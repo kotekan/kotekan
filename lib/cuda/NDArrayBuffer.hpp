@@ -135,11 +135,11 @@ public:
     // Metadata:
 
     void check_metadata() const {
-        const std::shared_ptr<metadataObject> mc =
+        const std::shared_ptr<const metadataObject> mc =
             device.get_gpu_memory_array_metadata(buffer_name_device, gpu_frame_id);
         assert(mc);
         assert(metadata_is_chord(mc));
-        const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
+        const std::shared_ptr<const chordMetadata> metadata = get_chord_metadata(mc);
         assert(metadata->get_name() == buffer_name);
         assert(metadata->type == ndarray.value_datatype);
         assert(metadata->dims == ndarray.rank);
@@ -150,10 +150,10 @@ public:
         }
     }
 
-    void set_metadata(const std::shared_ptr<chordMetadata>& other_metadata) const {
-        std::shared_ptr<metadataObject> const mc = device.create_gpu_memory_array_metadata(
+    void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) const {
+        const std::shared_ptr<metadataObject> mc = device.create_gpu_memory_array_metadata(
             buffer_name_device, gpu_frame_id, other_metadata->parent_pool);
-        std::shared_ptr<chordMetadata> const metadata = get_chord_metadata(mc);
+        const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
         *metadata = *other_metadata;
         metadata->set_name(buffer_name);
         metadata->type = ndarray.value_datatype;

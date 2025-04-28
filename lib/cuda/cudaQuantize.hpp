@@ -1,8 +1,8 @@
 #ifndef KOTEKAN_CUDA_QUANTIZE_HPP
 #define KOTEKAN_CUDA_QUANTIZE_HPP
 
-#include "cudaCommand.hpp"
-#include "cudaDeviceInterface.hpp"
+#include <cudaCommand.hpp>
+#include <cudaDeviceInterface.hpp>
 
 /**
  * @class cudaQuantize
@@ -46,6 +46,8 @@ private:
     std::string _gpu_mem_output;
     /// GPU side memory name for mean,stdev output
     std::string _gpu_mem_meanstd;
+    /// GPU side index array
+    std::string _gpu_mem_index;
 };
 
 #endif // KOTEKAN_CUDA_QUANTIZE_HPP

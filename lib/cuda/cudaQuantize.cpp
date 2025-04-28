@@ -1,11 +1,13 @@
 #include "cudaQuantize.hpp"
 
-#include "DataType.hpp"
-#include "chordMetadata.hpp"
-#include "cudaUtils.hpp"
-#include "mma.h"
-
+#include <DataType.hpp>
+#include <NDArrayBuffer.hpp>
+#include <array>
+#include <chordMetadata.hpp>
 #include <cmath>
+#include <cstdint>
+#include <cudaUtils.hpp>
+#include <string>
 #include <vector>
 
 void launch_quantize_kernel(cudaStream_t stream, int nframes, const __half2* in_base,
@@ -23,9 +25,9 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
     _gpu_mem_meanstd = config.get<std::string>(unique_name, "gpu_mem_meanstd");
+    _gpu_mem_index = unique_name + "/index";
     if (_num_chunks % FRAME_SIZE)
         throw std::runtime_error("The num_chunks parameter must be a multiple of 32");
-    std::string _gpu_mem_index = unique_name + "/index";
 
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaQuantize");
@@ -35,8 +37,9 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_meanstd, true, false, true));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_index", false, true, true));
 
-    size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
-    int32_t* index_array_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);
+    const size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
+    int32_t* const index_array_memory =
+        (int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);
 
     std::vector<int32_t> index_array_host(index_array_len / sizeof(int32_t), 0);
 
@@ -74,75 +77,49 @@ cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEven
     assert(in_meta->get_dimension_name(1) == "Fbar");
     assert(in_meta->get_dimension_name(2) == "Ttilde");
 
-    size_t input_frame_len = (size_t)_num_chunks * CHUNK_SIZE * sizeof(float16_t);
+    const size_t input_frame_len = (size_t)_num_chunks * CHUNK_SIZE * sizeof(float16_t);
     assert(input_frame_len
            == type_total_bytes(in_meta->type) * in_meta->dim[0] * in_meta->dim[1]
                   * in_meta->dim[2]);
 
-    void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id,
-                                                     _gpu_buffer_depth, input_frame_len);
+    const void* const input_memory = device.get_gpu_memory_array(
+        _gpu_mem_input, gpu_frame_id, _gpu_buffer_depth, input_frame_len);
     INFO("Input frame length: {:d} x {:d} x 2 = {:d}", _num_chunks, CHUNK_SIZE, input_frame_len);
 
-    //  divide by 2 because of packed int4 outputs
-    size_t output_frame_len = (size_t)_num_chunks * CHUNK_SIZE / 2;
-    INFO("Output frame length: {:d} x {:d} / 2 = {:d}", _num_chunks, CHUNK_SIZE, output_frame_len);
+    const size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
+    const int32_t* const index_array_memory =
+        (const int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);
 
-    int32_t* output_memory = (int32_t*)device.get_gpu_memory_array(
-        _gpu_mem_output, gpu_frame_id, _gpu_buffer_depth, output_frame_len);
+    // The data are stored as 4-bit integers, 2 values per byte
+    assert(in_meta->dim[0] % 2 == 0);
+    const std::array<std::ptrdiff_t, 3> beam_lengths{in_meta->dim[0] / 2, in_meta->dim[1],
+                                                     in_meta->dim[2]};
+    const std::array<std::string, 3> beam_dimnames{"R", "Fbar", "Ttilde"};
+    NDArrayBuffer<kotekan::uint4x2_t, 3> beam_buffer("frb3_beams", beam_lengths, beam_dimnames,
+                                                     device, cuda_stream_id, _gpu_buffer_depth,
+                                                     gpu_frame_id);
 
-    size_t meanstd_frame_len = (size_t)_num_chunks * 2 * sizeof(float16_t);
+    assert(in_meta->dim[2] % CHUNK_SIZE == 0);
+    static_assert(CHUNK_SIZE == 256);
+    const std::array<std::ptrdiff_t, 4> meanstd_lengths{in_meta->dim[0], in_meta->dim[1],
+                                                        in_meta->dim[2] / CHUNK_SIZE, 2};
+    const std::array<std::string, 4> meanstd_dimnames{"R", "Fbar", "Ttilde256", "mean/std"};
+    NDArrayBuffer<float16_t, 4> meanstd_buffer("frb3_beams_meanstd", meanstd_lengths,
+                                               meanstd_dimnames, device, cuda_stream_id,
+                                               _gpu_buffer_depth, gpu_frame_id);
 
-    void* meanstd_memory = device.get_gpu_memory_array(_gpu_mem_meanstd, gpu_frame_id,
-                                                       _gpu_buffer_depth, meanstd_frame_len);
-
-    std::string _gpu_mem_index = unique_name + "/index";
-    size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
-    int32_t* index_array_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);
+    void* const beam_memory = beam_buffer.get_ndarray().data();
+    void* const meanstd_memory = meanstd_buffer.get_ndarray().data();
 
     record_start_event();
 
     launch_quantize_kernel(device.getStream(cuda_stream_id), _num_chunks / FRAME_SIZE,
                            (const __half2*)input_memory, (__half2*)meanstd_memory,
-                           (unsigned int*)output_memory, index_array_memory);
+                           (unsigned int*)beam_memory, index_array_memory);
     CHECK_CUDA_ERROR(cudaGetLastError());
 
-    // Set metadata
-    const std::shared_ptr<metadataObject> out_mc_beam =
-        device.create_gpu_memory_array_metadata(_gpu_mem_output, gpu_frame_id, in_mc->parent_pool);
-    const std::shared_ptr<chordMetadata> out_meta_beam = get_chord_metadata(out_mc_beam);
-    *out_meta_beam = *in_meta;
-    out_meta_beam->set_name("I3");
-    out_meta_beam->type = kotekan::uint4x2;
-    // The data are stored as 4-bit integers, 2 values per byte
-    assert(in_meta->dim[0] % 2 == 0);
-    out_meta_beam->set_array_dimension(0, in_meta->dim[0] / 2, "R");
-    out_meta_beam->set_array_dimension(1, in_meta->dim[1], "Fbar");
-    out_meta_beam->set_array_dimension(2, in_meta->dim[2], "Ttilde");
-    for (int d = out_meta_beam->dims - 1; d >= 0; --d)
-        if (d == out_meta_beam->dims - 1)
-            out_meta_beam->stride[d] = 1;
-        else
-            out_meta_beam->stride[d] = out_meta_beam->stride[d + 1] * out_meta_beam->dim[d + 1];
-
-    const std::shared_ptr<metadataObject> out_mc_meanstd =
-        device.create_gpu_memory_array_metadata(_gpu_mem_meanstd, gpu_frame_id, in_mc->parent_pool);
-    const std::shared_ptr<chordMetadata> out_meta_meanstd = get_chord_metadata(out_mc_meanstd);
-    *out_meta_meanstd = *in_meta;
-    out_meta_meanstd->set_name("I3meanstd");
-    out_meta_meanstd->type = kotekan::float16;
-    out_meta_meanstd->dims = in_meta->dims + 1;
-    out_meta_meanstd->set_array_dimension(0, in_meta->dim[0], "R");
-    out_meta_meanstd->set_array_dimension(1, in_meta->dim[1], "Fbar");
-    assert(in_meta->dim[2] % CHUNK_SIZE == 0);
-    static_assert(CHUNK_SIZE == 256);
-    out_meta_meanstd->set_array_dimension(2, in_meta->dim[2] / CHUNK_SIZE, "Ttilde256");
-    out_meta_meanstd->set_array_dimension(3, 2, "mean/std");
-    for (int d = out_meta_meanstd->dims - 1; d >= 0; --d)
-        if (d == out_meta_meanstd->dims - 1)
-            out_meta_meanstd->stride[d] = 1;
-        else
-            out_meta_meanstd->stride[d] =
-                out_meta_meanstd->stride[d + 1] * out_meta_meanstd->dim[d + 1];
+    beam_buffer.set_metadata(in_meta);
+    meanstd_buffer.set_metadata(in_meta);
 
     return record_end_event();
 }
