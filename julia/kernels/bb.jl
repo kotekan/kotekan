@@ -666,28 +666,22 @@ function make_bb_kernel()
         @assert false
     end
 
-    if!(
-        emitter,
-        quote
-            let
-                thread = IndexSpaces.cuda_threadidx()
-                warp = IndexSpaces.cuda_warpidx()
-                thread == 0i32 && warp == 0i32
-            end
-        end,
-    ) do emitter
+    if!(emitter, quote
+        let
+            thread = IndexSpaces.cuda_threadidx()
+            warp = IndexSpaces.cuda_warpidx()
+            thread == 0i32 && warp == 0i32
+        end
+    end) do emitter
         apply!(emitter, :logval => layout_log_registers, 0i32)
         store!(emitter, :log_memory => layout_log_memory, :logval)
         return nothing
     end
     sync_threads!(emitter)
 
-    push!(
-        emitter.statements,
-        quote
-            hasoverflow = false
-        end,
-    )
+    push!(emitter.statements, quote
+        hasoverflow = false
+    end)
 
     if D == 1024
         layout_A0_registers = Layout([
@@ -786,12 +780,9 @@ function make_bb_kernel()
     @assert emitter.environment[:A] == layout_A_registers
 
     loop!(emitter, Time(:time, loopT1.offset, loopT1.length) => loopT1) do emitter
-        push!(
-            emitter.statements,
-            quote
-                Tmin + T1 ≥ Tmax && break
-            end,
-        )
+        push!(emitter.statements, quote
+            Tmin + T1 ≥ Tmax && break
+        end)
 
         loop!(emitter, Time(:time, loopT2.offset, loopT2.length) => loopT2) do emitter
 
@@ -979,7 +970,8 @@ function make_bb_kernel()
                 :J,
                 Register(:cplx, 1, C) => SIMD(:simd, 4, 2),
                 Register(:time, 8, 2) => SIMD(:simd, 8, 2),
-                Register(:time, 16, 2) => SIMD(:simd, 16, 2),
+                Register(:time, 16, 2) => SIMD(:simd, 16, 2);
+                swapped_withoffset=true,
             )
 
             unselect!(emitter, :Jper, :J, loopT2 => Register(:time, loopT2.offset, loopT2.length))
@@ -1000,23 +992,17 @@ function make_bb_kernel()
         return nothing
     end
 
-    push!(
-        emitter.statements,
-        quote
-            any_hasoverflow = sync_threads_or(hasoverflow)
-        end,
-    )
+    push!(emitter.statements, quote
+        any_hasoverflow = sync_threads_or(hasoverflow)
+    end)
     if!(emitter, :any_hasoverflow) do emitter
-        if!(
-            emitter,
-            quote
-                let
-                    thread = IndexSpaces.cuda_threadidx()
-                    warp = IndexSpaces.cuda_warpidx()
-                    thread == 0i32 && warp == 0i32
-                end
-            end,
-        ) do emitter
+        if!(emitter, quote
+            let
+                thread = IndexSpaces.cuda_threadidx()
+                warp = IndexSpaces.cuda_warpidx()
+                thread == 0i32 && warp == 0i32
+            end
+        end) do emitter
             apply!(emitter, :logval => layout_log_registers, 1i32)
             store!(emitter, :log_memory => layout_log_memory, :logval)
         end
@@ -1025,14 +1011,12 @@ function make_bb_kernel()
     apply!(emitter, :info => layout_info_registers, 0i32)
     store!(emitter, :info_memory => layout_info_memory, :info)
 
-    stmts = clean_code(
-        quote
-            @inbounds begin
-                $(emitter.init_statements...)
-                $(emitter.statements...)
-            end
-        end,
-    )
+    stmts = clean_code(quote
+        @inbounds begin
+            $(emitter.init_statements...)
+            $(emitter.statements...)
+        end
+    end)
 
     return stmts
 end
@@ -1273,7 +1257,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     ),
                     Dict(
                         "name" => "J",
-                        "type" => "int4x2",
+                        "type" => "int4x2chime",
                         "kotekan_name" => "bb_beams",
                         "axes" => [
                             Dict("label" => "T", "length" => Tout),

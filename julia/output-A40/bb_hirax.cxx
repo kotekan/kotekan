@@ -213,7 +213,7 @@ private:
     //
     // J: bb_beams
     static constexpr const char* J_name = "J";
-    static constexpr kotekan::DataType J_type = kotekan::int4x2;
+    static constexpr kotekan::DataType J_type = kotekan::int4x2chime;
     enum J_indices {
         J_index_T,
         J_index_P,
@@ -612,7 +612,7 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
 
     // Copy inputs to device memory
 
-    J_buffer.set_to_poison(0x88);
+    J_buffer.set_to_poison(0x00);
 
 #ifdef DEBUGGING
     // Initialize host-side buffer arrays
@@ -697,7 +697,7 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
     }
 #endif
 
-    J_buffer.check_for_poison(0x88);
+    J_buffer.check_for_poison(0x00);
 
     return record_end_event();
 }

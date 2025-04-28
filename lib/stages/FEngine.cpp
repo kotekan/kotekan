@@ -1488,7 +1488,7 @@ void FEngine::main_thread() {
                 get_chord_metadata(J_buffer, J_frame_id);
             J_metadata->frame_counter = J_frame_index;
 	    std::strncpy(J_metadata->name, "J", sizeof J_metadata->name);
-            J_metadata->type = kotekan::int4x2;
+            J_metadata->type = kotekan::int4x2chime;
             J_metadata->dims = 4;
             assert(J_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(J_metadata->dim_name[0], "B", sizeof J_metadata->dim_name[0]);

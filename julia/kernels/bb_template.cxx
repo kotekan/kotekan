@@ -462,7 +462,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    J_buffer.set_to_poison(0x88);
+    J_buffer.set_to_poison(0x00);
 
 #ifdef DEBUGGING
     // Initialize host-side buffer arrays
@@ -564,7 +564,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     }
 #endif
 
-    J_buffer.check_for_poison(0x88);
+    J_buffer.check_for_poison(0x00);
 
     return record_end_event();
 }
