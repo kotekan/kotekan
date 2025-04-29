@@ -180,7 +180,10 @@ if(${USE_LAPACK_BLAZE})
     if(BLAZE_FOUND)
         message(STATUS "Blaze found. BLAZE_PATH is ${BLAZE_PATH}")
     else()
-        message(FATAL_ERROR "Blaze headers not found. Please set BLAZE_PATH or install Blaze in /usr/local/include.")
+        message(
+            FATAL_ERROR
+                "Blaze headers not found. Please set BLAZE_PATH or install Blaze in /usr/local/include."
+        )
     endif()
     add_definitions(-DBLAZE_BLAS_MODE=1)
     add_definitions(-DBLAZE_BLAS_IS_PARALLEL=1)
