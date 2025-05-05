@@ -1,9 +1,13 @@
 #include "cudaCorrelator.hpp"
 
-#include "chordMetadata.hpp"
-#include "div.hpp"
-#include "math.h"
-#include "mma.h"
+#include <DataType.hpp>
+#include <NDArrayBuffer.hpp>
+#include <array>
+#include <chordMetadata.hpp>
+#include <cmath>
+#include <cstdint>
+#include <div.hpp>
+#include <string>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -22,8 +26,8 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     _sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
     n2correlator(_num_elements, _num_local_freq) {
     _gpu_mem_voltage = config.get<std::string>(unique_name, "gpu_mem_voltage");
-    _gpu_mem_correlation_triangle =
-        config.get<std::string>(unique_name, "gpu_mem_correlation_triangle");
+    // OUTDATED _gpu_mem_correlation_triangle =
+    // OUTDATED     config.get<std::string>(unique_name, "gpu_mem_correlation_triangle");
     if (_samples_per_data_set % _sub_integration_ntime)
         throw std::runtime_error(
             "The sub_integration_ntime parameter must evenly divide samples_per_data_set");
@@ -35,7 +39,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
 
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_voltage, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_correlation_triangle, true, false, true));
+    gpu_buffers_used.push_back(std::make_tuple("n2k_correlation_buffer", true, false, true));
 
     // TODO: code for rfi mask. Just using a placeholder zero mask for now.
     void* device_rfimask = device.get_gpu_memory("rfimask", _num_local_freq * _samples_per_data_set
@@ -82,16 +86,17 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     const int blocksize = 16;
     const int linear_num_blocks = (_num_elements + 1) / blocksize;
     const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
-    const std::ptrdiff_t output_array_len = std::ptrdiff_t(sizeof(int32_t)) * 2
-                                            * num_subintegrations * _num_local_freq * blocksize
-                                            * blocksize * triangle_num_blocks;
-    void* output_memory = device.get_gpu_memory_array(_gpu_mem_correlation_triangle, gpu_frame_id,
-                                                      _gpu_buffer_depth, output_array_len);
+    const std::array<std::ptrdiff_t, 6> n2k_lengths{
+        num_subintegrations, _num_local_freq, triangle_num_blocks, blocksize, blocksize, 2};
+    const std::array<std::string, 6> n2k_dimnames{"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"};
+    NDArrayBuffer<std::int32_t, 6> output("n2k_correlation", n2k_lengths, n2k_dimnames, device,
+                                          cuda_stream_id, _gpu_buffer_depth, gpu_frame_id);
 
     record_start_event();
 
-    n2correlator.launch((int*)output_memory, (int8_t*)input_memory, rfimask, num_subintegrations,
-                        _sub_integration_ntime, device.getStream(cuda_stream_id), true);
+    n2correlator.launch(output.get_ndarray().data(), (int8_t*)input_memory, rfimask,
+                        num_subintegrations, _sub_integration_ntime,
+                        device.getStream(cuda_stream_id), true);
 
     CHECK_CUDA_ERROR(cudaGetLastError());
 
@@ -108,32 +113,10 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
         assert(in_meta->dim[2] == 2);
         assert(in_meta->dim[3] == _num_elements / 2);
         // Set metadata on output buffer (correlation matrix)
-        std::shared_ptr<metadataObject> const out_mc = device.create_gpu_memory_array_metadata(
-            _gpu_mem_correlation_triangle, gpu_frame_id, in_mc->parent_pool);
-        std::shared_ptr<chordMetadata> const out_meta = get_chord_metadata(out_mc);
-        *out_meta = *in_meta;
-        // Output shape is
-        // (nt_outer = samples_per_data_set / sub_integration_ntimes x
-        //  num_freq x
-        //  num_elements (= num_polarizations x num_dishes) x
-        //  num_elements (= num_polarizations x num_dishes) x
-        //  2 complex components)
-        // In int32 format.
-        out_meta->set_name("N2");
-        out_meta->type = kotekan::int32;
-        out_meta->dims = 6;
-        out_meta->set_array_dimension(0, num_subintegrations, "Tc");
-        out_meta->set_array_dimension(1, _num_local_freq, "F");
-        out_meta->set_array_dimension(2, triangle_num_blocks, "DPhi");
-        out_meta->set_array_dimension(3, blocksize, "DPlo1");
-        out_meta->set_array_dimension(4, blocksize, "DPlo2");
-        out_meta->set_array_dimension(5, 2, "C");
-        for (int d = out_meta->dims - 1; d >= 0; --d)
-            if (d == out_meta->dims - 1)
-                out_meta->stride[d] = 1;
-            else
-                out_meta->stride[d] = out_meta->stride[d + 1] * out_meta->dim[d + 1];
-
+        output.set_metadata(in_meta);
+        const std::shared_ptr<metadataObject> out_mc =
+            device.get_gpu_memory_array_metadata("n2k_correlation_buffer", gpu_frame_id);
+        const std::shared_ptr<chordMetadata> out_meta = get_chord_metadata(out_mc);
         // Since we do not use a ring buffer we need to set `meta->sample0_offset`
         assert(input_cursor % in_meta->sample_bytes() == 0);
         out_meta->sample0_offset = div_noremainder(unmodded_input_cursor, in_meta->sample_bytes());

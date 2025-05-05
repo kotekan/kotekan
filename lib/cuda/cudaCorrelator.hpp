@@ -1,10 +1,10 @@
 #ifndef KOTEKAN_CUDA_CORRELATOR_H
 #define KOTEKAN_CUDA_CORRELATOR_H
 
-#include "cudaCommand.hpp"
-#include "cudaDeviceInterface.hpp"
-#include "n2k/Correlator.hpp"
-#include "ringbuffer.hpp"
+#include <cudaCommand.hpp>
+#include <cudaDeviceInterface.hpp>
+#include <n2k/Correlator.hpp>
+#include <ringbuffer.hpp>
 
 /**
  * @class cudaCorrelator
@@ -70,8 +70,8 @@ private:
 
     /// GPU side memory name for the voltage input
     std::string _gpu_mem_voltage;
-    /// GPU side memory name for correlator output
-    std::string _gpu_mem_correlation_triangle;
+    // OUTDATED /// GPU side memory name for correlator output
+    // OUTDATED std::string _gpu_mem_correlation_triangle;
 
     // Signalling ring buffer for the input (voltage) data
     RingBuffer* input_ringbuf_signal;

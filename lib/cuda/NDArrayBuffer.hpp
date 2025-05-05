@@ -140,12 +140,6 @@ public:
         assert(mc);
         assert(metadata_is_chord(mc));
         const std::shared_ptr<const chordMetadata> metadata = get_chord_metadata(mc);
-#warning "TODO"
-        if (!(metadata->get_name() == buffer_name))
-            std::cerr << "metadata->get_name()=" << metadata->get_name()
-                      << "\n"
-                         "buffer_name="
-                      << buffer_name << "\n";
         assert(metadata->get_name() == buffer_name);
         assert(metadata->type == ndarray.value_datatype);
         assert(metadata->dims == ndarray.rank);
@@ -154,6 +148,7 @@ public:
             assert(metadata->dim[d] == int(ndarray.extent(d)));
             assert(metadata->stride[d] == ndarray.stride(d));
         }
+        // TODO: check `sample0_offset`
     }
 
     // TODO: Use other NDArrayBuffer instead of other metadata
@@ -169,6 +164,7 @@ public:
             metadata->set_array_dimension(d, ndarray.extent(d), std::string(ndarray.dimname(d)));
             metadata->stride[d] = ndarray.stride(d);
         }
+        // TODO: set `sample0_offset`
     }
 
     // Poison

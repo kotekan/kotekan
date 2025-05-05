@@ -47,8 +47,8 @@ run_n2k:
           sub_integration_ntime: n2k_sub_integration_ntime
           in_signal: host_voltage_ringbuffer_in
           gpu_mem_voltage: voltage_buffer
-          gpu_mem_correlation_triangle: n2k_correlation_matrix_buffer
+          #OUTDATED gpu_mem_correlation_triangle: n2k_correlation_buffer
         - name: cudaSyncOutput
         - name: cudaOutputData
-          gpu_mem: n2k_correlation_matrix_buffer
+          gpu_mem: n2k_correlation_buffer
           out_buf: host_n2k_correlation_buffer_out
