@@ -2,14 +2,11 @@ if(NOT DEFINED BLAZE_PATH)
     set(BLAZE_PATH "/usr/local/include")
 endif()
 
-find_path(BLAZE_INCLUDE_DIR
+find_path(
+    BLAZE_INCLUDE_DIR
     NAMES blaze/Blaze.h
-    PATHS
-        ${BLAZE_PATH}
-        /usr/local/include
-        /usr/include
-    PATH_SUFFIXES blaze
-)
+    PATHS ${BLAZE_PATH} /usr/local/include /usr/include
+    PATH_SUFFIXES blaze)
 
 # Check if include directory was found
 if(BLAZE_INCLUDE_DIR)
