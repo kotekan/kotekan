@@ -30,7 +30,7 @@ endif()
 # optional modules for GPUs and the like
 option(USE_AIRSPY "Build Airspy Producer" OFF)
 option(USE_FFTW "Build with FFTW F-engine" OFF)
-option(USE_LAPACK "Build with LAPACK Linear Algebra (OpenBLAS)" OFF)
+option(USE_LAPACK_BLAZE "Build with LAPACK Linear Algebra (OpenBLAS) and Blaze support" OFF)
 option(USE_HSA "Build HSA GPU Framework" OFF)
 option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
@@ -154,7 +154,7 @@ if(NOT DEFINED ARCH)
 endif()
 
 include(CheckIncludeFileCXX)
-if(${USE_LAPACK})
+if(${USE_LAPACK_BLAZE})
 
     set(BLA_VENDOR OpenBLAS)
     find_package(BLAS REQUIRED)
@@ -169,11 +169,14 @@ if(${USE_LAPACK})
     find_package(LAPACKE REQUIRED)
     message("Using LAPACKE ${LAPACKE_LIBRARIES}")
 
-    # Check Blaze is installed
-    if(DEFINED BLAZE_PATH)
-        if(NOT EXISTS ${BLAZE_PATH}/blaze/Blaze.h)
-            message(FATAL_ERROR "Could not find Blaze headers")
-        endif()
+    # Attempt to find the Blaze package
+    find_package(Blaze REQUIRED)
+
+    if(BLAZE_FOUND)
+        message(STATUS "Blaze found. BLAZE_PATH is ${BLAZE_PATH}")
+    else()
+        message(STATUS "Please set BLAZE_PATH or install Blaze in /usr/local/include.")
+        message(FATAL_ERROR "Blaze headers not found.")
     endif()
     add_definitions(-DBLAZE_BLAS_MODE=1)
     add_definitions(-DBLAZE_BLAS_IS_PARALLEL=1)

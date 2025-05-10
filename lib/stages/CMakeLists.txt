@@ -134,7 +134,7 @@ if(${USE_OMP})
     target_sources(kotekan_stages PRIVATE VisTruncate.cpp HFBTruncate.cpp)
 endif()
 
-if(${USE_LAPACK})
+if(${USE_LAPACK_BLAZE})
     target_sources(kotekan_stages PRIVATE eigenVis.cpp RingMapMaker.cpp EigenVisIter.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${BLAS_INCLUDE_DIRS}
                                                              ${LAPACKE_INCLUDE_DIRS} ${BLAZE_PATH})
