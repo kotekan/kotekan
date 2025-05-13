@@ -65,6 +65,7 @@ add_library(
     restInspectFrame.cpp
     frbNetworkProcess.cpp
     pulsarNetworkProcess.cpp
+    pulsarNetworkProducer.cpp
     bufferMerge.cpp
     bufferCopy.cpp
     bufferSwitch.cpp
