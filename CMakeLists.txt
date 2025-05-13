@@ -136,6 +136,7 @@ if(${USE_CUDA})
     enable_language(CUDA)
 
     find_package(CUDAToolkit REQUIRED)
+    message(STATUS "Compiling with CUDA tools in ${CUDAToolkit_INCLUDE_DIRS}.")
 endif()
 
 if(${USE_AIRSPY})
