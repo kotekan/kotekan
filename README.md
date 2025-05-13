@@ -35,11 +35,10 @@ Cmake build options:
   Direct toolchain calls are used by default.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
 * `-DUSE_CUDA=ON` - Build with CUDA support, requires `nvcc`
-* `-DUSE_HDF5=ON` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
+* `-DUSE_HDF5=ON` to enable the HDF5 writer. Add `-DHIGHFIVE_PATH=<path>` to optionally specify a path to HighFive.
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
 * `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
-* `-DUSE_LAPACK=ON` - Build stages depending on LAPACK.
-* `-DBLAZE_PATH=<blaze_path>` - Path to BLAZE headers. Required if `USE_LAPACK` is set.
+* `-DUSE_LAPACK_BLAZE=ON` - Build stages depending on LAPACK and Blaze. Add `-DBLAZE_PATH=<blaze_path>` to optionally specify a path to BLAZE headers.
 * `-DCOMPILE_DOCS=ON` - Build kotekan documentation. Requires doxygen,
   sphinx (+ sphinx_rtd_theme), and breathe.
   Note that docs will only compile if explicitly told to,

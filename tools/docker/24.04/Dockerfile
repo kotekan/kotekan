@@ -188,6 +188,9 @@ ENV HDF5_PLUGIN_PATH=/usr/local/lib/python3.12/dist-packages/hdf5plugin/plugins
 
 ENV KOTEKAN_BUILD_DIRNAME=build-2404
 
+# Don't worry about permission issues in here
+RUN git config --global --add safe.directory /code/kotekan
+
 # Do nothing when the container launches
 CMD ["/bin/bash"]
 
