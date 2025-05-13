@@ -1,0 +1,70 @@
+type: config
+log_level: DEBUG
+
+cpu_affinity: [2]
+
+telescope:
+  name: CHIMETelescope
+  require_gps: false
+
+gps_time:
+  frame0_nano: 1430774690*1e9
+
+baseband_buffer_depth: 272 # 272 = ~33 seconds after accounting for active frames
+buffer_depth: 15
+
+main_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
+                        + 100 * 8 * buffer_depth # This part is for the sk/var output.
+
+samples_per_data_set: 16384
+num_freqs: 16
+num_beams: 16
+num_pol: 2
+
+tracking_output_buffers:
+  num_frames: buffer_depth
+  frame_size: samples_per_data_set * num_pol * num_freqs * num_beams
+  metadata_pool: main_pool
+  beamform_tracking_output_valved_buffer_0:
+    kotekan_buffer: standard
+  # beamform_tracking_output_valved_buffer_1:
+  #   kotekan_buffer: standard
+  # beamform_tracking_output_valved_buffer_2:
+  #   kotekan_buffer: standard
+  # beamform_tracking_output_valved_buffer_3:
+  #   kotekan_buffer: standard
+
+pulsar:
+  timesamples_per_pulsar_packet: 625
+  udp_pulsar_packet_size: 5032
+  num_packet_per_stream: 80
+  num_pulsar_beams: 10
+  num_freqs_per_gpu: 16
+  num_freqs_per_frame: 4
+  num_stream: 10
+  num_gpus: 1
+  pulsar_output_buffer:
+    num_frames: buffer_depth + 16
+    frame_size: udp_pulsar_packet_size * num_stream * num_packet_per_stream
+    metadata_pool: main_pool
+    kotekan_buffer: standard
+
+  produce:
+    kotekan_stage: PulsarNetworkProducer
+    out_buf: beamform_tracking_output_valved_buffer_0  
+  postprocess:
+    kotekan_stage: pulsarPostProcess
+    network_input_buffer_0: beamform_tracking_output_valved_buffer_0
+    # network_input_buffer_1: beamform_tracking_output_valved_buffer_1
+    # network_input_buffer_2: beamform_tracking_output_valved_buffer_2
+    # network_input_buffer_3: beamform_tracking_output_valved_buffer_3
+    pulsar_out_buf: pulsar_output_buffer
+  writer:
+    kotekan_stage: hdf5FileWrite
+    in_buf: pulsar_output_buffer
+    base_dir: .
+    file_name: pulsar
+    exit_after_n_frames: 5
+
