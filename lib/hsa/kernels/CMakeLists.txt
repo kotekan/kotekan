@@ -13,9 +13,10 @@ find_program(
     /opt/rocm/hcc/bin/
     /opt/rocm/hcc-1.0/bin/
     /opt/amd/llvm/bin/
+    /usr/bin
     NO_DEFAULT_PATH)
 if(NOT AMD_CLANG)
-    message(FATAL_ERROR "AMD clang not found!")
+    message(FATAL_ERROR "AMD clang (${AMD_CLANG}) not found!")
 else()
     message("-- Found the AMD clang: ${AMD_CLANG}")
 endif()

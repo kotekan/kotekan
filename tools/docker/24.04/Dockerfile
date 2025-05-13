@@ -39,7 +39,8 @@ RUN apt update && \
                    libssl-dev \
                    libyaml-cpp-dev \
                    libsystemd-dev \
-                   libgdal-dev && \
+                   libgdal-dev \
+                   libhsa-runtime-dev && \
     apt install -y python3 \
                    python3-dev && \
     apt clean && apt autoclean
