@@ -27,6 +27,7 @@
 using std::string;
 
 #define udp_pulsar_header_size 32
+#define num_freqs_per_frame 4 // at least for the 625 times version we use
 
 
 using kotekan::bufferContainer;
@@ -42,6 +43,12 @@ pulsarPostProcess::pulsarPostProcess(Config& config_, const std::string& unique_
 
     // Apply config.
     _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
+    // TODO: chord and the old chime Xengine code order input differently. 
+    // CHIME: [time][beam][pol]
+    // CHORD: [beam][freq][pol][time]
+    // handle this...
+    _num_freqs_per_gpu = config.get_default<uint32_t>(unique_name, "num_freqs_per_gpu", 1);
+    assert(_num_freqs_per_gpu % num_freqs_per_frame == 0);
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     _num_pulsar_beams = config.get<uint32_t>(unique_name, "num_pulsar_beams");
     _num_beams = config.get<uint32_t>(unique_name, "num_beams");
@@ -52,10 +59,13 @@ pulsarPostProcess::pulsarPostProcess(Config& config_, const std::string& unique_
     _num_packet_per_stream = config.get<uint32_t>(unique_name, "num_packet_per_stream");
     _num_stream = config.get<uint32_t>(unique_name, "num_stream");
 
+    // RH: only 625 used in production CHIME, get rid of other format option
     assert(_timesamples_per_pulsar_packet == 625 || _timesamples_per_pulsar_packet == 3125);
 
+    // TODO: check chord metadata object to ensure we receive what we expect
+
     in_buf = new Buffer*[_num_gpus];
-    in_buffer_ID = new uint[_num_gpus]; // 4 of these , cycle through buffer depth
+    in_buffer_ID = new uint[_num_gpus]; // 4 of these in CHIME , cycle through buffer depth
     in_frame = new uint8_t*[_num_gpus];
 
     for (uint32_t i = 0; i < _num_gpus; ++i) {
@@ -73,8 +83,8 @@ pulsarPostProcess::~pulsarPostProcess() {
 }
 
 void pulsarPostProcess::fill_headers(unsigned char* out_buf, PSRHeader* psr_header,
-                                     const uint64_t fpga_seq_num, timespec* time_now,
-                                     beamCoord* beam_coord, uint16_t* thread_ids) {
+                                     const uint64_t fpga_seq_num, timespec * const time_now,
+                                     beamCoord const * const beam_coord, uint16_t const * const thread_ids) {
 
     // Get the Telescope instance and pre-calc the length of an FPGA frame
     auto& tel = Telescope::instance();
@@ -90,10 +100,11 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, PSRHeader* psr_head
         psr_header->data_frame =
             (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * fpga_s);
 
-        for (uint f = 0; f < freqloop; ++f) {
+        for (uint f = 0; f < freqloop; f += num_freqs_per_frame) {
             // Load frequency indices into thread_id and EUD3 if frequency packing.
             psr_header->thread_id = thread_ids[f];
             if (_timesamples_per_pulsar_packet == 625) {
+		assert(num_freqs_per_frame == 4);
                 psr_header->eud3 = (uint32_t)thread_ids[1] + ((uint32_t)thread_ids[2] << 10)
                                    + ((uint32_t)thread_ids[3] << 20);
             }
@@ -141,9 +152,11 @@ void pulsarPostProcess::main_thread() {
     auto& tel = Telescope::instance();
     uint64_t fpga_ns = tel.seq_length_nsec();
 
+    struct timespec time_now;
+
     int out_buffer_ID = 0;
     int startup = 1; // related to the likely & unlikely
-    uint16_t thread_ids[_num_gpus];
+    uint16_t thread_ids[_num_gpus * _num_freqs_per_gpu];
 
     for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buffer_ID[i] = 0;
@@ -182,10 +195,19 @@ void pulsarPostProcess::main_thread() {
     uint64_t fpga_seq_num = 0;
 
     beamCoord beam_coord[_num_gpus];
+    const uint32_t num_out_frames = _num_gpus * _num_freqs_per_gpu / num_freqs_per_frame;
+    assert(num_out_frames > 0);
+    assert((uint32_t)pulsar_buf->num_frames >= num_out_frames);
+    assert(num_out_frames * num_freqs_per_frame == _num_gpus * _num_freqs_per_gpu);
+    uint8_t* out_frames[num_out_frames] = {nullptr};
     // Get the first output buffer which will always be id = 0 to start.
-    uint8_t* out_frame = pulsar_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
-    if (out_frame == nullptr)
-        goto end_loop;
+    for (uint32_t freq_block = 0; freq_block < num_out_frames; ++freq_block) {
+        uint8_t* out_frame = pulsar_buf->wait_for_empty_frame(unique_name,
+                              (out_buffer_ID + freq_block) % pulsar_buf->num_frames);
+        if (out_frame == nullptr)
+            goto end_loop;
+        out_frames[freq_block] = out_frame;
+    }
 
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
@@ -208,7 +230,8 @@ void pulsarPostProcess::main_thread() {
             (new_frame_fpga_seq_num.value() - frame_fpga_seq_num) > _samples_per_data_set;
         frame_fpga_seq_num = new_frame_fpga_seq_num.value();
 
-        // If this is the first time wait until we get the start of an interger second period.
+        // If this is the first time wait until we get the start of a being a
+        // multiple of the packet length
         if (unlikely(startup == 1)) {
             startup = 0;
 
@@ -218,8 +241,11 @@ void pulsarPostProcess::main_thread() {
             time_now = tel.to_time(frame_fpga_seq_num);
             uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet * fpga_ns;
             uint32_t ns_offset = pkt_length_in_ns - (time_now.tv_nsec % pkt_length_in_ns);
+            if (ns_offset == pkt_length_in_ns)
+                ns_offset = 0;
             float seq_number_offset_float = ns_offset / (float)fpga_ns;
             uint seq_number_offset = round(seq_number_offset_float);
+            assert(seq_number_offset == 0);
 
             current_input_location = seq_number_offset;
             fpga_seq_num = frame_fpga_seq_num + seq_number_offset;
@@ -231,8 +257,15 @@ void pulsarPostProcess::main_thread() {
             skipped_frames = false;
 
             // Fill the first output buffer headers
-            fill_headers((unsigned char*)out_frame, &psr_header, fpga_seq_num, &time_now,
-                         beam_coord, thread_ids);
+            struct timespec time_dummy;
+            for(uint32_t freq_block = 0; freq_block < num_out_frames; ++freq_block) {
+                time_dummy = time_now; // modified (!) by fill_headers
+                assert(freq_block < num_out_frames);
+                fill_headers((unsigned char*)out_frames[freq_block], &psr_header,
+                             fpga_seq_num,&time_dummy, beam_coord,
+                             &thread_ids[freq_block * num_freqs_per_frame]);
+            }
+            time_now = time_dummy;
         }
 
         // Take data from the input buffer and format the output
@@ -249,6 +282,8 @@ void pulsarPostProcess::main_thread() {
 
                 uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet * fpga_ns;
                 uint32_t ns_offset = pkt_length_in_ns - (time_now.tv_nsec % pkt_length_in_ns);
+                if (ns_offset == pkt_length_in_ns)
+                    ns_offset = 0;
                 float seq_number_offset_float = ns_offset / (float)fpga_ns;
                 uint seq_number_offset = round(seq_number_offset_float);
 
@@ -265,38 +300,68 @@ void pulsarPostProcess::main_thread() {
                 in_frame_location = 0;
 
                 // Fill the headers of the new buffer
-                fill_headers((unsigned char*)out_frame, &psr_header, fpga_seq_num, &time_now,
-                             beam_coord, thread_ids);
+                struct timespec time_dummy;
+                for(uint32_t freq_block = 0; freq_block < num_out_frames; ++freq_block) {
+                  time_dummy = time_now; // modified (!) by fill_headers
+                  assert(freq_block < num_out_frames);
+                  fill_headers((unsigned char*)out_frames[freq_block], &psr_header,
+                               fpga_seq_num,&time_dummy, beam_coord,
+                               &thread_ids[freq_block * num_freqs_per_frame]);
+                }
+                time_now = time_dummy;
             }
 
             // now store samples into output buffer.
+            for (uint32_t i = 0; i < _num_gpus; ++i) {
+                assert(_samples_per_data_set * _num_pol * _num_beams * _num_freqs_per_gpu == in_buf[i]->frame_size);
+            }
             for (uint i = current_input_location; i < _samples_per_data_set; ++i) {
                 if (in_frame_location == _timesamples_per_pulsar_packet) { // last sample
                     in_frame_location = 0;
                     frame++;
                     if (frame == _num_packet_per_stream) { // last frame
                         frame = 0;
-                        pulsar_buf->mark_frame_full(unique_name, out_buffer_ID);
+                        for (uint32_t freq_block = 0; freq_block < num_out_frames; ++freq_block) {
+                          pulsar_buf->mark_frame_full(unique_name, (out_buffer_ID + freq_block) % pulsar_buf->num_frames);
+                          out_frames[freq_block] = nullptr;
+                        }
                         // Get a new output buffer
-                        out_buffer_ID = (out_buffer_ID + 1) % pulsar_buf->num_frames;
-                        out_frame = pulsar_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
-                        if (out_frame == nullptr)
-                            goto end_loop;
+                        out_buffer_ID = (out_buffer_ID + num_out_frames) % pulsar_buf->num_frames;
+                        for (uint32_t freq_block = 0; freq_block < num_out_frames; ++freq_block) {
+                            uint8_t* out_frame = pulsar_buf->wait_for_empty_frame(unique_name,
+                                                  (out_buffer_ID + freq_block) % pulsar_buf->num_frames);
+                            if (out_frame == nullptr)
+                                goto end_loop;
+                            assert(freq_block < num_out_frames);
+                            assert(out_frames[freq_block] == nullptr);
+                            out_frames[freq_block] = out_frame;
+                        }
                         // Fill the headers of the new buffer
                         fpga_seq_num += _timesamples_per_pulsar_packet * _num_packet_per_stream;
-                        fill_headers((unsigned char*)out_frame, &psr_header, fpga_seq_num,
-                                     &time_now, beam_coord, thread_ids);
+                        struct timespec time_dummy;
+                        for(uint32_t freq_block = 0; freq_block < num_out_frames; ++freq_block) {
+                          time_dummy = time_now; // modified (!) by fill_headers
+                          assert(freq_block < num_out_frames);
+                          fill_headers((unsigned char*)out_frames[freq_block], &psr_header,
+                                       fpga_seq_num,&time_dummy, beam_coord,
+                                       &thread_ids[freq_block * num_freqs_per_frame]);
+                        }
+                        time_now = time_dummy;
                     } // end if last frame
                 }     // end if last sample
 
-                unsigned char* out_buf = (unsigned char*)out_frame;
-                for (uint32_t thread_id = 0; thread_id < _num_gpus; ++thread_id) {
-                    uint8_t* in_buf_data = in_frame[thread_id];
+                for (uint32_t thread_id = 0; thread_id < _num_gpus*_num_freqs_per_gpu; ++thread_id) {
+                    const uint32_t freq_block = thread_id / num_freqs_per_frame;
+                    assert(freq_block < num_out_frames);
+                    unsigned char* out_buf = (unsigned char*)out_frames[freq_block];
+                    const int gpu = thread_id / _num_freqs_per_gpu;
+                    uint8_t* in_buf_data = in_frame[gpu];
 
                     for (uint32_t psr = 0; psr < _num_pulsar_beams; ++psr) { // loop psr
                         for (uint32_t p = 0; p < _num_pol; ++p) {
                             uint32_t out_index = 0;
                             if (_timesamples_per_pulsar_packet == 3125) {
+                                assert(0 && "not supported anymore");
                                 // freq->beam->packets->[time-pol]
                                 out_index = (thread_id * _num_pulsar_beams + psr)
                                                 * _udp_pulsar_packet_size * _num_packet_per_stream
@@ -311,7 +376,7 @@ void pulsarPostProcess::main_thread() {
                                     // packet
                                     + frame * _udp_pulsar_packet_size
                                     // freq
-                                    + thread_id * _timesamples_per_pulsar_packet * _num_pol
+                                    + (thread_id % num_freqs_per_frame) * _timesamples_per_pulsar_packet * _num_pol
                                     // time
                                     + in_frame_location * _num_pol
                                     // pol
@@ -321,8 +386,14 @@ void pulsarPostProcess::main_thread() {
                             } else
                                 throw std::runtime_error("Unknown timesamples per VDIF packet.");
 
-                            out_buf[out_index] =
-                                in_buf_data[i * _num_beams * _num_pol + psr * _num_pol + p];
+                            uint32_t in_index = psr * _num_freqs_per_gpu * _num_pol * _samples_per_data_set +
+                                                (thread_id % _num_freqs_per_gpu) * _num_pol * _samples_per_data_set +
+                                                p * _samples_per_data_set +
+                                                i;
+                            assert(out_index < pulsar_buf->frame_size);
+                            assert(in_index < in_buf[gpu]->frame_size);
+                            out_buf[out_index] = in_buf_data[in_index];
+                                // in_buf_data[i * _num_beams * _num_pol + psr * _num_pol + p];
                         } // end loop pol
                     }     // end loop psr
                 }         // end loop freq

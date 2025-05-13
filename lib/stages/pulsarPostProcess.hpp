@@ -80,8 +80,8 @@ public:
 
 private:
     void fill_headers(unsigned char* out_buf, struct PSRHeader* psr_header,
-                      const uint64_t fpga_seq_num, struct timespec* time_now,
-                      struct beamCoord* beam_coord, uint16_t* freq_ids);
+                      const uint64_t fpga_seq_num, struct timespec * const time_now,
+                      struct beamCoord const * const beam_coord, uint16_t const * const freq_ids);
 
     /**
      * @brief Requests a full frame for each of the input buffers until all start with the same @c
@@ -104,7 +104,10 @@ private:
     Buffer* pulsar_buf;
 
     /// Config variables
+    /// The number of GPUs to collect data from, each providing _num_freqs data
     uint32_t _num_gpus;
+    /// The number of frequencies per GPU, must be a multiple of 4 for pulsar backend
+    uint32_t _num_freqs_per_gpu;
     uint32_t _samples_per_data_set;
     /// The number of pulsar beams to extract (starting at 0)
     uint32_t _num_pulsar_beams;
@@ -122,7 +125,6 @@ private:
     uint32_t _num_stream;
 
     /// Derived variables
-    struct timespec time_now;
     uint32_t unix_offset;
 };
 
