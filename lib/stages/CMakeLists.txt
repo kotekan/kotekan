@@ -163,7 +163,6 @@ if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR NOT CMAKE_CXX_COMPILER_ID MATCHE
     target_link_libraries(kotekan_stages PRIVATE atomic)
 endif()
 
-
 if(${USE_CUDA})
     target_include_directories(kotekan_stages PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
     message(STATUS "kotekan_stages include dirs: ")

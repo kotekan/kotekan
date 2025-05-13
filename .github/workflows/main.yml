@@ -393,7 +393,6 @@ jobs:
         docker run "${OPTS[@]}" \
           cmake \
             -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-            -DDOXYGEN_EXECUTABLE=/usr/local/bin/doxygen \
             -DWERROR=ON \
             -DCOMPILE_DOCS=ON \
             ..
