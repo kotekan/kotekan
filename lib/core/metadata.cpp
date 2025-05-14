@@ -7,8 +7,8 @@
 
 metadataPool::metadataPool(Private, int num_metadata_objects, size_t object_size,
                            const std::string& _unique_name, const std::string& _type_name) :
-    unique_name(_unique_name),
-    type_name(_type_name), metadata_object_size(object_size), pool_size(num_metadata_objects) {}
+    unique_name(_unique_name), type_name(_type_name), metadata_object_size(object_size),
+    pool_size(num_metadata_objects) {}
 
 metadataPool::~metadataPool() {}
 

@@ -29,12 +29,12 @@
 #include "util.h" // for e_time
 #endif
 
-//#define PACKET_OFFSET 58
-//#define NUM_POL 2
+// #define PACKET_OFFSET 58
+// #define NUM_POL 2
 #define PACKET_LEN (num_freq + VDIF_HEADER_LEN)
-//#define PACKET_LEN 1056
+// #define PACKET_LEN 1056
 #define VDIF_HEADER_LEN sizeof(VDIFHeader)
-//#define NUM_FREQ 1024
+// #define NUM_FREQ 1024
 
 using kotekan::bufferContainer;
 using kotekan::Config;
