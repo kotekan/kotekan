@@ -25,8 +25,7 @@ namespace kotekan {
 
 bufferFactory::bufferFactory(Config& _config,
                              map<string, std::shared_ptr<metadataPool>>& _metadataPools) :
-    config(_config),
-    metadataPools(_metadataPools) {}
+    config(_config), metadataPools(_metadataPools) {}
 
 bufferFactory::~bufferFactory() {}
 

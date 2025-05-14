@@ -25,7 +25,7 @@
 
 
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
-#define LO_NIBBLE(b) ((b)&0x0F)
+#define LO_NIBBLE(b) ((b) & 0x0F)
 
 #define PI 3.14159265
 #define light 299792458.
