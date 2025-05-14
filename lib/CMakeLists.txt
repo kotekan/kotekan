@@ -36,16 +36,10 @@ endif()
 add_subdirectory(metadata)
 target_link_libraries(kotekan_libs INTERFACE kotekan_metadata)
 
-if(${USE_HSA}
-   OR ${USE_OPENCL}
+if(${USE_OPENCL}
    OR ${USE_CUDA}
    OR ${USE_HIP})
     add_subdirectory(gpu)
-endif()
-
-if(${USE_HSA})
-    add_subdirectory(hsa)
-    target_link_libraries(kotekan_libs INTERFACE kotekan_hsa)
 endif()
 
 if(${USE_OPENCL})
@@ -63,8 +57,7 @@ if(${USE_HIP})
     target_link_libraries(kotekan_libs INTERFACE kotekan_hip)
 endif()
 
-if(${USE_HSA}
-   OR ${USE_OPENCL}
+if(${USE_OPENCL}
    OR ${USE_CUDA}
    OR ${USE_HIP})
     target_link_libraries(kotekan_libs INTERFACE kotekan_gpu)
