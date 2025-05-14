@@ -10,6 +10,7 @@
   - Start Julia:
     ```sh
     cd julia
+    export PYTHON=
     julia --project=@.
     ```
     The `--project=@.` argument is important, it selects the current
@@ -22,6 +23,12 @@
     This might take a bit because Julia is quite independent, and will
     download its own version of the CUDA SDK. Precompiling the `Makie`
     plotting package will also take some time.
+  - Precompile CUDA codes (these are instructions shown on the screen)
+    ```Julia
+    pkg = Base.PkgId(Base.UUID("76a88914-d11a-5bdc-97e0-2f5a05c973a2"),
+                     "CUDA_Runtime_jll")
+    Base.compilecache(pkg)
+    ```
   - You are done! Type Control-D (or `exit()`) to leave the Julia REPL.
 
 ## Generating kernels
