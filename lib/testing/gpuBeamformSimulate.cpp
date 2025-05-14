@@ -27,7 +27,7 @@
     (a) = (b);                                                                                     \
     (b) = tempr
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
-#define LO_NIBBLE(b) ((b)&0x0F)
+#define LO_NIBBLE(b) ((b) & 0x0F)
 
 #define PI 3.14159265
 #define feed_sep 0.3048
@@ -515,7 +515,7 @@ void gpuBeamformSimulate::main_thread() {
 
                             out_sq += tmp_real * tmp_real + tmp_imag * tmp_imag;
                         } // end for tt
-                    }     // end for pol
+                    } // end for pol
                     total_sum += out_sq / 6.f / HFB_BP[int((f + 8) % 16)];
                 } // end for nsamp
 
@@ -523,7 +523,7 @@ void gpuBeamformSimulate::main_thread() {
                 const int output_offset = b * nfreq_out + ((f + 64) % 128);
                 cpu_hfb_final_output[output_offset] = total_sum;
             } // end for freq
-        }     // end for beam
+        } // end for beam
 
         memcpy(hfb_output, cpu_hfb_final_output, hfb_output_buf->frame_size);
 
@@ -556,13 +556,13 @@ void gpuBeamformSimulate::main_thread() {
                                                                + 1];
                                 out_sq += tmp_real * tmp_real + tmp_imag * tmp_imag;
                             } // end for ff
-                        }     // end for tt
-                    }         // end for pol
+                        } // end for tt
+                    } // end for pol
                     cpu_final_output[out_id] = out_sq / 48. / BP[int((f + 8) % 16)];
 
                 } // end for freq
-            }     // end for time
-        }         // end for beam
+            } // end for time
+        } // end for beam
 
         memcpy(output, cpu_final_output, output_buf->frame_size);
 

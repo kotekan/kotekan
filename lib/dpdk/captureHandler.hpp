@@ -46,7 +46,7 @@ public:
     int handle_packet(struct rte_mbuf* mbuf) override;
 
     /// Update stats, not used by this handler yet.
-    virtual void update_stats() override{};
+    virtual void update_stats() override {};
 
 protected:
     /// The output buffer

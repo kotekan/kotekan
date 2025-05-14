@@ -88,8 +88,7 @@ template<typename T>
 MetricFamily<T>::MetricFamily(const string& name, const string& stage_name,
                               const std::vector<string>& label_names,
                               const MetricFamily<T>::MetricType metric_type) :
-    name(name),
-    stage_name(stage_name), label_names(label_names), metric_type(metric_type) {}
+    name(name), stage_name(stage_name), label_names(label_names), metric_type(metric_type) {}
 
 template<typename T>
 string MetricFamily<T>::serialize() {
@@ -112,8 +111,7 @@ string MetricFamily<T>::serialize() {
     }
     for (auto& m : metrics) {
         out << name;
-        out << "{"
-            << "stage_name=\"" << stage_name << "\"";
+        out << "{" << "stage_name=\"" << stage_name << "\"";
         if (!label_names.empty()) {
             auto value = m.label_values.begin();
             for (auto label : label_names) {
@@ -121,8 +119,7 @@ string MetricFamily<T>::serialize() {
                 out << label << "=\"" << *value++ << "\"";
             }
         }
-        out << "}"
-            << " ";
+        out << "}" << " ";
         m.to_string(out);
         out << "\n";
     }

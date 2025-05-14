@@ -492,8 +492,8 @@ public:
      */
     metadataState(std::string weight_type, std::string instrument_name,
                   std::string git_version_tag) :
-        _weight_type(weight_type),
-        _instrument_name(instrument_name), _git_version_tag(git_version_tag) {}
+        _weight_type(weight_type), _instrument_name(instrument_name),
+        _git_version_tag(git_version_tag) {}
 
     /**
      * @brief Get the weight type (read only).
