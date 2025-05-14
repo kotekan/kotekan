@@ -10,10 +10,10 @@ basebandDumpData::basebandDumpData(const uint64_t event_id_, const uint32_t freq
                                    const uint32_t stream_freq_idx_, int64_t trigger_start_fpga_,
                                    int64_t trigger_length_fpga_, int dump_start_frame_,
                                    int dump_end_frame_) :
-    event_id(event_id_),
-    freq_id(freq_id_), stream_freq_idx(stream_freq_idx_), trigger_start_fpga(trigger_start_fpga_),
-    trigger_length_fpga(trigger_length_fpga_), dump_start_frame(dump_start_frame_),
-    dump_end_frame(dump_end_frame_), status(basebandDumpData::Status::Ok) {}
+    event_id(event_id_), freq_id(freq_id_), stream_freq_idx(stream_freq_idx_),
+    trigger_start_fpga(trigger_start_fpga_), trigger_length_fpga(trigger_length_fpga_),
+    dump_start_frame(dump_start_frame_), dump_end_frame(dump_end_frame_),
+    status(basebandDumpData::Status::Ok) {}
 
 
 basebandDumpData::basebandDumpData(basebandDumpData::Status status_) :

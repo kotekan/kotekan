@@ -262,8 +262,8 @@ void frbPostProcess::main_thread() {
                             _mm256_store_ps(ib + thread_id * num_samples * _factor_upchan_out + idx,
                                             _c);
                         } // end loop b
-                    }     // end loop f
-                }         // end loop t
+                    } // end loop f
+                } // end loop t
             }
         }
 
@@ -364,7 +364,7 @@ void frbPostProcess::main_thread() {
                                 *(int32_t*)(utr + t * 16 + f) = _mm256_extract_epi32(_y, 0);
                                 *(int32_t*)(utr + t * 16 + f + 4) = _mm256_extract_epi32(_y, 4);
                             } // end freq f
-                        }     // end time t
+                        } // end time t
                         // transpose
                         for (int t = 0; t < 16; t++)
                             for (int f = 0; f < 16; f++)
@@ -376,7 +376,7 @@ void frbPostProcess::main_thread() {
                             + b * _num_gpus * 16 * 16 + thread_id * 16 * 16 + udp_header_size;
                         memcpy(out_frame + out_index, tr, 16 * 16);
                     } // end 4 GPUs
-                }     // end 4 nbeam
+                } // end 4 nbeam
                 // Fill the headers of the packet
                 uint32_t out_index =
                     stream * udp_packet_size * num_samples / _timesamples_per_frb_packet

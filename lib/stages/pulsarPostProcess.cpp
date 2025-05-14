@@ -287,7 +287,7 @@ void pulsarPostProcess::main_thread() {
                         fill_headers((unsigned char*)out_frame, &psr_header, fpga_seq_num,
                                      &time_now, beam_coord, thread_ids);
                     } // end if last frame
-                }     // end if last sample
+                } // end if last sample
 
                 unsigned char* out_buf = (unsigned char*)out_frame;
                 for (uint32_t thread_id = 0; thread_id < _num_gpus; ++thread_id) {
@@ -324,8 +324,8 @@ void pulsarPostProcess::main_thread() {
                             out_buf[out_index] =
                                 in_buf_data[i * _num_beams * _num_pol + psr * _num_pol + p];
                         } // end loop pol
-                    }     // end loop psr
-                }         // end loop freq
+                    } // end loop psr
+                } // end loop freq
                 in_frame_location++;
             } // end loop time
             current_input_location = 0;
