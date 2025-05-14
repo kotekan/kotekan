@@ -1,10 +1,10 @@
 #include "buffer.hpp"
 
-#include "errors.h"     // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F
+#include "errors.h" // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F
+#include "kotekanLogging.hpp"
 #include "metadata.hpp" // for metadataContainer, decrement_metadata_ref_count, increment_...
 #include "nt_memset.h"  // for nt_memset
 #include "util.h"       // for e_time
-#include "kotekanLogging.hpp"
 
 #include "fmt.hpp" // for fmt, basic_string_view, make_format_args, FMT_STRING
 
