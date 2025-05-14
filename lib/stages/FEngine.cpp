@@ -18,7 +18,7 @@
 #include <visUtil.hpp>
 
 #ifdef WITH_CUDA
-#include <nvToolsExt.h>
+#include <nvtx3/nvToolsExt.h>
 #endif
 
 #if !KOTEKAN_FLOAT16

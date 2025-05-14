@@ -65,24 +65,24 @@ find_library(
     NAMES rte_bus_vdev
     PATHS ${DPDK_LINK_HINT})
 find_library(
-    rte_pmd_bond_LIBRARY
-    NAMES rte_pmd_bond
+    rte_net_bond_LIBRARY
+    NAMES rte_net_bond
     PATHS ${DPDK_LINK_HINT})
 find_library(
-    rte_pmd_ixgbe_LIBRARY
-    NAMES rte_pmd_ixgbe
+    rte_net_ixgbe_LIBRARY
+    NAMES rte_net_ixgbe
     PATHS ${DPDK_LINK_HINT})
 find_library(
-    rte_pmd_i40e_LIBRARY
-    NAMES rte_pmd_i40e
+    rte_net_i40e_LIBRARY
+    NAMES rte_net_i40e
     PATHS ${DPDK_LINK_HINT})
 find_library(
-    rte_pmd_ring_LIBRARY
-    NAMES rte_pmd_ring
+    rte_net_ring_LIBRARY
+    NAMES rte_net_ring
     PATHS ${DPDK_LINK_HINT})
 find_library(
-    rte_pmd_af_packet_LIBRARY
-    NAMES rte_pmd_af_packet
+    rte_net_af_packet_LIBRARY
+    NAMES rte_net_af_packet
     PATHS ${DPDK_LINK_HINT})
 
 set(DPDK_LIST_LIBRARIES
@@ -94,12 +94,12 @@ set(DPDK_LIST_LIBRARIES
     ${rte_ring_LIBRARY}
     ${rte_eal_LIBRARY}
     ${rte_cmdline_LIBRARY}
-    ${rte_pmd_bond_LIBRARY}
-    ${rte_pmd_vmxnet3_uio_LIBRARY}
-    ${rte_pmd_ixgbe_LIBRARY}
-    ${rte_pmd_i40e_LIBRARY}
-    ${rte_pmd_ring_LIBRARY}
-    ${rte_pmd_af_packet_LIBRARY})
+    ${rte_net_bond_LIBRARY}
+    ${rte_net_vmxnet3_uio_LIBRARY}
+    ${rte_net_ixgbe_LIBRARY}
+    ${rte_net_i40e_LIBRARY}
+    ${rte_net_ring_LIBRARY}
+    ${rte_net_af_packet_LIBRARY})
 
 if(rte_pci_LIBRARY
    AND rte_bus_pci_LIBRARY
@@ -127,8 +127,8 @@ mark_as_advanced(
     rte_ring_LIBRARY
     rte_eal_LIBRARY
     rte_cmdline_LIBRARY
-    rte_pmd_bond_LIBRARY
-    rte_pmd_ixgbe_LIBRARY
-    rte_pmd_i40e_LIBRARY
-    rte_pmd_ring_LIBRARY
-    rte_pmd_af_packet_LIBRARY)
+    rte_net_bond_LIBRARY
+    rte_net_ixgbe_LIBRARY
+    rte_net_i40e_LIBRARY
+    rte_net_ring_LIBRARY
+    rte_net_af_packet_LIBRARY)
