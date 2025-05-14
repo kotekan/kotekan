@@ -8,6 +8,8 @@ and one specific to the CHIME correlator.
 CHIME
 --------------
 
+**NOTE: DEPRECATED**
+
 CHIME RFI removal is implemented as an HSA stage. 
 
 To add RFI removal, add the following the the kotekan config under GPU->commands:
