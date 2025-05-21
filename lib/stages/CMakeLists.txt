@@ -62,7 +62,6 @@ add_library(
     rfiBroadcast.cpp
     rfiRecord.cpp
     rfiBadInputFinder.cpp
-    rfiUpdateMetadata.cpp
     ReceiveFlags.cpp
     valve.cpp
     visTransform.cpp

@@ -19,7 +19,7 @@ public:
     void* get_signal(void);
 
     // Wait for the signal to become ready to sleep on then
-    // wait for the hsa signal itself to reach zero
+    // wait for the signal itself to reach zero
     // If `stopping` is set, then sleep on signals, but exit when
     // there are no signals to wait on.  (to clear the packet queue).
     int wait_for_signal();
