@@ -30,7 +30,6 @@ Cmake build options:
   Optional `-DRTE_SDK=<build-location>` and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`
   can be provided for non standard build locations.
 * `-DUSE_OLD_ROCM=ON` - Build for ROCm versions 2.3 or older. Off by default.
-* `-DUSE_CLOC=ON`
   Direct toolchain calls are used by default.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
 * `-DUSE_CUDA=ON` - Build with CUDA support, requires `nvcc`
