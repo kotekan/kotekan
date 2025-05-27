@@ -16,7 +16,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_STANDARD 99)
 
 # Set OpenCL version explicitly (quiets a build warning)
-add_definitions(-DCL_TARGET_OPENCL_VERSION=300)
+add_definitions(-DCL_TARGET_OPENCL_VERSION=220)
 
 # This quiets a noisy cmake warning on newer versions, triggered by some of our CMake/FindXYZ.cmake
 # scripts.

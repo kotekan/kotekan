@@ -59,9 +59,6 @@ add_library(
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
-    rfiBroadcast.cpp
-    rfiRecord.cpp
-    rfiBadInputFinder.cpp
     ReceiveFlags.cpp
     valve.cpp
     visTransform.cpp

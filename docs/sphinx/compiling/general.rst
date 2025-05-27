@@ -164,7 +164,7 @@ Cmake build options
 * ``-DUSE_OLD_DPDK=ON``
     Builds with DPDK support (<19.11), for source installs requires: `-DRTE_SDK=<dir>`
     and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`
-    Not needed for newer versions of DPDK on Ubuntu 22.04
+    Not needed for newer versions of DPDK on Ubuntu 22.04+.
     See :ref:`dpdk` for more details.
 * ``-DUSE_OLD_ROCM=ON``
     Build for ROCm versions 2.3 or older. Off by default.
@@ -204,17 +204,17 @@ Cmake build options
 Examples
 ---------
 
-To build with DPDK and debug symbols:
+To build with (old) DPDK and debug symbols:
 
 .. code:: bash
 
-    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DCMAKE_BUILD_TYPE=Debug ..
+    cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_OLD_DPDK=ON -DCMAKE_BUILD_TYPE=Debug ..
 
 To build with OpenCL and DPDK:
 
 .. code:: bash
 
-    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_OPENCL=ON ..
+    cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_OLD_DPDK=ON -DUSE_OPENCL=ON ..
 
 To install kotekan:
 

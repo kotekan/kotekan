@@ -26,7 +26,7 @@ Cmake build options:
 * `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with asserts, debug logging and debug symbols.
 * `-DCMAKE_BUILD_TYPE=Test` - Builds the project with asserts, debug logging, but without debug
   symbols.
-* `-DUSE_OLD_DPDK=ON` - Include DPDK support for older (<19.11) versions.  
+* `-DUSE_OLD_DPDK=ON` - Include DPDK support for older (<19.11) versions (newer is included by default if installed).
   Optional `-DRTE_SDK=<build-location>` and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`
   can be provided for non standard build locations.
 * `-DUSE_OLD_ROCM=ON` - Build for ROCm versions 2.3 or older. Off by default.
@@ -59,10 +59,6 @@ To build with OpenCL and debug symbols and logging:
 To build with CUDA:
 
     cmake -DUSE_CUDA=ON ..
-
-To build with old DPDK and debug symbols (CHIME):
-
-    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_OLD_DPDK=ON -DCMAKE_BUILD_TYPE=Debug ..
 
 To install kotekan (only works on CentOS at the moment):
 
