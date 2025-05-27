@@ -1,12 +1,21 @@
 #ifndef CHIME_METADATA
 #define CHIME_METADATA
 
-#include "Telescope.hpp"
-#include "buffer.hpp"
-#include "datasetManager.hpp"
-#include "metadata.hpp"
+#include <sys/time.h>          // for timeval
+#include <assert.h>            // for assert
+#include <stdint.h>            // for uint32_t, int64_t, int32_t, uint16_t, uint64_t
+#include <time.h>              // for size_t, timespec
+#include <atomic>              // for __atomic_base, atomic_int32_t
+#include <memory>              // for shared_ptr, static_pointer_cast, __shared_ptr_access, allo...
+#include <string>              // for char_traits, operator==, basic_string
+#include <vector>              // for vector
 
-#include <sys/time.h>
+#include "Telescope.hpp"       // for stream_t
+#include "buffer.hpp"          // for Buffer
+#include "datasetManager.hpp"  // for dset_id_t
+#include "metadata.hpp"        // for metadataObject, metadataPool
+#include "fmt.hpp"             // for compile_string_to_view
+#include "kotekanLogging.hpp"  // for WARN_NON_OO
 
 #define MAX_NUM_BEAMS 20
 

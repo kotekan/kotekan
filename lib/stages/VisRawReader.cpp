@@ -1,23 +1,21 @@
 #include "VisRawReader.hpp"
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for state_id_t, datasetManager, dset_id_t
-#include "datasetState.hpp"    // for eigenvalueState, inputState, prodState, stackState
-#include "kotekanLogging.hpp"  // for DEBUG, WARN
-#include "visBuffer.hpp"       // for VisFrameView, VisMetadata
-#include "visUtil.hpp"         // for prod_ctype, rstack_ctype, stack_ctype, input_ctype, frameID
+#include <stddef.h>             // for size_t
+#include <algorithm>            // for max
+#include <stdexcept>            // for runtime_error
+#include <utility>              // for pair, move
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for basic_json<>::object_t, basic_json, json, basic_json<>::v...
-
-#include <algorithm> // for fill, max
-#include <cstdint>   // for uint32_t
-#include <stddef.h>  // for size_t
-#include <stdexcept> // for runtime_error
-#include <utility>   // for pair, move
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "datasetManager.hpp"   // for datasetManager
+#include "datasetState.hpp"     // for eigenvalueState, inputState, prodState, stackState
+#include "kotekanLogging.hpp"   // for DEBUG, WARN
+#include "visBuffer.hpp"        // for VisFrameView, VisMetadata
+#include "visUtil.hpp"          // for stack_ctype, prod_ctype, rstack_ctype, input_ctype, frameID
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
+#include "json.hpp"             // for iter_impl, json
 
 using kotekan::bufferContainer;
 using kotekan::Config;

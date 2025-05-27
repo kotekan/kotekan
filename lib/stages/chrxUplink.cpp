@@ -1,23 +1,19 @@
 #include "chrxUplink.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for ERROR, INFO
+#include <arpa/inet.h>          // for inet_addr, htons
+#include <errno.h>              // for errno
+#include <netinet/in.h>         // for sockaddr_in, in_addr
+#include <strings.h>            // for bzero
+#include <sys/socket.h>         // for send, AF_INET, connect, socket, SOCK_STREAM
+#include <unistd.h>             // for gethostname, size_t, ssize_t
+#include <functional>           // for bind, function
 
-#include "fmt.hpp" // for format, fmt
-
-#include <arpa/inet.h>  // for inet_addr
-#include <atomic>       // for atomic_bool
-#include <errno.h>      // for errno
-#include <exception>    // for exception
-#include <functional>   // for _Bind_helper<>::type, bind, function
-#include <netinet/in.h> // for sockaddr_in, htons, in_addr
-#include <stddef.h>     // for size_t
-#include <strings.h>    // for bzero
-#include <sys/socket.h> // for send, connect, socket, AF_INET, SOCK_STREAM
-#include <unistd.h>     // for gethostname, ssize_t
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for ERROR, INFO
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
 
 
 using kotekan::bufferContainer;

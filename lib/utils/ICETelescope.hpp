@@ -1,14 +1,15 @@
 #ifndef ICE_TELESCOPE_HPP
 #define ICE_TELESCOPE_HPP
 
-#include "Config.hpp" // for Config
-#include "Telescope.hpp"
-#include "chimeMetadata.hpp"
+#include <stdint.h>           // for uint32_t, uint8_t, uint64_t
+#include <time.h>             // for timespec
+#include <string>             // for string, basic_string
+#include <utility>            // for forward
 
-#include <stdint.h> // for int32_t, uint32_t
-#include <string>   // for string
-#include <time.h>
-#include <utility>
+#include "Config.hpp"         // for Config
+#include "Telescope.hpp"      // for freq_id_t, stream_t, Telescope
+#include "chimeMetadata.hpp"  // for get_stream_id, set_stream_id
+#include "buffer.hpp"         // for Buffer
 
 /**
  * @brief Implementation for an ICEboard like telescope with a Casper PFB.

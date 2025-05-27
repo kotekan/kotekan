@@ -1,10 +1,10 @@
 #ifndef BASEBAND_METADATA_HPP
 #define BASEBAND_METADATA_HPP
 
-#include "Telescope.hpp"
-#include "buffer.hpp"
-#include "chimeMetadata.hpp"
-#include "metadata.hpp"
+#include <stddef.h>      // for size_t
+#include <stdint.h>      // for uint64_t, int32_t, int64_t
+
+#include "metadata.hpp"  // for metadataObject
 
 class BasebandMetadata : public metadataObject {
 public:

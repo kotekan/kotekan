@@ -1,28 +1,20 @@
 #include "RawReader.hpp"
 
-#include "Config.hpp"          // for Config
-#include "Hash.hpp"            // for Hash, operator<, operator==
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for mark_frame_full, wait_for_empty_frame, mark_frame_empty
-#include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager, DS_UNIQUE_NAME
-#include "datasetState.hpp"    // for freqState, timeState, metadataState
-#include "kotekanLogging.hpp"  // for INFO, FATAL_ERROR, DEBUG, WARN, ERROR
-#include "visBuffer.hpp"       // for VisFrameView
-#include "visUtil.hpp"         // for time_ctype, freq_ctype, frameID, modulo, current_time
+#include <stddef.h>             // for size_t
+#include <functional>           // for bind, function
+#include <future>               // for async, future
+#include <tuple>                // for get
 
-#include "json.hpp" // for basic_json<>::object_t, json, basic_json, basic_json<>::v...
-
-#include <atomic>       // for atomic_bool
-#include <cxxabi.h>     // for __forced_unwind
-#include <exception>    // for exception
-#include <functional>   // for _Bind_helper<>::type, bind, function
-#include <future>       // for async, future
-#include <memory>       // for allocator_traits<>::value_type
-#include <regex>        // for match_results<>::_Base_type
-#include <stdexcept>    // for runtime_error, invalid_argument, out_of_range
-#include <system_error> // for system_error
-#include <tuple>        // for get
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "datasetManager.hpp"   // for datasetManager, dset_id_t
+#include "datasetState.hpp"     // for freqState, timeState
+#include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO, ERROR
+#include "visBuffer.hpp"        // for VisFrameView
+#include "visUtil.hpp"          // for time_ctype, frameID, modulo, freq_ctype, ts_to_double
+#include "json.hpp"             // for json
 
 using kotekan::bufferContainer;
 using kotekan::Config;

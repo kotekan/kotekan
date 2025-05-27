@@ -1,28 +1,26 @@
 
 #include "hfbFileRaw.hpp"
 
-#include "HFBFrameView.hpp"   // for HFBFrameView
-#include "HFBMetadata.hpp"    // for HFBMetadata
-#include "Hash.hpp"           // for Hash
-#include "datasetManager.hpp" // for datasetManager, dset_id_t
-#include "datasetState.hpp"   // for beamState, freqState, subfreqState
+#include <errno.h>             // for errno
+#include <fcntl.h>             // for fallocate, sync_file_range, FALLOC_FL_KEEP_SIZE, SYNC_FILE...
+#include <string.h>            // for strerror
+#include <sys/stat.h>          // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
+#include <unistd.h>            // for close, pwrite, TEMP_FAILURE_RETRY
+#include <assert.h>            // for assert
+#include <cstdio>              // for remove
+#include <fstream>             // for basic_ofstream, basic_ios, basic_ostream::write, ios, ofst...
+#include <future>              // for async, future
+#include <stdexcept>           // for runtime_error
+#include <utility>             // for pair
+#include <algorithm>           // for max
+#include <memory>              // for __shared_ptr_access, shared_ptr
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
-
-#include <cstdio>       // for remove
-#include <cxxabi.h>     // for __forced_unwind
-#include <errno.h>      // for errno
-#include <exception>    // for exception
-#include <fcntl.h>      // for fallocate, sync_file_range, open, posix_fadvise, FALLOC_FL...
-#include <fstream>      // for ofstream, basic_ostream::write, ios
-#include <future>       // for async, future
-#include <stdexcept>    // for runtime_error, out_of_range
-#include <string.h>     // for strerror
-#include <sys/stat.h>   // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
-#include <system_error> // for system_error
-#include <unistd.h>     // for close, pwrite, TEMP_FAILURE_RETRY
-#include <utility>      // for pair
+#include "HFBFrameView.hpp"    // for HFBFrameView
+#include "HFBMetadata.hpp"     // for HFBMetadata
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t
+#include "datasetState.hpp"    // for beamState, freqState, subfreqState
+#include "fmt.hpp"             // for compile_string_to_view, format, fmt
+#include "json.hpp"            // for basic_json, json
 
 
 // Register the raw file writer

@@ -12,35 +12,36 @@
 #define VIS_UTIL_HPP
 
 
-#include "Config.hpp"   // for Config
-#include "DataType.hpp" // for float16_t
-#include "Telescope.hpp"
-#include "buffer.hpp" // for Buffer
+#include <math.h>         // for fmod, cosf, sinf, M_PI
+#include <sys/time.h>     // for timeval, gettimeofday, CLOCK_REALTIME
+#include <sys/types.h>    // for suseconds_t
+#include <time.h>         // for timespec, clock_gettime, time_t
+#include <bits/chrono.h>  // for system_clock
+#include <algorithm>      // for max
+#include <complex>        // for complex, imag, real
+#include <cstdint>        // for uint32_t, int8_t, uint16_t, uint8_t, int64_t, int32_t, uint64_t
+#include <cstdlib>        // for size_t, div
+#include <deque>          // for deque
+#include <functional>     // for function
+#include <iosfwd>         // for ostream
+#include <map>            // for map
+#include <memory>         // for unique_ptr
+#include <mutex>          // for recursive_mutex
+#include <string>         // for string, basic_string
+#include <tuple>          // for tuple, tie
+#include <type_traits>    // for enable_if_t, is_integral, make_unsigned
+#include <utility>        // for pair
+#include <vector>         // for vector
+#include <array>          // for array
+#include <iterator>       // for pair
 
-#include "fmt.hpp"      // for format_context, formatter
-#include "gsl-lite.hpp" // for span
-#include "json.hpp"     // for json
-
-#include <algorithm> // for max
-#include <chrono>
-#include <complex>     // for complex, imag, real
-#include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
-#include <cstdlib>     // for size_t, (anonymous), div
-#include <deque>       // for deque
-#include <functional>  // for function
-#include <iosfwd>      // for ostream
-#include <map>         // for map
-#include <math.h>      // for fmod
-#include <memory>      // for unique_ptr
-#include <mutex>       // for mutex, lock_guard
-#include <string>      // for string
-#include <sys/time.h>  // for timeval, CLOCK_REALTIME
-#include <sys/types.h> // for __syscall_slong_t, suseconds_t, time_t
-#include <time.h>      // for timespec, clock_gettime
-#include <tuple>       // for tuple, tie
-#include <type_traits> // for enable_if_t, is_integral, make_unsigned
-#include <utility>     // for pair
-#include <vector>      // for vector
+#include "Config.hpp"     // for Config
+#include "DataType.hpp"   // for KOTEKAN_FLOAT16, float16_t
+#include "Telescope.hpp"  // for stream_t
+#include "buffer.hpp"     // for Buffer
+#include "fmt.hpp"        // for appender, format, format_string, formatter, format_context, for...
+#include "gsl-lite.hpp"   // for span
+#include "json.hpp"       // for json
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;

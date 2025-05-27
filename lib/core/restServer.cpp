@@ -1,31 +1,30 @@
 #include "restServer.hpp"
 
-#include "Config.hpp"         // for Config
-#include "kotekanLogging.hpp" // for ERROR_NON_OO, WARN_NON_OO, INFO_NON_OO, DEBUG_NON_OO
+#include <assert.h>                 // for assert
+#include <event2/buffer.h>          // for evbuffer_add, evbuffer_peek, iovec, evbuffer_iovec
+#include <event2/event.h>           // for event_add, event_base_dispatch, event_base_free, even...
+#include <event2/http.h>            // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
+#include <event2/keyvalq_struct.h>  // for evkeyvalq, evkeyval
+#include <event2/thread.h>          // for evthread_use_pthreads
+#include <evhttp.h>                 // for evhttp_request
+#include <netinet/in.h>             // for sockaddr_in
+#include <pthread.h>                // for pthread_setaffinity_np, pthread_setname_np
+#include <sched.h>                  // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdlib.h>                 // for exit, free, malloc
+#include <sys/socket.h>             // for getsockname, socklen_t
+#include <sys/time.h>               // for timeval
+#include <arpa/inet.h>              // for ntohs
+#include <algorithm>                // for max
+#include <exception>                // for exception
+#include <mutex>                    // for unique_lock
+#include <stdexcept>                // for runtime_error
+#include <string>                   // for basic_string, string, allocator, operator!=, operator<
+#include <utility>                  // for pair
+#include <vector>                   // for vector
 
-#include "fmt.hpp" // for format, fmt
-
-#include <algorithm>               // for max
-#include <assert.h>                // for assert
-#include <cstdint>                 // for int32_t
-#include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_free
-#include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
-#include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
-#include <event2/keyvalq_struct.h> // for evkeyvalq, evkeyval, evkeyval::(anonymous)
-#include <event2/thread.h>         // for evthread_use_pthreads
-#include <evhttp.h>                // for evhttp_request
-#include <exception>               // for exception
-#include <mutex>                   // for unique_lock
-#include <netinet/in.h>            // for sockaddr_in, ntohs
-#include <pthread.h>               // for pthread_setaffinity_np, pthread_setname_np
-#include <sched.h>                 // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>               // for runtime_error
-#include <stdlib.h>                // for exit, free, malloc, size_t
-#include <string>                  // for string, basic_string, allocator, operator!=, operator+
-#include <sys/socket.h>            // for getsockname, socklen_t
-#include <sys/time.h>              // for timeval
-#include <utility>                 // for pair
-#include <vector>                  // for vector
+#include "Config.hpp"               // for Config
+#include "kotekanLogging.hpp"       // for ERROR_NON_OO, WARN_NON_OO, INFO_NON_OO, DEBUG_NON_OO
+#include "fmt.hpp"                  // for compile_string_to_view, format, fmt
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 #endif

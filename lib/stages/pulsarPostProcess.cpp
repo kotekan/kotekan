@@ -1,28 +1,24 @@
 #include "pulsarPostProcess.hpp"
 
-#include "BranchPrediction.hpp" // for likely, unlikely
-#include "Config.hpp"           // for Config
-#include "ICETelescope.hpp"
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
-#include "buffer.hpp"           // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.hpp"    // for get_fpga_seq_num, beamCoord, get_beam_coord, get_stream...
-#include "kotekanLogging.hpp"   // for DEBUG, ERROR
-#include "pulsar_functions.hpp" // for PSRHeader
+#include <assert.h>              // for assert
+#include <string.h>              // for memcpy
+#include <algorithm>             // for max
+#include <cmath>                 // for round
+#include <functional>            // for bind, function
+#include <stdexcept>             // for runtime_error
+#include <string>                // for allocator, basic_string, operator+, string, to_string
 
-#include <algorithm>  // for max
-#include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
-#include <cmath>      // for round
-#include <cstdint>    // for int64_t, uint64_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <string.h>   // for memcpy
-#include <string>     // for allocator, string, operator+, to_string
-#include <vector>     // for vector
+#include "BranchPrediction.hpp"  // for likely, unlikely
+#include "Config.hpp"            // for Config
+#include "ICETelescope.hpp"      // for ice_stream_id_t, ice_get_stream_id_t
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"         // for Telescope
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chimeMetadata.hpp"     // for beamCoord, get_fpga_seq_num, get_beam_coord
+#include "kotekanLogging.hpp"    // for DEBUG, ERROR
+#include "pulsar_functions.hpp"  // for PSRHeader
+#include "fmt.hpp"               // for compile_string_to_view
 
 using std::string;
 

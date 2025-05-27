@@ -1,34 +1,29 @@
 #include "HFBAccumulate.hpp"
 
-#include "HFBFrameView.hpp"   // for HFBFrameView
-#include "Hash.hpp"           // for operator!=
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"      // for Telescope
-#include "buffer.hpp"         // for mark_frame_empty, register_consumer, wait_for_empty_frame
-#include "chimeMetadata.hpp"  // for get_fpga_seq_num, get_lost_timesamples
-#include "datasetManager.hpp" // for state_id_t, dset_id_t, datasetManager
-#include "datasetState.hpp"   // for beamState, freqState, metadataState, subfreqState
-#include "kotekanLogging.hpp" // for DEBUG, DEBUG2
-#include "version.h"          // for get_git_commit_hash
-#include "visUtil.hpp"        // for frameID, modulo, freq_ctype
+#include <time.h>              // for size_t, timespec
+#include <algorithm>           // for fill, max, transform
+#include <functional>          // for bind, function
+#include <iterator>            // for back_insert_iterator, begin, end, back_inserter
+#include <numeric>             // for iota
+#include <string>              // for allocator, basic_string, string
+#include <utility>             // for pair
+#include <vector>              // for vector
+#include <cmath>               // for pow
+#include <cstring>             // for memcpy, size_t
 
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>  // for max, fill, transform, copy
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for uint32_t, int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <iterator>   // for back_insert_iterator, begin, end, back_inserter
-#include <math.h>     // for pow
-#include <numeric>    // for iota
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <string.h>   // for memcpy
-#include <string>     // for string
-#include <time.h>     // for timespec
-#include <utility>    // for pair
-#include <vector>     // for vector, vector<>::iterator
+#include "HFBFrameView.hpp"    // for HFBFrameView
+#include "Hash.hpp"            // for operator!=, Hash
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "chimeMetadata.hpp"   // for get_fpga_seq_num, get_dataset_id, get_lost_timesamples
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t
+#include "datasetState.hpp"    // for beamState, freqState, metadataState, subfreqState
+#include "kotekanLogging.hpp"  // for DEBUG, DEBUG2
+#include "version.h"           // for get_git_commit_hash
+#include "visUtil.hpp"         // for frameID, modulo, freq_ctype
+#include "gsl-lite.hpp"        // for span
+#include "fmt.hpp"             // for compile_string_to_view
 
 using kotekan::bufferContainer;
 using kotekan::Config;

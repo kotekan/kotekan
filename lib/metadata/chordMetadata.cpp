@@ -1,5 +1,9 @@
 #include "chordMetadata.hpp"
 
+#include <string.h>     // for size_t, memset
+
+#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
+
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
 const char* chord_datatype_string(chordDataType type) {

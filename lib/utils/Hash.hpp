@@ -1,17 +1,15 @@
 #ifndef _HASH_HPP
 #define _HASH_HPP
 
-#include "MurmurHash3.hpp" // for MurmurHash3_x64_128
-
-#include "fmt.hpp"      // for formatter
-#include "gsl-lite.hpp" // for span
-#include "json.hpp"     // for json
-
 // cinttypes needed by some CentOS systems.
-#include <cinttypes> // IWYU pragma: keep
-#include <iostream>  // for istream, ostream
-#include <stdint.h>  // for uint64_t
-#include <string>    // for string
+#include <cinttypes>        // for uint64_t
+#include <iostream>         // for istream, ostream
+#include <string>           // for string, basic_string
+
+#include "MurmurHash3.hpp"  // for MurmurHash3_x64_128
+#include "fmt.hpp"          // for formatter
+#include "gsl-lite.hpp"     // for span
+#include "json.hpp"         // for json
 
 // Set a value for the hash seed
 #define _SEED 1420

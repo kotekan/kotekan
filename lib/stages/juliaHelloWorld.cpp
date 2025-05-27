@@ -1,10 +1,17 @@
-#include <Config.hpp>
-#include <Stage.hpp>
-#include <StageFactory.hpp>
-#include <cassert>
-#include <julia.h>
-#include <juliaManager.hpp>
-#include <string>
+#include <Config.hpp>           // for Config
+#include <Stage.hpp>            // for Stage
+#include <StageFactory.hpp>     // for REGISTER_KOTEKAN_STAGE
+#include <julia.h>              // for jl_value_t, jl_box_float64, jl_call, jl_eval_string, jl_g...
+#include <juliaManager.hpp>     // for juliaCall, juliaShutdown, juliaStartup
+#include <math.h>               // for sqrt
+#include <cassert>              // for assert
+#include <string>               // for allocator, string
+#include <functional>           // for function
+
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "errors.h"             // for exit_kotekan, ReturnCode
+#include "fmt.hpp"              // for compile_string_to_view
+#include "kotekanLogging.hpp"   // for INFO
 
 class juliaHelloWorld : public kotekan::Stage {
 public:

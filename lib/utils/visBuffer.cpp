@@ -1,27 +1,24 @@
 #include "visBuffer.hpp"
 
-#include "FrameView.hpp"     // for bind_span, bind_scalar, FrameView
-#include "Telescope.hpp"     // for Telescope
-#include "buffer.hpp"        // for Buffer, allocate_new_metadata_object
-#include "chimeMetadata.hpp" // for chimeMetadata, get_stream_id_from_metadata
-#include "metadata.hpp"      // for metadataContainer
-
-#include "fmt.hpp" // for format, fmt
-
-#include <algorithm> // for copy
-#include <assert.h>
-#include <complex>     // for complex
+#include <assert.h>           // for assert
+#include <sys/time.h>         // for TIMEVAL_TO_TIMESPEC
+#include <algorithm>          // for copy
+#include <complex>            // for complex
 #include <cstdint>     // for uint64_t // IWYU pragma: keep
-#include <ctime>       // for gmtime
-#include <exception>   // for exception
-#include <map>         // for map
-#include <regex>       // for match_results<>::_Base_type
-#include <set>         // for set
-#include <stdexcept>   // for runtime_error
-#include <string.h>    // for memset
-#include <sys/time.h>  // for TIMEVAL_TO_TIMESPEC
-#include <type_traits> // for __decay_and_strip<>::__type
-#include <vector>      // for vector
+#include <ctime>              // for gmtime
+#include <map>                // for map
+#include <set>                // for set
+#include <stdexcept>          // for runtime_error
+#include <vector>             // for vector
+#include <cstring>            // for memset
+
+#include "FrameView.hpp"      // for bind_span, bind_scalar, FrameView
+#include "Telescope.hpp"      // for Telescope, freq_id_t
+#include "buffer.hpp"         // for Buffer
+#include "chimeMetadata.hpp"  // for chimeMetadata, get_stream_id_from_metadata
+#include "metadata.hpp"       // for metadataObject, _factory_aliasmetadataObject
+#include "fmt.hpp"            // for format, compile_string_to_view, fmt, format_string
+#include "factory.hpp"        // for REGISTER_TYPE_WITH_FACTORY
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
 

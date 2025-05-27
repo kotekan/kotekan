@@ -1,31 +1,26 @@
 #include "prodSubset.hpp"
 
-#include "Config.hpp"          // for Config
-#include "Hash.hpp"            // for operator<
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for allocate_new_metadata_object, mark_frame_empty, mark_fram...
-#include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
-#include "datasetState.hpp"    // for prodState
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"       // for VisFrameView, VisField, VisField::vis, VisField::weight
-#include "visUtil.hpp"         // for prod_ctype, frameID, cmap, icmap, modulo, cfloat
+#include <stdint.h>             // for uint16_t, uint32_t
+#include <algorithm>            // for max, copy, binary_search, sort
+#include <complex>              // for complex
+#include <functional>           // for bind, function
+#include <future>               // for future, async
+#include <iterator>             // for back_insert_iterator, back_inserter
+#include <utility>              // for pair
+#include <set>                  // for set
 
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>    // for max, binary_search, copy, sort
-#include <atomic>       // for atomic_bool
-#include <complex>      // for complex
-#include <cxxabi.h>     // for __forced_unwind
-#include <exception>    // for exception
-#include <functional>   // for _Bind_helper<>::type, bind, function
-#include <future>       // for future, async
-#include <iterator>     // for back_insert_iterator, back_inserter
-#include <regex>        // for match_results<>::_Base_type
-#include <stdexcept>    // for out_of_range, runtime_error
-#include <stdint.h>     // for uint16_t, uint32_t
-#include <system_error> // for system_error
-#include <utility>      // for pair, tuple_element<>::type
+#include "Config.hpp"           // for Config
+#include "Hash.hpp"             // for operator<
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "datasetManager.hpp"   // for datasetManager, dset_id_t
+#include "datasetState.hpp"     // for prodState
+#include "kotekanLogging.hpp"   // for FATAL_ERROR, WARN
+#include "visBuffer.hpp"        // for VisFrameView, VisField
+#include "visUtil.hpp"          // for prod_ctype, frameID, cmap, icmap, modulo
+#include "gsl-lite.hpp"         // for span
+#include "fmt.hpp"              // for compile_string_to_view
 
 
 using kotekan::bufferContainer;

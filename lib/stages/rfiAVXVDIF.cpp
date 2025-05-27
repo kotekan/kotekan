@@ -1,35 +1,31 @@
 #include "rfiAVXVDIF.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for mark_frame_empty, mark_frame_full, register_consumer, reg...
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for DEBUG
-#include "vdif_functions.h"    // for VDIFHeader
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for DEBUG
+#include "vdif_functions.h"     // for VDIFHeader
+#include "fmt.hpp"              // for compile_string_to_view
 
 #ifdef DEBUGGING
-#include "util.h" // for e_time
+#include "util.h"               // for e_time
 #endif
 
-#include <atomic>      // for atomic_bool
-#include <cstdint>     // for uint32_t
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function
-#include <immintrin.h> // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_mul...
-#include <pthread.h>   // for pthread_setaffinity_np
-#include <regex>       // for match_results<>::_Base_type
-#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>   // for runtime_error
-#include <stdlib.h>    // for srand
-#include <string.h>    // for memset
-#include <thread>      // for thread
-#include <time.h>      // for time
-#include <vector>      // for vector
+#include <immintrin.h>          // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_mul...
+#include <pthread.h>            // for pthread_setaffinity_np
+#include <sched.h>              // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdlib.h>             // for srand
+#include <string.h>             // for memset
+#include <time.h>               // for time
+#include <functional>           // for bind, function
+#include <thread>               // for thread
+#include <vector>               // for vector
 
 #ifdef MAC_OSX
-#include "osxBindCPU.hpp"
+#include <immintrin.h>          // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_mul...
 
-#include <immintrin.h> // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_mul...
+#include "osxBindCPU.hpp"
 #endif
 
 #define PACKET_LEN (_num_local_freq + VDIF_HEADER_LEN)

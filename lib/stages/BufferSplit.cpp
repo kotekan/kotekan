@@ -1,13 +1,11 @@
 #include "BufferSplit.hpp"
 
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"       // for mark_frame_empty, mark_frame_full, pass_metadata, register_c...
-#include "visUtil.hpp"      // for frameID, modulo
+#include <stdint.h>          // for uint8_t, uint32_t
+#include <algorithm>         // for max
 
-#include <algorithm> // for max
-#include <atomic>    // for atomic_bool
-#include <memory>    // for allocator_traits<>::value_type
-#include <stdint.h>  // for uint8_t, uint32_t
+#include "StageFactory.hpp"  // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"        // for Buffer
+#include "visUtil.hpp"       // for frameID, modulo
 
 REGISTER_KOTEKAN_STAGE(BufferSplit);
 

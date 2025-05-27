@@ -1,17 +1,14 @@
 #include "datasetManager.hpp"
 
-#include "Config.hpp"     // for Config
-#include "Hash.hpp"       // for operator<, hash, operator==
-#include "restClient.hpp" // for restClient::restReply, restClient
-#include "restServer.hpp" // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPONSE::...
+#include <stdlib.h>        // for exit
+#include <algorithm>       // for max
+#include <functional>      // for bind, function, _1
+#include <mutex>           // for mutex, lock_guard, lock, adopt_lock, unique_lock
 
-#include <algorithm>  // for max
-#include <cstdint>    // for int32_t
-#include <functional> // for function, _Bind_helper<>::type, _Placeholder, bind, _1
-#include <iosfwd>     // for streamsize
-#include <mutex>      // for mutex, lock_guard, lock, adopt_lock, unique_lock
-#include <regex>      // for match_results<>::_Base_type
-#include <stdlib.h>   // for exit
+#include "Config.hpp"      // for Config
+#include "Hash.hpp"        // for operator<, hash, Hash, operator==
+#include "restClient.hpp"  // for restClient
+#include "restServer.hpp"  // for HTTP_RESPONSE, restServer, connectionInstance
 
 using nlohmann::json;
 

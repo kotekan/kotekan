@@ -1,21 +1,18 @@
 #include "visDebug.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for dset_id_t
-#include "kotekanLogging.hpp"    // for DEBUG, INFO
-#include "prometheusMetrics.hpp" // for Metrics, Counter, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView
+#include <cstdint>                // for uint64_t
+#include <functional>             // for bind, function
+#include <vector>                 // for vector
+#include <algorithm>              // for copy, equal, max
 
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for uint64_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <vector>     // for vector
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "kotekanLogging.hpp"     // for DEBUG, INFO
+#include "prometheusMetrics.hpp"  // for Counter, Metrics, MetricFamily
+#include "visBuffer.hpp"          // for VisFrameView
+#include "fmt.hpp"                // for compile_string_to_view
 
 
 using kotekan::bufferContainer;

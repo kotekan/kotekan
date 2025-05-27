@@ -8,24 +8,23 @@
 #ifndef KOTEKAN_BUFFER_HPP
 #define KOTEKAN_BUFFER_HPP
 
-#include "kotekanLogging.hpp"
-#include "metadata.hpp" // for metadataPool
+#include <stdint.h>            // for uint8_t
+#include <time.h>              // for size_t
+#include <condition_variable>  // for condition_variable_any
+#include <map>                 // for map
+#include <mutex>               // for recursive_mutex
+#include <string>              // for string, basic_string
+#include <vector>              // for vector
+#include <memory>              // for shared_ptr
 
-#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
-
-#include <condition_variable>
-#include <map>
-#include <mutex>
-#include <stdbool.h> // for bool
-#include <stdint.h>  // for uint8_t
-#include <string>
-#include <time.h> // for size_t, timespec
-#include <vector>
+#include "kotekanLogging.hpp"  // for kotekanLogging
+#include "metadata.hpp"        // for metadataObject, metadataPool
+#include "json.hpp"            // for json
 
 #ifdef MAC_OSX
-#include "osxBindCPU.hpp"
-
 #include <immintrin.h>
+
+#include "osxBindCPU.hpp"
 #endif
 
 /// The system page size, this might become more dynamic someday

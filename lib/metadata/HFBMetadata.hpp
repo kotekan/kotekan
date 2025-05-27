@@ -1,12 +1,16 @@
 #ifndef HFB_METADATA
 #define HFB_METADATA
 
-#include "Telescope.hpp"
-#include "buffer.hpp"
-#include "dataset.hpp" // for dset_id_t
-#include "metadata.hpp"
+#include <stdint.h>       // for uint32_t, uint64_t, int64_t
+#include <time.h>         // for size_t, timespec
+#include <memory>         // for shared_ptr
+#include <vector>         // for vector
 
-#include <sys/time.h>
+#include "Telescope.hpp"  // for freq_id_t
+#include "buffer.hpp"     // for Buffer
+#include "dataset.hpp"    // for dset_id_t
+#include "metadata.hpp"   // for metadataObject
+#include "json.hpp"       // for json
 
 class HFBMetadata : public metadataObject {
 public:

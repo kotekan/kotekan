@@ -1,8 +1,7 @@
 #include "BasebandFrameView.hpp"
 
-#include "metadata.hpp" // for metadataContainer
-
-#include <string.h> // for memset
+#include <cstring>  // for memset
+#include <vector>   // for vector
 
 BasebandFrameView::BasebandFrameView(Buffer* buf, int frame_id) :
     FrameView(buf, frame_id),

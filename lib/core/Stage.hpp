@@ -1,23 +1,24 @@
 #ifndef KOTEKAN_STAGE_H
 #define KOTEKAN_STAGE_H
 
-#include "Config.hpp"          // for Config
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for kotekanLogging
+#include <stdint.h>             // for uint32_t
+#include <sys/types.h>          // for pid_t
+#include <atomic>               // for atomic_bool
+#include <functional>           // for function
+#include <mutex>                // for mutex
+#include <string>               // for string, basic_string
+#include <thread>               // for thread
+#include <vector>               // for vector
 
-#include <atomic>      // for atomic_bool
-#include <functional>  // for function
-#include <mutex>       // for mutex
-#include <stdint.h>    // for uint32_t
-#include <string>      // for string
-#include <sys/types.h> // for pid_t
-#include <thread>      // for thread
-#include <vector>      // for vector
+#include "Config.hpp"           // for Config
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for kotekanLogging
+#include "buffer.hpp"           // for Buffer
 
 #ifdef MAC_OSX
-#include "osxBindCPU.hpp"
-
 #include <immintrin.h>
+
+#include "osxBindCPU.hpp"
 #endif
 
 namespace kotekan {

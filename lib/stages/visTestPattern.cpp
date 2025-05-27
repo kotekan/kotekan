@@ -1,42 +1,36 @@
 #include "visTestPattern.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for Hash, operator!=
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for wait_for_full_frame, Buffer, mark_frame_empty, mark_fra...
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for datasetManager, dset_id_t
-#include "datasetState.hpp"      // for freqState, inputState, prodState
-#include "kotekanLogging.hpp"    // for INFO, DEBUG, DEBUG2, FATAL_ERROR, WARN
-#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
-#include "restClient.hpp"        // for restClient, restClient::restReply
-#include "restServer.hpp"        // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RES...
-#include "visBuffer.hpp"         // for VisFrameView
+#include <dirent.h>               // for opendir
+#include <errno.h>                // for errno
+#include <sys/stat.h>             // for mkdir, S_IRGRP, S_IROTH, S_IRWXU
+#include <time.h>                 // for timespec
+#include <algorithm>              // for copy, max, equal
+#include <cmath>                  // for log10, sqrt
+#include <complex>                // for complex, conj, operator*, operator-
+#include <cstring>                // for memcpy, strerror
+#include <exception>              // for exception
+#include <functional>             // for bind, function, _1, _2
+#include <future>                 // for async, future
+#include <iomanip>                // for operator<<, setprecision
+#include <mutex>                  // for mutex, lock_guard, unique_lock
+#include <stdexcept>              // for invalid_argument, runtime_error
+#include <tuple>                  // for get
+#include <locale>                 // for locale
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>    // for max
-#include <atomic>       // for atomic_bool
-#include <cmath>        // for log10, sqrt
-#include <complex>      // for operator*, operator-, complex
-#include <cstdint>      // for uint64_t
-#include <cstring>      // for memcpy, strerror
-#include <cxxabi.h>     // for __forced_unwind
-#include <dirent.h>     // for opendir
-#include <errno.h>      // for errno
-#include <exception>    // for exception
-#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
-#include <future>       // for async, future
-#include <iomanip>      // for operator<<, setprecision
-#include <memory>       // for allocator_traits<>::value_type
-#include <mutex>        // for mutex, lock_guard, unique_lock
-#include <regex>        // for match_results<>::_Base_type
-#include <stdexcept>    // for runtime_error, invalid_argument, out_of_range
-#include <sys/stat.h>   // for mkdir, S_IRGRP, S_IROTH, S_IRWXU
-#include <system_error> // for system_error
-#include <time.h>       // for timespec
-#include <tuple>        // for get
+#include "Config.hpp"             // for Config
+#include "Hash.hpp"               // for operator!=, Hash
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "datasetManager.hpp"     // for datasetManager, dset_id_t
+#include "datasetState.hpp"       // for freqState, inputState, prodState
+#include "kotekanLogging.hpp"     // for INFO, DEBUG, DEBUG2, FATAL_ERROR, WARN
+#include "prometheusMetrics.hpp"  // for Gauge, Metrics, MetricFamily
+#include "restClient.hpp"         // for restClient
+#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
+#include "visBuffer.hpp"          // for VisFrameView
+#include "fmt.hpp"                // for compile_string_to_view, format, fmt, format_string
+#include "gsl-lite.hpp"           // for span
 
 
 using kotekan::bufferContainer;

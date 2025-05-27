@@ -1,27 +1,24 @@
 #include "rawFileWrite.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, get_metadata_container, mark_frame_empty, regis...
-#include "bufferContainer.hpp" // for bufferContainer
-#include "errors.h"
-#include "kotekanLogging.hpp"    // for ERROR, INFO
-#include "metadata.hpp"          // for metadataContainer
-#include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "visUtil.hpp"           // for current_time
+#include <errno.h>                // for errno
+#include <fcntl.h>                // for open, O_CREAT, O_WRONLY
+#include <stdint.h>               // for uint32_t, int32_t, uint8_t
+#include <stdio.h>                // for snprintf, size_t
+#include <stdlib.h>               // for exit
+#include <unistd.h>               // for write, close, gethostname, ssize_t
+#include <functional>             // for bind, function
+#include <memory>                 // for shared_ptr, __shared_ptr_access
 
-#include <atomic>     // for atomic_bool
-#include <errno.h>    // for errno
-#include <exception>  // for exception
-#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <stdint.h>   // for uint32_t, int32_t, uint8_t
-#include <stdio.h>    // for snprintf
-#include <stdlib.h>   // for exit
-#include <unistd.h>   // for write, close, gethostname, ssize_t
-#include <vector>     // for vector
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "errors.h"               // for ReturnCode, exit_kotekan
+#include "kotekanLogging.hpp"     // for ERROR, INFO
+#include "metadata.hpp"           // for metadataObject
+#include "prometheusMetrics.hpp"  // for Metrics, Gauge
+#include "visUtil.hpp"            // for current_time
+#include "fmt.hpp"                // for compile_string_to_view
 
 
 using kotekan::bufferContainer;

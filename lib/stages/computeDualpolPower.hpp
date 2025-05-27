@@ -1,12 +1,13 @@
 #ifndef COMPUTE_DUALPOL_POWER
 #define COMPUTE_DUALPOL_POWER
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "bufferContainer.hpp"
+#include <sys/types.h>          // for uint
+#include <string>               // for string
 
-#include <string>      // for string
-#include <sys/types.h> // for uint
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "buffer.hpp"           // for Buffer
 
 class computeDualpolPower : public kotekan::Stage {
 public:

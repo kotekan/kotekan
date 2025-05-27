@@ -1,16 +1,19 @@
 #include "juliaManager.hpp"
 
-#include <any>
-#include <chrono>
-#include <condition_variable>
-#include <cstdlib>
-#include <future>
-#include <julia.h>
-#include <kotekanLogging.hpp>
-#include <mutex>
-#include <queue>
-#include <thread>
-#include <tuple>
+#include <julia.h>          // for jl_atexit_hook, jl_init
+#include <assert.h>         // for assert
+#include <bits/chrono.h>    // for operator""ms
+#include <any>              // for any
+#include <cstdlib>          // for atexit
+#include <future>           // for promise, future
+#include <mutex>            // for unique_lock, mutex
+#include <queue>            // for queue
+#include <thread>           // for thread, sleep_for
+#include <algorithm>        // for copy
+#include <utility>          // for move
+
+#include "errors.h"         // for INFO_F, DEBUG_F
+#include "julia_fasttls.h"  // for JULIA_DEFINE_FAST_TLS
 
 // Only define this once, in an executable (not in a shared library) if you want fast code.
 JULIA_DEFINE_FAST_TLS

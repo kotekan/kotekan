@@ -1,21 +1,16 @@
 #include "restInspectFrame.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for CHECK_MEM, WARN
-#include "restServer.hpp"      // for restServer, connectionInstance
+#include <stdlib.h>             // for free, malloc, size_t
+#include <string.h>             // for memcpy
+#include <functional>           // for bind, function, _1
 
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, function
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <stdlib.h>   // for free, malloc
-#include <string.h>   // for memcpy
-#include <vector>     // for vector
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for CHECK_MEM, WARN
+#include "restServer.hpp"       // for restServer, connectionInstance
+#include "fmt.hpp"              // for compile_string_to_view
 
 
 using kotekan::bufferContainer;

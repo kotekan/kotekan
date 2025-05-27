@@ -1,8 +1,9 @@
 #include "BeamMetadata.hpp"
 
-#include "visUtil.hpp"
+#include <assert.h>     // for assert
+#include <memory>       // for allocator
 
-#include <assert.h>
+#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, BeamMetadata);
 

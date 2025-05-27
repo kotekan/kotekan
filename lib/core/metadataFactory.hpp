@@ -1,13 +1,13 @@
 #ifndef METADATA_FACTORY_HPP
 #define METADATA_FACTORY_HPP
 
-#include "Config.hpp"   // for Config
-#include "metadata.hpp" // for metadataPool // IWYU pragma: keep
+#include <map>           // for map
+#include <string>        // for string
+#include <memory>        // for shared_ptr
 
-#include "json.hpp" // for json
-
-#include <map>    // for map
-#include <string> // for string
+#include "Config.hpp"    // for Config
+#include "metadata.hpp"  // for metadataPool
+#include "json.hpp"      // for json
 
 namespace kotekan {
 

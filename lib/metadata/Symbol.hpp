@@ -1,12 +1,13 @@
 #ifndef SYMBOL_HPP
 #define SYMBOL_HPP
 
-#include <cstring>
-#include <iostream>
-#include <mutex>
-#include <stdexcept>
-#include <string>
-#include <unordered_set>
+#include <cstring>        // for size_t
+#include <iostream>       // for ostream
+#include <mutex>          // for mutex
+#include <string>         // for string, basic_string
+#include <unordered_set>  // for unordered_set
+#include <functional>     // for equal_to, less
+#include <string_view>    // for string_view, hash
 
 namespace kotekan {
 

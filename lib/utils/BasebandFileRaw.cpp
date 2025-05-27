@@ -1,17 +1,18 @@
 #include "BasebandFileRaw.hpp"
 
-#include "visFile.hpp" // for create_lockfile
+#include <assert.h>              // for assert
+#include <errno.h>               // for errno
+#include <fcntl.h>               // for fallocate, open, posix_fadvise, sync_file_range, FALLOC_...
+#include <string.h>              // for strerror
+#include <sys/stat.h>            // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
+#include <unistd.h>              // for pwrite, TEMP_FAILURE_RETRY, close, lseek, off_t, ssize_t
+#include <cstdio>                // for remove, SEEK_END, size_t
+#include <stdexcept>             // for runtime_error
+#include <memory>                // for __shared_ptr_access, shared_ptr
 
-#include "fmt.hpp" // for format, fmt
-
-#include <assert.h>   // for assert
-#include <cstdio>     // for remove
-#include <errno.h>    // for errno
-#include <fcntl.h>    // for fallocate, open, posix_fadvise, sync_file_range, FALLOC_FL_KEEP_SIZE
-#include <stdexcept>  // for runtime_error
-#include <string.h>   // for strerror
-#include <sys/stat.h> // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
-#include <unistd.h>   // for pwrite, close, lseek, TEMP_FAILURE_RETRY, off_t, ssize_t
+#include "visFile.hpp"           // for create_lockfile
+#include "fmt.hpp"               // for compile_string_to_view, format, fmt
+#include "BasebandMetadata.hpp"  // for BasebandMetadata
 
 
 BasebandFileRaw::BasebandFileRaw(const std::string& name, const uint32_t frame_size) :

@@ -6,41 +6,40 @@
 #ifndef _RAW_READER_HPP
 #define _RAW_READER_HPP
 
-#include "Config.hpp"
-#include "Hash.hpp"      // for Hash, operator<, operator==
-#include "Stage.hpp"     // for Stage
-#include "Telescope.hpp" // for Telescope
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp" // for dset_id_t
-#include "datasetState.hpp"   // for freqState, timeState, metadataState
-#include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "kotekanLogging.hpp" // for INFO, FATAL_ERROR, DEBUG, WARN, ERROR
-#include "metadata.hpp"       // for metadataContainer
-#include "version.h"          // for get_git_commit_hash
-#include "visUtil.hpp"        // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype
+#include <errno.h>              // for errno
+#include <fcntl.h>              // for open, posix_fadvise, O_RDONLY, POSIX_FADV_DONTNEED
+#include <stdint.h>             // for uint32_t, uint8_t
+#include <sys/mman.h>           // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_...
+#include <sys/stat.h>           // for stat
+#include <time.h>               // for nanosleep, timespec
+#include <unistd.h>             // for close, off_t
+#include <assert.h>             // for assert
+#include <cstring>              // for size_t, strerror, memcpy
+#include <fstream>              // for basic_ifstream, basic_ios, ios_base, basic_istream::read
+#include <functional>           // for bind
+#include <map>                  // for map, _Rb_tree_iterator, operator!=, operator==
+#include <stdexcept>            // for runtime_error, invalid_argument
+#include <string>               // for allocator, basic_string, operator+, char_traits, string
+#include <utility>              // for pair
+#include <vector>               // for vector
+#include <algorithm>            // for min
+#include <memory>               // for __shared_ptr_access, shared_ptr
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json
-
-#include <cstring>    // for strerror, memcpy
-#include <errno.h>    // for errno
-#include <exception>  // for exception
-#include <fcntl.h>    // for open, posix_fadvise, O_RDONLY, POSIX_FADV_DONTNEED
-#include <fstream>    // for ifstream, ios_base::failure, ios_base, basic_ios, basic_i...
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <map>        // for map
-#include <regex>      // for match_results<>::_Base_type
-#include <stddef.h>   // for size_t
-#include <stdexcept>  // for runtime_error, invalid_argument, out_of_range
-#include <stdint.h>   // for uint32_t, uint8_t
-#include <string>     // for string
-#include <sys/mman.h> // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_...
-#include <sys/stat.h> // for stat
-#include <time.h>     // for nanosleep, timespec
-#include <unistd.h>   // for close, off_t
-#include <utility>    // for pair
-#include <vector>     // for vector
+#include "Config.hpp"           // for Config
+#include "Hash.hpp"             // for Hash, operator==
+#include "Stage.hpp"            // for Stage
+#include "Telescope.hpp"        // for Telescope
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "datasetManager.hpp"   // for datasetManager, dset_id_t, state_id_t, DS_UNIQUE_NAME
+#include "datasetState.hpp"     // for freqState, metadataState, timeState
+#include "errors.h"             // for ReturnCode, exit_kotekan
+#include "kotekanLogging.hpp"   // for INFO, DEBUG, FATAL_ERROR, WARN, DEBUG2
+#include "metadata.hpp"         // for metadataObject
+#include "version.h"            // for get_git_commit_hash
+#include "visUtil.hpp"          // for time_ctype, freq_ctype, frameID, current_time, double_to_ts
+#include "fmt.hpp"              // for compile_string_to_view, fmt
+#include "json.hpp"             // for json, input_adapter
 
 using kotekan::bufferContainer;
 using kotekan::Config;

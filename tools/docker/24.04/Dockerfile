@@ -21,6 +21,8 @@ RUN apt update && \
                    make \
                    cmake \
                    clang \
+                   libclang-dev \
+                   llvm-dev \
                    clang-format \
                    flex \
                    bison \

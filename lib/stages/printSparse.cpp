@@ -1,6 +1,7 @@
 #include "printSparse.hpp"
 
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"  // for REGISTER_KOTEKAN_STAGE
+#include "DataType.hpp"      // for KOTEKAN_FLOAT16, float16_t
 
 using printSparseUint8 = printSparse<uint8_t>;
 using printSparseUint32 = printSparse<uint32_t>;

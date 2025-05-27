@@ -1,31 +1,27 @@
 #include "BaseWriter.hpp"
 
-#include "Config.hpp"            // for Config
-#include "FrameView.hpp"         // for FrameView
-#include "Hash.hpp"              // for operator<
-#include "buffer.hpp"            // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t, datasetManager
-#include "datasetState.hpp"      // for metadataState, _factory_aliasdatasetState
-#include "factory.hpp"           // for FACTORY
-#include "kotekanLogging.hpp"    // for INFO, WARN, FATAL_ERROR, DEBUG, logLevel
-#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily, Gauge
-#include "restServer.hpp"        // for HTTP_RESPONSE, connectionInstance, restServer
-#include "version.h"             // for get_git_commit_hash
-#include "visFile.hpp"           // for visFileBundle, _factory_aliasvisFile
+#include <time.h>                 // for timespec
+#include <algorithm>              // for copy, equal, max
+#include <exception>              // for exception
+#include <functional>             // for bind, function
+#include <stdexcept>              // for runtime_error
+#include <utility>                // for pair
+#include <vector>                 // for vector
 
-#include "fmt.hpp" // for format
-
-#include <algorithm>  // for copy, copy_backward, equal, max
-#include <atomic>     // for atomic_bool
-#include <deque>      // for deque
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error, out_of_range
-#include <time.h>     // for timespec
-#include <utility>    // for pair
-#include <vector>     // for vector
+#include "Config.hpp"             // for Config
+#include "FrameView.hpp"          // for FrameView
+#include "Hash.hpp"               // for operator<
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "datasetManager.hpp"     // for datasetManager, dset_id_t
+#include "datasetState.hpp"       // for metadataState, _factory_aliasdatasetState
+#include "factory.hpp"            // for FACTORY
+#include "kotekanLogging.hpp"     // for INFO, WARN, FATAL_ERROR, DEBUG, logLevel
+#include "prometheusMetrics.hpp"  // for Counter, Metrics, MetricFamily, Gauge
+#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
+#include "version.h"              // for get_git_commit_hash
+#include "visFile.hpp"            // for visFileBundle, _factory_aliasvisFile
+#include "fmt.hpp"                // for compile_string_to_view, format, format_string
 
 
 using kotekan::bufferContainer;

@@ -1,34 +1,31 @@
 
 #include "VisWriter.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for Hash, operator<
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "SystemInterface.hpp"   // for get_hostname, get_username
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for datasetManager, dset_id_t
-#include "datasetState.hpp"      // for metadataState, freqState, prodState
-#include "kotekanLogging.hpp"    // for FATAL_ERROR, ERROR
-#include "prometheusMetrics.hpp" // for Metrics
-#include "restServer.hpp"        // for HTTP_RESPONSE, connectionInstance, restServer
-#include "version.h"             // for get_git_commit_hash
-#include "visBuffer.hpp"         // for VisFrameView
-#include "visUtil.hpp"           // for ts_to_double, time_ctype
+#include <sys/types.h>            // for uint
+#include <future>                 // for async, future
+#include <map>                    // for map
+#include <memory>                 // for shared_ptr, __shared_ptr_access
+#include <string>                 // for allocator, basic_string, operator<, operator+, string
+#include <tuple>                  // for get
+#include <utility>                // for pair
+#include <vector>                 // for vector
 
-#include <cxxabi.h>     // for __forced_unwind
-#include <exception>    // for exception
-#include <future>       // for async, future
-#include <map>          // for map, map<>::mapped_type
-#include <memory>       // for __shared_ptr_access, shared_ptr
-#include <stdexcept>    // for out_of_range
-#include <string>       // for string
-#include <sys/types.h>  // for uint
-#include <system_error> // for system_error
-#include <tuple>        // for get
-#include <utility>      // for pair
-#include <vector>       // for vector
+#include "Config.hpp"             // for Config
+#include "Hash.hpp"               // for operator<
+#include "Stage.hpp"              // for Stage
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "SystemInterface.hpp"    // for get_hostname, get_username
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "datasetManager.hpp"     // for datasetManager, dset_id_t
+#include "datasetState.hpp"       // for metadataState, freqState, prodState
+#include "kotekanLogging.hpp"     // for FATAL_ERROR, ERROR
+#include "prometheusMetrics.hpp"  // for Metrics
+#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
+#include "version.h"              // for get_git_commit_hash
+#include "visBuffer.hpp"          // for VisFrameView
+#include "visUtil.hpp"            // for ts_to_double, freq_ctype, time_ctype
+#include "fmt.hpp"                // for compile_string_to_view
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -1,16 +1,16 @@
 #ifndef FULL_PACKET_DUMP_HPP
 #define FULL_PACKET_DUMP_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
-#include "restServer.hpp"      // for connectionInstance
+#include <stdint.h>             // for uint8_t
+#include <mutex>                // for mutex
+#include <string>               // for string, basic_string
 
-#include "json.hpp" // for json
-
-#include <mutex>    // for mutex
-#include <stdint.h> // for uint8_t
-#include <string>   // for string
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "restServer.hpp"       // for connectionInstance
+#include "json.hpp"             // for json
+#include "buffer.hpp"           // for Buffer
 
 class fullPacketDump : public kotekan::Stage {
 public:
