@@ -15,6 +15,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # set C standard to gnu99
 set(CMAKE_C_STANDARD 99)
 
+# Set OpenCL version explicitly (quiets a build warning)
+add_definitions(-DCL_TARGET_OPENCL_VERSION=220)
+
 # This quiets a noisy cmake warning on newer versions, triggered by some of our CMake/FindXYZ.cmake
 # scripts.
 if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0")
@@ -31,7 +34,6 @@ endif()
 option(USE_AIRSPY "Build Airspy Producer" OFF)
 option(USE_FFTW "Build with FFTW F-engine" OFF)
 option(USE_LAPACK_BLAZE "Build with LAPACK Linear Algebra (OpenBLAS) and Blaze support" OFF)
-option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_CUDA "Build CUDA GPU Framework" OFF)
 option(USE_HIP "Build HIP GPU Framework" OFF)

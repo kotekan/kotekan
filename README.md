@@ -26,16 +26,15 @@ Cmake build options:
 * `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with asserts, debug logging and debug symbols.
 * `-DCMAKE_BUILD_TYPE=Test` - Builds the project with asserts, debug logging, but without debug
   symbols.
-* `-DUSE_OLD_DPDK=ON` - Include DPDK support for older (<19.11) versions.  
+* `-DUSE_OLD_DPDK=ON` - Include DPDK support for older (<19.11) versions (newer is included by default if installed).
   Optional `-DRTE_SDK=<build-location>` and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`
   can be provided for non standard build locations.
-* `-DUSE_HSA=ON` - Build with HSA support if available. On by default.
 * `-DUSE_OLD_ROCM=ON` - Build for ROCm versions 2.3 or older. Off by default.
-* `-DUSE_CLOC=ON` - For HSA, use cloc.sh to compile .hsaco binaries.
   Direct toolchain calls are used by default.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
 * `-DUSE_CUDA=ON` - Build with CUDA support, requires `nvcc`
 * `-DUSE_HDF5=ON` to enable the HDF5 writer. Add `-DHIGHFIVE_PATH=<path>` to optionally specify a path to HighFive.
+* `-DUSE_ASDF=ON` to enable to ASDF writer, and `-DUSE_GDAL=ON` for the GDAL writer.
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
 * `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
 * `-DUSE_LAPACK_BLAZE=ON` - Build stages depending on LAPACK and Blaze. Add `-DBLAZE_PATH=<blaze_path>` to optionally specify a path to BLAZE headers.
@@ -60,10 +59,6 @@ To build with OpenCL and debug symbols and logging:
 To build with CUDA:
 
     cmake -DUSE_CUDA=ON ..
-
-To build with HSA, old DPDK and debug symbols (CHIME):
-
-    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_OLD_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug ..
 
 To install kotekan (only works on CentOS at the moment):
 

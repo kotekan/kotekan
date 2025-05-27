@@ -134,13 +134,6 @@ Documentation:
 Hardware
 =========
 
-To support the latest HSA builds with full networking stack:
-
-* NIC supporting DPDK, ideally Intel XL710 based
-* CPU supporting AVX2, 4 memory channels, and at least 4 real cores. e.g. Intel E5-2620 v3 or i7-5930K
-* AMD GPUs R9 Fury (s9300x2), RX 480/580, RX Vega, or later.
-* RAM >= 16GB
-
 To support OpenCL builds with the full networking stack:
 
 * NIC supporting DPDK, ideally Intel XL710 based
@@ -171,10 +164,8 @@ Cmake build options
 * ``-DUSE_OLD_DPDK=ON``
     Builds with DPDK support (<19.11), for source installs requires: `-DRTE_SDK=<dir>`
     and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`
-    Not needed for newer versions of DPDK on Ubuntu 22.04
+    Not needed for newer versions of DPDK on Ubuntu 22.04+.
     See :ref:`dpdk` for more details.
-* ``-DUSE_HSA=ON``
-    Build with HSA support if available. Off by default.
 * ``-DUSE_OLD_ROCM=ON``
     Build for ROCm versions 2.3 or older. Off by default.
 * ``-DUSE_OPENCL=ON``
@@ -183,14 +174,18 @@ Cmake build options
     Build support for CUDA kernels and Nvidia GPUs, requires `nvcc`
 * ``-DUSE_HDF5=ON``
     Build with HDF5 support. Requires HighFive, Bitshuffle and h5py.
+* ``-DUSE_ASDF=ON``
+    Build with ASDF writer.
+* ``-DUSE_GDAL=ON``
+    Build with GDAL writer.
 * ``-DHIGHFIVE_PATH=<path>``
     To enable the HDF5 writer
 * ``-DUSE_AIRSPY=ON``
     Build the AirSpy producer. Requires libairspy.
 * ``-DUSE_FFTW=ON``
     Build an FFTW-based F-engine. Requires FFTW3.
-* ``-DUSE_LAPACK=ON``
-    Build stages depending on LAPACK.
+* ``-DUSE_LAPACK_BLAZE=ON``
+    Build stages depending on LAPACK and BLAZE.
 * ``-DUSE_OMP=ON``
     Build stages using OpenMP. This requires a compiler supporting OpenMP (>= 3.0, see `OpenMP Compilers and Tools <https://www.openmp.org/resources/openmp-compilers-tools/>`).
 * ``-DCOMPILE_DOCS=ON``
@@ -209,17 +204,17 @@ Cmake build options
 Examples
 ---------
 
-To build with HSA, DPDK and debug symbols:
+To build with (old) DPDK and debug symbols:
 
 .. code:: bash
 
-    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug ..
+    cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_OLD_DPDK=ON -DCMAKE_BUILD_TYPE=Debug ..
 
 To build with OpenCL and DPDK:
 
 .. code:: bash
 
-    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_OPENCL=ON ..
+    cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_OLD_DPDK=ON -DUSE_OPENCL=ON ..
 
 To install kotekan:
 

@@ -2,33 +2,7 @@
 RFI Mitigation
 *******************
 
-Two variants of RFI removal currently exist in kotekan, one for general VDIF,
-and one specific to the CHIME correlator.
-
-CHIME
---------------
-
-CHIME RFI removal is implemented as an HSA stage. 
-
-To add RFI removal, add the following the the kotekan config under GPU->commands:
-
-name: ``hsa_rfi``
-    kernel: "../lib/hsa/kernels/rfi_chime.hsaco"
-
-    The RFI kernel can either set input data with RFI in it to zero, 
-    or output an array with the amount of RFI detected by frequency.
-
-    Other config parameters:
-
-    * ``rfi_zero``: True/False (Whether or not to zero input data with RFI in it)
-    * ``sk_step``: 256 (The time cadence for kurtosis measurements, in units of time samples)
-    * ``rfi_sensitivity``: 10 (The sensitivity of the kurtosis threshold, lower is more sensitive)
-
-    Relevent files for CHIME RFI can be located here:
-
-    * /ch_gpu/lib/hsa/hsaRfi.cpp (.hpp)
-    * /ch_gpu/lib/hsa/hsaRFIOutput.cpp (.hpp)
-    * /ch_gpu/lib/hsa/kernels/rfi_chime.cl
+A general VDIF stage for RFI removal currently exists in kotekan.
 
 VDIF
 --------------
@@ -78,34 +52,5 @@ To configure computeDualpolPower for rfi removal, example config:
 Relevant files:
 
 /ch_gpu/lib/processes/computeDualpolPower.cpp (.hpp)
-
-3. As a GPU stage
-^^^^^^^^^^^^^^^^^^^
-VDIF RFI removal can be implemented as an HSA stage. 
-
-To add RFI removal, add the following the the kotekan config under GPU->commands:
-
-.. code-block:: YAML
-
-    - name: hsa_rfi_vdif
-        kernel: "../lib/hsa/kernels/rfi_vdif.hsaco"
-
-The RFI kernel will set input data with RFI in it to zero, 
-
-Other config parameters:
-
-* ``sk_step``: 256 (The time cadence for kurtosis measurements, in units of time samples)
-* ``rfi_sensitivity``: 10 (The sensitivity of the kurtosis threshold, lower is more sensitive)
-
-Relevent files for VDIF RFI can be located here:
-
-* /ch_gpu/lib/hsa/hsaRfiVdif.cpp (.hpp)
-* /ch_gpu/lib/hsa/hsaRFIOutput.cpp (.hpp)
-* /ch_gpu/lib/hsa/kernels/rfi_vdif.cl
-
-
-
-
-
 
 
