@@ -13,6 +13,7 @@ on:
         type: string
 
 jobs:
+  # Get a list of all branches
   determine-branches:
     runs-on: ubuntu-latest
     outputs:
@@ -35,6 +36,7 @@ jobs:
           JSON_ARRAY=$(echo $BRANCHES | jq -R -s -c 'split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')
           echo "matrix={\"branch\":$JSON_ARRAY}" >> $GITHUB_OUTPUT
 
+  # Trigger workflow on another branch
   trigger-workflows:
     needs: determine-branches
     runs-on: ubuntu-latest
