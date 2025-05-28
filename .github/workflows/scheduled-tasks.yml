@@ -1,13 +1,26 @@
-name: kotekan-nightly
+name: Scheduled Tasks
 on:
-  schedule:
-    - cron: '0 8 * * *' # run at 8 AM UTC (4 AM ET / 1 AM PT)
-  # allow manually triggering nightlies from the web interface:
   workflow_dispatch:
+    inputs:
+      trigger_source:
+        description: 'Source of trigger'
+        required: false
+        default: 'manual'
+        type: choice
+        options:
+          - manual
+          - scheduled
+      triggered_at:
+        description: 'ISO timestamp when triggered'
+        required: false
+        type: string
+      schedule_type:
+        description: 'Which schedule triggered this'
+        required: false
+        type: string
 
 env:
   REGISTRY: ghcr.io
-  IMG_IWYU: "ghcr.io/kotekan/kotekan/kotekan-iwyu"
   IMG_2404: "ghcr.io/${{ github.repository }}/kotekan-2404"
   PYTEST_TIMEOUT: 60
 
@@ -82,7 +95,6 @@ jobs:
         echo "GitHub Base Ref: $GITHUB_BASE_REF"
         echo "GitHub Ref Name: $GITHUB_REF_NAME"
         echo "Docker 2404 image: $IMG_2404"
-        echo "Docker IWYU image: $IMG_IWYU"
         echo "Used docker image name: ${{ steps.docker_img.outputs.img_name }}"
         echo "docker_build: ${{ steps.docker_img.outputs.docker_build }}"
         echo "img_name: ${{ steps.docker_img.outputs.img_name }}"
@@ -98,7 +110,7 @@ jobs:
       docker_img_name: "${{ steps.docker_img.outputs.img_name }}"
 
   # Build a version of kotekan and run some direct tests
-  build-nightly-tests-2404:
+  build-scheduled-tests-2404:
     runs-on: self-hosted
     container: 
       image: summerwind/actions-runner:ubuntu-22.04
@@ -147,11 +159,11 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         df -h
 
-    # Run tests in the config/nightly-tests directory with timeout
-    - name: Run nightly Kotekan tests
+    # Run tests in the config/scheduled-tests directory with timeout
+    - name: Run scheduled Kotekan tests
       run: |
         TIMEOUT_DURATION="5m"  # Timeout duration per test
-        TEST_CONFIG_DIR="config/nightly-tests"
+        TEST_CONFIG_DIR="config/scheduled-tests"
         for config_file in "$TEST_CONFIG_DIR"/*.yaml; do
           echo "Running test with config: $config_file"
           
