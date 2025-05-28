@@ -69,7 +69,7 @@ jobs:
               await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                workflow_id: 'scheduled-tasks.yml',
+                workflow_id: 'scheduled_tasks.yml',
                 ref: branch,
                 inputs: {
                   trigger_source: context.eventName === 'schedule' ? 'scheduled' : 'manual',
@@ -82,7 +82,7 @@ jobs:
               console.log(`Successfully triggered workflow on branch: ${branch}`);
             } catch (error) {
               if (error.status === 404) {
-                console.log(`Branch '${branch}' or workflow 'scheduled-tasks.yml' not found, skipping...`);
+                console.log(`Branch '${branch}' or workflow 'scheduled_tasks.yml' not found, skipping...`);
               } else {
                 console.error(`Error triggering workflow on ${branch}:`, error.message);
                 throw error;
