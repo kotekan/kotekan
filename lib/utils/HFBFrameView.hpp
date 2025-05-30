@@ -221,9 +221,9 @@ public:
     dset_id_t& dataset_id;
 
     /// View of the hyperfine beam data.
-    const gsl::span<float> hfb;
+    const gsl_lite::span<float> hfb;
     /// View of the weight data.
-    const gsl::span<float> weight;
+    const gsl_lite::span<float> weight;
 };
 
 #endif

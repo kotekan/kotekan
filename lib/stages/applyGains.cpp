@@ -302,7 +302,7 @@ void applyGains::apply_thread() {
             output_frame.dataset_id = output_dataset_ids[key];
         }
 
-        // Get raw pointers to avoid the gsl::span bounds checking
+        // Get raw pointers to avoid the gsl_lite::span bounds checking
         cfloat* out_vis = output_frame.vis.data();
         cfloat* in_vis = input_frame.vis.data();
         float* out_weight = output_frame.weight.data();

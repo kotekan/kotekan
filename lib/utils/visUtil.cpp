@@ -119,7 +119,7 @@ std::string json_type_name(nlohmann::json& value) {
 // possible reordering of the inputs
 // TODO: port this to using map_vis_triangle. Need a unit test first.
 void copy_vis_triangle(const int32_t* inputdata, const std::vector<uint32_t>& inputmap,
-                       size_t block, size_t N, gsl::span<cfloat> output) {
+                       size_t block, size_t N, gsl_lite::span<cfloat> output) {
 
     auto copyfunc = [&](int32_t pi, int32_t bi, bool conj) {
         int i_sign = conj ? -1 : 1;

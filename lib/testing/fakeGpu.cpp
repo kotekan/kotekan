@@ -140,7 +140,7 @@ void FakeGpu::main_thread() {
             // Fill the buffer with the specified mode
             chimeMetadata* metadata = (chimeMetadata*)out_buf->metadata[frame_id].get();
             for (int freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
-                gsl::span<int32_t> data(output + 2 * freq_ind * nprod_gpu,
+                gsl_lite::span<int32_t> data(output + 2 * freq_ind * nprod_gpu,
                                         output + 2 * (freq_ind + 1) * nprod_gpu);
                 pattern->fill(data, metadata, frame_count, freq + freq_ind);
             }

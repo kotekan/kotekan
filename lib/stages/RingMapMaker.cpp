@@ -154,7 +154,7 @@ void RingMapMaker::main_thread() {
                               input_frame.vis.begin() + (p + 1) * num_bl - 1,
                               special_vis.begin() + 1);
                     // Add missing cross-pol
-                    special_vis.at(0) = conj(input_frame.vis.at((p - 1) * num_bl));
+                    special_vis.at(0) = conj(input_frame.vis[(p - 1) * num_bl]);
                     var = frame_var.at((p - 1) * num_bl);
 
                     input_vis = special_vis.data();

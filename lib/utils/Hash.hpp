@@ -67,7 +67,7 @@ struct Hash {
  * @returns   The hashed value.
  **/
 template<typename T>
-Hash hash(gsl::span<const T> s) {
+Hash hash(gsl_lite::span<const T> s) {
     Hash t;
     MurmurHash3_x64_128((void*)s.as_bytes(), s.size_bytes(), _SEED, (void*)&t);
     return t;
