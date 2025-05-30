@@ -65,11 +65,25 @@ jobs:
                 branch: branch
               });
               
-              // Trigger the workflow
+              // Trigger the CI tests workflow
               await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 workflow_id: 'scheduled_tasks.yml',
+                ref: branch,
+                inputs: {
+                  trigger_source: context.eventName === 'schedule' ? 'scheduled' : 'manual',
+                  triggered_at: new Date().toISOString(),
+                  schedule_type: context.eventName === 'schedule' ? 
+                    context.payload.schedule : 'manual'
+                }
+              });
+
+              // Trigger the IWYU workflow
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'iwyu.yml',
                 ref: branch,
                 inputs: {
                   trigger_source: context.eventName === 'schedule' ? 'scheduled' : 'manual',
