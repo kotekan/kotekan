@@ -32,7 +32,7 @@ jobs:
               console.log('Manual trigger for branches:', branches);
             } else {
               // Scheduled trigger or manual without custom branches
-              branches = ['chord']; #['chord', 'develop', ...]
+              branches = ['chord',]; #['chord', 'develop', ...]
               console.log('Running scheduled branches:', branches);
             }
             
