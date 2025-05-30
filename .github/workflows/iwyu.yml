@@ -1,0 +1,33 @@
+name: IWYU Tasks
+on:
+  workflow_dispatch:
+    inputs:
+      trigger_source:
+        description: 'Source of trigger'
+        required: false
+        default: 'manual'
+        type: choice
+        options:
+          - manual
+          - scheduled
+      triggered_at:
+        description: 'ISO timestamp when triggered'
+        required: false
+        type: string
+      schedule_type:
+        description: 'Which schedule triggered this'
+        required: false
+        type: string
+
+jobs:
+
+  log-execution:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log execution context
+        run: |
+          echo "Workflow triggered by: ${{ github.event.inputs.trigger_source }}"
+          echo "Triggered at: ${{ github.event.inputs.triggered_at }}"
+          echo "Schedule type: ${{ github.event.inputs.schedule_type }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"
