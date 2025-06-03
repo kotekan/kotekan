@@ -21,6 +21,7 @@ RUN apt update && \
                    make \
                    cmake \
                    clang \
+                   libstdc++-14-dev \
                    clang-format \
                    flex \
                    bison \
@@ -39,6 +40,7 @@ RUN apt update && \
                    libssl-dev \
                    libyaml-cpp-dev \
                    libsystemd-dev \
+                   libomp-dev \
                    libgdal-dev && \
     apt install -y python3 \
                    python3-dev && \

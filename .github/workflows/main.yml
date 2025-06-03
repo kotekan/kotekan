@@ -468,16 +468,14 @@ jobs:
         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
         -DWERROR=ON \
         -DCMAKE_LINK_WHAT_YOU_USE=ON \
-        -DUSE_OLD_DPDK=ON \
         -DCMAKE_BUILD_TYPE=Test \
         -DUSE_ASDF=ON \
-        -DUSE_HDF5=ON \
-        -DHIGHFIVE_PATH=/code/build/HighFive \
-        -DUSE_LAPACK_BLAZE=ON \
-        -DBLAZE_PATH=/code/build/blaze \
-        -DARCH=haswell \
+        -DUSE_GDAL=ON \
+        -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+        -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
         -DNO_MEMLOCK=ON \
         -DUSE_OMP=ON \
+        -DUSE_CUDA=ON \
         -DWITH_TESTS=ON \
         -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
