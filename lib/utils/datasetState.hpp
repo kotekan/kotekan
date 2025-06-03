@@ -1,23 +1,25 @@
 #ifndef DATASETSTATE_HPP
 #define DATASETSTATE_HPP
 
-#include <stddef.h>      // for size_t
-#include <cstdint>       // for uint32_t
-#include <exception>     // for exception
-#include <iosfwd>        // for ostream
-#include <memory>        // for unique_ptr
-#include <numeric>       // for iota
-#include <stdexcept>     // for runtime_error, out_of_range
-#include <string>        // for string
-#include <utility>       // for pair
-#include <vector>        // for vector, vector<>::iterator
+#include "Hash.hpp"     // for Hash
+#include "factory.hpp"  // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, FACTORY, Factory
+#include "gateSpec.hpp" // for gateSpec, _factory_aliasgateSpec
+#include "visUtil.hpp"  // for prod_ctype, rstack_ctype, time_ctype, input_ctype, freq_ctype
 
-#include "Hash.hpp"      // for Hash
-#include "factory.hpp"   // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, FACTORY, Factory
-#include "gateSpec.hpp"  // for gateSpec, _factory_aliasgateSpec
-#include "visUtil.hpp"   // for prod_ctype, rstack_ctype, time_ctype, input_ctype, freq_ctype
-#include "fmt.hpp"       // for format, fmt
-#include "json.hpp"      // for json, basic_json<>::object_t, json_ref, basic_json, basic_json<>...
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, basic_json<>::object_t, json_ref, basic_json, basic_json<>...
+
+#include <algorithm> // for copy
+#include <cstdint>   // for uint32_t
+#include <exception> // for exception
+#include <iosfwd>    // for ostream
+#include <memory>    // for allocator, unique_ptr
+#include <numeric>   // for iota
+#include <stddef.h>  // for size_t
+#include <stdexcept> // for runtime_error, out_of_range
+#include <string>    // for string
+#include <utility>   // for pair
+#include <vector>    // for vector, vector<>::iterator
 
 class datasetManager;
 class datasetState; // IWYU pragma: keep

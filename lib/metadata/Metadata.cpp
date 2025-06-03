@@ -1,10 +1,8 @@
 #include <Metadata.hpp>
-#include <cctype>     // for isalnum, isalpha
-#include <iomanip>    // for operator<<, setfill, setprecision, setw
-#include <limits>     // for numeric_limits
-#include <algorithm>  // for copy, max
-#include <cassert>    // for assert
-#include <utility>    // for move
+#include <cctype>
+#include <iomanip>
+#include <limits>
+#include <sstream>
 
 namespace kotekan {
 

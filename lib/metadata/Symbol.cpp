@@ -1,6 +1,4 @@
 #include <Symbol.hpp>
-#include <cstring>    // for strcpy
-#include <stdexcept>  // for invalid_argument
 
 namespace kotekan {
 

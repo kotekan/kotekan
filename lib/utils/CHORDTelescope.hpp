@@ -1,19 +1,15 @@
 #ifndef CHORD_TELESCOPE_HPP
 #define CHORD_TELESCOPE_HPP
 
-#include <stdint.h>        // for uint64_t, uint32_t, uint8_t
-#include <time.h>          // for timespec, time_t
-#include <string>          // for string
-#include <utility>         // for forward
-#include <array>           // for array
-#include <complex>         // for complex
-#include <mutex>           // for mutex
-#include <vector>          // for vector
+#include "Config.hpp" // for Config
+#include "Telescope.hpp"
 
-#include "Config.hpp"      // for Config
-#include "Telescope.hpp"   // for freq_id_t, Telescope, stream_t
-#include "restServer.hpp"  // for connectionInstance
-#include "json.hpp"        // for json
+#include "restServer.hpp"
+
+#include <stdint.h> // for int32_t, uint32_t  TODO: why not cstdint?
+#include <string>
+#include <time.h>
+#include <utility>
 
 
 /**

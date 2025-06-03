@@ -1,13 +1,12 @@
 #ifndef HDF5_FILE_WRITE_H
 #define HDF5_FILE_WRITE_H
 
-#include <stdint.h>             // for uint32_t
-#include <string>               // for string
-#include <atomic>               // for atomic
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 /**
  * @class hdf5FileWrite

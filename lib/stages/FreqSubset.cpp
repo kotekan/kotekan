@@ -1,27 +1,27 @@
-#include <cxxabi.h>             // for __forced_unwind
-#include <algorithm>            // for find, max
-#include <cstdint>              // for uint32_t
-#include <exception>            // for exception
-#include <functional>           // for bind
-#include <future>               // for async, future
-#include <map>                  // for map
-#include <stdexcept>            // for out_of_range
-#include <system_error>         // for system_error
-#include <utility>              // for pair
-
 #include "FreqSubset.hpp"
-#include "Config.hpp"           // for Config
-#include "HFBFrameView.hpp"     // for HFBFrameView
-#include "Hash.hpp"             // for operator<
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for datasetManager, dset_id_t
-#include "datasetState.hpp"     // for freqState
-#include "kotekanLogging.hpp"   // for FATAL_ERROR
-#include "visBuffer.hpp"        // for VisFrameView
-#include "visUtil.hpp"          // for freq_ctype, frameID, modulo
-#include "fmt.hpp"              // for basic_string_view
+
+#include "Config.hpp"          // for Config
+#include "HFBFrameView.hpp"    // for HFBFrameView
+#include "Hash.hpp"            // for operator<
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"          // for mark_frame_empty, mark_frame_full, register_consumer, reg...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
+#include "datasetState.hpp"    // for freqState
+#include "kotekanLogging.hpp"  // for FATAL_ERROR
+#include "visBuffer.hpp"       // for VisFrameView
+#include "visUtil.hpp"         // for frameID, freq_ctype, modulo
+
+#include <algorithm>    // for find, max
+#include <cstdint>      // for uint32_t
+#include <cxxabi.h>     // for __forced_unwind
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <future>       // for async, future
+#include <map>          // for map, map<>::mapped_type, _Rb_tree_iterator
+#include <stdexcept>    // for out_of_range
+#include <system_error> // for system_error
+#include <utility>      // for pair
 
 using kotekan::bufferContainer;
 using kotekan::Config;

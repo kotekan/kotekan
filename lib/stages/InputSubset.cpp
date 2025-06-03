@@ -1,26 +1,27 @@
-#include <stddef.h>             // for size_t
-#include <algorithm>            // for max
-#include <atomic>               // for atomic_bool
-#include <complex>              // for complex
-#include <cstdint>              // for uint32_t, uint16_t
-#include <exception>            // for exception
-#include <functional>           // for _Bind_helper<>::type, bind, function
-#include <stdexcept>            // for out_of_range
-#include <utility>              // for pair
-
 #include "InputSubset.hpp"
-#include "Config.hpp"           // for Config
-#include "Hash.hpp"             // for operator!=, operator<, operator==, Hash
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for state_id_t, dset_id_t, datasetManager, fingerprint_t
-#include "datasetState.hpp"     // for inputState, prodState, stackState
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"        // for VisFrameView, VisField, VisField::evec, VisField::flags
-#include "visUtil.hpp"          // for prod_ctype, input_ctype, frameID, cfloat, modulo
-#include "gsl-lite.hpp"         // for span
-#include "fmt.hpp"              // for basic_string_view
+
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator!=, operator<, operator==, Hash
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"          // for allocate_new_metadata_object, mark_frame_empty, mark_fram...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager, fingerprint_t
+#include "datasetState.hpp"    // for inputState, prodState, stackState
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
+#include "visBuffer.hpp"       // for VisFrameView, VisField, VisField::evec, VisField::flags
+#include "visUtil.hpp"         // for prod_ctype, input_ctype, frameID, cfloat, modulo
+
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for max, copy
+#include <atomic>     // for atomic_bool
+#include <complex>    // for complex
+#include <cstdint>    // for uint32_t, uint16_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stddef.h>   // for size_t
+#include <stdexcept>  // for out_of_range
+#include <utility>    // for pair
 
 
 using kotekan::bufferContainer;

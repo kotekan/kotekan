@@ -1,31 +1,32 @@
+#include "buffer.hpp"
+
+#include "errors.h" // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F
+#include "kotekanLogging.hpp"
+#include "metadata.hpp" // for metadataContainer, decrement_metadata_ref_count, increment_...
+#include "nt_memset.h"  // for nt_memset
+#include "util.h"       // for e_time
+
+#include "fmt.hpp" // for fmt, basic_string_view, make_format_args, FMT_STRING
+
+#include <chrono>
+#include <stdexcept>
+
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
-#include <assert.h>            // for assert
-#include <errno.h>             // for errno
-#include <sched.h>             // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdlib.h>            // for free, malloc
-#include <string.h>            // for strerror, memset, memcpy
-#include <sys/mman.h>          // for mmap, munmap, MAP_FAILED
-#include <cxxabi.h>            // for __forced_unwind
-#include <pthread.h>           // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
-#include <chrono>              // for duration, operator+, seconds, nanoseconds, system_clock
-#include <stdexcept>           // for runtime_error
-#include <utility>             // for pair
-
-#include "buffer.hpp"
-#include "errors.h"            // for INFO_F, CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F, FAT...
-#include "kotekanLogging.hpp"  // for DEBUG, ERROR, WARN, FATAL_ERROR, INFO
-#include "metadata.hpp"        // for metadataObject, metadataPool
-#include "nt_memset.h"         // for nt_memset
-#include "util.h"              // for e_time
-#include "fmt.hpp"             // for format, fmt
+#include <assert.h>   // for assert
+#include <errno.h>    // for errno, ETIMEDOUT
+#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>    // for snprintf
+#include <stdlib.h>   // for free, malloc
+#include <string.h>   // for memset, strerror, memcpy, strdup, strncmp, strncpy
+#include <sys/mman.h> // for mlock, mmap, munmap, MAP_FAILED
 #ifndef MAC_OSX
-#include <linux/mman.h>        // for MAP_HUGE_2MB
+#include <linux/mman.h> // for MAP_HUGE_2MB
 #endif
-#include <time.h>              // for size_t, timespec, NULL
+#include <time.h> // for NULL, size_t, timespec
 #ifdef WITH_NUMA
-#include <numa.h>              // for numa_alloc_onnode, numa_allocate_nodemask, numa_bitmask_free
-#include <numaif.h>            // for mbind, MPOL_BIND, MPOL_MF_STRICT
+#include <numa.h>   // for numa_allocate_nodemask, numa_bitmask_free, numa_bitmask_setbit
+#include <numaif.h> // for set_mempolicy, mbind, MPOL_BIND, MPOL_DEFAULT, MPOL_MF_STRICT
 #endif
 
 // It is assumed this is a power of two in the code.

@@ -1,17 +1,18 @@
-#include <time.h>             // for timespec
-#include <algorithm>          // for fill
-#include <cmath>              // for lroundf, pow
-#include <exception>          // for exception
-#include <regex>              // for match_results<>::_Base_type
-#include <stdexcept>          // for runtime_error
-#include <vector>             // for vector
-#include <atomic>             // for __atomic_base, atomic_int32_t
-
 #include "fakeGpuPattern.hpp"
-#include "Config.hpp"         // for Config
-#include "chimeMetadata.hpp"  // for chimeMetadata
-#include "visUtil.hpp"        // for prod_index
-#include "gsl-lite.hpp"       // for span, span<>::iterator
+
+#include "Config.hpp"        // for Config
+#include "chimeMetadata.hpp" // for chimeMetadata
+#include "visUtil.hpp"       // for prod_index
+
+#include "gsl-lite.hpp" // for span, span<>::iterator
+
+#include <algorithm> // for fill
+#include <cmath>     // for lroundf, pow
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <time.h>    // for timespec  // IWYU pragma: keep
+#include <vector>    // for vector
 
 // Register test patterns
 REGISTER_FAKE_GPU_PATTERN(BlockGpuPattern, "block");

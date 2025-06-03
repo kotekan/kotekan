@@ -1,13 +1,12 @@
 #ifndef HEX_DUMP_H
 #define HEX_DUMP_H
 
-#include <stdint.h>             // for int32_t
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "buffer.hpp"           // for Buffer
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 
 /**
  * @class hexDump

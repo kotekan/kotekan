@@ -1,30 +1,31 @@
-#include <algorithm>            // for fill, max, copy, transform
-#include <atomic>               // for atomic_bool
-#include <cstdint>              // for uint32_t
-#include <exception>            // for exception
-#include <functional>           // for _Bind_helper<>::type, bind, function
-#include <iterator>             // for back_insert_iterator, begin, end, back_inserter
-#include <numeric>              // for iota
-#include <regex>                // for match_results<>::_Base_type
-#include <stdexcept>            // for runtime_error
-#include <tuple>                // for get, tie, tuple
-#include <memory>               // for shared_ptr
-
 #include "visTransform.hpp"
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"        // for Telescope
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.hpp"    // for get_chime_metadata, chimeMetadata
-#include "datasetManager.hpp"   // for state_id_t, datasetManager, dset_id_t
-#include "datasetState.hpp"     // for freqState, inputState, metadataState, prodState
-#include "kotekanLogging.hpp"   // for INFO
-#include "version.h"            // for get_git_commit_hash
-#include "visBuffer.hpp"        // for VisFrameView
-#include "visUtil.hpp"          // for prod_ctype, input_ctype, freq_ctype, copy_vis_triangle
-#include "gsl-lite.hpp"         // for span<>::iterator, span
-#include "fmt.hpp"              // for basic_string_view
+
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, mark_frame_empty
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.hpp"   // for chimeMetadata
+#include "datasetManager.hpp"  // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"    // for freqState, inputState, metadataState, prodState
+#include "kotekanLogging.hpp"  // for INFO
+#include "metadata.hpp"        // for metadataContainer
+#include "version.h"           // for get_git_commit_hash
+#include "visBuffer.hpp"       // for VisFrameView
+#include "visUtil.hpp"         // for prod_ctype, input_ctype, freq_ctype, copy_vis_triangle
+
+#include "gsl-lite.hpp" // for span<>::iterator, span
+
+#include <algorithm>  // for fill, max, transform
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <iterator>   // for back_insert_iterator, begin, end, back_inserter
+#include <numeric>    // for iota
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <tuple>      // for get, tie, tuple
 
 
 using kotekan::bufferContainer;

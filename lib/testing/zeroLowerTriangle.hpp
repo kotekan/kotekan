@@ -1,13 +1,12 @@
 #ifndef ZERO_LOWER_TRIANGLE_HPP
 #define ZERO_LOWER_TRIANGLE_HPP
 
-#include <stdint.h>             // for int32_t
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "buffer.hpp"           // for Buffer
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 
 /**
  * @brief Zeroes out the lower-triangle of a correlation matrix

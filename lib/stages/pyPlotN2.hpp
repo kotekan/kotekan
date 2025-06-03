@@ -7,14 +7,13 @@
 #ifndef PY_PLOT_N2_H
 #define PY_PLOT_N2_H
 
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "ICETelescope.hpp"    // for ice_stream_id_t
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
-#include "Config.hpp"           // for Config
-#include "ICETelescope.hpp"     // for ice_stream_id_t
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "restServer.hpp"       // for connectionInstance
-#include "buffer.hpp"           // for Buffer
+#include <string> // for string
 
 /**
  * @class pyPlotN2

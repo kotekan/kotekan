@@ -1,21 +1,22 @@
-#include <stdint.h>            // for uint32_t, uint8_t
-#include <string.h>            // for memcpy
-#include <atomic>              // for atomic_bool
-#include <exception>           // for exception
-#include <functional>          // for _Bind_helper<>::type, bind, function
-#include <regex>               // for match_results<>::_Base_type
-#include <stdexcept>           // for runtime_error, invalid_argument
-#include <vector>              // for vector, __alloc_traits<>::value_type
-#include <memory>              // for __shared_ptr_access
-
 #include "bufferDelay.hpp"
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer
-#include "kotekanLogging.hpp"  // for DEBUG
-#include "metadata.hpp"        // for metadataObject
-#include "visUtil.hpp"         // for frameID, modulo
-#include "fmt.hpp"             // for format, fmt
-#include "json.hpp"            // for json
+
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"         // for Buffer, allocate_new_metadata_object, copy_metadata, get_n...
+#include "kotekanLogging.hpp" // for DEBUG
+#include "metadata.hpp"       // for metadataContainer
+#include "visUtil.hpp"        // for frameID, modulo
+
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json
+
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error, invalid_argument
+#include <stdint.h>   // for uint32_t, uint8_t
+#include <string.h>   // for memcpy
+#include <vector>     // for vector
 
 
 using nlohmann::json;

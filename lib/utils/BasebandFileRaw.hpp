@@ -6,11 +6,12 @@
 #ifndef BASEBAND_FILE_RAW_HPP
 #define BASEBAND_FILE_RAW_HPP
 
-#include <stdint.h>               // for uint32_t, uint64_t, int32_t
-#include <string>                 // for string
+#include "BasebandFrameView.hpp" // for BasebandFrameView
+#include "BasebandMetadata.hpp"  // for BasebandMetadata
+#include "kotekanLogging.hpp"    // for kotekanLogging
 
-#include "BasebandFrameView.hpp"  // for BasebandFrameView
-#include "kotekanLogging.hpp"     // for kotekanLogging
+#include <stdint.h> // for uint32_t, int32_t
+#include <string>   // for string
 
 /** @brief A CHIME baseband file in raw format
  *

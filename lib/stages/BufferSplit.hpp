@@ -1,13 +1,12 @@
 #ifndef BUFFER_SPLIT_HPP
 #define BUFFER_SPLIT_HPP
 
-#include <string>               // for string
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "buffer.hpp"           // for Buffer
+#include <string> // for string
+#include <vector> // for vector
 
 /**
  * @brief Splits the input buffer into multiple output frames in a round robin fashion.

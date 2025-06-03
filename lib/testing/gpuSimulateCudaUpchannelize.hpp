@@ -6,14 +6,13 @@
 #ifndef SIMULATE_CUDA_UPCHANNELIZE_HPP
 #define SIMULATE_CUDA_UPCHANNELIZE_HPP
 
-#include <stdint.h>             // for int32_t, uint8_t
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "visUtil.hpp"
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "DataType.hpp"         // for KOTEKAN_FLOAT16
-#include "buffer.hpp"           // for Buffer
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 
 /**
  * @class gpuSimulateCudaUpchannelize

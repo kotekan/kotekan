@@ -7,17 +7,16 @@
 #ifndef CONST_DATA_CHECK_H
 #define CONST_DATA_CHECK_H
 
-#include <atomic>     // for atomic_bool   // IWYU pragma: keep
-#include <cstdint>              // for int32_t
-#include <functional> // for _Bind_helper<>::type, bind, function   // IWYU pragma: keep
-#include <string>               // for string
-#include <vector>               // for vector
-
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
 #include "StageFactory.hpp"    // IWYU pragma: keep
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+
+#include <atomic>     // for atomic_bool   // IWYU pragma: keep
+#include <cstdint>    // for int32_t
+#include <functional> // for _Bind_helper<>::type, bind, function   // IWYU pragma: keep
+#include <string>     // for string
+#include <vector>     // for vector
 
 
 /**

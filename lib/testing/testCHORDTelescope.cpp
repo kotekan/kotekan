@@ -1,22 +1,16 @@
-#include <stdint.h>            // for int64_t
-#include <time.h>              // for timespec
-#include <atomic>              // for atomic_bool
-#include <functional>          // for _Bind_helper<>::type, bind, function
-#include <chrono>              // for milliseconds
-#include <thread>              // for sleep_for
-#include <algorithm>           // for max
-#include <array>               // for array
-#include <exception>           // for exception
-#include <memory>              // for allocator_traits<>::value_type
-#include <vector>              // for vector
-
 #include "testCHORDTelescope.hpp"
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "kotekanLogging.hpp"  // for INFO
-#include "CHORDTelescope.hpp"  // for CHORDTelescope, EOP
-#include "timeUtil.hpp"        // for get_ERA_from_UT1, get_UT1_from_ERA, get_time_from_UT1
-#include "errors.h"            // for exit_kotekan, CLEAN_EXIT
-#include "Telescope.hpp"       // for Telescope
+
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "kotekanLogging.hpp" // for INFO
+#include "CHORDTelescope.hpp" // for CHORDTelescope
+#include "timeUtil.hpp" // for CHORDTelescope
+#include "errors.h" // for exit_kotekan
+
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stdint.h>   // for uint32_t, uint8_t
+#include <chrono>
+#include <thread>
 
 // Include the classes we will be using
 using kotekan::bufferContainer;

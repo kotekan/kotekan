@@ -7,15 +7,14 @@
 #ifndef N_DISK_FILE_READ_H
 #define N_DISK_FILE_READ_H
 
-#include <stdint.h>             // for uint32_t
-#include <string>               // for string
-#include <thread>               // for thread
-#include <vector>               // for vector
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "buffer.hpp"           // for Buffer
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <thread>   // for thread
+#include <vector>   // for vector
 
 /**
  * @class nDiskFileRead

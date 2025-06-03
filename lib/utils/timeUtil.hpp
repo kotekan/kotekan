@@ -5,8 +5,8 @@
 #ifndef TIME_UTIL_HPP
 #define TIME_UTIL_HPP
 
-#include <time.h>    // for timespec
-#include <stdint.h>  // for int64_t
+#include <time.h>   // for timespec
+#include <vector>
 
 
 /**

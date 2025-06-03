@@ -1,25 +1,25 @@
-#include <assert.h>             // for assert
-#include <algorithm>            // for max, min
-#include <array>                // for array
-#include <atomic>               // for atomic_bool
-#include <complex>              // for complex
-#include <cstdint>              // for int8_t
-#include <exception>            // for exception
-#include <functional>           // for _Bind_helper<>::type, bind, function
-#include <iosfwd>               // for size_t
-#include <regex>                // for match_results<>::_Base_type
-#include <stdexcept>            // for runtime_error
-#include <utility>              // for pair
-#include <vector>               // for vector
-
 #include "gpuSimulateCudaUpchannelize.hpp"
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for INFO, WARN, DEBUG
-#include "oneHotMetadata.hpp"   // for metadata_is_onehot, get_onehot_frame_counter, get_onehot_...
-#include "visUtil.hpp"          // for get4, set4, int4x2_t
+
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO, DEBUG
+#include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_indices, get_onehot_frame_...
+
+#include <algorithm>  // for max, min
+#include <array>      // for array
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <complex>    // for complex
+#include <cstdint>    // for int8_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <iosfwd>     // for size_t
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

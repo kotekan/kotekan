@@ -1,13 +1,12 @@
 #ifndef VDIF_STREAM
 #define VDIF_STREAM
 
-#include <stdint.h>             // for uint32_t
-#include <string>               // for string
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "buffer.hpp"           // for Buffer
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 class vdifStream : public kotekan::Stage {
 public:

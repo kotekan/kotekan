@@ -1,5 +1,4 @@
 #include "chordMetadata.hpp"
-#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 

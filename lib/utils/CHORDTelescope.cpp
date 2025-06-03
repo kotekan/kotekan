@@ -1,20 +1,21 @@
-#include <math.h>              // for sin, cos, M_PI
-#include <cstdint>             // for uint64_t
-#include <exception>           // for exception
-#include <regex>               // for match_results<>::_Base_type
-#include <stdexcept>           // for runtime_error, out_of_range
-#include <vector>              // for vector, vector<>::iterator, vector<>::const_iterator, __al...
-#include <algorithm>           // for lower_bound, copy, sort, max
-#include <functional>          // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
-
 #include "CHORDTelescope.hpp"
-#include "Telescope.hpp"       // for freq_id_t, REGISTER_TELESCOPE, Telescope, _factory_aliasTe...
-#include "kotekanLogging.hpp"  // for WARN, INFO, DEBUG
-#include "restClient.hpp"      // for restClient
-#include "restServer.hpp"      // for restServer, connectionInstance
-#include "configUpdater.hpp"   // for configUpdater
-#include "timeUtil.hpp"        // for get_ERA_from_UT1, get_UT1_from_time, get_time_from_UT1
-#include "json.hpp"            // for basic_json, basic_json<>::object_t, json, basic_json<>::va...
+
+#include "Telescope.hpp"        // for REGISTER_TELESCOPE, Telescope, ...
+#include "kotekanLogging.hpp"   // for WARN, INFO, FATAL_ERROR
+#include "restClient.hpp"       // for restClient
+#include "restServer.hpp"       // for restServer, connectionInstance
+#include "configUpdater.hpp"   // for ConfigUpdater
+#include "timeUtil.hpp"
+
+#include "fmt.hpp"  // for format
+#include "json.hpp" //for basic_json, basic_json<>::object_t, basic_jason<>::value_type
+
+#include <cstdint>      // for uint64_t  TODO: why not stdint.h?
+#include <exception>    // for exception
+#include <math.h>       // for abs
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error, invalid_argument
+#include <vector>       // for vector
 
 
 REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");

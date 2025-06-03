@@ -6,16 +6,15 @@
 #ifndef _VIS_RAW_READER_HPP
 #define _VIS_RAW_READER_HPP
 
-#include <stdint.h>             // for uint32_t
-#include <string>               // for string
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "RawReader.hpp"       // for RawReader
+#include "bufferContainer.hpp" // for bufferContainer
+#include "visBuffer.hpp"
+#include "visUtil.hpp" // for frameID, input_ctype, prod_ctype, stack_ctype, rstack_ctype
 
-#include "Config.hpp"           // for Config
-#include "RawReader.hpp"        // for Config, RawReader, bufferContainer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "visBuffer.hpp"        // for VisFrameView
-#include "visUtil.hpp"          // for input_ctype, prod_ctype, stack_ctype, frameID, rstack_ctype
-#include "fmt.hpp"              // for basic_string_view
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class VisRawReader

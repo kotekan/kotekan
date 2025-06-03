@@ -6,14 +6,13 @@
 #ifndef SIMULATE_CUDA_FRB_BEAMFORMER_HPP
 #define SIMULATE_CUDA_FRB_BEAMFORMER_HPP
 
-#include <stdint.h>             // for int32_t, uint8_t
-#include <string>               // for string
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "buffer.hpp"           // for Buffer
+#include <stdint.h> // for int32_t
+#include <string>   // for string
+#include <vector>
 
 /**
  * @class gpuSimulateCudaFRBBeamformer

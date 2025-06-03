@@ -1,16 +1,17 @@
 #ifndef NDARRAY_HPP
 #define NDARRAY_HPP
 
-#include <DataType.hpp>         // for DataType
-#include <Symbol.hpp>           // for Symbol
-#include <ext/new_allocator.h>  // for ptrdiff_t
-#include <array>                // for array
-#include <cassert>              // for assert
-#include <functional>           // for function
-#include <initializer_list>     // for initializer_list
-#include <iostream>             // for ptrdiff_t, size_t, ostream
-#include <utility>              // for pair
-#include <vector>               // for vector
+#include <DataType.hpp>
+#include <Symbol.hpp>
+#include <array>
+#include <cassert>
+#include <cstddef>
+#include <functional>
+#include <initializer_list>
+#include <iostream>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace kotekan {
 

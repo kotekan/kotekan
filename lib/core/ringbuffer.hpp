@@ -7,15 +7,12 @@
 #ifndef RINGBUFFER_H
 #define RINGBUFFER_H
 
-#include <optional>      // for optional
-#include <utility>       // for pair
-#include <iosfwd>        // for ptrdiff_t
-#include <map>           // for map
-#include <memory>        // for shared_ptr
-#include <string>        // for string
+#include "buffer.hpp"
+#include "kotekanLogging.hpp"
+#include "metadata.hpp" // for metadataPool
 
-#include "buffer.hpp"    // for GenericBuffer
-#include "metadata.hpp"  // for metadataPool
+#include <optional>
+#include <utility>
 
 /**
  * @brief A buffer to manage the signalling between stages when those

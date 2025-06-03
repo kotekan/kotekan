@@ -1,27 +1,31 @@
-#include <stdint.h>               // for uint16_t
-#include <exception>              // for exception
-#include <functional>             // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
-#include <regex>                  // for match_results<>::_Base_type
-#include <stdexcept>              // for runtime_error
-#include <utility>                // for pair
-#include <vector>                 // for vector
-
 #include "kotekanMode.hpp"
-#include "Config.hpp"             // for Config
-#include "Stage.hpp"              // for Stage
-#include "StageFactory.hpp"       // for StageFactory
-#include "Telescope.hpp"          // for Telescope
-#include "buffer.hpp"             // for GenericBuffer, StageInfo
-#include "bufferFactory.hpp"      // for bufferFactory
-#include "configUpdater.hpp"      // for configUpdater
-#include "datasetManager.hpp"     // for datasetManager
-#include "kotekanLogging.hpp"     // for INFO_NON_OO
-#include "kotekanTrackers.hpp"    // for KotekanTrackers
-#include "metadataFactory.hpp"    // for metadataFactory
-#include "prometheusMetrics.hpp"  // for Metrics
-#include "restServer.hpp"         // for restServer, connectionInstance
-#include "fmt.hpp"                // for format
-#include "json.hpp"               // for json, basic_json<>::object_t, basic_json<>::value_type
+
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "StageFactory.hpp"      // for StageFactory
+#include "Telescope.hpp"         // for Telescope
+#include "buffer.hpp"            // for Buffer, StageInfo, get_num_full_frames, delete_buffer
+#include "bufferFactory.hpp"     // for bufferFactory
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for datasetManager
+#include "kotekanLogging.hpp"    // for INFO_NON_OO
+#include "kotekanTrackers.hpp"   // for KotekanTrackers
+#include "metadata.hpp"          // for delete_metadata_pool
+#include "metadataFactory.hpp"   // for metadataFactory
+#include "prometheusMetrics.hpp" // for Metrics
+#include "restServer.hpp"        // for restServer, connectionInstance
+
+#include "fmt.hpp"  // for format
+#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
+
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <stdint.h>   // for uint16_t
+#include <stdlib.h>   // for free
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 using namespace std::placeholders;
 

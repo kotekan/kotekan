@@ -9,27 +9,26 @@
 #ifndef BUFFER_RECV_H
 #define BUFFER_RECV_H
 
-#include <event2/event.h>         // for event_add
-#include <event2/util.h>          // for evutil_socket_t
-#include <stdint.h>               // for uint32_t, uint8_t
-#include <stdio.h>                // for size_t
-#include <string.h>               // for strerror
-#include <sys/time.h>             // for timeval
-#include <unistd.h>               // for ssize_t
-#include <condition_variable>     // for condition_variable
-#include <deque>                  // for deque
-#include <mutex>                  // for mutex
-#include <string>                 // for string
-#include <thread>                 // for thread
-#include <vector>                 // for vector
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "bufferSend.hpp"        // for bufferFrameHeader
+#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, kotekanLogging
+#include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily
 
-#include "Config.hpp"             // for Config
-#include "Stage.hpp"              // for Stage
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "bufferSend.hpp"         // for bufferFrameHeader
-#include "kotekanLogging.hpp"     // for DEBUG2, ERROR, INFO, kotekanLogging
-#include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily
-#include "buffer.hpp"             // for Buffer
+#include <condition_variable> // for condition_variable
+#include <deque>              // for deque
+#include <event2/event.h>     // for event_add
+#include <event2/util.h>      // for evutil_socket_t
+#include <mutex>              // for mutex
+#include <stdint.h>           // for uint32_t, uint8_t
+#include <stdio.h>            // for size_t
+#include <string.h>           // for strerror
+#include <string>             // for string
+#include <sys/time.h>         // for timeval
+#include <thread>             // for thread
+#include <unistd.h>           // for ssize_t
+#include <vector>             // for vector
 
 // Forward declare
 class connInstance;

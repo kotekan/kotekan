@@ -6,13 +6,12 @@
 #ifndef RFI_AVX_VDIF_HPP
 #define RFI_AVX_VDIF_HPP
 
-#include <stdint.h>             // for uint32_t, uint8_t
-#include <string>               // for string
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "buffer.hpp"           // for Buffer
+#include <stdint.h> // for uint32_t, uint8_t
+#include <string>   // for string
 
 /*
  * @class rfiAVXVDIF

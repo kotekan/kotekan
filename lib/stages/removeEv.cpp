@@ -1,18 +1,18 @@
-#include <atomic>               // for atomic_bool
-#include <functional>           // for _Bind_helper<>::type, bind, function
-#include <utility>              // for pair
-
 #include "removeEv.hpp"
-#include "Config.hpp"           // for Config
-#include "Hash.hpp"             // for operator<
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for dset_id_t, datasetManager, state_id_t
-#include "datasetState.hpp"     // for eigenvalueState
-#include "visBuffer.hpp"        // for VisField, VisFrameView, VisField::erms, VisField::eval
-#include "visUtil.hpp"          // for frameID, modulo
-#include "fmt.hpp"              // for basic_string_view
+
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator<
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"          // for allocate_new_metadata_object, mark_frame_empty, mark_fram...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t
+#include "datasetState.hpp"    // for eigenvalueState
+#include "visBuffer.hpp"       // for VisField, VisFrameView, VisField::erms, VisField::eval
+#include "visUtil.hpp"         // for frameID, modulo
+
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <utility>    // for pair
 
 
 using kotekan::bufferContainer;

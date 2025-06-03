@@ -1,22 +1,24 @@
 #ifndef PRINT_SPARSE_H
 #define PRINT_SPARSE_H
 
-#include <stdlib.h>             // for size_t
-#include <cstdint>              // for uint32_t
-#include <exception>            // for exception
-#include <functional>           // for bind
-#include <regex>                // for match_results<>::_Base_type
-#include <stdexcept>            // for invalid_argument, runtime_error
-#include <string>               // for allocator, operator+, string, to_string, char_traits
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO
+#include "oneHotMetadata.hpp"  // for get_onehot_frame_counter, metadata_is_onehot
+#include "visUtil.hpp"         // for frameID, modulo
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for INFO
-#include "oneHotMetadata.hpp"   // for get_onehot_frame_counter, metadata_is_onehot
-#include "visUtil.hpp"          // for frameID, format_nice_string, format_python_string, modulo
+#include "fmt.hpp"
+
+#include <cstdint>    // for uint32_t
+#include <exception>  // for exception
+#include <functional> // for bind
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for invalid_argument, runtime_error
+#include <stdlib.h>   // for size_t
+#include <string>     // for allocator, string, operator+, to_string, char_traits
+#include <vector>     // for vector
 
 /**
  * @class printSparse

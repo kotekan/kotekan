@@ -6,13 +6,16 @@
 #ifndef METADATA_HPP
 #define METADATA_HPP
 
-#include <cstdint>           // for int64_t
-#include <initializer_list>  // for initializer_list
-#include <iostream>          // for size_t, ostream
-#include <string>            // for string
-#include <type_traits>       // for enable_if_t
-#include <unordered_map>     // for unordered_map
-#include <vector>            // for vector
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <initializer_list>
+#include <iostream>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace kotekan {
 

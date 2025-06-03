@@ -1,6 +1,9 @@
 #include "chimeMetadata.hpp"
-#include "factory.hpp"   // for REGISTER_TYPE_WITH_FACTORY
-#include "metadata.hpp"  // for _factory_aliasmetadataObject
+
+#include "BasebandMetadata.hpp"
+#include "HFBMetadata.hpp"
+#include "factory.hpp"
+#include "metadata.hpp"
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chimeMetadata);
 
