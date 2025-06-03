@@ -337,7 +337,7 @@ eigen_masked_subspace(const DynamicHermitian<MT>& A,
  * @return       The blaze matrix.
  **/
 template<typename MT>
-DynamicHermitian<MT> to_blaze_herm(const gsl::span<MT>& data) {
+DynamicHermitian<MT> to_blaze_herm(const gsl_lite::span<MT>& data) {
     size_t N = (size_t)std::sqrt(2 * data.size());
 
     DynamicHermitian<MT> A;

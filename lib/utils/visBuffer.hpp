@@ -347,19 +347,19 @@ public:
     uint64_t& n_valid_fpga_samples;
 
     /// View of the visibility data.
-    const gsl::span<cfloat> vis;
+    const gsl_lite::span<cfloat> vis;
     /// View of the weight data.
-    const gsl::span<float> weight;
+    const gsl_lite::span<float> weight;
     /// View of the input flags
-    const gsl::span<float> flags;
+    const gsl_lite::span<float> flags;
     /// View of the eigenvalues.
-    const gsl::span<float> eval;
+    const gsl_lite::span<float> eval;
     /// View of the eigenvectors (packed as ev,feed).
-    const gsl::span<cfloat> evec;
+    const gsl_lite::span<cfloat> evec;
     /// The RMS of residual visibilities
     float& erms;
     /// View of the applied gains
-    const gsl::span<cfloat> gain;
+    const gsl_lite::span<cfloat> gain;
 };
 
 
