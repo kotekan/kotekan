@@ -1,26 +1,26 @@
+#include <math.h>                 // for round
+#include <sys/stat.h>             // for mkdir, S_IRGRP, S_IROTH, S_IRWXU, S_IXGRP, S_IXOTH
+#include <stddef.h>               // for size_t
+#include <algorithm>              // for max
+#include <atomic>                 // for atomic_bool
+#include <chrono>                 // for duration, operator-, seconds, operator/, operator>, ste...
+#include <exception>              // for exception
+#include <functional>             // for _Bind_helper<>::type, bind, function
+#include <regex>                  // for match_results<>::_Base_type
+#include <stdexcept>              // for runtime_error
+#include <thread>                 // for sleep_for, thread
+#include <tuple>                  // for forward_as_tuple
+#include <utility>                // for pair, piecewise_construct
+#include <vector>                 // for vector
+#include <memory>                 // for __shared_ptr_access, shared_ptr
+
 #include "BasebandWriter.hpp"
-
-#include "BasebandFrameView.hpp" // for BasebandFrameView
-#include "BasebandMetadata.hpp"  // for BasebandMetadata
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "kotekanLogging.hpp"    // for DEBUG, INFO, ERROR, FATAL_ERROR, WARN
-#include "visUtil.hpp"           // for current_time, frameID, modulo, movingAverage
-
-#include "fmt.hpp" // for format
-
-#include <algorithm>  // for max
-#include <atomic>     // for atomic_bool
-#include <chrono>     // for duration, operator-, seconds, operator/, operator>, tim...
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <math.h>     // for round
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <sys/stat.h> // for mkdir, S_IRGRP, S_IROTH, S_IRWXU, S_IXGRP, S_IXOTH
-#include <thread>     // for sleep_for, thread
-#include <tuple>      // for forward_as_tuple
-#include <utility>    // for pair, piecewise_construct
-#include <vector>     // for vector
+#include "BasebandFrameView.hpp"  // for BasebandFrameView
+#include "BasebandMetadata.hpp"   // for BasebandMetadata
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "kotekanLogging.hpp"     // for DEBUG, INFO, ERROR, FATAL_ERROR, WARN
+#include "visUtil.hpp"            // for current_time, frameID, modulo, movingAverage
+#include "fmt.hpp"                // for format
 
 using kotekan::bufferContainer;
 using kotekan::Config;

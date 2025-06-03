@@ -1,30 +1,29 @@
+#include <algorithm>              // for copy, fill, copy_backward, max
+#include <atomic>                 // for atomic_bool
+#include <exception>              // for exception
+#include <functional>             // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <memory>                 // for operator==, __shared_ptr_access
+#include <regex>                  // for match_results<>::_Base_type
+#include <stdexcept>              // for invalid_argument, runtime_error
+#include <tuple>                  // for get
+#include <type_traits>            // for add_const<>::type
+#include <utility>                // for pair, move, tuple_element<>::type
+
 #include "ReceiveFlags.hpp"
-
-#include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for operator<
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for mark_frame_empty, mark_frame_full, register_consumer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
-#include "datasetState.hpp"      // for flagState
-#include "kotekanLogging.hpp"    // for WARN, INFO
-#include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
-#include "visBuffer.hpp"         // for VisFrameView
-#include "visUtil.hpp"           // for frameID, ts_to_double, current_time, double_to_ts, modulo
-
-#include "gsl-lite.hpp" // for span<>::iterator, span
-
-#include <algorithm>   // for copy, fill, copy_backward, max
-#include <atomic>      // for atomic_bool
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, function
-#include <memory>      // for operator==, __shared_ptr_access
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for invalid_argument, runtime_error
-#include <tuple>       // for get
-#include <type_traits> // for add_const<>::type
-#include <utility>     // for pair, move, tuple_element<>::type
+#include "Config.hpp"             // for Config
+#include "Hash.hpp"               // for operator<
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "configUpdater.hpp"      // for configUpdater
+#include "datasetManager.hpp"     // for dset_id_t, state_id_t, datasetManager
+#include "datasetState.hpp"       // for flagState
+#include "kotekanLogging.hpp"     // for WARN, INFO
+#include "prometheusMetrics.hpp"  // for Metrics, Counter, Gauge
+#include "visBuffer.hpp"          // for VisFrameView
+#include "visUtil.hpp"            // for frameID, ts_to_double, current_time, double_to_ts, modulo
+#include "gsl-lite.hpp"           // for span<>::iterator, span
+#include "fmt.hpp"                // for basic_string_view
 
 using namespace std::placeholders;
 

@@ -1,9 +1,6 @@
+#include <cstdlib>  // for size_t
+
 #include "metadata.hpp"
-
-#include "errors.h" // for CHECK_ERROR_F, CHECK_MEM_F
-
-#include <cassert> // for assert
-#include <cstdlib> // for malloc, free
 
 metadataPool::metadataPool(Private, int num_metadata_objects, size_t object_size,
                            const std::string& _unique_name, const std::string& _type_name) :

@@ -1,6 +1,8 @@
 #include <NDArray.hpp>
-#include <sstream>
-#include <string>
+#include <string>        // for operator<<, string
+
+#include "DataType.hpp"  // for operator<<
+#include "Symbol.hpp"    // for operator<<, Symbol
 
 namespace kotekan {
 

@@ -6,11 +6,12 @@
 #ifndef CHIME_METADATA_DUMP_HPP
 #define CHIME_METADATA_DUMP_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
+#include <string>               // for string
 
-#include <string> // for string
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "buffer.hpp"           // for Buffer
 
 
 /**

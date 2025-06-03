@@ -1,24 +1,21 @@
-#include "HFBFrameView.hpp"
-
-#include "FrameView.hpp" // for bind_span, FrameView
-#include "buffer.hpp"    // for Buffer, allocate_new_metadata_object
-#include "metadata.hpp"  // for metadataContainer
-#include "visUtil.hpp"   // for struct_alignment
-
-#include "fmt.hpp" // for format, fmt
-
-#include <algorithm> // for copy
+#include <string.h>       // for memset
+#include <algorithm>      // for copy
 #include <complex>   // for complex  // IWYU pragma: keep
 #include <cstdint>   // for uint64_t // IWYU pragma: keep
-#include <ctime>     // for gmtime
-#include <exception> // for exception
-#include <map>       // for map
-#include <regex>     // for match_results<>::_Base_type
-#include <set>       // for set
-#include <stdexcept> // for runtime_error
-#include <string.h>  // for memset
-#include <tuple>     // for tuple, make_tuple
-#include <vector>    // for vector
+#include <ctime>          // for gmtime
+#include <exception>      // for exception
+#include <map>            // for map
+#include <regex>          // for match_results<>::_Base_type
+#include <set>            // for set
+#include <stdexcept>      // for runtime_error
+#include <tuple>          // for tuple, make_tuple
+#include <vector>         // for vector, __alloc_traits<>::value_type
+
+#include "HFBFrameView.hpp"
+#include "FrameView.hpp"  // for bind_span, FrameView
+#include "buffer.hpp"     // for Buffer
+#include "visUtil.hpp"    // for struct_alignment
+#include "fmt.hpp"        // for format, basic_string_view, fmt
 
 HFBFrameView::HFBFrameView(Buffer* buf, int frame_id) :
     FrameView(buf, frame_id), _metadata(std::static_pointer_cast<HFBMetadata>(buf->metadata[id])),

@@ -6,15 +6,16 @@
 #ifndef _HFB_RAW_READER_HPP
 #define _HFB_RAW_READER_HPP
 
-#include "Config.hpp" // for Config
-#include "HFBFrameView.hpp"
-#include "RawReader.hpp"       // for RawReader
-#include "bufferContainer.hpp" // for bufferContainer
-#include "visUtil.hpp"         // for frameID
+#include <stdint.h>             // for uint32_t
+#include <string>               // for string
+#include <vector>               // for vector
 
-#include <stdint.h> // for uint32_t
-#include <string>   // for string
-#include <vector>   // for vector
+#include "Config.hpp"           // for Config
+#include "HFBFrameView.hpp"     // for HFBFrameView
+#include "RawReader.hpp"        // for Config, RawReader, bufferContainer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "visUtil.hpp"          // for frameID
+#include "fmt.hpp"              // for basic_string_view
 
 /**
  * @class HFBRawReader

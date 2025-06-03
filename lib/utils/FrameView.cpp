@@ -1,12 +1,12 @@
+#include <string.h>      // for memcpy
+#include <stdexcept>     // for runtime_error
+#include <string>        // for string
+#include <memory>        // for __shared_ptr_access
+#include <vector>        // for vector, __alloc_traits<>::value_type
+
 #include "FrameView.hpp"
-
-#include "metadata.hpp" // for metadataContainer
-
-#include "fmt.hpp" // for format, fmt
-
-#include <stdexcept> // for runtime_error
-#include <string.h>  // for memcpy
-#include <string>    // for string
+#include "metadata.hpp"  // for metadataObject
+#include "fmt.hpp"       // for format, fmt
 
 FrameView::FrameView(Buffer* buf, int frame_id) :
     buffer(buf), id(frame_id), _frame(buffer->frames[id]) {}

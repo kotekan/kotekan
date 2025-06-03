@@ -1,9 +1,8 @@
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "visUtil.hpp"
-
+#include "StageFactory.hpp"  // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 // Put visUtil.hpp before testDataCheck.hpp because we want the preprocessor symbol
 // KOTEKAN_FLOAT16 to be set before including the code that's going to be templated!
 #include "testDataCheck.hpp"
+#include "DataType.hpp"      // for KOTEKAN_FLOAT16
 
 using testDataCheckInt = testDataCheck<int32_t>;
 using testDataCheckUchar = testDataCheck<uint8_t>;

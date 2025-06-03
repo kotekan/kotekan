@@ -21,15 +21,14 @@
 #ifndef KOTEKAN_METADATA_HPP
 #define KOTEKAN_METADATA_HPP
 
-#include "factory.hpp"
-#include "kotekanLogging.hpp"
+#include <stddef.h>            // for size_t
+#include <memory>              // for shared_ptr, weak_ptr, enable_shared_from_this
+#include <mutex>               // for mutex
+#include <string>              // for string
 
-#include "json.hpp" // for json
-
-#include <cstdint> // for uint32_t
-#include <memory>
-#include <mutex>
-#include <vector>
+#include "factory.hpp"         // for CREATE_FACTORY, Factory
+#include "kotekanLogging.hpp"  // for kotekanLogging
+#include "json.hpp"            // for json
 
 class metadataPool;
 

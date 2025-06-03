@@ -1,10 +1,8 @@
 #ifndef DATATYPE_HPP
 #define DATATYPE_HPP
 
-#include <cstdint>
-#include <iostream>
-#include <string>
-#include <type_traits>
+#include <iostream>  // for size_t, ostream
+#include <string>    // for string
 
 // Define a macro `KOTEKAN_FLOAT16` specifying whether we support a float16 type.
 // Define a type `float16_t` if we support it.
@@ -12,11 +10,10 @@
 #if defined WITH_CUDA
 // If we use CUDA, use its float16 type
 #include <cuda_fp16.h>
+
 using float16_t = __half;
 #define KOTEKAN_FLOAT16 1
 #else
-// If we don't use CUDA, see whether the compiler supports it
-#include <float.h>
 #if defined __FLT16_MAX__
 using float16_t = _Float16;
 #define KOTEKAN_FLOAT16 1

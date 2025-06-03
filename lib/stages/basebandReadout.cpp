@@ -1,37 +1,34 @@
+#include <assert.h>                // for assert
+#include <math.h>                  // for fmod
+#include <string.h>                // for memcpy, memset
+#include <sys/time.h>              // for timeval, timeradd
+#include <algorithm>               // for max, copy, copy_backward, equal, min
+#include <atomic>                  // for atomic_bool
+#include <chrono>                  // for system_clock::time_point, system_clock, nanoseconds
+#include <cstdint>                 // for uint64_t, uint32_t, int64_t, uint8_t
+#include <cstdio>                  // for snprintf
+#include <ctime>                   // for timespec
+#include <deque>                   // for deque
+#include <exception>               // for exception
+#include <functional>              // for _Bind_helper<>::type, bind, function
+#include <memory>                  // for unique_ptr, allocator_traits<>::value_type, make_shared
+#include <regex>                   // for match_results<>::_Base_type
+#include <stdexcept>               // for runtime_error
+#include <thread>                  // for thread, sleep_for
+#include <tuple>                   // for get
+
 #include "basebandReadout.hpp"
-
-#include "BasebandMetadata.hpp"   // for BasebandMetadata
-#include "Config.hpp"             // for Config
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"          // for Telescope
-#include "basebandApiManager.hpp" // for basebandApiManager
-#include "buffer.hpp"             // for Buffer, mark_frame_full, allocate_new_metadata_object
-#include "chimeMetadata.hpp"      // for chimeMetadata
-#include "kotekanLogging.hpp"     // for INFO, DEBUG, WARN
-#include "metadata.hpp"           // for metadataContainer
-#include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
-#include "visUtil.hpp"            // for input_ctype, frameID, ts_to_double, modulo, parse_reor...
-
-#include "fmt.hpp" // for join
-
-#include <algorithm>  // for max, copy, copy_backward, equal, min
-#include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
-#include <chrono>     // for system_clock::time_point, system_clock, nanoseconds
-#include <cstdint>    // for uint64_t, uint32_t, int64_t, uint8_t
-#include <cstdio>     // for snprintf
-#include <ctime>      // for timespec
-#include <deque>      // for deque
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <math.h>     // for fmod
-#include <memory>     // for unique_ptr, make_shared, allocator_traits<>::value_type
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <string.h>   // for memcpy, memset
-#include <sys/time.h> // for timeval, timeradd
-#include <thread>     // for thread, sleep_for
-#include <tuple>      // for get
+#include "BasebandMetadata.hpp"    // for BasebandMetadata
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"           // for Telescope
+#include "basebandApiManager.hpp"  // for basebandApiManager
+#include "buffer.hpp"              // for Buffer
+#include "chimeMetadata.hpp"       // for chimeMetadata
+#include "kotekanLogging.hpp"      // for INFO, DEBUG, WARN
+#include "prometheusMetrics.hpp"   // for Counter, Gauge, MetricFamily, Metrics
+#include "visUtil.hpp"             // for input_ctype, frameID, ts_to_double, modulo, parse_reor...
+#include "fmt.hpp"                 // for join
 
 
 using kotekan::basebandApiManager;

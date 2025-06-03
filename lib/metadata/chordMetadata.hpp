@@ -1,18 +1,20 @@
 #ifndef CHORD_METADATA
 #define CHORD_METADATA
 
-#include "DataType.hpp"
-#include "Telescope.hpp"
-#include "buffer.hpp"
-#include "metadata.hpp"
+#include <sys/time.h>          // for timeval
+#include <string.h>            // for strncpy, strnlen, size_t
+#include <time.h>              // for timespec
+#include <cassert>             // for assert
+#include <cstdint>             // for int64_t, uint8_t, uint16_t, int16_t, int32_t, int8_t, uint...
+#include <sstream>             // for operator<<, basic_ostream, ostringstream, basic_ostream::o...
+#include <string>              // for string, operator==, operator<<, char_traits
+#include <vector>              // for vector
+#include <memory>              // for shared_ptr, __shared_ptr_access, static_pointer_cast, weak...
 
-#include <cassert>
-#include <cstdint>
-#include <sstream>
-#include <string>
-#include <sys/time.h>
-#include <type_traits>
-#include <vector>
+#include "DataType.hpp"        // for KOTEKAN_FLOAT16
+#include "buffer.hpp"          // for Buffer
+#include "metadata.hpp"        // for metadataObject, metadataPool
+#include "kotekanLogging.hpp"  // for WARN_NON_OO
 
 // One of the warning-silencing pragmas below only applied for gcc >= 8
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
@@ -82,6 +84,7 @@ constexpr chordDataType real_from_size(const std::size_t bits) {
 
 template<chordDataType>
 struct chordDataType_type;
+
 template<>
 struct chordDataType_type<uint4p4> {
     using type = std::uint8_t;
@@ -145,6 +148,7 @@ using chordDataType_type_t = typename chordDataType_type<val>::type;
 
 template<typename T>
 struct chordDataType_value;
+
 template<>
 struct chordDataType_value<unsigned char>
     : std::integral_constant<chordDataType, detail::unsigned_from_size(sizeof(unsigned char))> {};

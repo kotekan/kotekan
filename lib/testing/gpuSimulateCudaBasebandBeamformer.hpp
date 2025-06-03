@@ -6,12 +6,13 @@
 #ifndef SIMULATE_CUDA_BASEBAND_BEAMFORMER_HPP
 #define SIMULATE_CUDA_BASEBAND_BEAMFORMER_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
+#include <stdint.h>             // for int32_t, int8_t, uint8_t
+#include <string>               // for string
 
-#include <stdint.h> // for int32_t
-#include <string>   // for string
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "buffer.hpp"           // for Buffer
 
 /**
  * @class gpuSimulateCudaBasebandBeamformer

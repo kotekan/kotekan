@@ -1,17 +1,16 @@
 #ifndef TELESCOPE_HPP
 #define TELESCOPE_HPP
 
-#include "Config.hpp"         // for Config
-#include "buffer.hpp"         // for Buffer
-#include "factory.hpp"        // for CREATE_FACTORY, Factory, REGISTER_NAMED_TYPE_WITH_FACTORY
-#include "kotekanLogging.hpp" // for kotekanLogging
-#include "errors.h"
+#include <stdint.h>            // for uint32_t, uint64_t, UINT32_MAX, uint8_t
+#include <time.h>              // for timespec
+#include <memory>              // for unique_ptr
+#include <string>              // for string
+#include <exception>           // for exception
 
-#include <memory>   // for unique_ptr
-#include <stdint.h> // for uint32_t, uint64_t, UINT32_MAX
-#include <string>   // for string
-#include <time.h>   // for timespec
-
+#include "Config.hpp"          // for Config
+#include "buffer.hpp"          // for Buffer
+#include "factory.hpp"         // for FACTORY, CREATE_FACTORY, Factory, REGISTER_NAMED_TYPE_WITH...
+#include "kotekanLogging.hpp"  // for ERROR, kotekanLogging
 
 // Create the abstract factory for generating patterns
 class Telescope;

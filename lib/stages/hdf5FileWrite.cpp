@@ -1,34 +1,39 @@
+#include <errno.h>                // for errno
+#include <stdint.h>               // for uint32_t, uint8_t
+#include <stdlib.h>               // for exit
+#include <unistd.h>               // for gethostname
+#include <H5Apublic.h>            // for H5Aclose, H5Awrite, H5Acreate2
+#include <H5Dpublic.h>            // for H5Dclose, H5Dwrite
+#include <H5Fpublic.h>            // for H5Fclose, H5Fcreate, H5Fflush, H5F_ACC_TRUNC, H5F_SCOPE...
+#include <H5Gpublic.h>            // for H5Gclose
+#include <H5Ppublic.h>            // for H5P_DEFAULT
+#include <H5Spublic.h>            // for H5Sclose, H5Screate_simple, H5Screate, H5S_SCALAR
+#include <H5Tpublic.h>            // for H5T_NATIVE_INT64, H5Tclose, H5Tcreate, H5T_NATIVE_UINT8
+#include <H5version.h>            // for H5Acreate, H5Dcreate, H5Gcreate
+#include <highfive/H5Object.hpp>  // for hid_t, hsize_t, herr_t, H5I_UNINIT
+#include <atomic>                 // for atomic_bool, atomic, __atomic_base
+#include <exception>              // for exception
+#include <functional>             // for _Bind_helper<>::type, bind, function
+#include <iomanip>                // for operator<<, setfill, setw
+#include <regex>                  // for match_results<>::_Base_type
+#include <sstream>                // for operator<<, basic_ostream, ostringstream, size_t
+#include <stdexcept>              // for runtime_error
+#include <string>                 // for string, operator<<, char_traits
+#include <vector>                 // for vector
+#include <memory>                 // for shared_ptr, __shared_ptr_access
+
 #include "hdf5FileWrite.hpp"
-
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, get_metadata_container, mark_frame_empty, regis...
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for chimeMetadata
-#include "chordMetadata.hpp"   // for chordMetadata
-#include "errors.h"
-#include "kotekanLogging.hpp"    // for ERROR, INFO
-#include "metadata.hpp"          // for metadataContainer
-#include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "visUtil.hpp"           // for current_time
-
-#include <atomic>     // for atomic_bool
-#include <errno.h>    // for errno
-#include <exception>  // for exception
-#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <hdf5.h>
-#include <iomanip>   // for setfill, setw
-#include <regex>     // for match_results<>::_Base_type
-#include <signal.h>  // for raise, SIGHUP
-#include <sstream>   // for ostringstream
-#include <stdexcept> // for runtime_error
-#include <stdint.h>  // for uint32_t, int32_t, uint8_t
-#include <stdio.h>   // for snprintf
-#include <stdlib.h>  // for exit
-#include <string>    // for string
-#include <unistd.h>  // for gethostname
-#include <vector>    // for vector
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.hpp"      // for get_chime_metadata, metadata_is_chime, chimeMetadata
+#include "chordMetadata.hpp"      // for chordMetadata, get_chord_metadata, metadata_is_chord
+#include "errors.h"               // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "kotekanLogging.hpp"     // for ERROR, INFO
+#include "metadata.hpp"           // for metadataObject
+#include "prometheusMetrics.hpp"  // for Metrics, Gauge
+#include "visUtil.hpp"            // for current_time
 
 
 using kotekan::bufferContainer;

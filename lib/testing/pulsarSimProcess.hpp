@@ -7,12 +7,13 @@
 #ifndef PULSAR_SIM_PROCESS
 #define PULSAR_SIM_PROCESS
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "bufferContainer.hpp"
+#include <stdint.h>             // for int32_t, uint16_t, uint64_t
+#include <string>               // for string
 
-#include <stdint.h> // for int32_t, uint16_t, uint64_t
-#include <string>   // for string
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "buffer.hpp"           // for Buffer
 
 
 /**

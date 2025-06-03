@@ -6,11 +6,12 @@
 #ifndef BASEBAND_FRAME_VIEW_HPP
 #define BASEBAND_FRAME_VIEW_HPP
 
-#include "BasebandMetadata.hpp" // for BasebandMetadata
-#include "FrameView.hpp"        // for FrameView
-#include "buffer.hpp"           // for Buffer
+#include <cstddef>               // for size_t
+#include <memory>                // for shared_ptr
 
-#include <cstddef> // for size_t
+#include "BasebandMetadata.hpp"  // for BasebandMetadata
+#include "FrameView.hpp"         // for FrameView
+#include "buffer.hpp"            // for Buffer
 
 /**
  * @class HFBFrameView

@@ -1,31 +1,28 @@
+#include <sys/time.h>          // for CLOCK_REALTIME, TIMESPEC_TO_TIMEVAL, timeval
+#include <time.h>              // for timespec, clock_gettime, nanosleep
+#include <atomic>              // for atomic_bool
+#include <csignal>             // for raise, SIGTERM
+#include <cstdint>             // for int32_t
+#include <exception>           // for exception
+#include <functional>          // for _Bind_helper<>::type, bind, function
+#include <random>              // for mt19937, random_device, uniform_real_distribution
+#include <regex>               // for match_results<>::_Base_type
+#include <stdexcept>           // for runtime_error
+#include <string>              // for string
+#include <vector>              // for vector, __alloc_traits<>::value_type
+
 #include "fakeGpu.hpp"
-
-#include "Config.hpp"         // for Config
-#include "Stage.hpp"          // for Stage
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"         // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "chimeMetadata.hpp"  // for set_first_packet_recv_time, set_fpga_seq_num, set_gps...
-#include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "factory.hpp"        // for FACTORY
-#include "fakeGpuPattern.hpp" // for FakeGpuPattern, _factory_aliasFakeGpuPattern
-#include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
-#include "metadata.hpp"       // for metadataContainer
-#include "visUtil.hpp"        // for frameID, gpu_N2_size, modulo, operator+
-
-#include "gsl-lite.hpp" // for span
-
-#include <atomic>     // for atomic_bool
-#include <csignal>    // for raise, SIGTERM
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <random>     // for mt19937, random_device, uniform_real_distribution
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <string>     // for string
-#include <sys/time.h> // for CLOCK_REALTIME, TIMESPEC_TO_TIMEVAL, timeval
-#include <time.h>     // for timespec, clock_gettime, nanosleep
-#include <vector>     // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"          // for Buffer
+#include "chimeMetadata.hpp"   // for chimeMetadata, set_dataset_id, set_first_packet_recv_time
+#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "factory.hpp"         // for FACTORY
+#include "fakeGpuPattern.hpp"  // for FakeGpuPattern, _factory_aliasFakeGpuPattern
+#include "kotekanLogging.hpp"  // for DEBUG, ERROR, INFO
+#include "visUtil.hpp"         // for frameID, gpu_N2_size, modulo, operator+
+#include "gsl-lite.hpp"        // for span
 
 
 REGISTER_KOTEKAN_STAGE(FakeGpu);

@@ -1,28 +1,24 @@
-#include "visBuffer.hpp"
-
-#include "FrameView.hpp"     // for bind_span, bind_scalar, FrameView
-#include "Telescope.hpp"     // for Telescope
-#include "buffer.hpp"        // for Buffer, allocate_new_metadata_object
-#include "chordMetadata.hpp" // for chordMetadata
-#include "chimeMetadata.hpp" // for chimedMetadata, get_stream_id_from_metadata
-#include "metadata.hpp"      // for metadataContainer
-
-#include "fmt.hpp" // for format, fmt
-
-#include <algorithm> // for copy
-#include <assert.h>
-#include <complex>     // for complex
+#include <assert.h>       // for assert
+#include <string.h>       // for memset
+#include <algorithm>      // for copy
+#include <complex>        // for complex
 #include <cstdint>     // for uint64_t // IWYU pragma: keep
-#include <ctime>       // for gmtime
-#include <exception>   // for exception
-#include <map>         // for map
-#include <regex>       // for match_results<>::_Base_type
-#include <set>         // for set
-#include <stdexcept>   // for runtime_error
-#include <string.h>    // for memset
-#include <sys/time.h>  // for TIMEVAL_TO_TIMESPEC
-#include <type_traits> // for __decay_and_strip<>::__type
-#include <vector>      // for vector
+#include <ctime>          // for gmtime
+#include <exception>      // for exception
+#include <map>            // for map
+#include <regex>          // for match_results<>::_Base_type
+#include <set>            // for set
+#include <stdexcept>      // for runtime_error
+#include <type_traits>    // for __decay_and_strip<>::__type
+#include <vector>         // for vector, __alloc_traits<>::value_type
+
+#include "visBuffer.hpp"
+#include "FrameView.hpp"  // for bind_span, bind_scalar, FrameView
+#include "Telescope.hpp"  // for freq_id_t
+#include "buffer.hpp"     // for Buffer
+#include "metadata.hpp"   // for _factory_aliasmetadataObject, metadataObject
+#include "fmt.hpp"        // for format, basic_string_view, fmt
+#include "factory.hpp"    // for REGISTER_TYPE_WITH_FACTORY
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
 

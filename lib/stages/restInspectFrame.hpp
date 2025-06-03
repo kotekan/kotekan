@@ -1,14 +1,15 @@
 #ifndef REST_INSPECT_FRAME_HPP
 #define REST_INSPECT_FRAME_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
-#include "restServer.hpp"      // for connectionInstance
+#include <stdint.h>             // for int32_t, uint8_t
+#include <mutex>                // for mutex
+#include <string>               // for string
 
-#include <mutex>    // for mutex
-#include <stdint.h> // for int32_t, uint8_t
-#include <string>   // for string
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "restServer.hpp"       // for connectionInstance
+#include "buffer.hpp"           // for Buffer
 
 /**
  * @class restInspectFrame
