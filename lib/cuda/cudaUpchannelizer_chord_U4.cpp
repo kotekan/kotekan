@@ -504,7 +504,7 @@ cudaEvent_t cudaUpchannelizer_chord_U4::execute(cudaPipelineState& /*pipestate*/
     std::shared_ptr<metadataObject> const Ebar_mc =
         args::Ebar == args::Ebar ? output_ringbuf_signal->get_metadata(0)
                                  : device.create_gpu_memory_array_metadata(
-                                     Ebar_memname, gpu_frame_id, E_mc->parent_pool);
+                                       Ebar_memname, gpu_frame_id, E_mc->parent_pool);
     std::shared_ptr<chordMetadata> const Ebar_meta = get_chord_metadata(Ebar_mc);
     *Ebar_meta = *E_meta;
     std::strncpy(Ebar_meta->name, Ebar_name, sizeof Ebar_meta->name);

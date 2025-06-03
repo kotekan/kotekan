@@ -207,7 +207,7 @@ void pulsarNetworkProcess::main_thread() {
                 CLOCK_ABS_NANOSLEEP(CLOCK_MONOTONIC, t1);
                 if (e_beam < number_of_pulsar_links) {
                     sendto(sock_fd[socket_ids[e_beam]],
-                           &packet_buffer[(e_beam)*80 * udp_pulsar_packet_size
+                           &packet_buffer[(e_beam) * 80 * udp_pulsar_packet_size
                                           + frame * udp_pulsar_packet_size],
                            udp_pulsar_packet_size, 0, (struct sockaddr*)&server_address[e_beam],
                            sizeof(server_address[e_beam]));

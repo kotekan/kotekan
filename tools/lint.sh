@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # clang format version
-CLANG_FORMAT=clang-format-8
+CLANG_FORMAT=clang-format-18
 
 # kotekan root directory
 KOTEKAN_DIR="./"
@@ -98,7 +98,7 @@ fi
 
 # clang-format
 echo "Running clang-format..."
-find $KOTEKAN_DIR -type d -name "build" -prune -o -type d -name "external" -prune -o -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
+find $KOTEKAN_DIR -type d \( -name "build" -o -name "external" \) -prune -o -type f -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
 git diff --exit-code
 
 # black

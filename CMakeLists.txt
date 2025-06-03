@@ -15,6 +15,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # set C standard to gnu99
 set(CMAKE_C_STANDARD 99)
 
+# Set OpenCL version explicitly (quiets a build warning)
+add_definitions(-DCL_TARGET_OPENCL_VERSION=220)
+
 # This quiets a noisy cmake warning on newer versions, triggered by some of our CMake/FindXYZ.cmake
 # scripts.
 if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0")
@@ -30,9 +33,7 @@ endif()
 # optional modules for GPUs and the like
 option(USE_AIRSPY "Build Airspy Producer" OFF)
 option(USE_FFTW "Build with FFTW F-engine" OFF)
-option(USE_LAPACK "Build with LAPACK Linear Algebra (OpenBLAS)" OFF)
-option(USE_HSA "Build HSA GPU Framework" OFF)
-option(USE_CLOC "Use the CL offline compiler" OFF)
+option(USE_LAPACK_BLAZE "Build with LAPACK Linear Algebra (OpenBLAS) and Blaze support" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_CUDA "Build CUDA GPU Framework" OFF)
 option(USE_HIP "Build HIP GPU Framework" OFF)
@@ -109,15 +110,6 @@ if(${SANITIZE})
         "${CMAKE_CXX_FLAGS_DEBUG} -fno-optimize-sibling-calls -fsanitize=address")
 endif()
 
-if(${USE_HSA})
-    find_package(HSA REQUIRED)
-    set(USE_HSA ${HSA_FOUND})
-    find_library(hsa-runtime64 /opt/rocm/hsa/lib/)
-    if(${USE_OLD_ROCM})
-        add_definitions(-DUSE_OLD_ROCM)
-    endif()
-endif()
-
 if(${USE_OPENCL})
     set(ENV{AMDAPPSDKROOT} /opt/rocm/opencl)
     find_package(OPENCL REQUIRED)
@@ -134,13 +126,9 @@ if(${USE_CUDA})
     set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
     set(USE_CUDA ${CUDA_FOUND})
     enable_language(CUDA)
-    # TODO: Set the include path and warning options in the proper cmake way
-    set(CMAKE_CXX_FLAGS_DEBUG
-        "${CMAKE_CXX_FLAGS_DEBUG} -I/usr/local/cuda/targets/x86_64-linux/include")
-    set(CMAKE_CXX_FLAGS_TEST
-        "${CMAKE_CXX_FLAGS_TEST} -I/usr/local/cuda/targets/x86_64-linux/include")
-    set(CMAKE_CXX_FLAGS_RELEASE
-        "${CMAKE_CXX_FLAGS_RELEASE} -I/usr/local/cuda/targets/x86_64-linux/include")
+
+    find_package(CUDAToolkit REQUIRED)
+    message(STATUS "Compiling with CUDA tools in ${CUDAToolkit_INCLUDE_DIRS}.")
 endif()
 
 if(${USE_AIRSPY})
@@ -159,7 +147,7 @@ if(NOT DEFINED ARCH)
 endif()
 
 include(CheckIncludeFileCXX)
-if(${USE_LAPACK})
+if(${USE_LAPACK_BLAZE})
 
     set(BLA_VENDOR OpenBLAS)
     find_package(BLAS REQUIRED)
@@ -174,11 +162,14 @@ if(${USE_LAPACK})
     find_package(LAPACKE REQUIRED)
     message("Using LAPACKE ${LAPACKE_LIBRARIES}")
 
-    # Check Blaze is installed
-    if(DEFINED BLAZE_PATH)
-        if(NOT EXISTS ${BLAZE_PATH}/blaze/Blaze.h)
-            message(FATAL_ERROR "Could not find Blaze headers")
-        endif()
+    # Attempt to find the Blaze package
+    find_package(Blaze REQUIRED)
+
+    if(BLAZE_FOUND)
+        message(STATUS "Blaze found. BLAZE_PATH is ${BLAZE_PATH}")
+    else()
+        message(STATUS "Please set BLAZE_PATH or install Blaze in /usr/local/include.")
+        message(FATAL_ERROR "Blaze headers not found.")
     endif()
     add_definitions(-DBLAZE_BLAS_MODE=1)
     add_definitions(-DBLAZE_BLAS_IS_PARALLEL=1)
@@ -240,10 +231,6 @@ set(GPU_MODULES "")
 if(${USE_HIP})
     add_definitions(-DWITH_HIP)
     set(GPU_MODULES ${GPU_MODULES} "HIP ")
-endif()
-if(${USE_HSA})
-    add_definitions(-DWITH_HSA)
-    set(GPU_MODULES ${GPU_MODULES} "HSA ")
 endif()
 if(${USE_OPENCL})
     set(GPU_MODULES ${GPU_MODULES} "OpenCL ")

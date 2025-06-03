@@ -78,8 +78,8 @@ Copy-to/-from operations are typically run in parallel with the kernel processin
 minimizing idle time.
 
 Two such modules are included at present, built around the AMD GPUs used by CHIME,
-but broadly capable of handling `OpenCL <https://www.khronos.org/opencl/>`_
-and `HSA <http://www.hsafoundation.com/>`_ capable devices.
+but broadly capable of handling `OpenCL <https://www.khronos.org/opencl/>` and
+`CUDA <https://developer.nvidia.com/cuda-zone>` for AMD and Nvidia GPUs.
 
 Configuration
 --------------

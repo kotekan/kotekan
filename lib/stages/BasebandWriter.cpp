@@ -31,8 +31,7 @@ REGISTER_KOTEKAN_STAGE(BasebandWriter);
 
 BasebandWriter::BasebandWriterDestination::BasebandWriterDestination(const std::string& file_name,
                                                                      const uint32_t& frame_size) :
-    file(file_name, frame_size),
-    last_updated(current_time()) {}
+    file(file_name, frame_size), last_updated(current_time()) {}
 
 
 BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,

@@ -12,7 +12,8 @@
 #define VIS_UTIL_HPP
 
 
-#include "Config.hpp" // for Config
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for float16_t
 #include "Telescope.hpp"
 #include "buffer.hpp" // for Buffer
 
@@ -40,20 +41,6 @@
 #include <type_traits> // for enable_if_t, is_integral, make_unsigned
 #include <utility>     // for pair
 #include <vector>      // for vector
-
-#if defined(WITH_CUDA)
-#include <cuda_fp16.h>
-using float16_t = __half;
-#define KOTEKAN_FLOAT16 1
-#else
-#include <float.h>
-#if defined __FLT16_MAX__
-using float16_t = _Float16;
-#define KOTEKAN_FLOAT16 1
-#else
-#define KOTEKAN_FLOAT16 0
-#endif
-#endif
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;

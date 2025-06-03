@@ -9,7 +9,7 @@
 #include <array>
 
 #ifdef WITH_CUDA
-#include <nvToolsExt.h>
+#include <nvtx3/nvToolsExt.h>
 #endif
 
 /**

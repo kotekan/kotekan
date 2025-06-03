@@ -1,13 +1,10 @@
 #include "buffer.hpp"
 
-#include "errors.h"     // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F
+#include "errors.h" // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F
+#include "kotekanLogging.hpp"
 #include "metadata.hpp" // for metadataContainer, decrement_metadata_ref_count, increment_...
 #include "nt_memset.h"  // for nt_memset
 #include "util.h"       // for e_time
-#ifdef WITH_HSA
-#include "hsaBase.h" // for hsa_host_free, hsa_host_malloc
-#endif
-#include "kotekanLogging.hpp"
 
 #include "fmt.hpp" // for fmt, basic_string_view, make_format_args, FMT_STRING
 
@@ -44,9 +41,8 @@ typedef std::lock_guard<std::recursive_mutex> buffer_lock;
 
 GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
                              std::shared_ptr<metadataPool> pool, int _num_frames) :
-    num_frames(_num_frames),
-    shutdown_signal(false), buffer_name(_buffer_name), buffer_type(_buffer_type),
-    metadata_pool(pool), metadata(num_frames, nullptr) {
+    num_frames(_num_frames), shutdown_signal(false), buffer_name(_buffer_name),
+    buffer_type(_buffer_type), metadata_pool(pool), metadata(num_frames, nullptr) {
     set_log_prefix(_buffer_type + "Buffer \"" + _buffer_name + "\"");
 }
 
@@ -210,8 +206,7 @@ std::string GenericBuffer::get_dot_node_label() {
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                const std::string& _buffer_name, const std::string& _buffer_type, int _numa_node,
                bool _use_hugepages, bool _mlock_frames, bool zero_new_frames) :
-    GenericBuffer(_buffer_name, _buffer_type, pool, num_frames),
-    frame_size(len),
+    GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
     _zero_frames(false), frames(num_frames, nullptr), is_full(num_frames, false),
     last_arrival_time(0), use_hugepages(_use_hugepages), mlock_frames(_mlock_frames),
@@ -726,13 +721,6 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
 
     uint8_t* frame = nullptr;
 
-#ifdef WITH_HSA // Support for legacy HSA support used in CHIME
-    (void)use_hugepages;
-    frame = (uint8_t*)hsa_host_malloc(len, numa_node);
-    if (frame == nullptr) {
-        return nullptr;
-    }
-#else
     if (use_hugepages) {
 #ifndef MAC_OSX
         void* mapped_frame = mmap(nullptr, len, PROT_READ | PROT_WRITE,
@@ -775,7 +763,6 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
         CHECK_MEM_F(frame);
 #endif
     }
-#endif
 
 #ifndef WITH_NO_MEMLOCK
     if (mlock_frames) {
@@ -797,11 +784,6 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
 }
 
 void buffer_free(uint8_t* frame_pointer, size_t size, bool use_hugepages) {
-#ifdef WITH_HSA
-    (void)size;
-    (void)use_hugepages;
-    hsa_host_free(frame_pointer);
-#else
     if (use_hugepages) {
         munmap(frame_pointer, size);
     } else {
@@ -812,5 +794,4 @@ void buffer_free(uint8_t* frame_pointer, size_t size, bool use_hugepages) {
         free(frame_pointer);
 #endif
     }
-#endif
 }

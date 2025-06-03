@@ -97,9 +97,9 @@ void gpuSimulateN2k::main_thread() {
                                 // clang-format on
 
                             } // ilo
-                        }     // jlo
-                    }         // iji
-                }             // jhi
+                        } // jlo
+                    } // iji
+                } // jhi
 
                 DEBUG("Done t_outer {:d} of {:d} (freq {:d} of {:d}, nt_inner={:d})...", tout,
                       nt_outer, f, _num_local_freq, nt_inner);

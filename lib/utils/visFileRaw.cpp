@@ -32,8 +32,7 @@ REGISTER_VIS_FILE("raw", visFileRaw);
 //
 visFileRaw::visFileRaw(const std::string& name, const kotekan::logLevel log_level,
                        const std::map<std::string, std::string>& metadata, dset_id_t dataset,
-                       size_t max_time, int oflags) :
-    _name(name) {
+                       size_t max_time, int oflags) : _name(name) {
     set_log_level(log_level);
 
     INFO("Creating new output file {:s}", name);
@@ -157,7 +156,7 @@ void visFileRaw::flush_raw_async(int ind) {
     size_t n = nfreq * frame_size;
     sync_file_range(fd, ind * n, n, SYNC_FILE_RANGE_WRITE);
 #else
-    (void)ind;      // Suppress warning
+    (void)ind; // Suppress warning
 #endif
 }
 
@@ -169,7 +168,7 @@ void visFileRaw::flush_raw_sync(int ind) {
                         | SYNC_FILE_RANGE_WAIT_AFTER);
     posix_fadvise(fd, ind * n, n, POSIX_FADV_DONTNEED);
 #else
-    (void)ind;      // Suppress warning
+    (void)ind; // Suppress warning
 #endif
 }
 
