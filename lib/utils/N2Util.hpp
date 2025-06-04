@@ -10,6 +10,8 @@
 #include <cstdlib>     // for size_t
 #include <time.h>      // for timespec, clock_gettime
 
+#include "buffer.hpp"
+
 namespace N2
 {
 
