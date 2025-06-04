@@ -7,17 +7,17 @@
 #ifndef NETWORK_POWER_STREAM_H
 #define NETWORK_POWER_STREAM_H
 
-#include <stdint.h>             // for uint32_t, uint64_t
-#include <sys/types.h>          // for uint
-#include <atomic>               // for atomic_flag
-#include <string>               // for string, basic_string
-#include <thread>               // for thread
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "powerStreamUtil.hpp" // for IntensityHeader
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "powerStreamUtil.hpp"  // for IntensityHeader
-#include "buffer.hpp"           // for Buffer
+#include <atomic>      // for atomic_flag
+#include <stdint.h>    // for uint32_t, uint64_t
+#include <string>      // for string, basic_string
+#include <sys/types.h> // for uint
+#include <thread>      // for thread
 
 /**
  * @class networkPowerStream

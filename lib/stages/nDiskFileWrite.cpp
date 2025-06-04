@@ -1,25 +1,26 @@
 #include "nDiskFileWrite.hpp"
 
-#include <errno.h>              // for errno
-#include <fcntl.h>              // for open, posix_fadvise, O_CREAT, O_WRONLY, POSIX_FADV_DONTNEED
-#include <pthread.h>            // for pthread_setaffinity_np
-#include <sched.h>              // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdio.h>              // for fprintf, snprintf, fclose, fopen, size_t, FILE
-#include <stdlib.h>             // for exit
-#include <time.h>               // for gmtime, strftime, time, time_t
-#include <unistd.h>             // for close, syncfs, write, ssize_t
-#include <algorithm>            // for max
-#include <functional>           // for bind, function
-#include <thread>               // for thread
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.hpp"   // for get_lost_timesamples
+#include "kotekanLogging.hpp"  // for ERROR, INFO
+#include "util.h"              // for cp, make_raw_dirs
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.hpp"    // for get_lost_timesamples
-#include "kotekanLogging.hpp"   // for ERROR, INFO
-#include "util.h"               // for cp, make_raw_dirs
-#include "fmt.hpp"              // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <algorithm>  // for max
+#include <errno.h>    // for errno
+#include <fcntl.h>    // for open, posix_fadvise, O_CREAT, O_WRONLY, POSIX_FADV_DONTNEED
+#include <functional> // for bind, function
+#include <pthread.h>  // for pthread_setaffinity_np
+#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>    // for fprintf, snprintf, fclose, fopen, size_t, FILE
+#include <stdlib.h>   // for exit
+#include <thread>     // for thread
+#include <time.h>     // for gmtime, strftime, time, time_t
+#include <unistd.h>   // for close, syncfs, write, ssize_t
 
 
 using kotekan::bufferContainer;

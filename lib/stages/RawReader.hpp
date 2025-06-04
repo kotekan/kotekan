@@ -6,40 +6,41 @@
 #ifndef _RAW_READER_HPP
 #define _RAW_READER_HPP
 
-#include <errno.h>              // for errno
-#include <fcntl.h>              // for open, posix_fadvise, O_RDONLY, POSIX_FADV_DONTNEED
-#include <stdint.h>             // for uint32_t, uint8_t
-#include <sys/mman.h>           // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_...
-#include <sys/stat.h>           // for stat
-#include <time.h>               // for nanosleep, timespec
-#include <unistd.h>             // for close, off_t
-#include <assert.h>             // for assert
-#include <cstring>              // for size_t, strerror, memcpy
-#include <fstream>              // for basic_ifstream, basic_ios, ios_base, basic_istream::read
-#include <functional>           // for bind
-#include <map>                  // for map, _Rb_tree_iterator, operator!=, operator==
-#include <stdexcept>            // for runtime_error, invalid_argument
-#include <string>               // for allocator, basic_string, operator+, char_traits, string
-#include <utility>              // for pair
-#include <vector>               // for vector
-#include <algorithm>            // for min
-#include <memory>               // for __shared_ptr_access, shared_ptr
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for Hash, operator==
+#include "Stage.hpp"           // for Stage
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t, state_id_t, DS_UNIQUE_NAME
+#include "datasetState.hpp"    // for freqState, metadataState, timeState
+#include "errors.h"            // for ReturnCode, exit_kotekan
+#include "kotekanLogging.hpp"  // for INFO, DEBUG, FATAL_ERROR, WARN, DEBUG2
+#include "metadata.hpp"        // for metadataObject
+#include "version.h"           // for get_git_commit_hash
+#include "visUtil.hpp"         // for time_ctype, freq_ctype, frameID, current_time, double_to_ts
 
-#include "Config.hpp"           // for Config
-#include "Hash.hpp"             // for Hash, operator==
-#include "Stage.hpp"            // for Stage
-#include "Telescope.hpp"        // for Telescope
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for datasetManager, dset_id_t, state_id_t, DS_UNIQUE_NAME
-#include "datasetState.hpp"     // for freqState, metadataState, timeState
-#include "errors.h"             // for ReturnCode, exit_kotekan
-#include "kotekanLogging.hpp"   // for INFO, DEBUG, FATAL_ERROR, WARN, DEBUG2
-#include "metadata.hpp"         // for metadataObject
-#include "version.h"            // for get_git_commit_hash
-#include "visUtil.hpp"          // for time_ctype, freq_ctype, frameID, current_time, double_to_ts
-#include "fmt.hpp"              // for compile_string_to_view, fmt
-#include "json.hpp"             // for json, input_adapter
+#include "fmt.hpp"  // for compile_string_to_view, fmt
+#include "json.hpp" // for json, input_adapter
+
+#include <algorithm>  // for min
+#include <assert.h>   // for assert
+#include <cstring>    // for size_t, strerror, memcpy
+#include <errno.h>    // for errno
+#include <fcntl.h>    // for open, posix_fadvise, O_RDONLY, POSIX_FADV_DONTNEED
+#include <fstream>    // for basic_ifstream, basic_ios, ios_base, basic_istream::read
+#include <functional> // for bind
+#include <map>        // for map, _Rb_tree_iterator, operator!=, operator==
+#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <stdexcept>  // for runtime_error, invalid_argument
+#include <stdint.h>   // for uint32_t, uint8_t
+#include <string>     // for allocator, basic_string, operator+, char_traits, string
+#include <sys/mman.h> // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_...
+#include <sys/stat.h> // for stat
+#include <time.h>     // for nanosleep, timespec
+#include <unistd.h>   // for close, off_t
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

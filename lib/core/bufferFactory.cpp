@@ -1,17 +1,18 @@
 #include "bufferFactory.hpp"
 
-#include <stddef.h>            // for size_t
-#include <cstdint>             // for int32_t, uint32_t
-#include <stdexcept>           // for runtime_error
+#include "Config.hpp"         // for Config
+#include "HFBFrameView.hpp"   // for HFBFrameView
+#include "buffer.hpp"         // for GenericBuffer, Buffer
+#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "metadata.hpp"       // for metadataPool
+#include "ringbuffer.hpp"     // for RingBuffer
+#include "visBuffer.hpp"      // for VisFrameView
 
-#include "Config.hpp"          // for Config
-#include "HFBFrameView.hpp"    // for HFBFrameView
-#include "buffer.hpp"          // for GenericBuffer, Buffer
-#include "kotekanLogging.hpp"  // for INFO_NON_OO
-#include "metadata.hpp"        // for metadataPool
-#include "ringbuffer.hpp"      // for RingBuffer
-#include "visBuffer.hpp"       // for VisFrameView
-#include "fmt.hpp"             // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <cstdint>   // for int32_t, uint32_t
+#include <stddef.h>  // for size_t
+#include <stdexcept> // for runtime_error
 
 using json = nlohmann::json;
 using std::map;

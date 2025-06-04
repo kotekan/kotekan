@@ -1,24 +1,25 @@
 #include "rawFileWrite.hpp"
 
-#include <errno.h>                // for errno
-#include <fcntl.h>                // for open, O_CREAT, O_WRONLY
-#include <stdint.h>               // for uint32_t, int32_t, uint8_t
-#include <stdio.h>                // for snprintf, size_t
-#include <stdlib.h>               // for exit
-#include <unistd.h>               // for write, close, gethostname, ssize_t
-#include <functional>             // for bind, function
-#include <memory>                 // for shared_ptr, __shared_ptr_access
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "errors.h"              // for ReturnCode, exit_kotekan
+#include "kotekanLogging.hpp"    // for ERROR, INFO
+#include "metadata.hpp"          // for metadataObject
+#include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "visUtil.hpp"           // for current_time
 
-#include "Config.hpp"             // for Config
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "errors.h"               // for ReturnCode, exit_kotekan
-#include "kotekanLogging.hpp"     // for ERROR, INFO
-#include "metadata.hpp"           // for metadataObject
-#include "prometheusMetrics.hpp"  // for Metrics, Gauge
-#include "visUtil.hpp"            // for current_time
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <errno.h>    // for errno
+#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdint.h>   // for uint32_t, int32_t, uint8_t
+#include <stdio.h>    // for snprintf, size_t
+#include <stdlib.h>   // for exit
+#include <unistd.h>   // for write, close, gethostname, ssize_t
 
 
 using kotekan::bufferContainer;

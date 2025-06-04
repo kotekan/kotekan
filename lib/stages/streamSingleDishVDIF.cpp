@@ -1,19 +1,20 @@
 #include "streamSingleDishVDIF.hpp"
 
-#include <arpa/inet.h>          // for inet_aton, htons
-#include <netinet/in.h>         // for sockaddr_in, IPPROTO_UDP
-#include <stdio.h>              // for size_t
-#include <stdlib.h>             // for exit
-#include <string.h>             // for memset
-#include <sys/socket.h>         // for AF_INET, sendto, socket, SOCK_DGRAM
-#include <functional>           // for bind, function
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for ERROR, INFO
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for ERROR, INFO
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <arpa/inet.h>  // for inet_aton, htons
+#include <functional>   // for bind, function
+#include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP
+#include <stdio.h>      // for size_t
+#include <stdlib.h>     // for exit
+#include <string.h>     // for memset
+#include <sys/socket.h> // for AF_INET, sendto, socket, SOCK_DGRAM
 
 
 using kotekan::bufferContainer;

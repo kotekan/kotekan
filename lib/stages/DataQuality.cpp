@@ -1,25 +1,26 @@
 #include "DataQuality.hpp"
 
-#include <stdint.h>               // for uint32_t
-#include <string.h>               // for size_t
-#include <algorithm>              // for copy, equal, max
-#include <functional>             // for bind, function
-#include <string>                 // for basic_string, allocator, to_string, operator<, string
-#include <vector>                 // for vector
-#include <cmath>                  // for pow
-#include <set>                    // for set
+#include "Hash.hpp"              // for operator<, Hash
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t, fingerprint_t
+#include "datasetState.hpp"      // for stackState
+#include "kotekanLogging.hpp"    // for FATAL_ERROR
+#include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
+#include "visBuffer.hpp"         // for VisFrameView
+#include "visUtil.hpp"           // for frameID, rstack_ctype, modulo
 
-#include "Hash.hpp"               // for operator<, Hash
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer
-#include "datasetManager.hpp"     // for datasetManager, dset_id_t, fingerprint_t
-#include "datasetState.hpp"       // for stackState
-#include "kotekanLogging.hpp"     // for FATAL_ERROR
-#include "prometheusMetrics.hpp"  // for Gauge, Metrics, MetricFamily
-#include "visBuffer.hpp"          // for VisFrameView
-#include "visUtil.hpp"            // for frameID, rstack_ctype, modulo
-#include "gsl-lite.hpp"           // for span
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for copy, equal, max
+#include <cmath>      // for pow
+#include <functional> // for bind, function
+#include <set>        // for set
+#include <stdint.h>   // for uint32_t
+#include <string.h>   // for size_t
+#include <string>     // for basic_string, allocator, to_string, operator<, string
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

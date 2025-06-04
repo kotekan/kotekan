@@ -1,22 +1,23 @@
 #include "rawFileRead.hpp"
 
-#include <assert.h>             // for assert
-#include <errno.h>              // for errno
-#include <stdint.h>             // for uint32_t, uint8_t
-#include <string.h>             // for strerror
-#include <sys/stat.h>           // for stat
-#include <unistd.h>             // for gethostname, sleep
-#include <cstdio>               // for fread, snprintf, fclose, fopen, fseek, ftell, rewind, FILE
-#include <functional>           // for bind, function
-#include <memory>               // for __shared_ptr_access, shared_ptr
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO, ERROR, FATAL_ERROR
+#include "metadata.hpp"        // for metadataObject
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for INFO, ERROR, FATAL_ERROR
-#include "metadata.hpp"         // for metadataObject
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <assert.h>   // for assert
+#include <cstdio>     // for fread, snprintf, fclose, fopen, fseek, ftell, rewind, FILE
+#include <errno.h>    // for errno
+#include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <stdint.h>   // for uint32_t, uint8_t
+#include <string.h>   // for strerror
+#include <sys/stat.h> // for stat
+#include <unistd.h>   // for gethostname, sleep
 
 
 inline bool file_exists(char* name) {

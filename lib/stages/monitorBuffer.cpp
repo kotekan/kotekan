@@ -1,17 +1,18 @@
 #include "monitorBuffer.hpp"
 
-#include <stdint.h>             // for uint32_t
-#include <unistd.h>             // for usleep, sleep
-#include <map>                  // for map, operator!=, _Rb_tree_iterator
-#include <utility>              // for pair
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer, GenericBuffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for FATAL_ERROR
+#include "util.h"              // for e_time
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer, GenericBuffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for FATAL_ERROR
-#include "util.h"               // for e_time
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <map>      // for map, operator!=, _Rb_tree_iterator
+#include <stdint.h> // for uint32_t
+#include <unistd.h> // for usleep, sleep
+#include <utility>  // for pair
 
 using kotekan::bufferContainer;
 using kotekan::Config;

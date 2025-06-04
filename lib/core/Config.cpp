@@ -1,17 +1,17 @@
 #include "Config.hpp"
 
-#include <stdio.h>        // for sprintf
-#include <cstdint>        // for int32_t, uint8_t
-#include <fstream>        // for basic_ifstream, basic_istream, ifstream
-#include <stdexcept>      // for runtime_error
-#include <vector>         // for vector
-#include <cstddef>        // for size_t
+#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "json.hpp" // for json, basic_json, iter_impl, operator>>
 
-#include "fmt.hpp"        // for compile_string_to_view, format, fmt
-#include "json.hpp"       // for json, basic_json, iter_impl, operator>>
+#include <cstddef>   // for size_t
+#include <cstdint>   // for int32_t, uint8_t
+#include <fstream>   // for basic_ifstream, basic_istream, ifstream
+#include <stdexcept> // for runtime_error
+#include <stdio.h>   // for sprintf
+#include <vector>    // for vector
 
 #ifdef WITH_SSL
-#include <openssl/md5.h>  // for MD5, MD5_DIGEST_LENGTH
+#include <openssl/md5.h> // for MD5, MD5_DIGEST_LENGTH
 #endif
 
 using nlohmann::json;

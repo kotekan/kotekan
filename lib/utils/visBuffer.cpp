@@ -1,24 +1,25 @@
 #include "visBuffer.hpp"
 
-#include <assert.h>           // for assert
-#include <sys/time.h>         // for TIMEVAL_TO_TIMESPEC
-#include <algorithm>          // for copy
-#include <complex>            // for complex
-#include <cstdint>     // for uint64_t // IWYU pragma: keep
-#include <ctime>              // for gmtime
-#include <map>                // for map
-#include <set>                // for set
-#include <stdexcept>          // for runtime_error
-#include <vector>             // for vector
-#include <cstring>            // for memset
+#include "FrameView.hpp"     // for bind_span, bind_scalar, FrameView
+#include "Telescope.hpp"     // for Telescope, freq_id_t
+#include "buffer.hpp"        // for Buffer
+#include "chimeMetadata.hpp" // for chimeMetadata, get_stream_id_from_metadata
+#include "factory.hpp"       // for REGISTER_TYPE_WITH_FACTORY
+#include "metadata.hpp"      // for metadataObject, _factory_aliasmetadataObject
 
-#include "FrameView.hpp"      // for bind_span, bind_scalar, FrameView
-#include "Telescope.hpp"      // for Telescope, freq_id_t
-#include "buffer.hpp"         // for Buffer
-#include "chimeMetadata.hpp"  // for chimeMetadata, get_stream_id_from_metadata
-#include "metadata.hpp"       // for metadataObject, _factory_aliasmetadataObject
-#include "fmt.hpp"            // for format, compile_string_to_view, fmt, format_string
-#include "factory.hpp"        // for REGISTER_TYPE_WITH_FACTORY
+#include "fmt.hpp" // for format, compile_string_to_view, fmt, format_string
+
+#include <algorithm>  // for copy
+#include <assert.h>   // for assert
+#include <complex>    // for complex
+#include <cstdint>    // for uint64_t // IWYU pragma: keep
+#include <cstring>    // for memset
+#include <ctime>      // for gmtime
+#include <map>        // for map
+#include <set>        // for set
+#include <stdexcept>  // for runtime_error
+#include <sys/time.h> // for TIMEVAL_TO_TIMESPEC
+#include <vector>     // for vector
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
 

@@ -8,13 +8,13 @@
 #ifndef MONITOR_BUFFER_H
 #define MONITOR_BUFFER_H
 
-#include <string>               // for string
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "buffer.hpp"           // for Buffer
+#include <string> // for string
+#include <vector> // for vector
 
 
 /**

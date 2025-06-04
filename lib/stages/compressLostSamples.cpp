@@ -1,13 +1,13 @@
 #include "compressLostSamples.hpp"
 
-#include <visUtil.hpp>        // for frameID, modulo
-#include <functional>         // for bind, function
-#include <stdexcept>          // for runtime_error
-#include <string>             // for allocator, basic_string, string
+#include "StageFactory.hpp"  // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"        // for Buffer
+#include "chimeMetadata.hpp" // for atomic_add_lost_timesamples, zero_lost_samples
 
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"         // for Buffer
-#include "chimeMetadata.hpp"  // for atomic_add_lost_timesamples, zero_lost_samples
+#include <functional>  // for bind, function
+#include <stdexcept>   // for runtime_error
+#include <string>      // for allocator, basic_string, string
+#include <visUtil.hpp> // for frameID, modulo
 
 
 using kotekan::bufferContainer;

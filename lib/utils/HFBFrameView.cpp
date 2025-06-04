@@ -1,20 +1,21 @@
 #include "HFBFrameView.hpp"
 
-#include <algorithm>      // for copy
+#include "FrameView.hpp" // for bind_span, FrameView
+#include "buffer.hpp"    // for Buffer
+#include "visUtil.hpp"   // for struct_layout, struct_alignment
+
+#include "fmt.hpp" // for format, compile_string_to_view, fmt, format_string
+
+#include <algorithm> // for copy
 #include <complex>   // for complex  // IWYU pragma: keep
 #include <cstdint>   // for uint64_t // IWYU pragma: keep
-#include <ctime>          // for gmtime
-#include <map>            // for map
-#include <set>            // for set
-#include <stdexcept>      // for runtime_error
-#include <tuple>          // for tuple, make_tuple
-#include <vector>         // for vector
-#include <cstring>        // for memset
-
-#include "FrameView.hpp"  // for bind_span, FrameView
-#include "buffer.hpp"     // for Buffer
-#include "visUtil.hpp"    // for struct_layout, struct_alignment
-#include "fmt.hpp"        // for format, compile_string_to_view, fmt, format_string
+#include <cstring>   // for memset
+#include <ctime>     // for gmtime
+#include <map>       // for map
+#include <set>       // for set
+#include <stdexcept> // for runtime_error
+#include <tuple>     // for tuple, make_tuple
+#include <vector>    // for vector
 
 HFBFrameView::HFBFrameView(Buffer* buf, int frame_id) :
     FrameView(buf, frame_id), _metadata(std::static_pointer_cast<HFBMetadata>(buf->metadata[id])),

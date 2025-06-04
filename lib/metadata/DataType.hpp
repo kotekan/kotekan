@@ -1,10 +1,10 @@
 #ifndef DATATYPE_HPP
 #define DATATYPE_HPP
 
-#include <iostream>     // for ostream
-#include <string>       // for string
-#include <type_traits>  // for integral_constant
-#include <cstddef>      // for size_t
+#include <cstddef>     // for size_t
+#include <iostream>    // for ostream
+#include <string>      // for string
+#include <type_traits> // for integral_constant
 
 // Define a macro `KOTEKAN_FLOAT16` specifying whether we support a float16 type.
 // Define a type `float16_t` if we support it.

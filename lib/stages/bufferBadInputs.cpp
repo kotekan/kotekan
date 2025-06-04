@@ -1,18 +1,19 @@
 #include "bufferBadInputs.hpp"
 
-#include <algorithm>           // for copy, max
-#include <exception>           // for exception
-#include <functional>          // for bind, function, _1
-#include <tuple>               // for get
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"         // for Buffer
+#include "chimeMetadata.hpp"  // for set_rfi_num_bad_inputs
+#include "configUpdater.hpp"  // for configUpdater
+#include "kotekanLogging.hpp" // for DEBUG, ERROR
+#include "visUtil.hpp"        // for parse_reorder_default
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "chimeMetadata.hpp"   // for set_rfi_num_bad_inputs
-#include "configUpdater.hpp"   // for configUpdater
-#include "kotekanLogging.hpp"  // for DEBUG, ERROR
-#include "visUtil.hpp"         // for parse_reorder_default
-#include "fmt.hpp"             // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for copy, max
+#include <exception>  // for exception
+#include <functional> // for bind, function, _1
+#include <tuple>      // for get
 
 using kotekan::bufferContainer;
 using kotekan::Config;

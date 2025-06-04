@@ -1,17 +1,18 @@
 #include "visFileRing.hpp"
 
-#include <errno.h>      // for errno
-#include <fcntl.h>      // for O_CREAT, O_WRONLY
-#include <string.h>     // for strerror
-#include <sys/types.h>  // for uint
-#include <unistd.h>     // for pwrite, TEMP_FAILURE_RETRY
-#include <vector>       // for vector
-#include <fstream>      // for basic_ofstream, basic_ostream::flush, basic_ostream::seekp, basic...
+#include "visFile.hpp" // for visFile, REGISTER_VIS_FILE, _factory_aliasvisFile
+#include "visUtil.hpp" // for time_ctype
 
-#include "visFile.hpp"  // for visFile, REGISTER_VIS_FILE, _factory_aliasvisFile
-#include "visUtil.hpp"  // for time_ctype
-#include "json.hpp"     // for basic_json, json
-#include "fmt.hpp"      // for compile_string_to_view
+#include "fmt.hpp"  // for compile_string_to_view
+#include "json.hpp" // for basic_json, json
+
+#include <errno.h>     // for errno
+#include <fcntl.h>     // for O_CREAT, O_WRONLY
+#include <fstream>     // for basic_ofstream, basic_ostream::flush, basic_ostream::seekp, basic...
+#include <string.h>    // for strerror
+#include <sys/types.h> // for uint
+#include <unistd.h>    // for pwrite, TEMP_FAILURE_RETRY
+#include <vector>      // for vector
 
 // Register the HDF5 file writers
 REGISTER_VIS_FILE("ring", visFileRing);

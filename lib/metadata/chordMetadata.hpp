@@ -1,20 +1,21 @@
 #ifndef CHORD_METADATA
 #define CHORD_METADATA
 
-#include <cassert>             // for assert
-#include <cstdint>             // for uint8_t, int64_t, int16_t, int32_t, int8_t, uint16_t, uint...
-#include <sstream>             // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
-#include <string>              // for char_traits, basic_string, allocator, string, operator==
-#include <type_traits>         // for integral_constant
-#include <vector>              // for vector
-#include <cstring>             // for size_t, strncpy, strnlen
-#include <memory>              // for shared_ptr, __shared_ptr_access, static_pointer_cast, weak...
+#include "DataType.hpp"       // for float16_t, KOTEKAN_FLOAT16
+#include "buffer.hpp"         // for Buffer
+#include "kotekanLogging.hpp" // for WARN_NON_OO
+#include "metadata.hpp"       // for metadataObject, metadataPool
 
-#include "DataType.hpp"        // for float16_t, KOTEKAN_FLOAT16
-#include "buffer.hpp"          // for Buffer
-#include "metadata.hpp"        // for metadataObject, metadataPool
-#include "fmt.hpp"             // for compile_string_to_view
-#include "kotekanLogging.hpp"  // for WARN_NON_OO
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <cassert>     // for assert
+#include <cstdint>     // for uint8_t, int64_t, int16_t, int32_t, int8_t, uint16_t, uint...
+#include <cstring>     // for size_t, strncpy, strnlen
+#include <memory>      // for shared_ptr, __shared_ptr_access, static_pointer_cast, weak...
+#include <sstream>     // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
+#include <string>      // for char_traits, basic_string, allocator, string, operator==
+#include <type_traits> // for integral_constant
+#include <vector>      // for vector
 
 // One of the warning-silencing pragmas below only applied for gcc >= 8
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)

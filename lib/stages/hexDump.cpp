@@ -1,16 +1,17 @@
 #include "hexDump.hpp"
 
-#include <stddef.h>             // for size_t
-#include <visUtil.hpp>          // for frameID, modulo
-#include <stdexcept>            // for runtime_error
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG
+#include "util.h"              // for hex_dump
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for DEBUG
-#include "util.h"               // for hex_dump
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <stddef.h>    // for size_t
+#include <stdexcept>   // for runtime_error
+#include <visUtil.hpp> // for frameID, modulo
 
 
 using kotekan::bufferContainer;

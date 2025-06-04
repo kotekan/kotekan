@@ -1,17 +1,18 @@
 #include "countCheck.hpp"
 
-#include <stdlib.h>             // for llabs
-#include <time.h>               // for timespec
-#include <functional>           // for bind, function
-#include <tuple>                // for get
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
+#include "visBuffer.hpp"       // for VisFrameView
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for DEBUG, FATAL_ERROR
-#include "visBuffer.hpp"        // for VisFrameView
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <stdlib.h>   // for llabs
+#include <time.h>     // for timespec
+#include <tuple>      // for get
 
 
 using kotekan::bufferContainer;

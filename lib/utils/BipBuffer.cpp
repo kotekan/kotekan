@@ -1,10 +1,11 @@
 #include "BipBuffer.hpp"
 
-#include <algorithm>           // for min, max
-#include <cassert>             // for assert
+#include "kotekanLogging.hpp" // for DEBUG2_NON_OO
 
-#include "kotekanLogging.hpp"  // for DEBUG2_NON_OO
-#include "fmt.hpp"             // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm> // for min, max
+#include <cassert>   // for assert
 
 
 BipWriteReservation::BipWriteReservation(uint8_t* const start, const size_t length,

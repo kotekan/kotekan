@@ -1,23 +1,24 @@
 #ifndef DATASETSTATE_HPP
 #define DATASETSTATE_HPP
 
-#include <stddef.h>      // for size_t
-#include <cstdint>       // for uint32_t
-#include <exception>     // for exception
-#include <iosfwd>        // for ostream
-#include <memory>        // for allocator, unique_ptr
-#include <numeric>       // for iota
-#include <stdexcept>     // for runtime_error
-#include <string>        // for basic_string, string
-#include <utility>       // for pair
-#include <vector>        // for vector
+#include "Hash.hpp"     // for Hash
+#include "factory.hpp"  // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, FACTORY
+#include "gateSpec.hpp" // for gateSpec, _factory_aliasgateSpec
+#include "visUtil.hpp"  // for prod_ctype, rstack_ctype, time_ctype, input_ctype, freq_ctype
 
-#include "Hash.hpp"      // for Hash
-#include "factory.hpp"   // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, FACTORY
-#include "gateSpec.hpp"  // for gateSpec, _factory_aliasgateSpec
-#include "visUtil.hpp"   // for prod_ctype, rstack_ctype, time_ctype, input_ctype, freq_ctype
-#include "fmt.hpp"       // for compile_string_to_view, format, fmt
-#include "json.hpp"      // for json, json_ref, basic_json
+#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "json.hpp" // for json, json_ref, basic_json
+
+#include <cstdint>   // for uint32_t
+#include <exception> // for exception
+#include <iosfwd>    // for ostream
+#include <memory>    // for allocator, unique_ptr
+#include <numeric>   // for iota
+#include <stddef.h>  // for size_t
+#include <stdexcept> // for runtime_error
+#include <string>    // for basic_string, string
+#include <utility>   // for pair
+#include <vector>    // for vector
 
 class datasetManager;
 class datasetState; // IWYU pragma: keep

@@ -1,27 +1,28 @@
-#include <Config.hpp>          // for Config
-#include <FEngine.hpp>
-#include <Stage.hpp>           // for Stage
-#include <StageFactory.hpp>    // for REGISTER_KOTEKAN_STAGE
-#include <chordMetadata.hpp>   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM, cho...
-#include <julia.h>             // for jl_box_int64, jl_box_float32, jl_value_t, jl_get_function
-#include <juliaManager.hpp>    // for juliaCall, juliaShutdown, juliaStartup
-#include <algorithm>           // for max
-#include <cassert>             // for assert
-#include <cmath>               // for cos, sin, M_PI, log2, lrint
-#include <complex>             // for complex, sqrt
-#include <cstdint>             // for int64_t, uint8_t, uint64_t, int32_t, int8_t
-#include <cstring>             // for strncpy, memset, size_t
-#include <fstream>             // for basic_ifstream, basic_istream::seekg, basic_istream::read
-#include <string>              // for allocator, basic_string, string
-#include <vector>              // for vector
-#include <cstddef>             // for ptrdiff_t
-#include <cstdio>              // for snprintf
-#include <functional>          // for function
-#include <memory>              // for shared_ptr, __shared_ptr_access
+#include "DataType.hpp"       // for float16_t, KOTEKAN_FLOAT16
+#include "kotekanLogging.hpp" // for DEBUG, FATAL_ERROR, INFO
 
-#include "DataType.hpp"        // for float16_t, KOTEKAN_FLOAT16
-#include "fmt.hpp"             // for compile_string_to_view
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <Config.hpp> // for Config
+#include <FEngine.hpp>
+#include <Stage.hpp>         // for Stage
+#include <StageFactory.hpp>  // for REGISTER_KOTEKAN_STAGE
+#include <algorithm>         // for max
+#include <cassert>           // for assert
+#include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM, cho...
+#include <cmath>             // for cos, sin, M_PI, log2, lrint
+#include <complex>           // for complex, sqrt
+#include <cstddef>           // for ptrdiff_t, size_t
+#include <cstdint>           // for int64_t, uint8_t, uint64_t, int32_t, int8_t
+#include <cstdio>            // for snprintf
+#include <cstring>           // for strncpy, memset
+#include <fstream>           // for basic_ifstream, basic_istream::seekg, basic_istream::read
+#include <functional>        // for function
+#include <julia.h>           // for jl_box_int64, jl_box_float32, jl_value_t, jl_get_function
+#include <juliaManager.hpp>  // for juliaCall, juliaShutdown, juliaStartup
+#include <memory>            // for shared_ptr, __shared_ptr_access
+#include <string>            // for allocator, basic_string, string
+#include <vector>            // for vector
 
 #ifdef WITH_CUDA
 #include <nvtx3/nvToolsExt.h>

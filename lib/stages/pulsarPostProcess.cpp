@@ -1,24 +1,25 @@
 #include "pulsarPostProcess.hpp"
 
-#include <assert.h>              // for assert
-#include <string.h>              // for memcpy
-#include <algorithm>             // for max
-#include <cmath>                 // for round
-#include <functional>            // for bind, function
-#include <stdexcept>             // for runtime_error
-#include <string>                // for allocator, basic_string, operator+, string, to_string
+#include "BranchPrediction.hpp" // for likely, unlikely
+#include "Config.hpp"           // for Config
+#include "ICETelescope.hpp"     // for ice_stream_id_t, ice_get_stream_id_t
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"        // for Telescope
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chimeMetadata.hpp"    // for beamCoord, get_fpga_seq_num, get_beam_coord
+#include "kotekanLogging.hpp"   // for DEBUG, ERROR
+#include "pulsar_functions.hpp" // for PSRHeader
 
-#include "BranchPrediction.hpp"  // for likely, unlikely
-#include "Config.hpp"            // for Config
-#include "ICETelescope.hpp"      // for ice_stream_id_t, ice_get_stream_id_t
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chimeMetadata.hpp"     // for beamCoord, get_fpga_seq_num, get_beam_coord
-#include "kotekanLogging.hpp"    // for DEBUG, ERROR
-#include "pulsar_functions.hpp"  // for PSRHeader
-#include "fmt.hpp"               // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for max
+#include <assert.h>   // for assert
+#include <cmath>      // for round
+#include <functional> // for bind, function
+#include <stdexcept>  // for runtime_error
+#include <string.h>   // for memcpy
+#include <string>     // for allocator, basic_string, operator+, string, to_string
 
 using std::string;
 

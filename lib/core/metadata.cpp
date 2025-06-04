@@ -1,8 +1,6 @@
 #include "metadata.hpp"
 
-#include <cstdlib>  // for size_t
-
-#include "fmt.hpp"  // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
 
 metadataPool::metadataPool(Private, int num_metadata_objects, size_t object_size,
                            const std::string& _unique_name, const std::string& _type_name) :

@@ -1,20 +1,21 @@
 #ifndef TEST_DATA_GEN_H
 #define TEST_DATA_GEN_H
 
-#include <stddef.h>             // for size_t
-#include <stdint.h>             // for uint32_t
-#include <memory>               // for shared_ptr
-#include <string>               // for string, basic_string
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "Telescope.hpp"       // for stream_t
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
+#include "visUtil.hpp"         // for StatTracker
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "Telescope.hpp"        // for stream_t
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "restServer.hpp"       // for connectionInstance
-#include "visUtil.hpp"          // for StatTracker
-#include "json.hpp"             // for json
-#include "buffer.hpp"           // for Buffer
+#include "json.hpp" // for json
+
+#include <memory>   // for shared_ptr
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t
+#include <string>   // for string, basic_string
+#include <vector>   // for vector
 
 /**
  * @class testDataGen

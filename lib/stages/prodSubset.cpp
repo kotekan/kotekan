@@ -1,26 +1,27 @@
 #include "prodSubset.hpp"
 
-#include <stdint.h>             // for uint16_t, uint32_t
-#include <algorithm>            // for max, copy, binary_search, sort
-#include <complex>              // for complex
-#include <functional>           // for bind, function
-#include <future>               // for future, async
-#include <iterator>             // for back_insert_iterator, back_inserter
-#include <utility>              // for pair
-#include <set>                  // for set
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator<
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t
+#include "datasetState.hpp"    // for prodState
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
+#include "visBuffer.hpp"       // for VisFrameView, VisField
+#include "visUtil.hpp"         // for prod_ctype, frameID, cmap, icmap, modulo
 
-#include "Config.hpp"           // for Config
-#include "Hash.hpp"             // for operator<
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for datasetManager, dset_id_t
-#include "datasetState.hpp"     // for prodState
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"        // for VisFrameView, VisField
-#include "visUtil.hpp"          // for prod_ctype, frameID, cmap, icmap, modulo
-#include "gsl-lite.hpp"         // for span
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for max, copy, binary_search, sort
+#include <complex>    // for complex
+#include <functional> // for bind, function
+#include <future>     // for future, async
+#include <iterator>   // for back_insert_iterator, back_inserter
+#include <set>        // for set
+#include <stdint.h>   // for uint16_t, uint32_t
+#include <utility>    // for pair
 
 
 using kotekan::bufferContainer;

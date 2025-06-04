@@ -1,23 +1,24 @@
 #include "InputSubset.hpp"
 
-#include <stddef.h>             // for size_t
-#include <algorithm>            // for max
-#include <complex>              // for complex
-#include <functional>           // for bind, function
-#include <utility>              // for pair
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for Hash, operator<, operator!=, operator==
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t, fingerprint_t
+#include "datasetState.hpp"    // for inputState, prodState, stackState
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
+#include "visBuffer.hpp"       // for VisFrameView, VisField
+#include "visUtil.hpp"         // for prod_ctype, input_ctype, frameID, modulo
 
-#include "Config.hpp"           // for Config
-#include "Hash.hpp"             // for Hash, operator<, operator!=, operator==
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for datasetManager, dset_id_t, fingerprint_t
-#include "datasetState.hpp"     // for inputState, prodState, stackState
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"        // for VisFrameView, VisField
-#include "visUtil.hpp"          // for prod_ctype, input_ctype, frameID, modulo
-#include "gsl-lite.hpp"         // for span
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for max
+#include <complex>    // for complex
+#include <functional> // for bind, function
+#include <stddef.h>   // for size_t
+#include <utility>    // for pair
 
 
 using kotekan::bufferContainer;

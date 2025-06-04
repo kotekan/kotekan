@@ -1,33 +1,34 @@
 #include "bufferRecv.hpp"
 
-#include <arpa/inet.h>            // for inet_ntop, htons, ntohs
-#include <assert.h>               // for assert
-#include <errno.h>                // for errno
-#include <event2/thread.h>        // for evthread_use_pthreads
-#include <netinet/in.h>           // for sockaddr_in, in_addr
-#include <pthread.h>              // for pthread_setaffinity_np, pthread_setname_np
-#include <sched.h>                // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdlib.h>               // for free, malloc
-#include <sys/socket.h>           // for setsockopt, AF_INET, SOL_SOCKET, accept, bind, listen
-#include <algorithm>              // for copy, max, find, equal
-#include <functional>             // for bind, ref, function, placeholders
-#include <memory>                 // for shared_ptr, __shared_ptr_access
-#include <queue>                  // for queue
-#include <stdexcept>              // for runtime_error
-#include <string>                 // for basic_string, allocator, string, char_traits, operator+
-#include <cstring>                // for strerror
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer, buffer_free, buffer_malloc
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "bufferSend.hpp"        // for bufferFrameHeader
+#include "metadata.hpp"          // for metadataObject, metadataPool
+#include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
+#include "restServer.hpp"        // for connectionInstance
+#include "util.h"                // for string_tail
+#include "visUtil.hpp"           // for current_time
 
-#include "Config.hpp"             // for Config
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer, buffer_free, buffer_malloc
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "bufferSend.hpp"         // for bufferFrameHeader
-#include "metadata.hpp"           // for metadataObject, metadataPool
-#include "prometheusMetrics.hpp"  // for Gauge, Metrics, Counter, MetricFamily
-#include "util.h"                 // for string_tail
-#include "visUtil.hpp"            // for current_time
-#include "fmt.hpp"                // for compile_string_to_view, format, format_string, fmt
-#include "restServer.hpp"         // for connectionInstance
+#include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
+
+#include <algorithm>       // for copy, max, find, equal
+#include <arpa/inet.h>     // for inet_ntop, htons, ntohs
+#include <assert.h>        // for assert
+#include <cstring>         // for strerror
+#include <errno.h>         // for errno
+#include <event2/thread.h> // for evthread_use_pthreads
+#include <functional>      // for bind, ref, function, placeholders
+#include <memory>          // for shared_ptr, __shared_ptr_access
+#include <netinet/in.h>    // for sockaddr_in, in_addr
+#include <pthread.h>       // for pthread_setaffinity_np, pthread_setname_np
+#include <queue>           // for queue
+#include <sched.h>         // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>       // for runtime_error
+#include <stdlib.h>        // for free, malloc
+#include <string>          // for basic_string, allocator, string, char_traits, operator+
+#include <sys/socket.h>    // for setsockopt, AF_INET, SOL_SOCKET, accept, bind, listen
 
 using namespace std::placeholders;
 using std::mutex;

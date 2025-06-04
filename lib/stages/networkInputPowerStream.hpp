@@ -7,13 +7,13 @@
 #ifndef NETWORK_INPUT_POWER_STREAM_H
 #define NETWORK_INPUT_POWER_STREAM_H
 
-#include <stdint.h>             // for uint32_t
-#include <string>               // for string, basic_string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "buffer.hpp"           // for Buffer
+#include <stdint.h> // for uint32_t
+#include <string>   // for string, basic_string
 
 
 /**

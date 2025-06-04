@@ -1,12 +1,12 @@
 #ifndef KOTEKAN_BEAMINSPECT_HPP
 #define KOTEKAN_BEAMINSPECT_HPP
 
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "buffer.hpp"           // for Buffer
+#include <string> // for string
 
 /**
  * @class BeamInspect

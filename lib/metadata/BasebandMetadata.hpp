@@ -1,10 +1,10 @@
 #ifndef BASEBAND_METADATA_HPP
 #define BASEBAND_METADATA_HPP
 
-#include <stddef.h>      // for size_t
-#include <stdint.h>      // for uint64_t, int32_t, int64_t
+#include "metadata.hpp" // for metadataObject
 
-#include "metadata.hpp"  // for metadataObject
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint64_t, int32_t, int64_t
 
 class BasebandMetadata : public metadataObject {
 public:

@@ -1,6 +1,6 @@
 #include "datasetState.hpp"
 
-#include <ostream>  // for basic_ios, basic_ostream
+#include <ostream> // for basic_ios, basic_ostream
 
 
 using nlohmann::json;

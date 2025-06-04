@@ -1,18 +1,19 @@
 #include "zeroSamples.hpp"
 
-#include <assert.h>             // for assert
-#include <string.h>             // for memcpy, size_t
-#include <algorithm>            // for max
-#include <functional>           // for bind, function
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.hpp"   // for atomic_add_lost_timesamples
+#include "nt_memset.h"         // for nt_memset
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.hpp"    // for atomic_add_lost_timesamples
-#include "nt_memset.h"          // for nt_memset
-#include "json.hpp"             // for basic_json, json, iter_impl
+#include "json.hpp" // for basic_json, json, iter_impl
+
+#include <algorithm>  // for max
+#include <assert.h>   // for assert
+#include <functional> // for bind, function
+#include <string.h>   // for memcpy, size_t
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

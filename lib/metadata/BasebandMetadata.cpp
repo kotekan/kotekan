@@ -1,9 +1,9 @@
 #include "BasebandMetadata.hpp"
 
-#include <assert.h>     // for assert
-#include <memory>       // for allocator
+#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
 
-#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
+#include <assert.h> // for assert
+#include <memory>   // for allocator
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, BasebandMetadata);
 

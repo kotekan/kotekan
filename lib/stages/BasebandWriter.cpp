@@ -1,23 +1,24 @@
 #include "BasebandWriter.hpp"
 
-#include <math.h>                 // for round
-#include <sys/stat.h>             // for mkdir, S_IRGRP, S_IROTH, S_IRWXU, S_IXGRP, S_IXOTH
-#include <bits/chrono.h>          // for duration, operator-, operator/, operator>, seconds, ste...
-#include <stddef.h>               // for size_t
-#include <algorithm>              // for max
-#include <functional>             // for bind, function
-#include <thread>                 // for sleep_for, thread
-#include <tuple>                  // for forward_as_tuple
-#include <utility>                // for pair, piecewise_construct
-#include <memory>                 // for __shared_ptr_access, shared_ptr
-#include <ratio>                  // for ratio
+#include "BasebandFrameView.hpp" // for BasebandFrameView
+#include "BasebandMetadata.hpp"  // for BasebandMetadata
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "kotekanLogging.hpp"    // for DEBUG, INFO, ERROR, FATAL_ERROR, WARN
+#include "visUtil.hpp"           // for current_time, frameID, modulo, movingAverage
 
-#include "BasebandFrameView.hpp"  // for BasebandFrameView
-#include "BasebandMetadata.hpp"   // for BasebandMetadata
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "kotekanLogging.hpp"     // for DEBUG, INFO, ERROR, FATAL_ERROR, WARN
-#include "visUtil.hpp"            // for current_time, frameID, modulo, movingAverage
-#include "fmt.hpp"                // for compile_string_to_view, format, format_string
+#include "fmt.hpp" // for compile_string_to_view, format, format_string
+
+#include <algorithm>     // for max
+#include <bits/chrono.h> // for duration, operator-, operator/, operator>, seconds, ste...
+#include <functional>    // for bind, function
+#include <math.h>        // for round
+#include <memory>        // for __shared_ptr_access, shared_ptr
+#include <ratio>         // for ratio
+#include <stddef.h>      // for size_t
+#include <sys/stat.h>    // for mkdir, S_IRGRP, S_IROTH, S_IRWXU, S_IXGRP, S_IXOTH
+#include <thread>        // for sleep_for, thread
+#include <tuple>         // for forward_as_tuple
+#include <utility>       // for pair, piecewise_construct
 
 using kotekan::bufferContainer;
 using kotekan::Config;

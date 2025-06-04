@@ -1,24 +1,25 @@
 #include "FreqSubset.hpp"
 
-#include <algorithm>            // for find, max
-#include <functional>           // for bind
-#include <future>               // for async, future
-#include <map>                  // for map, operator!=
-#include <utility>              // for pair
-#include <set>                  // for set
+#include "Config.hpp"          // for Config
+#include "HFBFrameView.hpp"    // for HFBFrameView
+#include "Hash.hpp"            // for operator<, Hash
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t
+#include "datasetState.hpp"    // for freqState
+#include "kotekanLogging.hpp"  // for FATAL_ERROR
+#include "visBuffer.hpp"       // for VisFrameView
+#include "visUtil.hpp"         // for freq_ctype, frameID, modulo
 
-#include "Config.hpp"           // for Config
-#include "HFBFrameView.hpp"     // for HFBFrameView
-#include "Hash.hpp"             // for operator<, Hash
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for datasetManager, dset_id_t
-#include "datasetState.hpp"     // for freqState
-#include "kotekanLogging.hpp"   // for FATAL_ERROR
-#include "visBuffer.hpp"        // for VisFrameView
-#include "visUtil.hpp"          // for freq_ctype, frameID, modulo
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for find, max
+#include <functional> // for bind
+#include <future>     // for async, future
+#include <map>        // for map, operator!=
+#include <set>        // for set
+#include <utility>    // for pair
 
 using kotekan::bufferContainer;
 using kotekan::Config;

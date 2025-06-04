@@ -1,14 +1,14 @@
 #include "visUtil.hpp"
 
-#include <cstring>     // for memset
-#include <exception>   // for exception
-#include <iterator>    // for back_insert_iterator, back_inserter
-#include <limits>      // for numeric_limits
-#include <regex>       // for sregex_token_iterator, regex
-#include <stdexcept>   // for runtime_error, invalid_argument
-#include <cmath>       // for pow
+#include "Config.hpp" // for Config
 
-#include "Config.hpp"  // for Config
+#include <cmath>     // for pow
+#include <cstring>   // for memset
+#include <exception> // for exception
+#include <iterator>  // for back_insert_iterator, back_inserter
+#include <limits>    // for numeric_limits
+#include <regex>     // for sregex_token_iterator, regex
+#include <stdexcept> // for runtime_error, invalid_argument
 
 using nlohmann::json;
 

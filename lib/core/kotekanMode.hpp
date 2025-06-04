@@ -1,21 +1,21 @@
 #ifndef KOTEKAN_MODE_HPP
 #define KOTEKAN_MODE_HPP
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "metadata.hpp"         // for metadataPool
-#include "restServer.hpp"       // for connectionInstance
-#include "buffer.hpp"           // for GenericBuffer
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for GenericBuffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "metadata.hpp"        // for metadataPool
+#include "restServer.hpp"      // for connectionInstance
 #if !defined(MAC_OSX)
-#include "cpuMonitor.hpp"       // for CpuMonitor
+#include "cpuMonitor.hpp" // for CpuMonitor
 #endif
 
-#include <map>                  // for map
-#include <memory>               // for shared_ptr
-#include <string>               // for string
+#include "json.hpp" // for json
 
-#include "json.hpp"             // for json
+#include <map>    // for map
+#include <memory> // for shared_ptr
+#include <string> // for string
 
 // doxygen wants the namespace to be documented somewhere
 /*!

@@ -1,26 +1,27 @@
 #include "visTransform.hpp"
 
-#include <algorithm>            // for fill, max, copy, transform
-#include <functional>           // for bind, function
-#include <iterator>             // for back_insert_iterator, begin, end, back_inserter
-#include <numeric>              // for iota
-#include <tuple>                // for get, tie, tuple
-#include <memory>               // for shared_ptr
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.hpp"   // for chimeMetadata
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t, state_id_t
+#include "datasetState.hpp"    // for freqState, inputState, metadataState, prodState
+#include "kotekanLogging.hpp"  // for INFO
+#include "version.h"           // for get_git_commit_hash
+#include "visBuffer.hpp"       // for VisFrameView
+#include "visUtil.hpp"         // for input_ctype, prod_ctype, freq_ctype, copy_vis_triangle
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"        // for Telescope
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.hpp"    // for chimeMetadata
-#include "datasetManager.hpp"   // for datasetManager, dset_id_t, state_id_t
-#include "datasetState.hpp"     // for freqState, inputState, metadataState, prodState
-#include "kotekanLogging.hpp"   // for INFO
-#include "version.h"            // for get_git_commit_hash
-#include "visBuffer.hpp"        // for VisFrameView
-#include "visUtil.hpp"          // for input_ctype, prod_ctype, freq_ctype, copy_vis_triangle
-#include "gsl-lite.hpp"         // for span
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for fill, max, copy, transform
+#include <functional> // for bind, function
+#include <iterator>   // for back_insert_iterator, begin, end, back_inserter
+#include <memory>     // for shared_ptr
+#include <numeric>    // for iota
+#include <tuple>      // for get, tie, tuple
 
 
 using kotekan::bufferContainer;

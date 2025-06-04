@@ -1,14 +1,15 @@
 #ifndef BUFFER_FACTORY_HPP
 #define BUFFER_FACTORY_HPP
 
-#include <map>           // for map
-#include <string>        // for string
-#include <memory>        // for shared_ptr
+#include "Config.hpp"   // for Config
+#include "buffer.hpp"   // for GenericBuffer
+#include "metadata.hpp" // for metadataPool
 
-#include "Config.hpp"    // for Config
-#include "buffer.hpp"    // for GenericBuffer
-#include "metadata.hpp"  // for metadataPool
-#include "json.hpp"      // for json
+#include "json.hpp" // for json
+
+#include <map>    // for map
+#include <memory> // for shared_ptr
+#include <string> // for string
 
 namespace kotekan {
 

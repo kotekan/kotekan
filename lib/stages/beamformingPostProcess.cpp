@@ -1,22 +1,23 @@
 #include "beamformingPostProcess.hpp"
 
-#include <assert.h>              // for assert
-#include <math.h>                // for round
-#include <stdlib.h>              // for free, malloc
-#include <string.h>              // for memcpy
-#include <sys/time.h>            // for timeval
-#include <functional>            // for bind, function
-#include <string>                // for allocator, basic_string, string
+#include "BranchPrediction.hpp" // for unlikely, likely
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"        // for stream_t
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chimeMetadata.hpp"    // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
+#include "vdif_functions.h"     // for VDIFHeader
 
-#include "BranchPrediction.hpp"  // for unlikely, likely
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"         // for stream_t
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chimeMetadata.hpp"     // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
-#include "vdif_functions.h"      // for VDIFHeader
-#include "fmt.hpp"               // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <assert.h>   // for assert
+#include <functional> // for bind, function
+#include <math.h>     // for round
+#include <stdlib.h>   // for free, malloc
+#include <string.h>   // for memcpy
+#include <string>     // for allocator, basic_string, string
+#include <sys/time.h> // for timeval
 
 using kotekan::bufferContainer;
 using kotekan::Config;

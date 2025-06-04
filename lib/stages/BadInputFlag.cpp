@@ -1,28 +1,29 @@
 #include "BadInputFlag.hpp"
 
-#include <assert.h>               // for assert
-#include <stddef.h>               // for size_t
-#include <algorithm>              // for copy, equal, max
-#include <cmath>                  // for isinf, isnan
-#include <functional>             // for bind, function
-#include <future>                 // for future
-#include <optional>               // for optional
-#include <utility>                // for pair
-#include <vector>                 // for vector
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator!=, operator==, operator<
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "dataset.hpp"           // for dataset
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t, fingerprint_t
+#include "kotekanLogging.hpp"    // for FATAL_ERROR
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
+#include "visBuffer.hpp"         // for VisFrameView
+#include "visUtil.hpp"           // for frameID, modulo
 
-#include "Config.hpp"             // for Config
-#include "Hash.hpp"               // for Hash, operator!=, operator==, operator<
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "datasetManager.hpp"     // for datasetManager, dset_id_t, fingerprint_t
-#include "kotekanLogging.hpp"     // for FATAL_ERROR
-#include "prometheusMetrics.hpp"  // for Counter, MetricFamily, Metrics
-#include "visBuffer.hpp"          // for VisFrameView
-#include "visUtil.hpp"            // for frameID, modulo
-#include "gsl-lite.hpp"           // for span
-#include "dataset.hpp"            // for dataset
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for copy, equal, max
+#include <assert.h>   // for assert
+#include <cmath>      // for isinf, isnan
+#include <functional> // for bind, function
+#include <future>     // for future
+#include <optional>   // for optional
+#include <stddef.h>   // for size_t
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

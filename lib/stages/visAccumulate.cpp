@@ -1,40 +1,41 @@
 #include "visAccumulate.hpp"
 
-#include <assert.h>               // for assert
-#include <sys/time.h>             // for TIMEVAL_TO_TIMESPEC
-#include <time.h>                 // for size_t, timespec
-#include <algorithm>              // for max, fill, copy, equal, transform
-#include <cmath>                  // for pow
-#include <complex>                // for conj, operator*, complex
-#include <cstring>                // for memcpy
-#include <exception>              // for exception
-#include <iterator>               // for back_insert_iterator, begin, end, back_inserter
-#include <mutex>                  // for mutex, lock_guard
-#include <numeric>                // for iota
-#include <optional>               // for optional, nullopt
-#include <stdexcept>              // for invalid_argument, runtime_error
-#include <tuple>                  // for get
-#include <vector>                 // for vector
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator!=, Hash
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"         // for Telescope
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chimeMetadata.hpp"     // for chimeMetadata, get_dataset_id, get_fpga_seq_num, get_lo...
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
+#include "datasetState.hpp"      // for eigenvalueState, freqState, gatingState, inputState
+#include "factory.hpp"           // for FACTORY
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, DEBUG, logLevel, WARN
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
+#include "version.h"             // for get_git_commit_hash
+#include "visBuffer.hpp"         // for VisFrameView
+#include "visUtil.hpp"           // for prod_ctype, frameID, input_ctype, modulo, freq_ctype
 
-#include "Config.hpp"             // for Config
-#include "Hash.hpp"               // for operator!=, Hash
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"          // for Telescope
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "chimeMetadata.hpp"      // for chimeMetadata, get_dataset_id, get_fpga_seq_num, get_lo...
-#include "configUpdater.hpp"      // for configUpdater
-#include "datasetManager.hpp"     // for datasetManager, dset_id_t, state_id_t
-#include "datasetState.hpp"       // for eigenvalueState, freqState, gatingState, inputState
-#include "factory.hpp"            // for FACTORY
-#include "kotekanLogging.hpp"     // for FATAL_ERROR, INFO, DEBUG, logLevel, WARN
-#include "prometheusMetrics.hpp"  // for Counter, MetricFamily, Metrics
-#include "version.h"              // for get_git_commit_hash
-#include "visBuffer.hpp"          // for VisFrameView
-#include "visUtil.hpp"            // for prod_ctype, frameID, input_ctype, modulo, freq_ctype
-#include "fmt.hpp"                // for compile_string_to_view, format, fmt, format_string
-#include "gsl-lite.hpp"           // for span
-#include "json.hpp"               // for basic_json, iter_impl, iteration_proxy_value, json
+#include "fmt.hpp"      // for compile_string_to_view, format, fmt, format_string
+#include "gsl-lite.hpp" // for span
+#include "json.hpp"     // for basic_json, iter_impl, iteration_proxy_value, json
+
+#include <algorithm>  // for max, fill, copy, equal, transform
+#include <assert.h>   // for assert
+#include <cmath>      // for pow
+#include <complex>    // for conj, operator*, complex
+#include <cstring>    // for memcpy
+#include <exception>  // for exception
+#include <iterator>   // for back_insert_iterator, begin, end, back_inserter
+#include <mutex>      // for mutex, lock_guard
+#include <numeric>    // for iota
+#include <optional>   // for optional, nullopt
+#include <stdexcept>  // for invalid_argument, runtime_error
+#include <sys/time.h> // for TIMEVAL_TO_TIMESPEC
+#include <time.h>     // for size_t, timespec
+#include <tuple>      // for get
+#include <vector>     // for vector
 
 
 using namespace std::placeholders;

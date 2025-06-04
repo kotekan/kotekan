@@ -1,17 +1,17 @@
 #include "integratePowerStream.hpp"
 
-#include <stdint.h>             // for uint8_t
-#include <stdlib.h>             // for malloc, calloc
-#include <string.h>             // for memcpy, memset
-#include <sys/types.h>          // for uint
-#include <functional>           // for bind, function
-#include <string>               // for allocator, basic_string, string
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "powerStreamUtil.hpp" // for IntensityPacketHeader
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "powerStreamUtil.hpp"  // for IntensityPacketHeader
+#include <functional>  // for bind, function
+#include <stdint.h>    // for uint8_t
+#include <stdlib.h>    // for malloc, calloc
+#include <string.h>    // for memcpy, memset
+#include <string>      // for allocator, basic_string, string
+#include <sys/types.h> // for uint
 
 
 using kotekan::bufferContainer;

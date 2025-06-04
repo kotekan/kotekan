@@ -1,23 +1,24 @@
 #include "freqSplit.hpp"
 
-#include <stddef.h>             // for size_t
-#include <stdint.h>             // for uint32_t
-#include <algorithm>            // for max
-#include <functional>           // for bind, function
-#include <memory>               // for make_unique
-#include <tuple>                // for tie, tuple
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator!=, Hash
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t, state_id_t
+#include "datasetState.hpp"    // for freqState, state_uptr
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
+#include "visBuffer.hpp"       // for VisFrameView
+#include "visUtil.hpp"         // for freq_ctype
 
-#include "Config.hpp"           // for Config
-#include "Hash.hpp"             // for operator!=, Hash
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for datasetManager, dset_id_t, state_id_t
-#include "datasetState.hpp"     // for freqState, state_uptr
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO
-#include "visBuffer.hpp"        // for VisFrameView
-#include "visUtil.hpp"          // for freq_ctype
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for max
+#include <functional> // for bind, function
+#include <memory>     // for make_unique
+#include <stddef.h>   // for size_t
+#include <stdint.h>   // for uint32_t
+#include <tuple>      // for tie, tuple
 
 
 using kotekan::bufferContainer;

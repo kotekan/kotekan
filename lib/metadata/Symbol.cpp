@@ -1,5 +1,5 @@
 #include <Symbol.hpp>
-#include <stdexcept>  // for invalid_argument
+#include <stdexcept> // for invalid_argument
 
 namespace kotekan {
 

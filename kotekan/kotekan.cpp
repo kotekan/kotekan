@@ -1,42 +1,43 @@
-#include <assert.h>                // for assert
-#include <getopt.h>                // for no_argument, required_argument, getopt_long, option
-#include <stdio.h>                 // for printf, fprintf, fclose, stderr, fdopen, feof, fgets
-#include <stdlib.h>                // for exit, free, WEXITSTATUS, WIFEXITED
-#include <string.h>                // for strdup
-#include <strings.h>               // for strcasecmp
-#include <sys/wait.h>              // for waitpid
-#include <syslog.h>                // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
-#include <unistd.h>                // for close, optarg, dup2, execvp, fork, pipe, sleep, STDOUT...
-#include <algorithm>               // for max
-#include <array>                   // for array
-#include <csignal>                 // for signal, size_t, SIGINT, SIGTERM, sig_atomic_t
-#include <exception>               // for exception
-#include <iostream>                // for basic_ostream, operator<<, endl, cerr, cout
-#include <iterator>                // for reverse_iterator
-#include <locale>                  // for locale
-#include <map>                     // for map, operator!=, _Rb_tree_iterator
-#include <mutex>                   // for mutex, lock_guard
-#include <stdexcept>               // for runtime_error, out_of_range
-#include <string>                  // for basic_string, allocator, string, operator!=, char_traits
-#include <type_traits>             // for underlying_type
-#include <utility>                 // for pair
-#include <vector>                  // for vector
-#include <functional>              // for function
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for StageFactoryRegistry, StageMaker
+#include "basebandApiManager.hpp" // for basebandApiManager
+#include "errors.h"               // for get_error_message, __enable_syslog, get_exit_code, Ret...
+#include "kotekanLogging.hpp"     // for logLevel, INFO_NON_OO, ERROR_NON_OO, FATAL_ERROR_NON_OO
+#include "kotekanMode.hpp"        // for kotekanMode
+#include "kotekanTrackers.hpp"    // for KotekanTrackers
+#include "prometheusMetrics.hpp"  // for Metrics, Gauge
+#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
+#include "util.h"                 // for EVER
+#include "version.h"              // for get_kotekan_version, get_cmake_build_options, get_git_...
+#include "visUtil.hpp"            // for regex_split
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for StageFactoryRegistry, StageMaker
-#include "basebandApiManager.hpp"  // for basebandApiManager
-#include "errors.h"                // for get_error_message, __enable_syslog, get_exit_code, Ret...
-#include "kotekanLogging.hpp"      // for logLevel, INFO_NON_OO, ERROR_NON_OO, FATAL_ERROR_NON_OO
-#include "kotekanMode.hpp"         // for kotekanMode
-#include "kotekanTrackers.hpp"     // for KotekanTrackers
-#include "prometheusMetrics.hpp"   // for Metrics, Gauge
-#include "restServer.hpp"          // for HTTP_RESPONSE, connectionInstance, restServer
-#include "util.h"                  // for EVER
-#include "version.h"               // for get_kotekan_version, get_cmake_build_options, get_git_...
-#include "visUtil.hpp"             // for regex_split
-#include "fmt.hpp"                 // for compile_string_to_view, format, fmt
-#include "json.hpp"                // for basic_json, input_adapter, json
+#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "json.hpp" // for basic_json, input_adapter, json
+
+#include <algorithm>   // for max
+#include <array>       // for array
+#include <assert.h>    // for assert
+#include <csignal>     // for signal, size_t, SIGINT, SIGTERM, sig_atomic_t
+#include <exception>   // for exception
+#include <functional>  // for function
+#include <getopt.h>    // for no_argument, required_argument, getopt_long, option
+#include <iostream>    // for basic_ostream, operator<<, endl, cerr, cout
+#include <iterator>    // for reverse_iterator
+#include <locale>      // for locale
+#include <map>         // for map, operator!=, _Rb_tree_iterator
+#include <mutex>       // for mutex, lock_guard
+#include <stdexcept>   // for runtime_error, out_of_range
+#include <stdio.h>     // for printf, fprintf, fclose, stderr, fdopen, feof, fgets
+#include <stdlib.h>    // for exit, free, WEXITSTATUS, WIFEXITED
+#include <string.h>    // for strdup
+#include <string>      // for basic_string, allocator, string, operator!=, char_traits
+#include <strings.h>   // for strcasecmp
+#include <sys/wait.h>  // for waitpid
+#include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
+#include <type_traits> // for underlying_type
+#include <unistd.h>    // for close, optarg, dup2, execvp, fork, pipe, sleep, STDOUT...
+#include <utility>     // for pair
+#include <vector>      // for vector
 
 
 using std::string;

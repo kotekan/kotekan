@@ -1,31 +1,32 @@
 #include "visCompression.hpp"
 
-#include <pthread.h>              // for pthread_setaffinity_np
-#include <sched.h>                // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <algorithm>              // for copy, max, fill, equal
-#include <complex>                // for complex, conj, norm
-#include <functional>             // for function, bind, placeholders
-#include <future>                 // for async, future
-#include <iterator>               // for begin, end
-#include <stdexcept>              // for invalid_argument
-#include <tuple>                  // for tuple, tie
-#include <vector>                 // for vector
-#include <set>                    // for set
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator<
+#include "Stack.hpp"             // for stack_chime_in_cyl, stack_diagonal
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t
+#include "datasetState.hpp"      // for stackState, prodState, inputState
+#include "kotekanLogging.hpp"    // for INFO, DEBUG, ERROR, FATAL_ERROR
+#include "prometheusMetrics.hpp" // for Gauge, Counter, Metrics, MetricFamily
+#include "visBuffer.hpp"         // for VisFrameView, VisField
+#include "visUtil.hpp"           // for modulo, current_time, rstack_ctype, frameID, prod_ctype
 
-#include "Config.hpp"             // for Config
-#include "Hash.hpp"               // for operator<
-#include "Stack.hpp"              // for stack_chime_in_cyl, stack_diagonal
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "datasetManager.hpp"     // for datasetManager, dset_id_t
-#include "datasetState.hpp"       // for stackState, prodState, inputState
-#include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR, FATAL_ERROR
-#include "prometheusMetrics.hpp"  // for Gauge, Counter, Metrics, MetricFamily
-#include "visBuffer.hpp"          // for VisFrameView, VisField
-#include "visUtil.hpp"            // for modulo, current_time, rstack_ctype, frameID, prod_ctype
-#include "gsl-lite.hpp"           // for span
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for copy, max, fill, equal
+#include <complex>    // for complex, conj, norm
+#include <functional> // for function, bind, placeholders
+#include <future>     // for async, future
+#include <iterator>   // for begin, end
+#include <pthread.h>  // for pthread_setaffinity_np
+#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <set>        // for set
+#include <stdexcept>  // for invalid_argument
+#include <tuple>      // for tuple, tie
+#include <vector>     // for vector
 
 
 using namespace std::placeholders;

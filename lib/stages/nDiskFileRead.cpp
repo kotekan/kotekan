@@ -1,18 +1,19 @@
 #include "nDiskFileRead.hpp"
 
-#include <assert.h>             // for assert
-#include <pthread.h>            // for pthread_setaffinity_np
-#include <sched.h>              // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdio.h>              // for fclose, fopen, fread, fseek, ftell, rewind, size_t, snprintf
-#include <algorithm>            // for max
-#include <functional>           // for bind, function
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO, ERROR
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for INFO, ERROR
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for max
+#include <assert.h>   // for assert
+#include <functional> // for bind, function
+#include <pthread.h>  // for pthread_setaffinity_np
+#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>    // for fclose, fopen, fread, fseek, ftell, rewind, size_t, snprintf
 
 
 using std::string;

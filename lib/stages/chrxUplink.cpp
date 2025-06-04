@@ -1,19 +1,20 @@
 #include "chrxUplink.hpp"
 
-#include <arpa/inet.h>          // for inet_addr, htons
-#include <errno.h>              // for errno
-#include <netinet/in.h>         // for sockaddr_in, in_addr
-#include <strings.h>            // for bzero
-#include <sys/socket.h>         // for send, AF_INET, connect, socket, SOCK_STREAM
-#include <unistd.h>             // for gethostname, size_t, ssize_t
-#include <functional>           // for bind, function
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for ERROR, INFO
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for ERROR, INFO
-#include "fmt.hpp"              // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <arpa/inet.h>  // for inet_addr, htons
+#include <errno.h>      // for errno
+#include <functional>   // for bind, function
+#include <netinet/in.h> // for sockaddr_in, in_addr
+#include <strings.h>    // for bzero
+#include <sys/socket.h> // for send, AF_INET, connect, socket, SOCK_STREAM
+#include <unistd.h>     // for gethostname, size_t, ssize_t
 
 
 using kotekan::bufferContainer;

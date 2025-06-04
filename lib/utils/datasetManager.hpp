@@ -1,36 +1,37 @@
 #ifndef DATASET_MANAGER_HPP
 #define DATASET_MANAGER_HPP
 
-#include <stdint.h>               // for uint32_t, int32_t, uint64_t
-#include <bits/chrono.h>          // for milliseconds
-#include <atomic>                 // for atomic, __atomic_base
-#include <condition_variable>     // for condition_variable
-#include <exception>              // for exception
-#include <functional>             // for function
-#include <map>                    // for map, _Rb_tree_iterator, operator!=
-#include <memory>                 // for allocator, unique_ptr, operator==, default_delete, make...
-#include <mutex>                  // for mutex, unique_lock, lock_guard
-#include <optional>               // for optional
-#include <set>                    // for set
-#include <stdexcept>              // for runtime_error, out_of_range
-#include <string>                 // for basic_string, string
-#include <thread>                 // for sleep_for
-#include <type_traits>            // for is_base_of, enable_if, enable_if_t
-#include <typeinfo>               // for type_info
-#include <utility>                // for pair, move, forward
-#include <vector>                 // for vector
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator<
+#include "dataset.hpp"           // for dataset
+#include "datasetState.hpp"      // for datasetState, _factory_aliasdatasetState, state_uptr
+#include "factory.hpp"           // for FACTORY
+#include "kotekanLogging.hpp"    // for WARN_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO, FATAL_ERROR_N...
+#include "prometheusMetrics.hpp" // for Gauge
+#include "restClient.hpp"        // for restClient
+#include "restServer.hpp"        // for connectionInstance
 
-#include "Config.hpp"             // for Config
-#include "Hash.hpp"               // for Hash, operator<
-#include "dataset.hpp"            // for dataset
-#include "datasetState.hpp"       // for datasetState, _factory_aliasdatasetState, state_uptr
-#include "factory.hpp"            // for FACTORY
-#include "kotekanLogging.hpp"     // for WARN_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO, FATAL_ERROR_N...
-#include "prometheusMetrics.hpp"  // for Gauge
-#include "restClient.hpp"         // for restClient
-#include "restServer.hpp"         // for connectionInstance
-#include "fmt.hpp"                // for compile_string_to_view, fmt
-#include "json.hpp"               // for json, operator!=, basic_json, input_adapter
+#include "fmt.hpp"  // for compile_string_to_view, fmt
+#include "json.hpp" // for json, operator!=, basic_json, input_adapter
+
+#include <atomic>             // for atomic, __atomic_base
+#include <bits/chrono.h>      // for milliseconds
+#include <condition_variable> // for condition_variable
+#include <exception>          // for exception
+#include <functional>         // for function
+#include <map>                // for map, _Rb_tree_iterator, operator!=
+#include <memory>             // for allocator, unique_ptr, operator==, default_delete, make...
+#include <mutex>              // for mutex, unique_lock, lock_guard
+#include <optional>           // for optional
+#include <set>                // for set
+#include <stdexcept>          // for runtime_error, out_of_range
+#include <stdint.h>           // for uint32_t, int32_t, uint64_t
+#include <string>             // for basic_string, string
+#include <thread>             // for sleep_for
+#include <type_traits>        // for is_base_of, enable_if, enable_if_t
+#include <typeinfo>           // for type_info
+#include <utility>            // for pair, move, forward
+#include <vector>             // for vector
 
 /// Alias certain types to give semantic meaning to the IDs
 /// These use a 128 bit hash type so there shouldn't be any collisions.

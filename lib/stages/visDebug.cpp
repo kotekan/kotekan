@@ -1,18 +1,19 @@
 #include "visDebug.hpp"
 
-#include <cstdint>                // for uint64_t
-#include <functional>             // for bind, function
-#include <vector>                 // for vector
-#include <algorithm>              // for copy, equal, max
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for DEBUG, INFO
+#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily
+#include "visBuffer.hpp"         // for VisFrameView
 
-#include "Config.hpp"             // for Config
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "kotekanLogging.hpp"     // for DEBUG, INFO
-#include "prometheusMetrics.hpp"  // for Counter, Metrics, MetricFamily
-#include "visBuffer.hpp"          // for VisFrameView
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for copy, equal, max
+#include <cstdint>    // for uint64_t
+#include <functional> // for bind, function
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

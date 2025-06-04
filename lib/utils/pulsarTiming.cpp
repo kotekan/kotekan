@@ -1,12 +1,13 @@
 #include "pulsarTiming.hpp"
 
-#include <sys/types.h>  // for uint
-#include <cmath>        // for pow, floor
-#include <stdexcept>    // for runtime_error
-#include <algorithm>    // for max
+#include "visUtil.hpp" // for add_nsec
 
-#include "visUtil.hpp"  // for add_nsec
-#include "fmt.hpp"      // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <algorithm>   // for max
+#include <cmath>       // for pow, floor
+#include <stdexcept>   // for runtime_error
+#include <sys/types.h> // for uint
 
 Polyco::Polyco(double t, float d, double p, double f0, std::vector<float> c) :
     tmid(t), dm(d), phase_ref(p), rot_freq(f0), coeff(c) {}

@@ -1,11 +1,11 @@
 #include <Metadata.hpp>
-#include <cctype>     // for isalnum, isalpha
-#include <iomanip>    // for operator<<, setfill, setprecision, setw
-#include <limits>     // for numeric_limits
-#include <sstream>    // for basic_ostringstream
-#include <algorithm>  // for copy, max
-#include <cassert>    // for assert
-#include <utility>    // for move, pair
+#include <algorithm> // for copy, max
+#include <cassert>   // for assert
+#include <cctype>    // for isalnum, isalpha
+#include <iomanip>   // for operator<<, setfill, setprecision, setw
+#include <limits>    // for numeric_limits
+#include <sstream>   // for basic_ostringstream
+#include <utility>   // for move, pair
 
 namespace kotekan {
 

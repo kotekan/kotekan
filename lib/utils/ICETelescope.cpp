@@ -1,13 +1,14 @@
 #include "ICETelescope.hpp"
 
-#include <stdexcept>           // for invalid_argument, runtime_error
-#include <cmath>               // for abs
+#include "Telescope.hpp"      // for Telescope, stream_t, freq_id_t, REGISTER_TELESCOPE, _facto...
+#include "kotekanLogging.hpp" // for WARN, INFO, FATAL_ERROR
+#include "restClient.hpp"     // for restClient
 
-#include "Telescope.hpp"       // for Telescope, stream_t, freq_id_t, REGISTER_TELESCOPE, _facto...
-#include "kotekanLogging.hpp"  // for WARN, INFO, FATAL_ERROR
-#include "restClient.hpp"      // for restClient
-#include "fmt.hpp"             // for compile_string_to_view, format, format_string
-#include "json.hpp"            // for basic_json, input_adapter, json
+#include "fmt.hpp"  // for compile_string_to_view, format, format_string
+#include "json.hpp" // for basic_json, input_adapter, json
+
+#include <cmath>     // for abs
+#include <stdexcept> // for invalid_argument, runtime_error
 
 
 REGISTER_TELESCOPE(ICETelescope, "ICETelescope");

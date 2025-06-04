@@ -1,20 +1,21 @@
 #include "cpuMonitor.hpp"
 
-#include <math.h>               // for floor
-#include <pthread.h>            // for pthread_setaffinity_np
-#include <sched.h>              // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdio.h>              // for fclose, fopen, fscanf, FILE, snprintf
-#include <unistd.h>             // for sysconf, _SC_NPROCESSORS_ONLN
-#include <bits/chrono.h>        // for operator""ms
-#include <exception>            // for exception
-#include <functional>           // for bind, _1, function
-#include <utility>              // for pair
-#include <vector>               // for vector
+#include "kotekanLogging.hpp"  // for WARN_NON_OO
+#include "kotekanTrackers.hpp" // for KotekanTrackers
 
-#include "kotekanLogging.hpp"   // for WARN_NON_OO
-#include "kotekanTrackers.hpp"  // for KotekanTrackers
-#include "json.hpp"             // for basic_json, json
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"  // for compile_string_to_view
+#include "json.hpp" // for basic_json, json
+
+#include <bits/chrono.h> // for operator""ms
+#include <exception>     // for exception
+#include <functional>    // for bind, _1, function
+#include <math.h>        // for floor
+#include <pthread.h>     // for pthread_setaffinity_np
+#include <sched.h>       // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>       // for fclose, fopen, fscanf, FILE, snprintf
+#include <unistd.h>      // for sysconf, _SC_NPROCESSORS_ONLN
+#include <utility>       // for pair
+#include <vector>        // for vector
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;

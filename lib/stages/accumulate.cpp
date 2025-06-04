@@ -1,15 +1,15 @@
 #include "accumulate.hpp"
 
-#include <sys/time.h>           // for timeval
-#include <time.h>               // for timespec
-#include <functional>           // for bind, function
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for stream_t
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.hpp"   // for atomic_add_lost_timesamples, get_lost_timesamples, get_fi...
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"        // for stream_t
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.hpp"    // for atomic_add_lost_timesamples, get_lost_timesamples, get_fi...
+#include <functional> // for bind, function
+#include <sys/time.h> // for timeval
+#include <time.h>     // for timespec
 
 
 using kotekan::bufferContainer;

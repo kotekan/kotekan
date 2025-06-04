@@ -1,26 +1,27 @@
 #include "pulsarNetworkProcess.hpp"
 
-#include <arpa/inet.h>           // for inet_pton, htons
-#include <netinet/in.h>          // for sockaddr_in, IPPROTO_UDP
-#include <stdint.h>              // for int64_t, uint32_t, uint8_t
-#include <stdlib.h>              // for free, malloc
-#include <sys/socket.h>          // for AF_INET, bind, sendto, setsockopt, socket, SOCK_DGRAM
-#include <time.h>                // for timespec, clock_gettime, CLOCK_MONOTONIC, CLOCK_REALTIME
-#include <cstdio>                // for snprintf
-#include <cstring>               // for memset
-#include <functional>            // for bind, function
-#include <string>                // for allocator, basic_string, string
-#include <vector>                // for vector
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"        // for Telescope
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO, CHECK_MEM
+#include "pulsar_functions.hpp" // for PSRHeader
+#include "tx_utils.hpp"         // for add_nsec, CLOCK_ABS_NANOSLEEP, get_vlan_from_ip, parse_c...
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, CHECK_MEM
-#include "pulsar_functions.hpp"  // for PSRHeader
-#include "tx_utils.hpp"          // for add_nsec, CLOCK_ABS_NANOSLEEP, get_vlan_from_ip, parse_c...
-#include "fmt.hpp"               // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <arpa/inet.h>  // for inet_pton, htons
+#include <cstdio>       // for snprintf
+#include <cstring>      // for memset
+#include <functional>   // for bind, function
+#include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP
+#include <stdint.h>     // for int64_t, uint32_t, uint8_t
+#include <stdlib.h>     // for free, malloc
+#include <string>       // for allocator, basic_string, string
+#include <sys/socket.h> // for AF_INET, bind, sendto, setsockopt, socket, SOCK_DGRAM
+#include <time.h>       // for timespec, clock_gettime, CLOCK_MONOTONIC, CLOCK_REALTIME
+#include <vector>       // for vector
 
 
 using kotekan::bufferContainer;

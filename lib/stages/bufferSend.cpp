@@ -1,26 +1,27 @@
 #include "bufferSend.hpp"
 
-#include <arpa/inet.h>            // for inet_addr, htons
-#include <strings.h>              // for bzero
-#include <sys/socket.h>           // for send, MSG_NOSIGNAL, AF_INET, connect, setsockopt, socket
-#include <sys/time.h>             // for timeval
-#include <unistd.h>               // for close, sleep
-#include <bits/chrono.h>          // for seconds
-#include <cerrno>                 // for errno
-#include <cstring>                // for strerror, size_t
-#include <functional>             // for bind, ref, function
-#include <stdexcept>              // for runtime_error
-#include <thread>                 // for thread
-#include <memory>                 // for __shared_ptr_access, shared_ptr
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
+#include "metadata.hpp"          // for metadataObject
+#include "prometheusMetrics.hpp" // for Counter, Metrics
 
-#include "Config.hpp"             // for Config
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "kotekanLogging.hpp"     // for DEBUG2, ERROR, INFO, DEBUG, WARN
-#include "metadata.hpp"           // for metadataObject
-#include "prometheusMetrics.hpp"  // for Counter, Metrics
-#include "fmt.hpp"                // for compile_string_to_view, format, format_string, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
+
+#include <arpa/inet.h>   // for inet_addr, htons
+#include <bits/chrono.h> // for seconds
+#include <cerrno>        // for errno
+#include <cstring>       // for strerror, size_t
+#include <functional>    // for bind, ref, function
+#include <memory>        // for __shared_ptr_access, shared_ptr
+#include <stdexcept>     // for runtime_error
+#include <strings.h>     // for bzero
+#include <sys/socket.h>  // for send, MSG_NOSIGNAL, AF_INET, connect, setsockopt, socket
+#include <sys/time.h>    // for timeval
+#include <thread>        // for thread
+#include <unistd.h>      // for close, sleep
 
 // Some systems don't support MSG_NOSIGNAL and don't include it in socket.h
 #ifndef MSG_NOSIGNAL

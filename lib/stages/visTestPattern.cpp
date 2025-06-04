@@ -1,36 +1,37 @@
 #include "visTestPattern.hpp"
 
-#include <dirent.h>               // for opendir
-#include <errno.h>                // for errno
-#include <sys/stat.h>             // for mkdir, S_IRGRP, S_IROTH, S_IRWXU
-#include <time.h>                 // for timespec
-#include <algorithm>              // for copy, max, equal
-#include <cmath>                  // for log10, sqrt
-#include <complex>                // for complex, conj, operator*, operator-
-#include <cstring>                // for memcpy, strerror
-#include <exception>              // for exception
-#include <functional>             // for bind, function, _1, _2
-#include <future>                 // for async, future
-#include <iomanip>                // for operator<<, setprecision
-#include <mutex>                  // for mutex, lock_guard, unique_lock
-#include <stdexcept>              // for invalid_argument, runtime_error
-#include <tuple>                  // for get
-#include <locale>                 // for locale
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator!=, Hash
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t
+#include "datasetState.hpp"      // for freqState, inputState, prodState
+#include "kotekanLogging.hpp"    // for INFO, DEBUG, DEBUG2, FATAL_ERROR, WARN
+#include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
+#include "restClient.hpp"        // for restClient
+#include "restServer.hpp"        // for HTTP_RESPONSE, connectionInstance, restServer
+#include "visBuffer.hpp"         // for VisFrameView
 
-#include "Config.hpp"             // for Config
-#include "Hash.hpp"               // for operator!=, Hash
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "datasetManager.hpp"     // for datasetManager, dset_id_t
-#include "datasetState.hpp"       // for freqState, inputState, prodState
-#include "kotekanLogging.hpp"     // for INFO, DEBUG, DEBUG2, FATAL_ERROR, WARN
-#include "prometheusMetrics.hpp"  // for Gauge, Metrics, MetricFamily
-#include "restClient.hpp"         // for restClient
-#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
-#include "visBuffer.hpp"          // for VisFrameView
-#include "fmt.hpp"                // for compile_string_to_view, format, fmt, format_string
-#include "gsl-lite.hpp"           // for span
+#include "fmt.hpp"      // for compile_string_to_view, format, fmt, format_string
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for copy, max, equal
+#include <cmath>      // for log10, sqrt
+#include <complex>    // for complex, conj, operator*, operator-
+#include <cstring>    // for memcpy, strerror
+#include <dirent.h>   // for opendir
+#include <errno.h>    // for errno
+#include <exception>  // for exception
+#include <functional> // for bind, function, _1, _2
+#include <future>     // for async, future
+#include <iomanip>    // for operator<<, setprecision
+#include <locale>     // for locale
+#include <mutex>      // for mutex, lock_guard, unique_lock
+#include <stdexcept>  // for invalid_argument, runtime_error
+#include <sys/stat.h> // for mkdir, S_IRGRP, S_IROTH, S_IRWXU
+#include <time.h>     // for timespec
+#include <tuple>      // for get
 
 
 using kotekan::bufferContainer;

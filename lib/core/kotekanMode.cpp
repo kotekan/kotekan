@@ -1,24 +1,25 @@
 #include "kotekanMode.hpp"
 
-#include <stdint.h>               // for uint16_t
-#include <functional>             // for bind, function, _1
-#include <utility>                // for pair
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "StageFactory.hpp"      // for StageFactory
+#include "Telescope.hpp"         // for Telescope
+#include "buffer.hpp"            // for StageInfo, GenericBuffer
+#include "bufferFactory.hpp"     // for bufferFactory
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for datasetManager
+#include "kotekanLogging.hpp"    // for INFO_NON_OO
+#include "kotekanTrackers.hpp"   // for KotekanTrackers
+#include "metadataFactory.hpp"   // for metadataFactory
+#include "prometheusMetrics.hpp" // for Metrics
+#include "restServer.hpp"        // for restServer, connectionInstance
 
-#include "Config.hpp"             // for Config
-#include "Stage.hpp"              // for Stage
-#include "StageFactory.hpp"       // for StageFactory
-#include "Telescope.hpp"          // for Telescope
-#include "buffer.hpp"             // for StageInfo, GenericBuffer
-#include "bufferFactory.hpp"      // for bufferFactory
-#include "configUpdater.hpp"      // for configUpdater
-#include "datasetManager.hpp"     // for datasetManager
-#include "kotekanLogging.hpp"     // for INFO_NON_OO
-#include "kotekanTrackers.hpp"    // for KotekanTrackers
-#include "metadataFactory.hpp"    // for metadataFactory
-#include "prometheusMetrics.hpp"  // for Metrics
-#include "restServer.hpp"         // for restServer, connectionInstance
-#include "fmt.hpp"                // for compile_string_to_view, format, format_string
-#include "json.hpp"               // for json, basic_json
+#include "fmt.hpp"  // for compile_string_to_view, format, format_string
+#include "json.hpp" // for json, basic_json
+
+#include <functional> // for bind, function, _1
+#include <stdint.h>   // for uint16_t
+#include <utility>    // for pair
 
 using namespace std::placeholders;
 

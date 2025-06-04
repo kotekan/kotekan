@@ -1,14 +1,14 @@
 #include "datasetManager.hpp"
 
-#include <stdlib.h>        // for exit
-#include <algorithm>       // for max
-#include <functional>      // for bind, function, _1
-#include <mutex>           // for mutex, lock_guard, lock, adopt_lock, unique_lock
+#include "Config.hpp"     // for Config
+#include "Hash.hpp"       // for operator<, hash, Hash, operator==
+#include "restClient.hpp" // for restClient
+#include "restServer.hpp" // for HTTP_RESPONSE, restServer, connectionInstance
 
-#include "Config.hpp"      // for Config
-#include "Hash.hpp"        // for operator<, hash, Hash, operator==
-#include "restClient.hpp"  // for restClient
-#include "restServer.hpp"  // for HTTP_RESPONSE, restServer, connectionInstance
+#include <algorithm>  // for max
+#include <functional> // for bind, function, _1
+#include <mutex>      // for mutex, lock_guard, lock, adopt_lock, unique_lock
+#include <stdlib.h>   // for exit
 
 using nlohmann::json;
 

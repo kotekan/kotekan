@@ -1,27 +1,28 @@
 #include "ReceiveFlags.hpp"
 
-#include <algorithm>              // for copy, fill, max
-#include <exception>              // for exception
-#include <functional>             // for bind, function, _1
-#include <memory>                 // for operator==, shared_ptr, __shared_ptr_access
-#include <stdexcept>              // for invalid_argument
-#include <tuple>                  // for get
-#include <utility>                // for pair, move
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator<, Hash
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
+#include "datasetState.hpp"      // for flagState
+#include "kotekanLogging.hpp"    // for WARN, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
+#include "visBuffer.hpp"         // for VisFrameView
+#include "visUtil.hpp"           // for frameID, ts_to_double, modulo, current_time, double_to_ts
 
-#include "Config.hpp"             // for Config
-#include "Hash.hpp"               // for operator<, Hash
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "configUpdater.hpp"      // for configUpdater
-#include "datasetManager.hpp"     // for datasetManager, dset_id_t, state_id_t
-#include "datasetState.hpp"       // for flagState
-#include "kotekanLogging.hpp"     // for WARN, INFO
-#include "prometheusMetrics.hpp"  // for Metrics, Counter, Gauge
-#include "visBuffer.hpp"          // for VisFrameView
-#include "visUtil.hpp"            // for frameID, ts_to_double, modulo, current_time, double_to_ts
-#include "gsl-lite.hpp"           // for span
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for copy, fill, max
+#include <exception>  // for exception
+#include <functional> // for bind, function, _1
+#include <memory>     // for operator==, shared_ptr, __shared_ptr_access
+#include <stdexcept>  // for invalid_argument
+#include <tuple>      // for get
+#include <utility>    // for pair, move
 
 using namespace std::placeholders;
 
