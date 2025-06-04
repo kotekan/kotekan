@@ -81,21 +81,21 @@ public:
     struct EOP &eop;
 
     /// View of the visibility data.
-    const gsl::span<N2::cfloat> vis;
+    const gsl_lite::span<N2::cfloat> vis;
     /// View of the weight data.
-    const gsl::span<float> weight;
+    const gsl_lite::span<float> weight;
     /// View of the input flags
-    const gsl::span<float> flags;
+    const gsl_lite::span<float> flags;
     /// View of the eigenvalues.
-    const gsl::span<float> eval;
+    const gsl_lite::span<float> eval;
     /// View of the eigenvectors (packed as ev,feed).
-    const gsl::span<N2::cfloat> evec;
+    const gsl_lite::span<N2::cfloat> evec;
     /// Method used to compute Eigenvalues and Eigenvectors
     N2EigenMethod & emethod;
     /// The RMS of residual visibilities
     float& erms;
     /// View of the applied gains
-    const gsl::span<N2::cfloat> gain;
+    const gsl_lite::span<N2::cfloat> gain;
 
     /**
      * @brief The sizes of the fields in the N2FrameView.
