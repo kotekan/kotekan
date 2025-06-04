@@ -99,7 +99,7 @@ if ! [ $ENABLE_IWYU = "OFF" ]; then
     echo "Applying suggested changes..."
     python3 ../tools/iwyu/fix_includes.py --nosafe_headers --comments < iwyu.out
 else
-    echo "fast mode enabled, skipping IWYU (add option -i ON to disable fast mode)"
+    echo "Skipping IWYU (add option -i ON to enable IWYU)"
 fi
 
 # clang-format
