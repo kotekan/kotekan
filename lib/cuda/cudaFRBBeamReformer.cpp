@@ -149,8 +149,8 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
     const int calls_per_stream =
         _cuda_streams.empty() ? 1 : div_noremainder(_num_local_freq, _cuda_streams.size());
 
-    const float16_t alpha = 1;
-    const float16_t beta = 0;
+    const float16_t alpha = 1.;
+    const float16_t beta = 0.;
 
     // Calculate
     //     Iout[T,F,Bout] = Iin[Bin,F0,T] * W[Bin,Bout,F]
@@ -212,8 +212,8 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
     } else {
         // Batched (fast) case
 
-        const float16_t alpha = 1;
-        const float16_t beta = 0;
+        const float16_t alpha = 1.;
+        const float16_t beta = 0.;
 
         assert(_cuda_streams.empty());
         cublasStatus_t stat = cublasHgemmStridedBatched(
