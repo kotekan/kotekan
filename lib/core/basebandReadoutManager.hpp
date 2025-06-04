@@ -80,7 +80,7 @@ struct basebandDumpStatus {
  * @brief A container for baseband data and metadata.
  *
  * @note This class does not own the underlying data buffer, but provides a view
- *       (i.e., a `gsl::span`) to it. Users are responsible for managing the
+ *       (i.e., a `gsl_lite::span`) to it. Users are responsible for managing the
  *       memory storage.
  *
  * @author Kiyoshi Masui

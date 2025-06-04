@@ -38,7 +38,7 @@ BlockGpuPattern::BlockGpuPattern(kotekan::Config& config, const std::string& pat
     FakeGpuPattern(config, path) {}
 
 
-void BlockGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
+void BlockGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
                            freq_id_t freq_id) {
 
     (void)metadata;
@@ -65,7 +65,7 @@ void BlockGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, in
 LostSamplesGpuPattern::LostSamplesGpuPattern(kotekan::Config& config, const std::string& path) :
     FakeGpuPattern(config, path) {}
 
-void LostSamplesGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
+void LostSamplesGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata,
                                  int frame_number, freq_id_t freq_id) {
     (void)freq_id;
 
@@ -90,7 +90,7 @@ void LostSamplesGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metada
 LostWeightsGpuPattern::LostWeightsGpuPattern(kotekan::Config& config, const std::string& path) :
     FakeGpuPattern(config, path), _b(config.get_default<uint32_t>(path, "b", 1)) {}
 
-void LostWeightsGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
+void LostWeightsGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata,
                                  int frame_number, freq_id_t freq_id) {
     (void)freq_id;
 
@@ -118,8 +118,8 @@ AccumulateGpuPattern::AccumulateGpuPattern(kotekan::Config& config, const std::s
     FakeGpuPattern(config, path) {}
 
 
-void AccumulateGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
-                                freq_id_t freq_id) {
+void AccumulateGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata,
+                                int frame_number, freq_id_t freq_id) {
 
     (void)metadata;
     (void)freq_id;
@@ -148,8 +148,8 @@ GaussianGpuPattern::GaussianGpuPattern(kotekan::Config& config, const std::strin
     FakeGpuPattern(config, path), rd(), gen(rd()), gaussian(0, 1) {}
 
 
-void GaussianGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
-                              freq_id_t freq_id) {
+void GaussianGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata,
+                              int frame_number, freq_id_t freq_id) {
 
     (void)metadata;
     (void)frame_number;
@@ -187,8 +187,8 @@ PulsarGpuPattern::PulsarGpuPattern(kotekan::Config& config, const std::string& p
 }
 
 
-void PulsarGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
-                            freq_id_t freq_id) {
+void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata,
+                            int frame_number, freq_id_t freq_id) {
     (void)frame_number;
 
     auto& tel = Telescope::instance();
@@ -219,8 +219,8 @@ void PulsarGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, i
 MultiFreqGpuPattern::MultiFreqGpuPattern(kotekan::Config& config, const std::string& path) :
     FakeGpuPattern(config, path) {}
 
-void MultiFreqGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
-                               freq_id_t freq_id) {
+void MultiFreqGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata,
+                               int frame_number, freq_id_t freq_id) {
     (void)frame_number;
     (void)metadata;
 
