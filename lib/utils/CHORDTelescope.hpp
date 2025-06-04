@@ -3,7 +3,6 @@
 
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
-
 #include "restServer.hpp"
 
 #include <stdint.h> // for int32_t, uint32_t  TODO: why not cstdint?
@@ -25,9 +24,12 @@ struct EOP {
 };
 
 // A null (all 0) struct EOP;
-const static struct EOP eop_null = {.t_inst={(time_t)0,(long)0},
-        .t_ut1={(time_t)0,(long)0}, .delta_UT1_inst=0.0, .ERA_deg=0.0,
-        .xp_as=0.0, .yp_as=0.0};
+const static struct EOP eop_null = {.t_inst = {(time_t)0, (long)0},
+                                    .t_ut1 = {(time_t)0, (long)0},
+                                    .delta_UT1_inst = 0.0,
+                                    .ERA_deg = 0.0,
+                                    .xp_as = 0.0,
+                                    .yp_as = 0.0};
 
 
 /**
@@ -67,8 +69,8 @@ const static struct EOP eop_null = {.t_inst={(time_t)0,(long)0},
  *                                      altitude. Must be:
  *                                      normalized, orthogonal to the alt-axis.
  * @conf    dish_positions      [[double, 3], N]    List of 3D dish positions,
- *                                      measured in the "Telescope" frame, 
- *                                      where the x-axis is dish E/W sep, 
+ *                                      measured in the "Telescope" frame,
+ *                                      where the x-axis is dish E/W sep,
  *                                      and the y-axis is dish N/S sep. Should
  *                                      be, within mm, a rectilinear
  *                                      axis-aligned grid in these coordinates.
@@ -88,18 +90,18 @@ public:
     bool gps_time_enabled() const override;
     timespec to_time(uint64_t seq) const override;
     uint64_t to_seq(timespec time) const override;
-    uint64_t seq_length_nsec() const override; 
+    uint64_t seq_length_nsec() const override;
 
     /**
      * @brief   Return the longitude of the instrument.
      **/
     double get_inst_long_deg() const;
-    
+
     /**
      * @brief   Return the latitude of the instrument.
      **/
     double get_inst_lat_deg() const;
-    
+
     /**
      * @brief   Return the altitude angle of the instrument. 90.0 is up,
      *          0.0 is North.
@@ -122,7 +124,7 @@ public:
      * @param   j   First index, int, 0 <= j < 3, col
      **/
     double get_dish_orientation_el(int i, int j) const;
-    
+
     /**
      * @brief   Return a dish location, in the Telescope frame.
      *
@@ -139,7 +141,7 @@ public:
      * @brief   Return the number of entries in the EOP table.
      **/
     int get_EOP_table_len() const;
-    
+
     /**
      * @brief   Return the EOP table entry at an index.
      *
@@ -154,7 +156,7 @@ public:
      *
      * @param   ts  Target instrument time, as a timespec.
      **/
-    struct EOP get_EOP_at_time(const timespec &ts) const;
+    struct EOP get_EOP_at_time(const timespec& ts) const;
 
     /**
      * @brief   Return the EOP at the desired UT1 time. Will interpolate
@@ -163,7 +165,7 @@ public:
      *
      * @param   ts  Target UT1 time, as a timespec.
      **/
-    struct EOP get_EOP_at_UT1(const timespec &ut1) const;
+    struct EOP get_EOP_at_UT1(const timespec& ut1) const;
 
     /**
      * @brief   Return an observing vector (normalized vec3) in telescope
@@ -172,8 +174,8 @@ public:
      * @param   dec Target Declination in CIRS frame.
      * @param   eop EOP for the time of observation.
      **/
-    std::array<double, 3> get_sky_vec_in_tel_coords(double ra,
-                                    double dec, const struct EOP &eop) const;
+    std::array<double, 3> get_sky_vec_in_tel_coords(double ra, double dec,
+                                                    const struct EOP& eop) const;
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the
      *          phase center), in Dish coordinates (x is altitude axis,
@@ -183,99 +185,90 @@ public:
 
     /**
      * @brief   Transform the given vector from topocentric to dish coords.
-     *  
+     *
      * @param   v_topo  Vector in topocentric coordinates.
      **/
-    std::array<double, 3> vec_topocen_to_dish(
-            const std::array<double, 3>& v_topo) const;
+    std::array<double, 3> vec_topocen_to_dish(const std::array<double, 3>& v_topo) const;
 
     /**
      * @brief   Transform the given vector from Dish to Topocentric coords.
-     *  
+     *
      * @param   v_topo  Vector in dish coordinates.
      **/
-    std::array<double, 3> vec_dish_to_topocen(
-            const std::array<double, 3>& v_dish) const;
-    
+    std::array<double, 3> vec_dish_to_topocen(const std::array<double, 3>& v_dish) const;
+
     /**
      * @brief   Transform the given vector from topocentric to telescope coords.
-     *  
+     *
      * @param   v_topo  Vector in topocentric coordinates.
      **/
-    std::array<double, 3> vec_topocen_to_tel(
-            const std::array<double, 3>& v_topo) const;
+    std::array<double, 3> vec_topocen_to_tel(const std::array<double, 3>& v_topo) const;
 
     /**
      * @brief   Transform the given vector from telescope to topocentric coords.
-     *  
+     *
      * @param   v_topo  Vector in telescope coordinates.
      **/
-    std::array<double, 3> vec_tel_to_topocen(
-            const std::array<double, 3>& v_tel) const;
+    std::array<double, 3> vec_tel_to_topocen(const std::array<double, 3>& v_tel) const;
 
     /**
      * @brief   Transform the given vector from ITRS to topocentric coords.
-     *  
+     *
      * @param   v_topo  Vector in ITRS coordinates.
      **/
-    std::array<double, 3> vec_itrs_to_topocen(
-            const std::array<double, 3>& v_itrs) const;
+    std::array<double, 3> vec_itrs_to_topocen(const std::array<double, 3>& v_itrs) const;
 
     /**
      * @brief   Transform the given vector from topocentric to ITRS coords.
-     *  
+     *
      * @param   v_topo  Vector in topocentric coordinates.
      **/
-    std::array<double, 3> vec_topocen_to_itrs(
-            const std::array<double, 3>& v_topo) const;
+    std::array<double, 3> vec_topocen_to_itrs(const std::array<double, 3>& v_topo) const;
 
     /**
      * @brief   Transform the given vector from CIRS to ITRS coords.
-     *  
+     *
      * @param   v_topo  Vector in CIRS coordinates.
      * @param   eop     EOP for time of transformation.
      **/
-    std::array<double, 3> vec_cirs_to_itrs(
-        const std::array<double, 3>& v_cirs, const struct EOP &eop) const;
+    std::array<double, 3> vec_cirs_to_itrs(const std::array<double, 3>& v_cirs,
+                                           const struct EOP& eop) const;
 
     /**
      * @brief   Transform the given vector from ITRS to CIRS coords.
-     *  
+     *
      * @param   v_topo  Vector in ITRS coordinates.
      * @param   eop     EOP for time of transformation.
      **/
-    std::array<double, 3> vec_itrs_to_cirs(
-        const std::array<double, 3>& v_itrs, const struct EOP &eop) const;
+    std::array<double, 3> vec_itrs_to_cirs(const std::array<double, 3>& v_itrs,
+                                           const struct EOP& eop) const;
 
     /**
      * @brief   Transform the given vector to a frame where the basis has
      *          rotated about the x axis by an angle theta.
-     *  
+     *
      * @param   v       Input vector
      * @param   theta   Angle basis is rotated by, in radians.
      **/
-    std::array<double, 3> vec_axes_rotation_R1(
-        const std::array<double, 3>& v, double theta) const;
+    std::array<double, 3> vec_axes_rotation_R1(const std::array<double, 3>& v, double theta) const;
 
     /**
      * @brief   Transform the given vector to a frame where the basis has
      *          rotated about the y axis by an angle theta.
-     *  
+     *
      * @param   v       Input vector
      * @param   theta   Angle basis is rotated by, in radians.
      **/
-    std::array<double, 3> vec_axes_rotation_R2(
-        const std::array<double, 3>& v, double theta) const;
+    std::array<double, 3> vec_axes_rotation_R2(const std::array<double, 3>& v, double theta) const;
 
     /**
      * @brief   Transform the given vector to a frame where the basis has
      *          rotated about the z axis by an angle theta.
-     *  
+     *
      * @param   v       Input vector
      * @param   theta   Angle basis is rotated by, in radians.
      **/
-    std::array<double, 3> vec_axes_rotation_R3(
-        const std::array<double, 3>& v, double theta) const;
+    std::array<double, 3> vec_axes_rotation_R3(const std::array<double, 3>& v, double theta) const;
 
     /**
      * @brief   Compute the fringestopping phases for each dish.
@@ -288,12 +281,11 @@ public:
      *                  least num_dishes. The phases will be written to the
      *                  first num_dishes elements of this vector.
      **/
-    void fringestop_phases_1d(double freq_Hz, const struct EOP &eop,
-            const struct EOP &eop0,
-        std::vector<std::complex<double>>& phases) const;
+    void fringestop_phases_1d(double freq_Hz, const struct EOP& eop, const struct EOP& eop0,
+                              std::vector<std::complex<double>>& phases) const;
 
     // Implementations of the required frequency mapping functions
-    // TODO: Implement these.    
+    // TODO: Implement these.
     freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
     double to_freq(freq_id_t freq_id) const override;
     uint32_t num_freq_per_stream() const override;
@@ -323,8 +315,7 @@ protected:
      * @param port  The port of the server with the GPS time information
      * @param path  The endpoint resource name (e.g. /get-frame0-time)
      **/
-    void set_gps(const std::string& host, const uint32_t port,
-                 const std::string& path);
+    void set_gps(const std::string& host, const uint32_t port, const std::string& path);
 
     /**
      * @brief Callback to update EOP data
@@ -348,8 +339,8 @@ protected:
      * @param   xp_as   Polar Motion x' coordinate in arcseconds
      * @param   yp_as   Polar Motion y' coordinate in arcseconds
      **/
-    struct EOP build_EOP_from_update(uint64_t t_ns, double delta_ut1_inst,
-                                     double xp_as, double yp_as) const;
+    struct EOP build_EOP_from_update(uint64_t t_ns, double delta_ut1_inst, double xp_as,
+                                     double yp_as) const;
 
     // The telescope's name in the config
     std::string _unique_name;
@@ -370,14 +361,14 @@ protected:
     double _inst_long_deg;
     double _inst_lat_deg;
 
-    // Matrix to transform from local topocentric coordinates to the 
+    // Matrix to transform from local topocentric coordinates to the
     // telescope (ie. dish position) coordinate system.
     double _R_topo_to_tel[3][3];
 
     // Dish pointing angle.  Measured in degrees from vertical.
     double _inst_alt_deg;
 
-    // Matrix to transform from local topocentric coordinates to the 
+    // Matrix to transform from local topocentric coordinates to the
     // dish (ie. z is dish zenith, x is altitude axis) coordinate system.
     double _R_topo_to_dish[3][3];
 
@@ -389,13 +380,13 @@ protected:
     std::vector<std::array<double, 3>> _dish_positions;
 
     // The time of FPGA frame=0, and the time length of each frame (in ns)
-    // time0_ns is a UNIX timestamp, in nanoseconds. It does not include 
-    // leap seconds.  
+    // time0_ns is a UNIX timestamp, in nanoseconds. It does not include
+    // leap seconds.
     bool gps_enabled = false;
     uint64_t time0_ns = 0;
     uint64_t dt_ns;
 
-    //Earth Orientation Parameters
+    // Earth Orientation Parameters
     mutable std::mutex _eop_lock;
     std::vector<struct EOP> _eop_table;
 };
@@ -407,7 +398,7 @@ protected:
  * @params  eop1    First EOP to compare.
  * @params  eop2    Second EOP to compare.
  **/
-bool EOP_comp_time(const struct EOP &eop1, const struct EOP &eop2);
+bool EOP_comp_time(const struct EOP& eop1, const struct EOP& eop2);
 
 /*
  * @brief   Comparison function for searching/sorting the EOP table. Compares
@@ -417,6 +408,6 @@ bool EOP_comp_time(const struct EOP &eop1, const struct EOP &eop2);
  * @params  eop1    First EOP to compare.
  * @params  eop2    Second EOP to compare.
  **/
-bool EOP_comp_ut1(const struct EOP &eop1, const struct EOP &eop2);
+bool EOP_comp_ut1(const struct EOP& eop1, const struct EOP& eop2);
 
 #endif // CHORD_TELESCOPE_HPP

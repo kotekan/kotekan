@@ -3,8 +3,8 @@
 #include "FrameView.hpp"     // for bind_span, bind_scalar, FrameView
 #include "Telescope.hpp"     // for Telescope
 #include "buffer.hpp"        // for Buffer, allocate_new_metadata_object
-#include "chordMetadata.hpp" // for chordMetadata
 #include "chimeMetadata.hpp" // for chimedMetadata, get_stream_id_from_metadata
+#include "chordMetadata.hpp" // for chordMetadata
 #include "metadata.hpp"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
@@ -141,18 +141,18 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     eval(bind_span<float>(_frame, buffer_layout.second[VisField::eval])),
     evec(bind_span<cfloat>(_frame, buffer_layout.second[VisField::evec])),
     erms(bind_scalar<float>(_frame, buffer_layout.second[VisField::erms])),
-    gain(bind_span<cfloat>(_frame, buffer_layout.second[VisField::gain]))
-{
+    gain(bind_span<cfloat>(_frame, buffer_layout.second[VisField::gain])) {
     // Check that the actual buffer size is big enough to contain the calculated
     // view
     size_t required_size = buffer_layout.first;
 
     if (required_size > (uint32_t)buffer->frame_size) {
 
-        std::string s =
-            fmt::format(fmt("Visibility buffer [{:s}] frames are too small with {:d} bytes. Must be a minimum of {:d} bytes "
-                            "for elements={:d}, products={:d}, ev={:d}"),
-                        buffer->buffer_name, (uint32_t)buffer->frame_size, required_size, num_elements, num_prod, num_ev);
+        std::string s = fmt::format(fmt("Visibility buffer [{:s}] frames are too small with {:d} "
+                                        "bytes. Must be a minimum of {:d} bytes "
+                                        "for elements={:d}, products={:d}, ev={:d}"),
+                                    buffer->buffer_name, (uint32_t)buffer->frame_size,
+                                    required_size, num_elements, num_prod, num_ev);
 
         throw std::runtime_error(s);
     }

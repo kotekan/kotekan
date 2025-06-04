@@ -277,7 +277,7 @@ inline double ts_to_double(const timespec& ts) {
  * @return    Time as an uint64.
  */
 inline uint64_t ts_to_uint64(const timespec& ts) {
-    return 1000000000L * (uint64_t) ts.tv_sec + (uint64_t) ts.tv_nsec;
+    return 1000000000L * (uint64_t)ts.tv_sec + (uint64_t)ts.tv_nsec;
 }
 
 

@@ -16,11 +16,11 @@
 // TODO: figure out how to forward declare eig_t
 #include "Config.hpp"            // for Config
 #include "LinearAlgebra.hpp"     // for EigConvergenceStats
+#include "N2Util.hpp"            // for movingAverage, cfloat
 #include "Stage.hpp"             // for Stage
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "prometheusMetrics.hpp" // for Gauge, MetricFamily
-#include "N2Util.hpp"           // for movingAverage, cfloat
 
 
 /**
@@ -88,8 +88,8 @@ public:
 
 private:
     // Update the prometheus metrics
-    void update_metrics(int freq_id, u_int64_t elapsed_time,
-                        const eig_t<cfloat>& eigpair, const EigConvergenceStats& stats);
+    void update_metrics(int freq_id, u_int64_t elapsed_time, const eig_t<cfloat>& eigpair,
+                        const EigConvergenceStats& stats);
 
     // Calculate the mask to apply from the object parameters
     DynamicHermitian<float> calculate_mask(uint32_t num_elements) const;

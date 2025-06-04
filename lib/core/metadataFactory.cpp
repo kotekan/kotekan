@@ -4,13 +4,13 @@
 #include "BeamMetadata.hpp"     // for BeamMetadata
 #include "Config.hpp"           // for Config
 #include "HFBMetadata.hpp"      // for HFBMetadata
+#include "N2Metadata.hpp"       // for N2Metadata
 #include "chimeMetadata.hpp"    // for chimeMetadata
 #include "chordMetadata.hpp"
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.hpp"       // for create_metadata_pool
 #include "oneHotMetadata.hpp"
-#include "visBuffer.hpp"      // for VisMetadata
-#include "N2Metadata.hpp"     // for N2Metadata
+#include "visBuffer.hpp" // for VisMetadata
 
 #include "fmt.hpp" // for format, fmt
 

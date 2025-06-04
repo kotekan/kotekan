@@ -1,12 +1,12 @@
 #include "eigenVis.hpp"
 
 #include "Config.hpp"            // for Config
+#include "N2FrameView.hpp"       // for N2FrameView
+#include "N2Util.hpp"            // for cfloat, frameID, current_time, cmap
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"            // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
 #include "kotekanLogging.hpp"    // for DEBUG, ERROR, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
-#include "N2FrameView.hpp"       // for N2FrameView
-#include "N2Util.hpp"            // for cfloat, frameID, current_time, cmap
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
@@ -79,15 +79,15 @@ void eigenVis::main_thread() {
 
     openblas_set_num_threads(1);
 
-    auto& eigenvalue_metric = Metrics::instance().add_gauge(
-        "kotekan_eigenvis_eigenvalue", unique_name, {"eigenvalue", "freq_id"});
+    auto& eigenvalue_metric = Metrics::instance().add_gauge("kotekan_eigenvis_eigenvalue",
+                                                            unique_name, {"eigenvalue", "freq_id"});
 
     auto& comp_time_seconds_metric =
         Metrics::instance().add_gauge("kotekan_eigenvis_comp_time_seconds", unique_name);
 
     auto& lapack_failure_counter = Metrics::instance().add_counter(
         "kotekan_eigenvis_lapack_failure_total", unique_name, {"freq_id"});
-    
+
     while (!stop_thread) {
 
         // Get input visibilities. We assume the shape of these doesn't change.
@@ -150,7 +150,7 @@ void eigenVis::main_thread() {
             }
         }
 
-        nside = (int32_t) num_elements;
+        nside = (int32_t)num_elements;
         info = LAPACKE_cheevr(LAPACK_COL_MAJOR, 'V', 'I', 'L', nside,
                               (lapack_complex_float*)vis_square.data(), nside, 0.0, 0.0,
                               nside - num_ev + 1, nside, 0.0, &ev_found, evals.data(),
@@ -162,9 +162,7 @@ void eigenVis::main_thread() {
             lapack_failure_total++;
 
             // Update prometheus metric about LAPACK failures
-            lapack_failure_counter
-                .labels({std::to_string(freq_id)})
-                .inc();
+            lapack_failure_counter.labels({std::to_string(freq_id)}).inc();
 
             // Clear frame and advance
             input_buffer->mark_frame_empty(unique_name, input_frame_id++);
@@ -221,15 +219,12 @@ void eigenVis::main_thread() {
 
         // Output eigenvalues to prometheus
         for (uint32_t i = 0; i < num_ev; i++) {
-            eigenvalue_metric
-                .labels({std::to_string(i), std::to_string(freq_id)})
+            eigenvalue_metric.labels({std::to_string(i), std::to_string(freq_id)})
                 .set(evals[num_ev - 1 - i]);
         }
 
         // Output RMS to prometheus
-        eigenvalue_metric
-            .labels({"rms", std::to_string(freq_id)})
-            .set(rms);
+        eigenvalue_metric.labels({"rms", std::to_string(freq_id)}).set(rms);
 
         // Get output buffer for visibilities. Essentially identical to input buffers.
         if (output_buffer->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {

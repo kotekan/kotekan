@@ -302,8 +302,8 @@ eigen_masked_subspace(const DynamicHermitian<MT>& A,
                          / (k_conv * k_conv);
 
         // Calculate the eigenvalue convergence (Summed fractional change in eigenvalues)
-        stats.eps_eval = rms(blaze::evaluate(blaze::subvector((evalsp - evals)
-                                                              / (blaze::abs(evals) + etols), k - k_conv, k_conv)));
+        stats.eps_eval = rms(blaze::evaluate(
+            blaze::subvector((evalsp - evals) / (blaze::abs(evals) + etols), k - k_conv, k_conv)));
 
         evalsp = evals;
         Vp = V;

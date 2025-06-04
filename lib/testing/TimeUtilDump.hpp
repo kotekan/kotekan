@@ -1,11 +1,11 @@
 #ifndef TIME_UTIL_DUMP_HPP
 #define TIME_UTIL_DUMP_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
+#include "Config.hpp" // for Config
+#include "Stage.hpp"  // for Stage
 
-#include <time.h>
 #include <string> // for string
+#include <time.h>
 
 /**
  * @class ExampleConsumer
@@ -25,8 +25,7 @@ public:
      *   if your constructor does not need additional customisation
      *   and you wish to hide the complexity.
      */
-    TimeUtilDump(kotekan::Config& config,
-                 const std::string& unique_name,
+    TimeUtilDump(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     /**
@@ -46,7 +45,7 @@ private:
 
     // Input buffer
     Buffer* in_buf;
-    
+
     // Output buffer
     Buffer* out_buf;
 };

@@ -7,10 +7,10 @@
 #define EIGENVIS_HPP
 
 #include "Config.hpp"          // for Config
+#include "N2Util.hpp"          // for movingAverage
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "N2Util.hpp"         // for movingAverage
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
@@ -65,7 +65,6 @@ public:
     void main_thread() override;
 
 private:
-
     Buffer* input_buffer;
     Buffer* output_buffer;
 

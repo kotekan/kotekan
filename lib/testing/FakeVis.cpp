@@ -1,6 +1,8 @@
 #include "FakeVis.hpp"
 
 #include "Config.hpp"          // for Config
+#include "N2FrameView.hpp"     // for N2FrameView
+#include "N2Util.hpp"          // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"          // for allocate_new_metadata_object, mark_frame_full, register_p...
 #include "bufferContainer.hpp" // for bufferContainer
@@ -8,8 +10,6 @@
 #include "factory.hpp"         // for FACTORY
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "version.h"           // for get_git_commit_hash
-#include "N2FrameView.hpp"     // for N2FrameView
-#include "N2Util.hpp"          // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span<>::iterator, span
@@ -62,7 +62,7 @@ FakeVis::FakeVis(Config& config, const std::string& unique_name,
 
     // Get frequency IDs from config
     freq = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
-    if(freq.size() == 0) {
+    if (freq.size() == 0) {
         size_t n = config.get<size_t>(unique_name, "num_total_freq");
         freq.resize(n);
         std::iota(freq.begin(), freq.end(), 0);
@@ -89,10 +89,10 @@ void FakeVis::main_thread() {
     unsigned int output_frame_id = 0;
     int64_t fpga_seq = 0, frame_count = 0;
 
-    int64_t time_ns = (uint64_t) start_time * 1000000000;
+    int64_t time_ns = (uint64_t)start_time * 1000000000;
 
     // Calculate the time increments in seq and ctime
-    //int64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
+    // int64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
     int64_t delta_seq = (uint64_t)(3.2e9 / 16384 * cadence);
     int64_t delta_ns = (uint64_t)(cadence * 1000000000);
     DEBUG("delta_seq = {:d}, delta_ns = {:d}", delta_seq, delta_ns);
@@ -112,7 +112,7 @@ void FakeVis::main_thread() {
 
         // process times in chunks of `randomize_chunksize` if randomized... otherwise, chunks of 1
         uint64_t curr_n_frames = 1;
-        if( randomize && (num_frames < 0 || frame_count < num_frames - randomize_chunksize )) {
+        if (randomize && (num_frames < 0 || frame_count < num_frames - randomize_chunksize)) {
             curr_n_frames = randomize_chunksize;
         }
         std::vector<uint64_t> times(curr_n_frames);
@@ -125,7 +125,7 @@ void FakeVis::main_thread() {
                 ftpairs.emplace_back(f, t);
             }
         }
-        if(randomize)
+        if (randomize)
             std::shuffle(ftpairs.begin(), ftpairs.end(), gen);
 
         DEBUG("Making fake N2FrameViews for {:d} freqs, {:d} times ({:d} total frames)",
@@ -145,7 +145,7 @@ void FakeVis::main_thread() {
             out_buf->allocate_new_metadata_object(output_frame_id);
             std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, output_frame_id);
             assert(meta);
-    
+
             meta->num_elements = num_elements;
             /// Number of products in the data
             meta->num_prod = N2::get_num_prod(num_elements);
@@ -164,10 +164,9 @@ void FakeVis::main_thread() {
             meta->fpga_start_tick = fpga_seq + t * delta_seq;
 
             DEBUG("Creating N2FrameView.");
-            DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}",
-                    meta->num_elements, meta->num_prod, meta->num_ev,
-                    meta->nfreq);
-            N2FrameView output_frame (out_buf, output_frame_id);
+            DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}", meta->num_elements,
+                  meta->num_prod, meta->num_ev, meta->nfreq);
+            N2FrameView output_frame(out_buf, output_frame_id);
             DEBUG("Created.");
 
 
@@ -198,7 +197,7 @@ void FakeVis::main_thread() {
         frame_count += curr_n_frames; // NOTE: frame count increases only once for all freq
 
         // Increment the timespec
-        time_ns += curr_n_frames*delta_ns;
+        time_ns += curr_n_frames * delta_ns;
 
         // Cause kotekan to exit if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count >= num_frames) {
@@ -214,8 +213,8 @@ void FakeVis::main_thread() {
         // at the correct cadence
         if (this->wait) {
             double diff = cadence * frame_count - (current_time() - start);
-            if(randomize) // random delays from 0*cadence to 2*cadence
-                diff *= 2*distrib(gen);
+            if (randomize) // random delays from 0*cadence to 2*cadence
+                diff *= 2 * distrib(gen);
             timespec ts_diff = double_to_ts(diff);
             nanosleep(&ts_diff, nullptr);
         }

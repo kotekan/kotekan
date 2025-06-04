@@ -19,7 +19,7 @@
  * @brief Average a set number of frames on a single-frequency stream to
  *        effectively reduce the cadence of the acquisition.
  *
- * This stage accumulates and averages a specified number of incoming frames on 
+ * This stage accumulates and averages a specified number of incoming frames on
  * a single-frequency stream to reduce the cadence of the acquisition.
  * Visibilities, eigenvectors, eigenvalues, eigen-rms are averaged. Inverse
  * weights are averaged and divided by number of combined frames to track
@@ -50,7 +50,7 @@ class N2FringeStop : public kotekan::Stage {
 public:
     /// Default constructor, loads config params.
     N2FringeStop(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& buffer_container);
+                 kotekan::bufferContainer& buffer_container);
 
     /// Main loop for the stage
     void main_thread() override;
