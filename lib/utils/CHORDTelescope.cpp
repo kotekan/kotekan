@@ -715,7 +715,7 @@ uint32_t CHORDTelescope::num_freq() const {
 }
     
 //TODO: This is a stub to satisfy inheritance and must be updated.
-double CHORDTelescope::freq_width(freq_id_t freq_id) const {
+double CHORDTelescope::freq_width(freq_id_t) const {
     return 0;
 }
     
