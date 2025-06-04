@@ -695,7 +695,7 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(const timespec &t_ut1) const {
 }
 
 //TODO: This is a stub to satisfy inheritance and must be updated.
-freq_id_t CHORDTelescope::to_freq_id(stream_t stream, uint32_t ind) const {
+freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
     return 0;
 }
     
