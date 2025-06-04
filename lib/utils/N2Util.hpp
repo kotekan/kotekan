@@ -5,12 +5,12 @@
 #ifndef N2_UTIL_HPP
 #define N2_UTIL_HPP
 
+#include "buffer.hpp"
+
 #include <complex> // for complex, imag, real
 #include <cstdint> // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
 #include <cstdlib> // for size_t
 #include <time.h>  // for timespec, clock_gettime
-
-#include "buffer.hpp"
 
 namespace N2 {
 
