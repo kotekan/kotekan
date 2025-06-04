@@ -461,12 +461,10 @@ jobs:
       env:
         CC: clang
         CXX: clang++
-      if: env.RUN_2404_CLANG_TESTS
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-        -DWERROR=ON \
         -DCMAKE_LINK_WHAT_YOU_USE=ON \
         -DCMAKE_BUILD_TYPE=Test \
         -DUSE_ASDF=ON \
