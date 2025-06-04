@@ -196,6 +196,8 @@ ENV CCACHE_MAXSIZE=1G
 # Ideally this would be determined dynamically, but for now...
 ENV HDF5_PLUGIN_PATH=/usr/local/lib/python3.12/dist-packages/hdf5plugin/plugins
 
+RUN python3 -m pip install --no-cache astropy
+
 ENV KOTEKAN_BUILD_DIRNAME=build-2404
 
 # Don't worry about permission issues in here
