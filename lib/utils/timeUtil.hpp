@@ -5,9 +5,9 @@
 #ifndef TIME_UTIL_HPP
 #define TIME_UTIL_HPP
 
+#include <inttypes.h>
 #include <time.h> // for timespec
 #include <vector>
-
 
 /**
  * @brief Compute UT1 time Julian Date (in seconds, nanoseconds) from GPS time
