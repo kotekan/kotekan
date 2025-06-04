@@ -21,6 +21,7 @@ accumulate_params = {
     "num_freq_in_frame": 4,
 }
 
+
 @pytest.fixture(scope="module")
 def accumulate_data(tmpdir_factory):
 

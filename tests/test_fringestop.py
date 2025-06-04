@@ -14,20 +14,22 @@ import numpy as np
 
 from kotekan import runner
 
-obs_start_time = astropy.time.Time('2024-12-11 00:00:00', scale='utc')
+obs_start_time = astropy.time.Time("2024-12-11 00:00:00", scale="utc")
 
-t_gps_0 = astropy.time.Time('1980-01-06 00:00:00', scale='utc')
+t_gps_0 = astropy.time.Time("1980-01-06 00:00:00", scale="utc")
+
 
 def calc_dtai(t):
-    
+
     tdate = t.ymdhms
     return erfa.dat(tdate.year, tdate.month, tdate.day, 0.0)
+
 
 dut1 = float(obs_start_time.delta_ut1_utc)
 dtai = float(calc_dtai(obs_start_time))
 
-t0_nanosec = int((obs_start_time - t_gps_0).to_value('ns'))
-t0_sec = int((obs_start_time - t_gps_0).to_value('s'))
+t0_nanosec = int((obs_start_time - t_gps_0).to_value("ns"))
+t0_sec = int((obs_start_time - t_gps_0).to_value("s"))
 
 
 downsamp_params = {
@@ -60,24 +62,26 @@ global_params = {
     "earth_rotation_data": {
         "kotekan_update_endpoint": "json",
         "DUT1": dut1,
-        "DTAI": dtai},
+        "DTAI": dtai,
+    },
     "telescope": {
         "name": "CHORDTelescope",
         "require_gps": False,
         "inst_long_deg": -119.62081125,
-        "inst_lat_deg":    49.32075144444,
-        "inst_alt_deg":    90.0,
+        "inst_lat_deg": 49.32075144444,
+        "inst_alt_deg": 90.0,
         "inst_orientation": [1, 0, 0, 0, 1, 0, 0, 0, 1],
-        "dish_positions": [[0.0, 0.0, 0.0],
-                           # [1.0, 0.0, 0.0],
-                           # [0.0, 1.0, 0.0],
-                           [1.0, 1.0, 0.0],
-                           [10.0, 10.0, 0.0],
-                           [100.0, 100.0, 0.0]
-                           ],
-        "updatable_config": "/earth_rotation_data"},
-    "gps_time": {
-        "frame0_nano": t0_nanosec},
+        "dish_positions": [
+            [0.0, 0.0, 0.0],
+            # [1.0, 0.0, 0.0],
+            # [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [10.0, 10.0, 0.0],
+            [100.0, 100.0, 0.0],
+        ],
+        "updatable_config": "/earth_rotation_data",
+    },
+    "gps_time": {"frame0_nano": t0_nanosec},
 }
 
 
@@ -112,7 +116,7 @@ def test_structure(n2_data):
         assert frame.metadata.num_ev == global_params["num_ev"]
 
     # Check that we have the expected number of samples
-    nsamp = (fakevis_params["num_frames"]-1) // downsamp_params["num_samples"]
+    nsamp = (fakevis_params["num_frames"] - 1) // downsamp_params["num_samples"]
     assert len(n2_data) == nsamp
 
 
@@ -120,15 +124,18 @@ def test_metadata(n2_data):
 
     input_frame_length = int(3.2e9 / 16384 * fakevis_params["cadence"])
     frame_length = input_frame_length * downsamp_params["num_samples"]
-    frame_total = (input_frame_length - fakevis_params["n_rfi_ticks"]
-            - fakevis_params["n_lost_ticks"]) * downsamp_params["num_samples"]
+    frame_total = (
+        input_frame_length
+        - fakevis_params["n_rfi_ticks"]
+        - fakevis_params["n_lost_ticks"]
+    ) * downsamp_params["num_samples"]
     rfi_total = fakevis_params["n_rfi_ticks"] * downsamp_params["num_samples"]
 
-    freq_id = fakevis_params['freq_ids'][0]
-    freq_Hz = freq_id * 1.6e9/8192
+    freq_id = fakevis_params["freq_ids"][0]
+    freq_Hz = freq_id * 1.6e9 / 8192
 
     for frame in n2_data:
-        assert frame.metadata.freq_id == fakevis_params['freq_ids'][0]
+        assert frame.metadata.freq_id == fakevis_params["freq_ids"][0]
         assert frame.metadata.frame_length_fpga_ticks == frame_length
         assert frame.metadata.n_valid_fpga_ticks_in_frame == frame_total
         assert frame.metadata.n_rfi_fpga_ticks == rfi_total
@@ -150,24 +157,22 @@ def test_time(n2_data):
     time_s = time_ns // 1000000000
     # print("time check", time_ns, time_s)
 
-    dt_downsamp = fakevis_params['cadence'] * downsamp_params['num_samples']
-    n_downsamp = (fakevis_params['num_frames'] - 1
-                  ) // downsamp_params['num_samples']
+    dt_downsamp = fakevis_params["cadence"] * downsamp_params["num_samples"]
+    n_downsamp = (fakevis_params["num_frames"] - 1) // downsamp_params["num_samples"]
 
     t_start = obs_start_time + np.arange(n_downsamp) * dt_downsamp * units.second
     t_mid = obs_start_time + (np.arange(n_downsamp) + 0.5) * dt_downsamp * units.second
 
-    era_true = t_mid.earth_rotation_angle('tio').degree
-
+    era_true = t_mid.earth_rotation_angle("tio").degree
 
     # check_era = isclose_sym(era_deg, era_true, atol=1.0e-6)
     # print("BAD era:", era_deg[~check_era], era_true[~check_era])
 
     # assert np.all(time_ns == (t_start - t_gps_0).to_value('ns').astype(int))
-    assert (np.fabs(time_ns - (t_start - t_gps_0).to_value('ns').astype(int)) 
-            < 5121).all()
+    assert (
+        np.fabs(time_ns - (t_start - t_gps_0).to_value("ns").astype(int)) < 5121
+    ).all()
     assert np.all(isclose_sym(era_deg, era_true, atol=1.0e-6))
-
 
 
 def test_vis(n2_data):
@@ -191,33 +196,33 @@ def test_vis(n2_data):
         pass
 
     for k, frame in enumerate(n2_data):
-    
-        model_vis = calc_vis_pointsource(frame.metadata.frame_start_time_ns
-                                         + int(0.5 * fakevis_params['cadence']
-                                           * 1e9)
-                                           * downsamp_params['num_samples'],
-                                         frame.metadata.freq_id * 1.6e9/8192)
 
+        model_vis = calc_vis_pointsource(
+            frame.metadata.frame_start_time_ns
+            + int(0.5 * fakevis_params["cadence"] * 1e9)
+            * downsamp_params["num_samples"],
+            frame.metadata.freq_id * 1.6e9 / 8192,
+        )
 
         with open("vis_out.txt", "a") as f:
             f.write("{} frame vis:\n".format(k))
             idx = 0
             for i in range(n):
-                line_vals = ["-------"]*i + ["{}".format(x)
-                                       for x in frame.vis[idx:idx+n-i]]
-                idx += n-i
+                line_vals = ["-------"] * i + [
+                    "{}".format(x) for x in frame.vis[idx : idx + n - i]
+                ]
+                idx += n - i
                 f.write(" ".join(line_vals) + "\n")
             f.write("{} model vis:\n".format(k))
             idx = 0
             for i in range(n):
-                line_vals = ["-------"]*i + ["{}".format(x)
-                                       for x in model_vis[idx:idx+n-i]]
-                idx += n-i
+                line_vals = ["-------"] * i + [
+                    "{}".format(x) for x in model_vis[idx : idx + n - i]
+                ]
+                idx += n - i
                 f.write(" ".join(line_vals) + "\n")
 
-
-        assert np.all(isclose_sym(frame.vis, model_vis,
-                                  atol=0.0, rtol=1.0e-5))
+        assert np.all(isclose_sym(frame.vis, model_vis, atol=0.0, rtol=1.0e-5))
         assert frame.erms == 1.0
 
         # weights get an extra factor of nsamp
@@ -237,11 +242,12 @@ def test_evec(n2_data):
         pass
 
     for frame in n2_data:
-        model_vis = calc_vis_pointsource(frame.metadata.frame_start_time_ns
-                                         + int(0.5 * fakevis_params['cadence']
-                                           * 1e9)
-                                           * downsamp_params['num_samples'],
-                                         frame.metadata.freq_id * 1.6e9/8192)
+        model_vis = calc_vis_pointsource(
+            frame.metadata.frame_start_time_ns
+            + int(0.5 * fakevis_params["cadence"] * 1e9)
+            * downsamp_params["num_samples"],
+            frame.metadata.freq_id * 1.6e9 / 8192,
+        )
 
         model_eval, model_evec = calc_eig_from_vis(model_vis)
 
@@ -276,13 +282,13 @@ def test_evec(n2_data):
         """
         with open("ev_out.txt", "a") as f:
             for k in range(n_ev):
-                f.write("{} {} model-ev {} frame-ev {}\n".format(
-                    frame_idx, k, model_eval[k], frame.eval[k]))
+                f.write(
+                    "{} {} model-ev {} frame-ev {}\n".format(
+                        frame_idx, k, model_eval[k], frame.eval[k]
+                    )
+                )
 
-
-
-        assert np.all(isclose_sym(frame.eval, model_eval,
-                                  atol=2.0e-5, rtol=1.0e-6))
+        assert np.all(isclose_sym(frame.eval, model_eval, atol=2.0e-5, rtol=1.0e-6))
         # assert np.all(np.isclose(frame.evec, model_evec.flat,
         #                          atol=1.0e-4, rtol=1.0e-4))
         frame_idx += 1
@@ -300,10 +306,9 @@ def calc_eig_from_vis(vis):
             vis_square[j, i] = vis[idx].conj()
             idx += 1
 
-
     eigval, eigvec = np.linalg.eigh(vis_square)
 
-    num_ev = global_params['num_ev']
+    num_ev = global_params["num_ev"]
 
     return eigval[-num_ev:][::-1], eigvec[:, -num_ev:][:, ::-1].T
 
@@ -326,7 +331,7 @@ def calc_vis_pointsource(time_ns, freq_Hz):
 
     lambda_m = const.c.to_value("m/s") / freq_Hz
 
-    vis = np.empty((num_el*(num_el+1))//2, dtype=np.complex64)
+    vis = np.empty((num_el * (num_el + 1)) // 2, dtype=np.complex64)
 
     for el_i in range(num_el):
         for el_j in range(el_i, num_el):
@@ -339,57 +344,57 @@ def calc_vis_pointsource(time_ns, freq_Hz):
             x_j = np.array(tel_params["dish_positions"][dish_j])
             u_ij = (x_i - x_j) / lambda_m
 
-            phase = 2*np.pi * (u_ij * n_source).sum()
+            phase = 2 * np.pi * (u_ij * n_source).sum()
 
             power = 0.0
             if pol_i == 0 and pol_j == 0:
-                power = fakevis_params["stokes_I"]\
-                            + fakevis_params["stokes_Q"]
+                power = fakevis_params["stokes_I"] + fakevis_params["stokes_Q"]
             elif pol_i == 1 and pol_j == 1:
-                power = fakevis_params["stokes_I"]\
-                            - fakevis_params["stokes_Q"]
+                power = fakevis_params["stokes_I"] - fakevis_params["stokes_Q"]
             elif pol_i == 0 and pol_j == 1:
-                power = fakevis_params['stokes_U']\
-                            + 1j*fakevis_params['stokes_V']
+                power = fakevis_params["stokes_U"] + 1j * fakevis_params["stokes_V"]
             elif pol_i == 1 and pol_j == 0:
-                power = fakevis_params['stokes_U']\
-                            - 1j*fakevis_params['stokes_V']
+                power = fakevis_params["stokes_U"] - 1j * fakevis_params["stokes_V"]
 
             vis[idx] = np.exp(1j * phase) * power
             idx += 1
 
     return vis
 
+
 def calc_n_source(time_ns):
 
     t = time_ns * units.ns + t_gps_0
 
-    tel_params = global_params['telescope']
-    
-    era = t.earth_rotation_angle('tio').degree
+    tel_params = global_params["telescope"]
+
+    era = t.earth_rotation_angle("tio").degree
 
     # print("ERA:", era, "deg")
 
-    deg2rad = np.pi/180
+    deg2rad = np.pi / 180
 
-    phi = deg2rad * (fakevis_params['ra'] - era)
-    theta = deg2rad * (90 - fakevis_params['dec'])
+    phi = deg2rad * (fakevis_params["ra"] - era)
+    theta = deg2rad * (90 - fakevis_params["dec"])
 
-    n_geocen = np.array([np.cos(phi) * np.sin(theta),
-                         np.sin(phi) * np.sin(theta),
-                         np.cos(theta)])
+    n_geocen = np.array(
+        [np.cos(phi) * np.sin(theta), np.sin(phi) * np.sin(theta), np.cos(theta)]
+    )
 
     # print("n_geocen", n_geocen)
 
-    clon = np.cos(deg2rad * tel_params['inst_long_deg'])
-    slon = np.sin(deg2rad * tel_params['inst_long_deg'])
-    clat = np.cos(deg2rad * (90 - tel_params['inst_lat_deg']))
-    slat = np.sin(deg2rad * (90 - tel_params['inst_lat_deg']))
+    clon = np.cos(deg2rad * tel_params["inst_long_deg"])
+    slon = np.sin(deg2rad * tel_params["inst_long_deg"])
+    clat = np.cos(deg2rad * (90 - tel_params["inst_lat_deg"]))
+    slat = np.sin(deg2rad * (90 - tel_params["inst_lat_deg"]))
 
-    R_geocen_to_topocen = np.array([
-        [-slon,         clon, 0.0],
-        [-clon*clat, -slon*clat, slat],
-        [ clon*slat,  slon*slat, clat]])
+    R_geocen_to_topocen = np.array(
+        [
+            [-slon, clon, 0.0],
+            [-clon * clat, -slon * clat, slat],
+            [clon * slat, slon * slat, clat],
+        ]
+    )
 
     # print("R:", R_geocen_to_topocen[0])
     # print("  ", R_geocen_to_topocen[1])
@@ -398,8 +403,9 @@ def calc_n_source(time_ns):
     n_topocen = (R_geocen_to_topocen[:, :] * n_geocen[None, :]).sum(axis=1)
 
     return n_topocen
-    
+
 
 def isclose_sym(a, b, atol=0.0, rtol=1.0e-6):
-    return (np.isclose(a, b, atol=atol, rtol=rtol)
-            | np.isclose(b, a, atol=atol, rtol=rtol))
+    return np.isclose(a, b, atol=atol, rtol=rtol) | np.isclose(
+        b, a, atol=atol, rtol=rtol
+    )

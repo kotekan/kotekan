@@ -33,6 +33,7 @@ class N2Metadata(ctypes.Structure):
         ("n_rfi_fpga_ticks", ctypes.c_uint64),
     ]
 
+
 class N2Buffer(object):
     """Python representation of an N2Buffer dump.
 
@@ -224,4 +225,3 @@ def _offset(offset, size):
     """Calculate the start of a member of `size` after `offset` within a
     struct."""
     return ((size - (offset % size)) % size) + offset
-

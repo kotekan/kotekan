@@ -380,6 +380,7 @@ class FakeGPUBuffer(InputBuffer):
         self.stage_block = {stage_name: stage_config}
         self.global_block = {"telescope": {"name": "fake"}}
 
+
 class FakeN2Buffer(InputBuffer):
     """Create an input N2 format buffer and fill it using `fakeGPUBuffer`.
 
@@ -422,6 +423,7 @@ class FakeN2Buffer(InputBuffer):
 
         self.stage_block = {stage_name: stage_config}
         self.global_block = {"telescope": {"name": "fake"}}
+
 
 class FakeVisBuffer(InputBuffer):
     """Create an input visBuffer format buffer and fill it using `FakeVis`.

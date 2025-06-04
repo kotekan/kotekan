@@ -7,6 +7,7 @@ import astropy.utils.iers
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def read_time0_ns(base_url, port):
     r"""
     Read the "time0_ns" parameter from a running Kotekan instance. 
@@ -36,7 +37,7 @@ def read_time0_ns(base_url, port):
 
     resp = requests.get(url)
 
-    return resp.json()['time0_ns']
+    return resp.json()["time0_ns"]
 
 
 def broadcast_eop_table(base_url, port, eop_table):
@@ -66,7 +67,7 @@ def broadcast_eop_table(base_url, port, eop_table):
 
     url = "{0:s}:{1:d}/earth_rotation_data".format(base_url, port)
 
-    payload = {'earth_orientation_parameter_table': eop_table}
+    payload = {"earth_orientation_parameter_table": eop_table}
 
     resp = requests.post(url, json=payload)
 
@@ -102,8 +103,17 @@ def calc_delta_tai_utc(t):
     # Form a time object for 0h UTC on the beginning of the given day.
     # This will have a numerical representation (in JD) that can be differenced
     # with the TAI represenatation.
-    t_utc_d = Time({'year': t_utc.year, 'month': t_utc.month, 'day': t_utc.day,
-                    'hour': 0, 'minute': 0, 'second': 0}, scale='utc')
+    t_utc_d = Time(
+        {
+            "year": t_utc.year,
+            "month": t_utc.month,
+            "day": t_utc.day,
+            "hour": 0,
+            "minute": 0,
+            "second": 0,
+        },
+        scale="utc",
+    )
 
     # Compute the remaining time from 0h to the given t, in seconds.
     t_utc_s = 3600 * t_utc.hour + 60 * t_utc.minute + t_utc.second
@@ -153,15 +163,20 @@ def calc_astropy_time_from_unix_ns(t_unix_ns):
 
     # Unpack the struct_time into an Astropy time object, add back the
     # remaining nanoseconds.
-    t = Time({'year': t_ts.tm_year,
-              'month': t_ts.tm_mon,
-              'day': t_ts.tm_mday,
-              'hour': t_ts.tm_hour,
-              'minute': t_ts.tm_min,
-              'second': t_ts.tm_sec + 1.0e-9 * t_ns},
-             scale='utc')
+    t = Time(
+        {
+            "year": t_ts.tm_year,
+            "month": t_ts.tm_mon,
+            "day": t_ts.tm_mday,
+            "hour": t_ts.tm_hour,
+            "minute": t_ts.tm_min,
+            "second": t_ts.tm_sec + 1.0e-9 * t_ns,
+        },
+        scale="utc",
+    )
 
     return t
+
 
 def calc_unix_ns_from_t(t):
     r"""
@@ -184,11 +199,20 @@ def calc_unix_ns_from_t(t):
     # Get the time at the beginning (0h) of the UTC day.  The astropy UNIX
     # time conversion is not accurate in the middle of a day the day before a
     # leap second.
-    t0h = Time({'year': ymdhms.year, 'month': ymdhms.month, 'day': ymdhms.day,
-                'hour': 0, 'minute': 0, 'second': 0}, scale='utc')
+    t0h = Time(
+        {
+            "year": ymdhms.year,
+            "month": ymdhms.month,
+            "day": ymdhms.day,
+            "hour": 0,
+            "minute": 0,
+            "second": 0,
+        },
+        scale="utc",
+    )
 
     # Number of nanoseconds elapsed since t0.
-    ns_from_0 = round((t-t0h).tai.to_value('ns'))
+    ns_from_0 = round((t - t0h).tai.to_value("ns"))
 
     # Return the sum of the unix timestamp from the start of the day and the
     # number of nanoseconds elapsed since then.
@@ -273,7 +297,7 @@ def build_EOP_table(times, time0_ns, iers):
     eop_table = []
 
     for t in times:
-        
+
         # Compute number of leap seconds at t.
         dtai = calc_delta_tai_utc(t)
 
@@ -291,11 +315,11 @@ def build_EOP_table(times, time0_ns, iers):
         # Third argument is whether to return Status as third return value
         delta_ut1_utc, _ = iers.ut1_utc(t, None, True)
 
-        # The Instrument -> UT1 conversion is UT1-UTC PLUS any elapsed leap 
+        # The Instrument -> UT1 conversion is UT1-UTC PLUS any elapsed leap
         # seconds since t0 (startup). This ensures
         # UT1 = t_inst + delta_UT1_inst is a continuous function over a leap
         # second.
-        delta_ut1_inst = delta_ut1_utc.to_value('second') - (dtai - dtai0)
+        delta_ut1_inst = delta_ut1_utc.to_value("second") - (dtai - dtai0)
 
         # Get Polar motion x & y from IERS Table.
         # First argument is Time object, or jd1
@@ -304,10 +328,12 @@ def build_EOP_table(times, time0_ns, iers):
         x, y, status = iers.pm_xy(t, None, True)
 
         # Build the EOP entry!
-        eop = dict(time_inst_ns=t_inst,
-                   delta_UT1_inst=delta_ut1_inst,
-                   x_pm=x.to_value('arcsecond'),
-                   y_pm=y.to_value('arcsecond'))
+        eop = dict(
+            time_inst_ns=t_inst,
+            delta_UT1_inst=delta_ut1_inst,
+            x_pm=x.to_value("arcsecond"),
+            y_pm=y.to_value("arcsecond"),
+        )
 
         # Append to the table.
         eop_table.append(eop)
@@ -315,8 +341,14 @@ def build_EOP_table(times, time0_ns, iers):
     # Done!
     return eop_table
 
-def build_time_array(t_ref, n_intervals_before, n_intervals_after,
-                     interval_length_days, snap_to_grid=False):
+
+def build_time_array(
+    t_ref,
+    n_intervals_before,
+    n_intervals_after,
+    interval_length_days,
+    snap_to_grid=False,
+):
     r"""
     Construct an array of times for the entries in the EOP Table.
 
@@ -342,26 +374,26 @@ def build_time_array(t_ref, n_intervals_before, n_intervals_after,
 
     # Array of all entry offsets from t0 (the beginning time of the current
     # interval).
-    dts = dt * np.arange(-n_intervals_before, n_intervals_after+2)
+    dts = dt * np.arange(-n_intervals_before, n_intervals_after + 2)
 
     if snap_to_grid:
         # We'll "grid" in MJD, which is an integer at 0h.
         mjd_ref = t_ref.mjd
 
         # Compute the MJD value for the beginning of the interval containing
-        # t_ref. If length is 1.0, this just takes the floor of mjd_ref, 
+        # t_ref. If length is 1.0, this just takes the floor of mjd_ref,
         # returning the most recent midnight UTC (assuming t_ref is UTC).
         # If length is 0,5, will return the most recent midnight or noon UTC
         # (if t_ref is UTC).
         mjd0 = int(mjd_ref / interval_length_days) * interval_length_days
 
         # Make the time object for this mjd.
-        t0 = Time(mjd0, format='mjd', scale=t_ref.scale)
+        t0 = Time(mjd0, format="mjd", scale=t_ref.scale)
 
     else:
         # If not snapping, then t_ref is center of current interval and
         # t0 is half a dt earlier.
-        t0 = t_ref - 0.5*dt
+        t0 = t_ref - 0.5 * dt
 
     # constuct list of times.
     times = t0 + dts
@@ -398,4 +430,3 @@ if __name__ == "__main__":
 
     # Send table to Kotekan
     broadcast_eop_table(kotekan_url, kotekan_port, eop_table)
-
