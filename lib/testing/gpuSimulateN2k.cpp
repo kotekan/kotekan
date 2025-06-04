@@ -1,10 +1,10 @@
 #include "gpuSimulateN2k.hpp"
 
-#include "chordMetadata.hpp"   // for chordMetadata
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"          // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
 #include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 
 #include <atomic>     // for atomic_bool
@@ -61,8 +61,9 @@ void gpuSimulateN2k::main_thread() {
         int fstride = 128 * _num_elements / 16 * (_num_elements / 16 + 1);
         int tstride = _num_local_freq * fstride;
 
-        INFO("Running stage with nt_outer={:d}, nt_inner={:d}, _num_local_freq={:d}, _num_elements={:d}",
-            nt_outer, nt_inner, _num_local_freq, _num_elements);
+        INFO("Running stage with nt_outer={:d}, nt_inner={:d}, _num_local_freq={:d}, "
+             "_num_elements={:d}",
+             nt_outer, nt_inner, _num_local_freq, _num_elements);
 
         for (int tout = 0; tout < nt_outer; ++tout) {
             for (int f = 0; f < _num_local_freq; ++f) {
@@ -115,8 +116,8 @@ void gpuSimulateN2k::main_thread() {
         input_buf->mark_frame_empty(unique_name, input_frame_id);
 
         // Pretend some samples were lost
-        // chordMetadata* chord_metadata = (chordMetadata*) output_buf->get_metadata(output_frame_id);
-        // chord_metadata->lost_timesamples[0] = 1;
+        // chordMetadata* chord_metadata = (chordMetadata*)
+        // output_buf->get_metadata(output_frame_id); chord_metadata->lost_timesamples[0] = 1;
 
         output_buf->mark_frame_full(unique_name, output_frame_id);
 

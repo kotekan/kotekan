@@ -7,19 +7,19 @@
 #ifndef N2BUFFER_HPP
 #define N2BUFFER_HPP
 
-#include "Config.hpp"       // for Config
-#include "FrameView.hpp"    // for FrameView
-#include "Telescope.hpp"    // for freq_id_t
-#include "buffer.hpp"       // for Buffer
-#include "N2Util.hpp"       // for cfloat
-#include "N2Metadata.hpp"   // for N2Metadata
 #include "CHORDTelescope.hpp" // for struct EOP
+#include "Config.hpp"         // for Config
+#include "FrameView.hpp"      // for FrameView
+#include "N2Metadata.hpp"     // for N2Metadata
+#include "N2Util.hpp"         // for cfloat
+#include "Telescope.hpp"      // for freq_id_t
+#include "buffer.hpp"         // for Buffer
 
-#include "gsl-lite.hpp"     // for span
+#include "gsl-lite.hpp" // for span
 
-#include <set>              // for set
-#include <map>              // for map
-#include <utility>          // for pair
+#include <map>     // for map
+#include <set>     // for set
+#include <utility> // for pair
 
 /**
  * @brief The fields within the N2FrameView.
@@ -43,8 +43,7 @@ enum class N2EigenMethod { cheevr, iterative };
  * the ability to interact with the data and metadata.
  *
  **/
-class N2FrameView :
-    public FrameView {
+class N2FrameView : public FrameView {
 
 public:
     const std::shared_ptr<N2Metadata> _metadata;
@@ -78,7 +77,7 @@ public:
     const double& freq_Hz;
 
     /// Earth Orientation Paramters
-    struct EOP &eop;
+    struct EOP& eop;
 
     /// View of the visibility data.
     const gsl_lite::span<N2::cfloat> vis;
@@ -91,7 +90,7 @@ public:
     /// View of the eigenvectors (packed as ev,feed).
     const gsl_lite::span<N2::cfloat> evec;
     /// Method used to compute Eigenvalues and Eigenvectors
-    N2EigenMethod & emethod;
+    N2EigenMethod& emethod;
     /// The RMS of residual visibilities
     float& erms;
     /// View of the applied gains
@@ -100,36 +99,38 @@ public:
     /**
      * @brief The sizes of the fields in the N2FrameView.
      */
-    static std::vector<std::pair<N2Field, size_t>> get_field_sizes(uint32_t num_elements_in, uint32_t num_ev_in) {
+    static std::vector<std::pair<N2Field, size_t>> get_field_sizes(uint32_t num_elements_in,
+                                                                   uint32_t num_ev_in) {
 
         size_t num_prod = N2::get_num_prod(num_elements_in);
 
         std::vector<std::pair<N2Field, size_t>> field_sizes;
-        field_sizes.push_back( { N2Field::vis,      sizeof(N2::cfloat) * num_prod } );
-        field_sizes.push_back( { N2Field::weight,   sizeof(float) * num_prod} );
-        field_sizes.push_back( { N2Field::flags,    sizeof(float) * num_elements_in} );
-        field_sizes.push_back( { N2Field::eval,     sizeof(float) * num_ev_in} );
-        field_sizes.push_back( { N2Field::evec,     sizeof(N2::cfloat) * num_ev_in * num_elements_in} );
-        field_sizes.push_back( { N2Field::emethod,  sizeof(N2EigenMethod) * 1} );
-        field_sizes.push_back( { N2Field::erms,     sizeof(float) * 1} );
-        field_sizes.push_back( { N2Field::gain,     sizeof(N2::cfloat) * num_elements_in} );
+        field_sizes.push_back({N2Field::vis, sizeof(N2::cfloat) * num_prod});
+        field_sizes.push_back({N2Field::weight, sizeof(float) * num_prod});
+        field_sizes.push_back({N2Field::flags, sizeof(float) * num_elements_in});
+        field_sizes.push_back({N2Field::eval, sizeof(float) * num_ev_in});
+        field_sizes.push_back({N2Field::evec, sizeof(N2::cfloat) * num_ev_in * num_elements_in});
+        field_sizes.push_back({N2Field::emethod, sizeof(N2EigenMethod) * 1});
+        field_sizes.push_back({N2Field::erms, sizeof(float) * 1});
+        field_sizes.push_back({N2Field::gain, sizeof(N2::cfloat) * num_elements_in});
 
         return field_sizes;
     }
 
     /**
      * @brief The layout of the fields within the N2FrameView.
-     * 
+     *
      * @return A map of the field to the { start, end } of the field in the frame.
      **/
-    static std::map<N2Field, std::pair<size_t, size_t>> get_frame_layout(uint32_t num_elements_in, uint32_t num_ev_in)
-    {
+    static std::map<N2Field, std::pair<size_t, size_t>> get_frame_layout(uint32_t num_elements_in,
+                                                                         uint32_t num_ev_in) {
         std::map<N2Field, std::pair<size_t, size_t>> frame_layout;
-        std::vector<std::pair<N2Field, size_t>> field_sizes = get_field_sizes(num_elements_in, num_ev_in);
-        
+        std::vector<std::pair<N2Field, size_t>> field_sizes =
+            get_field_sizes(num_elements_in, num_ev_in);
+
         // build the layout
         size_t offset = 0;
-        for (const std::pair<N2Field, size_t> & field : field_sizes) {
+        for (const std::pair<N2Field, size_t>& field : field_sizes) {
             frame_layout[field.first] = std::make_pair(offset, offset + field.second);
             offset += field.second;
         }
@@ -163,10 +164,10 @@ public:
      * @param frame_id The id of the frame to read.
      */
     N2FrameView(Buffer* buf, int frame_id);
-    
+
     size_t data_size() const override;
     void zero_frame() override;
-    
+
     /**
      * @brief Copy a whole frame from a buffer and create a view of it.
      *
@@ -186,8 +187,8 @@ public:
      * @returns An N2FrameView of the copied frame.
      *
      **/
-    static N2FrameView copy_frame(Buffer* buf_src, int frame_id_src,
-                                  Buffer* buf_dest, int frame_id_dest);
+    static N2FrameView copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
+                                  int frame_id_dest);
 
     /**
      * @brief Copy over the data, skipping specified members.

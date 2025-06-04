@@ -3,12 +3,12 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for operator!=, operator<
 #include "LinearAlgebra.hpp"     // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
+#include "N2FrameView.hpp"       // for N2FrameView
+#include "N2Util.hpp"            // for cfloat, frameID
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"            // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
-#include "N2FrameView.hpp"       // for N2FrameView
-#include "N2Util.hpp"            // for cfloat, frameID
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
@@ -70,16 +70,17 @@ EigenVisIter::EigenVisIter(Config& config, const std::string& unique_name,
     _krylov = config.get_default<uint32_t>(unique_name, "krylov", 2);
     _subspace = config.get_default<uint32_t>(unique_name, "subspace", 3);
 
-    if(_num_ev_conv > _num_eigenvectors)
-        FATAL_ERROR("The `num_ev_conv` config parameter ({:d}) must be less than or equal to `num_ev` ({:d}).",
-                        _num_ev_conv, _num_eigenvectors);
-    if(_num_eigenvectors <= 0)
+    if (_num_ev_conv > _num_eigenvectors)
+        FATAL_ERROR("The `num_ev_conv` config parameter ({:d}) must be less than or equal to "
+                    "`num_ev` ({:d}).",
+                    _num_ev_conv, _num_eigenvectors);
+    if (_num_eigenvectors <= 0)
         FATAL_ERROR("The `num_ev` config parameter must be greater than zero.");
-    if(_tol_eval <= 0)
+    if (_tol_eval <= 0)
         FATAL_ERROR("The `tol_eval` config parameter must be greater than zero.");
-    if(_tol_evec <= 0)
+    if (_tol_evec <= 0)
         FATAL_ERROR("The `tol_evec` config parameter must be greater than zero.");
-    if(_max_iterations <= 0)
+    if (_max_iterations <= 0)
         FATAL_ERROR("The `max_iterations` config parameter must be greater than zero.");
 }
 
@@ -109,7 +110,8 @@ void EigenVisIter::main_thread() {
         // Check that we have the full triangle
         uint32_t num_prod_full = input_frame.num_elements * (input_frame.num_elements + 1) / 2;
         if (input_frame.num_prod != num_prod_full) {
-            FATAL_ERROR("Eigenvectors require full correlation triangle. Sizes {:d} and {:d} don't match.",
+            FATAL_ERROR(
+                "Eigenvectors require full correlation triangle. Sizes {:d} and {:d} don't match.",
                 input_frame.num_prod, num_prod_full);
         }
 
@@ -182,8 +184,8 @@ void EigenVisIter::main_thread() {
 }
 
 
-void EigenVisIter::update_metrics(int freq_id, u_int64_t elapsed_time,
-                                  const eig_t<cfloat>& eigpair, const EigConvergenceStats& stats) {
+void EigenVisIter::update_metrics(int freq_id, u_int64_t elapsed_time, const eig_t<cfloat>& eigpair,
+                                  const EigConvergenceStats& stats) {
     // Update average write time in prometheus
     auto& calc_time = calc_time_map[freq_id];
     calc_time.add_sample(elapsed_time);

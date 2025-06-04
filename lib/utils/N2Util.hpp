@@ -5,13 +5,12 @@
 #ifndef N2_UTIL_HPP
 #define N2_UTIL_HPP
 
-#include <complex>     // for complex, imag, real
-#include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
-#include <cstdlib>     // for size_t
-#include <time.h>      // for timespec, clock_gettime
+#include <complex> // for complex, imag, real
+#include <cstdint> // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
+#include <cstdlib> // for size_t
+#include <time.h>  // for timespec, clock_gettime
 
-namespace N2
-{
+namespace N2 {
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
@@ -86,7 +85,7 @@ inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
  * @return    Time as an uint64.
  */
 inline uint64_t ts_to_uint64(const timespec& ts) {
-    return 1000000000L * (uint64_t) ts.tv_sec + (uint64_t) ts.tv_nsec;
+    return 1000000000L * (uint64_t)ts.tv_sec + (uint64_t)ts.tv_nsec;
 }
 
 /**
@@ -298,8 +297,7 @@ private:
  *
  * @returns  The current time in nanoseconds.
  **/
-inline uint64_t current_time()
-{
+inline uint64_t current_time() {
     timespec output_ts;
     timespec_get(&output_ts, TIME_UTC);
     return N2::ts_to_uint64(output_ts);

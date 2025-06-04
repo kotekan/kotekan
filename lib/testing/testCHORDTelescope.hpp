@@ -27,7 +27,7 @@ public:
      *   and you wish to hide the complexity.
      */
     TestCHORDTelescope(kotekan::Config& config, const std::string& unique_name,
-                    kotekan::bufferContainer& buffer_container);
+                       kotekan::bufferContainer& buffer_container);
 
     /**
      * @brief Deconstructor - what happens when Kotekan shuts down.

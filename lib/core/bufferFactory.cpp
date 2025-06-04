@@ -2,12 +2,12 @@
 
 #include "Config.hpp"         // for Config
 #include "HFBFrameView.hpp"   // for HFBFrameView
+#include "N2FrameView.hpp"    // for N2FrameView
 #include "buffer.hpp"         // for create_buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.hpp"       // for metadataPool // IWYU pragma: keep
 #include "ringbuffer.hpp"
-#include "visBuffer.hpp"      // for VisFrameView
-#include "N2FrameView.hpp"    // for N2FrameView
+#include "visBuffer.hpp" // for VisFrameView
 
 #include "fmt.hpp" // for format, fmt
 

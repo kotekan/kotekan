@@ -5,7 +5,7 @@
 #ifndef TIME_UTIL_HPP
 #define TIME_UTIL_HPP
 
-#include <time.h>   // for timespec
+#include <time.h> // for timespec
 #include <vector>
 
 
@@ -16,7 +16,7 @@
  * @param   dUT dobule Value of UT1-UTC at t, seconds
  * @return  UT1 time as a timespec
  */
-timespec get_UT1_from_time(const timespec &t, double delta_UT1_inst);
+timespec get_UT1_from_time(const timespec& t, double delta_UT1_inst);
 
 /**
  * @brief Compute UT1 time Julian Date (in seconds, nanoseconds) from GPS time
@@ -25,15 +25,16 @@ timespec get_UT1_from_time(const timespec &t, double delta_UT1_inst);
  * @param   dUT dobule Value of UT1-UTC at t, seconds
  * @return  UT1 time as a timespec
  */
-timespec get_time_from_UT1(const timespec &t_ut1, double delta_UT1_inst);
+timespec get_time_from_UT1(const timespec& t_ut1, double delta_UT1_inst);
 
 /**
  * @brief Compute Earth Rotation Angle (ERA) from UT1
  * @param   ut1 const ref timespec The UT1 time to convert, since JD=0.
- * @param   num_rot int64_t pointer Optional location to store number of rotations since UT1 2451545 JD
+ * @param   num_rot int64_t pointer Optional location to store number of rotations since UT1 2451545
+ * JD
  * @return  ERA in degrees, [0.0, 360.0)
  */
-double get_ERA_from_UT1(const timespec &ut1, int64_t *num_rot);
+double get_ERA_from_UT1(const timespec& ut1, int64_t* num_rot);
 
 /**
  * @brief Compute UT1 time from Earth Rotation Angle (ERA).
@@ -50,6 +51,6 @@ timespec get_UT1_from_ERA(int64_t num_rot, double ERA_deg);
  * @param   dUT dobule Value of UT1-UTC at gps_time, seconds
  * @return  ERA in degrees
  */
-double get_ERA_from_time(const timespec &t, double delta_UT1_inst);
+double get_ERA_from_time(const timespec& t, double delta_UT1_inst);
 
 #endif

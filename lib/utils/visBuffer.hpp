@@ -237,7 +237,7 @@ public:
      *                       if not multifrequency)
      *
      **/
-    template <typename CH_Metadata>
+    template<typename CH_Metadata>
     void fill_metadata(const std::shared_ptr<CH_Metadata> metadata, uint32_t f_ind) {
 
         auto& tel = Telescope::instance();

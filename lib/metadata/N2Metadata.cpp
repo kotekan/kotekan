@@ -1,8 +1,7 @@
 #include "N2Metadata.hpp"
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, N2Metadata);
-N2Metadata::N2Metadata() :
-    N2MetadataFormat{0, 0, 0, 0, 0, 0.0, eop_null, 0, 0, 0, 0, 0} {
+N2Metadata::N2Metadata() : N2MetadataFormat{0, 0, 0, 0, 0, 0.0, eop_null, 0, 0, 0, 0, 0} {
     ;
 }
 
@@ -20,7 +19,7 @@ size_t N2Metadata::set_from_bytes(const char* bytes, size_t length) {
     assert(length >= sizeof(N2MetadataFormat));
 
     const N2MetadataFormat* fmt = reinterpret_cast<const N2MetadataFormat*>(bytes);
-    
+
     fpga_start_tick = fmt->fpga_start_tick;
     frame_start_time_ns = fmt->frame_start_time_ns;
     frame_length_fpga_ticks = fmt->frame_length_fpga_ticks;

@@ -1,8 +1,8 @@
 #include "FakeVisPattern.hpp"
 
+#include "CHORDTelescope.hpp" // for CHORDTelescope
 #include "Config.hpp"         // for Config
 #include "Hash.hpp"           // for Hash
-#include "CHORDTelescope.hpp" // for CHORDTelescope
 #include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
 #include "datasetState.hpp"   // for flagState, inputState
 #include "timeUtil.hpp"       // for get_ERA_from_time
@@ -17,7 +17,7 @@
 #include <complex>   // for complex, operator*
 #include <cstdint>   // for uint32_t, uint16_t
 #include <exception> // for exception
-//#include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
+// #include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
 #include <map>       // for map, map<>::mapped_type
 #include <math.h>    // for cosf, sinf
 #include <regex>     // for match_results<>::_Base_type
@@ -465,9 +465,8 @@ state_id_t ChangeStatePattern::gen_state_gains() {
     return dm.create_state<gainState>(update_id, _gain_update_ind++).first;
 }
 
-PointSourceVisPattern::PointSourceVisPattern(kotekan::Config& config,
-                                             const std::string& path) : 
-        FakeVisPattern(config, path) {
+PointSourceVisPattern::PointSourceVisPattern(kotekan::Config& config, const std::string& path) :
+    FakeVisPattern(config, path) {
     ra = config.get<double>(path, "ra");
     dec = config.get<double>(path, "dec");
     stokes_I = config.get_default<double>(path, "stokes_I", 1.0);
@@ -480,7 +479,7 @@ PointSourceVisPattern::PointSourceVisPattern(kotekan::Config& config,
 }
 
 void PointSourceVisPattern::fill(VisFrameView& frame) {
-    
+
     frame.fpga_seq_total = frame.fpga_seq_length - n_rfi_ticks - n_lost_ticks;
     frame.rfi_total = n_rfi_ticks;
 
@@ -490,25 +489,25 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
     uint32_t num_elements = frame.num_elements;
 
 
-    timespec time = tel.to_time(std::get<0>(frame.time) + frame.fpga_seq_length/2);
+    timespec time = tel.to_time(std::get<0>(frame.time) + frame.fpga_seq_length / 2);
     struct EOP eop = tel.get_EOP_at_time(time);
 
     std::array<double, 3> n = tel.get_sky_vec_in_tel_coords(ra, dec, eop);
 
     double f = tel.to_freq(frame.freq_id);
     double lambda = C / f;
-    
+
     /*
     n[0] = 0.0;
     n[1] = 0.0;
     n[2] = 1.0;
     */
 
-    INFO("Making fake vis at t: {:d} s + {:d} ns",
-            time.tv_sec, time.tv_nsec);
+    INFO("Making fake vis at t: {:d} s + {:d} ns", time.tv_sec, time.tv_nsec);
     INFO("     telescope dt_ns: {}", tel.seq_length_nsec());
     INFO("          start tick: {}", std::get<0>(frame.time));
-    INFO("          Frame time: {:d} ns", std::get<1>(frame.time).tv_sec*1000000000 + std::get<1>(frame.time).tv_nsec);
+    INFO("          Frame time: {:d} ns",
+         std::get<1>(frame.time).tv_sec * 1000000000 + std::get<1>(frame.time).tv_nsec);
     INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
     INFO("                   ERA: {:.10f} deg", eop.ERA_deg);
     INFO("                   xp: {:.10f} arcsec", eop.xp_as);
@@ -527,10 +526,10 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
             std::array<double, 3> pos_i = tel.get_dish_position(dish_i);
             std::array<double, 3> pos_j = tel.get_dish_position(dish_j);
 
-            double phase = 2*M_PI * ( (pos_i[0]-pos_j[0]) * n[0]
-                                    + (pos_i[1]-pos_j[1]) * n[1]
-                                    + (pos_i[2]-pos_j[2]) * n[2])
-                                    / lambda;
+            double phase = 2 * M_PI
+                           * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]
+                              + (pos_i[2] - pos_j[2]) * n[2])
+                           / lambda;
 
             double cp = cos(phase);
             double sp = sin(phase);
@@ -544,8 +543,7 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
             else if (pol_i == 0 && pol_j == 1) {
                 power_r = stokes_U;
                 power_i = stokes_V;
-            }
-            else if (pol_i == 1 && pol_j == 0) {
+            } else if (pol_i == 1 && pol_j == 0) {
                 power_r = stokes_U;
                 power_i = -stokes_V;
             }
@@ -559,7 +557,8 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
 
 void PointSourceVisPattern::fill(N2FrameView& frame) {
 
-    frame._metadata->n_valid_fpga_ticks_in_frame = frame._metadata->frame_length_fpga_ticks - n_rfi_ticks - n_lost_ticks;
+    frame._metadata->n_valid_fpga_ticks_in_frame =
+        frame._metadata->frame_length_fpga_ticks - n_rfi_ticks - n_lost_ticks;
     frame._metadata->n_rfi_fpga_ticks = n_rfi_ticks;
 
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
@@ -567,8 +566,7 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     uint32_t num_dishes = tel.get_num_dishes();
     uint32_t num_elements = frame.num_elements;
 
-    timespec time = tel.to_time(frame.fpga_start_tick
-                                    + frame.frame_length_fpga_ticks/2);
+    timespec time = tel.to_time(frame.fpga_start_tick + frame.frame_length_fpga_ticks / 2);
 
     struct EOP eop = tel.get_EOP_at_time(time);
 
@@ -576,7 +574,7 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
 
     double f = tel.to_freq(frame.freq_id);
     double lambda = C / f;
-    
+
     frame._metadata->freq_Hz = f;
     frame._metadata->eop = eop;
 
@@ -586,8 +584,7 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     n[2] = 1.0;
     */
 
-    INFO("Making fake vis at t: {:d} s + {:d} ns",
-            time.tv_sec, time.tv_nsec);
+    INFO("Making fake vis at t: {:d} s + {:d} ns", time.tv_sec, time.tv_nsec);
     INFO("     telescope dt_ns: {}", tel.seq_length_nsec());
     INFO("          start tick: {}", frame.fpga_start_tick);
     INFO("          Frame time: {:d} ns", frame.frame_start_time_ns);
@@ -609,10 +606,10 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
             std::array<double, 3> pos_i = tel.get_dish_position(dish_i);
             std::array<double, 3> pos_j = tel.get_dish_position(dish_j);
 
-            double phase = 2*M_PI * ( (pos_i[0]-pos_j[0]) * n[0]
-                                    + (pos_i[1]-pos_j[1]) * n[1]
-                                    + (pos_i[2]-pos_j[2]) * n[2])
-                                    / lambda;
+            double phase = 2 * M_PI
+                           * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]
+                              + (pos_i[2] - pos_j[2]) * n[2])
+                           / lambda;
 
             double cp = cos(phase);
             double sp = sin(phase);
@@ -626,8 +623,7 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
             else if (pol_i == 0 && pol_j == 1) {
                 power_r = stokes_U;
                 power_i = stokes_V;
-            }
-            else if (pol_i == 1 && pol_j == 0) {
+            } else if (pol_i == 1 && pol_j == 0) {
                 power_r = stokes_U;
                 power_i = -stokes_V;
             }
@@ -643,7 +639,7 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     std::vector<N2::cfloat> vis_square;
     std::vector<N2::cfloat> evecs;
     std::vector<float> evals;
-    
+
     vis_square.resize(num_elements * num_elements, 0);
     evecs.resize(num_elements * frame.num_ev, 0);
     evals.resize(frame.num_ev, 0);
@@ -665,7 +661,7 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
 
     info = LAPACKE_cheevr(LAPACK_ROW_MAJOR, 'V', 'I', 'U', nside,
                    (lapack_complex_float *)vis_square.data(), nside,
-                   0.0, 0.0, nside-frame.num_ev+1, nside, 
+                   0.0, 0.0, nside-frame.num_ev+1, nside,
                    0.0, &ev_found, evals.data(),
                    (lapack_complex_float *)evecs.data(), frame.num_ev,
                    isuppz);

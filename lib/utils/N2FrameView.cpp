@@ -1,14 +1,16 @@
 #include "N2FrameView.hpp"
-#include "buffer.hpp"        // for Buffer
-#include "FrameView.hpp"     // for FrameView, bind_span
+
+#include "FrameView.hpp" // for FrameView, bind_span
+#include "buffer.hpp"    // for Buffer
 
 N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 
-    FrameView(buf, frame_id), _metadata(std::static_pointer_cast<N2Metadata>(buf->metadata[frame_id])),
+    FrameView(buf, frame_id),
+    _metadata(std::static_pointer_cast<N2Metadata>(buf->metadata[frame_id])),
 
     // Set the const refs to the structural metadata
-    num_elements(_metadata->num_elements), num_prod(_metadata->num_prod),
-    num_ev(_metadata->num_ev), nfreq(_metadata->nfreq),
+    num_elements(_metadata->num_elements), num_prod(_metadata->num_prod), num_ev(_metadata->num_ev),
+    nfreq(_metadata->nfreq),
     frame_layout(get_frame_layout(_metadata->num_elements, _metadata->num_ev)),
 
     // Non-structural data
@@ -16,10 +18,9 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     frame_start_time_ns(_metadata->frame_start_time_ns),
     frame_length_fpga_ticks(_metadata->frame_length_fpga_ticks),
     n_valid_fpga_ticks_in_frame(_metadata->n_valid_fpga_ticks_in_frame),
-    n_rfi_fpga_ticks(_metadata->n_rfi_fpga_ticks), 
+    n_rfi_fpga_ticks(_metadata->n_rfi_fpga_ticks),
 
-    freq_id(_metadata->freq_id),
-    freq_Hz(_metadata->freq_Hz),
+    freq_id(_metadata->freq_id), freq_Hz(_metadata->freq_Hz),
 
     eop(_metadata->eop),
 
@@ -44,21 +45,20 @@ void N2FrameView::zero_frame() {
     std::memset(_frame, 0, data_size());
 }
 
-N2FrameView N2FrameView::copy_frame(Buffer* buf_src, int frame_id_src,
-                                    Buffer* buf_dest, int frame_id_dest) {
+N2FrameView N2FrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
+                                    int frame_id_dest) {
     FrameView::copy_frame(buf_src, frame_id_src, buf_dest, frame_id_dest);
 
     return N2FrameView(buf_dest, frame_id_dest);
 }
 
-void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Field>& skip_members)
-{
+void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Field>& skip_members) {
     auto copy_member = [&](N2Field member) { return (skip_members.count(member) == 0); };
 
     assert(nfreq == frame_to_copy_from.nfreq);
 
     if (copy_member(N2Field::vis) || copy_member(N2Field::weight) || copy_member(N2Field::flags)
-            || copy_member(N2Field::evec) || copy_member(N2Field::gain) ) {
+        || copy_member(N2Field::evec) || copy_member(N2Field::gain)) {
         assert(num_elements == frame_to_copy_from.num_elements);
     }
 
@@ -70,7 +70,8 @@ void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Fie
         std::copy(frame_to_copy_from.vis.begin(), frame_to_copy_from.vis.end(), vis.begin());
 
     if (copy_member(N2Field::weight))
-        std::copy(frame_to_copy_from.weight.begin(), frame_to_copy_from.weight.end(), weight.begin());
+        std::copy(frame_to_copy_from.weight.begin(), frame_to_copy_from.weight.end(),
+                  weight.begin());
 
     if (copy_member(N2Field::flags))
         std::copy(frame_to_copy_from.flags.begin(), frame_to_copy_from.flags.end(), flags.begin());
@@ -78,7 +79,7 @@ void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Fie
     if (copy_member(N2Field::eval))
         std::copy(frame_to_copy_from.eval.begin(), frame_to_copy_from.eval.end(), eval.begin());
 
-    if (copy_member(N2Field::evec)) 
+    if (copy_member(N2Field::evec))
         std::copy(frame_to_copy_from.evec.begin(), frame_to_copy_from.evec.end(), evec.begin());
 
     if (copy_member(N2Field::erms))
@@ -87,5 +88,3 @@ void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Fie
     if (copy_member(N2Field::gain))
         std::copy(frame_to_copy_from.gain.begin(), frame_to_copy_from.gain.end(), gain.begin());
 }
-
-
