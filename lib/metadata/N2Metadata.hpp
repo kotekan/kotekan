@@ -1,14 +1,14 @@
 #ifndef N2_METADATA
 #define N2_METADATA
 
+#include "CHORDTelescope.hpp" // for struct EOP, eop_null
+#include "Config.hpp"         // for Config
 #include "N2Metadata.hpp"
-#include "metadata.hpp"     // for metadataObject, metadataPool
-#include "chordMetadata.hpp"// for chordMetadata
-#include "N2Util.hpp"       // for frameID
-#include "buffer.hpp"       // for Buffer
-#include "Config.hpp"       // for Config
-#include "N2Util.hpp"       // for get_num_prod
-#include "CHORDTelescope.hpp"   // for struct EOP, eop_null
+#include "N2Util.hpp"        // for frameID
+#include "N2Util.hpp"        // for get_num_prod
+#include "buffer.hpp"        // for Buffer
+#include "chordMetadata.hpp" // for chordMetadata
+#include "metadata.hpp"      // for metadataObject, metadataPool
 
 using kotekan::Config;
 
@@ -49,11 +49,10 @@ struct N2MetadataFormat {
     uint64_t n_rfi_fpga_ticks;
 };
 
-class N2Metadata :
-    public metadataObject, public N2MetadataFormat {
+class N2Metadata : public metadataObject, public N2MetadataFormat {
 public:
     N2Metadata();
-    
+
     // ASSUMES the "other" is my type!
     void deepCopy(std::shared_ptr<metadataObject> other) override;
 
@@ -94,8 +93,7 @@ inline std::shared_ptr<N2Metadata> get_N2_metadata(const std::shared_ptr<metadat
         return std::shared_ptr<N2Metadata>();
     if (!metadata_is_N2(mc)) {
         std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
-        WARN_NON_OO("Expected metadata to be type \"N2Metadata\", got \"{:s}\".",
-                    pool->type_name);
+        WARN_NON_OO("Expected metadata to be type \"N2Metadata\", got \"{:s}\".", pool->type_name);
         return std::shared_ptr<N2Metadata>();
     }
 
@@ -109,11 +107,13 @@ inline std::shared_ptr<N2Metadata> get_N2_metadata(Buffer* buf, int frame_id) {
     return get_N2_metadata(meta);
 }
 
- inline std::shared_ptr<N2Metadata> alloc_N2_from_chord_metadata(Buffer* chord_buf, size_t chord_frame_id,
-    Buffer* N2_buf, N2::frameID N2_frame_id, Config& config, const std::string& unique_name, int f) {
-    
+inline std::shared_ptr<N2Metadata>
+alloc_N2_from_chord_metadata(Buffer* chord_buf, size_t chord_frame_id, Buffer* N2_buf,
+                             N2::frameID N2_frame_id, Config& config,
+                             const std::string& unique_name, int f) {
+
     assert(f >= 0 && f < CHORD_META_MAX_FREQ);
-    
+
     N2_buf->allocate_new_metadata_object(N2_frame_id);
 
     std::shared_ptr<chordMetadata> chord_meta = get_chord_metadata(chord_buf, chord_frame_id);
