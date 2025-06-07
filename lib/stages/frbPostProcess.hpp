@@ -18,6 +18,7 @@
 #include <string>   // for string
 #include <vector>   // for vector
 
+using float16_t = _Float16;
 
 /**
  * @class frbPostProcess
@@ -98,11 +99,11 @@ private:
     Buffer* lost_samples_buf;
     int32_t lost_samples_buf_id;
 
-    Buffer** in_buf;
+    Buffer* in_buf;
     Buffer* frb_buf;
 
     struct FRBHeader frb_header;
-    float* ib;
+    float16_t* ib;
 
     // Dynamic header
     uint16_t* frb_header_beam_ids;
@@ -111,7 +112,7 @@ private:
     float* frb_header_offset;
 
     // kotekan::Config variables
-    int32_t _num_gpus;
+    int32_t _num_freqs;
     int32_t _samples_per_data_set;
     int32_t _downsample_time;
     int32_t _factor_upchan;

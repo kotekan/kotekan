@@ -13,7 +13,6 @@
 #include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for get_chord_metadata, chordMetadata
 #include "kotekanLogging.hpp"    // for DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 
@@ -37,7 +36,7 @@ frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
     masked_packets_counter(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_frb_masked_packets_total", unique_name)) {
     // Apply config.
-    _num_gpus = config.get<int32_t>(unique_name, "num_gpus");
+    _num_freqs = config.get<int32_t>(unique_name, "num_freqs");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _downsample_time = config.get<int32_t>(unique_name, "downsample_time");
     _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
@@ -55,18 +54,15 @@ frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
 
     fpga_counts_per_sample = _downsample_time * _factor_upchan;
     udp_header_size = sizeof(struct FRBHeader) + sizeof(uint16_t) * _nbeams // beam ids
-                      + sizeof(uint16_t) * _num_gpus                        // freq band ids
-                      + sizeof(float) * _nbeams * _num_gpus                 // scales
-                      + sizeof(float) * _nbeams * _num_gpus                 // offsets
+                      + sizeof(uint16_t) * _num_freqs                       // freq band ids
+                      + sizeof(float) * _nbeams * _num_freqs                // scales
+                      + sizeof(float) * _nbeams * _num_freqs                // offsets
         ;
     udp_packet_size =
-        _nbeams * _num_gpus * _factor_upchan_out * _timesamples_per_frb_packet + udp_header_size;
+        _nbeams * _num_freqs * _factor_upchan_out * _timesamples_per_frb_packet + udp_header_size;
 
-    in_buf = (Buffer**)malloc(_num_gpus * sizeof(Buffer*));
-    for (int i = 0; i < _num_gpus; ++i) {
-        in_buf[i] = get_buffer(fmt::format(fmt("in_buf_{:d}"), i));
-        in_buf[i]->register_consumer(unique_name);
-    }
+    in_buf = get_buffer("in_buf");
+    in_buf->register_consumer(unique_name);
     frb_buf = get_buffer("out_buf");
     frb_buf->register_producer(unique_name);
 
@@ -76,14 +72,14 @@ frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
 
     // Dynamic header
     frb_header_beam_ids = new uint16_t[_nbeams];
-    frb_header_coarse_freq_ids = new uint16_t[_num_gpus];
-    frb_header_scale = new float[_nbeams * _num_gpus];
-    frb_header_offset = new float[_nbeams * _num_gpus];
+    frb_header_coarse_freq_ids = new uint16_t[_num_freqs];
+    frb_header_scale = new float[_nbeams * _num_freqs];
+    frb_header_offset = new float[_nbeams * _num_freqs];
 
     droppacket = (uint8_t*)calloc(num_samples, sizeof(uint8_t));
 
     if (posix_memalign((void**)&ib, 32,
-                       _num_gpus * num_samples * _factor_upchan_out * sizeof(float))) {
+                       _num_freqs * num_samples * _factor_upchan_out * sizeof(float16_t))) {
         throw std::runtime_error("Couldn't allocate frbPostProcess memory.");
     }
 }
@@ -105,13 +101,13 @@ void frbPostProcess::write_header(unsigned char* dest) {
     memcpy(dest, frb_header_beam_ids, sizeof(uint16_t) * _nbeams);
     dest += sizeof(uint16_t) * _nbeams;
 
-    memcpy(dest, frb_header_coarse_freq_ids, sizeof(uint16_t) * _num_gpus);
-    dest += sizeof(uint16_t) * _num_gpus;
+    memcpy(dest, frb_header_coarse_freq_ids, sizeof(uint16_t) * _num_freqs);
+    dest += sizeof(uint16_t) * _num_freqs;
 
-    memcpy(dest, frb_header_scale, sizeof(float) * _nbeams * _num_gpus);
-    dest += sizeof(float) * _nbeams * _num_gpus;
+    memcpy(dest, frb_header_scale, sizeof(float) * _nbeams * _num_freqs);
+    dest += sizeof(float) * _nbeams * _num_freqs;
 
-    memcpy(dest, frb_header_offset, sizeof(float) * _nbeams * _num_gpus);
+    memcpy(dest, frb_header_offset, sizeof(float) * _nbeams * _num_freqs);
 }
 
 #ifdef __AVX2__
@@ -119,12 +115,9 @@ void frbPostProcess::main_thread() {
 
     auto& tel = Telescope::instance();
 
-    uint in_buffer_ID[_num_gpus]; // 4 of these , cycle through buffer depth
-    uint8_t* in_frame[_num_gpus];
+    uint8_t* in_frame = nullptr;
+    uint in_buffer_ID = 0;
     int out_buffer_ID = 0;
-
-    for (int i = 0; i < _num_gpus; ++i)
-        in_buffer_ID[i] = 0;
 
     frb_header.protocol_version = 2;
     frb_header.data_nbytes = udp_packet_size - udp_header_size;
@@ -133,7 +126,7 @@ void frbPostProcess::main_thread() {
     frb_header.fpga0_ns = fpga0_ns.tv_sec * 1'000'000'000 + fpga0_ns.tv_nsec;
     frb_header.fpga_count = 0;           // to be updated in fill_header
     frb_header.nbeams = _nbeams;         // 4
-    frb_header.nfreq_coarse = _num_gpus; // 4
+    frb_header.nfreq_coarse = _num_freqs;// 4
     frb_header.nupfreq = _factor_upchan_out;
     frb_header.ntsamp = _timesamples_per_frb_packet;
 
@@ -144,89 +137,16 @@ void frbPostProcess::main_thread() {
         uint8_t* out_frame = frb_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
         if (out_frame == nullptr)
             return;
+
         // Get an input buffer, This call is blocking!
-        for (int i = 0; i < _num_gpus; ++i) {
-            in_frame[i] = in_buf[i]->wait_for_full_frame(unique_name, in_buffer_ID[i]);
-            if (in_frame[i] == nullptr)
-                return;
-        }
+        in_frame = in_buf->wait_for_full_frame(unique_name, in_buffer_ID);
+        if (in_frame == nullptr)
+            return;
 
         // Information on drop packets
         uint8_t* lost_samples_frame =
             lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_buf_id);
         if (lost_samples_frame == nullptr)
-            return;
-
-        // Get all input buffers in sync by fpga_seq_no: find the one that's the furthest along, and
-        // keep advancing others until they all match. (Keep in mind that advancing one of the
-        // others may put it ahead of the current largest fpga_seq_no, in which case we have to
-        // repeat the process.)
-        int64_t start_fpga_count = frb_header.fpga_count;
-        while (!stop_thread) {
-            // Find out the amount by which inputs are out of sync
-            int64_t max_fpga_count =
-                get_chord_metadata(in_buf[0], in_buffer_ID[0])->get_fpga_seq_num();
-            for (int i = 1; i < _num_gpus; i++) {
-                max_fpga_count =
-                    std::max(max_fpga_count,
-                             get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
-            }
-
-            // On startup, we just go with whatever is the smallest input fpga_seq_num.
-            // Afterwards, we know what the last frame was, and so can just count from there
-            if (startup) {
-                start_fpga_count = max_fpga_count;
-                for (int i = 1; i < _num_gpus; i++) {
-                    start_fpga_count = std::min(
-                        start_fpga_count,
-                        get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
-                }
-                startup = false;
-            }
-
-            DEBUG("Syncing min {} -> {} max", start_fpga_count, max_fpga_count);
-
-            // Advance lost_samples buffer by the amount of known dropped frames across all inputs
-            for (int i = 0; i < (max_fpga_count - start_fpga_count) / _samples_per_data_set; ++i) {
-                INFO("Advance lost_samples");
-                lost_samples_buf->mark_frame_empty(unique_name, lost_samples_buf_id);
-                lost_samples_buf_id = (lost_samples_buf_id + 1) % lost_samples_buf->num_frames;
-                lost_samples_frame =
-                    lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_buf_id);
-                if (lost_samples_frame == nullptr)
-                    return;
-            }
-            start_fpga_count = max_fpga_count;
-
-            // try to catch up the GPU inputs
-            bool fpga_seq_in_sync = true;
-            for (int i = 0; i < _num_gpus; ++i) {
-                while (max_fpga_count
-                       > get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
-                    INFO("Advance {} from {}", i,
-                         get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
-                    in_buf[i]->mark_frame_empty(unique_name, in_buffer_ID[i]);
-                    in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
-                    in_frame[i] = in_buf[i]->wait_for_full_frame(unique_name, in_buffer_ID[i]);
-                    if (in_frame[i] == nullptr)
-                        return;
-                }
-                if (max_fpga_count
-                    != get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
-                    fpga_seq_in_sync = false;
-                }
-                // TODO: check if [0] is really correct
-                frb_header_coarse_freq_ids[i] =
-                    get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_coarse_freq()[0];
-            }
-
-            if (fpga_seq_in_sync) {
-                frb_header.fpga_count = max_fpga_count;
-                DEBUG("Synced to {}", max_fpga_count);
-                break;
-            }
-        }
-        if (stop_thread)
             return;
 
         for (uint t = 0; t < num_samples; t++) {
@@ -242,9 +162,9 @@ void frbPostProcess::main_thread() {
 
         // Sum all the beams together into ib array.
         if (_incoherent_beams.size() > 0) {
-            memset(ib, 0, _num_gpus * num_samples * _factor_upchan_out * sizeof(float));
-            for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { // loop 4 GPUs (input)
-                float* in_data = (float*)in_frame[thread_id];
+            memset(ib, 0, _num_freqs * num_samples * _factor_upchan_out * sizeof(float16_t));
+            for (int thread_id = 0; thread_id < _num_freqs; thread_id++) { // loop 4 GPUs (input)
+                float16_t* in_data = (float16_t*)in_frame;
                 for (uint t = 0; t < num_samples; t++) {
                     float norm = 1. / _nbeams / num_L1_streams;
                     float ce = _incoherent_truncation / norm;
@@ -258,15 +178,15 @@ void frbPostProcess::main_thread() {
                          f += (sizeof(__m256) / sizeof(float))) { // loop over freq , each +8
                         int idx = t * _factor_upchan_out + f;
                         __m256 _a =
-                            _mm256_load_ps(ib + thread_id * num_samples * _factor_upchan_out + idx);
+                            _mm256_cvtph_ps(_mm_load_si128((__m128i*)(ib + thread_id * num_samples * _factor_upchan_out + idx)));
                         for (int b = 0; b < num_L1_streams * _nbeams; b++) {     // loop 1024 beams
                             int idx_next = b * num_samples * _factor_upchan_out; // b*128*16
-                            __m256 _b = _mm256_load_ps(in_data + idx + idx_next);
+                            __m256 _b = _mm256_cvtph_ps(_mm_load_si128((__m128i*)(in_data + idx + idx_next)));
                             // limit the max value in e.g. the coherent beam
                             _b = _mm256_min_ps(_b, _ce);
                             __m256 _c = _mm256_fmadd_ps(_b, _norm, _a); // SUMMING
-                            _mm256_store_ps(ib + thread_id * num_samples * _factor_upchan_out + idx,
-                                            _c);
+                            const uint8_t imm8 = 0x0; // round to nearest even, see https://www.felixcloutier.com/x86/vcvtps2ph
+                            _mm_store_si128((__m128i*)(ib + thread_id * num_samples * _factor_upchan_out + idx), _mm256_cvtps_ph(_c, imm8));
                         } // end loop b
                     } // end loop f
                 } // end loop t
@@ -282,15 +202,14 @@ void frbPostProcess::main_thread() {
                     // frb_header_beam_ids[b] = beam_id;
                     // Changing to beam id convention 0->255, 1000->1255, 2000->2255, 3000->3255
                     frb_header_beam_ids[b] = (beam_id) % 256 + (int((beam_id) / 256) * 1000);
-                    for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { // loop 4 GPUs
-                        float* in_data =
-                            ((float*)in_frame[thread_id])
+                    for (int thread_id = 0; thread_id < _num_freqs; thread_id++) { // loop 4 GPUs
+                        float16_t* in_data = (float16_t*)(in_frame) //[thread_id])
                             + (stream * _nbeams + b) * num_samples * _factor_upchan_out;
                         if (std::find(_incoherent_beams.begin(), _incoherent_beams.end(), beam_id)
                             != _incoherent_beams.end()) {
                             DEBUG("Incoherent beam! Stream {:d}, Beam {:d}; ID {:d}", stream, b,
                                   beam_id);
-                            in_data = ib + thread_id * num_samples * _factor_upchan_out;
+                            in_data = (float16_t*)(ib + thread_id * num_samples * _factor_upchan_out);
                         }
                         // pre-set to zero, in case all samples dropped within these 16 t
                         float zero = 0.0;
@@ -303,8 +222,8 @@ void frbPostProcess::main_thread() {
                         for (int t = 0; t < _timesamples_per_frb_packet; t++) {
                             if (droppacket[T + t] != 1) {
                                 int idx = (T + t) * _factor_upchan_out;
-                                _cA = _mm256_load_ps(in_data + idx);     // 8f
-                                _cB = _mm256_load_ps(in_data + idx + 8); // 8f
+                                _cA = _mm256_cvtph_ps(_mm_load_si128((__m128i*)(in_data + idx)));     // 8f
+                                _cB = _mm256_cvtph_ps(_mm_load_si128((__m128i*)(in_data + idx + 8))); // 8f
                                 if (firstvalue) {
                                     _mx = _mm256_max_ps(_cA, _cB);
                                     _mn = _mm256_min_ps(_cA, _cB);
@@ -332,8 +251,8 @@ void frbPostProcess::main_thread() {
                         _mm_store_ss(&min, mn);
                         if (firstvalue) {
                             // all times dropped within this frb packet
-                            frb_header_scale[b * _num_gpus + thread_id] = 0.0;
-                            frb_header_offset[b * _num_gpus + thread_id] = 0.0;
+                            frb_header_scale[b * _num_freqs + thread_id] = 0.0;
+                            frb_header_offset[b * _num_freqs + thread_id] = 0.0;
                             scl = 0.0;
                             ofs = 0.0;
                             masked_packets_counter.inc();
@@ -341,8 +260,8 @@ void frbPostProcess::main_thread() {
                             // scale to 1-254 (0 and 255 are both error codes)
                             scl = (253.) / (max - min);
                             ofs = min - 1 / scl; // offset by 1, so 1-254
-                            frb_header_scale[b * _num_gpus + thread_id] = 1. / scl;
-                            frb_header_offset[b * _num_gpus + thread_id] = ofs;
+                            frb_header_scale[b * _num_freqs + thread_id] = 1. / scl;
+                            frb_header_offset[b * _num_freqs + thread_id] = ofs;
                         }
                         // Apply scale and offset
                         int f_per_m = sizeof(__m256) / sizeof(float);
@@ -359,7 +278,7 @@ void frbPostProcess::main_thread() {
                             __m256 _ofs = _mm256_broadcast_ss(&off);
                             for (int f = 0; f < _factor_upchan_out; f += f_per_m) {
                                 uint32_t in_index = (T + t) * _factor_upchan_out + f;
-                                __m256 _in = _mm256_load_ps(in_data + in_index);
+                                __m256 _in = _mm256_cvtph_ps(_mm_load_si128((__m128i*)(in_data + in_index)));
                                 __m256 _out =
                                     _mm256_fmadd_ps(_in, _scl, _ofs); // now [0-255]  // APPLY!
                                 // extract -- probably a better way to do this...
@@ -379,7 +298,7 @@ void frbPostProcess::main_thread() {
                         uint32_t out_index =
                             stream * udp_packet_size * num_samples / _timesamples_per_frb_packet
                             + (T / _timesamples_per_frb_packet) * udp_packet_size
-                            + b * _num_gpus * 16 * 16 + thread_id * 16 * 16 + udp_header_size;
+                            + b * _num_freqs * 16 * 16 + thread_id * 16 * 16 + udp_header_size;
                         memcpy(out_frame + out_index, tr, 16 * 16);
                     } // end 4 GPUs
                 } // end 4 nbeam
@@ -399,10 +318,10 @@ void frbPostProcess::main_thread() {
         lost_samples_buf_id = (lost_samples_buf_id + 1) % lost_samples_buf->num_frames;
 
         // Release the input buffers
-        for (int i = 0; i < _num_gpus; ++i) {
+        for (int i = 0; i < _num_freqs; ++i) {
             // release_info_object(in_buf[gpu_id], in_buffer_ID[i]);
-            in_buf[i]->mark_frame_empty(unique_name, in_buffer_ID[i]);
-            in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
+            in_buf->mark_frame_empty(unique_name, in_buffer_ID);
+            in_buffer_ID = (in_buffer_ID + 1) % in_buf->num_frames;
         }
     } // end stop thread
 }
