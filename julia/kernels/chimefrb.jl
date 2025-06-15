@@ -1649,7 +1649,7 @@ function fix_ptx_kernel()
                 ),
                 Dict(
                     "name" => "W",
-                    "kotekan_name" => "gpu_mem_phase",
+                    "kotekan_name" => "frb_phase_name",
                     "type" => "float16",
                     "axes" => [
                         Dict("label" => "C", "length" => C),
@@ -1664,7 +1664,7 @@ function fix_ptx_kernel()
                 ),
                 Dict(
                     "name" => "Ebar",
-                    "kotekan_name" => "gpu_mem_voltage",
+                    "kotekan_name" => "voltage_name",
                     "type" => "int4x2chime",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
@@ -1678,7 +1678,7 @@ function fix_ptx_kernel()
                 ),
                 Dict(
                     "name" => "I",
-                    "kotekan_name" => "gpu_mem_beamgrid",
+                    "kotekan_name" => "frb_beamgrid_name",
                     "type" => "float16",
                     "axes" => [
                         Dict("label" => "beamP", "length" => 2 * M),

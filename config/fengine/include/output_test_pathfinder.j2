@@ -120,24 +120,23 @@ run_recv_frb1_beams:
 
 # Output
 
-write_data:
-    # base_dir:
+write_data_asdf:
     write_dish_positions:
         kotekan_stage: asdfFileWrite
         in_buf: host_dish_positions_buffer
         file_name: dish_positions
-    write_voltage:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_voltage_buffer
-        file_name: voltage
-    write_pl_mask:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_pl_mask_buffer
-        file_name: pl_mask
     write_bf_mask:
         kotekan_stage: asdfFileWrite
         in_buf: host_bf_mask_buffer
         file_name: bf_mask
+    write_pl_mask:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_pl_mask_buffer
+        file_name: pl_mask
+    write_voltage:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_voltage_buffer
+        file_name: voltage
     write_n2k_correlation:
         kotekan_stage: asdfFileWrite
         in_buf: host_n2k_correlation_buffer
@@ -154,10 +153,10 @@ write_data:
         kotekan_stage: asdfFileWrite
         in_buf: host_bb_shift_buffer
         file_name: bb_shift
-    write_expected_bb_beams:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_expected_bb_beams_buffer
-        file_name: expected_bb_beams
+    # write_expected_bb_beams:
+    #     kotekan_stage: asdfFileWrite
+    #     in_buf: host_expected_bb_beams_buffer
+    #     file_name: expected_bb_beams
     write_bb_beams:
         kotekan_stage: asdfFileWrite
         in_buf: host_bb_beams_buffer
@@ -262,26 +261,25 @@ write_data:
         kotekan_stage: asdfFileWrite
         in_buf: host_frb3_beams_meanstd_buffer
         file_name: frb3_beams_meanstd
-        max_frames: 1
+        max_frames: 4
 
-write_data2:
-    # base_dir:
+write_data_zarr:
     write_dish_positions:
         kotekan_stage: gdalFileWrite
         in_buf: host_dish_positions_buffer
         file_name: dish_positions
-    write_voltage:
-        kotekan_stage: gdalFileWrite
-        in_buf: host_voltage_buffer
-        file_name: voltage
-    write_pl_mask:
-        kotekan_stage: gdalFileWrite
-        in_buf: host_pl_mask_buffer
-        file_name: pl_mask
     write_bf_mask:
         kotekan_stage: gdalFileWrite
         in_buf: host_bf_mask_buffer
         file_name: bf_mask
+    write_pl_mask:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_pl_mask_buffer
+        file_name: pl_mask
+    write_voltage:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_voltage_buffer
+        file_name: voltage
     write_n2k_correlation:
         kotekan_stage: gdalFileWrite
         in_buf: host_n2k_correlation_buffer
@@ -298,10 +296,10 @@ write_data2:
         kotekan_stage: gdalFileWrite
         in_buf: host_bb_shift_buffer
         file_name: bb_shift
-    write_expected_bb_beams:
-        kotekan_stage: gdalFileWrite
-        in_buf: host_expected_bb_beams_buffer
-        file_name: expected_bb_beams
+    # write_expected_bb_beams:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_expected_bb_beams_buffer
+    #     file_name: expected_bb_beams
     write_bb_beams:
         kotekan_stage: gdalFileWrite
         in_buf: host_bb_beams_buffer
@@ -406,4 +404,4 @@ write_data2:
         kotekan_stage: gdalFileWrite
         in_buf: host_frb3_beams_meanstd_buffer
         file_name: frb3_beams_meanstd
-        max_frames: 1
+        max_frames: 4

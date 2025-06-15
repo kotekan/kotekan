@@ -77,6 +77,7 @@ private:
     // Kernel arguments:
     {{#kernel_arguments}}
         // {{{name}}}: {{{kotekan_name}}}
+        static constexpr const char *{{{name}}}_quantity = "{{{name}}}";
         static constexpr kotekan::DataType {{{name}}}_type = kotekan::{{{type}}};
         static constexpr std::size_t {{{name}}}_rank = 0
             {{#axes}}
@@ -104,7 +105,7 @@ private:
 
     // Kotekan buffer names
     {{#kernel_arguments}}
-        const std::string {{{name}}}_memname;
+        const std::string {{{name}}}_name;
     {{/kernel_arguments}}
 
     // Host-side buffer arrays
@@ -126,10 +127,10 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         "{{{kernel_name}}}", "{{{kernel_name}}}.ptx")
     {{#kernel_arguments}}
         {{#hasbuffer}}
-            , {{{name}}}_memname(config.get<std::string>(unique_name, "{{{kotekan_name}}}"))
+            , {{{name}}}_name(config.get<std::string>(unique_name, "{{{kotekan_name}}}"))
         {{/hasbuffer}}
         {{^hasbuffer}}
-            , {{{name}}}_memname(unique_name + "/{{{kotekan_name}}}")
+            , {{{name}}}_name(unique_name + "/{{{kotekan_name}}}")
         {{/hasbuffer}}
     {{/kernel_arguments}}
 
@@ -142,7 +143,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     // Add Graphviz entries for the GPU buffers used by this kernel
     {{#kernel_arguments}}
         {{#hasbuffer}}
-            gpu_buffers_used.push_back(std::make_tuple({{{name}}}_memname, true, true, false));
+            gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, true, true, false));
         {{/hasbuffer}}
         {{^hasbuffer}}
             gpu_buffers_used.push_back(std::make_tuple(get_name() + "_{{{kotekan_name}}}", false, true, true));
@@ -168,10 +169,12 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     {{#kernel_arguments}}
         {{#hasbuffer}}
+            const std::string {{{name}}}_memname = {{{name}}}_name + "_buffer";
             void* const {{{name}}}_memory =
                 device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
         {{/hasbuffer}}
         {{^hasbuffer}}
+            const std::string {{{name}}}_memname = {{{name}}}_name + "_buffer";
             void* const {{{name}}}_memory = device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length);
         {{/hasbuffer}}
     {{/kernel_arguments}}
@@ -306,9 +309,3 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     return record_end_event();
 }
-
-/*
-void cuda{{{kernel_name}}}::finalize_frame() {
-    cudaCommand::finalize_frame();
-}
-*/

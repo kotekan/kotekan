@@ -48,7 +48,7 @@ run_rfi:
         in_buffers:
             host_bf_mask_buffer_in: host_bf_mask_buffer
             host_pl_mask_ringbuffer_in: host_pl_mask_ringbuffer
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
+            host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
         out_buffers:
             host_rfi_S012_ringbuffer_out: host_rfi_S012_ringbuffer
             host_rfi_S012tilde_ringbuffer_out: host_rfi_S012tilde_ringbuffer
@@ -61,11 +61,11 @@ run_rfi:
         - name: S012Kernel
           bf_mask: bf_mask_buffer
           pl_mask: pl_mask_buffer
-          gpu_mem_voltage: voltage_buffer
+          gpu_mem_voltage: xposed_voltage_buffer
           accumulant: rfi_S012_buffer
           averaged_accumulant: rfi_S012tilde_buffer
           pl_mask_in_signal: host_pl_mask_ringbuffer_in
-          voltage_in_signal: host_voltage_ringbuffer_in
+          voltage_in_signal: host_xposed_voltage_ringbuffer_in
           rfi_S012_out_signal: host_rfi_S012_ringbuffer_out
           rfi_S012tilde_out_signal: host_rfi_S012tilde_ringbuffer_out
           max_num_times: buffer_depth * num_times

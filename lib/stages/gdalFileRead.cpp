@@ -22,6 +22,7 @@ class gdalFileRead : public kotekan::Stage {
     const std::string input_dir = config.get<std::string>(unique_name, "input_dir");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
+    const bool do_once = config.get_default<bool>(unique_name, "do_once", false);
 
     Buffer* const buffer;
 
@@ -50,8 +51,15 @@ public:
         for (int frame_index = 0;; ++frame_index) {
             const int frame_id = frame_index % buffer->num_frames;
 
+        wait:
+
             if (stop_thread)
                 break;
+
+            if (do_once && frame_index > 0) {
+                sleep(1);
+                goto wait;
+            }
 
             // Start timer
             const double t0 = current_time();

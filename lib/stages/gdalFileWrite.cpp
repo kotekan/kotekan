@@ -2,6 +2,7 @@
 
 #include <Stage.hpp>
 #include <StageFactory.hpp>
+#include <atomic>
 #include <cassert>
 #include <chordMetadata.hpp>
 #include <complex>
@@ -26,6 +27,9 @@
 #include <visUtil.hpp>
 
 using namespace gdal;
+
+// Number of writers which are waiting for `max_frames`
+extern std::atomic<int> waiting_for_max_frames;
 
 /**
  * @class gdalFileWrite
@@ -70,6 +74,9 @@ public:
         buffer(get_buffer("in_buf")) {
 
         GDALAllRegister();
+
+        if (max_frames >= 0)
+            ++waiting_for_max_frames;
 
         buffer->register_consumer(unique_name);
     }
@@ -383,10 +390,15 @@ public:
             buffer->mark_frame_empty(unique_name, frame_id);
 
             if (max_frames >= 0 && frame_counter + 1 >= max_frames) {
-                WARN("Processed {} frames, shutting down Kotekan", frame_counter + 1);
-                exit_kotekan(CLEAN_EXIT);
+                WARN("Processed {} frames", frame_counter + 1);
+                break;
             }
         } // for
+
+        if (--waiting_for_max_frames == 0) {
+            WARN("Shutting down Kotekan");
+            exit_kotekan(CLEAN_EXIT);
+        }
 
         DEBUG("exiting");
     }

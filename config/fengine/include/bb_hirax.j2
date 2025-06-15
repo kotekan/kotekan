@@ -69,11 +69,11 @@ run_bb:
           gpu_mem: bb_shift_buffer
         - name: cudaSyncInput
         - name: cudaBasebandBeamformer_hirax
-          in_signal: host_voltage_ringbuffer_in
-          gpu_mem_voltage: voltage_buffer
-          gpu_mem_phase: bb_phase_buffer
-          gpu_mem_output_scaling: bb_shift_buffer
-          #OUTDATED gpu_mem_formed_beams: bb_beams_buffer
+          voltage_signal_in: host_voltage_ringbuffer_in
+          voltage_name: voltage
+          bb_phase_name: bb_phase
+          bb_shift_name: bb_shift
+          bb_beams_name: bb_beams
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: bb_beams_buffer

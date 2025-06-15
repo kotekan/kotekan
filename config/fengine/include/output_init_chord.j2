@@ -16,7 +16,7 @@ write_data:
         kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
-        max_frames: 10
+        max_frames: 40
     write_bb_beam_positions:
         kotekan_stage: asdfFileWrite
         in_buf: host_bb_beam_positions_buffer
@@ -29,10 +29,10 @@ write_data:
         kotekan_stage: asdfFileWrite
         in_buf: host_bb_shift_buffer
         file_name: bb_shift
-    write_expected_bb_beams:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_expected_bb_beams_buffer
-        file_name: expected_bb_beams
+    # write_expected_bb_beams:
+    #     kotekan_stage: asdfFileWrite
+    #     in_buf: host_expected_bb_beams_buffer
+    #     file_name: expected_bb_beams
     write_upchan_U2_gain:
         kotekan_stage: asdfFileWrite
         in_buf: host_upchan_U2_gain_buffer
@@ -104,7 +104,7 @@ write_data2:
         kotekan_stage: gdalFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
-        max_frames: 10
+        max_frames: 40
     write_bb_beam_positions:
         kotekan_stage: gdalFileWrite
         in_buf: host_bb_beam_positions_buffer
@@ -117,10 +117,10 @@ write_data2:
         kotekan_stage: gdalFileWrite
         in_buf: host_bb_shift_buffer
         file_name: bb_shift
-    write_expected_bb_beams:
-        kotekan_stage: gdalFileWrite
-        in_buf: host_expected_bb_beams_buffer
-        file_name: expected_bb_beams
+    # write_expected_bb_beams:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_expected_bb_beams_buffer
+    #     file_name: expected_bb_beams
     write_upchan_U2_gain:
         kotekan_stage: gdalFileWrite
         in_buf: host_upchan_U2_gain_buffer

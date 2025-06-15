@@ -176,8 +176,8 @@ run_xpose2048:
           gpu_mem: scatter_indices_buffer
         - name: cudaSyncInput
         - name: cudaTranspose2048_chime
-          in_signal: host_voltage_ringbuffer_in
-          out_signal: host_xposed_voltage_ringbuffer_out
-          gpu_mem_input_voltage: voltage_buffer
-          gpu_mem_scatter_indices: scatter_indices_buffer
-          gpu_mem_output_voltage: xposed_voltage_buffer
+          voltage_signal_in: host_voltage_ringbuffer_in
+          voltage_signal_out: host_xposed_voltage_ringbuffer_out
+          input_voltage_name: voltage
+          scatter_indices_name: scatter_indices
+          output_voltage_name: xposed_voltage

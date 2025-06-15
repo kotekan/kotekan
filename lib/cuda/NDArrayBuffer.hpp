@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cudaCommand.hpp>
 #include <cudaDeviceInterface.hpp>
 #include <gpuDeviceInterface.hpp>
 #include <kotekanLogging.hpp>
@@ -18,24 +19,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-namespace {
-template<std::size_t D>
-std::array<kotekan::Symbol, D> strings_to_symbols(const std::array<std::string, D>& strings) {
-    std::array<kotekan::Symbol, D> symbols;
-    for (std::size_t d = 0; d < D; ++d)
-        symbols[d] = strings[d];
-    return symbols;
-}
-template<std::size_t D>
-std::array<kotekan::Symbol, D> strings_to_symbols(const std::array<const char*, D>& strings) {
-    std::array<kotekan::Symbol, D> symbols;
-    for (std::size_t d = 0; d < D; ++d)
-        symbols[d] = strings[d];
-    return symbols;
-}
-
-} // namespace
 
 template<typename T, std::size_t D>
 class NDArrayBuffer : public kotekan::kotekanLogging {
@@ -58,67 +41,55 @@ class NDArrayBuffer : public kotekan::kotekanLogging {
     const std::string buffer_name_host;   // buffer name on host
     const std::string buffer_name_device; // buffer name on device
 
+    cudaCommand& cuda_command;
+    const int64_t gpu_frame_id;
+
+    const std::string quantity;
     kotekan::NDArray<T, D> ndarray;
 
-    cudaDeviceInterface& device;
-    int cuda_stream_id;
-    // GPU buffer depth of a GPU command. Must be the same for all
-    // commands in a pipeline. Should probablye be a buffer property
-    // rather than a command property.
-    int gpu_buffer_depth;
-    // GPU frame id. Needed to access the current buffer since we're
-    // multi-buffering.
-    std::int64_t gpu_frame_id;
+private:
+    T* get_buffer_pointer(const std::array<std::ptrdiff_t, D>& extents) const {
+        std::ptrdiff_t size = 1;
+        for (std::size_t d = 0; d < D; ++d)
+            size *= extents[d];
+        const std::ptrdiff_t size_in_bytes = size * sizeof(T);
+        void* const ptr = cuda_command.get_device().get_gpu_memory_array(
+            buffer_name_device, gpu_frame_id, cuda_command.get_gpu_buffer_depth(), size_in_bytes);
+        return static_cast<T*>(ptr);
+    }
 
 public:
-    NDArrayBuffer(const std::string& buffer_name, const std::array<std::ptrdiff_t, D>& extents,
-                  const std::array<kotekan::Symbol, D>& dimnames, cudaDeviceInterface& device,
-                  const int cuda_stream_id, const int gpu_buffer_depth,
-                  const std::int64_t gpu_frame_id) :
+    NDArrayBuffer(const std::string& buffer_name, const std::string& quantity,
+                  const std::array<std::ptrdiff_t, D>& extents,
+                  const std::array<kotekan::Symbol, D>& dimnames, cudaCommand& cuda_command,
+                  const int64_t gpu_frame_id) :
         // metadata
         buffer_name(buffer_name),                            // e.g. "bb_beams"
         buffer_name_host("host_" + buffer_name + "_buffer"), // e.g. "host_bb_beams_buffer"
         buffer_name_device(buffer_name + "_buffer"),         // e.g. "bb_beams_buffer"
-                                                             // NDArray
-        ndarray(extents, dimnames, nullptr),
         // Buffer
-        device(device), cuda_stream_id(cuda_stream_id), gpu_buffer_depth(gpu_buffer_depth),
-        gpu_frame_id(gpu_frame_id)
+        cuda_command(cuda_command), gpu_frame_id(gpu_frame_id),
+        // NDArray
+        quantity(quantity), // e.g. "J"
+        ndarray(extents, dimnames, get_buffer_pointer(extents))
     //
-    {
-        void* const ptr = device.get_gpu_memory_array(buffer_name_device, gpu_frame_id,
-                                                      gpu_buffer_depth, length_in_bytes());
-        ndarray.set_data(static_cast<T*>(ptr));
-    }
+    {}
 
-    NDArrayBuffer(const std::string& buffer_name, const std::array<std::ptrdiff_t, D>& extents,
-                  const std::array<std::string, D>& dimnames, cudaDeviceInterface& device,
-                  const int cuda_stream_id, const int gpu_buffer_depth,
-                  const std::int64_t gpu_frame_id) :
-        NDArrayBuffer(buffer_name, extents, strings_to_symbols(dimnames), device, cuda_stream_id,
-                      gpu_buffer_depth, gpu_frame_id) {}
+    NDArrayBuffer(const std::string& buffer_name, const std::string& quantity,
+                  const std::array<std::ptrdiff_t, D>& extents,
+                  const std::array<std::string, D>& dimnames, cudaCommand& cuda_command,
+                  const int64_t gpu_frame_id) :
+        NDArrayBuffer(buffer_name, quantity, extents, kotekan::strings_to_symbols(dimnames),
+                      cuda_command, gpu_frame_id) {}
 
-    NDArrayBuffer(const std::string& buffer_name, const std::array<std::ptrdiff_t, D>& extents,
-                  const std::array<const char*, D>& dimnames, cudaDeviceInterface& device,
-                  const int cuda_stream_id, const int gpu_buffer_depth,
-                  const std::int64_t gpu_frame_id) :
-        NDArrayBuffer(buffer_name, extents, strings_to_symbols(dimnames), device, cuda_stream_id,
-                      gpu_buffer_depth, gpu_frame_id) {}
+    NDArrayBuffer(const std::string& buffer_name, const std::string& quantity,
+                  const std::array<std::ptrdiff_t, D>& extents,
+                  const std::array<const char*, D>& dimnames, cudaCommand& cuda_command,
+                  const int64_t gpu_frame_id) :
+        NDArrayBuffer(buffer_name, quantity, extents, kotekan::strings_to_symbols(dimnames),
+                      cuda_command, gpu_frame_id) {}
 
     virtual ~NDArrayBuffer() {}
-
-    // NDArray:
-
-    const kotekan::NDArray<T, D>& get_ndarray() const {
-        return ndarray;
-    }
-    kotekan::NDArray<T, D>& get_ndarray() {
-        return ndarray;
-    }
-
-    std::ptrdiff_t length_in_bytes() const {
-        return get_ndarray().get_size() * sizeof(T);
-    }
 
     // Buffer:
 
@@ -132,15 +103,45 @@ public:
         return buffer_name_device;
     }
 
+    // NDArray:
+
+    std::string get_quantity() const {
+        return quantity;
+    }
+
+    const kotekan::NDArray<T, D>& get_ndarray() const {
+        return ndarray;
+    }
+    kotekan::NDArray<T, D>& get_ndarray() {
+        return ndarray;
+    }
+
+private:
+    std::ptrdiff_t length_in_bytes() const {
+        return ndarray.get_size() * ndarray.value_type_size;
+    }
+
+public:
     // Metadata:
 
-    void check_metadata() const {
+    std::shared_ptr<const chordMetadata> get_metadata() const {
         const std::shared_ptr<const metadataObject> mc =
-            device.get_gpu_memory_array_metadata(buffer_name_device, gpu_frame_id);
-        assert(mc);
-        assert(metadata_is_chord(mc));
+            cuda_command.get_device().get_gpu_memory_array_metadata(buffer_name_device,
+                                                                    gpu_frame_id);
         const std::shared_ptr<const chordMetadata> metadata = get_chord_metadata(mc);
-        assert(metadata->get_name() == buffer_name);
+        return metadata;
+    }
+    std::shared_ptr<chordMetadata> get_metadata() {
+        const std::shared_ptr<metadataObject> mc =
+            cuda_command.get_device().get_gpu_memory_array_metadata(buffer_name_device,
+                                                                    gpu_frame_id);
+        const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
+        return metadata;
+    }
+
+    void check_metadata() const {
+        const std::shared_ptr<const chordMetadata> metadata = get_metadata();
+        assert(metadata->get_name() == quantity);
         assert(metadata->type == ndarray.value_datatype);
         assert(metadata->dims == ndarray.rank);
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
@@ -151,13 +152,13 @@ public:
         // TODO: check `sample0_offset`
     }
 
-    // TODO: Use other NDArrayBuffer instead of other metadata
     void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) const {
-        const std::shared_ptr<metadataObject> mc = device.create_gpu_memory_array_metadata(
-            buffer_name_device, gpu_frame_id, other_metadata->parent_pool);
+        const std::shared_ptr<metadataObject> mc =
+            cuda_command.get_device().create_gpu_memory_array_metadata(
+                buffer_name_device, gpu_frame_id, other_metadata->parent_pool);
         const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
         *metadata = *other_metadata;
-        metadata->set_name(buffer_name);
+        metadata->set_name(quantity);
         metadata->type = ndarray.value_datatype;
         metadata->dims = ndarray.rank;
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
@@ -166,6 +167,16 @@ public:
         }
         // TODO: set `sample0_offset`
     }
+
+    // TODO template<typename T1, std::size_t D1>
+    // TODO void set_metadata(const NDArrayBuffer<T1, D1>& other_buffer) const {
+    // TODO     const std::shared_ptr<const metadataObject> mc =
+    // TODO         cuda_command.get_device().get_gpu_memory_array_metadata(buffer_name_device,
+    // TODO                                                                 gpu_frame_id);
+    // TODO     assert(mc);
+    // TODO     assert(metadata_is_chord(mc));
+    // TODO     const std::shared_ptr<const chordMetadata> metadata = get_chord_metadata(mc);
+    // TODO }
 
     // Poison
 
@@ -178,7 +189,8 @@ public:
         const std::ptrdiff_t buffer_length = length_in_bytes();
         void* const buffer_device_ptr = ndarray.data();
         assert(buffer_device_ptr);
-        const cudaStream_t cuda_stream = device.getStream(cuda_stream_id);
+        const cudaStream_t cuda_stream =
+            cuda_command.get_device().getStream(cuda_command.get_cuda_stream_id());
         CHECK_CUDA_ERROR(
             cudaMemsetAsync(buffer_device_ptr, poison_value, buffer_length, cuda_stream));
 #endif

@@ -102,15 +102,15 @@ private:
     enum class args { Tmin, Tmax, A, E, s, J, info, log, count };
 
     // Tmin: Tmin
-    static constexpr const char* Tmin_name = "Tmin";
+    static constexpr const char* Tmin_quantity = "Tmin";
     static constexpr kotekan::DataType Tmin_type = kotekan::int32;
     //
     // Tmax: Tmax
-    static constexpr const char* Tmax_name = "Tmax";
+    static constexpr const char* Tmax_quantity = "Tmax";
     static constexpr kotekan::DataType Tmax_type = kotekan::int32;
     //
-    // A: gpu_mem_phase
-    static constexpr const char* A_name = "A";
+    // A: bb_phase_name
+    static constexpr const char* A_quantity = "A";
     static constexpr kotekan::DataType A_type = kotekan::int8;
     enum A_indices {
         A_index_C,
@@ -140,8 +140,8 @@ private:
     };
     static_assert(A_length == type_total_bytes(A_type) * A_strides[A_rank]);
     //
-    // E: gpu_mem_voltage
-    static constexpr const char* E_name = "E";
+    // E: voltage_name
+    static constexpr const char* E_quantity = "E";
     static constexpr kotekan::DataType E_type = kotekan::int4x2chime;
     enum E_indices {
         E_index_D,
@@ -176,8 +176,8 @@ private:
     };
     static_assert(E_length == type_total_bytes(E_type) * E_strides[E_rank]);
     //
-    // s: gpu_mem_output_scaling
-    static constexpr const char* s_name = "s";
+    // s: bb_shift_name
+    static constexpr const char* s_quantity = "s";
     static constexpr kotekan::DataType s_type = kotekan::int32;
     enum s_indices {
         s_index_B,
@@ -211,8 +211,8 @@ private:
     };
     static_assert(s_length == type_total_bytes(s_type) * s_strides[s_rank]);
     //
-    // J: bb_beams
-    static constexpr const char* J_name = "J";
+    // J: bb_beams_name
+    static constexpr const char* J_quantity = "J";
     static constexpr kotekan::DataType J_type = kotekan::int4x2chime;
     enum J_indices {
         J_index_T,
@@ -248,7 +248,7 @@ private:
     static_assert(J_length == type_total_bytes(J_type) * J_strides[J_rank]);
     //
     // info: gpu_mem_info
-    static constexpr const char* info_name = "info";
+    static constexpr const char* info_quantity = "info";
     static constexpr kotekan::DataType info_type = kotekan::int32;
     enum info_indices {
         info_index_thread,
@@ -283,7 +283,7 @@ private:
     static_assert(info_length == type_total_bytes(info_type) * info_strides[info_rank]);
     //
     // log: gpu_mem_log
-    static constexpr const char* log_name = "log";
+    static constexpr const char* log_quantity = "log";
     static constexpr kotekan::DataType log_type = kotekan::int32;
     enum log_indices {
         log_index_block,
@@ -311,11 +311,12 @@ private:
     //
 
     // Kotekan buffer names
-    const std::string A_memname;
-    const std::string E_memname;
-    const std::string s_memname;
-    const std::string info_memname;
-    const std::string log_memname;
+    const std::string A_name;
+    const std::string E_name;
+    const std::string s_name;
+    const std::string J_name;
+    const std::string info_name;
+    const std::string log_name;
 
     // Host-side buffer arrays
     std::vector<std::uint8_t> info_host;
@@ -328,7 +329,7 @@ private:
     RingBuffer* input_ringbuf_signal;
 
     // How many samples we will process from the input ringbuffer
-    // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
+    // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
     std::ptrdiff_t Tmin, Tmax;
 };
 
@@ -341,16 +342,17 @@ cudaBasebandBeamformer_chime::cudaBasebandBeamformer_chime(Config& config,
                                                            const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "BasebandBeamformer_chime", "BasebandBeamformer_chime.ptx"),
-    A_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
-    E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
-    s_memname(config.get<std::string>(unique_name, "gpu_mem_output_scaling")),
-    info_memname(unique_name + "/gpu_mem_info"), log_memname(unique_name + "/gpu_mem_log"),
+    A_name(config.get<std::string>(unique_name, "bb_phase_name")),
+    E_name(config.get<std::string>(unique_name, "voltage_name")),
+    s_name(config.get<std::string>(unique_name, "bb_shift_name")),
+    J_name(config.get<std::string>(unique_name, "bb_beams_name")),
+    info_name(unique_name + "/gpu_mem_info"), log_name(unique_name + "/gpu_mem_log"),
 
     info_host(info_length), log_host(log_length),
 
     // Find input buffer used for signalling ring-buffer state
-    input_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))) {
+    input_ringbuf_signal(dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(
+        config.get<std::string>(unique_name, "voltage_signal_in")))) {
     // Check ringbuffer size
     if (!(input_ringbuf_signal->size == E_length))
         FATAL_ERROR("Need input_ringbuf_signal->size == E_length, but have "
@@ -369,12 +371,12 @@ cudaBasebandBeamformer_chime::cudaBasebandBeamformer_chime(Config& config,
     }
 
     // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(A_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(s_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple("bb_beams_buffer", true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_log", false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(A_name, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(E_name, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(s_name, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(J_name, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(info_name, false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(log_name, false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
 
@@ -451,27 +453,31 @@ cudaEvent_t cudaBasebandBeamformer_chime::execute(cudaPipelineState& /*pipestate
                                                   const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
 
+    const std::string A_memname = A_name + "_buffer";
     void* const A_memory =
         args::A == args::E ? device.get_gpu_memory(A_memname, input_ringbuf_signal->size)
         : args::A == args::A || args::A == args::s
             ? device.get_gpu_memory(A_memname, A_length)
             : device.get_gpu_memory_array(A_memname, gpu_frame_id, _gpu_buffer_depth, A_length);
+    const std::string E_memname = E_name + "_buffer";
     void* const E_memory =
         args::E == args::E ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
         : args::E == args::A || args::E == args::s
             ? device.get_gpu_memory(E_memname, E_length)
             : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
+    const std::string s_memname = s_name + "_buffer";
     void* const s_memory =
         args::s == args::E ? device.get_gpu_memory(s_memname, input_ringbuf_signal->size)
         : args::s == args::A || args::s == args::s
             ? device.get_gpu_memory(s_memname, s_length)
             : device.get_gpu_memory_array(s_memname, gpu_frame_id, _gpu_buffer_depth, s_length);
     NDArrayBuffer<kotekan::GetType_t<J_type>, J_rank> J_buffer(
-        "bb_beams", reverse(J_lengths), reverse(J_labels), device, cuda_stream_id,
-        _gpu_buffer_depth, gpu_frame_id);
+        J_name, J_quantity, reverse(J_lengths), reverse(J_labels), *this, gpu_frame_id);
     const std::string J_memname(J_buffer.get_buffer_name_device());
     void* const J_memory = J_buffer.get_ndarray().data();
+    const std::string info_memname = info_name + "_buffer";
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
+    const std::string log_memname = log_name + "_buffer";
     void* const log_memory = device.get_gpu_memory(log_memname, log_length);
 
     // A is an input buffer: check metadata
@@ -482,7 +488,7 @@ cudaEvent_t cudaBasebandBeamformer_chime::execute(cudaPipelineState& /*pipestate
     assert(metadata_is_chord(A_mc));
     const std::shared_ptr<chordMetadata> A_meta = get_chord_metadata(A_mc);
     DEBUG("input A array: {:s} {:s}", A_meta->get_type_string(), A_meta->get_dimensions_string());
-    assert(std::strncmp(A_meta->name, A_name, sizeof A_meta->name) == 0);
+    assert(std::strncmp(A_meta->name, A_quantity, sizeof A_meta->name) == 0);
     assert(A_meta->type == A_type);
     assert(A_meta->dims == A_rank);
     for (std::ptrdiff_t dim = 0; dim < A_rank; ++dim) {
@@ -506,7 +512,7 @@ cudaEvent_t cudaBasebandBeamformer_chime::execute(cudaPipelineState& /*pipestate
     assert(metadata_is_chord(E_mc));
     const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
     DEBUG("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
-    assert(std::strncmp(E_meta->name, E_name, sizeof E_meta->name) == 0);
+    assert(std::strncmp(E_meta->name, E_quantity, sizeof E_meta->name) == 0);
     assert(E_meta->type == E_type);
     assert(E_meta->dims == E_rank);
     for (std::ptrdiff_t dim = 0; dim < E_rank; ++dim) {
@@ -530,7 +536,7 @@ cudaEvent_t cudaBasebandBeamformer_chime::execute(cudaPipelineState& /*pipestate
     assert(metadata_is_chord(s_mc));
     const std::shared_ptr<chordMetadata> s_meta = get_chord_metadata(s_mc);
     DEBUG("input s array: {:s} {:s}", s_meta->get_type_string(), s_meta->get_dimensions_string());
-    assert(std::strncmp(s_meta->name, s_name, sizeof s_meta->name) == 0);
+    assert(std::strncmp(s_meta->name, s_quantity, sizeof s_meta->name) == 0);
     assert(s_meta->type == s_type);
     assert(s_meta->dims == s_rank);
     for (std::ptrdiff_t dim = 0; dim < s_rank; ++dim) {

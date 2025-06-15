@@ -134,13 +134,8 @@ if(${USE_CUDA})
     set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
     set(USE_CUDA ${CUDA_FOUND})
     enable_language(CUDA)
-    # TODO: Set the include path and warning options in the proper cmake way
-    set(CMAKE_CXX_FLAGS_DEBUG
-        "${CMAKE_CXX_FLAGS_DEBUG} -I/usr/local/cuda/targets/x86_64-linux/include")
-    set(CMAKE_CXX_FLAGS_TEST
-        "${CMAKE_CXX_FLAGS_TEST} -I/usr/local/cuda/targets/x86_64-linux/include")
-    set(CMAKE_CXX_FLAGS_RELEASE
-        "${CMAKE_CXX_FLAGS_RELEASE} -I/usr/local/cuda/targets/x86_64-linux/include")
+
+    find_package(CUDAToolkit REQUIRED)
 endif()
 
 if(${USE_AIRSPY})
@@ -293,7 +288,7 @@ if(${USE_HDF5})
             GIT_REPOSITORY https://github.com/jrs65/HighFive.git
             GIT_TAG extensible-datasets
             TIMEOUT 10
-            UPDATE_COMMAND ${GIT_EXECUTABLE} pull
+            UPDATE_COMMAND ""
             CONFIGURE_COMMAND ""
             BUILD_COMMAND ""
             INSTALL_COMMAND ""

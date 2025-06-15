@@ -296,47 +296,47 @@ wait_for_data:
     DEBUG("    Tmax:    {:d}", Tmax);
     DEBUG("    Tlength: {:d}", Tlength);
 
-    // How many outputs will we produce?
-    const std::ptrdiff_t Tcoarse_produced = num_produced_elements(T_available);
-    DEBUG("Will produce (samples): Tcoarse_produced: {:d}", Tcoarse_produced);
-    const std::ptrdiff_t Tcoarselength = Tcoarse_produced;
-
-    // to bytes
-    const std::ptrdiff_t S012_output_bytes = Tcoarselength * S012_Tcoarse_sample_bytes;
-    const std::ptrdiff_t S012tilde_output_bytes = Tcoarselength * S012tilde_Tcoarse_sample_bytes;
-    DEBUG("Will produce {:d} S012 output bytes", S012_output_bytes);
-    DEBUG("Will produce {:d} S012tilde output bytes", S012tilde_output_bytes);
-
-    // Wait for space to be available in our output ringbuffers...
-    DEBUG("Waiting for S012 output ringbuffer space for frame {:d}...", gpu_frame_id);
-    const std::optional<std::ptrdiff_t> val_S012_out1 =
-        rfi_S012_output_ringbuf_signal->wait_for_writable(unique_name, instance_num,
-                                                          S012_output_bytes);
-    DEBUG("Finished waiting for S012 output for data frame {:d}.", gpu_frame_id);
-    if (!val_S012_out1.has_value())
-        return -1;
-    const std::ptrdiff_t S012_output_cursor = val_S012_out1.value();
-    DEBUG("S012 output ring-buffer byte offset {:d}", S012_output_cursor);
-
-    DEBUG("Waiting for S012tilde output ringbuffer space for frame {:d}...", gpu_frame_id);
-    const std::optional<std::ptrdiff_t> val_S012tilde_out2 =
-        rfi_S012tilde_output_ringbuf_signal->wait_for_writable(unique_name, instance_num,
-                                                               S012tilde_output_bytes);
-    DEBUG("Finished waiting for S012tilde output for data frame {:d}.", gpu_frame_id);
-    if (!val_S012tilde_out2.has_value())
-        return -1;
-    const std::ptrdiff_t S012tilde_output_cursor = val_S012tilde_out2.value();
-    DEBUG("S012 output ring-buffer byte offset {:d}", S012tilde_output_cursor);
-
-    assert(kotekan::mod(S012_output_cursor, S012_Tcoarse_sample_bytes) == 0);
-    assert(kotekan::mod(S012tilde_output_cursor, S012tilde_Tcoarse_sample_bytes) == 0);
-    Tcoarsemin = S012_output_cursor / S012_Tcoarse_sample_bytes;
-    assert(Tcoarsemin == S012tilde_output_cursor / S012tilde_Tcoarse_sample_bytes);
-    Tcoarsemax = Tcoarsemin + Tcoarselength;
-    DEBUG("Output samples:");
-    DEBUG("    Tcoarsemin:    {:d}", Tcoarsemin);
-    DEBUG("    Tcoarsemax:    {:d}", Tcoarsemax);
-    DEBUG("    Tcoarselength: {:d}", Tcoarselength);
+    //TODO // How many outputs will we produce?
+    //TODO const std::ptrdiff_t Tcoarse_produced = num_produced_elements(T_available);
+    //TODO DEBUG("Will produce (samples): Tcoarse_produced: {:d}", Tcoarse_produced);
+    //TODO const std::ptrdiff_t Tcoarselength = Tcoarse_produced;
+    //TODO 
+    //TODO // to bytes
+    //TODO const std::ptrdiff_t S012_output_bytes = Tcoarselength * S012_Tcoarse_sample_bytes;
+    //TODO const std::ptrdiff_t S012tilde_output_bytes = Tcoarselength * S012tilde_Tcoarse_sample_bytes;
+    //TODO DEBUG("Will produce {:d} S012 output bytes", S012_output_bytes);
+    //TODO DEBUG("Will produce {:d} S012tilde output bytes", S012tilde_output_bytes);
+    //TODO 
+    //TODO // Wait for space to be available in our output ringbuffers...
+    //TODO DEBUG("Waiting for S012 output ringbuffer space for frame {:d}...", gpu_frame_id);
+    //TODO const std::optional<std::ptrdiff_t> val_S012_out1 =
+    //TODO     rfi_S012_output_ringbuf_signal->wait_for_writable(unique_name, instance_num,
+    //TODO                                                       S012_output_bytes);
+    //TODO DEBUG("Finished waiting for S012 output for data frame {:d}.", gpu_frame_id);
+    //TODO if (!val_S012_out1.has_value())
+    //TODO     return -1;
+    //TODO const std::ptrdiff_t S012_output_cursor = val_S012_out1.value();
+    //TODO DEBUG("S012 output ring-buffer byte offset {:d}", S012_output_cursor);
+    //TODO 
+    //TODO DEBUG("Waiting for S012tilde output ringbuffer space for frame {:d}...", gpu_frame_id);
+    //TODO const std::optional<std::ptrdiff_t> val_S012tilde_out2 =
+    //TODO     rfi_S012tilde_output_ringbuf_signal->wait_for_writable(unique_name, instance_num,
+    //TODO                                                            S012tilde_output_bytes);
+    //TODO DEBUG("Finished waiting for S012tilde output for data frame {:d}.", gpu_frame_id);
+    //TODO if (!val_S012tilde_out2.has_value())
+    //TODO     return -1;
+    //TODO const std::ptrdiff_t S012tilde_output_cursor = val_S012tilde_out2.value();
+    //TODO DEBUG("S012 output ring-buffer byte offset {:d}", S012tilde_output_cursor);
+    //TODO 
+    //TODO assert(kotekan::mod(S012_output_cursor, S012_Tcoarse_sample_bytes) == 0);
+    //TODO assert(kotekan::mod(S012tilde_output_cursor, S012tilde_Tcoarse_sample_bytes) == 0);
+    //TODO Tcoarsemin = S012_output_cursor / S012_Tcoarse_sample_bytes;
+    //TODO assert(Tcoarsemin == S012tilde_output_cursor / S012tilde_Tcoarse_sample_bytes);
+    //TODO Tcoarsemax = Tcoarsemin + Tcoarselength;
+    //TODO DEBUG("Output samples:");
+    //TODO DEBUG("    Tcoarsemin:    {:d}", Tcoarsemin);
+    //TODO DEBUG("    Tcoarsemax:    {:d}", Tcoarsemax);
+    //TODO DEBUG("    Tcoarselength: {:d}", Tcoarselength);
 
     return 0;
 }
@@ -480,37 +480,37 @@ cudaEvent_t S012Kernel::execute(cudaPipelineState& /*pipestate*/,
     DEBUG("Input ringbuffer size (samples):  {:d}", T_ringbuf);
     DEBUG("Output ringbuffer size (samples): {:d}", Tcoarse_ringbuf);
 
-    const std::ptrdiff_t Tlength = Tmax - Tmin;
-    const std::ptrdiff_t Tcoarselength = Tcoarsemax - Tcoarsemin;
-    DEBUG("Processed input samples: {:d}", Tlength);
-    DEBUG("Produced output samples: {:d}", Tcoarselength);
-
-    // Update metadata
-    S012_meta->dim[0] = Tcoarselength;
-    assert(S012_meta->dim[0] <= int(max_num_times / rfi_downsampling_factor));
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
-    assert(S012_meta->nfreq >= 0);
-    assert(S012_meta->nfreq == E_meta->nfreq);
-    for (int freq = 0; freq < S012_meta->nfreq; ++freq) {
-        S012_meta->freq_upchan_factor[freq] =
-            rfi_downsampling_factor * E_meta->freq_upchan_factor[freq];
-        // S012_meta->half_fpga_sample0[freq] = Evar_meta->half_fpga_sample0[freq];
-        S012_meta->time_downsampling_fpga[freq] =
-            rfi_downsampling_factor * E_meta->time_downsampling_fpga[freq];
-    }
-
-    S012tilde_meta->dim[0] = Tcoarselength;
-    assert(S012tilde_meta->dim[0] <= int(max_num_times / rfi_downsampling_factor));
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
-    assert(S012tilde_meta->nfreq >= 0);
-    assert(S012tilde_meta->nfreq == E_meta->nfreq);
-    for (int freq = 0; freq < S012tilde_meta->nfreq; ++freq) {
-        S012tilde_meta->freq_upchan_factor[freq] =
-            rfi_downsampling_factor * E_meta->freq_upchan_factor[freq];
-        // S012tilde_meta->half_fpga_sample0[freq] = Evar_meta->half_fpga_sample0[freq];
-        S012tilde_meta->time_downsampling_fpga[freq] =
-            rfi_downsampling_factor * E_meta->time_downsampling_fpga[freq];
-    }
+    //TODO const std::ptrdiff_t Tlength = Tmax - Tmin;
+    //TODO const std::ptrdiff_t Tcoarselength = Tcoarsemax - Tcoarsemin;
+    //TODO DEBUG("Processed input samples: {:d}", Tlength);
+    //TODO DEBUG("Produced output samples: {:d}", Tcoarselength);
+    //TODO 
+    //TODO // Update metadata
+    //TODO S012_meta->dim[0] = Tcoarselength;
+    //TODO assert(S012_meta->dim[0] <= int(max_num_times / rfi_downsampling_factor));
+    //TODO // Since we use a ring buffer we do not need to update `meta->sample0_offset`
+    //TODO assert(S012_meta->nfreq >= 0);
+    //TODO assert(S012_meta->nfreq == E_meta->nfreq);
+    //TODO for (int freq = 0; freq < S012_meta->nfreq; ++freq) {
+    //TODO     S012_meta->freq_upchan_factor[freq] =
+    //TODO         rfi_downsampling_factor * E_meta->freq_upchan_factor[freq];
+    //TODO     // S012_meta->half_fpga_sample0[freq] = Evar_meta->half_fpga_sample0[freq];
+    //TODO     S012_meta->time_downsampling_fpga[freq] =
+    //TODO         rfi_downsampling_factor * E_meta->time_downsampling_fpga[freq];
+    //TODO }
+    //TODO 
+    //TODO S012tilde_meta->dim[0] = Tcoarselength;
+    //TODO assert(S012tilde_meta->dim[0] <= int(max_num_times / rfi_downsampling_factor));
+    //TODO // Since we use a ring buffer we do not need to update `meta->sample0_offset`
+    //TODO assert(S012tilde_meta->nfreq >= 0);
+    //TODO assert(S012tilde_meta->nfreq == E_meta->nfreq);
+    //TODO for (int freq = 0; freq < S012tilde_meta->nfreq; ++freq) {
+    //TODO     S012tilde_meta->freq_upchan_factor[freq] =
+    //TODO         rfi_downsampling_factor * E_meta->freq_upchan_factor[freq];
+    //TODO     // S012tilde_meta->half_fpga_sample0[freq] = Evar_meta->half_fpga_sample0[freq];
+    //TODO     S012tilde_meta->time_downsampling_fpga[freq] =
+    //TODO         rfi_downsampling_factor * E_meta->time_downsampling_fpga[freq];
+    //TODO }
 
     const std::uint8_t* const bf_mask_memory =
         static_cast<const std::uint8_t*>(device.get_gpu_memory(bf_mask_memname, bf_mask_length));
@@ -587,16 +587,16 @@ void S012Kernel::finalize_frame() {
     voltage_input_ringbuf_signal->finish_read(unique_name, instance_num,
                                               T_consumed * E_T_sample_bytes);
 
-    // Advance the output ringbuffer
-    const std::ptrdiff_t Tcoarse_produced = Tcoarselength;
-    DEBUG("Advancing output ringbuffer:");
-    DEBUG("    Produced samples:         {:d}", Tcoarse_produced);
-    DEBUG("    Produced S012 bytes:      {:d}", Tcoarse_produced * S012_Tcoarse_sample_bytes);
-    DEBUG("    Produced S012tilde bytes: {:d}", Tcoarse_produced * S012tilde_Tcoarse_sample_bytes);
-    rfi_S012_output_ringbuf_signal->finish_write(unique_name, instance_num,
-                                                 Tcoarse_produced * S012_Tcoarse_sample_bytes);
-    rfi_S012tilde_output_ringbuf_signal->finish_write(
-        unique_name, instance_num, Tcoarse_produced * S012tilde_Tcoarse_sample_bytes);
+    //TODO // Advance the output ringbuffer
+    //TODO const std::ptrdiff_t Tcoarse_produced = Tcoarselength;
+    //TODO DEBUG("Advancing output ringbuffer:");
+    //TODO DEBUG("    Produced samples:         {:d}", Tcoarse_produced);
+    //TODO DEBUG("    Produced S012 bytes:      {:d}", Tcoarse_produced * S012_Tcoarse_sample_bytes);
+    //TODO DEBUG("    Produced S012tilde bytes: {:d}", Tcoarse_produced * S012tilde_Tcoarse_sample_bytes);
+    //TODO rfi_S012_output_ringbuf_signal->finish_write(unique_name, instance_num,
+    //TODO                                              Tcoarse_produced * S012_Tcoarse_sample_bytes);
+    //TODO rfi_S012tilde_output_ringbuf_signal->finish_write(
+    //TODO     unique_name, instance_num, Tcoarse_produced * S012tilde_Tcoarse_sample_bytes);
 
     cudaCommand::finalize_frame();
 }

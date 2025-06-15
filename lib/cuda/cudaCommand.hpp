@@ -113,6 +113,10 @@ public:
      **/
     virtual void finalize_frame() override;
 
+    cudaDeviceInterface& get_device() {
+        return device;
+    }
+
     /**
      * Returns the id of the cuda stream used by this command object.
      */

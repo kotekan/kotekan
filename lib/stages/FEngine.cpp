@@ -19,7 +19,7 @@
 #include <visUtil.hpp>
 
 #ifdef WITH_CUDA
-#include <nvToolsExt.h>
+#include <nvtx3/nvToolsExt.h>
 #endif
 
 #if !KOTEKAN_FLOAT16
@@ -168,10 +168,10 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
     // Frame sizes
     dish_positions_frame_size(sizeof(float) * 2 * num_dishes),
-    E_frame_size(sizeof(uint8_t) * num_dishes * num_polarizations * num_frequencies * num_times),
+    bf_mask_frame_size(sizeof(int8_t) * num_dishes * num_polarizations),
     pl_mask_frame_size(sizeof(uint8_t) * num_dishes * num_polarizations * (num_frequencies / 4)
                        * (num_times / 2 / 8)),
-    bf_mask_frame_size(sizeof(int8_t) * num_dishes * num_polarizations),
+    E_frame_size(sizeof(uint8_t) * num_dishes * num_polarizations * num_frequencies * num_times),
     scatter_indices_frame_size(sizeof(int) * num_dishes * num_polarizations),
     bb_beam_positions_frame_size(sizeof(float) * 2 * bb_num_beams),
     A_frame_size(sizeof(int8_t) * num_components * num_dishes * bb_num_beams * num_polarizations
@@ -217,13 +217,14 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
                   * upchan_all_max_num_output_channels * frb_num_times),
 
     // Buffers
-    dish_positions_buffer(get_buffer("dish_positions_buffer")), E_buffer(get_buffer("E_buffer")),
-    pl_mask_buffer(get_buffer("pl_mask_buffer")), bf_mask_buffer(get_buffer("bf_mask_buffer")),
+    dish_positions_buffer(get_buffer("dish_positions_buffer")),
+    bf_mask_buffer(get_buffer("bf_mask_buffer")), pl_mask_buffer(get_buffer("pl_mask_buffer")),
+    E_buffer(get_buffer("E_buffer")),
     scatter_indices_buffer(scatter_indices.empty() ? nullptr
                                                    : get_buffer("scatter_indices_buffer")),
     bb_beam_positions_buffer(get_buffer("bb_beam_positions_buffer")),
     A_buffer(get_buffer("A_buffer")), s_buffer(get_buffer("s_buffer")),
-    J_buffer(get_buffer("J_buffer")),
+    // J_buffer(get_buffer("J_buffer")),
     G_buffers{
         nullptr,
         get_buffer("G_U2_buffer"),
@@ -238,7 +239,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         get_buffer("W1_U8_buffer"),  get_buffer("W1_U16_buffer"), get_buffer("W1_U32_buffer"),
         get_buffer("W1_U64_buffer"),
     },
-    W2_buffer(get_buffer("W2_buffer")), I1_buffer(get_buffer("I1_buffer"))
+    W2_buffer(get_buffer("W2_buffer"))
+// I1_buffer(get_buffer("I1_buffer"))
 
 {
     assert(source_channels.size() == source_amplitudes.size());
@@ -298,14 +300,14 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     }
 
     assert(dish_positions_buffer);
-    assert(E_buffer);
-    assert(pl_mask_buffer);
     assert(bf_mask_buffer);
+    assert(pl_mask_buffer);
+    assert(E_buffer);
     assert(scatter_indices.empty() ? !scatter_indices_buffer : !!scatter_indices_buffer);
     assert(bb_beam_positions_buffer);
     assert(A_buffer);
     assert(s_buffer);
-    assert(J_buffer);
+    // assert(J_buffer);
     for (int Uindex = 0; Uindex < Usize; ++Uindex)
         if (Uindex == 0)
             assert(!G_buffers.at(Uindex));
@@ -314,24 +316,24 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     for (auto W1_buffer : W1_buffers)
         assert(W1_buffer);
     assert(W2_buffer);
-    assert(I1_buffer);
+    // assert(I1_buffer);
     dish_positions_buffer->register_producer(unique_name);
-    E_buffer->register_producer(unique_name);
-    pl_mask_buffer->register_producer(unique_name);
     bf_mask_buffer->register_producer(unique_name);
+    pl_mask_buffer->register_producer(unique_name);
+    E_buffer->register_producer(unique_name);
     if (scatter_indices_buffer)
         scatter_indices_buffer->register_producer(unique_name);
     bb_beam_positions_buffer->register_producer(unique_name);
     A_buffer->register_producer(unique_name);
     s_buffer->register_producer(unique_name);
-    J_buffer->register_producer(unique_name);
+    // J_buffer->register_producer(unique_name);
     for (auto G_buffer : G_buffers)
         if (G_buffer)
             G_buffer->register_producer(unique_name);
     for (auto W1_buffer : W1_buffers)
         W1_buffer->register_producer(unique_name);
     W2_buffer->register_producer(unique_name);
-    I1_buffer->register_producer(unique_name);
+    // I1_buffer->register_producer(unique_name);
 
     INFO("Starting Julia...");
     kotekan::juliaStartup();
@@ -1242,6 +1244,7 @@ void FEngine::main_thread() {
     }
 
     for (int E_frame_index = 0; E_frame_index < num_frames * repeat_count; ++E_frame_index) {
+        DEBUG("[{:d}] Starting new main loop interation", E_frame_index);
         const std::uint64_t seq_num = std::uint64_t(1) * num_times * E_frame_index;
         if (stop_thread)
             break;
@@ -1251,9 +1254,11 @@ void FEngine::main_thread() {
             const int E_frame_id = E_frame_index % E_buffer->num_frames;
 
             // Wait for buffer
+            DEBUG("[{:d}] Waiting for empty E buffer...", E_frame_index);
             profile_range_push("E_frame::wait_for_empty_frame");
             std::uint8_t* const E_frame = E_buffer->wait_for_empty_frame(unique_name, E_frame_id);
             profile_range_pop();
+            DEBUG("[{:d}] Done waiting for empty E buffer", E_frame_index);
             if (!E_frame)
                 break;
             if (!(std::ptrdiff_t(E_buffer->frame_size) == E_frame_size))
@@ -1349,8 +1354,10 @@ void FEngine::main_thread() {
             E_metadata->dish_index = dish_indices_ptr;
 
             // Mark buffer as full
+            DEBUG("[{:d}] Marking E buffer as full...", E_frame_index);
             profile_mark("E_frame::mark_frame_full");
             E_buffer->mark_frame_full(unique_name, E_frame_id);
+            DEBUG("[{:d}] Done marking E buffer as full", E_frame_index);
         }
 
         {
@@ -1358,10 +1365,12 @@ void FEngine::main_thread() {
             const int pl_mask_frame_id = E_frame_index % pl_mask_buffer->num_frames;
 
             // Wait for buffer
+            DEBUG("[{:d}] Waiting for empty pl buffer...", E_frame_index);
             profile_range_push("pl_mask_frame::wait_for_empty_frame");
             std::uint8_t* const pl_mask_frame =
                 pl_mask_buffer->wait_for_empty_frame(unique_name, pl_mask_frame_id);
             profile_range_pop();
+            DEBUG("[{:d}] Done waiting for empty pl buffer", E_frame_index);
             if (!pl_mask_frame)
                 break;
             if (!(std::ptrdiff_t(pl_mask_buffer->frame_size) == pl_mask_frame_size))
@@ -1434,8 +1443,10 @@ void FEngine::main_thread() {
             pl_mask_metadata->dish_index = dish_indices_ptr;
 
             // Mark buffer as full
+            DEBUG("[{:d}] Marking pl buffer as full...", E_frame_index);
             profile_mark("pl_mask_frame::mark_frame_full");
             pl_mask_buffer->mark_frame_full(unique_name, pl_mask_frame_id);
+            DEBUG("[{:d}] Done marking pl buffer as full", E_frame_index);
         }
 
 #if 0
@@ -1613,6 +1624,7 @@ void FEngine::main_thread() {
 
 #endif
 
+        DEBUG("[{:d}] Finished main loop interation", E_frame_index);
     } // for E_frame_index
 
     INFO("Done.");

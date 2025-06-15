@@ -90,7 +90,7 @@ frequency_channels: [
 
 # Input frames
 
-num_times: 8192
+num_times: 8192                 # frame length is 8192 * 5.12 us = 41.94304 ms
 
 ################################################################################
 
@@ -122,17 +122,17 @@ host_voltage_ringbuffer:
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times
     metadata_pool: main_pool
 
-host_expected_bb_beams_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
-    metadata_pool: main_pool
-
-host_expected_frb1_beams_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
-    metadata_pool: main_pool
+# host_expected_bb_beams_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
+#     metadata_pool: main_pool
+# 
+# host_expected_frb1_beams_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+#     metadata_pool: main_pool
 
 ################################################################################
 

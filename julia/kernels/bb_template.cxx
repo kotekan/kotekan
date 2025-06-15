@@ -103,7 +103,7 @@ private:
 
     {{#kernel_arguments}}
         // {{{name}}}: {{{kotekan_name}}}
-        static constexpr const char *{{{name}}}_name = "{{{name}}}";
+        static constexpr const char *{{{name}}}_quantity = "{{{name}}}";
         static constexpr kotekan::DataType {{{name}}}_type = kotekan::{{{type}}};
         {{^isscalar}}
             enum {{{name}}}_indices {
@@ -148,14 +148,7 @@ private:
     // Kotekan buffer names
     {{#kernel_arguments}}
         {{^isscalar}}
-            {{#hasbuffer}}
-                {{^isoutput}}
-                    const std::string {{{name}}}_memname;
-                {{/isoutput}}
-            {{/hasbuffer}}
-            {{^hasbuffer}}
-                const std::string {{{name}}}_memname;
-            {{/hasbuffer}}
+            const std::string {{{name}}}_name;
         {{/isscalar}}
     {{/kernel_arguments}}
 
@@ -174,7 +167,7 @@ private:
     RingBuffer* input_ringbuf_signal;
 
     // How many samples we will process from the input ringbuffer
-    // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
+    // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
     std::ptrdiff_t Tmin, Tmax;
 };
 
@@ -190,12 +183,10 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
-                {{^isoutput}}
-                    {{{name}}}_memname(config.get<std::string>(unique_name, "{{{kotekan_name}}}")),
-                {{/isoutput}}
+                {{{name}}}_name(config.get<std::string>(unique_name, "{{{kotekan_name}}}")),
             {{/hasbuffer}}
             {{^hasbuffer}}
-                {{{name}}}_memname(unique_name + "/{{{kotekan_name}}}"),
+                {{{name}}}_name(unique_name + "/{{{kotekan_name}}}"),
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
@@ -210,7 +201,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 
     // Find input buffer used for signalling ring-buffer state
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal"))))
+        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "voltage_signal_in"))))
 {
     // Check ringbuffer size
     if (!(input_ringbuf_signal->size == E_length))
@@ -235,14 +226,14 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{^isscalar}}
             {{#hasbuffer}}
                 {{^isoutput}}
-                    gpu_buffers_used.push_back(std::make_tuple({{{name}}}_memname, true, true, false));
+                    gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, true, true, false));
                 {{/isoutput}}
                 {{#isoutput}}
-                    gpu_buffers_used.push_back(std::make_tuple("{{{kotekan_name}}}_buffer", true, true, false));
+                    gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, true, true, false));
                 {{/isoutput}}
             {{/hasbuffer}}
             {{^hasbuffer}}
-                gpu_buffers_used.push_back(std::make_tuple(get_name() + "_{{{kotekan_name}}}", false, true, true));
+                gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, false, true, true));
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
@@ -322,6 +313,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{^isscalar}}
             {{#hasbuffer}}
                 {{^isoutput}}
+                    const std::string {{{name}}}_memname = {{{name}}}_name + "_buffer";
                     void* const {{{name}}}_memory =
                         args::{{{name}}} == args::E ?
                             device.get_gpu_memory({{{name}}}_memname, input_ringbuf_signal->size) :
@@ -331,14 +323,15 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 {{/isoutput}}
                 {{#isoutput}}
                     NDArrayBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer(
-                        "{{{kotekan_name}}}", reverse({{{name}}}_lengths), reverse({{{name}}}_labels),
-                        device, cuda_stream_id, _gpu_buffer_depth, gpu_frame_id
+                        {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels),
+                        *this, gpu_frame_id
                     );
                     const std::string {{{name}}}_memname({{{name}}}_buffer.get_buffer_name_device());
                     void* const {{{name}}}_memory = {{{name}}}_buffer.get_ndarray().data();
                 {{/isoutput}}
             {{/hasbuffer}}
             {{^hasbuffer}}
+                const std::string {{{name}}}_memname = {{{name}}}_name + "_buffer";
                 void* const {{{name}}}_memory = device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length);
             {{/hasbuffer}}
         {{/isscalar}}
@@ -359,7 +352,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                     DEBUG("input {{{name}}} array: {:s} {:s}",
                           {{{name}}}_meta->get_type_string(),
                           {{{name}}}_meta->get_dimensions_string());
-                    assert(std::strncmp({{{name}}}_meta->name, {{{name}}}_name, sizeof {{{name}}}_meta->name) == 0);
+                    assert(std::strncmp({{{name}}}_meta->name, {{{name}}}_quantity, sizeof {{{name}}}_meta->name) == 0);
                     assert({{{name}}}_meta->type == {{{name}}}_type);
                     assert({{{name}}}_meta->dims == {{{name}}}_rank);
                     for (std::ptrdiff_t dim = 0; dim < {{{name}}}_rank; ++dim) {

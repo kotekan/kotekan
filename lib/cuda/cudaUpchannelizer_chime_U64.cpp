@@ -94,31 +94,31 @@ private:
     enum class args { Tmin, Tmax, Tbarmin, Tbarmax, Fmin, Fmax, G_U64, E, Ebar, info, count };
 
     // Tmin: Tmin
-    static constexpr const char* Tmin_name = "Tmin";
+    static constexpr const char* Tmin_quantity = "Tmin";
     static constexpr kotekan::DataType Tmin_type = kotekan::int32;
     //
     // Tmax: Tmax
-    static constexpr const char* Tmax_name = "Tmax";
+    static constexpr const char* Tmax_quantity = "Tmax";
     static constexpr kotekan::DataType Tmax_type = kotekan::int32;
     //
     // Tbarmin: Tbarmin
-    static constexpr const char* Tbarmin_name = "Tbarmin";
+    static constexpr const char* Tbarmin_quantity = "Tbarmin";
     static constexpr kotekan::DataType Tbarmin_type = kotekan::int32;
     //
     // Tbarmax: Tbarmax
-    static constexpr const char* Tbarmax_name = "Tbarmax";
+    static constexpr const char* Tbarmax_quantity = "Tbarmax";
     static constexpr kotekan::DataType Tbarmax_type = kotekan::int32;
     //
     // Fmin: Fmin
-    static constexpr const char* Fmin_name = "Fmin";
+    static constexpr const char* Fmin_quantity = "Fmin";
     static constexpr kotekan::DataType Fmin_type = kotekan::int32;
     //
     // Fmax: Fmax
-    static constexpr const char* Fmax_name = "Fmax";
+    static constexpr const char* Fmax_quantity = "Fmax";
     static constexpr kotekan::DataType Fmax_type = kotekan::int32;
     //
-    // G_U64: gpu_mem_gain
-    static constexpr const char* G_U64_name = "G_U64";
+    // G_U64: upchan_U64_gain_name
+    static constexpr const char* G_U64_quantity = "G_U64";
     static constexpr kotekan::DataType G_U64_type = kotekan::float16;
     enum G_U64_indices {
         G_U64_index_Fbar,
@@ -144,8 +144,8 @@ private:
     };
     static_assert(G_U64_length == type_total_bytes(G_U64_type) * G_U64_strides[G_U64_rank]);
     //
-    // E: gpu_mem_input_voltage
-    static constexpr const char* E_name = "E";
+    // E: voltage_name
+    static constexpr const char* E_quantity = "E";
     static constexpr kotekan::DataType E_type = kotekan::int4x2chime;
     enum E_indices {
         E_index_D,
@@ -180,8 +180,8 @@ private:
     };
     static_assert(E_length == type_total_bytes(E_type) * E_strides[E_rank]);
     //
-    // Ebar: gpu_mem_output_voltage
-    static constexpr const char* Ebar_name = "Ebar";
+    // Ebar: upchan_U64_voltage_name
+    static constexpr const char* Ebar_quantity = "Ebar";
     static constexpr kotekan::DataType Ebar_type = kotekan::int4x2chime;
     enum Ebar_indices {
         Ebar_index_D,
@@ -219,7 +219,7 @@ private:
     static_assert(Ebar_length == type_total_bytes(Ebar_type) * Ebar_strides[Ebar_rank]);
     //
     // info: gpu_mem_info
-    static constexpr const char* info_name = "info";
+    static constexpr const char* info_quantity = "info";
     static constexpr kotekan::DataType info_type = kotekan::int32;
     enum info_indices {
         info_index_thread,
@@ -255,10 +255,10 @@ private:
     //
 
     // Kotekan buffer names
-    const std::string G_U64_memname;
-    const std::string E_memname;
-    const std::string Ebar_memname;
-    const std::string info_memname;
+    const std::string G_U64_name;
+    const std::string E_name;
+    const std::string Ebar_name;
+    const std::string info_name;
 
     // Host-side buffer arrays
     std::vector<std::uint8_t> info_host;
@@ -277,11 +277,11 @@ private:
     const int Fmin, Fmax;
 
     // How many samples we will process from the input ringbuffer
-    // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
+    // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
     std::ptrdiff_t Tmin, Tmax;
 
     // How many samples we will produce in the output ringbuffer
-    // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
+    // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
     std::ptrdiff_t Tbarmin, Tbarmax;
 };
 
@@ -294,17 +294,17 @@ cudaUpchannelizer_chime_U64::cudaUpchannelizer_chime_U64(Config& config,
                                                          const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "Upchannelizer_chime_U64", "Upchannelizer_chime_U64.ptx"),
-    G_U64_memname(config.get<std::string>(unique_name, "gpu_mem_gain")),
-    E_memname(config.get<std::string>(unique_name, "gpu_mem_input_voltage")),
-    Ebar_memname(config.get<std::string>(unique_name, "gpu_mem_output_voltage")),
-    info_memname(unique_name + "/gpu_mem_info"),
+    G_U64_name(config.get<std::string>(unique_name, "upchan_U64_gain_name")),
+    E_name(config.get<std::string>(unique_name, "voltage_name")),
+    Ebar_name(config.get<std::string>(unique_name, "upchan_U64_voltage_name")),
+    info_name(unique_name + "/gpu_mem_info"),
 
     info_host(info_length),
     // Find input and output buffers used for signalling ring-buffer state
-    input_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))),
-    output_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))),
+    input_ringbuf_signal(dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(
+        config.get<std::string>(unique_name, "voltage_signal_in")))),
+    output_ringbuf_signal(dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(
+        config.get<std::string>(unique_name, "upchan_U64_voltage_signal_out")))),
     Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")) {
     // Check ringbuffer sizes
     assert(input_ringbuf_signal->size == E_length);
@@ -317,9 +317,9 @@ cudaUpchannelizer_chime_U64::cudaUpchannelizer_chime_U64(Config& config,
     }
 
     // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(G_U64_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(Ebar_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(G_U64_name, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(E_name, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(Ebar_name, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
@@ -453,6 +453,7 @@ cudaEvent_t cudaUpchannelizer_chime_U64::execute(cudaPipelineState& /*pipestate*
                                                  const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
 
+    const std::string G_U64_memname = G_U64_name + "_buffer";
     void* const G_U64_memory =
         args::G_U64 == args::E ? device.get_gpu_memory(G_U64_memname, input_ringbuf_signal->size)
         : args::G_U64 == args::Ebar
@@ -460,12 +461,14 @@ cudaEvent_t cudaUpchannelizer_chime_U64::execute(cudaPipelineState& /*pipestate*
         : args::G_U64 == args::G_U64 ? device.get_gpu_memory(G_U64_memname, G_U64_length)
                                      : device.get_gpu_memory_array(G_U64_memname, gpu_frame_id,
                                                                    _gpu_buffer_depth, G_U64_length);
+    const std::string E_memname = E_name + "_buffer";
     void* const E_memory =
         args::E == args::E      ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
         : args::E == args::Ebar ? device.get_gpu_memory(E_memname, output_ringbuf_signal->size)
         : args::E == args::G_U64
             ? device.get_gpu_memory(E_memname, E_length)
             : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
+    const std::string Ebar_memname = Ebar_name + "_buffer";
     void* const Ebar_memory =
         args::Ebar == args::E ? device.get_gpu_memory(Ebar_memname, input_ringbuf_signal->size)
         : args::Ebar == args::Ebar
@@ -473,6 +476,7 @@ cudaEvent_t cudaUpchannelizer_chime_U64::execute(cudaPipelineState& /*pipestate*
         : args::Ebar == args::G_U64 ? device.get_gpu_memory(Ebar_memname, Ebar_length)
                                     : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id,
                                                                   _gpu_buffer_depth, Ebar_length);
+    const std::string info_memname = info_name + "_buffer";
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     // G_U64 is an input buffer: check metadata
@@ -484,7 +488,7 @@ cudaEvent_t cudaUpchannelizer_chime_U64::execute(cudaPipelineState& /*pipestate*
     const std::shared_ptr<chordMetadata> G_U64_meta = get_chord_metadata(G_U64_mc);
     DEBUG("input G_U64 array: {:s} {:s}", G_U64_meta->get_type_string(),
           G_U64_meta->get_dimensions_string());
-    assert(std::strncmp(G_U64_meta->name, G_U64_name, sizeof G_U64_meta->name) == 0);
+    assert(std::strncmp(G_U64_meta->name, G_U64_quantity, sizeof G_U64_meta->name) == 0);
     assert(G_U64_meta->type == G_U64_type);
     assert(G_U64_meta->dims == G_U64_rank);
     for (std::ptrdiff_t dim = 0; dim < G_U64_rank; ++dim) {
@@ -508,7 +512,7 @@ cudaEvent_t cudaUpchannelizer_chime_U64::execute(cudaPipelineState& /*pipestate*
     assert(metadata_is_chord(E_mc));
     const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
     DEBUG("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
-    assert(std::strncmp(E_meta->name, E_name, sizeof E_meta->name) == 0);
+    assert(std::strncmp(E_meta->name, E_quantity, sizeof E_meta->name) == 0);
     assert(E_meta->type == E_type);
     assert(E_meta->dims == E_rank);
     for (std::ptrdiff_t dim = 0; dim < E_rank; ++dim) {
@@ -531,7 +535,7 @@ cudaEvent_t cudaUpchannelizer_chime_U64::execute(cudaPipelineState& /*pipestate*
                                      Ebar_memname, gpu_frame_id, E_mc->parent_pool);
     std::shared_ptr<chordMetadata> const Ebar_meta = get_chord_metadata(Ebar_mc);
     *Ebar_meta = *E_meta;
-    std::strncpy(Ebar_meta->name, Ebar_name, sizeof Ebar_meta->name);
+    std::strncpy(Ebar_meta->name, Ebar_quantity, sizeof Ebar_meta->name);
     Ebar_meta->type = Ebar_type;
     Ebar_meta->dims = Ebar_rank;
     for (std::ptrdiff_t dim = 0; dim < Ebar_rank; ++dim) {

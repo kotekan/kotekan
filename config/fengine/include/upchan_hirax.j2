@@ -221,11 +221,11 @@ host_upchan_U64_voltage_ringbuffer:
 #           gpu_mem: upchan_U2_gain_buffer
 #         - name: cudaSyncInput
 #         - name: cudaUpchannelizer_hirax_U2
-#           in_signal: host_voltage_ringbuffer_in
-#           out_signal: host_upchan_U2_voltage_ringbuffer_out
-#           gpu_mem_input_voltage: voltage_buffer
-#           gpu_mem_gain: upchan_U2_gain_buffer
-#           gpu_mem_output_voltage: upchan_U2_voltage_buffer
+#           voltage_signal_in: host_voltage_ringbuffer_in
+#           upchan_U2_voltage_signal_out: host_upchan_U2_voltage_ringbuffer_out
+#           voltage_name: voltage
+#           upchan_U2_gain_name: upchan_U2_gain
+#           upchan_U2_voltage_name: upchan_U2_voltage
 #           Fmin: upchan_U2_min_channel
 #           Fmax: upchan_U2_max_channel
 # 
@@ -245,11 +245,11 @@ host_upchan_U64_voltage_ringbuffer:
 #           gpu_mem: upchan_U4_gain_buffer
 #         - name: cudaSyncInput
 #         - name: cudaUpchannelizer_hirax_U4
-#           in_signal: host_voltage_ringbuffer_in
-#           out_signal: host_upchan_U4_voltage_ringbuffer_out
-#           gpu_mem_input_voltage: voltage_buffer
-#           gpu_mem_gain: upchan_U4_gain_buffer
-#           gpu_mem_output_voltage: upchan_U4_voltage_buffer
+#           voltage_signal_in: host_voltage_ringbuffer_in
+#           upchan_U4_voltage_signal_out: host_upchan_U4_voltage_ringbuffer_out
+#           voltage_name: voltage
+#           upchan_U4_gain_name: upchan_U4_gain
+#           upchan_U4_voltage_name: upchan_U4_voltage
 #           Fmin: upchan_U4_min_channel
 #           Fmax: upchan_U4_max_channel
 
@@ -269,11 +269,11 @@ run_upchan_U8:
           gpu_mem: upchan_U8_gain_buffer
         - name: cudaSyncInput
         - name: cudaUpchannelizer_hirax_U8
-          in_signal: host_voltage_ringbuffer_in
-          out_signal: host_upchan_U8_voltage_ringbuffer_out
-          gpu_mem_input_voltage: voltage_buffer
-          gpu_mem_gain: upchan_U8_gain_buffer
-          gpu_mem_output_voltage: upchan_U8_voltage_buffer
+          voltage_signal_in: host_voltage_ringbuffer_in
+          upchan_U8_voltage_signal_out: host_upchan_U8_voltage_ringbuffer_out
+          voltage_name: voltage
+          upchan_U8_gain_name: upchan_U8_gain
+          upchan_U8_voltage_name: upchan_U8_voltage
           Fmin: upchan_U8_min_channel
           Fmax: upchan_U8_max_channel
 
@@ -293,11 +293,11 @@ run_upchan_U16:
           gpu_mem: upchan_U16_gain_buffer
         - name: cudaSyncInput
         - name: cudaUpchannelizer_hirax_U16
-          in_signal: host_voltage_ringbuffer_in
-          out_signal: host_upchan_U16_voltage_ringbuffer_out
-          gpu_mem_input_voltage: voltage_buffer
-          gpu_mem_gain: upchan_U16_gain_buffer
-          gpu_mem_output_voltage: upchan_U16_voltage_buffer
+          voltage_signal_in: host_voltage_ringbuffer_in
+          upchan_U16_voltage_signal_out: host_upchan_U16_voltage_ringbuffer_out
+          voltage_name: voltage
+          upchan_U16_gain_name: upchan_U16_gain
+          upchan_U16_voltage_name: upchan_U16_voltage
           Fmin: upchan_U16_min_channel
           Fmax: upchan_U16_max_channel
 
@@ -317,11 +317,11 @@ run_upchan_U32:
           gpu_mem: upchan_U32_gain_buffer
         - name: cudaSyncInput
         - name: cudaUpchannelizer_hirax_U32
-          in_signal: host_voltage_ringbuffer_in
-          out_signal: host_upchan_U32_voltage_ringbuffer_out
-          gpu_mem_input_voltage: voltage_buffer
-          gpu_mem_gain: upchan_U32_gain_buffer
-          gpu_mem_output_voltage: upchan_U32_voltage_buffer
+          voltage_signal_in: host_voltage_ringbuffer_in
+          upchan_U32_voltage_signal_out: host_upchan_U32_voltage_ringbuffer_out
+          voltage_name: voltage
+          upchan_U32_gain_name: upchan_U32_gain
+          upchan_U32_voltage_name: upchan_U32_voltage
           Fmin: upchan_U32_min_channel
           Fmax: upchan_U32_max_channel
 
@@ -341,10 +341,10 @@ run_upchan_U32:
 #           gpu_mem: upchan_U64_gain_buffer
 #         - name: cudaSyncInput
 #         - name: cudaUpchannelizer_hirax_U64
-#           in_signal: host_voltage_ringbuffer_in
-#           out_signal: host_upchan_U64_voltage_ringbuffer_out
-#           gpu_mem_input_voltage: voltage_buffer
-#           gpu_mem_gain: upchan_U64_gain_buffer
-#           gpu_mem_output_voltage: upchan_U64_voltage_buffer
+#           voltage_signal_in: host_voltage_ringbuffer_in
+#           upchan_U64_voltage_signal_out: host_upchan_U64_voltage_ringbuffer_out
+#           voltage_name: voltage
+#           upchan_U64_gain_name: upchan_U64_gain
+#           upchan_U64_voltage_name: upchan_U64_voltage
 #           Fmin: upchan_U64_min_channel
 #           Fmax: upchan_U64_max_channel

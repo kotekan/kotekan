@@ -2,6 +2,7 @@
 #include <Stage.hpp>
 #include <StageFactory.hpp>
 #include <asdf/asdf.hxx>
+#include <atomic>
 #include <cassert>
 #include <chordMetadata.hpp>
 #include <cstdint>
@@ -20,6 +21,9 @@
 #include <utility>
 #include <vector>
 #include <visUtil.hpp>
+
+// Number of writers which are waiting for `max_frames`
+std::atomic<int> waiting_for_max_frames;
 
 namespace {
 ASDF::scalar_type_id_t chord2asdf(const kotekan::DataType type) {
@@ -101,6 +105,9 @@ public:
               }),
         buffer(get_buffer("in_buf")) {
         ASDF_CHECK_VERSION();
+
+        if (max_frames >= 0)
+            ++waiting_for_max_frames;
 
         buffer->register_consumer(unique_name);
     }
@@ -354,10 +361,15 @@ public:
             buffer->mark_frame_empty(unique_name, frame_id);
 
             if (max_frames >= 0 && frame_counter + 1 >= max_frames) {
-                WARN("Processed {} frames, shutting down Kotekan", frame_counter + 1);
-                exit_kotekan(CLEAN_EXIT);
+                INFO("Processed {} frames, exiting", frame_counter + 1);
+                break;
             }
         } // for
+
+        if (--waiting_for_max_frames == 0) {
+            WARN("Shutting down Kotekan");
+            exit_kotekan(CLEAN_EXIT);
+        }
 
         DEBUG("exiting");
     }

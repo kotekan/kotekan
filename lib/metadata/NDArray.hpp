@@ -134,7 +134,7 @@ private:
     // Size (number of elements)
     std::ptrdiff_t m_size;
 
-    // Strides
+    // Strides (measured in elements)
     std::array<std::ptrdiff_t, D> m_strides;
 
     // Dimension names
@@ -203,11 +203,11 @@ public:
             m_cleanup();
     }
 
-    // Set the (non-owning) pointer to the first element
-    void set_data(T* data) {
-        assert(!m_cleanup);
-        m_data = data;
-    }
+    // // Set the (non-owning) pointer to the first element
+    // void set_data(T* data) {
+    //     assert(!m_cleanup);
+    //     m_data = data;
+    // }
 
     // Get a pointer to the first element
     const T* data() const {
@@ -273,6 +273,14 @@ public:
     template<typename I = std::ptrdiff_t>
     T& operator()(const std::array<I, D>& ind) {
         return m_data[index2offset(ind)];
+    }
+    template<typename... Inds>
+    const T& operator()(const Inds&... inds) const {
+        return (*this)(std::array<std::ptrdiff_t, sizeof...(Inds)>{inds...});
+    }
+    template<typename... Inds>
+    T& operator()(const Inds&... inds) {
+        return (*this)(std::array<std::ptrdiff_t, sizeof...(Inds)>{inds...});
     }
 
     // A const iterator

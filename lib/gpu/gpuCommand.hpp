@@ -152,6 +152,18 @@ public:
     /// Almost the same as excute_time, but divided by the frame arrival period
     std::shared_ptr<StatTracker> utilization;
 
+    kotekan::bufferContainer get_host_buffers() {
+        return host_buffers;
+    }
+
+    int get_instance_num() const {
+        return instance_num;
+    }
+
+    int32_t get_gpu_buffer_depth() const {
+        return _gpu_buffer_depth;
+    }
+
 protected:
     /// A unique name used for the gpu command. Used in indexing commands in a list and referencing
     /// them by this value.

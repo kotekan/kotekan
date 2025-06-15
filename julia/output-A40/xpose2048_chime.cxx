@@ -89,23 +89,23 @@ private:
     enum class args { Tinmin, Tinmax, Tmin, Tmax, Ein, E, scatter_indices, info, count };
 
     // Tinmin: Tinmin
-    static constexpr const char* Tinmin_name = "Tinmin";
+    static constexpr const char* Tinmin_quantity = "Tinmin";
     static constexpr kotekan::DataType Tinmin_type = kotekan::int32;
     //
     // Tinmax: Tinmax
-    static constexpr const char* Tinmax_name = "Tinmax";
+    static constexpr const char* Tinmax_quantity = "Tinmax";
     static constexpr kotekan::DataType Tinmax_type = kotekan::int32;
     //
     // Tmin: Tmin
-    static constexpr const char* Tmin_name = "Tmin";
+    static constexpr const char* Tmin_quantity = "Tmin";
     static constexpr kotekan::DataType Tmin_type = kotekan::int32;
     //
     // Tmax: Tmax
-    static constexpr const char* Tmax_name = "Tmax";
+    static constexpr const char* Tmax_quantity = "Tmax";
     static constexpr kotekan::DataType Tmax_type = kotekan::int32;
     //
-    // Ein: gpu_mem_input_voltage
-    static constexpr const char* Ein_name = "Ein";
+    // Ein: input_voltage_name
+    static constexpr const char* Ein_quantity = "Ein";
     static constexpr kotekan::DataType Ein_type = kotekan::int4x2chime;
     enum Ein_indices {
         Ein_index_D,
@@ -140,8 +140,8 @@ private:
     };
     // static_assert(Ein_length == type_total_bytes(Ein_type) * Ein_strides[Ein_rank]);
     //
-    // E: gpu_mem_output_voltage
-    static constexpr const char* E_name = "E";
+    // E: output_voltage_name
+    static constexpr const char* E_quantity = "E";
     static constexpr kotekan::DataType E_type = kotekan::int4x2chime;
     enum E_indices {
         E_index_D,
@@ -176,8 +176,8 @@ private:
     };
     // static_assert(E_length == type_total_bytes(E_type) * E_strides[E_rank]);
     //
-    // scatter_indices: gpu_mem_scatter_indices
-    static constexpr const char* scatter_indices_name = "scatter_indices";
+    // scatter_indices: scatter_indices_name
+    static constexpr const char* scatter_indices_quantity = "scatter_indices";
     static constexpr kotekan::DataType scatter_indices_type = kotekan::int32;
     enum scatter_indices_indices {
         scatter_indices_index_D,
@@ -211,7 +211,7 @@ private:
     // scatter_indices_strides[scatter_indices_rank]);
     //
     // info: gpu_mem_info
-    static constexpr const char* info_name = "info";
+    static constexpr const char* info_quantity = "info";
     static constexpr kotekan::DataType info_type = kotekan::int32;
     enum info_indices {
         info_index_thread,
@@ -247,10 +247,10 @@ private:
     //
 
     // Kotekan buffer names
-    const std::string Ein_memname;
-    const std::string E_memname;
-    const std::string scatter_indices_memname;
-    const std::string info_memname;
+    const std::string Ein_name;
+    const std::string E_name;
+    const std::string scatter_indices_name;
+    const std::string info_name;
 
     // Host-side buffer arrays
     std::vector<std::uint8_t> info_host;
@@ -266,11 +266,11 @@ private:
     RingBuffer* output_ringbuf_signal;
 
     // How many samples we will process from the input ringbuffer
-    // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
+    // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
     std::ptrdiff_t Tinmin, Tinmax;
 
     // How many samples we will produce in the output ringbuffer
-    // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
+    // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
     std::ptrdiff_t Tmin, Tmax;
 };
 
@@ -282,17 +282,17 @@ cudaTranspose2048_chime::cudaTranspose2048_chime(Config& config, const std::stri
                                                  const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "Transpose2048_chime", "Transpose2048_chime.ptx"),
-    Ein_memname(config.get<std::string>(unique_name, "gpu_mem_input_voltage")),
-    E_memname(config.get<std::string>(unique_name, "gpu_mem_output_voltage")),
-    scatter_indices_memname(config.get<std::string>(unique_name, "gpu_mem_scatter_indices")),
-    info_memname(unique_name + "/gpu_mem_info"),
+    Ein_name(config.get<std::string>(unique_name, "input_voltage_name")),
+    E_name(config.get<std::string>(unique_name, "output_voltage_name")),
+    scatter_indices_name(config.get<std::string>(unique_name, "scatter_indices_name")),
+    info_name(unique_name + "/gpu_mem_info"),
 
     info_host(info_length),
     // Find input and output buffers used for signalling ring-buffer state
-    input_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))),
-    output_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))) {
+    input_ringbuf_signal(dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(
+        config.get<std::string>(unique_name, "voltage_signal_in")))),
+    output_ringbuf_signal(dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(
+        config.get<std::string>(unique_name, "voltage_signal_out")))) {
     // Check ringbuffer sizes
     assert(input_ringbuf_signal->size == Ein_length);
     assert(output_ringbuf_signal->size == E_length);
@@ -304,9 +304,9 @@ cudaTranspose2048_chime::cudaTranspose2048_chime(Config& config, const std::stri
     }
 
     // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(Ein_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(scatter_indices_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(Ein_name, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(E_name, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(scatter_indices_name, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
@@ -416,18 +416,21 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
                                              const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
 
+    const std::string Ein_memname = Ein_name + "_buffer";
     void* const Ein_memory =
         args::Ein == args::Ein ? device.get_gpu_memory(Ein_memname, input_ringbuf_signal->size)
         : args::Ein == args::E ? device.get_gpu_memory(Ein_memname, output_ringbuf_signal->size)
         : args::Ein == args::scatter_indices
             ? device.get_gpu_memory(Ein_memname, Ein_length)
             : device.get_gpu_memory_array(Ein_memname, gpu_frame_id, _gpu_buffer_depth, Ein_length);
+    const std::string E_memname = E_name + "_buffer";
     void* const E_memory =
         args::E == args::Ein ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
         : args::E == args::E ? device.get_gpu_memory(E_memname, output_ringbuf_signal->size)
         : args::E == args::scatter_indices
             ? device.get_gpu_memory(E_memname, E_length)
             : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
+    const std::string scatter_indices_memname = scatter_indices_name + "_buffer";
     void* const scatter_indices_memory =
         args::scatter_indices == args::Ein
             ? device.get_gpu_memory(scatter_indices_memname, input_ringbuf_signal->size)
@@ -437,6 +440,7 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
             ? device.get_gpu_memory(scatter_indices_memname, scatter_indices_length)
             : device.get_gpu_memory_array(scatter_indices_memname, gpu_frame_id, _gpu_buffer_depth,
                                           scatter_indices_length);
+    const std::string info_memname = info_name + "_buffer";
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     // Ein is an input buffer: check metadata
@@ -451,7 +455,7 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
     if (args::Ein == args::Ein)
         assert(std::strncmp(Ein_meta->name, "E", sizeof Ein_meta->name) == 0);
     else
-        assert(std::strncmp(Ein_meta->name, Ein_name, sizeof Ein_meta->name) == 0);
+        assert(std::strncmp(Ein_meta->name, Ein_quantity, sizeof Ein_meta->name) == 0);
     assert(Ein_meta->type == Ein_type);
     assert(Ein_meta->dims == Ein_rank);
     for (std::ptrdiff_t dim = 0; dim < Ein_rank; ++dim) {
@@ -474,7 +478,7 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
             : device.create_gpu_memory_array_metadata(E_memname, gpu_frame_id, E_mc->parent_pool);
     std::shared_ptr<chordMetadata> const E_meta = get_chord_metadata(E_mc);
     *E_meta = *Ein_meta;
-    std::strncpy(E_meta->name, E_name, sizeof E_meta->name);
+    std::strncpy(E_meta->name, E_quantity, sizeof E_meta->name);
     E_meta->type = E_type;
     E_meta->dims = E_rank;
     for (std::ptrdiff_t dim = 0; dim < E_rank; ++dim) {
@@ -500,7 +504,7 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
         assert(std::strncmp(scatter_indices_meta->name, "E", sizeof scatter_indices_meta->name)
                == 0);
     else
-        assert(std::strncmp(scatter_indices_meta->name, scatter_indices_name,
+        assert(std::strncmp(scatter_indices_meta->name, scatter_indices_quantity,
                             sizeof scatter_indices_meta->name)
                == 0);
     assert(scatter_indices_meta->type == scatter_indices_type);

@@ -558,7 +558,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     ),
                     Dict(
                         "name" => "Ein",
-                        "kotekan_name" => "gpu_mem_input_voltage",
+                        "kotekan_name" => "input_voltage_name",
                         "type" => "int4x2chime",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
@@ -571,7 +571,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     ),
                     Dict(
                         "name" => "E",
-                        "kotekan_name" => "gpu_mem_output_voltage",
+                        "kotekan_name" => "output_voltage_name",
                         "type" => "int4x2chime",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
@@ -584,7 +584,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     ),
                     Dict(
                         "name" => "scatter_indices",
-                        "kotekan_name" => "gpu_mem_scatter_indices",
+                        "kotekan_name" => "scatter_indices_name",
                         "type" => "int32",
                         "axes" => [Dict("label" => "D", "length" => D), Dict("label" => "P", "length" => P)],
                         "isoutput" => false,

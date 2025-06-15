@@ -1216,7 +1216,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     ),
                     Dict(
                         "name" => "A",
-                        "kotekan_name" => "gpu_mem_phase",
+                        "kotekan_name" => "bb_phase_name",
                         "type" => "int8",
                         "axes" => [
                             Dict("label" => "C", "length" => C),
@@ -1231,7 +1231,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     ),
                     Dict(
                         "name" => "E",
-                        "kotekan_name" => "gpu_mem_voltage",
+                        "kotekan_name" => "voltage_name",
                         "type" => "int4x2chime",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
@@ -1245,7 +1245,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     ),
                     Dict(
                         "name" => "s",
-                        "kotekan_name" => "gpu_mem_output_scaling",
+                        "kotekan_name" => "bb_shift_name",
                         "type" => "int32",
                         "axes" => [
                             Dict("label" => "B", "length" => B),
@@ -1258,7 +1258,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     Dict(
                         "name" => "J",
                         "type" => "int4x2chime",
-                        "kotekan_name" => "bb_beams",
+                        "kotekan_name" => "bb_beams_name",
                         "axes" => [
                             Dict("label" => "T", "length" => Tout),
                             Dict("label" => "P", "length" => P),

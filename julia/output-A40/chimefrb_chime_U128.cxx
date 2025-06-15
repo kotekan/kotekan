@@ -95,23 +95,23 @@ private:
     enum class args { Tbarmin, Tbarmax, Ttildemin, Ttildemax, W, Ebar, I, info, count };
 
     // Tbarmin: Tbarmin
-    static constexpr const char* Tbarmin_name = "Tbarmin";
+    static constexpr const char* Tbarmin_quantity = "Tbarmin";
     static constexpr kotekan::DataType Tbarmin_type = kotekan::int32;
     //
     // Tbarmax: Tbarmax
-    static constexpr const char* Tbarmax_name = "Tbarmax";
+    static constexpr const char* Tbarmax_quantity = "Tbarmax";
     static constexpr kotekan::DataType Tbarmax_type = kotekan::int32;
     //
     // Ttildemin: Ttildemin
-    static constexpr const char* Ttildemin_name = "Ttildemin";
+    static constexpr const char* Ttildemin_quantity = "Ttildemin";
     static constexpr kotekan::DataType Ttildemin_type = kotekan::int32;
     //
     // Ttildemax: Ttildemax
-    static constexpr const char* Ttildemax_name = "Ttildemax";
+    static constexpr const char* Ttildemax_quantity = "Ttildemax";
     static constexpr kotekan::DataType Ttildemax_type = kotekan::int32;
     //
-    // W: gpu_mem_phase
-    static constexpr const char* W_name = "W";
+    // W: frb_phase_name
+    static constexpr const char* W_quantity = "W";
     static constexpr kotekan::DataType W_type = kotekan::float16;
     enum W_indices {
         W_index_C,
@@ -141,8 +141,8 @@ private:
     };
     static_assert(W_length == type_total_bytes(W_type) * W_strides[W_rank]);
     //
-    // Ebar: gpu_mem_voltage
-    static constexpr const char* Ebar_name = "Ebar";
+    // Ebar: voltage_name
+    static constexpr const char* Ebar_quantity = "Ebar";
     static constexpr kotekan::DataType Ebar_type = kotekan::int4x2chime;
     enum Ebar_indices {
         Ebar_index_D,
@@ -179,8 +179,8 @@ private:
     };
     static_assert(Ebar_length == type_total_bytes(Ebar_type) * Ebar_strides[Ebar_rank]);
     //
-    // I: gpu_mem_beamgrid
-    static constexpr const char* I_name = "I";
+    // I: frb_beamgrid_name
+    static constexpr const char* I_quantity = "I";
     static constexpr kotekan::DataType I_type = kotekan::float16;
     enum I_indices {
         I_index_beamP,
@@ -216,7 +216,7 @@ private:
     static_assert(I_length == type_total_bytes(I_type) * I_strides[I_rank]);
     //
     // info: gpu_mem_info
-    static constexpr const char* info_name = "info";
+    static constexpr const char* info_quantity = "info";
     static constexpr kotekan::DataType info_type = kotekan::int32;
     enum info_indices {
         info_index_thread,
@@ -252,10 +252,10 @@ private:
     //
 
     // Kotekan buffer names
-    const std::string W_memname;
-    const std::string Ebar_memname;
-    const std::string I_memname;
-    const std::string info_memname;
+    const std::string W_name;
+    const std::string Ebar_name;
+    const std::string I_name;
+    const std::string info_name;
 
     // Host-side buffer arrays
     std::vector<std::uint8_t> info_host;
@@ -271,11 +271,11 @@ private:
     RingBuffer* const output_ringbuf_signal;
 
     // How many samples we will process from the input ringbuffer
-    // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
+    // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
     std::ptrdiff_t Tbarmin, Tbarmax;
 
     // How many samples we will produce in the output ringbuffer
-    // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
+    // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
     std::ptrdiff_t Ttildemin, Ttildemax;
 };
 
@@ -288,17 +288,17 @@ cudaCHIMEFRBBeamformer_chime_U128::cudaCHIMEFRBBeamformer_chime_U128(Config& con
                                                                      const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "CHIMEFRBBeamformer_chime_U128", "CHIMEFRBBeamformer_chime_U128.ptx"),
-    W_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
-    Ebar_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
-    I_memname(config.get<std::string>(unique_name, "gpu_mem_beamgrid")),
-    info_memname(unique_name + "/gpu_mem_info"),
+    W_name(config.get<std::string>(unique_name, "frb_phase_name")),
+    Ebar_name(config.get<std::string>(unique_name, "voltage_name")),
+    I_name(config.get<std::string>(unique_name, "frb_beamgrid_name")),
+    info_name(unique_name + "/gpu_mem_info"),
 
     info_host(info_length),
     // Find input and output buffers used for signalling ring-buffer state
-    input_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))),
-    output_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))) {
+    input_ringbuf_signal(dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(
+        config.get<std::string>(unique_name, "voltage_signal_in")))),
+    output_ringbuf_signal(dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(
+        config.get<std::string>(unique_name, "beamgrid_signal_out")))) {
     // Check ringbuffer sizes
     if (!(input_ringbuf_signal->size == Ebar_length))
         FATAL_ERROR("Need input_ringbuf_signal->size == Ebar_length, but have "
@@ -318,9 +318,9 @@ cudaCHIMEFRBBeamformer_chime_U128::cudaCHIMEFRBBeamformer_chime_U128(Config& con
     }
 
     // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(W_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(Ebar_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(I_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(W_name, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(Ebar_name, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(I_name, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
@@ -383,10 +383,6 @@ wait_for_data:
     const std::ptrdiff_t Tbar_consumed = num_consumed_elements(Tbar_available);
     DEBUG("Will process (samples): Tbar_processed: {:d}", Tbar_processed);
     DEBUG("Will consume (samples): Tbar_consumed:  {:d}", Tbar_consumed);
-    if (Tbar_processed == 0 || Tbar_consumed == 0)
-        return -1;
-    assert(Tbar_processed > 0);
-    assert(Tbar_consumed > 0);
     assert(Tbar_consumed <= Tbar_processed);
     const std::ptrdiff_t Tbar_consumed2 = num_consumed_elements(Tbar_processed);
     assert(Tbar_consumed2 == Tbar_consumed);
@@ -398,7 +394,7 @@ wait_for_data:
 
         DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
         const std::optional<std::ptrdiff_t> waited =
-            input_ringbuf_signal->wait_without_claiming(unique_name, instance_num, 1);
+            input_ringbuf_signal->wait_without_claiming(unique_name, instance_num, input_bytes + 1);
         DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
         if (!waited.has_value())
             return -1;
@@ -459,25 +455,28 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
                                            const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
 
+    const std::string W_memname = W_name + "_buffer";
     void* const W_memory =
         args::W == args::Ebar ? device.get_gpu_memory(W_memname, input_ringbuf_signal->size)
         : args::W == args::I  ? device.get_gpu_memory(W_memname, output_ringbuf_signal->size)
         : args::W == args::W
             ? device.get_gpu_memory(W_memname, W_length)
             : device.get_gpu_memory_array(W_memname, gpu_frame_id, _gpu_buffer_depth, W_length);
+    const std::string Ebar_memname = Ebar_name + "_buffer";
     void* const Ebar_memory =
         args::Ebar == args::Ebar ? device.get_gpu_memory(Ebar_memname, input_ringbuf_signal->size)
         : args::Ebar == args::I  ? device.get_gpu_memory(Ebar_memname, output_ringbuf_signal->size)
         : args::Ebar == args::W  ? device.get_gpu_memory(Ebar_memname, Ebar_length)
                                  : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id,
                                                                _gpu_buffer_depth, Ebar_length);
+    const std::string I_memname = I_name + "_buffer";
     void* const I_memory =
         args::I == args::Ebar ? device.get_gpu_memory(I_memname, input_ringbuf_signal->size)
         : args::I == args::I  ? device.get_gpu_memory(I_memname, output_ringbuf_signal->size)
         : args::I == args::W
             ? device.get_gpu_memory(I_memname, I_length)
             : device.get_gpu_memory_array(I_memname, gpu_frame_id, _gpu_buffer_depth, I_length);
-    info_host.resize(info_length);
+    const std::string info_memname = info_name + "_buffer";
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     // W is an input buffer: check metadata
@@ -506,7 +505,7 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
         assert(W_meta->dim[0] <= int(Ebar_lengths[3]));
         assert(W_meta->stride[0] == Ebar_strides[3]);
     } else {
-        assert(std::strncmp(W_meta->name, W_name, sizeof W_meta->name) == 0);
+        assert(std::strncmp(W_meta->name, W_quantity, sizeof W_meta->name) == 0);
         assert(W_meta->type == W_type);
         assert(W_meta->dims == W_rank);
         for (std::ptrdiff_t dim = 0; dim < W_rank; ++dim) {
@@ -551,7 +550,7 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
         assert(Ebar_meta->dim[0] <= int(Ebar_lengths[3]));
         assert(Ebar_meta->stride[0] == Ebar_strides[3]);
     } else {
-        assert(std::strncmp(Ebar_meta->name, Ebar_name, sizeof Ebar_meta->name) == 0);
+        assert(std::strncmp(Ebar_meta->name, Ebar_quantity, sizeof Ebar_meta->name) == 0);
         assert(Ebar_meta->type == Ebar_type);
         assert(Ebar_meta->dims == Ebar_rank);
         for (std::ptrdiff_t dim = 0; dim < Ebar_rank; ++dim) {
@@ -576,7 +575,7 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
                                                                      Ebar_mc->parent_pool);
     std::shared_ptr<chordMetadata> const I_meta = get_chord_metadata(I_mc);
     *I_meta = *Ebar_meta;
-    std::strncpy(I_meta->name, I_name, sizeof I_meta->name);
+    std::strncpy(I_meta->name, I_quantity, sizeof I_meta->name);
     I_meta->type = I_type;
     I_meta->dims = I_rank;
     for (std::ptrdiff_t dim = 0; dim < I_rank; ++dim) {

@@ -130,11 +130,11 @@ host_frb3_beams_meanstd_buffer:
 #           gpu_mem: frb1_U1_phase_buffer
 #         - name: cudaSyncInput
 #         - name: cudaFRBBeamformer_hirax_U1
-#           in_signal: host_voltage_ringbuffer_in
-#           out_signal: host_frb1_beams_ringbuffer_out
-#           gpu_mem_voltage: voltage_buffer
-#           gpu_mem_phase: frb1_U1_phase_buffer
-#           gpu_mem_beamgrid: frb1_beams_buffer
+#           voltage_signal_in: host_voltage_ringbuffer_in
+#           beamgrid_signal_out: host_frb1_beams_ringbuffer_out
+#           voltage_name: voltage
+#           frb_phase_name: frb1_U1_phase
+#           frb_beamgrid_name: frb1_beams
 #           Fbar_in_min: upchan_U1_min_channel
 #           Fbar_in_max: upchan_U1_max_channel
 #           Fbar_out_min: upchan_U1_min_output_channel
@@ -156,11 +156,11 @@ host_frb3_beams_meanstd_buffer:
 #           gpu_mem: frb1_U2_phase_buffer
 #         - name: cudaSyncInput
 #         - name: cudaFRBBeamformer_hirax_U2
-#           in_signal: host_upchan_U2_voltage_ringbuffer_in
-#           out_signal: host_frb1_beams_ringbuffer_out
-#           gpu_mem_voltage: upchan_U2_voltage_buffer
-#           gpu_mem_phase: frb1_U2_phase_buffer
-#           gpu_mem_beamgrid: frb1_beams_buffer
+#           voltage_signal_in: host_upchan_U2_voltage_ringbuffer_in
+#           beamgrid_signal_out: host_frb1_beams_ringbuffer_out
+#           voltage_name: upchan_U2_voltage
+#           frb_phase_name: frb1_U2_phase
+#           frb_beamgrid_name: frb1_beams
 #           Fbar_in_min: 0
 #           Fbar_in_max: upchan_U2_max_output_channel - upchan_U2_min_output_channel
 #           Fbar_out_min: upchan_U2_min_output_channel
@@ -182,11 +182,11 @@ host_frb3_beams_meanstd_buffer:
 #           gpu_mem: frb1_U4_phase_buffer
 #         - name: cudaSyncInput
 #         - name: cudaFRBBeamformer_hirax_U4
-#           in_signal: host_upchan_U4_voltage_ringbuffer_in
-#           out_signal: host_frb1_beams_ringbuffer_out
-#           gpu_mem_voltage: upchan_U4_voltage_buffer
-#           gpu_mem_phase: frb1_U4_phase_buffer
-#           gpu_mem_beamgrid: frb1_beams_buffer
+#           voltage_signal_in: host_upchan_U4_voltage_ringbuffer_in
+#           beamgrid_signal_out: host_frb1_beams_ringbuffer_out
+#           voltage_name: upchan_U4_voltage
+#           frb_phase_name: frb1_U4_phase
+#           frb_beamgrid_name: frb1_beams
 #           Fbar_in_min: 0
 #           Fbar_in_max: upchan_U4_max_output_channel - upchan_U4_min_output_channel
 #           Fbar_out_min: upchan_U4_min_output_channel
@@ -208,11 +208,11 @@ run_frb1_U8:
           gpu_mem: frb1_U8_phase_buffer
         - name: cudaSyncInput
         - name: cudaFRBBeamformer_hirax_U8
-          in_signal: host_upchan_U8_voltage_ringbuffer_in
-          out_signal: host_frb1_beams_ringbuffer_out
-          gpu_mem_voltage: upchan_U8_voltage_buffer
-          gpu_mem_phase: frb1_U8_phase_buffer
-          gpu_mem_beamgrid: frb1_beams_buffer
+          voltage_signal_in: host_upchan_U8_voltage_ringbuffer_in
+          beamgrid_signal_out: host_frb1_beams_ringbuffer_out
+          voltage_name: upchan_U8_voltage
+          frb_phase_name: frb1_U8_phase
+          frb_beamgrid_name: frb1_beams
           Fbar_in_min: 0
           Fbar_in_max: upchan_U8_max_output_channel - upchan_U8_min_output_channel
           Fbar_out_min: upchan_U8_min_output_channel
@@ -234,11 +234,11 @@ run_frb1_U16:
           gpu_mem: frb1_U16_phase_buffer
         - name: cudaSyncInput
         - name: cudaFRBBeamformer_hirax_U16
-          in_signal: host_upchan_U16_voltage_ringbuffer_in
-          out_signal: host_frb1_beams_ringbuffer_out
-          gpu_mem_voltage: upchan_U16_voltage_buffer
-          gpu_mem_phase: frb1_U16_phase_buffer
-          gpu_mem_beamgrid: frb1_beams_buffer
+          voltage_signal_in: host_upchan_U16_voltage_ringbuffer_in
+          beamgrid_signal_out: host_frb1_beams_ringbuffer_out
+          voltage_name: upchan_U16_voltage
+          frb_phase_name: frb1_U16_phase
+          frb_beamgrid_name: frb1_beams
           Fbar_in_min: 0
           Fbar_in_max: upchan_U16_max_output_channel - upchan_U16_min_output_channel
           Fbar_out_min: upchan_U16_min_output_channel
@@ -260,11 +260,11 @@ run_frb1_U32:
           gpu_mem: frb1_U32_phase_buffer
         - name: cudaSyncInput
         - name: cudaFRBBeamformer_hirax_U32
-          in_signal: host_upchan_U32_voltage_ringbuffer_in
-          out_signal: host_frb1_beams_ringbuffer_out
-          gpu_mem_voltage: upchan_U32_voltage_buffer
-          gpu_mem_phase: frb1_U32_phase_buffer
-          gpu_mem_beamgrid: frb1_beams_buffer
+          voltage_signal_in: host_upchan_U32_voltage_ringbuffer_in
+          beamgrid_signal_out: host_frb1_beams_ringbuffer_out
+          voltage_name: upchan_U32_voltage
+          frb_phase_name: frb1_U32_phase
+          frb_beamgrid_name: frb1_beams
           Fbar_in_min: 0
           Fbar_in_max: upchan_U32_max_output_channel - upchan_U32_min_output_channel
           Fbar_out_min: upchan_U32_min_output_channel
@@ -286,11 +286,11 @@ run_frb1_U32:
 #           gpu_mem: frb1_U64_phase_buffer
 #         - name: cudaSyncInput
 #         - name: cudaFRBBeamformer_hirax_U64
-#           in_signal: host_upchan_U64_voltage_ringbuffer_in
-#           out_signal: host_frb1_beams_ringbuffer_out
-#           gpu_mem_voltage: upchan_U64_voltage_buffer
-#           gpu_mem_phase: frb1_U64_phase_buffer
-#           gpu_mem_beamgrid: frb1_beams_buffer
+#           voltage_signal_in: host_upchan_U64_voltage_ringbuffer_in
+#           beamgrid_signal_out: host_frb1_beams_ringbuffer_out
+#           voltage_name: upchan_U64_voltage
+#           frb_phase_name: frb1_U64_phase
+#           frb_beamgrid_name: frb1_beams
 #           Fbar_in_min: 0
 #           Fbar_in_max: upchan_U64_max_output_channel - upchan_U64_min_output_channel
 #           Fbar_out_min: upchan_U64_min_output_channel
@@ -323,15 +323,15 @@ run_frb23:
           samples_per_data_set: frb_num_output_times
           # cuda_streams: [2, 3]
           in_signal: host_frb1_beams_ringbuffer_in
-          gpu_mem_beamgrid: frb1_beams_buffer
-          gpu_mem_phase: frb2_phase_buffer
-          gpu_mem_beamout: frb2_beams_buffer
+          gpu_mem_beamgrid: frb1_beams
+          gpu_mem_phase: frb2_phase
+          gpu_mem_beamout: frb2_beams
         - name: cudaQuantize
           # the output is quantized in chunks of `frb_chunk_size`
           num_chunks: frb_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times / frb_chunk_size
-          gpu_mem_input: frb2_beams_buffer
-          #OUTDATED gpu_mem_output: frb3_beams_buffer
-          #OUTDATED gpu_mem_meanstd: frb3_beams_meanstd_buffer
+          gpu_mem_input: frb2_beams
+          gpu_mem_output: frb3_beams
+          gpu_mem_meanstd: frb3_beams_meanstd
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: frb2_beams_buffer

@@ -1929,7 +1929,7 @@ function fix_ptx_kernel()
                 ),
                 Dict(
                     "name" => "G_U$(U)",
-                    "kotekan_name" => "gpu_mem_gain",
+                    "kotekan_name" => "upchan_U$(U)_gain_name",
                     "type" => "float16",
                     "axes" => [Dict("label" => "Fbar", "length" => F̄)],
                     "isoutput" => false,
@@ -1938,7 +1938,7 @@ function fix_ptx_kernel()
                 ),
                 Dict(
                     "name" => "E",
-                    "kotekan_name" => "gpu_mem_input_voltage",
+                    "kotekan_name" => "voltage_name",
                     "type" => "int4x2chime",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
@@ -1952,7 +1952,7 @@ function fix_ptx_kernel()
                 ),
                 Dict(
                     "name" => "Ebar",
-                    "kotekan_name" => "gpu_mem_output_voltage",
+                    "kotekan_name" => "upchan_U$(U)_voltage_name",
                     "type" => "int4x2chime",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
