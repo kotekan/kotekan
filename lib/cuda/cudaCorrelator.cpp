@@ -1,7 +1,5 @@
 #include "cudaCorrelator.hpp"
 
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
 #include <array>
 #include <chordMetadata.hpp>
 #include <cmath>
@@ -29,6 +27,19 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     voltage(_voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{-1, _num_local_freq, 2, _num_elements / 2},
             std::array<std::string, 4>{"T", "F", "P", "D"}, *this),
+    n2k_correlation([&]() {
+        // aka "nt_outer" in n2k.hpp
+        const int num_subintegrations = _samples_per_data_set / _sub_integration_ntime;
+        const int blocksize = 16;
+        const int linear_num_blocks = (_num_elements + 1) / blocksize;
+        const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
+        const std::array<std::ptrdiff_t, 6> n2k_lengths{
+            num_subintegrations, _num_local_freq, triangle_num_blocks, blocksize, blocksize, 2};
+        const std::array<std::string, 6> n2k_dimnames{"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"};
+        return NDArrayBuffer<std::int32_t, 6>(
+            _n2k_correlation_name, "n2k_correlation", n2k_lengths,
+            std::array<std::string, 6>{"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}, *this);
+    }()),
     n2correlator(_num_elements, _num_local_freq) {
     if (_samples_per_data_set % _sub_integration_ntime)
         throw std::runtime_error(
@@ -37,7 +48,6 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     voltage.register_consumer();
 
     // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(_voltage_name, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_n2k_correlation_name, true, false, true));
 
     // TODO: code for rfi mask. Just using a placeholder zero mask for now.
@@ -75,30 +85,22 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
 
     // aka "nt_outer" in n2k.hpp
     const int num_subintegrations = _samples_per_data_set / _sub_integration_ntime;
-    const int blocksize = 16;
-    const int linear_num_blocks = (_num_elements + 1) / blocksize;
-    const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
-    const std::array<std::ptrdiff_t, 6> n2k_lengths{
-        num_subintegrations, _num_local_freq, triangle_num_blocks, blocksize, blocksize, 2};
-    const std::array<std::string, 6> n2k_dimnames{"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"};
-    NDArrayBuffer<std::int32_t, 6> output(_n2k_correlation_name, "n2k_correlation", n2k_lengths,
-                                          n2k_dimnames, *this, gpu_frame_id);
 
     record_start_event();
 
-    n2correlator.launch(output.get_ndarray().data(), (int8_t*)input_memory, rfimask,
+    n2correlator.launch(n2k_correlation.get_ndarray().data(), (int8_t*)input_memory, rfimask,
                         num_subintegrations, _sub_integration_ntime,
                         device.getStream(cuda_stream_id), true);
 
     CHECK_CUDA_ERROR(cudaGetLastError());
 
     voltage.check_metadata();
-    output.set_metadata(voltage.get_metadata());
+    n2k_correlation.set_metadata(voltage.get_metadata());
 
     // Since we do not use a ring buffer we need to set `meta->sample0_offset`
     // TODO: do this automatically in `NDArrayRingBuffer`
     const std::shared_ptr<const chordMetadata> in_meta = voltage.get_metadata();
-    const std::shared_ptr<chordMetadata> out_meta = output.get_metadata();
+    const std::shared_ptr<chordMetadata> out_meta = n2k_correlation.get_metadata();
     out_meta->sample0_offset = voltage.get_begin_read_valid();
     for (int freq = 0; freq < out_meta->nfreq; ++freq) {
         out_meta->time_downsampling_fpga[freq] =

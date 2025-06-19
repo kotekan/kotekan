@@ -118,6 +118,38 @@ run_recv_frb1_beams:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_frb1_beams_buffer_out
 
+run_recv_rfi_S012:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_S012_ringbuffer_in: host_rfi_S012_ringbuffer
+        out_buffers:
+            host_rfi_S012_buffer_out: host_rfi_S012_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_S012_ringbuffer_in
+          gpu_mem_input: rfi_S012_buffer
+          output_size: sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_S012_buffer_out
+
+run_recv_rfi_S012tilde:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_S012tilde_ringbuffer_in: host_rfi_S012tilde_ringbuffer
+        out_buffers:
+            host_rfi_S012tilde_buffer_out: host_rfi_S012tilde_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_S012tilde_ringbuffer_in
+          gpu_mem_input: rfi_S012tilde_buffer
+          output_size: sizeof_uint64 * 3 * num_frequencies * rfi_num_times_tilde
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_S012tilde_buffer_out
+
 # Output
 
 write_data_asdf:
@@ -137,6 +169,14 @@ write_data_asdf:
         kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
+    write_rfi_S012:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_rfi_S012_buffer
+        file_name: rfi_S012
+    write_rfi_S012tilde:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_rfi_S012tilde_buffer
+        file_name: rfi_S012tilde
     write_n2k_correlation:
         kotekan_stage: asdfFileWrite
         in_buf: host_n2k_correlation_buffer
@@ -280,6 +320,14 @@ write_data_zarr:
         kotekan_stage: gdalFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
+    write_rfi_S012:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_rfi_S012_buffer
+        file_name: rfi_S012
+    write_rfi_S012tilde:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_rfi_S012tilde_buffer
+        file_name: rfi_S012tilde
     write_n2k_correlation:
         kotekan_stage: gdalFileWrite
         in_buf: host_n2k_correlation_buffer

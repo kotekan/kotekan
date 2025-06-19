@@ -21,9 +21,8 @@ gpuCommand::gpuCommand(Config& config_, const std::string& unique_name_,
                        int instance_num_, std::shared_ptr<gpuCommandState> state_,
                        const std::string& default_kernel_command,
                        const std::string& default_kernel_file_name) :
-    kernel_file_name(default_kernel_file_name),
-    config(config_), unique_name(unique_name_), host_buffers(host_buffers_), dev(device_),
-    instance_num(instance_num_), command_state(state_) {
+    kernel_file_name(default_kernel_file_name), config(config_), unique_name(unique_name_),
+    host_buffers(host_buffers_), dev(device_), instance_num(instance_num_), command_state(state_) {
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     // Set the local log level.
@@ -83,4 +82,9 @@ double gpuCommand::get_last_gpu_execution_time() {
 
 gpuCommandType gpuCommand::get_command_type() {
     return command_type;
+}
+
+void gpuCommand::register_gpu_buffer_user(const gpu_buffer_descriptor& desc) {
+    gpu_buffers_used.push_back(
+        std::make_tuple(desc.name, desc.is_array, desc.does_read, desc.does_write));
 }

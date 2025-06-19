@@ -2,6 +2,7 @@
 #define KOTEKAN_CUDA_CORRELATOR_H
 
 #include <DataType.hpp>
+#include <NDArrayBuffer.hpp>
 #include <NDArrayRingBuffer.hpp>
 #include <cstdint>
 #include <cudaCommand.hpp>
@@ -77,6 +78,7 @@ private:
 
     // Signalling ring buffer for the input (voltage) data.
     NDArrayRingBuffer<kotekan::int4x2chime_t, 4> voltage;
+    NDArrayBuffer<std::int32_t, 6> n2k_correlation;
 
     // Cuda kernel wrapper object
     n2k::Correlator n2correlator;

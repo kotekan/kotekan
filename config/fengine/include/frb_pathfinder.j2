@@ -327,7 +327,9 @@ run_frb23:
           gpu_mem_beamout: frb2_beams
         - name: cudaQuantize
           # the output is quantized in chunks of `frb_chunk_size`
-          num_chunks: frb_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times / frb_chunk_size
+          num_beams: frb_num_beams
+          num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
+          num_times: frb_num_output_times
           gpu_mem_input: frb2_beams
           gpu_mem_output: frb3_beams
           gpu_mem_meanstd: frb3_beams_meanstd

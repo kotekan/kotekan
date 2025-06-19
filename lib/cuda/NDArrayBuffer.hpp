@@ -20,41 +20,36 @@
 #include <utility>
 #include <vector>
 
+enum buffer_type_t { standard = 0, do_once = 1 << 0 };
+
 template<typename T, std::size_t D>
 class NDArrayBuffer : public kotekan::kotekanLogging {
-
-    // // This is a buffer, not just a `std::vector`.
-    // // This is used e.g. for the `info` output of the Julia-generated kernels.
-    // const bool is_buffer = true;
-
-    // The buffer lives on the device (and not the host).
-    const bool is_device_buffer = true;
-
-    // This is a ring buffer.
-    const bool is_ringbuffer = false;
-
-    // There is only one copy of the buffer, we don't use multi-buffering.
-    // This is used e.g. for data that doesn't vary in time such as the beamforming matrices.
-    const bool is_once_buffer = false;
-
     const std::string buffer_name;        // "official" buffer name (for metadata)
     const std::string buffer_name_host;   // buffer name on host
     const std::string buffer_name_device; // buffer name on device
 
+    const bool is_do_once;
+
     cudaCommand& cuda_command;
-    const int64_t gpu_frame_id;
 
     const std::string quantity;
     kotekan::NDArray<T, D> ndarray;
 
 private:
+    int get_instance_num() const {
+        return cuda_command.get_instance_num();
+    }
+
     T* get_buffer_pointer(const std::array<std::ptrdiff_t, D>& extents) const {
         std::ptrdiff_t size = 1;
         for (std::size_t d = 0; d < D; ++d)
             size *= extents[d];
         const std::ptrdiff_t size_in_bytes = size * sizeof(T);
-        void* const ptr = cuda_command.get_device().get_gpu_memory_array(
-            buffer_name_device, gpu_frame_id, cuda_command.get_gpu_buffer_depth(), size_in_bytes);
+        void* const ptr =
+            is_do_once ? cuda_command.get_device().get_gpu_memory(buffer_name_device, size_in_bytes)
+                       : cuda_command.get_device().get_gpu_memory_array(
+                             buffer_name_device, get_instance_num(),
+                             cuda_command.get_gpu_buffer_depth(), size_in_bytes);
         return static_cast<T*>(ptr);
     }
 
@@ -62,13 +57,14 @@ public:
     NDArrayBuffer(const std::string& buffer_name, const std::string& quantity,
                   const std::array<std::ptrdiff_t, D>& extents,
                   const std::array<kotekan::Symbol, D>& dimnames, cudaCommand& cuda_command,
-                  const int64_t gpu_frame_id) :
+                  const buffer_type_t buffer_type = buffer_type_t::standard) :
         // metadata
         buffer_name(buffer_name),                            // e.g. "bb_beams"
         buffer_name_host("host_" + buffer_name + "_buffer"), // e.g. "host_bb_beams_buffer"
         buffer_name_device(buffer_name + "_buffer"),         // e.g. "bb_beams_buffer"
+        is_do_once(buffer_type & buffer_type_t::do_once),
         // Buffer
-        cuda_command(cuda_command), gpu_frame_id(gpu_frame_id),
+        cuda_command(cuda_command),
         // NDArray
         quantity(quantity), // e.g. "J"
         ndarray(extents, dimnames, get_buffer_pointer(extents))
@@ -78,16 +74,16 @@ public:
     NDArrayBuffer(const std::string& buffer_name, const std::string& quantity,
                   const std::array<std::ptrdiff_t, D>& extents,
                   const std::array<std::string, D>& dimnames, cudaCommand& cuda_command,
-                  const int64_t gpu_frame_id) :
+                  const buffer_type_t buffer_type = buffer_type_t::standard) :
         NDArrayBuffer(buffer_name, quantity, extents, kotekan::strings_to_symbols(dimnames),
-                      cuda_command, gpu_frame_id) {}
+                      cuda_command, buffer_type) {}
 
     NDArrayBuffer(const std::string& buffer_name, const std::string& quantity,
                   const std::array<std::ptrdiff_t, D>& extents,
                   const std::array<const char*, D>& dimnames, cudaCommand& cuda_command,
-                  const int64_t gpu_frame_id) :
+                  const buffer_type_t buffer_type = buffer_type_t::standard) :
         NDArrayBuffer(buffer_name, quantity, extents, kotekan::strings_to_symbols(dimnames),
-                      cuda_command, gpu_frame_id) {}
+                      cuda_command, buffer_type) {}
 
     virtual ~NDArrayBuffer() {}
 
@@ -127,14 +123,14 @@ public:
     std::shared_ptr<const chordMetadata> get_metadata() const {
         const std::shared_ptr<const metadataObject> mc =
             cuda_command.get_device().get_gpu_memory_array_metadata(buffer_name_device,
-                                                                    gpu_frame_id);
+                                                                    get_instance_num());
         const std::shared_ptr<const chordMetadata> metadata = get_chord_metadata(mc);
         return metadata;
     }
     std::shared_ptr<chordMetadata> get_metadata() {
         const std::shared_ptr<metadataObject> mc =
             cuda_command.get_device().get_gpu_memory_array_metadata(buffer_name_device,
-                                                                    gpu_frame_id);
+                                                                    get_instance_num());
         const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
         return metadata;
     }
@@ -155,7 +151,7 @@ public:
     void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) const {
         const std::shared_ptr<metadataObject> mc =
             cuda_command.get_device().create_gpu_memory_array_metadata(
-                buffer_name_device, gpu_frame_id, other_metadata->parent_pool);
+                buffer_name_device, get_instance_num(), other_metadata->parent_pool);
         const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
         *metadata = *other_metadata;
         metadata->set_name(quantity);
@@ -182,9 +178,6 @@ public:
 
     // Poison an NDArray buffer
     void set_to_poison(const std::uint8_t poison_value) {
-        // assert(is_buffer);
-        assert(is_device_buffer);
-        assert(!is_ringbuffer);
 #ifdef DEBUGGING
         const std::ptrdiff_t buffer_length = length_in_bytes();
         void* const buffer_device_ptr = ndarray.data();
@@ -198,9 +191,6 @@ public:
 
     // Check an NDArray buffer for poison
     void check_for_poison(const std::uint8_t poison_value) {
-        // assert(is_buffer);
-        assert(is_device_buffer);
-        assert(!is_ringbuffer);
 #ifdef DEBUGGING
         const std::ptrdiff_t buffer_length = length_in_bytes();
         const void* const buffer_device_ptr = ndarray.data();
@@ -212,6 +202,23 @@ public:
         if (found_error)
             FATAL_ERROR("NDArray buffer {:s} contains poison", buffer_name);
 #endif
+    }
+
+    // I/O
+
+    std::ostream& output(std::ostream& os) const {
+        return os << "NDArrayBuffer<" << ndarray.value_datatype << "," << ndarray.rank << ">("
+                  << buffer_name << "," << quantity << ")";
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const NDArrayBuffer& b) {
+        return b.output(os);
+    }
+
+    operator std::string() const {
+        std::ostringstream buf;
+        buf << *this;
+        return buf.str();
     }
 };
 

@@ -86,8 +86,9 @@ add_library(
     cudaUpchannelizer_pathfinder_U16.cpp
     cudaUpchannelizer_pathfinder_U32.cpp
     cudaUpchannelizer_pathfinder_U64.cpp
-    chordMVPSetup.cpp
-    S012Kernel.cpp)
+    cudaRFIS012.cpp
+    cudaRFIS012tilde.cpp
+    chordMVPSetup.cpp)
 
 # C++17
 set_property(TARGET kotekan_cuda PROPERTY CUDA_STANDARD 17)

@@ -7,6 +7,8 @@
  */
 
 #include <DataType.hpp>
+#include <NDArrayBuffer.hpp>
+#include <NDArrayRingBuffer.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -157,6 +159,16 @@ private:
 
     RingBuffer* const input_ringbuf_signal;
     RingBuffer* const output_ringbuf_signal;
+    {{#kernel_arguments}}
+        {{#hasbuffer}}
+            {{#hasringbuffer}}
+                // TODO: NDArrayRingBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
+            {{/hasringbuffer}}
+            {{^hasringbuffer}}
+                // NDArrayBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
+            {{/hasringbuffer}}
+        {{/hasbuffer}}
+    {{/kernel_arguments}}
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
@@ -198,7 +210,22 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "voltage_signal_in")))),
     output_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "beamgrid_signal_out"))))
+        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "beamgrid_signal_out")))),
+
+    {{#kernel_arguments}}
+        {{#hasbuffer}}
+            {{#hasringbuffer}}
+                // {{{name}}}_buffer(
+                //     {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
+            {{/hasringbuffer}}
+            {{^hasringbuffer}}
+                // {{{name}}}_buffer(
+                //     {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
+            {{/hasringbuffer}}
+        {{/hasbuffer}}
+    {{/kernel_arguments}}
+
+    Tbarmin()                   // avoid trailing comma
 {
     // Check ringbuffer sizes
     if (!(input_ringbuf_signal->size == Ebar_length))

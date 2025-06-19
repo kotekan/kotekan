@@ -8,6 +8,7 @@
 
 #include <DataType.hpp>
 #include <NDArrayBuffer.hpp>
+#include <NDArrayRingBuffer.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -327,6 +328,10 @@ private:
                                                        * E_lengths[E_index_F];
 
     RingBuffer* input_ringbuf_signal;
+    NDArrayBuffer<kotekan::GetType_t<A_type>, A_rank> A_buffer;
+    // TODO: NDArrayRingBuffer<kotekan::GetType_t<E_type>, E_rank> E_buffer;
+    NDArrayBuffer<kotekan::GetType_t<s_type>, s_rank> s_buffer;
+    NDArrayBuffer<kotekan::GetType_t<J_type>, J_rank> J_buffer;
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
@@ -352,7 +357,17 @@ cudaBasebandBeamformer_chime::cudaBasebandBeamformer_chime(Config& config,
 
     // Find input buffer used for signalling ring-buffer state
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(
-        config.get<std::string>(unique_name, "voltage_signal_in")))) {
+        config.get<std::string>(unique_name, "voltage_signal_in")))),
+    A_buffer(A_name, A_quantity, reverse(A_lengths), reverse(A_labels), *this,
+             buffer_type_t::do_once),
+    // E_buffer(
+    //     E_name, E_quantity, reverse(E_lengths), reverse(E_labels), *this),
+    s_buffer(s_name, s_quantity, reverse(s_lengths), reverse(s_labels), *this,
+             buffer_type_t::do_once),
+    J_buffer(J_name, J_quantity, reverse(J_lengths), reverse(J_labels), *this),
+
+    Tmin() // avoid trailing comma
+{
     // Check ringbuffer size
     if (!(input_ringbuf_signal->size == E_length))
         FATAL_ERROR("Need input_ringbuf_signal->size == E_length, but have "
@@ -453,26 +468,17 @@ cudaEvent_t cudaBasebandBeamformer_chime::execute(cudaPipelineState& /*pipestate
                                                   const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
 
-    const std::string A_memname = A_name + "_buffer";
-    void* const A_memory =
-        args::A == args::E ? device.get_gpu_memory(A_memname, input_ringbuf_signal->size)
-        : args::A == args::A || args::A == args::s
-            ? device.get_gpu_memory(A_memname, A_length)
-            : device.get_gpu_memory_array(A_memname, gpu_frame_id, _gpu_buffer_depth, A_length);
+    const std::string A_memname(A_buffer.get_buffer_name_device());
+    void* const A_memory = A_buffer.get_ndarray().data();
     const std::string E_memname = E_name + "_buffer";
     void* const E_memory =
-        args::E == args::E ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
-        : args::E == args::A || args::E == args::s
+        args::E == args::E ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size) :
+                           // TODO: Remove the cases `A` and `s`
+            args::E == args::A || args::E == args::s
             ? device.get_gpu_memory(E_memname, E_length)
             : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
-    const std::string s_memname = s_name + "_buffer";
-    void* const s_memory =
-        args::s == args::E ? device.get_gpu_memory(s_memname, input_ringbuf_signal->size)
-        : args::s == args::A || args::s == args::s
-            ? device.get_gpu_memory(s_memname, s_length)
-            : device.get_gpu_memory_array(s_memname, gpu_frame_id, _gpu_buffer_depth, s_length);
-    NDArrayBuffer<kotekan::GetType_t<J_type>, J_rank> J_buffer(
-        J_name, J_quantity, reverse(J_lengths), reverse(J_labels), *this, gpu_frame_id);
+    const std::string s_memname(s_buffer.get_buffer_name_device());
+    void* const s_memory = s_buffer.get_ndarray().data();
     const std::string J_memname(J_buffer.get_buffer_name_device());
     void* const J_memory = J_buffer.get_ndarray().data();
     const std::string info_memname = info_name + "_buffer";

@@ -8,6 +8,7 @@
 
 #include <DataType.hpp>
 #include <NDArrayBuffer.hpp>
+#include <NDArrayRingBuffer.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -165,6 +166,16 @@ private:
         type_total_bytes(E_type) * E_lengths[E_index_D] * E_lengths[E_index_P] * E_lengths[E_index_F];
 
     RingBuffer* input_ringbuf_signal;
+    {{#kernel_arguments}}
+        {{#hasbuffer}}
+            {{#hasringbuffer}}
+                // TODO: NDArrayRingBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
+            {{/hasringbuffer}}
+            {{^hasringbuffer}}
+                NDArrayBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
+            {{/hasringbuffer}}
+        {{/hasbuffer}}
+    {{/kernel_arguments}}
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
@@ -201,7 +212,25 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 
     // Find input buffer used for signalling ring-buffer state
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "voltage_signal_in"))))
+        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "voltage_signal_in")))),
+    {{#kernel_arguments}}
+        {{#hasbuffer}}
+            {{#hasringbuffer}}
+                // {{{name}}}_buffer(
+                //     {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
+            {{/hasringbuffer}}
+            {{^hasringbuffer}}
+                {{{name}}}_buffer(
+                    {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this
+                    {{#do_once}}
+                        , buffer_type_t::do_once
+                    {{/do_once}}
+                    ),
+            {{/hasringbuffer}}
+        {{/hasbuffer}}
+    {{/kernel_arguments}}
+
+    Tmin()                      // avoid trailing comma
 {
     // Check ringbuffer size
     if (!(input_ringbuf_signal->size == E_length))
@@ -225,12 +254,14 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
-                {{^isoutput}}
-                    gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, true, true, false));
-                {{/isoutput}}
-                {{#isoutput}}
-                    gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, true, true, false));
-                {{/isoutput}}
+                {{^hasringbuffer}}
+                    {{^isoutput}}
+                        gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, true, true, false));
+                    {{/isoutput}}
+                    {{#isoutput}}
+                        gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, true, true, false));
+                    {{/isoutput}}
+                {{/hasringbuffer}}
             {{/hasbuffer}}
             {{^hasbuffer}}
                 gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, false, true, true));
@@ -312,23 +343,20 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
-                {{^isoutput}}
+                {{#hasringbuffer}}
                     const std::string {{{name}}}_memname = {{{name}}}_name + "_buffer";
                     void* const {{{name}}}_memory =
                         args::{{{name}}} == args::E ?
                             device.get_gpu_memory({{{name}}}_memname, input_ringbuf_signal->size) :
+                        // TODO: Remove the cases `A` and `s`
                         args::{{{name}}} == args::A || args::{{{name}}} == args::s ?
                             device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length) :
                             device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
-                {{/isoutput}}
-                {{#isoutput}}
-                    NDArrayBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer(
-                        {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels),
-                        *this, gpu_frame_id
-                    );
+                {{/hasringbuffer}}
+                {{^hasringbuffer}}
                     const std::string {{{name}}}_memname({{{name}}}_buffer.get_buffer_name_device());
                     void* const {{{name}}}_memory = {{{name}}}_buffer.get_ndarray().data();
-                {{/isoutput}}
+                {{/hasringbuffer}}
             {{/hasbuffer}}
             {{^hasbuffer}}
                 const std::string {{{name}}}_memname = {{{name}}}_name + "_buffer";
@@ -341,6 +369,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{^isscalar}}
             {{#hasbuffer}}
                 {{^isoutput}}
+                    // TODO: use array buffers for this
                     // {{{name}}} is an input buffer: check metadata
                     const std::shared_ptr<metadataObject> {{{name}}}_mc =
                         args::{{{name}}} == args::E ?

@@ -1621,6 +1621,7 @@ function fix_ptx_kernel()
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "hasringbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
@@ -1629,6 +1630,7 @@ function fix_ptx_kernel()
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "hasringbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
@@ -1637,6 +1639,7 @@ function fix_ptx_kernel()
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "hasringbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
@@ -1645,6 +1648,7 @@ function fix_ptx_kernel()
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "hasringbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
@@ -1660,6 +1664,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
+                    "hasringbuffer" => false,
                     "isscalar" => false,
                 ),
                 Dict(
@@ -1674,6 +1679,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
+                    "hasringbuffer" => true,
                     "isscalar" => false,
                 ),
                 Dict(
@@ -1688,6 +1694,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
+                    "hasringbuffer" => true,
                     "isscalar" => false,
                 ),
                 Dict(
@@ -1701,6 +1708,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => true,
                     "hasbuffer" => false,
+                    "hasringbuffer" => false,
                     "isscalar" => false,
                 ),
             ],

@@ -1,12 +1,12 @@
 #include "cudaQuantize.hpp"
 
 #include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
 #include <array>
 #include <chordMetadata.hpp>
 #include <cmath>
 #include <cstdint>
 #include <cudaUtils.hpp>
+#include <div.hpp>
 #include <string>
 #include <vector>
 
@@ -21,11 +21,44 @@ REGISTER_CUDA_COMMAND(cudaQuantize);
 cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
                            bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
     cudaCommand(config, unique_name, host_buffers, device, inst),
-    _num_chunks(config.get<std::int64_t>(unique_name, "num_chunks")),
+    //
+    _num_beams(config.get<std::int64_t>(unique_name, "num_beams")),
+    _num_frequencies(config.get<std::int64_t>(unique_name, "num_frequencies")),
+    _num_times(config.get<std::int64_t>(unique_name, "num_times")),
+    _num_chunks(
+        kotekan::div_noremainder(1LL * _num_beams * _num_frequencies * _num_times, CHUNK_SIZE)),
+    //
     _gpu_mem_input(config.get<std::string>(unique_name, "gpu_mem_input")),
     _gpu_mem_beams(config.get<std::string>(unique_name, "gpu_mem_output")),
     _gpu_mem_beams_meanstd(config.get<std::string>(unique_name, "gpu_mem_meanstd")),
-    _gpu_mem_index(unique_name + "/index") {
+    _gpu_mem_index(unique_name + "/index"),
+    //
+    input_buffer([&]() {
+        const std::array<std::ptrdiff_t, 3> input_lengths{_num_beams, _num_frequencies, _num_times};
+        const std::array<std::string, 3> input_dimnames{"R", "Fbar", "Ttilde"};
+        return NDArrayBuffer<float16_t, 3>(_gpu_mem_input, "frb2_beams", input_lengths,
+                                           input_dimnames, *this);
+    }()),
+    beam_buffer([&]() {
+        // The data are stored as 4-bit integers, 2 values per byte
+        assert(_num_beams % 2 == 0);
+        const std::array<std::ptrdiff_t, 3> beam_lengths{_num_beams / 2, _num_frequencies,
+                                                         _num_times};
+        const std::array<std::string, 3> beam_dimnames{"R", "Fbar", "Ttilde"};
+        return NDArrayBuffer<kotekan::uint4x2_t, 3>(_gpu_mem_beams, "frb3_beams", beam_lengths,
+                                                    beam_dimnames, *this);
+    }()),
+    meanstd_buffer([&]() {
+        assert(_num_times % CHUNK_SIZE == 0);
+        static_assert(CHUNK_SIZE == 256);
+        const std::array<std::ptrdiff_t, 4> meanstd_lengths{_num_beams, _num_frequencies,
+                                                            _num_times / CHUNK_SIZE, 2};
+        const std::array<std::string, 4> meanstd_dimnames{"R", "Fbar", "Ttilde256", "mean/std"};
+        return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_meanstd, "frb3_beams_meanstd",
+                                           meanstd_lengths, meanstd_dimnames, *this);
+    }())
+//
+{
     if (_num_chunks % FRAME_SIZE)
         throw std::runtime_error("The num_chunks parameter must be a multiple of 32");
 
@@ -64,36 +97,16 @@ cudaQuantize::~cudaQuantize() {}
 cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
-    // TODO: Create NDArrayBuffer from chordMetadata
     const std::shared_ptr<const metadataObject> input_mc =
         device.get_gpu_memory_array_metadata(_gpu_mem_input + "_buffer", gpu_frame_id);
     assert(input_mc);
     assert(metadata_is_chord(input_mc));
     const std::shared_ptr<const chordMetadata> input_meta = get_chord_metadata(input_mc);
     assert(input_meta->dims == 3);
-    const std::array<std::ptrdiff_t, 3> input_lengths{input_meta->dim[0], input_meta->dim[1],
-                                                      input_meta->dim[2]};
-    const std::array<std::string, 3> input_dimnames{"R", "Fbar", "Ttilde"};
-    const NDArrayBuffer<float16_t, 3> input_buffer(_gpu_mem_input, "frb2_beams", input_lengths,
-                                                   input_dimnames, *this, gpu_frame_id);
-
-    // The data are stored as 4-bit integers, 2 values per byte
     assert(input_meta->dim[0] % 2 == 0);
-    const std::array<std::ptrdiff_t, 3> beam_lengths{input_meta->dim[0] / 2, input_meta->dim[1],
-                                                     input_meta->dim[2]};
-    const std::array<std::string, 3> beam_dimnames{"R", "Fbar", "Ttilde"};
-    NDArrayBuffer<kotekan::uint4x2_t, 3> beam_buffer(_gpu_mem_beams, "frb3_beams", beam_lengths,
-                                                     beam_dimnames, *this, gpu_frame_id);
-
-    assert(input_meta->dim[2] % CHUNK_SIZE == 0);
     static_assert(CHUNK_SIZE == 256);
-    const std::array<std::ptrdiff_t, 4> meanstd_lengths{input_meta->dim[0], input_meta->dim[1],
-                                                        input_meta->dim[2] / CHUNK_SIZE, 2};
-    const std::array<std::string, 4> meanstd_dimnames{"R", "Fbar", "Ttilde256", "mean/std"};
-    NDArrayBuffer<float16_t, 4> meanstd_buffer(_gpu_mem_beams_meanstd, "frb3_beams_meanstd",
-                                               meanstd_lengths, meanstd_dimnames, *this,
-                                               gpu_frame_id);
 
+    // TODO: Avoid the index array
     const size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
     const int32_t* const index_array_memory =
         (const int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);

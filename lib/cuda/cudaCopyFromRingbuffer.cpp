@@ -121,6 +121,11 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
     assert(meta->dims > 0);
     assert(out_buffer->frame_size % meta->sample_bytes() == 0);
     meta->dim[0] = out_buffer->frame_size / meta->sample_bytes();
+#warning "TODO"
+    DEBUG("frame_size: {:d}", out_buffer->frame_size);
+    DEBUG("sample_bytes: {:d}", meta->sample_bytes());
+    DEBUG("dim[0]: {:d}", meta->dim[0]);
+    DEBUG("stride[0]: {:d}", meta->stride[0]);
 
     size_t start = input_cursor % _ring_buffer_size;
     size_t ncopy = _output_size;

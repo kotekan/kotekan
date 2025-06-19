@@ -1,6 +1,7 @@
 #ifndef KOTEKAN_CUDA_QUANTIZE_HPP
 #define KOTEKAN_CUDA_QUANTIZE_HPP
 
+#include <NDArrayBuffer.hpp>
 #include <cudaCommand.hpp>
 #include <cudaDeviceInterface.hpp>
 
@@ -38,6 +39,9 @@ public:
     static constexpr int FRAME_SIZE = 32;
 
 private:
+    const int _num_beams;
+    const int _num_frequencies;
+    const int _num_times;
     const int64_t _num_chunks;
 
     /// GPU side memory name for the time-stream input
@@ -48,6 +52,10 @@ private:
     const std::string _gpu_mem_beams_meanstd;
     /// GPU side index array
     const std::string _gpu_mem_index;
+
+    const NDArrayBuffer<float16_t, 3> input_buffer;
+    NDArrayBuffer<kotekan::uint4x2_t, 3> beam_buffer;
+    NDArrayBuffer<float16_t, 4> meanstd_buffer;
 };
 
 #endif // KOTEKAN_CUDA_QUANTIZE_HPP

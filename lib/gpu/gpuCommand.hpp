@@ -204,6 +204,15 @@ protected:
 
     /// For get_gpu_buffers: a list of GPU buffers used by this command.
     std::vector<std::tuple<std::string, bool, bool, bool>> gpu_buffers_used;
+
+public:
+    struct gpu_buffer_descriptor {
+        std::string name;
+        bool is_array;
+        bool does_read;
+        bool does_write;
+    };
+    void register_gpu_buffer_user(const gpu_buffer_descriptor& desc);
 };
 
 #endif // GPU_COMMAND_H

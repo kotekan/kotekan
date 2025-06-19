@@ -19,11 +19,11 @@ namespace n2k {
 //
 //   ulong    S12[Tds][F][2][S];     // output array (length-2 axis is for S1+S2 output arrays)
 //   uint4+4  E[Tds*Nds][F][S];      // input array (electric field)
-//   int      Nds;                    // time downsampling factor
+//   int      Nds;                   // time downsampling factor
 //   int      Tds;                   // number of time samples after downsampling
-//   int      F;                      // number of frequency channels
-//   int      S;                      // number of stations
-//   int      out_fstride;            // output stride (minimal value is 2*S)
+//   int      F;                     // number of frequency channels
+//   int      S;                     // number of stations
+//   int      out_fstride;           // output stride (minimal value is 2*S), measured in ulong elements
 //
 // Constraints (checked in launch_s12_kernel below):
 //
