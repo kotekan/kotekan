@@ -51,10 +51,11 @@ private:
     //    SKbar       skKernel
 
     // Parameters
+    const int buffer_depth;
+    const int num_times;
     const int num_frequencies;
     const int num_polarizations;
     const int num_dishes;
-
     const int rfi_downsampling_factor;
 
     // Kotekan buffer names
@@ -76,6 +77,8 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "cudaRFIS012"),
     // Parameters
+    buffer_depth(config.get<int>(unique_name, "buffer_depth")),
+    num_times(config.get<int>(unique_name, "num_times")),
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
@@ -85,15 +88,18 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
     voltage_name(config.get<std::string>(unique_name, "voltage_name")),
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
     // Buffers
-    pl_mask(
-        pl_mask_name, "pl_mask",
-        std::array<std::ptrdiff_t, 5>{-1, num_frequencies / 4, num_polarizations, num_dishes, 8},
-        std::array<std::string, 5>{"T16hi8", "F4", "P", "D", "T16lo8"}, *this),
+    pl_mask(pl_mask_name, "pl_mask",
+            std::array<std::ptrdiff_t, 5>{div_noremainder(buffer_depth * num_times, 128),
+                                          num_frequencies / 4, num_polarizations, num_dishes, 8},
+            std::array<std::string, 5>{"T16hi8", "F4", "P", "D", "T16lo8"}, *this),
     voltage(voltage_name, "E",
-            std::array<std::ptrdiff_t, 4>{-1, num_frequencies, num_polarizations, num_dishes},
+            std::array<std::ptrdiff_t, 4>{buffer_depth * num_times, num_frequencies,
+                                          num_polarizations, num_dishes},
             std::array<std::string, 4>{"T", "F", "P", "D"}, *this),
     rfi_S012(rfi_S012_name, "S012",
-             std::array<std::ptrdiff_t, 5>{-1, num_frequencies, 3, num_polarizations, num_dishes},
+             std::array<std::ptrdiff_t, 5>{
+                 div_noremainder(buffer_depth * num_times, rfi_downsampling_factor),
+                 num_frequencies, 3, num_polarizations, num_dishes},
              std::array<std::string, 5>{"Tcoarse", "F", "S", "P", "D"}, *this)
 //
 {
@@ -152,8 +158,9 @@ int cudaRFIS012::wait_on_precondition() {
     const int rfi_S012_errcode = rfi_S012.wait_for_writable(produced_elements);
     if (rfi_S012_errcode < 0)
         return rfi_S012_errcode;
-    DEBUG("Done waiting for rfi_S012 input ringbuffer data for frame {:d}; will write {:d} elements",
-          gpu_frame_id, produced_elements);
+    DEBUG(
+        "Done waiting for rfi_S012 input ringbuffer data for frame {:d}; will write {:d} elements",
+        gpu_frame_id, produced_elements);
 
     return 0;
 }

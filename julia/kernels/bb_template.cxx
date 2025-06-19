@@ -20,7 +20,6 @@
 #include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
-#include <ringbuffer.hpp>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -165,11 +164,10 @@ private:
     static constexpr std::ptrdiff_t E_T_sample_bytes =
         type_total_bytes(E_type) * E_lengths[E_index_D] * E_lengths[E_index_P] * E_lengths[E_index_F];
 
-    RingBuffer* input_ringbuf_signal;
     {{#kernel_arguments}}
         {{#hasbuffer}}
             {{#hasringbuffer}}
-                // TODO: NDArrayRingBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
+                NDArrayRingBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
             {{/hasringbuffer}}
             {{^hasringbuffer}}
                 NDArrayBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
@@ -177,9 +175,8 @@ private:
         {{/hasbuffer}}
     {{/kernel_arguments}}
 
-    // How many samples we will process from the input ringbuffer
-    // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
-    std::ptrdiff_t Tmin, Tmax;
+    // To avoid trailing comma below
+    int dummy;
 };
 
 REGISTER_CUDA_COMMAND(cuda{{{kernel_name}}});
@@ -210,14 +207,11 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    // Find input buffer used for signalling ring-buffer state
-    input_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "voltage_signal_in")))),
     {{#kernel_arguments}}
         {{#hasbuffer}}
             {{#hasringbuffer}}
-                // {{{name}}}_buffer(
-                //     {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
+                {{{name}}}_buffer(
+                    {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
             {{/hasringbuffer}}
             {{^hasringbuffer}}
                 {{{name}}}_buffer(
@@ -230,14 +224,8 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{/hasbuffer}}
     {{/kernel_arguments}}
 
-    Tmin()                      // avoid trailing comma
+    dummy()                      // avoid trailing comma
 {
-    // Check ringbuffer size
-    if (!(input_ringbuf_signal->size == E_length))
-        FATAL_ERROR("Need input_ringbuf_signal->size == E_length, but have input_ringbuf_signal->size={:d}, E_length={:d}",
-                    input_ringbuf_signal->size, E_length);
-    assert(input_ringbuf_signal->size == E_length);
-
     // Register host memory
     {{#kernel_arguments}}
         {{^isscalar}}
@@ -250,18 +238,15 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    // Add Graphviz entries for the GPU buffers used by this kernel
     {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
-                {{^hasringbuffer}}
-                    {{^isoutput}}
-                        gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, true, true, false));
-                    {{/isoutput}}
-                    {{#isoutput}}
-                        gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, true, true, false));
-                    {{/isoutput}}
-                {{/hasringbuffer}}
+                {{^isoutput}}
+                    {{{name}}}_buffer.register_consumer();
+                {{/isoutput}}
+                {{#isoutput}}
+                    {{{name}}}_buffer.register_producer();
+                {{/isoutput}}
             {{/hasbuffer}}
             {{^hasbuffer}}
                 gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, false, true, true));
@@ -279,60 +264,20 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         };
         device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "{{{kernel_name}}}_");
     }
-
-    if (instance_num == 0) {
-        input_ringbuf_signal->register_consumer(unique_name);
-    }
 }
 
 cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}
 
-std::int64_t cuda{{{kernel_name}}}::num_consumed_elements(std::int64_t num_available_elements) const {
-    return num_produced_elements(num_available_elements);
-}
-std::int64_t cuda{{{kernel_name}}}::num_produced_elements(std::int64_t num_available_elements) const {
-    return num_processed_elements(num_available_elements);
-}
-
-std::int64_t cuda{{{kernel_name}}}::num_processed_elements(std::int64_t num_available_elements) const {
-    assert(num_available_elements >= cuda_granularity_number_of_timesamples);
-    return cuda_granularity_number_of_timesamples;
-}
-
 int cuda{{{kernel_name}}}::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
-    const std::ptrdiff_t input_bytes = cuda_granularity_number_of_timesamples * E_T_sample_bytes;
-    DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
-    DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::ptrdiff_t> val_in =
-        input_ringbuf_signal->wait_and_claim_readable(unique_name, instance_num, input_bytes);
-    DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
-    if (!val_in.has_value())
-        return -1;
-    const std::ptrdiff_t input_cursor = val_in.value();
-    DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
-
-    // How many inputs samples are available?
-    const std::ptrdiff_t T_available = div_noremainder(input_bytes, E_T_sample_bytes);
-    DEBUG("Available samples:      T_available: {:d}", T_available);
-
-    // How many outputs will we process and consume?
-    const std::ptrdiff_t T_processed = num_processed_elements(T_available);
-    const std::ptrdiff_t T_consumed = num_consumed_elements(T_available);
-    DEBUG("Will process (samples): T_processed: {:d}", T_processed);
-    DEBUG("Will consume (samples): T_consumed:  {:d}", T_consumed);
-    assert(T_processed > 0);
-    assert(T_consumed <= T_processed);
-    const std::ptrdiff_t T_consumed2 = num_consumed_elements(T_processed);
-    assert(T_consumed2 == T_consumed);
-
-    Tmin = div_noremainder(input_cursor, E_T_sample_bytes);
-    Tmax = Tmin + T_processed;
-    const std::ptrdiff_t Tlength = Tmax - Tmin;
-    DEBUG("Input samples:");
-    DEBUG("    Tmin:    {:d}", Tmin);
-    DEBUG("    Tmax:    {:d}", Tmax);
-    DEBUG("    Tlength: {:d}", Tlength);
+    {
+        const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
+            const std::ptrdiff_t T_read = round_down(T_available, cuda_granularity_number_of_timesamples);
+            return read_descriptor_t{.claimed = T_read, .read = T_read};
+        });
+        if (errcode < 0)
+            return errcode;
+    }
 
     return 0;
 }
@@ -343,20 +288,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
-                {{#hasringbuffer}}
-                    const std::string {{{name}}}_memname = {{{name}}}_name + "_buffer";
-                    void* const {{{name}}}_memory =
-                        args::{{{name}}} == args::E ?
-                            device.get_gpu_memory({{{name}}}_memname, input_ringbuf_signal->size) :
-                        // TODO: Remove the cases `A` and `s`
-                        args::{{{name}}} == args::A || args::{{{name}}} == args::s ?
-                            device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length) :
-                            device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
-                {{/hasringbuffer}}
-                {{^hasringbuffer}}
-                    const std::string {{{name}}}_memname({{{name}}}_buffer.get_buffer_name_device());
-                    void* const {{{name}}}_memory = {{{name}}}_buffer.get_ndarray().data();
-                {{/hasringbuffer}}
+                void* const {{{name}}}_memory = {{{name}}}_buffer.get_ndarray().data();
             {{/hasbuffer}}
             {{^hasbuffer}}
                 const std::string {{{name}}}_memname = {{{name}}}_name + "_buffer";
@@ -366,53 +298,17 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{/kernel_arguments}}
 
     {{#kernel_arguments}}
-        {{^isscalar}}
-            {{#hasbuffer}}
-                {{^isoutput}}
-                    // TODO: use array buffers for this
-                    // {{{name}}} is an input buffer: check metadata
-                    const std::shared_ptr<metadataObject> {{{name}}}_mc =
-                        args::{{{name}}} == args::E ?
-                            input_ringbuf_signal->get_metadata(0) :
-                            device.get_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
-                    assert({{{name}}}_mc);
-                    assert(metadata_is_chord({{{name}}}_mc));
-                    const std::shared_ptr<chordMetadata> {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
-                    DEBUG("input {{{name}}} array: {:s} {:s}",
-                          {{{name}}}_meta->get_type_string(),
-                          {{{name}}}_meta->get_dimensions_string());
-                    assert(std::strncmp({{{name}}}_meta->name, {{{name}}}_quantity, sizeof {{{name}}}_meta->name) == 0);
-                    assert({{{name}}}_meta->type == {{{name}}}_type);
-                    assert({{{name}}}_meta->dims == {{{name}}}_rank);
-                    for (std::ptrdiff_t dim = 0; dim < {{{name}}}_rank; ++dim) {
-                        assert(std::strncmp({{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim],
-                                            {{{name}}}_labels[dim],
-                                            sizeof {{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim]) == 0);
-                        if (args::{{{name}}} == args::E) {
-                            assert({{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] <= int({{{name}}}_lengths[dim]));
-                            assert({{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] == {{{name}}}_strides[dim]);
-                        } else {
-                            assert({{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] == int({{{name}}}_lengths[dim]));
-                            assert({{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] == {{{name}}}_strides[dim]);
-                        }
-                    }
-                    //
-                {{/isoutput}}
-                {{#isoutput}}
-                    // {{{name}}} is an output buffer: set metadata
-                    {{{name}}}_buffer.set_metadata(E_meta);
-                    // DEBUG("output {{{name}}} array: {:s} {:s}",
-                    //       {{{name}}}_meta->get_type_string(),
-                    //       {{{name}}}_meta->get_dimensions_string());
-                    //
-                {{/isoutput}}
-            {{/hasbuffer}}
-        {{/isscalar}}
+        {{#hasbuffer}}
+            {{^isoutput}}
+                {{{name}}}_buffer.check_metadata();
+            {{/isoutput}}
+            {{#isoutput}}
+                {{{name}}}_buffer.set_metadata(E_buffer.get_metadata());
+            {{/isoutput}}
+        {{/hasbuffer}}
     {{/kernel_arguments}}
 
     record_start_event();
-
-    DEBUG("gpu_frame_id: {}", gpu_frame_id);
 
     const char* exc_arg = "exception";
     {{#kernel_arguments}}
@@ -434,15 +330,12 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     E_arg = array_desc(E_memory, E_length);
 
     // Ringbuffer size
-    const std::ptrdiff_t T_ringbuf = input_ringbuf_signal->size / E_T_sample_bytes;
-    DEBUG("Input ringbuffer size (samples):  {:d}", T_ringbuf);
+    const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
+
+    const std::ptrdiff_t Tmin = E_buffer.get_begin_read_valid();
+    const std::ptrdiff_t Tmax = E_buffer.get_end_read_valid();
 
     const std::ptrdiff_t Tlength = Tmax - Tmin;
-    DEBUG("Processed input samples: {:d}", Tlength);
-
-    DEBUG("Kernel arguments:");
-    DEBUG("    Tmin:    {:d}", Tmin);
-    DEBUG("    Tmax:    {:d}", Tmax);
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
@@ -451,22 +344,11 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     // Update metadata
     {
-        std::shared_ptr<metadataObject> const J_mc = device.get_gpu_memory_array_metadata(J_memname, gpu_frame_id);
-        std::shared_ptr<chordMetadata> const J_meta = get_chord_metadata(J_mc);
-    
-        assert(J_meta->dim[J_rank - 1 - J_index_T] == int(Tlength));
-        assert(J_meta->dim[J_rank - 1 - J_index_T] == int(J_lengths[J_index_T]));
+        std::shared_ptr<chordMetadata> const J_meta = J_buffer.get_metadata();
     
         // Since we do not use a ring buffer we need to set `meta->sample0_offset`
         J_meta->sample0_offset = Tmin;
         assert(J_meta->offset_downsampling == 1);
-    
-        assert(J_meta->nfreq >= 0);
-        assert(J_meta->nfreq == J_meta->nfreq);
-        for (int freq = 0; freq < J_meta->nfreq; ++freq) {
-            J_meta->freq_upchan_factor[freq] = J_meta->freq_upchan_factor[freq];
-            J_meta->time_downsampling_fpga[freq] = J_meta->time_downsampling_fpga[freq];
-        }
     }
 
     // Copy inputs to device memory
@@ -538,6 +420,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     DEBUG("Finished CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
+    // TODO: Introduce a new "unbuffered" buffer; do this there
     std::uint32_t error_code = 0;
     for (int block = 0; block < info_lengths[info_index_block]; ++block) {
         for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
@@ -555,6 +438,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     if (error_code != 0)
         ERROR("CUDA kernel returned error code: {}", error_code);
 
+    // TODO: Introduce a new "unbuffered" buffer; do this there
     for (int block = 0; block < info_lengths[info_index_block]; ++block) {
         for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
             for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
@@ -577,6 +461,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     if (log_code != 0)
         WARN("CUDA kernel {{{kernel_name}}} returned log code cuLaunchKernel: {}", log_code);
 
+    // TODO: Introduce a new "unbuffered" buffer; do this there
     for (std::size_t i = 0; i < log_host.size() / type_total_bytes(log_type); ++i) {
         const std::uint32_t val = ((const std::uint32_t*)log_host.data())[i];
         if (val != 0)
@@ -592,14 +477,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 }
 
 void cuda{{{kernel_name}}}::finalize_frame() {
-    const std::ptrdiff_t Tlength = Tmax - Tmin;
-
     // Advance the input ringbuffer
-    const std::ptrdiff_t T_consumed = num_consumed_elements(Tlength);
-    DEBUG("Advancing input ringbuffer:");
-    DEBUG("    Consumed samples: {:d}", T_consumed);
-    DEBUG("    Consumed bytes:   {:d}", T_consumed * E_T_sample_bytes);
-    input_ringbuf_signal->finish_read(unique_name, instance_num, T_consumed * E_T_sample_bytes);
+    E_buffer.finish_read();
 
     cudaCommand::finalize_frame();
 }

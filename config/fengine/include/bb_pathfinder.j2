@@ -53,19 +53,19 @@ run_bb:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
-            host_bb_phase_in: host_bb_phase_buffer
-            host_bb_shift_in: host_bb_shift_buffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_bb_phase_buffer: host_bb_phase_buffer
+            host_bb_shift_buffer: host_bb_shift_buffer
         out_buffers:
-            host_bb_beams_out: host_bb_beams_buffer
+            host_bb_beams_buffer: host_bb_beams_buffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_bb_phase_in
+          in_buf: host_bb_phase_buffer
           gpu_mem: bb_phase_buffer
         - name: cudaInputData
           do_once: true
-          in_buf: host_bb_shift_in
+          in_buf: host_bb_shift_buffer
           gpu_mem: bb_shift_buffer
         - name: cudaSyncInput
         - name: cudaBasebandBeamformer_pathfinder
@@ -77,4 +77,4 @@ run_bb:
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: bb_beams_buffer
-          out_buf: host_bb_beams_out
+          out_buf: host_bb_beams_buffer

@@ -99,6 +99,19 @@ public:
         return buffer_name_device;
     }
 
+    // TODO: Distinguish between input and output buffers, then register automatically
+    void register_consumer() {
+        if (get_instance_num() == 0)
+            cuda_command.register_gpu_buffer_user(
+                {.name = buffer_name, .is_array = true, .does_read = true, .does_write = false});
+    }
+
+    void register_producer() {
+        if (get_instance_num() == 0)
+            cuda_command.register_gpu_buffer_user(
+                {.name = buffer_name, .is_array = true, .does_read = false, .does_write = true});
+    }
+
     // NDArray:
 
     std::string get_quantity() const {
@@ -163,16 +176,6 @@ public:
         }
         // TODO: set `sample0_offset`
     }
-
-    // TODO template<typename T1, std::size_t D1>
-    // TODO void set_metadata(const NDArrayBuffer<T1, D1>& other_buffer) const {
-    // TODO     const std::shared_ptr<const metadataObject> mc =
-    // TODO         cuda_command.get_device().get_gpu_memory_array_metadata(buffer_name_device,
-    // TODO                                                                 gpu_frame_id);
-    // TODO     assert(mc);
-    // TODO     assert(metadata_is_chord(mc));
-    // TODO     const std::shared_ptr<const chordMetadata> metadata = get_chord_metadata(mc);
-    // TODO }
 
     // Poison
 

@@ -60,23 +60,7 @@ private:
         return cuda_command.get_instance_num();
     }
 
-    // Complete the extents for the total ring buffer size, whether we
-    // can access the elements or not
-    std::array<std::ptrdiff_t, D> complete_extents(std::array<std::ptrdiff_t, D> extents) const {
-        assert(extents[0] == -1);
-        std::ptrdiff_t stride = 1;
-        for (std::size_t d = 1; d < D; ++d)
-            stride *= extents[d];
-        const std::ptrdiff_t size = ringbuffer->size;
-        assert(size > 0);
-        const std::ptrdiff_t stride_bytes = stride * sizeof(T);
-        assert(size % stride_bytes == 0);
-        extents[0] = size / stride_bytes;
-        return extents;
-    }
-
-    T* get_buffer_pointer(const std::array<std::ptrdiff_t, D>& extents0) const {
-        const std::array<std::ptrdiff_t, D>& extents = complete_extents(extents0);
+    T* get_buffer_pointer(const std::array<std::ptrdiff_t, D>& extents) const {
         std::ptrdiff_t size = 1;
         for (std::size_t d = 0; d < D; ++d)
             size *= extents[d];
@@ -102,7 +86,7 @@ public:
             cuda_command.get_host_buffers().get_generic_buffer(signal_buffer_name))),
         // NDArray
         quantity(quantity), // e.g. "J"
-        ndarray(complete_extents(extents), dimnames, get_buffer_pointer(extents)),
+        ndarray(extents, dimnames, get_buffer_pointer(extents)),
         // State
         begin_write_valid(0), end_write_valid(0), begin_read_valid(0), end_read_valid(0),
         end_read_claimed(0)

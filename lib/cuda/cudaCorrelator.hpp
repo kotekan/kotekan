@@ -55,6 +55,8 @@ public:
 
 private:
     // Common configuration values (which do not change in a run)
+    const std::int32_t _buffer_depth;
+    const std::int32_t _num_times;
     /// Number of elements on the telescope (aka analog inputs)
     // CHIME            = 2048 (1024 antennas x 2 polarizations),
     // CHORD pathfinder =  128 ( 64  dishes   x 2 polarizations)

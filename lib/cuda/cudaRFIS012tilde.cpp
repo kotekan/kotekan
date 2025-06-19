@@ -52,9 +52,12 @@ private:
     //    SKbar       skKernel
 
     // Parameters
+    const int buffer_depth;
+    const int num_times;
     const int num_frequencies;
     const int num_polarizations;
     const int num_dishes;
+    const int rfi_downsampling_factor;
 
     // Kotekan buffer names
     const std::string bf_mask_name;
@@ -75,9 +78,12 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "cudaRFIS012tilde"),
     // Parameters
+    buffer_depth(config.get<int>(unique_name, "buffer_depth")),
+    num_times(config.get<int>(unique_name, "num_times")),
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
+    rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
     // Buffer names
     bf_mask_name(config.get<std::string>(unique_name, "bf_mask_name")),
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
@@ -86,11 +92,15 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     bf_mask(bf_mask_name, "bf_mask", std::array<std::ptrdiff_t, 2>{num_polarizations, num_dishes},
             std::array<std::string, 2>{"P", "D"}, *this, buffer_type_t::do_once),
     rfi_S012(rfi_S012_name, "S012",
-             std::array<std::ptrdiff_t, 5>{-1, num_frequencies, 3, num_polarizations, num_dishes},
+             std::array<std::ptrdiff_t, 5>{
+                 div_noremainder(buffer_depth * num_times, rfi_downsampling_factor),
+                 num_frequencies, 3, num_polarizations, num_dishes},
              std::array<std::string, 5>{"Tcoarse", "F", "S", "P", "D"}, *this),
-    rfi_S012tilde(rfi_S012tilde_name, "S012tilde",
-                  std::array<std::ptrdiff_t, 3>{-1, num_frequencies, 3},
-                  std::array<std::string, 3>{"Tcoarse", "F", "S"}, *this)
+    rfi_S012tilde(
+        rfi_S012tilde_name, "S012tilde",
+        std::array<std::ptrdiff_t, 3>{
+            div_noremainder(buffer_depth * num_times, rfi_downsampling_factor), num_frequencies, 3},
+        std::array<std::string, 3>{"Tcoarse", "F", "S"}, *this)
 //
 {
     rfi_S012.register_consumer();

@@ -18,6 +18,8 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, cudaDeviceInterface& device,
                                const int inst) :
     cudaCommand(config, unique_name, host_buffers, device, inst),
+    _buffer_depth(config.get<int>(unique_name, "buffer_depth")),
+    _num_times(config.get<int>(unique_name, "num_times")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
     _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
@@ -25,7 +27,8 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     _voltage_name(config.get<std::string>(unique_name, "voltage_name")),
     _n2k_correlation_name(config.get<std::string>(unique_name, "n2k_correlation_name")),
     voltage(_voltage_name, "E",
-            std::array<std::ptrdiff_t, 4>{-1, _num_local_freq, 2, _num_elements / 2},
+            std::array<std::ptrdiff_t, 4>{_buffer_depth * _num_times, _num_local_freq, 2,
+                                          _num_elements / 2},
             std::array<std::string, 4>{"T", "F", "P", "D"}, *this),
     n2k_correlation([&]() {
         // aka "nt_outer" in n2k.hpp
