@@ -418,13 +418,7 @@ cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate*/,
     void* const E_memory = E_buffer.get_ndarray().data();
     void* const s_memory = s_buffer.get_ndarray().data();
     void* const J_memory = J_buffer.get_ndarray().data();
-    // TODO void* const info_memory = device.get_gpu_memory_array(info_name, gpu_index,
-    // buffer_depth, info_length_in_bytes);
-    //  TODO: combine
     void* const info_memory = info_buffer.get_ndarray().data();
-    // TODO void* const log_memory = device.get_gpu_memory_array(log_name, gpu_index, buffer_depth,
-    // log_length_in_bytes);
-    //  TODO: combine
     void* const log_memory = log_buffer.get_ndarray().data();
 
     A_buffer.check_metadata();

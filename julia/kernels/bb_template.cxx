@@ -279,14 +279,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     {{#kernel_arguments}}
         {{^isscalar}}
-            {{#hasbuffer}}
-                void* const {{{name}}}_memory = {{{name}}}_buffer.get_ndarray().data();
-            {{/hasbuffer}}
-            {{^hasbuffer}}
-                //TODO void* const {{{name}}}_memory = device.get_gpu_memory_array({{{name}}}_name, gpu_index, buffer_depth, {{{name}}}_length_in_bytes);
-                // TODO: combine
-                void* const {{{name}}}_memory = {{{name}}}_buffer.get_ndarray().data();
-            {{/hasbuffer}}
+            void* const {{{name}}}_memory = {{{name}}}_buffer.get_ndarray().data();
         {{/isscalar}}
     {{/kernel_arguments}}
 
