@@ -1199,8 +1199,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 "kernel_symbol" => kernel_symbol,
                 "kernel_arguments" => [
                     Dict(
-                        "name" => "Tmin",
-                        "kotekan_name" => "Tmin",
+                        "name" => "T_min",
+                        "kotekan_name" => "T_min",
                         "type" => "int32",
                         "isoutput" => false,
                         "isscalar" => true,
@@ -1209,8 +1209,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "do_once" => false,
                     ),
                     Dict(
-                        "name" => "Tmax",
-                        "kotekan_name" => "Tmax",
+                        "name" => "T_max",
+                        "kotekan_name" => "T_max",
                         "type" => "int32",
                         "isoutput" => false,
                         "isscalar" => true,

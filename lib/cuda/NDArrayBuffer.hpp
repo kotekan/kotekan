@@ -13,9 +13,10 @@
 #include <cstring>
 #include <cudaCommand.hpp>
 #include <cudaDeviceInterface.hpp>
-#include <gpuDeviceInterface.hpp>
 #include <kotekanLogging.hpp>
 #include <memory>
+#include <ostream>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>

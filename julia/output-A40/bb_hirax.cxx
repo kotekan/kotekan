@@ -93,15 +93,15 @@ private:
         "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES4_S5_S5_";
 
     // Kernel arguments:
-    enum class args { Tmin, Tmax, A, E, s, J, info, log, count };
+    enum class args { T_min, T_max, A, E, s, J, info, log, count };
 
-    // Tmin: Tmin
-    static constexpr const char* Tmin_quantity = "Tmin";
-    static constexpr kotekan::DataType Tmin_type = kotekan::int32;
+    // T_min: T_min
+    static constexpr const char* T_min_quantity = "T_min";
+    static constexpr kotekan::DataType T_min_type = kotekan::int32;
     //
-    // Tmax: Tmax
-    static constexpr const char* Tmax_quantity = "Tmax";
-    static constexpr kotekan::DataType Tmax_type = kotekan::int32;
+    // T_max: T_max
+    static constexpr const char* T_max_quantity = "T_max";
+    static constexpr kotekan::DataType T_max_type = kotekan::int32;
     //
     // A: bb_phase_name
     static constexpr const char* A_quantity = "A";
@@ -392,10 +392,13 @@ cudaBasebandBeamformer_hirax::~cudaBasebandBeamformer_hirax() {}
 
 int cudaBasebandBeamformer_hirax::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
+    const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
+    const std::ptrdiff_t T_read_max = T_ringbuf / 4;
     {
         const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
+            using std::min;
             const std::ptrdiff_t T_read =
-                round_down(T_available, cuda_granularity_number_of_timesamples);
+                round_down(min(T_available, T_read_max), cuda_granularity_number_of_timesamples);
             return read_descriptor_t{.claimed = T_read, .read = T_read};
         });
         if (errcode < 0)
@@ -424,8 +427,8 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
     record_start_event();
 
     const char* exc_arg = "exception";
-    std::int32_t Tmin_arg;
-    std::int32_t Tmax_arg;
+    std::int32_t T_min_arg;
+    std::int32_t T_max_arg;
     array_desc A_arg(A_memory, A_length_in_bytes);
     array_desc E_arg(E_memory, E_length_in_bytes);
     array_desc s_arg(s_memory, s_length_in_bytes);
@@ -433,7 +436,7 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
     array_desc info_arg(info_memory, info_length_in_bytes);
     array_desc log_arg(log_memory, log_length_in_bytes);
     void* args[] = {
-        &exc_arg, &Tmin_arg, &Tmax_arg, &A_arg, &E_arg, &s_arg, &J_arg, &info_arg, &log_arg,
+        &exc_arg, &T_min_arg, &T_max_arg, &A_arg, &E_arg, &s_arg, &J_arg, &info_arg, &log_arg,
     };
 
     // Set E_memory to beginning of input ring buffer
@@ -442,28 +445,30 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
     // Ringbuffer size
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
 
-    const std::ptrdiff_t Tmin = E_buffer.get_begin_read_valid();
-    const std::ptrdiff_t Tmax = E_buffer.get_end_read_valid();
+    const std::ptrdiff_t T_min = E_buffer.get_begin_read_valid();
+    const std::ptrdiff_t T_max = E_buffer.get_end_read_valid();
 
-    const std::ptrdiff_t Tlength = Tmax - Tmin;
+    const std::ptrdiff_t T_length = T_max - T_min;
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    Tmin_arg = mod(Tmin, T_ringbuf);
-    Tmax_arg = mod(Tmin, T_ringbuf) + Tlength;
+    T_min_arg = mod(T_min, T_ringbuf);
+    T_max_arg = mod(T_min, T_ringbuf) + T_length;
 
     // Update metadata
     {
         const std::shared_ptr<chordMetadata> J_meta = J_buffer.get_metadata();
 
         // Since we do not use a ring buffer we need to set `meta->sample0_offset`
-        J_meta->sample0_offset = Tmin;
+        J_meta->sample0_offset = T_min;
         assert(J_meta->offset_downsampling == 1);
     }
 
     // Copy inputs to device memory
 
     J_buffer.set_to_poison(0x00);
+    info_buffer.set_to_poison(0xff);
+    log_buffer.set_to_poison(0xff);
 
 #ifdef DEBUGGING
     // Initialize host-side buffer arrays
@@ -478,7 +483,6 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA BasebandBeamformer_hirax on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -497,23 +501,12 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    DEBUG("Finished CUDA BasebandBeamformer_hirax on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
     // TODO: Introduce a new "unbuffered" buffer; do this there
-    std::uint32_t error_code = 0;
-    for (int block = 0; block < info_lengths[info_index_block]; ++block) {
-        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
-            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
-                const std::ptrdiff_t i = info_strides[info_index_thread] * thread
-                                         + info_strides[info_index_warp] * warp
-                                         + info_strides[info_index_block] * block;
-                const std::uint32_t val = host_info_buffer.data()[i];
-                using std::max;
-                error_code = max(error_code, val);
-            }
-        }
-    }
+    const std::int32_t error_code =
+        *std::max_element((const std::int32_t*)&*host_info_buffer.begin(),
+                          (const std::int32_t*)&*host_info_buffer.end());
     if (error_code != 0)
         ERROR("CUDA kernel returned error code: {}", error_code);
 
@@ -558,7 +551,7 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
 }
 
 void cudaBasebandBeamformer_hirax::finalize_frame() {
-    // Advance the input ringbuffer
+    // Advance the input ring buffer
     E_buffer.finish_read();
 
     cudaCommand::finalize_frame();

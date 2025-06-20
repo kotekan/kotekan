@@ -256,10 +256,13 @@ cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}
 
 int cuda{{{kernel_name}}}::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
+    const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
+    const std::ptrdiff_t T_read_max = T_ringbuf / 4;
     {
         const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
-            const std::ptrdiff_t T_read = round_down(T_available, cuda_granularity_number_of_timesamples);
-            return read_descriptor_t{.claimed = T_read, .read = T_read};
+            using std::min;
+            const std::ptrdiff_t T_read = round_down(min(T_available, T_read_max), cuda_granularity_number_of_timesamples);
+                return read_descriptor_t{.claimed = T_read, .read = T_read};
         });
         if (errcode < 0)
             return errcode;
@@ -312,22 +315,22 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     // Ringbuffer size
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
 
-    const std::ptrdiff_t Tmin = E_buffer.get_begin_read_valid();
-    const std::ptrdiff_t Tmax = E_buffer.get_end_read_valid();
+    const std::ptrdiff_t T_min = E_buffer.get_begin_read_valid();
+    const std::ptrdiff_t T_max = E_buffer.get_end_read_valid();
 
-    const std::ptrdiff_t Tlength = Tmax - Tmin;
+    const std::ptrdiff_t T_length = T_max - T_min;
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    Tmin_arg = mod(Tmin, T_ringbuf);
-    Tmax_arg = mod(Tmin, T_ringbuf) + Tlength;
+    T_min_arg = mod(T_min, T_ringbuf);
+    T_max_arg = mod(T_min, T_ringbuf) + T_length;
 
     // Update metadata
     {
         const std::shared_ptr<chordMetadata> J_meta = J_buffer.get_metadata();
     
         // Since we do not use a ring buffer we need to set `meta->sample0_offset`
-        J_meta->sample0_offset = Tmin;
+        J_meta->sample0_offset = T_min;
         assert(J_meta->offset_downsampling == 1);
     }
 
@@ -347,6 +350,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{/kernel_arguments}}
 
     J_buffer.set_to_poison(0x00);
+    info_buffer.set_to_poison(0xff);
+    log_buffer.set_to_poison(0xff);
 
 #ifdef DEBUGGING
     // Initialize host-side buffer arrays
@@ -369,7 +374,6 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname],
                        blocks, 1, 1, threads_x, threads_y, 1,
@@ -400,24 +404,11 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{/kernel_arguments}}
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    DEBUG("Finished CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
     // TODO: Introduce a new "unbuffered" buffer; do this there
-    std::uint32_t error_code = 0;
-    for (int block = 0; block < info_lengths[info_index_block]; ++block) {
-        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
-            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
-                const std::ptrdiff_t i =
-                    info_strides[info_index_thread] * thread +
-                    info_strides[info_index_warp] * warp +
-                    info_strides[info_index_block] * block;
-                const std::uint32_t val = host_info_buffer.data()[i];
-                using std::max;
-                error_code = max(error_code, val);
-            }
-        }
-    }
+    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*host_info_buffer.begin(),
+                                                      (const std::int32_t*)&*host_info_buffer.end());
     if (error_code != 0)
         ERROR("CUDA kernel returned error code: {}", error_code);
 
@@ -460,7 +451,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 }
 
 void cuda{{{kernel_name}}}::finalize_frame() {
-    // Advance the input ringbuffer
+    // Advance the input ring buffer
     E_buffer.finish_read();
 
     cudaCommand::finalize_frame();

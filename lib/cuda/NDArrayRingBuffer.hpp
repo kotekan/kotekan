@@ -13,6 +13,7 @@
 #include <cstring>
 #include <cudaCommand.hpp>
 #include <cudaDeviceInterface.hpp>
+#include <cudaUtils.hpp>
 #include <div.hpp>
 #include <functional>
 #include <gpuDeviceInterface.hpp>
@@ -25,6 +26,7 @@
 #include <vector>
 
 using kotekan::div_noremainder;
+using kotekan::mod;
 
 struct read_descriptor_t {
     std::ptrdiff_t claimed, read;
@@ -313,40 +315,69 @@ public:
 
     // Poison
 
-    // TODO     // Poison an NDArray buffer
-    // TODO     void set_to_poison(const std::uint8_t poison_value) {
-    // TODO         // assert(is_buffer);
-    // TODO         assert(is_device_buffer);
-    // TODO         assert(!is_ringbuffer);
-    // TODO #ifdef DEBUGGING
-    // TODO         const std::ptrdiff_t buffer_length = length_in_bytes();
-    // TODO         void* const buffer_device_ptr = ndarray.data();
-    // TODO         assert(buffer_device_ptr);
-    // TODO         const cudaStream_t cuda_stream = device.getStream(cuda_stream_id);
-    // TODO         CHECK_CUDA_ERROR(
-    // TODO             cudaMemsetAsync(buffer_device_ptr, poison_value, buffer_length,
-    // cuda_stream));
-    // TODO #endif
-    // TODO     }
-    // TODO
-    // TODO     // Check an NDArray buffer for poison
-    // TODO     void check_for_poison(const std::uint8_t poison_value) {
-    // TODO         // assert(is_buffer);
-    // TODO         assert(is_device_buffer);
-    // TODO         assert(!is_ringbuffer);
-    // TODO #ifdef DEBUGGING
-    // TODO         const std::ptrdiff_t buffer_length = length_in_bytes();
-    // TODO         const void* const buffer_device_ptr = ndarray.data();
-    // TODO         assert(buffer_device_ptr);
-    // TODO         std::vector<std::uint8_t> local_data(buffer_length);
-    // TODO         CHECK_CUDA_ERROR(cudaMemcpy(local_data.data(), buffer_device_ptr, buffer_length,
-    // TODO                                     cudaMemcpyDeviceToHost));
-    // TODO         const bool found_error = std::memchr(local_data.data(), poison_value,
-    // buffer_length);
-    // TODO         if (found_error)
-    // TODO             FATAL_ERROR("NDArray buffer {:s} contains poison", buffer_name);
-    // TODO #endif
-    // TODO     }
+    // Poison an NDArray ring buffer
+    void set_to_poison(const std::uint8_t poison_value) {
+#ifdef DEBUGGING
+        const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
+        const std::ptrdiff_t T_min = get_begin_write_valid();
+        const std::ptrdiff_t T_max = get_end_write_valid();
+        const std::ptrdiff_t T_length = T_max - T_min;
+        const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
+        const std::ptrdiff_t T_max_arg = mod(T_min, T_ringbuf) + T_length;
+        const int num_chunks = T_max_arg <= T_ringbuf ? 1 : 2;
+        for (int chunk = 0; chunk < num_chunks; ++chunk) {
+            const std::ptrdiff_t T_stride = granularity_in_bytes();
+            const std::ptrdiff_t T_offset = chunk == 0 ? T_min_arg : 0;
+            const std::ptrdiff_t T_length = num_chunks == 1 ? T_max_arg - T_min_arg
+                                            : chunk == 0    ? T_ringbuf - T_min_arg
+                                                            : T_max_arg - T_ringbuf;
+            CHECK_CUDA_ERROR(cudaMemsetAsync(
+                (std::uint8_t*)get_ndarray().data() + T_offset * T_stride, poison_value,
+                T_length * T_stride,
+                cuda_command.get_device().getStream(cuda_command.get_cuda_stream_id())));
+        } // for chunk
+#endif
+    }
+
+    // Check an NDArray ring buffer for poison
+    void check_for_poison(const std::uint8_t poison_value) {
+#ifdef DEBUGGING
+        const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
+        const std::ptrdiff_t T_min = get_begin_write_valid();
+        const std::ptrdiff_t T_max = get_end_write_valid();
+        const std::ptrdiff_t T_length = T_max - T_min;
+        const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
+        const std::ptrdiff_t T_max_arg = mod(T_min, T_ringbuf) + T_length;
+        const int num_chunks = T_max_arg <= T_ringbuf ? 1 : 2;
+        for (int chunk = 0; chunk < num_chunks; ++chunk) {
+            const std::ptrdiff_t T_stride = granularity_in_bytes();
+            const std::ptrdiff_t T_offset = chunk == 0 ? T_min_arg : 0;
+            const std::ptrdiff_t T_length = num_chunks == 1 ? T_max_arg - T_min_arg
+                                            : chunk == 0    ? T_ringbuf - T_min_arg
+                                                            : T_max_arg - T_ringbuf;
+            std::vector<std::uint8_t> local_data(T_length * T_stride, poison_value);
+            CHECK_CUDA_ERROR(cudaMemcpy(local_data.data(),
+                                        (std::uint8_t*)get_ndarray().data() + T_offset * T_stride,
+                                        T_length * T_stride, cudaMemcpyDeviceToHost));
+            const bool found_error =
+                std::memchr(local_data.data(), poison_value, local_data.size());
+            if (found_error) {
+                for (std::ptrdiff_t t = 0; t < T_length; ++t) {
+                    bool any_error = false;
+                    for (std::ptrdiff_t n = 0; n < T_stride; ++n) {
+                        const auto val = local_data.at(t * T_stride + n);
+                        any_error |= val == 0x00;
+                    }
+                    if (any_error)
+                        DEBUG("    [{}]={:#02x}", t, 0x00);
+                }
+            }
+            if (found_error)
+                FATAL_ERROR("NDArray buffer {:s} contains poison", buffer_name);
+            assert(!found_error);
+        } // for chunk
+#endif
+    }
 
     // I/O
 
