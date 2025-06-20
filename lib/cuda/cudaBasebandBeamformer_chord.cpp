@@ -126,8 +126,6 @@ private:
     static constexpr std::array<std::ptrdiff_t, A_rank> A_lengths = {
         2, 512, 96, 2, 48,
     };
-    static constexpr std::ptrdiff_t A_length = type_total_bytes(A_type) * 2 * 512 * 96 * 2 * 48;
-    static_assert(A_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto A_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -138,7 +136,9 @@ private:
         A_calc_stride(A_index_C), A_calc_stride(A_index_D), A_calc_stride(A_index_B),
         A_calc_stride(A_index_P), A_calc_stride(A_index_F), A_calc_stride(A_rank),
     };
-    static_assert(A_length == type_total_bytes(A_type) * A_strides[A_rank]);
+    static constexpr std::ptrdiff_t A_length = A_strides[A_rank];
+    static constexpr std::ptrdiff_t A_length_in_bytes = type_total_bytes(A_type) * A_length;
+    static_assert(A_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: voltage_name
     static constexpr const char* E_quantity = "E";
@@ -162,8 +162,6 @@ private:
         48,
         32768,
     };
-    static constexpr std::ptrdiff_t E_length = type_total_bytes(E_type) * 512 * 2 * 48 * 32768;
-    static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -174,7 +172,9 @@ private:
         E_calc_stride(E_index_D), E_calc_stride(E_index_P), E_calc_stride(E_index_F),
         E_calc_stride(E_index_T), E_calc_stride(E_rank),
     };
-    static_assert(E_length == type_total_bytes(E_type) * E_strides[E_rank]);
+    static constexpr std::ptrdiff_t E_length = E_strides[E_rank];
+    static constexpr std::ptrdiff_t E_length_in_bytes = type_total_bytes(E_type) * E_length;
+    static_assert(E_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // s: bb_shift_name
     static constexpr const char* s_quantity = "s";
@@ -195,8 +195,6 @@ private:
         2,
         48,
     };
-    static constexpr std::ptrdiff_t s_length = type_total_bytes(s_type) * 96 * 2 * 48;
-    static_assert(s_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto s_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -209,7 +207,9 @@ private:
         s_calc_stride(s_index_F),
         s_calc_stride(s_rank),
     };
-    static_assert(s_length == type_total_bytes(s_type) * s_strides[s_rank]);
+    static constexpr std::ptrdiff_t s_length = s_strides[s_rank];
+    static constexpr std::ptrdiff_t s_length_in_bytes = type_total_bytes(s_type) * s_length;
+    static_assert(s_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // J: bb_beams_name
     static constexpr const char* J_quantity = "J";
@@ -233,8 +233,6 @@ private:
         48,
         96,
     };
-    static constexpr std::ptrdiff_t J_length = type_total_bytes(J_type) * 8192 * 2 * 48 * 96;
-    static_assert(J_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto J_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -245,7 +243,9 @@ private:
         J_calc_stride(J_index_T), J_calc_stride(J_index_P), J_calc_stride(J_index_F),
         J_calc_stride(J_index_B), J_calc_stride(J_rank),
     };
-    static_assert(J_length == type_total_bytes(J_type) * J_strides[J_rank]);
+    static constexpr std::ptrdiff_t J_length = J_strides[J_rank];
+    static constexpr std::ptrdiff_t J_length_in_bytes = type_total_bytes(J_type) * J_length;
+    static_assert(J_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr const char* info_quantity = "info";
@@ -266,8 +266,6 @@ private:
         24,
         96,
     };
-    static constexpr std::ptrdiff_t info_length = type_total_bytes(info_type) * 32 * 24 * 96;
-    static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -280,7 +278,10 @@ private:
         info_calc_stride(info_index_block),
         info_calc_stride(info_rank),
     };
-    static_assert(info_length == type_total_bytes(info_type) * info_strides[info_rank]);
+    static constexpr std::ptrdiff_t info_length = info_strides[info_rank];
+    static constexpr std::ptrdiff_t info_length_in_bytes =
+        type_total_bytes(info_type) * info_length;
+    static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // log: gpu_mem_log
     static constexpr const char* log_quantity = "log";
@@ -295,8 +296,6 @@ private:
     static constexpr std::array<std::ptrdiff_t, log_rank> log_lengths = {
         96,
     };
-    static constexpr std::ptrdiff_t log_length = type_total_bytes(log_type) * 96;
-    static_assert(log_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto log_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -307,7 +306,9 @@ private:
         log_calc_stride(log_index_block),
         log_calc_stride(log_rank),
     };
-    static_assert(log_length == type_total_bytes(log_type) * log_strides[log_rank]);
+    static constexpr std::ptrdiff_t log_length = log_strides[log_rank];
+    static constexpr std::ptrdiff_t log_length_in_bytes = type_total_bytes(log_type) * log_length;
+    static_assert(log_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     // Kotekan buffer names
@@ -318,18 +319,15 @@ private:
     const std::string info_name;
     const std::string log_name;
 
-    // Host-side buffer arrays
-    std::vector<std::uint8_t> info_host;
-    std::vector<std::uint8_t> log_host;
-
-    static constexpr std::ptrdiff_t E_T_sample_bytes = type_total_bytes(E_type)
-                                                       * E_lengths[E_index_D] * E_lengths[E_index_P]
-                                                       * E_lengths[E_index_F];
-
+    // Buffers
     NDArrayBuffer<kotekan::GetType_t<A_type>, A_rank> A_buffer;
     NDArrayRingBuffer<kotekan::GetType_t<E_type>, E_rank> E_buffer;
     NDArrayBuffer<kotekan::GetType_t<s_type>, s_rank> s_buffer;
     NDArrayBuffer<kotekan::GetType_t<J_type>, J_rank> J_buffer;
+    std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
+    NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
+    std::vector<kotekan::GetType_t<log_type>> host_log_buffer;
+    NDArrayBuffer<kotekan::GetType_t<log_type>, log_rank> log_buffer;
 
     // To avoid trailing comma below
     int dummy;
@@ -350,24 +348,28 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
     J_name(config.get<std::string>(unique_name, "bb_beams_name")),
     info_name(unique_name + "/gpu_mem_info"), log_name(unique_name + "/gpu_mem_log"),
 
-    info_host(info_length), log_host(log_length),
-
     A_buffer(A_name, A_quantity, reverse(A_lengths), reverse(A_labels), *this,
              buffer_type_t::do_once),
     E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), *this),
     s_buffer(s_name, s_quantity, reverse(s_lengths), reverse(s_labels), *this,
              buffer_type_t::do_once),
     J_buffer(J_name, J_quantity, reverse(J_lengths), reverse(J_labels), *this),
+    host_info_buffer(info_length),
+    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
+    host_log_buffer(log_length),
+    log_buffer(log_name, log_quantity, reverse(log_lengths), reverse(log_labels), *this),
 
     dummy() // avoid trailing comma
 {
     // Register host memory
     {
-        const cudaError_t ierr = cudaHostRegister(info_host.data(), info_host.size(), 0);
+        const cudaError_t ierr = cudaHostRegister(
+            host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0);
         assert(ierr == cudaSuccess);
     }
     {
-        const cudaError_t ierr = cudaHostRegister(log_host.data(), log_host.size(), 0);
+        const cudaError_t ierr = cudaHostRegister(
+            host_log_buffer.data(), host_log_buffer.size() * sizeof *host_log_buffer.data(), 0);
         assert(ierr == cudaSuccess);
     }
 
@@ -415,10 +417,14 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     void* const E_memory = E_buffer.get_ndarray().data();
     void* const s_memory = s_buffer.get_ndarray().data();
     void* const J_memory = J_buffer.get_ndarray().data();
-    const std::string info_memname = info_name + "_buffer";
-    void* const info_memory = device.get_gpu_memory(info_memname, info_length);
-    const std::string log_memname = log_name + "_buffer";
-    void* const log_memory = device.get_gpu_memory(log_memname, log_length);
+    // TODO void* const info_memory = device.get_gpu_memory_array(info_name, gpu_index,
+    // buffer_depth, info_length_in_bytes);
+    //  TODO: combine
+    void* const info_memory = info_buffer.get_ndarray().data();
+    // TODO void* const log_memory = device.get_gpu_memory_array(log_name, gpu_index, buffer_depth,
+    // log_length_in_bytes);
+    //  TODO: combine
+    void* const log_memory = log_buffer.get_ndarray().data();
 
     A_buffer.check_metadata();
     E_buffer.check_metadata();
@@ -430,18 +436,18 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     const char* exc_arg = "exception";
     std::int32_t Tmin_arg;
     std::int32_t Tmax_arg;
-    array_desc A_arg(A_memory, A_length);
-    array_desc E_arg(E_memory, E_length);
-    array_desc s_arg(s_memory, s_length);
-    array_desc J_arg(J_memory, J_length);
-    array_desc info_arg(info_memory, info_length);
-    array_desc log_arg(log_memory, log_length);
+    array_desc A_arg(A_memory, A_length_in_bytes);
+    array_desc E_arg(E_memory, E_length_in_bytes);
+    array_desc s_arg(s_memory, s_length_in_bytes);
+    array_desc J_arg(J_memory, J_length_in_bytes);
+    array_desc info_arg(info_memory, info_length_in_bytes);
+    array_desc log_arg(log_memory, log_length_in_bytes);
     void* args[] = {
         &exc_arg, &Tmin_arg, &Tmax_arg, &A_arg, &E_arg, &s_arg, &J_arg, &info_arg, &log_arg,
     };
 
     // Set E_memory to beginning of input ring buffer
-    E_arg = array_desc(E_memory, E_length);
+    E_arg = array_desc(E_memory, E_length_in_bytes);
 
     // Ringbuffer size
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
@@ -472,9 +478,9 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
 #ifdef DEBUGGING
     // Initialize host-side buffer arrays
     CHECK_CUDA_ERROR(
-        cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
+        cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes, device.getStream(cuda_stream_id)));
     CHECK_CUDA_ERROR(
-        cudaMemsetAsync(log_memory, 0xff, log_length, device.getStream(cuda_stream_id)));
+        cudaMemsetAsync(log_memory, 0xff, log_length_in_bytes, device.getStream(cuda_stream_id)));
 #endif
 
     const std::string symname = "BasebandBeamformer_chord_" + std::string(kernel_symbol);
@@ -495,9 +501,9 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
 
 #ifdef DEBUGGING
     // Copy results back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(log_host.data(), log_memory, log_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_log_buffer.data(), log_memory, log_length_in_bytes,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
@@ -512,7 +518,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
                 const std::ptrdiff_t i = info_strides[info_index_thread] * thread
                                          + info_strides[info_index_warp] * warp
                                          + info_strides[info_index_block] * block;
-                const std::uint32_t val = *(const std::uint32_t*)&info_host[i];
+                const std::uint32_t val = host_info_buffer.data()[i];
                 using std::max;
                 error_code = max(error_code, val);
             }
@@ -528,7 +534,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
                 const std::ptrdiff_t i = info_strides[info_index_thread] * thread
                                          + info_strides[info_index_warp] * warp
                                          + info_strides[info_index_block] * block;
-                const std::uint32_t val = ((const std::uint32_t*)info_host.data())[i];
+                const std::uint32_t val = host_info_buffer.data()[i];
                 if (val != 0)
                     ERROR("CUDA kernel BasebandBeamformer_chord returned 'info' value {:d} "
                           "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no "
@@ -539,14 +545,15 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     }
 
     // Check log codes
-    const std::uint32_t log_code = *std::max_element((const std::uint32_t*)&*log_host.begin(),
-                                                     (const std::uint32_t*)&*log_host.end());
+    const std::uint32_t log_code =
+        *std::max_element((const std::uint32_t*)&*host_log_buffer.begin(),
+                          (const std::uint32_t*)&*host_log_buffer.end());
     if (log_code != 0)
         WARN("CUDA kernel BasebandBeamformer_chord returned log code cuLaunchKernel: {}", log_code);
 
     // TODO: Introduce a new "unbuffered" buffer; do this there
-    for (std::size_t i = 0; i < log_host.size() / type_total_bytes(log_type); ++i) {
-        const std::uint32_t val = ((const std::uint32_t*)log_host.data())[i];
+    for (std::size_t i = 0; i < host_log_buffer.size(); ++i) {
+        const std::uint32_t val = host_log_buffer.data()[i];
         if (val != 0)
             WARN("CUDA kernel BasebandBeamformer_chord returned 'log' value {:d} at index {:d} "
                  "(zero "

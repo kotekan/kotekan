@@ -122,12 +122,6 @@ private:
                     {{{length}}},
                 {{/axes}}
             };
-            static constexpr std::ptrdiff_t {{{name}}}_length = type_total_bytes({{{name}}}_type)
-                {{#axes}}
-                    * {{{length}}}
-                {{/axes}}
-                ;
-            static_assert({{{name}}}_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
             static constexpr auto {{{name}}}_calc_stride = [](int dim) {
                 std::ptrdiff_t str = 1;
                 for (int d = 0; d < dim; ++d)
@@ -140,7 +134,9 @@ private:
                 {{/axes}}
                 {{{name}}}_calc_stride({{{name}}}_rank),
             };
-            static_assert({{{name}}}_length == type_total_bytes({{{name}}}_type) * {{{name}}}_strides[{{{name}}}_rank]);
+            static constexpr std::ptrdiff_t {{{name}}}_length = {{{name}}}_strides[{{{name}}}_rank];
+            static constexpr std::ptrdiff_t {{{name}}}_length_in_bytes = type_total_bytes({{{name}}}_type) * {{{name}}}_length;
+            static_assert({{{name}}}_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
         {{/isscalar}}
         //
     {{/kernel_arguments}}
@@ -152,27 +148,22 @@ private:
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    // Host-side buffer arrays
+    // Buffers
     {{#kernel_arguments}}
         {{^isscalar}}
+            {{#hasbuffer}}
+                {{#hasringbuffer}}
+                    NDArrayRingBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
+                {{/hasringbuffer}}
+                {{^hasringbuffer}}
+                    NDArrayBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
+                {{/hasringbuffer}}
+            {{/hasbuffer}}
             {{^hasbuffer}}
-                std::vector<std::uint8_t> {{{name}}}_host;
+                std::vector<kotekan::GetType_t<{{{name}}}_type>> host_{{{name}}}_buffer;
+                NDArrayBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
             {{/hasbuffer}}
         {{/isscalar}}
-    {{/kernel_arguments}}
-
-    static constexpr std::ptrdiff_t E_T_sample_bytes =
-        type_total_bytes(E_type) * E_lengths[E_index_D] * E_lengths[E_index_P] * E_lengths[E_index_F];
-
-    {{#kernel_arguments}}
-        {{#hasbuffer}}
-            {{#hasringbuffer}}
-                NDArrayRingBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
-            {{/hasringbuffer}}
-            {{^hasringbuffer}}
-                NDArrayBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
-            {{/hasringbuffer}}
-        {{/hasbuffer}}
     {{/kernel_arguments}}
 
     // To avoid trailing comma below
@@ -201,27 +192,26 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 
     {{#kernel_arguments}}
         {{^isscalar}}
-            {{^hasbuffer}}
-                {{{name}}}_host({{{name}}}_length),
+            {{#hasbuffer}}
+                {{#hasringbuffer}}
+                    {{{name}}}_buffer(
+                        {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
+                {{/hasringbuffer}}
+                {{^hasringbuffer}}
+                    {{{name}}}_buffer(
+                        {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this
+                        {{#do_once}}
+                            , buffer_type_t::do_once
+                        {{/do_once}}
+                        ),
+                {{/hasringbuffer}}
             {{/hasbuffer}}
-        {{/isscalar}}
-    {{/kernel_arguments}}
-
-    {{#kernel_arguments}}
-        {{#hasbuffer}}
-            {{#hasringbuffer}}
+            {{^hasbuffer}}
+                host_{{{name}}}_buffer({{{name}}}_length),
                 {{{name}}}_buffer(
                     {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
-            {{/hasringbuffer}}
-            {{^hasringbuffer}}
-                {{{name}}}_buffer(
-                    {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this
-                    {{#do_once}}
-                        , buffer_type_t::do_once
-                    {{/do_once}}
-                    ),
-            {{/hasringbuffer}}
-        {{/hasbuffer}}
+            {{/hasbuffer}}
+        {{/isscalar}}
     {{/kernel_arguments}}
 
     dummy()                      // avoid trailing comma
@@ -231,7 +221,9 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{^isscalar}}
             {{^hasbuffer}}
                 {
-                    const cudaError_t ierr = cudaHostRegister({{{name}}}_host.data(), {{{name}}}_host.size(), 0);
+                    const cudaError_t ierr = cudaHostRegister(host_{{{name}}}_buffer.data(),
+                                                              host_{{{name}}}_buffer.size() * sizeof *host_{{{name}}}_buffer.data(),
+                                                              0);
                     assert(ierr == cudaSuccess);
                 }
             {{/hasbuffer}}
@@ -291,8 +283,9 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 void* const {{{name}}}_memory = {{{name}}}_buffer.get_ndarray().data();
             {{/hasbuffer}}
             {{^hasbuffer}}
-                const std::string {{{name}}}_memname = {{{name}}}_name + "_buffer";
-                void* const {{{name}}}_memory = device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length);
+                //TODO void* const {{{name}}}_memory = device.get_gpu_memory_array({{{name}}}_name, gpu_index, buffer_depth, {{{name}}}_length_in_bytes);
+                // TODO: combine
+                void* const {{{name}}}_memory = {{{name}}}_buffer.get_ndarray().data();
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
@@ -313,7 +306,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     const char* exc_arg = "exception";
     {{#kernel_arguments}}
         {{^isscalar}}
-            array_desc {{{name}}}_arg({{{name}}}_memory, {{{name}}}_length);
+            array_desc {{{name}}}_arg({{{name}}}_memory, {{{name}}}_length_in_bytes);
         {{/isscalar}}
         {{#isscalar}}
             std::{{{type}}}_t {{{name}}}_arg;
@@ -327,7 +320,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     };
 
     // Set E_memory to beginning of input ring buffer
-    E_arg = array_desc(E_memory, E_length);
+    E_arg = array_desc(E_memory, E_length_in_bytes);
 
     // Ringbuffer size
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
@@ -357,8 +350,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
             {{^hasbuffer}}
                 {{^isoutput}}
                     CHECK_CUDA_ERROR(cudaMemcpyAsync({{{name}}}_memory,
-                                                     {{{name}}}_host.data(),
-                                                     {{{name}}}_length,
+                                                     host_{{{name}}}_buffer.data(),
+                                                     {{{name}}}_length_in_bytes,
                                                      cudaMemcpyHostToDevice,
                                                      device.getStream(cuda_stream_id)));
                 {{/isoutput}}
@@ -374,7 +367,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{^isscalar}}
             {{^hasbuffer}}
                 {{#isoutput}}
-                    CHECK_CUDA_ERROR(cudaMemsetAsync({{{name}}}_memory, 0xff, {{{name}}}_length, device.getStream(cuda_stream_id)));
+                    CHECK_CUDA_ERROR(cudaMemsetAsync({{{name}}}_memory,
+                                                     0xff,
+                                                     {{{name}}}_length_in_bytes,
+                                                     device.getStream(cuda_stream_id)));
                 {{/isoutput}}
             {{/hasbuffer}}
         {{/isscalar}}
@@ -406,9 +402,9 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{^isscalar}}
             {{^hasbuffer}}
                 {{#isoutput}}
-                    CHECK_CUDA_ERROR(cudaMemcpyAsync({{{name}}}_host.data(),
+                    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_{{{name}}}_buffer.data(),
                                                      {{{name}}}_memory,
-                                                     {{{name}}}_length,
+                                                     {{{name}}}_length_in_bytes,
                                                      cudaMemcpyDeviceToHost,
                                                      device.getStream(cuda_stream_id)));
                 {{/isoutput}}
@@ -429,7 +425,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                     info_strides[info_index_thread] * thread +
                     info_strides[info_index_warp] * warp +
                     info_strides[info_index_block] * block;
-                const std::uint32_t val = *(const std::uint32_t*)&info_host[i];
+                const std::uint32_t val = host_info_buffer.data()[i];
                 using std::max;
                 error_code = max(error_code, val);
             }
@@ -446,7 +442,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                     info_strides[info_index_thread] * thread +
                     info_strides[info_index_warp] * warp +
                     info_strides[info_index_block] * block;
-                const std::uint32_t val = ((const std::uint32_t*)info_host.data())[i];
+                const std::uint32_t val = host_info_buffer.data()[i];
                 if (val != 0)
                     ERROR("CUDA kernel {{{kernel_name}}} returned 'info' value {:d} "
                           "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no error)",
@@ -456,14 +452,14 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     }
 
     // Check log codes
-    const std::uint32_t log_code = *std::max_element((const std::uint32_t*)&*log_host.begin(),
-                                                     (const std::uint32_t*)&*log_host.end());
+    const std::uint32_t log_code = *std::max_element((const std::uint32_t*)&*host_log_buffer.begin(),
+                                                     (const std::uint32_t*)&*host_log_buffer.end());
     if (log_code != 0)
         WARN("CUDA kernel {{{kernel_name}}} returned log code cuLaunchKernel: {}", log_code);
 
     // TODO: Introduce a new "unbuffered" buffer; do this there
-    for (std::size_t i = 0; i < log_host.size() / type_total_bytes(log_type); ++i) {
-        const std::uint32_t val = ((const std::uint32_t*)log_host.data())[i];
+    for (std::size_t i = 0; i < host_log_buffer.size(); ++i) {
+        const std::uint32_t val = host_log_buffer.data()[i];
         if (val != 0)
             WARN("CUDA kernel {{{kernel_name}}} returned 'log' value {:d} at index {:d} (zero "
                  "indicates success)",
