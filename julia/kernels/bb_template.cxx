@@ -74,12 +74,6 @@ private:
         static constexpr {{{type}}} {{{name}}} = {{{value}}};
     {{/kernel_design_parameters}}
 
-    // Kernel input and output sizes
-    std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
-    std::int64_t num_produced_elements(std::int64_t num_available_elements) const;
-
-    std::int64_t num_processed_elements(std::int64_t num_available_elements) const;
-
     // Kernel compile parameters:
     static constexpr int minthreads = {{{minthreads}}};
     static constexpr int blocks_per_sm = {{{num_blocks_per_sm}}};
@@ -91,7 +85,7 @@ private:
     static constexpr int shmem_bytes = {{{shmem_bytes}}};
 
     // Kernel name:
-    const char* const kernel_symbol = "{{{kernel_symbol}}}";
+    static constexpr const char* kernel_symbol = "{{{kernel_symbol}}}";
 
     // Kernel arguments:
     enum class args {
@@ -160,8 +154,8 @@ private:
                 {{/hasringbuffer}}
             {{/hasbuffer}}
             {{^hasbuffer}}
-                std::vector<kotekan::GetType_t<{{{name}}}_type>> host_{{{name}}}_buffer;
                 NDArrayBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
+                std::vector<kotekan::GetType_t<{{{name}}}_type>> host_{{{name}}}_buffer;
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
@@ -207,9 +201,9 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                 {{/hasringbuffer}}
             {{/hasbuffer}}
             {{^hasbuffer}}
-                host_{{{name}}}_buffer({{{name}}}_length),
                 {{{name}}}_buffer(
                     {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
+                host_{{{name}}}_buffer({{{name}}}_length),
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
@@ -241,7 +235,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                 {{/isoutput}}
             {{/hasbuffer}}
             {{^hasbuffer}}
-                gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, false, true, true));
+                register_gpu_buffer_user({.name = {{{name}}}_name, .is_array = true, .does_read = true, .does_write = true});
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
@@ -330,7 +324,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     // Update metadata
     {
-        std::shared_ptr<chordMetadata> const J_meta = J_buffer.get_metadata();
+        const std::shared_ptr<chordMetadata> J_meta = J_buffer.get_metadata();
     
         // Since we do not use a ring buffer we need to set `meta->sample0_offset`
         J_meta->sample0_offset = Tmin;

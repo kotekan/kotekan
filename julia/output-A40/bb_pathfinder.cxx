@@ -78,12 +78,6 @@ private:
     static constexpr int cuda_granularity_number_of_timesamples = 8192;
     static constexpr int cuda_shift_parameter_sigma = 2;
 
-    // Kernel input and output sizes
-    std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
-    std::int64_t num_produced_elements(std::int64_t num_available_elements) const;
-
-    std::int64_t num_processed_elements(std::int64_t num_available_elements) const;
-
     // Kernel compile parameters:
     static constexpr int minthreads = 128;
     static constexpr int blocks_per_sm = 8;
@@ -95,7 +89,7 @@ private:
     static constexpr int shmem_bytes = 9472;
 
     // Kernel name:
-    const char* const kernel_symbol =
+    static constexpr const char* kernel_symbol =
         "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES4_S5_S5_";
 
     // Kernel arguments:
@@ -324,10 +318,10 @@ private:
     NDArrayRingBuffer<kotekan::GetType_t<E_type>, E_rank> E_buffer;
     NDArrayBuffer<kotekan::GetType_t<s_type>, s_rank> s_buffer;
     NDArrayBuffer<kotekan::GetType_t<J_type>, J_rank> J_buffer;
-    std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
     NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
-    std::vector<kotekan::GetType_t<log_type>> host_log_buffer;
+    std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
     NDArrayBuffer<kotekan::GetType_t<log_type>, log_rank> log_buffer;
+    std::vector<kotekan::GetType_t<log_type>> host_log_buffer;
 
     // To avoid trailing comma below
     int dummy;
@@ -354,10 +348,10 @@ cudaBasebandBeamformer_pathfinder::cudaBasebandBeamformer_pathfinder(Config& con
     s_buffer(s_name, s_quantity, reverse(s_lengths), reverse(s_labels), *this,
              buffer_type_t::do_once),
     J_buffer(J_name, J_quantity, reverse(J_lengths), reverse(J_labels), *this),
-    host_info_buffer(info_length),
     info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
-    host_log_buffer(log_length),
+    host_info_buffer(info_length),
     log_buffer(log_name, log_quantity, reverse(log_lengths), reverse(log_labels), *this),
+    host_log_buffer(log_length),
 
     dummy() // avoid trailing comma
 {
@@ -377,8 +371,10 @@ cudaBasebandBeamformer_pathfinder::cudaBasebandBeamformer_pathfinder(Config& con
     E_buffer.register_consumer();
     s_buffer.register_consumer();
     J_buffer.register_producer();
-    gpu_buffers_used.push_back(std::make_tuple(info_name, false, true, true));
-    gpu_buffers_used.push_back(std::make_tuple(log_name, false, true, true));
+    register_gpu_buffer_user(
+        {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
+    register_gpu_buffer_user(
+        {.name = log_name, .is_array = true, .does_read = true, .does_write = true});
 
     set_command_type(gpuCommandType::KERNEL);
 
@@ -459,7 +455,7 @@ cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate*/,
 
     // Update metadata
     {
-        std::shared_ptr<chordMetadata> const J_meta = J_buffer.get_metadata();
+        const std::shared_ptr<chordMetadata> J_meta = J_buffer.get_metadata();
 
         // Since we do not use a ring buffer we need to set `meta->sample0_offset`
         J_meta->sample0_offset = Tmin;
