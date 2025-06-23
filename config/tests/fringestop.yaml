@@ -70,6 +70,7 @@ direct_phase_fringestop_0:
   era_target_deg: 81.0
 
 raw_rate: 1
+T_rot_sec: 86636.54694914103
 
 N2_pool:
   int_frames: 64
@@ -233,7 +234,7 @@ earth_rotation_data:
     }]
 
 fakevis0:
-  cadence: 1.0 / raw_rate
+  cadence: T_rot_sec / (86400 * raw_rate)
   dec: 49.32
   ra: -37.0
   freq_ids: [8000]

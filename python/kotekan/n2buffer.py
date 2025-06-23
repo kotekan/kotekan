@@ -14,6 +14,27 @@ import io
 import numpy as np
 from kotekan import timespec
 
+"""
+class CTimeSpec(ctypes.Structure):
+
+    _fields_ = [
+        ("tv_sec", ctypes.c_time_t),
+        ("tv_nsec", ctypes.c_long),
+    ]
+"""
+
+
+class EOP(ctypes.Structure):
+
+    _fields_ = [
+        ("t_inst", timespec.time_spec),
+        ("t_ut1", timespec.time_spec),
+        ("delta_UT1_inst", ctypes.c_double),
+        ("ERA_deg", ctypes.c_double),
+        ("xp_as", ctypes.c_double),
+        ("yp_as", ctypes.c_double),
+    ]
+
 
 class N2Metadata(ctypes.Structure):
     """Wrap an N2Metadata struct."""
@@ -25,7 +46,7 @@ class N2Metadata(ctypes.Structure):
         ("nfreq", ctypes.c_uint32),
         ("freq_id", ctypes.c_uint32),
         ("freq_Hz", ctypes.c_double),
-        ("era_deg", ctypes.c_double),
+        ("eop", EOP),
         ("fpga_start_tick", ctypes.c_uint64),
         ("frame_start_time_ns", ctypes.c_uint64),
         ("frame_length_fpga_ticks", ctypes.c_uint64),

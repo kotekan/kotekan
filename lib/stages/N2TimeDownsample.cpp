@@ -45,7 +45,7 @@ N2TimeDownsample::N2TimeDownsample(Config& config, const std::string& unique_nam
 
     // Get the number of bins per earth rotation (sidereal day)
     num_bins_per_rotation =
-        config.get_default<uint32_t>(unique_name, "num_bins_per_rotation", 86400);
+        config.get<uint32_t>(unique_name, "num_bins_per_rotation");
 
     max_age = config.get_default<float>(unique_name, "max_age", 120.0);
 
@@ -93,7 +93,8 @@ void N2TimeDownsample::main_thread() {
 
         N2FrameView frame(in_buf, frame_id);
 
-        DEBUG("Input frame - num_elements: {:d}", frame.num_elements);
+        DEBUG("Input frame - num_elements: {:d} - t: {:d}", frame.num_elements,
+                frame.frame_start_time_ns);
 
         // The first frame
         if (freq_id == -1) {
@@ -123,12 +124,14 @@ void N2TimeDownsample::main_thread() {
             // Check ERA at the beginning of the frame. If it's earlier than
             // the bin edge, we'll fill the bin and can start integrating
             // immediately.
+            /*
             timespec frame_start = {.tv_sec = (time_t)(frame.frame_start_time_ns / 1'000'000'000),
                                     .tv_nsec = (long)(frame.frame_start_time_ns % 1'000'000'000)};
             struct EOP eop_start = tel.get_EOP_at_time(frame_start);
 
             if (eop_start.ERA_deg < era_deg_lo || eop_start.ERA_deg >= era_deg_hi)
                 wait_for_alignment = false;
+            */
         }
 
         // Check that this is the frequency we care about,
@@ -145,6 +148,10 @@ void N2TimeDownsample::main_thread() {
             wait_for_alignment = false;
 
 
+        DEBUG("T:   {:d}s + {:d}ns", frame.eop.t_inst.tv_sec,
+                                     frame.eop.t_inst.tv_nsec);
+        DEBUG("UT1: {:d}s + {:d}ns", frame.eop.t_ut1.tv_sec,
+                                     frame.eop.t_ut1.tv_nsec);
         DEBUG("ERA: {:f}; ERA_target: {:f}; ERA_bin_lo: {:f}; ERA_bin_hi: {:f}", frame.eop.ERA_deg,
               eop_target.ERA_deg, era_deg_lo, era_deg_hi);
 
@@ -291,6 +298,8 @@ void N2TimeDownsample::main_thread() {
             double output_age =
                 1.0e-9 * (frame.frame_start_time_ns - output_frame.frame_start_time_ns);
             if (output_age > max_age) {
+                DEBUG("Skipping - age {:g} > max_age {:g}",
+                      output_age, max_age);
                 skipped_frame_counter.labels({std::to_string(freq_id), "age"}).inc();
                 nframes = 0;
                 continue;
@@ -312,6 +321,11 @@ void N2TimeDownsample::main_thread() {
             output_frame.erms /= nframes;
 
             DEBUG("Output frame - num_elements: {:d}", output_frame.num_elements);
+            DEBUG("Output T:   {:d}s + {:d}ns", output_frame.eop.t_inst.tv_sec,
+                                     output_frame.eop.t_inst.tv_nsec);
+            DEBUG("Output UT1: {:d}s + {:d}ns", output_frame.eop.t_ut1.tv_sec,
+                                     output_frame.eop.t_ut1.tv_nsec);
+            DEBUG("Output ERA: {:f}", output_frame.eop.ERA_deg);
 
             char* addr0 = (char*)&(output_frame.vis[0]);
             DEBUG("Output frame Struct - vis: {}, w: {}, flags: {}, eval: {}, evec: {}, emeth: {}, "

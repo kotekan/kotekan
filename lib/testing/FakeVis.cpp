@@ -1,6 +1,7 @@
 #include "FakeVis.hpp"
 
 #include "Config.hpp"          // for Config
+#include "CHORDTelescope.hpp"  // for struct EOP, eop_null, CHORDTelescope
 #include "N2FrameView.hpp"     // for N2FrameView
 #include "N2Util.hpp"          // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
@@ -102,6 +103,8 @@ void FakeVis::main_thread() {
     nanosleep(&ts_sleep, nullptr);
 
     double start = current_time();
+    
+    const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
 
     // random number generators in case we randomize things
     std::random_device rd;
@@ -162,6 +165,10 @@ void FakeVis::main_thread() {
             meta->frame_length_fpga_ticks = delta_seq;
             /// The sequence number of the first FPGA frame integrated into this visibility frame
             meta->fpga_start_tick = fpga_seq + t * delta_seq;
+
+            // Set EOP
+            timespec time = tel.to_time(fpga_seq + t * delta_seq + delta_seq/2);
+            meta->eop = tel.get_EOP_at_time(time);
 
             DEBUG("Creating N2FrameView.");
             DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}", meta->num_elements,
