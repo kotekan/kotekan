@@ -7,7 +7,6 @@
 
 #include <inttypes.h>
 #include <time.h> // for timespec
-#include <vector>
 
 /**
  * @brief Compute UT1 time Julian Date (in seconds, nanoseconds) from GPS time
@@ -46,11 +45,12 @@ timespec get_UT1_from_ERA(int64_t num_rot, double ERA_deg);
 
 /**
  * @brief Compute Earth Rotation Angle (ERA) from GPS time
- * @param   gps_time The GPS time to convert, const reference timespec
- * @param   dAT double Value of TAI-UTC at gps_time, seconds
- * @param   dUT dobule Value of UT1-UTC at gps_time, seconds
- * @return  ERA in degrees
+ * @param   t_inst The instrument time to convert, const reference timespec
+ * @param   delta_UT1_inst double Value of UT1-t_inst at t_inst, seconds
+ *          Equal to UT1 - UTC plus the number of leap seconds that have
+ *          occured since instrument start up.
+ * @return  ERA in degrees, [0.0, 360.0)
  */
-double get_ERA_from_time(const timespec& t, double delta_UT1_inst);
+double get_ERA_from_time(const timespec& t_inst, double delta_UT1_inst);
 
 #endif

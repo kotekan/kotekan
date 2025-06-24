@@ -5,12 +5,11 @@ from astropy.time import Time
 import astropy.units as units
 import astropy.utils.iers
 import numpy as np
-import matplotlib.pyplot as plt
 
 
 def read_time0_ns(base_url, port):
     r"""
-    Read the "time0_ns" parameter from a running Kotekan instance. 
+    Read the "time0_ns" parameter from a running Kotekan instance.
 
     time0_ns is the UNIX timestamp (in nanoseconds) of the first frame in
     Kotekan, and serves as the base time for all future timestamps.
@@ -223,7 +222,7 @@ def calc_tai_ns_from_dt(dt):
     r"""
     Compute the number of TAI nanoseconds elapsed over a time interval, rounded
     to the nearest nanosecond. Should be accurate (up to the precision of the
-    given dt) so long as dt ~< 200 years. 
+    given dt) so long as dt ~< 200 years.
 
     Parameters
     ----------

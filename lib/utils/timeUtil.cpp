@@ -80,7 +80,7 @@ timespec get_time_from_UT1(const timespec& t_ut1, double delta_UT1_inst) {
     long GIGA = 1'000'000'000;
 
     // UNIX time of J2000
-    long J2000_s_unix = 946'728'935L;
+    long J2000_s_unix = 946'727'935L;
     long J2000_ns_unix = 816'000'000L;
 
     // JD of J2000 in s,ns
