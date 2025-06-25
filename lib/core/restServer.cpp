@@ -15,6 +15,7 @@
 #include <event2/thread.h>         // for evthread_use_pthreads
 #include <evhttp.h>                // for evhttp_request
 #include <exception>               // for exception
+#include <arpa/inet.h>             // for inet_pton, sockaddr_in6, sockaddr_in
 #include <mutex>                   // for unique_lock
 #include <netinet/in.h>            // for sockaddr_in, ntohs
 #include <pthread.h>               // for pthread_setaffinity_np, pthread_setname_np
@@ -56,7 +57,56 @@ restServer::~restServer() {
     }
 }
 
+bool restServer::isValidIPv4(const std::string& ip) {
+    struct sockaddr_in sa;
+    return inet_pton(AF_INET, ip.c_str(), &(sa.sin_addr)) == 1;
+}
+
+bool restServer::canBindToAddress(const std::string& ip, u_short port) {
+    int sock = -1;
+    bool result = false;
+
+    DEBUG_NON_OO("restServer: Checking if we can bind to address {:s}:{:d}", ip, port);
+    
+    // Determine if IPv4
+    if (isValidIPv4(ip)) {
+        sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock < 0) return false;
+        
+        // Enable SO_REUSEADDR to avoid TIME_WAIT issues
+        int opt = 1;
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+        
+        struct sockaddr_in addr;
+        std::memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port);
+        inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
+        
+        result = (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) == 0);
+    }
+    
+    if (sock >= 0) {
+        shutdown(sock, SHUT_RDWR);
+    }
+    
+    DEBUG_NON_OO("restServer: Can bind to address {:s}:{:d} = {:s}", ip, port,
+                result ? "true" : "false");
+    return result;
+}
+
 void restServer::start(const std::string& bind_address, u_short port) {
+
+    // Check if bind_address and port are valid.
+    if (!isValidIPv4(bind_address)) {
+        ERROR_NON_OO("Invalid bind address: {:s}", bind_address);
+    }
+
+    // Check if we can bind to the address and port.
+    // This does not start the server, but checks if the address is available.
+    if (!canBindToAddress(bind_address, port)) {
+        ERROR_NON_OO("Cannot bind to address: {:s}:{:d}", bind_address, port);
+    }
 
     this->bind_address = bind_address;
     this->_port = port;
@@ -82,7 +132,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
 
     {
         // TODO This function should be locked against changes to the callback
-        // maps form other threads.  However there are a number of callbacks (start, stop, etc)
+        // maps from other threads.  However there are a number of callbacks (start, stop, etc)
         // which add or remove callbacks from the maps. So a more fine-grained
         // locking system is needed here.
         // std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);

@@ -8,6 +8,9 @@
 #include "metadata.hpp"          // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 
+#include "configTracker.hpp"     // for configTracker
+#include "restServer.hpp"        // for restServer
+
 #include "fmt.hpp" // for format, fmt
 
 #include <arpa/inet.h> // for inet_addr
@@ -34,6 +37,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
+using kotekan::ConfigTracker;
 
 REGISTER_KOTEKAN_STAGE(bufferSend);
 
@@ -63,6 +67,9 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
     server_addr.sin_port = htons(server_port);
 
     socket_fd = -1;
+
+    config_tracker_update = true;
+    config_tracker_combined_hash = "";
 }
 
 bufferSend::~bufferSend() {}
@@ -103,9 +110,16 @@ void bufferSend::main_thread() {
 
             header.frame_size = buf->frame_size;
             header.metadata_size = meta->get_serialized_size();
+            // Check if config tracker data has been updated since last transmission
+            if (config_tracker_combined_hash != ConfigTracker::instance().getCombinedHash()) {
+                header.config_tracker_update = true;
+                config_tracker_combined_hash = ConfigTracker::instance().getCombinedHash();
+            } else {
+                header.config_tracker_update = false;
+            }
 
-            DEBUG2("frame_size: {:d}, metadata_size: {:d}", header.frame_size,
-                   header.metadata_size);
+            DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}", header.frame_size,
+                   header.metadata_size, header.config_tracker_update);
 
             // Recover from partial sends
             DEBUG2("Sending header");
@@ -161,6 +175,9 @@ void bufferSend::main_thread() {
             DEBUG2("Sent frame: {:d}", n_sent);
             DEBUG("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id, server_ip,
                   server_port);
+
+            /// Set to true sine we've set a transmission.
+            first_transmission_sent = true;
 
         } else {
             // Wait for connection and block
@@ -240,6 +257,7 @@ void bufferSend::connect_to_server() {
         {
             std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
             connected = true;
+            first_transmission_sent = false; // Reset first transmission flag
         }
 
         // Notify that connection is established

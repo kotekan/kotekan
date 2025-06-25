@@ -9,6 +9,7 @@
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
 #include "bufferContainer.hpp"   // for bufferContainer
+#include "configTracker.hpp"     // for configTracker
 #include "prometheusMetrics.hpp" // for Counter
 
 #include <atomic>             // for atomic
@@ -26,13 +27,14 @@
 struct bufferFrameHeader {
     uint32_t metadata_size;
     uint32_t frame_size;
+    bool config_tracker_update;
 };
 
 /**
- * @brief Sends a buffer and metadata over TCP.
+ * @brief Sends a buffer, metadata, and flag for whether config data was updated over TCP.
  *
  * Will attempt to connect to a remote server (likely another kotekan instance)
- * and send frames and metadata as they arrive.
+ * and send frames, metadata, and config status as it arrives.
  *
  * If the remote server is down, or the connection breaks, this stage will
  * drop incoming frames, and try to reconnect to the server after @c reconnect_time
@@ -79,6 +81,8 @@ public:
     /// Main loop for sending data
     void main_thread() override;
 
+    /// Getter function for config_tracker_update;
+
     /// Adds the target server to the pipeline dot graph
     virtual std::string dot_string(const std::string& prefix) const override;
 
@@ -104,6 +108,14 @@ private:
     /// Threshold to drop frames
     float drop_threshold;
 
+    /// Flag to indicate if config tracker data has been updated
+    /// This is set to true if the config tracker data has changed since the last transmission.
+    /// This is used to avoid sending the config tracker data on every frame.
+    bool config_tracker_update;
+
+    /// Serialized list of current config tracker hashes
+    std::string config_tracker_combined_hash;
+
     /**
      * @brief Number of frame dropped because the send is too slow.
      * Only counts dropped data from caused by the send being too slow,
@@ -113,6 +125,9 @@ private:
 
     /// Set to true if there is an active connection
     std::atomic<bool> connected;
+
+    /// Set to true if this is the first transmission
+    std::atomic<bool> first_transmission_sent;
 
     /// Internal server address struct
     struct sockaddr_in server_addr;

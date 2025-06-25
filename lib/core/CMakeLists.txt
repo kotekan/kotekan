@@ -9,6 +9,7 @@ add_library(
     bufferContainer.cpp
     bufferFactory.cpp
     Config.cpp
+    configTracker.cpp
     configUpdater.cpp
     cpuMonitor.cpp
     errors.c

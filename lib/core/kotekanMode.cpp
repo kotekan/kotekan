@@ -7,7 +7,7 @@
 #include "buffer.hpp"            // for Buffer, StageInfo, get_num_full_frames, delete_buffer
 #include "bufferFactory.hpp"     // for bufferFactory
 #include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for datasetManager
+#include "configTracker.hpp"     // for ConfigTracker
 #include "kotekanLogging.hpp"    // for INFO_NON_OO
 #include "kotekanTrackers.hpp"   // for KotekanTrackers
 #include "metadata.hpp"          // for delete_metadata_pool
@@ -32,6 +32,7 @@ using namespace std::placeholders;
 namespace kotekan {
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
+
     restServer::instance().register_get_callback("/config", [&](connectionInstance& conn) {
         conn.send_json_reply(config.get_full_config_json());
     });
@@ -53,6 +54,7 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/config");
     restServer::instance().remove_get_callback("/buffers");
     restServer::instance().remove_get_callback("/pipeline_dot");
+    restServer::instance().remove_get_callback("/config_tracker"); // TODO
     restServer::instance().remove_all_aliases();
 
     KotekanTrackers::instance().set_kotekan_mode_ptr(nullptr);
@@ -79,9 +81,10 @@ void kotekanMode::initalize_stages() {
     configUpdater& config_updater = configUpdater::instance();
     config_updater.apply_config(config);
 
-    // Apply config to datasetManager
-    if (config.exists("/", "dataset_manager"))
-        datasetManager::instance(config);
+    // Create ConfigTracker instance and register with the REST server.
+    ConfigTracker::instance();
+    ConfigTracker::instance().insertConfig(config.get_full_config_json());
+    ConfigTracker::instance().register_with_server(&restServer::instance());
 
     // Apply config for Telescope class
     Telescope::instance(config);

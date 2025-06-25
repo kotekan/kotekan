@@ -140,6 +140,29 @@ public:
     static restServer& instance();
 
     /**
+     * @brief Checks if the given string is a valid IPv4 address
+     */
+    bool isValidIPv4(const std::string& ip);
+
+    /**
+     * @brief Checks if the given string is a valid IPv6 address.
+     */
+    bool isValidIPv6(const std::string& ip);
+
+    /**
+     * @brief Checks if the given IP address and port can be bound to.
+     *
+     * This function checks if the given IP address and port can be bound to
+     * by attempting to create a socket and bind it. It does not actually
+     * start a server, but checks if the address is available.
+     *
+     * @param ip The IP address to check.
+     * @param port The port to check.
+     * @return true if the address can be bound, false otherwise.
+     */
+    bool canBindToAddress(const std::string& ip, u_short port);
+
+    /**
      * @brief Start the rest server, should only be called once by the framework
      *
      * @param bind_address The address to bind too.  Default: 0.0.0.0

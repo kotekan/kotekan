@@ -514,7 +514,6 @@ int main(int argc, char** argv) {
 
     restServer& rest_server = restServer::instance();
     std::vector<std::string> address_parts = regex_split(bind_address, ":");
-    // TODO validate IP and port
     rest_server.start(address_parts.at(0), std::stoi(address_parts.at(1)));
 
     if (string(config_file_name) != "none") {

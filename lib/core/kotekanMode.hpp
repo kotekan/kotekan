@@ -29,19 +29,19 @@ public:
     kotekanMode(Config& config);
     virtual ~kotekanMode();
 
-    // Allocate memory for the stages and get the configuration.
+    /// Allocate memory for the stages and get the configuration.
     virtual void initalize_stages();
 
-    // Call start on all the stages.
+    /// Call start on all the stages.
     void start_stages();
 
-    // Stop all the stages.
+    /// Stop all the stages.
     void stop_stages();
 
-    // Join blocks until all stages have stopped.
+    /// Join blocks until all stages have stopped.
     void join();
 
-    // HTTP callback that dumps the current buffer state in JSON.
+    /// HTTP callback that dumps the current buffer state in JSON.
     void buffer_data_callback(connectionInstance& conn);
 
     /**
@@ -54,7 +54,7 @@ public:
      */
     nlohmann::json get_buffer_json();
 
-    // HTTP callback that dumps the current pipeline graph in `dot` format.
+    /// HTTP callback that dumps the current pipeline graph in `dot` format.
     void pipeline_dot_graph_callback(connectionInstance& conn);
 
 private:
