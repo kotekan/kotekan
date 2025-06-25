@@ -1,14 +1,8 @@
 import pytest
-import os
-from subprocess import Popen
 import time
-import shutil
-import signal
-import sys
 
 from kotekan import runner
 
-from test_dataset_broker import has_redis
 
 params = {
     "num_elements": 5,
@@ -39,146 +33,129 @@ params_fakevis = {
 
 
 @pytest.fixture(scope="module")
-def subset_data(tmpdir_factory):
-    broker_path = shutil.which("comet")
-    if not broker_path:
-        pytest.skip(
-            "Make sure PYTHONPATH is set to where the comet dataset broker is installed."
-        )
-    if not has_redis():
-        pytest.skip("Redis is not available and so comet will fail")
+def subset_data(tmpdir_factory, comet_broker_port):
 
-    # run the dataset broker
-    broker = Popen([broker_path, "--recover", "False"])
-    time.sleep(1.5)
+    # Make sure to use the correct dataset manager port
+    params["dataset_manager"]["ds_broker_port"] = comet_broker_port
 
-    try:
-        tmpdir = tmpdir_factory.mktemp("freqsub_broker_fakevis")
+    tmpdir = tmpdir_factory.mktemp("freqsub_broker_fakevis")
 
-        dump_buffer_gen = runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer_gen = runner.DumpVisBuffer(str(tmpdir))
 
-        test = runner.KotekanStageTester(
-            "FakeVis", params_fakevis, None, dump_buffer_gen, params
-        )
+    test = runner.KotekanStageTester(
+        "FakeVis", params_fakevis, None, dump_buffer_gen, params
+    )
 
-        test.run()
+    test.run()
 
-        data_gen = dump_buffer_gen.load()
+    data_gen = dump_buffer_gen.load()
 
-        ### VisFreqSubset ###
-        tmpdir = tmpdir_factory.mktemp("freqsub_broker")
+    ### VisFreqSubset ###
+    tmpdir = tmpdir_factory.mktemp("freqsub_broker")
 
-        ds_id = data_gen[0].metadata.dataset_id
-        fakevis_buffer_subset = runner.FakeVisBuffer(
-            num_frames=params["total_frames"],
-            mode=params["mode"],
-            freq_ids=params["freq_ids"],
-            use_dataset_manager=True,
-            wait=False,
-            dataset_id="{:016x}{:016x}".format(ds_id[1], ds_id[0]),
-        )
+    ds_id = data_gen[0].metadata.dataset_id
+    fakevis_buffer_subset = runner.FakeVisBuffer(
+        num_frames=params["total_frames"],
+        mode=params["mode"],
+        freq_ids=params["freq_ids"],
+        use_dataset_manager=True,
+        wait=False,
+        dataset_id="{:016x}{:016x}".format(ds_id[1], ds_id[0]),
+    )
 
-        dump_buffer_subset = runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer_subset = runner.DumpVisBuffer(str(tmpdir))
 
-        test = runner.KotekanStageTester(
-            "VisFreqSubset", {}, fakevis_buffer_subset, dump_buffer_subset, params
-        )
+    test = runner.KotekanStageTester(
+        "VisFreqSubset", {}, fakevis_buffer_subset, dump_buffer_subset, params
+    )
 
-        test.run()
+    test.run()
 
-        data_subset = dump_buffer_subset.load()
+    data_subset = dump_buffer_subset.load()
 
-        ### freqSplit ###
-        time.sleep(10)
-        tmpdir = tmpdir_factory.mktemp("freqsplit_broker")
+    ### freqSplit ###
+    time.sleep(10)
+    tmpdir = tmpdir_factory.mktemp("freqsplit_broker")
 
-        ds_id = data_subset[0].metadata.dataset_id
-        fakevis_buffer_split = runner.FakeVisBuffer(
-            num_frames=params["total_frames"],
-            mode=params["mode"],
-            freq_ids=params["subset_list"],
-            use_dataset_manager=True,
-            wait=False,
-            dataset_id="{:016x}{:016x}".format(ds_id[1], ds_id[0]),
-        )
+    ds_id = data_subset[0].metadata.dataset_id
+    fakevis_buffer_split = runner.FakeVisBuffer(
+        num_frames=params["total_frames"],
+        mode=params["mode"],
+        freq_ids=params["subset_list"],
+        use_dataset_manager=True,
+        wait=False,
+        dataset_id="{:016x}{:016x}".format(ds_id[1], ds_id[0]),
+    )
 
-        dump_buffer_split_lower = runner.DumpVisBuffer(str(tmpdir))
-        dump_buffer_split_higher = runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer_split_lower = runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer_split_higher = runner.DumpVisBuffer(str(tmpdir))
 
-        test = runner.KotekanStageTester(
-            "freqSplit",
-            {},
-            fakevis_buffer_split,
-            (dump_buffer_split_lower, dump_buffer_split_higher),
-            params,
-        )
+    test = runner.KotekanStageTester(
+        "freqSplit",
+        {},
+        fakevis_buffer_split,
+        (dump_buffer_split_lower, dump_buffer_split_higher),
+        params,
+    )
 
-        test.run()
+    test.run()
 
-        data_split_lower = dump_buffer_split_lower.load()
-        data_split_higher = dump_buffer_split_higher.load()
+    data_split_lower = dump_buffer_split_lower.load()
+    data_split_higher = dump_buffer_split_higher.load()
 
-        ### 2 VisWriter processes ###
+    ### 2 VisWriter processes ###
 
-        tmpdir = tmpdir_factory.mktemp("freqsub_write_lower")
+    tmpdir = tmpdir_factory.mktemp("freqsub_write_lower")
 
-        params_fakevis_write_lower = params_fakevis.copy()
+    params_fakevis_write_lower = params_fakevis.copy()
 
-        ds_id = data_split_lower[0].metadata.dataset_id
+    ds_id = data_split_lower[0].metadata.dataset_id
 
-        params_fakevis_write_lower["dataset_id"] = "{:016x}{:016x}".format(
-            ds_id[1], ds_id[0]
-        )
+    params_fakevis_write_lower["dataset_id"] = "{:016x}{:016x}".format(
+        ds_id[1], ds_id[0]
+    )
 
-        # the writer is not given the subset list, it get's it through the broker
-        write_buffer_lower = runner.VisWriterBuffer(
-            str(tmpdir), "raw", None, extra_config={"use_dataset_manager": True}
-        )
+    # the writer is not given the subset list, it get's it through the broker
+    write_buffer_lower = runner.VisWriterBuffer(
+        str(tmpdir), "raw", None, extra_config={"use_dataset_manager": True}
+    )
 
-        test = runner.KotekanStageTester(
-            "FakeVis", params_fakevis_write_lower, None, write_buffer_lower, params
-        )
+    test = runner.KotekanStageTester(
+        "FakeVis", params_fakevis_write_lower, None, write_buffer_lower, params
+    )
 
-        test.run()
+    test.run()
 
-        tmpdir = tmpdir_factory.mktemp("freqsub_write_higher")
+    tmpdir = tmpdir_factory.mktemp("freqsub_write_higher")
 
-        params_fakevis_write_higher = params_fakevis.copy()
-        ds_id = data_split_higher[0].metadata.dataset_id
+    params_fakevis_write_higher = params_fakevis.copy()
+    ds_id = data_split_higher[0].metadata.dataset_id
 
-        params_fakevis_write_higher["dataset_id"] = "{:016x}{:016x}".format(
-            ds_id[1], ds_id[0]
-        )
+    params_fakevis_write_higher["dataset_id"] = "{:016x}{:016x}".format(
+        ds_id[1], ds_id[0]
+    )
 
-        # the writer is not given the subset list, it get's it through the broker
-        write_buffer_higher = runner.VisWriterBuffer(
-            str(tmpdir), "raw", None, extra_config={"use_dataset_manager": True}
-        )
+    # the writer is not given the subset list, it get's it through the broker
+    write_buffer_higher = runner.VisWriterBuffer(
+        str(tmpdir), "raw", None, extra_config={"use_dataset_manager": True}
+    )
 
-        test = runner.KotekanStageTester(
-            "FakeVis", params_fakevis_write_higher, None, write_buffer_higher, params
-        )
+    test = runner.KotekanStageTester(
+        "FakeVis", params_fakevis_write_higher, None, write_buffer_higher, params
+    )
 
-        test.run()
+    test.run()
 
-        yield [
-            data_gen,
-            data_subset,
-            data_split_lower,
-            data_split_higher,
-            write_buffer_lower.load(),
-            write_buffer_higher.load(),
-        ]
-    finally:
-        pid = broker.pid
-        os.kill(pid, signal.SIGTERM)
-        broker.terminate()
+    yield [
+        data_gen,
+        data_subset,
+        data_split_lower,
+        data_split_higher,
+        write_buffer_lower.load(),
+        write_buffer_higher.load(),
+    ]
 
 
-@pytest.mark.skipif(
-    sys.version_info > (3, 7),
-    reason="Test only passes when comet works, which needs old python3.7.",
-)
 @pytest.mark.serial
 def test_subset_broker(subset_data):
     data_gen = subset_data[0]

@@ -14,6 +14,12 @@ import subprocess
 import os
 import sys
 import faulthandler
+import re
+import signal
+import shutil
+import tempfile
+
+from time import sleep
 
 faulthandler.enable()
 _fh_interval = os.environ.get("FAULTHANDLER_DUMP_INTERVAL")
@@ -104,3 +110,66 @@ def cal_broker(request, old_gains, new_gains):
     yield server
 
     server.stop()
+
+
+def has_redis(host="localhost", port=6379):
+    """Check if redis is available."""
+
+    try:
+        import redis
+
+        r = redis.Redis(host, port)
+        return r.ping()
+
+    except Exception as e:
+        print(e)
+        return False
+
+
+@pytest.fixture(scope="module")
+def comet_broker_port(*broker_args):
+    """Yield the port on which the comet broker is running."""
+    broker_path = shutil.which("comet")
+    if not broker_path:
+        pytest.skip(
+            "Make sure PYTHONPATH is set to where the comet dataset broker is installed."
+        )
+
+    if not has_redis():
+        pytest.skip("Redis is not available and so comet will fail.")
+
+    if not broker_args:
+        # By default, open on a random port
+        broker_args = ["-p", "0"]
+
+    with tempfile.NamedTemporaryFile(mode="w") as f_out:
+        # Start comet
+        broker = subprocess.Popen(
+            [broker_path, "broker", *broker_args], stdout=f_out, stderr=f_out
+        )
+        sleep(3)
+
+        # Find port in the log
+        regex = re.compile("Selected random port: ([0-9]+)$")
+        log = open(f_out.name, "r").read().split("\n")
+        port = None
+        for line in log:
+            print(line)
+            match = regex.search(line)
+            if match:
+                port = match.group(1)
+                print("Test found comet port in log: %s" % port)
+                break
+        if not match:
+            print("Could not find comet port in logs.")
+            exit(1)
+
+        try:
+            yield port
+        finally:
+            pid = broker.pid
+            os.kill(pid, signal.SIGTERM)
+            broker.terminate()
+            log = open(f_out.name, "r").read().split("\n")
+            for line in log:
+                print(line)
