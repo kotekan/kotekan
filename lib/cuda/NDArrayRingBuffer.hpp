@@ -281,11 +281,9 @@ public:
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
             assert(metadata->get_dimension_name(d) == ndarray.dimname(d));
             // The ring buffer direction is special
-            if (d > 0) {
+            if (d > 0)
                 assert(metadata->dim[d] == int(ndarray.extent(d)));
-            }
             assert(metadata->stride[d] == ndarray.stride(d));
-            assert(metadata->get_dimension_name(d) == std::string(ndarray.dimname(d)));
         }
     }
 
@@ -302,13 +300,12 @@ public:
         metadata->dims = ndarray.rank;
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
             // The ring buffer direction is special
-            if (d == 0) {
+            if (d == 0)
                 metadata->set_array_dimension(d, other_metadata->dim[d],
                                               std::string(ndarray.dimname(d)));
-            } else {
+            else
                 metadata->set_array_dimension(d, ndarray.extent(d),
                                               std::string(ndarray.dimname(d)));
-            }
             metadata->stride[d] = ndarray.stride(d);
         }
     }

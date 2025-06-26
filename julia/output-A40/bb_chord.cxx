@@ -336,6 +336,7 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
                                                            const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "BasebandBeamformer_chord", "BasebandBeamformer_chord.ptx"),
+
     A_name(config.get<std::string>(unique_name, "bb_phase_name")),
     E_name(config.get<std::string>(unique_name, "voltage_name")),
     s_name(config.get<std::string>(unique_name, "bb_shift_name")),
@@ -411,6 +412,7 @@ int cudaBasebandBeamformer_chord::wait_on_precondition() {
 cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
                                                   const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
+    record_start_event();
 
     void* const A_memory = A_buffer.get_ndarray().data();
     void* const E_memory = E_buffer.get_ndarray().data();
@@ -423,8 +425,6 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     E_buffer.check_metadata();
     s_buffer.check_metadata();
     J_buffer.set_metadata(E_buffer.get_metadata());
-
-    record_start_event();
 
     const char* exc_arg = "exception";
     std::int32_t T_min_arg;

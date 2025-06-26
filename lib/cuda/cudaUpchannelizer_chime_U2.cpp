@@ -7,6 +7,8 @@
  */
 
 #include <DataType.hpp>
+#include <NDArrayBuffer.hpp>
+#include <NDArrayRingBuffer.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -18,7 +20,6 @@
 #include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
-#include <ringbuffer.hpp>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -26,6 +27,16 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::round_down, kotekan::div_noremainder, kotekan::div, kotekan::mod;
+
+namespace {
+template<typename T, std::size_t D>
+std::array<T, D> reverse(const std::array<T, D>& values) {
+    std::array<T, D> result;
+    for (std::size_t d = 0; d < D; ++d)
+        result[d] = values[D - 1 - d];
+    return result;
+}
+} // namespace
 
 /**
  * @class cudaUpchannelizer_chime_U2
@@ -86,28 +97,31 @@ private:
     static constexpr int shmem_bytes = 49664;
 
     // Kernel name:
-    const char* const kernel_symbol =
+    static constexpr const char* kernel_symbol =
         "_Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_"
         "Li1ELi1EE";
 
     // Kernel arguments:
-    enum class args { Tmin, Tmax, Tbarmin, Tbarmax, Fmin, Fmax, G_U2, E, Ebar, info, count };
+    enum class args { T_min, T_max, Tbar_min, Tbar_max, Fmin, Fmax, G_U2, E, Ebar, info, count };
 
-    // Tmin: Tmin
-    static constexpr const char* Tmin_quantity = "Tmin";
-    static constexpr kotekan::DataType Tmin_type = kotekan::int32;
+    // How many frequencies we will process
+    const int Fmin, Fmax;
+
+    // T_min: T_min
+    static constexpr const char* T_min_quantity = "T_min";
+    static constexpr kotekan::DataType T_min_type = kotekan::int32;
     //
-    // Tmax: Tmax
-    static constexpr const char* Tmax_quantity = "Tmax";
-    static constexpr kotekan::DataType Tmax_type = kotekan::int32;
+    // T_max: T_max
+    static constexpr const char* T_max_quantity = "T_max";
+    static constexpr kotekan::DataType T_max_type = kotekan::int32;
     //
-    // Tbarmin: Tbarmin
-    static constexpr const char* Tbarmin_quantity = "Tbarmin";
-    static constexpr kotekan::DataType Tbarmin_type = kotekan::int32;
+    // Tbar_min: Tbar_min
+    static constexpr const char* Tbar_min_quantity = "Tbar_min";
+    static constexpr kotekan::DataType Tbar_min_type = kotekan::int32;
     //
-    // Tbarmax: Tbarmax
-    static constexpr const char* Tbarmax_quantity = "Tbarmax";
-    static constexpr kotekan::DataType Tbarmax_type = kotekan::int32;
+    // Tbar_max: Tbar_max
+    static constexpr const char* Tbar_max_quantity = "Tbar_max";
+    static constexpr kotekan::DataType Tbar_max_type = kotekan::int32;
     //
     // Fmin: Fmin
     static constexpr const char* Fmin_quantity = "Fmin";
@@ -130,8 +144,6 @@ private:
     static constexpr std::array<std::ptrdiff_t, G_U2_rank> G_U2_lengths = {
         2,
     };
-    static constexpr std::ptrdiff_t G_U2_length = type_total_bytes(G_U2_type) * 2;
-    static_assert(G_U2_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto G_U2_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -142,7 +154,10 @@ private:
         G_U2_calc_stride(G_U2_index_Fbar),
         G_U2_calc_stride(G_U2_rank),
     };
-    static_assert(G_U2_length == type_total_bytes(G_U2_type) * G_U2_strides[G_U2_rank]);
+    static constexpr std::ptrdiff_t G_U2_length = G_U2_strides[G_U2_rank];
+    static constexpr std::ptrdiff_t G_U2_length_in_bytes =
+        type_total_bytes(G_U2_type) * G_U2_length;
+    static_assert(G_U2_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: voltage_name
     static constexpr const char* E_quantity = "E";
@@ -166,8 +181,6 @@ private:
         16,
         65536,
     };
-    static constexpr std::ptrdiff_t E_length = type_total_bytes(E_type) * 1024 * 2 * 16 * 65536;
-    static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -178,7 +191,9 @@ private:
         E_calc_stride(E_index_D), E_calc_stride(E_index_P), E_calc_stride(E_index_F),
         E_calc_stride(E_index_T), E_calc_stride(E_rank),
     };
-    static_assert(E_length == type_total_bytes(E_type) * E_strides[E_rank]);
+    static constexpr std::ptrdiff_t E_length = E_strides[E_rank];
+    static constexpr std::ptrdiff_t E_length_in_bytes = type_total_bytes(E_type) * E_length;
+    static_assert(E_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: upchan_U2_voltage_name
     static constexpr const char* Ebar_quantity = "Ebar";
@@ -202,9 +217,6 @@ private:
         2,
         32768,
     };
-    static constexpr std::ptrdiff_t Ebar_length =
-        type_total_bytes(Ebar_type) * 1024 * 2 * 2 * 32768;
-    static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -216,7 +228,10 @@ private:
         Ebar_calc_stride(Ebar_index_Fbar), Ebar_calc_stride(Ebar_index_Tbar),
         Ebar_calc_stride(Ebar_rank),
     };
-    static_assert(Ebar_length == type_total_bytes(Ebar_type) * Ebar_strides[Ebar_rank]);
+    static constexpr std::ptrdiff_t Ebar_length = Ebar_strides[Ebar_rank];
+    static constexpr std::ptrdiff_t Ebar_length_in_bytes =
+        type_total_bytes(Ebar_type) * Ebar_length;
+    static_assert(Ebar_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr const char* info_quantity = "info";
@@ -237,8 +252,6 @@ private:
         2,
         256,
     };
-    static constexpr std::ptrdiff_t info_length = type_total_bytes(info_type) * 32 * 2 * 256;
-    static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -251,7 +264,10 @@ private:
         info_calc_stride(info_index_block),
         info_calc_stride(info_rank),
     };
-    static_assert(info_length == type_total_bytes(info_type) * info_strides[info_rank]);
+    static constexpr std::ptrdiff_t info_length = info_strides[info_rank];
+    static constexpr std::ptrdiff_t info_length_in_bytes =
+        type_total_bytes(info_type) * info_length;
+    static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     // Kotekan buffer names
@@ -260,29 +276,15 @@ private:
     const std::string Ebar_name;
     const std::string info_name;
 
-    // Host-side buffer arrays
-    std::vector<std::uint8_t> info_host;
+    // Buffers
+    NDArrayBuffer<kotekan::GetType_t<G_U2_type>, G_U2_rank> G_U2_buffer;
+    NDArrayRingBuffer<kotekan::GetType_t<E_type>, E_rank> E_buffer;
+    NDArrayRingBuffer<kotekan::GetType_t<Ebar_type>, Ebar_rank> Ebar_buffer;
+    NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
+    std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
 
-    static constexpr std::ptrdiff_t E_T_sample_bytes = type_total_bytes(E_type)
-                                                       * E_lengths[E_index_D] * E_lengths[E_index_P]
-                                                       * E_lengths[E_index_F];
-    static constexpr std::ptrdiff_t Ebar_Tbar_sample_bytes =
-        type_total_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P]
-        * Ebar_lengths[Ebar_index_Fbar];
-
-    RingBuffer* input_ringbuf_signal;
-    RingBuffer* output_ringbuf_signal;
-
-    // How many frequencies we will process
-    const int Fmin, Fmax;
-
-    // How many samples we will process from the input ringbuffer
-    // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
-    std::ptrdiff_t Tmin, Tmax;
-
-    // How many samples we will produce in the output ringbuffer
-    // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
-    std::ptrdiff_t Tbarmin, Tbarmax;
+    // To avoid trailing comma below
+    int dummy;
 };
 
 REGISTER_CUDA_COMMAND(cudaUpchannelizer_chime_U2);
@@ -294,33 +296,34 @@ cudaUpchannelizer_chime_U2::cudaUpchannelizer_chime_U2(Config& config,
                                                        const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "Upchannelizer_chime_U2", "Upchannelizer_chime_U2.ptx"),
+    Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")),
+
     G_U2_name(config.get<std::string>(unique_name, "upchan_U2_gain_name")),
     E_name(config.get<std::string>(unique_name, "voltage_name")),
     Ebar_name(config.get<std::string>(unique_name, "upchan_U2_voltage_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
-    info_host(info_length),
-    // Find input and output buffers used for signalling ring-buffer state
-    input_ringbuf_signal(dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(
-        config.get<std::string>(unique_name, "voltage_signal_in")))),
-    output_ringbuf_signal(dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(
-        config.get<std::string>(unique_name, "upchan_U2_voltage_signal_out")))),
-    Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")) {
-    // Check ringbuffer sizes
-    assert(input_ringbuf_signal->size == E_length);
-    assert(output_ringbuf_signal->size == Ebar_length);
+    G_U2_buffer(G_U2_name, G_U2_quantity, reverse(G_U2_lengths), reverse(G_U2_labels), *this,
+                buffer_type_t::do_once),
+    E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), *this),
+    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels), *this),
+    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
+    host_info_buffer(info_length),
 
+    dummy() // avoid trailing comma
+{
     // Register host memory
     {
-        const cudaError_t ierr = cudaHostRegister(info_host.data(), info_host.size(), 0);
+        const cudaError_t ierr = cudaHostRegister(
+            host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0);
         assert(ierr == cudaSuccess);
     }
 
-    // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(G_U2_name, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(E_name, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(Ebar_name, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
+    G_U2_buffer.register_consumer();
+    E_buffer.register_consumer();
+    Ebar_buffer.register_producer();
+    register_gpu_buffer_user(
+        {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
 
     set_command_type(gpuCommandType::KERNEL);
 
@@ -331,12 +334,6 @@ cudaUpchannelizer_chime_U2::cudaUpchannelizer_chime_U2(Config& config,
             "--verbose",
         };
         device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "Upchannelizer_chime_U2_");
-    }
-
-    if (instance_num == 0) {
-        input_ringbuf_signal->register_consumer(unique_name);
-        output_ringbuf_signal->register_producer(unique_name);
-        output_ringbuf_signal->allocate_new_metadata_object(0);
     }
 }
 
@@ -361,90 +358,27 @@ cudaUpchannelizer_chime_U2::num_processed_elements(std::int64_t num_available_el
 
 int cudaUpchannelizer_chime_U2::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
-
-    // Check available samples
-    DEBUG("Checking available input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> peeked =
-        input_ringbuf_signal->peek_readable(unique_name, instance_num);
-    if (!peeked.has_value())
-        return -1;
-    std::ptrdiff_t input_bytes = peeked.value().second;
-    DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
-
-wait_for_data:
-
-    // How many inputs samples are available?
-    const std::ptrdiff_t T_available = div_noremainder(input_bytes, E_T_sample_bytes);
-    DEBUG("Available samples:      T_available: {:d}", T_available);
-
-    // How many inputs will we process and consume?
-    const std::ptrdiff_t T_processed = num_processed_elements(T_available);
-    const std::ptrdiff_t T_consumed = num_consumed_elements(T_available);
-    DEBUG("Will process (samples): T_processed: {:d}", T_processed);
-    DEBUG("Will consume (samples): T_consumed:  {:d}", T_consumed);
-    assert(T_consumed <= T_processed);
-    const std::ptrdiff_t T_consumed2 = num_consumed_elements(T_processed);
-    assert(T_consumed2 == T_consumed);
-
-    // Can we make progress?
-    if (T_consumed <= 0) {
-        // We cannot make progress, we need to wait
-        DEBUG("We cannot make progress, we need to wait for more input");
-
-        DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
-        const std::optional<std::ptrdiff_t> waited =
-            input_ringbuf_signal->wait_without_claiming(unique_name, instance_num, input_bytes + 1);
-        DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
-        if (!waited.has_value())
-            return -1;
-        input_bytes = waited.value();
-        DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
-
-        goto wait_for_data;
+    const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
+    const std::ptrdiff_t T_read_max = T_ringbuf / 4;
+    std::ptrdiff_t T_read = -1;
+    {
+        const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
+            using std::min;
+            T_read = min(T_available, T_read_max);
+            return read_descriptor_t{.claimed = num_consumed_elements(T_read),
+                                     .read = num_processed_elements(T_read)};
+        });
+        if (errcode < 0)
+            return errcode;
     }
+    const std::ptrdiff_t T_written = num_produced_elements(T_read);
 
-    // Claim inputs
-    assert(T_consumed > 0);
-    const std::optional<std::ptrdiff_t> claimed = input_ringbuf_signal->wait_and_claim_readable(
-        unique_name, instance_num, T_consumed * E_T_sample_bytes);
-    if (!claimed.has_value())
-        return -1;
-    const std::ptrdiff_t input_cursor = claimed.value();
-    DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
-    Tmin = div_noremainder(input_cursor, E_T_sample_bytes);
-    Tmax = Tmin + T_processed;
-    const std::ptrdiff_t Tlength = Tmax - Tmin;
-    DEBUG("Input samples:");
-    DEBUG("    Tmin:    {:d}", Tmin);
-    DEBUG("    Tmax:    {:d}", Tmax);
-    DEBUG("    Tlength: {:d}", Tlength);
-
-    // How many outputs will we produce?
-    const std::ptrdiff_t Tbar_produced = num_produced_elements(T_available);
-    DEBUG("Will produce (samples): Tbar_produced: {:d}", Tbar_produced);
-    const std::ptrdiff_t Tbarlength = Tbar_produced;
-
-    // to bytes
-    const std::ptrdiff_t output_bytes = Tbarlength * Ebar_Tbar_sample_bytes;
-    DEBUG("Will produce {:d} output bytes", output_bytes);
-
-    // Wait for space to be available in our output ringbuffer...
-    DEBUG("Waiting for output ringbuffer space for frame {:d}...", gpu_frame_id);
-    const std::optional<std::ptrdiff_t> val_out =
-        output_ringbuf_signal->wait_for_writable(unique_name, instance_num, output_bytes);
-    DEBUG("Finished waiting for output for data frame {:d}.", gpu_frame_id);
-    if (!val_out.has_value())
-        return -1;
-    const std::ptrdiff_t output_cursor = val_out.value();
-    DEBUG("Output ring-buffer byte offset {:d}", output_cursor);
-
-    assert(mod(output_cursor, Ebar_Tbar_sample_bytes) == 0);
-    Tbarmin = output_cursor / Ebar_Tbar_sample_bytes;
-    Tbarmax = Tbarmin + Tbarlength;
-    DEBUG("Output samples:");
-    DEBUG("    Tbarmin:    {:d}", Tbarmin);
-    DEBUG("    Tbarmax:    {:d}", Tbarmax);
-    DEBUG("    Tbarlength: {:d}", Tbarlength);
+    // Wait for space to be available in output ringbuffer
+    {
+        const int errcode = Ebar_buffer.wait_for_writable(T_written);
+        if (errcode < 0)
+            return errcode;
+    }
 
     return 0;
 }
@@ -452,203 +386,76 @@ wait_for_data:
 cudaEvent_t cudaUpchannelizer_chime_U2::execute(cudaPipelineState& /*pipestate*/,
                                                 const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
-
-    const std::string G_U2_memname = G_U2_name + "_buffer";
-    void* const G_U2_memory =
-        args::G_U2 == args::E ? device.get_gpu_memory(G_U2_memname, input_ringbuf_signal->size)
-        : args::G_U2 == args::Ebar
-            ? device.get_gpu_memory(G_U2_memname, output_ringbuf_signal->size)
-        : args::G_U2 == args::G_U2 ? device.get_gpu_memory(G_U2_memname, G_U2_length)
-                                   : device.get_gpu_memory_array(G_U2_memname, gpu_frame_id,
-                                                                 _gpu_buffer_depth, G_U2_length);
-    const std::string E_memname = E_name + "_buffer";
-    void* const E_memory =
-        args::E == args::E      ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
-        : args::E == args::Ebar ? device.get_gpu_memory(E_memname, output_ringbuf_signal->size)
-        : args::E == args::G_U2
-            ? device.get_gpu_memory(E_memname, E_length)
-            : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
-    const std::string Ebar_memname = Ebar_name + "_buffer";
-    void* const Ebar_memory =
-        args::Ebar == args::E ? device.get_gpu_memory(Ebar_memname, input_ringbuf_signal->size)
-        : args::Ebar == args::Ebar
-            ? device.get_gpu_memory(Ebar_memname, output_ringbuf_signal->size)
-        : args::Ebar == args::G_U2 ? device.get_gpu_memory(Ebar_memname, Ebar_length)
-                                   : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id,
-                                                                 _gpu_buffer_depth, Ebar_length);
-    const std::string info_memname = info_name + "_buffer";
-    void* const info_memory = device.get_gpu_memory(info_memname, info_length);
-
-    // G_U2 is an input buffer: check metadata
-    const std::shared_ptr<metadataObject> G_U2_mc =
-        args::G_U2 == args::E ? input_ringbuf_signal->get_metadata(0)
-                              : device.get_gpu_memory_array_metadata(G_U2_memname, gpu_frame_id);
-    assert(G_U2_mc);
-    assert(metadata_is_chord(G_U2_mc));
-    const std::shared_ptr<chordMetadata> G_U2_meta = get_chord_metadata(G_U2_mc);
-    DEBUG("input G_U2 array: {:s} {:s}", G_U2_meta->get_type_string(),
-          G_U2_meta->get_dimensions_string());
-    assert(std::strncmp(G_U2_meta->name, G_U2_quantity, sizeof G_U2_meta->name) == 0);
-    assert(G_U2_meta->type == G_U2_type);
-    assert(G_U2_meta->dims == G_U2_rank);
-    for (std::ptrdiff_t dim = 0; dim < G_U2_rank; ++dim) {
-        assert(std::strncmp(G_U2_meta->dim_name[G_U2_rank - 1 - dim], G_U2_labels[dim],
-                            sizeof G_U2_meta->dim_name[G_U2_rank - 1 - dim])
-               == 0);
-        if (args::G_U2 == args::E && dim == E_index_T) {
-            assert(G_U2_meta->dim[G_U2_rank - 1 - dim] <= int(G_U2_lengths[dim]));
-            assert(G_U2_meta->stride[G_U2_rank - 1 - dim] <= G_U2_strides[dim]);
-        } else {
-            assert(G_U2_meta->dim[G_U2_rank - 1 - dim] == int(G_U2_lengths[dim]));
-            assert(G_U2_meta->stride[G_U2_rank - 1 - dim] == G_U2_strides[dim]);
-        }
-    }
-    //
-    // E is an input buffer: check metadata
-    const std::shared_ptr<metadataObject> E_mc =
-        args::E == args::E ? input_ringbuf_signal->get_metadata(0)
-                           : device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    assert(E_mc);
-    assert(metadata_is_chord(E_mc));
-    const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
-    DEBUG("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
-    assert(std::strncmp(E_meta->name, E_quantity, sizeof E_meta->name) == 0);
-    assert(E_meta->type == E_type);
-    assert(E_meta->dims == E_rank);
-    for (std::ptrdiff_t dim = 0; dim < E_rank; ++dim) {
-        assert(std::strncmp(E_meta->dim_name[E_rank - 1 - dim], E_labels[dim],
-                            sizeof E_meta->dim_name[E_rank - 1 - dim])
-               == 0);
-        if (args::E == args::E && dim == E_index_T) {
-            assert(E_meta->dim[E_rank - 1 - dim] <= int(E_lengths[dim]));
-            assert(E_meta->stride[E_rank - 1 - dim] <= E_strides[dim]);
-        } else {
-            assert(E_meta->dim[E_rank - 1 - dim] == int(E_lengths[dim]));
-            assert(E_meta->stride[E_rank - 1 - dim] == E_strides[dim]);
-        }
-    }
-    //
-    // Ebar is an output buffer: set metadata
-    std::shared_ptr<metadataObject> const Ebar_mc =
-        args::Ebar == args::Ebar ? output_ringbuf_signal->get_metadata(0)
-                                 : device.create_gpu_memory_array_metadata(
-                                     Ebar_memname, gpu_frame_id, E_mc->parent_pool);
-    std::shared_ptr<chordMetadata> const Ebar_meta = get_chord_metadata(Ebar_mc);
-    *Ebar_meta = *E_meta;
-    std::strncpy(Ebar_meta->name, Ebar_quantity, sizeof Ebar_meta->name);
-    Ebar_meta->type = Ebar_type;
-    Ebar_meta->dims = Ebar_rank;
-    for (std::ptrdiff_t dim = 0; dim < Ebar_rank; ++dim) {
-        std::strncpy(Ebar_meta->dim_name[Ebar_rank - 1 - dim], Ebar_labels[dim],
-                     sizeof Ebar_meta->dim_name[Ebar_rank - 1 - dim]);
-        Ebar_meta->dim[Ebar_rank - 1 - dim] = Ebar_lengths[dim];
-        Ebar_meta->stride[Ebar_rank - 1 - dim] = Ebar_strides[dim];
-    }
-    DEBUG("output Ebar array: {:s} {:s}", Ebar_meta->get_type_string(),
-          Ebar_meta->get_dimensions_string());
-    //
-
     record_start_event();
 
-    DEBUG("gpu_frame_id: {}", gpu_frame_id);
+    void* const G_U2_memory = G_U2_buffer.get_ndarray().data();
+    void* const E_memory = E_buffer.get_ndarray().data();
+    void* const Ebar_memory = Ebar_buffer.get_ndarray().data();
+    void* const info_memory = info_buffer.get_ndarray().data();
+
+    G_U2_buffer.check_metadata();
+    E_buffer.check_metadata();
+    Ebar_buffer.set_metadata(E_buffer.get_metadata());
+
+    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
 
     const char* exc_arg = "exception";
-    std::int32_t Tmin_arg;
-    std::int32_t Tmax_arg;
-    std::int32_t Tbarmin_arg;
-    std::int32_t Tbarmax_arg;
+    std::int32_t T_min_arg;
+    std::int32_t T_max_arg;
+    std::int32_t Tbar_min_arg;
+    std::int32_t Tbar_max_arg;
     std::int32_t Fmin_arg;
     std::int32_t Fmax_arg;
-    array_desc G_U2_arg(G_U2_memory, G_U2_length);
-    array_desc E_arg(E_memory, E_length);
-    array_desc Ebar_arg(Ebar_memory, Ebar_length);
-    array_desc info_arg(info_memory, info_length);
+    array_desc G_U2_arg(G_U2_memory, G_U2_length_in_bytes);
+    array_desc E_arg(E_memory, E_length_in_bytes);
+    array_desc Ebar_arg(Ebar_memory, Ebar_length_in_bytes);
+    array_desc info_arg(info_memory, info_length_in_bytes);
     void* args[] = {
-        &exc_arg,  &Tmin_arg, &Tmax_arg, &Tbarmin_arg, &Tbarmax_arg, &Fmin_arg,
-        &Fmax_arg, &G_U2_arg, &E_arg,    &Ebar_arg,    &info_arg,
+        &exc_arg,  &T_min_arg, &T_max_arg, &Tbar_min_arg, &Tbar_max_arg, &Fmin_arg,
+        &Fmax_arg, &G_U2_arg,  &E_arg,     &Ebar_arg,     &info_arg,
     };
 
     // Set E_memory to beginning of input ring buffer
-    E_arg = array_desc(E_memory, E_length);
+    E_arg = array_desc(E_memory, E_length_in_bytes);
 
     // Set Ebar_memory to beginning of output ring buffer
-    Ebar_arg = array_desc(Ebar_memory, Ebar_length);
+    Ebar_arg = array_desc(Ebar_memory, Ebar_length_in_bytes);
 
     // Ringbuffer size
-    const std::ptrdiff_t T_ringbuf = input_ringbuf_signal->size / E_T_sample_bytes;
-    const std::ptrdiff_t Tbar_ringbuf = output_ringbuf_signal->size / Ebar_Tbar_sample_bytes;
-    DEBUG("Input ringbuffer size (samples):  {:d}", T_ringbuf);
-    DEBUG("Output ringbuffer size (samples): {:d}", Tbar_ringbuf);
+    const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
+    const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
 
-    const std::ptrdiff_t Tlength = Tmax - Tmin;
-    const std::ptrdiff_t Tbarlength = Tbarmax - Tbarmin;
-    DEBUG("Processed input samples: {:d}", Tlength);
-    DEBUG("Produced output samples: {:d}", Tbarlength);
+    const std::ptrdiff_t T_min = E_buffer.get_begin_read_valid();
+    const std::ptrdiff_t T_max = E_buffer.get_end_read_valid();
+    const std::ptrdiff_t Tbar_min = Ebar_buffer.get_begin_write_valid();
+    const std::ptrdiff_t Tbar_max = Ebar_buffer.get_end_write_valid();
 
-    DEBUG("Kernel arguments:");
-    DEBUG("    Tmin:    {:d}", Tmin);
-    DEBUG("    Tmax:    {:d}", Tmax);
-    DEBUG("    Tbarmin: {:d}", Tbarmin);
-    DEBUG("    Tbarmax: {:d}", Tbarmax);
+    const std::ptrdiff_t T_length = T_max - T_min;
+    const std::ptrdiff_t Tbar_length = Tbar_max - Tbar_min;
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    Tmin_arg = mod(Tmin, T_ringbuf);
-    Tmax_arg = mod(Tmin, T_ringbuf) + Tlength;
-    Tbarmin_arg = mod(Tbarmin, Tbar_ringbuf);
-    Tbarmax_arg = mod(Tbarmin, Tbar_ringbuf) + Tbarlength;
+    T_min_arg = mod(T_min, T_ringbuf);
+    T_max_arg = mod(T_min, T_ringbuf) + T_length;
+    Tbar_min_arg = mod(Tbar_min, Tbar_ringbuf);
+    Tbar_max_arg = mod(Tbar_min, Tbar_ringbuf) + Tbar_length;
 
     // Pass frequency spans to kernel
     Fmin_arg = Fmin;
     Fmax_arg = Fmax;
-
-    // Update metadata
-    Ebar_meta->dim[Ebar_rank - 1 - Ebar_index_Tbar] = Tbarlength;
-    assert(Ebar_meta->dim[Ebar_rank - 1 - Ebar_index_Tbar] <= int(Ebar_lengths[Ebar_index_Tbar]));
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
-
-    assert(Ebar_meta->nfreq >= 0);
-    assert(Ebar_meta->nfreq == E_meta->nfreq);
-    for (int freq = 0; freq < Ebar_meta->nfreq; ++freq) {
-        Ebar_meta->freq_upchan_factor[freq] =
-            cuda_upchannelization_factor * E_meta->freq_upchan_factor[freq];
-        Ebar_meta->half_fpga_sample0[freq] =
-            E_meta->half_fpga_sample0[freq] + cuda_number_of_taps - 1;
-        Ebar_meta->time_downsampling_fpga[freq] =
-            cuda_upchannelization_factor * E_meta->time_downsampling_fpga[freq];
-    }
+    const int blocks = blocks_per_frequency * (Fmax - Fmin);
+    assert(0 <= blocks);
+    assert(blocks <= max_blocks);
 
     // Copy inputs to device memory
+
+    Ebar_buffer.set_to_poison(0x00);
+    info_buffer.set_to_poison(0xff);
 
 #ifdef DEBUGGING
     // Initialize host-side buffer arrays
     CHECK_CUDA_ERROR(
-        cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
-#endif
-
-#ifdef DEBUGGING
-    // Poison outputs
-    {
-        DEBUG("begin poisoning");
-        const int num_chunks = Tbarmax_arg <= Tbar_ringbuf ? 1 : 2;
-        for (int chunk = 0; chunk < num_chunks; ++chunk) {
-            DEBUG("poisoning chunk={}/{}", chunk, num_chunks);
-            const std::ptrdiff_t Tbarstride = Ebar_meta->stride[0];
-            const std::ptrdiff_t Tbaroffset = chunk == 0 ? Tbarmin_arg : 0;
-            const std::ptrdiff_t Tbarlength = (num_chunks == 1 ? Tbarmax_arg - Tbarmin_arg
-                                               : chunk == 0    ? Tbar_ringbuf - Tbarmin_arg
-                                                               : Tbarmax_arg - Tbar_ringbuf);
-            const std::ptrdiff_t Fbarstride = Ebar_meta->stride[1];
-            const std::ptrdiff_t Fbaroffset = 0;
-            const std::ptrdiff_t Fbarlength = cuda_upchannelization_factor * (Fmax - Fmin);
-            DEBUG("before cudaMemset2DAsync.Ebar");
-            CHECK_CUDA_ERROR(cudaMemset2DAsync((std::uint8_t*)Ebar_memory + Tbaroffset * Tbarstride
-                                                   + Fbaroffset * Fbarstride,
-                                               Tbarstride, 0x00, Fbarlength * Fbarstride,
-                                               Tbarlength, device.getStream(cuda_stream_id)));
-        } // for chunk
-        DEBUG("poisoning done.");
-    }
+        cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes, device.getStream(cuda_stream_id)));
 #endif
 
     const std::string symname = "Upchannelizer_chime_U2_" + std::string(kernel_symbol);
@@ -656,12 +463,6 @@ cudaEvent_t cudaUpchannelizer_chime_U2::execute(cudaPipelineState& /*pipestate*/
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA Upchannelizer_chime_U2 on GPU frame {:d}", gpu_frame_id);
-    const int blocks = blocks_per_frequency * (Fmax - Fmin);
-    DEBUG("More kernel arguments:");
-    DEBUG("    Fmin:   {:d}", Fmin);
-    DEBUG("    Fmax:   {:d}", Fmax);
-    DEBUG("    blocks: {:d}", blocks);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -674,138 +475,51 @@ cudaEvent_t cudaUpchannelizer_chime_U2::execute(cudaPipelineState& /*pipestate*/
 
 #ifdef DEBUGGING
     // Copy results back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    DEBUG("Finished CUDA Upchannelizer_chime_U2 on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
-    std::uint32_t error_code = 0;
-    for (int block = 0; block < blocks; ++block) {
-        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
-            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
-                const std::ptrdiff_t i = info_strides[info_index_thread] * thread
-                                         + info_strides[info_index_warp] * warp
-                                         + info_strides[info_index_block] * block;
-                const std::uint32_t val = *(const std::uint32_t*)&info_host[i];
-                using std::max;
-                error_code = max(error_code, val);
-            }
-        }
-    }
+    const std::uint32_t error_code = *std::max_element(
+        (const std::uint32_t*)&host_info_buffer[0],
+        (const std::uint32_t*)&host_info_buffer[blocks * info_lengths[info_index_warp]
+                                                * info_lengths[info_index_thread]]);
     if (error_code != 0)
         ERROR("CUDA kernel Upchannelizer_chime_U2 returned error code: {}", error_code);
 
-    for (int block = 0; block < blocks; ++block) {
-        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
-            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
-                const std::ptrdiff_t i = info_strides[info_index_thread] * thread
-                                         + info_strides[info_index_warp] * warp
-                                         + info_strides[info_index_block] * block;
-                const std::uint32_t val = ((const std::uint32_t*)info_host.data())[i];
-                if (val != 0)
-                    ERROR("CUDA kernel Upchannelizer_chime_U2 returned 'info' value {:d} "
-                          "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no "
-                          "error)",
-                          val, thread, warp, block, i);
+    if (error_code != 0) {
+        // TODO: Introduce a new "unbuffered" buffer; do this there
+        // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
+        for (int block = 0; block < blocks; ++block) {
+            for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+                for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                    const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                             + info_strides[info_index_warp] * warp
+                                             + info_strides[info_index_block] * block;
+                    const std::uint32_t val = host_info_buffer.data()[i];
+                    if (val != 0)
+                        ERROR("CUDA kernel Upchannelizer_chime_U2 returned 'info' value {:d} "
+                              "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates "
+                              "no error)",
+                              val, thread, warp, block, i);
+                }
             }
         }
     }
 #endif
 
-#ifdef DEBUGGING
-    // Check outputs for poison
-    {
-        DEBUG("begin poison check");
-        DEBUG("    E_dims={}", E_meta->dims);
-        DEBUG("    E_dim[0]={}", E_meta->dim[0]);
-        DEBUG("    E_dim[1]={}", E_meta->dim[1]);
-        DEBUG("    E_dim[2]={}", E_meta->dim[2]);
-        DEBUG("    E_dim[3]={}", E_meta->dim[3]);
-        DEBUG("    E_stride[0]={}", E_meta->stride[0]);
-        DEBUG("    E_stride[1]={}", E_meta->stride[1]);
-        DEBUG("    E_stride[2]={}", E_meta->stride[2]);
-        DEBUG("    E_stride[3]={}", E_meta->stride[3]);
-        DEBUG("    Ebar_dims={}", Ebar_meta->dims);
-        DEBUG("    Ebar_dim[0]={}", Ebar_meta->dim[0]);
-        DEBUG("    Ebar_dim[1]={}", Ebar_meta->dim[1]);
-        DEBUG("    Ebar_dim[2]={}", Ebar_meta->dim[2]);
-        DEBUG("    Ebar_dim[3]={}", Ebar_meta->dim[3]);
-        DEBUG("    Ebar_stride[0]={}", Ebar_meta->stride[0]);
-        DEBUG("    Ebar_stride[1]={}", Ebar_meta->stride[1]);
-        DEBUG("    Ebar_stride[2]={}", Ebar_meta->stride[2]);
-        DEBUG("    Ebar_stride[3]={}", Ebar_meta->stride[3]);
-        const int num_chunks = Tbarmax_arg <= Tbar_ringbuf ? 1 : 2;
-        for (int chunk = 0; chunk < num_chunks; ++chunk) {
-            DEBUG("poisoning chunk={}/{}", chunk, num_chunks);
-            const std::ptrdiff_t Tbarstride = Ebar_meta->stride[0];
-            const std::ptrdiff_t Tbaroffset = chunk == 0 ? Tbarmin_arg : 0;
-            const std::ptrdiff_t Tbarlength = (num_chunks == 1 ? Tbarmax_arg - Tbarmin_arg
-                                               : chunk == 0    ? Tbar_ringbuf - Tbarmin_arg
-                                                               : Tbarmax_arg - Tbar_ringbuf);
-            const std::ptrdiff_t Fbarstride = Ebar_meta->stride[1];
-            const std::ptrdiff_t Fbaroffset = 0;
-            const std::ptrdiff_t Fbarlength = cuda_upchannelization_factor * (Fmax - Fmin);
-            DEBUG("    Tbarstride={}", Tbarstride);
-            DEBUG("    Tbaroffset={}", Tbaroffset);
-            DEBUG("    Tbarlength={}", Tbarlength);
-            DEBUG("    Fbarstride={}", Fbarstride);
-            DEBUG("    Fbaroffset={}", Fbaroffset);
-            DEBUG("    Fbarlength={}", Fbarlength);
-            std::vector<std::uint8_t> Ebar_buffer(Tbarlength * Fbarlength * Fbarstride, 0x11);
-            DEBUG("    Ebar_buffer.size={}", Ebar_buffer.size());
-            DEBUG("before cudaMemcpy2D.Ebar");
-            CHECK_CUDA_ERROR(cudaMemcpy2D(Ebar_buffer.data(), Fbarlength * Fbarstride,
-                                          (const std::uint8_t*)Ebar_memory + Tbaroffset * Tbarstride
-                                              + Fbaroffset * Fbarstride,
-                                          Tbarstride, Fbarlength * Fbarstride, Tbarlength,
-                                          cudaMemcpyDeviceToHost));
-
-            DEBUG("before memchr");
-            const bool Ebar_found_error = std::memchr(Ebar_buffer.data(), 0x00, Ebar_buffer.size());
-            if (Ebar_found_error) {
-                for (std::ptrdiff_t tbar = 0; tbar < Tbarlength; ++tbar) {
-                    for (std::ptrdiff_t fbar = 0; fbar < Fbarlength; ++fbar) {
-                        bool any_error = false;
-                        for (std::ptrdiff_t n = 0; n < Fbarstride; ++n) {
-                            const auto val = Ebar_buffer.at(tbar * (Fbarlength * Fbarstride)
-                                                            + fbar * Fbarstride + n);
-                            any_error |= val == 0x00;
-                        }
-                        if (any_error)
-                            DEBUG("    U={} [{},{}]={:#02x}", cuda_upchannelization_factor, tbar,
-                                  fbar, 0x00);
-                    }
-                }
-            }
-            assert(!Ebar_found_error);
-        } // for chunk
-        DEBUG("poison check done.");
-    }
-#endif
+    E_buffer.check_for_poison(0x00);
 
     return record_end_event();
 }
 
 void cudaUpchannelizer_chime_U2::finalize_frame() {
-    const std::ptrdiff_t Tlength = Tmax - Tmin;
-    const std::ptrdiff_t Tbarlength = Tbarmax - Tbarmin;
+    // Advance the input ring buffer
+    E_buffer.finish_read();
 
-    // Advance the input ringbuffer
-    const std::ptrdiff_t T_consumed = num_consumed_elements(Tlength);
-    DEBUG("Advancing input ringbuffer:");
-    DEBUG("    Consumed samples: {:d}", T_consumed);
-    DEBUG("    Consumed bytes:   {:d}", T_consumed * E_T_sample_bytes);
-    input_ringbuf_signal->finish_read(unique_name, instance_num, T_consumed * E_T_sample_bytes);
-
-    // Advance the output ringbuffer
-    const std::ptrdiff_t Tbar_produced = Tbarlength;
-    DEBUG("Advancing output ringbuffer:");
-    DEBUG("    Produced samples: {:d}", Tbar_produced);
-    DEBUG("    Produced bytes:   {:d}", Tbar_produced * Ebar_Tbar_sample_bytes);
-    output_ringbuf_signal->finish_write(unique_name, instance_num,
-                                        Tbar_produced * Ebar_Tbar_sample_bytes);
+    // Advance the output ring buffer
+    Ebar_buffer.finish_write();
 
     cudaCommand::finalize_frame();
 }

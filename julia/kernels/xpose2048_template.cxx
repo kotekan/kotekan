@@ -173,6 +173,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                                              const int instance_num):
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
         "{{{kernel_name}}}", "{{{kernel_name}}}.ptx"),
+
     {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
@@ -270,9 +271,9 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
     const std::ptrdiff_t T_read = Ein_buffer.get_end_read_valid() - E_buffer.get_begin_read_valid();
 
     // Wait for space to be available in output ringbuffer
-    const std::ptrdiff_t T_write = T_read;
+    const std::ptrdiff_t T_written = T_read;
     {
-        const int errcode = E_buffer.wait_for_writable(T_write);
+        const int errcode = E_buffer.wait_for_writable(T_written);
         if (errcode < 0)
             return errcode;
     }
@@ -282,6 +283,7 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
 
 cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
+    record_start_event();
 
     {{#kernel_arguments}}
         {{^isscalar}}
@@ -299,8 +301,6 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
             {{/isoutput}}
         {{/hasbuffer}}
     {{/kernel_arguments}}
-
-    record_start_event();
 
     const char* exc_arg = "exception";
     {{#kernel_arguments}}
@@ -399,9 +399,6 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
-    E_buffer.check_for_poison(0x00);
-    info_buffer.check_for_poison(0xff);
-
 #ifdef DEBUGGING
     // Copy results back to host memory
     {{#kernel_arguments}}
@@ -443,6 +440,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         }
     }
 #endif
+
+    E_buffer.check_for_poison(0x00);
 
     return record_end_event();
 }

@@ -279,6 +279,7 @@ cudaTranspose2048_chime::cudaTranspose2048_chime(Config& config, const std::stri
                                                  const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "Transpose2048_chime", "Transpose2048_chime.ptx"),
+
     Ein_name(config.get<std::string>(unique_name, "input_voltage_name")),
     E_name(config.get<std::string>(unique_name, "output_voltage_name")),
     scatter_indices_name(config.get<std::string>(unique_name, "scatter_indices_name")),
@@ -339,9 +340,9 @@ int cudaTranspose2048_chime::wait_on_precondition() {
     const std::ptrdiff_t T_read = Ein_buffer.get_end_read_valid() - E_buffer.get_begin_read_valid();
 
     // Wait for space to be available in output ringbuffer
-    const std::ptrdiff_t T_write = T_read;
+    const std::ptrdiff_t T_written = T_read;
     {
-        const int errcode = E_buffer.wait_for_writable(T_write);
+        const int errcode = E_buffer.wait_for_writable(T_written);
         if (errcode < 0)
             return errcode;
     }
@@ -352,6 +353,7 @@ int cudaTranspose2048_chime::wait_on_precondition() {
 cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
                                              const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
+    record_start_event();
 
     void* const Ein_memory = Ein_buffer.get_ndarray().data();
     void* const E_memory = E_buffer.get_ndarray().data();
@@ -361,8 +363,6 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
     Ein_buffer.check_metadata();
     E_buffer.set_metadata(Ein_buffer.get_metadata());
     scatter_indices_buffer.check_metadata();
-
-    record_start_event();
 
     const char* exc_arg = "exception";
     std::int32_t Tin_min_arg;
@@ -433,9 +433,6 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
         ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
-    E_buffer.check_for_poison(0x00);
-    info_buffer.check_for_poison(0xff);
-
 #ifdef DEBUGGING
     // Copy results back to host memory
     CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
@@ -467,6 +464,8 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
         }
     }
 #endif
+
+    E_buffer.check_for_poison(0x00);
 
     return record_end_event();
 }

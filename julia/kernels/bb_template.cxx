@@ -173,6 +173,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                                              const int instance_num):
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
         "{{{kernel_name}}}", "{{{kernel_name}}}.ptx"),
+
     {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
@@ -273,6 +274,7 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
 
 cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
+    record_start_event();
 
     {{#kernel_arguments}}
         {{^isscalar}}
@@ -290,8 +292,6 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
             {{/isoutput}}
         {{/hasbuffer}}
     {{/kernel_arguments}}
-
-    record_start_event();
 
     const char* exc_arg = "exception";
     {{#kernel_arguments}}

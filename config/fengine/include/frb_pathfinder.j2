@@ -119,19 +119,17 @@ run_frb1_U1:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
-            host_frb1_U1_phase_buffer_in: host_frb1_U1_phase_buffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_frb1_U1_phase_buffer: host_frb1_U1_phase_buffer
         out_buffers:
-            host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_frb1_U1_phase_buffer_in
+          in_buf: host_frb1_U1_phase_buffer
           gpu_mem: frb1_U1_phase_buffer
         - name: cudaSyncInput
         - name: cudaFRBBeamformer_pathfinder_U1
-          voltage_signal_in: host_voltage_ringbuffer_in
-          beamgrid_signal_out: host_frb1_beams_ringbuffer_out
           voltage_name: voltage
           frb_phase_name: frb1_U1_phase
           frb_beamgrid_name: frb1_beams
@@ -145,19 +143,17 @@ run_frb1_U2:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_upchan_U2_voltage_ringbuffer_in: host_upchan_U2_voltage_ringbuffer
-            host_frb1_U2_phase_buffer_in: host_frb1_U2_phase_buffer
+            host_upchan_U2_voltage_ringbuffer: host_upchan_U2_voltage_ringbuffer
+            host_frb1_U2_phase_buffer: host_frb1_U2_phase_buffer
         out_buffers:
-            host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_frb1_U2_phase_buffer_in
+          in_buf: host_frb1_U2_phase_buffer
           gpu_mem: frb1_U2_phase_buffer
         - name: cudaSyncInput
         - name: cudaFRBBeamformer_pathfinder_U2
-          voltage_signal_in: host_upchan_U2_voltage_ringbuffer_in
-          beamgrid_signal_out: host_frb1_beams_ringbuffer_out
           voltage_name: upchan_U2_voltage
           frb_phase_name: frb1_U2_phase
           frb_beamgrid_name: frb1_beams
@@ -171,19 +167,17 @@ run_frb1_U4:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_upchan_U4_voltage_ringbuffer_in: host_upchan_U4_voltage_ringbuffer
-            host_frb1_U4_phase_buffer_in: host_frb1_U4_phase_buffer
+            host_upchan_U4_voltage_ringbuffer: host_upchan_U4_voltage_ringbuffer
+            host_frb1_U4_phase_buffer: host_frb1_U4_phase_buffer
         out_buffers:
-            host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_frb1_U4_phase_buffer_in
+          in_buf: host_frb1_U4_phase_buffer
           gpu_mem: frb1_U4_phase_buffer
         - name: cudaSyncInput
         - name: cudaFRBBeamformer_pathfinder_U4
-          voltage_signal_in: host_upchan_U4_voltage_ringbuffer_in
-          beamgrid_signal_out: host_frb1_beams_ringbuffer_out
           voltage_name: upchan_U4_voltage
           frb_phase_name: frb1_U4_phase
           frb_beamgrid_name: frb1_beams
@@ -197,19 +191,17 @@ run_frb1_U8:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_upchan_U8_voltage_ringbuffer_in: host_upchan_U8_voltage_ringbuffer
-            host_frb1_U8_phase_buffer_in: host_frb1_U8_phase_buffer
+            host_upchan_U8_voltage_ringbuffer: host_upchan_U8_voltage_ringbuffer
+            host_frb1_U8_phase_buffer: host_frb1_U8_phase_buffer
         out_buffers:
-            host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_frb1_U8_phase_buffer_in
+          in_buf: host_frb1_U8_phase_buffer
           gpu_mem: frb1_U8_phase_buffer
         - name: cudaSyncInput
         - name: cudaFRBBeamformer_pathfinder_U8
-          voltage_signal_in: host_upchan_U8_voltage_ringbuffer_in
-          beamgrid_signal_out: host_frb1_beams_ringbuffer_out
           voltage_name: upchan_U8_voltage
           frb_phase_name: frb1_U8_phase
           frb_beamgrid_name: frb1_beams
@@ -223,19 +215,17 @@ run_frb1_U16:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_upchan_U16_voltage_ringbuffer_in: host_upchan_U16_voltage_ringbuffer
-            host_frb1_U16_phase_buffer_in: host_frb1_U16_phase_buffer
+            host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
+            host_frb1_U16_phase_buffer: host_frb1_U16_phase_buffer
         out_buffers:
-            host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_frb1_U16_phase_buffer_in
+          in_buf: host_frb1_U16_phase_buffer
           gpu_mem: frb1_U16_phase_buffer
         - name: cudaSyncInput
         - name: cudaFRBBeamformer_pathfinder_U16
-          voltage_signal_in: host_upchan_U16_voltage_ringbuffer_in
-          beamgrid_signal_out: host_frb1_beams_ringbuffer_out
           voltage_name: upchan_U16_voltage
           frb_phase_name: frb1_U16_phase
           frb_beamgrid_name: frb1_beams
@@ -249,19 +239,17 @@ run_frb1_U32:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_upchan_U32_voltage_ringbuffer_in: host_upchan_U32_voltage_ringbuffer
-            host_frb1_U32_phase_buffer_in: host_frb1_U32_phase_buffer
+            host_upchan_U32_voltage_ringbuffer: host_upchan_U32_voltage_ringbuffer
+            host_frb1_U32_phase_buffer: host_frb1_U32_phase_buffer
         out_buffers:
-            host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_frb1_U32_phase_buffer_in
+          in_buf: host_frb1_U32_phase_buffer
           gpu_mem: frb1_U32_phase_buffer
         - name: cudaSyncInput
         - name: cudaFRBBeamformer_pathfinder_U32
-          voltage_signal_in: host_upchan_U32_voltage_ringbuffer_in
-          beamgrid_signal_out: host_frb1_beams_ringbuffer_out
           voltage_name: upchan_U32_voltage
           frb_phase_name: frb1_U32_phase
           frb_beamgrid_name: frb1_beams
@@ -275,19 +263,17 @@ run_frb1_U64:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_upchan_U64_voltage_ringbuffer_in: host_upchan_U64_voltage_ringbuffer
-            host_frb1_U64_phase_buffer_in: host_frb1_U64_phase_buffer
+            host_upchan_U64_voltage_ringbuffer: host_upchan_U64_voltage_ringbuffer
+            host_frb1_U64_phase_buffer: host_frb1_U64_phase_buffer
         out_buffers:
-            host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_frb1_U64_phase_buffer_in
+          in_buf: host_frb1_U64_phase_buffer
           gpu_mem: frb1_U64_phase_buffer
         - name: cudaSyncInput
         - name: cudaFRBBeamformer_pathfinder_U64
-          voltage_signal_in: host_upchan_U64_voltage_ringbuffer_in
-          beamgrid_signal_out: host_frb1_beams_ringbuffer_out
           voltage_name: upchan_U64_voltage
           frb_phase_name: frb1_U64_phase
           frb_beamgrid_name: frb1_beams
@@ -303,7 +289,7 @@ run_frb23:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_frb1_beams_ringbuffer_in: host_frb1_beams_ringbuffer
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
             host_frb2_phase_in: host_frb2_phase_buffer
         out_buffers:
             host_frb2_beams_out: host_frb2_beams_buffer
@@ -321,7 +307,7 @@ run_frb23:
           beam_grid_size_ew: frb_num_beams_Q
           num_beams: frb_num_beams
           samples_per_data_set: frb_num_output_times
-          in_signal: host_frb1_beams_ringbuffer_in
+          in_signal: host_frb1_beams_ringbuffer
           gpu_mem_beamgrid: frb1_beams
           gpu_mem_phase: frb2_phase
           gpu_mem_beamout: frb2_beams

@@ -7,6 +7,8 @@
  */
 
 #include <DataType.hpp>
+#include <NDArrayBuffer.hpp>
+#include <NDArrayRingBuffer.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -269,6 +271,9 @@ private:
 
     RingBuffer* const input_ringbuf_signal;
     RingBuffer* const output_ringbuf_signal;
+    // NDArrayBuffer<kotekan::GetType_t<W_type>, W_rank> W_buffer;
+    // TODO: NDArrayRingBuffer<kotekan::GetType_t<Ebar_type>, Ebar_rank> Ebar_buffer;
+    // TODO: NDArrayRingBuffer<kotekan::GetType_t<I_type>, I_rank> I_buffer;
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_on_precondition`, invalid after `finalize_frame`)
@@ -298,7 +303,17 @@ cudaCHIMEFRBBeamformer_chime_U128::cudaCHIMEFRBBeamformer_chime_U128(Config& con
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(
         config.get<std::string>(unique_name, "voltage_signal_in")))),
     output_ringbuf_signal(dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(
-        config.get<std::string>(unique_name, "beamgrid_signal_out")))) {
+        config.get<std::string>(unique_name, "beamgrid_signal_out")))),
+
+    // W_buffer(
+    //     W_name, W_quantity, reverse(W_lengths), reverse(W_labels), *this),
+    // Ebar_buffer(
+    //     Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels), *this),
+    // I_buffer(
+    //     I_name, I_quantity, reverse(I_lengths), reverse(I_labels), *this),
+
+    Tbarmin() // avoid trailing comma
+{
     // Check ringbuffer sizes
     if (!(input_ringbuf_signal->size == Ebar_length))
         FATAL_ERROR("Need input_ringbuf_signal->size == Ebar_length, but have "
