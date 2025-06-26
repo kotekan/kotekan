@@ -4,6 +4,7 @@
 #include <DataType.hpp>
 #include <NDArray.hpp>
 #include <Symbol.hpp>
+#include <algorithm>
 #include <array>
 #include <buffer.hpp>
 #include <cassert>
@@ -339,6 +340,11 @@ public:
     // Check an NDArray ring buffer for poison
     void check_for_poison(const std::uint8_t poison_value) {
 #ifdef DEBUGGING
+        T poison;
+        std::memset(&poison, poison_value, sizeof poison);
+        const auto check_for_poison = [=](const T x) {
+            return std::memcmp(&x, &poison, sizeof poison) == 0;
+        };
         const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
         const std::ptrdiff_t T_min = get_begin_write_valid();
         const std::ptrdiff_t T_max = get_end_write_valid();
@@ -352,23 +358,24 @@ public:
             const std::ptrdiff_t T_length = num_chunks == 1 ? T_max_arg - T_min_arg
                                             : chunk == 0    ? T_ringbuf - T_min_arg
                                                             : T_max_arg - T_ringbuf;
-            std::vector<std::uint8_t> local_data(T_length * T_stride, poison_value);
+            std::vector<T> local_data(T_length * T_stride / sizeof(T), poison);
             CHECK_CUDA_ERROR(cudaMemcpy(local_data.data(),
                                         (std::uint8_t*)get_ndarray().data() + T_offset * T_stride,
                                         T_length * T_stride, cudaMemcpyDeviceToHost));
             const bool found_error =
-                std::memchr(local_data.data(), poison_value, local_data.size());
-            if (found_error) {
-                for (std::ptrdiff_t t = 0; t < T_length; ++t) {
-                    bool any_error = false;
-                    for (std::ptrdiff_t n = 0; n < T_stride; ++n) {
-                        const auto val = local_data.at(t * T_stride + n);
-                        any_error |= val == 0x00;
-                    }
-                    if (any_error)
-                        DEBUG("    [{}]={:#02x}", t, 0x00);
-                }
-            }
+                std::find_if(local_data.begin(), local_data.end(), check_for_poison)
+                != local_data.end();
+            // if (found_error) {
+            //     for (std::ptrdiff_t t = 0; t < T_length; ++t) {
+            //         bool any_error = false;
+            //         for (std::ptrdiff_t n = 0; n < T_stride; ++n) {
+            //             const auto val = local_data.at(t * T_stride + n);
+            //             any_error |= val == poison_value;
+            //         }
+            //         if (any_error)
+            //             DEBUG("    [{}]={:#02x}", t, poison_value);
+            //     }
+            // }
             if (found_error)
                 FATAL_ERROR("NDArray buffer {:s} contains poison", buffer_name);
             assert(!found_error);

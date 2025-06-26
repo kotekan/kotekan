@@ -4,6 +4,7 @@
 #include <DataType.hpp>
 #include <NDArray.hpp>
 #include <Symbol.hpp>
+#include <algorithm>
 #include <array>
 #include <buffer.hpp>
 #include <cassert>
@@ -196,13 +197,20 @@ public:
     // Check an NDArray buffer for poison
     void check_for_poison(const std::uint8_t poison_value) {
 #ifdef DEBUGGING
+        T poison;
+        std::memset(&poison, poison_value, sizeof poison);
+        const auto check_for_poison = [=](const T x) {
+            return std::memcmp(&x, &poison, sizeof poison) == 0;
+        };
         const std::ptrdiff_t buffer_length = length_in_bytes();
         const void* const buffer_device_ptr = ndarray.data();
         assert(buffer_device_ptr);
-        std::vector<std::uint8_t> local_data(buffer_length);
+        std::vector<T> local_data(buffer_length / sizeof(T), poison);
         CHECK_CUDA_ERROR(cudaMemcpy(local_data.data(), buffer_device_ptr, buffer_length,
                                     cudaMemcpyDeviceToHost));
-        const bool found_error = std::memchr(local_data.data(), poison_value, buffer_length);
+        const bool found_error =
+            std::find_if(local_data.begin(), local_data.end(), check_for_poison)
+            != local_data.end();
         if (found_error)
             FATAL_ERROR("NDArray buffer {:s} contains poison", buffer_name);
 #endif

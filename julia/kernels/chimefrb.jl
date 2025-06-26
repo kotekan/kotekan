@@ -1599,6 +1599,7 @@ function fix_ptx_kernel()
                 Dict("type" => "int", "name" => "cuda_beam_layout_N", "value" => "$(2*N)"),
                 Dict("type" => "int", "name" => "cuda_dish_layout_M", "value" => "$M"),
                 Dict("type" => "int", "name" => "cuda_dish_layout_N", "value" => "$N"),
+                Dict("type" => "int", "name" => "cuda_upchannelization_factor", "value" => "$U"),
                 Dict("type" => "int", "name" => "cuda_downsampling_factor", "value" => "$Tds"),
                 Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),
                 Dict("type" => "int", "name" => "cuda_number_of_dishes", "value" => "$D"),
@@ -1616,8 +1617,8 @@ function fix_ptx_kernel()
             "kernel_symbol" => kernel_symbol,
             "kernel_arguments" => [
                 Dict(
-                    "name" => "Tbarmin",
-                    "kotekan_name" => "Tbarmin",
+                    "name" => "Tbar_min",
+                    "kotekan_name" => "Tbar_min",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
@@ -1625,8 +1626,8 @@ function fix_ptx_kernel()
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Tbarmax",
-                    "kotekan_name" => "Tbarmax",
+                    "name" => "Tbar_max",
+                    "kotekan_name" => "Tbar_max",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
@@ -1634,8 +1635,8 @@ function fix_ptx_kernel()
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Ttildemin",
-                    "kotekan_name" => "Ttildemin",
+                    "name" => "Ttilde_min",
+                    "kotekan_name" => "Ttilde_min",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
@@ -1643,8 +1644,8 @@ function fix_ptx_kernel()
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Ttildemax",
-                    "kotekan_name" => "Ttildemax",
+                    "name" => "Ttilde_max",
+                    "kotekan_name" => "Ttilde_max",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,

@@ -374,6 +374,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         I_meta->freq_upchan_factor[freq] *= cuda_downsampling_factor;
         I_meta->time_downsampling_fpga[freq] *= cuda_downsampling_factor;
     }
+    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
 
     const char* exc_arg = "exception";
     {{#kernel_arguments}}
@@ -396,8 +397,6 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     // Set I_memory to beginning of output ring buffer
     I_arg = array_desc(I_memory, I_length_in_bytes);
-
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
 
     // Ringbuffer size
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
@@ -586,7 +585,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 #endif
 
     // We do not write all frequencies
-    // I_buffer.check_for_poison(0x00);
+    // I_buffer.check_for_poison(0xff);
 
 #ifdef DEBUGGING
     // Check outputs for poison
