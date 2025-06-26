@@ -94,6 +94,8 @@ def print_isot_times(t_str):
     tai_s, tai_ns = get_s_ns_from_jd(t.tai)
     print("TAI {0:d} s {1:d} ns".format(tai_s, tai_ns))
 
+    print("dUT1 {0:.17e} s".format(t.delta_ut1_utc))
+
     ut1_s, ut1_ns = get_s_ns_from_jd(t.ut1)
     print("UT1 {0:d} s {1:d} ns {2:.17e} jd2000".format(ut1_s, ut1_ns,
                                                         (t.ut1.jd1-2451545)
@@ -122,5 +124,5 @@ if __name__ == "__main__":
     args = sys.argv[2:]
 
     if mode == "isot":
-        t_str = args[0]
-        print_isot_times(t_str)
+        for t_str in args:
+            print_isot_times(t_str)

@@ -118,4 +118,4 @@ add_executable(test_Symbol test_Symbol.cpp)
 target_link_libraries(test_Symbol kotekan_metadata)
 
 add_executable(test_timeUtil test_timeUtil.cpp)
-target_link_libraries(test_timeUtil PRIVATE kotekan_utils)
+target_link_libraries(test_timeUtil kotekan_utils)

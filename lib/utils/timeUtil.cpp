@@ -1,6 +1,9 @@
 #include "timeUtil.hpp"
+#include <boost/multiprecision/cpp_int.hpp>
 
 #include <math.h>
+
+using boost::multiprecision::int128_t;
 
 timespec get_UT1_from_time(const timespec& t, double delta_UT1_inst) {
     /*
@@ -147,7 +150,7 @@ double get_ERA_from_UT1(const timespec& ut1, int64_t* n_rot) {
     num_rot += (int64_t)temp;
     double dayfrac_nsec = modf(day_nsec, &temp);
     num_rot += (int64_t)temp;
-    double sidcor_frac_sec = modf(2.73781191135448e-3 * day_sec, &temp);
+    double sidcor_frac_sec =  modf(2.73781191135448e-3 * day_sec, &temp);
     num_rot += (int64_t)temp;
     double sidcor_frac_nsec = modf(2.73781191135448e-3 * day_nsec, &temp);
     num_rot += (int64_t)temp;
@@ -155,6 +158,23 @@ double get_ERA_from_UT1(const timespec& ut1, int64_t* n_rot) {
     double f = modf(
         0.7790572732640 + dayfrac_sec + dayfrac_nsec + sidcor_frac_sec + sidcor_frac_nsec, &temp);
     num_rot += (int64_t)temp;
+
+    //double dayfrac = modf(day_sec, &temp) + modf(day_nsec, &temp);
+    //f = modf(dayfrac + 0.7790572732640 + 2.73781191135448e-3 * (day_sec + day_nsec), &temp);
+    //
+    int128_t t_ns = ((int128_t) t_sec) * 1'000'000'000L + ((int128_t) t_nsec);
+
+    int128_t A =  77'905'727'326'400'000L;
+    int128_t B = 100'273'781'191'135'448L;
+    int64_t day_ns = 86'400'000'000'000L;
+
+    int128_t denom = ((int128_t) 100'000'000'000'000'000L) * day_ns;
+    
+    int128_t tot_17ns = A*day_ns + B*t_ns;
+
+    num_rot = (int64_t) (tot_17ns / denom);
+    int128_t f_17ns = tot_17ns % denom;
+    f = ((double) f_17ns) / ((double) denom);
 
     if (f < 0.0) {
         f += 1;
