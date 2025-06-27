@@ -35,7 +35,7 @@ def get_era_nrot(t):
 
     dt_jd = (t.ut1.jd1 - 2451545.0) + t.ut1.jd2
 
-    nrot = int(0.7790572732640 + dt_jd * 1.00273781191135448)
+    nrot = math.floor(0.7790572732640 + dt_jd * 1.00273781191135448)
 
     return era_deg, nrot
 
@@ -46,9 +46,13 @@ def get_era_nrot_basic(t):
 
     mjd = jd - 2451545.0
 
-    nrot = int(0.7790572732640 + mjd * 1.00273781191135448)
+    nrot = math.floor(0.7790572732640 + mjd * 1.00273781191135448)
 
     era_deg = 360.0 * ((0.7790572732640 + 1.00273781191135448*mjd) % 1.0)
+
+    if era_deg < 0.0:
+        era_deg += 360.0
+        nrot -= 1
 
     return era_deg, nrot
 
@@ -75,7 +79,12 @@ def get_era_nrot_fancy(t):
 
     f_rot, fn_rot = math.modf(arg_rot)
 
-    n_rot = int(jd1n) + int(jd2n) + int(jd1n_sdn) + int(jd2n_sdn) + int(fn_rot)
+    n_rot = (math.floor(jd1n) + math.floor(jd2n) + math.floor(jd1n_sdn)
+             + math.floor(jd2n_sdn) + math.floor(fn_rot))
+
+    if f_rot < 0.0:
+        f_rot += 1.0
+        n_rot -= 1
 
     era_deg = 360.0 * f_rot
 
