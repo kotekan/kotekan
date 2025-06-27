@@ -124,6 +124,8 @@ target_compile_definitions(test_timeUtil PRIVATE TEST_SCRIPT_DIR="${PROJECT_BINA
 add_custom_command(
     OUTPUT ${PROJECT_BINARY_DIR}/timeUtil.py
     DEPENDS ${PROJECT_SOURCE_DIR}/timeUtil.py
-    COMMAND ${CMAKE_COMMAND} ARGS -E copy ${PROJECT_SOURCE_DIR}/timeUtil.py
-            ${PROJECT_BINARY_DIR}/timeUtil.py)
-add_custom_target(test_timeUtil_script ALL DEPENDS ${PROJECT_BINARY_DIR}/timeUtil.py)
+    COMMAND ${CMAKE_COMMAND} ARGS -E copy ${PROJECT_SOURCE_DIR}/timeUtil.py ${PROJECT_BINARY_DIR}/timeUtil.py
+    COMMENT "Copying timeUtil.py script into destination")
+add_custom_target(test_timeUtil_script ALL
+    DEPENDS ${PROJECT_BINARY_DIR}/timeUtil.py
+    COMMENT "Generating timeUtil.py script")
