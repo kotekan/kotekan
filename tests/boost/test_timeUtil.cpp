@@ -5,6 +5,7 @@
 #include <inttypes.h>
 #include <vector>
 #include <time.h>
+#include <sys/wait.h>
 #include "fmt.hpp"
 #include "timeUtil.hpp"
 
@@ -54,7 +55,11 @@ TimeData::TimeData(const std::vector<std::string> &tstrs) {
     cmd += fmt::format(" > {:s}", filename);
 
     std::cout.flush();
-    std::system(cmd.c_str());
+    int sys_ret_val = std::system(cmd.c_str());
+    BOOST_REQUIRE_MESSAGE(WEXITSTATUS(sys_ret_val) == 0,
+            fmt::format(
+                "system python call terminated abnormally with status {:d}",
+                WEXITSTATUS(sys_ret_val)));
 
     std::ifstream file(filename);
     for(std::string line; std::getline(file, line);) {
