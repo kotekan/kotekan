@@ -22,10 +22,10 @@ cadence = T_rot_sec / (n_samps_per_bin * n_bins_per_rot)
 dut1 = 0.0
 
 # Set a time a few seconds before ERA=0.0
-t_start = Time("2024-07-01 05:00:00", scale='utc')
+t_start = Time("2024-07-01 05:00:00", scale="utc")
 # Set the DUT1 to our user value
 t_start.delta_ut1_utc = dut1
-t_end = t_start + (cadence*(n_samps_tot-1)) * units.s
+t_end = t_start + (cadence * (n_samps_tot - 1)) * units.s
 t_end.delta_ut1_utc = dut1
 
 GIGA = 1_000_000_000
@@ -37,7 +37,7 @@ fake_params = {
     "num_frames": n_samps_tot,
     "mode": "fill_ij_missing",
     "cadence": cadence,
-    "start_time": t_start_inst_ns//GIGA,
+    "start_time": t_start_inst_ns // GIGA,
 }
 
 downsamp_params = {
@@ -52,13 +52,13 @@ global_params = {
         "kotekan_update_endpoint": "json",
         "earth_orientation_parameter_table": [
             {
-                "time_inst_ns": t_start_inst_ns - 2000*GIGA,
+                "time_inst_ns": t_start_inst_ns - 2000 * GIGA,
                 "delta_UT1_inst": dut1,
                 "x_pm": 0.1,
                 "y_pm": 0.1,
             },
             {
-                "time_inst_ns": t_end_inst_ns + 2000*GIGA,
+                "time_inst_ns": t_end_inst_ns + 2000 * GIGA,
                 "delta_UT1_inst": dut1,
                 "x_pm": 0.12,
                 "y_pm": 0.12,
@@ -75,8 +75,7 @@ global_params = {
         "inst_dish_alt_axis": [1, 0, 0],
         "inst_dish_vert_axis": [0, 0, 1],
         "inst_alt_deg": 90.0,
-        "dish_positions": [[0.0, 0.0, 0.0],
-                           [1.0, 0.0, 0.0]],
+        "dish_positions": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
         "updatable_config": "/earth_rotation_data",
     },
     "gps_time": {"frame0_nano": t_start_inst_ns},
@@ -86,7 +85,7 @@ global_params = {
 def jd_to_s_ns(jd):
 
     s = int(jd * 86400)
-    ns = int((jd*86400 - s) * GIGA)
+    ns = int((jd * 86400 - s) * GIGA)
 
     return s, ns
 
@@ -106,25 +105,25 @@ def calc_times(t):
         t_ut1_s -= 1
         t_ut1_ns += GIGA
 
-    era = t.earth_rotation_angle('tio').to_value('degree')
+    era = t.earth_rotation_angle("tio").to_value("degree")
 
     return (t_inst_s, t_inst_ns), (t_ut1_s, t_ut1_ns), era
 
 
 def calc_era_bins():
 
-    t_start_center = (t_start + 0.5 * cadence * units.s)
+    t_start_center = t_start + 0.5 * cadence * units.s
     t_start_center.delta_ut1_utc = dut1
-    t_end_center = (t_end + 0.5 * cadence * units.s)
+    t_end_center = t_end + 0.5 * cadence * units.s
     t_end_center.delta_ut1_utc = dut1
 
-    era_start = t_start_center.earth_rotation_angle('tio').to_value('deg')
-    era_end = t_end_center.earth_rotation_angle('tio').to_value('deg')
+    era_start = t_start_center.earth_rotation_angle("tio").to_value("deg")
+    era_end = t_end_center.earth_rotation_angle("tio").to_value("deg")
 
-    n_rot = int((t_end_center - t_start_center).tai.to_value('s') / T_rot_sec)
+    n_rot = int((t_end_center - t_start_center).tai.to_value("s") / T_rot_sec)
 
     if era_end < era_start:
-        era_end += 360.0 * (n_rot+1)
+        era_end += 360.0 * (n_rot + 1)
     else:
         era_end += 360.0 * n_rot
 
@@ -135,7 +134,7 @@ def calc_era_bins():
     bin_idx_start = int(era_start / delta_era) + 1
     bin_idx_end = int(era_end / delta_era)
 
-    bin_indices = np.arange(bin_idx_start, bin_idx_end+1)
+    bin_indices = np.arange(bin_idx_start, bin_idx_end + 1)
     bin_edges_raw = delta_era * bin_indices
 
     bin_edges = bin_edges_raw.copy()
@@ -236,9 +235,7 @@ def test_time(n2_data):
     time_s = time_ns * 1.0e-9
 
     # Check downsampled cadence
-    assert np.all(
-        np.diff(time_s) == fake_params["cadence"] * n_samps_per_bin
-    )
+    assert np.all(np.diff(time_s) == fake_params["cadence"] * n_samps_per_bin)
 
 
 def test_contents(n2_data):
