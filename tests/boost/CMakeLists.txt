@@ -118,4 +118,14 @@ add_executable(test_Symbol test_Symbol.cpp)
 target_link_libraries(test_Symbol kotekan_metadata)
 
 add_executable(test_timeUtil test_timeUtil.cpp)
-target_link_libraries(test_timeUtil kotekan_utils)
+target_link_libraries(test_timeUtil PRIVATE kotekan_utils)
+target_compile_definitions(test_timeUtil
+    PRIVATE TEST_SCRIPT_DIR="${PROJECT_BINARY_DIR}")
+
+add_custom_command(
+    OUTPUT ${PROJECT_BINARY_DIR}/timeUtil.py
+    DEPENDS ${PROJECT_SOURCE_DIR}/timeUtil.py
+    COMMAND ${CMAKE_COMMAND}
+    ARGS -E copy ${PROJECT_SOURCE_DIR}/timeUtil.py ${PROJECT_BINARY_DIR}/timeUtil.py)
+add_custom_target(test_timeUtil_script ALL
+    DEPENDS ${PROJECT_BINARY_DIR}/timeUtil.py)

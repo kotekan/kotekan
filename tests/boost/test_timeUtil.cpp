@@ -42,13 +42,11 @@ bool f_exists(const std::string &name) {
 TimeData::TimeData(const std::vector<std::string> &tstrs) {
 
     std::string filename = "time_dump.txt";
-    std::string script = "";
-    if(f_exists("timeUtil.py"))
-        script = "timeUtil.py";
-    else if(f_exists("boost/timeUtil.py"))
-        script = "boost/timeUtil.py";
+    std::string script = fmt::format("{:s}/timeUtil.py", TEST_SCRIPT_DIR);
 
-    BOOST_REQUIRE(script.size() > 0);
+    BOOST_REQUIRE_MESSAGE(f_exists(script),
+            fmt::format("critical script {:s}/timeUtil.py was not found",
+                TEST_SCRIPT_DIR));
 
     std::string cmd = fmt::format("python3 {:s} isot", script);
     for(const std::string &tstr : tstrs)
