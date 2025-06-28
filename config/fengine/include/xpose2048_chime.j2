@@ -299,19 +299,17 @@ run_xpose2048:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
-            host_scatter_indices_buffer_in: host_scatter_indices_buffer
+            host_scatter_indices_buffer: host_scatter_indices_buffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
         out_buffers:
-            host_xposed_voltage_ringbuffer_out: host_xposed_voltage_ringbuffer
+            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_scatter_indices_buffer_in
+          in_buf: host_scatter_indices_buffer
           gpu_mem: scatter_indices_buffer
         - name: cudaSyncInput
         - name: cudaTranspose2048_chime
-          voltage_signal_in: host_voltage_ringbuffer_in
-          voltage_signal_out: host_xposed_voltage_ringbuffer_out
           input_voltage_name: voltage
           scatter_indices_name: scatter_indices
           output_voltage_name: xposed_voltage

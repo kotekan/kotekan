@@ -318,7 +318,8 @@ cudaCHIMEFRBBeamformer_chime_U16::cudaCHIMEFRBBeamformer_chime_U16(Config& confi
     I_name(config.get<std::string>(unique_name, "frb_beamgrid_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
-    W_buffer(W_name, W_quantity, reverse(W_lengths), reverse(W_labels), *this),
+    W_buffer(W_name, W_quantity, reverse(W_lengths), reverse(W_labels), *this,
+             buffer_type_t::do_once),
     Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels), *this),
     I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), *this),
     info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),

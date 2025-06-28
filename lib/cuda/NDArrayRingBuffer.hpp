@@ -365,19 +365,24 @@ public:
             const bool found_error =
                 std::find_if(local_data.begin(), local_data.end(), check_for_poison)
                 != local_data.end();
-            // if (found_error) {
-            //     for (std::ptrdiff_t t = 0; t < T_length; ++t) {
-            //         bool any_error = false;
-            //         for (std::ptrdiff_t n = 0; n < T_stride; ++n) {
-            //             const auto val = local_data.at(t * T_stride + n);
-            //             any_error |= val == poison_value;
-            //         }
-            //         if (any_error)
-            //             DEBUG("    [{}]={:#02x}", t, poison_value);
-            //     }
-            // }
             if (found_error)
-                FATAL_ERROR("NDArray buffer {:s} contains poison", buffer_name);
+                ERROR("NDArray ring buffer {:s} contains poison at {}/{}", buffer_name,
+                      std::find_if(local_data.begin(), local_data.end(), check_for_poison)
+                          - local_data.begin(),
+                      local_data.size());
+            if (found_error) {
+                for (std::ptrdiff_t t = 0; t < T_length; ++t) {
+                    bool any_error = false;
+                    for (std::ptrdiff_t n = 0; n < T_stride / std::ptrdiff_t(sizeof(T)); ++n) {
+                        const auto val = local_data.at(t * T_stride / sizeof(T) + n);
+                        any_error |= check_for_poison(val);
+                    }
+                    if (any_error)
+                        ERROR("    poison: [chunk={}][t={}]={:#02x}", chunk, t, poison_value);
+                }
+            }
+            if (found_error)
+                FATAL_ERROR("NDArray ring buffer {:s} contains poison", buffer_name);
             assert(!found_error);
         } // for chunk
 #endif

@@ -80,7 +80,7 @@ host_frb2_phase_buffer:
 host_frb1_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times 
+    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
     metadata_pool: main_pool
 host_frb1_beams_ringbuffer:
     kotekan_buffer: ring
@@ -290,15 +290,15 @@ run_frb23:
         gpu_id: 0
         in_buffers:
             host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
-            host_frb2_phase_in: host_frb2_phase_buffer
+            host_frb2_phase_buffer: host_frb2_phase_buffer
         out_buffers:
-            host_frb2_beams_out: host_frb2_beams_buffer
-            host_frb3_beams_out: host_frb3_beams_buffer
-            host_frb3_beams_meanstd_out: host_frb3_beams_meanstd_buffer
+            host_frb2_beams_buffer: host_frb2_beams_buffer
+            host_frb3_beams_buffer: host_frb3_beams_buffer
+            host_frb3_beams_meanstd_buffer: host_frb3_beams_meanstd_buffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_frb2_phase_in
+          in_buf: host_frb2_phase_buffer
           gpu_mem: frb2_phase_buffer
         - name: cudaFRBBeamReformer
           max_num_local_freq: upchan_all_max_num_output_channels
@@ -323,10 +323,10 @@ run_frb23:
         - name: cudaOutputData
           # TODO: Don't do this in production
           gpu_mem: frb2_beams_buffer
-          out_buf: host_frb2_beams_out
+          out_buf: host_frb2_beams_buffer
         - name: cudaOutputData
           gpu_mem: frb3_beams_buffer
-          out_buf: host_frb3_beams_out
+          out_buf: host_frb3_beams_buffer
         - name: cudaOutputData
           gpu_mem: frb3_beams_meanstd_buffer
-          out_buf: host_frb3_beams_meanstd_out
+          out_buf: host_frb3_beams_meanstd_buffer

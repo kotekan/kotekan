@@ -1,6 +1,6 @@
 # -*-yaml-*-
 
-# CHIME RFI setup
+# HIRAX RFI setup
 
 ################################################################################
 
@@ -49,15 +49,14 @@ run_rfi_S012:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            # TODO: transpose pl_mask
             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
-            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
         out_buffers:
             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
         commands:
         - name: cudaRFIS012
           pl_mask_name: pl_mask
-          voltage_name: xposed_voltage
+          voltage_name: voltage
           rfi_S012_name: rfi_S012
 
 run_rfi_S012tilde:
@@ -74,7 +73,7 @@ run_rfi_S012tilde:
           do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
-        - name: cudaSyncOutput
+        - name: cudaSyncInput
         - name: cudaRFIS012tilde
           bf_mask_name: bf_mask
           rfi_S012_name: rfi_S012

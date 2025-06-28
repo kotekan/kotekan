@@ -6,17 +6,24 @@
 
 # Output
 
-write_data:
-    # base_dir:
+write_data_asdf:
     write_dish_positions:
         kotekan_stage: asdfFileWrite
         in_buf: host_dish_positions_buffer
         file_name: dish_positions
+    write_bf_mask:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_bf_mask_buffer
+        file_name: bf_mask
+    write_pl_mask:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_pl_mask_buffer
+        file_name: pl_mask
     write_voltage:
         kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
-        max_frames: 40
+        max_frames: 25
     write_bb_beam_positions:
         kotekan_stage: asdfFileWrite
         in_buf: host_bb_beam_positions_buffer
@@ -94,17 +101,24 @@ write_data:
     #     in_buf: host_expected_frb1_beams_buffer
     #     file_name: expected_frb1_beams
 
-write_data2:
-    # base_dir:
+write_data_zarr:
     write_dish_positions:
         kotekan_stage: gdalFileWrite
         in_buf: host_dish_positions_buffer
         file_name: dish_positions
+    write_bf_mask:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_bf_mask_buffer
+        file_name: bf_mask
+    write_pl_mask:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_pl_mask_buffer
+        file_name: pl_mask
     write_voltage:
         kotekan_stage: gdalFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
-        max_frames: 40
+        max_frames: 25
     write_bb_beam_positions:
         kotekan_stage: gdalFileWrite
         in_buf: host_bb_beam_positions_buffer

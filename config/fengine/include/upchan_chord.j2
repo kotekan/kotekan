@@ -225,19 +225,17 @@ run_upchan_U2:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
-            host_upchan_U2_gain_buffer_in: host_upchan_U2_gain_buffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_upchan_U2_gain_buffer: host_upchan_U2_gain_buffer
         out_buffers:
-            host_upchan_U2_voltage_ringbuffer_out: host_upchan_U2_voltage_ringbuffer
+            host_upchan_U2_voltage_ringbuffer: host_upchan_U2_voltage_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_upchan_U2_gain_buffer_in
+          in_buf: host_upchan_U2_gain_buffer
           gpu_mem: upchan_U2_gain_buffer
         - name: cudaSyncInput
         - name: cudaUpchannelizer_chord_U2
-          voltage_signal_in: host_voltage_ringbuffer_in
-          upchan_U2_voltage_signal_out: host_upchan_U2_voltage_ringbuffer_out
           voltage_name: voltage
           upchan_U2_gain_name: upchan_U2_gain
           upchan_U2_voltage_name: upchan_U2_voltage
@@ -249,19 +247,17 @@ run_upchan_U4:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
-            host_upchan_U4_gain_buffer_in: host_upchan_U4_gain_buffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_upchan_U4_gain_buffer: host_upchan_U4_gain_buffer
         out_buffers:
-            host_upchan_U4_voltage_ringbuffer_out: host_upchan_U4_voltage_ringbuffer
+            host_upchan_U4_voltage_ringbuffer: host_upchan_U4_voltage_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_upchan_U4_gain_buffer_in
+          in_buf: host_upchan_U4_gain_buffer
           gpu_mem: upchan_U4_gain_buffer
         - name: cudaSyncInput
         - name: cudaUpchannelizer_chord_U4
-          voltage_signal_in: host_voltage_ringbuffer_in
-          upchan_U4_voltage_signal_out: host_upchan_U4_voltage_ringbuffer_out
           voltage_name: voltage
           upchan_U4_gain_name: upchan_U4_gain
           upchan_U4_voltage_name: upchan_U4_voltage
@@ -273,19 +269,17 @@ run_upchan_U8:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
-            host_upchan_U8_gain_buffer_in: host_upchan_U8_gain_buffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_upchan_U8_gain_buffer: host_upchan_U8_gain_buffer
         out_buffers:
-            host_upchan_U8_voltage_ringbuffer_out: host_upchan_U8_voltage_ringbuffer
+            host_upchan_U8_voltage_ringbuffer: host_upchan_U8_voltage_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_upchan_U8_gain_buffer_in
+          in_buf: host_upchan_U8_gain_buffer
           gpu_mem: upchan_U8_gain_buffer
         - name: cudaSyncInput
         - name: cudaUpchannelizer_chord_U8
-          voltage_signal_in: host_voltage_ringbuffer_in
-          upchan_U8_voltage_signal_out: host_upchan_U8_voltage_ringbuffer_out
           voltage_name: voltage
           upchan_U8_gain_name: upchan_U8_gain
           upchan_U8_voltage_name: upchan_U8_voltage
@@ -297,19 +291,17 @@ run_upchan_U16:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
-            host_upchan_U16_gain_buffer_in: host_upchan_U16_gain_buffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_upchan_U16_gain_buffer: host_upchan_U16_gain_buffer
         out_buffers:
-            host_upchan_U16_voltage_ringbuffer_out: host_upchan_U16_voltage_ringbuffer
+            host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_upchan_U16_gain_buffer_in
+          in_buf: host_upchan_U16_gain_buffer
           gpu_mem: upchan_U16_gain_buffer
         - name: cudaSyncInput
         - name: cudaUpchannelizer_chord_U16
-          voltage_signal_in: host_voltage_ringbuffer_in
-          upchan_U16_voltage_signal_out: host_upchan_U16_voltage_ringbuffer_out
           voltage_name: voltage
           upchan_U16_gain_name: upchan_U16_gain
           upchan_U16_voltage_name: upchan_U16_voltage
@@ -321,19 +313,17 @@ run_upchan_U32:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
-            host_upchan_U32_gain_buffer_in: host_upchan_U32_gain_buffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_upchan_U32_gain_buffer: host_upchan_U32_gain_buffer
         out_buffers:
-            host_upchan_U32_voltage_ringbuffer_out: host_upchan_U32_voltage_ringbuffer
+            host_upchan_U32_voltage_ringbuffer: host_upchan_U32_voltage_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_upchan_U32_gain_buffer_in
+          in_buf: host_upchan_U32_gain_buffer
           gpu_mem: upchan_U32_gain_buffer
         - name: cudaSyncInput
         - name: cudaUpchannelizer_chord_U32
-          voltage_signal_in: host_voltage_ringbuffer_in
-          upchan_U32_voltage_signal_out: host_upchan_U32_voltage_ringbuffer_out
           voltage_name: voltage
           upchan_U32_gain_name: upchan_U32_gain
           upchan_U32_voltage_name: upchan_U32_voltage
@@ -345,19 +335,17 @@ run_upchan_U64:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
-            host_upchan_U64_gain_buffer_in: host_upchan_U64_gain_buffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_upchan_U64_gain_buffer: host_upchan_U64_gain_buffer
         out_buffers:
-            host_upchan_U64_voltage_ringbuffer_out: host_upchan_U64_voltage_ringbuffer
+            host_upchan_U64_voltage_ringbuffer: host_upchan_U64_voltage_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_upchan_U64_gain_buffer_in
+          in_buf: host_upchan_U64_gain_buffer
           gpu_mem: upchan_U64_gain_buffer
         - name: cudaSyncInput
         - name: cudaUpchannelizer_chord_U64
-          voltage_signal_in: host_voltage_ringbuffer_in
-          upchan_U64_voltage_signal_out: host_upchan_U64_voltage_ringbuffer_out
           voltage_name: voltage
           upchan_U64_gain_name: upchan_U64_gain
           upchan_U64_voltage_name: upchan_U64_voltage

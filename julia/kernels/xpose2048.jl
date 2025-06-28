@@ -595,6 +595,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                         "axes" => [Dict("label" => "D", "length" => D), Dict("label" => "P", "length" => P)],
                         "isoutput" => false,
                         "hasbuffer" => true,
+                        "do_once" => true,
                     ),
                     Dict(
                         "name" => "info",

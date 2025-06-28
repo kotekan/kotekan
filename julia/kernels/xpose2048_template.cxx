@@ -257,21 +257,21 @@ cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}
 
 int cuda{{{kernel_name}}}::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
-    const std::ptrdiff_t T_ringbuf = Ein_buffer.get_ndarray().extent(0);
-    const std::ptrdiff_t T_read_max = T_ringbuf / 4;
+    const std::ptrdiff_t Tin_ringbuf = Ein_buffer.get_ndarray().extent(0);
+    const std::ptrdiff_t Tin_read_max = Tin_ringbuf / 4;
+    std::ptrdiff_t Tin_read = -1;
     {
-        const int errcode = Ein_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
+        const int errcode = Ein_buffer.wait_and_claim_readable([&](const std::ptrdiff_t Tin_available) {
             using std::min;
-            const std::ptrdiff_t T_read = round_down(min(T_available, T_read_max), cuda_granularity_number_of_timesamples);
-                return read_descriptor_t{.claimed = T_read, .read = T_read};
+            Tin_read = round_down(min(Tin_available, Tin_read_max), cuda_granularity_number_of_timesamples);
+                return read_descriptor_t{.claimed = Tin_read, .read = Tin_read};
         });
         if (errcode < 0)
             return errcode;
     }
-    const std::ptrdiff_t T_read = Ein_buffer.get_end_read_valid() - E_buffer.get_begin_read_valid();
 
     // Wait for space to be available in output ringbuffer
-    const std::ptrdiff_t T_written = T_read;
+    const std::ptrdiff_t T_written = Tin_read;
     {
         const int errcode = E_buffer.wait_for_writable(T_written);
         if (errcode < 0)
@@ -294,7 +294,29 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{#kernel_arguments}}
         {{#hasbuffer}}
             {{^isoutput}}
-                {{{name}}}_buffer.check_metadata();
+                if (args::{{{name}}} == args::Ein) {
+                    // Replace "Ein" with "E" etc.
+                    // {{{name}}}_buffer.check_metadata();
+                    const std::string quantity = "E";
+                    const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
+                    const std::shared_ptr<const chordMetadata> metadata = Ein_buffer.get_metadata();
+                    if (!(metadata->get_name() == quantity))
+                        ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}", Ein_buffer.get_buffer_name(), quantity,
+                              metadata->get_name());
+                    assert(metadata->get_name() == quantity);
+                    const auto& ndarray = Ein_buffer.get_ndarray();
+                    assert(metadata->type == ndarray.value_datatype);
+                    assert(metadata->dims == ndarray.rank);
+                    for (std::size_t d = 0; d < ndarray.rank; ++d) {
+                        assert(metadata->get_dimension_name(d) == dimname[d]);
+                        // The ring buffer direction is special
+                        if (d > 0)
+                            assert(metadata->dim[d] == int(ndarray.extent(d)));
+                        assert(metadata->stride[d] == ndarray.stride(d));
+                    }
+                } else {
+                    {{{name}}}_buffer.check_metadata();
+                }
             {{/isoutput}}
             {{#isoutput}}
                 {{{name}}}_buffer.set_metadata(Ein_buffer.get_metadata());

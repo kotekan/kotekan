@@ -1,11 +1,13 @@
 # -*-yaml-*-
 
-# CHIME RFI setup
+# CHORD RFI setup
 
 ################################################################################
 
-# from 2.56 μs to 1.31072 ms
-rfi_downsampling_factor: 512
+# from 5.12 μs to 1.31072 ms
+rfi_downsampling_factor: 256
+# from  1.31072 ms to 31.45728 ms
+rfi_second_downsampling_factor: 24
 
 rfi_sk_rfimask_sigmas: 5.0
 rfi_single_feed_min_good_frac: 0.8
@@ -23,21 +25,23 @@ rfi_num_times_tilde: rfi_num_times
 host_rfi_S012_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * num_times / rfi_downsampling_factor
+    frame_size: sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times
     metadata_pool: main_pool
 host_rfi_S012_ringbuffer:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * num_times / rfi_downsampling_factor
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times
     metadata_pool: main_pool
 
 host_rfi_S012tilde_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: sizeof_uint64 * 3 * num_frequencies * num_times / rfi_downsampling_factor
+    frame_size: sizeof_uint64 * 3 * num_frequencies * rfi_num_times_tilde
     metadata_pool: main_pool
 host_rfi_S012tilde_ringbuffer:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * sizeof_uint64 * 3 * num_frequencies * num_times / rfi_downsampling_factor
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_uint64 * 3 * num_frequencies * rfi_num_times_tilde
     metadata_pool: main_pool
 
 ################################################################################
@@ -49,15 +53,14 @@ run_rfi_S012:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            # TODO: transpose pl_mask
             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
-            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
         out_buffers:
             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
         commands:
         - name: cudaRFIS012
           pl_mask_name: pl_mask
-          voltage_name: xposed_voltage
+          voltage_name: voltage
           rfi_S012_name: rfi_S012
 
 run_rfi_S012tilde:
@@ -74,7 +77,7 @@ run_rfi_S012tilde:
           do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
-        - name: cudaSyncOutput
+        - name: cudaSyncInput
         - name: cudaRFIS012tilde
           bf_mask_name: bf_mask
           rfi_S012_name: rfi_S012

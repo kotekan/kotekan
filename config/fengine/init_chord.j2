@@ -9,7 +9,7 @@
 ---
 log_level: debug
 
-fengine_num_frames: 20
+fengine_num_frames: 25
 fengine_repeat_count: 1
 
 skip_julia: false
@@ -19,6 +19,7 @@ base_dir: data/fengine_init_chord
 {% include "include/defs.j2" %}
 {% include "include/fengine_chord.j2" %}
 
+{% include "include/rfi_chord.j2" %}
 {% include "include/n2k_chord.j2" %}
 {% include "include/bb_chord.j2" %}
 {% include "include/upchan_chord.j2" %}

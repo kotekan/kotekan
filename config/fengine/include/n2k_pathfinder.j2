@@ -38,7 +38,7 @@ run_n2k:
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
         out_buffers:
-            host_n2k_correlation_buffer_out: host_n2k_correlation_buffer
+            host_n2k_correlation_buffer: host_n2k_correlation_buffer
         commands:
         - name: cudaCorrelator
           num_elements: num_dishes * num_polarizations
@@ -50,4 +50,4 @@ run_n2k:
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: n2k_correlation_buffer
-          out_buf: host_n2k_correlation_buffer_out
+          out_buf: host_n2k_correlation_buffer
