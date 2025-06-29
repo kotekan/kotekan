@@ -403,26 +403,14 @@ struct SkKernel
 	const uint8_t *in_bf_mask,            // Length S (bad feed mask)
 	long rfimask_fstride,                 // Only used if (out_rfimask != NULL). NOTE: uint32 stride, not bit stride!
 	long T,                               // Number of downsampled times in S012 array
-        long Tmin,                            // first time sample in input array
-        long Tsize,                           // ringbuffer size
 	long F,                               // Number of frequency channels
 	long S,                               // Number of stations (= 2 * dishes)
-	cudaStream_t stream = 0,
-	bool check_params = true) const;
-
-    // Bare-pointer launch() interface.
-    // Launches asynchronously (i.e. does not synchronize stream or device after launching kernel.)
-    
-    void launch(
-        float *out_sk_feed_averaged,          // Shape (T,F,3)
-	float *out_sk_single_feed,            // Shape (T,F,3,S), can be NULL
-	uint *out_rfimask,                    // Shape (F,T*Nds/32), can be NULL
-	const ulong *in_S012,                 // Shape (T,F,3,S)
-	const uint8_t *in_bf_mask,            // Length S (bad feed mask)
-	long rfimask_fstride,                 // Only used if (out_rfimask != NULL). NOTE: uint32 stride, not bit stride!
-	long T,                               // Number of downsampled times in S012 array
-	long F,                               // Number of frequency channels
-	long S,                               // Number of stations (= 2 * dishes)
+        long S012_Tmin,                       // First time sample in S012 array
+        long S012_Tsize,                      // Number of time samples in S012 array
+        long sk_feed_averaged_Tmin,           // First time sample in sk_feed_averaged array
+        long sk_feed_averaged_Tsize,          // Number of time samples in sk_feed_averaged array
+        long rfimask_T128min,                 // First (coarse) time sample in rfimask array
+        long rfimask_T128size,                // Number of (coarse) time samples in rfimask array
 	cudaStream_t stream = 0,
 	bool check_params = true) const;
     
