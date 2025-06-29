@@ -47,8 +47,8 @@ private:
     //    S012bar     s012_time_downsample_kernel
     //    SKtilde     skKernel
     //    RFImask     skKernel
-    //    SKtildebar  skKernel
     //    SKbar       skKernel
+    //    SKbartilde  skKernel
 
     // Parameters
     const int buffer_depth;

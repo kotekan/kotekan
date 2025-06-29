@@ -48,8 +48,8 @@ private:
     //    S012bar     s012_time_downsample_kernel
     //    SKtilde     skKernel
     //    RFImask     skKernel
-    //    SKtildebar  skKernel
     //    SKbar       skKernel
+    //    SKbartilde  skKernel
 
     // Parameters
     const int buffer_depth;
@@ -200,12 +200,15 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     const long S012_Tsize = rfi_S012.get_ndarray().get_extent(0);
     const long sk_feed_averaged_Tmin = rfi_SKtilde.get_read_valid().begin();
     const long sk_feed_averaged_Tsize = rfi_SKtilde.get_ndarray().get_extent(0);
+    const long sk_single_feed_Tmin = 0;
+    const long sk_single_feed_Tsize = 0;
     const long rfimask_T128min = rfi_RFImask.get_read_valid().begin();
     const long rfimask_T128size = rfi_RFImask.get_ndarray().get_extent(0);
     const cudaStream_t stream = device.getStream(cuda_stream_id);
     skKernel.launch(out_sk_feed_averaged, out_sk_single_feed, out_rfimask, in_S012, in_bf_mask,
                     rfimask_fstride, T, F, S, S012_Tmin, S012_Tsize, sk_feed_averaged_Tmin,
-                    sk_feed_averaged_Tsize, rfimask_T128min, rfimask_T128size, stream);
+                    sk_feed_averaged_Tsize, sk_single_feed_Tmin, sk_single_feed_Tsize,
+                    rfimask_T128min, rfimask_T128size, stream);
 
     return record_end_event();
 }

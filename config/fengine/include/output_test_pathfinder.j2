@@ -86,6 +86,38 @@ run_recv_rfi_RFImask:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_RFImask_buffer
 
+run_recv_rfi_SKbar:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_SKbar_ringbuffer: host_rfi_SKbar_ringbuffer
+        out_buffers:
+            host_rfi_SKbar_buffer: host_rfi_SKbar_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_SKbar_ringbuffer
+          gpu_mem_input: rfi_SKbar_buffer
+          output_size: sizeof_float32 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_SKbar_buffer
+
+run_recv_rfi_SKbarbartilde:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_SKbartilde_ringbuffer: host_rfi_SKbartilde_ringbuffer
+        out_buffers:
+            host_rfi_SKbartilde_buffer: host_rfi_SKbartilde_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_SKbartilde_ringbuffer
+          gpu_mem_input: rfi_SKbartilde_buffer
+          output_size: sizeof_float32 * 3 * num_frequencies * rfi_num_times_bar
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_SKbartilde_buffer
+
 run_recv_upchan_U2_voltage:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -237,6 +269,14 @@ write_data_asdf:
         kotekan_stage: asdfFileWrite
         in_buf: host_rfi_RFImask_buffer
         file_name: rfi_RFImask
+    write_rfi_SKbar:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_rfi_SKbar_buffer
+        file_name: rfi_SKbar
+    write_rfi_SKbartilde:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_rfi_SKbartilde_buffer
+        file_name: rfi_SKbartilde
     write_n2k_correlation:
         kotekan_stage: asdfFileWrite
         in_buf: host_n2k_correlation_buffer
@@ -400,6 +440,14 @@ write_data_zarr:
         kotekan_stage: gdalFileWrite
         in_buf: host_rfi_RFImask_buffer
         file_name: rfi_RFImask
+    write_rfi_SKbar:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_rfi_SKbar_buffer
+        file_name: rfi_SKbar
+    write_rfi_SKbartilde:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_rfi_SKbartilde_buffer
+        file_name: rfi_SKbartilde
     write_n2k_correlation:
         kotekan_stage: gdalFileWrite
         in_buf: host_n2k_correlation_buffer

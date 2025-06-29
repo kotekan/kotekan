@@ -48,12 +48,11 @@ private:
     //    S012bar     s012_time_downsample_kernel
     //    SKtilde     skKernel
     //    RFImask     skKernel
-    //    SKtildebar  skKernel
     //    SKbar       skKernel
+    //    SKbartilde  skKernel
 
     // Parameters
     const int buffer_depth;
-    const int num_times;
     const int num_frequencies;
     const int num_polarizations;
     const int num_dishes;
@@ -79,7 +78,6 @@ cudaRFIS012bar::cudaRFIS012bar(kotekan::Config& config, const std::string& uniqu
                 "cudaRFIS012bar"),
     // Parameters
     buffer_depth(config.get<int>(unique_name, "buffer_depth")),
-    num_times(config.get<int>(unique_name, "num_times")),
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),

@@ -94,8 +94,10 @@ __global__ void sk_kernel(
     int S,                               // Number of stations (= 2*dishes)
     int S012_Tmin,                       // First time sample in S012 array
     int S012_Tsize,                      // Number of time samples in S012 array
-    int sk_feed_averaged_Tmin,           // First time sample in sk array
-    int sk_feed_averaged_Tsize,          // Number of time samples in sk array
+    int sk_feed_averaged_Tmin,           // First time sample in sk_feed_averaged array
+    int sk_feed_averaged_Tsize,          // Number of time samples in sk_feed_averaged array
+    int sk_single_feed_Tmin,             // First time sample in sk_single_feed array
+    int sk_single_feed_Tsize,            // Number of time samples in sk_single_feed array
     int rfimask_T128min,                 // First (coarse) time sample in rfimask array
     int rfimask_T128size)                // Number of (coarse) time samples in rfimask array
 {
@@ -113,6 +115,14 @@ __global__ void sk_kernel(
         return *(out_sk_feed_averaged
                  + ((&lval - out_sk_feed_averaged + out_sk_feed_averaged_min_in_elems)
                     % out_sk_feed_averaged_size_in_elems));
+    };
+
+    const auto ringbuffer_sk_single_feed = [=](float& lval) -> float& {
+        const int out_sk_single_feed_min_in_elems = sk_single_feed_Tmin * F * 3 * S;
+        const int out_sk_single_feed_size_in_elems = sk_single_feed_Tsize * F * 3 * S;
+        return *(out_sk_single_feed
+                 + ((&lval - out_sk_single_feed + out_sk_single_feed_min_in_elems)
+                    % out_sk_single_feed_size_in_elems));
     };
 
     const auto ringbuffer_rfimask = [=](uint& lval) -> uint& {
@@ -230,9 +240,9 @@ __global__ void sk_kernel(
 	// Note: invalid entry is reprsented by (sk,b,sigma) = (0,0,-1).
 
 	if (write_sf) {
-	    out_sk_single_feed[s] = sf_valid ? sk : 0.0f;
-	    out_sk_single_feed[s+S] = sf_valid ? b : 0.0f;
-	    out_sk_single_feed[s+2*S] = sf_valid ? sigma : -1.0f;
+	    ringbuffer_sk_single_feed(out_sk_single_feed[s]) = sf_valid ? sk : 0.0f;
+	    ringbuffer_sk_single_feed(out_sk_single_feed[s+S]) = sf_valid ? b : 0.0f;
+	    ringbuffer_sk_single_feed(out_sk_single_feed[s+2*S]) = sf_valid ? sigma : -1.0f;
 	}
 
 	// Accumulate single-feed contribution to feed-averaged SK statistics.
@@ -519,6 +529,8 @@ void SkKernel::launch(
     long S012_Tsize,                      // Number of time samples in S012 array
     long sk_feed_averaged_Tmin,           // First time sample in sk_feed_averaged array
     long sk_feed_averaged_Tsize,          // Number of time samples in sk_feed_averaged array
+    long sk_single_feed_Tmin,             // First time sample in sk_single_feed array
+    long sk_single_feed_Tsize,            // Number of time samples in sk_single_feed array
     long rfimask_T128min,                 // First (coarse) time sample in rfimask array
     long rfimask_T128size,                // Number of (coarse) time samples in rfimask array
     cudaStream_t stream,
@@ -604,6 +616,7 @@ void SkKernel::launch(
 	 T, F, S,                             // long -> int
 	 S012_Tmin, S012_Tsize,               // long -> int
          sk_feed_averaged_Tmin, sk_feed_averaged_Tsize,  // long -> int
+         sk_single_feed_Tmin, sk_single_feed_Tsize,  // long -> int
          rfimask_T128min, rfimask_T128size);  // long -> int
 
     CUDA_PEEK("sk_kernel");
@@ -668,7 +681,7 @@ void SkKernel::launch(
 	in_bf_mask.data,
 	rfimask_fstride,
 	T, F, S,
-        0, 1<<30, 0, 1<<30, 0, 1<<30,
+        0, 1<<30, 0, 1<<30, 0, 1<<30, 0, 1<<30,
 	stream,
 	false);   // check_params
 }

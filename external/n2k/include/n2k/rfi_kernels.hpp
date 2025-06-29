@@ -411,6 +411,8 @@ struct SkKernel
         long S012_Tsize,                      // Number of time samples in S012 array
         long sk_feed_averaged_Tmin,           // First time sample in sk_feed_averaged array
         long sk_feed_averaged_Tsize,          // Number of time samples in sk_feed_averaged array
+        long sk_single_feed_Tmin,             // First time sample in sk_single_feed array
+        long sk_single_feed_Tsize,            // Number of time samples in sk_single_feed array
         long rfimask_T128min,                 // First (coarse) time sample in rfimask array
         long rfimask_T128size,                // Number of (coarse) time samples in rfimask array
 	cudaStream_t stream = 0,
