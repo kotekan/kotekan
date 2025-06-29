@@ -122,45 +122,46 @@ cudaRFIS012::~cudaRFIS012() {}
 int cudaRFIS012::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
     DEBUG("Waiting for pl_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const std::ptrdiff_t pl_mask_ringbuf = pl_mask.get_ndarray().extent(0);
+    const std::ptrdiff_t pl_mask_read_max = pl_mask_ringbuf / 4;
+    std::ptrdiff_t pl_mask_read = -1;
     const int pl_mask_errcode =
         pl_mask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
             // We are downsampling, so we need to process in batches
             // that have a multiple `rfi_downsampling_factor` elements
-            assert(rfi_downsampling_factor % 128 == 0);
-            const std::ptrdiff_t processed_elements =
-                round_down(available_elements, rfi_downsampling_factor);
-            return read_descriptor_t{.claimed = processed_elements, .read = processed_elements};
+            using std::min;
+            pl_mask_read = round_down(min(available_elements, pl_mask_read_max),
+                                      div_noremainder(rfi_downsampling_factor, 128));
+            return read_descriptor_t{.claimed = pl_mask_read, .read = pl_mask_read};
         });
     if (pl_mask_errcode < 0)
         return pl_mask_errcode;
-    const std::ptrdiff_t processed_elements =
-        128 * (pl_mask.get_end_read_valid() - pl_mask.get_begin_read_valid());
-    const std::ptrdiff_t produced_elements =
-        div_noremainder(processed_elements, rfi_downsampling_factor);
     DEBUG("Done waiting for pl_mask input ringbuffer data for frame {:d}; will read {:d} elements",
-          gpu_frame_id, processed_elements);
+          gpu_frame_id, pl_mask_read);
 
     DEBUG("Waiting for voltage input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const std::ptrdiff_t voltage_read = pl_mask_read * 128;
     const int voltage_errcode =
         voltage.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
             // Process the same number of elements as from `pl_mask`
-            if (available_elements < processed_elements)
+            if (available_elements < voltage_read)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else
-                return read_descriptor_t{.claimed = processed_elements, .read = processed_elements};
+                return read_descriptor_t{.claimed = voltage_read, .read = voltage_read};
         });
     if (voltage_errcode < 0)
         return voltage_errcode;
     DEBUG("Done waiting for voltage input ringbuffer data for frame {:d}; will read {:d} elements",
-          gpu_frame_id, processed_elements);
+          gpu_frame_id, voltage_read);
 
     DEBUG("Waiting for rfi_S012 output ringbuffer space for frame {:d}...", gpu_frame_id);
-    const int rfi_S012_errcode = rfi_S012.wait_for_writable(produced_elements);
+    const std::ptrdiff_t rfi_S012_written = div_noremainder(voltage_read, rfi_downsampling_factor);
+    const int rfi_S012_errcode = rfi_S012.wait_for_writable(rfi_S012_written);
     if (rfi_S012_errcode < 0)
         return rfi_S012_errcode;
     DEBUG(
         "Done waiting for rfi_S012 input ringbuffer data for frame {:d}; will write {:d} elements",
-        gpu_frame_id, produced_elements);
+        gpu_frame_id, rfi_S012_written);
 
     return 0;
 }
@@ -188,9 +189,9 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
 
     const std::ptrdiff_t Tsize = voltage.get_ndarray().extent(0);
     assert(Tsize % rfi_downsampling_factor == 0);
-    const std::ptrdiff_t Tmin = voltage.get_begin_read_valid();
+    const std::ptrdiff_t Tmin = voltage.get_read_valid().begin();
     assert(Tmin % 128 == 0);
-    const std::ptrdiff_t T = voltage.get_end_read_valid() - voltage.get_begin_read_valid();
+    const std::ptrdiff_t T = voltage.get_read_valid().size();
 
     const int F_stride = rfi_S012.get_ndarray().stride(1);
     const int S_stride = rfi_S012.get_ndarray().stride(2);

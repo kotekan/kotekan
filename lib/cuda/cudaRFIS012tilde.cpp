@@ -114,25 +114,28 @@ cudaRFIS012tilde::~cudaRFIS012tilde() {}
 int cudaRFIS012tilde::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
     DEBUG("Waiting for rfi_S012 input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const std::ptrdiff_t rfi_S012_ringbuf = rfi_S012.get_ndarray().extent(0);
+    const std::ptrdiff_t rfi_S012_read_max = rfi_S012_ringbuf / 4;
+    std::ptrdiff_t rfi_S012_read = -1;
     const int rfi_S012_errcode =
         rfi_S012.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
-            return read_descriptor_t{.claimed = available_elements, .read = available_elements};
+            using std::min;
+            rfi_S012_read = min(available_elements, rfi_S012_read_max);
+            return read_descriptor_t{.claimed = rfi_S012_read, .read = rfi_S012_read};
         });
     if (rfi_S012_errcode < 0)
         return rfi_S012_errcode;
-    const std::ptrdiff_t processed_elements =
-        rfi_S012.get_end_read_valid() - rfi_S012.get_begin_read_valid();
-    const std::ptrdiff_t produced_elements = processed_elements;
     DEBUG("Done waiting for rfi_S012 input ringbuffer data for frame {:d}; will read {:d} elements",
-          gpu_frame_id, processed_elements);
+          gpu_frame_id, rfi_S012_read);
 
     DEBUG("Waiting for rfi_S012tilde output ringbuffer space for frame {:d}...", gpu_frame_id);
-    const int rfi_S012tilde_errcode = rfi_S012tilde.wait_for_writable(produced_elements);
+    const std::ptrdiff_t rfi_S012tilde_written = rfi_S012_read;
+    const int rfi_S012tilde_errcode = rfi_S012tilde.wait_for_writable(rfi_S012tilde_written);
     if (rfi_S012tilde_errcode < 0)
         return rfi_S012tilde_errcode;
     DEBUG("Done waiting for rfi_S012tilde output ringbuffer space for frame {:d}; "
           "will write {:d} elements",
-          gpu_frame_id, produced_elements);
+          gpu_frame_id, rfi_S012tilde_written);
 
     return 0;
 }
@@ -152,8 +155,8 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
     std::uint64_t* const rfi_S012tilde_memory = rfi_S012tilde.get_ndarray().data();
 
     const std::ptrdiff_t Tcoarsesize = rfi_S012.get_ndarray().extent(0);
-    const std::ptrdiff_t Tcoarsemin = rfi_S012.get_begin_read_valid();
-    const std::ptrdiff_t Tcoarse = rfi_S012.get_end_read_valid() - rfi_S012.get_begin_read_valid();
+    const std::ptrdiff_t Tcoarsemin = rfi_S012.get_read_valid().begin();
+    const std::ptrdiff_t Tcoarse = rfi_S012.get_read_valid().size();
     DEBUG("Tcoarsesize={:d} Tcoarsemin={:d} Tcoarse={:d}", Tcoarsesize, Tcoarsemin, Tcoarse);
 
     n2k::launch_s012_station_downsample_kernel(

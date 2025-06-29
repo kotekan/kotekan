@@ -16,14 +16,6 @@
 .extern .func julia_AssertionError_32067
 ()
 ;
-.func gpu_signal_exception
-(
-	.param .align 8 .b8 gpu_signal_exception_param_0[16]
-)
-.noreturn
-{
-	trap;
-}
 .func gpu_report_exception
 (
 	.param .align 8 .b8 gpu_report_exception_param_0[16],
@@ -33,8 +25,16 @@
 {
 	trap;
 }
+.func gpu_signal_exception
+(
+	.param .align 8 .b8 gpu_signal_exception_param_0[16]
+)
+.noreturn
+{
+	trap;
+}
 .global .align 1 .b8 exception2777[6] = {101, 114, 114, 111, 114, 0};
-.global .align 1 .b8 exception12802[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
+.global .align 1 .b8 exception12803[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
                                         // @_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE
 .visible .entry _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE(
 	.param .align 8 .b8 _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_0[16],
@@ -153,7 +153,7 @@ $L__BB0_9:                              // %L233
 	exit;
 	// end inline asm
 $L__BB0_1:                              // %L9
-	mov.u64 	%rd4, exception12802;
+	mov.u64 	%rd4, exception12803;
 	cvta.global.u64 	%rd5, %rd4;
 	{ // callseq 0, 0
 	.reg .b32 temp_param_reg;
@@ -186,7 +186,7 @@ $L__BB0_1:                              // %L9
 	exit;
 	// end inline asm
 $L__BB0_3:                              // %L25
-	mov.u64 	%rd6, exception12802;
+	mov.u64 	%rd6, exception12803;
 	cvta.global.u64 	%rd7, %rd6;
 	{ // callseq 2, 0
 	.reg .b32 temp_param_reg;
@@ -328,7 +328,7 @@ $L__BB0_12:                             // %pass231
 	(
 	);
 	} // callseq 6
-	mov.u64 	%rd11, exception12802;
+	mov.u64 	%rd11, exception12803;
 	cvta.global.u64 	%rd12, %rd11;
 	{ // callseq 7, 0
 	.reg .b32 temp_param_reg;

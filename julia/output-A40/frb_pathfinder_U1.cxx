@@ -597,10 +597,10 @@ cudaFRBBeamformer_pathfinder_U1::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t Ttilde_ringbuf = I_buffer.get_ndarray().extent(0);
 
-    const std::ptrdiff_t Tbar_min = Ebar_buffer.get_begin_read_valid();
-    const std::ptrdiff_t Tbar_max = Ebar_buffer.get_end_read_valid();
-    const std::ptrdiff_t Ttilde_min = I_buffer.get_begin_write_valid();
-    const std::ptrdiff_t Ttilde_max = I_buffer.get_end_write_valid();
+    const std::ptrdiff_t Tbar_min = Ebar_buffer.get_read_valid().begin();
+    const std::ptrdiff_t Tbar_max = Ebar_buffer.get_read_valid().end();
+    const std::ptrdiff_t Ttilde_min = I_buffer.get_write_valid().begin();
+    const std::ptrdiff_t Ttilde_max = I_buffer.get_write_valid().end();
 
     const std::ptrdiff_t Tbar_length = Tbar_max - Tbar_min;
     const std::ptrdiff_t Ttilde_length = Ttilde_max - Ttilde_min;

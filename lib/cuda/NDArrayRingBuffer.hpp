@@ -33,6 +33,30 @@ struct read_descriptor_t {
     std::ptrdiff_t claimed, read;
 };
 
+struct extent_t {
+    std::ptrdiff_t m_begin, m_end;
+
+public:
+    extent_t(const extent_t&) = default;
+    extent_t(extent_t&&) = default;
+    extent_t& operator=(const extent_t&) = default;
+    extent_t& operator=(extent_t&&) = default;
+
+    extent_t() : extent_t(0, 0) {}
+    extent_t(std::ptrdiff_t begin, std::ptrdiff_t end) : m_begin(begin), m_end(end) {
+        assert(size() >= 0);
+    }
+    std::ptrdiff_t begin() const noexcept {
+        return m_begin;
+    }
+    std::ptrdiff_t end() const noexcept {
+        return m_end;
+    }
+    std::ptrdiff_t size() const noexcept {
+        return end() - begin();
+    }
+};
+
 template<typename T, std::size_t D>
 class NDArrayRingBuffer : public kotekan::kotekanLogging {
     static_assert(D > 0);
@@ -55,8 +79,7 @@ class NDArrayRingBuffer : public kotekan::kotekanLogging {
     // A ringbuffer is attached to only one instance of a command, and
     // it thus doesn't process all data. In other words, the processed
     // regions are not contiguous.
-    std::ptrdiff_t begin_write_valid, end_write_valid;
-    std::ptrdiff_t begin_read_valid, end_read_valid, end_read_claimed;
+    extent_t write_valid, read_valid, read_claimed;
 
 private:
     int get_instance_num() const {
@@ -91,8 +114,7 @@ public:
         quantity(quantity), // e.g. "J"
         ndarray(extents, dimnames, get_buffer_pointer(extents)),
         // State
-        begin_write_valid(0), end_write_valid(0), begin_read_valid(0), end_read_valid(0),
-        end_read_claimed(0)
+        write_valid(0, 0), read_valid(0, 0), read_claimed(0, 0)
     //
     {
         assert(ringbuffer);
@@ -143,21 +165,38 @@ public:
 
     // Returns 0 if all is good, -1 if we should terminate
     int wait_for_writable(const std::ptrdiff_t produced_elements) {
+        assert(write_valid.size() == 0);
+        assert(read_valid.size() == 0);
+        assert(read_claimed.size() == 0);
+
         const std::ptrdiff_t produced_bytes = produced_elements * granularity_in_bytes();
         const std::optional<std::ptrdiff_t> waited = ringbuffer->wait_for_writable(
             cuda_command.get_unique_name(), get_instance_num(), produced_bytes);
         if (!waited.has_value())
             return -1;
 
-        begin_write_valid = div_noremainder(waited.value(), granularity_in_bytes());
-        end_write_valid = begin_write_valid + produced_elements;
+        const std::ptrdiff_t write_begin = div_noremainder(waited.value(), granularity_in_bytes());
+        write_valid = extent_t(write_begin, write_begin + produced_elements);
 
         return 0;
+    }
+
+    void finish_write() {
+        const std::ptrdiff_t written_elements = write_valid.size();
+        ringbuffer->finish_write(cuda_command.get_unique_name(), get_instance_num(),
+                                 written_elements * granularity_in_bytes());
+
+        write_valid = extent_t(write_valid.end(), write_valid.end());
+        assert(write_valid.size() == 0);
     }
 
     // Returns 0 if all is good, -1 if we should terminate
     int wait_and_claim_readable(
         const std::function<read_descriptor_t(std::ptrdiff_t)> calc_read_descriptor) {
+        assert(write_valid.size() == 0);
+        assert(read_valid.size() == 0);
+        assert(read_claimed.size() == 0);
+
         // Check available samples
         const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> peeked =
             ringbuffer->peek_readable(cuda_command.get_unique_name(), get_instance_num());
@@ -192,43 +231,32 @@ public:
         if (!claimed.has_value())
             return -1;
 
-        begin_read_valid = div_noremainder(claimed.value(), granularity_in_bytes());
-        end_read_valid = begin_read_valid + read_descriptor.read;
-        end_read_claimed = begin_read_valid + read_descriptor.claimed;
+        const std::ptrdiff_t read_begin = div_noremainder(claimed.value(), granularity_in_bytes());
+        read_valid = extent_t(read_begin, read_begin + read_descriptor.read);
+        read_claimed = extent_t(read_begin, read_begin + read_descriptor.claimed);
 
         return 0;
     }
 
-    void finish_write() {
-        const std::ptrdiff_t written_elements = end_write_valid - begin_write_valid;
-        begin_write_valid = end_write_valid;
-        ringbuffer->finish_write(cuda_command.get_unique_name(), get_instance_num(),
-                                 written_elements * granularity_in_bytes());
-    }
-
     void finish_read() {
-        const std::ptrdiff_t claimed_elements = end_read_claimed - begin_read_valid;
-        begin_read_valid = end_read_claimed;
+        const std::ptrdiff_t claimed_elements = read_claimed.size();
         ringbuffer->finish_read(cuda_command.get_unique_name(), get_instance_num(),
                                 claimed_elements * granularity_in_bytes());
+
+        read_valid = extent_t(read_claimed.end(), read_claimed.end());
+        read_claimed = extent_t(read_claimed.end(), read_claimed.end());
     }
 
     // State
 
-    std::ptrdiff_t get_begin_write_valid() const {
-        return begin_write_valid;
+    extent_t get_write_valid() const {
+        return write_valid;
     }
-    std::ptrdiff_t get_end_write_valid() const {
-        return end_write_valid;
+    extent_t get_read_valid() const {
+        return read_valid;
     }
-    std::ptrdiff_t get_begin_read_valid() const {
-        return begin_read_valid;
-    }
-    std::ptrdiff_t get_end_read_valid() const {
-        return end_read_valid;
-    }
-    std::ptrdiff_t get_end_read_claimed() const {
-        return end_read_claimed;
+    extent_t get_read_claimed() const {
+        return read_claimed;
     }
 
     // NDArray:
@@ -317,8 +345,8 @@ public:
     void set_to_poison(const std::uint8_t poison_value) {
 #ifdef DEBUGGING
         const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
-        const std::ptrdiff_t T_min = get_begin_write_valid();
-        const std::ptrdiff_t T_max = get_end_write_valid();
+        const std::ptrdiff_t T_min = get_write_valid().begin();
+        const std::ptrdiff_t T_max = get_write_valid().end();
         const std::ptrdiff_t T_length = T_max - T_min;
         const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
         const std::ptrdiff_t T_max_arg = mod(T_min, T_ringbuf) + T_length;
@@ -346,8 +374,8 @@ public:
             return std::memcmp(&x, &poison, sizeof poison) == 0;
         };
         const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
-        const std::ptrdiff_t T_min = get_begin_write_valid();
-        const std::ptrdiff_t T_max = get_end_write_valid();
+        const std::ptrdiff_t T_min = get_write_valid().begin();
+        const std::ptrdiff_t T_max = get_write_valid().end();
         const std::ptrdiff_t T_length = T_max - T_min;
         const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
         const std::ptrdiff_t T_max_arg = mod(T_min, T_ringbuf) + T_length;

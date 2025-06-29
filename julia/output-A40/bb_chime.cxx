@@ -445,8 +445,8 @@ cudaEvent_t cudaBasebandBeamformer_chime::execute(cudaPipelineState& /*pipestate
     // Ringbuffer size
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
 
-    const std::ptrdiff_t T_min = E_buffer.get_begin_read_valid();
-    const std::ptrdiff_t T_max = E_buffer.get_end_read_valid();
+    const std::ptrdiff_t T_min = E_buffer.get_read_valid().begin();
+    const std::ptrdiff_t T_max = E_buffer.get_read_valid().end();
 
     const std::ptrdiff_t T_length = T_max - T_min;
 

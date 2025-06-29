@@ -83,7 +83,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     pre_execute();
 
     const std::ptrdiff_t time_offset =
-        voltage.get_begin_read_valid() % voltage.get_ndarray().extent(0);
+        voltage.get_read_valid().begin() % voltage.get_ndarray().extent(0);
     const kotekan::int4x2chime_t* const input_memory = &voltage.get_ndarray()(time_offset, 0, 0, 0);
 
     // aka "nt_outer" in n2k.hpp
@@ -104,7 +104,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     // TODO: do this automatically in `NDArrayRingBuffer`
     const std::shared_ptr<const chordMetadata> in_meta = voltage.get_metadata();
     const std::shared_ptr<chordMetadata> out_meta = n2k_correlation.get_metadata();
-    out_meta->sample0_offset = voltage.get_begin_read_valid();
+    out_meta->sample0_offset = voltage.get_read_valid().begin();
     for (int freq = 0; freq < out_meta->nfreq; ++freq) {
         out_meta->time_downsampling_fpga[freq] =
             _sub_integration_ntime * in_meta->time_downsampling_fpga[freq];

@@ -432,10 +432,10 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Tin_ringbuf = Ein_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
 
-    const std::ptrdiff_t Tin_min = Ein_buffer.get_begin_read_valid();
-    const std::ptrdiff_t Tin_max = Ein_buffer.get_end_read_valid();
-    const std::ptrdiff_t T_min = E_buffer.get_begin_write_valid();
-    const std::ptrdiff_t T_max = E_buffer.get_end_write_valid();
+    const std::ptrdiff_t Tin_min = Ein_buffer.get_read_valid().begin();
+    const std::ptrdiff_t Tin_max = Ein_buffer.get_read_valid().end();
+    const std::ptrdiff_t T_min = E_buffer.get_write_valid().begin();
+    const std::ptrdiff_t T_max = E_buffer.get_write_valid().end();
 
     const std::ptrdiff_t Tin_length = Tin_max - Tin_min;
     const std::ptrdiff_t T_length = T_max - T_min;
