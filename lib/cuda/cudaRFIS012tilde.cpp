@@ -57,7 +57,7 @@ private:
     const int num_frequencies;
     const int num_polarizations;
     const int num_dishes;
-    const int rfi_downsampling_factor;
+    const int rfi_num_times;
 
     // Kotekan buffer names
     const std::string bf_mask_name;
@@ -83,7 +83,7 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
-    rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
+    rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
     // Buffer names
     bf_mask_name(config.get<std::string>(unique_name, "bf_mask_name")),
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
@@ -92,15 +92,12 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     bf_mask(bf_mask_name, "bf_mask", std::array<std::ptrdiff_t, 2>{num_polarizations, num_dishes},
             std::array<std::string, 2>{"P", "D"}, *this, buffer_type_t::do_once),
     rfi_S012(rfi_S012_name, "S012",
-             std::array<std::ptrdiff_t, 5>{
-                 div_noremainder(buffer_depth * num_times, rfi_downsampling_factor),
-                 num_frequencies, 3, num_polarizations, num_dishes},
-             std::array<std::string, 5>{"Tcoarse", "F", "S", "P", "D"}, *this),
-    rfi_S012tilde(
-        rfi_S012tilde_name, "S012tilde",
-        std::array<std::ptrdiff_t, 3>{
-            div_noremainder(buffer_depth * num_times, rfi_downsampling_factor), num_frequencies, 3},
-        std::array<std::string, 3>{"Tcoarse", "F", "S"}, *this)
+             std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
+                                           num_polarizations, num_dishes},
+             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"}, *this),
+    rfi_S012tilde(rfi_S012tilde_name, "S012tilde",
+                  std::array<std::ptrdiff_t, 3>{buffer_depth * rfi_num_times, num_frequencies, 3},
+                  std::array<std::string, 3>{"Trfi", "F", "S"}, *this)
 //
 {
     rfi_S012.register_consumer();
@@ -154,14 +151,14 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
     const std::uint64_t* const rfi_S012_memory = rfi_S012.get_ndarray().data();
     std::uint64_t* const rfi_S012tilde_memory = rfi_S012tilde.get_ndarray().data();
 
-    const std::ptrdiff_t Tcoarsesize = rfi_S012.get_ndarray().extent(0);
-    const std::ptrdiff_t Tcoarsemin = rfi_S012.get_read_valid().begin();
-    const std::ptrdiff_t Tcoarse = rfi_S012.get_read_valid().size();
-    DEBUG("Tcoarsesize={:d} Tcoarsemin={:d} Tcoarse={:d}", Tcoarsesize, Tcoarsemin, Tcoarse);
+    const std::ptrdiff_t Trfisize = rfi_S012.get_ndarray().extent(0);
+    const std::ptrdiff_t Trfimin = rfi_S012.get_read_valid().begin();
+    const std::ptrdiff_t Trfi = rfi_S012.get_read_valid().size();
+    DEBUG("Trfisize={:d} Trfimin={:d} Trfi={:d}", Trfisize, Trfimin, Trfi);
 
     n2k::launch_s012_station_downsample_kernel(
         (ulong*)rfi_S012tilde_memory, (const ulong*)rfi_S012_memory, (const uint8_t*)bf_mask_memory,
-        Tcoarse, Tcoarsemin, Tcoarsesize, num_frequencies, num_dishes * num_polarizations,
+        Trfi, Trfimin, Trfisize, num_frequencies, num_dishes * num_polarizations,
         device.getStream(cuda_stream_id));
 
     return record_end_event();

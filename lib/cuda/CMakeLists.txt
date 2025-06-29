@@ -88,7 +88,8 @@ add_library(
     cudaUpchannelizer_pathfinder_U64.cpp
     cudaRFIS012.cpp
     cudaRFIS012tilde.cpp
-    cudaRFISK.cpp
+    cudaRFIS012bar.cpp
+    cudaRFISKtilde.cpp
     chordMVPSetup.cpp)
 
 # C++17

@@ -220,10 +220,12 @@ extern void launch_s012_time_downsample_kernel(
     ulong *Sout,        // output array, shape (T/Nds,3,F,S) or equivalently (T/Nds,M)
     const ulong *Sin,   // input array, shape (T,3,F,S) or equivalently (T,M)
     long T,             // number of time samples in input array (before downsampling)
-    long Tmin,          // first time sample in input array
-    long Tsize,         // ringbuffer size
     long M,             // number of spectator indices (3*F*S), see above
     long Nds,           // time downsampling factor
+    long Trfi_min,      // first time sample in input array
+    long Trfi_size,     // input ringbuffer size
+    long Trfibar_min,   // first time sample in output array
+    long Trfibar_size,  // output ringbuffer size
     cudaStream_t stream=0);
 
 

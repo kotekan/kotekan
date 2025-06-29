@@ -18,12 +18,12 @@
 using kotekan::div_noremainder;
 using kotekan::round_down;
 
-class cudaRFISK : public cudaCommand {
+class cudaRFISKtilde : public cudaCommand {
 public:
-    cudaRFISK(kotekan::Config& config, const std::string& unique_name,
-              kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
-              const int instance_num);
-    virtual ~cudaRFISK();
+    cudaRFISKtilde(kotekan::Config& config, const std::string& unique_name,
+                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                   const int instance_num);
+    virtual ~cudaRFISKtilde();
 
     int wait_on_precondition() override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
@@ -58,6 +58,7 @@ private:
     const int num_polarizations;
     const int num_dishes;
     const int rfi_downsampling_factor;
+    const int rfi_num_times;
 
     // Kotekan buffer names
     const std::string bf_mask_name;
@@ -75,13 +76,13 @@ private:
     const n2k::SkKernel skKernel;
 };
 
-REGISTER_CUDA_COMMAND(cudaRFISK);
+REGISTER_CUDA_COMMAND(cudaRFISKtilde);
 
-cudaRFISK::cudaRFISK(kotekan::Config& config, const std::string& unique_name,
-                     kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
-                     const int instance_num) :
+cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& unique_name,
+                               kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                               const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
-                "cudaRFISK"),
+                "cudaRFISKtilde"),
     // Parameters
     buffer_depth(config.get<int>(unique_name, "buffer_depth")),
     num_times(config.get<int>(unique_name, "num_times")),
@@ -89,6 +90,7 @@ cudaRFISK::cudaRFISK(kotekan::Config& config, const std::string& unique_name,
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
+    rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
     // Buffer names
     bf_mask_name(config.get<std::string>(unique_name, "bf_mask_name")),
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
@@ -98,15 +100,12 @@ cudaRFISK::cudaRFISK(kotekan::Config& config, const std::string& unique_name,
     bf_mask(bf_mask_name, "bf_mask", std::array<std::ptrdiff_t, 2>{num_polarizations, num_dishes},
             std::array<std::string, 2>{"P", "D"}, *this, buffer_type_t::do_once),
     rfi_S012(rfi_S012_name, "S012",
-             std::array<std::ptrdiff_t, 5>{
-                 div_noremainder(buffer_depth * num_times, rfi_downsampling_factor),
-                 num_frequencies, 3, num_polarizations, num_dishes},
-             std::array<std::string, 5>{"Tcoarse", "F", "S", "P", "D"}, *this),
-    rfi_SKtilde(
-        rfi_SKtilde_name, "SKtilde",
-        std::array<std::ptrdiff_t, 3>{
-            div_noremainder(buffer_depth * num_times, rfi_downsampling_factor), num_frequencies, 3},
-        std::array<std::string, 3>{"Tcoarse", "F", "SK"}, *this),
+             std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
+                                           num_polarizations, num_dishes},
+             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"}, *this),
+    rfi_SKtilde(rfi_SKtilde_name, "SKtilde",
+                std::array<std::ptrdiff_t, 3>{buffer_depth * rfi_num_times, num_frequencies, 3},
+                std::array<std::string, 3>{"Trfi", "F", "SK"}, *this),
     rfi_RFImask(rfi_RFImask_name, "RFImask",
                 std::array<std::ptrdiff_t, 3>{div_noremainder(buffer_depth * num_times, 128),
                                               num_frequencies, 16},
@@ -129,9 +128,9 @@ cudaRFISK::cudaRFISK(kotekan::Config& config, const std::string& unique_name,
     set_command_type(gpuCommandType::KERNEL);
 }
 
-cudaRFISK::~cudaRFISK() {}
+cudaRFISKtilde::~cudaRFISKtilde() {}
 
-int cudaRFISK::wait_on_precondition() {
+int cudaRFISKtilde::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
     DEBUG("Waiting for rfi_S012 input ringbuffer data for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t rfi_S012_ringbuf = rfi_S012.get_ndarray().extent(0);
@@ -170,8 +169,8 @@ int cudaRFISK::wait_on_precondition() {
     return 0;
 }
 
-cudaEvent_t cudaRFISK::execute(cudaPipelineState& /*pipestate*/,
-                               const std::vector<cudaEvent_t>& /*pre_events*/) {
+cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
+                                    const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
 
     record_start_event();
@@ -211,7 +210,7 @@ cudaEvent_t cudaRFISK::execute(cudaPipelineState& /*pipestate*/,
     return record_end_event();
 }
 
-void cudaRFISK::finalize_frame() {
+void cudaRFISKtilde::finalize_frame() {
     // Advance the ring buffers
     rfi_S012.finish_read();
     rfi_SKtilde.finish_write();

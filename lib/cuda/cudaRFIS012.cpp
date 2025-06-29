@@ -57,6 +57,7 @@ private:
     const int num_polarizations;
     const int num_dishes;
     const int rfi_downsampling_factor;
+    const int rfi_num_times;
 
     // Kotekan buffer names
     const std::string pl_mask_name;
@@ -83,6 +84,7 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
+    rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
     // Buffer names
     pl_mask_name(config.get<std::string>(unique_name, "pl_mask_name")),
     voltage_name(config.get<std::string>(unique_name, "voltage_name")),
@@ -97,10 +99,9 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
                                           num_polarizations, num_dishes},
             std::array<std::string, 4>{"T", "F", "P", "D"}, *this),
     rfi_S012(rfi_S012_name, "S012",
-             std::array<std::ptrdiff_t, 5>{
-                 div_noremainder(buffer_depth * num_times, rfi_downsampling_factor),
-                 num_frequencies, 3, num_polarizations, num_dishes},
-             std::array<std::string, 5>{"Tcoarse", "F", "S", "P", "D"}, *this)
+             std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
+                                           num_polarizations, num_dishes},
+             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"}, *this)
 //
 {
     // For pl_mask_T128_sample_bytes

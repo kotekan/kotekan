@@ -20,6 +20,10 @@ namespace n2k {
 //   long   Nds;
 //   long   Tout;
 //   long   M;
+//   long   Trfi_min,             // first time sample in input array
+//   long   Trfi_size,            // input ringbuffer size
+//   long   Trfibar_min,          // first time sample in output array
+//   long   Trfibar_size,         // output ringbuffer size
 //
 // Parallelization:
 //
@@ -30,15 +34,21 @@ namespace n2k {
 //      {threadIdx,blockIdx}.x <-> spectator index
 //      {threadIdx,blockIdx}.y <-> output (downsampled) time
 
-__global__ void s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, int Tds, int M, int Nds)
+__global__ void s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, int Tds, int M, int Nds,
+                                            int Trfi_min, int Trfi_size, int Trfibar_min, int Trfibar_size)
 {
     // Per-thread (downsampled time, spectator index)
     uint m = (blockIdx.x * blockDim.x) + threadIdx.x;
     ulong tout = (blockIdx.y * blockDim.y) + threadIdx.y;
+    ulong tin = Nds*tout;
     bool valid = (m < M) && (tout < Tds);
 
+    // Ring buffer
+    tout = (tout + Trfibar_min) & (Trfibar_size-1);
+    tin = (tin + Trfi_min) & (Trfi_size-1);
+    
     // Per-thread base indices and pointer shift.
-    ulong in_base = (M*Nds)*tout + m;
+    ulong in_base = M*tin + m;
     ulong out_base = M*tout + m;
     Sin += (valid ? in_base : 0);
     
@@ -49,6 +59,57 @@ __global__ void s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, int T
     if (valid)
 	Sout[out_base] = s;
 }
+
+// launch_s012_time_downsample_kernel(): ringbuffer interface.
+//
+//   ulong  S012_out[T/Nds][M];   // where M is number of "spectator" indices (3*F*S)
+//   ulong  S012_in[T][M];
+//   long   T;                    // number of time samples before downsampling
+//   long   M;                    // number of spectator indices (3*F*S), see above
+//   long   Nds;                  // time downsampling factor
+//   long   Trfi_min,             // first time sample in input array
+//   long   Trfi_size,            // input ringbuffer size
+//   long   Trfibar_min,          // first time sample in output array
+//   long   Trfibar_size,         // output ringbuffer size
+//
+// Constraints:
+//   - T must be a multiple of Nds
+//   - M must be a multiple of 32 (could easily be relaxed)
+
+void launch_s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, long T, long M, long Nds,
+                                        long Trfi_min, long Trfi_size, long Trfibar_min, long Trfibar_size,
+                                        cudaStream_t stream)
+{
+    int threads_per_block = 128;
+    bool noisy = false;
+
+    if ((Sout == nullptr) || (Sin == nullptr))
+	throw runtime_error("launch_s012_time_downsample_kernel(): data pointer was NULL");
+    if (T <= 0)
+	throw runtime_error("launch_s012_time_downsample_kernel(): expected Tds > 0");
+    if (M <= 0)
+	throw runtime_error("launch_s012_time_downsample_kernel(): expected M > 0");
+    if (M & 31)
+	throw runtime_error("launch_s012_time_downsample_kernel(): expected M to be a multiple of 32");
+    if (Nds <= 0)
+	throw runtime_error("launch_s012_time_downsample_kernel(): expected Nds > 0");
+    if ((T >= INT_MAX) || (M >= INT_MAX) || (Nds >= INT_MAX))
+	throw runtime_error("launch_s012_time_downsample_kernel(): 32-bit overflow");
+
+    long Tds = T/Nds;
+
+    if (T != Tds*Nds)
+	throw runtime_error("launch_s012_time_downsample_kernel(): T must be a multiple of Nds");	
+    
+    dim3 nblocks, nthreads;
+    gputils::assign_kernel_dims(nblocks, nthreads, M, Tds, 1, threads_per_block, noisy);
+
+    s012_time_downsample_kernel <<< nblocks, nthreads, 0, stream >>>
+	(Sout, Sin, Tds, M, Nds, Trfi_min, Trfi_size, Trfibar_min, Trfibar_size);
+
+    CUDA_PEEK("launch s012_time_downsample");
+}
+
 
 // launch_s012_time_downsample_kernel(): bare-pointer interface.
 //
@@ -89,7 +150,7 @@ void launch_s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, long T, l
     gputils::assign_kernel_dims(nblocks, nthreads, M, Tds, 1, threads_per_block, noisy);
 
     s012_time_downsample_kernel <<< nblocks, nthreads, 0, stream >>>
-	(Sout, Sin, Tds, M, Nds);
+	(Sout, Sin, Tds, M, Nds, 0, 1<<30, 0, 1<<30);
 
     CUDA_PEEK("launch s012_time_downsample");
 }
