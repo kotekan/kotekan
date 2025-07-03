@@ -48,7 +48,7 @@ N2TimeDownsample::N2TimeDownsample(Config& config, const std::string& unique_nam
 
     max_age = config.get_default<float>(unique_name, "max_age", 120.0);
 
-    do_fringestop = config.get_default<int>(unique_name, "do_fringestop", true);
+    do_fringestop = config.get_default<bool>(unique_name, "do_fringestop", true);
 
     num_elements = 0;
     nprod = 0;
