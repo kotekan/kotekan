@@ -5,6 +5,7 @@
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "metadata.hpp"
+#include "jsonMetadata.hpp"
 
 #include <cassert>
 #include <cstdint>
@@ -392,6 +393,22 @@ public:
         this->onehot_index[dim] = i;
         strncpy(this->onehot_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
     }
+
+    // science metadata
+    using beamCoord = jsonMetadata::beamCoord;
+
+    beamCoord get_beam_coord() const {
+        return beamCoord(metadata);
+    }
+
+    // TODO: add set_beam_coord
+
+    int64_t get_fpga_seq_num() const {
+        return metadata[jsonMetadata::FPGA_SEQ_NUM].template get<int64_t>();
+    }
+
+private:
+    jsonMetadata::metadata metadata;
 };
 
 inline bool metadata_is_chord(Buffer* buf, int) {

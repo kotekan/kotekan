@@ -36,6 +36,17 @@ struct beamCoord {
     float declination[MAX_NUM_BEAMS];
     uint32_t scaling[MAX_NUM_BEAMS];
 
+    beamCoord() {
+#ifdef DEBUG
+        for(auto& ra : right_ascension)
+            ra = std::nanf("");
+        for(auto& dec : declination)
+            dec = std::nanf("");
+        for(auto& scale : scaling)
+            scale = 0;
+#endif
+    }
+
     // TODO: turn into a from_json function?
     beamCoord(const metadata& md) {
         {

@@ -7,7 +7,9 @@
 #include "Telescope.hpp"
 #include "buffer.hpp"           // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
 #include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.hpp"    // for get_fpga_seq_num, beamCoord, get_beam_coord, get_stream...
+#include "chimeMetadata.hpp"    // for get_stream...
+#include "chordMetadata.hpp"
+#include "jsonMetadata.hpp"     // dict-style metadata
 #include "kotekanLogging.hpp"   // for DEBUG, ERROR
 #include "pulsar_functions.hpp" // for PSRHeader
 
@@ -181,7 +183,7 @@ void pulsarPostProcess::main_thread() {
     uint in_frame_location = 0; // goes from 0 to 3125 or 625
     uint64_t fpga_seq_num = 0;
 
-    beamCoord beam_coord[_num_gpus];
+    chordMetadata::beamCoord beam_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = pulsar_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
     if (out_frame == nullptr)
@@ -195,7 +197,7 @@ void pulsarPostProcess::main_thread() {
 
         // Initialize data for header info, namely position and frequency labels.
         for (uint32_t i = 0; i < _num_gpus; ++i) {
-            beam_coord[i] = get_beam_coord(in_buf[i], in_buffer_ID[i]);
+            beam_coord[i] = get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_beam_coord();
             thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
         }
 
@@ -232,7 +234,7 @@ void pulsarPostProcess::main_thread() {
 
             // Fill the first output buffer headers
             fill_headers((unsigned char*)out_frame, &psr_header, fpga_seq_num, &time_now,
-                         beam_coord, thread_ids);
+                         (beamCoord*)&beam_coord, thread_ids);
         }
 
         // Take data from the input buffer and format the output
@@ -266,7 +268,7 @@ void pulsarPostProcess::main_thread() {
 
                 // Fill the headers of the new buffer
                 fill_headers((unsigned char*)out_frame, &psr_header, fpga_seq_num, &time_now,
-                             beam_coord, thread_ids);
+                             (beamCoord*)&beam_coord, thread_ids);
             }
 
             // now store samples into output buffer.
@@ -285,7 +287,7 @@ void pulsarPostProcess::main_thread() {
                         // Fill the headers of the new buffer
                         fpga_seq_num += _timesamples_per_pulsar_packet * _num_packet_per_stream;
                         fill_headers((unsigned char*)out_frame, &psr_header, fpga_seq_num,
-                                     &time_now, beam_coord, thread_ids);
+                                     &time_now, (beamCoord*)&beam_coord, thread_ids);
                     } // end if last frame
                 } // end if last sample
 
@@ -353,20 +355,20 @@ std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
         // furthest along, and keep advancing others until they all match. (Keep in
         // mind that advancing one of the others may put it ahead of the current
         // largest fpga_seq_no, in which case we have to repeat the process.)
-        auto max_fpga_count = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
+        int64_t max_fpga_count = get_chord_metadata(in_buf[0], in_buffer_ID[0])->get_fpga_seq_num();
         for (unsigned i = 1; i < _num_gpus; i++) {
-            max_fpga_count = std::max(max_fpga_count, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
+            max_fpga_count = std::max(max_fpga_count, get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
         }
         bool fpga_seq_in_sync = true;
         for (unsigned i = 0; i < _num_gpus; ++i) {
-            while (max_fpga_count > get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
+            while (max_fpga_count > get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
                 in_buf[i]->mark_frame_empty(unique_name, in_buffer_ID[i]);
                 in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
                 in_frame[i] = in_buf[i]->wait_for_full_frame(unique_name, in_buffer_ID[i]);
                 if (in_frame[i] == nullptr)
                     return std::nullopt;
             }
-            if (max_fpga_count != get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
+            if (max_fpga_count != get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
                 fpga_seq_in_sync = false;
             }
         }
@@ -377,5 +379,5 @@ std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
     if (stop_thread)
         return std::nullopt;
 
-    return get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
+    return get_chord_metadata(in_buf[0], in_buffer_ID[0])->get_fpga_seq_num();
 }
