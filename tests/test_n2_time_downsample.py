@@ -12,10 +12,10 @@ import astropy.units as units
 
 from kotekan import runner
 
-T_rot_sec = 86400 / 1.00273781191135448
-n_bins_per_rot = 60  # 21600  # approx 4 seconds per bin
+T_rot_sec = 86400 # / 1.00273781191135448
+n_bins_per_rot = 600  # 21600  # approx 4 seconds per bin
 n_samps_per_bin = 10
-n_samps_tot = 101
+n_samps_tot = 1001
 
 dut1 = 0.0
 x_pm = 0.1
@@ -85,6 +85,60 @@ global_params = {
     },
     "gps_time": {"frame0_nano": t_start_inst_ns},
 }
+
+
+def seq_to_t_inst_ns(seq):
+
+    dt_ns = 5120   # 16384/(3.2 GHz)
+
+    return t_start_inst_ns + dt_ns * seq
+
+
+def calc_raw_frame_times_and_seqs():
+
+    delta_seq = int(3.2e9/16384 * cadence)
+    delta_ns = int(cadence * GIGA)
+
+    seq = delta_seq * np.arange(fake_params["num_frames"],
+                                dtype=int)
+
+    dseq = np.empty_like(seq)
+    dseq[:] = delta_seq
+
+    t_inst_ns = seq_to_t_inst_ns(seq)
+
+    return seq, dseq, t_inst_ns
+
+
+def calc_t_from_t_inst_ns(t_inst_ns):
+
+    frame0_ns = global_params['gps_time']['frame0_nano']
+
+    t_start_0h_s = (frame0_ns // (86400 * GIGA)) * 86400
+    t_start_diff_ns = frame0_ns - GIGA * t_start_0h_s
+
+    diff_h = t_start_diff_ns // (GIGA * 3600)
+    t_start_diff_ns -= GIGA * 3600 * diff_h
+    diff_min = t_start_diff_ns // (GIGA * 60)
+    t_start_diff_ns -= GIGA * 60 * diff_min
+    diff_s = t_start_diff_ns / GIGA
+    
+    t_start_0h = Time(t_start_0h_s, scale='utc', format='unix')
+    t_start_tel = Time({'year': t_start_0h.ymdhms.year,
+                        'month': t_start_0h.ymdhms.month,
+                        'day': t_start_0h.ymdhms.day,
+                        'hour': diff_h,
+                        'minute': diff_min,
+                        'second': diff_s}, scale='utc', format='ymdhms')
+
+    dt_ns = t_inst_ns - frame0_ns
+
+    dt = TimeDelta(dt_ns * units.ns, scale='tai')
+
+    t = t_start_tel + dt
+    t.delta_ut1_utc = dut1
+
+    return t
 
 
 def calc_t_at_era(t0, era_deg_target, tol):
@@ -190,6 +244,56 @@ def calc_era_bins():
     return bins
 
 
+def calc_downsamp_frame_meta():
+
+    seq, dseq, t_ns = calc_raw_frame_times_and_seqs()
+    t = calc_t_from_t_inst_ns(t_ns)
+
+    seq_c = seq + dseq // 2
+    t_c_ns = seq_to_t_inst_ns(seq_c)
+    t_c = calc_t_from_t_inst_ns(t_c_ns)
+
+    bins = calc_era_bins()
+
+    frames = [None] * (len(bins)-1)
+
+    def init_frame(frame_idx):
+        return dict(seq_start=seq[frame_idx], t_start_ns=t_ns[frame_idx],
+                    seq_len=0, seq_valid=0, seq_rfi=0, n_frames=0)
+
+    def accum_frame(out_idx, in_idx):
+        frames[out_idx]["seq_len"] += dseq[in_idx]
+        frames[out_idx]["n_frames"] += 1
+        if fake_params["mode"] == "fill_ij_missing":
+            frames[out_idx]["seq_valid"] += dseq[in_idx] - 2
+            frames[out_idx]["seq_rfi"] += 1
+        else:
+            frames[out_idx]["seq_valid"] += dseq[in_idx]
+            frames[out_idx]["seq_rfi"] += 0
+
+    bin_idx = -1
+
+    for i in range(len(seq)):
+
+        while bin_idx < (len(bins)-1) and t_c[i] >= bins[bin_idx+1]:
+            bin_idx += 1
+
+        if bin_idx >= len(bins)-1:
+            break
+
+        if t_c[i] >= bins[bin_idx] and t_c[i] < bins[bin_idx+1]:
+            if frames[bin_idx] is None:
+                frames[bin_idx] = init_frame(i)
+            accum_frame(bin_idx, i)
+
+
+    with open("frame_meta.out", "w") as f:
+        for frame in frames:
+            f.write(str(frame) + "\n")
+
+    return frames
+
+
 @pytest.fixture(scope="module")
 def n2_data(tmpdir_factory):
 
@@ -230,36 +334,30 @@ def test_metadata(n2_data):
 
     # ticks_per_second = int(3.2e9 / 16384)
 
-    input_frame_length = int(3.2e9 / 16384 * fake_params["cadence"])
-    frame_length = input_frame_length * n_samps_per_bin
-    frame_total = (input_frame_length - 2) * n_samps_per_bin
-    rfi_total = n_samps_per_bin
+    # input_frame_length = int(3.2e9 / 16384 * fake_params["cadence"])
+    # frame_length = input_frame_length * n_samps_per_bin
+    # frame_total = (input_frame_length - 2) * n_samps_per_bin
+    # rfi_total = n_samps_per_bin
 
-    for frame in n2_data:
+    frame_meta = calc_downsamp_frame_meta()
+
+    for i, frame in enumerate(n2_data):
         assert frame.metadata.freq_id == 0
-        assert frame.metadata.frame_length_fpga_ticks == frame_length
-        assert frame.metadata.n_valid_fpga_ticks_in_frame == frame_total
-        assert frame.metadata.n_rfi_fpga_ticks == rfi_total
+        assert frame.metadata.frame_length_fpga_ticks == frame_meta[i]["seq_len"]
+        assert frame.metadata.n_valid_fpga_ticks_in_frame == frame_meta[i]["seq_valid"]
+        assert frame.metadata.n_rfi_fpga_ticks == frame_meta[i]["seq_rfi"]
 
 
 def test_time(n2_data):
 
     frame_time_ns = np.array([v.metadata.frame_start_time_ns for v in n2_data])
+    
+    frame_meta = calc_downsamp_frame_meta()
 
-    bins = calc_era_bins()
-
-    t_bin_center = [bins[i] + 0.5 * (bins[i+1] - bins[i])
-                    for i in range(len(bins)-1)]
-
-    for i in range(len(t_bin_center)):
-        t_bin_center[i].delta_ut1_utc = dut1
-
-    t_bin_cent_tup = [calc_times(t) for t in t_bin_center]
-    t_bin_cent_ns = np.array([t[0][0]*GIGA + t[0][1] for t in t_bin_cent_tup])
-
+    calculated_time_ns = np.array([meta["t_start_ns"] for meta in frame_meta])
 
     # Check downsampled cadence
-    assert np.all(frame_time_ns == t_bin_cent_ns)
+    assert np.all(frame_time_ns == calculated_time_ns)
 
 
 def test_eop(n2_data):
