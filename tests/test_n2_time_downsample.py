@@ -36,7 +36,8 @@ t_start_inst_ns = int(t_start.unix) * GIGA
 t_end_inst_ns = int(t_end.unix) * GIGA
 
 era_deg_tol = (360.0 / (1.0e9 * 86400))
-eop_ns_tol = 500
+eop_t_ns_tol = 1
+eop_ut1_ns_tol = 1
 
 fake_params = {
     "num_frames": n_samps_tot,
@@ -109,10 +110,7 @@ def calc_raw_frame_times_and_seqs():
 
     return seq, dseq, t_inst_ns
 
-
-def calc_t_from_t_inst_ns(t_inst_ns):
-
-    frame0_ns = global_params['gps_time']['frame0_nano']
+def calc_t_start_tel(frame0_ns):
 
     t_start_0h_s = (frame0_ns // (86400 * GIGA)) * 86400
     t_start_diff_ns = frame0_ns - GIGA * t_start_0h_s
@@ -131,6 +129,15 @@ def calc_t_from_t_inst_ns(t_inst_ns):
                         'minute': diff_min,
                         'second': diff_s}, scale='utc', format='ymdhms')
 
+    return t_start_tel
+
+
+def calc_t_from_t_inst_ns(t_inst_ns):
+
+    frame0_ns = global_params['gps_time']['frame0_nano']
+
+    t_start_tel = calc_t_start_tel(frame0_ns)
+
     dt_ns = t_inst_ns - frame0_ns
 
     dt = TimeDelta(dt_ns * units.ns, scale='tai')
@@ -139,6 +146,18 @@ def calc_t_from_t_inst_ns(t_inst_ns):
     t.delta_ut1_utc = dut1
 
     return t
+
+
+def calc_t_inst_ns_from_t(t):
+
+    frame0_ns = global_params['gps_time']['frame0_nano']
+    t_start_tel = calc_t_start_tel(frame0_ns)
+
+    dt = t.tai - t_start_tel.tai
+
+    dt_s, dt_ns = t_jd_to_s_ns(dt)
+
+    return frame0_ns + dt_s*GIGA + dt_ns
 
 
 def calc_t_at_era(t0, era_deg_target, tol):
@@ -183,65 +202,32 @@ def jd_to_s_ns(jd):
     return s, ns
 
 
-def calc_times(t):
-    t_inst_s = int(t.utc.unix)
-    t_inst_ns = int((t.utc.unix - t_inst_s) * GIGA)
-    t_ut1_jd1_s, t_ut1_jd1_ns = jd_to_s_ns(t.ut1.jd1)
-    t_ut1_jd2_s, t_ut1_jd2_ns = jd_to_s_ns(t.ut1.jd2)
+def t_jd_to_s_ns(t):
 
-    t_ut1_s = t_ut1_jd1_s + t_ut1_jd2_s
-    t_ut1_ns = t_ut1_jd1_ns + t_ut1_jd2_ns
-    while t_ut1_ns > GIGA:
-        t_ut1_s += 1
-        t_ut1_ns -= GIGA
-    while t_ut1_ns < 0:
-        t_ut1_s -= 1
-        t_ut1_ns += GIGA
+
+    t1_s, t1_ns = jd_to_s_ns(t.jd1)
+    t2_s, t2_ns = jd_to_s_ns(t.jd2)
+
+    t_s = t1_s + t2_s
+    t_ns = t1_ns + t2_ns
+
+    sec_over = t_ns // GIGA
+    t_ns -= GIGA * sec_over
+    t_s += sec_over
+
+    return t_s, t_ns
+
+
+def calc_times(t):
+    t_inst_ns = calc_t_inst_ns_from_t(t)
+    t_inst_s = t_inst_ns // GIGA
+    t_inst_ns -= GIGA * t_inst_s
+
+    t_ut1_s, t_ut1_ns = t_jd_to_s_ns(t.ut1)
 
     era = t.earth_rotation_angle("tio").to_value("degree")
 
     return (t_inst_s, t_inst_ns), (t_ut1_s, t_ut1_ns), era
-
-
-def calc_era_bins():
-
-    t_start_center = t_start + 0.5 * cadence * units.s
-
-    era_start = t_start_center.earth_rotation_angle("tio").to_value("deg")
-    delta_era = 360.0 / n_bins_per_rot
-    era_idx_start = 1 + int(era_start / delta_era)
-
-    t_first_bin_edge = calc_t_at_era(t_start_center,
-                                     era_idx_start * delta_era,
-                                     0.1*units.ns)
-    t_second_bin_edge = calc_t_at_era(t_start_center,
-                                      (era_idx_start + 1) * delta_era,
-                                      0.1*units.ns)
-    dt = t_second_bin_edge - t_first_bin_edge
-
-    n_bins = int((t_end.ut1 - t_first_bin_edge.ut1) / (dt.ut1)) + 1
-
-    bins_raw = t_first_bin_edge + np.arange(n_bins) * dt
-
-    bins = []
-    for t_raw in bins_raw:
-        era_ahead = (t_raw.earth_rotation_angle('tio').to_value('deg')
-                     + 0.5 * delta_era)
-        era_idx = int(era_ahead / delta_era)
-        era = era_idx * delta_era
-        t = calc_t_at_era(t_raw, era, 0.1*units.ns)
-        bins.append(t)
-
-    bins = np.array(bins)
-
-    with open('bins.out', 'w') as f:
-        for i, t in enumerate(bins):
-            t_inst, t_ut1, era = calc_times(t)
-            f.write(
-                "{0:d} INST {1:d}s + {2:09d}ns UT1 {3:d}s + {4:09d}ns ERA {5:.17f}\n"
-                .format(i, *t_inst, *t_ut1, era))
-
-    return bins
 
 
 def calc_downsamp_frame_meta():
@@ -253,45 +239,87 @@ def calc_downsamp_frame_meta():
     t_c_ns = seq_to_t_inst_ns(seq_c)
     t_c = calc_t_from_t_inst_ns(t_c_ns)
 
-    bins = calc_era_bins()
+    era_edges = np.linspace(0.0, 360.0, n_bins_per_rot+1)
+    out_frames = []
 
-    frames = [None] * (len(bins)-1)
-
-    def init_frame(frame_idx):
-        return dict(seq_start=seq[frame_idx], t_start_ns=t_ns[frame_idx],
-                    seq_len=0, seq_valid=0, seq_rfi=0, n_frames=0)
+    def init_frame(in_idx, era_idx):
+        return dict(seq_start=seq[in_idx],
+                    t_start_ns=t_ns[in_idx],
+                    t_start=t[in_idx],
+                    t_eop=calc_t_at_era(t[in_idx],
+                        0.5*(era_edges[era_idx]+era_edges[era_idx+1]),
+                        0.1*units.ns),
+                    era_lo=era_edges[era_idx],
+                    era_hi=era_edges[era_idx+1],
+                    seq_len=0,
+                    seq_valid=0,
+                    seq_rfi=0,
+                    n_frames=0,
+                    finalized=False)
 
     def accum_frame(out_idx, in_idx):
-        frames[out_idx]["seq_len"] += dseq[in_idx]
-        frames[out_idx]["n_frames"] += 1
+        out_frames[out_idx]["seq_len"] += dseq[in_idx]
+        out_frames[out_idx]["n_frames"] += 1
         if fake_params["mode"] == "fill_ij_missing":
-            frames[out_idx]["seq_valid"] += dseq[in_idx] - 2
-            frames[out_idx]["seq_rfi"] += 1
+            out_frames[out_idx]["seq_valid"] += dseq[in_idx] - 2
+            out_frames[out_idx]["seq_rfi"] += 1
         else:
-            frames[out_idx]["seq_valid"] += dseq[in_idx]
-            frames[out_idx]["seq_rfi"] += 0
+            out_frames[out_idx]["seq_valid"] += dseq[in_idx]
+            out_frames[out_idx]["seq_rfi"] += 0
 
-    bin_idx = -1
+    def get_era_idx(era):
+        idx = np.searchsorted(era_edges, era) - 1
+        if idx < 0:
+            idx += n_bins_per_rot
+        if idx >= n_bins_per_rot:
+            idx -= n_bins_per_rot
+        return idx
+
+    era_idx = None
+    waiting = True
 
     for i in range(len(seq)):
+        era = t_c[i].earth_rotation_angle('tio').to_value('deg')
 
-        while bin_idx < (len(bins)-1) and t_c[i] >= bins[bin_idx+1]:
-            bin_idx += 1
+        if era_idx is None:
+            era_idx = get_era_idx(era)
+            continue
 
-        if bin_idx >= len(bins)-1:
-            break
+        if era < era_edges[era_idx] or era >= era_edges[era_idx+1]:
+            if len(out_frames) > 0:
+                out_frames[-1]['finalized'] = True
+            era_idx = era_idx + 1 if era_idx < n_bins_per_rot-1 else 0
+            out_frames.append(init_frame(i, era_idx))
+            accum_frame(-1, i)
+            waiting = False
+        elif not waiting:
+            accum_frame(-1, i)
 
-        if t_c[i] >= bins[bin_idx] and t_c[i] < bins[bin_idx+1]:
-            if frames[bin_idx] is None:
-                frames[bin_idx] = init_frame(i)
-            accum_frame(bin_idx, i)
+    if not out_frames[-1]['finalized']:
+        out_frames.pop()
 
 
     with open("frame_meta.out", "w") as f:
-        for frame in frames:
+        for frame in out_frames:
             f.write(str(frame) + "\n")
 
-    return frames
+    return out_frames
+
+
+def calc_era_bin_times(out_frame_metas):
+
+    t = []
+
+    for frame_meta in out_frame_metas:
+        t.append(calc_t_at_era(frame_meta['t_start'],
+                               frame_meta['era_lo'],
+                               0.1*units.ns))
+
+    t.append(calc_t_at_era(out_frame_metas[-1]['t_start'],
+                           out_frame_metas[-1]['era_hi'],
+                           0.1*units.ns))
+
+    return t
 
 
 @pytest.fixture(scope="module")
@@ -316,9 +344,14 @@ def n2_data(tmpdir_factory):
 
 def test_structure(n2_data):
 
-    n = global_params["num_elements"]
+    out_frame_metas = calc_downsamp_frame_meta()
+
+    # Check that there are the correct number of samples
+    assert len(n2_data) == len(out_frame_metas)
 
     # Check that each samples is the expected shape
+    n = global_params["num_elements"]
+
     for frame in n2_data:
         assert frame.metadata.num_elements == n
         assert frame.metadata.num_prod == (n * (n + 1) // 2)
@@ -326,8 +359,7 @@ def test_structure(n2_data):
 
 
     # Check that we have the expected number of samples
-    nsamp = len(calc_era_bins()) - 1
-    assert len(n2_data) == nsamp
+
 
 
 def test_metadata(n2_data):
@@ -373,56 +405,44 @@ def test_eop(n2_data):
     eop_y_pm = np.array([v.metadata.eop.yp_as for v in n2_data])
     eop_era = np.array([v.metadata.eop.ERA_deg for v in n2_data])
 
-    bins = calc_era_bins()
+    out_frame_metas = calc_downsamp_frame_meta()
 
-    t_bin_center = [bins[i] + 0.5 * (bins[i+1] - bins[i])
-                    for i in range(len(bins)-1)]
-
-    for i in range(len(t_bin_center)):
-        t_bin_center[i].delta_ut1_utc = dut1
-
-    t_cent = []
-    for i in range(len(bins)-1):
-        _, _, era_a = calc_times(bins[i])
-        _, _, era_b = calc_times(bins[i+1])
-
-        if era_b < era_a:
-            era_a -= 360.0
-        era = 0.5*(era_a + era_b)
-        if era < 0.0:
-            era += 360
-        elif era >= 360.0:
-            era -= 360.0
-
-        t = calc_t_at_era(t_bin_center[i], era, 0.1*units.ns)
-        t_cent.append(t)
-
-    t_cent_tup = [calc_times(t) for t in t_cent]
+    t_cent_tup = [calc_times(frame['t_eop']) for frame in out_frame_metas]
 
     t_inst_bin = np.array([t[0] for t in t_cent_tup])
     ut1_bin = np.array([t[1] for t in t_cent_tup])
     era_bin = np.array([t[2] for t in t_cent_tup])
 
+    with open("era.out", "w") as f:
+        for i in range(len(eop_era)):
+            f.write("{:04d} ERA_FRAME:   {:.17f}\n".format(i, eop_era[i]))
+            f.write(  "     ERA_TEST:    {:.17f}\n".format(era_bin[i]))
+            f.write(  "     DUT1_FRAME:  {:.17f}\n".format(eop_dut1[i]))
+            f.write(  "     DUT1_TEST:   {:.17f}\n".format(dut1))
+            f.write(  "     XPM_FRAME:   {:.17f}\n".format(eop_x_pm[i]))
+            f.write(  "     XPM_TEST:    {:.17f}\n".format(x_pm))
+            f.write(  "     YPM_FRAME:   {:.17f}\n".format(eop_y_pm[i]))
+            f.write(  "     YPM_TEST:    {:.17f}\n".format(y_pm))
+            f.write(  "     T_DIFF_NS:   {:d}\n".format(eop_t_inst[i, 1]
+                                                       - t_inst_bin[i, 1]))
+            f.write(  "     UT1_DIFF_NS: {:d}\n".format(eop_t_ut1[i, 1]
+                                                       - ut1_bin[i, 1]))
+
     # check EOP
-    assert np.all(eop_dut1 == dut1)
-    assert np.all(eop_x_pm == x_pm)
-    assert np.all(eop_y_pm == y_pm)
+    assert np.all(np.isclose(eop_dut1, dut1, 1.0e-15, 0.0))
+    assert np.all(np.isclose(eop_x_pm, x_pm, 1.0e-15, 0.0))
+    assert np.all(np.isclose(eop_y_pm, y_pm, 1.0e-15, 0.0))
 
     # check seconds
     assert np.all(eop_t_inst[:, 0] == t_inst_bin[:, 0])
     assert np.all(eop_t_ut1[:, 0] == ut1_bin[:, 0])
 
-    with open("era.out", "w") as f:
-        for i in range(len(eop_era)):
-            f.write("{:04d} ERA_FRAME: {:.17f}\n".format(i, eop_era[i]))
-            f.write(  "     ERA_TEST:  {:.17f}\n".format(era_bin[i]))
-
     # check ERA
-    assert np.all(np.fabs(eop_era - era_bin) < era_deg_tol)
+    assert np.all(np.fabs(eop_era - era_bin) <= era_deg_tol)
 
     # check nanoseconds
-    assert np.all(np.fabs(eop_t_inst[:, 1] - t_inst_bin[:, 1]) < eop_ns_tol)
-    assert np.all(np.fabs(eop_t_ut1[:, 1] - ut1_bin[:, 1]) < eop_ns_tol)
+    assert np.all(np.fabs(eop_t_inst[:, 1] - t_inst_bin[:, 1]) <= eop_t_ns_tol)
+    assert np.all(np.fabs(eop_t_ut1[:, 1] - ut1_bin[:, 1]) <= eop_ut1_ns_tol)
 
 
 def test_contents(n2_data):
