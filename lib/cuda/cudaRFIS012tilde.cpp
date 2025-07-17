@@ -140,12 +140,14 @@ int cudaRFIS012tilde::wait_on_precondition() {
 cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
                                       const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
-
     record_start_event();
 
     rfi_S012.check_metadata();
 
     rfi_S012tilde.set_metadata(rfi_S012.get_metadata());
+
+    // There is no poison value
+    // rfi_S012tilde.set_to_poison(0xff);
 
     const std::int8_t* const bf_mask_memory = bf_mask.get_ndarray().data();
     const std::uint64_t* const rfi_S012_memory = rfi_S012.get_ndarray().data();
@@ -160,6 +162,9 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
         (ulong*)rfi_S012tilde_memory, (const ulong*)rfi_S012_memory, (const uint8_t*)bf_mask_memory,
         Trfi, Trfimin, Trfisize, num_frequencies, num_dishes * num_polarizations,
         device.getStream(cuda_stream_id));
+
+    // There is no poison value
+    // rfi_S012tilde.check_for_poison(0xff);
 
     return record_end_event();
 }

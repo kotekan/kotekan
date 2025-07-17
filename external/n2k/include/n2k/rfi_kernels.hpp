@@ -403,7 +403,6 @@ struct SkKernel
 	uint *out_rfimask,                    // Shape (F,T*Nds/32), can be NULL
 	const ulong *in_S012,                 // Shape (T,F,3,S)
 	const uint8_t *in_bf_mask,            // Length S (bad feed mask)
-	long rfimask_fstride,                 // Only used if (out_rfimask != NULL). NOTE: uint32 stride, not bit stride!
 	long T,                               // Number of downsampled times in S012 array
 	long F,                               // Number of frequency channels
 	long S,                               // Number of stations (= 2 * dishes)

@@ -70,6 +70,10 @@ void kotekanLogging::set_log_level(const std::string& s_log_level) {
     set_log_level(log_level);
 }
 
+logLevel kotekanLogging::get_log_level() const {
+    return logLevel(_member_log_level);
+}
+
 void kotekanLogging::vset_error_message(const fmt::basic_string_view<char> format,
                                         fmt::format_args args) {
     // Note: We should protect `__err_msg` with a lock

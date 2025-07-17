@@ -173,7 +173,6 @@ int cudaRFISKbar::wait_on_precondition() {
 cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
                                   const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
-
     record_start_event();
 
     rfi_S012bar.check_metadata();
@@ -181,34 +180,39 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
     rfi_SKbar.set_metadata(rfi_S012bar.get_metadata());
     rfi_SKbartilde.set_metadata(rfi_S012bar.get_metadata());
 
+    rfi_SKbar.set_to_poison(0xff);
+    rfi_SKbartilde.set_to_poison(0xff);
+
     const std::int8_t* const bf_mask_memory = bf_mask.get_ndarray().data();
     const std::uint64_t* const rfi_S012bar_memory = rfi_S012bar.get_ndarray().data();
     float* const rfi_SKbar_memory = rfi_SKbar.get_ndarray().data();
     float* const rfi_SKbartilde_memory = rfi_SKbartilde.get_ndarray().data();
 
-    float* const out_sk_feed_averaged = rfi_SKbar_memory;
-    float* const out_sk_single_feed = rfi_SKbartilde_memory;
+    float* const out_sk_feed_averaged = rfi_SKbartilde_memory;
+    float* const out_sk_single_feed = rfi_SKbar_memory;
     uint* const out_rfimask = nullptr;
     const ulong* const in_S012 = rfi_S012bar_memory;
     const uint8_t* const in_bf_mask = (const uint8_t*)bf_mask_memory;
-    const long rfimask_fstride = 0;
     const long T = rfi_S012bar.get_read_valid().size();
     const long F = rfi_S012bar.get_ndarray().get_extent(1);
     const long S = rfi_S012bar.get_ndarray().get_extent(3)
                    * rfi_S012bar.get_ndarray().get_extent(4); // Number of stations (= 2 * dishes)
     const long S012_Tmin = rfi_S012bar.get_read_valid().begin();
     const long S012_Tsize = rfi_S012bar.get_ndarray().get_extent(0);
-    const long sk_feed_averaged_Tmin = rfi_SKbartilde.get_read_valid().begin();
+    const long sk_feed_averaged_Tmin = rfi_SKbartilde.get_write_valid().begin();
     const long sk_feed_averaged_Tsize = rfi_SKbartilde.get_ndarray().get_extent(0);
-    const long sk_single_feed_Tmin = rfi_SKbar.get_read_valid().begin();
+    const long sk_single_feed_Tmin = rfi_SKbar.get_write_valid().begin();
     const long sk_single_feed_Tsize = rfi_SKbar.get_ndarray().get_extent(0);
     const long rfimask_T128min = 0;
     const long rfimask_T128size = 0;
     const cudaStream_t stream = device.getStream(cuda_stream_id);
-    skKernel.launch(out_sk_feed_averaged, out_sk_single_feed, out_rfimask, in_S012, in_bf_mask,
-                    rfimask_fstride, T, F, S, S012_Tmin, S012_Tsize, sk_feed_averaged_Tmin,
-                    sk_feed_averaged_Tsize, sk_single_feed_Tmin, sk_single_feed_Tsize,
-                    rfimask_T128min, rfimask_T128size, stream);
+    skKernel.launch(out_sk_feed_averaged, out_sk_single_feed, out_rfimask, in_S012, in_bf_mask, T,
+                    F, S, S012_Tmin, S012_Tsize, sk_feed_averaged_Tmin, sk_feed_averaged_Tsize,
+                    sk_single_feed_Tmin, sk_single_feed_Tsize, rfimask_T128min, rfimask_T128size,
+                    stream);
+
+    rfi_SKbar.check_for_poison(0xff);
+    rfi_SKbartilde.check_for_poison(0xff);
 
     return record_end_event();
 }

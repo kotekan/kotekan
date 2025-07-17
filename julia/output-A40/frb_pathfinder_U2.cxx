@@ -659,33 +659,8 @@ cudaFRBBeamformer_pathfinder_U2::execute(cudaPipelineState& /*pipestate*/,
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, host_S_buffer.data(), S_length_in_bytes,
                                          cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 
-        // We do not write all frequencies
-        // I_buffer.set_to_poison(0xff); // 0xffff is NaN16
-
-#ifdef DEBUGGING
-    // Poison outputs
-    {
-        const int num_chunks = Ttilde_max_arg <= Ttilde_ringbuf ? 1 : 2;
-        for (int chunk = 0; chunk < num_chunks; ++chunk) {
-            const std::ptrdiff_t Ttilde_stride = I_meta->stride[0];
-            const std::ptrdiff_t Ttilde_offset = chunk == 0 ? Ttilde_min_arg : 0;
-            const std::ptrdiff_t Ttilde_length = (num_chunks == 1 ? Ttilde_max_arg - Ttilde_min_arg
-                                                  : chunk == 0    ? Ttilde_ringbuf - Ttilde_min_arg
-                                                               : Ttilde_max_arg - Ttilde_ringbuf);
-            const std::ptrdiff_t Fbar_out_stride = I_meta->stride[1];
-            const std::ptrdiff_t Fbar_out_offset = Fbar_out_min;
-            const std::ptrdiff_t Fbar_out_length = Fbar_out_max - Fbar_out_min;
-            CHECK_CUDA_ERROR(cudaMemset2DAsync((std::uint8_t*)I_memory
-                                                   + 2 * Ttilde_offset * Ttilde_stride
-                                                   + 2 * Fbar_out_offset * Fbar_out_stride,
-                                               2 * Ttilde_stride,
-                                               0xff, // 0xffff is NaN16
-                                               2 * Fbar_out_length * Fbar_out_stride, Ttilde_length,
-                                               device.getStream(cuda_stream_id)));
-        } // for chunk
-    }
-#endif
-
+    // We do not write all frequencies
+    I_buffer.set_to_poison(0xff, Fbar_out_min, Fbar_out_max); // 0xffff is NaN16
     info_buffer.set_to_poison(0xff);
 
 #ifdef DEBUGGING
@@ -746,50 +721,7 @@ cudaFRBBeamformer_pathfinder_U2::execute(cudaPipelineState& /*pipestate*/,
 #endif
 
     // We do not write all frequencies
-    // I_buffer.check_for_poison(0xff);
-
-#ifdef DEBUGGING
-    // Check outputs for poison
-    {
-        const int num_chunks = Ttilde_max_arg <= Ttilde_ringbuf ? 1 : 2;
-        for (int chunk = 0; chunk < num_chunks; ++chunk) {
-            DEBUG("poison check chunk={}/{}", chunk, num_chunks);
-            const std::ptrdiff_t Ttilde_stride = I_meta->stride[0];
-            const std::ptrdiff_t Ttilde_offset = chunk == 0 ? Ttilde_min_arg : 0;
-            const std::ptrdiff_t Ttilde_length = num_chunks == 1 ? Ttilde_max_arg - Ttilde_min_arg
-                                                 : chunk == 0    ? Ttilde_ringbuf - Ttilde_min_arg
-                                                                 : Ttilde_max_arg - Ttilde_ringbuf;
-            const std::ptrdiff_t Fbar_out_stride = I_meta->stride[1];
-            const std::ptrdiff_t Fbar_out_offset = Fbar_out_min;
-            const std::ptrdiff_t Fbar_out_length = Fbar_out_max - Fbar_out_min;
-            std::vector<std::uint16_t> I_buffer(Ttilde_length * Fbar_out_length * Fbar_out_stride,
-                                                0xfffe);
-            CHECK_CUDA_ERROR(cudaMemcpy2D(I_buffer.data(), 2 * Fbar_out_length * Fbar_out_stride,
-                                          (const std::uint8_t*)I_memory
-                                              + 2 * Ttilde_offset * Ttilde_stride
-                                              + 2 * Fbar_out_offset * Fbar_out_stride,
-                                          2 * Ttilde_stride, 2 * Fbar_out_length * Fbar_out_stride,
-                                          Ttilde_length, cudaMemcpyDeviceToHost));
-
-            bool I_found_error = false;
-            for (std::ptrdiff_t ttilde = 0; ttilde < Ttilde_length; ++ttilde) {
-                for (std::ptrdiff_t ftilde = 0; ftilde < Fbar_out_length; ++ftilde) {
-                    bool any_error = false, all_error = true;
-                    for (std::ptrdiff_t n = 0; n < Fbar_out_stride; ++n) {
-                        const auto val = I_buffer.at(ttilde * (Fbar_out_length * Fbar_out_stride)
-                                                     + ftilde * Fbar_out_stride + n);
-                        const bool val_is_finite = (val & 0b0111110000000000) != 0b0111110000000000;
-                        any_error |= !val_is_finite;
-                        all_error &= !val_is_finite;
-                    }
-                    I_found_error |= any_error;
-                }
-            }
-            if (I_found_error)
-                WARN("CUDA kernel FRBBeamformer_pathfinder_U2 produced non-finite results");
-        } // for chunk
-    }
-#endif
+    I_buffer.check_for_poison(0xff, Fbar_out_min, Fbar_out_max); // 0xffff is NaN16
 
     return record_end_event();
 }

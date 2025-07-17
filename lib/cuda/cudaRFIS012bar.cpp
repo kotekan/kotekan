@@ -140,7 +140,6 @@ int cudaRFIS012bar::wait_on_precondition() {
 cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
                                     const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
-
     record_start_event();
 
     rfi_S012.check_metadata();
@@ -153,6 +152,9 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
         rfi_S012bar_meta->time_downsampling_fpga[freq] *= rfi_second_downsampling_factor;
     }
 
+    // There is no poison value
+    // rfi_S012bar.set_to_poison(0xff);
+
     const std::uint64_t* const rfi_S012_memory = rfi_S012.get_ndarray().data();
     std::uint64_t* const rfi_S012bar_memory = rfi_S012bar.get_ndarray().data();
 
@@ -162,7 +164,7 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
     DEBUG("Trfi_size={:d} Trfi_min={:d} Trfi={:d}", Trfi_size, Trfi_min, Trfi);
 
     const std::ptrdiff_t Trfibar_size = rfi_S012bar.get_ndarray().extent(0);
-    const std::ptrdiff_t Trfibar_min = rfi_S012bar.get_read_valid().begin();
+    const std::ptrdiff_t Trfibar_min = rfi_S012bar.get_write_valid().begin();
     const std::ptrdiff_t Trfibar = rfi_S012bar.get_write_valid().size();
     DEBUG("Trfibar_size={:d} Trfibar_min={:d} Trfibar={:d}", Trfibar_size, Trfibar_min, Trfibar);
 
@@ -176,6 +178,9 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
 
     n2k::launch_s012_time_downsample_kernel(Sout, Sin, T, M, Nds, Trfi_min, Trfi_size, Trfibar_min,
                                             Trfibar_size, stream);
+
+    // There is no poison value
+    // rfi_S012bar.check_for_poison(0xff);
 
     return record_end_event();
 }

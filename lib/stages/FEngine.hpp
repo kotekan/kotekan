@@ -123,6 +123,7 @@ class FEngine : public kotekan::Stage {
     // FRB beamformer setup
     const int frb1_num_beams_P;
     const int frb1_num_beams_Q;
+    const float frb1_input_scale;
     const int frb2_num_beams_ew;
     const int frb2_num_beams_ns;
     const float frb2_bore_z;

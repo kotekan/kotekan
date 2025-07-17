@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <type_traits>
 
@@ -55,6 +56,12 @@ struct uint1x8_t {
         KOTEKAN_ASSERT(0 <= n && n < 8);
         return (val >> n) & 1;
     }
+
+    friend std::ostream& operator<<(std::ostream& os, const uint1x8_t x) {
+        for (int n = 0; n < 8; ++n)
+            os << x[n];
+        return os;
+    }
 };
 
 // 2 unsigned 4-bit integers (packed into a byte)
@@ -74,6 +81,10 @@ struct uint4x2_t {
     constexpr std::uint8_t operator[](int n) const {
         KOTEKAN_ASSERT(0 <= n && n < 2);
         return (val >> (4 * n)) & 0xf;
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const uint4x2_t x) {
+        return os << x[0] << "," << x[1];
     }
 };
 
@@ -96,6 +107,10 @@ struct int4x2_t {
         const int bits = (val >> (4 * n)) & 0xf;
         return (std::int8_t)(bits << 4) >> 4;
     }
+
+    friend std::ostream& operator<<(std::ostream& os, const int4x2_t x) {
+        return os << x[0] << "," << x[1];
+    }
 };
 
 // offset-encoded (stored is value + 8), low and high values swapped
@@ -117,7 +132,39 @@ struct int4x2chime_t {
         const int bits = (val >> (4 * n)) & 0xf;
         return bits - 8;
     }
+
+    friend std::ostream& operator<<(std::ostream& os, const int4x2chime_t x) {
+        return os << x[0] << "," << x[1];
+    }
 };
+
+#if KOTEKAN_FLOAT16
+constexpr inline bool isfinite(const float16_t x) {
+    std::uint16_t bits = 0;
+    std::memcpy(&bits, &x, sizeof bits);
+    return (bits & 0b0111110000000000) != 0b0111110000000000;
+}
+
+constexpr inline bool isinf(const float16_t x) {
+    std::uint16_t bits = 0;
+    std::memcpy(&bits, &x, sizeof bits);
+    return (bits & 0b0111111111111111) == 0b0111110000000000;
+}
+
+constexpr inline bool isnan(const float16_t x) {
+    return !isfinite(x) && !isinf(x);
+}
+
+constexpr inline bool signbit(const float16_t x) {
+    std::uint16_t bits = 0;
+    std::memcpy(&bits, &x, sizeof bits);
+    return bits >> 15;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const float16_t x) {
+    return os << float(x);
+}
+#endif
 
 #undef KOTEKAN_ASSERT
 
@@ -405,6 +452,142 @@ struct GetType<float64> {
 
 template<DataType type>
 using GetType_t = typename GetType<type>::type;
+
+// Find a poison value
+template<typename T>
+struct PoisonValue;
+
+template<>
+struct PoisonValue<unsigned char>
+    : std::integral_constant<unsigned char, std::numeric_limits<unsigned char>::max()> {};
+template<>
+struct PoisonValue<unsigned short>
+    : std::integral_constant<unsigned short, std::numeric_limits<unsigned short>::max()> {};
+template<>
+struct PoisonValue<unsigned int>
+    : std::integral_constant<unsigned int, std::numeric_limits<unsigned int>::max()> {};
+template<>
+struct PoisonValue<unsigned long>
+    : std::integral_constant<unsigned long, std::numeric_limits<unsigned long>::max()> {};
+template<>
+struct PoisonValue<unsigned long long>
+    : std::integral_constant<unsigned long long, std::numeric_limits<unsigned long long>::max()> {};
+
+template<>
+struct PoisonValue<signed char>
+    : std::integral_constant<signed char, std::numeric_limits<signed char>::min()> {};
+template<>
+struct PoisonValue<signed short>
+    : std::integral_constant<signed short, std::numeric_limits<signed short>::min()> {};
+template<>
+struct PoisonValue<signed int>
+    : std::integral_constant<signed int, std::numeric_limits<signed int>::min()> {};
+template<>
+struct PoisonValue<signed long>
+    : std::integral_constant<signed long, std::numeric_limits<signed long>::min()> {};
+template<>
+struct PoisonValue<signed long long>
+    : std::integral_constant<signed long long, std::numeric_limits<signed long long>::min()> {};
+
+#if KOTEKAN_FLOAT16
+template<>
+struct PoisonValue<float16_t> {
+    // Unfortunately, `float16_t` does not have any `constexpr` constructors
+    inline static const float16_t value = std::numeric_limits<float>::quiet_NaN();
+    using value_type = float16_t;
+    operator value_type() const noexcept {
+        return value;
+    }
+    value_type operator()() const noexcept {
+        return value;
+    }
+};
+#endif
+
+template<>
+struct PoisonValue<float> {
+    static constexpr float value = std::numeric_limits<float>::quiet_NaN();
+    using value_type = float;
+    constexpr operator value_type() const noexcept {
+        return value;
+    }
+    constexpr value_type operator()() const noexcept {
+        return value;
+    }
+};
+
+template<>
+struct PoisonValue<double> {
+    static constexpr double value = std::numeric_limits<double>::quiet_NaN();
+    using value_type = double;
+    constexpr operator value_type() const noexcept {
+        return value;
+    }
+    constexpr value_type operator()() const noexcept {
+        return value;
+    }
+};
+
+template<>
+struct PoisonValue<long double> {
+    static constexpr long double value = std::numeric_limits<long double>::quiet_NaN();
+    using value_type = long double;
+    constexpr operator value_type() const noexcept {
+        return value;
+    }
+    constexpr value_type operator()() const noexcept {
+        return value;
+    }
+};
+
+template<>
+struct PoisonValue<uint1x8_t> {
+    static constexpr uint1x8_t value{0x55};
+    using value_type = uint1x8_t;
+    constexpr operator value_type() const noexcept {
+        return value;
+    }
+    constexpr value_type operator()() const noexcept {
+        return value;
+    }
+};
+
+template<>
+struct PoisonValue<uint4x2_t> {
+    static constexpr uint4x2_t value{0xff};
+    using value_type = uint4x2_t;
+    constexpr operator value_type() const noexcept {
+        return value;
+    }
+    constexpr value_type operator()() const noexcept {
+        return value;
+    }
+};
+
+template<>
+struct PoisonValue<int4x2_t> {
+    static constexpr int4x2_t value{0x88};
+    using value_type = int4x2_t;
+    constexpr operator value_type() const noexcept {
+        return value;
+    }
+    constexpr value_type operator()() const noexcept {
+        return value;
+    }
+};
+
+template<>
+struct PoisonValue<int4x2chime_t> {
+    static constexpr int4x2chime_t value{0x00};
+    using value_type = int4x2chime_t;
+    constexpr operator value_type() const noexcept {
+        return value;
+    }
+    constexpr value_type operator()() const noexcept {
+        return value;
+    }
+};
+
 
 // Convert a type to a string
 std::string type_to_string(DataType type);

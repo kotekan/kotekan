@@ -170,7 +170,6 @@ int cudaRFIS012::wait_on_precondition() {
 cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
                                  const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
-
     record_start_event();
 
     pl_mask.check_metadata();
@@ -183,6 +182,9 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
         rfi_S012_meta->freq_upchan_factor[freq] *= rfi_downsampling_factor;
         rfi_S012_meta->time_downsampling_fpga[freq] *= rfi_downsampling_factor;
     }
+
+    // There is no poison value
+    // rfi_S012.set_to_poison(0xff);
 
     const kotekan::uint1x8_t* const pl_mask_memory = pl_mask.get_ndarray().data();
     const kotekan::int4x2chime_t* const voltage_memory = voltage.get_ndarray().data();
@@ -204,6 +206,9 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
                            Tmin, Tsize, num_frequencies, num_dishes * num_polarizations,
                            rfi_downsampling_factor, F_stride, offset_encoded,
                            device.getStream(cuda_stream_id));
+
+    // There is no poison value
+    // rfi_S012.check_for_poison(0xff);
 
     return record_end_event();
 }

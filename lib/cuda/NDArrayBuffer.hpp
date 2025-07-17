@@ -71,7 +71,9 @@ public:
         quantity(quantity), // e.g. "J"
         ndarray(extents, dimnames, get_buffer_pointer(extents))
     //
-    {}
+    {
+        set_log_level(cuda_command.get_log_level());
+    }
 
     NDArrayBuffer(const std::string& buffer_name, const std::string& quantity,
                   const std::array<std::ptrdiff_t, D>& extents,
@@ -199,9 +201,7 @@ public:
 #ifdef DEBUGGING
         T poison;
         std::memset(&poison, poison_value, sizeof poison);
-        const auto check_for_poison = [=](const T x) {
-            return std::memcmp(&x, &poison, sizeof poison) == 0;
-        };
+        const auto check = [=](const T x) { return std::memcmp(&x, &poison, sizeof poison) == 0; };
         const std::ptrdiff_t buffer_length = length_in_bytes();
         const void* const buffer_device_ptr = ndarray.data();
         assert(buffer_device_ptr);
@@ -209,8 +209,7 @@ public:
         CHECK_CUDA_ERROR(cudaMemcpy(local_data.data(), buffer_device_ptr, buffer_length,
                                     cudaMemcpyDeviceToHost));
         const bool found_error =
-            std::find_if(local_data.begin(), local_data.end(), check_for_poison)
-            != local_data.end();
+            std::find_if(local_data.begin(), local_data.end(), check) != local_data.end();
         if (found_error)
             FATAL_ERROR("NDArray buffer {:s} contains poison", buffer_name);
 #endif

@@ -155,6 +155,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
     // FRB beamformer setup
     frb1_num_beams_P(2 * num_dish_locations_ns), frb1_num_beams_Q(2 * num_dish_locations_ew),
+    frb1_input_scale(config.get<float>(unique_name, "frb1_input_scale")),
     frb2_num_beams_ew(config.get<int>(unique_name, "frb_num_beams_ew")),
     frb2_num_beams_ns(config.get<int>(unique_name, "frb_num_beams_ns")),
     frb2_bore_z(config.get<float>(unique_name, "frb_bore_z")),
@@ -1027,7 +1028,7 @@ void FEngine::main_thread() {
                 for (int n = 0; n < num_dish_locations_ns * num_dish_locations_ew
                                         * num_polarizations * num_local_channels * U;
                      ++n)
-                    ((std::complex<float16_t>*)W1_frame)[n] = 1;
+                    ((std::complex<float16_t>*)W1_frame)[n] = frb1_input_scale;
             }
             DEBUG("[{:d}] Done filling W1 buffer for U={:d}.", W1_frame_index, U);
 

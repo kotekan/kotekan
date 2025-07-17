@@ -172,13 +172,16 @@ int cudaRFISKtilde::wait_on_precondition() {
 cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
                                     const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
-
     record_start_event();
 
     rfi_S012.check_metadata();
 
     rfi_SKtilde.set_metadata(rfi_S012.get_metadata());
     rfi_RFImask.set_metadata(rfi_S012.get_metadata());
+
+    rfi_SKtilde.set_to_poison(0xff);
+    // There is no poison value
+    // rfi_RFImask.set_to_poison(0x55);
 
     const std::int8_t* const bf_mask_memory = bf_mask.get_ndarray().data();
     const std::uint64_t* const rfi_S012_memory = rfi_S012.get_ndarray().data();
@@ -190,25 +193,27 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     uint* const out_rfimask = (uint*)rfi_RFImask_memory;
     const ulong* const in_S012 = rfi_S012_memory;
     const uint8_t* const in_bf_mask = (const uint8_t*)bf_mask_memory;
-    const long rfimask_fstride =
-        rfi_RFImask.get_ndarray().get_stride(1) / 4; // NOTE: uint32 stride, not bit stride!
     const long T = rfi_S012.get_read_valid().size();
     const long F = rfi_S012.get_ndarray().get_extent(1);
     const long S = rfi_S012.get_ndarray().get_extent(3)
                    * rfi_S012.get_ndarray().get_extent(4); // Number of stations (= 2 * dishes)
     const long S012_Tmin = rfi_S012.get_read_valid().begin();
     const long S012_Tsize = rfi_S012.get_ndarray().get_extent(0);
-    const long sk_feed_averaged_Tmin = rfi_SKtilde.get_read_valid().begin();
+    const long sk_feed_averaged_Tmin = rfi_SKtilde.get_write_valid().begin();
     const long sk_feed_averaged_Tsize = rfi_SKtilde.get_ndarray().get_extent(0);
     const long sk_single_feed_Tmin = 0;
     const long sk_single_feed_Tsize = 0;
-    const long rfimask_T128min = rfi_RFImask.get_read_valid().begin();
+    const long rfimask_T128min = rfi_RFImask.get_write_valid().begin();
     const long rfimask_T128size = rfi_RFImask.get_ndarray().get_extent(0);
     const cudaStream_t stream = device.getStream(cuda_stream_id);
-    skKernel.launch(out_sk_feed_averaged, out_sk_single_feed, out_rfimask, in_S012, in_bf_mask,
-                    rfimask_fstride, T, F, S, S012_Tmin, S012_Tsize, sk_feed_averaged_Tmin,
-                    sk_feed_averaged_Tsize, sk_single_feed_Tmin, sk_single_feed_Tsize,
-                    rfimask_T128min, rfimask_T128size, stream);
+    skKernel.launch(out_sk_feed_averaged, out_sk_single_feed, out_rfimask, in_S012, in_bf_mask, T,
+                    F, S, S012_Tmin, S012_Tsize, sk_feed_averaged_Tmin, sk_feed_averaged_Tsize,
+                    sk_single_feed_Tmin, sk_single_feed_Tsize, rfimask_T128min, rfimask_T128size,
+                    stream);
+
+    rfi_SKtilde.check_for_poison(0xff);
+    // There is no poison value
+    // rfi_RFImask.check_for_poison(0x55);
 
     return record_end_event();
 }

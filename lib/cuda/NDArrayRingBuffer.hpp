@@ -9,6 +9,7 @@
 #include <buffer.hpp>
 #include <cassert>
 #include <chordMetadata.hpp>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -18,11 +19,13 @@
 #include <div.hpp>
 #include <functional>
 #include <gpuDeviceInterface.hpp>
+#include <iomanip>
 #include <kotekanLogging.hpp>
 #include <ostream>
 #include <ringbuffer.hpp>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -57,6 +60,7 @@ public:
     }
 };
 
+#warning "TODO: set log level in constructor"
 template<typename T, std::size_t D>
 class NDArrayRingBuffer : public kotekan::kotekanLogging {
     static_assert(D > 0);
@@ -117,6 +121,8 @@ public:
         write_valid(0, 0), read_valid(0, 0), read_claimed(0, 0)
     //
     {
+        set_log_level(cuda_command.get_log_level());
+
         assert(ringbuffer);
     }
 
@@ -177,11 +183,13 @@ public:
 
         const std::ptrdiff_t write_begin = div_noremainder(waited.value(), granularity_in_bytes());
         write_valid = extent_t(write_begin, write_begin + produced_elements);
+        assert(write_valid.size() > 0);
 
         return 0;
     }
 
     void finish_write() {
+        assert(write_valid.size() > 0);
         const std::ptrdiff_t written_elements = write_valid.size();
         ringbuffer->finish_write(cuda_command.get_unique_name(), get_instance_num(),
                                  written_elements * granularity_in_bytes());
@@ -192,8 +200,20 @@ public:
 
     // Returns 0 if all is good, -1 if we should terminate
     int wait_and_claim_readable(
-        const std::function<read_descriptor_t(std::ptrdiff_t)> calc_read_descriptor) {
+        const std::function<read_descriptor_t(std::ptrdiff_t)>& calc_read_descriptor) {
         assert(write_valid.size() == 0);
+#warning "TODO"
+        if (!(read_valid.size() == 0)) {
+            DEBUG("buffer {:s}, wait_and_claim_readable({:s}[{:d}]): valid read region is not "
+                  "empty (begin={:d}, end={:d}, size={:d})",
+                  buffer_name, cuda_command.get_unique_name(), get_instance_num(),
+                  read_valid.begin(), read_valid.end(), read_valid.size());
+            sleep(1);
+            FATAL_ERROR("buffer {:s}, wait_and_claim_readable({:s}[{:d}]): valid read region is "
+                        "not empty (begin={:d}, end={:d}, size={:d})",
+                        buffer_name, cuda_command.get_unique_name(), get_instance_num(),
+                        read_valid.begin(), read_valid.end(), read_valid.size());
+        }
         assert(read_valid.size() == 0);
         assert(read_claimed.size() == 0);
 
@@ -234,28 +254,52 @@ public:
         const std::ptrdiff_t read_begin = div_noremainder(claimed.value(), granularity_in_bytes());
         read_valid = extent_t(read_begin, read_begin + read_descriptor.read);
         read_claimed = extent_t(read_begin, read_begin + read_descriptor.claimed);
+        assert(read_valid.size() > 0);
+        assert(read_claimed.size() > 0);
 
         return 0;
     }
 
     void finish_read() {
+        assert(read_valid.size() > 0);
+        assert(read_claimed.size() > 0);
         const std::ptrdiff_t claimed_elements = read_claimed.size();
         ringbuffer->finish_read(cuda_command.get_unique_name(), get_instance_num(),
                                 claimed_elements * granularity_in_bytes());
 
         read_valid = extent_t(read_claimed.end(), read_claimed.end());
         read_claimed = extent_t(read_claimed.end(), read_claimed.end());
+        assert(read_valid.size() == 0);
+        assert(read_claimed.size() == 0);
     }
 
     // State
 
     extent_t get_write_valid() const {
+#ifdef DEBUGGING
+        if (!(write_valid.size() > 0))
+            FATAL_ERROR("kernel {:s}, buffer {:s}, get_write_valid: valid write region is empty",
+                        cuda_command.get_unique_name(), buffer_name);
+        assert(write_valid.size() > 0);
+#endif
         return write_valid;
     }
     extent_t get_read_valid() const {
+#ifdef DEBUGGING
+        if (!(read_valid.size() > 0))
+            FATAL_ERROR("kernel {:s}, buffer {:s}, get_read_valid: valid read region is empty",
+                        cuda_command.get_unique_name(), buffer_name);
+        assert(read_valid.size() > 0);
+#endif
         return read_valid;
     }
     extent_t get_read_claimed() const {
+#ifdef DEBUGGING
+        if (!(read_claimed.size() > 0))
+            FATAL_ERROR("kernel {:s}, buffer {:s}, get_read_claimed: claimed read region is empty",
+                        cuda_command.get_unique_name(), buffer_name);
+        assert(read_claimed.size() > 0);
+#endif
         return read_claimed;
     }
 
@@ -342,78 +386,163 @@ public:
     // Poison
 
     // Poison an NDArray ring buffer
-    void set_to_poison(const std::uint8_t poison_value) {
+    void set_to_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
+                       const std::ptrdiff_t F_max) {
 #ifdef DEBUGGING
+        assert(get_write_valid().size() > 0);
+
+        const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
+        assert(F_stride > 0);
+        const std::ptrdiff_t F_offset = F_min;
+        assert(F_offset >= 0);
+        const std::ptrdiff_t F_length = F_max - F_min;
+        assert(F_length > 0);
+
         const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
+        assert(T_ringbuf > 0);
+        const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
+        assert(T_stride > 0);
         const std::ptrdiff_t T_min = get_write_valid().begin();
+        assert(T_min >= 0);
         const std::ptrdiff_t T_max = get_write_valid().end();
+        assert(T_max > T_min);
         const std::ptrdiff_t T_length = T_max - T_min;
+        assert(T_length > 0);
+
         const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
-        const std::ptrdiff_t T_max_arg = mod(T_min, T_ringbuf) + T_length;
+        assert(T_min_arg >= 0);
+        assert(T_min_arg < T_ringbuf);
+        const std::ptrdiff_t T_max_arg = T_min_arg + T_length;
+        assert(T_max_arg >= T_min_arg);
+        assert(T_max_arg < 2 * T_ringbuf);
         const int num_chunks = T_max_arg <= T_ringbuf ? 1 : 2;
         for (int chunk = 0; chunk < num_chunks; ++chunk) {
-            const std::ptrdiff_t T_stride = granularity_in_bytes();
             const std::ptrdiff_t T_offset = chunk == 0 ? T_min_arg : 0;
+            assert(T_offset >= 0);
+            assert(T_offset < T_ringbuf);
             const std::ptrdiff_t T_length = num_chunks == 1 ? T_max_arg - T_min_arg
                                             : chunk == 0    ? T_ringbuf - T_min_arg
                                                             : T_max_arg - T_ringbuf;
-            CHECK_CUDA_ERROR(cudaMemsetAsync(
-                (std::uint8_t*)get_ndarray().data() + T_offset * T_stride, poison_value,
-                T_length * T_stride,
-                cuda_command.get_device().getStream(cuda_command.get_cuda_stream_id())));
+            assert(T_length > 0);
+            assert(T_offset + T_length <= T_ringbuf);
+
+            const auto stream =
+                cuda_command.get_device().getStream(cuda_command.get_cuda_stream_id());
+            CHECK_CUDA_ERROR(
+                cudaMemset2DAsync(get_ndarray().data() + T_offset * T_stride + F_offset * F_stride,
+                                  T_stride * sizeof(T), poison_value,
+                                  F_length * F_stride * sizeof(T), T_length, stream));
         } // for chunk
 #endif
     }
 
+    void set_to_poison(const std::uint8_t poison_value) {
+        set_to_poison(poison_value, 0, get_ndarray().get_extent(1));
+    }
+
     // Check an NDArray ring buffer for poison
-    void check_for_poison(const std::uint8_t poison_value) {
+    void check_for_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
+                          const std::ptrdiff_t F_max) {
 #ifdef DEBUGGING
+        assert(get_write_valid().size() > 0);
+
         T poison;
         std::memset(&poison, poison_value, sizeof poison);
-        const auto check_for_poison = [=](const T x) {
+        const auto check = [=](const T x) {
+            using std::isfinite, kotekan::isfinite;
+            if constexpr (std::is_floating_point_v<T> || std::is_same_v<T, float16_t>)
+                if (!isfinite(x))
+                    return true;
             return std::memcmp(&x, &poison, sizeof poison) == 0;
         };
+
+        const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
+        assert(F_stride > 0);
+        const std::ptrdiff_t F_offset = F_min;
+        assert(F_offset >= 0);
+        const std::ptrdiff_t F_length = F_max - F_min;
+        assert(F_length > 0);
+
         const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
+        assert(T_ringbuf > 0);
+        const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
+        assert(T_stride > 0);
         const std::ptrdiff_t T_min = get_write_valid().begin();
+        assert(T_min >= 0);
         const std::ptrdiff_t T_max = get_write_valid().end();
+        assert(T_max > T_min);
         const std::ptrdiff_t T_length = T_max - T_min;
+        assert(T_length > 0);
+
+        const std::ptrdiff_t T_stride_local = F_length * F_stride;
+        std::vector<T> local_data(T_length * T_stride_local, poison);
+
         const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
-        const std::ptrdiff_t T_max_arg = mod(T_min, T_ringbuf) + T_length;
+        assert(T_min_arg >= 0);
+        assert(T_min_arg < T_ringbuf);
+        const std::ptrdiff_t T_max_arg = T_min_arg + T_length;
+        assert(T_max_arg >= T_min_arg);
+        assert(T_max_arg < 2 * T_ringbuf);
         const int num_chunks = T_max_arg <= T_ringbuf ? 1 : 2;
         for (int chunk = 0; chunk < num_chunks; ++chunk) {
-            const std::ptrdiff_t T_stride = granularity_in_bytes();
             const std::ptrdiff_t T_offset = chunk == 0 ? T_min_arg : 0;
+            assert(T_offset >= 0);
+            assert(T_offset < T_ringbuf);
             const std::ptrdiff_t T_length = num_chunks == 1 ? T_max_arg - T_min_arg
                                             : chunk == 0    ? T_ringbuf - T_min_arg
                                                             : T_max_arg - T_ringbuf;
-            std::vector<T> local_data(T_length * T_stride / sizeof(T), poison);
-            CHECK_CUDA_ERROR(cudaMemcpy(local_data.data(),
-                                        (std::uint8_t*)get_ndarray().data() + T_offset * T_stride,
-                                        T_length * T_stride, cudaMemcpyDeviceToHost));
-            const bool found_error =
-                std::find_if(local_data.begin(), local_data.end(), check_for_poison)
-                != local_data.end();
-            if (found_error)
-                ERROR("NDArray ring buffer {:s} contains poison at {}/{}", buffer_name,
-                      std::find_if(local_data.begin(), local_data.end(), check_for_poison)
-                          - local_data.begin(),
-                      local_data.size());
-            if (found_error) {
-                for (std::ptrdiff_t t = 0; t < T_length; ++t) {
+            assert(T_length > 0);
+            assert(T_offset + T_length <= T_ringbuf);
+
+            const std::ptrdiff_t T_offset_local = chunk == 0 ? 0 : T_ringbuf - T_min_arg;
+
+            CHECK_CUDA_ERROR(cudaMemcpy2D(
+                local_data.data() + T_offset_local * T_stride_local, T_stride_local * sizeof(T),
+                get_ndarray().data() + T_offset * T_stride + F_offset * F_stride,
+                T_stride * sizeof(T), T_stride_local * sizeof(T), T_length,
+                cudaMemcpyDeviceToHost));
+        } // for chunk
+
+        const auto first_poison_location =
+            std::find_if(local_data.begin(), local_data.end(), check);
+        const bool found_error = first_poison_location != local_data.end();
+        if (found_error)
+            ERROR("NDArray ring buffer {:s} contains poison or a non-finite number at index={:d}",
+                  buffer_name, first_poison_location - local_data.begin(), local_data.size());
+        if (found_error) {
+            for (std::ptrdiff_t t = 0; t < T_length; ++t) {
+                for (std::ptrdiff_t f = 0; f < F_length; ++f) {
                     bool any_error = false;
-                    for (std::ptrdiff_t n = 0; n < T_stride / std::ptrdiff_t(sizeof(T)); ++n) {
-                        const auto val = local_data.at(t * T_stride / sizeof(T) + n);
-                        any_error |= check_for_poison(val);
+                    for (std::ptrdiff_t n = 0; n < F_stride; ++n) {
+                        const auto val = local_data.at(t * T_stride_local + f * F_stride + n);
+                        if (true) {
+                            if (check(val)) {
+                                kotekan::GetType_t<kotekan::uint_from_element_bits(8 * sizeof(T))>
+                                    bits;
+                                static_assert(sizeof bits == sizeof(T));
+                                std::memcpy(&bits, &val, sizeof(T));
+                                using kotekan::operator<<;
+                                std::cerr << "    [t=" << t << ",f=" << f << ",n=" << n
+                                          << "]=" << val << " (0x" << std::hex
+                                          << std::setw(2 * sizeof(T)) << std::setfill('0') << bits
+                                          << std::setfill(' ') << std::dec << ")" << "\n";
+                            }
+                        }
+                        any_error |= check(val);
                     }
                     if (any_error)
-                        ERROR("    poison: [chunk={}][t={}]={:#02x}", chunk, t, poison_value);
+                        ERROR("    poison or non-finite at [t={:d},f={:d}]", t, f);
                 }
             }
-            if (found_error)
-                FATAL_ERROR("NDArray ring buffer {:s} contains poison", buffer_name);
-            assert(!found_error);
-        } // for chunk
+        }
+        if (found_error)
+            FATAL_ERROR("NDArray ring buffer {:s} contains poison", buffer_name);
+        assert(!found_error);
 #endif
+    }
+
+    void check_for_poison(const std::uint8_t poison_value) {
+        check_for_poison(poison_value, 0, get_ndarray().get_extent(1));
     }
 
     // I/O

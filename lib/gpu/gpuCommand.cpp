@@ -22,7 +22,8 @@ gpuCommand::gpuCommand(Config& config_, const std::string& unique_name_,
                        const std::string& default_kernel_command,
                        const std::string& default_kernel_file_name) :
     kernel_file_name(default_kernel_file_name), config(config_), unique_name(unique_name_),
-    host_buffers(host_buffers_), dev(device_), instance_num(instance_num_), command_state(state_) {
+    host_buffers(host_buffers_), dev(device_), instance_num(instance_num_), command_state(state_),
+    execute_lock(execute_mutex) {
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     // Set the local log level.
@@ -55,9 +56,13 @@ void gpuCommand::start_frame(int64_t _gpu_frame_id) {
     gpu_frame_id = _gpu_frame_id;
 }
 
-void gpuCommand::finalize_frame() {}
+void gpuCommand::finalize_frame() {
+    //TODO if (bool(execute_lock))
+    //TODO     execute_lock.unlock(); // release the lock
+}
 
 int gpuCommand::wait_on_precondition() {
+    //TOOD execute_lock.lock(); // acquire the lock
     return 0;
 }
 
