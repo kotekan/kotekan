@@ -44,7 +44,7 @@
  *                      Unix time in seconds). This simply changes the time
  *                      the frames are labelled with. Default is the current
  *                      time.
- * @conf  cadence       Float. The interval of time (in seconds) between
+ * @conf  cadence       Double. The interval of time (in seconds) between
  *                      frames.
  * @conf  mode          String. How to fill the visibility array. See
  *                      the set of FakeVisPattern implementations for details.
@@ -98,7 +98,7 @@ private:
     double start_time;
 
     /// Cadence to simulate (in seconds)
-    float cadence;
+    double cadence;
 
     // Visibility filling mode
     std::string mode;

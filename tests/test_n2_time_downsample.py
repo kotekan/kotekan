@@ -12,16 +12,16 @@ import astropy.units as units
 
 from kotekan import runner
 
-T_rot_sec = 86400 # / 1.00273781191135448
-n_bins_per_rot = 600  # 21600  # approx 4 seconds per bin
+T_rot_sec = 86400 / 1.001234567890123456 #  / 1.00273781191135448
+n_bins_per_rot = 20000  # 21600  # approx 4 seconds per bin
 n_samps_per_bin = 10
-n_samps_tot = 1001
+n_samps_tot = 100001
 
 dut1 = 0.0
 x_pm = 0.1
 y_pm = 0.1
 
-cadence = np.float32(T_rot_sec / (n_samps_per_bin * n_bins_per_rot))
+cadence = T_rot_sec / (n_samps_per_bin * n_bins_per_rot)
 
 # Set a time a few seconds before ERA=0.0
 t_start = Time("2024-07-01 05:00:00", scale="utc")
@@ -42,7 +42,7 @@ eop_ut1_ns_tol = 1
 fake_params = {
     "num_frames": n_samps_tot,
     "mode": "fill_ij_missing",
-    "cadence": float(cadence),
+    "cadence": cadence,
     "start_time": t_start_inst_ns // GIGA,
 }
 
@@ -92,7 +92,7 @@ def seq_to_t_inst_ns(seq):
 
     dt_ns = 5120   # 16384/(3.2 GHz)
 
-    return t_start_inst_ns + dt_ns * seq
+    return global_params["gps_time"]["frame0_nano"] + dt_ns * seq
 
 
 def calc_raw_frame_times_and_seqs():
@@ -107,6 +107,13 @@ def calc_raw_frame_times_and_seqs():
     dseq[:] = delta_seq
 
     t_inst_ns = seq_to_t_inst_ns(seq)
+
+    with open("raw_test_frame_seq.out", "w") as f:
+        f.write("DELTA_SEQ {:d}\n".format(delta_seq))
+        f.write("DELTA_NS  {:d}\n".format(delta_ns))
+        for i in range(len(seq)):
+            f.write("{0:8d} START {1:12d} LEN {2:12d} TIME {3:12d}\n"
+                    .format(i, seq[i], dseq[i], t_inst_ns[i]))
 
     return seq, dseq, t_inst_ns
 
@@ -306,22 +313,6 @@ def calc_downsamp_frame_meta():
     return out_frames
 
 
-def calc_era_bin_times(out_frame_metas):
-
-    t = []
-
-    for frame_meta in out_frame_metas:
-        t.append(calc_t_at_era(frame_meta['t_start'],
-                               frame_meta['era_lo'],
-                               0.1*units.ns))
-
-    t.append(calc_t_at_era(out_frame_metas[-1]['t_start'],
-                           out_frame_metas[-1]['era_hi'],
-                           0.1*units.ns))
-
-    return t
-
-
 @pytest.fixture(scope="module")
 def n2_data(tmpdir_factory):
 
@@ -373,8 +364,21 @@ def test_metadata(n2_data):
 
     frame_meta = calc_downsamp_frame_meta()
 
+    with open('frame_seq.out', 'w') as f:
+        for i, frame in enumerate(n2_data):
+            f.write("{0:06d}: FRAME START {1:12d} LEN {2:12d} TIME {3:d}\n"
+                    .format(i, frame.metadata.fpga_start_tick,
+                            frame.metadata.frame_length_fpga_ticks,
+                            frame.metadata.frame_start_time_ns))
+            f.write("        CALC  START {0:12d} LEN {1:12d} TIME {2:d}\n"
+                    .format(frame_meta[i]['seq_start'],
+                            frame_meta[i]['seq_len'],
+                            frame_meta[i]['t_start_ns']))
+
+
     for i, frame in enumerate(n2_data):
         assert frame.metadata.freq_id == 0
+        assert frame.metadata.fpga_start_tick == frame_meta[i]["seq_start"]
         assert frame.metadata.frame_length_fpga_ticks == frame_meta[i]["seq_len"]
         assert frame.metadata.n_valid_fpga_ticks_in_frame == frame_meta[i]["seq_valid"]
         assert frame.metadata.n_rfi_fpga_ticks == frame_meta[i]["seq_rfi"]
@@ -466,6 +470,8 @@ def test_contents(n2_data):
 
     with open("test_contents.out", "w"):
         pass
+    
+    out_frame_metas = calc_downsamp_frame_meta()
 
     # Averaging shouldn't change vis, eigenstuff
     for i, frame in enumerate(n2_data):
@@ -479,5 +485,5 @@ def test_contents(n2_data):
         assert frame.erms == 1.0
 
     # weights get an extra factor of nsamp
-    for frame in n2_data:
-        assert np.all(frame.weight == n_samps_per_bin)
+    for i, frame in enumerate(n2_data):
+        assert np.all(frame.weight == out_frame_metas[i]['n_frames'])

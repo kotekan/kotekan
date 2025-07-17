@@ -75,7 +75,7 @@ FakeVis::FakeVis(Config& config, const std::string& unique_name,
 
     // Get timing and frame params
     start_time = config.get_default<double>(unique_name, "start_time", current_time());
-    cadence = config.get<float>(unique_name, "cadence");
+    cadence = config.get<double>(unique_name, "cadence");
     num_frames = config.get_default<int64_t>(unique_name, "num_frames", -1);
     wait = config.get_default<bool>(unique_name, "wait", true);
     randomize = config.get_default<bool>(unique_name, "randomize", false);
@@ -94,8 +94,9 @@ void FakeVis::main_thread() {
 
     // Calculate the time increments in seq and ctime
     // int64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
-    int64_t delta_seq = (uint64_t)(3.2e9 / 16384 * cadence);
-    int64_t delta_ns = (uint64_t)(cadence * 1000000000);
+    int64_t delta_seq = (uint64_t)(cadence * 3.2e9 / 16384);
+    // calculate delta_ns from delta_seq (instead of cadence) in case rounding occured.
+    int64_t delta_ns = delta_seq * ((int64_t) (16384/3.2));
     DEBUG("delta_seq = {:d}, delta_ns = {:d}", delta_seq, delta_ns);
 
     // Sleep before starting up
@@ -159,16 +160,19 @@ void FakeVis::main_thread() {
             // Set the frequency index
             meta->freq_id = f;
 
-            // Set the time
-            meta->frame_start_time_ns = time_ns + t * delta_ns;
-            // Set the length and total data
-            meta->frame_length_fpga_ticks = delta_seq;
             /// The sequence number of the first FPGA frame integrated into this visibility frame
             meta->fpga_start_tick = fpga_seq + t * delta_seq;
+            // Set the length and total data
+            meta->frame_length_fpga_ticks = delta_seq;
+            // Set the time
+            meta->frame_start_time_ns = time_ns + t * delta_ns;
+
+            DEBUG("Output frame seq={:d} time_ns={:d}", meta->fpga_start_tick,
+                    meta->frame_start_time_ns);
 
             // Set EOP
-            timespec time = tel.to_time(fpga_seq + t * delta_seq + delta_seq / 2);
-            meta->eop = tel.get_EOP_at_time(time);
+            timespec time_cen = tel.to_time(fpga_seq + t * delta_seq + delta_seq / 2);
+            meta->eop = tel.get_EOP_at_time(time_cen);
 
             DEBUG("Creating N2FrameView.");
             DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}", meta->num_elements,
