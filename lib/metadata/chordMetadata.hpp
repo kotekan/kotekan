@@ -298,6 +298,7 @@ public:
 
     // frequencies -- integer (0-8192) identifier for FPGA coarse frequencies
     // This is the FPGA frequency channel index, indexed by the local coarse frequency channel.
+    // TODO: this should really be a freq_id_t array
     int coarse_freq[CHORD_META_MAX_FREQ];
 
     // the upchannelization factor that each frequency has gone through (1 for = FPGA)
@@ -406,6 +407,12 @@ public:
     int64_t get_fpga_seq_num() const {
         return metadata[jsonMetadata::FPGA_SEQ_NUM].template get<int64_t>();
     }
+
+    // TODO: this should really be a freq_id_t array
+    const int* get_coarse_freq() const {
+        return this->coarse_freq;
+    }
+
 
 private:
     jsonMetadata::metadata metadata;
