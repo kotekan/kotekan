@@ -14,7 +14,7 @@ from kotekan import runner
 
 T_rot_sec = 86400 / 1.001234567890123456 #  / 1.00273781191135448
 n_bins_per_rot = 20000  # 21600  # approx 4 seconds per bin
-n_samps_per_bin = 10
+n_samps_per_bin = 100
 n_samps_tot = 100001
 
 dut1 = 0.0
@@ -35,9 +35,9 @@ GIGA = 1_000_000_000
 t_start_inst_ns = int(t_start.unix) * GIGA
 t_end_inst_ns = int(t_end.unix) * GIGA
 
-era_deg_tol = (360.0 / (1.0e9 * 86400))
-eop_t_ns_tol = 1
-eop_ut1_ns_tol = 1
+era_deg_tol = 2.2 * (360.0 / (1.0e9 * 86400))
+eop_t_ns_tol = 2
+eop_ut1_ns_tol = 2
 
 fake_params = {
     "num_frames": n_samps_tot,

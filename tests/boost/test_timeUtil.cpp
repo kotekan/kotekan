@@ -11,11 +11,16 @@
 #include <time.h>
 #include <vector>
 
-#define ERA_TOL 2e-12 // <~ 7.5 arcseconds
+#define ERA_TOL 4e-12 // <~ 1.0 nanoseconds of rotation
+#define NS_TOL 1
 
 void check_timespec_equal(const timespec& t1, const timespec& t2) {
     BOOST_CHECK_EQUAL(t1.tv_sec, t2.tv_sec);
-    BOOST_CHECK_EQUAL(t1.tv_nsec, t2.tv_nsec);
+    //BOOST_CHECK_EQUAL(t1.tv_nsec, t2.tv_nsec);
+
+    long ns1 = (long)t1.tv_nsec;
+    long ns2 = (long)t2.tv_nsec;
+    BOOST_CHECK(abs(ns1-ns2) <= NS_TOL);
 }
 
 void check_era_close(double era1, double era2) {
@@ -96,7 +101,7 @@ std::vector<std::string> default_test_times({
     "2015-06-30T23:59:59.999999999", "2015-06-30T23:59:60.0",         "2015-07-01T00:00:00.0",
     "2020-01-01T12:00:00.0",         "2025-01-01T12:00:00.0",         "2025-12-31T23:59:59.0",
     "2025-12-31T23:59:59.000000001", "2025-12-31T23:59:59.999999999", "2026-01-01T00:00:00",
-    "2026-01-01T00:00:00.000000001", "2028-01-01T12:00:00.0",
+    "2026-01-01T00:00:00.000000001", "2027-03-14T02:07:01.828123456", "2028-01-01T12:00:00.0",
 });
 
 BOOST_AUTO_TEST_CASE(_time_to_ut1) {

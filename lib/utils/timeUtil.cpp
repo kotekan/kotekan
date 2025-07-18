@@ -4,7 +4,12 @@
 #include <math.h>
 
 using boost::multiprecision::int128_t;
-
+    
+const int128_t era_A =  77'905'727'326'400'000L;
+const int128_t era_B = 100'273'781'191'135'448L;
+const int128_t day_ns = 86'400'000'000'000L;
+const int128_t e17 = 100'000'000'000'000'000L;
+    
 timespec get_UT1_from_time(const timespec& t, double delta_UT1_inst) {
     /*
      * Compute the UT1 time at given instrument time t.
@@ -162,14 +167,10 @@ double get_ERA_from_UT1(const timespec& ut1, int64_t* n_rot) {
 
     int128_t t_ns = ((int128_t)t_sec) * 1'000'000'000L + ((int128_t)t_nsec);
 
-    int128_t A = 77'905'727'326'400'000L;
-    int128_t B = 100'273'781'191'135'448L;
-    int64_t day_ns = 86'400'000'000'000L;
-    int64_t e17 = 100'000'000'000'000'000L;
 
     int128_t denom = ((int128_t)e17) * day_ns;
 
-    int128_t tot_17ns = A * day_ns + B * t_ns;
+    int128_t tot_17ns = era_A * day_ns + era_B * t_ns;
 
     int64_t num_rot = (int64_t)(tot_17ns / denom);
     int128_t f_17ns = tot_17ns % denom;
@@ -232,10 +233,6 @@ timespec get_UT1_from_ERA(int64_t n_rot, double ERA_deg) {
     int64_t ut1_ns = (int64_t)round(1.0e9 * (fsec_1 + fsec_2 + fsec_3 + fsec_4));
     */
 
-    int128_t A = 77'905'727'326'400'000L;
-    int128_t B = 100'273'781'191'135'448L;
-    int128_t day_ns = 86'400'000'000'000L;
-    int128_t e17 = 100'000'000'000'000'000L;
 
     // rots = a + b * td;
     // td = (rots - a) / b
@@ -243,12 +240,14 @@ timespec get_UT1_from_ERA(int64_t n_rot, double ERA_deg) {
     // tns = (day_ns * (1e17 * rots - A)) / B
 
     // (86400/360 = 240)  ==>  86400 * 10^9 * 10^17 / 360 = 240e26
-    int128_t rot_17ns = day_ns * e17 * n_rot + (int128_t)(2.4e28 * ERA_deg);
-    int128_t numer = rot_17ns - A * day_ns;
-    int128_t t_ns = numer / B;
-    double frac_ns = (double)(numer % B) / ((double)B);
+    //int128_t rot_17ns = day_ns * e17 * n_rot + (int128_t)(2.4e28 * ERA_deg);
+    int128_t rot_17ns = day_ns * (e17 * n_rot
+                                  + ((int128_t)(1e17 * ERA_deg)) / 360);
+    int128_t numer = rot_17ns - era_A * day_ns;
+    int128_t t_ns = numer / era_B;
+    double frac_ns = (double)(numer % era_B) / ((double)era_B);
 
-    long GIGA = 1'000'000'000;
+    long GIGA = 1'000'000'000L;
 
     int64_t ut1_s = (int64_t)(t_ns / GIGA);
     int64_t ut1_ns = (int64_t)(t_ns - GIGA * ut1_s) + (int64_t)round(frac_ns);

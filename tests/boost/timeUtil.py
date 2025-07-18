@@ -30,6 +30,10 @@ def get_s_ns_from_jd(t):
     s = int(t_s1 + t_s2)
     ns = round(((t_s1 - s) + t_s2) * 1_000_000_000)
 
+    sec_over = ns // 1_000_000_000
+    s += sec_over
+    ns -= 1_000_000_000 * sec_over
+
     return s, ns
 
 
