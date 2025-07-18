@@ -11,6 +11,7 @@
 #include "Stage.hpp" // for Stage
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
+#include "chordMetadata.hpp" // for beamCoord
 
 #include <optional>    // for optional
 #include <stdint.h>    // for uint32_t, uint64_t, uint16_t, uint8_t
@@ -81,7 +82,7 @@ public:
 private:
     void fill_headers(unsigned char* out_buf, struct PSRHeader* psr_header,
                       const uint64_t fpga_seq_num, struct timespec* time_now,
-                      struct beamCoord* beam_coord, uint16_t* freq_ids);
+                      chordMetadata::beamCoord* beam_coord, uint16_t* freq_ids);
 
     /**
      * @brief Requests a full frame for each of the input buffers until all start with the same @c
