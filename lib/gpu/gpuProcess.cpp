@@ -159,7 +159,7 @@ void gpuProcess::main_thread() {
         int ic = gpu_frame_counter % final_signals.size();
 
         DEBUG2("Waiting for free slot for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
-              unique_name);
+               unique_name);
 
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[ic]->wait_for_free_slot();
@@ -184,8 +184,8 @@ void gpuProcess::main_thread() {
             }
         }
 
-        DEBUG2("Preconditions met for GPU[{:d}][{:d}] {:s}, queuing commands", gpu_id, gpu_frame_counter,
-               unique_name);
+        DEBUG2("Preconditions met for GPU[{:d}][{:d}] {:s}, queuing commands", gpu_id,
+               gpu_frame_counter, unique_name);
         // Queue the commands for this frame.  This calls execute on each commandObject.
         queue_commands(gpu_frame_counter);
 
