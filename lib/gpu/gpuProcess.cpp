@@ -156,8 +156,7 @@ void gpuProcess::main_thread() {
     bool first_run = true;
 
     while (!stop_thread) {
-        int ic = gpu_frame_counter % commands.size();
-        assert(commands.size() == final_signals.size());
+        int ic = gpu_frame_counter % final_signals.size();
 
         DEBUG2("Waiting for free slot for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
               unique_name);
@@ -168,6 +167,7 @@ void gpuProcess::main_thread() {
         // Update the gpu_frame_counter and perform any reset actions on the command object
         // for this frame.
         for (auto& command : commands) {
+            assert(command.size() == final_signals.size());
             command[ic]->start_frame(gpu_frame_counter);
         }
 
