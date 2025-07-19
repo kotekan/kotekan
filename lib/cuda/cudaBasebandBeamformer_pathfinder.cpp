@@ -392,6 +392,12 @@ cudaBasebandBeamformer_pathfinder::cudaBasebandBeamformer_pathfinder(Config& con
 cudaBasebandBeamformer_pathfinder::~cudaBasebandBeamformer_pathfinder() {}
 
 int cudaBasebandBeamformer_pathfinder::wait_on_precondition() {
+    {
+        const int errcode = cudaCommand::wait_on_precondition();
+        if (errcode < 0)
+            return errcode;
+    }
+
     // Wait for data to be available in input ringbuffer
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t T_read_max = T_ringbuf / 4;

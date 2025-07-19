@@ -60,7 +60,6 @@ public:
     }
 };
 
-#warning "TODO: set log level in constructor"
 template<typename T, std::size_t D>
 class NDArrayRingBuffer : public kotekan::kotekanLogging {
     static_assert(D > 0);
@@ -202,13 +201,7 @@ public:
     int wait_and_claim_readable(
         const std::function<read_descriptor_t(std::ptrdiff_t)>& calc_read_descriptor) {
         assert(write_valid.size() == 0);
-#warning "TODO"
         if (!(read_valid.size() == 0)) {
-            DEBUG("buffer {:s}, wait_and_claim_readable({:s}[{:d}]): valid read region is not "
-                  "empty (begin={:d}, end={:d}, size={:d})",
-                  buffer_name, cuda_command.get_unique_name(), get_instance_num(),
-                  read_valid.begin(), read_valid.end(), read_valid.size());
-            sleep(1);
             FATAL_ERROR("buffer {:s}, wait_and_claim_readable({:s}[{:d}]): valid read region is "
                         "not empty (begin={:d}, end={:d}, size={:d})",
                         buffer_name, cuda_command.get_unique_name(), get_instance_num(),

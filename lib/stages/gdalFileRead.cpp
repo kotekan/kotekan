@@ -24,6 +24,8 @@ class gdalFileRead : public kotekan::Stage {
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     const bool do_once = config.get_default<bool>(unique_name, "do_once", false);
 
+    const bool read_sozip = true;
+
     Buffer* const buffer;
 
 public:
@@ -66,12 +68,17 @@ public:
 
             // Define file name
             std::ostringstream buf;
+            if (read_sozip)
+                buf << "/vsizip/";
             buf << input_dir << "/";
             if (prefix_hostname) {
                 char hostname[256];
                 gethostname(hostname, sizeof hostname);
                 buf << hostname << "_";
             }
+            if (read_sozip)
+                buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_index
+                    << ".zarr.zip/";
             buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_index << ".zarr";
             const std::string full_path = buf.str();
 
@@ -330,6 +337,9 @@ public:
                                   frame, frame, buffer->frame_size);
                 assert(success);
             }
+
+            const CPLErr err = dataset->Close();
+            assert(!err);
 
             // Mark buffer as full
             DEBUG("[{:s}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);

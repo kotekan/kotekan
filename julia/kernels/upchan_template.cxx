@@ -14,14 +14,12 @@
 #include <bufferContainer.hpp>
 #include <cassert>
 #include <chordMetadata.hpp>
-#include <condition_variable>
 #include <cstring>
 #include <cudaCommand.hpp>
 #include <cudaDeviceInterface.hpp>
 #include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
-#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -172,11 +170,6 @@ private:
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    /// Ensure serial execution of calls to the same instance
-    std::mutex execute_mtx;
-    bool execute_is_active;
-    std::condition_variable execute_cv;
-
     // To avoid trailing comma below
     int dummy;
 };
@@ -227,8 +220,6 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
-
-    execute_is_active(false),
 
     dummy()                      // avoid trailing comma
 {
@@ -295,12 +286,6 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
         const int errcode = cudaCommand::wait_on_precondition();
         if (errcode < 0)
             return errcode;
-    }
-
-    {
-        std::unique_lock<std::mutex> lock(execute_mtx);
-        execute_cv.wait(lock, [&] { return !execute_is_active; }); // wait until this instance is inactive
-        execute_is_active = true;
     }
 
     // Wait for data to be available in input ringbuffer
@@ -508,12 +493,6 @@ void cuda{{{kernel_name}}}::finalize_frame() {
 
     // Advance the output ring buffer
     Ebar_buffer.finish_write();
-
-    {
-        std::unique_lock<std::mutex> lock(execute_mtx);
-        execute_is_active = false;
-        execute_cv.notify_one();
-    }
 
     cudaCommand::finalize_frame();
 }

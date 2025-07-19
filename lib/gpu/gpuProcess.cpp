@@ -156,9 +156,19 @@ void gpuProcess::main_thread() {
     bool first_run = true;
 
     while (!stop_thread) {
+        int ic = gpu_frame_counter % final_signals.size();
+
+        DEBUG2("Waiting for free slot for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
+              unique_name);
+
+        // We make sure we aren't using a gpu frame that's currently in-flight.
+        final_signals[ic]->wait_for_free_slot();
+
+        // Update the gpu_frame_counter and perform any reset actions on the command object
+        // for this frame.
 
         for (auto& command : commands) {
-            int ic = gpu_frame_counter % command.size();
+            assert(command.size() == final_signals.size());
             command[ic]->start_frame(gpu_frame_counter);
         }
 
@@ -168,7 +178,6 @@ void gpuProcess::main_thread() {
         DEBUG2("Waiting on preconditions for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
                unique_name);
         for (auto& command : commands) {
-            int ic = gpu_frame_counter % command.size();
             if (command[ic]->wait_on_precondition() != 0) {
                 INFO("Received exit signal from GPU command precondition (Command '{:s}')",
                      command[ic]->get_name());
@@ -176,19 +185,17 @@ void gpuProcess::main_thread() {
             }
         }
 
-        DEBUG("Waiting for free slot for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
-              unique_name);
-        // We make sure we aren't using a gpu frame that's currently in-flight.
-        int ic = gpu_frame_counter % final_signals.size();
-        final_signals[ic]->wait_for_free_slot();
-        DEBUG("Waited for free slot for GPU[{:d}][{:d}] {:s}, queuing commands", gpu_id,
-              gpu_frame_counter, unique_name);
+        DEBUG2("Preconditions met for GPU[{:d}][{:d}] {:s}, queuing commands", gpu_id, gpu_frame_counter,
+               unique_name);
+        // Queue the commands for this frame.  This calls execute on each commandObject.
         queue_commands(gpu_frame_counter);
+
+        // Launch the results thread if it hasn't been launched yet.
         if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
 
-            // Requires Linux, this could possibly be made more general someday.
-            // TODO Move to config
+            // Set the CPU affinity for the results thread, uses the "cpu_affinity" from the
+            // gpuProcess config.
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
             for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))

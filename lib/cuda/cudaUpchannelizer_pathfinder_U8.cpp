@@ -14,14 +14,12 @@
 #include <bufferContainer.hpp>
 #include <cassert>
 #include <chordMetadata.hpp>
-#include <condition_variable>
 #include <cstring>
 #include <cudaCommand.hpp>
 #include <cudaDeviceInterface.hpp>
 #include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
-#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -285,11 +283,6 @@ private:
     NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
     std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
 
-    /// Ensure serial execution of calls to the same instance
-    std::mutex execute_mtx;
-    bool execute_is_active;
-    std::condition_variable execute_cv;
-
     // To avoid trailing comma below
     int dummy;
 };
@@ -316,8 +309,6 @@ cudaUpchannelizer_pathfinder_U8::cudaUpchannelizer_pathfinder_U8(Config& config,
     Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels), *this),
     info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
     host_info_buffer(info_length),
-
-    execute_is_active(false),
 
     dummy() // avoid trailing comma
 {
@@ -370,13 +361,6 @@ int cudaUpchannelizer_pathfinder_U8::wait_on_precondition() {
         const int errcode = cudaCommand::wait_on_precondition();
         if (errcode < 0)
             return errcode;
-    }
-
-    {
-        std::unique_lock<std::mutex> lock(execute_mtx);
-        execute_cv.wait(lock,
-                        [&] { return !execute_is_active; }); // wait until this instance is inactive
-        execute_is_active = true;
     }
 
     // Wait for data to be available in input ringbuffer
@@ -543,12 +527,6 @@ void cudaUpchannelizer_pathfinder_U8::finalize_frame() {
 
     // Advance the output ring buffer
     Ebar_buffer.finish_write();
-
-    {
-        std::unique_lock<std::mutex> lock(execute_mtx);
-        execute_is_active = false;
-        execute_cv.notify_one();
-    }
 
     cudaCommand::finalize_frame();
 }

@@ -256,6 +256,12 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}
 
 int cuda{{{kernel_name}}}::wait_on_precondition() {
+    {
+        const int errcode = cudaCommand::wait_on_precondition();
+        if (errcode < 0)
+            return errcode;
+    }
+
     // Wait for data to be available in input ringbuffer
     const std::ptrdiff_t Tin_ringbuf = Ein_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t Tin_read_max = Tin_ringbuf / 4;

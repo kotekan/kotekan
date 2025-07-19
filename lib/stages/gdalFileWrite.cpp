@@ -59,6 +59,8 @@ class gdalFileWrite : public kotekan::Stage {
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
 
+    const bool create_sozip = true;
+
     const int max_frames = config.get_default<int>(unique_name, "max_frames", -1);
     const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
 
@@ -127,17 +129,25 @@ public:
 
                 // Choose file format (driver)
                 const auto driver_manager = GetGDALDriverManager();
+                assert(driver_manager);
                 const std::string driver_name = "Zarr";
                 const auto driver = driver_manager->GetDriverByName(driver_name.c_str());
+                if (!driver)
+                    FATAL_ERROR("Could not get {:s} driver", driver_name);
 
                 // Define file name
                 std::ostringstream buf;
+                if (create_sozip)
+                    buf << "/vsizip/";
                 buf << base_dir << "/";
                 if (prefix_hostname) {
                     char hostname[256];
                     gethostname(hostname, sizeof hostname);
                     buf << hostname << "_";
                 }
+                if (create_sozip)
+                    buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_counter
+                        << ".zarr.zip/";
                 buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_counter
                     << ".zarr";
                 const std::string full_path = buf.str();
@@ -156,8 +166,8 @@ public:
                 const std::vector<std::string> root_group_options{};
                 const auto root_group_options_c = convert_to_cstring_list(root_group_options);
                 const std::vector<std::string> options{
-                    "FORMAT=ZARR_V2",
-                    // "FORMAT=ZARR_V3",
+                    // "FORMAT=ZARR_V2",
+                    "FORMAT=ZARR_V3",
                 };
                 const auto options_c = convert_to_cstring_list(options);
                 const auto dataset = std::unique_ptr<GDALDataset>(driver->CreateMultiDimensional(
@@ -166,6 +176,7 @@ public:
                     FATAL_ERROR("Could not create GDAL file {:s}", full_path);
 
                 const auto group = dataset->GetRootGroup();
+                assert(group);
 
                 // Write metadata (attributes)
 
@@ -352,10 +363,8 @@ public:
                     bbuf << (d == 0 ? "" : ",") << blocksize.at(d);
                 const std::string blocksize_str = bbuf.str();
                 const std::vector<std::string> array_options{
-                    "COMPRESS=BLOSC",
-                    blocksize_str,
-                    "BLOSC_CLEVEL=9",
-                    "BLOSC_SHUFFLE=BIT",
+                    "COMPRESS=BLOSC",    blocksize_str,      "BLOSC_CLEVEL=9",
+                    "BLOSC_SHUFFLE=BIT", "BLOSC_CNAME=zstd",
                 };
                 const auto array_options_c = convert_to_cstring_list(array_options);
                 const auto mdarray = group->CreateMDArray(meta->get_name(), dimensions, datatype,
@@ -377,6 +386,9 @@ public:
                         frame + datatypesize * meta->offset, frame, buffer->frame_size);
                     assert(success);
                 }
+
+                const CPLErr err = dataset->Close();
+                assert(!err);
 
             } // if !skip_writing
 

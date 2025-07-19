@@ -454,6 +454,12 @@ cudaFRBBeamformer_chord_U1::num_processed_elements(std::int64_t num_available_el
 }
 
 int cudaFRBBeamformer_chord_U1::wait_on_precondition() {
+    {
+        const int errcode = cudaCommand::wait_on_precondition();
+        if (errcode < 0)
+            return errcode;
+    }
+
     // Wait for data to be available in input ringbuffer
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t Tbar_read_max = Tbar_ringbuf / 4;
