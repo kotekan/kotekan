@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"      // for stream_t
 #include "buffer.hpp"         // for get_metadata, allocate_new_metadata_object, mark_frame_empty
-#include "chimeMetadata.hpp"  // for chimeMetadata, beamCoord, get_stream_id
+#include "chordMetadata.hpp"
 #include "datasetManager.hpp" // for dset_id_t
 #include "kotekanLogging.hpp" // for DEBUG2
 #include "visUtil.hpp"        // for frameID, modulo
@@ -81,22 +81,25 @@ void BeamExtract::main_thread() {
         // Copy over the relevant metadata
         out_buf->allocate_new_metadata_object(out_frame_id);
 
-        chimeMetadata* in_metadata = (chimeMetadata*)(in_buf->get_metadata(in_frame_id).get());
+        auto in_metadata = get_chord_metadata(in_buf, in_frame_id);
         BeamMetadata* out_metadata = (BeamMetadata*)(out_buf->get_metadata(out_frame_id).get());
 
-        out_metadata->ctime = in_metadata->gps_time;
-        out_metadata->fpga_seq_start = in_metadata->fpga_seq_num;
-        out_metadata->stream_id = get_stream_id(in_buf, in_frame_id);
+        out_metadata->ctime = in_metadata->get_gps_time();
+        out_metadata->fpga_seq_start = in_metadata->get_fpga_seq_num();
+        out_metadata->nfreq = in_metadata->get_nfreq();
+        for (int i = 0 ; i < out_metadata->nfreq ; i++) {
+            out_metadata->coarse_freq[i] = in_metadata->get_coarse_freq()[i];
+        }
         // Copy the base dataset ID from the GPU data.
         // @TODO we will likely want to add a unique dataset ID state
         // for each beam for systems that like to track things with the dataset ID
         // however at the moment all that data should be contained in this metadata
         // plus the root dataset ID.
-        out_metadata->dataset_id = in_metadata->dataset_id;
+        out_metadata->dataset_id = in_metadata->get_dataset_id();
         out_metadata->beam_number = _extract_beam;
-        out_metadata->ra = in_metadata->beam_coord.ra[_extract_beam];
-        out_metadata->dec = in_metadata->beam_coord.dec[_extract_beam];
-        out_metadata->scaling = in_metadata->beam_coord.scaling[_extract_beam];
+        out_metadata->ra = in_metadata->get_beam_coord().right_ascension[_extract_beam];
+        out_metadata->dec = in_metadata->get_beam_coord().declination[_extract_beam];
+        out_metadata->scaling = in_metadata->get_beam_coord().scaling[_extract_beam];
 
         DEBUG2("Extracted beam: {:d}, fpga_number: {:d}", _extract_beam,
                out_metadata->fpga_seq_start);
