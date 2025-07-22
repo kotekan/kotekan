@@ -3,9 +3,11 @@
 
 #include "Telescope.hpp"
 #include "buffer.hpp"
-#include "chimeMetadata.hpp"
 #include "dataset.hpp" // for dset_id_t
 #include "metadata.hpp"
+#include "chordMetadata.hpp" // for CHORD_META_MAX_FREQ
+
+#include <time.h>
 
 class BeamMetadata : public metadataObject {
 public:
@@ -26,8 +28,10 @@ public:
     int64_t fpga_seq_start;
     /// The GPS time of @c fpga_seq_start.
     timespec ctime;
-    /// Stream identifier
-    stream_t stream_id;
+    /// Number of frequency indices in frame
+    int nfreq;
+    /// Frequency indices in frame
+    int coarse_freq[CHORD_META_MAX_FREQ];
     /// ID of the dataset
     dset_id_t dataset_id;
     /// Beam number (e.g. which of the tracking beams is in this stream)
