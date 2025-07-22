@@ -7,6 +7,8 @@
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
 #include "jsonMetadata.hpp"
+// TODO: CHIME and CHORD differ whether they use the datasetManager
+#include "dataset.hpp"
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -239,11 +241,25 @@ public:
         return metadata[jsonMetadata::FPGA_SEQ_NUM].template get<int64_t>();
     }
 
+    int get_nfreq() const {
+        return this->nfreq;
+    }
+
     // TODO: this should really be a freq_id_t array
     const int* get_coarse_freq() const {
         return this->coarse_freq;
     }
 
+    struct timespec get_gps_time() const {
+        const Telescope& tel = Telescope::instance();
+        return tel.to_time(this->get_fpga_seq_num());
+    }
+
+    // links to other data
+
+    dset_id_t get_dataset_id() const {
+        return metadata[jsonMetadata::DATASET_ID].template get<dset_id_t>();
+    }
 
 private:
     jsonMetadata::metadata metadata;
