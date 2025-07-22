@@ -37,13 +37,13 @@ void BeamInspect::main_thread() {
             break;
 
         BeamMetadata* metadata = (BeamMetadata*)(in_buf->get_metadata(frame_id).get());
-        const uint32_t num_freq_per_stream = Telescope::instance().num_freq_per_stream();
 
         std::string frequency_bins = "";
-        for (uint32_t f = 0; f < num_freq_per_stream; ++f) {
+        // TODO: this is horrible, fix this to not use decltype
+        for (decltype(metadata->nfreq) f = 0; f < metadata->nfreq; ++f) {
             frequency_bins +=
-                fmt::format("{:d}", Telescope::instance().to_freq_id(metadata->stream_id, f));
-            if (f != num_freq_per_stream - 1)
+                fmt::format("{:d}", metadata->coarse_freq[f]);
+            if (f != metadata->nfreq - 1)
                 frequency_bins += ", ";
         }
 
