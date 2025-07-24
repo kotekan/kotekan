@@ -3,7 +3,6 @@
 
 #include "Telescope.hpp"
 #include "buffer.hpp"
-#include "chimeMetadata.hpp"
 #include "metadata.hpp"
 
 class BasebandMetadata : public metadataObject {
