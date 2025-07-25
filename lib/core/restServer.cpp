@@ -8,6 +8,7 @@
 #include <algorithm>               // for max
 #include <assert.h>                // for assert
 #include <cstdint>                 // for int32_t
+#include <unistd.h>                // for close
 #include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_free
 #include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
 #include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
@@ -57,48 +58,94 @@ restServer::~restServer() {
     }
 }
 
-bool restServer::isValidIPv4(const std::string& ip) {
-    struct sockaddr_in sa;
-    return inet_pton(AF_INET, ip.c_str(), &(sa.sin_addr)) == 1;
+// Validation function that accepts both IPs and hostnames
+bool restServer::isValidAddress(const std::string& address) {
+    // First check if it's a valid IPv4 address
+    struct sockaddr_in sa4;
+    if (inet_pton(AF_INET, address.c_str(), &(sa4.sin_addr)) == 1) {
+        return true;
+    }
+    
+    // Check if it's a valid IPv6 address
+    struct sockaddr_in6 sa6;
+    if (inet_pton(AF_INET6, address.c_str(), &(sa6.sin6_addr)) == 1) {
+        return true;
+    }
+    
+    // For hostnames, we can do basic validation or just let getaddrinfo handle it
+    // Basic hostname validation: non-empty, reasonable length, valid characters
+    if (address.empty() || address.length() > 253) {
+        return false;
+    }
+    
+    // Allow alphanumeric characters, dots, hyphens, and underscores
+    for (char c : address) {
+        if (!std::isalnum(c) && c != '.' && c != '-' && c != '_') {
+            return false;
+        }
+    }
+    
+    return true;
 }
 
-bool restServer::canBindToAddress(const std::string& ip, u_short port) {
-    int sock = -1;
-    bool result = false;
-
-    DEBUG_NON_OO("restServer: Checking if we can bind to address {:s}:{:d}", ip, port);
+bool restServer::canBindToAddress(const std::string& address, u_short port) {
+    DEBUG_NON_OO("restServer: Checking if we can bind to address {:s}:{:d}", address, port);
     
-    // Determine if IPv4
-    if (isValidIPv4(ip)) {
-        sock = socket(AF_INET, SOCK_STREAM, 0);
-        if (sock < 0) return false;
+    // Use getaddrinfo to resolve the address (works for both IPs and hostnames)
+    struct addrinfo hints, *result = nullptr;
+    std::memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;     // Allow both IPv4 and IPv6
+    hints.ai_socktype = SOCK_STREAM; // TCP socket
+    hints.ai_flags = AI_PASSIVE;     // For binding
+    
+    std::string port_str = std::to_string(port);
+    int status = getaddrinfo(address.c_str(), port_str.c_str(), &hints, &result);
+    
+    if (status != 0) {
+        DEBUG_NON_OO("restServer: getaddrinfo failed for {:s}: {:s}", address, gai_strerror(status));
+        return false;
+    }
+    
+    bool can_bind = false;
+    
+    // Try to bind to each resolved address
+    for (struct addrinfo* rp = result; rp != nullptr; rp = rp->ai_next) {
+        int sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (sock < 0) {
+            continue;
+        }
         
         // Enable SO_REUSEADDR to avoid TIME_WAIT issues
         int opt = 1;
         setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
         
-        struct sockaddr_in addr;
-        std::memset(&addr, 0, sizeof(addr));
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(port);
-        inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
+        // For IPv6, we might want to set IPV6_V6ONLY
+        if (rp->ai_family == AF_INET6) {
+            int v6only = 1;
+            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
+        }
         
-        result = (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) == 0);
+        if (bind(sock, rp->ai_addr, rp->ai_addrlen) == 0) {
+            can_bind = true;
+            shutdown(sock, SHUT_RDWR);
+            close(sock);
+            break; // Successfully bound to at least one address
+        }
+        
+        close(sock);
     }
     
-    if (sock >= 0) {
-        shutdown(sock, SHUT_RDWR);
-    }
+    freeaddrinfo(result);
     
-    DEBUG_NON_OO("restServer: Can bind to address {:s}:{:d} = {:s}", ip, port,
-                result ? "true" : "false");
-    return result;
+    DEBUG_NON_OO("restServer: Can bind to address {:s}:{:d} = {:s}", address, port,
+                can_bind ? "true" : "false");
+    return can_bind;
 }
 
 void restServer::start(const std::string& bind_address, u_short port) {
 
     // Check if bind_address and port are valid.
-    if (!isValidIPv4(bind_address)) {
+    if (!isValidAddress(bind_address)) {
         ERROR_NON_OO("Invalid bind address: {:s}", bind_address);
     }
 

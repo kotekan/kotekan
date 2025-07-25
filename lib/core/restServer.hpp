@@ -140,14 +140,9 @@ public:
     static restServer& instance();
 
     /**
-     * @brief Checks if the given string is a valid IPv4 address
+     * @brief Checks if the given string is a valid address (IPv4, IPv6, or hostname)
      */
-    bool isValidIPv4(const std::string& ip);
-
-    /**
-     * @brief Checks if the given string is a valid IPv6 address.
-     */
-    bool isValidIPv6(const std::string& ip);
+    bool isValidAddress(const std::string& address);
 
     /**
      * @brief Checks if the given IP address and port can be bound to.
