@@ -3,8 +3,8 @@
 # clang format version
 CLANG_FORMAT=clang-format-18
 
-# Attempt to infer kotekan root directory from this script
-KOTEKAN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# kotekan root directory
+KOTEKAN_DIR="."
 
 # Flag to enable iwyu (default OFF)
 ENABLE_IWYU="OFF"
@@ -79,8 +79,6 @@ while getopts ":d:i:j:e:" options; do
   esac
 done
 
-echo "Using kotekan directory: ${KOTEKAN_DIR}"
-
 if ! [ $EXIT_ON_FAILURE = "OFF" ]; then
     # exit when any command fails
     set -e
@@ -88,23 +86,21 @@ fi
 
 # include-what-you-use
 if ! [ $ENABLE_IWYU = "OFF" ]; then
-    export CC=clang
-    export CXX=clang++
-    mkdir -p ${KOTEKAN_DIR}/build-iwyu
-    cd ${KOTEKAN_DIR}/build-iwyu
-    echo "Running iwyu. If it fails, run cmake manually with
+    CXX=clang++
+    CC=clang
+    echo "Running iwyu. If it fails make sure cmake compiles with
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first.\nThis could take a while..."
-    cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DIWYU=ON ..
-    iwyu_tool -j $N_JOBS -p . -- -Xiwyu --no_fwd_decls -Xiwyu --mapping_file=${KOTEKAN_DIR}/iwyu.kotekan.imp -Xiwyu --max_line_length=100 | tee iwyu.out
+    (cd ${KOTEKAN_DIR}/build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DIWYU=ON ..)
+    (cd ${KOTEKAN_DIR}/build && iwyu_tool -j $N_JOBS -p . -- -Xiwyu --no_fwd_decls -Xiwyu --max_line_length=100 -Xiwyu --mapping_file=${KOTEKAN_DIR}/iwyu.kotekan.imp | tee iwyu.out)
     echo "Applying suggested changes..."
-    python3 ../tools/iwyu/fix_includes.py --nosafe_headers --comments < iwyu.out
+    python3 ${KOTEKAN_DIR}/tools/iwyu/fix_includes.py --nosafe_headers --comments < ${KOTEKAN_DIR}/build/iwyu.out
 else
-    echo "Skipping IWYU (add option -i ON to enable IWYU)"
+    echo "fast mode enabled, skipping IWYU (add option -i ON to disable fast mode)"
 fi
 
 # clang-format
 echo "Running clang-format..."
-find $KOTEKAN_DIR -type d \( -name "build" -o -name "external" -o -name "build-iwyu" \) -prune -o -type f -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
+find $KOTEKAN_DIR -type d \( -name "build" -o -name "external" \) -prune -o -type f -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
 git diff --exit-code
 
 # black
