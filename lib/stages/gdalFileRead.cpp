@@ -24,7 +24,7 @@ class gdalFileRead : public kotekan::Stage {
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     const bool do_once = config.get_default<bool>(unique_name, "do_once", false);
 
-    const bool read_sozip = true;
+    const bool read_sozip = false;
 
     Buffer* const buffer;
 

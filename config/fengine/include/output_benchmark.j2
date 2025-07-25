@@ -47,35 +47,35 @@ write_data:
     # base_dir:
     skip_writing: true
     write_pl_mask:
-        kotekan_stage: gdalFileWrite
+        kotekan_stage: hdf5FileWrite
         in_buf: host_pl_mask_buffer
         file_name: pl_mask
     write_bf_mask:
-        kotekan_stage: gdalFileWrite
+        kotekan_stage: hdf5FileWrite
         in_buf: host_bf_mask_buffer
         file_name: bf_mask
     write_rfi_S012:
-        kotekan_stage: gdalFileWrite
+        kotekan_stage: hdf5FileWrite
         in_buf: host_rfi_S012_buffer
         file_name: rfi_S012
     write_rfi_S012tilde:
-        kotekan_stage: gdalFileWrite
+        kotekan_stage: hdf5FileWrite
         in_buf: host_rfi_S012tilde_buffer
         file_name: rfi_S012tilde
     write_n2k_correlation:
-        kotekan_stage: gdalFileWrite
+        kotekan_stage: hdf5FileWrite
         in_buf: host_n2k_correlation_buffer
         file_name: n2k_correlation
     write_bb_beams:
-        kotekan_stage: gdalFileWrite
+        kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beams_buffer
         file_name: bb_beams
     write_frb3_beams:
-        kotekan_stage: gdalFileWrite
+        kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_buffer
         file_name: frb3_beams
     write_frb3_beams_meanstd:
-        kotekan_stage: gdalFileWrite
+        kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_meanstd_buffer
         file_name: frb3_beams_meanstd
         max_frames: 15

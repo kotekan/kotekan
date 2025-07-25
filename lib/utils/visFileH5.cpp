@@ -145,9 +145,11 @@ void visFileH5::create_time_axis() {
     Group indexmap =
         file->exist("index_map") ? file->getGroup("index_map") : file->createGroup("index_map");
 
-    DataSet time_axis =
-        indexmap.createDataSet("time", DataSpace({0}, {_max_time}), create_datatype<time_ctype>(),
-                               std::vector<size_t>({1}));
+    DataSetCreateProps props;
+    props.add(Chunking{1});
+
+    DataSet time_axis = indexmap.createDataSet("time", DataSpace({0}, {_max_time}),
+                                               create_datatype<time_ctype>(), props);
 }
 
 
@@ -190,7 +192,8 @@ void visFileH5::create_dataset(const std::string& name, const std::vector<std::s
     size_map["ev"] = std::make_tuple(length("ev"), length("ev"), length("ev"));
     size_map["time"] = std::make_tuple(0, max_time, 1);
 
-    std::vector<size_t> cur_dims, max_dims, chunk_dims;
+    std::vector<size_t> cur_dims, max_dims;
+    std::vector<hsize_t> chunk_dims;
 
     for (auto axis : axes) {
         auto cs = size_map[axis];
@@ -200,7 +203,9 @@ void visFileH5::create_dataset(const std::string& name, const std::vector<std::s
     }
 
     DataSpace space = DataSpace(cur_dims, max_dims);
-    DataSet dset = file->createDataSet(name, space, type, max_dims);
+    DataSetCreateProps props;
+    props.add(Chunking(chunk_dims));
+    DataSet dset = file->createDataSet(name, space, type, props);
     dset.createAttribute<std::string>("axis", DataSpace::From(axes)).write(axes);
 }
 
@@ -330,13 +335,17 @@ void visFileH5Fast::create_dataset(const std::string& name, const std::vector<st
         dims.push_back(length(axis));
     }
 
-    hid_t create_p = H5Pcreate(H5P_DATASET_CREATE);
-    H5Pset_layout(create_p, H5D_CONTIGUOUS);
-    H5Pset_alloc_time(create_p, H5D_ALLOC_TIME_EARLY);
-    H5Pset_fill_time(create_p, H5D_FILL_TIME_NEVER);
+    // DataSetCreateProps props;
+    // props.add(HighFive::Layout(HighFive::DataSetLayout::Contiguous));
+    // props.add(HighFive::AllocTime(HighFive::AllocationTime::Early));
+    // props.add(HighFive::FillTime(HighFive::FillTime::Never));
+    RawPropertyList<PropertyType::DATASET_CREATE> props;
+    props.add(H5Pset_layout, H5D_CONTIGUOUS);
+    props.add(H5Pset_alloc_time, H5D_ALLOC_TIME_EARLY);
+    props.add(H5Pset_fill_time, H5D_FILL_TIME_NEVER);
 
     DataSpace space = DataSpace(dims);
-    DataSet dset = file->createDataSet(name, space, type, create_p);
+    DataSet dset = file->createDataSet(name, space, type, props);
     dset.createAttribute<std::string>("axis", DataSpace::From(axes)).write(axes);
 }
 

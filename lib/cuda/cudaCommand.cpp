@@ -50,10 +50,8 @@ cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
                          const std::string& default_kernel_file_name) :
     gpuCommand(config_, unique_name_, host_buffers_, device_, instance_num_, state_,
                default_kernel_command, default_kernel_file_name),
-    device(device_) {
+    start_event(nullptr), end_event(nullptr), device(device_) {
     _required_flag = config.get_default<std::string>(unique_name, "required_flag", "");
-    start_event = nullptr;
-    end_event = nullptr;
 }
 
 void cudaCommand::set_command_type(const gpuCommandType& type) {
@@ -121,12 +119,14 @@ void cudaCommand::finalize_frame() {
         excute_time->add_sample(0.);
         utilization->add_sample(0.);
     }
-    if (start_event)
+    if (start_event != nullptr) {
         CHECK_CUDA_ERROR(cudaEventDestroy(start_event));
-    start_event = nullptr;
-    if (end_event != nullptr)
+        start_event = nullptr;
+    }
+    if (end_event != nullptr) {
         CHECK_CUDA_ERROR(cudaEventDestroy(end_event));
-    end_event = nullptr;
+        end_event = nullptr;
+    }
 }
 
 int32_t cudaCommand::get_cuda_stream_id() {

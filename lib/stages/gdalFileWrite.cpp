@@ -59,7 +59,7 @@ class gdalFileWrite : public kotekan::Stage {
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
 
-    const bool create_sozip = true;
+    const bool create_sozip = false; // Produces errors, does not write attributes
 
     const int max_frames = config.get_default<int>(unique_name, "max_frames", -1);
     const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);

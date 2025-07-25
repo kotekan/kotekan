@@ -1,300 +1,287 @@
-#include "hdf5FileWrite.hpp"
+#include "hdf5Files.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, get_metadata_container, mark_frame_empty, regis...
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for chimeMetadata
-#include "chordMetadata.hpp"   // for chordMetadata
-#include "errors.h"
-#include "kotekanLogging.hpp"    // for ERROR, INFO
-#include "metadata.hpp"          // for metadataContainer
-#include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "visUtil.hpp"           // for current_time
+#include <Stage.hpp>
+#include <StageFactory.hpp>
+#include <algorithm>
+#include <atomic>
+#include <cassert>
+#include <chordMetadata.hpp>
+#include <complex>
+#include <cstdint>
+#include <errno.h>
+#include <errors.h>
+#include <fstream>
+#include <highfive/highfive.hpp>
+#include <iomanip>
+#include <map>
+#include <memory>
+#include <optional>
+#include <prometheusMetrics.hpp>
+#include <sstream>
+#include <string>
+#include <sys/stat.h>
+#include <type_traits>
+#include <unistd.h>
+#include <utility>
+#include <vector>
+#include <visUtil.hpp>
 
-#include <atomic>     // for atomic_bool
-#include <errno.h>    // for errno
-#include <exception>  // for exception
-#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <hdf5.h>
-#include <iomanip>   // for setfill, setw
-#include <regex>     // for match_results<>::_Base_type
-#include <signal.h>  // for raise, SIGHUP
-#include <sstream>   // for ostringstream
-#include <stdexcept> // for runtime_error
-#include <stdint.h>  // for uint32_t, int32_t, uint8_t
-#include <stdio.h>   // for snprintf
-#include <stdlib.h>  // for exit
-#include <string>    // for string
-#include <unistd.h>  // for gethostname
-#include <vector>    // for vector
+using namespace hdf5;
+using namespace HighFive;
 
+// Number of writers which are waiting for `max_frames`
+extern std::atomic<int> waiting_for_max_frames;
 
-using kotekan::bufferContainer;
-using kotekan::Config;
-using kotekan::Stage;
-using kotekan::prometheus::Metrics;
+/**
+ * @class hdf5FileWrite
+ * @brief Stream a buffer to disk.
+ *
+ * @par Buffers:
+ * @buffer in_buf Buffer to write to disk.
+ *     @buffer_format Any
+ *     @buffer_metadata Any
+ *
+ * @conf base_dir  String. Directory to write into.
+ * @conf file_name String. Base filename to write.
+ * @conf exit_after_n_frames  Int. Stop writing after this many frames, Default 0 = unlimited
+ *       frames.
+ * @conf exit_with_n_writers  Int. Exit after this many HDF5 writers finished writing, Default 0 =
+ *       unlimited writers.
+ *
+ * @par Metrics
+ * @metric kotekan_hdf5filewrite_write_time_seconds
+ *         The write time to write out the last frame.
+ *
+ * @author Erik Schnetter
+ **/
+class hdf5FileWrite : public kotekan::Stage {
+
+    const std::string base_dir = config.get<std::string>(unique_name, "base_dir");
+    const std::string file_name = config.get<std::string>(unique_name, "file_name");
+    const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
+
+    const int max_frames = config.get_default<int>(unique_name, "max_frames", -1);
+    const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
+
+    Buffer* const buffer;
+
+public:
+    hdf5FileWrite(kotekan::Config& config, const std::string& unique_name,
+                  kotekan::bufferContainer& buffer_container) :
+        Stage(config, unique_name, buffer_container,
+              [](const kotekan::Stage& stage) {
+                  return const_cast<kotekan::Stage&>(stage).main_thread();
+              }),
+        buffer(get_buffer("in_buf")) {
+
+        if (max_frames >= 0)
+            ++waiting_for_max_frames;
+
+        buffer->register_consumer(unique_name);
+    }
+
+    virtual ~hdf5FileWrite() {}
+
+    void main_thread() override {
+        auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
+            "kotekan_hdf5filewrite_write_time_seconds", unique_name);
+
+        const double start_time = current_time();
+
+        for (std::int64_t frame_counter = 0;; ++frame_counter) {
+            const std::uint32_t frame_id = frame_counter % buffer->num_frames;
+
+            if (stop_thread)
+                break;
+
+            // Wait for the next frame
+            DEBUG("wait_for_full_frame: frame_id={}", frame_id);
+            const std::uint8_t* const frame = buffer->wait_for_full_frame(unique_name, frame_id);
+            if (!frame)
+                break;
+            DEBUG("got frame: frame_id={}", frame_id);
+
+            // Start timer
+            const double t0 = current_time();
+
+            // Fetch metadata
+            const std::shared_ptr<const metadataObject> mc = buffer->get_metadata(frame_id);
+            if (!mc)
+                FATAL_ERROR("Buffer \"{:s}\" frame {:d} does not have metadata",
+                            buffer->buffer_name, frame_id);
+            assert(mc);
+            if (!metadata_is_chord(mc))
+                FATAL_ERROR("Metadata of buffer \"{:s}\" frame {:d} is not of type CHORD",
+                            buffer->buffer_name, frame_id);
+            assert(metadata_is_chord(mc));
+            const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
+
+            const double this_time = current_time();
+            const double elapsed_time = this_time - start_time;
+
+            INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
+                 frame_counter, meta->sample0_offset, elapsed_time);
+
+            if (!skip_writing) {
+
+                // Define file name
+                std::ostringstream buf;
+                buf << base_dir << "/";
+                if (prefix_hostname) {
+                    char hostname[256];
+                    gethostname(hostname, sizeof hostname);
+                    buf << hostname << "_";
+                }
+                buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_counter
+                    << ".h5";
+                const std::string full_path = buf.str();
+
+                // Create directory if necessary
+                int ierr = mkdir(base_dir.c_str(), 0777);
+                if (ierr) {
+                    if (errno != EEXIST && errno != EISDIR) {
+                        const char* const msg = strerror(errno);
+                        FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
+                                    msg);
+                    }
+                }
+
+                // Create HDF5 file
+                File file(full_path, File::Truncate);
+
+                // Choose dataspace
+                const DataSpace space(meta->dim, meta->dim + meta->dims);
+                {
+                    std::ptrdiff_t npoints = 1;
+                    for (int d = meta->dims - 1; d >= 0; --d) {
+                        assert(meta->stride[d] == npoints);
+                        npoints *= meta->dim[d];
+                    }
+                    assert(std::ptrdiff_t(space.getElementCount()) == npoints);
+                    assert(meta->offset == 0);
+                }
+                assert(std::ptrdiff_t(space.getNumberDimensions()) == meta->dims);
+
+                // Choose datatype
+                const DataType type = chord2hdf5(meta->type);
+
+                RawPropertyList<PropertyType::DATASET_CREATE> props;
+
+                // Enable chunking
+                std::vector<hsize_t> chunk_dims(meta->dim, meta->dim + meta->dims);
+                if (!chunk_dims.empty()) {
+                    // Choose chunk size
+                    std::size_t npoints_lo = 1;
+                    for (std::size_t d = 1; d < chunk_dims.size(); ++d)
+                        npoints_lo *= chunk_dims.at(d);
+                    std::size_t npoints_hi = 10 * 1000 * 1000 / npoints_lo;
+                    using std::max, std::min;
+                    npoints_hi =
+                        min(std::size_t(chunk_dims.at(0)), max(std::size_t(1), npoints_hi));
+                    chunk_dims.at(0) = npoints_hi;
+                }
+                (*(DataSetCreateProps*)&props).add(Chunking(chunk_dims));
+
+                // // Enable compression
+                // constexpr int blosc_compression_level = 9;
+                // const std::vector<unsigned int> blosc_flags{
+                //     blosc_compression_level,
+                //     BLOSC_SHUFFLE_BIT,
+                //     BLOSC_COMPRESS_ZSTD,
+                // };
+                // props.add(H5Pset_filter, H5Z_BLOSC, H5Z_FLAG_MANDATORY, blosc_flags.size(),
+                //           blosc_flags.data());
+                constexpr int bitshuffle_compression_level = 9;
+                const std::vector<unsigned int> bitshuffle_flags{
+                    BITSHUFFLE_BLOCKSIZE_AUTO,
+                    BITSHUFFLE_COMPRESS_ZSTD,
+                    bitshuffle_compression_level,
+                };
+                props.add(H5Pset_filter, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
+                          bitshuffle_flags.size(), bitshuffle_flags.data());
+
+                // Create dataset
+                auto dataset = file.createDataSet(file_name, space, type, props);
+
+                // Write metadata (attributes)
+
+                dataset.createAttribute("chord_metadata_version", chord_metadata_version);
+                dataset.createAttribute("name", meta->get_name());
+                dataset.createAttribute("type", type_to_string(meta->type));
+                std::vector<std::string> dim_names;
+                for (int d = 0; d < meta->dims; ++d)
+                    dim_names.push_back(meta->get_dimension_name(d));
+                dataset.createAttribute("dim_names", dim_names);
+
+                if (meta->sample0_offset >= 0)
+                    dataset.createAttribute("sample0_offset", meta->sample0_offset);
+
+                if (meta->offset_downsampling >= 0)
+                    dataset.createAttribute("offset_downsampling", meta->offset_downsampling);
+
+                if (meta->nfreq >= 0) {
+                    dataset.createAttribute("nfreq", meta->nfreq);
+                    dataset.createAttribute(
+                        "coarse_freq",
+                        std::vector<int>(meta->coarse_freq, meta->coarse_freq + meta->nfreq));
+                    dataset.createAttribute(
+                        "freq_upchan_factor",
+                        std::vector<int>(meta->freq_upchan_factor,
+                                         meta->freq_upchan_factor + meta->nfreq));
+                    dataset.createAttribute(
+                        "half_fpga_sample0",
+                        std::vector<std::int64_t>(meta->half_fpga_sample0,
+                                                  meta->half_fpga_sample0 + meta->nfreq));
+                    dataset.createAttribute(
+                        "time_downsampling_fpga",
+                        std::vector<int>(meta->time_downsampling_fpga,
+                                         meta->time_downsampling_fpga + meta->nfreq));
+                }
+
+                if (meta->ndishes >= 0) {
+                    dataset.createAttribute("ndishes", meta->ndishes);
+                    // const DataSpace space{std::size_t(meta->n_dish_locations_ns),
+                    //                       std::size_t(meta->n_dish_locations_ew)};
+                    // auto attr = dataset.createAttribute<int>("dish_index", space);
+                    // attr.write(meta->dish_index);
+                    dataset.createAttribute("n_dish_locations_ns", meta->n_dish_locations_ns);
+                    dataset.createAttribute("n_dish_locations_ew", meta->n_dish_locations_ew);
+                    dataset.createAttribute(
+                        "dish_index",
+                        std::vector<int>(meta->dish_index, meta->dish_index
+                                                               + meta->n_dish_locations_ns
+                                                                     * meta->n_dish_locations_ew));
+                }
+
+                // Write data
+                assert(dataset.getElementCount() * dataset.getDataType().getSize()
+                       == buffer->frame_size);
+                dataset.write_raw(frame, type);
+
+            } // if !skip_writing
+
+            // Stop timer
+            const double t1 = current_time();
+            const double elapsed = t1 - t0;
+            write_time_metric.set(elapsed);
+
+            // Mark frame as done
+            DEBUG("mark_frame_empty: frame_id={}", frame_id);
+            buffer->mark_frame_empty(unique_name, frame_id);
+
+            if (max_frames >= 0 && frame_counter + 1 >= max_frames) {
+                WARN("Processed {} frames", frame_counter + 1);
+                break;
+            }
+        } // for
+
+        if (--waiting_for_max_frames == 0) {
+            WARN("Shutting down Kotekan");
+            exit_kotekan(CLEAN_EXIT);
+        }
+
+        DEBUG("exiting");
+    }
+};
 
 REGISTER_KOTEKAN_STAGE(hdf5FileWrite);
-
-std::atomic<uint32_t> hdf5FileWrite::n_finished{0};
-
-hdf5FileWrite::hdf5FileWrite(Config& config, const std::string& unique_name,
-                             bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&hdf5FileWrite::main_thread, this)) {
-
-    buf = get_buffer("in_buf");
-    buf->register_consumer(unique_name);
-    _base_dir = config.get<std::string>(unique_name, "base_dir");
-    _file_name = config.get<std::string>(unique_name, "file_name");
-    _prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
-    _exit_after_n_frames = config.get_default<uint32_t>(unique_name, "exit_after_n_frames", 0);
-    _exit_with_n_writers = config.get_default<uint32_t>(unique_name, "exit_with_n_writers", 0);
-}
-
-hdf5FileWrite::~hdf5FileWrite() {}
-
-void hdf5FileWrite::main_thread() {
-    std::string full_path;
-    hid_t fd = H5I_UNINIT;
-
-    uint32_t frame_id = 0;
-    uint32_t frame_ctr = 0;
-    uint8_t* frame = nullptr;
-
-    auto& write_time_metric =
-        Metrics::instance().add_gauge("kotekan_hdf5filewrite_write_time_seconds", unique_name);
-    while (!stop_thread) {
-
-        // This call is blocking.
-        frame = buf->wait_for_full_frame(unique_name, frame_id);
-        if (frame == nullptr)
-            break;
-
-        // Start timing the write time
-        const double st = current_time();
-
-        if (fd < 0) {
-            std::ostringstream sbuf;
-            sbuf << _base_dir << "/";
-            if (_prefix_hostname) {
-                char hostname[256];
-                gethostname(hostname, sizeof hostname);
-                sbuf << hostname << "_";
-            }
-            sbuf << _file_name << ".h5";
-            full_path = sbuf.str();
-
-            fd = H5Fcreate(full_path.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-
-            if (fd < 0) {
-                ERROR("Cannot open file");
-                ERROR("File name was: {:s}", full_path.c_str());
-                exit(errno);
-            }
-        }
-
-        // Create group for frame
-        std::ostringstream sbuf;
-        sbuf << std::setfill('0') << std::setw(7) << frame_ctr;
-        const std::string frame_ctr_str = sbuf.str();
-        const hid_t group =
-            H5Gcreate(fd, frame_ctr_str.c_str(), H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-
-        if (group < 0) {
-            ERROR("Cannot create group");
-            ERROR("Group name was: {:s}", frame_ctr_str.c_str());
-            exit(errno);
-        }
-
-        // Write the metadata to file
-        std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
-        if (mc) {
-            // There should be a metadata tag, or this should be a proper C++ class hierarchy.
-            if (metadata_is_chime(mc)) {
-                std::shared_ptr<chimeMetadata> md = get_chime_metadata(mc);
-                {
-                    const hid_t space = H5Screate(H5S_SCALAR);
-                    if (space < 0)
-                        ERROR("Could not create data space");
-                    const hid_t attr = H5Acreate(group, "fpga_seq_num", H5T_NATIVE_INT64, space,
-                                                 H5P_DEFAULT, H5P_DEFAULT);
-                    if (attr < 0)
-                        ERROR("Could not create attribute");
-                    herr_t herr = H5Awrite(attr, H5T_NATIVE_INT64, &md->fpga_seq_num);
-                    if (herr < 0)
-                        ERROR("Could not write attribute");
-                    herr = H5Aclose(attr);
-                    if (herr < 0)
-                        ERROR("Could not close attribute");
-                    herr = H5Sclose(space);
-                    if (herr < 0)
-                        ERROR("Could not close attribute");
-                }
-                // TODO: Write other attributes
-            }
-        }
-
-        // Write the contents of the buffer frame to file
-
-        hid_t type = -1;
-        std::size_t type_size = 0;
-        hid_t space = -1;
-
-        if (metadata_is_chord(mc)) {
-            // We have proper CHORD metadata and know the buffer type and shape
-            const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
-
-            switch (metadata->type) {
-                case kotekan::int4x2:
-                case kotekan::int4x2chime:
-                    type = H5T_NATIVE_UINT8;
-                    type_size = 1;
-                    break;
-                case kotekan::int8:
-                    type = H5T_NATIVE_INT8;
-                    type_size = 1;
-                    break;
-                case kotekan::int16:
-                    type = H5T_NATIVE_INT16;
-                    type_size = 2;
-                    break;
-                case kotekan::int32:
-                    type = H5T_NATIVE_INT32;
-                    type_size = 4;
-                    break;
-                case kotekan::int64:
-                    type = H5T_NATIVE_INT64;
-                    type_size = 8;
-                    break;
-                case kotekan::float16:
-                    // TODO: Define HDF5 float16 type
-                    type = H5T_NATIVE_UINT16;
-                    type_size = 2;
-                    break;
-                case kotekan::float32:
-                    type = H5T_NATIVE_FLOAT;
-                    type_size = 4;
-                    break;
-                case kotekan::float64:
-                    type = H5T_NATIVE_DOUBLE;
-                    type_size = 8;
-                    break;
-                default:
-                    ERROR("Unsupported metadata type");
-            }
-
-            const int rank = metadata->dims;
-            if (rank < 0)
-                ERROR("Negative number of metadata dimensions");
-            hsize_t dims[CHORD_META_MAX_DIM];
-            for (int d = 0; d < rank; ++d) {
-                dims[d] = metadata->dim[d];
-            }
-            hsize_t np = 1;
-            for (int d = 0; d < rank; ++d) {
-                np *= dims[d];
-            }
-            if (buf->frame_size != np * type_size)
-                ERROR("Buffer frame size is different from total metadata array length");
-            space = H5Screate_simple(rank, dims, dims);
-
-        } else {
-            // We don't have proper CHORD metadata and don't know the buffer type and shape
-
-            type = H5T_NATIVE_UINT8;
-            const int rank = 1;
-            hsize_t dims[1];
-            dims[0] = buf->frame_size;
-            space = H5Screate_simple(rank, dims, dims);
-        }
-
-        if (type < 0)
-            ERROR("Illegal HDF5 data type");
-        if (space < 0)
-            ERROR("Illegal HDF5 data space");
-
-        const hid_t dataset = H5Dcreate(group, buf->buffer_name.c_str(), type, space, H5P_DEFAULT,
-                                        H5P_DEFAULT, H5P_DEFAULT);
-        if (dataset < 0)
-            ERROR("Could not create HDF5 dataset");
-
-        if (metadata_is_chord(mc)) {
-            // Write dimension names
-            const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
-
-            hid_t dim_name_type = H5Tcreate(H5T_STRING, CHORD_META_MAX_DIMNAME);
-            if (dim_name_type < 0)
-                ERROR("Could not create HDF5 datatype for dim_name");
-            const hsize_t dim_name_dims[1]{static_cast<hsize_t>(metadata->dims)};
-            hid_t dim_name_space = H5Screate_simple(1, dim_name_dims, nullptr);
-            if (dim_name_space < 0)
-                ERROR("Could not create HDF5 dataspace for dim_name");
-            hid_t dim_name_attr = H5Acreate2(dataset, "dim_name", dim_name_type, dim_name_space,
-                                             H5P_DEFAULT, H5P_DEFAULT);
-            if (dim_name_attr < 0)
-                ERROR("Could not create HDF5 attribute for dim_name");
-            herr_t herr = H5Awrite(dim_name_attr, dim_name_type, metadata->dim_name);
-            if (herr < 0)
-                ERROR("Could not write HDF5 attribute for dim_name");
-            herr = H5Aclose(dim_name_attr);
-            if (herr < 0)
-                ERROR("Could not close HDF5 attribute for dim_name");
-            herr = H5Sclose(dim_name_space);
-            if (herr < 0)
-                ERROR("Could not close HDF5 dataspace for dim_name");
-            herr = H5Tclose(dim_name_type);
-            if (herr < 0)
-                ERROR("Could not close HDF5 datatype for dim_name");
-        }
-
-        herr_t herr = H5Dwrite(dataset, type, space, space, H5P_DEFAULT, frame);
-        if (herr < 0)
-            ERROR("Could not write HDF5 dataset");
-
-        herr = H5Dclose(dataset);
-        if (herr < 0)
-            ERROR("Could not close HDF5 dataset");
-        herr = H5Sclose(space);
-        if (herr < 0)
-            ERROR("Could not close HDF5 dataspace");
-
-        herr = H5Gclose(group);
-        if (herr < 0)
-            ERROR("Could not close HDF5 group");
-
-        herr = H5Fflush(fd, H5F_SCOPE_GLOBAL);
-        if (herr < 0)
-            ERROR("Could not flush HDF5 file");
-
-        INFO("Data file write done for {:s} {:d}", full_path.c_str(), frame_ctr);
-
-        ++frame_ctr;
-
-        if (frame_ctr == _exit_after_n_frames) {
-            if (fd >= 0) {
-                herr = H5Fclose(fd);
-                if (herr < 0) {
-                    ERROR("Cannot close file {:s}", full_path.c_str());
-                }
-                fd = -1;
-            }
-            stop_thread = true;
-        }
-
-        double elapsed = current_time() - st;
-        write_time_metric.set(elapsed);
-
-        buf->mark_frame_empty(unique_name, frame_id);
-
-        frame_id = (frame_id + 1) % buf->num_frames;
-    }
-
-    // Check if we should exit after writing out a fixed number of
-    // files. Useful for some tests and burst modes. Will hopefully be
-    // replaced by frames which can contain a "final" signal.
-    if (!_exit_with_n_writers || ++n_finished >= _exit_with_n_writers) {
-        exit_kotekan(ReturnCode::CLEAN_EXIT);
-    }
-}
