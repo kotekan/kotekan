@@ -432,6 +432,10 @@ public:
         return metadata[jsonMetadata::DATASET_ID].template get<dset_id_t>();
     }
 
+    void set_dataset_id(const dset_id_t dset_id) {
+        metadata[jsonMetadata::DATASET_ID] = dset_id;
+    }
+
 private:
     jsonMetadata::metadata metadata;
 };
