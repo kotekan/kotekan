@@ -4,7 +4,7 @@
 CLANG_FORMAT=clang-format-18
 
 # kotekan root directory
-KOTEKAN_DIR="./"
+KOTEKAN_DIR="."
 
 # Flag to enable iwyu (default OFF)
 ENABLE_IWYU="OFF"
@@ -86,12 +86,14 @@ fi
 
 # include-what-you-use
 if ! [ $ENABLE_IWYU = "OFF" ]; then
-    #CXX=clang++ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
-    echo "Running iwyu. If it fails make sure to run cmake with
+    CXX=clang++
+    CC=clang
+    echo "Running iwyu. If it fails make sure cmake compiles with
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first.\nThis could take a while..."
-    iwyu_tool -j $N_JOBS -p . -- -Xiwyu --no_fwd_decls -Xiwyu --mapping_file=${KOTEKAN_DIR}/iwyu.kotekan.imp -Xiwyu --max_line_length=100 | tee iwyu.out
+    (cd ${KOTEKAN_DIR}/build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DIWYU=ON ..)
+    (cd ${KOTEKAN_DIR}/build && iwyu_tool -j $N_JOBS -p . -- -Xiwyu --no_fwd_decls -Xiwyu --max_line_length=100 -Xiwyu --mapping_file=${KOTEKAN_DIR}/iwyu.kotekan.imp | tee iwyu.out)
     echo "Applying suggested changes..."
-    python2 /usr/bin/fix_include --nosafe_headers --comments < iwyu.out
+    python3 ${KOTEKAN_DIR}/tools/iwyu/fix_includes.py --nosafe_headers --comments < ${KOTEKAN_DIR}/build/iwyu.out
 else
     echo "fast mode enabled, skipping IWYU (add option -i ON to disable fast mode)"
 fi
