@@ -112,6 +112,7 @@ void bufferSend::main_thread() {
             header.metadata_size = meta->get_serialized_size();
             // Check if config tracker data has been updated since last transmission
             if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
+                DEBUG("Config tracker data has been updated, sending new config tracker data.");
                 header.config_tracker_update = true;
                 config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
             } else {

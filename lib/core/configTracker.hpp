@@ -222,7 +222,7 @@ public:
             _tracker_hash = md5_ss.str();
         }
         
-        DEBUG_NON_OO("Combined hash set to: {}", _tracker_hash);
+        DEBUG_NON_OO("ConfigTracker: Combined hash set to: {}", _tracker_hash);
     }
 
     /**
@@ -286,6 +286,7 @@ public:
         setTrackerHash();
         DEBUG_NON_OO("ConfigTracker: inserted config for host: {}, port: {}, hash: {}",
                     host, port, config_info.json_hash);
+        DEBUG_NON_OO("ConfigTracker: _tracker_hash: {}", _tracker_hash);
     }
 
     /**
@@ -443,13 +444,13 @@ public:
                                     {}, host, port, 1, -1);
         // reply is a pair with success boolean and the reply string
         if (!reply.first) {
-            ERROR_NON_OO("Failed to get config hashes from upstream host: {}, port: {}", host, port);
+            ERROR_NON_OO("ConfigTracker: Failed to get config hashes from upstream host: {}, port: {}", host, port);
             return;
         }
 
         // Check if the response contains any hashes
         if (reply.second.empty()) {
-            ERROR_NON_OO("No configs found at upstream host: {}, port: {}", host, port);
+            ERROR_NON_OO("ConfigTracker: No configs found at upstream host: {}, port: {}", host, port);
             return;
         }
 
@@ -458,7 +459,7 @@ public:
         try {
             response_json = nlohmann::json::parse(reply.second);
         } catch (const nlohmann::json::parse_error& e) {
-            ERROR_NON_OO("Failed to parse JSON response from upstream host: {}, port: {}. Error: {}",
+            ERROR_NON_OO("ConfigTracker: Failed to parse JSON response from upstream host: {}, port: {}. Error: {}",
                           host, port, e.what());
             return;
         }
@@ -481,7 +482,7 @@ public:
                     // Config already exists with the same host and port, continue
                     continue;
                 } else {
-                    FATAL_ERROR_NON_OO("Hash conflict for {}, upstream host: {}, port: {}",
+                    FATAL_ERROR_NON_OO("ConfigTracker: Hash conflict for {}, upstream host: {}, port: {}",
                                   hash, upstream_host, upstream_port);
                 }
             }
@@ -492,7 +493,7 @@ public:
                                     request_json, host, port, 1, -1);
             // Check if the request was successful
             if (!reply.first) { 
-                ERROR_NON_OO("Failed to get config for hash: {} from upstream host: {}, port: {}",
+                ERROR_NON_OO("ConfigTracker: Failed to get config for hash: {} from upstream host: {}, port: {}",
                               hash, upstream_host, upstream_port);
                 continue;
             }
@@ -501,7 +502,7 @@ public:
             try {
                 config_response_json = nlohmann::json::parse(reply.second);
             } catch (const nlohmann::json::parse_error& e) {
-                ERROR_NON_OO("Failed to parse JSON response for hash: {} from upstream host: {}, port: {}. Error: {}",
+                ERROR_NON_OO("ConfigTracker: Failed to parse JSON response for hash: {} from upstream host: {}, port: {}. Error: {}",
                               hash, upstream_host, upstream_port, e.what());
                 continue;
             }
@@ -513,7 +514,7 @@ public:
                 insertConfig(host, port, info);
             } else {
                 // If the config was not found, log an error or take appropriate action
-                ERROR_NON_OO("Config not found for hash: {}", hash);
+                ERROR_NON_OO("ConfigTracker: Config not found for hash: {}", hash);
             }
         }
         // Sanity check to ensure that the number of configs is consistent
@@ -531,11 +532,11 @@ public:
         struct stat info;
         if (stat(directory.c_str(), &info) != 0) {
             std::string err = "Directory does not exist: " + directory;
-            throw std::runtime_error(err);
+            ERROR_NON_OO("ConfigTracker: {}", err);
         }
         if (!(info.st_mode & S_IFDIR)) {
             std::string err = "Path is not a directory: " + directory;
-            throw std::runtime_error(err);
+            ERROR_NON_OO("ConfigTracker: {}", err);
         }
         
         std::lock_guard<std::mutex> lock(_lock);
@@ -556,7 +557,7 @@ public:
                 {
                     std::ofstream file(temp_filename);
                     if (!file) {
-                        throw std::runtime_error("Cannot open file for writing");
+                        ERROR_NON_OO("ConfigTracker: Cannot open file for writing");
                     }
                     
                     // Write with pretty formatting
@@ -564,13 +565,13 @@ public:
                                                     nlohmann::json::error_handler_t::strict);
                     
                     if (!file.good()) {
-                        throw std::runtime_error("Write failed");
+                        ERROR_NON_OO("ConfigTracker: Write failed");
                     }
                 }  // file closed here
                 
                 // Atomically rename temp file to final name
                 if (std::rename(temp_filename.c_str(), filename.c_str()) != 0) {
-                    throw std::runtime_error("Failed to rename temp file");
+                    ERROR_NON_OO("ConfigTracker: Failed to rename temp file");
                 }
                 
                 ++written;
