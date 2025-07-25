@@ -14,6 +14,7 @@
 #include "metadataFactory.hpp"   // for metadataFactory
 #include "prometheusMetrics.hpp" // for Metrics
 #include "restServer.hpp"        // for restServer, connectionInstance
+#include "version.h"             // for get_kotekan_version, get_cmake_build_options, get_git_commit_hash
 
 #include "fmt.hpp"  // for format
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
@@ -83,7 +84,15 @@ void kotekanMode::initalize_stages() {
 
     // Create ConfigTracker instance and register with the REST server.
     ConfigTracker::instance();
-    ConfigTracker::instance().insertConfig(config.get_full_config_json());
+    ConfigTracker::instance().insertConfig(
+        restServer::instance().bind_address(),
+        restServer::instance().port(),
+        config.get_full_config_json(),
+        get_kotekan_version(),
+        get_git_branch(),
+        get_git_commit_hash(),
+        get_cmake_build_options()
+    );
     ConfigTracker::instance().register_with_server(&restServer::instance());
 
     // Apply config for Telescope class

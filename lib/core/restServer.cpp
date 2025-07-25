@@ -43,7 +43,7 @@ restServer& restServer::instance() {
     return server_instance;
 }
 
-restServer::restServer() : port(_port), main_thread() {
+restServer::restServer() : main_thread() {
     stop_thread = false;
 }
 
@@ -108,7 +108,7 @@ void restServer::start(const std::string& bind_address, u_short port) {
         ERROR_NON_OO("Cannot bind to address: {:s}:{:d}", bind_address, port);
     }
 
-    this->bind_address = bind_address;
+    this->_bind_address = bind_address;
     this->_port = port;
 
     main_thread = std::thread(&restServer::http_server_thread, this);
@@ -439,9 +439,9 @@ void restServer::http_server_thread() {
 
     // Bind to the IP and port
     struct evhttp_bound_socket* ev_sock =
-        evhttp_bind_socket_with_handle(ev_server, bind_address.c_str(), _port);
+        evhttp_bind_socket_with_handle(ev_server, _bind_address.c_str(), _port);
     if (ev_sock == nullptr) {
-        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", bind_address, _port);
+        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", _bind_address, _port);
         exit(1);
     }
 
@@ -451,13 +451,13 @@ void restServer::http_server_thread() {
         struct sockaddr_in sin;
         socklen_t len = sizeof(sin);
         if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
-            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", bind_address, _port);
+            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", _bind_address, _port);
             exit(1);
         }
         _port = ntohs(sin.sin_port);
     }
     // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
-    INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", bind_address, _port);
+    INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", _bind_address, _port);
 
     // Create a timer to check for the exit condition
     struct event* timer_event;

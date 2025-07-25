@@ -255,8 +255,11 @@ public:
      */
     void remove_all_aliases();
 
-    /// The port to use
-    const u_short& port;
+    // Getter for the port to use
+    inline u_short port() const { return _port; }
+
+    // Getter for the bind address to use
+    inline std::string bind_address() const { return _bind_address; }
 
 private:
     /// Private constuctor
@@ -355,7 +358,7 @@ private:
     struct evhttp* ev_server = nullptr;
 
     /// Bind address
-    std::string bind_address;
+    std::string _bind_address;
 
     /// The port to use
     u_short _port;

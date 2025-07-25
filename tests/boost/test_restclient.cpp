@@ -167,7 +167,7 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_send_json, TestContext) {
     restServer::instance().start("127.0.0.1", 0);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    int port = restServer::instance().port;
+    int port = restServer::instance().port();
 
     std::function<void(restClient::restReply)> fun = TestContext::rq_callback;
     restClient::instance().make_request("/test_restclient", fun, request, "127.0.0.1", port);
@@ -203,7 +203,7 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply, TestContext) {
     _global_log_level = 4;
     __enable_syslog = 0;
 
-    int port = restServer::instance().port;
+    int port = restServer::instance().port();
 
     json request, bad_request;
     request["array"] = {1, 2, 3};
@@ -243,7 +243,7 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply_blocking, TestContext) {
     _global_log_level = 4;
     __enable_syslog = 0;
 
-    int port = restServer::instance().port;
+    int port = restServer::instance().port();
 
     restClient::restReply reply;
     json request, bad_request;
