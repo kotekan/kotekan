@@ -7,7 +7,7 @@
 #include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for mark_frame_empty, Buffer, wait_for_full_frame, get_meta...
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "chimeMetadata.hpp"     // for chimeMetadata, get_dataset_id, get_fpga_seq_num, set_da...
+#include "chordMetadata.hpp"
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t, datasetManager
 #include "kotekanLogging.hpp"    // for WARN, INFO, DEBUG, DEBUG2
@@ -106,16 +106,16 @@ void RfiFrameDrop::main_thread() {
         if (frame_in_vis == nullptr || frame_in_sk == nullptr)
             break;
 
-        auto* metadata_vis = (chimeMetadata*)(_buf_in_vis->get_metadata(frame_id_in_vis).get());
-        auto* metadata_sk = (chimeMetadata*)(_buf_in_sk->get_metadata(frame_id_in_sk).get());
+        const auto metadata_vis = get_chord_metadata(_buf_in_vis, frame_id_in_vis);
+        const auto metadata_sk = get_chord_metadata(_buf_in_sk, frame_id_in_sk);
 
         // Set the frequency index from the stream id of the metadata
         uint32_t freq_id = tel.to_freq_id(_buf_in_vis, frame_id_in_vis);
 
         // Try and synchronize up the frames. Even though they arrive at
         // different rates, this should eventually sync them up.
-        auto vis_seq = metadata_vis->fpga_seq_num;
-        auto sk_seq = metadata_sk->fpga_seq_num;
+        auto vis_seq = metadata_vis->get_fpga_seq_num();
+        auto sk_seq = metadata_sk->get_fpga_seq_num();
 
         if (vis_seq < sk_seq) {
             DEBUG("Dropping incoming N2 frame to sync up. Vis frame: {}; SK frame: {}, diff {}",
@@ -133,7 +133,7 @@ void RfiFrameDrop::main_thread() {
                vis_seq - sk_seq);
 
         // Calculate the scaling to turn kurtosis value into sigma
-        size_t num_inputs = num_elements - metadata_vis->rfi_num_bad_inputs;
+        size_t num_inputs = num_elements - metadata_vis->get_rfi_num_bad_inputs();
         float sigma_scale = sqrt((num_inputs * (sk_step - 1) * (sk_step + 2) * (sk_step + 3))
                                  / (4.0 * sk_step * sk_step));
 
@@ -141,7 +141,7 @@ void RfiFrameDrop::main_thread() {
         lock.lock();
 
         // Check if we need to register a new dataset
-        dset_id_t dset_id_in_new = get_dataset_id(_buf_in_vis, frame_id_in_vis);
+        dset_id_t dset_id_in_new = get_chord_metadata(_buf_in_vis, frame_id_in_vis)->get_dataset_id();
         if (dset_id_in_new != dset_id_in || state_id != last_state_id) {
             dset_id_out = dm.add_dataset(state_id, dset_id_in_new);
             dset_id_in = dset_id_in_new;
@@ -166,7 +166,8 @@ void RfiFrameDrop::main_thread() {
                 break;
             }
 
-            auto sf_seq = get_fpga_seq_num(_buf_in_vis, frame_id_in_vis);
+            const auto metadata = get_chord_metadata(_buf_in_vis, frame_id_in_vis);
+            auto sf_seq = metadata->get_fpga_seq_num();
 
             // Check that we are still synchronized with the frame we are
             // expecting. If not (and this may happen if the Valve process is
@@ -212,7 +213,7 @@ void RfiFrameDrop::main_thread() {
                     break;
                 }
                 copy_frame(_buf_in_vis, frame_id_in_vis, _buf_out, frame_id_out);
-                set_dataset_id(_buf_out, frame_id_out, dset_id_out);
+                get_chord_metadata(_buf_out, frame_id_out)->set_dataset_id(dset_id_out);
                 _buf_out->mark_frame_full(unique_name, frame_id_out++);
             } else {
                 dropped_frame_counter.labels({std::to_string(freq_id)}).inc();
