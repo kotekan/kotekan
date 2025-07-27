@@ -402,6 +402,7 @@ public:
     // science metadata
     using beamCoord = jsonMetadata::beamCoord;
 
+    /// The coordinates of the tracking beam (if applicable)
     beamCoord get_beam_coord() const {
         return beamCoord(metadata);
     }
@@ -426,8 +427,19 @@ public:
         return tel.to_time(this->get_fpga_seq_num());
     }
 
+    /// The number of bad inputs in the RFI systems bad input list.
+    /// This value is mostly needed for renormalization of the SK values.
+    uint32_t get_rfi_num_bad_inputs() const {
+        return metadata[jsonMetadata::RFI_NUM_BAD_INPUTS].template get<uint32_t>();
+    }
+
+    void set_rfi_num_bad_inputs(const uint32_t rfi_num_bad_inputs) {
+        metadata[jsonMetadata::RFI_NUM_BAD_INPUTS] = rfi_num_bad_inputs;
+    }
+
     // links to other data
 
+    /// ID of the dataset
     dset_id_t get_dataset_id() const {
         return metadata[jsonMetadata::DATASET_ID].template get<dset_id_t>();
     }
