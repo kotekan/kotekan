@@ -1,9 +1,11 @@
+#define DONTUSECHIMEMETA 1
+
 #include "bufferBadInputs.hpp"
 
 #include "Config.hpp"         // for Config
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"         // for allocate_new_metadata_object, mark_frame_full, register_pr...
-#include "chimeMetadata.hpp"  // for set_rfi_num_bad_inputs
+#include "chordMetadata.hpp"
 #include "configUpdater.hpp"  // for configUpdater
 #include "kotekanLogging.hpp" // for DEBUG, ERROR
 #include "visUtil.hpp"        // for parse_reorder_default
@@ -78,7 +80,7 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     out_buf->allocate_new_metadata_object(out_buffer_ID);
 
     // Set no. of bad inputs in the metadata
-    set_rfi_num_bad_inputs(out_buf, out_buffer_ID, bad_inputs_correlator.size());
+    get_chord_metadata(out_buf, out_buffer_ID)->set_rfi_num_bad_inputs(bad_inputs_correlator.size());
 
     out_buf->mark_frame_full(unique_name, out_buffer_ID);
 
