@@ -8,7 +8,7 @@
 #
 # - Packet capture from the ICE boards including FPGA flag handling and normalization
 # - N^2 kernels and output for various data projects to receiver systems
-# - FRB FFT Fan beam and packet Tx, with Valves protecting input buffers from overflowing
+# - FRB FFT Fan beam and packet Tx, with Valves protecting input buffers from overflowinlibpcaplibpcapg
 # - Tracking 10 coherent beam system and packet Tx, with Valves protecting input buffers from
 #   overflowing
 # - RFI detection and summary stats system (only reports on RFI, no normalization yet)

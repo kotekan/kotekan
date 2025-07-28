@@ -83,7 +83,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     // This default works well for ICE boards,
     // but we might change this to something more genertic
     memset((void*)&port_conf, 0, sizeof(struct rte_eth_conf));
-    uint32_t max_rx_pkt_len = config.get_default<uint32_t>(unique_name, "max_rx_pkt_len", 5000);
+    uint32_t max_rx_pkt_len = config.get_default<uint32_t>(unique_name, "max_rx_pkt_len", 9000);
 #ifndef OLD_DPDK
     port_conf.rxmode.max_lro_pkt_size = max_rx_pkt_len;
     port_conf.rxmode.mtu = max_rx_pkt_len;
@@ -252,6 +252,9 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
     char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], nullptr};
     int argc2 = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
 
+
+    rte_memzone_max_set(8192);
+
     // Initialize the Environment Abstraction Layer (EAL).
     // Currently closing DPDKs EAL isn't offically supported,
     // so we only do it once.
@@ -397,6 +400,7 @@ int dpdkCore::lcore_rx(void* args) {
         }
     }
 
+    sleep(10);
     while (!core->stop_thread) {
         for (uint32_t i = 0; i < num_local_ports; ++i) {
             uint32_t port = ports[i];

@@ -1,3 +1,4 @@
+
 #include "buffer.hpp"
 
 #include "errors.h"    // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F
@@ -328,7 +329,7 @@ int private_mark_frame_empty(Buffer* buf, const int id) {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         // TODO: Move this to the config file (when buffers.c updated to C++11)
-        CPU_SET(5, &cpuset);
+        CPU_SET(2, &cpuset);
 
         CHECK_ERROR_F(pthread_create(&zero_t, nullptr, &private_zero_frames, (void*)zero_args));
         CHECK_ERROR_F(pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset));
