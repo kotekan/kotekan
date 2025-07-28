@@ -16,7 +16,6 @@
 
 void check_timespec_equal(const timespec& t1, const timespec& t2) {
     BOOST_CHECK_EQUAL(t1.tv_sec, t2.tv_sec);
-    //BOOST_CHECK_EQUAL(t1.tv_nsec, t2.tv_nsec);
 
     long ns1 = (long)t1.tv_nsec;
     long ns2 = (long)t2.tv_nsec;
@@ -29,25 +28,47 @@ void check_era_close(double era1, double era2) {
                                     era1, era2, fabs(era1 - era2), ERA_TOL));
 }
 
-class TimeData {
-public:
-    TimeData(const std::vector<std::string>& tstrs);
-    ~TimeData(){};
-
-    std::vector<timespec> t_unix;
-    std::vector<timespec> t_ut1;
-    std::vector<double> dUT1;
-    std::vector<double> era;
-    std::vector<int64_t> nrot;
-    size_t size;
-};
-
 bool f_exists(const std::string& name) {
     std::ifstream f(name.c_str());
     return f.good();
 }
 
-TimeData::TimeData(const std::vector<std::string>& tstrs) {
+static std::vector<std::string> test_times({
+    "1995-01-01T12:00:00.0",         "2000-01-01T11:58:55.816",       "2000-01-01T12:00:00.0",
+    "2005-01-01T12:00:00.0",         "2010-01-01T12:00:00.0",         "2015-01-01T12:00:00.0",
+    "2015-06-30T23:59:59.0",         "2015-06-30T23:59:59.999",       "2015-06-30T23:59:59.999999",
+    "2015-06-30T23:59:59.999999999", "2015-06-30T23:59:60.0",         "2015-07-01T00:00:00.0",
+    "2020-01-01T12:00:00.0",         "2025-01-01T12:00:00.0",         "2025-12-31T23:59:59.0",
+    "2025-12-31T23:59:59.000000001", "2025-12-31T23:59:59.999999999", "2026-01-01T00:00:00",
+    "2026-01-01T00:00:00.000000001", "2027-03-14T02:07:01.828123456", "2028-01-01T12:00:00.0",
+});
+
+class TimeData {
+public:
+    TimeData(){BOOST_TEST_MESSAGE("TimeData constructor");};
+    void setup();
+    ~TimeData(){BOOST_TEST_MESSAGE("TimeData destructor");};
+
+    static std::vector<timespec> t_unix;
+    static std::vector<timespec> t_ut1;
+    static std::vector<double> dUT1;
+    static std::vector<double> era;
+    static std::vector<int64_t> nrot;
+    static size_t size;
+};
+
+std::vector<timespec> TimeData::t_unix{};
+std::vector<timespec> TimeData::t_ut1{};
+std::vector<double> TimeData::dUT1{};
+std::vector<double> TimeData::era{};
+std::vector<int64_t> TimeData::nrot{};
+size_t TimeData::size = 0;
+
+void TimeData::setup() {
+
+    BOOST_TEST_MESSAGE("TimeData setup.");
+
+    const std::vector<std::string>& tstrs = test_times;
 
     std::string filename = "time_dump.txt";
     std::string script = fmt::format("{:s}/timeUtil.py", TEST_SCRIPT_DIR);
@@ -88,142 +109,113 @@ TimeData::TimeData(const std::vector<std::string>& tstrs) {
         }
     }
 
+    BOOST_REQUIRE(t_unix.size() == test_times.size());
     BOOST_REQUIRE(t_unix.size() == t_ut1.size() && t_unix.size() == dUT1.size()
                   && t_unix.size() == era.size() && t_unix.size() == nrot.size());
 
     size = t_unix.size();
+
+    BOOST_TEST_MESSAGE(fmt::format("Setup TimeData with {:d} entries.", size));
 }
 
-std::vector<std::string> default_test_times({
-    "1995-01-01T12:00:00.0",         "2000-01-01T11:58:55.816",       "2000-01-01T12:00:00.0",
-    "2005-01-01T12:00:00.0",         "2010-01-01T12:00:00.0",         "2015-01-01T12:00:00.0",
-    "2015-06-30T23:59:59.0",         "2015-06-30T23:59:59.999",       "2015-06-30T23:59:59.999999",
-    "2015-06-30T23:59:59.999999999", "2015-06-30T23:59:60.0",         "2015-07-01T00:00:00.0",
-    "2020-01-01T12:00:00.0",         "2025-01-01T12:00:00.0",         "2025-12-31T23:59:59.0",
-    "2025-12-31T23:59:59.000000001", "2025-12-31T23:59:59.999999999", "2026-01-01T00:00:00",
-    "2026-01-01T00:00:00.000000001", "2027-03-14T02:07:01.828123456", "2028-01-01T12:00:00.0",
-});
+BOOST_TEST_GLOBAL_FIXTURE(TimeData);
 
 BOOST_AUTO_TEST_CASE(_time_to_ut1) {
 
-    /*
-    timespec t_J2000 = {.tv_sec=946'727'935L, .tv_nsec=816'000'000L};
-    timespec t_J2000_ut1 = {.tv_sec=2'451'545L * 86400L - 65,
-                            .tv_nsec=816'000'000L};
+    BOOST_TEST_MESSAGE(fmt::format("Testing time->ut1 with {:d} entries.", TimeData::size));
 
-    check_timespec_equal(get_UT1_from_time(t_J2000, 0.0), t_J2000_ut1);
-    */
-
-    TimeData dat(default_test_times);
-
-    BOOST_REQUIRE(dat.size == default_test_times.size());
-
-    for (size_t i = 0; i < dat.size; i++) {
-        check_timespec_equal(get_UT1_from_time(dat.t_unix[i], dat.dUT1[i]), dat.t_ut1[i]);
+    for (size_t i = 0; i < TimeData::size; i++) {
+        check_timespec_equal(get_UT1_from_time(TimeData::t_unix[i], TimeData::dUT1[i]),
+                             TimeData::t_ut1[i]);
     }
 }
 
 BOOST_AUTO_TEST_CASE(_ut1_to_time) {
 
-    TimeData dat(default_test_times);
+    BOOST_TEST_MESSAGE(fmt::format("Testing ut1->time with {:d} entries.", TimeData::size));
 
-    BOOST_REQUIRE(dat.size == default_test_times.size());
-
-    for (size_t i = 0; i < dat.size; i++) {
-        check_timespec_equal(get_time_from_UT1(dat.t_ut1[i], dat.dUT1[i]), dat.t_unix[i]);
+    for (size_t i = 0; i < TimeData::size; i++) {
+        check_timespec_equal(get_time_from_UT1(TimeData::t_ut1[i], TimeData::dUT1[i]),
+                             TimeData::t_unix[i]);
     }
 }
 
 BOOST_AUTO_TEST_CASE(_ut1_to_era) {
 
-    TimeData dat(default_test_times);
+    BOOST_TEST_MESSAGE(fmt::format("Testing ut1->ERA with {:d} entries.", TimeData::size));
 
-    BOOST_REQUIRE(dat.size == default_test_times.size());
-
-    for (size_t i = 0; i < dat.size; i++) {
+    for (size_t i = 0; i < TimeData::size; i++) {
         int64_t nrot = -1;
-        double era = get_ERA_from_UT1(dat.t_ut1[i], &nrot);
-        check_era_close(era, dat.era[i]);
-        BOOST_CHECK_EQUAL(nrot, dat.nrot[i]);
+        double era = get_ERA_from_UT1(TimeData::t_ut1[i], &nrot);
+        check_era_close(era, TimeData::era[i]);
+        BOOST_CHECK_EQUAL(nrot, TimeData::nrot[i]);
     }
 }
 
 BOOST_AUTO_TEST_CASE(_era_to_ut1) {
 
-    TimeData dat(default_test_times);
+    BOOST_TEST_MESSAGE(fmt::format("Testing era->ut1 with {:d} entries.", TimeData::size));
 
-    BOOST_REQUIRE(dat.size == default_test_times.size());
-
-    for (size_t i = 0; i < dat.size; i++) {
-        check_timespec_equal(get_UT1_from_ERA(dat.nrot[i], dat.era[i]), dat.t_ut1[i]);
+    for (size_t i = 0; i < TimeData::size; i++) {
+        check_timespec_equal(get_UT1_from_ERA(TimeData::nrot[i], TimeData::era[i]), TimeData::t_ut1[i]);
     }
 }
 
 BOOST_AUTO_TEST_CASE(_time_to_era) {
 
-    TimeData dat(default_test_times);
+    BOOST_TEST_MESSAGE(fmt::format("Testing time->era with {:d} entries.", TimeData::size));
 
-    BOOST_REQUIRE(dat.size == default_test_times.size());
-
-    for (size_t i = 0; i < dat.size; i++) {
-        double era = get_ERA_from_time(dat.t_unix[i], dat.dUT1[i]);
-        check_era_close(era, dat.era[i]);
+    for (size_t i = 0; i < TimeData::size; i++) {
+        double era = get_ERA_from_time(TimeData::t_unix[i], TimeData::dUT1[i]);
+        check_era_close(era, TimeData::era[i]);
     }
 }
 
 BOOST_AUTO_TEST_CASE(_time_to_ut1_to_time) {
 
-    TimeData dat(default_test_times);
+    BOOST_TEST_MESSAGE(fmt::format("Testing time->ut1->time with {:d} entries.", TimeData::size));
 
-    BOOST_REQUIRE(dat.size == default_test_times.size());
-
-    for (size_t i = 0; i < dat.size; i++) {
+    for (size_t i = 0; i < TimeData::size; i++) {
         check_timespec_equal(
-            get_time_from_UT1(get_UT1_from_time(dat.t_unix[i], dat.dUT1[i]), dat.dUT1[i]),
-            dat.t_unix[i]);
+            get_time_from_UT1(get_UT1_from_time(TimeData::t_unix[i], TimeData::dUT1[i]), TimeData::dUT1[i]),
+            TimeData::t_unix[i]);
     }
 }
 
 BOOST_AUTO_TEST_CASE(_ut1_to_time_to_ut1) {
 
-    TimeData dat(default_test_times);
+    BOOST_TEST_MESSAGE(fmt::format("Testing ut1->time->ut1 with {:d} entries.", TimeData::size));
 
-    BOOST_REQUIRE(dat.size == default_test_times.size());
-
-    for (size_t i = 0; i < dat.size; i++) {
+    for (size_t i = 0; i < TimeData::size; i++) {
         check_timespec_equal(
-            get_UT1_from_time(get_time_from_UT1(dat.t_ut1[i], dat.dUT1[i]), dat.dUT1[i]),
-            dat.t_ut1[i]);
+            get_UT1_from_time(get_time_from_UT1(TimeData::t_ut1[i], TimeData::dUT1[i]), TimeData::dUT1[i]),
+            TimeData::t_ut1[i]);
     }
 }
 
 BOOST_AUTO_TEST_CASE(_ut1_to_era_to_ut1) {
 
-    TimeData dat(default_test_times);
+    BOOST_TEST_MESSAGE(fmt::format("Testing ut1->era->ut1 with {:d} entries.", TimeData::size));
 
-    BOOST_REQUIRE(dat.size == default_test_times.size());
-
-    for (size_t i = 0; i < dat.size; i++) {
+    for (size_t i = 0; i < TimeData::size; i++) {
         int64_t nrot = -1;
-        double era = get_ERA_from_UT1(dat.t_ut1[i], &nrot);
+        double era = get_ERA_from_UT1(TimeData::t_ut1[i], &nrot);
 
-        check_timespec_equal(get_UT1_from_ERA(nrot, era), dat.t_ut1[i]);
+        check_timespec_equal(get_UT1_from_ERA(nrot, era), TimeData::t_ut1[i]);
     }
 }
 
 BOOST_AUTO_TEST_CASE(_era_to_ut1_to_era) {
 
-    TimeData dat(default_test_times);
+    BOOST_TEST_MESSAGE(fmt::format("Testing era->ut1->era with {:d} entries.", TimeData::size));
 
-    BOOST_REQUIRE(dat.size == default_test_times.size());
-
-    for (size_t i = 0; i < dat.size; i++) {
-        timespec ut1 = get_UT1_from_ERA(dat.nrot[i], dat.era[i]);
+    for (size_t i = 0; i < TimeData::size; i++) {
+        timespec ut1 = get_UT1_from_ERA(TimeData::nrot[i], TimeData::era[i]);
 
         int64_t nrot = -1;
         double era = get_ERA_from_UT1(ut1, &nrot);
 
-        check_era_close(era, dat.era[i]);
-        BOOST_CHECK_EQUAL(nrot, dat.nrot[i]);
+        check_era_close(era, TimeData::era[i]);
+        BOOST_CHECK_EQUAL(nrot, TimeData::nrot[i]);
     }
 }
