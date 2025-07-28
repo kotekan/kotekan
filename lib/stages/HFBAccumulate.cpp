@@ -5,7 +5,7 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"      // for Telescope
 #include "buffer.hpp"         // for mark_frame_empty, register_consumer, wait_for_empty_frame
-#include "chimeMetadata.hpp"  // for get_fpga_seq_num, get_lost_timesamples
+#include "chordMetadata.hpp"
 #include "datasetManager.hpp" // for state_id_t, dset_id_t, datasetManager
 #include "datasetState.hpp"   // for beamState, freqState, metadataState, subfreqState
 #include "kotekanLogging.hpp" // for DEBUG, DEBUG2
@@ -94,20 +94,21 @@ void HFBAccumulate::init_first_frame(float* input_data, const uint32_t in_frame_
     int64_t fpga_seq_num_start =
         fpga_seq_num_end - (_num_frames_to_integrate - 1) * _samples_per_data_set;
     memcpy(out_hfb.data(), input_data, _num_frb_total_beams * _factor_upchan * sizeof(float));
-    total_lost_timesamples += get_fpga_seq_num(in_buf, in_frame_id) - fpga_seq_num_start;
+
+    total_lost_timesamples += get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() - fpga_seq_num_start;
     // Get the first FPGA sequence no. to check for missing frames
-    fpga_seq_num = get_fpga_seq_num(in_buf, in_frame_id);
+    fpga_seq_num = get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num();
     frame++;
 
     DEBUG("\nInit frame. fpga_seq_start: {:d}. out_hfb[0]: {:f}",
-          get_fpga_seq_num(in_buf, in_frame_id), out_hfb[0]);
+          get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num(), out_hfb[0]);
 }
 
 void HFBAccumulate::integrate_frame(float* input_data, const uint32_t in_frame_id) {
     frame++;
     fpga_seq_num += _samples_per_data_set;
-    total_lost_timesamples += get_fpga_seq_num(in_buf, in_frame_id) - fpga_seq_num;
-    fpga_seq_num = get_fpga_seq_num(in_buf, in_frame_id);
+    total_lost_timesamples += get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() - fpga_seq_num;
+    fpga_seq_num = get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num();
 
     // Integrates data from the input buffer to the output buffer.
     for (uint32_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
@@ -130,7 +131,7 @@ void HFBAccumulate::normalise_frame(const uint32_t in_frame_id) {
           total_lost_timesamples, 100.f * (((float)total_lost_timesamples) / total_timesamples),
           normalise_frac);
 
-    fpga_seq_num = get_fpga_seq_num(in_buf, in_frame_id);
+    fpga_seq_num = get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num();
 }
 
 void HFBAccumulate::main_thread() {
@@ -164,7 +165,7 @@ void HFBAccumulate::main_thread() {
             return;
 
         // Check if dataset ID changed
-        dset_id_t ds_id_in_new = get_dataset_id(in_buf, in_frame_id);
+        dset_id_t ds_id_in_new = get_chord_metadata(in_buf, in_frame_id)->get_dataset_id();
         if (ds_id_in_new != ds_id_in) {
             ds_id_in = ds_id_in_new;
 
@@ -176,12 +177,13 @@ void HFBAccumulate::main_thread() {
         }
 
         float* input = (float*)in_frame_ptr;
-        uint64_t frame_count = (get_fpga_seq_num(in_buf, in_frame_id) / _samples_per_data_set);
+        uint64_t frame_count =
+          (get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() / _samples_per_data_set);
 
         // Try and synchronize up the frames. Even though they arrive at
         // different rates, this should eventually sync them up.
-        auto hfb_seq_num = get_fpga_seq_num(in_buf, in_frame_id);
-        auto cls_seq_num = get_fpga_seq_num(cls_buf, cls_frame_id);
+        auto hfb_seq_num = get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num();
+        auto cls_seq_num = get_chord_metadata(cls_buf, cls_frame_id)->get_fpga_seq_num();
 
         if (hfb_seq_num < cls_seq_num) {
             DEBUG("Dropping incoming HFB frame to sync up. HFB frame: {}; Compressed Lost Samples "
@@ -210,9 +212,9 @@ void HFBAccumulate::main_thread() {
         float* input_data = (float*)in_buf->frames[in_frame_id];
 
         // Find where the end of the integration is
-        fpga_seq_num_end = get_fpga_seq_num(in_buf, in_frame_id)
+        fpga_seq_num_end = get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num()
                            + ((_num_frames_to_integrate * _samples_per_data_set
-                               - (get_fpga_seq_num(in_buf, in_frame_id)
+                               - (get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num()
                                   % (_num_frames_to_integrate * _samples_per_data_set)))
                               - _samples_per_data_set);
         if (first) {
@@ -223,13 +225,13 @@ void HFBAccumulate::main_thread() {
         DEBUG2(
             "fpga_seq_start: {:d}, fpga_seq_num_end: {:d}, num_frames * num_samples: {:d}, fpga % "
             "(align): {:d}",
-            get_fpga_seq_num(in_buf, in_frame_id), fpga_seq_num_end,
+            get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num(), fpga_seq_num_end,
             _num_frames_to_integrate * _samples_per_data_set,
-            get_fpga_seq_num(in_buf, in_frame_id)
+            get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num()
                 % (_num_frames_to_integrate * _samples_per_data_set));
 
         // Get the no. of lost samples in this frame
-        int32_t lost_in_frame = get_lost_timesamples(cls_buf, cls_frame_id);
+        int32_t lost_in_frame = get_chord_metadata(cls_buf, cls_frame_id)->get_lost_timesamples();
         int32_t samples_in_frame = _samples_per_data_set - lost_in_frame;
 
         total_lost_timesamples += lost_in_frame;
@@ -269,7 +271,8 @@ void HFBAccumulate::main_thread() {
         }
 
         // When all frames have been integrated output the result
-        if (get_fpga_seq_num(in_buf, in_frame_id) >= fpga_seq_num_end_old + _samples_per_data_set) {
+        if (get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() >=
+            fpga_seq_num_end_old + _samples_per_data_set) {
 
             DEBUG("fpga_seq_num_end_old: {:d}, fpga_seq_start: {:d}", fpga_seq_num_end_old,
                   fpga_seq_num);
@@ -293,7 +296,8 @@ void HFBAccumulate::main_thread() {
                 out_frame.time = tel.to_time(fpga_seq);
                 out_frame.fpga_seq_total = total_timesamples - total_lost_timesamples;
                 out_frame.fpga_seq_length = total_timesamples;
-                out_frame.freq_id = tel.to_freq_id(in_buf, in_frame_id);
+                // TODO: handle multiple frequencies
+                out_frame.freq_id = get_chord_metadata(in_buf, in_frame_id)->get_coarse_freq()[0];
                 out_frame.dataset_id = base_dataset_id;
 
                 // Set the weights

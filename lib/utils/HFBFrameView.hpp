@@ -215,6 +215,7 @@ public:
     uint64_t& fpga_seq_total;
     /// Number of samples expected
     uint64_t& fpga_seq_length;
+    // TODO: support multiple frequencies?
     /// A reference to the frequency ID.
     freq_id_t& freq_id;
     /// A reference to the dataset ID.
