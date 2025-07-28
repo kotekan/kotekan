@@ -1,6 +1,15 @@
 from astropy.time import Time
+from mpmath import mp
 import math
 import sys
+
+
+# 40 digits of decimal precision
+mp.dps = 40
+
+# ERA = (A + B * t_jd)
+era_A = mp.mpf(  779_057_273_264_000_000) / mp.mpf(1e18)
+era_B = mp.mpf(1_002_737_811_911_354_480) / mp.mpf(1e18)
 
 
 def get_unix_ns(t):
@@ -109,6 +118,18 @@ def get_era_nrot_fancy(t):
     return era_deg, n_rot
 
 
+def get_era_nrot_precise(t):
+
+    ut1_jd = (mp.mpf(t.ut1.jd1) - mp.mpf(2451545)) + mp.mpf(t.ut1.jd2)
+
+    rot = era_A + era_B * ut1_jd
+
+    nrot = int(mp.floor(rot))
+    era_deg = float(360 * mp.frac(rot))
+
+    return era_deg, nrot
+
+
 def print_isot_times(t_str):
 
     t = Time(t_str, scale="utc", format="isot")
@@ -139,6 +160,9 @@ def print_isot_times(t_str):
     era_deg, nrot = get_era_nrot_fancy(t)
     mjd = ((era_deg / 360.0 + nrot) - 0.7790572732640) / 1.00273781191135448
     print("ERA3 {0:.17e} deg {1:d} rot {2:.17e} jd2000".format(era_deg, nrot, mjd))
+    era_deg, nrot = get_era_nrot_precise(t)
+    mjd = ((era_deg / 360.0 + nrot) - 0.7790572732640) / 1.00273781191135448
+    print("ERA4 {0:.17e} deg {1:d} rot {2:.17e} jd2000".format(era_deg, nrot, mjd))
 
 
 if __name__ == "__main__":

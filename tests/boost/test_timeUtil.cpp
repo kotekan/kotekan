@@ -11,8 +11,8 @@
 #include <time.h>
 #include <vector>
 
-#define ERA_TOL 4e-12 // <~ 1.0 nanoseconds of rotation
-#define NS_TOL 1
+#define ERA_TOL 2e-12 // <~ 0.5 nanoseconds of rotation
+#define NS_TOL 0
 
 void check_timespec_equal(const timespec& t1, const timespec& t2) {
     BOOST_CHECK_EQUAL(t1.tv_sec, t2.tv_sec);
@@ -82,7 +82,7 @@ TimeData::TimeData(const std::vector<std::string>& tstrs) {
             t_ut1.push_back(t);
         } else if (words[0] == "dUT1") {
             dUT1.push_back(stod(words[1]));
-        } else if (words[0] == "ERA") {
+        } else if (words[0] == "ERA4") {
             era.push_back(stod(words[1]));
             nrot.push_back(stol(words[3]));
         }
