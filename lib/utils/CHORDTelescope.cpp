@@ -529,12 +529,14 @@ struct EOP CHORDTelescope::get_EOP_at_idx(uint64_t i) const {
     return eop_null;
 }
 
-struct EOP CHORDTelescope::get_EOP_at_time(const timespec& t_target) const {
+struct EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
     // Interpolate on the EOP table to find EOP for the given instrument time.
 
     std::lock_guard<std::mutex> lock(_eop_lock);
 
     struct EOP eop;
+
+    int64_t t_target = ts_target.tv_sec * GIGA + ts_target.tv_nsec;
     eop.t_inst = t_target;
 
     // _eop_table is always sorted by instrument time. Do a quick search
@@ -551,7 +553,7 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec& t_target) const {
         eop.yp_as = eop_b->yp_as;
         WARN("Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. Earliest "
              "time = {:d} s + {:d} ns.",
-             t_target.tv_sec, t_target.tv_nsec, eop_b->t_inst.tv_sec, eop_b->t_inst.tv_nsec);
+             t_target / GIGA, t_target % GIGA, eop_b->t_inst / GIGA, eop_b->t_inst % GIGA);
     } else if (eop_b == _eop_table.end()) {
         // Time is later than covered by the table, use the last value.
         auto eop_last = eop_b - 1;
@@ -560,17 +562,14 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec& t_target) const {
         eop.yp_as = eop_last->yp_as;
         WARN("Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest UT1 = "
              "{:d} s + {:d} ns.",
-             t_target.tv_sec, t_target.tv_nsec, eop_last->t_inst.tv_sec, eop_last->t_inst.tv_nsec);
+             t_target / GIGA, t_target % GIGA, eop_last->t_inst / GIGA, eop_last->t_inst % GIGA);
     } else {
         // Interpolate!
         auto eop_a = eop_b - 1;
         // t - ta in ns. Should be > 0
-        int64_t diff_ns_a = GIGA * (t_target.tv_sec - eop_a->t_inst.tv_sec) + t_target.tv_nsec
-                            - eop_a->t_inst.tv_nsec;
+        int64_t diff_ns_a = t_target - eop_a->t_inst;
         // t - tb in ns. Should be < 0
-        int64_t diff_ns_b = GIGA * (t_target.tv_sec - eop_b->t_inst.tv_sec) + t_target.tv_nsec
-                            - eop_b->t_inst.tv_nsec;
-
+        int64_t diff_ns_b = t_target - eop_b->t_inst;
         // tb - ta in ns.
         int64_t diff_ns = diff_ns_a - diff_ns_b;
 
@@ -585,16 +584,16 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec& t_target) const {
     }
 
     // now that we have a delta_UT1, can compute UT1 and ERA
-    timespec t_ut1 = get_UT1_from_time(t_target, eop.delta_UT1_inst);
-    double era = get_ERA_from_UT1(t_ut1, nullptr);
+    timespec ts_ut1 = get_UT1_from_time(ts_target, eop.delta_UT1_inst);
+    double era = get_ERA_from_UT1(ts_ut1, nullptr);
 
-    eop.t_ut1 = t_ut1;
+    eop.t_ut1 = ts_ut1.tv_sec * GIGA + ts_ut1.tv_nsec;
     eop.ERA_deg = era;
 
     return eop;
 }
 
-struct EOP CHORDTelescope::get_EOP_at_UT1(const timespec& t_ut1) const {
+struct EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
     // Interpolate on the EOP table to find EOP for the given UT1 time.
 
     std::lock_guard<std::mutex> lock(_eop_lock);
@@ -618,7 +617,7 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(const timespec& t_ut1) const {
         eop.yp_as = eop_b->yp_as;
         WARN("Requesting EOP earlier than in table. Requested UT1 = {:d} s + {:d} ns. Earliest UT1 "
              "= {:d} s + {:d} ns.",
-             t_ut1.tv_sec, t_ut1.tv_nsec, eop_b->t_ut1.tv_sec, eop_b->t_ut1.tv_nsec);
+             t_ut1 / GIGA, t_ut1 % GIGA, eop_b->t_ut1 / GIGA, eop_b->t_ut1 % GIGA);
     } else if (eop_b == _eop_table.end()) {
         // Time is later than covered by the table, use the last value.
         auto eop_last = eop_b - 1;
@@ -627,17 +626,15 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(const timespec& t_ut1) const {
         eop.yp_as = eop_last->yp_as;
         WARN("Requesting EOP later than in table. Requested UT1 = {:d} s + {:d} ns. Latest UT1 = "
              "{:d} s + {:d} ns.",
-             t_ut1.tv_sec, t_ut1.tv_nsec, eop_last->t_ut1.tv_sec, eop_last->t_ut1.tv_nsec);
+             t_ut1 / GIGA, t_ut1 % GIGA, eop_last->t_ut1 / GIGA, eop_last->t_ut1 % GIGA);
     } else {
         // Interpolate! Target time = t, in table interval [ta, tb]
         auto eop_a = eop_b - 1;
 
         // t - ta in ns. Should be > 0
-        int64_t diff_ns_a =
-            GIGA * (t_ut1.tv_sec - eop_a->t_ut1.tv_sec) + t_ut1.tv_nsec - eop_a->t_ut1.tv_nsec;
+        int64_t diff_ns_a = t_ut1 - eop_a->t_ut1;
         // t - tb in ns. Should be < 0
-        int64_t diff_ns_b =
-            GIGA * (t_ut1.tv_sec - eop_b->t_ut1.tv_sec) + t_ut1.tv_nsec - eop_b->t_ut1.tv_nsec;
+        int64_t diff_ns_b = t_ut1 - eop_b->t_ut1;
 
         // tb - ta in ns.
         int64_t diff_ns = diff_ns_a - diff_ns_b;
@@ -654,10 +651,12 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(const timespec& t_ut1) const {
     }
 
     // Now that we have a delta_UT1, can get t_inst and the ERA
-    timespec t_inst = get_time_from_UT1(t_ut1, eop.delta_UT1_inst);
-    double era = get_ERA_from_UT1(t_ut1, nullptr);
+    timespec ts_ut1 = {.tv_sec = (time_t)(t_ut1 / GIGA),
+                       .tv_nsec = t_ut1 % GIGA};
+    timespec ts_inst = get_time_from_UT1(ts_ut1, eop.delta_UT1_inst);
+    double era = get_ERA_from_UT1(ts_ut1, nullptr);
 
-    eop.t_inst = t_inst;
+    eop.t_inst = ts_inst.tv_sec*GIGA + ts_inst.tv_nsec;
     eop.ERA_deg = era;
 
     return eop;
@@ -696,35 +695,26 @@ uint8_t CHORDTelescope::nyquist_zone() const {
 struct EOP CHORDTelescope::build_EOP_from_update(uint64_t time_ns, double delta_ut1_inst,
                                                  double xp_as, double yp_as) const {
 
-    struct timespec t {
-        .tv_sec = (time_t)(time_ns / GIGA), .tv_nsec = (long)(time_ns % GIGA)
-    };
-
-    struct timespec ut1 = get_UT1_from_time(t, delta_ut1_inst);
-    double era = get_ERA_from_UT1(ut1, nullptr);
+    struct timespec ts_inst = {.tv_sec=(time_t)(time_ns/GIGA),
+                               .tv_nsec=(int64_t)(time_ns%GIGA)};
+    struct timespec ts_ut1 = get_UT1_from_time(ts_inst, delta_ut1_inst);
+    int64_t ut1 = ts_ut1.tv_sec * GIGA + ts_ut1.tv_nsec;
+    double era = get_ERA_from_UT1(ts_ut1, nullptr);
 
     struct EOP eop {
-        .t_inst = t, .t_ut1 = ut1, .delta_UT1_inst = delta_ut1_inst, .ERA_deg = era, .xp_as = xp_as,
-        .yp_as = yp_as
+        .t_inst = (int64_t) time_ns,
+        .t_ut1 = ut1,
+        .delta_UT1_inst = delta_ut1_inst,
+        .ERA_deg = era, .xp_as = xp_as, .yp_as = yp_as
     };
 
     return eop;
 }
 
 bool EOP_comp_time(const struct EOP& eop1, const struct EOP& eop2) {
-    if (eop1.t_inst.tv_sec < eop2.t_inst.tv_sec)
-        return true;
-    if (eop1.t_inst.tv_sec == eop2.t_inst.tv_sec && eop1.t_inst.tv_nsec < eop2.t_inst.tv_nsec)
-        return true;
-
-    return false;
+    return eop1.t_inst < eop2.t_inst;
 }
 
 bool EOP_comp_ut1(const struct EOP& eop1, const struct EOP& eop2) {
-    if (eop1.t_ut1.tv_sec < eop2.t_ut1.tv_sec)
-        return true;
-    if (eop1.t_ut1.tv_sec == eop2.t_ut1.tv_sec && eop1.t_ut1.tv_nsec < eop2.t_ut1.tv_nsec)
-        return true;
-
-    return false;
+    return eop1.t_ut1 < eop2.t_ut1;
 }

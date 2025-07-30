@@ -15,8 +15,8 @@
  * @brief   Simple struct for containing Earth Orientation Parameter (EOP) data
  */
 struct EOP {
-    struct timespec t_inst; // Instrument time {s, ns}, UNIX epoch.
-    struct timespec t_ut1;  // UT1 time {s, ns}, JD epoch.
+    int64_t t_inst; // Instrument time, nanoseconds, UNIX epoch.
+    int64_t t_ut1;  // UT1 time, nanoseconds, J2000(UT1) epoch.
     double delta_UT1_inst;  // Diff between UT1 and Instrument time, seconds
     double ERA_deg;         // Earth Rotation Angle, degrees
     double xp_as;           // Polar Motion x', in arcseconds.
@@ -24,8 +24,8 @@ struct EOP {
 };
 
 // A null (all 0) struct EOP;
-const static struct EOP eop_null = {.t_inst = {(time_t)0, (long)0},
-                                    .t_ut1 = {(time_t)0, (long)0},
+const static struct EOP eop_null = {.t_inst = 0,
+                                    .t_ut1 = 0,
                                     .delta_UT1_inst = 0.0,
                                     .ERA_deg = 0.0,
                                     .xp_as = 0.0,
@@ -163,9 +163,9 @@ public:
      *          over table, using the first or last entry if target time is
      *          out of table range.
      *
-     * @param   ts  Target UT1 time, as a timespec.
+     * @param   ts  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
      **/
-    struct EOP get_EOP_at_UT1(const timespec& ut1) const;
+    struct EOP get_EOP_at_UT1(int64_t ut1) const;
 
     /**
      * @brief   Return an observing vector (normalized vec3) in telescope

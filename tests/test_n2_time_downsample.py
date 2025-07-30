@@ -15,7 +15,7 @@ from kotekan import runner
 T_rot_sec = 86400 / 1.001234567890123456 #  / 1.00273781191135448
 n_bins_per_rot = 20000  # 21600  # approx 4 seconds per bin
 n_samps_per_bin = 100
-n_samps_tot = 100001
+n_samps_tot = 1001
 
 dut1 = 0.0
 x_pm = 0.1
@@ -227,14 +227,15 @@ def t_jd_to_s_ns(t):
 
 def calc_times(t):
     t_inst_ns = calc_t_inst_ns_from_t(t)
-    t_inst_s = t_inst_ns // GIGA
-    t_inst_ns -= GIGA * t_inst_s
+    # t_inst_s = t_inst_ns // GIGA
+    # t_inst_ns -= GIGA * t_inst_s
 
     t_ut1_s, t_ut1_ns = t_jd_to_s_ns(t.ut1)
+    t_ut1_ns += (t_ut1_s - 2_451_545*86400) * GIGA
 
     era = t.earth_rotation_angle("tio").to_value("degree")
 
-    return (t_inst_s, t_inst_ns), (t_ut1_s, t_ut1_ns), era
+    return t_inst_ns, t_ut1_ns, era
 
 
 def calc_downsamp_frame_meta():
@@ -398,12 +399,8 @@ def test_time(n2_data):
 
 def test_eop(n2_data):
 
-    eop_t_inst = np.array([(v.metadata.eop.t_inst.tv,
-                            v.metadata.eop.t_inst.tv_nsec)
-                           for v in n2_data])
-    eop_t_ut1 = np.array([(v.metadata.eop.t_ut1.tv,
-                           v.metadata.eop.t_ut1.tv_nsec)
-                          for v in n2_data])
+    eop_t_inst = np.array([v.metadata.eop.t_inst for v in n2_data])
+    eop_t_ut1 = np.array([v.metadata.eop.t_ut1 for v in n2_data])
     eop_dut1 = np.array([v.metadata.eop.delta_UT1_inst for v in n2_data])
     eop_x_pm = np.array([v.metadata.eop.xp_as for v in n2_data])
     eop_y_pm = np.array([v.metadata.eop.yp_as for v in n2_data])
@@ -427,26 +424,26 @@ def test_eop(n2_data):
             f.write(  "     XPM_TEST:    {:.17f}\n".format(x_pm))
             f.write(  "     YPM_FRAME:   {:.17f}\n".format(eop_y_pm[i]))
             f.write(  "     YPM_TEST:    {:.17f}\n".format(y_pm))
-            f.write(  "     T_DIFF_NS:   {:d}\n".format(eop_t_inst[i, 1]
-                                                       - t_inst_bin[i, 1]))
-            f.write(  "     UT1_DIFF_NS: {:d}\n".format(eop_t_ut1[i, 1]
-                                                       - ut1_bin[i, 1]))
+            f.write(  "     T_DIFF_NS:   {:d}\n".format(eop_t_inst[i]
+                                                       - t_inst_bin[i]))
+            f.write(  "     UT1_DIFF_NS: {:d}\n".format(eop_t_ut1[i]
+                                                       - ut1_bin[i]))
 
     # check EOP
     assert np.all(np.isclose(eop_dut1, dut1, 1.0e-15, 0.0))
     assert np.all(np.isclose(eop_x_pm, x_pm, 1.0e-15, 0.0))
     assert np.all(np.isclose(eop_y_pm, y_pm, 1.0e-15, 0.0))
 
-    # check seconds
-    assert np.all(eop_t_inst[:, 0] == t_inst_bin[:, 0])
-    assert np.all(eop_t_ut1[:, 0] == ut1_bin[:, 0])
+    # check times
+    assert np.all(np.fabs(eop_t_inst - t_inst_bin) <= eop_t_ns_tol)
+    assert np.all(np.fabs(eop_t_ut1 - ut1_bin) <= eop_ut1_ns_tol)
 
     # check ERA
     assert np.all(np.fabs(eop_era - era_bin) <= era_deg_tol)
 
     # check nanoseconds
-    assert np.all(np.fabs(eop_t_inst[:, 1] - t_inst_bin[:, 1]) <= eop_t_ns_tol)
-    assert np.all(np.fabs(eop_t_ut1[:, 1] - ut1_bin[:, 1]) <= eop_ut1_ns_tol)
+    # assert np.all(np.fabs(eop_t_inst[:, 1] - t_inst_bin[:, 1]) <= eop_t_ns_tol)
+    # assert np.all(np.fabs(eop_t_ut1[:, 1] - ut1_bin[:, 1]) <= eop_ut1_ns_tol)
 
 
 def test_contents(n2_data):

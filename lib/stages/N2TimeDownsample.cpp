@@ -25,6 +25,7 @@
 #include <tuple>      // for get
 #include <vector>     // for vector
 
+#define GIGA 1'000'000'000L
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -112,10 +113,13 @@ void N2TimeDownsample::main_thread() {
             double era_deg_target = 0.5 * (era_deg_lo + era_deg_hi);
 
             // Initialize num_rotations from first frame.
-            get_ERA_from_UT1(frame.eop.t_ut1, &num_rotations);
+            timespec frame_ts_ut1 = {.tv_sec=frame.eop.t_ut1/GIGA,
+                               .tv_nsec=frame.eop.t_ut1%GIGA};
+            get_ERA_from_UT1(frame_ts_ut1, &num_rotations);
 
             // Get UT1 time at target ERA
-            timespec t_ut1 = get_UT1_from_ERA(num_rotations, era_deg_target);
+            timespec ts_ut1 = get_UT1_from_ERA(num_rotations, era_deg_target);
+            int64_t t_ut1 = ts_ut1.tv_sec * GIGA + ts_ut1.tv_nsec;
 
             // Set EOP at target ERA
             eop_target = tel.get_EOP_at_UT1(t_ut1);
@@ -147,8 +151,8 @@ void N2TimeDownsample::main_thread() {
             wait_for_alignment = false;
 
 
-        DEBUG("T:   {:d}s + {:d}ns", frame.eop.t_inst.tv_sec, frame.eop.t_inst.tv_nsec);
-        DEBUG("UT1: {:d}s + {:d}ns", frame.eop.t_ut1.tv_sec, frame.eop.t_ut1.tv_nsec);
+        DEBUG("T:   {:d}s + {:d}ns", frame.eop.t_inst / GIGA, frame.eop.t_inst % GIGA);
+        DEBUG("UT1: {:d}s + {:d}ns", frame.eop.t_ut1 / GIGA, frame.eop.t_ut1 % GIGA);
         DEBUG("ERA: {:f}; ERA_target: {:f}; ERA_bin_lo: {:f}; ERA_bin_hi: {:f}", frame.eop.ERA_deg,
               eop_target.ERA_deg, era_deg_lo, era_deg_hi);
 
@@ -171,10 +175,13 @@ void N2TimeDownsample::main_thread() {
             double era_deg_target = 0.5 * (era_deg_lo + era_deg_hi);
 
             // Get the current num_rotations from frame.
-            get_ERA_from_UT1(frame.eop.t_ut1, &num_rotations);
+            timespec frame_ts_ut1 = {.tv_sec=frame.eop.t_ut1/GIGA,
+                                     .tv_nsec=frame.eop.t_ut1%GIGA};
+            get_ERA_from_UT1(frame_ts_ut1, &num_rotations);
 
             // Get UT1 time at target ERA
-            timespec t_ut1 = get_UT1_from_ERA(num_rotations, era_deg_target);
+            timespec ts_ut1 = get_UT1_from_ERA(num_rotations, era_deg_target);
+            int64_t t_ut1 = ts_ut1.tv_sec * GIGA + ts_ut1.tv_nsec;
 
             // Set EOP at target ERA / UT1
             eop_target = tel.get_EOP_at_UT1(t_ut1);
@@ -317,10 +324,10 @@ void N2TimeDownsample::main_thread() {
             output_frame.erms /= nframes;
 
             DEBUG("Output frame - num_elements: {:d}", output_frame.num_elements);
-            DEBUG("Output T:   {:d}s + {:d}ns", output_frame.eop.t_inst.tv_sec,
-                  output_frame.eop.t_inst.tv_nsec);
-            DEBUG("Output UT1: {:d}s + {:d}ns", output_frame.eop.t_ut1.tv_sec,
-                  output_frame.eop.t_ut1.tv_nsec);
+            DEBUG("Output T:   {:d}s + {:d}ns", output_frame.eop.t_inst / GIGA,
+                  output_frame.eop.t_inst % GIGA);
+            DEBUG("Output UT1: {:d}s + {:d}ns", output_frame.eop.t_ut1 / GIGA,
+                  output_frame.eop.t_ut1 % GIGA);
             DEBUG("Output ERA: {:f}", output_frame.eop.ERA_deg);
 
             char* addr0 = (char*)&(output_frame.vis[0]);

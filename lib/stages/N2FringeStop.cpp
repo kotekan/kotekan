@@ -31,6 +31,8 @@ using kotekan::Config;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 
+#define GIGA 1'000'000'000L
+
 REGISTER_KOTEKAN_STAGE(N2FringeStop);
 
 N2FringeStop::N2FringeStop(Config& config, const std::string& unique_name,
@@ -63,7 +65,8 @@ void N2FringeStop::main_thread() {
     int num_dishes = tel.get_num_dishes();
     std::vector<std::complex<double>> fringe_phase(num_dishes, 1.0);
 
-    timespec ut1 = get_UT1_from_ERA(num_rot_target, era_target_deg);
+    timespec ts_ut1 = get_UT1_from_ERA(num_rot_target, era_target_deg);
+    int64_t ut1 = ts_ut1.tv_sec * GIGA + ts_ut1.tv_nsec;
 
     struct EOP eop_target = {.t_inst = ut1,
                              .t_ut1 = ut1,

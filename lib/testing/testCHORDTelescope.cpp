@@ -17,6 +17,8 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
+#define GIGA 1'000'000'000L
+
 // Register the stage with the stage factory.
 REGISTER_KOTEKAN_STAGE(TestCHORDTelescope);
 
@@ -75,17 +77,17 @@ void TestCHORDTelescope::main_thread() {
              tel.get_dish_orientation_el(2, 2));
         int n_eop = tel.get_EOP_table_len();
 
-        std::vector<timespec> eop_times;
+        std::vector<int64_t> eop_times;
 
         int i;
         INFO("            EOP entries: {:d}", n_eop);
         for (i = 0; i < n_eop; i++) {
             struct EOP eop = tel.get_EOP_at_idx(i);
             eop_times.push_back(eop.t_inst);
-            INFO("            {0: 2d} - t_inst: {1:d} s + {2:d} ns", i, eop.t_inst.tv_sec,
-                 eop.t_inst.tv_nsec);
-            INFO("               - t_ut1:  {0:d} s + {1:d} ns", eop.t_ut1.tv_sec,
-                 eop.t_ut1.tv_nsec);
+            INFO("            {0: 2d} - t_inst: {1:d} s + {2:d} ns", i, eop.t_inst / GIGA,
+                 eop.t_inst % GIGA);
+            INFO("               - t_ut1:  {0:d} s + {1:d} ns", eop.t_ut1 / GIGA,
+                 eop.t_ut1 % GIGA);
             INFO("               - dut1:   {:f} s", eop.delta_UT1_inst);
             INFO("               - era:    {:f} deg", eop.ERA_deg);
             INFO("               - xp:     {:f} arcsec", eop.xp_as);
@@ -97,64 +99,58 @@ void TestCHORDTelescope::main_thread() {
         INFO("            EOP Probes:");
 
         for (i = 0; i <= nt; i++) {
-            timespec ta, tb;
+            int64_t ta, tb;
             if (i == 0 && nt == 1)
-                ta = {eop_times[0].tv_sec - 43200, 0};
+                ta = eop_times[0] - 43200*GIGA;
             else if (i == 0)
-                ta = {eop_times[0].tv_sec - 2 * (eop_times[1].tv_sec - eop_times[0].tv_sec), 0};
+                ta = eop_times[0] - 2 * (eop_times[1] - eop_times[0]);
             else
                 ta = eop_times[i - 1];
 
             if (i == nt && nt == 1)
-                tb = {eop_times[0].tv_sec + 43200, 0};
+                tb = eop_times[0] + 43200*GIGA;
             else if (i == nt)
-                tb = {eop_times[nt - 1].tv_sec
-                          + 2 * (eop_times[nt - 1].tv_sec - eop_times[nt - 2].tv_sec),
-                      0};
+                tb = eop_times[nt - 1]
+                    + 2 * (eop_times[nt - 1] - eop_times[nt - 2]);
             else
                 tb = eop_times[i];
 
 
             int n_seg = 4;
-            int64_t dns = 1'000'000'000L * (tb.tv_sec - ta.tv_sec) + tb.tv_nsec - ta.tv_nsec;
+            int64_t dns = tb - ta;
             for (int j = 0; j < n_seg; j++) {
-                int64_t ns = (j * dns) / n_seg;
-                int64_t s = ns / 1'000'000'000;
-                ns = ns - 1'000'000'000 * s;
 
-                if (ns + ta.tv_nsec >= 1'000'000'000) {
-                    ns -= 1'000'000'000;
-                    s += 1;
-                }
+                int64_t t = ta + (j * dns) / n_seg;
+                timespec ts = {.tv_sec = (time_t)(t / GIGA),
+                               .tv_nsec = t % GIGA};
 
-                timespec t = {ta.tv_sec + s, ta.tv_nsec + ns};
-
-                struct EOP eop = tel.get_EOP_at_time(t);
-                INFO("               - t_inst: {1:d} s + {2:d} ns", i, eop.t_inst.tv_sec,
-                     eop.t_inst.tv_nsec);
-                INFO("               - t_ut1:  {0:d} s + {1:d} ns", eop.t_ut1.tv_sec,
-                     eop.t_ut1.tv_nsec);
+                struct EOP eop = tel.get_EOP_at_time(ts);
+                INFO("               - t_inst: {1:d} s + {2:d} ns", i, eop.t_inst / GIGA,
+                     eop.t_inst % GIGA);
+                INFO("               - t_ut1:  {0:d} s + {1:d} ns", eop.t_ut1 / GIGA,
+                     eop.t_ut1 % GIGA);
                 INFO("               - dut1:   {:f} s", eop.delta_UT1_inst);
                 INFO("               - era:    {:f} deg", eop.ERA_deg);
                 INFO("               - xp:     {:f} arcsec", eop.xp_as);
                 INFO("               - yp:     {:f} arcsec", eop.yp_as);
 
-                timespec t_inst2 = get_time_from_UT1(eop.t_ut1, eop.delta_UT1_inst);
+                timespec ts_ut1 = {.tv_sec=eop.t_ut1/GIGA, .tv_nsec=eop.t_ut1%GIGA};
+                timespec ts_inst2 = get_time_from_UT1(ts_ut1, eop.delta_UT1_inst);
                 int64_t n_rot;
-                double era = get_ERA_from_UT1(eop.t_ut1, &n_rot);
-                timespec t_ut12 = get_UT1_from_ERA(n_rot, eop.ERA_deg);
+                double era = get_ERA_from_UT1(ts_ut1, &n_rot);
+                timespec ts_ut12 = get_UT1_from_ERA(n_rot, eop.ERA_deg);
 
-                INFO("               -t_inst2: {0:d} s + {1:d} ns", t_inst2.tv_sec,
-                     t_inst2.tv_nsec);
+                INFO("               -t_inst2: {0:d} s + {1:d} ns", ts_inst2.tv_sec,
+                     ts_inst2.tv_nsec);
                 INFO("               -diff:    {0:d} s + {1:d} ns",
-                     t_inst2.tv_sec - eop.t_inst.tv_sec, t_inst2.tv_nsec - eop.t_inst.tv_nsec);
-                INFO("               -t_ut12:  {0:d} s + {1:d} ns", t_ut12.tv_sec, t_ut12.tv_nsec);
+                     ts_inst2.tv_sec - eop.t_inst/GIGA, ts_inst2.tv_nsec - eop.t_inst % GIGA);
+                INFO("               -t_ut12:  {0:d} s + {1:d} ns", ts_ut12.tv_sec, ts_ut12.tv_nsec);
                 INFO("               -diff:    {0:d} s + {1:d} ns",
-                     t_ut12.tv_sec - eop.t_ut1.tv_sec, t_ut12.tv_nsec - eop.t_ut1.tv_nsec);
+                     ts_ut12.tv_sec - eop.t_ut1 / GIGA, ts_ut12.tv_nsec - eop.t_ut1 % GIGA);
 
 
                 int64_t n_rot2;
-                double era2 = get_ERA_from_UT1(t_ut12, &n_rot2);
+                double era2 = get_ERA_from_UT1(ts_ut12, &n_rot2);
 
                 INFO("               -era:  {0:f} deg + {1:d}", era, n_rot);
                 INFO("               -diff: {0:e} deg + {1:d}", era2 - era, n_rot2 - n_rot);

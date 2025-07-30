@@ -80,12 +80,15 @@ timespec get_UT1_from_time(const timespec& t, double delta_UT1_inst) {
     ut1_s += full_sec_over;
     ut1_ns -= full_sec_over * GIGA;
 
-    return timespec{.tv_sec = ut1_s, .tv_nsec = ut1_ns};
+    long t0_ut1_s = 2'451'545L * 86400L;
+
+    return timespec{.tv_sec = ut1_s-t0_ut1_s, .tv_nsec = ut1_ns};
 }
 
 timespec get_time_from_UT1(const timespec& t_ut1, double delta_UT1_inst) {
 
-    long GIGA = 1'000'000'000;
+    long GIGA = 1'000'000'000L;
+    long t0_ut1_s = 2'451'545L * 86400L;
 
     // UNIX time of J2000
     long J2000_s_unix = 946'727'935L;
@@ -114,7 +117,7 @@ timespec get_time_from_UT1(const timespec& t_ut1, double delta_UT1_inst) {
 
     // Convert UT1 to SI seconds (subtract dUT1), and re-base to J2000
     // (by subtracting J2000 in jy)
-    int64_t t_J2000_s = t_ut1.tv_sec - J2000_s_jd - dUT1_s;
+    int64_t t_J2000_s = t_ut1.tv_sec + t0_ut1_s - J2000_s_jd - dUT1_s;
     int64_t t_J2000_ns = t_ut1.tv_nsec - J2000_ns_jd - dUT1_ns;
 
     // Now re-base to the unix epoch for instrument time.
@@ -139,9 +142,9 @@ double get_ERA_from_UT1(const timespec& ut1, int64_t* n_rot) {
     //              + Tu(d)_frac
     //              + 0.00273781191135448 * (Tu(d) - 2451545)
 
-    long t0_sec = 2'451'545L * 86400L;
+    //long t0_sec = 2'451'545L * 86400L;
 
-    long t_sec = ut1.tv_sec - t0_sec;
+    long t_sec = ut1.tv_sec; // - t0_sec;
     long t_nsec = ut1.tv_nsec;
 
     /*
@@ -196,7 +199,7 @@ timespec get_UT1_from_ERA(int64_t n_rot, double ERA_deg) {
     //
     //  1 / (a + x) = 1/a - x/a^2 + x^2/a^3 - ...
 
-    long t0_sec = 2'451'545L * 86400L;
+    //long t0_sec = 2'451'545L * 86400L;
 
     /*
     double rot_per_jd1 = 1.00273781191100000;
@@ -263,7 +266,8 @@ timespec get_UT1_from_ERA(int64_t n_rot, double ERA_deg) {
         ut1_s -= 1;
     }
 
-    return {(time_t)(ut1_s + t0_sec), ut1_ns};
+    return {(time_t) ut1_s, ut1_ns};
+    //return {(time_t)(ut1_s + t0_sec), ut1_ns};
 }
 
 double get_ERA_from_time(const timespec& time, double dUT) {
