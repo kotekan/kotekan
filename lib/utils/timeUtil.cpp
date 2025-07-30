@@ -70,29 +70,14 @@ int64_t get_UT1_from_time(const timespec& t, double delta_UT1_inst) {
     int64_t t_J2000_s = t.tv_sec - J2000_s_unix;
     int64_t t_J2000_ns = t.tv_nsec - J2000_ns_unix;
 
-    /*
-    // extract the seconds and fractional seconds from dUT1
-    double dUT1_secd;
-    double dUT1_fracsec = modf(delta_UT1_inst, &dUT1_secd);
-
-    // convert from floating point sec & frac sec to integral s & ns
-
-    // The seconds are already guaranteed to be integral, so a simple cast
-    // works here.
-    int64_t dUT1_s = (int64_t)dUT1_secd;
-
-    // The fracsec are doubles, with precision ~ 1e-16 s, so rounding
-    // will produce the correct number of ns.
-    // NOTE: dUT1 is only accurate to ~microseconds at best, so
-    // nanoseconds is comfortably overkill.
-    int64_t dUT1_ns = (int64_t)round(1e9 * dUT1_fracsec);
-    */
+    // Get dUT1 in nanoseconds
     int64_t dUT1_ns = (int64_t)round(1e9 * delta_UT1_inst);
 
-    // Finally, compute the UT1 time with JD epoch.
+    // Finally, compute the UT1 time with UT1 2451545 epoch.
     int64_t ut1_s = J2000_s_jd + t_J2000_s - ut1_t0_s_jd;
     int64_t ut1_ns = J2000_ns_jd + t_J2000_ns + dUT1_ns;
 
+    // Combine into a single nanosecond count.
     ut1_ns += GIGA * ut1_s;
 
     return ut1_ns;
@@ -110,23 +95,7 @@ timespec get_time_from_UT1(int64_t t_ut1, double delta_UT1_inst) {
     int64_t J2000_s_jd = 2'451'545L * 86400L - 64;
     int64_t J2000_ns_jd = -184'000'000L;
 
-    /*
-    // extract the seconds and fractional seconds from dUT1
-    double dUT1_secd;
-    double dUT1_fracsec = modf(delta_UT1_inst, &dUT1_secd);
-
-    // convert from floating point sec & frac sec to integral s & ns
-
-    // The seconds are already guaranteed to be integral, so a simple cast
-    // works here.
-    int64_t dUT1_s = (int64_t)dUT1_secd;
-
-    // The fracsec are doubles, with precision ~ 1e-16 s, so rounding
-    // will produce the correct number of ns.
-    // NOTE: dUT1 is only accurate to ~microseconds at best, so
-    // nanoseconds is comfortably overkill.
-    int64_t dUT1_ns = (int64_t)round(1e9 * dUT1_fracsec);
-    */
+    // Get dUT1 in nanoseconds
     int64_t dUT1_ns = (int64_t)round(1e9 * delta_UT1_inst);
 
 
@@ -142,49 +111,47 @@ timespec get_time_from_UT1(int64_t t_ut1, double delta_UT1_inst) {
 }
 
 double get_ERA_from_UT1(int64_t ut1, int64_t* n_rot) {
-    // ERA = 2pi * (0.7790572732640 + 1.00273781191135448 * (Tu(d) - 2451545))
-    //
-    //     = 2pi * (0.7790572732640
-    //              + Tu(d)_frac
-    //              + 0.00273781191135448 * (Tu(d) - 2451545)
-
-    //int64_t t0_sec = 2'451'545L * 86400L;
-
-    //int64_t t_sec = ut1.tv_sec; // - t0_sec;
-    //int64_t t_nsec = ut1.tv_nsec;
-
     /*
-    int64_t num_rot = 0;
+     * To handle the large constants and maintain nanosecond precision we
+     * compute the ERA using integer arithmetic.  The large constants are
+     * expressed as rational numbers with a denominator of 1e17 to ensure
+     * the numerator is an integer.
+     *
+     * The ut1 time since 2,451,545 JD is expressed as an integer number of 
+     * nanoseconds which can have a magnitude ~ few x 10^18 ~ few x 2^60.
+     * The product of this with the integral ERA constants requires a 128 bit
+     * variable.
+     *
+     * ERA = 2pi * (0.7790572732640 + 1.00273781191135448 * (Tu(d) - 2451545))
+     *     
+     *     = 2pi * (0.7790572732640 + 1.00273781191135448 * ut1(d) )
+     *     
+     *     = 2pi * (07790572732640 + 100273781191135448 * ut1(d) ) / 1e17
+     *     
+     *     = 2pi * (A + B * ut1(d) ) / 1e17             (defining A & B)
+     *     
+     *     = 2pi * (A * day_ns + B * ut1_ns) / (1e17 * day_ns)
+     *
+     *     day_ns = number of ns in a day.
+     */
 
-    double temp;
-    double day_sec = t_sec / 86400.0;
-    double day_nsec = 1.0e-9 * (t_nsec / 86400.0);
-    double dayfrac_sec = modf(day_sec, &temp);
-    num_rot += (int64_t)temp;
-    double dayfrac_nsec = modf(day_nsec, &temp);
-    num_rot += (int64_t)temp;
-    double sidcor_frac_sec =  modf(2.73781191135448e-3 * day_sec, &temp);
-    num_rot += (int64_t)temp;
-    double sidcor_frac_nsec = modf(2.73781191135448e-3 * day_nsec, &temp);
-    num_rot += (int64_t)temp;
-
-    double f = modf(
-        0.7790572732640 + dayfrac_sec + dayfrac_nsec + sidcor_frac_sec + sidcor_frac_nsec, &temp);
-    num_rot += (int64_t)temp;
-
-    */
-
-    //int128_t t_ns = ((int128_t)t_sec) * 1'000'000'000L + ((int128_t)t_nsec);
+    // Cast ut1 time (already with correct epoch) to an i128
     int128_t t_ns = (int128_t) ut1;
 
+    // Denominator 
     int128_t denom = ((int128_t)e17) * day_ns;
 
+    // Numerator
     int128_t tot_17ns = era_A * day_ns + era_B * t_ns;
 
+    // Number of rotations since UT1 T0
     int64_t num_rot = (int64_t)(tot_17ns / denom);
+    
+    // Fraction of rotation, this is the ERA.
     int128_t f_17ns = tot_17ns % denom;
     double f = ((double)f_17ns) / ((double)denom);
 
+    // Correct if time was negative
     if (f < 0.0) {
         f += 1;
         num_rot -= 1;
@@ -193,91 +160,34 @@ double get_ERA_from_UT1(int64_t ut1, int64_t* n_rot) {
     if (n_rot != nullptr)
         *n_rot = num_rot;
 
+    // Return ERA in degrees.
     return 360.0 * f;
 }
 
 int64_t get_UT1_from_ERA(int64_t n_rot, double ERA_deg) {
-    // ERA = 2pi * (0.7790572732640 + 1.00273781191135448 * (Tu(d) - 2451545))
-    //
-    //     = 2pi * (0.7790572732640
-    //              + Tu(d)_frac
-    //              + 0.00273781191135448 * (Tu(d) - 2451545)
-    //
-    //  1 / (a + x) = 1/a - x/a^2 + x^2/a^3 - ...
-
-    //long t0_sec = 2'451'545L * 86400L;
 
     /*
-    double rot_per_jd1 = 1.00273781191100000;
-    double rot_per_jd2 = 0.00000000000035448;
-
-    double denom1 = 1.0 / rot_per_jd1;
-    double denom2 = -rot_per_jd2 * denom1 * denom1;
-
-    double f = ERA_deg / 360.0;
-
-    double days_1 = n_rot * denom1;
-    double days_2 = n_rot * denom2;
-    double days_3 = (f - 0.7790572732640) * denom1;
-    double days_4 = (f - 0.7790572732640) * denom2;
-
-    double secs_1 = days_1 * 86400.0;
-    double secs_2 = days_2 * 86400.0;
-    double secs_3 = days_3 * 86400.0;
-    double secs_4 = days_4 * 86400.0;
-
-    double isec_1, isec_2, isec_3, isec_4;
-
-    double fsec_1 = modf(secs_1, &isec_1);
-    double fsec_2 = modf(secs_2, &isec_2);
-    double fsec_3 = modf(secs_3, &isec_3);
-    double fsec_4 = modf(secs_4, &isec_4);
-
-    int64_t ut1_1_s = (int64_t)isec_1;
-    int64_t ut1_2_s = (int64_t)isec_2;
-    int64_t ut1_3_s = (int64_t)isec_3;
-    int64_t ut1_4_s = (int64_t)isec_4;
-
-    int64_t ut1_s = ut1_1_s + ut1_2_s + ut1_3_s + ut1_4_s;
-    int64_t ut1_ns = (int64_t)round(1.0e9 * (fsec_1 + fsec_2 + fsec_3 + fsec_4));
-    */
-
-
-    // rots = a + b * td;
-    // td = (rots - a) / b
-    //    = (1e17 * rots - A) / B
-    // tns = (day_ns * (1e17 * rots - A)) / B
-
-    // (86400/360 = 240)  ==>  86400 * 10^9 * 10^17 / 360 = 240e26
-    //int128_t rot_17ns = day_ns * e17 * n_rot + (int128_t)(2.4e28 * ERA_deg);
+     * For details see comment for get_ERA_from_UT1()
+     *
+     * rots = a + b * td;
+     * td = (rots - a) / b
+     *    = (1e17 * rots - A) / B
+     * tns = (day_ns * (1e17 * rots - A)) / B
+     */
+   
+    // the amount of rotation since UT1 T0, multiplied by 1e17 * day_ns
     int128_t rot_17ns = day_ns * (e17 * n_rot
                                   + ((int128_t)(1e17 * ERA_deg)) / 360);
+
+    // Calculate the UT1 time for the amount of rotation.
     int128_t numer = rot_17ns - era_A * day_ns;
     int128_t t_ns = numer / era_B;
+
+    // Compute the correction for integer rounding. Will be < 1 ns, but may
+    // round to a full nanosecond.
     double frac_ns = (double)(numer % era_B) / ((double)era_B);
 
     return (int64_t) t_ns + (int64_t) round(frac_ns);
-
-    /*
-    long GIGA = 1'000'000'000L;
-
-    int64_t ut1_s = (int64_t)(t_ns / GIGA);
-    int64_t ut1_ns = (int64_t)(t_ns - GIGA * ut1_s) + (int64_t)round(frac_ns);
-
-    if (ut1_ns > GIGA) {
-        ut1_ns -= GIGA;
-        ut1_s += 1;
-        // } else if (ut1_ns < -GIGA) {
-        //    ut1_ns += 2 * GIGA;
-        //    ut1_s -= 2;
-    } else if (ut1_ns < 0) {
-        ut1_ns += GIGA;
-        ut1_s -= 1;
-    }
-
-    return {(time_t) ut1_s, ut1_ns};
-    //return {(time_t)(ut1_s + t0_sec), ut1_ns};
-    */
 }
 
 double get_ERA_from_time(const timespec& time, double dUT) {
