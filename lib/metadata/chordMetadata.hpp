@@ -10,6 +10,7 @@
 // TODO: CHIME and CHORD differ whether they use the datasetManager
 #include "dataset.hpp"
 
+#include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <sstream>
@@ -441,10 +442,10 @@ public:
         return metadata[jsonMetadata::LOST_TIMESAMPLES].template get<int32_t>();
     }
 
-    void atomic_add_lost_timesamples(const int32_t lost_samples) const {
+    void atomic_add_lost_timesamples(const int32_t lost_samples) {
         // RH: this is almost certainly not admissible code, but also almost certain, "works".
-        static_assert(std::is_same(std::int64_t, json::NumberIntegerType), "Roland's horrible hack fails");
-        (*static_cast<std::atomic_int64_t*>(metadata[jsonMetadata::LOST_TIMESAMPLES].template get_ptr<std::int64_t>())) += int64_t(lost_samples);
+        static_assert(std::is_same<std::int64_t, nlohmann::json::number_integer_t>::value, "Roland's horrible hack fails");
+        *reinterpret_cast<std::atomic_int64_t*>(metadata[jsonMetadata::LOST_TIMESAMPLES].template get_ptr<std::int64_t*>()) += lost_samples;
     }
 
     // links to other data
