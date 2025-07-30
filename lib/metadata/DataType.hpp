@@ -493,7 +493,8 @@ struct PoisonValue<signed long long>
 template<>
 struct PoisonValue<float16_t> {
     // Unfortunately, `float16_t` does not have any `constexpr` constructors
-    inline static const float16_t value = std::numeric_limits<float>::quiet_NaN();
+    inline static const float16_t value =
+        static_cast<float16_t>(std::numeric_limits<float>::quiet_NaN());
     using value_type = float16_t;
     operator value_type() const noexcept {
         return value;
