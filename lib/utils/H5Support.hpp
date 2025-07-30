@@ -28,71 +28,58 @@ inline AtomicType<dset_id_str>::AtomicType() {
 // \cond NO_DOC
 template<>
 inline DataType HighFive::create_datatype<freq_ctype>() {
-    CompoundType f;
-    f.addMember("centre", H5T_IEEE_F64LE);
-    f.addMember("width", H5T_IEEE_F64LE);
-    f.autoCreate();
-    return f;
+    return CompoundType{
+        {"centre", AtomicType<double>{}},
+        {"width", AtomicType<double>{}},
+    };
 }
 
 template<>
 inline DataType HighFive::create_datatype<time_ctype>() {
-    CompoundType t;
-    t.addMember("fpga_count", H5T_STD_U64LE);
-    t.addMember("ctime", H5T_IEEE_F64LE);
-    t.autoCreate();
-    return t;
+    return CompoundType{
+        {"fpga_count", AtomicType<uint64_t>{}},
+        {"ctime", AtomicType<double>{}},
+    };
 }
 
 template<>
 inline DataType HighFive::create_datatype<input_ctype>() {
-
-    CompoundType i;
-    hid_t s32 = H5Tcopy(H5T_C_S1);
-    H5Tset_size(s32, 32);
-    // AtomicType<char[32]> s32;
-    i.addMember("chan_id", H5T_STD_U16LE, 0);
-    i.addMember("correlator_input", s32, 2);
-    i.manualCreate(34);
-
-    return i;
+    return CompoundType{
+        {"chan_id", AtomicType<uint16_t>{}},
+        {"correlator_input", AtomicType<char[32]>{}},
+    };
 }
 
 template<>
 inline DataType HighFive::create_datatype<prod_ctype>() {
-
-    CompoundType p;
-    p.addMember("input_a", H5T_STD_U16LE);
-    p.addMember("input_b", H5T_STD_U16LE);
-    p.autoCreate();
-    return p;
+    return CompoundType{
+        {"input_a", AtomicType<uint16_t>{}},
+        {"input_b", AtomicType<uint16_t>{}},
+    };
 }
 
 template<>
 inline DataType HighFive::create_datatype<cfloat>() {
-    CompoundType c;
-    c.addMember("r", H5T_IEEE_F32LE);
-    c.addMember("i", H5T_IEEE_F32LE);
-    c.autoCreate();
-    return c;
+    return CompoundType{
+        {"r", AtomicType<float>{}},
+        {"i", AtomicType<float>{}},
+    };
 }
 
 template<>
 inline DataType HighFive::create_datatype<rstack_ctype>() {
-    CompoundType c;
-    c.addMember("stack", H5T_STD_U32LE);
-    c.addMember("conjugate", H5T_STD_U8LE);
-    c.autoCreate();
-    return c;
+    return CompoundType{
+        {"stack", AtomicType<uint32_t>{}},
+        {"conjugate", AtomicType<uint8_t>{}},
+    };
 }
 
 template<>
 inline DataType HighFive::create_datatype<stack_ctype>() {
-    CompoundType c;
-    c.addMember("prod", H5T_STD_U32LE);
-    c.addMember("conjugate", H5T_STD_U8LE);
-    c.autoCreate();
-    return c;
+    return CompoundType{
+        {"prod", AtomicType<uint32_t>{}},
+        {"conjugate", AtomicType<uint8_t>{}},
+    };
 }
 // \endcond
 

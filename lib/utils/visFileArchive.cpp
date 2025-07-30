@@ -267,7 +267,8 @@ void visFileArchive::create_dataset(const std::string& name, const std::vector<s
     if (stacked)
         size_map["stack"] = std::make_tuple(length("stack"), chunk[1]);
 
-    std::vector<size_t> cur_dims, max_dims, chunk_dims;
+    std::vector<size_t> cur_dims, max_dims;
+    std::vector<hsize_t> chunk_dims;
 
     for (auto axis : axes) {
         auto cs = size_map[axis];
@@ -277,30 +278,18 @@ void visFileArchive::create_dataset(const std::string& name, const std::vector<s
 
     DataSpace space = DataSpace(cur_dims);
 
+    // Add chunking and bitshuffle filter to plist
+    RawPropertyList<PropertyType::DATASET_CREATE> props;
+    // Set dataset creation properties to enable chunking
+    (*(DataSetCreateProps*)&props).add(Chunking(chunk_dims));
     if (compress) {
-        // Add chunking and bitshuffle filter to plist
-        // Pulled this out of HighFive createDataSet source
-        std::vector<hsize_t> real_chunk(chunk_dims.size());
-        std::copy(chunk_dims.begin(), chunk_dims.end(), real_chunk.begin());
-        // Set dataset creation properties to enable chunking
-        hid_t plist = H5Pcreate(H5P_DATASET_CREATE);
-        if (H5Pset_chunk(plist, int(chunk_dims.size()), &(real_chunk.at(0))) < 0) {
-            HDF5ErrMapper::ToException<DataSpaceException>("Failed trying to create chunk.");
-        }
         // Set bitshuffle compression filter
-        if (H5Pset_filter(plist, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY, BSHUF_CD.size(),
-                          BSHUF_CD.data())
-            < 0) {
-            HDF5ErrMapper::ToException<DataSpaceException>(
-                "Failed trying to set bishuffle filter.");
-        }
-
-        DataSet dset = file->createDataSet(name, space, type, plist);
-        dset.createAttribute<std::string>("axis", DataSpace::From(axes)).write(axes);
-    } else {
-        DataSet dset = file->createDataSet(name, space, type, chunk_dims);
-        dset.createAttribute<std::string>("axis", DataSpace::From(axes)).write(axes);
+        props.add(H5Pset_filter, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY, BSHUF_CD.size(),
+                  BSHUF_CD.data());
     }
+
+    DataSet dset = file->createDataSet(name, space, type, props);
+    dset.createAttribute<std::string>("axis", DataSpace::From(axes)).write(axes);
 }
 
 // Quick functions for fetching datasets and dimensions

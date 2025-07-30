@@ -2,7 +2,7 @@
 #define GPU_PROCESS_H
 
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
-#define LO_NIBBLE(b) ((b) & 0x0F)
+#define LO_NIBBLE(b) ((b)&0x0F)
 
 #include "Config.hpp"             // for Config
 #include "Stage.hpp"              // for Stage

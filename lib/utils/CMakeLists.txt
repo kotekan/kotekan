@@ -43,9 +43,8 @@ target_include_directories(kotekan_utils PUBLIC .)
 if(${USE_HDF5})
     target_sources(kotekan_utils PRIVATE visFileH5.cpp visFileArchive.cpp HFBFileArchive.cpp)
     target_include_directories(kotekan_utils SYSTEM INTERFACE ${HDF5_INCLUDE_DIRS}
-                                                              ${HIGHFIVE_PATH}/include)
-    target_link_libraries(kotekan_utils PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
-    add_dependencies(kotekan_utils highfive)
+                                                            )
+    target_link_libraries(kotekan_utils PRIVATE HighFive::HighFive ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
 endif()
 
 # Libevent base&pthreads is required for the restClient
