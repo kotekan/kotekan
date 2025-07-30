@@ -105,7 +105,7 @@ git diff --exit-code
 
 # black
 echo "Running black..."
-black --exclude "/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|docs)/" $KOTEKAN_DIR
+black --exclude "/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|docs|fix_includes)/" $KOTEKAN_DIR
 git diff --exit-code
 
 # cmake-list
