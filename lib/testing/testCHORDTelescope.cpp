@@ -134,23 +134,22 @@ void TestCHORDTelescope::main_thread() {
                 INFO("               - xp:     {:f} arcsec", eop.xp_as);
                 INFO("               - yp:     {:f} arcsec", eop.yp_as);
 
-                timespec ts_ut1 = {.tv_sec=eop.t_ut1/GIGA, .tv_nsec=eop.t_ut1%GIGA};
-                timespec ts_inst2 = get_time_from_UT1(ts_ut1, eop.delta_UT1_inst);
+                timespec ts_inst2 = get_time_from_UT1(eop.t_ut1, eop.delta_UT1_inst);
                 int64_t n_rot;
-                double era = get_ERA_from_UT1(ts_ut1, &n_rot);
-                timespec ts_ut12 = get_UT1_from_ERA(n_rot, eop.ERA_deg);
+                double era = get_ERA_from_UT1(eop.t_ut1, &n_rot);
+                int64_t t_ut12 = get_UT1_from_ERA(n_rot, eop.ERA_deg);
 
                 INFO("               -t_inst2: {0:d} s + {1:d} ns", ts_inst2.tv_sec,
                      ts_inst2.tv_nsec);
                 INFO("               -diff:    {0:d} s + {1:d} ns",
                      ts_inst2.tv_sec - eop.t_inst/GIGA, ts_inst2.tv_nsec - eop.t_inst % GIGA);
-                INFO("               -t_ut12:  {0:d} s + {1:d} ns", ts_ut12.tv_sec, ts_ut12.tv_nsec);
+                INFO("               -t_ut12:  {0:d} s + {1:d} ns", t_ut12/GIGA, t_ut12 % GIGA);
                 INFO("               -diff:    {0:d} s + {1:d} ns",
-                     ts_ut12.tv_sec - eop.t_ut1 / GIGA, ts_ut12.tv_nsec - eop.t_ut1 % GIGA);
+                     (t_ut12 - eop.t_ut1) / GIGA, (t_ut12 - eop.t_ut1) % GIGA);
 
 
                 int64_t n_rot2;
-                double era2 = get_ERA_from_UT1(ts_ut12, &n_rot2);
+                double era2 = get_ERA_from_UT1(t_ut12, &n_rot2);
 
                 INFO("               -era:  {0:f} deg + {1:d}", era, n_rot);
                 INFO("               -diff: {0:e} deg + {1:d}", era2 - era, n_rot2 - n_rot);

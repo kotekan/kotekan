@@ -584,10 +584,10 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
     }
 
     // now that we have a delta_UT1, can compute UT1 and ERA
-    timespec ts_ut1 = get_UT1_from_time(ts_target, eop.delta_UT1_inst);
-    double era = get_ERA_from_UT1(ts_ut1, nullptr);
+    int64_t ut1 = get_UT1_from_time(ts_target, eop.delta_UT1_inst);
+    double era = get_ERA_from_UT1(ut1, nullptr);
 
-    eop.t_ut1 = ts_ut1.tv_sec * GIGA + ts_ut1.tv_nsec;
+    eop.t_ut1 = ut1;
     eop.ERA_deg = era;
 
     return eop;
@@ -651,10 +651,8 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
     }
 
     // Now that we have a delta_UT1, can get t_inst and the ERA
-    timespec ts_ut1 = {.tv_sec = (time_t)(t_ut1 / GIGA),
-                       .tv_nsec = t_ut1 % GIGA};
-    timespec ts_inst = get_time_from_UT1(ts_ut1, eop.delta_UT1_inst);
-    double era = get_ERA_from_UT1(ts_ut1, nullptr);
+    timespec ts_inst = get_time_from_UT1(t_ut1, eop.delta_UT1_inst);
+    double era = get_ERA_from_UT1(t_ut1, nullptr);
 
     eop.t_inst = ts_inst.tv_sec*GIGA + ts_inst.tv_nsec;
     eop.ERA_deg = era;
@@ -697,9 +695,8 @@ struct EOP CHORDTelescope::build_EOP_from_update(uint64_t time_ns, double delta_
 
     struct timespec ts_inst = {.tv_sec=(time_t)(time_ns/GIGA),
                                .tv_nsec=(int64_t)(time_ns%GIGA)};
-    struct timespec ts_ut1 = get_UT1_from_time(ts_inst, delta_ut1_inst);
-    int64_t ut1 = ts_ut1.tv_sec * GIGA + ts_ut1.tv_nsec;
-    double era = get_ERA_from_UT1(ts_ut1, nullptr);
+    int64_t ut1 = get_UT1_from_time(ts_inst, delta_ut1_inst);
+    double era = get_ERA_from_UT1(ut1, nullptr);
 
     struct EOP eop {
         .t_inst = (int64_t) time_ns,

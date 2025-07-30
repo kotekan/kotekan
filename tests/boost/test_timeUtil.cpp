@@ -22,6 +22,11 @@ void check_timespec_equal(const timespec& t1, const timespec& t2) {
     BOOST_CHECK(abs(ns1-ns2) <= NS_TOL);
 }
 
+void check_ns_equal(int64_t t1, int64_t t2) {
+    BOOST_CHECK_MESSAGE(abs(t1-t2) <= NS_TOL,
+                        fmt::format("|ns1 - ns2| = |{:d} - {:d}| = {:d} < {:d} failed", t1, t2, abs(t1-t2), NS_TOL));
+}
+
 void check_era_close(double era1, double era2) {
     BOOST_CHECK_MESSAGE(fabs(era1 - era2) < ERA_TOL,
                         fmt::format("|era1 - era2| = |{:.14f} - {:.14f}| = {:.3e} < {:e} failed",
@@ -50,7 +55,7 @@ public:
     ~TimeData(){BOOST_TEST_MESSAGE("TimeData destructor");};
 
     static std::vector<timespec> t_unix;
-    static std::vector<timespec> t_ut1;
+    static std::vector<int64_t> t_ut1;
     static std::vector<double> dUT1;
     static std::vector<double> era;
     static std::vector<int64_t> nrot;
@@ -58,7 +63,7 @@ public:
 };
 
 std::vector<timespec> TimeData::t_unix{};
-std::vector<timespec> TimeData::t_ut1{};
+std::vector<int64_t> TimeData::t_ut1{};
 std::vector<double> TimeData::dUT1{};
 std::vector<double> TimeData::era{};
 std::vector<int64_t> TimeData::nrot{};
@@ -99,13 +104,12 @@ void TimeData::setup() {
             timespec t = {.tv_sec = std::stol(words[1]), .tv_nsec = std::stol(words[3])};
             t_unix.push_back(t);
         } else if (words[0] == "UT1") {
-            timespec t = {.tv_sec = std::stol(words[1]), .tv_nsec = std::stol(words[3])};
-            t_ut1.push_back(t);
+            t_ut1.push_back(std::stol(words[1]));
         } else if (words[0] == "dUT1") {
-            dUT1.push_back(stod(words[1]));
+            dUT1.push_back(std::stod(words[1]));
         } else if (words[0] == "ERA4") {
-            era.push_back(stod(words[1]));
-            nrot.push_back(stol(words[3]));
+            era.push_back(std::stod(words[1]));
+            nrot.push_back(std::stol(words[3]));
         }
     }
 
@@ -125,8 +129,9 @@ BOOST_AUTO_TEST_CASE(_time_to_ut1) {
     BOOST_TEST_MESSAGE(fmt::format("Testing time->ut1 with {:d} entries.", TimeData::size));
 
     for (size_t i = 0; i < TimeData::size; i++) {
-        check_timespec_equal(get_UT1_from_time(TimeData::t_unix[i], TimeData::dUT1[i]),
-                             TimeData::t_ut1[i]);
+        check_ns_equal(get_UT1_from_time(TimeData::t_unix[i],
+                                         TimeData::dUT1[i]),
+                       TimeData::t_ut1[i]);
     }
 }
 
@@ -157,7 +162,8 @@ BOOST_AUTO_TEST_CASE(_era_to_ut1) {
     BOOST_TEST_MESSAGE(fmt::format("Testing era->ut1 with {:d} entries.", TimeData::size));
 
     for (size_t i = 0; i < TimeData::size; i++) {
-        check_timespec_equal(get_UT1_from_ERA(TimeData::nrot[i], TimeData::era[i]), TimeData::t_ut1[i]);
+        check_ns_equal(get_UT1_from_ERA(TimeData::nrot[i], TimeData::era[i]),
+                       TimeData::t_ut1[i]);
     }
 }
 
@@ -187,8 +193,10 @@ BOOST_AUTO_TEST_CASE(_ut1_to_time_to_ut1) {
     BOOST_TEST_MESSAGE(fmt::format("Testing ut1->time->ut1 with {:d} entries.", TimeData::size));
 
     for (size_t i = 0; i < TimeData::size; i++) {
-        check_timespec_equal(
-            get_UT1_from_time(get_time_from_UT1(TimeData::t_ut1[i], TimeData::dUT1[i]), TimeData::dUT1[i]),
+        check_ns_equal(
+            get_UT1_from_time(get_time_from_UT1(TimeData::t_ut1[i],
+                                                TimeData::dUT1[i]),
+                              TimeData::dUT1[i]),
             TimeData::t_ut1[i]);
     }
 }
@@ -201,7 +209,7 @@ BOOST_AUTO_TEST_CASE(_ut1_to_era_to_ut1) {
         int64_t nrot = -1;
         double era = get_ERA_from_UT1(TimeData::t_ut1[i], &nrot);
 
-        check_timespec_equal(get_UT1_from_ERA(nrot, era), TimeData::t_ut1[i]);
+        check_ns_equal(get_UT1_from_ERA(nrot, era), TimeData::t_ut1[i]);
     }
 }
 
@@ -210,7 +218,7 @@ BOOST_AUTO_TEST_CASE(_era_to_ut1_to_era) {
     BOOST_TEST_MESSAGE(fmt::format("Testing era->ut1->era with {:d} entries.", TimeData::size));
 
     for (size_t i = 0; i < TimeData::size; i++) {
-        timespec ut1 = get_UT1_from_ERA(TimeData::nrot[i], TimeData::era[i]);
+        int64_t ut1 = get_UT1_from_ERA(TimeData::nrot[i], TimeData::era[i]);
 
         int64_t nrot = -1;
         double era = get_ERA_from_UT1(ut1, &nrot);

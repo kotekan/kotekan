@@ -71,15 +71,14 @@ void TimeUtilDump::main_thread() {
         for (uint32_t i = 0; i < frame_length; i++) {
             timespec time{.tv_sec = input[2 * i], .tv_nsec = input[2 * i + 1]};
             INFO("Instrument Time: {:d} s {:d} ns", time.tv_sec, time.tv_nsec);
-            timespec ut1 = get_UT1_from_time(time, _dUT - _dAT);
+            int64_t ut1 = get_UT1_from_time(time, _dUT - _dAT);
             double era = get_ERA_from_UT1(ut1, nullptr);
             double era2 = get_ERA_from_time(time, _dUT - _dAT);
-            output[6 * i + 0] = time.tv_sec;
-            output[6 * i + 1] = time.tv_nsec;
-            output[6 * i + 2] = ut1.tv_sec;
-            output[6 * i + 3] = ut1.tv_nsec;
-            memcpy(&(output[6 * i + 4]), &era, sizeof(long));
-            memcpy(&(output[6 * i + 5]), &era2, sizeof(long));
+            output[5 * i + 0] = time.tv_sec;
+            output[5 * i + 1] = time.tv_nsec;
+            output[5 * i + 2] = ut1;
+            memcpy(&(output[5 * i + 3]), &era, sizeof(long));
+            memcpy(&(output[5 * i + 4]), &era2, sizeof(long));
         }
 
         // Release the input frames and increment the frame indices

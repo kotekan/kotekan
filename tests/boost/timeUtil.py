@@ -146,9 +146,10 @@ def print_isot_times(t_str):
 
     ut1_s, ut1_ns = get_s_ns_from_jd(t.ut1)
     ut1_s -= 2451545 * 86400
+    ut1_ns += ut1_s * 1_000_000_000
     print(
-        "UT1 {0:d} s {1:d} ns {2:.17e} jd2000".format(
-            ut1_s, ut1_ns, (t.ut1.jd1 - 2451545) + t.ut1.jd2
+        "UT1 {0:d} ns {1:.17e} jd2000".format(
+            ut1_ns, (t.ut1.jd1 - 2451545) + t.ut1.jd2
         )
     )
 

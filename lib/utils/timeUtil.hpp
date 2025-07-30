@@ -8,14 +8,8 @@
 #include <inttypes.h>
 #include <time.h> // for timespec
 
-/**
- * @brief Compute UT1 time Julian Date (in seconds, nanoseconds) from GPS time
- * @param   t The instrument time to convert, const reference timespec
- * @param   dAT double Difference between TAI-UTC at t and value at frame0.
- * @param   dUT dobule Value of UT1-UTC at t, seconds
- * @return  UT1 time as a timespec
- */
-timespec get_UT1_from_time(const timespec& t, double delta_UT1_inst);
+int64_t timespec_to_nanosec_i64(timespec t);
+timespec nanosec_i64_to_timespec(int64_t t);
 
 /**
  * @brief Compute UT1 time Julian Date (in seconds, nanoseconds) from GPS time
@@ -24,7 +18,16 @@ timespec get_UT1_from_time(const timespec& t, double delta_UT1_inst);
  * @param   dUT dobule Value of UT1-UTC at t, seconds
  * @return  UT1 time as a timespec
  */
-timespec get_time_from_UT1(const timespec& t_ut1, double delta_UT1_inst);
+int64_t get_UT1_from_time(const timespec& t, double delta_UT1_inst);
+
+/**
+ * @brief Compute UT1 time Julian Date (in seconds, nanoseconds) from GPS time
+ * @param   t The instrument time to convert, const reference timespec
+ * @param   dAT double Difference between TAI-UTC at t and value at frame0.
+ * @param   dUT dobule Value of UT1-UTC at t, seconds
+ * @return  UT1 time as a timespec
+ */
+timespec get_time_from_UT1(int64_t t_ut1, double delta_UT1_inst);
 
 /**
  * @brief Compute Earth Rotation Angle (ERA) from UT1
@@ -33,7 +36,7 @@ timespec get_time_from_UT1(const timespec& t_ut1, double delta_UT1_inst);
  * JD
  * @return  ERA in degrees, [0.0, 360.0)
  */
-double get_ERA_from_UT1(const timespec& ut1, int64_t* num_rot);
+double get_ERA_from_UT1(int64_t ut1, int64_t* num_rot);
 
 /**
  * @brief Compute UT1 time from Earth Rotation Angle (ERA).
@@ -41,7 +44,7 @@ double get_ERA_from_UT1(const timespec& ut1, int64_t* num_rot);
  * @param   ERA_deg double ERA in degrees
  * @return  timespec containing the UT1 time with JD epoch.
  */
-timespec get_UT1_from_ERA(int64_t num_rot, double ERA_deg);
+int64_t get_UT1_from_ERA(int64_t num_rot, double ERA_deg);
 
 /**
  * @brief Compute Earth Rotation Angle (ERA) from GPS time

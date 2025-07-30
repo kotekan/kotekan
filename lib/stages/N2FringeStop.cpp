@@ -65,8 +65,7 @@ void N2FringeStop::main_thread() {
     int num_dishes = tel.get_num_dishes();
     std::vector<std::complex<double>> fringe_phase(num_dishes, 1.0);
 
-    timespec ts_ut1 = get_UT1_from_ERA(num_rot_target, era_target_deg);
-    int64_t ut1 = ts_ut1.tv_sec * GIGA + ts_ut1.tv_nsec;
+    int64_t ut1 = get_UT1_from_ERA(num_rot_target, era_target_deg);
 
     struct EOP eop_target = {.t_inst = ut1,
                              .t_ut1 = ut1,
