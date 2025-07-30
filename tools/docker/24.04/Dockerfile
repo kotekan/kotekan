@@ -141,8 +141,7 @@ RUN mkdir src && \
 RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig/lz4.pc
 
 # Clone HighFive
-RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
- cd HighFive && git pull && cd ..
+RUN git clone --single-branch --branch v3.1.0 https://github.com/highfive-devs/highfive
 ENV HIGHFIVE_PATH=/code/build/HighFive
 
 # Documentation libs
