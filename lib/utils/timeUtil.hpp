@@ -8,7 +8,7 @@
 #include <inttypes.h>
 #include <time.h> // for timespec
 
-int64_t timespec_to_nanosec_i64(timespec t);
+int64_t timespec_to_nanosec_i64(const timespec &t);
 timespec nanosec_i64_to_timespec(int64_t t);
 
 /**

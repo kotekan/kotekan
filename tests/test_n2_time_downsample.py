@@ -15,7 +15,7 @@ from kotekan import runner
 T_rot_sec = 86400 / 1.001234567890123456 #  / 1.00273781191135448
 n_bins_per_rot = 20000  # 21600  # approx 4 seconds per bin
 n_samps_per_bin = 100
-n_samps_tot = 1001
+n_samps_tot = 10001
 
 dut1 = 0.0
 x_pm = 0.1

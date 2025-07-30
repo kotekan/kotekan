@@ -339,7 +339,7 @@ protected:
      * @param   xp_as   Polar Motion x' coordinate in arcseconds
      * @param   yp_as   Polar Motion y' coordinate in arcseconds
      **/
-    struct EOP build_EOP_from_update(uint64_t t_ns, double delta_ut1_inst, double xp_as,
+    struct EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
                                      double yp_as) const;
 
     // The telescope's name in the config

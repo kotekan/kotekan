@@ -201,7 +201,7 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
         std::vector<struct EOP> tmp_eop_table;
         for (const auto& elem : json.at("earth_orientation_parameter_table")) {
             INFO("CHORDTelescope EOP update: {:s}", elem.dump());
-            uint64_t t_ns = elem.at("time_inst_ns").get<uint64_t>();
+            int64_t t_ns = elem.at("time_inst_ns").get<int64_t>();
             double dut1 = elem.at("delta_UT1_inst").get<double>();
             double x_pm = elem.at("x_pm").get<double>();
             double y_pm = elem.at("y_pm").get<double>();
@@ -232,7 +232,7 @@ void CHORDTelescope::send_time0_ns(connectionInstance& conn) {
 
 timespec CHORDTelescope::to_time(uint64_t seq) const {
     auto time_ns = time0_ns + seq * dt_ns;
-    return {(time_t)(time_ns / GIGA), (long)(time_ns % GIGA)};
+    return nanosec_i64_to_timespec(time_ns);
 }
 
 uint64_t CHORDTelescope::to_seq(timespec time) const {
@@ -536,7 +536,7 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
 
     struct EOP eop;
 
-    int64_t t_target = ts_target.tv_sec * GIGA + ts_target.tv_nsec;
+    int64_t t_target = timespec_to_nanosec_i64(ts_target);
     eop.t_inst = t_target;
 
     // _eop_table is always sorted by instrument time. Do a quick search
@@ -654,7 +654,7 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
     timespec ts_inst = get_time_from_UT1(t_ut1, eop.delta_UT1_inst);
     double era = get_ERA_from_UT1(t_ut1, nullptr);
 
-    eop.t_inst = ts_inst.tv_sec*GIGA + ts_inst.tv_nsec;
+    eop.t_inst = timespec_to_nanosec_i64(ts_inst);
     eop.ERA_deg = era;
 
     return eop;
@@ -690,16 +690,15 @@ uint8_t CHORDTelescope::nyquist_zone() const {
     return 0;
 }
 
-struct EOP CHORDTelescope::build_EOP_from_update(uint64_t time_ns, double delta_ut1_inst,
+struct EOP CHORDTelescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst,
                                                  double xp_as, double yp_as) const {
 
-    struct timespec ts_inst = {.tv_sec=(time_t)(time_ns/GIGA),
-                               .tv_nsec=(int64_t)(time_ns%GIGA)};
+    struct timespec ts_inst = nanosec_i64_to_timespec(time_ns);
     int64_t ut1 = get_UT1_from_time(ts_inst, delta_ut1_inst);
     double era = get_ERA_from_UT1(ut1, nullptr);
 
     struct EOP eop {
-        .t_inst = (int64_t) time_ns,
+        .t_inst = time_ns,
         .t_ut1 = ut1,
         .delta_UT1_inst = delta_ut1_inst,
         .ERA_deg = era, .xp_as = xp_as, .yp_as = yp_as
