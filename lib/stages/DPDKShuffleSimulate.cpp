@@ -1,12 +1,11 @@
 #include "DPDKShuffleSimulate.hpp"
 
 #include "Config.hpp"          // for Config
-#include "ICETelescope.hpp"    // for ice_stream_id_t, ice_encode_stream_id
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"       // for Telescope
 #include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "chordMetadata.hpp"
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
 #include "visUtil.hpp"         // for frameID, current_time, modulo, ts_to_double
 
@@ -89,24 +88,15 @@ void DPDKShuffleSimulate::main_thread() {
         for (uint32_t i = 0; i < shuffle_size; ++i) {
             voltage_data_buf[i]->allocate_new_metadata_object(voltage_data_frame_id[i]);
 
-            // StreamID
-            ice_stream_id_t ice_stream_id;
-            ice_stream_id.crate_id = 0;
-            ice_stream_id.link_id = 0;
-            ice_stream_id.slot_id = 0;
-            ice_stream_id.unused = i;
-            set_stream_id(voltage_data_buf[i], voltage_data_frame_id[i],
-                          ice_encode_stream_id(ice_stream_id));
-
-            set_fpga_seq_num(voltage_data_buf[i], voltage_data_frame_id[i], fpga_seq);
-            set_first_packet_recv_time(voltage_data_buf[i], voltage_data_frame_id[i], now);
+            get_chord_metadata(voltage_data_buf[i], voltage_data_frame_id[i])->set_fpga_seq_num(fpga_seq);
+            get_chord_metadata(voltage_data_buf[i], voltage_data_frame_id[i])->set_first_packet_recv_time(now);
         }
         fpga_seq += _num_samples_per_dataset;
 
         // Set metadata for lost samples buf
         lost_samples_buf->allocate_new_metadata_object(lost_samples_frame_id);
-        set_fpga_seq_num(lost_samples_buf, lost_samples_frame_id, fpga_seq);
-        set_first_packet_recv_time(lost_samples_buf, lost_samples_frame_id, now);
+        get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_fpga_seq_num(fpga_seq);
+        get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_first_packet_recv_time(now);
 
         // TODO Set the default values for the frames to something.
 
