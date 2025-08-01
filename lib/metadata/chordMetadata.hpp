@@ -464,8 +464,14 @@ public:
         return metadata[jsonMetadata::LOST_TIMESAMPLES].template get<int32_t>();
     }
 
+    void set_lost_timesamples(int32_t lost_timesamples) {
+        // very much non-atomic, due to json dict entry creation
+        metadata[jsonMetadata::LOST_TIMESAMPLES] = lost_timesamples;
+    }
+
     void atomic_add_lost_timesamples(const int32_t lost_samples) {
         // RH: this is almost certainly not admissible code, but also almost certain, "works".
+        // RH: this is not actually atomic and has race conditions if the underlying json dict changes
         static_assert(std::is_same<std::int64_t, nlohmann::json::number_integer_t>::value, "Roland's horrible hack fails");
         *reinterpret_cast<std::atomic_int64_t*>(metadata[jsonMetadata::LOST_TIMESAMPLES].template get_ptr<std::int64_t*>()) += lost_samples;
     }
