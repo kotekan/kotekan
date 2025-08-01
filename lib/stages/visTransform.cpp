@@ -5,7 +5,7 @@
 #include "Telescope.hpp"       // for Telescope
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for chimeMetadata
+#include "chordMetadata.hpp"
 #include "datasetManager.hpp"  // for datasetManager, dset_id_t, state_id_t
 #include "datasetState.hpp"    // for freqState, inputState, metadataState, prodState
 #include "kotekanLogging.hpp"  // for INFO
@@ -141,8 +141,8 @@ void visTransform::main_thread() {
 
             // TODO: multifrequency support
             // Copy over the metadata
-            std::shared_ptr<chimeMetadata> metadata = get_chime_metadata(buf, frame_id);
-            output_frame.fill_metadata<chimeMetadata>(metadata, 0);
+            output_frame.fill_metadata(get_chord_metadata(buf, frame_id).get(),
+                                       0);
 
             // Copy the visibility data into a proper triangle and write into
             // the file
