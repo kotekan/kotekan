@@ -476,6 +476,16 @@ public:
         *reinterpret_cast<std::atomic_int64_t*>(metadata[jsonMetadata::LOST_TIMESAMPLES].template get_ptr<std::int64_t*>()) += lost_samples;
     }
 
+    // non-science metadata
+
+   timeval get_first_packet_recv_time() const {
+        return metadata[jsonMetadata::FIRST_PACKET_RECV_TIME].template get<timeval>();
+   }
+
+   void set_first_packet_recv_time(const timeval time_v) {
+        metadata[jsonMetadata::FIRST_PACKET_RECV_TIME] = time_v;
+   }
+
     // links to other data
 
     /// ID of the dataset
