@@ -4,7 +4,6 @@
 #include "BeamMetadata.hpp"     // for BeamMetadata
 #include "Config.hpp"           // for Config
 #include "HFBMetadata.hpp"      // for HFBMetadata
-#include "chimeMetadata.hpp"    // for chimeMetadata
 #include "chordMetadata.hpp"
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.hpp"       // for create_metadata_pool
@@ -83,11 +82,6 @@ std::shared_ptr<metadataPool> metadataFactory::new_pool(const std::string& pool_
     if (pool_type == "chordMetadata") {
         INFO_NON_OO("ChordMetadata size: {:d}", sizeof(chordMetadata));
         return metadataPool::create(num_metadata_objects, sizeof(chordMetadata), location,
-                                    pool_type);
-    }
-
-    if (pool_type == "chimeMetadata") {
-        return metadataPool::create(num_metadata_objects, sizeof(chimeMetadata), location,
                                     pool_type);
     }
 
