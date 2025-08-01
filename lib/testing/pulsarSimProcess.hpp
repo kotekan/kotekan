@@ -10,6 +10,7 @@
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
 #include "bufferContainer.hpp"
+#include "chordMetadata.hpp"
 
 #include <stdint.h> // for int32_t, uint16_t, uint64_t
 #include <string>   // for string
@@ -60,7 +61,7 @@ public:
 private:
     void fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header,
                       const uint64_t fpga_seq_num, struct timeval* time_now,
-                      struct beamCoord* beam_coord, uint16_t* freq_ids);
+                      chordMetadata::beamCoord* beam_coord, uint16_t* freq_ids);
 
     Buffer* pulsar_buf;
 
