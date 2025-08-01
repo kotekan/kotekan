@@ -11,7 +11,7 @@
 #include "FrameView.hpp"      // for FrameView
 #include "Telescope.hpp"      // for freq_id_t
 #include "buffer.hpp"         // for Buffer
-#include "chimeMetadata.hpp"  // for chimeMetadata
+#include "chordMetadata.hpp"
 #include "datasetManager.hpp" // for dset_id_t
 #include "visUtil.hpp"        // for cfloat
 
@@ -223,7 +223,7 @@ public:
      *                       if not multifrequency)
      *
      **/
-    void fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind);
+    void fill_chime_metadata(const chordMetadata* chord_metadata, uint32_t ind);
 
     /**
      * @brief Populate metadata.
