@@ -36,6 +36,7 @@ const std::string NFREQ("NFREQ");                      // an int
 const std::string COARSE_FREQ("COARSE_FREQ");          // an array of int of size CHORD_META_MAX_FREQ
 const std::string DATASET_ID("DATASET_ID");            // a 128bit hash of the system state, of type dset_id_t
 const std::string RFI_NUM_BAD_INPUTS("RFI_NUM_BAD_INPUTS"); // a uint32_t of bad frames count
+const std::string RFI_FLAGGED_SAMPLES("RFI_FLAGGED_SAMPLES"); // a int32_t of FPGA frames flagged as containing RFI
 const std::string LOST_TIMESAMPLES("LOST_TIMESAMPLES"); // a int32_t of samples lost
 
 const std::string FIRST_PACKET_RECV_TIME("FIRST_PACKET_RECV_TIME"); // The system time when the first packet in the frame was captured
