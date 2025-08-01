@@ -12,6 +12,7 @@
 #include "Hash.hpp"           // for Hash
 #include "Telescope.hpp"      // for Telescope, freq_id_t
 #include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for get_chord_metadata
 #include "datasetManager.hpp" // for dset_id_t
 #include "metadata.hpp"       // for metadataObject, metadataPool
 #include "visUtil.hpp"        // for cfloat, struct_layout
@@ -227,20 +228,19 @@ public:
     void copy_data(VisFrameView frame_to_copy, const std::set<VisField>& skip_members);
 
     /**
-     * @brief Fill the VisMetadata from a chordMetadata or chimeMetadata object.
+     * @brief Fill the VisMetadata from a chordMetadata object.
      *
      * The time field is filled with the GPS time if it is set (checked via
      * `Telescope.gps_time_enabled`), otherwise the `first_packet_recv_time` is
      * used. Also note, there is no dataset information in the chime/chord metadata so
      * the `dataset_id` is set to zero.
      *
-     * @param chime_metadata Metadata to fill from.
+     * @param chord_metadata Metadata to fill from.
      * @param ind            Frequency ind for multifrequency buffers (use zero
      *                       if not multifrequency)
      *
      **/
-    template<typename CH_Metadata>
-    void fill_metadata(const std::shared_ptr<CH_Metadata> metadata, uint32_t f_ind) {
+    void fill_metadata(const chordMetadata* chord_metadata, uint32_t f_ind) {
 
         auto& tel = Telescope::instance();
 
@@ -248,18 +248,19 @@ public:
         dataset_id = dset_id_t::null;
 
         // Set the frequency index from the stream id of the metadata
-        freq_id = tel.to_freq_id({(uint64_t)metadata->stream_ID}, f_ind);
+        freq_id = chord_metadata->get_coarse_freq()[f_ind];
 
         // Set the time
-        uint64_t fpga_seq = metadata->fpga_seq_num;
+        uint64_t fpga_seq = chord_metadata->get_fpga_seq_num();
 
         timespec ts;
 
         // Use the GPS time if appropriate.
         if (tel.gps_time_enabled()) {
-            ts = metadata->gps_time;
+            ts = chord_metadata->get_gps_time();
         } else {
-            TIMEVAL_TO_TIMESPEC(&(metadata->first_packet_recv_time), &ts);
+            timeval tv = chord_metadata->get_first_packet_recv_time();
+            TIMEVAL_TO_TIMESPEC(&tv, &ts);
         }
 
         time = std::make_tuple(fpga_seq, ts);
