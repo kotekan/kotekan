@@ -6,7 +6,7 @@
 #include "Telescope.hpp"          // for Telescope
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "buffer.hpp"             // for Buffer, mark_frame_full, allocate_new_metadata_object
-#include "chimeMetadata.hpp"      // for chimeMetadata
+#include "chordMetadata.hpp"
 #include "kotekanLogging.hpp"     // for INFO, DEBUG, WARN
 #include "metadata.hpp"           // for metadataContainer
 #include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
@@ -310,8 +310,8 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
 
         for (int frame_index = dump_start_frame; frame_index < next_frame; frame_index++) {
             int in_buf_frame = frame_index % in_buf->num_frames;
-            auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame].get();
-            frame_fpga_seq = metadata->fpga_seq_num;
+            auto metadata = get_chord_metadata(in_buf, in_buf_frame);
+            frame_fpga_seq = metadata->get_fpga_seq_num();
 
             // if the request specified -1 for the start time, use the earliest
             // timestamp available
@@ -383,7 +383,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     const uint64_t event_id = data.event_id;
 
     int in_buf_frame = data.dump_start_frame % in_buf->num_frames;
-    auto first_meta = (chimeMetadata*)in_buf->metadata[in_buf_frame].get();
+    auto first_meta = get_chord_metadata(in_buf, in_buf_frame);
 
     const uint32_t stream_freq_idx = data.stream_freq_idx;
     const uint32_t freq_id = data.freq_id;
@@ -391,15 +391,16 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     auto& frame_dropped_counter = readout_dropped_frame_counter.labels({std::to_string(freq_id)});
 
     // Figure out how much data we have.
-    int64_t data_start_fpga = std::max(data.trigger_start_fpga, first_meta->fpga_seq_num);
+    int64_t data_start_fpga = std::max(data.trigger_start_fpga, first_meta->get_fpga_seq_num());
     // For now just assume that we have the last sample, because the locking logic
     // currently waits for it. Could be made to be more robust.
     int64_t data_end_fpga = data.trigger_start_fpga + data.trigger_length_fpga;
 
     timeval tmp, delta;
     delta.tv_sec = 0;
-    delta.tv_usec = (data.trigger_start_fpga - first_meta->fpga_seq_num) * fpga_period_s * 1e6;
-    timeradd(&(first_meta->first_packet_recv_time), &delta, &tmp);
+    delta.tv_usec = (data.trigger_start_fpga - first_meta->get_fpga_seq_num()) * fpga_period_s * 1e6;
+    timeval first_packet_recv_time = first_meta->get_first_packet_recv_time();
+    timeradd(&first_packet_recv_time, &delta, &tmp);
     timespec packet_time0 = {tmp.tv_sec, tmp.tv_usec * 1000};
 
     timespec time0 = tel.to_time(data_start_fpga);
@@ -436,9 +437,9 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
         }
 
         in_buf_frame = frame_index % in_buf->num_frames;
-        auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame].get();
+        auto metadata = get_chord_metadata(in_buf, in_buf_frame);
         uint8_t* in_buf_data = in_buf->frames[in_buf_frame];
-        int64_t frame_fpga_seq = metadata->fpga_seq_num;
+        int64_t frame_fpga_seq = metadata->get_fpga_seq_num();
         int64_t in_start = std::max(data_start_fpga - frame_fpga_seq, (int64_t)0);
         int64_t in_end = std::min(data_end_fpga - frame_fpga_seq, (int64_t)_samples_per_data_set);
         DEBUG("Next input frame: {},  samples {}-{}", frame_index, in_start, in_end);
