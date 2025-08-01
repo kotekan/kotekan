@@ -12,7 +12,7 @@
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
-#include "chimeMetadata.hpp"
+#include "chordMetadata.hpp"
 #include "iceBoardHandler.hpp"
 #include "packet_copy.h"
 #include "prometheusMetrics.hpp"
@@ -37,7 +37,7 @@
  * @par Buffers
  * @buffer out_buf  Kotekan buffer to place the packets in.
  *       @buffer_format unit8_t array of FPGA packet contents
- *       @buffer_metadata chimeMetadata
+ *       @buffer_metadata chordMetadata
  * @buffer lost_samples_buf Kotekan buffer of flags (one per time sample)
  *       @buffer_format unit8_t array of flags
  *       @buffer_metadata none
