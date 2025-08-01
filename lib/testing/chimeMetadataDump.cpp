@@ -6,7 +6,7 @@
 #include "Telescope.hpp"
 #include "buffer.hpp"          // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp" //
-#include "chimeMetadata.hpp"   // for get_first_packet_recv_time, get_fpga_seq_num, get_gps...
+#include "chordMetadata.hpp"
 #include "kotekanLogging.hpp"  // for INFO
 
 #include <atomic>     // for atomic_bool
@@ -41,12 +41,10 @@ void chimeMetadataDump::main_thread() {
         if (frame == nullptr)
             break;
 
-        uint64_t fpga_seq = get_fpga_seq_num(in_buf, frame_id);
-        stream_t encoded_stream_id = get_stream_id(in_buf, frame_id);
-        ice_stream_id_t stream_id = ice_extract_stream_id(encoded_stream_id);
-        timeval time_v = get_first_packet_recv_time(in_buf, frame_id);
-        uint64_t lost_samples = get_lost_timesamples(in_buf, frame_id);
-        struct timespec time_s = get_gps_time(in_buf, frame_id);
+        uint64_t fpga_seq = get_chord_metadata(in_buf, frame_id)->get_fpga_seq_num();
+        timeval time_v = get_chord_metadata(in_buf, frame_id)->get_first_packet_recv_time();
+        uint64_t lost_samples = get_chord_metadata(in_buf, frame_id)->get_lost_timesamples();
+        struct timespec time_s = get_chord_metadata(in_buf, frame_id)->get_gps_time();
 
         char time_buf[64];
         time_t temp_time = time_v.tv_sec;
