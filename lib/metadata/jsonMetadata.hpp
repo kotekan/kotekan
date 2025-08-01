@@ -4,8 +4,12 @@
 
 #include "json.hpp"
 
+#include <cstdint>
 #include <string>
+#include <ctime>
 #include <vector>
+
+#include <sys/time.h>
 
 #pragma pack()
 
@@ -33,6 +37,11 @@ const std::string COARSE_FREQ("COARSE_FREQ");          // an array of int of siz
 const std::string DATASET_ID("DATASET_ID");            // a 128bit hash of the system state, of type dset_id_t
 const std::string RFI_NUM_BAD_INPUTS("RFI_NUM_BAD_INPUTS"); // a uint32_t of bad frames count
 const std::string LOST_TIMESAMPLES("LOST_TIMESAMPLES"); // a int32_t of samples lost
+
+const std::string FIRST_PACKET_RECV_TIME("FIRST_PACKET_RECV_TIME"); // The system time when the first packet in the frame was captured
+const std::string TV_SEC("TV_SEC");                     // the tv_sec memmber of a timeval
+const std::string TV_USEC("TV_USEC");                   // the tv_usec memmber of a timeval
+
 
 struct beamCoord {
     float right_ascension[MAX_NUM_BEAMS];
@@ -121,7 +130,20 @@ struct coarseFreq {
         }
 };
 
+}
 
+static inline
+void to_json(nlohmann::json&j, const timeval& tv) {
+  using namespace jsonMetadata;
+  j[TV_SEC] = static_cast<std::int64_t>(tv.tv_sec);
+  j[TV_USEC] = static_cast<std::int64_t>(tv.tv_usec);
+}
+
+static inline
+void from_json(const nlohmann::json&j, timeval& tv) {
+  using namespace jsonMetadata;
+  tv.tv_sec = j[TV_SEC].template get<std::int64_t>();
+  tv.tv_usec = j[TV_USEC].template get<std::int64_t>();
 }
 
 #endif
