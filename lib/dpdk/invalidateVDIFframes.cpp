@@ -2,12 +2,11 @@
 
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"            // for Buffer, mark_frame_empty, mark_frame_full, register_con...
-#include "chimeMetadata.hpp"     // for atomic_add_lost_timesamples
+#include "chordMetadata.hpp"     // for atomic_add_lost_timesamples
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 #include "vdif_functions.h"      // for VDIFHeader
 
 #include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <stddef.h>   // for size_t
 
@@ -70,7 +69,7 @@ void invalidateVDIFframes::main_thread() {
             }
         }
 
-        atomic_add_lost_timesamples(out_buf, out_buf_frame_id, lost_samples);
+        get_chord_metadata(out_buf, out_buf_frame_id)->atomic_add_lost_timesamples(lost_samples);
         lost_frame_total.inc(lost_samples);
 
         lost_samples_buf->mark_frame_empty(unique_name, lost_samples_buf_frame_id);
