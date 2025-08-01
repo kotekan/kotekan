@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "chordMetadata.hpp"
 #include "kotekanLogging.hpp"  // for INFO
 
 #include <assert.h>   // for assert
@@ -61,10 +61,8 @@ void testDataGenQuad::main_thread() {
                 break;
 
             buf[b]->allocate_new_metadata_object(f);
-            set_fpga_seq_num(buf[b], f, seq_num);
-            // TODO This should be dynamic/config controlled.
-            set_stream_id(buf[b], f, {0});
-            set_first_packet_recv_time(buf[b], f, now);
+            get_chord_metadata(buf[b], f)->set_fpga_seq_num(seq_num);
+            get_chord_metadata(buf[b], f)->set_first_packet_recv_time(now);
 
             for (size_t j = 0; j < buf[b]->frame_size; ++j)
                 frame[b][j] = v;
@@ -89,10 +87,8 @@ void testDataGenQuad::main_thread() {
         gettimeofday(&now, nullptr);
         for (int i = 0; i < 4; i++) {
             buf[i]->allocate_new_metadata_object(frame_id);
-            set_fpga_seq_num(buf[i], frame_id, seq_num);
-            // TODO This should be dynamic/config controlled.
-            set_stream_id(buf[i], frame_id, {0});
-            set_first_packet_recv_time(buf[i], frame_id, now);
+            get_chord_metadata(buf[i], frame_id)->set_fpga_seq_num(seq_num);
+            get_chord_metadata(buf[i], frame_id)->set_first_packet_recv_time(now);
         }
 
         // This is nominally the CHIME pace?
