@@ -29,7 +29,7 @@
  * @par Buffers
  * @buffer out_buf The buffer of fake data.
  *         @buffer_format N2 GPU buffer format
- *         @buffer_metadata chimeMetadata
+ *         @buffer_metadata chordMetadata
  *
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in
  *                              the correlator data

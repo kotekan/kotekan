@@ -4,7 +4,7 @@
 #include "Stage.hpp"          // for Stage
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"         // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "chimeMetadata.hpp"  // for set_first_packet_recv_time, set_fpga_seq_num, set_gps...
+#include "chordMetadata.hpp"
 #include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "factory.hpp"        // for FACTORY
 #include "fakeGpuPattern.hpp" // for FakeGpuPattern, _factory_aliasFakeGpuPattern
@@ -128,17 +128,16 @@ void FakeGpu::main_thread() {
             DEBUG("Simulating GPU buffer in {}[{}]", out_buf->buffer_name, frame_id);
 
             out_buf->allocate_new_metadata_object(frame_id);
-            set_fpga_seq_num(out_buf, frame_id, fpga_seq);
-            set_stream_id(out_buf, frame_id, {(uint64_t)freq});
+            get_chord_metadata(out_buf, frame_id)->set_fpga_seq_num(fpga_seq);
 
             // Set the two times
             TIMESPEC_TO_TIMEVAL(&tv, &ts);
-            set_first_packet_recv_time(out_buf, frame_id, tv);
-            set_gps_time(out_buf, frame_id, ts);
-            set_dataset_id(out_buf, frame_id, dataset_id);
+            get_chord_metadata(out_buf, frame_id)->set_first_packet_recv_time( tv);
+            get_chord_metadata(out_buf, frame_id)->set_gps_time(ts);
+            get_chord_metadata(out_buf, frame_id)->set_dataset_id(dataset_id);
 
             // Fill the buffer with the specified mode
-            chimeMetadata* metadata = (chimeMetadata*)out_buf->metadata[frame_id].get();
+            auto metadata = get_chord_metadata(out_buf, frame_id).get();
             for (int freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
                 gsl_lite::span<int32_t> data(output + 2 * freq_ind * nprod_gpu,
                                              output + 2 * (freq_ind + 1) * nprod_gpu);
