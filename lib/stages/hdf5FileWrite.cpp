@@ -4,7 +4,6 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"          // for Buffer, get_metadata_container, mark_frame_empty, regis...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for chimeMetadata
 #include "chordMetadata.hpp"   // for chordMetadata
 #include "errors.h"
 #include "kotekanLogging.hpp"    // for ERROR, INFO
@@ -109,31 +108,27 @@ void hdf5FileWrite::main_thread() {
         }
 
         // Write the metadata to file
-        std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
-        if (mc) {
-            // There should be a metadata tag, or this should be a proper C++ class hierarchy.
-            if (metadata_is_chime(mc)) {
-                std::shared_ptr<chimeMetadata> md = get_chime_metadata(mc);
-                {
-                    const hid_t space = H5Screate(H5S_SCALAR);
-                    if (space < 0)
-                        ERROR("Could not create data space");
-                    const hid_t attr = H5Acreate(group, "fpga_seq_num", H5T_NATIVE_INT64, space,
-                                                 H5P_DEFAULT, H5P_DEFAULT);
-                    if (attr < 0)
-                        ERROR("Could not create attribute");
-                    herr_t herr = H5Awrite(attr, H5T_NATIVE_INT64, &md->fpga_seq_num);
-                    if (herr < 0)
-                        ERROR("Could not write attribute");
-                    herr = H5Aclose(attr);
-                    if (herr < 0)
-                        ERROR("Could not close attribute");
-                    herr = H5Sclose(space);
-                    if (herr < 0)
-                        ERROR("Could not close attribute");
-                }
-                // TODO: Write other attributes
-            }
+        auto metadata = get_chord_metadata(buf, frame_id);
+
+        if (metadata) {
+            const hid_t space = H5Screate(H5S_SCALAR);
+            if (space < 0)
+                ERROR("Could not create data space");
+            const hid_t attr = H5Acreate(group, "fpga_seq_num", H5T_NATIVE_INT64, space,
+                                         H5P_DEFAULT, H5P_DEFAULT);
+            if (attr < 0)
+                ERROR("Could not create attribute");
+            const int64_t fpga_seq_num = metadata->get_fpga_seq_num();
+            herr_t herr = H5Awrite(attr, H5T_NATIVE_INT64, &fpga_seq_num);
+            if (herr < 0)
+                ERROR("Could not write attribute");
+            herr = H5Aclose(attr);
+            if (herr < 0)
+                ERROR("Could not close attribute");
+            herr = H5Sclose(space);
+            if (herr < 0)
+                ERROR("Could not close attribute");
+            // TODO: Write other attributes
         }
 
         // Write the contents of the buffer frame to file
@@ -142,9 +137,8 @@ void hdf5FileWrite::main_thread() {
         std::size_t type_size = 0;
         hid_t space = -1;
 
-        if (metadata_is_chord(mc)) {
+        if (metadata) {
             // We have proper CHORD metadata and know the buffer type and shape
-            const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
 
             switch (metadata->type) {
                 case int4p4:
@@ -220,9 +214,8 @@ void hdf5FileWrite::main_thread() {
         if (dataset < 0)
             ERROR("Could not create HDF5 dataset");
 
-        if (metadata_is_chord(mc)) {
+        if (metadata) {
             // Write dimension names
-            const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
 
             hid_t dim_name_type = H5Tcreate(H5T_STRING, CHORD_META_MAX_DIMNAME);
             if (dim_name_type < 0)
