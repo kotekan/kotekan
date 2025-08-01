@@ -4,7 +4,6 @@
 #include <StageFactory.hpp>
 #include <algorithm>
 #include <cassert>
-#include <chimeMetadata.hpp>
 #include <chordMetadata.hpp>
 #include <cmath>
 #include <complex>
