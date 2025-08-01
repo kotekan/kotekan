@@ -34,7 +34,7 @@ private:
     int32_t num_local_freq;
 
     // <streamID, freq_map>
-    cl_mem get_freq_map(stream_t encoded_stream_id);
+    cl_mem get_freq_map(int frame_index);
     std::map<uint64_t, cl_mem> device_freq_map;
 };
 

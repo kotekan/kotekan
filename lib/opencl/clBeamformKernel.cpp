@@ -1,7 +1,7 @@
 #include "clBeamformKernel.hpp"
 
 #include "Telescope.hpp"
-#include "chimeMetadata.hpp"
+#include "chordMetadata.hpp"
 
 #include <string>
 
@@ -99,10 +99,8 @@ cl_event clBeamformKernel::execute(cl_event pre_event) {
     const uint64_t phase_update_period = 390625;
 
     int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
-    int64_t current_seq = get_fpga_seq_num(network_buf, gpu_frame_index);
+    int64_t current_seq = get_chord_metadata(network_buf, gpu_frame_index)->get_fpga_seq_num();
     int64_t bankID = (current_seq / phase_update_period) % 2;
-
-    stream_t streamID = get_stream_id(network_buf, gpu_frame_index);
 
     uint32_t input_frame_len = _num_elements * num_local_freq * _samples_per_data_set;
 
@@ -117,7 +115,7 @@ cl_event clBeamformKernel::execute(cl_event pre_event) {
 
     setKernelArg(0, input_memory);
     setKernelArg(1, output_memory_frame);
-    setKernelArg(2, get_freq_map(streamID));
+    setKernelArg(2, get_freq_map(gpu_frame_index));
     setKernelArg(3, phase_memory);
 
     CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, nullptr, gws, lws, 1,
@@ -126,11 +124,15 @@ cl_event clBeamformKernel::execute(cl_event pre_event) {
     return post_event;
 }
 
-
-cl_mem clBeamformKernel::get_freq_map(stream_t encoded_stream_id) {
+cl_mem clBeamformKernel::get_freq_map(int frame_index) {
     // TODO: convert to use standard mem alloc!
     // TODO: stream_t - uses internal structure
+    // TODO: this assumes that a given stream_id will never change its coarse
+    // frequencies
+    stream_t encoded_stream_id = get_chord_metadata(network_buf, frame_index)->get_stream_id();
     auto it = device_freq_map.find(encoded_stream_id.id);
+    const int* coarse_freq = get_chord_metadata(network_buf, frame_index)->get_coarse_freq();
+    assert(num_local_freq <= get_chord_metadata(network_buf, frame_index)->nfreq);
 
     if (it == device_freq_map.end()) {
         // Create the freq map for the first time.
@@ -139,7 +141,7 @@ cl_mem clBeamformKernel::get_freq_map(stream_t encoded_stream_id) {
         float freq[num_local_freq];
 
         for (int j = 0; j < num_local_freq; ++j) {
-            freq[j] = tel.to_freq(encoded_stream_id, j) / 1000.0;
+            freq[j] = tel.to_freq(static_cast<freq_id_t>(coarse_freq[j])) / 1000.0;
         }
 
         device_freq_map[encoded_stream_id.id] =
