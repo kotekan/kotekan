@@ -12,7 +12,6 @@
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
-#include "chimeMetadata.hpp"
 #include "iceBoardHandler.hpp"
 #include "kotekanLogging.hpp"
 #include "packet_copy.h"
@@ -30,7 +29,7 @@
  * @par Buffers
  * @buffer out_bufs  Array of kotekan buffers of lenght shuffle_size
  *       @buffer_format unit8_t array of FPGA packet contents
- *       @buffer_metadata chimeMetadata
+ *       @buffer_metadata chordMetadata
  * @buffer lost_samples_buf Kotekan buffer of flags (one per time sample)
  *       @buffer_format unit8_t array of flags
  *       @buffer_metadata none
