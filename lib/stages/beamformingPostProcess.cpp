@@ -6,7 +6,7 @@
 #include "Telescope.hpp"        // for stream_t
 #include "buffer.hpp"           // for Buffer, wait_for_empty_frame, mark_frame_empty, mark_fra...
 #include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.hpp"    // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
+#include "chordMetadata.hpp"
 #include "vdif_functions.h"     // for VDIFHeader
 
 #include "fmt.hpp" // for format, fmt
@@ -145,17 +145,14 @@ void beamformingPostProcess::main_thread() {
 
             if (i == 0) {
                 first_seq_number =
-                    (uint32_t)get_fpga_seq_num(in_buf[_link_map[0]], in_buffer_ID[0]);
+                    static_cast<uint32_t>(get_chord_metadata(in_buf[_link_map[0]], in_buffer_ID[0])->get_fpga_seq_num());
             } else {
                 assert(first_seq_number
-                       == (uint32_t)get_fpga_seq_num(in_buf[gpu_id], in_buffer_ID[gpu_id]));
+                       == static_cast<uint32_t>(get_chord_metadata(in_buf[gpu_id], in_buffer_ID[gpu_id])->get_fpga_seq_num()));
             }
 
-            // TODO: port this to use ice_extract_stream_id_t
-            stream_t stream_id = get_stream_id(in_buf[gpu_id], in_buffer_ID[gpu_id]);
-            int link_id = stream_id.id & 0x000F;
-            int slot_id = (stream_id.id & 0x00F0) >> 4;
-            thread_ids[i] = link_id + (slot_id << 4);
+            // TODO: check that frequency is actually usable as unique thread ID
+            thread_ids[i] = get_chord_metadata(in_buf[gpu_id], in_buffer_ID[gpu_id])->get_coarse_freq()[0];
 
             in_buffer_ID[gpu_id] = (in_buffer_ID[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
         }
@@ -168,7 +165,7 @@ void beamformingPostProcess::main_thread() {
             // testing sync code
             startup = 0;
             current_input_location = 0;
-            struct timeval time = get_first_packet_recv_time(in_buf[_link_map[0]], 0);
+            struct timeval time = get_chord_metadata(in_buf[_link_map[0]], 0)->get_first_packet_recv_time();
             second = (int)(round((double)time.tv_sec / 20.0) * 20.0) - 946728000;
             // Fill the first output buffer headers
             fpga_seq_num = first_seq_number;
