@@ -5,7 +5,7 @@
 #include "Telescope.hpp"       // for stream_t
 #include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, mark_frame_empty
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for atomic_add_lost_timesamples, get_lost_timesamples, get_fi...
+#include "chordMetadata.hpp"
 
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for int32_t
@@ -63,20 +63,24 @@ void accumulate::main_thread() {
             out_buf->allocate_new_metadata_object(out_frame_id);
 
             // Copy values for the metadata into the new metadata object.
-            uint64_t fpga_seq = get_fpga_seq_num(in_buf, in_frame_id);
-            set_fpga_seq_num(out_buf, out_frame_id, fpga_seq);
+            uint64_t fpga_seq = get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num();
+            get_chord_metadata(out_buf, out_frame_id)->set_fpga_seq_num(fpga_seq);
 
-            stream_t stream_id = get_stream_id(in_buf, in_frame_id);
-            set_stream_id(out_buf, out_frame_id, stream_id);
+            const int nfreq = get_chord_metadata(in_buf, in_frame_id)->get_nfreq();
+            const int* coarse_freq = get_chord_metadata(in_buf, in_frame_id)->get_coarse_freq();
+            get_chord_metadata(out_buf, out_frame_id)->set_coarse_freq(nfreq, coarse_freq);
 
-            timeval time_v = get_first_packet_recv_time(in_buf, in_frame_id);
-            set_first_packet_recv_time(out_buf, out_frame_id, time_v);
+            // TODO: this is not copying all available metadata
+            // TODO: there's a metadata copy() member, or so, use that one.
 
-            timespec time_s = get_gps_time(in_buf, in_frame_id);
-            set_gps_time(out_buf, out_frame_id, time_s);
+            timeval time_v = get_chord_metadata(in_buf, in_frame_id)->get_first_packet_recv_time();
+            get_chord_metadata(out_buf, out_frame_id)->set_first_packet_recv_time(time_v);
 
-            uint64_t lost_samples = get_lost_timesamples(in_buf, in_frame_id);
-            atomic_add_lost_timesamples(out_buf, out_frame_id, lost_samples);
+            timespec time_s = get_chord_metadata(in_buf, in_frame_id)->get_gps_time();
+            get_chord_metadata(out_buf, out_frame_id)->set_gps_time(time_s);
+
+            int32_t lost_samples = get_chord_metadata(in_buf, in_frame_id)->get_lost_timesamples();
+            get_chord_metadata(out_buf, out_frame_id)->set_lost_timesamples(lost_samples);
 
             for (uint32_t i = 0; i < in_buf->frame_size / sizeof(int32_t); ++i) {
                 output[i] = input[i];
@@ -84,8 +88,8 @@ void accumulate::main_thread() {
 
         } else {
             // Add up the number of lost samples from each input frame.
-            uint64_t lost_samples = get_lost_timesamples(in_buf, in_frame_id);
-            atomic_add_lost_timesamples(out_buf, out_frame_id, lost_samples);
+            int32_t lost_samples = get_chord_metadata(in_buf, in_frame_id)->get_lost_timesamples();
+            get_chord_metadata(out_buf, out_frame_id)->atomic_add_lost_timesamples(lost_samples);
 
             for (uint32_t i = 0; i < in_buf->frame_size / sizeof(int32_t); ++i) {
                 output[i] += input[i];
