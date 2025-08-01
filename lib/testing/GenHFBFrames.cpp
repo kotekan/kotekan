@@ -2,9 +2,8 @@
 
 #include "Config.hpp"         // for Config
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"      // for stream_t
 #include "buffer.hpp"         // for allocate_new_metadata_object, mark_frame_full, register_pr...
-#include "chimeMetadata.hpp"  // for atomic_add_lost_timesamples, set_fpga_seq_num, set_stream_id
+#include "chordMetadata.hpp"
 #include "datasetManager.hpp" // for dset_id_t
 #include "kotekanLogging.hpp" // for DEBUG, INFO
 #include "visUtil.hpp"        // for frameID, modulo
@@ -50,8 +49,6 @@ GenHFBFrames::GenHFBFrames(Config& config, const std::string& unique_name,
 void GenHFBFrames::main_thread() {
     frameID out_frame_id(out_buf), cls_frame_id(cls_out_buf);
     uint64_t seq_num = _samples_per_data_set * _first_frame_index;
-    stream_t stream_id;
-    stream_id.id = 0;
 
     std::default_random_engine gen;
     std::normal_distribution<float> gaussian(_rng_mean, _rng_stddev);
@@ -102,14 +99,12 @@ void GenHFBFrames::main_thread() {
 
         // Create metadata
         out_buf->allocate_new_metadata_object(out_frame_id);
-        set_fpga_seq_num(out_buf, out_frame_id, seq_num);
-        set_dataset_id(out_buf, out_frame_id, dataset_id);
-        set_stream_id(out_buf, out_frame_id, stream_id);
+        get_chord_metadata(out_buf, out_frame_id)->set_fpga_seq_num(seq_num);
+        get_chord_metadata(out_buf, out_frame_id)->set_dataset_id(dataset_id);
 
         cls_out_buf->allocate_new_metadata_object(cls_frame_id);
-        set_fpga_seq_num(cls_out_buf, cls_frame_id, seq_num);
-        zero_lost_samples(cls_out_buf, cls_frame_id);
-        atomic_add_lost_timesamples(cls_out_buf, cls_frame_id, total_lost_samples);
+        get_chord_metadata(cls_out_buf, cls_frame_id)->set_fpga_seq_num(seq_num);
+        get_chord_metadata(cls_out_buf, cls_frame_id)->set_lost_timesamples(total_lost_samples);
 
         seq_num += _samples_per_data_set;
         out_buf->mark_frame_full(unique_name, out_frame_id++);
