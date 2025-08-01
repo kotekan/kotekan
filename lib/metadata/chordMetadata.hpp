@@ -469,6 +469,11 @@ public:
         return metadata[jsonMetadata::RFI_FLAGGED_SAMPLES].template get<int32_t>();
     }
 
+    void set_rfi_flagged_samples(const int32_t flagged_samples)  {
+        // very much non-atomic, due to json dict entry creation
+        metadata[jsonMetadata::RFI_FLAGGED_SAMPLES] = flagged_samples;
+    }
+
     int32_t get_lost_timesamples() const {
         return metadata[jsonMetadata::LOST_TIMESAMPLES].template get<int32_t>();
     }
