@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for get_lost_timesamples
+#include "chordMetadata.hpp"
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 #include "util.h"              // for cp, make_raw_dirs
 
@@ -222,11 +222,11 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
             }
 
             INFO("Data file write done for {:s}, lost_packets {:d}", file_name,
-                 get_lost_timesamples(buf, frame_id));
+                 get_chord_metadata(buf, frame_id)->get_lost_timesamples());
         } else {
             // usleep(0.070 * 1e6);
             INFO("Disk id {:d}, Lost Packets {:d}, buffer id {:d}", disk_id,
-                 get_lost_timesamples(buf, frame_id), frame_id);
+                 get_chord_metadata(buf, frame_id)->get_lost_timesamples(), frame_id);
         }
 
         // TODO make release_info_object work for nConsumers.
