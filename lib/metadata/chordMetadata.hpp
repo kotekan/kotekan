@@ -414,6 +414,10 @@ public:
         return metadata[jsonMetadata::FPGA_SEQ_NUM].template get<int64_t>();
     }
 
+    void set_fpga_seq_num(const int64_t fpga_seq_num) {
+        metadata[jsonMetadata::FPGA_SEQ_NUM] = fpga_seq_num;
+    }
+
     int get_nfreq() const {
         return this->nfreq;
     }
@@ -423,9 +427,27 @@ public:
         return this->coarse_freq;
     }
 
+    void set_coarse_freq(const int nfreq, const int* coarse_freq) {
+        assert(nfreq < CHORD_META_MAX_FREQ);
+        this->nfreq = nfreq;
+        for(int i = 0 ; i < nfreq ; ++i) {
+            this->coarse_freq[i] = *coarse_freq++;
+        }
+    }
+
+    // TODO: remove this, its redundant
     struct timespec get_gps_time() const {
         const Telescope& tel = Telescope::instance();
         return tel.to_time(this->get_fpga_seq_num());
+    }
+
+    // TODO: remove this, it's not setting anything anymore (and assumes that
+    // fpga_seq_num is set)
+    void set_gps_time(const timespec gps_time) {
+        const Telescope& tel = Telescope::instance();
+        const timespec my_gps_time = tel.to_time(this->get_fpga_seq_num());
+        assert(gps_time.tv_sec == my_gps_time.tv_sec);
+        assert(gps_time.tv_nsec == my_gps_time.tv_nsec);
     }
 
     /// The number of bad inputs in the RFI systems bad input list.
