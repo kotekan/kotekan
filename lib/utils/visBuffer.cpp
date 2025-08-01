@@ -3,7 +3,7 @@
 #include "FrameView.hpp"     // for bind_span, bind_scalar, FrameView
 #include "Telescope.hpp"     // for Telescope
 #include "buffer.hpp"        // for Buffer, allocate_new_metadata_object
-#include "chimeMetadata.hpp" // for chimeMetadata, get_stream_id_from_metadata
+#include "chordMetadata.hpp"
 #include "metadata.hpp"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
@@ -283,7 +283,7 @@ size_t VisFrameView::calculate_frame_size(kotekan::Config& config, const std::st
     return calculate_buffer_layout(num_elements, num_prod, num_ev).first;
 }
 
-void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind) {
+void VisFrameView::fill_chime_metadata(const chordMetadata* chord_metadata, uint32_t ind) {
 
     auto& tel = Telescope::instance();
 
@@ -291,18 +291,19 @@ void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint
     dataset_id = dset_id_t::null;
 
     // Set the frequency index from the stream id of the metadata
-    freq_id = tel.to_freq_id(get_stream_id_from_metadata(chime_metadata), ind);
+    freq_id = chord_metadata->get_coarse_freq()[ind];
 
     // Set the time
-    uint64_t fpga_seq = chime_metadata->fpga_seq_num;
+    uint64_t fpga_seq = chord_metadata->get_fpga_seq_num();
 
     timespec ts;
 
     // Use the GPS time if appropriate.
     if (tel.gps_time_enabled()) {
-        ts = chime_metadata->gps_time;
+        ts = chord_metadata->get_gps_time();
     } else {
-        TIMEVAL_TO_TIMESPEC(&(chime_metadata->first_packet_recv_time), &ts);
+        timeval tv = chord_metadata->get_first_packet_recv_time();
+        TIMEVAL_TO_TIMESPEC(&tv, &ts);
     }
 
     time = std::make_tuple(fpga_seq, ts);
