@@ -1,7 +1,6 @@
 #include "chimeMetadataDump.hpp"
 
 #include "Config.hpp"
-#include "ICETelescope.hpp"
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
 #include "buffer.hpp"          // for mark_frame_empty, register_consumer, wait_for_full_frame
@@ -45,6 +44,7 @@ void chimeMetadataDump::main_thread() {
         timeval time_v = get_chord_metadata(in_buf, frame_id)->get_first_packet_recv_time();
         uint64_t lost_samples = get_chord_metadata(in_buf, frame_id)->get_lost_timesamples();
         struct timespec time_s = get_chord_metadata(in_buf, frame_id)->get_gps_time();
+        freq_id_t freq_id = get_chord_metadata(in_buf, frame_id)->get_coarse_freq()[0];
 
         char time_buf[64];
         time_t temp_time = time_v.tv_sec;
@@ -56,13 +56,12 @@ void chimeMetadataDump::main_thread() {
         struct tm* l_gps_time = gmtime(&temp_gps_time);
         strftime(gps_time_buf, sizeof(gps_time_buf), "%Y-%m-%d %H:%M:%S", l_gps_time);
 
-        INFO("Metadata for {:s}[{:d}]: FPGA Seq: {:d}, stream ID = (crate ID: {:d}, "
-             "slot ID: {:d}, link ID: {:d}, freq ID: {:d}), lost samples: {:d} freq_bin: {:d}, "
+        INFO("Metadata for {:s}[{:d}]: FPGA Seq: {:d}, stream ID = ("
+             "freq ID: {:d}), lost samples: {:d} freq_bin: {:d}, "
              "freq: {:f} MHz , time stamp: {:d}.{:06d} ({:s}.{:06d}), "
              "GPS time: {:d}.{:06d} ({:s}.{:09d})",
-             in_buf->buffer_name, frame_id, fpga_seq, stream_id.crate_id, stream_id.slot_id,
-             stream_id.link_id, stream_id.unused, lost_samples, tel.to_freq_id(encoded_stream_id),
-             tel.to_freq(encoded_stream_id), time_v.tv_sec, time_v.tv_usec, time_buf,
+             in_buf->buffer_name, frame_id, fpga_seq, lost_samples, freq_id,
+             tel.to_freq(freq_id), time_v.tv_sec, time_v.tv_usec, time_buf,
              time_v.tv_usec, time_s.tv_sec, time_s.tv_nsec, gps_time_buf, time_s.tv_nsec);
 
         in_buf->mark_frame_empty(unique_name, frame_id);
