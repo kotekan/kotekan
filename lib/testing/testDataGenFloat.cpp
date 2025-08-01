@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"          // for allocate_new_metadata_object, mark_frame_full, register_p...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "chordMetadata.hpp"
 #include "kotekanLogging.hpp"  // for DEBUG
 
 #include <assert.h>   // for assert
@@ -68,12 +68,10 @@ void testDataGenFloat::main_thread() {
             break;
 
         buf->allocate_new_metadata_object(frame_id);
-        set_fpga_seq_num(buf, frame_id, seq_num);
-        // TODO This should be dynamic/config controlled.
-        set_stream_id(buf, frame_id, {0});
+        get_chord_metadata(buf, frame_id)->set_fpga_seq_num(seq_num);
 
         gettimeofday(&now, nullptr);
-        set_first_packet_recv_time(buf, frame_id, now);
+        get_chord_metadata(buf, frame_id)->set_first_packet_recv_time(now);
 
         // std::random_device rd;
         // std::mt19937 gen(rd());
