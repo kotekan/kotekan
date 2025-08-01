@@ -5,7 +5,6 @@
 #include "Telescope.hpp"       // for Telescope, stream_t
 #include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "chordMetadata.hpp"
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "kotekanTrackers.hpp" // for KotekanTrackers
@@ -100,7 +99,6 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     }
 
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
-    stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     num_links = config.get_default<uint32_t>(unique_name, "num_links", 1);
     // TODO: rename this parameter to `num_freq_per_stream` in the config
@@ -191,19 +189,15 @@ void testDataGen::main_thread() {
             break;
 
         buf->allocate_new_metadata_object(frame_id);
-        set_fpga_seq_num(buf, frame_id, seq_num);
-        set_stream_id(buf, frame_id, stream_id);
+        get_chord_metadata(buf, frame_id)->set_fpga_seq_num(seq_num);
 
         gettimeofday(&now, nullptr);
-        set_first_packet_recv_time(buf, frame_id, now);
+        get_chord_metadata(buf, frame_id)->set_first_packet_recv_time(now);
 
-        std::shared_ptr<chordMetadata> chordmeta;
-        if (metadata_is_chord(buf, frame_id)) {
-            chordmeta = get_chord_metadata(buf, frame_id);
-            chordmeta->dims = (int)_array_shape.size();
-            for (int d = 0; d < chordmeta->dims; ++d)
-                chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
-        }
+        std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
+        chordmeta->dims = (int)_array_shape.size();
+        for (int d = 0; d < chordmeta->dims; ++d)
+            chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
 
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
