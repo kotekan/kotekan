@@ -146,7 +146,14 @@ RUN mkdir src && \
         cd src && \
         git clone --recurse-submodules --single-branch --branch v3.1.0 https://github.com/highfive-devs/highfive && \
         cd highfive && \
-        cmake -B cmake-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
+        cmake -B cmake-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DHIGHFIVE_UNIT_TESTS=OFF \
+            -DHIGHFIVE_EXAMPLES=OFF \
+            -DHIGHFIVE_BUILD_DOCS=OFF \
+            -DHIGHFIVE_TEST_HALF_FLOAT=ON \
+            && \
         cmake --build cmake-build --parallel $(nproc) && \
         cmake --install cmake-build && \
     true) && \
