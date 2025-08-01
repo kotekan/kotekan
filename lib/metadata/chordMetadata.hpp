@@ -460,6 +460,15 @@ public:
         metadata[jsonMetadata::RFI_NUM_BAD_INPUTS] = rfi_num_bad_inputs;
     }
 
+    /// The number of FPGA frames flagged as containing RFI.
+    /// NOTE: This value might contain overlap with lost samples, so it can count
+    /// missing samples as samples with RFI.  For renormalization this value
+    /// should NOT be used, use @c lost_timesamples instead.
+    /// This value will be filled even if RFI zeroing is disabled.
+    int32_t get_rfi_flagged_samples() const {
+        return metadata[jsonMetadata::RFI_FLAGGED_SAMPLES].template get<int32_t>();
+    }
+
     int32_t get_lost_timesamples() const {
         return metadata[jsonMetadata::LOST_TIMESAMPLES].template get<int32_t>();
     }
