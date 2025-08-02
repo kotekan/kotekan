@@ -442,7 +442,11 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
                         goto next_element;
                     }
                 } // end of while; input pointer is at sample.
-                std::copy_n(in, num_elements, out);
+                if (num_elements == 2) {  // allow optimization of most common case.
+                    std::copy_n(in, 2, out);
+                } else {
+                    std::copy_n(in, num_elements, out);
+                }
             next_element:
                 in += total_num_elements;
             }
