@@ -1,17 +1,15 @@
 #include "recvSingleDishVDIF.hpp"
 
 #include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, mark_frame_full, register_producer, wait_for_empt...
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO
 
-#include <atomic>     // for atomic_bool
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
 #include <stddef.h>   // for size_t
-#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

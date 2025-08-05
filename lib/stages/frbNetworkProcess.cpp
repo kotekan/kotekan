@@ -1,44 +1,37 @@
 #include "frbNetworkProcess.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
-#include "buffer.hpp"            // for wait_for_full_frame, mark_frame_empty, register_consumer
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"         // for Telescope
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "frb_functions.h"       // for FRBHeader
 #include "kotekanLogging.hpp"    // for DEBUG, INFO, WARN, FATAL_ERROR, ERROR
 #include "network_functions.hpp" // for receive_ping, send_ping
-#include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RES...
+#include "restServer.hpp"        // for restServer, HTTP_RESPONSE, connectionInstance
 #include "tx_utils.hpp"          // for add_nsec, CLOCK_ABS_NANOSLEEP, get_vlan_from_ip, parse_...
 
-#include "fmt.hpp" // for format
+#include "fmt.hpp" // for compile_string_to_view, format, format_string
 
-#include <algorithm>    // for max, max_element, copy
-#include <arpa/inet.h>  // for inet_pton, inet_ntop
+#include <algorithm>    // for max, max_element
+#include <arpa/inet.h>  // for inet_pton, htons, inet_ntop
 #include <assert.h>     // for assert
-#include <chrono>       // for operator+, operator-, seconds, steady_clock::time_point
 #include <cstring>      // for strerror, memset, size_t
 #include <errno.h>      // for errno, EINTR
-#include <exception>    // for exception
-#include <map>          // for map, map<>::mapped_type
-#include <memory>       // for allocator_traits<>::value_type
+#include <map>          // for map, operator!=, _Rb_tree_iterator
 #include <mutex>        // for mutex, unique_lock
 #include <pthread.h>    // for pthread_setaffinity_np
 #include <queue>        // for priority_queue
-#include <random>       // for mt19937, random_device, uniform_int_distribution
-#include <ratio>        // for ratio
-#include <regex>        // for match_results<>::_Base_type
+#include <random>       // for random_device, uniform_int_distribution, mt19937
 #include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>    // for runtime_error
-#include <string>       // for string
-#include <sys/select.h> // for select, FD_SET, FD_ZERO, FD_ISSET, fd_set
+#include <string>       // for basic_string, allocator, string
+#include <sys/select.h> // for FD_SET, FD_ZERO, select, FD_ISSET, fd_set
 #include <sys/socket.h> // for AF_INET, bind, socket, sendto, setsockopt, SOCK_DGRAM
 #include <sys/time.h>   // for CLOCK_MONOTONIC, CLOCK_REALTIME, timeval
 #include <thread>       // for thread
-#include <time.h>       // for clock_gettime, timespec
-#include <type_traits>  // for __success_type<>::type
+#include <time.h>       // for timespec, clock_gettime
 #include <unistd.h>     // for close
-#include <utility>      // for move, get
+#include <utility>      // for get, move, pair
 
 
 using std::string;

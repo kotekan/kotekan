@@ -1,12 +1,14 @@
 #include "FrameView.hpp"
 
-#include "metadata.hpp" // for metadataContainer
+#include "metadata.hpp" // for metadataObject
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 
+#include <cstring>   // for memcpy
+#include <memory>    // for shared_ptr, __shared_ptr_access
 #include <stdexcept> // for runtime_error
-#include <string.h>  // for memcpy
-#include <string>    // for string
+#include <string>    // for basic_string, string
+#include <vector>    // for vector
 
 FrameView::FrameView(Buffer* buf, int frame_id) :
     buffer(buf), id(frame_id), _frame(buffer->frames[id]) {}

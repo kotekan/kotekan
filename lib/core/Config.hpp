@@ -8,19 +8,21 @@
 
 #include "kotekanLogging.hpp" // for ERROR_NON_OO
 
-#include "fmt.hpp"  // for format, fmt
+#include "fmt.hpp"  // for compile_string_to_view, fmt, format, format_string
 #include "json.hpp" // for json
 
+#include <assert.h>    // for assert
+#include <cmath>       // for isinf, isnan
 #include <complex>     // for complex  // IWYU pragma: keep
 #include <cstdint>     // for int32_t
-#include <cxxabi.h>    // for __cxa_demangle
+#include <cxxabi.h>    // for __cxa_demangle, abi
 #include <exception>   // for exception
 #include <limits>      // for numeric_limits
 #include <list>        // for list
-#include <regex>       // for regex, cmatch, regex_match, sregex_token_iterator
+#include <regex>       // for regex, regex_match, cmatch, sregex_token_iterator
 #include <stdexcept>   // for runtime_error
-#include <string>      // for string, operator==, allocator, stod
-#include <type_traits> // for is_arithmetic, enable_if, is_same, is_integral, is_unsigned, conditional
+#include <string>      // for basic_string, operator==, string, char_traits, allocator
+#include <type_traits> // for conditional, is_arithmetic, is_integral, is_unsigned, enab...
 #include <typeinfo>    // for type_info
 #include <vector>      // for vector
 

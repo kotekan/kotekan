@@ -4,18 +4,17 @@
 #include "HFBFrameView.hpp"    // for HFBFrameView
 #include "HFBMetadata.hpp"     // for HFBMetadata
 #include "Stage.hpp"           // for Stage
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for state_id_t, datasetManager, dset_id_t
+#include "datasetManager.hpp"  // for datasetManager
 #include "datasetState.hpp"    // for beamState, subfreqState
 #include "kotekanLogging.hpp"  // for DEBUG, WARN
 #include "visUtil.hpp"         // for frameID
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for basic_json<>::object_t, json, basic_json, basic_json<>::v...
+#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "json.hpp" // for json
 
-#include <algorithm> // for fill, max
-#include <cstdint>   // for uint32_t
+#include <algorithm> // for max
 #include <stdexcept> // for runtime_error
 #include <utility>   // for pair
 

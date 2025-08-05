@@ -1,12 +1,11 @@
 #include "ExampleDotProduct.hpp"
 
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
 #include "kotekanLogging.hpp" // for INFO
 #include "visUtil.hpp"        // for frameID, modulo
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 
-#include <atomic>    // for atomic_bool
 #include <stdexcept> // for runtime_error
 #include <stdint.h>  // for uint8_t, uint32_t
 

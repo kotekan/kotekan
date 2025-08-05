@@ -3,13 +3,13 @@
 #include "kotekanLogging.hpp" // for ERROR_NON_OO
 #include "restServer.hpp"     // for restServer, connectionInstance
 
-#include "fmt.hpp" // for print, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, print, format, fmt
 
 #include <cmath>      // for isinf, isnan
-#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
+#include <functional> // for bind, _1, function
 #include <iterator>   // for begin, end
-#include <ostream>    // for operator<<, basic_ostream
-#include <sys/time.h> // for gettimeofday, timeval
+#include <sstream>    // for basic_ostream, operator<<, basic_ostringstream
+#include <sys/time.h> // for timeval, gettimeofday
 #include <utility>    // for pair
 
 using std::string;

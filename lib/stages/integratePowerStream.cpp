@@ -1,21 +1,17 @@
 #include "integratePowerStream.hpp"
 
 #include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "powerStreamUtil.hpp" // for IntensityPacketHeader
 
-#include <atomic>      // for atomic_bool
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function
-#include <regex>       // for match_results<>::_Base_type
+#include <functional>  // for bind, function
 #include <stdint.h>    // for uint8_t
 #include <stdlib.h>    // for malloc, calloc
 #include <string.h>    // for memcpy, memset
-#include <string>      // for string, allocator
+#include <string>      // for allocator, basic_string, string
 #include <sys/types.h> // for uint
-#include <vector>      // for vector
 
 
 using kotekan::bufferContainer;

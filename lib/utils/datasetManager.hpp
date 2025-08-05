@@ -2,31 +2,31 @@
 #define DATASET_MANAGER_HPP
 
 #include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for operator<, Hash
+#include "Hash.hpp"              // for Hash, operator<
 #include "dataset.hpp"           // for dataset
-#include "datasetState.hpp"      // for datasetState, state_uptr, _factory_aliasdatasetState
+#include "datasetState.hpp"      // for datasetState, _factory_aliasdatasetState, state_uptr
 #include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for WARN_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO, FATAL_ERROR_N...
 #include "prometheusMetrics.hpp" // for Gauge
-#include "restClient.hpp"        // for restClient::restReply, restClient
+#include "restClient.hpp"        // for restClient
 #include "restServer.hpp"        // for connectionInstance
 
-#include "fmt.hpp"  // for fmt
-#include "json.hpp" // for json, basic_json<>::object_t, basic_json, operator!=
+#include "fmt.hpp"  // for compile_string_to_view, fmt
+#include "json.hpp" // for json, operator!=, basic_json, input_adapter
 
 #include <atomic>             // for atomic, __atomic_base
-#include <chrono>             // for milliseconds
+#include <bits/chrono.h>      // for milliseconds
 #include <condition_variable> // for condition_variable
 #include <exception>          // for exception
 #include <functional>         // for function
-#include <map>                // for map, _Rb_tree_iterator, operator!=, map<>::iterator
-#include <memory>             // for unique_ptr, allocator, operator==, make_unique
+#include <map>                // for map, _Rb_tree_iterator, operator!=
+#include <memory>             // for allocator, unique_ptr, operator==, default_delete, make...
 #include <mutex>              // for mutex, unique_lock, lock_guard
 #include <optional>           // for optional
 #include <set>                // for set
 #include <stdexcept>          // for runtime_error, out_of_range
 #include <stdint.h>           // for uint32_t, int32_t, uint64_t
-#include <string>             // for string, basic_string
+#include <string>             // for basic_string, string
 #include <thread>             // for sleep_for
 #include <type_traits>        // for is_base_of, enable_if, enable_if_t
 #include <typeinfo>           // for type_info

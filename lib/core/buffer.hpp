@@ -8,19 +8,19 @@
 #ifndef KOTEKAN_BUFFER_HPP
 #define KOTEKAN_BUFFER_HPP
 
-#include "kotekanLogging.hpp"
-#include "metadata.hpp" // for metadataPool
+#include "kotekanLogging.hpp" // for kotekanLogging
+#include "metadata.hpp"       // for metadataObject, metadataPool
 
-#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
+#include "json.hpp" // for json
 
-#include <condition_variable>
-#include <map>
-#include <mutex>
-#include <stdbool.h> // for bool
-#include <stdint.h>  // for uint8_t
-#include <string>
-#include <time.h> // for size_t, timespec
-#include <vector>
+#include <condition_variable> // for condition_variable_any
+#include <map>                // for map
+#include <memory>             // for shared_ptr
+#include <mutex>              // for recursive_mutex
+#include <stdint.h>           // for uint8_t
+#include <string>             // for string, basic_string
+#include <time.h>             // for size_t
+#include <vector>             // for vector
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"

@@ -2,10 +2,10 @@
 
 #include "visUtil.hpp" // for add_nsec
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 
-#include <cmath>       // for floor, pow
-#include <memory>      // for allocator_traits<>::value_type
+#include <algorithm>   // for max
+#include <cmath>       // for pow, floor
 #include <stdexcept>   // for runtime_error
 #include <sys/types.h> // for uint
 

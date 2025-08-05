@@ -1,39 +1,39 @@
 #include "dpdkCore.hpp"
 
-#include "Config.hpp"           // for Config
-#include "ICETelescope.hpp"     // for ice_stream_id_t
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "captureHandler.hpp"   // for captureHandler
-#include "iceBoardShuffle.hpp"  // for iceBoardShuffle, iceBoardShuffle::shuffle_size
-#include "iceBoardStandard.hpp" // for iceBoardStandard
-#include "iceBoardVDIF.hpp"     // for iceBoardVDIF
-
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, basic_json<>::object_t, basic_json, basic_json<...
-
-#include <algorithm> // for copy, max
-#include <atomic>    // for atomic_bool
-// cinttypes needed by some CentOS systems.
-#include <cinttypes>               // IWYU pragma: keep
-#include <functional>              // for _Bind_helper<>::type, bind, function
+#include <algorithm>               // for max
 #include <numa.h>                  // for numa_node_of_cpu, numa_num_configured_nodes
-#include <regex>                   // for match_results<>::_Base_type
 #include <rte_branch_prediction.h> // for unlikely
 #include <rte_config.h>            // for RTE_PKTMBUF_HEADROOM
 #include <rte_eal.h>               // for rte_eal_init
 #include <rte_errno.h>             // for rte_strerror, per_lcore__rte_errno, rte_errno
-#include <rte_ether.h>             // for ether_addr
-#include <rte_launch.h>            // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore, SKIP...
+#include <rte_ether.h>             // for rte_ether_addr
+#include <rte_launch.h>            // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore, rte_...
 #include <rte_lcore.h>             // for rte_lcore_count, rte_lcore_id
-#include <rte_mbuf.h>              // for rte_mbuf, rte_pktmbuf_free, rte_pktmbuf_init, rte_pkt...
-#include <rte_mempool.h>           // for rte_mempool, rte_mempool_create, rte_mempool_free
-#include <stdexcept>               // for runtime_error
+#include <rte_mbuf.h>              // for rte_pktmbuf_free, rte_pktmbuf_init, rte_pktmbuf_pool_...
+#include <rte_mbuf_core.h>         // for rte_mbuf
+#include <rte_mempool.h>           // for rte_mempool_create, rte_mempool_free
+#include <stdint.h>                // for uint32_t, uint16_t, int32_t, uint8_t
 #include <stdio.h>                 // for fprintf, size_t, stderr
 #include <stdlib.h>                // for malloc, free
 #include <string.h>                // for strncpy, memset
 #include <sys/types.h>             // for uint
 #include <unistd.h>                // for sleep
-#include <vector>                  // for vector
+// cinttypes needed by some CentOS systems.
+#include "Config.hpp"           // for Config
+#include "ICETelescope.hpp"     // for ice_stream_id_t
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "captureHandler.hpp"   // for captureHandler
+#include "iceBoardShuffle.hpp"  // for iceBoardShuffle
+#include "iceBoardStandard.hpp" // for iceBoardStandard
+#include "iceBoardVDIF.hpp"     // for iceBoardVDIF
+
+#include "fmt.hpp"  // for compile_string_to_view, format, fmt, format_string
+#include "json.hpp" // for basic_json, iter_impl, json
+
+#include <cinttypes>  // IWYU pragma: keep
+#include <functional> // for bind, function
+#include <stdexcept>  // for runtime_error
+#include <vector>     // for vector
 
 using nlohmann::json;
 using std::string;

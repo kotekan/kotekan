@@ -1,7 +1,15 @@
 #include "ringbuffer.hpp"
 
-#include <cassert>
-#include <sstream>
+#include "kotekanLogging.hpp" // for DEBUG, INFO, DEBUG_NON_OO
+
+#include "fmt.hpp" // for compile_string_to_view, group_digits, format, format_string
+
+#include <algorithm>          // for min
+#include <cassert>            // for assert
+#include <condition_variable> // for condition_variable_any
+#include <mutex>              // for unique_lock, recursive_mutex, lock_guard
+#include <sstream>            // for char_traits, basic_ostream, operator<<, basic_ostringstream
+#include <stdexcept>          // for runtime_error
 
 typedef std::lock_guard<std::recursive_mutex> buffer_lock;
 

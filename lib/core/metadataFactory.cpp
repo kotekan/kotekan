@@ -5,19 +5,16 @@
 #include "Config.hpp"           // for Config
 #include "HFBMetadata.hpp"      // for HFBMetadata
 #include "chimeMetadata.hpp"    // for chimeMetadata
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp" // for INFO_NON_OO
-#include "metadata.hpp"       // for create_metadata_pool
-#include "oneHotMetadata.hpp"
-#include "visBuffer.hpp"
+#include "chordMetadata.hpp"    // for chordMetadata
+#include "kotekanLogging.hpp"   // for INFO_NON_OO
+#include "metadata.hpp"         // for metadataPool
+#include "oneHotMetadata.hpp"   // for oneHotMetadata
+#include "visBuffer.hpp"        // for VisMetadata
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 
-#include <exception> // for exception
-#include <regex>     // for match_results<>::_Base_type
 #include <stdexcept> // for runtime_error
 #include <stdint.h>  // for uint32_t
-#include <vector>    // for vector
 
 using json = nlohmann::json;
 using std::map;

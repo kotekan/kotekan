@@ -1,24 +1,25 @@
 #include "valve.hpp"
 
-#include "Config.hpp"
-#include "Stage.hpp"        // for Stage
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"       // for Buffer, allocate_new_metadata_object, get_num_consumers
-#include "bufferContainer.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
-#include "metadata.hpp"          // for metadataContainer
+#include "metadata.hpp"          // for metadataObject
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 #include "visUtil.hpp"           // for frameID, modulo
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 
-#include <atomic>     // for atomic_bool
 #include <cstring>    // for memcpy
 #include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint8_t
-#include <string>     // for string, allocator
+#include <string>     // for allocator, basic_string, string
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

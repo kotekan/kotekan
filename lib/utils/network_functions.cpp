@@ -2,11 +2,14 @@
 
 #include "kotekanLogging.hpp" // for DEBUG_NON_OO
 
-#include <netinet/in.h>      // for sockaddr_in, htons, ntohs
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <arpa/inet.h>       // for htons, ntohs
+#include <netinet/in.h>      // for sockaddr_in
 #include <netinet/ip.h>      // for ip, IP_MAXPACKET
 #include <netinet/ip_icmp.h> // for icmp, icmp_id, icmp_seq, ICMP_ECHO, ICMP_ECHOREPLY, ICMP_M...
-#include <sys/socket.h>      // for recvfrom, sendto
-#include <unistd.h>          // for getpid, socklen_t
+#include <sys/socket.h>      // for recvfrom, sendto, sockaddr, socklen_t
+#include <unistd.h>          // for getpid
 
 
 bool send_ping(int s, const sockaddr_in& dst, const uint16_t seq_no) {

@@ -9,16 +9,18 @@
 
 #include "FrameView.hpp"      // for FrameView
 #include "dataset.hpp"        // for dset_id_t
-#include "factory.hpp"        // for CREATE_FACTORY, FACTORY, Factory, REGISTER_NAMED_TYPE_WITH...
+#include "factory.hpp"        // for CREATE_FACTORY, FACTORY, REGISTER_NAMED_TYPE_WITH_FACTORY
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging, DEBUG
 #include "visUtil.hpp"        // for time_ctype, operator<
 
+#include "fmt.hpp" // for compile_string_to_view
+
 #include <cstdint>    // for uint32_t
 #include <functional> // for function
-#include <map>        // for map, map<>::mapped_type
+#include <map>        // for map
 #include <memory>     // for allocator, shared_ptr, __shared_ptr_access
 #include <stddef.h>   // for size_t
-#include <string>     // for string, operator+, char_traits
+#include <string>     // for string, basic_string, operator+, char_traits
 #include <tuple>      // for tie, tuple
 #include <utility>    // for pair, forward
 

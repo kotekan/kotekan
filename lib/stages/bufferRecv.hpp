@@ -11,10 +11,13 @@
 
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "bufferSend.hpp"        // for bufferFrameHeader
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, kotekanLogging
 #include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily
+
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <condition_variable> // for condition_variable
 #include <deque>              // for deque
@@ -24,7 +27,7 @@
 #include <stdint.h>           // for uint32_t, uint8_t
 #include <stdio.h>            // for size_t
 #include <string.h>           // for strerror
-#include <string>             // for string
+#include <string>             // for string, basic_string
 #include <sys/time.h>         // for timeval
 #include <thread>             // for thread
 #include <unistd.h>           // for ssize_t

@@ -9,20 +9,23 @@
 
 #include "Config.hpp"         // for Config
 #include "FrameView.hpp"      // for FrameView
+#include "Hash.hpp"           // for Hash
 #include "Telescope.hpp"      // for freq_id_t
 #include "buffer.hpp"         // for Buffer
 #include "chimeMetadata.hpp"  // for chimeMetadata
 #include "datasetManager.hpp" // for dset_id_t
-#include "visUtil.hpp"        // for cfloat
+#include "metadata.hpp"       // for metadataObject
+#include "visUtil.hpp"        // for cfloat, struct_layout
 
 #include "gsl-lite.hpp" // for span
+#include "json.hpp"     // for json
 
+#include <memory>   // for shared_ptr
 #include <set>      // for set
 #include <stdint.h> // for uint32_t, uint64_t
 #include <string>   // for string
 #include <time.h>   // for size_t, timespec
 #include <tuple>    // for tuple
-#include <utility>  // for pair
 
 
 /**

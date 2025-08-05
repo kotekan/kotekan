@@ -2,25 +2,19 @@
 
 #include "Config.hpp"          // for Config
 #include "ICETelescope.hpp"    // for ice_stream_id_t, ice_encode_stream_id
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"       // for Telescope
-#include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
-#include "visUtil.hpp"         // for frameID, current_time, modulo, ts_to_double
+#include "visUtil.hpp"         // for frameID, modulo, current_time, ts_to_double
 
-#include "fmt.hpp" // for format
+#include "fmt.hpp" // for compile_string_to_view, format, format_string
 
 #include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <regex>      // for match_results<>::_Base_type
-#include <stddef.h>   // for size_t
 #include <sys/time.h> // for gettimeofday, timeval
-#include <unistd.h>   // for sleep, usleep
-#include <vector>     // for vector
+#include <unistd.h>   // for sleep, usleep, size_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;

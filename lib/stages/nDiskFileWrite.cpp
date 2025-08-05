@@ -1,31 +1,26 @@
 #include "nDiskFileWrite.hpp"
 
 #include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for get_lost_timesamples
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 #include "util.h"              // for cp, make_raw_dirs
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 
 #include <algorithm>  // for max
-#include <atomic>     // for atomic_bool
 #include <errno.h>    // for errno
-#include <exception>  // for exception
-#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <memory>     // for allocator_traits<>::value_type
+#include <fcntl.h>    // for open, posix_fadvise, O_CREAT, O_WRONLY, POSIX_FADV_DONTNEED
+#include <functional> // for bind, function
 #include <pthread.h>  // for pthread_setaffinity_np
-#include <regex>      // for match_results<>::_Base_type
 #include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>  // for runtime_error
-#include <stdio.h>    // for fprintf, snprintf, fclose, fopen, FILE, size_t
+#include <stdio.h>    // for fprintf, snprintf, fclose, fopen, size_t, FILE
 #include <stdlib.h>   // for exit
 #include <thread>     // for thread
 #include <time.h>     // for gmtime, strftime, time, time_t
-#include <unistd.h>   // for close, write, ssize_t
+#include <unistd.h>   // for close, syncfs, write, ssize_t
 
 
 using kotekan::bufferContainer;

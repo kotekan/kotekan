@@ -1,11 +1,12 @@
 #include "ExampleConsumer.hpp"
 
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
 #include "kotekanLogging.hpp" // for INFO
 #include "visUtil.hpp"        // for frameID, modulo
 
-#include <atomic>     // for atomic_bool
-#include <functional> // for _Bind_helper<>::type, bind, function
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
 #include <stdint.h>   // for uint32_t, uint8_t
 
 // Include the classes we will be using

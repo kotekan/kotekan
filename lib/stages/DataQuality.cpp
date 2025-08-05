@@ -1,27 +1,25 @@
 #include "DataQuality.hpp"
 
-#include "Hash.hpp"              // for operator<
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "datasetManager.hpp"    // for fingerprint_t, datasetManager, dset_id_t
+#include "Hash.hpp"              // for operator<, Hash
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t, fingerprint_t
 #include "datasetState.hpp"      // for stackState
 #include "kotekanLogging.hpp"    // for FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
 #include "visBuffer.hpp"         // for VisFrameView
-#include "visUtil.hpp"           // for frameID, modulo
+#include "visUtil.hpp"           // for frameID, rstack_ctype, modulo
 
+#include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for copy, copy_backward, equal, max
-#include <atomic>     // for atomic_bool
-#include <deque>      // for deque
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <math.h>     // for pow
-#include <stdexcept>  // for out_of_range
+#include <algorithm>  // for copy, equal, max
+#include <cmath>      // for pow
+#include <functional> // for bind, function
+#include <set>        // for set
 #include <stdint.h>   // for uint32_t
 #include <string.h>   // for size_t
-#include <string>     // for string, to_string
+#include <string>     // for basic_string, allocator, to_string, operator<, string
 #include <vector>     // for vector
 
 using kotekan::bufferContainer;

@@ -10,10 +10,11 @@
 #include "Config.hpp"          // for Config
 #include "ICETelescope.hpp"    // for ice_stream_id_t
 #include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "restServer.hpp"      // for connectionInstance
 
-#include <string> // for string
+#include <string> // for string, basic_string
 
 /**
  * @class pyPlotN2

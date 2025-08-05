@@ -3,12 +3,13 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "restServer.hpp"      // for connectionInstance
 
 #include <mutex>    // for mutex
 #include <stdint.h> // for int32_t, uint8_t
-#include <string>   // for string
+#include <string>   // for string, basic_string
 
 /**
  * @class restInspectFrame

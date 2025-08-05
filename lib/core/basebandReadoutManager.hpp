@@ -11,16 +11,16 @@
 
 #include "SynchronizedQueue.hpp" // for SynchronizedQueue
 
-#include <chrono>       // for system_clock, system_clock::time_point
-#include <forward_list> // for forward_list
-#include <functional>   // for reference_wrapper
-#include <memory>       // for unique_ptr, shared_ptr
-#include <mutex>        // for mutex
-#include <stdint.h>     // for int64_t, uint32_t, uint64_t
-#include <string>       // for string
-#include <time.h>       // for size_t
-#include <utility>      // for pair
-#include <vector>       // for vector
+#include <bits/chrono.h> // for system_clock
+#include <forward_list>  // for forward_list
+#include <functional>    // for reference_wrapper
+#include <memory>        // for allocator, shared_ptr, unique_ptr
+#include <mutex>         // for mutex
+#include <stdint.h>      // for int64_t, uint32_t, uint64_t
+#include <string>        // for basic_string, string
+#include <time.h>        // for size_t
+#include <utility>       // for pair
+#include <vector>        // for vector
 
 namespace kotekan {
 

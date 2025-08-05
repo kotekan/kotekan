@@ -1,25 +1,21 @@
 #include "fullPacketDump.hpp"
 
 #include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO
-#include "restServer.hpp"      // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RESPO...
+#include "restServer.hpp"      // for HTTP_RESPONSE, connectionInstance, restServer
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 
-#include <atomic>     // for atomic_bool
 #include <errno.h>    // for errno
-#include <exception>  // for exception
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
-#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
-#include <regex>      // for match_results<>::_Base_type
-#include <stdio.h>    // for snprintf
+#include <functional> // for bind, function, _1, _2
+#include <stdio.h>    // for snprintf, size_t
 #include <stdlib.h>   // for exit, free, malloc
 #include <string.h>   // for memcpy
 #include <unistd.h>   // for close, gethostname, sleep, write, ssize_t
-#include <vector>     // for vector
 
 
 #define MAX_NUM_PACKETS 100
