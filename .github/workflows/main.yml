@@ -414,23 +414,9 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Run cmakelint
+    - name: Run lint.sh
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" tools/cmakelint.sh /code/kotekan
-
-    - name: Run black
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" black --exclude="docs|external" --check .
-
-    - name: Run clang-format
-      run: |
-        mkdir -p build-check-format
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-check-format/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ..
-        docker run "${OPTS[@]}" make clang-format
-        git diff --exit-code
+        docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan
 
   # Build a clang version of kotekan
   # Note that this build isn't working at the moment, so for now only run it upon request.
