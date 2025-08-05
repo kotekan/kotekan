@@ -134,7 +134,8 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Run iwyu
-      run: |
-        docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -i ON -d /code/kotekan
-
+    - name: Run lint.sh
+      shell: bash
+      run:
+        set -e
+        docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan

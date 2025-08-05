@@ -106,15 +106,29 @@ fi
 # clang-format
 echo "Running clang-format..."
 find $KOTEKAN_DIR -type d \( -name "build-iwyu" -name "build" -o -name "external" \) -prune -o -type f -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
-git diff --exit-code
+if ! git diff --exit-code; then
+    echo "Error: clang-format found formatting issues" >&2
+    ERROR=1
+fi
 
 # black
 echo "Running black..."
-black --exclude "/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|build-iwyu|dist|docs|external|fix_includes\.py)/" $KOTEKAN_DIR
-git diff --exit-code
+black --exclude="/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|build-iwyu|dist|docs|external|tools/iwyu)/" $KOTEKAN_DIR
+if ! git diff --exit-code; then
+    echo "Error: black found formatting issues" >&2
+    ERROR=1
+fi
 
 # cmake-list
 echo "Running cmakelint..."
-source ${KOTEKAN_DIR}/tools/cmakelint.sh ${KOTEKAN_DIR}
+if ! source ${KOTEKAN_DIR}/tools/cmakelint.sh ${KOTEKAN_DIR}; then
+    echo "Error: cmakelint failed" >&2
+    ERROR=1
+fi
+
+if [[ ${ERROR} -ne 0 ]]; then
+    echo "One or more formatting checks failed" >&2
+    exit 1
+fi
 
 exit 0

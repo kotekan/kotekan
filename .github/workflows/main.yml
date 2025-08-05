@@ -415,7 +415,9 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Run lint.sh
-      run: |
+      shell: bash
+      run:
+        set -e
         docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan
 
   # Build a clang version of kotekan
