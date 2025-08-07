@@ -1,12 +1,4 @@
-# TODO:
-# - start from 
-# - don't `apt upgrade`
-# - install all apt packages at the same time
-# - install all pip packages at the same time
-# - why gcc 12?
-# - install a specific julia version
-# - use UNIX line endings
-FROM nvidia/cuda:12.9.1-devel-ubuntu24.04
+FROM ubuntu:24.04
 
 # So tzdata package doesn't ask for user interaction
 ARG DEBIAN_FRONTEND=noninteractive
@@ -105,16 +97,18 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
         tabulate \
         wheel
 
-#        pyyaml
+# Uncomment this to check what version got installed
+# RUN python3 -m pip show <package>
+# RUN apt-cache policy <package>
 
 # We want the `python` command to point to python3
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# # CUDA / GPU tools
-# RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
-# RUN dpkg -i cuda-keyring_1.1-1_all.deb
-# RUN apt -y update && \
-#     apt-get install -y cuda-toolkit nvidia-open && apt-get clean
+# CUDA / driver installs
+RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+RUN dpkg -i cuda-keyring_1.1-1_all.deb
+RUN apt -y update && \
+    apt-get install -y cuda-toolkit nvidia-open && apt-get clean
 ENV CUDADIR=/usr/local/cuda
 ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:${LD_LIBRARY_PATH}"
 ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include"
@@ -188,16 +182,12 @@ RUN mkdir src && \
     true) && \
     rm -rf src
 
-# Julia
+# Install Julia
 RUN curl -fsSL https://install.julialang.org | sh -s -- -y
 ENV PATH="$PATH:/root/.juliaup/bin"
 
 # Update Julia...
 RUN juliaup self update && juliaup update
-
-# Uncomment this to check what version got installed
-# RUN python3 -m pip show <package>
-# RUN apt-cache policy <package>
 
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR=1
