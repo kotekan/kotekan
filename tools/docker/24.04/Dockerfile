@@ -43,14 +43,11 @@ RUN apt update && \
         liblz4-dev \
         libnuma-dev \
         libopenblas-dev \
-        libopencl-clang-17-dev \
         libssl-dev \
         libsystemd-dev \
         libxtensor-dev \
         libyaml-cpp-dev \
         make \
-        ocl-icd-opencl-dev \
-        opencl-headers \
         pkg-config \
         python3 \
         python3-dev \
@@ -110,9 +107,13 @@ RUN dpkg -i cuda-keyring_1.1-1_all.deb
 RUN apt -y update && \
     apt-get install -y cuda-toolkit nvidia-open && apt-get clean
 ENV CUDADIR=/usr/local/cuda
-ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:${LD_LIBRARY_PATH}"
-ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include"
+ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include:${CPLUS_INCLUDE_PATH}"
 ENV PATH="$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
+
+RUN apt-get install -y --no-install-recommends \
+  libopencl-clang-17-dev opencl-headers ocl-icd-opencl-dev && \
+  apt clean && apt autoclean
 
 # Install Blaze for the eigenvalue processes
 RUN mkdir src && \
