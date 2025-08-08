@@ -34,7 +34,7 @@ testDataGenFloat::testDataGenFloat(Config& config, const std::string& unique_nam
     Stage(config, unique_name, buffer_container, std::bind(&testDataGenFloat::main_thread, this)) {
 
     buf = get_buffer("network_out_buf");
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "random" || type == "ramp");
     if (type == "const" || type == "ramp")
@@ -63,11 +63,11 @@ void testDataGenFloat::main_thread() {
     int link_id = 0;
 
     while (!stop_thread) {
-        frame = (float*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+        frame = (float*)buf->wait_for_empty_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
-        allocate_new_metadata_object(buf, frame_id);
+        buf->allocate_new_metadata_object(frame_id);
         set_fpga_seq_num(buf, frame_id, seq_num);
         // TODO This should be dynamic/config controlled.
         set_stream_id(buf, frame_id, {0});
@@ -97,7 +97,7 @@ void testDataGenFloat::main_thread() {
         usleep(83000);
         DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
 
-        mark_frame_full(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_full(unique_name, frame_id);
 
         frame_id = (frame_id + 1) % buf->num_frames;
 

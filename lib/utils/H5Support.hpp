@@ -32,7 +32,7 @@ inline DataType HighFive::create_datatype<freq_ctype>() {
     f.addMember("centre", H5T_IEEE_F64LE);
     f.addMember("width", H5T_IEEE_F64LE);
     f.autoCreate();
-    return std::move(f);
+    return f;
 }
 
 template<>
@@ -41,7 +41,7 @@ inline DataType HighFive::create_datatype<time_ctype>() {
     t.addMember("fpga_count", H5T_STD_U64LE);
     t.addMember("ctime", H5T_IEEE_F64LE);
     t.autoCreate();
-    return std::move(t);
+    return t;
 }
 
 template<>
@@ -55,7 +55,7 @@ inline DataType HighFive::create_datatype<input_ctype>() {
     i.addMember("correlator_input", s32, 2);
     i.manualCreate(34);
 
-    return std::move(i);
+    return i;
 }
 
 template<>
@@ -65,7 +65,7 @@ inline DataType HighFive::create_datatype<prod_ctype>() {
     p.addMember("input_a", H5T_STD_U16LE);
     p.addMember("input_b", H5T_STD_U16LE);
     p.autoCreate();
-    return std::move(p);
+    return p;
 }
 
 template<>
@@ -74,7 +74,7 @@ inline DataType HighFive::create_datatype<cfloat>() {
     c.addMember("r", H5T_IEEE_F32LE);
     c.addMember("i", H5T_IEEE_F32LE);
     c.autoCreate();
-    return std::move(c);
+    return c;
 }
 
 template<>
@@ -83,7 +83,7 @@ inline DataType HighFive::create_datatype<rstack_ctype>() {
     c.addMember("stack", H5T_STD_U32LE);
     c.addMember("conjugate", H5T_STD_U8LE);
     c.autoCreate();
-    return std::move(c);
+    return c;
 }
 
 template<>
@@ -92,7 +92,7 @@ inline DataType HighFive::create_datatype<stack_ctype>() {
     c.addMember("prod", H5T_STD_U32LE);
     c.addMember("conjugate", H5T_STD_U8LE);
     c.autoCreate();
-    return std::move(c);
+    return c;
 }
 // \endcond
 

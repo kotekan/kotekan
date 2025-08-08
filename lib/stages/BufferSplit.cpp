@@ -13,11 +13,11 @@ REGISTER_KOTEKAN_STAGE(BufferSplit);
 
 STAGE_CONSTRUCTOR(BufferSplit) {
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     out_bufs = get_buffer_array("out_bufs");
     for (Buffer* out_buf : out_bufs)
-        register_producer(out_buf, unique_name.c_str());
+        out_buf->register_producer(unique_name);
 }
 
 BufferSplit::~BufferSplit() {}
@@ -32,20 +32,20 @@ void BufferSplit::main_thread() {
 
     while (!stop_thread) {
         for (uint32_t i = 0; i < out_bufs.size(); ++i) {
-            uint8_t* input = wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id);
+            uint8_t* input = in_buf->wait_for_full_frame(unique_name, input_frame_id);
             if (input == nullptr)
                 break;
             uint8_t* output =
-                wait_for_empty_frame(out_bufs.at(i), unique_name.c_str(), output_frame_ids.at(i));
+                out_bufs.at(i)->wait_for_empty_frame(unique_name, output_frame_ids.at(i));
             if (output == nullptr)
                 break;
 
-            safe_swap_frame(in_buf, input_frame_id, out_bufs.at(i), output_frame_ids.at(i));
+            in_buf->safe_swap_frame(input_frame_id, out_bufs.at(i), output_frame_ids.at(i));
 
-            pass_metadata(in_buf, input_frame_id, out_bufs.at(i), output_frame_ids.at(i));
+            in_buf->pass_metadata(input_frame_id, out_bufs.at(i), output_frame_ids.at(i));
 
-            mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id++);
-            mark_frame_full(out_bufs.at(i), unique_name.c_str(), output_frame_ids.at(i)++);
+            in_buf->mark_frame_empty(unique_name, input_frame_id++);
+            out_bufs.at(i)->mark_frame_full(unique_name, output_frame_ids.at(i)++);
         }
     }
 }

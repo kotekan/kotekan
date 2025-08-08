@@ -1,0 +1,31 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# Initialize a CHORD test
+#
+################################################################################
+
+---
+log_level: debug
+
+fengine_num_frames: 10
+fengine_repeat_count: 1
+
+skip_julia: false
+
+base_dir: /localhome/eschnett/data/fengine_init_chord
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_chord.j2" %}
+
+{% include "include/n2k_chord.j2" %}
+{% include "include/bb_chord.j2" %}
+{% include "include/upchan_chord.j2" %}
+{% include "include/frb_chord.j2" %}
+
+{% include "include/sources_chord.j2" %}
+{% include "include/fengine_init.j2" %}
+
+{% include "include/output_init_chord.j2" %}
+...

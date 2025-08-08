@@ -28,9 +28,9 @@ visDrop::visDrop(Config& config, const std::string& unique_name,
 
     // Setup the buffers
     buf_in = get_buffer("in_buf");
-    register_consumer(buf_in, unique_name.c_str());
+    buf_in->register_consumer(unique_name);
     buf_out = get_buffer("out_buf");
-    register_producer(buf_out, unique_name.c_str());
+    buf_out->register_producer(unique_name);
 
     drop_freqs = config.get_default<std::vector<uint32_t>>(unique_name, "freq", {});
     INFO("Dropping {:d} frequencies.", drop_freqs.size());
@@ -45,12 +45,12 @@ void visDrop::main_thread() {
 
     while (!stop_thread) {
         // Wait for data in the input buffer
-        if ((wait_for_full_frame(buf_in, unique_name.c_str(), frame_id_in)) == nullptr) {
+        if ((buf_in->wait_for_full_frame(unique_name, frame_id_in)) == nullptr) {
             break;
         }
 
         // Wait for space in the output buffer
-        if (wait_for_empty_frame(buf_out, unique_name.c_str(), frame_id_out) == nullptr) {
+        if (buf_out->wait_for_empty_frame(unique_name, frame_id_out) == nullptr) {
             break;
         }
         // Copy frame into output buffer
@@ -65,15 +65,15 @@ void visDrop::main_thread() {
                 frame.rfi_total = (uint64_t)(frame.fpga_seq_length * frac_rfi);
             } else {
                 DEBUG("Dropping frame {:d} with frequency ID {:d}.", frame_id_in, frame.freq_id);
-                mark_frame_empty(buf_in, unique_name.c_str(), frame_id_in);
+                buf_in->mark_frame_empty(unique_name, frame_id_in);
                 frame_id_in = (frame_id_in + 1) % buf_in->num_frames;
                 continue;
             }
         }
 
         // Mark output frame full and input frame empty
-        mark_frame_full(buf_out, unique_name.c_str(), frame_id_out);
-        mark_frame_empty(buf_in, unique_name.c_str(), frame_id_in);
+        buf_out->mark_frame_full(unique_name, frame_id_out);
+        buf_in->mark_frame_empty(unique_name, frame_id_in);
         // Move forward one frame
         frame_id_out = (frame_id_out + 1) % buf_out->num_frames;
         frame_id_in = (frame_id_in + 1) % buf_in->num_frames;

@@ -36,9 +36,9 @@ timeDownsample::timeDownsample(Config& config, const std::string& unique_name,
 
     // Fetch the buffers, register
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Get the number of time samples to combine
     nsamp = config.get_default<int>(unique_name, "num_samples", 2);
@@ -63,7 +63,7 @@ void timeDownsample::main_thread() {
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
-        if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
+        if ((in_buf->wait_for_full_frame(unique_name, frame_id)) == nullptr) {
             break;
         }
 
@@ -74,7 +74,7 @@ void timeDownsample::main_thread() {
         if (freq_id == -1) {
             // Enforce starting on an even sample to help with synchronisation
             if (fpga_seq_start % (nsamp * frame.fpga_seq_length) != 0) {
-                mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+                in_buf->mark_frame_empty(unique_name, frame_id++);
                 continue;
             }
             // Get parameters from first frame
@@ -97,7 +97,7 @@ void timeDownsample::main_thread() {
         if (nframes == 0 and wdw_pos != 0) {
             // Skip this frame
             skipped_frame_counter.labels({std::to_string(freq_id), "alignment"}).inc();
-            mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+            in_buf->mark_frame_empty(unique_name, frame_id++);
             continue;
         } else if (nframes == 0) { // Start accumulating frames
 
@@ -105,7 +105,7 @@ void timeDownsample::main_thread() {
             wdw_end = fpga_seq_start + wdw_len;
 
             // Wait for an empty frame
-            if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
+            if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
                 break;
             }
 
@@ -122,7 +122,7 @@ void timeDownsample::main_thread() {
 
             // Go to next frame
             nframes += 1;
-            mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+            in_buf->mark_frame_empty(unique_name, frame_id++);
             continue;
         }
 
@@ -151,7 +151,7 @@ void timeDownsample::main_thread() {
 
             // Move to next frame
             nframes += 1;
-            mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+            in_buf->mark_frame_empty(unique_name, frame_id++);
 
         } else {
 
@@ -177,7 +177,7 @@ void timeDownsample::main_thread() {
             }
             output_frame.erms /= nframes;
             // mark as full
-            mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
+            out_buf->mark_frame_full(unique_name, output_frame_id++);
             // reset accumulation and move on, starting with this frame
             nframes = 0;
         }

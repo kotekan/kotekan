@@ -38,7 +38,7 @@ public:
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/
-    const BasebandMetadata* metadata() const;
+    const std::shared_ptr<BasebandMetadata> metadata() const;
 
     size_t data_size() const override;
 
@@ -46,7 +46,7 @@ public:
 
 private:
     // References to the metadata we are viewing
-    BasebandMetadata* const _metadata;
+    std::shared_ptr<BasebandMetadata> _metadata;
 };
 
 #endif // BASEBAND_FRAME_VIEW_HPP

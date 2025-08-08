@@ -52,16 +52,16 @@ gpuSimulateCudaUpchannelize::gpuSimulateCudaUpchannelize(Config& config,
                         ngains));
     gains16.resize(gains.size());
     for (size_t i = 0; i < gains.size(); i++)
-        gains16[i] = gains[i];
+        gains16[i] = (float16_t)gains[i];
 #endif
 
     bool zero_output = config.get_default<bool>(unique_name, "zero_output", false);
     voltage_in_buf = get_buffer("voltage_in_buf");
     voltage_out_buf = get_buffer("voltage_out_buf");
-    register_consumer(voltage_in_buf, unique_name.c_str());
-    register_producer(voltage_out_buf, unique_name.c_str());
+    voltage_in_buf->register_consumer(unique_name);
+    voltage_out_buf->register_producer(unique_name);
     if (zero_output)
-        zero_frames(voltage_out_buf);
+        voltage_out_buf->zero_frames();
 }
 
 gpuSimulateCudaUpchannelize::~gpuSimulateCudaUpchannelize() {}
@@ -194,7 +194,9 @@ void upchan_simple_cxx(const float16_t* __restrict__ const W, const float16_t* _
     const int tbar0 = t0 / U;
     const int tbar1 = (t == -1 ? T / U : (tbar0 + 1));
 
+#ifdef _OPENMP
 #pragma omp parallel for collapse(5)
+#endif
     for (int f = f0; f < f1; ++f) {
         for (int p = p0; p < p1; ++p) {
             for (int d = d0; d < d1; ++d) {
@@ -228,10 +230,10 @@ void upchan_simple_cxx(const float16_t* __restrict__ const W, const float16_t* _
                             set_storage(to_array(quantize<value_t>(Ebar1, 7)));
 
                     } // tbar
-                }     // u
-            }         // d
-        }             // p
-    }                 // f
+                } // u
+            } // d
+        } // p
+    } // f
 }
 
 
@@ -250,11 +252,11 @@ void gpuSimulateCudaUpchannelize::upchan_simple_sub(std::string tag,
     float sumW = 0;
     for (int s = 0; s < M * U; ++s) {
         // sinc-Hanning window function, eqn. (11), with `N=U`
-        W.at(s) = pow(cos(float(M_PI) * (s - (M * U - 1) / 2.0f) / (M * U + 1)), 2)
-                  * sinc((s - (M * U - 1) / 2.0f) / U);
+        W.at(s) = (float16_t)(pow(cos(float(M_PI) * (s - (M * U - 1) / 2.0f) / (M * U + 1)), 2)
+                              * sinc((s - (M * U - 1) / 2.0f) / U));
         sumW += (float)W.at(s);
     }
-    float16_t sumW16;
+    float16_t sumW16 = (float16_t)sumW;
     // Normalize the window function
     for (int s = 0; s < M * U; ++s)
         // W.at(s) /= (float16_t)sumW;
@@ -275,11 +277,11 @@ void gpuSimulateCudaUpchannelize::main_thread() {
 
     while (!stop_thread) {
         int4x2_t* voltage_in =
-            (int4x2_t*)wait_for_full_frame(voltage_in_buf, unique_name.c_str(), voltage_frame_id);
+            (int4x2_t*)voltage_in_buf->wait_for_full_frame(unique_name, voltage_frame_id);
         if (voltage_in == nullptr)
             break;
         int4x2_t* voltage_out =
-            (int4x2_t*)wait_for_empty_frame(voltage_out_buf, unique_name.c_str(), output_frame_id);
+            (int4x2_t*)voltage_out_buf->wait_for_empty_frame(unique_name, output_frame_id);
         if (voltage_out == nullptr)
             break;
 
@@ -329,9 +331,9 @@ void gpuSimulateCudaUpchannelize::main_thread() {
               voltage_in_buf->buffer_name, voltage_frame_id, voltage_out_buf->buffer_name,
               output_frame_id);
 
-        pass_metadata(voltage_in_buf, voltage_frame_id, voltage_out_buf, output_frame_id);
-        mark_frame_empty(voltage_in_buf, unique_name.c_str(), voltage_frame_id);
-        mark_frame_full(voltage_out_buf, unique_name.c_str(), output_frame_id);
+        voltage_in_buf->pass_metadata(voltage_frame_id, voltage_out_buf, output_frame_id);
+        voltage_in_buf->mark_frame_empty(unique_name, voltage_frame_id);
+        voltage_out_buf->mark_frame_full(unique_name, output_frame_id);
 
         voltage_frame_id = (voltage_frame_id + 1) % voltage_in_buf->num_frames;
         output_frame_id = (output_frame_id + 1) % voltage_out_buf->num_frames;

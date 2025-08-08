@@ -5,7 +5,7 @@
 #include "buffer.hpp"            // for Buffer, get_num_full_frames, mark_frame_empty, register...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, DEBUG, WARN, INFO
-#include "metadata.h"            // for metadataContainer
+#include "metadata.hpp"          // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 
 #include "fmt.hpp" // for format, fmt
@@ -44,7 +44,7 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
         Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
 
     buf = get_buffer("buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
 
     connected = false;
     server_ip = config.get<std::string>(unique_name, "server_ip");
@@ -75,11 +75,11 @@ void bufferSend::main_thread() {
 
     while (!stop_thread) {
 
-        uint8_t* frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        uint8_t* frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
-        uint32_t num_full_frames = get_num_full_frames(buf);
+        uint32_t num_full_frames = buf->get_num_full_frames();
 
         if (drop_frames && (float)num_full_frames / (float)buf->num_frames > drop_threshold) {
             // If the number of full frames is high, then we drop some frames,
@@ -99,8 +99,10 @@ void bufferSend::main_thread() {
             int32_t n = 0;
             int32_t n_sent = 0;
 
+            auto meta = buf->get_metadata(frame_id);
+
             header.frame_size = buf->frame_size;
-            header.metadata_size = buf->metadata[frame_id]->metadata_size;
+            header.metadata_size = meta->get_serialized_size();
 
             DEBUG2("frame_size: {:d}, metadata_size: {:d}", header.frame_size,
                    header.metadata_size);
@@ -124,10 +126,14 @@ void bufferSend::main_thread() {
             // Send metadata
             DEBUG2("Sending metadata");
             n_sent = 0;
-            while ((n = send(socket_fd, &((uint8_t*)buf->metadata[frame_id]->metadata)[n_sent],
-                             header.metadata_size - n_sent, MSG_NOSIGNAL))
-                   > 0) {
-                n_sent += n;
+            {
+                char metabuf[header.metadata_size];
+                meta->serialize(metabuf);
+                while ((n = send(socket_fd, &metabuf + n_sent, header.metadata_size - n_sent,
+                                 MSG_NOSIGNAL))
+                       > 0) {
+                    n_sent += n;
+                }
             }
             if (n < 0) {
                 ERROR("Error {:s}, failed to metadata to {:s}:{:d}", strerror(errno), server_ip,
@@ -165,7 +171,7 @@ void bufferSend::main_thread() {
             continue;
         }
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;
     }
 

@@ -1,0 +1,26 @@
+# -*-yaml-*-
+
+# CHORD pathfinder simulated sources
+
+################################################################################
+
+# F-Engine simulator: Sky
+
+noise_amplitude: 1.0/3.0        # 2.3/7.5
+
+# frequency = channel * adc_frequency / num_samples_per_frame
+# frequency = channel * 0.1953125 MHz
+source_channels: []
+source_amplitudes: []
+
+# A sample FRB:
+# time in seconds, frequency in Hertz
+dispersed_source_start_time: 0.010
+dispersed_source_end_time: 0.070
+dispersed_source_start_frequency: 1500.0e+6
+dispersed_source_stop_frequency: 300.0e+6
+dispersed_source_linewidth: 1.0e+3
+dispersed_source_amplitude: 1.0
+
+source_position_ew: 0.02                    # east-west
+source_position_ns: 0.03                    # north-south

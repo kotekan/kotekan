@@ -49,7 +49,7 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
     for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
         std::string internal_name = it.key();
         std::string global_buffer_name = it.value();
-        Buffer* buf = buffer_container.get_buffer(global_buffer_name);
+        GenericBuffer* buf = buffer_container.get_generic_buffer(global_buffer_name);
         local_buffer_container.add_buffer(internal_name, buf);
     }
 
@@ -57,20 +57,19 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
     for (json::iterator it = out_bufs.begin(); it != out_bufs.end(); ++it) {
         std::string internal_name = it.key();
         std::string global_buffer_name = it.value();
-        Buffer* buf = buffer_container.get_buffer(global_buffer_name);
+        GenericBuffer* buf = buffer_container.get_generic_buffer(global_buffer_name);
         local_buffer_container.add_buffer(internal_name, buf);
     }
     INFO("GPU Process Starting...");
 }
 
 gpuProcess::~gpuProcess() {
-    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:d}"), gpu_id));
+    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:s}"), unique_name));
     for (auto& command : commands)
-        delete command;
+        for (auto& c : command)
+            delete c;
     for (auto& event : final_signals)
         delete event;
-
-    delete dev;
 }
 
 void gpuProcess::init() {
@@ -93,7 +92,8 @@ void gpuProcess::init() {
     }
 
     for (auto& buf : local_buffer_container.get_buffer_map()) {
-        register_host_memory(buf.second);
+        if (is_frame_buffer(buf.second))
+            register_host_memory(dynamic_cast<Buffer*>(buf.second));
     }
 }
 
@@ -109,19 +109,21 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
     double total_kernel_time = 0;
 
     for (auto& cmd : commands) {
-        double time = cmd->excute_time->get_avg(); //->get_last_gpu_execution_time();
+        // The multiple gpuCommand instances share a StatsTracker object, so we only need
+        // ask the first one for its stats.
+        double time = cmd[0]->excute_time->get_avg(); //->get_last_gpu_execution_time();
         double utilization = time / frame_arrival_period;
-        if (cmd->get_command_type() == gpuCommandType::KERNEL) {
+        if (cmd[0]->get_command_type() == gpuCommandType::KERNEL) {
             reply["kernel"].push_back(
-                {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
+                {{"name", cmd[0]->get_name()}, {"time", time}, {"utilization", utilization}});
             total_kernel_time += isnan(time) ? 0. : time;
-        } else if (cmd->get_command_type() == gpuCommandType::COPY_IN) {
+        } else if (cmd[0]->get_command_type() == gpuCommandType::COPY_IN) {
             reply["copy_in"].push_back(
-                {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
+                {{"name", cmd[0]->get_name()}, {"time", time}, {"utilization", utilization}});
             total_copy_in_time += isnan(time) ? 0. : time;
-        } else if (cmd->get_command_type() == gpuCommandType::COPY_OUT) {
+        } else if (cmd[0]->get_command_type() == gpuCommandType::COPY_OUT) {
             reply["copy_out"].push_back(
-                {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
+                {{"name", cmd[0]->get_name()}, {"time", time}, {"utilization", utilization}});
             total_copy_out_time += isnan(time) ? 0. : time;
         } else {
             continue;
@@ -143,8 +145,10 @@ void gpuProcess::main_thread() {
     dev->set_thread_device();
 
     restServer& rest_server = restServer::instance();
+    // unique_name starts with "/", so this path becomes something like
+    // "/gpu_profile/gpuB/gpu_0" for pipeline B running on GPU 0.
     rest_server.register_get_callback(
-        fmt::format(fmt("/gpu_profile/{:d}"), gpu_id),
+        fmt::format(fmt("/gpu_profile{:s}"), unique_name),
         std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;
@@ -152,28 +156,45 @@ void gpuProcess::main_thread() {
     bool first_run = true;
 
     while (!stop_thread) {
-        int gpu_frame_id = gpu_frame_counter % _gpu_buffer_depth;
+        int ic = gpu_frame_counter % final_signals.size();
+
+        DEBUG2("Waiting for free slot for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
+               unique_name);
+
+        // We make sure we aren't using a gpu frame that's currently in-flight.
+        final_signals[ic]->wait_for_free_slot();
+
+        // Update the gpu_frame_counter and perform any reset actions on the command object
+        // for this frame.
+        for (auto& command : commands) {
+            assert(command.size() == final_signals.size());
+            command[ic]->start_frame(gpu_frame_counter);
+        }
+
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
-        // INFO("Waiting on preconditions for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
+        DEBUG2("Waiting on preconditions for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
+               unique_name);
         for (auto& command : commands) {
-            if (command->wait_on_precondition(gpu_frame_id) != 0) {
+            if (command[ic]->wait_on_precondition() != 0) {
                 INFO("Received exit signal from GPU command precondition (Command '{:s}')",
-                     command->get_name());
+                     command[ic]->get_name());
                 goto exit_loop;
             }
         }
 
-        DEBUG("Waiting for free slot for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
-        // We make sure we aren't using a gpu frame that's currently in-flight.
-        final_signals[gpu_frame_id]->wait_for_free_slot();
-        queue_commands(gpu_frame_id, gpu_frame_counter);
+        DEBUG2("Preconditions met for GPU[{:d}][{:d}] {:s}, queuing commands", gpu_id,
+               gpu_frame_counter, unique_name);
+        // Queue the commands for this frame.  This calls execute on each commandObject.
+        queue_commands(gpu_frame_counter);
+
+        // Launch the results thread if it hasn't been launched yet.
         if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
 
-            // Requires Linux, this could possibly be made more general someday.
-            // TODO Move to config
+            // Set the CPU affinity for the results thread, uses the "cpu_affinity" from the
+            // gpuProcess config.
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
             for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
@@ -186,9 +207,8 @@ void gpuProcess::main_thread() {
         gpu_frame_counter++;
     }
 exit_loop:
-    for (auto& sig_container : final_signals) {
+    for (auto& sig_container : final_signals)
         sig_container->stop();
-    }
     INFO("Waiting for GPU packet queues to finish up before freeing memory.");
     if (results_thread_handle.joinable())
         results_thread_handle.join();
@@ -199,18 +219,19 @@ void gpuProcess::results_thread() {
     dev->set_thread_device();
 
     // Start with the first GPU frame;
-    int gpu_frame_id = 0;
+    int gpu_frame_counter = 0;
 
     while (true) {
         // Wait for a signal to be completed
-        DEBUG2("Waiting for signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id, gpu_frame_id,
-               e_time());
-        if (final_signals[gpu_frame_id]->wait_for_signal() == -1) {
+        DEBUG2("Waiting for signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id,
+               gpu_frame_counter, e_time());
+        int ic = gpu_frame_counter % final_signals.size();
+        if (final_signals[ic]->wait_for_signal() == -1) {
             // If wait_for_signal returns -1, then we don't have a signal to wait on,
             // but we have been given a shutdown request, so break this loop.
             break;
         }
-        DEBUG2("Got final signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id, gpu_frame_id,
+        DEBUG2("Got final signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id, gpu_frame_counter,
                e_time());
 
         for (auto& command : commands) {
@@ -221,24 +242,29 @@ void gpuProcess::results_thread() {
             // Two ways around this would be to have a different call for memory freeing
             // which is always called, or make sure that all finalize_frame calls can
             // run even when there is a shutdown in progress.
-            if (!stop_thread)
-                command->finalize_frame(gpu_frame_id);
+            if (!stop_thread) {
+                ic = gpu_frame_counter % command.size();
+                command[ic]->finalize_frame();
+            }
         }
-        DEBUG2("Finished finalizing frames for gpu[{:d}][{:d}]", gpu_id, gpu_frame_id);
+        DEBUG2("Finished finalizing frames for gpu[{:d}][{:d}]", gpu_id, gpu_frame_counter);
 
         if (log_profiling) {
             std::string output = "";
-            for (uint32_t i = 0; i < commands.size(); ++i) {
-                output = fmt::format(fmt("{:s}command: {:s} ({:30s}) metrics: {:s}; \n"), output,
-                                     commands[i]->get_unique_name(), commands[i]->get_name(),
-                                     commands[i]->get_performance_metric_string());
+            for (size_t i = 0; i < commands.size(); ++i) {
+                ic = gpu_frame_counter % commands[i].size();
+                output =
+                    fmt::format(fmt("{:s}command: {:s} ({:30s}) metrics: {:s}; \n"), output,
+                                commands[i][ic]->get_unique_name(), commands[i][ic]->get_name(),
+                                commands[i][ic]->get_performance_metric_string());
             }
-            INFO("GPU[{:d}] frame {:d} Profiling: \n{:s}", gpu_id, gpu_frame_id, output);
+            INFO("GPU[{:d}] frame {:d} Profiling: \n{:s}", gpu_id, gpu_frame_counter, output);
         }
 
-        final_signals[gpu_frame_id]->reset();
-
-        gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
+        DEBUG2("Resetting signal for gpu[{:d}][{:d}]", gpu_id, gpu_frame_counter);
+        ic = gpu_frame_counter % final_signals.size();
+        final_signals[ic]->reset();
+        gpu_frame_counter++;
     }
 }
 
@@ -253,7 +279,7 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
     // Draw a node for each gpuCommand
     for (auto& command : commands) {
         std::string shape;
-        switch (command->get_command_type()) {
+        switch (command[0]->get_command_type()) {
             case gpuCommandType::COPY_IN:
                 shape = "trapezium";
                 break;
@@ -272,7 +298,7 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
                 break;
         }
         dot += fmt::format("{:s}{:s}\"{:s}\" [shape={:s},label=\"{:s}\"];\n", prefix, prefix,
-                           command->get_unique_name(), shape, command->get_name());
+                           command[0]->get_unique_name(), shape, command[0]->get_name());
     }
 
     // Draw edges between gpuCommands
@@ -281,13 +307,13 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
     std::string last_item = "";
     for (auto& command : commands) {
         if (first_item) {
-            last_item = command->get_unique_name();
+            last_item = command[0]->get_unique_name();
             first_item = false;
             continue;
         }
         dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=dotted];\n", prefix, prefix,
-                           last_item, command->get_unique_name());
-        last_item = command->get_unique_name();
+                           last_item, command[0]->get_unique_name());
+        last_item = command[0]->get_unique_name();
     }
     dot += fmt::format("{:s}{:s}// end gpu command edges\n", prefix, prefix);
 
@@ -295,7 +321,7 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
     std::set<std::string> gpu_buffers;
     std::set<std::string> gpu_buffer_arrays;
     for (auto& command : commands) {
-        auto buffs = command->get_gpu_buffers();
+        auto buffs = command[0]->get_gpu_buffers();
         for (auto& buff : buffs)
             if (std::get<1>(buff))
                 gpu_buffer_arrays.insert(std::get<0>(buff));
@@ -318,23 +344,23 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
 
     // Draw I/O edges on GPU buffers
     for (auto& command : commands) {
-        auto buffs = command->get_gpu_buffers();
+        auto buffs = command[0]->get_gpu_buffers();
         for (auto& buff : buffs) {
             std::string buffname = std::get<0>(buff);
             if (std::get<2>(buff))
                 // Read
                 dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=solid];\n", prefix, prefix,
-                                   buffname, command->get_unique_name());
+                                   buffname, command[0]->get_unique_name());
             if (std::get<3>(buff))
                 // Write
                 dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=solid];\n", prefix, prefix,
-                                   command->get_unique_name(), buffname);
+                                   command[0]->get_unique_name(), buffname);
         }
     }
 
     // Add any extra DOT commands...
     for (auto& command : commands) {
-        dot += command->get_extra_dot(prefix);
+        dot += command[0]->get_extra_dot(prefix);
     }
 
     dot += fmt::format("{:s}}}\n", prefix);

@@ -16,8 +16,9 @@ using kotekan::Config;
 REGISTER_CL_COMMAND(clBeamformPhaseData);
 
 clBeamformPhaseData::clBeamformPhaseData(Config& config, const std::string& unique_name,
-                                         bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "", "") {
+                                         bufferContainer& host_buffers, clDeviceInterface& device,
+                                         int inst) :
+    clCommand(config, unique_name, host_buffers, device, inst, no_cl_command_state, "", "") {
     command_type = gpuCommandType::NOT_SET;
 
     _num_elements = config.get<int>(unique_name, "num_elements");
@@ -46,8 +47,8 @@ void clBeamformPhaseData::build() {
     start_beamform_time = time(nullptr); // Current time.
 }
 
-cl_event clBeamformPhaseData::execute(int gpu_frame_id, cl_event pre_event) {
-    gpuCommand::pre_execute(gpu_frame_id);
+cl_event clBeamformPhaseData::execute(cl_event pre_event) {
+    gpuCommand::pre_execute();
 
     time_t local_beamform_time;
     uint64_t current_seq;
@@ -57,12 +58,13 @@ cl_event clBeamformPhaseData::execute(int gpu_frame_id, cl_event pre_event) {
 
     // Update the phases only every "phase_update_period"
     //    uint32_t input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
-    //    cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    //    cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id,
+    //    _gpu_buffer_depth, input_frame_len);
 
     current_seq = get_fpga_seq_num(network_buf, gpu_frame_id);
     int64_t bankID = (current_seq / phase_update_period) % 2;
-    cl_mem phase_memory =
-        device.get_gpu_memory_array("phases", bankID, _num_elements * sizeof(float));
+    cl_mem phase_memory = device.get_gpu_memory_array("phases", bankID, _gpu_buffer_depth,
+                                                      _num_elements * sizeof(float));
 
     if (bankID != last_bankID) {
 
@@ -78,12 +80,12 @@ cl_event clBeamformPhaseData::execute(int gpu_frame_id, cl_event pre_event) {
 
         get_delays(phases[bankID], local_beamform_time);
 
-        CHECK_CL_ERROR(clEnqueueWriteBuffer(
-            device.getQueue(0), phase_memory, CL_FALSE, 0, _num_elements * sizeof(float),
-            (cl_float*)phases[bankID], 1, &pre_event, &post_events[gpu_frame_id]));
+        CHECK_CL_ERROR(clEnqueueWriteBuffer(device.getQueue(0), phase_memory, CL_FALSE, 0,
+                                            _num_elements * sizeof(float),
+                                            (cl_float*)phases[bankID], 1, &pre_event, &post_event));
 
         last_bankID = bankID;
-        return post_events[gpu_frame_id];
+        return post_event;
     }
     return pre_event;
 }

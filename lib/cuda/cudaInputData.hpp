@@ -20,25 +20,27 @@
 class cudaInputData : public cudaCommand {
 public:
     cudaInputData(kotekan::Config& config, const std::string& unique_name,
-                  kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                  kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                  int instance_num);
     ~cudaInputData();
-    int wait_on_precondition(int gpu_frame_id) override;
+    int wait_on_precondition() override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame(int frame_id) override;
+    void finalize_frame() override;
 
     std::string get_performance_metric_string() override;
 
 protected:
-    cudaEvent_t* data_staged_event;
-
     /// Name of the GPU side memory to transfer data into.
     std::string _gpu_mem;
 
-    int32_t in_buffer_id;
-    int32_t in_buffer_precondition_id;
-    int32_t in_buffer_finalize_id;
     Buffer* in_buf;
+
+    // Whether to copy the data only once (at the first iteration).
+    // This condition should be generalized to allow periodic updates.
+    bool do_once;
+    // Whether we already copied the data
+    bool did_once;
 };
 
 #endif // CUDA_INPUT_DATA_H

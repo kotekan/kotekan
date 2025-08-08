@@ -9,7 +9,7 @@
 #include "factory.hpp"        // for FACTORY
 #include "fakeGpuPattern.hpp" // for FakeGpuPattern, _factory_aliasFakeGpuPattern
 #include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
-#include "metadata.h"         // for metadataContainer
+#include "metadata.hpp"       // for metadataContainer
 #include "visUtil.hpp"        // for frameID, gpu_N2_size, modulo, operator+
 
 #include "gsl-lite.hpp" // for span
@@ -64,7 +64,7 @@ FakeGpu::FakeGpu(kotekan::Config& config, const std::string& unique_name,
     pattern = FACTORY(FakeGpuPattern)::create_unique(pattern_name, config, unique_name);
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Check that the buffer is large enough
     auto expected_frame_size = num_freq_in_frame * gpu_N2_size(num_elements, block_size);
@@ -117,17 +117,17 @@ void FakeGpu::main_thread() {
         // Test if this will be dropped or not, and only fill out the buffer
         // (and advance) if it won't
         if (drop(gen) < drop_probability) {
-            DEBUG("Dropping frame.")
+            DEBUG("Dropping frame.");
 
         } else {
 
-            int32_t* output = (int*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
+            int32_t* output = (int*)out_buf->wait_for_empty_frame(unique_name, frame_id);
             if (output == nullptr)
                 break;
 
             DEBUG("Simulating GPU buffer in {}[{}]", out_buf->buffer_name, frame_id);
 
-            allocate_new_metadata_object(out_buf, frame_id);
+            out_buf->allocate_new_metadata_object(frame_id);
             set_fpga_seq_num(out_buf, frame_id, fpga_seq);
             set_stream_id(out_buf, frame_id, {(uint64_t)freq});
 
@@ -138,15 +138,15 @@ void FakeGpu::main_thread() {
             set_dataset_id(out_buf, frame_id, dataset_id);
 
             // Fill the buffer with the specified mode
-            chimeMetadata* metadata = (chimeMetadata*)out_buf->metadata[frame_id]->metadata;
+            chimeMetadata* metadata = (chimeMetadata*)out_buf->metadata[frame_id].get();
             for (int freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
-                gsl::span<int32_t> data(output + 2 * freq_ind * nprod_gpu,
-                                        output + 2 * (freq_ind + 1) * nprod_gpu);
+                gsl_lite::span<int32_t> data(output + 2 * freq_ind * nprod_gpu,
+                                             output + 2 * (freq_ind + 1) * nprod_gpu);
                 pattern->fill(data, metadata, frame_count, freq + freq_ind);
             }
 
             // Mark full and move onto next frame...
-            mark_frame_full(out_buf, unique_name.c_str(), frame_id++);
+            out_buf->mark_frame_full(unique_name, frame_id++);
         }
 
         // Increase total frame count

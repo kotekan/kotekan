@@ -68,7 +68,7 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const std::string& unique_
         config_.get_default<uint32_t>(unique_name, "ping_dead_threshold", 30))} {
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Apply config.
     udp_frb_packet_size = config.get_default<int>(unique_name, "udp_frb_packet_size", 4272);
@@ -166,7 +166,7 @@ void frbNetworkProcess::main_thread() {
 
 
     int frame_id = 0;
-    uint8_t* packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+    uint8_t* packet_buffer = in_buf->wait_for_full_frame(unique_name, frame_id);
     if (packet_buffer == nullptr)
         return;
 
@@ -205,7 +205,7 @@ void frbNetworkProcess::main_thread() {
 
         // reading the next frame and comparing the fpga clock with the monotonic clock.
         if (count != 0) {
-            packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+            packet_buffer = in_buf->wait_for_full_frame(unique_name, frame_id);
             if (packet_buffer == nullptr)
                 break;
 
@@ -277,7 +277,7 @@ void frbNetworkProcess::main_thread() {
             }
         }
 
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+        in_buf->mark_frame_empty(unique_name, frame_id);
         frame_id = (frame_id + 1) % in_buf->num_frames;
         count++;
     }

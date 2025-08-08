@@ -195,7 +195,7 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_send_json, TestContext) {
     std::string fail_msg = fmt::format(
         fmt("Only {:d} callback functions where called (expected 3). This suggests some requests "
             "were never sent by the restClient OR the test didn't wait long enough."),
-        cb_called_count);
+        cb_called_count.load());
     BOOST_CHECK_MESSAGE(cb_called_count == 3, fail_msg);
 }
 
@@ -235,7 +235,7 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply, TestContext) {
     std::string fail_msg = fmt::format(
         fmt("Only {:d} callback functions where called (expected 2). This suggests some requests "
             "were never sent by the restClient OR the test didn't wait long enough."),
-        cb_called_count);
+        cb_called_count.load());
     BOOST_CHECK_MESSAGE(cb_called_count == 2, fail_msg);
 }
 

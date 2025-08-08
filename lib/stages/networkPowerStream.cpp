@@ -34,7 +34,7 @@ networkPowerStream::networkPowerStream(Config& config, const std::string& unique
           std::bind(&networkPowerStream::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // PER BUFFER
     times = config.get<int>(unique_name, "samples_per_data_set")
@@ -105,7 +105,7 @@ void networkPowerStream::main_thread() {
 
         while (!stop_thread) {
             // Wait for a full buffer.
-            frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+            frame = in_buf->wait_for_full_frame(unique_name, frame_id);
             if (frame == nullptr)
                 break;
 
@@ -127,14 +127,14 @@ void networkPowerStream::main_thread() {
             }
 
             // Mark buffer as empty.
-            mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+            in_buf->mark_frame_empty(unique_name, frame_id);
             frame_id = (frame_id + 1) % in_buf->num_frames;
         }
     } else if (dest_protocol == "TCP") {
         // TCP variables
         while (!stop_thread) {
             // Wait for a full buffer.
-            frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+            frame = in_buf->wait_for_full_frame(unique_name, frame_id);
             if (frame == nullptr)
                 break;
 
@@ -175,7 +175,7 @@ void networkPowerStream::main_thread() {
                 atomic_flag_clear(&socket_lock);
             }
             // Mark buffer as empty.
-            mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+            in_buf->mark_frame_empty(unique_name, frame_id);
             frame_id = (frame_id + 1) % in_buf->num_frames;
         }
 

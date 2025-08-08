@@ -1,0 +1,31 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# Run a HIRAX test
+#
+################################################################################
+
+---
+log_level: debug
+
+fengine_num_frames: 10
+fengine_repeat_count: 1
+
+skip_julia: false
+
+input_dir: /localhome/eschnett/data/fengine_init_hirax
+base_dir: /localhome/eschnett/data/fengine_test_hirax
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_hirax.j2" %}
+
+{% include "include/n2k_hirax.j2" %}
+{% include "include/bb_hirax.j2" %}
+{% include "include/upchan_hirax.j2" %}
+{% include "include/frb_hirax.j2" %}
+
+{% include "include/input_init_hirax.j2" %}
+
+{% include "include/output_test_hirax.j2" %}
+...

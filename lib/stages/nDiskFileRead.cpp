@@ -42,7 +42,7 @@ nDiskFileRead::nDiskFileRead(Config& config, const std::string& unique_name,
     starting_index = config.get<uint32_t>(unique_name, "starting_file_index");
 
     // Mark as producer
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
 }
 
 void nDiskFileRead::main_thread() {
@@ -72,12 +72,11 @@ void nDiskFileRead::file_read_thread(int disk_id) {
     unsigned int buf_id = disk_id;
     // Starting File index
     unsigned int file_index = disk_id + starting_index;
-    INFO("{:s}{:s}/{:d}/{:s}/{:07d}.vdif", disk_base, disk_set, disk_id, capture, file_index)
+    INFO("{:s}{:s}/{:d}/{:s}/{:07d}.vdif", disk_base, disk_set, disk_id, capture, file_index);
     // Endless loop
     while (!stop_thread) {
 
-        unsigned char* buf_ptr =
-            (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), buf_id);
+        unsigned char* buf_ptr = (unsigned char*)buf->wait_for_empty_frame(unique_name, buf_id);
         if (buf_ptr == nullptr)
             break;
 
@@ -105,7 +104,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
         fclose(in_file);
         INFO("{:s} Read Complete Marking Frame ID {:d} Full\n", file_name, buf_id);
 
-        mark_frame_full(buf, unique_name.c_str(), buf_id);
+        buf->mark_frame_full(unique_name, buf_id);
 
         // Go to next file
         buf_id = (buf_id + num_disks) % buf->num_frames;

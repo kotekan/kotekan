@@ -24,37 +24,72 @@ add_library(
     # Kernels
     cudaCorrelatorAstron.cpp
     cudaShuffleAstron.cu
-    cudaBasebandBeamformer.cpp
-    cudaFRBBeamformer.cpp
+    cudaBasebandBeamformer_chime.cpp
+    cudaBasebandBeamformer_chord.cpp
+    cudaBasebandBeamformer_hirax.cpp
+    cudaBasebandBeamformer_pathfinder.cpp
+    cudaCHIMEFRBBeamformer_chime_U16.cpp
+    cudaFRBBeamformer_chord_U1.cpp
+    cudaFRBBeamformer_chord_U2.cpp
+    cudaFRBBeamformer_chord_U4.cpp
+    cudaFRBBeamformer_chord_U8.cpp
+    cudaFRBBeamformer_chord_U16.cpp
+    cudaFRBBeamformer_chord_U32.cpp
+    cudaFRBBeamformer_chord_U64.cpp
+    cudaFRBBeamformer_chord_U128.cpp
+    cudaFRBBeamformer_hirax_U1.cpp
+    cudaFRBBeamformer_hirax_U2.cpp
+    cudaFRBBeamformer_hirax_U4.cpp
+    cudaFRBBeamformer_hirax_U8.cpp
+    cudaFRBBeamformer_hirax_U16.cpp
+    cudaFRBBeamformer_hirax_U32.cpp
+    cudaFRBBeamformer_hirax_U64.cpp
+    cudaFRBBeamformer_hirax_U128.cpp
+    cudaFRBBeamformer_pathfinder_U1.cpp
+    cudaFRBBeamformer_pathfinder_U2.cpp
+    cudaFRBBeamformer_pathfinder_U4.cpp
+    cudaFRBBeamformer_pathfinder_U8.cpp
+    cudaFRBBeamformer_pathfinder_U16.cpp
+    cudaFRBBeamformer_pathfinder_U32.cpp
+    cudaFRBBeamformer_pathfinder_U64.cpp
     cudaFRBBeamReformer.cpp
-    quantize_kernel_wrapper.cu
+    cudaQuantizeKernel.cu
     cudaQuantize.cpp
     cudaRechunk.cpp
-    cudaUpchannelize.cpp
-    cudaUpchannelize16k.cpp
+    cudaCopyFromRingbuffer.cpp
+    cudaCopyToRingbuffer.cpp
+    cudaTranspose2048_chime.cpp
+    cudaUpchannelizer_chime_U2.cpp
+    cudaUpchannelizer_chime_U4.cpp
+    cudaUpchannelizer_chime_U8.cpp
+    cudaUpchannelizer_chime_U16.cpp
+    cudaUpchannelizer_chime_U32.cpp
+    cudaUpchannelizer_chime_U64.cpp
+    cudaUpchannelizer_chord_U2.cpp
+    cudaUpchannelizer_chord_U4.cpp
+    cudaUpchannelizer_chord_U8.cpp
+    cudaUpchannelizer_chord_U16.cpp
+    cudaUpchannelizer_chord_U32.cpp
+    cudaUpchannelizer_chord_U64.cpp
+    cudaUpchannelizer_chord_U128.cpp
+    cudaUpchannelizer_hirax_U8.cpp
+    cudaUpchannelizer_hirax_U16.cpp
+    cudaUpchannelizer_hirax_U32.cpp
+    cudaUpchannelizer_hirax_U64.cpp
+    cudaUpchannelizer_hirax_U128.cpp
+    cudaUpchannelizer_pathfinder_U2.cpp
+    cudaUpchannelizer_pathfinder_U4.cpp
+    cudaUpchannelizer_pathfinder_U8.cpp
+    cudaUpchannelizer_pathfinder_U16.cpp
+    cudaUpchannelizer_pathfinder_U32.cpp
+    cudaUpchannelizer_pathfinder_U64.cpp
     chordMVPSetup.cpp)
 
 # C++17
 set_property(TARGET kotekan_cuda PROPERTY CUDA_STANDARD 17)
 
-find_package(GPUTILS)
-if(${GPUTILS_FOUND})
-    message("gputils support enabled")
-    find_package(N2K)
-    if(${N2K_FOUND})
-        message("n2k support enabled")
-        target_include_directories(kotekan_cuda SYSTEM PRIVATE ${N2K_INCLUDE_DIR})
-        target_link_libraries(kotekan_cuda INTERFACE ${N2K_LIBRARY})
-        target_sources(kotekan_cuda PRIVATE cudaCorrelator.cpp)
-    else()
-        message("n2k not found, support disabled in kotekan_cuda")
-    endif()
-    target_include_directories(kotekan_cuda SYSTEM PRIVATE ${GPUTILS_INCLUDE_DIR})
-    target_link_libraries(kotekan_cuda INTERFACE ${GPUTILS_LIBRARY})
-
-else()
-    message("gputils not found, support disabled in kotekan_cuda")
-endif()
+# gputils and n2k are vendorized; located in kotekan/external for now.
+target_sources(kotekan_cuda PRIVATE cudaCorrelator.cpp)
 
 target_link_libraries(
     kotekan_cuda
@@ -63,7 +98,7 @@ target_link_libraries(
 
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 
-target_include_directories(kotekan_cuda SYSTEM PUBLIC ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+target_include_directories(kotekan_cuda INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
 target_include_directories(kotekan_cuda PUBLIC .)
 
 target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-gencode

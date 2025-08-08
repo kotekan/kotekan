@@ -1,6 +1,20 @@
-# There are no symbols in this entire library, and so it is created as an INTERFACE library. If any
-# symbols are ever added it will need to be turned back into a standard CMake library
 project(kotekan_metadata)
 
-add_library(kotekan_metadata INTERFACE)
-target_include_directories(kotekan_metadata INTERFACE .)
+add_library(
+    kotekan_metadata
+    chordMetadata.cpp
+    chimeMetadata.cpp
+    HFBMetadata.cpp
+    BasebandMetadata.cpp
+    BeamMetadata.cpp
+    DataType.cpp
+    Metadata.cpp
+    NDArray.cpp
+    Symbol.cpp)
+
+target_link_libraries(kotekan_metadata PRIVATE kotekan_utils)
+target_include_directories(kotekan_metadata PUBLIC .)
+
+if(${USE_CUDA})
+    target_include_directories(kotekan_metadata INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
+endif()

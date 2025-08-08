@@ -4,7 +4,25 @@
 #include "visUtil.hpp"
 
 #include <boost/test/included/unit_test.hpp>
-#include <vector>
+#include <locale>
+
+// Use a boost::test "Global Fixture" to set the locale...
+// https://www.boost.org/doc/libs/1_75_0/libs/test/doc/html/boost_test/tests_organization/fixtures/global.html
+// Enable this in your test suite by adding:
+// BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
+struct GlobalFixture_Locale {
+    GlobalFixture_Locale() {
+        std::cout << "Setting locale (stdout)..." << std::endl;
+        BOOST_TEST_MESSAGE("Setting locale...");
+        try {
+            std::locale::global(std::locale::classic());
+        } catch (const std::exception& ex) {
+            std::cerr << "Exception setting locale (stdout)..." << ex.what() << std::endl;
+            BOOST_TEST_MESSAGE("Exception setting locale");
+        }
+    }
+    ~GlobalFixture_Locale() {}
+};
 
 struct CompareCTypes {
     void check_equal(const std::vector<input_ctype>& a, const std::vector<input_ctype>& b) {

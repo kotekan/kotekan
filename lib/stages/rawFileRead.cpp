@@ -5,7 +5,7 @@
 #include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, get_metadata_container
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO, FATAL_ERROR
-#include "metadata.h"          // for metadataContainer
+#include "metadata.hpp"        // for metadataContainer
 
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
@@ -36,7 +36,7 @@ rawFileRead::rawFileRead(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&rawFileRead::main_thread, this)) {
 
     buf = get_buffer("buf");
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
     base_dir = config.get<std::string>(unique_name, "base_dir");
     file_name = config.get<std::string>(unique_name, "file_name");
     file_ext = config.get<std::string>(unique_name, "file_ext");
@@ -105,20 +105,22 @@ void rawFileRead::main_thread() {
         for (uint32_t i = 0; i < num_frames_per_file; i++) {
 
             // Get an empty buffer to write into
-            frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+            frame = buf->wait_for_empty_frame(unique_name, frame_id);
             if (frame == nullptr)
                 break;
 
             // If metadata exists then lets read it in.
             if (metadata_size != 0) {
-                allocate_new_metadata_object(buf, frame_id);
-                metadataContainer* mc = get_metadata_container(buf, frame_id);
-                assert(metadata_size == mc->metadata_size);
-                if (fread(mc->metadata, metadata_size, 1, fp) != 1) {
+                buf->allocate_new_metadata_object(frame_id);
+                auto meta = buf->get_metadata(frame_id);
+                assert(metadata_size == meta->get_serialized_size());
+                char meta_buf[metadata_size];
+                if (fread(meta_buf, metadata_size, 1, fp) != 1) {
                     ERROR("rawFileRead: Failed to read file {:s} metadata,", full_path);
                     break;
                 }
                 INFO("rawFileRead: Read in metadata from file {:s}", full_path);
+                meta->set_from_bytes(meta_buf, metadata_size);
             }
 
             size_t bytes_read = fread((void*)frame, sizeof(char), buf->frame_size, fp);
@@ -130,7 +132,7 @@ void rawFileRead::main_thread() {
 
             INFO("rawFileRead: Read frame data from {:s} into {:s}[{:d}]", full_path,
                  buf->buffer_name, frame_id);
-            mark_frame_full(buf, unique_name.c_str(), frame_id);
+            buf->mark_frame_full(unique_name, frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
         }
 

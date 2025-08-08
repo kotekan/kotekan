@@ -8,7 +8,7 @@
 #include "buffer.hpp"             // for Buffer, mark_frame_full, allocate_new_metadata_object
 #include "chimeMetadata.hpp"      // for chimeMetadata
 #include "kotekanLogging.hpp"     // for INFO, DEBUG, WARN
-#include "metadata.h"             // for metadataContainer
+#include "metadata.hpp"           // for metadataContainer
 #include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
 #include "visUtil.hpp"            // for input_ctype, frameID, ts_to_double, modulo, parse_reor...
 
@@ -80,9 +80,9 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
         throw std::runtime_error("num_elements must be multiple of 128");
     }
 
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Ensure input buffer is long enough.
     if (in_buf->num_frames <= _num_frames_buffer) {
@@ -107,8 +107,7 @@ void basebandReadout::main_thread() {
     uint32_t freq_ids[_num_freq_per_stream];
     while (!stop_thread) {
 
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id % in_buf->num_frames)
-            == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, frame_id % in_buf->num_frames) == nullptr) {
             break;
         }
 
@@ -142,7 +141,7 @@ void basebandReadout::main_thread() {
 
         int done_frame = add_replace_frame(frame_id);
         if (done_frame >= 0) {
-            mark_frame_empty(in_buf, unique_name.c_str(), done_frame % in_buf->num_frames);
+            in_buf->mark_frame_empty(unique_name, done_frame % in_buf->num_frames);
         }
 
         frame_id++;
@@ -311,7 +310,7 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
 
         for (int frame_index = dump_start_frame; frame_index < next_frame; frame_index++) {
             int in_buf_frame = frame_index % in_buf->num_frames;
-            auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
+            auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame].get();
             frame_fpga_seq = metadata->fpga_seq_num;
 
             // if the request specified -1 for the start time, use the earliest
@@ -384,7 +383,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     const uint64_t event_id = data.event_id;
 
     int in_buf_frame = data.dump_start_frame % in_buf->num_frames;
-    auto first_meta = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
+    auto first_meta = (chimeMetadata*)in_buf->metadata[in_buf_frame].get();
 
     const uint32_t stream_freq_idx = data.stream_freq_idx;
     const uint32_t freq_id = data.freq_id;
@@ -437,7 +436,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
         }
 
         in_buf_frame = frame_index % in_buf->num_frames;
-        auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
+        auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame].get();
         uint8_t* in_buf_data = in_buf->frames[in_buf_frame];
         int64_t frame_fpga_seq = metadata->fpga_seq_num;
         int64_t in_start = std::max(data_start_fpga - frame_fpga_seq, (int64_t)0);
@@ -447,7 +446,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
             // Do we need a new output frame?
             if (out_remaining == 0) {
                 // Is there an available output frame?
-                if (!is_frame_empty(out_buf, out_frame_id)) {
+                if (!out_buf->is_frame_empty(out_frame_id)) {
                     // No, skip this frame
                     WARN("Output buffer full ({:d}). Dropping frame {:d}/{:d}", out_frame_id,
                          event_id, frame_index);
@@ -456,7 +455,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                     break;
                 }
                 // Get a pointer to the new out frame (cannot block because of the check above)
-                out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+                out_frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
                 if (out_frame == nullptr) {
                     // Skip this frame
                     WARN("Cannot get an output frame ({:d}). Dropping frame {:d}/{:d}",
@@ -469,8 +468,8 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 out_start = 0;
                 out_remaining = out_frame_samples;
 
-                allocate_new_metadata_object(out_buf, out_frame_id);
-                out_metadata = (BasebandMetadata*)get_metadata(out_buf, out_frame_id);
+                out_buf->allocate_new_metadata_object(out_frame_id);
+                out_metadata = (BasebandMetadata*)(out_buf->get_metadata(out_frame_id).get());
 
                 out_metadata->event_id = event_id;
                 out_metadata->freq_id = freq_id;
@@ -515,7 +514,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
             out_metadata->valid_to = out_start;
             out_remaining -= copy_len;
             if (out_remaining == 0) {
-                mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
+                out_buf->mark_frame_full(unique_name, out_frame_id++);
                 frame_sent_counter.inc();
             }
         }
@@ -529,7 +528,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
         DEBUG("Clearing out the remaining {} samples of the frame: {}/{} ({} bytes)", out_remaining,
               out_frame_id, out_start, (out_remaining * _num_elements));
         memset(out_frame + (out_start * _num_elements), 0, out_remaining * _num_elements);
-        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
+        out_buf->mark_frame_full(unique_name, out_frame_id++);
         frame_sent_counter.inc();
     }
 

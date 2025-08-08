@@ -5,6 +5,7 @@ add_library(
     basebandReadoutManager.cpp
     basebandApiManager.cpp
     buffer.cpp
+    ringbuffer.cpp
     bufferContainer.cpp
     bufferFactory.cpp
     Config.cpp
@@ -14,7 +15,7 @@ add_library(
     kotekanLogging.cpp
     kotekanMode.cpp
     kotekanTrackers.cpp
-    metadata.c
+    metadata.cpp
     metadataFactory.cpp
     prometheusMetrics.cpp
     restServer.cpp

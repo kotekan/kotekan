@@ -31,8 +31,8 @@ integratePowerStream::integratePowerStream(Config& config, const std::string& un
 
     in_buf = get_buffer("in_buf");
     out_buf = get_buffer("out_buf");
-    register_consumer(in_buf, unique_name.c_str());
-    register_producer(out_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
+    out_buf->register_producer(unique_name);
 
     integration_length = config.get<int>(unique_name, "integration");
 }
@@ -58,7 +58,7 @@ void integratePowerStream::main_thread() {
 
     // IntensityPacketHeader *header_in;
     while (!stop_thread) {
-        in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buf_id);
+        in_frame = in_buf->wait_for_full_frame(unique_name, in_buf_id);
         if (in_frame == nullptr)
             break;
 
@@ -77,18 +77,18 @@ void integratePowerStream::main_thread() {
             if (integrated_samples[e] >= integration_length) {
                 //                INFO("Integrated sample! {:d}", integrated_samples[e]);
                 integrated_samples[e] = 0;
-                out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_id);
+                out_frame = out_buf->wait_for_empty_frame(unique_name, out_buf_id);
                 if (out_frame == nullptr)
                     goto end_loop;
 
                 memcpy(out_frame, (char*)accum_buffer + e * packet_length, packet_length);
 
-                mark_frame_full(out_buf, unique_name.c_str(), out_buf_id);
+                out_buf->mark_frame_full(unique_name, out_buf_id);
                 out_buf_id = (out_buf_id + 1) % out_buf->num_frames;
                 memset((char*)accum_buffer + e * packet_length, 0, packet_length);
             }
         }
-        mark_frame_empty(in_buf, unique_name.c_str(), in_buf_id);
+        in_buf->mark_frame_empty(unique_name, in_buf_id);
         in_buf_id = (in_buf_id + 1) % in_buf->num_frames;
     }
 end_loop:;

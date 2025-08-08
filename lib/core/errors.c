@@ -19,7 +19,7 @@ void internal_logging_f(int log, const char* format, ...) {
     } else {
         char log_buf[__max_log_msg_len];
         (void)vsnprintf(log_buf, __max_log_msg_len, format, args);
-        fprintf(stderr, "%s\n", log_buf);
+        fprintf(stderr, "%s: %s\n", get_log_level_string(log), log_buf);
     }
     va_end(args);
 }
@@ -37,22 +37,42 @@ char* get_error_message() {
     return __err_msg;
 }
 
+// Return log level as string
+const char* get_log_level_string(int log) {
+    switch (log) {
+        case LOG_EMERG:
+            return "EMERGENCY";
+        case LOG_ALERT:
+            return "ALERT";
+        case LOG_CRIT:
+            return "CRITICAL";
+        case LOG_ERR:
+            return "ERROR";
+        case LOG_WARNING:
+            return "WARNING";
+        case LOG_NOTICE:
+            return "NOTICE";
+        case LOG_INFO:
+            return "INFO";
+        case LOG_DEBUG:
+            return "DEBUG";
+        default:
+            return "(unknown log level)";
+    }
+}
+
 // Return error code as string
 char* get_exit_code_string(enum ReturnCode code) {
 
     switch (code) {
         case CLEAN_EXIT:
             return "CLEAN_EXIT";
-            break;
         case FATAL_ERROR:
             return "FATAL_ERROR";
-            break;
         case TEST_PASSED:
             return "TEST_PASSED";
-            break;
         case TEST_FAILED:
             return "TEST_FAILED";
-            break;
         default:
             return "INVALID_CODE";
     }

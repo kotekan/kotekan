@@ -1,0 +1,109 @@
+########################################################################
+# First test of signalling-only GPU ringbuffers / multiple GPU pipelines
+########################################################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: debug
+#    log_level: info
+cpu_affinity: [2,3,4,5,8,9,10,11]
+frame_arrival_period: 0.001
+
+buffer_depth: 4
+
+# data gen:
+num_frames: 20
+
+input_size: 4
+output_size: 5
+
+ring_buffer_size: 10
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+host_in_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: input_size
+    metadata_pool: main_pool
+
+# Buffer used for signalling only, between the two GPU pipelines.
+host_signal_buffer:
+    kotekan_buffer: ring
+    #ring_buffer_size: 
+    metadata_pool: main_pool
+
+host_out_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: output_size
+    metadata_pool: main_pool
+
+gen_data:
+    kotekan_stage: testDataGen
+    type: const8
+    values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] #, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    #    array_shape: [64, 16]
+    #dim_name: ["X", "Y"]
+    out_buf: host_in_buffer
+
+gpuA:
+    #profiling: true
+    #log_profiling: true
+    kernel_path: "../../lib/cuda/kernels/"
+    commands: &command_list
+    - name: cudaCopyToRingbuffer
+      in_buf: host_in
+      signal_buf: host_sig
+      gpu_mem_output: ringbuf
+    - name: cudaSyncInput
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        commands: *command_list
+        in_buffers:
+            host_in: host_in_buffer
+        out_buffers:
+            host_sig: host_signal_buffer
+
+gpuB:
+    log_level: debug2
+    #profiling: true
+    #log_profiling: true
+    kernel_path: "../../lib/cuda/kernels/"
+    commands: &command_list2
+    #- name: cudaInputData
+    #  in_buf: host_mid
+    - name: cudaCopyFromRingbuffer
+      #output_size: 
+      #ring_buffer_size:
+      gpu_mem_input: ringbuf
+      gpu_mem_output: chunk
+      host_signal: host_sig
+    - name: cudaSyncOutput
+    - name: cudaOutputData
+      gpu_mem: chunk
+      out_buf: host_out
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        commands: *command_list2
+        in_buffers:
+            host_sig: host_signal_buffer
+        out_buffers:
+            host_out: host_out_buffer
+
+# print:
+#     kotekan_stage: hexDump
+#     in_buf: host_out_buffer
+#     len: 20
+print:
+    kotekan_stage: printSparseUint8
+    input_buf: host_out_buffer
+    max_to_print: 30

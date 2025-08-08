@@ -1,0 +1,126 @@
+# -*-yaml-*-
+
+# HIRAX F-Engine setup
+
+################################################################################
+
+# Dishes
+
+num_dish_locations_ew: 16
+num_dish_locations_ns: 16
+num_dish_locations: num_dish_locations_ew * num_dish_locations_ns
+dish_separation_ew: 6.5         # [m] east-west
+dish_separation_ns: 8.5         # [m] north-south
+num_dishes: 256
+
+dish_indices: [
+      0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
+     16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+     32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+     48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+     64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
+     80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,
+     96, 97, 98, 99,100,101,102,103,104,105,106,107,108,109,110,111,
+    112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,
+    128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,
+    144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,
+    160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,
+    176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,
+    192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,
+    208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,
+    224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,
+    240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,
+]
+
+# HIRAX:
+#             quantity   frequency    east-west   east-west   north-south   north-south
+# 
+#   angular resolution     400 MHz     7.2 mrad       0.41°      5.5 mrad         0.32°
+#   angular resolution     800 MHz     3.6 mrad       0.21°      2.8 mrad         0.16°
+#        field of view     400 MHz   115.3 mrad       6.61°     88.2 mrad         5.05°
+#        field of view     800 MHz    57.7 mrad        3.3°     44.1 mrad         2.53°
+
+host_dish_positions_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_float32 * 2 * num_dishes
+    metadata_pool: main_pool
+
+################################################################################
+
+# ADC
+
+adc_frequency: 1.6e+9           # [Hz]
+
+################################################################################
+
+# PFB
+
+num_taps: 4
+num_samples_per_frame: 4096
+
+num_frequencies: 64        # 2048 frequencies / 16 gpus * 50% coverage
+# The frequency channels we keep.
+#     A channel's frequency is   freq = channel * adc_frequency / num_samples_per_frame
+#     Note that   channel = freq = 0   is the DC channel.
+#     Channel 1024 has 400 MHz for CHIME, channel 2048 has 800 MHz.
+#     There are 2.56 channels per MHz, with a channel width of 390625 Hz.
+# (These particular channels were chosen with a fixed step size between these channel boundaries.)
+frequency_channels: [
+    1024, 1040, 1056, 1072, 1088, 1104, 1120, 1136, 1152, 1168, 1184, 1200, 1216, 1232, 1248, 1264,
+    1280, 1296, 1312, 1328, 1344, 1360, 1376, 1392, 1408, 1424, 1440, 1456, 1472, 1488, 1504, 1520,
+    1536, 1552, 1568, 1584, 1600, 1616, 1632, 1648, 1664, 1680, 1696, 1712, 1728, 1744, 1760, 1776,
+    1792, 1808, 1824, 1840, 1856, 1872, 1888, 1904, 1920, 1936, 1952, 1968, 1984, 2000, 2016, 2032,
+]
+
+################################################################################
+
+# Input frames
+
+num_times: 16384
+
+################################################################################
+
+# Buffers
+
+host_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_dishes * num_polarizations * num_frequencies * num_times
+    metadata_pool: main_pool
+host_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times
+    metadata_pool: main_pool
+
+host_expected_bb_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
+    metadata_pool: main_pool
+
+host_expected_frb1_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+    metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+run_send_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_buffer_in: host_voltage_buffer
+        out_buffers:
+            host_voltage_ringbuffer_out: host_voltage_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_dishes * num_polarizations * num_frequencies * num_times
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_voltage_buffer_in
+          signal_buf: host_voltage_ringbuffer_out
+          gpu_mem_output: voltage_buffer

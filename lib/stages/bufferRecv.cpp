@@ -5,7 +5,7 @@
 #include "buffer.hpp"            // for Buffer, allocate_new_metadata_object, buffer_free, buff...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "bufferSend.hpp"        // for bufferFrameHeader
-#include "metadata.h"            // for metadataPool
+#include "metadata.hpp"          // for metadataPool
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
 #include "util.h"                // for string_tail
 #include "visUtil.hpp"           // for current_time
@@ -63,7 +63,7 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
 
     buf = get_buffer("buf");
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
 }
 
 bufferRecv::~bufferRecv() {}
@@ -308,7 +308,7 @@ int bufferRecv::get_next_frame() {
 
     // If the frame is full for some reason (items not being consumed fast enough)
     // Then return -1;
-    if (drop_frames && is_frame_empty(buf, current_frame_id) == 0) {
+    if (drop_frames && buf->is_frame_empty(current_frame_id) == 0) {
         return -1;
     }
 
@@ -330,15 +330,16 @@ std::string bufferRecv::dot_string(const std::string& prefix) const {
 
 connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                            const std::string& client_ip, int port, struct timeval read_timeout) :
-    producer_name(producer_name),
-    buf(buf), buffer_recv(buffer_recv), client_ip(client_ip), port(port),
-    read_timeout(read_timeout) {
+    producer_name(producer_name), buf(buf), buffer_recv(buffer_recv), client_ip(client_ip),
+    port(port), read_timeout(read_timeout) {
 
     frame_space = buffer_malloc(buf->aligned_frame_size, buf->numa_node, buf->use_hugepages,
                                 buf->mlock_frames, false);
     CHECK_MEM(frame_space);
 
-    metadata_space = (uint8_t*)malloc(buf->metadata_pool->metadata_object_size);
+    auto meta = buf->metadata_pool->request_metadata_object();
+    metadata_size = meta->get_serialized_size();
+    metadata_space = (uint8_t*)malloc(metadata_size);
     CHECK_MEM(metadata_space);
 }
 
@@ -420,8 +421,7 @@ void connInstance::internal_read_callback() {
                         close_instance();
                         return;
                     }
-                    if (buf->metadata_pool->metadata_object_size
-                        != buf_frame_header.metadata_size) {
+                    if (metadata_size != buf_frame_header.metadata_size) {
                         ERROR("Metadata size does not match between server and client!");
                         decrement_ref_count();
                         close_instance();
@@ -477,22 +477,22 @@ void connInstance::internal_read_callback() {
             } else {
                 // This call cannot be blocking because we checked that
                 // the frame is empty in get_next_frame()
-                uint8_t* frame = wait_for_empty_frame(buf, producer_name.c_str(), frame_id);
+                uint8_t* frame = buf->wait_for_empty_frame(producer_name, frame_id);
                 if (frame == nullptr)
                     return;
 
-                allocate_new_metadata_object(buf, frame_id);
+                buf->allocate_new_metadata_object(frame_id);
 
                 // Swap the frame pointers
-                frame_space = swap_external_frame(buf, frame_id, frame_space);
+                frame_space = buf->swap_external_frame(frame_id, frame_space);
 
                 // We could also swap the metadata,
                 // but this is more complex, and mucher lower overhead to just memcpy here.
-                void* metadata = get_metadata(buf, frame_id);
-                if (metadata != nullptr)
-                    memcpy(metadata, metadata_space, buf_frame_header.metadata_size);
+                std::shared_ptr<metadataObject> metadata = buf->get_metadata(frame_id);
+                if (metadata)
+                    metadata->set_from_bytes((char*)metadata_space, metadata_size);
 
-                mark_frame_full(buf, producer_name.c_str(), frame_id);
+                buf->mark_frame_full(producer_name, frame_id);
 
                 // Save a prometheus metric of the elapsed time
                 double elapsed = current_time() - start_time;

@@ -80,7 +80,7 @@ VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique
 
     // Setup the input vector
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Check if any of the old buffer files exist
     // Remove them, if they do
@@ -277,7 +277,12 @@ void VisSharedMemWriter::write_to_memory(const VisFrameView& frame, uint32_t tim
     // first write the metadata, then the data, then the valid byte
     // add valid_size amount of padding
     *buf_write_pos = valid;
-    memcpy(buf_write_pos + valid_size, frame.metadata(), rbs.metadata_size);
+    // Serialize metadata
+    auto meta = frame.metadata();
+    size_t sz = meta->get_serialized_size();
+    assert(sz == rbs.metadata_size);
+    meta->serialize((char*)(buf_write_pos + valid_size));
+    // Serialize data
     memcpy(buf_write_pos + rbs.metadata_size + valid_size, frame.data(), rbs.data_size);
 
     // Document the fpga sequence counter for that frame in the access record
@@ -321,7 +326,7 @@ void VisSharedMemWriter::main_thread() {
 
     // Set up the structure of the ring buffer shared memory
     // Get one frame for reference
-    wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+    in_buf->wait_for_full_frame(unique_name, frame_id);
 
     auto frame = VisFrameView(in_buf, frame_id);
 
@@ -356,7 +361,8 @@ void VisSharedMemWriter::main_thread() {
     // Calculate the ring buffer structure
 
     rbs.data_size = frame.data_size();
-    rbs.metadata_size = sizeof(VisMetadata);
+    auto meta = frame.metadata();
+    rbs.metadata_size = meta->get_serialized_size();
     // Aligns the frame along page size
     rbs.frame_size = _member_alignment(rbs.data_size + rbs.metadata_size + valid_size, alignment);
 
@@ -386,7 +392,7 @@ void VisSharedMemWriter::main_thread() {
 
 
         // Wait for the buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, frame_id) == nullptr) {
             break;
         }
 
@@ -429,6 +435,6 @@ void VisSharedMemWriter::main_thread() {
 
 
         // marks the buffer and moves on
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+        in_buf->mark_frame_empty(unique_name, frame_id++);
     }
 }

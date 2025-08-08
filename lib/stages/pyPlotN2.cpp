@@ -40,7 +40,7 @@ pyPlotN2::pyPlotN2(Config& config, const std::string& unique_name,
 
 {
     buf = get_buffer("in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
     gpu_id = config.get<int>(unique_name, "gpu_id");
     in_local = (unsigned char*)malloc(buf->frame_size);
     endpoint = unique_name + "/plot_corr_matrix/" + std::to_string(gpu_id);
@@ -69,7 +69,7 @@ void pyPlotN2::main_thread() {
     while (!stop_thread) {
 
         // This call is blocking.
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -82,13 +82,13 @@ void pyPlotN2::main_thread() {
             memcpy(in_local, frame, buf->frame_size);
             stream_id = ice_get_stream_id_t(buf, frame_id);
 
-            mark_frame_empty(buf, unique_name.c_str(), frame_id);
+            buf->mark_frame_empty(unique_name, frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
 
             std::thread thr = std::thread(&pyPlotN2::make_plot, this);
             thr.detach();
         } else {
-            mark_frame_empty(buf, unique_name.c_str(), frame_id);
+            buf->mark_frame_empty(unique_name, frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
         }
     }

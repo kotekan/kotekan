@@ -306,6 +306,7 @@ public:
 
     /// Pointer to local memory for storing the metadata of the incoming frame.
     uint8_t* metadata_space;
+    size_t metadata_size;
 
     /// Lock to make sure only one instance of this jobs call backs is run at any one time.
     std::mutex instance_lock;

@@ -12,7 +12,9 @@
 #define VIS_UTIL_HPP
 
 
-#include "Config.hpp" // for Config
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for float16_t
+#include "Telescope.hpp"
 #include "buffer.hpp" // for Buffer
 
 #include "fmt.hpp"      // for format_context, formatter
@@ -42,14 +44,6 @@
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
-
-#if defined(WITH_CUDA)
-#include <cuda_fp16.h>
-using float16_t = __half;
-#define KOTEKAN_FLOAT16 1
-#else
-#define KOTEKAN_FLOAT16 0
-#endif
 
 /// Aliased type for storing the layout of members in a struct
 /// The first element of the pair is the total struct size, the second is a map
@@ -165,6 +159,14 @@ inline bool operator<(const time_ctype& a, const time_ctype& b) {
 inline bool operator>(const time_ctype& a, const time_ctype& b) {
     return (a.fpga_count > b.fpga_count);
 }
+
+// JSON <--> timespec
+void to_json(nlohmann::json& j, const timespec& t);
+void from_json(const nlohmann::json& j, timespec& t);
+
+// JSON <--> stream_t
+void to_json(nlohmann::json& j, const stream_t& t);
+void from_json(const nlohmann::json& j, stream_t& t);
 
 // Conversions of the index types to json
 void to_json(nlohmann::json& j, const freq_ctype& f);
@@ -395,7 +397,7 @@ inline constexpr uint32_t gpu_N2_size(uint32_t N, uint32_t block) {
  * @param output    Region of memory to write into.
  */
 void copy_vis_triangle(const int32_t* inputdata, const std::vector<uint32_t>& inputmap,
-                       size_t block, size_t N, gsl::span<cfloat> output);
+                       size_t block, size_t N, gsl_lite::span<cfloat> output);
 
 
 /**

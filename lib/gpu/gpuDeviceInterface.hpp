@@ -3,7 +3,7 @@
 
 #include "Config.hpp"
 #include "kotekanLogging.hpp" // for kotekanLogging
-#include "metadata.h"
+#include "metadata.hpp"
 
 #include <map> // for map
 #include <mutex>
@@ -16,7 +16,7 @@ struct gpuMemoryBlock {
     std::vector<void*> gpu_pointers;
     // store the "real" pointers to allow windowed buffer views
     std::vector<void*> gpu_pointers_to_free;
-    std::vector<metadataContainer*> metadata_pointers;
+    std::vector<std::shared_ptr<metadataObject>> metadata_pointers;
     size_t len;
     // if this is a view, the target of that view; used only for metadata
     std::string view_source;
@@ -32,8 +32,8 @@ struct gpuMemoryBlock {
 class gpuDeviceInterface : public kotekan::kotekanLogging {
 public:
     /// Constructor
-    gpuDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
-                       int gpu_buffer_depth);
+    gpuDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id);
+
     /// Destructor
     virtual ~gpuDeviceInterface();
 
@@ -45,7 +45,8 @@ public:
      * NOTE: if accessing an existing named region then len must match the existing
      * length or the system will throw an assert.
      */
-    void* get_gpu_memory_array(const std::string& name, const uint32_t index, const size_t len);
+    void* get_gpu_memory_array(const std::string& name, const uint32_t index,
+                               const uint32_t buffer_depth, const size_t len);
 
     /**
      * @brief Same as get_gpu_memory_array but gets just one gpu memory buffer
@@ -80,7 +81,7 @@ public:
      */
     void create_gpu_memory_array_view(const std::string& source_name, const size_t source_len,
                                       const std::string& view_name, const size_t view_offset,
-                                      const size_t view_len);
+                                      const size_t view_len, const uint32_t buffer_depth);
 
     /**
      * @brief Creates a chunk of GPU memory that is a view on another GPU
@@ -93,12 +94,37 @@ public:
                                  const size_t view_len);
 
     /**
+     * @brief Creates a large GPU memory chunk, and then multiple
+     * views into that memory chunk that look like a GPU memory array.
+     * This method should be called once during setup.  After this has
+     * been called, *get_gpu_memory* for the "source" name will return
+     * the full memory chunk, and *get_gpu_memory_array* for the
+     * "view" name will return a view into the full memory chunk,
+     * where adjacent array indices are contiguous.
+     *
+     * The "source" singleton and "dest" array each have their own
+     * metadata objects.
+     *
+     * @param source_name like the "name" of get_gpu_memory, the
+     *   name of the "real" GPU memory array.
+     * @param source_len  the size in bytes of the "real" GPU memory array.
+     * @param view_name   the name of the view onto the "real" GPU memory array.
+     * @param view_offset the offset in bytes of the views.
+     * @param view_len the length in bytes of the views.  *view_offset*
+     *   + *view_len* * gpu_buffer_depth must be <= *source_len*.
+     */
+    void create_gpu_memory_ringbuffer(const std::string& source_name, const size_t source_len,
+                                      const std::string& view_name, const size_t view_offset,
+                                      const size_t view_len, const uint32_t buffer_depth);
+
+    /**
      * @brief Fetches the metadata (if any) attached to the given GPU
      * memory array element.  Return NULL if no metadata.
      * @param name  the name of the GPU buffer whose metadata you want
      * @param index the GPU buffer array index
      */
-    metadataContainer* get_gpu_memory_array_metadata(const std::string& name, const uint32_t index);
+    std::shared_ptr<metadataObject> get_gpu_memory_array_metadata(const std::string& name,
+                                                                  const uint32_t index);
 
     /**
      * @brief Allocates a new metadata object (from the given pool)
@@ -107,28 +133,19 @@ public:
      * @param index the GPU buffer array index
      * @param pool  the pool that will be used to create the metadata object
      */
-    metadataContainer* create_gpu_memory_array_metadata(const std::string& name,
-                                                        const uint32_t index, metadataPool* pool);
+    std::shared_ptr<metadataObject>
+    create_gpu_memory_array_metadata(const std::string& name, const uint32_t index,
+                                     std::weak_ptr<metadataPool> pool);
 
     /**
      * @brief Attaches the given metadata to this GPU array element,
-     * incrementing the reference count.  This should be accompanied
-     * by a *release_gpu_memory_array_metadata* call to release the
-     * reference count.
+     *
      * @param name  the name of the GPU buffer whose metadata you want to create
      * @param index the GPU buffer array index
-     * @param mc    the metadata container whose ref count will get increased
+     * @param mc    the metadata
      */
     void claim_gpu_memory_array_metadata(const std::string& name, const uint32_t index,
-                                         metadataContainer* mc);
-
-    /**
-     * @brief Releases a claim on a metadata object (including a newly
-     * created metadata object) attached to the given GPU array
-     * element.  Does nothing if no metadata object has been attached
-     * to this GPU array element.
-     */
-    void release_gpu_memory_array_metadata(const std::string& name, const uint32_t index);
+                                         std::shared_ptr<metadataObject> mc);
 
     // Can't do this in the destructor because only the derived classes know
     // how to free their memory. To be moved into distinct objects...
@@ -136,21 +153,21 @@ public:
 
     /// This function sets the thread specific variables needed for the GPU API
     /// For example CUDA requires the GPU ID be set per thread
-    virtual void set_thread_device(){};
+    virtual void set_thread_device() {};
 
     /// Returns the GPU ID handled by this device object
     int get_gpu_id() {
         return gpu_id;
     }
 
-    /// Returns the gpu buffer depth
-    int get_gpu_buffer_depth() {
-        return gpu_buffer_depth;
-    }
-
 protected:
     virtual void* alloc_gpu_memory(size_t len) = 0;
     virtual void free_gpu_memory(void*) = 0;
+
+    // This is used internally - when a GPU array is actually a view on another array,
+    // then we forward metadata requests, but only if the view is the same size as the
+    // original -- so that array-size metadata are still correct.
+    bool is_view_of_same_size(const std::string& name);
 
     // Extra data
     kotekan::Config& config;
@@ -158,7 +175,6 @@ protected:
 
     // Config variables
     int gpu_id;
-    uint32_t gpu_buffer_depth;
 
 private:
     std::map<std::string, gpuMemoryBlock> gpu_memory;

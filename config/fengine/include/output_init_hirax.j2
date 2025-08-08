@@ -1,0 +1,183 @@
+# -*-yaml-*-
+
+# HIRAX output initial conditions
+
+################################################################################
+
+# Output
+
+write_data:
+    # base_dir:
+    write_dish_positions:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_dish_positions_buffer
+        file_name: dish_positions
+    write_voltage:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_voltage_buffer
+        file_name: voltage
+        max_frames: 10
+    write_bb_beam_positions:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_bb_beam_positions_buffer
+        file_name: bb_beam_positions
+    write_bb_phase:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_bb_phase_buffer
+        file_name: bb_phase
+    write_bb_shift:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_bb_shift_buffer
+        file_name: bb_shift
+    write_expected_bb_beams:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_expected_bb_beams_buffer
+        file_name: expected_bb_beams
+    # write_upchan_U2_gain:
+    #     kotekan_stage: asdfFileWrite
+    #     in_buf: host_upchan_U2_gain_buffer
+    #     file_name: upchan_U2_gain
+    # write_upchan_U4_gain:
+    #     kotekan_stage: asdfFileWrite
+    #     in_buf: host_upchan_U4_gain_buffer
+    #     file_name: upchan_U4_gain
+    write_upchan_U8_gain:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_upchan_U8_gain_buffer
+        file_name: upchan_U8_gain
+    write_upchan_U16_gain:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_upchan_U16_gain_buffer
+        file_name: upchan_U16_gain
+    write_upchan_U32_gain:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_upchan_U32_gain_buffer
+        file_name: upchan_U32_gain
+    # write_upchan_U64_gain:
+    #     kotekan_stage: asdfFileWrite
+    #     in_buf: host_upchan_U64_gain_buffer
+    #     file_name: upchan_U64_gain
+    # write_frb1_U1_phase:
+    #     kotekan_stage: asdfFileWrite
+    #     in_buf: host_frb1_U1_phase_buffer
+    #     file_name: frb1_U1_phase
+    # write_frb1_U2_phase:
+    #     kotekan_stage: asdfFileWrite
+    #     in_buf: host_frb1_U2_phase_buffer
+    #     file_name: frb1_U2_phase
+    # write_frb1_U4_phase:
+    #     kotekan_stage: asdfFileWrite
+    #     in_buf: host_frb1_U4_phase_buffer
+    #     file_name: frb1_U4_phase
+    write_frb1_U8_phase:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_frb1_U8_phase_buffer
+        file_name: frb1_U8_phase
+    write_frb1_U16_phase:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_frb1_U16_phase_buffer
+        file_name: frb1_U16_phase
+    write_frb1_U32_phase:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_frb1_U32_phase_buffer
+        file_name: frb1_U32_phase
+    # write_frb1_U64_phase:
+    #     kotekan_stage: asdfFileWrite
+    #     in_buf: host_frb1_U64_phase_buffer
+    #     file_name: frb1_U64_phase
+    write_frb2_phase:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_frb2_phase_buffer
+        file_name: frb2_phase
+    # write_expected_frb1_beams:
+    #     kotekan_stage: asdfFileWrite
+    #     in_buf: host_expected_frb1_beams_buffer
+    #     file_name: expected_frb1_beams
+
+write_data2:
+    # base_dir:
+    write_dish_positions:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_dish_positions_buffer
+        file_name: dish_positions
+    write_voltage:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_voltage_buffer
+        file_name: voltage
+        max_frames: 10
+    write_bb_beam_positions:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_bb_beam_positions_buffer
+        file_name: bb_beam_positions
+    write_bb_phase:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_bb_phase_buffer
+        file_name: bb_phase
+    write_bb_shift:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_bb_shift_buffer
+        file_name: bb_shift
+    write_expected_bb_beams:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_expected_bb_beams_buffer
+        file_name: expected_bb_beams
+    # write_upchan_U2_gain:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_upchan_U2_gain_buffer
+    #     file_name: upchan_U2_gain
+    # write_upchan_U4_gain:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_upchan_U4_gain_buffer
+    #     file_name: upchan_U4_gain
+    write_upchan_U8_gain:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_upchan_U8_gain_buffer
+        file_name: upchan_U8_gain
+    write_upchan_U16_gain:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_upchan_U16_gain_buffer
+        file_name: upchan_U16_gain
+    write_upchan_U32_gain:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_upchan_U32_gain_buffer
+        file_name: upchan_U32_gain
+    # write_upchan_U64_gain:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_upchan_U64_gain_buffer
+    #     file_name: upchan_U64_gain
+    # write_frb1_U1_phase:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_frb1_U1_phase_buffer
+    #     file_name: frb1_U1_phase
+    # write_frb1_U2_phase:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_frb1_U2_phase_buffer
+    #     file_name: frb1_U2_phase
+    # write_frb1_U4_phase:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_frb1_U4_phase_buffer
+    #     file_name: frb1_U4_phase
+    write_frb1_U8_phase:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_frb1_U8_phase_buffer
+        file_name: frb1_U8_phase
+    write_frb1_U16_phase:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_frb1_U16_phase_buffer
+        file_name: frb1_U16_phase
+    write_frb1_U32_phase:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_frb1_U32_phase_buffer
+        file_name: frb1_U32_phase
+    # write_frb1_U64_phase:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_frb1_U64_phase_buffer
+    #     file_name: frb1_U64_phase
+    write_frb2_phase:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_frb2_phase_buffer
+        file_name: frb2_phase
+    # write_expected_frb1_beams:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_expected_frb1_beams_buffer
+    #     file_name: expected_frb1_beams

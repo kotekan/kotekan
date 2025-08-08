@@ -32,8 +32,7 @@ REGISTER_VIS_FILE("raw", visFileRaw);
 //
 visFileRaw::visFileRaw(const std::string& name, const kotekan::logLevel log_level,
                        const std::map<std::string, std::string>& metadata, dset_id_t dataset,
-                       size_t max_time, int oflags) :
-    _name(name) {
+                       size_t max_time, int oflags) : _name(name) {
     set_log_level(log_level);
 
     INFO("Creating new output file {:s}", name);
@@ -98,7 +97,7 @@ visFileRaw::visFileRaw(const std::string& name, const kotekan::logLevel log_leve
     // Calculate the file structure
     data_size = VisFrameView::calculate_frame_size(ninput, nvis, num_ev);
 
-    metadata_size = sizeof(VisMetadata);
+    metadata_size = VisMetadata().get_serialized_size();
     frame_size = _member_alignment(data_size + metadata_size + 1, alignment * 1024);
 
     // Write the structure into the file for decoding
@@ -157,7 +156,7 @@ void visFileRaw::flush_raw_async(int ind) {
     size_t n = nfreq * frame_size;
     sync_file_range(fd, ind * n, n, SYNC_FILE_RANGE_WRITE);
 #else
-    (void)ind;      // Suppress warning
+    (void)ind; // Suppress warning
 #endif
 }
 
@@ -169,7 +168,7 @@ void visFileRaw::flush_raw_sync(int ind) {
                         | SYNC_FILE_RANGE_WAIT_AFTER);
     posix_fadvise(fd, ind * n, n, POSIX_FADV_DONTNEED);
 #else
-    (void)ind;      // Suppress warning
+    (void)ind; // Suppress warning
 #endif
 }
 
@@ -237,6 +236,10 @@ void visFileRaw::write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameV
     off_t offset = (time_ind * nfreq + freq_ind) * frame_size;
 
     write_raw(offset, 1, &ONE);
-    write_raw(offset + 1, metadata_size, frame.metadata());
+    char metabuf[metadata_size];
+    auto meta = frame.metadata();
+    assert(meta->get_serialized_size() == metadata_size);
+    meta->serialize(metabuf);
+    write_raw(offset + 1, metadata_size, metabuf);
     write_raw(offset + 1 + metadata_size, data_size, frame.data());
 }

@@ -1,4 +1,4 @@
-project(MurmurHash3)
+project(MODP_B64)
 
 add_library(modp_b64 modp_b64.cpp)
 target_include_directories(modp_b64 INTERFACE .)

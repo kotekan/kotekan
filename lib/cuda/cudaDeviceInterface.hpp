@@ -11,6 +11,8 @@
 #include "cuda_runtime_api.h"
 #include "gpuDeviceInterface.hpp"
 
+#include <cuda.h>
+
 /**
  * @class cudaDeviceInterface
  * @brief Class to handle CUDA interactions with GPU hardware.
@@ -25,8 +27,13 @@
  */
 class cudaDeviceInterface final : public gpuDeviceInterface {
 public:
-    cudaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
-                        int gpu_buffer_depth);
+    /**
+     * @brief Get/create a cudaDeviceInterface for the given gpu_id.
+     */
+    static std::shared_ptr<cudaDeviceInterface> get(int32_t gpu_id, const std::string& name,
+                                                    kotekan::Config& config);
+
+    cudaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id);
     ~cudaDeviceInterface();
 
     void prepareStreams(uint32_t num_streams);
@@ -51,8 +58,8 @@ public:
      * @param copy_end_event The event at the end of the copy.
      */
     void async_copy_host_to_gpu(void* dst, void* src, size_t len, uint32_t cuda_stream_id,
-                                cudaEvent_t pre_event, cudaEvent_t& copy_start_event,
-                                cudaEvent_t& copy_end_event);
+                                cudaEvent_t pre_event, cudaEvent_t* copy_start_event,
+                                cudaEvent_t* copy_end_event);
 
     /**
      * @brief Asynchronous Copies memory from the device GPU (global memory) to host (CPU RAM).
@@ -66,17 +73,39 @@ public:
      * @param copy_end_event The event at the end of the copy.
      */
     void async_copy_gpu_to_host(void* dst, void* src, size_t len, uint32_t cuda_stream_id,
-                                cudaEvent_t pre_event, cudaEvent_t& copy_start_event,
-                                cudaEvent_t& copy_end_event);
+                                cudaEvent_t pre_event, cudaEvent_t* copy_start_event,
+                                cudaEvent_t* copy_end_event);
+
+    /**
+     * @brief Builds a list of kernels from the file with name: @c kernel_file_name
+     *
+     * @param kernel_names Vector list of kernel names in the kernel file
+     * @param opts         List of options to pass to nvrtc
+     **/
+    virtual void build(const std::string& kernel_filename,
+                       const std::vector<std::string>& kernel_names,
+                       const std::vector<std::string>& opts);
+
+    virtual void build_ptx(const std::string& kernel_filename,
+                           const std::vector<std::string>& kernel_names,
+                           const std::vector<std::string>& opts,
+                           const std::string& kernel_name_prefix = "");
+
+    // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
+    std::map<std::string, CUfunction> runtime_kernels;
+
+    // Mutex for queuing GPU commands
+    std::recursive_mutex gpu_command_mutex;
 
 protected:
     void* alloc_gpu_memory(size_t len) override;
     void free_gpu_memory(void*) override;
 
-    // Extra data
+    // Cuda Streams
     std::vector<cudaStream_t> streams;
 
-private:
+    // Singleton dictionary
+    static std::map<int, std::shared_ptr<cudaDeviceInterface>> inst_map;
 };
 
 #endif // CUDA_DEVICE_INTERFACE_H

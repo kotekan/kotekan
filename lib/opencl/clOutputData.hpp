@@ -6,21 +6,16 @@
 class clOutputData : public clCommand {
 public:
     clOutputData(kotekan::Config& config, const std::string& unique_name,
-                 kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
+                 kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
+                 int instance_num);
     ~clOutputData();
-    int wait_on_precondition(int gpu_frame_id) override;
-    virtual cl_event execute(int buf_frame_id, cl_event pre_event) override;
-    void finalize_frame(int frame_id) override;
+    int wait_on_precondition() override;
+    virtual cl_event execute(cl_event pre_event) override;
+    void finalize_frame() override;
 
 protected:
-    int32_t output_buffer_execute_id;
-    int32_t output_buffer_precondition_id;
-
     Buffer* output_buffer;
     Buffer* network_buffer;
-
-    int32_t output_buffer_id;
-    int32_t network_buffer_id;
 
 private:
     // Common configuration values (which do not change in a run)

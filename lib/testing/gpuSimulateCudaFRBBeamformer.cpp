@@ -30,8 +30,8 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
                            const int4x2_t* __restrict__ const E, float16_t* __restrict__ const I,
                            const int t_hot, const int p_hot, const int f_hot, const int d_hot);
 #else
-//#warning No float16 -- cannot simulate FRB beamformer!
-// Fake it so that some variables declared in the rest of the code still work!
+// #warning No float16 -- cannot simulate FRB beamformer!
+//  Fake it so that some variables declared in the rest of the code still work!
 typedef int16_t float16_t;
 #endif
 
@@ -72,12 +72,12 @@ gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(Config& config,
 
     voltage_buf = get_buffer("voltage_in_buf");
     phase_buf = get_buffer("phase_in_buf");
-    register_consumer(voltage_buf, unique_name.c_str());
-    register_consumer(phase_buf, unique_name.c_str());
+    voltage_buf->register_consumer(unique_name);
+    phase_buf->register_consumer(unique_name);
     beamgrid_buf = get_buffer("beams_out_buf");
-    register_producer(beamgrid_buf, unique_name.c_str());
+    beamgrid_buf->register_producer(unique_name);
     if (zero_output)
-        zero_frames(beamgrid_buf);
+        beamgrid_buf->zero_frames();
 }
 
 gpuSimulateCudaFRBBeamformer::~gpuSimulateCudaFRBBeamformer() {}
@@ -94,15 +94,14 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
 
     while (!stop_thread) {
         int4x2_t* voltage =
-            (int4x2_t*)wait_for_full_frame(voltage_buf, unique_name.c_str(), voltage_frame_id);
+            (int4x2_t*)voltage_buf->wait_for_full_frame(unique_name, voltage_frame_id);
         if (voltage == nullptr)
             break;
-        float16_t* phase =
-            (float16_t*)wait_for_full_frame(phase_buf, unique_name.c_str(), phase_frame_id);
+        float16_t* phase = (float16_t*)phase_buf->wait_for_full_frame(unique_name, phase_frame_id);
         if (phase == nullptr)
             break;
         float16_t* output =
-            (float16_t*)wait_for_empty_frame(beamgrid_buf, unique_name.c_str(), beamgrid_frame_id);
+            (float16_t*)beamgrid_buf->wait_for_empty_frame(unique_name, beamgrid_frame_id);
         if (output == nullptr)
             break;
 
@@ -152,17 +151,17 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
               voltage_buf->buffer_name, voltage_frame_id, beamgrid_buf->buffer_name,
               beamgrid_frame_id);
 
-        pass_metadata(voltage_buf, voltage_frame_id, beamgrid_buf, beamgrid_frame_id);
-        mark_frame_empty(voltage_buf, unique_name.c_str(), voltage_frame_id);
-        mark_frame_full(beamgrid_buf, unique_name.c_str(), beamgrid_frame_id);
+        voltage_buf->pass_metadata(voltage_frame_id, beamgrid_buf, beamgrid_frame_id);
+        voltage_buf->mark_frame_empty(unique_name, voltage_frame_id);
+        beamgrid_buf->mark_frame_full(unique_name, beamgrid_frame_id);
 
         voltage_frame_id = (voltage_frame_id + 1) % voltage_buf->num_frames;
         beamgrid_frame_id = (beamgrid_frame_id + 1) % beamgrid_buf->num_frames;
 
         // Check for available phase & shift frames and advance if they're ready!
         int next_frame = (phase_frame_id + 1) % phase_buf->num_frames;
-        if (is_frame_empty(phase_buf, next_frame) == 0) {
-            mark_frame_empty(phase_buf, unique_name.c_str(), phase_frame_id);
+        if (phase_buf->is_frame_empty(next_frame) == 0) {
+            phase_buf->mark_frame_empty(unique_name, phase_frame_id);
             phase_frame_id = next_frame;
         }
     }
@@ -223,7 +222,7 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
             assert(E1[d]);
     }
 
-    //#pragma omp parallel for
+    // #pragma omp parallel for
     for (int freq = f0; freq < f1; ++freq) {
 
         float I1[(2 * M) * (2 * N)];
@@ -289,7 +288,7 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
                         // I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
                         // Freq varies slowest
                         I[p + 2 * M * q + 2 * M * 2 * N * tds + 2 * M * 2 * N * NT * freq] =
-                            I1[p + 2 * M * q];
+                            (float16_t)I1[p + 2 * M * q];
                 tds += 1;
                 t_running = 0;
                 for (int q = 0; q < 2 * N; ++q)
@@ -306,7 +305,7 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
                     // I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
                     // Freq varies slowest
                     I[p + 2 * M * q + 2 * M * 2 * N * tds + 2 * M * 2 * N * NT * freq] =
-                        I1[p + 2 * M * q];
+                        (float16_t)I1[p + 2 * M * q];
         }
 
     } // for freq

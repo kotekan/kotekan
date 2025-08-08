@@ -83,7 +83,7 @@ private:
     Buffer* out_buf;
 
     /// View of the output frame data.
-    gsl::span<float> out_hfb;
+    gsl_lite::span<float> out_hfb;
 
     /// Config variables
     uint32_t _num_frames_to_integrate;

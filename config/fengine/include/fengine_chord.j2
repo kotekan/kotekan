@@ -1,0 +1,134 @@
+# -*-yaml-*-
+
+# CHORD F-Engine setup
+
+################################################################################
+
+# Dishes
+
+num_dish_locations_ew: 24        # east-west
+num_dish_locations_ns: 24        # north-south
+num_dish_locations: num_dish_locations_ns * num_dish_locations_ew
+dish_separation_ew: 6.3          # [m] east-west
+dish_separation_ns: 8.5          # [m] north-south
+num_dishes: 512
+
+# The actual dishes live on an 22x24 grid.
+dish_indices: [
+    -1,-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  0,  1,  2,  3,  4,  5,
+    -1,-1,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+    -1,-1, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+    -1,-1, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
+    -1,-1, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93,
+    -1,-1, 94, 95, 96, 97, 98, 99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,
+    -1,-1,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,
+    -1,-1,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,
+    -1,-1,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,
+    -1,-1,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,
+    -1,-1,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,
+    -1,-1,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,
+    -1,-1,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,
+    -1,-1,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,
+    -1,-1,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,
+    -1,-1,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332,333,334,335,
+    -1,-1,336,337,338,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,
+    -1,-1,358,359,360,361,362,363,364,365,366,367,368,369,370,371,372,373,374,375,376,377,378,379,
+    -1,-1,380,381,382,383,384,385,386,387,388,389,390,391,392,393,394,395,396,397,398,399,400,401,
+    -1,-1,402,403,404,405,406,407,408,409,410,411,412,413,414,415,416,417,418,419,420,421,422,423,
+    -1,-1,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,
+    -1,-1,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,465,466,467,
+    -1,-1,468,469,470,471,472,473,474,475,476,477,478,479,480,481,482,483,484,485,486,487,488,489,
+    -1,-1,490,491,492,493,494,495,496,497,498,499,500,501,502,503,504,505,506,507,508,509,510,511,
+]
+
+# CHORD:
+#             quantity   frequency    east-west   east-west   north-south   north-south
+# 
+#   angular resolution     300 MHz     7.2 mrad       0.41°      4.9 mrad         0.28°
+#   angular resolution    1500 MHz     1.4 mrad       0.08°      1.0 mrad         0.06°
+#        field of view     300 MHz   158.6 mrad       9.09°    117.6 mrad         6.74°
+#        field of view    1500 MHz    31.7 mrad       1.82°     23.5 mrad         1.35°
+
+host_dish_positions_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_float32 * 2 * num_dishes
+    metadata_pool: main_pool
+
+################################################################################
+
+# ADC
+
+adc_frequency: 3.2e+9           # [Hz]
+
+################################################################################
+
+# PFB
+
+num_taps: 4
+num_samples_per_frame: 16384
+
+num_frequencies: 48       # 8192 frequencies / 128 gpus * 75% coverage
+# The frequency channels we keep.
+#     A channel's frequency is   freq = channel * adc_frequency / num_samples_per_frame
+#     Note that   channel = freq = 0   is the DC channel.
+#     Channel 1536 has 300 MHz for CHORD, channel 7680 has 1500 MHz.
+#     There are 5.12 channels per MHz, with a channel width of 195312.5 Hz.
+# (These particular channels were chosen with a fixed step size between these channel boundaries.)
+frequency_channels: [
+    1536, 1664, 1792, 1920, 2048, 2176, 2304, 2432, 2560, 2688, 2816, 2944, 3072, 3200, 3328, 3456,
+    3584, 3712, 3840, 3968, 4096, 4224, 4352, 4480, 4608, 4736, 4864, 4992, 5120, 5248, 5376, 5504,
+    5632, 5760, 5888, 6016, 6144, 6272, 6400, 6528, 6656, 6784, 6912, 7040, 7168, 7296, 7424, 7552,
+]
+
+################################################################################
+
+# Input frames
+
+num_times: 8192
+
+################################################################################
+
+# Buffers
+
+host_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_dishes * num_polarizations * num_frequencies * num_times
+    metadata_pool: main_pool
+host_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times
+    metadata_pool: main_pool
+
+host_expected_bb_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
+    metadata_pool: main_pool
+
+host_expected_frb1_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+    metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+run_send_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_buffer_in: host_voltage_buffer
+        out_buffers:
+            host_voltage_ringbuffer_out: host_voltage_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_dishes * num_polarizations * num_frequencies * num_times
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_voltage_buffer_in
+          signal_buf: host_voltage_ringbuffer_out
+          gpu_mem_output: voltage_buffer

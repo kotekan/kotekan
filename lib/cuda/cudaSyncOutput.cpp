@@ -6,9 +6,10 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaSyncOutput);
 
 cudaSyncOutput::cudaSyncOutput(Config& config, const std::string& unique_name,
-                               bufferContainer& host_buffers, cudaDeviceInterface& device) :
+                               bufferContainer& host_buffers, cudaDeviceInterface& device,
+                               int inst) :
     // Call the "subclassers" version of the cudaSyncStream constructor
-    cudaSyncStream(config, unique_name, host_buffers, device, true) {
+    cudaSyncStream(config, unique_name, host_buffers, device, inst, true) {
     // Sync on all compute streams (all streams >= 2)
     DEBUG("Number of streams: {:d}", device.get_num_streams());
     std::vector<int32_t> streams;

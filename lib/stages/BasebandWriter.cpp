@@ -31,8 +31,7 @@ REGISTER_KOTEKAN_STAGE(BasebandWriter);
 
 BasebandWriter::BasebandWriterDestination::BasebandWriterDestination(const std::string& file_name,
                                                                      const uint32_t& frame_size) :
-    file(file_name, frame_size),
-    last_updated(current_time()) {}
+    file(file_name, frame_size), last_updated(current_time()) {}
 
 
 BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
@@ -42,9 +41,6 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
     _root_path(config.get_default<std::string>(unique_name, "root_path", ".")),
     _dump_timeout(config.get_default<double>(unique_name, "dump_timeout", 60)),
     _max_frames_per_second(config.get_default<double>(unique_name, "max_frames_per_second", 0)),
-    _frame_size(config.get<uint32_t>(unique_name, "samples_per_data_set")
-                    * config.get<uint32_t>(unique_name, "num_elements")
-                + sizeof(BasebandMetadata)),
     in_buf(get_buffer("in_buf")), write_in_progress_metric(Metrics::instance().add_gauge(
                                       "kotekan_baseband_writeout_in_progress", unique_name)),
     active_event_dumps_metric(
@@ -53,7 +49,11 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
         Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name)),
     bytes_written_metric(
         Metrics::instance().add_counter("kotekan_writer_bytes_total", unique_name)) {
-    register_consumer(in_buf, unique_name.c_str());
+    size_t metadata_size = BasebandMetadata().get_serialized_size();
+    _frame_size = config.get<uint32_t>(unique_name, "samples_per_data_set")
+                      * config.get<uint32_t>(unique_name, "num_elements")
+                  + metadata_size;
+    in_buf->register_consumer(unique_name);
 }
 
 
@@ -61,12 +61,12 @@ void BasebandWriter::main_thread() {
     frameID frame_id(in_buf);
     std::thread closing_thread(&BasebandWriter::close_old_events, this);
 
-    std::chrono::time_point<std::chrono::steady_clock> period_start;
+    auto period_start = std::chrono::steady_clock::now();
     unsigned int frames_in_period = 0;
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, frame_id) == nullptr) {
             break;
         }
 
@@ -76,7 +76,7 @@ void BasebandWriter::main_thread() {
         const auto now = std::chrono::steady_clock::now();
         const std::chrono::duration<double> diff = now - period_start;
         if (diff > std::chrono::seconds(1)) {
-            DEBUG("Restart step count ({:.3f} s)", diff);
+            DEBUG("Restart step count ({:.3f} s)", diff.count());
             period_start = now;
             frames_in_period = 1;
         } else {
@@ -102,7 +102,7 @@ void BasebandWriter::main_thread() {
         }
 
         // Mark the buffer and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+        in_buf->mark_frame_empty(unique_name, frame_id++);
     }
 
     stop_closing.notify_one();
@@ -155,7 +155,7 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
         DEBUG("Written frame with event id {:d} and freq {:d} to {:s}", event_id, freq_id,
               file_name);
 
-        bytes_written_metric.inc(frame.data_size() + sizeof(BasebandMetadata));
+        bytes_written_metric.inc(frame.data_size() + metadata->get_serialized_size());
 
         // Update average write time in prometheus
         write_time.add_sample(elapsed);

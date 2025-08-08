@@ -157,14 +157,15 @@ class clBeamformPhaseData : public clCommand {
 public:
     /// Constructor, no logic added.
     clBeamformPhaseData(kotekan::Config& config, const std::string& unique_name,
-                        kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
+                        kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
+                        int instance_num);
     /// Allocate size for phases arrays and initialize start_beamform_time and last_bankID.
     virtual void build() override;
     /// Enqueues a new array of phases on the gpu. Phases are updated every "phase period" (1
     /// second) by referencing a "phase bank" array that stores two arrays of phases and enqueues
     /// either based on the fpga sequence number of the current buffer and buffer_ID. (Sequence
     /// number for CHIME is 2.56us).
-    virtual cl_event execute(int gpu_frame_id, cl_event pre_event) override;
+    virtual cl_event execute(cl_event pre_event) override;
 
 protected:
     /** The get_delays method is called in execute to determine the current phase delays to store in

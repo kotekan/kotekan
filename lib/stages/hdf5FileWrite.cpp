@@ -8,7 +8,7 @@
 #include "chordMetadata.hpp"   // for chordMetadata
 #include "errors.h"
 #include "kotekanLogging.hpp"    // for ERROR, INFO
-#include "metadata.h"            // for metadataContainer
+#include "metadata.hpp"          // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "visUtil.hpp"           // for current_time
 
@@ -45,7 +45,7 @@ hdf5FileWrite::hdf5FileWrite(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&hdf5FileWrite::main_thread, this)) {
 
     buf = get_buffer("in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
     _base_dir = config.get<std::string>(unique_name, "base_dir");
     _file_name = config.get<std::string>(unique_name, "file_name");
     _prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
@@ -68,7 +68,7 @@ void hdf5FileWrite::main_thread() {
     while (!stop_thread) {
 
         // This call is blocking.
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -109,18 +109,16 @@ void hdf5FileWrite::main_thread() {
         }
 
         // Write the metadata to file
-        struct metadataContainer* mc = get_metadata_container(buf, frame_id);
-        if (mc != nullptr) {
-            const uint32_t metadata_size = mc->metadata_size;
-
+        std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
+        if (mc) {
             // There should be a metadata tag, or this should be a proper C++ class hierarchy.
-            if (metadata_size == sizeof(chimeMetadata)) {
-                const chimeMetadata* const md = (const chimeMetadata*)mc->metadata;
+            if (metadata_is_chime(mc)) {
+                std::shared_ptr<chimeMetadata> md = get_chime_metadata(mc);
                 {
                     const hid_t space = H5Screate(H5S_SCALAR);
                     if (space < 0)
                         ERROR("Could not create data space");
-                    const hid_t attr = H5Acreate(group, "fpga_seq_num", H5T_STD_I64LE, space,
+                    const hid_t attr = H5Acreate(group, "fpga_seq_num", H5T_NATIVE_INT64, space,
                                                  H5P_DEFAULT, H5P_DEFAULT);
                     if (attr < 0)
                         ERROR("Could not create attribute");
@@ -141,50 +139,71 @@ void hdf5FileWrite::main_thread() {
         // Write the contents of the buffer frame to file
 
         hid_t type = -1;
+        std::size_t type_size = 0;
         hid_t space = -1;
 
-        if (metadata_container_is_chord(mc)) {
+        if (metadata_is_chord(mc)) {
             // We have proper CHORD metadata and know the buffer type and shape
-            const chordMetadata& metadata = *static_cast<const chordMetadata*>(mc->metadata);
+            const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
 
-            switch (metadata.type) {
+            switch (metadata->type) {
                 case int4p4:
-                    type = H5T_STD_U8LE;
+                case int4p4chime:
+                    type = H5T_NATIVE_UINT8;
+                    type_size = 1;
                     break;
                 case int8:
-                    type = H5T_STD_I8LE;
+                    type = H5T_NATIVE_INT8;
+                    type_size = 1;
+                    break;
+                case int16:
+                    type = H5T_NATIVE_INT16;
+                    type_size = 2;
+                    break;
+                case int32:
+                    type = H5T_NATIVE_INT32;
+                    type_size = 4;
+                    break;
+                case int64:
+                    type = H5T_NATIVE_INT64;
+                    type_size = 8;
                     break;
                 case float16:
                     // TODO: Define HDF5 float16 type
-                    type = H5T_STD_U16LE;
+                    type = H5T_NATIVE_UINT16;
+                    type_size = 2;
                     break;
                 case float32:
-                    static_assert(sizeof(float) == 4);
                     type = H5T_NATIVE_FLOAT;
+                    type_size = 4;
+                    break;
+                case float64:
+                    type = H5T_NATIVE_DOUBLE;
+                    type_size = 8;
                     break;
                 default:
                     ERROR("Unsupported metadata type");
             }
 
-            const int rank = metadata.dims;
+            const int rank = metadata->dims;
             if (rank < 0)
                 ERROR("Negative number of metadata dimensions");
             hsize_t dims[CHORD_META_MAX_DIM];
             for (int d = 0; d < rank; ++d) {
-                dims[d] = metadata.dim[d];
+                dims[d] = metadata->dim[d];
             }
             hsize_t np = 1;
             for (int d = 0; d < rank; ++d) {
                 np *= dims[d];
             }
-            if (buf->frame_size != np)
+            if (buf->frame_size != np * type_size)
                 ERROR("Buffer frame size is different from total metadata array length");
             space = H5Screate_simple(rank, dims, dims);
 
         } else {
             // We don't have proper CHORD metadata and don't know the buffer type and shape
 
-            type = H5T_STD_U8LE;
+            type = H5T_NATIVE_UINT8;
             const int rank = 1;
             hsize_t dims[1];
             dims[0] = buf->frame_size;
@@ -196,12 +215,41 @@ void hdf5FileWrite::main_thread() {
         if (space < 0)
             ERROR("Illegal HDF5 data space");
 
-        const hid_t dataset =
-            H5Dcreate(group, buf->buffer_name, type, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        const hid_t dataset = H5Dcreate(group, buf->buffer_name.c_str(), type, space, H5P_DEFAULT,
+                                        H5P_DEFAULT, H5P_DEFAULT);
         if (dataset < 0)
             ERROR("Could not create HDF5 dataset");
 
-        herr_t herr = H5Dwrite(dataset, H5T_NATIVE_UINT8, space, space, H5P_DEFAULT, frame);
+        if (metadata_is_chord(mc)) {
+            // Write dimension names
+            const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
+
+            hid_t dim_name_type = H5Tcreate(H5T_STRING, CHORD_META_MAX_DIMNAME);
+            if (dim_name_type < 0)
+                ERROR("Could not create HDF5 datatype for dim_name");
+            const hsize_t dim_name_dims[1]{static_cast<hsize_t>(metadata->dims)};
+            hid_t dim_name_space = H5Screate_simple(1, dim_name_dims, nullptr);
+            if (dim_name_space < 0)
+                ERROR("Could not create HDF5 dataspace for dim_name");
+            hid_t dim_name_attr = H5Acreate2(dataset, "dim_name", dim_name_type, dim_name_space,
+                                             H5P_DEFAULT, H5P_DEFAULT);
+            if (dim_name_attr < 0)
+                ERROR("Could not create HDF5 attribute for dim_name");
+            herr_t herr = H5Awrite(dim_name_attr, dim_name_type, metadata->dim_name);
+            if (herr < 0)
+                ERROR("Could not write HDF5 attribute for dim_name");
+            herr = H5Aclose(dim_name_attr);
+            if (herr < 0)
+                ERROR("Could not close HDF5 attribute for dim_name");
+            herr = H5Sclose(dim_name_space);
+            if (herr < 0)
+                ERROR("Could not close HDF5 dataspace for dim_name");
+            herr = H5Tclose(dim_name_type);
+            if (herr < 0)
+                ERROR("Could not close HDF5 datatype for dim_name");
+        }
+
+        herr_t herr = H5Dwrite(dataset, type, space, space, H5P_DEFAULT, frame);
         if (herr < 0)
             ERROR("Could not write HDF5 dataset");
 
@@ -220,7 +268,7 @@ void hdf5FileWrite::main_thread() {
         if (herr < 0)
             ERROR("Could not flush HDF5 file");
 
-        INFO("Data file write done for {:s}", full_path.c_str());
+        INFO("Data file write done for {:s} {:d}", full_path.c_str(), frame_ctr);
 
         ++frame_ctr;
 
@@ -238,7 +286,7 @@ void hdf5FileWrite::main_thread() {
         double elapsed = current_time() - st;
         write_time_metric.set(elapsed);
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
 
         frame_id = (frame_id + 1) % buf->num_frames;
     }

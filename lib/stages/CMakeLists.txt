@@ -17,6 +17,10 @@ add_library(
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
+    $<$<BOOL:${USE_ASDF}>:asdfFileWrite.cpp>
+    $<$<BOOL:${USE_GDAL}>:gdalFileRead.cpp>
+    $<$<BOOL:${USE_GDAL}>:gdalFileWrite.cpp>
+    $<$<BOOL:${USE_GDAL}>:gdalFiles.cpp>
     $<$<BOOL:${USE_HDF5}>:hdf5FileWrite.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
@@ -51,13 +55,10 @@ add_library(
     bufferDelay.cpp
     BufferSplit.cpp
     InputSubset.cpp
+    $<$<BOOL:${Julia_FOUND}>:FEngine.cpp>
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
-    rfiBroadcast.cpp
-    rfiRecord.cpp
-    rfiBadInputFinder.cpp
-    rfiUpdateMetadata.cpp
     ReceiveFlags.cpp
     valve.cpp
     visTransform.cpp
@@ -97,6 +98,18 @@ if(${USE_FFTW})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
 endif()
 
+if(${USE_ASDF})
+    target_include_directories(kotekan_stages PRIVATE ${ASDF_CXX_INCLUDE_DIRS})
+    target_link_options(kotekan_stages PUBLIC ${ASDF_CXX_LDFLAGS})
+    target_link_libraries(kotekan_stages PUBLIC ${ASDF_CXX_LIBRARIES})
+endif()
+
+if(${USE_GDAL})
+    target_include_directories(kotekan_stages PRIVATE ${GDAL_INCLUDE_DIRS})
+    target_link_options(kotekan_stages PUBLIC ${GDAL_LDFLAGS})
+    target_link_libraries(kotekan_stages PUBLIC ${GDAL_LIBRARIES})
+endif()
+
 if(${USE_HDF5})
     target_sources(kotekan_stages PRIVATE applyGains.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
@@ -117,7 +130,7 @@ if(${USE_OMP})
     target_sources(kotekan_stages PRIVATE VisTruncate.cpp HFBTruncate.cpp)
 endif()
 
-if(${USE_LAPACK})
+if(${USE_LAPACK_BLAZE})
     target_sources(kotekan_stages PRIVATE eigenVis.cpp RingMapMaker.cpp EigenVisIter.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${BLAS_INCLUDE_DIRS}
                                                              ${LAPACKE_INCLUDE_DIRS} ${BLAZE_PATH})
@@ -144,4 +157,11 @@ endif()
 # separately for clang on macOS
 if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_link_libraries(kotekan_stages PRIVATE atomic)
+endif()
+
+if(${USE_CUDA})
+    target_include_directories(kotekan_stages PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+    message(STATUS "kotekan_stages include dirs: ")
+    get_target_property(STAGES_INCLUDES kotekan_stages INCLUDE_DIRECTORIES)
+    message(STATUS "${STAGES_INCLUDES}")
 endif()

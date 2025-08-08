@@ -30,6 +30,22 @@ bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs) {
 }
 
 // JSON converters
+void to_json(nlohmann::json& j, const timespec& t) {
+    j["tv_sec"] = (int64_t)t.tv_sec;
+    j["tv_nsec"] = t.tv_nsec;
+}
+void from_json(const nlohmann::json& j, timespec& t) {
+    t.tv_sec = (time_t)(j["tv_sec"]);
+    t.tv_nsec = j["tv_nsec"];
+}
+
+void to_json(nlohmann::json& j, const stream_t& t) {
+    j = t.id;
+}
+void from_json(const nlohmann::json& j, stream_t& t) {
+    t.id = j;
+}
+
 void to_json(json& j, const freq_ctype& f) {
     j = json{{"centre", f.centre}, {"width", f.width}};
 }
@@ -103,7 +119,7 @@ std::string json_type_name(nlohmann::json& value) {
 // possible reordering of the inputs
 // TODO: port this to using map_vis_triangle. Need a unit test first.
 void copy_vis_triangle(const int32_t* inputdata, const std::vector<uint32_t>& inputmap,
-                       size_t block, size_t N, gsl::span<cfloat> output) {
+                       size_t block, size_t N, gsl_lite::span<cfloat> output) {
 
     auto copyfunc = [&](int32_t pi, int32_t bi, bool conj) {
         int i_sign = conj ? -1 : 1;

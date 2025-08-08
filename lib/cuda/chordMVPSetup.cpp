@@ -6,9 +6,16 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(chordMVPSetup);
 
 chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
-                             bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "chordMVPSetup", "") {
+                             bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst) {
     set_command_type(gpuCommandType::COPY_IN);
+    set_name("chordMVPSetup");
+
+    // The GPU memory view setup below is "global", so need only do it once.
+    if (instance_num != 0)
+        return;
+
+    // Set up GPU memory views
 
     // Upchan to FRB-Beamformer:
     size_t num_dishes = config.get<int>(unique_name, "num_dishes");
@@ -36,8 +43,8 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
 
     size_t offset = num_dishes * num_local_freq * upchan_factor * frb_bf_padding * 2;
 
-    for (int i = 0; i < device.get_gpu_buffer_depth(); i++) {
-        void* real = device.get_gpu_memory_array(fullname, i, fullsize);
+    for (int i = 0; i < _gpu_buffer_depth; i++) {
+        void* real = device.get_gpu_memory_array(fullname, i, _gpu_buffer_depth, fullsize);
         // Zero it out!
         CHECK_CUDA_ERROR(cudaMemset((unsigned char*)real + viewsize, 0, fullsize - viewsize));
 
@@ -46,7 +53,8 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
               "\"upchan/frb-bf\")",
               real, fullsize, (char*)real + offset, viewsize, fullname, viewname, i);
     }
-    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize);
+    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize,
+                                        _gpu_buffer_depth);
 
     // We produce custom DOT output to connect the views, so we omit these (and all other) entries.
     // gpu_buffers_used.push_back(std::make_tuple(fullname, true, false, true));
@@ -63,20 +71,19 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     INFO("Creating fpga voltage/fine-upchan glue buffers: fpga {:s} size {:d}, fine-upchan input "
          "{:s} size {:d}",
          fullname, fullsize, viewname, viewsize);
-    for (int i = 0; i < device.get_gpu_buffer_depth(); i++)
-        device.get_gpu_memory_array(fullname, i, fullsize);
+    for (int i = 0; i < _gpu_buffer_depth; i++)
+        device.get_gpu_memory_array(fullname, i, _gpu_buffer_depth, fullsize);
     offset = 0;
-    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize);
+    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize,
+                                        _gpu_buffer_depth);
 }
 
 chordMVPSetup::~chordMVPSetup() {}
 
-cudaEvent_t chordMVPSetup::execute(cudaPipelineState& pipestate,
-                                   const std::vector<cudaEvent_t>& pre_events) {
-    (void)pre_events;
-    pre_execute(pipestate.gpu_frame_id);
-    record_start_event(pipestate.gpu_frame_id);
-    return record_end_event(pipestate.gpu_frame_id);
+cudaEvent_t chordMVPSetup::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
+    pre_execute();
+    record_start_event();
+    return record_end_event();
 }
 
 std::string chordMVPSetup::get_extra_dot(const std::string& prefix) const {

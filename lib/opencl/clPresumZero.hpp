@@ -8,9 +8,10 @@
 class clPresumZero : public clCommand {
 public:
     clPresumZero(kotekan::Config& config, const std::string& unique_name,
-                 kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
+                 kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
+                 int instance_num);
     ~clPresumZero();
-    cl_event execute(int param_bufferID, cl_event param_PrecedeEvent) override;
+    cl_event execute(cl_event param_PrecedeEvent) override;
 
 private:
     int32_t presum_len;

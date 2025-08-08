@@ -56,8 +56,8 @@ baselineCompression::baselineCompression(Config& config, const std::string& uniq
     compression_frame_counter(Metrics::instance().add_counter(
         "kotekan_baselinecompression_frame_total", unique_name, {"thread_id"})) {
 
-    register_consumer(in_buf, unique_name.c_str());
-    register_producer(out_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
+    out_buf->register_producer(unique_name);
 
     // Fill out the map of stack types
     stack_type_defs["diagonal"] = stack_diagonal;
@@ -157,7 +157,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
     // Wait for the input buffer to be filled with data
     // in order to get dataset ID
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
+    if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
         return;
     }
     auto input_frame = VisFrameView(in_buf, input_frame_id);
@@ -165,7 +165,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
 
@@ -196,7 +196,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         std::vector<float> stack_v2(sstate_ptr->get_num_stack(), 0.0);
 
         // Wait for the output buffer frame to be free
-        if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
+        if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
             break;
         }
 
@@ -279,8 +279,8 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         }
 
         // Mark the buffers and move on
-        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
-        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
+        out_buf->mark_frame_full(unique_name, output_frame_id);
+        in_buf->mark_frame_empty(unique_name, input_frame_id);
 
         // Calculate residuals (return zero if no data for this freq)
         float residual = (normt != 0.0) ? (vart / normt) : 0.0;

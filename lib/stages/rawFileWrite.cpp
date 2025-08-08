@@ -6,7 +6,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "errors.h"
 #include "kotekanLogging.hpp"    // for ERROR, INFO
-#include "metadata.h"            // for metadataContainer
+#include "metadata.hpp"          // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "visUtil.hpp"           // for current_time
 
@@ -36,7 +36,7 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&rawFileWrite::main_thread, this)) {
 
     buf = get_buffer("in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
     _base_dir = config.get<std::string>(unique_name, "base_dir");
     _file_name = config.get<std::string>(unique_name, "file_name");
     _file_ext = config.get<std::string>(unique_name, "file_ext");
@@ -66,7 +66,7 @@ void rawFileWrite::main_thread() {
     while (!stop_thread) {
 
         // This call is blocking.
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -96,10 +96,9 @@ void rawFileWrite::main_thread() {
 
         // Write the meta data to disk
         uint32_t metadata_size = 0;
-        metadataContainer* mc = get_metadata_container(buf, frame_id);
-        if (mc != nullptr) {
-            metadata_size = mc->metadata_size;
-        }
+        std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
+        if (mc)
+            metadata_size = mc->get_serialized_size();
         // Write metadata size to disk, if there is no metadata in the frame, then
         // just save 0 to the first word.
         if (write(fd, (void*)&metadata_size, sizeof(metadata_size))
@@ -107,9 +106,11 @@ void rawFileWrite::main_thread() {
             ERROR("Failed to write metadata_size to disk for file {:s}", full_path);
             exit(-1);
         }
-        if (mc != nullptr) {
-            if (write(fd, mc->metadata, mc->metadata_size) != (int32_t)mc->metadata_size) {
-                ERROR("Failed to write metadata_size to disk for file {:s}", full_path);
+        if (mc) {
+            char metabuf[metadata_size];
+            mc->serialize(metabuf);
+            if (write(fd, metabuf, metadata_size) != (int32_t)metadata_size) {
+                ERROR("Failed to write metadata to disk for file {:s}", full_path);
                 exit(-1);
             }
         }
@@ -138,7 +139,7 @@ void rawFileWrite::main_thread() {
         double elapsed = current_time() - st;
         write_time_metric.set(elapsed);
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
 
         // Check if we should exit after writing out a fixed number of files.
         // Useful for some tests and burst modes.  Will hopefully be replaced by frames

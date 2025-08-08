@@ -32,9 +32,9 @@ chrxUplink::chrxUplink(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&chrxUplink::main_thread, this)) {
 
     vis_buf = get_buffer("chrx_in_buf");
-    register_consumer(vis_buf, unique_name.c_str());
+    vis_buf->register_consumer(unique_name);
     gate_buf = get_buffer("gate_in_buf");
-    register_consumer(gate_buf, unique_name.c_str());
+    gate_buf->register_consumer(unique_name);
 }
 
 chrxUplink::~chrxUplink() {}
@@ -85,7 +85,7 @@ void chrxUplink::main_thread() {
     while (!stop_thread) {
 
         // This call is blocking!
-        vis_frame = wait_for_full_frame(vis_buf, unique_name.c_str(), buffer_ID);
+        vis_frame = vis_buf->wait_for_full_frame(unique_name, buffer_ID);
         if (vis_frame == nullptr)
             break;
 
@@ -105,7 +105,7 @@ void chrxUplink::main_thread() {
 
         if (_enable_gating) {
             //            DEBUG("Getting gated buffer");
-            gate_frame = wait_for_full_frame(gate_buf, unique_name.c_str(), buffer_ID);
+            gate_frame = gate_buf->wait_for_full_frame(unique_name, buffer_ID);
             if (gate_frame == nullptr)
                 break;
 
@@ -122,10 +122,10 @@ void chrxUplink::main_thread() {
                 break;
             }
             INFO("Finished sending gated data frame to chrx");
-            mark_frame_empty(gate_buf, unique_name.c_str(), buffer_ID);
+            gate_buf->mark_frame_empty(unique_name, buffer_ID);
         }
 
-        mark_frame_empty(vis_buf, unique_name.c_str(), buffer_ID);
+        vis_buf->mark_frame_empty(unique_name, buffer_ID);
 
         buffer_ID = (buffer_ID + 1) % vis_buf->num_frames;
     }

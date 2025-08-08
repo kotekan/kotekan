@@ -40,7 +40,7 @@ fullPacketDump::fullPacketDump(Config& config, const std::string& unique_name,
 
     link_id = config.get<int>(unique_name, "link_id");
     buf = get_buffer("network_in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
 
     // Apply config.
     _packet_size = config.get<int>(unique_name, "udp_packet_size");
@@ -101,7 +101,7 @@ void fullPacketDump::main_thread() {
     while (!stop_thread) {
 
         // This call is blocking!
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -148,7 +148,7 @@ void fullPacketDump::main_thread() {
             file_num++;
         }
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
 
         frame_id = (frame_id + 1) % buf->num_frames;
     }

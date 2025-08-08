@@ -188,13 +188,13 @@ public:
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/
-    const HFBMetadata* metadata() const {
+    const std::shared_ptr<HFBMetadata> metadata() const {
         return _metadata;
     }
 
 private:
     // References to the metadata we are viewing
-    HFBMetadata* const _metadata;
+    std::shared_ptr<HFBMetadata> _metadata;
 
     // The calculated layout of the buffer
     struct_layout<HFBField> buffer_layout;
@@ -221,9 +221,9 @@ public:
     dset_id_t& dataset_id;
 
     /// View of the hyperfine beam data.
-    const gsl::span<float> hfb;
+    const gsl_lite::span<float> hfb;
     /// View of the weight data.
-    const gsl::span<float> weight;
+    const gsl_lite::span<float> weight;
 };
 
 #endif
