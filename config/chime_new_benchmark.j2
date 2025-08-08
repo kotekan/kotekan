@@ -10,9 +10,9 @@ samples_per_data_set: 49152
 num_elements: 512
 num_local_freq: 4
 
-num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 sizeof_int: 4
-block_size: 32
+block_size: 2
+num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 
 # The number of links per NUMA node
 num_links: 16
@@ -116,6 +116,7 @@ zero_samples:
 {%- endfor %}
 
 
+num_data_sets: 1
 gpu:
     profiling: true
     kernel_path: "../../lib/cuda/kernels/"
@@ -128,13 +129,22 @@ gpu:
     {%- endfor %}
         - name: cudaSyncInput
         - name: cudaSyncOutput
+    {%- for id in range(16) %}
+        - name: cudaCorrelatorAstron
+          num_elements: 8192
+          num_local_freq: 1
+          num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
+          samples_per_data_set: 49152/4
+          gpu_mem_voltage: gpu_voltage_0
+          gpu_mem_correlation_matrix: gpu_correlation
+    {%- endfor %}
     {%- for id in range(8) %}
         - name: cudaOutputData
           in_buf: host_voltage_{{ id }} # Metadata transfer from here
           gpu_mem: gpu_voltage_{{ id }}
           out_buf: host_output_{{ id }}
     {%- endfor %}
-    frame_arrival_period: samples_per_data_set / 390625.0 / num_links
+    frame_arrival_period: samples_per_data_set / 390625.0
     buffer_depth: 3
     gpu_0:
         kotekan_stage: cudaProcess

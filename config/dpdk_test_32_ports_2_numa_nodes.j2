@@ -59,7 +59,7 @@ dpdk:
     lcore_cpu_map: [4, 5, 6, 7, 20, 21, 22, 23]
     main_lcore_cpu: 2
     fpga_packet_size: 4928
-    alignment: samples_per_data_set * 8
+    alignment: samples_per_data_set * 32
     mbuf_cache_size: 250
     # Format is index = lcore, value = array of port IDs
     # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,

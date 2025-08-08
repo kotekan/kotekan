@@ -249,7 +249,18 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
     char* arg6 = (char*)malloc(init_mem_alloc.length() + 1);
     strncpy(arg6, init_mem_alloc.c_str(), init_mem_alloc.length() + 1);
     // Generate final options string for EAL initialization
-    char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], nullptr};
+    
+    char arg7[] = "-b";
+    char arg8[] = "0d:00.0";
+    char arg9[] = "-b";
+    char arg10[] = "0d:00.1";
+    char arg11[] = "-b";
+    char arg12[] = "9f:00.0";
+    char arg13[] = "-b";
+    char arg14[] = "9f:00.1";
+
+
+    char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0],  &arg7[0], &arg8[0], &arg9[0], &arg10[0], &arg11[0], &arg12[0], &arg13[0], &arg14[0], nullptr};
     int argc2 = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
 
 
@@ -400,7 +411,7 @@ int dpdkCore::lcore_rx(void* args) {
         }
     }
 
-    sleep(10);
+    sleep(40);
     while (!core->stop_thread) {
         for (uint32_t i = 0; i < num_local_ports; ++i) {
             uint32_t port = ports[i];
