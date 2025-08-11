@@ -9,6 +9,7 @@ using fmt::group_digits;
 
 // This prints out a Python literal used for making plots in post-processing, for debugging
 // and illustration purposes.
+__attribute__((unused))
 static void print_py_status(const RingBuffer* const rb) {
     std::ostringstream write_heads("{");
     for (const auto& [key, value] : rb->write_heads)
