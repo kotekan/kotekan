@@ -128,8 +128,7 @@ gpu:
           gpu_mem: gpu_voltage_{{ id }}
     {%- endfor %}
         - name: cudaSyncInput
-        - name: cudaSyncOutput
-    {%- for id in range(16) %}
+    {%- for id in range(30) %}
         - name: cudaCorrelatorAstron
           num_elements: 8192
           num_local_freq: 1
@@ -138,6 +137,7 @@ gpu:
           gpu_mem_voltage: gpu_voltage_0
           gpu_mem_correlation_matrix: gpu_correlation
     {%- endfor %}
+        - name: cudaSyncOutput
     {%- for id in range(8) %}
         - name: cudaOutputData
           in_buf: host_voltage_{{ id }} # Metadata transfer from here
