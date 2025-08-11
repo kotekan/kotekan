@@ -186,9 +186,7 @@ RUN mkdir src && \
 # Install Julia
 RUN curl -fsSL https://install.julialang.org | sh -s -- -y
 ENV PATH="$PATH:/root/.juliaup/bin"
-
-# Update Julia...
-RUN juliaup self update && juliaup update
+RUN juliaup add 1.11 && juliaup default 1.11
 
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR=1
