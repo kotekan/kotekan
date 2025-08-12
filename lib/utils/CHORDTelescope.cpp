@@ -698,10 +698,8 @@ struct EOP CHORDTelescope::build_EOP_from_update(int64_t time_ns, double delta_u
     double era = get_ERA_from_UT1(ut1, nullptr);
 
     struct EOP eop {
-        .t_inst = time_ns,
-        .t_ut1 = ut1,
-        .delta_UT1_inst = delta_ut1_inst,
-        .ERA_deg = era, .xp_as = xp_as, .yp_as = yp_as
+        .t_inst = time_ns, .t_ut1 = ut1, .delta_UT1_inst = delta_ut1_inst, .ERA_deg = era,
+        .xp_as = xp_as, .yp_as = yp_as
     };
 
     return eop;

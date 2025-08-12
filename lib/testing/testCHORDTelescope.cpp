@@ -86,8 +86,7 @@ void TestCHORDTelescope::main_thread() {
             eop_times.push_back(eop.t_inst);
             INFO("            {0: 2d} - t_inst: {1:d} s + {2:d} ns", i, eop.t_inst / GIGA,
                  eop.t_inst % GIGA);
-            INFO("               - t_ut1:  {0:d} s + {1:d} ns", eop.t_ut1 / GIGA,
-                 eop.t_ut1 % GIGA);
+            INFO("               - t_ut1:  {0:d} s + {1:d} ns", eop.t_ut1 / GIGA, eop.t_ut1 % GIGA);
             INFO("               - dut1:   {:f} s", eop.delta_UT1_inst);
             INFO("               - era:    {:f} deg", eop.ERA_deg);
             INFO("               - xp:     {:f} arcsec", eop.xp_as);
@@ -101,17 +100,16 @@ void TestCHORDTelescope::main_thread() {
         for (i = 0; i <= nt; i++) {
             int64_t ta, tb;
             if (i == 0 && nt == 1)
-                ta = eop_times[0] - 43200*GIGA;
+                ta = eop_times[0] - 43200 * GIGA;
             else if (i == 0)
                 ta = eop_times[0] - 2 * (eop_times[1] - eop_times[0]);
             else
                 ta = eop_times[i - 1];
 
             if (i == nt && nt == 1)
-                tb = eop_times[0] + 43200*GIGA;
+                tb = eop_times[0] + 43200 * GIGA;
             else if (i == nt)
-                tb = eop_times[nt - 1]
-                    + 2 * (eop_times[nt - 1] - eop_times[nt - 2]);
+                tb = eop_times[nt - 1] + 2 * (eop_times[nt - 1] - eop_times[nt - 2]);
             else
                 tb = eop_times[i];
 
@@ -121,8 +119,7 @@ void TestCHORDTelescope::main_thread() {
             for (int j = 0; j < n_seg; j++) {
 
                 int64_t t = ta + (j * dns) / n_seg;
-                timespec ts = {.tv_sec = (time_t)(t / GIGA),
-                               .tv_nsec = t % GIGA};
+                timespec ts = {.tv_sec = (time_t)(t / GIGA), .tv_nsec = t % GIGA};
 
                 struct EOP eop = tel.get_EOP_at_time(ts);
                 INFO("               - t_inst: {1:d} s + {2:d} ns", i, eop.t_inst / GIGA,
@@ -142,10 +139,10 @@ void TestCHORDTelescope::main_thread() {
                 INFO("               -t_inst2: {0:d} s + {1:d} ns", ts_inst2.tv_sec,
                      ts_inst2.tv_nsec);
                 INFO("               -diff:    {0:d} s + {1:d} ns",
-                     ts_inst2.tv_sec - eop.t_inst/GIGA, ts_inst2.tv_nsec - eop.t_inst % GIGA);
-                INFO("               -t_ut12:  {0:d} s + {1:d} ns", t_ut12/GIGA, t_ut12 % GIGA);
-                INFO("               -diff:    {0:d} s + {1:d} ns",
-                     (t_ut12 - eop.t_ut1) / GIGA, (t_ut12 - eop.t_ut1) % GIGA);
+                     ts_inst2.tv_sec - eop.t_inst / GIGA, ts_inst2.tv_nsec - eop.t_inst % GIGA);
+                INFO("               -t_ut12:  {0:d} s + {1:d} ns", t_ut12 / GIGA, t_ut12 % GIGA);
+                INFO("               -diff:    {0:d} s + {1:d} ns", (t_ut12 - eop.t_ut1) / GIGA,
+                     (t_ut12 - eop.t_ut1) % GIGA);
 
 
                 int64_t n_rot2;

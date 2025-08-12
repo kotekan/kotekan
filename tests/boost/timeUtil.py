@@ -8,7 +8,7 @@ import sys
 mp.dps = 40
 
 # ERA = (A + B * t_jd)
-era_A = mp.mpf(  779_057_273_264_000_000) / mp.mpf(1e18)
+era_A = mp.mpf(779_057_273_264_000_000) / mp.mpf(1e18)
 era_B = mp.mpf(1_002_737_811_911_354_480) / mp.mpf(1e18)
 
 
@@ -148,9 +148,7 @@ def print_isot_times(t_str):
     ut1_s -= 2451545 * 86400
     ut1_ns += ut1_s * 1_000_000_000
     print(
-        "UT1 {0:d} ns {1:.17e} jd2000".format(
-            ut1_ns, (t.ut1.jd1 - 2451545) + t.ut1.jd2
-        )
+        "UT1 {0:d} ns {1:.17e} jd2000".format(ut1_ns, (t.ut1.jd1 - 2451545) + t.ut1.jd2)
     )
 
     era_deg, nrot = get_era_nrot(t)

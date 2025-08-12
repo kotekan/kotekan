@@ -96,7 +96,7 @@ void FakeVis::main_thread() {
     // int64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
     int64_t delta_seq = (uint64_t)(cadence * 3.2e9 / 16384);
     // calculate delta_ns from delta_seq (instead of cadence) in case rounding occured.
-    int64_t delta_ns = delta_seq * ((int64_t) (16384/3.2));
+    int64_t delta_ns = delta_seq * ((int64_t)(16384 / 3.2));
     DEBUG("delta_seq = {:d}, delta_ns = {:d}", delta_seq, delta_ns);
 
     // Sleep before starting up
@@ -168,7 +168,7 @@ void FakeVis::main_thread() {
             meta->frame_start_time_ns = time_ns + t * delta_ns;
 
             DEBUG("Output frame seq={:d} time_ns={:d}", meta->fpga_start_tick,
-                    meta->frame_start_time_ns);
+                  meta->frame_start_time_ns);
 
             // Set EOP
             timespec time_cen = tel.to_time(fpga_seq + t * delta_seq + delta_seq / 2);

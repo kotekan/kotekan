@@ -12,7 +12,7 @@ import astropy.units as units
 
 from kotekan import runner
 
-T_rot_sec = 86400 / 1.001234567890123456 #  / 1.00273781191135448
+T_rot_sec = 86400 / 1.001234567890123456  #  / 1.00273781191135448
 n_bins_per_rot = 20000  # 21600  # approx 4 seconds per bin
 n_samps_per_bin = 100
 n_samps_tot = 10001
@@ -90,18 +90,17 @@ global_params = {
 
 def seq_to_t_inst_ns(seq):
 
-    dt_ns = 5120   # 16384/(3.2 GHz)
+    dt_ns = 5120  # 16384/(3.2 GHz)
 
     return global_params["gps_time"]["frame0_nano"] + dt_ns * seq
 
 
 def calc_raw_frame_times_and_seqs():
 
-    delta_seq = int(3.2e9/16384 * cadence)
+    delta_seq = int(3.2e9 / 16384 * cadence)
     delta_ns = int(cadence * GIGA)
 
-    seq = delta_seq * np.arange(fake_params["num_frames"],
-                                dtype=int)
+    seq = delta_seq * np.arange(fake_params["num_frames"], dtype=int)
 
     dseq = np.empty_like(seq)
     dseq[:] = delta_seq
@@ -112,10 +111,14 @@ def calc_raw_frame_times_and_seqs():
         f.write("DELTA_SEQ {:d}\n".format(delta_seq))
         f.write("DELTA_NS  {:d}\n".format(delta_ns))
         for i in range(len(seq)):
-            f.write("{0:8d} START {1:12d} LEN {2:12d} TIME {3:12d}\n"
-                    .format(i, seq[i], dseq[i], t_inst_ns[i]))
+            f.write(
+                "{0:8d} START {1:12d} LEN {2:12d} TIME {3:12d}\n".format(
+                    i, seq[i], dseq[i], t_inst_ns[i]
+                )
+            )
 
     return seq, dseq, t_inst_ns
+
 
 def calc_t_start_tel(frame0_ns):
 
@@ -127,27 +130,33 @@ def calc_t_start_tel(frame0_ns):
     diff_min = t_start_diff_ns // (GIGA * 60)
     t_start_diff_ns -= GIGA * 60 * diff_min
     diff_s = t_start_diff_ns / GIGA
-    
-    t_start_0h = Time(t_start_0h_s, scale='utc', format='unix')
-    t_start_tel = Time({'year': t_start_0h.ymdhms.year,
-                        'month': t_start_0h.ymdhms.month,
-                        'day': t_start_0h.ymdhms.day,
-                        'hour': diff_h,
-                        'minute': diff_min,
-                        'second': diff_s}, scale='utc', format='ymdhms')
+
+    t_start_0h = Time(t_start_0h_s, scale="utc", format="unix")
+    t_start_tel = Time(
+        {
+            "year": t_start_0h.ymdhms.year,
+            "month": t_start_0h.ymdhms.month,
+            "day": t_start_0h.ymdhms.day,
+            "hour": diff_h,
+            "minute": diff_min,
+            "second": diff_s,
+        },
+        scale="utc",
+        format="ymdhms",
+    )
 
     return t_start_tel
 
 
 def calc_t_from_t_inst_ns(t_inst_ns):
 
-    frame0_ns = global_params['gps_time']['frame0_nano']
+    frame0_ns = global_params["gps_time"]["frame0_nano"]
 
     t_start_tel = calc_t_start_tel(frame0_ns)
 
     dt_ns = t_inst_ns - frame0_ns
 
-    dt = TimeDelta(dt_ns * units.ns, scale='tai')
+    dt = TimeDelta(dt_ns * units.ns, scale="tai")
 
     t = t_start_tel + dt
     t.delta_ut1_utc = dut1
@@ -157,24 +166,24 @@ def calc_t_from_t_inst_ns(t_inst_ns):
 
 def calc_t_inst_ns_from_t(t):
 
-    frame0_ns = global_params['gps_time']['frame0_nano']
+    frame0_ns = global_params["gps_time"]["frame0_nano"]
     t_start_tel = calc_t_start_tel(frame0_ns)
 
     dt = t.tai - t_start_tel.tai
 
     dt_s, dt_ns = t_jd_to_s_ns(dt)
 
-    return frame0_ns + dt_s*GIGA + dt_ns
+    return frame0_ns + dt_s * GIGA + dt_ns
 
 
 def calc_t_at_era(t0, era_deg_target, tol):
 
-    dta = TimeDelta(-12.0*units.hour, scale="ut1")
-    dtb = TimeDelta(+12.0*units.hour, scale="ut1")
+    dta = TimeDelta(-12.0 * units.hour, scale="ut1")
+    dtb = TimeDelta(+12.0 * units.hour, scale="ut1")
 
     t0_ut1 = t0.ut1
 
-    with open('t_search.out', 'w'):
+    with open("t_search.out", "w"):
         pass
 
     while dtb - dta >= tol:
@@ -182,9 +191,9 @@ def calc_t_at_era(t0, era_deg_target, tol):
         with open("t_search.out", "a") as f:
             f.write(str(dta) + "   " + str(dtb) + "\n")
 
-        dt = 0.5*(dta + dtb)
+        dt = 0.5 * (dta + dtb)
         t = t0_ut1 + dt
-        dera = t.earth_rotation_angle('tio').to_value('deg') - era_deg_target
+        dera = t.earth_rotation_angle("tio").to_value("deg") - era_deg_target
         if dera > 180.0:
             dera -= 360.0
         elif dera <= -180.0:
@@ -195,7 +204,7 @@ def calc_t_at_era(t0, era_deg_target, tol):
         else:
             dtb = dt
 
-    t = t0_ut1 + 0.5*(dta + dtb)
+    t = t0_ut1 + 0.5 * (dta + dtb)
     t.delta_ut1_utc = dut1
 
     return t
@@ -210,7 +219,6 @@ def jd_to_s_ns(jd):
 
 
 def t_jd_to_s_ns(t):
-
 
     t1_s, t1_ns = jd_to_s_ns(t.jd1)
     t2_s, t2_ns = jd_to_s_ns(t.jd2)
@@ -231,7 +239,7 @@ def calc_times(t):
     # t_inst_ns -= GIGA * t_inst_s
 
     t_ut1_s, t_ut1_ns = t_jd_to_s_ns(t.ut1)
-    t_ut1_ns += (t_ut1_s - 2_451_545*86400) * GIGA
+    t_ut1_ns += (t_ut1_s - 2_451_545 * 86400) * GIGA
 
     era = t.earth_rotation_angle("tio").to_value("degree")
 
@@ -247,23 +255,27 @@ def calc_downsamp_frame_meta():
     t_c_ns = seq_to_t_inst_ns(seq_c)
     t_c = calc_t_from_t_inst_ns(t_c_ns)
 
-    era_edges = np.linspace(0.0, 360.0, n_bins_per_rot+1)
+    era_edges = np.linspace(0.0, 360.0, n_bins_per_rot + 1)
     out_frames = []
 
     def init_frame(in_idx, era_idx):
-        return dict(seq_start=seq[in_idx],
-                    t_start_ns=t_ns[in_idx],
-                    t_start=t[in_idx],
-                    t_eop=calc_t_at_era(t[in_idx],
-                        0.5*(era_edges[era_idx]+era_edges[era_idx+1]),
-                        0.1*units.ns),
-                    era_lo=era_edges[era_idx],
-                    era_hi=era_edges[era_idx+1],
-                    seq_len=0,
-                    seq_valid=0,
-                    seq_rfi=0,
-                    n_frames=0,
-                    finalized=False)
+        return dict(
+            seq_start=seq[in_idx],
+            t_start_ns=t_ns[in_idx],
+            t_start=t[in_idx],
+            t_eop=calc_t_at_era(
+                t[in_idx],
+                0.5 * (era_edges[era_idx] + era_edges[era_idx + 1]),
+                0.1 * units.ns,
+            ),
+            era_lo=era_edges[era_idx],
+            era_hi=era_edges[era_idx + 1],
+            seq_len=0,
+            seq_valid=0,
+            seq_rfi=0,
+            n_frames=0,
+            finalized=False,
+        )
 
     def accum_frame(out_idx, in_idx):
         out_frames[out_idx]["seq_len"] += dseq[in_idx]
@@ -287,25 +299,24 @@ def calc_downsamp_frame_meta():
     waiting = True
 
     for i in range(len(seq)):
-        era = t_c[i].earth_rotation_angle('tio').to_value('deg')
+        era = t_c[i].earth_rotation_angle("tio").to_value("deg")
 
         if era_idx is None:
             era_idx = get_era_idx(era)
             continue
 
-        if era < era_edges[era_idx] or era >= era_edges[era_idx+1]:
+        if era < era_edges[era_idx] or era >= era_edges[era_idx + 1]:
             if len(out_frames) > 0:
-                out_frames[-1]['finalized'] = True
-            era_idx = era_idx + 1 if era_idx < n_bins_per_rot-1 else 0
+                out_frames[-1]["finalized"] = True
+            era_idx = era_idx + 1 if era_idx < n_bins_per_rot - 1 else 0
             out_frames.append(init_frame(i, era_idx))
             accum_frame(-1, i)
             waiting = False
         elif not waiting:
             accum_frame(-1, i)
 
-    if not out_frames[-1]['finalized']:
+    if not out_frames[-1]["finalized"]:
         out_frames.pop()
-
 
     with open("frame_meta.out", "w") as f:
         for frame in out_frames:
@@ -349,9 +360,7 @@ def test_structure(n2_data):
         assert frame.metadata.num_prod == (n * (n + 1) // 2)
         assert frame.metadata.num_ev == global_params["num_ev"]
 
-
     # Check that we have the expected number of samples
-
 
 
 def test_metadata(n2_data):
@@ -365,17 +374,23 @@ def test_metadata(n2_data):
 
     frame_meta = calc_downsamp_frame_meta()
 
-    with open('frame_seq.out', 'w') as f:
+    with open("frame_seq.out", "w") as f:
         for i, frame in enumerate(n2_data):
-            f.write("{0:06d}: FRAME START {1:12d} LEN {2:12d} TIME {3:d}\n"
-                    .format(i, frame.metadata.fpga_start_tick,
-                            frame.metadata.frame_length_fpga_ticks,
-                            frame.metadata.frame_start_time_ns))
-            f.write("        CALC  START {0:12d} LEN {1:12d} TIME {2:d}\n"
-                    .format(frame_meta[i]['seq_start'],
-                            frame_meta[i]['seq_len'],
-                            frame_meta[i]['t_start_ns']))
-
+            f.write(
+                "{0:06d}: FRAME START {1:12d} LEN {2:12d} TIME {3:d}\n".format(
+                    i,
+                    frame.metadata.fpga_start_tick,
+                    frame.metadata.frame_length_fpga_ticks,
+                    frame.metadata.frame_start_time_ns,
+                )
+            )
+            f.write(
+                "        CALC  START {0:12d} LEN {1:12d} TIME {2:d}\n".format(
+                    frame_meta[i]["seq_start"],
+                    frame_meta[i]["seq_len"],
+                    frame_meta[i]["t_start_ns"],
+                )
+            )
 
     for i, frame in enumerate(n2_data):
         assert frame.metadata.freq_id == 0
@@ -388,7 +403,7 @@ def test_metadata(n2_data):
 def test_time(n2_data):
 
     frame_time_ns = np.array([v.metadata.frame_start_time_ns for v in n2_data])
-    
+
     frame_meta = calc_downsamp_frame_meta()
 
     calculated_time_ns = np.array([meta["t_start_ns"] for meta in frame_meta])
@@ -408,7 +423,7 @@ def test_eop(n2_data):
 
     out_frame_metas = calc_downsamp_frame_meta()
 
-    t_cent_tup = [calc_times(frame['t_eop']) for frame in out_frame_metas]
+    t_cent_tup = [calc_times(frame["t_eop"]) for frame in out_frame_metas]
 
     t_inst_bin = np.array([t[0] for t in t_cent_tup])
     ut1_bin = np.array([t[1] for t in t_cent_tup])
@@ -417,17 +432,15 @@ def test_eop(n2_data):
     with open("era.out", "w") as f:
         for i in range(len(eop_era)):
             f.write("{:04d} ERA_FRAME:   {:.17f}\n".format(i, eop_era[i]))
-            f.write(  "     ERA_TEST:    {:.17f}\n".format(era_bin[i]))
-            f.write(  "     DUT1_FRAME:  {:.17f}\n".format(eop_dut1[i]))
-            f.write(  "     DUT1_TEST:   {:.17f}\n".format(dut1))
-            f.write(  "     XPM_FRAME:   {:.17f}\n".format(eop_x_pm[i]))
-            f.write(  "     XPM_TEST:    {:.17f}\n".format(x_pm))
-            f.write(  "     YPM_FRAME:   {:.17f}\n".format(eop_y_pm[i]))
-            f.write(  "     YPM_TEST:    {:.17f}\n".format(y_pm))
-            f.write(  "     T_DIFF_NS:   {:d}\n".format(eop_t_inst[i]
-                                                       - t_inst_bin[i]))
-            f.write(  "     UT1_DIFF_NS: {:d}\n".format(eop_t_ut1[i]
-                                                       - ut1_bin[i]))
+            f.write("     ERA_TEST:    {:.17f}\n".format(era_bin[i]))
+            f.write("     DUT1_FRAME:  {:.17f}\n".format(eop_dut1[i]))
+            f.write("     DUT1_TEST:   {:.17f}\n".format(dut1))
+            f.write("     XPM_FRAME:   {:.17f}\n".format(eop_x_pm[i]))
+            f.write("     XPM_TEST:    {:.17f}\n".format(x_pm))
+            f.write("     YPM_FRAME:   {:.17f}\n".format(eop_y_pm[i]))
+            f.write("     YPM_TEST:    {:.17f}\n".format(y_pm))
+            f.write("     T_DIFF_NS:   {:d}\n".format(eop_t_inst[i] - t_inst_bin[i]))
+            f.write("     UT1_DIFF_NS: {:d}\n".format(eop_t_ut1[i] - ut1_bin[i]))
 
     # check EOP
     assert np.all(np.isclose(eop_dut1, dut1, 1.0e-15, 0.0))
@@ -467,15 +480,19 @@ def test_contents(n2_data):
 
     with open("test_contents.out", "w"):
         pass
-    
+
     out_frame_metas = calc_downsamp_frame_meta()
 
     # Averaging shouldn't change vis, eigenstuff
     for i, frame in enumerate(n2_data):
         with open("test_contents.out", "a") as f:
-            f.write("{0:d} {1:d} {2:d}\n".format(i,
+            f.write(
+                "{0:d} {1:d} {2:d}\n".format(
+                    i,
                     frame.metadata.fpga_start_tick,
-                    frame.metadata.frame_length_fpga_ticks))
+                    frame.metadata.frame_length_fpga_ticks,
+                )
+            )
         assert np.all(frame.vis == model_vis)
         assert np.all(frame.evec == model_evec)
         assert np.all(frame.eval == model_eval)
@@ -483,4 +500,4 @@ def test_contents(n2_data):
 
     # weights get an extra factor of nsamp
     for i, frame in enumerate(n2_data):
-        assert np.all(frame.weight == out_frame_metas[i]['n_frames'])
+        assert np.all(frame.weight == out_frame_metas[i]["n_frames"])

@@ -19,12 +19,13 @@ void check_timespec_equal(const timespec& t1, const timespec& t2) {
 
     long ns1 = (long)t1.tv_nsec;
     long ns2 = (long)t2.tv_nsec;
-    BOOST_CHECK(abs(ns1-ns2) <= NS_TOL);
+    BOOST_CHECK(abs(ns1 - ns2) <= NS_TOL);
 }
 
 void check_ns_equal(int64_t t1, int64_t t2) {
-    BOOST_CHECK_MESSAGE(abs(t1-t2) <= NS_TOL,
-                        fmt::format("|ns1 - ns2| = |{:d} - {:d}| = {:d} < {:d} failed", t1, t2, abs(t1-t2), NS_TOL));
+    BOOST_CHECK_MESSAGE(abs(t1 - t2) <= NS_TOL,
+                        fmt::format("|ns1 - ns2| = |{:d} - {:d}| = {:d} < {:d} failed", t1, t2,
+                                    abs(t1 - t2), NS_TOL));
 }
 
 void check_era_close(double era1, double era2) {
@@ -50,9 +51,13 @@ static std::vector<std::string> test_times({
 
 class TimeData {
 public:
-    TimeData(){BOOST_TEST_MESSAGE("TimeData constructor");};
+    TimeData() {
+        BOOST_TEST_MESSAGE("TimeData constructor");
+    };
     void setup();
-    ~TimeData(){BOOST_TEST_MESSAGE("TimeData destructor");};
+    ~TimeData() {
+        BOOST_TEST_MESSAGE("TimeData destructor");
+    };
 
     static std::vector<timespec> t_unix;
     static std::vector<int64_t> t_ut1;
@@ -129,8 +134,7 @@ BOOST_AUTO_TEST_CASE(_time_to_ut1) {
     BOOST_TEST_MESSAGE(fmt::format("Testing time->ut1 with {:d} entries.", TimeData::size));
 
     for (size_t i = 0; i < TimeData::size; i++) {
-        check_ns_equal(get_UT1_from_time(TimeData::t_unix[i],
-                                         TimeData::dUT1[i]),
+        check_ns_equal(get_UT1_from_time(TimeData::t_unix[i], TimeData::dUT1[i]),
                        TimeData::t_ut1[i]);
     }
 }
@@ -162,8 +166,7 @@ BOOST_AUTO_TEST_CASE(_era_to_ut1) {
     BOOST_TEST_MESSAGE(fmt::format("Testing era->ut1 with {:d} entries.", TimeData::size));
 
     for (size_t i = 0; i < TimeData::size; i++) {
-        check_ns_equal(get_UT1_from_ERA(TimeData::nrot[i], TimeData::era[i]),
-                       TimeData::t_ut1[i]);
+        check_ns_equal(get_UT1_from_ERA(TimeData::nrot[i], TimeData::era[i]), TimeData::t_ut1[i]);
     }
 }
 
@@ -183,7 +186,8 @@ BOOST_AUTO_TEST_CASE(_time_to_ut1_to_time) {
 
     for (size_t i = 0; i < TimeData::size; i++) {
         check_timespec_equal(
-            get_time_from_UT1(get_UT1_from_time(TimeData::t_unix[i], TimeData::dUT1[i]), TimeData::dUT1[i]),
+            get_time_from_UT1(get_UT1_from_time(TimeData::t_unix[i], TimeData::dUT1[i]),
+                              TimeData::dUT1[i]),
             TimeData::t_unix[i]);
     }
 }
@@ -193,11 +197,9 @@ BOOST_AUTO_TEST_CASE(_ut1_to_time_to_ut1) {
     BOOST_TEST_MESSAGE(fmt::format("Testing ut1->time->ut1 with {:d} entries.", TimeData::size));
 
     for (size_t i = 0; i < TimeData::size; i++) {
-        check_ns_equal(
-            get_UT1_from_time(get_time_from_UT1(TimeData::t_ut1[i],
-                                                TimeData::dUT1[i]),
-                              TimeData::dUT1[i]),
-            TimeData::t_ut1[i]);
+        check_ns_equal(get_UT1_from_time(get_time_from_UT1(TimeData::t_ut1[i], TimeData::dUT1[i]),
+                                         TimeData::dUT1[i]),
+                       TimeData::t_ut1[i]);
     }
 }
 

@@ -15,21 +15,17 @@
  * @brief   Simple struct for containing Earth Orientation Parameter (EOP) data
  */
 struct EOP {
-    int64_t t_inst; // Instrument time, nanoseconds, UNIX epoch.
-    int64_t t_ut1;  // UT1 time, nanoseconds, J2000(UT1) epoch.
-    double delta_UT1_inst;  // Diff between UT1 and Instrument time, seconds
-    double ERA_deg;         // Earth Rotation Angle, degrees
-    double xp_as;           // Polar Motion x', in arcseconds.
-    double yp_as;           // Polar Motion y', in arcseconds.
+    int64_t t_inst;        // Instrument time, nanoseconds, UNIX epoch.
+    int64_t t_ut1;         // UT1 time, nanoseconds, J2000(UT1) epoch.
+    double delta_UT1_inst; // Diff between UT1 and Instrument time, seconds
+    double ERA_deg;        // Earth Rotation Angle, degrees
+    double xp_as;          // Polar Motion x', in arcseconds.
+    double yp_as;          // Polar Motion y', in arcseconds.
 };
 
 // A null (all 0) struct EOP;
-const static struct EOP eop_null = {.t_inst = 0,
-                                    .t_ut1 = 0,
-                                    .delta_UT1_inst = 0.0,
-                                    .ERA_deg = 0.0,
-                                    .xp_as = 0.0,
-                                    .yp_as = 0.0};
+const static struct EOP eop_null = {
+    .t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0.0, .ERA_deg = 0.0, .xp_as = 0.0, .yp_as = 0.0};
 
 
 /**
