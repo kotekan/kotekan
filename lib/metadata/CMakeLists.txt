@@ -3,7 +3,6 @@ project(kotekan_metadata)
 add_library(
     kotekan_metadata
     chordMetadata.cpp
-    chimeMetadata.cpp
     HFBMetadata.cpp
     BasebandMetadata.cpp
     BeamMetadata.cpp
