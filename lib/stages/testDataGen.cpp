@@ -99,6 +99,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     }
 
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
+    stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     num_links = config.get_default<uint32_t>(unique_name, "num_links", 1);
     // TODO: rename this parameter to `num_freq_per_stream` in the config
