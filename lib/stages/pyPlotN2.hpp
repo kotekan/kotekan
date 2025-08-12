@@ -8,7 +8,6 @@
 #define PY_PLOT_N2_H
 
 #include "Config.hpp"          // for Config
-#include "ICETelescope.hpp"    // for ice_stream_id_t
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -78,7 +77,6 @@ private:
     int gpu_id = -1;
     bool dump_plot = false;
     bool busy = false;
-    ice_stream_id_t stream_id;
 };
 
 #endif
