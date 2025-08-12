@@ -80,7 +80,6 @@ void pyPlotN2::main_thread() {
             busy = true;
             // make a local copy so the rest of kotekan can carry along happily.
             memcpy(in_local, frame, buf->frame_size);
-            stream_id = ice_get_stream_id_t(buf, frame_id);
 
             buf->mark_frame_empty(unique_name, frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
@@ -110,9 +109,7 @@ void pyPlotN2::make_plot(void) {
             {"data_length", num_blocks * block_size},
             {"type", "CORR_MATRIX"},
             {"num_elements", num_elements},
-            {"block_dim", {block_dim, block_dim, 2}},
-            {"stream_id",
-             {stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused}}};
+            {"block_dim", {block_dim, block_dim, 2}}};
         std::string s = header.dump() + "\n";
         fwrite(s.c_str(), 1, s.length(), python_script);
         for (uint32_t i = 0; i < num_blocks; i++) {
