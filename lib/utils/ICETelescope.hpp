@@ -3,7 +3,6 @@
 
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
-#include "chimeMetadata.hpp"
 
 #include <stdint.h> // for int32_t, uint32_t
 #include <string>   // for string
@@ -125,14 +124,5 @@ struct ice_stream_id_t {
 
 ice_stream_id_t ice_extract_stream_id(const stream_t encoded_stream_id);
 stream_t ice_encode_stream_id(const ice_stream_id_t s_stream_id);
-
-inline ice_stream_id_t ice_get_stream_id_t(const Buffer* buf, int ID) {
-    return ice_extract_stream_id(get_stream_id(buf, ID));
-}
-
-inline void ice_set_stream_id_t(Buffer* buf, int ID, ice_stream_id_t stream_id) {
-    set_stream_id(buf, ID, ice_encode_stream_id(stream_id));
-}
-
 
 #endif // ICE_TELESCOPE_HPP
