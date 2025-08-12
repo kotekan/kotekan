@@ -83,7 +83,7 @@ void LostSamplesGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* m
         }
     }
 
-    metadata->lost_timesamples = frame_number;
+    metadata->set_lost_timesamples(frame_number);
 }
 
 
@@ -110,8 +110,8 @@ void LostWeightsGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* m
         }
     }
 
-    metadata->lost_timesamples = lost;
-    metadata->rfi_flagged_samples = lost;
+    metadata->set_lost_timesamples(lost);
+    metadata->set_rfi_flagged_samples(lost);
 }
 
 AccumulateGpuPattern::AccumulateGpuPattern(kotekan::Config& config, const std::string& path) :
@@ -187,7 +187,7 @@ PulsarGpuPattern::PulsarGpuPattern(kotekan::Config& config, const std::string& p
 }
 
 
-void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chrodMetadata* metadata,
+void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                             int frame_number, freq_id_t freq_id) {
     (void)frame_number;
 
@@ -196,10 +196,10 @@ void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chrodMetadata* metada
     // Fill frame with zeros
     std::fill(data.begin(), data.end(), 0);
 
-    DEBUG2("GPS time %ds%dns", metadata->gps_time.tv_sec, metadata->gps_time.tv_nsec);
+    DEBUG2("GPS time %ds%dns", metadata->get_gps_time().tv_sec, metadata->get_gps_time().tv_nsec);
 
     // Figure out if we are in a pulse
-    double toa = _polyco.next_toa(metadata->gps_time, tel.to_freq(freq_id));
+    double toa = _polyco.next_toa(metadata->get_gps_time(), tel.to_freq(freq_id));
     double last_toa = toa - 1. / _rot_freq;
     DEBUG2("TOA: %f, last TOA: %f", toa, last_toa);
 
