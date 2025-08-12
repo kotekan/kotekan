@@ -4,7 +4,6 @@
 #include "Config.hpp"        // for Config
 #include "Telescope.hpp"     // for freq_id_t, stream_t, Telescope
 #include "buffer.hpp"        // for Buffer
-#include "chimeMetadata.hpp" // for get_stream_id, set_stream_id
 
 #include <stdint.h> // for uint32_t, uint8_t, uint64_t
 #include <string>   // for string, basic_string
@@ -126,14 +125,5 @@ struct ice_stream_id_t {
 
 ice_stream_id_t ice_extract_stream_id(const stream_t encoded_stream_id);
 stream_t ice_encode_stream_id(const ice_stream_id_t s_stream_id);
-
-inline ice_stream_id_t ice_get_stream_id_t(const Buffer* buf, int ID) {
-    return ice_extract_stream_id(get_stream_id(buf, ID));
-}
-
-inline void ice_set_stream_id_t(Buffer* buf, int ID, ice_stream_id_t stream_id) {
-    set_stream_id(buf, ID, ice_encode_stream_id(stream_id));
-}
-
 
 #endif // ICE_TELESCOPE_HPP
