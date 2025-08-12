@@ -21,6 +21,8 @@ RUN apt update && \
                    make \
                    cmake \
                    clang \
+                   libclang-dev \
+                   llvm-dev \
                    clang-format \
                    flex \
                    bison \
@@ -86,9 +88,9 @@ RUN dpkg -i cuda-keyring_1.1-1_all.deb
 RUN apt -y update && \
     apt-get install -y cuda-toolkit nvidia-open && apt-get clean
 ENV CUDADIR=/usr/local/cuda
-ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:${LD_LIBRARY_PATH}"
-ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include:${CPLUS_INCLUDE_PATH}"
-ENV PATH="$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
+ENV LD_LIBRARY_PATH="${CUDADIR}/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
+ENV PATH="${PATH:+${PATH}:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
 
 RUN apt-get install -y --no-install-recommends \
   libopencl-clang-17-dev opencl-headers ocl-icd-opencl-dev
@@ -140,16 +142,6 @@ RUN mkdir src && \
 # Depends on lz4.pc (called liblz4.pc in apt install)
 RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig/lz4.pc
 
-# Install zarr
-RUN apt install -y xtl-dev libxsimd-dev libxtensor-dev nlohmann-json3-dev libbz2-dev
-RUN mkdir src && ( \
-        git clone https://github.com/constantinpape/z5.git && \
-        cd z5 && \
-        mkdir build && cd build && \
-        cmake -DWITH_ZLIB=ON -DWITH_BZIP2=ON -DBUILD_Z5PY=OFF -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
-        make install && \
-    true) && rm -rf src
-
 # Clone HighFive
 RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
  cd HighFive && git pull && cd ..
@@ -195,8 +187,6 @@ ENV CCACHE_MAXSIZE=1G
 # Set the plugin path so kotekan can find bitshuffle
 # Ideally this would be determined dynamically, but for now...
 ENV HDF5_PLUGIN_PATH=/usr/local/lib/python3.12/dist-packages/hdf5plugin/plugins
-
-RUN python3 -m pip install --no-cache astropy
 
 ENV KOTEKAN_BUILD_DIRNAME=build-2404
 
