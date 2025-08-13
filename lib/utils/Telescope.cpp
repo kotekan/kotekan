@@ -38,14 +38,6 @@ freq_id_t Telescope::to_freq_id(stream_t stream) const {
     return to_freq_id(stream, 0);
 }
 
-freq_id_t Telescope::to_freq_id(const Buffer* buf, int ID) const {
-    return to_freq_id(get_stream_id(buf, ID));
-}
-
-freq_id_t Telescope::to_freq_id(const Buffer* buf, int ID, uint32_t ind) const {
-    return to_freq_id(get_stream_id(buf, ID), ind);
-}
-
 timespec Telescope::seq_length() const {
     auto dt_ns = seq_length_nsec();
     return {(time_t)(dt_ns / 1000000000), (long)(dt_ns % 1000000000)};

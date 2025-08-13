@@ -82,26 +82,6 @@ public:
      **/
     virtual freq_id_t to_freq_id(stream_t stream, uint32_t ind) const = 0;
 
-    /**
-     * Get the frequency ID from the FPGA stream ID.
-     *
-     * @param  buf  The buffer object.
-     * @param  ID   Index of the frame in the buffer.
-     *
-     * @returns     The integer frequency ID.
-     **/
-    virtual freq_id_t to_freq_id(const Buffer* buf, int ID) const;
-
-    /**
-     * Get the frequency ID from the FPGA stream ID.
-     *
-     * @param  buf  The buffer object.
-     * @param  ID   Index of the frame in the buffer.
-     * @param  ind  The index for the multifrequency stream.
-     *
-     * @returns     The integer frequency ID.
-     **/
-    virtual freq_id_t to_freq_id(const Buffer* buf, int ID, uint32_t ind) const;
 
     /**
      * Get the physical frequency in MHz of the specified freq ID.
