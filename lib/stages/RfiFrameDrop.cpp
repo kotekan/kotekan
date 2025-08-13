@@ -4,7 +4,6 @@
 #include "Hash.hpp"              // for Hash, operator!=
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for mark_frame_empty, Buffer, wait_for_full_frame, get_meta...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"
@@ -79,8 +78,6 @@ RfiFrameDrop::RfiFrameDrop(Config& config, const std::string& unique_name,
 
 void RfiFrameDrop::main_thread() {
 
-    auto& tel = Telescope::instance();
-
     frameID frame_id_in_vis(_buf_in_vis);
     frameID frame_id_in_sk(_buf_in_sk);
     frameID frame_id_out(_buf_out);
@@ -110,7 +107,7 @@ void RfiFrameDrop::main_thread() {
         const auto metadata_sk = get_chord_metadata(_buf_in_sk, frame_id_in_sk);
 
         // Set the frequency index from the stream id of the metadata
-        uint32_t freq_id = tel.to_freq_id(_buf_in_vis, frame_id_in_vis);
+        uint32_t freq_id = get_chord_metadata(_buf_in_vis, frame_id_in_vis)->get_coarse_freq()[0];
 
         // Try and synchronize up the frames. Even though they arrive at
         // different rates, this should eventually sync them up.
