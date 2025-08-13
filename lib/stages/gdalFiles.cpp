@@ -18,7 +18,7 @@ GDALDataType chord2gdal(const kotekan::DataType type) {
             return GDT_UInt64;
         case kotekan::int4x2:
             return GDT_Byte; // TODO: Define GDAL int4+4 type
-        case kotekan::int4x2chime:
+        case kotekan::int4x2_swapped_withoffset:
             return GDT_Byte; // TODO: Define GDAL int4+4 type
         case kotekan::int8:
             return GDT_Int8;

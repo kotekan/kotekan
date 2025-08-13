@@ -30,7 +30,7 @@ inline ASDF::scalar_type_id_t chord2asdf(const kotekan::DataType type) {
             return ASDF::id_uint64;
         case kotekan::int4x2:
             return ASDF::id_uint8; // TODO: Define ASDF int4+4 type
-        case kotekan::int4x2chime:
+        case kotekan::int4x2_swapped_withoffset:
             return ASDF::id_uint8; // TODO: Define ASDF int4+4 type
         case kotekan::int8:
             return ASDF::id_int8;
