@@ -211,7 +211,8 @@ void frbPostProcess::main_thread() {
                 if (max_fpga_count != get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
                     fpga_seq_in_sync = false;
                 }
-                frb_header_coarse_freq_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
+                // TODO: check if [0] is really correct
+                frb_header_coarse_freq_ids[i] = get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_coarse_freq()[0];
             }
 
             if (fpga_seq_in_sync) {
