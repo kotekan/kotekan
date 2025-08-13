@@ -118,7 +118,7 @@ void basebandReadout::main_thread() {
             int in_buf_frame = frame_id % in_buf->num_frames;
             for (uint32_t stream_freq_idx = 0; stream_freq_idx < _num_freq_per_stream;
                  ++stream_freq_idx) {
-                uint32_t freq_id = tel.to_freq_id(in_buf, in_buf_frame, stream_freq_idx);
+                uint32_t freq_id = get_chord_metadata(in_buf, in_buf_frame)->get_coarse_freq()[stream_freq_idx];
                 freq_ids[stream_freq_idx] = freq_id;
 
                 DEBUG("Initialize baseband metrics for freq_id: {:d}/{:d}", freq_id,
