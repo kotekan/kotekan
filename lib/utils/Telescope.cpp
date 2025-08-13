@@ -1,7 +1,5 @@
 #include "Telescope.hpp"
 
-#include "chimeMetadata.hpp" // for get_stream_id
-
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <stdexcept> // for invalid_argument
