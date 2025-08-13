@@ -444,6 +444,42 @@ class FakeVisBuffer(InputBuffer):
 
         self.buffer_block = {
             self.name: {
+                "kotekan_buffer": "vis",
+                "metadata_pool": "vis_pool",
+                "num_frames": "buffer_depth",
+            }
+        }
+
+        stage_config = {
+            "kotekan_stage": "FakeVis",
+            "out_buf": self.name,
+            "freq_ids": [0],
+            "wait": False,
+        }
+        stage_config.update(kwargs)
+
+        self.stage_block = {stage_name: stage_config}
+
+
+class FakeN2VisBuffer(InputBuffer):
+    """Create an input visBuffer format buffer and fill it using `FakeVis`.
+
+    Parameters
+    ----------
+    **kwargs : dict
+        Parameters fed straight into the stage config.
+    """
+
+    _buf_ind = 0
+
+    def __init__(self, **kwargs):
+
+        self.name = "fakevis_buf%i" % self._buf_ind
+        stage_name = "fakevis%i" % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.buffer_block = {
+            self.name: {
                 "kotekan_buffer": "N2",
                 "metadata_pool": "N2_pool",
                 "num_frames": "buffer_depth",
@@ -451,7 +487,7 @@ class FakeVisBuffer(InputBuffer):
         }
 
         stage_config = {
-            "kotekan_stage": "FakeVis",
+            "kotekan_stage": "FakeN2",
             "out_buf": self.name,
             "freq_ids": [0],
             "wait": False,
