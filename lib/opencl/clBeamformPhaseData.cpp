@@ -1,7 +1,7 @@
 #include "clBeamformPhaseData.hpp"
 
 #include "buffer.hpp"
-#include "chimeMetadata.hpp"
+#include "chordMetadata.hpp"
 #include "errors.h"
 
 #include <math.h>
@@ -61,7 +61,7 @@ cl_event clBeamformPhaseData::execute(cl_event pre_event) {
     //    cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id,
     //    _gpu_buffer_depth, input_frame_len);
 
-    current_seq = get_fpga_seq_num(network_buf, gpu_frame_id);
+    current_seq = get_chord_metadata(network_buf, gpu_frame_id)->get_fpga_seq_num();
     int64_t bankID = (current_seq / phase_update_period) % 2;
     cl_mem phase_memory = device.get_gpu_memory_array("phases", bankID, _gpu_buffer_depth,
                                                       _num_elements * sizeof(float));
@@ -75,7 +75,7 @@ cl_event clBeamformPhaseData::execute(cl_event pre_event) {
                 local_beamform_time = start_beamform_time; // Current time.
             }
         } else {
-            local_beamform_time = get_first_packet_recv_time(network_buf, gpu_frame_id).tv_sec;
+            local_beamform_time = get_chord_metadata(network_buf, gpu_frame_id)->get_first_packet_recv_time().tv_sec;
         }
 
         get_delays(phases[bankID], local_beamform_time);
