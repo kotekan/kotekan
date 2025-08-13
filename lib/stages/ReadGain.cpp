@@ -2,6 +2,7 @@
 
 #include "Config.hpp"         // for Config
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "chordMetadata.hpp"  // for get_chord_metadata
 #include "Telescope.hpp"      // for Telescope, FREQ_ID_NOT_SET
 #include "buffer.hpp"         // for mark_frame_full, register_producer, wait_for_empty_frame
 #include "configUpdater.hpp"  // for configUpdater
@@ -272,7 +273,8 @@ void ReadGain::main_thread() {
         return;
 
     auto& tel = Telescope::instance();
-    freq_idx = tel.to_freq_id(metadata_buf, metadata_buffer_id);
+    // TODO: handle multiple frequencies
+    freq_idx = get_chord_metadata(metadata_buf, metadata_buffer_id)->get_coarse_freq()[0];
     freq_MHz = tel.to_freq(freq_idx);
     metadata_buffer_precondition_id =
         (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
