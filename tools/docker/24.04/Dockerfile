@@ -1,3 +1,4 @@
+# check=skip=UndefinedVar
 FROM ubuntu:24.04
 
 # So tzdata package doesn't ask for user interaction
@@ -101,19 +102,22 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
 # We want the `python` command to point to python3
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# CUDA / driver installs
-RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
-RUN dpkg -i cuda-keyring_1.1-1_all.deb
-RUN apt -y update && \
-    apt-get install -y cuda-toolkit nvidia-open && apt-get clean
-ENV CUDADIR=/usr/local/cuda
-ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include:${CPLUS_INCLUDE_PATH}"
-ENV PATH="$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
+# CUDA / opencl driver installs and packages
+RUN mkdir src && \
+    ( \
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb && \
+        dpkg -i cuda-keyring_1.1-1_all.deb && \
+        apt -y update && \
+        apt-get install -y cuda-toolkit nvidia-open && \
+        apt-get install -y --no-install-recommends libopencl-clang-17-dev opencl-headers ocl-icd-opencl-dev && \
+        apt-get clean && \
+    true) && \
+    rm -rf src
 
-RUN apt-get install -y --no-install-recommends \
-  libopencl-clang-17-dev opencl-headers ocl-icd-opencl-dev && \
-  apt clean && apt autoclean
+ENV CUDADIR=/usr/local/cuda
+ENV PATH="${PATH:+${PATH}:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
+ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
 
 # Install Blaze for the eigenvalue processes
 RUN mkdir src && \
