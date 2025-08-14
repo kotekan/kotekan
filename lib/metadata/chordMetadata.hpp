@@ -502,6 +502,14 @@ public:
 
     // links to other data
 
+    stream_t get_stream_id() const {
+        return stream_t{.id = metadata[jsonMetadata::STREAM_ID].template get<uint64_t>()};
+    }
+
+    void set_stream_id(const stream_t stream_id) {
+        metadata[jsonMetadata::STREAM_ID] = stream_id.id;
+    }
+
     /// ID of the dataset
     dset_id_t get_dataset_id() const {
         return metadata[jsonMetadata::DATASET_ID].template get<dset_id_t>();
