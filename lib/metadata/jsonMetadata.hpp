@@ -38,6 +38,7 @@ const std::string DATASET_ID("DATASET_ID");            // a 128bit hash of the s
 const std::string RFI_NUM_BAD_INPUTS("RFI_NUM_BAD_INPUTS"); // a uint32_t of bad frames count
 const std::string RFI_FLAGGED_SAMPLES("RFI_FLAGGED_SAMPLES"); // a int32_t of FPGA frames flagged as containing RFI
 const std::string LOST_TIMESAMPLES("LOST_TIMESAMPLES"); // a int32_t of samples lost
+const std::string STREAM_ID("STREAM_ID");               // a uint64_t stream identifier set originally by the FPGA board
 
 const std::string FIRST_PACKET_RECV_TIME("FIRST_PACKET_RECV_TIME"); // The system time when the first packet in the frame was captured
 const std::string TV_SEC("TV_SEC");                     // the tv_sec memmber of a timeval
