@@ -80,7 +80,10 @@ RUN python3 -m pip install msgpack \
                            pytest-cpp \
                            pytest-localserver \
                            pytest-timeout \
-                           posix_ipc
+                           posix_ipc \
+                           astropy \
+                           gmpy2 \
+                           mpmath
 
 # CUDA / GPU tools
 RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
