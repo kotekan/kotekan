@@ -112,14 +112,22 @@ enum class logLevel {
 // Always prints, no check for log level
 #define ERROR(m, a...)                                                                             \
     do {                                                                                           \
+        std::string error_msg = fmt(m);                                                            \
         if (_member_log_level > 0) {                                                               \
-            internal_logging(LOG_ERR, __log_prefix, fmt(m), ##a);                                  \
+            internal_logging(LOG_ERR, __log_prefix, error_msg, ##a);                               \
+        }                                                                                          \
+        if (defined(BOOST_TEST_MODULE) || defined(BOOST_TEST_MAIN)) {                              \
+            BOOST_FAIL(error_msg);                                                                 \
         }                                                                                          \
     } while (0)
 #define ERROR_NON_OO(m, a...)                                                                      \
     do {                                                                                           \
+        std::string error_msg = fmt(m);                                                            \
         if (_global_log_level > 0) {                                                               \
-            kotekan::kotekanLogging::internal_logging(LOG_ERR, "", fmt(m), ##a);                   \
+            kotekan::kotekanLogging::internal_logging(LOG_ERR, "", error_msg, ##a);                \
+        }                                                                                          \
+        if (defined(BOOST_TEST_MODULE) || defined(BOOST_TEST_MAIN)) {                              \
+            BOOST_FAIL(error_msg);                                                                 \
         }                                                                                          \
     } while (0)
 
@@ -127,14 +135,22 @@ enum class logLevel {
 // but don't cause the program to fail.
 #define WARN(m, a...)                                                                              \
     do {                                                                                           \
+        std::string warn_msg = fmt(m);                                                             \
         if (_member_log_level > 1) {                                                               \
-            internal_logging(LOG_WARNING, __log_prefix, fmt(m), ##a);                              \
+            internal_logging(LOG_WARNING, __log_prefix, warn_msg, ##a);                            \
+        }                                                                                          \
+        if (defined(BOOST_TEST_MODULE) || defined(BOOST_TEST_MAIN)) {                              \
+            BOOST_WARN_MESSAGE(false, warn_msg);                                                   \
         }                                                                                          \
     } while (0)
 #define WARN_NON_OO(m, a...)                                                                       \
     do {                                                                                           \
+        std::string warn_msg = fmt(m);                                                             \
         if (_global_log_level > 1) {                                                               \
-            kotekan::kotekanLogging::internal_logging(LOG_WARNING, "", fmt(m), ##a);               \
+            kotekan::kotekanLogging::internal_logging(LOG_WARNING, "", warn_msg, ##a);             \
+        }                                                                                          \
+        if (defined(BOOST_TEST_MODULE) || defined(BOOST_TEST_MAIN)) {                              \
+            BOOST_WARN_MESSAGE(false, warn_msg);                                                   \
         }                                                                                          \
     } while (0)
 

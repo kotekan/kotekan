@@ -588,6 +588,12 @@ public:
         return written;
     }
 
+    void reset() {
+        std::lock_guard<std::mutex> lock(_lock);
+        _configs.clear();
+        _config_hashes.clear();
+        _tracker_hash.clear();
+    }
 
 private:
     /// Constructor, we don't want anyone to call this
