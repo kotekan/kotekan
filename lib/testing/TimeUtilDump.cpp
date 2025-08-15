@@ -32,8 +32,7 @@ TimeUtilDump::TimeUtilDump(Config& config, const std::string& unique_name,
                         in_buf->frame_size, out_buf->frame_size));
     }
 
-    _dUT = config.get_default<double>(unique_name, "dUT_sec", 0.0);
-    _dAT = config.get_default<double>(unique_name, "dAT_sec", 0.0);
+    _dUT = config.get_default<double>(unique_name, "dUT_inst_sec", 0.0);
 }
 
 
@@ -66,19 +65,19 @@ void TimeUtilDump::main_thread() {
             break;
 
         long* input = (long*)frame_ptr;
-        long* output = (long*)out_frame_ptr;
+        int64_t* output = (int64_t*)out_frame_ptr;
 
         for (uint32_t i = 0; i < frame_length; i++) {
             timespec time{.tv_sec = input[2 * i], .tv_nsec = input[2 * i + 1]};
             INFO("Instrument Time: {:d} s {:d} ns", time.tv_sec, time.tv_nsec);
-            int64_t ut1 = get_UT1_from_time(time, _dUT - _dAT);
-            double era = get_ERA_from_UT1(ut1, nullptr);
-            double era2 = get_ERA_from_time(time, _dUT - _dAT);
+            int64_t ut1 = get_UT1_from_time(time, _dUT);
+            int64_t nrot = 0;
+            double era = get_ERA_from_UT1(ut1, &nrot);
             output[5 * i + 0] = time.tv_sec;
             output[5 * i + 1] = time.tv_nsec;
             output[5 * i + 2] = ut1;
-            memcpy(&(output[5 * i + 3]), &era, sizeof(long));
-            memcpy(&(output[5 * i + 4]), &era2, sizeof(long));
+            memcpy(&(output[5 * i + 3]), &era, sizeof(int64_t));
+            memcpy(&(output[5 * i + 4]), &nrot, sizeof(int64_t));
         }
 
         // Release the input frames and increment the frame indices

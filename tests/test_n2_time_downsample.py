@@ -335,7 +335,7 @@ def n2_data(tmpdir_factory):
     test = runner.KotekanStageTester(
         "N2TimeDownsample",
         downsamp_params,
-        runner.FakeVisBuffer(**fake_params),
+        runner.FakeN2VisBuffer(**fake_params),
         dump_buffer,
         global_params,
     )

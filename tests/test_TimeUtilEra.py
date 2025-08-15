@@ -17,12 +17,20 @@ def my_print(*args):
 
 
 entry_size = 8
-num_outputs = 3
+num_outputs = 5
 
+"""
 t0_gps = astropy.time.Time(
     dict(year=1980, month=1, day=6, hour=0, minute=0, second=19.0),
     format="ymdhms",
     scale="tai",
+)
+"""
+
+t0_gps = astropy.time.Time(
+    dict(year=2025, month=6, day=15, hour=8, minute=47, second=19.0),
+    format="ymdhms",
+    scale="utc",
 )
 
 init_printing()
@@ -30,7 +38,7 @@ init_printing()
 
 @pytest.fixture(scope="module")
 def runner_factory(tmpdir_factory):
-    def _runner_factory(t, dUT, dAT):
+    def _runner_factory(t, dUT):
 
         time_length = t.shape[0]
         array_length = 2 * time_length
@@ -61,7 +69,7 @@ def runner_factory(tmpdir_factory):
             str(tmpdir), 1, frame_size=(frame_size * num_outputs)
         )
 
-        timeUtil_params = {"dUT_sec": dUT, "dAT_sec": dAT}
+        timeUtil_params = {"dUT_inst_sec": dUT}
 
         default_params = {
             "num_elements": 1,
@@ -120,6 +128,14 @@ def time_to_s_ns(t):
     return jd_sec, jd_nsec
 
 
+def time_to_ut1_ns(t):
+
+    jd1 = t.ut1.jd1 - 2451545
+    jd2 = t.ut1.jd2
+
+    return np.round((jd1 + jd2) * 86400 * 1e9).astype(np.int64)
+
+
 def get_dAT(t):
     return float(round((t.tai - astropy.time.Time(t.utc.value, scale="tai")).sec))
 
@@ -129,9 +145,9 @@ def test_structure(runner_factory):
     N = 38
     t = t0_gps + (np.linspace(0.0, 10.0, N) * u.s)
 
-    for data in runner_factory(t, 0.0, 0.0):
+    for data in runner_factory(t, 0.0):
 
-        assert data.shape == (num_outputs * 2 * N,)
+        assert data.shape == (num_outputs * N,)
 
 
 def test_tai(runner_factory):
@@ -142,16 +158,16 @@ def test_tai(runner_factory):
         np.linspace(356.76, 98739.71, N), format="sec", scale="tai"
     )
 
-    gps_sec, gps_nsec = time_to_s_ns(t)
+    input_sec, input_nsec = time_to_s_ns(t)
 
-    for data in runner_factory(t0_gps + t, 0.0, 0.0):
+    for data in runner_factory(t0_gps + t, 0.0):
 
-        stride = 2 * num_outputs
-        tai_sec = data[0::stride]
-        tai_nsec = data[1::stride]
+        stride = num_outputs
+        t_sec = data[0::stride]
+        t_nsec = data[1::stride]
 
-        assert (tai_sec == (gps_sec + 19)).all()
-        assert (tai_nsec == gps_nsec).all()
+        assert (tai_sec == input_sec).all()
+        assert (tai_nsec == input_nsec).all()
 
 
 def test_ut1(runner_factory):
@@ -171,17 +187,13 @@ def test_ut1(runner_factory):
 
     T.delta_ut1_utc = dUT
 
-    check_ut1_s, check_ut1_ns = time_to_s_ns(T.ut1)
+    check_ut1_ns = time_to_ut1_ns(T)
 
-    for data in runner_factory(T, dUT, dAT):
+    for data in runner_factory(T, dUT):
 
-        stride = 2 * num_outputs
-        ut1_sec = data[2::stride]
-        ut1_nsec = data[3::stride]
+        stride = num_outputs
+        ut1_nsec = data[2::stride]
 
-        my_print("ut1_sec:", ut1_sec)
-        my_print("target ut1_sec:", check_ut1_s)
-        my_print("diff:", ut1_sec - check_ut1_s)
         my_print("ut1_nsec:", ut1_nsec)
         my_print("target ut1_nsec:", check_ut1_ns)
         my_print("diff:", ut1_nsec - check_ut1_ns)
@@ -189,7 +201,6 @@ def test_ut1(runner_factory):
         my_print(T[-2])
         my_print(dUT)
 
-        assert (ut1_sec == check_ut1_s).all()
         assert (ut1_nsec == check_ut1_ns).all()
 
 
@@ -206,31 +217,27 @@ def test_era(runner_factory):
     my_print("delta_utc_ut1", T.delta_ut1_utc)
 
     dUT = float(T[0].delta_ut1_utc)
-    dAT = get_dAT(T[0])
 
     T.delta_ut1_utc = dUT
 
     target_era = T.earth_rotation_angle("tio").deg
 
-    for i, data in enumerate(runner_factory(T, dUT, dAT)):
+    for i, data in enumerate(runner_factory(T, dUT)):
 
         my_print("frame:", i)
 
-        stride = 2 * num_outputs
-        era = np.frombuffer(data[4::stride].tobytes(), dtype=np.float64)
-        era2 = np.frombuffer(data[5::stride].tobytes(), dtype=np.float64)
+        stride = num_outputs
+        era = np.frombuffer(data[3::stride].tobytes(), dtype=np.float64)
+        nrot = np.frombuffer(data[4::stride].tobytes(), dtype=np.int64)
 
         my_print("era:", era)
         my_print("target era:", target_era)
         my_print("diff:", era - target_era)
-        my_print("era2:", era2)
-        my_print("diff:", era2 - target_era)
 
         uas = 1.0e-6 / 3600
         nas = 1.0e-9 / 3600
         my_print("nas", nas)
 
         assert (np.fabs(era - target_era) < uas).all()
-        assert (np.fabs(era2 - target_era) < uas).all()
         # assert (np.fabs(era - target_era) < nas).all()
         # assert (np.fabs(era2 - target_era) < nas).all()

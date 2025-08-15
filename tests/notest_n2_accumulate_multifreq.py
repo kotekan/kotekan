@@ -20,7 +20,7 @@ accumulate_params = {
     "block_size": 2,
     "freq": 777,
     "num_freq_in_frame": 4,
-    "dataset_manager": {"use_dataset_broker": False},
+    "sub_integration_ntime": 1024,
 }
 
 
@@ -29,10 +29,10 @@ def accumulate_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("accumulate")
 
-    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpN2Buffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
-        "visAccumulate",
+        "N2Accumulate",
         {},
         runner.FakeGPUBuffer(
             pattern="multifreq",

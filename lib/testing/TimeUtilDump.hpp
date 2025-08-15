@@ -41,7 +41,6 @@ public:
 private:
     // Time conversions
     double _dUT;
-    double _dAT;
 
     // Input buffer
     Buffer* in_buf;

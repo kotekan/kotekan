@@ -26,7 +26,7 @@ def vis_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("vis_data")
 
-    dump_buffer = runner.DumpN2Buffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
         "timeDownsample",

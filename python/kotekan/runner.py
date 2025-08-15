@@ -708,7 +708,7 @@ class DumpN2Buffer(OutputBuffer):
 
     def __init__(self, output_dir):
 
-        self.name = "dumpvis_buf%i" % self._buf_ind
+        self.name = "dumpn2_buf%i" % self._buf_ind
         stage_name = "dump%i" % self._buf_ind
         self.__class__._buf_ind += 1
 
