@@ -56,9 +56,13 @@ target_link_libraries(test_bip_buffer PRIVATE libexternal kotekan_libs kotekan_u
 add_executable(test_prometheus_metrics test_prometheus_metrics.cpp)
 target_link_libraries(test_prometheus_metrics PRIVATE libexternal kotekan_libs kotekan_core)
 
-# test_config needs fmt
+# test_config needs Config, json
 add_executable(test_config test_config.cpp)
 target_link_libraries(test_config PRIVATE libexternal kotekan_core kotekan_stages)
+
+# test_configTracker needs 
+add_executable(test_configTracker test_configTracker.cpp)
+target_link_libraries(test_configTracker PRIVATE libexternal kotekan_core kotekan_stages)
 
 # test_chime_stacking needs MurmurHash3 and VisUtil
 add_executable(test_chime_stacking test_chime_stacking.cpp)

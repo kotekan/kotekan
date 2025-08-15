@@ -81,8 +81,6 @@ public:
     /// Main loop for sending data
     void main_thread() override;
 
-    /// Getter function for config_tracker_update;
-
     /// Adds the target server to the pipeline dot graph
     virtual std::string dot_string(const std::string& prefix) const override;
 

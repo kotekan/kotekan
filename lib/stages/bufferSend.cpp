@@ -114,7 +114,6 @@ void bufferSend::main_thread() {
             if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
                 DEBUG("Config tracker data has been updated, sending new config tracker data.");
                 header.config_tracker_update = true;
-                config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
             } else {
                 header.config_tracker_update = false;
             }
@@ -135,6 +134,11 @@ void bufferSend::main_thread() {
                       server_port);
                 close_connection();
                 continue;
+            }
+            
+            // If the frame sent successfully, 
+            if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
+                config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
             }
             DEBUG2("Sent header: {:d}", n_sent);
 
