@@ -73,7 +73,7 @@ class FakeN2 : public kotekan::Stage {
 public:
     /// Constructor. Loads config options.
     FakeN2(kotekan::Config& config, const std::string& unique_name,
-            kotekan::bufferContainer& buffer_container);
+           kotekan::bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
     void main_thread() override;
@@ -141,7 +141,7 @@ class ReplaceN2 : public kotekan::Stage {
 public:
     /// Constructor. Loads config options.
     ReplaceN2(kotekan::Config& config, const std::string& unique_name,
-               kotekan::bufferContainer& buffer_container);
+              kotekan::bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
     void main_thread() override;

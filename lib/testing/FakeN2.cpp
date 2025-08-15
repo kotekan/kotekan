@@ -44,8 +44,7 @@ REGISTER_KOTEKAN_STAGE(FakeN2);
 REGISTER_KOTEKAN_STAGE(ReplaceN2);
 
 
-FakeN2::FakeN2(Config& config, const std::string& unique_name,
-                 bufferContainer& buffer_container) :
+FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&FakeN2::main_thread, this)) {
 
     // Fetch any simple configuration
@@ -261,7 +260,7 @@ void FakeN2::fill_non_vis(N2FrameView& frame) {
 
 
 ReplaceN2::ReplaceN2(Config& config, const std::string& unique_name,
-                       bufferContainer& buffer_container) :
+                     bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&ReplaceN2::main_thread, this)) {
 
     // Setup the input buffer
