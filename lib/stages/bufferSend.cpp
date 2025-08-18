@@ -4,11 +4,10 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"            // for Buffer, get_num_full_frames, mark_frame_empty, register...
 #include "bufferContainer.hpp"   // for bufferContainer
+#include "configTracker.hpp"     // for configTracker
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, DEBUG, WARN, INFO
 #include "metadata.hpp"          // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Counter
-
-#include "configTracker.hpp"     // for configTracker
 #include "restServer.hpp"        // for restServer
 
 #include "fmt.hpp" // for format, fmt
@@ -35,9 +34,9 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::ConfigTracker;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
-using kotekan::ConfigTracker;
 
 REGISTER_KOTEKAN_STAGE(bufferSend);
 
@@ -118,8 +117,8 @@ void bufferSend::main_thread() {
                 header.config_tracker_update = false;
             }
 
-            DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}", header.frame_size,
-                   header.metadata_size, header.config_tracker_update);
+            DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}",
+                   header.frame_size, header.metadata_size, header.config_tracker_update);
 
             // Recover from partial sends
             DEBUG2("Sending header");
@@ -135,8 +134,8 @@ void bufferSend::main_thread() {
                 close_connection();
                 continue;
             }
-            
-            // If the frame sent successfully, 
+
+            // If the frame sent successfully,
             if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
                 config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
             }

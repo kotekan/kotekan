@@ -60,9 +60,10 @@ target_link_libraries(test_prometheus_metrics PRIVATE libexternal kotekan_libs k
 add_executable(test_config test_config.cpp)
 target_link_libraries(test_config PRIVATE libexternal kotekan_core kotekan_stages)
 
-# test_configTracker needs 
+# test_configTracker needs
 add_executable(test_configTracker test_configTracker.cpp)
-target_link_libraries(test_configTracker PRIVATE libexternal kotekan_core kotekan_stages)
+target_link_libraries(test_configTracker PRIVATE libexternal kotekan_core kotekan_stages
+                                                 kotekan_metadata kotekan_utils)
 
 # test_chime_stacking needs MurmurHash3 and VisUtil
 add_executable(test_chime_stacking test_chime_stacking.cpp)

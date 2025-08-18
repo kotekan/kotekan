@@ -6,9 +6,9 @@
 #include "fmt.hpp" // for format, fmt
 
 #include <algorithm>               // for max
+#include <arpa/inet.h>             // for inet_pton, sockaddr_in6, sockaddr_in
 #include <assert.h>                // for assert
 #include <cstdint>                 // for int32_t
-#include <unistd.h>                // for close
 #include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_free
 #include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
 #include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
@@ -16,7 +16,6 @@
 #include <event2/thread.h>         // for evthread_use_pthreads
 #include <evhttp.h>                // for evhttp_request
 #include <exception>               // for exception
-#include <arpa/inet.h>             // for inet_pton, sockaddr_in6, sockaddr_in
 #include <mutex>                   // for unique_lock
 #include <netinet/in.h>            // for sockaddr_in, ntohs
 #include <pthread.h>               // for pthread_setaffinity_np, pthread_setname_np
@@ -26,6 +25,7 @@
 #include <string>                  // for string, basic_string, allocator, operator!=, operator+
 #include <sys/socket.h>            // for getsockname, socklen_t
 #include <sys/time.h>              // for timeval
+#include <unistd.h>                // for close
 #include <utility>                 // for pair
 #include <vector>                  // for vector
 #ifdef MAC_OSX
@@ -65,80 +65,81 @@ bool restServer::isValidAddress(const std::string& address) {
     if (inet_pton(AF_INET, address.c_str(), &(sa4.sin_addr)) == 1) {
         return true;
     }
-    
+
     // Check if it's a valid IPv6 address
     struct sockaddr_in6 sa6;
     if (inet_pton(AF_INET6, address.c_str(), &(sa6.sin6_addr)) == 1) {
         return true;
     }
-    
+
     // For hostnames, we can do basic validation or just let getaddrinfo handle it
     // Basic hostname validation: non-empty, reasonable length, valid characters
     if (address.empty() || address.length() > 253) {
         return false;
     }
-    
+
     // Allow alphanumeric characters, dots, hyphens, and underscores
     for (char c : address) {
         if (!std::isalnum(c) && c != '.' && c != '-' && c != '_') {
             return false;
         }
     }
-    
+
     return true;
 }
 
 bool restServer::canBindToAddress(const std::string& address, u_short port) {
     DEBUG_NON_OO("restServer: Checking if we can bind to address {:s}:{:d}", address, port);
-    
+
     // Use getaddrinfo to resolve the address (works for both IPs and hostnames)
     struct addrinfo hints, *result = nullptr;
     std::memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;     // Allow both IPv4 and IPv6
     hints.ai_socktype = SOCK_STREAM; // TCP socket
     hints.ai_flags = AI_PASSIVE;     // For binding
-    
+
     std::string port_str = std::to_string(port);
     int status = getaddrinfo(address.c_str(), port_str.c_str(), &hints, &result);
-    
+
     if (status != 0) {
-        DEBUG_NON_OO("restServer: getaddrinfo failed for {:s}: {:s}", address, gai_strerror(status));
+        DEBUG_NON_OO("restServer: getaddrinfo failed for {:s}: {:s}", address,
+                     gai_strerror(status));
         return false;
     }
-    
+
     bool can_bind = false;
-    
+
     // Try to bind to each resolved address
     for (struct addrinfo* rp = result; rp != nullptr; rp = rp->ai_next) {
         int sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (sock < 0) {
             continue;
         }
-        
+
         // Enable SO_REUSEADDR to avoid TIME_WAIT issues
         int opt = 1;
         setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-        
+
         // For IPv6, we might want to set IPV6_V6ONLY
         if (rp->ai_family == AF_INET6) {
             int v6only = 1;
             setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
         }
-        
+
         if (bind(sock, rp->ai_addr, rp->ai_addrlen) == 0) {
             can_bind = true;
             shutdown(sock, SHUT_RDWR);
             close(sock);
             break; // Successfully bound to at least one address
         }
-        
+
         close(sock);
     }
-    
+
     freeaddrinfo(result);
-    
+
     DEBUG_NON_OO("restServer: Can bind to address {:s}:{:d} = {:s}", address, port,
-                can_bind ? "true" : "false");
+                 can_bind ? "true" : "false");
     return can_bind;
 }
 
@@ -498,7 +499,8 @@ void restServer::http_server_thread() {
         struct sockaddr_in sin;
         socklen_t len = sizeof(sin);
         if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
-            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", _bind_address, _port);
+            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", _bind_address,
+                         _port);
             exit(1);
         }
         _port = ntohs(sin.sin_port);

@@ -251,10 +251,14 @@ public:
     void remove_all_aliases();
 
     // Getter for the port to use
-    inline u_short port() const { return _port; }
+    inline u_short port() const {
+        return _port;
+    }
 
     // Getter for the bind address to use
-    inline std::string bind_address() const { return _bind_address; }
+    inline std::string bind_address() const {
+        return _bind_address;
+    }
 
 private:
     /// Private constuctor

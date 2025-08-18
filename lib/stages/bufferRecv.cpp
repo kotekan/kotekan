@@ -5,11 +5,11 @@
 #include "buffer.hpp"            // for Buffer, allocate_new_metadata_object, buffer_free, buff...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "bufferSend.hpp"        // for bufferFrameHeader
+#include "configTracker.hpp"     // for configTracker
 #include "metadata.hpp"          // for metadataPool
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
 #include "util.h"                // for string_tail
 #include "visUtil.hpp"           // for current_time
-#include "configTracker.hpp"     // for configTracker
 
 #include "fmt.hpp" // for format, fmt
 
@@ -413,8 +413,10 @@ void connInstance::internal_read_callback() {
                     state = connState::metadata;
                     bytes_read = 0;
 
-                    DEBUG2("Got header: metadata_size: {:d}, frame_size: {:d}, config_tracker_update: {:d}",
-                           buf_frame_header.metadata_size, buf_frame_header.frame_size, buf_frame_header.config_tracker_update);
+                    DEBUG2("Got header: metadata_size: {:d}, frame_size: {:d}, "
+                           "config_tracker_update: {:d}",
+                           buf_frame_header.metadata_size, buf_frame_header.frame_size,
+                           buf_frame_header.config_tracker_update);
 
                     if ((unsigned int)buf->frame_size != buf_frame_header.frame_size) {
                         ERROR("Frame size does not match between server: {:d} and client: {:d}",
@@ -430,9 +432,10 @@ void connInstance::internal_read_callback() {
                         return;
                     }
                     if (buf_frame_header.config_tracker_update) {
-                        DEBUG("Config tracker data update requested, updating config tracker data.");
+                        DEBUG(
+                            "Config tracker data update requested, updating config tracker data.");
                         // Need to get ip/port from the kotekan instance that sent the buffer
-                        ConfigTracker::instance().getUpstreamConfigs( client_ip, port );
+                        ConfigTracker::instance().getUpstreamConfigs(client_ip, port);
                     }
                 }
 
