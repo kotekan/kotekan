@@ -1,10 +1,7 @@
 project(kotekan_boost_tests)
 
 # Prep ourselves for compiling boost
-find_package(
-    Boost
-    COMPONENTS unit_test_framework
-    REQUIRED)
+find_package(Boost REQUIRED COMPONENTS unit_test_framework filesystem system)
 
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
@@ -63,7 +60,8 @@ target_link_libraries(test_config PRIVATE libexternal kotekan_core kotekan_stage
 # test_configTracker needs
 add_executable(test_configTracker test_configTracker.cpp)
 target_link_libraries(test_configTracker PRIVATE libexternal kotekan_core kotekan_stages
-                                                 kotekan_metadata kotekan_utils)
+                                                 kotekan_metadata kotekan_utils
+                                                 Boost::unit_test_framework Boost::filesystem)
 
 # test_chime_stacking needs MurmurHash3 and VisUtil
 add_executable(test_chime_stacking test_chime_stacking.cpp)

@@ -216,7 +216,7 @@ jobs:
     - name: Run boost tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
+        docker run "${OPTS[@]}" /code/kotekan/tests/boost/run_boost_tests.sh -t ${PYTEST_TIMEOUT} /code/kotekan/build-2404/tests/boost
 
   # Build an OpenCL version of kotekan and run the unit tests
   build-opencl-2404:

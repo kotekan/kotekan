@@ -576,7 +576,7 @@ public:
                     if (!file.good()) {
                         ERROR_NON_OO("ConfigTracker: Write failed");
                     }
-                } // file closed here
+                } // file closed
 
                 // Atomically rename temp file to final name
                 if (std::rename(temp_filename.c_str(), filename.c_str()) != 0) {

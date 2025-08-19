@@ -1,11 +1,14 @@
 #define BOOST_TEST_MODULE "test_configTracker"
 
-#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
+#include <boost/test/included/unit_test.hpp>
+#include <boost/filesystem.hpp>
+#include <fstream>
+#include <string>
+
+#include "json.hpp" // for json_ref, basic_json<>::object_t, json
 
 // the code to test:
 #include "configTracker.hpp" // for configTracker
-
-#include "json.hpp" // for json_ref, basic_json<>::object_t, json
 
 using namespace kotekan;
 using json = nlohmann::json;
@@ -23,9 +26,9 @@ struct ConfigFixture {
     }
 };
 
-BOOST_FIXTURE_TEST_SUITE(MyFeatureTests, ConfigFixture)
+BOOST_FIXTURE_TEST_SUITE(ConfigTrackerTests, ConfigFixture)
 
-BOOST_AUTO_TEST_CASE(test_add_json) {
+BOOST_AUTO_TEST_CASE(add_json) {
 
     auto& tracker = ConfigTracker::instance();
 
@@ -45,7 +48,7 @@ BOOST_AUTO_TEST_CASE(test_add_json) {
     BOOST_CHECK_EQUAL(tracker.n_configs(), 1);
 }
 
-BOOST_AUTO_TEST_CASE(test_add_two_jsons) {
+BOOST_AUTO_TEST_CASE(add_two_jsons) {
 
     auto& tracker = ConfigTracker::instance();
 
@@ -72,7 +75,7 @@ BOOST_AUTO_TEST_CASE(test_add_two_jsons) {
     BOOST_CHECK_EQUAL(tracker.n_configs(), 2);
 }
 
-BOOST_AUTO_TEST_CASE(test_add_same_jsons) {
+BOOST_AUTO_TEST_CASE(add_same_two_jsons) {
 
     auto& tracker = ConfigTracker::instance();
 
@@ -97,7 +100,7 @@ BOOST_AUTO_TEST_CASE(test_add_same_jsons) {
     BOOST_CHECK_EQUAL(tracker.n_configs(), 1);
 }
 
-BOOST_AUTO_TEST_CASE(test_add_same_jsons_bad) {
+BOOST_AUTO_TEST_CASE(add_same_two_jsons_bad) {
 
     auto& tracker = ConfigTracker::instance();
 
@@ -118,6 +121,41 @@ BOOST_AUTO_TEST_CASE(test_add_same_jsons_bad) {
     BOOST_CHECK_THROW(tracker.insertConfig("localhost", 8080, j2, "1.0.0", "main",
                                            "abcdef1234567890", "CMAKE_BUILD_TYPE=Release"),
                       std::runtime_error);
+}
+
+BOOST_AUTO_TEST_CASE(write_configs)
+{
+    auto& tracker = ConfigTracker::instance();
+    
+    // Some json
+    json j1 = {{"key1", "value1"},
+               {"key2", {{"subkey1", "subvalue1"}, {"subkey2", "subvalue2"}}},
+               {"key3", "value3"}};
+
+    tracker.insertConfig("localhost", 8080, j1, "1.0.0", "main", "abcdef1234567890",
+                         "CMAKE_BUILD_TYPE=Release");
+
+
+    // Create a temporary file path
+    boost::filesystem::path temp_dir = boost::filesystem::temp_directory_path();
+
+    tracker.writeConfigsToDisk(temp_dir.string());
+    
+    // Verify the file exists and has content
+    BOOST_CHECK(boost::filesystem::exists(temp_dir / "localhost_8080.json"));
+
+    // Read back and verify content
+    {
+        std::ifstream read_file(temp_dir / "localhost_8080.json");
+        std::string line;
+        std::getline(read_file, line);
+        BOOST_TEST(!line.empty()); // TODO: Add more specific content checks
+    }
+
+    // Clean up - remove the temporary file
+    boost::filesystem::remove(temp_dir / "localhost_8080.json");
+    BOOST_CHECK(!boost::filesystem::exists(temp_dir / "localhost_8080.json"));
+
 }
 
 BOOST_AUTO_TEST_SUITE_END()

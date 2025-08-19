@@ -27,7 +27,8 @@ RUN apt update && \
                    flex \
                    bison \
                    iwyu \
-                   gdb && \
+                   gdb \
+                   valgrind && \
     apt install -y dpdk \
                    dpdk-dev \
                    libdpdk-dev \
@@ -36,6 +37,8 @@ RUN apt update && \
                    libfftw3-dev \
                    libairspy-dev \
                    libboost-test-dev \
+                   libboost-filesystem-dev \
+                   libboost-system-dev \
                    libevent-dev \
                    libnuma-dev \
                    libssl-dev \

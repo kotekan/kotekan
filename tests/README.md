@@ -9,3 +9,6 @@ To run it you must:
 - Have built `kotekan` into the standard location (i.e. `build/kotekan/`).
 - Run the tests from within the `tests/` directory using `pytest`.
 
+The boost tests can be run using the `tests/boost/run_boost_tests.py` script.
+This script is provided because pytest itself will ignore compiled executables
+that fail to run.
