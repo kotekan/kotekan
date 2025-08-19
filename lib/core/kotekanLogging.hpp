@@ -11,12 +11,24 @@
 
 // Boost messages (conditional on test compile/link)
 #if defined(BOOST_TEST_MODULE) || defined(BOOST_TEST_MAIN) || defined(BOOST_TEST_DYN_LINK)
-    #include <boost/test/unit_test.hpp>
-    #define KTK_BOOST_ERR(m, ...) do { BOOST_THROW_EXCEPTION( std::runtime_error( FORMAT(m, ##__VA_ARGS__).c_str() ) ); } while (0)
-    #define KTK_BOOST_WARN(m, ...) do { BOOST_WARN_MESSAGE(false, FORMAT(m, ##__VA_ARGS__).c_str()); } while (0)
+#include <boost/test/unit_test.hpp>
+#define KTK_BOOST_ERR(m, ...)                                                                      \
+    do {                                                                                           \
+        BOOST_THROW_EXCEPTION(std::runtime_error(FORMAT(m, ##__VA_ARGS__).c_str()));               \
+    } while (0)
+#define KTK_BOOST_WARN(m, ...)                                                                     \
+    do {                                                                                           \
+        BOOST_WARN_MESSAGE(false, FORMAT(m, ##__VA_ARGS__).c_str());                               \
+    } while (0)
 #else
-    #define KTK_BOOST_ERR(m, ...) do { (void)0; } while (0)
-    #define KTK_BOOST_WARN(m, ...) do { (void)0; } while (0)
+#define KTK_BOOST_ERR(m, ...)                                                                      \
+    do {                                                                                           \
+        (void)0;                                                                                   \
+    } while (0)
+#define KTK_BOOST_WARN(m, ...)                                                                     \
+    do {                                                                                           \
+        (void)0;                                                                                   \
+    } while (0)
 #endif
 
 // Macro to pass a string and arguments to fmt::format including a compile-time string format check.
@@ -24,25 +36,24 @@
 
 // These macros check if the given value evaluates to True and if so report an error and exit
 // kotekan.
-#define CHECK_ERROR(err)                                                                            \
-    do {                                                                                            \
-        if (err) {                                                                                  \
-            kotekanLogging::internal_logging(LOG_ERR, __log_prefix,                                 \
-                                             fmt("Error at {:s}:{:d}; Error type: {:s}"),           \
-                                             __FILE__, __LINE__, strerror(errno));                  \
-            KTK_BOOST_ERR("Error at {}:{}; Error type: {}", __FILE__, __LINE__,                     \
-                          strerror(errno));                                                         \
-            exit(errno);                                                                            \
-        }                                                                                           \
+#define CHECK_ERROR(err)                                                                           \
+    do {                                                                                           \
+        if (err) {                                                                                 \
+            kotekanLogging::internal_logging(LOG_ERR, __log_prefix,                                \
+                                             fmt("Error at {:s}:{:d}; Error type: {:s}"),          \
+                                             __FILE__, __LINE__, strerror(errno));                 \
+            KTK_BOOST_ERR("Error at {}:{}; Error type: {}", __FILE__, __LINE__, strerror(errno));  \
+            exit(errno);                                                                           \
+        }                                                                                          \
     } while (0)
-#define CHECK_MEM(pointer)                                                                          \
-    do {                                                                                            \
-        if (pointer == nullptr) {                                                                   \
-            internal_logging(LOG_ERR, __log_prefix, fmt("Error at {:s}:{:d}; Null pointer"),        \
-                             __FILE__, __LINE__);                                                   \
-            KTK_BOOST_ERR("Error at {}:{}; Null pointer", __FILE__, __LINE__);                      \
-            exit(-1);                                                                               \
-        }                                                                                           \
+#define CHECK_MEM(pointer)                                                                         \
+    do {                                                                                           \
+        if (pointer == nullptr) {                                                                  \
+            internal_logging(LOG_ERR, __log_prefix, fmt("Error at {:s}:{:d}; Null pointer"),       \
+                             __FILE__, __LINE__);                                                  \
+            KTK_BOOST_ERR("Error at {}:{}; Null pointer", __FILE__, __LINE__);                     \
+            exit(-1);                                                                              \
+        }                                                                                          \
     } while (0)
 
 // DEBUG / DEBUG2
@@ -51,88 +62,86 @@
 // sections, since it will be compiled out in a release build.
 // Requires a build with -DCMAKE_BUILD_TYPE=Debug
 #ifdef DEBUGGING
-#define DEBUG(m, ...)                                                                               \
-    do {                                                                                            \
-        if (_member_log_level > 3)                                                                  \
-            internal_logging(LOG_DEBUG, __log_prefix, fmt(m), ##__VA_ARGS__);                       \
+#define DEBUG(m, ...)                                                                              \
+    do {                                                                                           \
+        if (_member_log_level > 3)                                                                 \
+            internal_logging(LOG_DEBUG, __log_prefix, fmt(m), ##__VA_ARGS__);                      \
     } while (0)
-#define DEBUG2(m, ...)                                                                              \
-    do {                                                                                            \
-        if (_member_log_level > 4)                                                                  \
-            internal_logging(LOG_DEBUG, __log_prefix, fmt(m), ##__VA_ARGS__);                       \
+#define DEBUG2(m, ...)                                                                             \
+    do {                                                                                           \
+        if (_member_log_level > 4)                                                                 \
+            internal_logging(LOG_DEBUG, __log_prefix, fmt(m), ##__VA_ARGS__);                      \
     } while (0)
-#define DEBUG_NON_OO(m, ...)                                                                        \
-    do {                                                                                            \
-        if (_global_log_level > 3)                                                                  \
-            kotekan::kotekanLogging::internal_logging(LOG_DEBUG, "",                                \
-                                                      fmt(m), ##__VA_ARGS__);                       \
+#define DEBUG_NON_OO(m, ...)                                                                       \
+    do {                                                                                           \
+        if (_global_log_level > 3)                                                                 \
+            kotekan::kotekanLogging::internal_logging(LOG_DEBUG, "", fmt(m), ##__VA_ARGS__);       \
     } while (0)
-#define DEBUG2_NON_OO(m, ...)                                                                       \
-    do {                                                                                            \
-        if (_global_log_level > 4)                                                                  \
-            kotekan::kotekanLogging::internal_logging(LOG_DEBUG, "",                                \
-                                                      fmt(m), ##__VA_ARGS__);                       \
+#define DEBUG2_NON_OO(m, ...)                                                                      \
+    do {                                                                                           \
+        if (_global_log_level > 4)                                                                 \
+            kotekan::kotekanLogging::internal_logging(LOG_DEBUG, "", fmt(m), ##__VA_ARGS__);       \
     } while (0)
 #else // !DEBUGGING
-#define DEBUG(m, ...)                                                                               \
-    do {                                                                                            \
-        (void)0;                                                                                    \
+#define DEBUG(m, ...)                                                                              \
+    do {                                                                                           \
+        (void)0;                                                                                   \
     } while (0)
-#define DEBUG2(m, ...)                                                                              \
-    do {                                                                                            \
-        (void)0;                                                                                    \
+#define DEBUG2(m, ...)                                                                             \
+    do {                                                                                           \
+        (void)0;                                                                                   \
     } while (0)
-#define DEBUG_NON_OO(m, ...)                                                                        \
-    do {                                                                                            \
-        (void)0;                                                                                    \
+#define DEBUG_NON_OO(m, ...)                                                                       \
+    do {                                                                                           \
+        (void)0;                                                                                   \
     } while (0)
-#define DEBUG2_NON_OO(m, ...)                                                                       \
-    do {                                                                                            \
-        (void)0;                                                                                    \
+#define DEBUG2_NON_OO(m, ...)                                                                      \
+    do {                                                                                           \
+        (void)0;                                                                                   \
     } while (0)
 #endif // DEBUGGING
 
 // Use this for serious errors.  i.e. things that require the program to end.
 // Always prints, no check for log level
-#define ERROR(m, ...)                                                                               \
-    do {                                                                                            \
-        if (_member_log_level > 0)                                                                  \
-            internal_logging(LOG_ERR, __log_prefix, fmt(m), ##__VA_ARGS__);                         \
-        KTK_BOOST_ERR(m, ##__VA_ARGS__);                                                            \
+#define ERROR(m, ...)                                                                              \
+    do {                                                                                           \
+        if (_member_log_level > 0)                                                                 \
+            internal_logging(LOG_ERR, __log_prefix, fmt(m), ##__VA_ARGS__);                        \
+        KTK_BOOST_ERR(m, ##__VA_ARGS__);                                                           \
     } while (0)
-#define ERROR_NON_OO(m, ...)                                                                        \
-    do {                                                                                            \
-        if (_global_log_level > 0)                                                                  \
-            kotekan::kotekanLogging::internal_logging(LOG_ERR, "", fmt(m), ##__VA_ARGS__);          \
-        KTK_BOOST_ERR(m, ##__VA_ARGS__);                                                            \
+#define ERROR_NON_OO(m, ...)                                                                       \
+    do {                                                                                           \
+        if (_global_log_level > 0)                                                                 \
+            kotekan::kotekanLogging::internal_logging(LOG_ERR, "", fmt(m), ##__VA_ARGS__);         \
+        KTK_BOOST_ERR(m, ##__VA_ARGS__);                                                           \
     } while (0)
 
 // This is for errors that could cause problems with the operation, or data issues,
 // but don't cause the program to fail.
-#define WARN(m, ...)                                                                                \
-    do {                                                                                            \
-        if (_member_log_level > 1)                                                                  \
-            internal_logging(LOG_WARNING, __log_prefix, fmt(m), ##__VA_ARGS__);                     \
-        KTK_BOOST_WARN(m, ##__VA_ARGS__);                                                           \
+#define WARN(m, ...)                                                                               \
+    do {                                                                                           \
+        if (_member_log_level > 1)                                                                 \
+            internal_logging(LOG_WARNING, __log_prefix, fmt(m), ##__VA_ARGS__);                    \
+        KTK_BOOST_WARN(m, ##__VA_ARGS__);                                                          \
     } while (0)
-#define WARN_NON_OO(m, ...)                                                                         \
-    do {                                                                                            \
-        if (_global_log_level > 1)                                                                  \
-            kotekan::kotekanLogging::internal_logging(LOG_WARNING, "",  fmt(m), ##__VA_ARGS__);     \
-        KTK_BOOST_WARN(m, ##__VA_ARGS__);                                                           \
+#define WARN_NON_OO(m, ...)                                                                        \
+    do {                                                                                           \
+        if (_global_log_level > 1)                                                                 \
+            kotekan::kotekanLogging::internal_logging(LOG_WARNING, "", fmt(m), ##__VA_ARGS__);     \
+        KTK_BOOST_WARN(m, ##__VA_ARGS__);                                                          \
     } while (0)
 
 // Useful messages to say what the application is doing.
 // Should be used sparingly, and limited to useful areas.
-#define INFO(m, ...)                                                                                \
-    do {                                                                                            \
-        if (_member_log_level > 2)                                                                  \
-            internal_logging(LOG_INFO, __log_prefix, fmt(m), ##__VA_ARGS__);                        \
+#define INFO(m, ...)                                                                               \
+    do {                                                                                           \
+        if (_member_log_level > 2)                                                                 \
+            internal_logging(LOG_INFO, __log_prefix, fmt(m), ##__VA_ARGS__);                       \
     } while (0)
-#define INFO_NON_OO(m, ...)                                                                         \
-    do {                                                                                            \
-        if (_global_log_level > 2)                                                                  \
-            kotekan::kotekanLogging::internal_logging(LOG_INFO, "", fmt(m), ##__VA_ARGS__);         \
+#define INFO_NON_OO(m, ...)                                                                        \
+    do {                                                                                           \
+        if (_global_log_level > 2)                                                                 \
+            kotekan::kotekanLogging::internal_logging(LOG_INFO, "", fmt(m), ##__VA_ARGS__);        \
     } while (0)
 
 // Use this for fatal errors that kotekan can't recover from.

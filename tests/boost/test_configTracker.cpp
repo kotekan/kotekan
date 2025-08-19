@@ -93,7 +93,7 @@ BOOST_AUTO_TEST_CASE(test_add_same_jsons) {
     // same port, same config (updatable_config should be ignored!), so no conflict expected
     tracker.insertConfig("localhost", 8080, j2, "1.0.0", "main", "abcdef1234567890",
                          "CMAKE_BUILD_TYPE=Release");
-    
+
     BOOST_CHECK_EQUAL(tracker.n_configs(), 1);
 }
 
@@ -115,11 +115,9 @@ BOOST_AUTO_TEST_CASE(test_add_same_jsons_bad) {
                          "CMAKE_BUILD_TYPE=Release");
 
     // same port, different config, so conflict *is* expected
-    BOOST_CHECK_THROW(
-        tracker.insertConfig("localhost", 8080, j2, "1.0.0", "main", "abcdef1234567890",
-                        "CMAKE_BUILD_TYPE=Release"),
-        std::runtime_error
-    );
+    BOOST_CHECK_THROW(tracker.insertConfig("localhost", 8080, j2, "1.0.0", "main",
+                                           "abcdef1234567890", "CMAKE_BUILD_TYPE=Release"),
+                      std::runtime_error);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
