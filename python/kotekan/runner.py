@@ -1371,7 +1371,7 @@ def has_hdf5():
 
 def has_lapack():
     """Is LAPACK support built in."""
-    return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_LAPACK"] == "ON"
+    return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_LAPACK_BLAZE"] == "ON"
 
 
 def has_openmp():
