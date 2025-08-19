@@ -55,7 +55,6 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/config");
     restServer::instance().remove_get_callback("/buffers");
     restServer::instance().remove_get_callback("/pipeline_dot");
-    restServer::instance().remove_get_callback("/config_tracker"); // TODO
     restServer::instance().remove_all_aliases();
 
     KotekanTrackers::instance().set_kotekan_mode_ptr(nullptr);

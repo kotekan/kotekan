@@ -43,6 +43,11 @@ public:
     ConfigTracker(const ConfigTracker&) = delete;
     void operator=(const ConfigTracker&) = delete;
 
+    ~ConfigTracker() {
+        restServer::instance().remove_get_callback("/config_tracker_configs");
+        restServer::instance().remove_get_callback("/config_tracker_hashes");
+    }
+
     /**
      * @brief Struct to hold a (host, port) pair.
      */
@@ -422,7 +427,7 @@ public:
      */
     void register_with_server(restServer* rest_server) {
         using namespace std::placeholders;
-        // register callback for /config_tracker, pass along hash if provided
+        // register callback for /config_tracker_*, pass along hash if provided
         rest_server->register_get_callback(
             "/config_tracker_configs",
             std::bind(&ConfigTracker::trackers_configs_callback, this, _1));
