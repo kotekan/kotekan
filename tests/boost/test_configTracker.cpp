@@ -7,8 +7,8 @@
 
 #include "json.hpp" // for json_ref, basic_json<>::object_t, json
 
-// the code to test:
 #include "configTracker.hpp" // for configTracker
+#include "restServer.hpp" // for restServer
 
 using namespace kotekan;
 using json = nlohmann::json;
@@ -17,6 +17,9 @@ using json = nlohmann::json;
 struct ConfigFixture {
     ConfigFixture() {
         auto& tracker = ConfigTracker::instance();
+        // restServer& rest_server = restServer::instance();
+        // if(rest_server.bind_address().empty())
+        //     rest_server.start("localhost", 12480);
         tracker.reset();
     }
 

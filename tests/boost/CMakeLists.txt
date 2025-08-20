@@ -60,8 +60,7 @@ target_link_libraries(test_config PRIVATE libexternal kotekan_core kotekan_stage
 # test_configTracker needs
 add_executable(test_configTracker test_configTracker.cpp)
 target_link_libraries(test_configTracker PRIVATE libexternal kotekan_core kotekan_stages
-                                                 kotekan_metadata kotekan_utils
-                                                 Boost::unit_test_framework Boost::filesystem)
+                                                 kotekan_metadata kotekan_utils Boost::file)
 
 # test_chime_stacking needs MurmurHash3 and VisUtil
 add_executable(test_chime_stacking test_chime_stacking.cpp)

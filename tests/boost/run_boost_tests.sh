@@ -35,8 +35,8 @@ if ! [[ "$TIMEOUT" =~ ^[0-9]+$ ]] || [ "$TIMEOUT" -le 0 ]; then
     exit 1
 fi
 
-# Find all executable files in the directory
-mapfile -t EXECUTABLES < <(find "$TEST_DIR" -maxdepth 1 -type f -executable)
+# Find all executable files in the directory that start with "test_"
+mapfile -t EXECUTABLES < <(find "$TEST_DIR" -maxdepth 1 -type f -executable -name "test_*")
 
 # Check if any executables were found
 if [ ${#EXECUTABLES[@]} -eq 0 ]; then

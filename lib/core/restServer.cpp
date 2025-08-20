@@ -46,6 +46,8 @@ restServer& restServer::instance() {
 
 restServer::restServer() : main_thread() {
     stop_thread = false;
+    _bind_address = "";
+    _port = 0;
 }
 
 restServer::~restServer() {

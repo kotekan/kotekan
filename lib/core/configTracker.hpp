@@ -44,8 +44,8 @@ public:
     void operator=(const ConfigTracker&) = delete;
 
     ~ConfigTracker() {
-        restServer::instance().remove_get_callback("/config_tracker_configs");
-        restServer::instance().remove_get_callback("/config_tracker_hashes");
+        // restServer::instance().remove_get_callback("/config_tracker_configs");
+        // restServer::instance().remove_get_callback("/config_tracker_hashes");
     }
 
     /**
@@ -444,7 +444,6 @@ public:
      * (otherwise fail).
      */
     void getUpstreamConfigs(const std::string& host, uint16_t port) {
-
 
         // Send a request to the upstream server to get all config hashes.
         nlohmann::json request_json = {};
