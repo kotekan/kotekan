@@ -1323,7 +1323,7 @@ void FEngine::main_thread() {
                 get_chord_metadata(E_buffer, E_frame_id);
             E_metadata->frame_counter = E_frame_index;
             std::strncpy(E_metadata->name, "E", sizeof E_metadata->name);
-            E_metadata->type = kotekan::int4x2chime;
+            E_metadata->type = kotekan::int4x2_swapped_withoffset;
             E_metadata->dims = 4;
             assert(E_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(E_metadata->dim_name[0], "T", sizeof E_metadata->dim_name[0]);
@@ -1500,7 +1500,7 @@ void FEngine::main_thread() {
                 get_chord_metadata(J_buffer, J_frame_id);
             J_metadata->frame_counter = J_frame_index;
 	    std::strncpy(J_metadata->name, "J", sizeof J_metadata->name);
-            J_metadata->type = kotekan::int4x2chime;
+            J_metadata->type = kotekan::int4x2_swapped_withoffset;
             J_metadata->dims = 4;
             assert(J_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(J_metadata->dim_name[0], "B", sizeof J_metadata->dim_name[0]);

@@ -23,7 +23,7 @@ HighFive::DataType chord2hdf5(const kotekan::DataType type) {
         case kotekan::int4x2:
             return HighFive::AtomicType<std::uint8_t>(); // 2 signed 4-bit integers (packed into a
                                                          // byte)
-        case kotekan::int4x2chime:
+        case kotekan::int4x2_swapped_withoffset:
             return HighFive::AtomicType<std::uint8_t>(); // offset-encoded (stored is value + 8),
                                                          // low and high values swapped
         case kotekan::int8:

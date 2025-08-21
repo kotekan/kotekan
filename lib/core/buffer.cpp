@@ -322,12 +322,12 @@ bool Buffer::is_frame_empty(const int ID) {
 uint8_t* Buffer::wait_for_full_frame(const std::string& consumer_name, const int ID) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     auto& con = consumers.at(consumer_name);
-    DEBUG("wait_for_full_frame({:s}[{:d}]): waiting...", consumer_name, ID);
+    DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting...", consumer_name, ID);
     print_full_status();
     // This wait exits when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as done
     full_cond.wait(lock, [&]() { return (is_full[ID] && !con.is_done[ID]) || shutdown_signal; });
-    DEBUG("wait_for_full_frame({:s}[{:d}]): waiting done.", consumer_name, ID);
+    DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting done.", consumer_name, ID);
     assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
     lock.unlock();
 
@@ -345,10 +345,10 @@ int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
     std::unique_lock<std::recursive_mutex> lock(mutex);
     auto& con = consumers.at(name);
 
-    DEBUG("wait_for_full_frame_timeout({:s}[{:d}]): waiting...", name, ID);
+    DEBUG2("wait_for_full_frame_timeout({:s}[{:d}]): waiting...", name, ID);
     bool st = full_cond.wait_until(
         lock, deadline, [&]() { return (is_full[ID] && !con.is_done[ID]) || shutdown_signal; });
-    DEBUG("wait_for_full_frame_timeout({:s}[{:d}]): waiting done.", name, ID);
+    DEBUG2("wait_for_full_frame_timeout({:s}[{:d}]): waiting done.", name, ID);
     if (st)
         assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
     lock.unlock();
@@ -453,7 +453,7 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
     assert(ID >= 0);
     assert(ID < num_frames);
 
-    DEBUG("mark_frame_full({:s}[{:d}])", producer_name, ID);
+    DEBUG2("mark_frame_full({:s}[{:d}])", producer_name, ID);
 
     bool set_full = false;
     bool set_empty = false;
@@ -533,7 +533,7 @@ void Buffer::mark_frame_empty(const std::string& consumer_name, const int ID) {
     assert(ID < num_frames);
     bool broadcast = false;
 
-    DEBUG("mark_frame_empty({:s}[{:d}])", consumer_name, ID);
+    DEBUG2("mark_frame_empty({:s}[{:d}])", consumer_name, ID);
 
     // If we've been asked to zero the buffer do it here.
     // This needs to happen out side of the critical section
@@ -594,10 +594,10 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
     // If the buffer isn't full, i.e. is_full[ID] == 0, then we never sleep on the cond var.
     // The second condition stops us from using a buffer we've already filled,
     // and forces a wait until that buffer has been marked as empty.
-    DEBUG("wait_for_empty_frame({:s}[{:d}]): waiting...", producer_name, ID);
+    DEBUG2("wait_for_empty_frame({:s}[{:d}]): waiting...", producer_name, ID);
     print_full_status();
     empty_cond.wait(lock, [&]() { return (!is_full[ID] && !pro->is_done[ID]) || shutdown_signal; });
-    DEBUG("wait_for_empty_frame({:s}[{:d}]): waiting done.", producer_name, ID);
+    DEBUG2("wait_for_empty_frame({:s}[{:d}]): waiting done.", producer_name, ID);
     assert((!is_full[ID] && !pro->is_done[ID]) || shutdown_signal);
     assert(!((is_full[ID] || pro->is_done[ID]) && !shutdown_signal));
     lock.unlock();

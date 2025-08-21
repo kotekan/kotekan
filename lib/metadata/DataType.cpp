@@ -84,7 +84,7 @@ constexpr bool test_int4x2_t() {
 }
 static_assert(test_int4x2_t());
 
-constexpr bool test_int4x2chime_t() {
+constexpr bool test_int4x2_swapped_withoffset_t() {
     for (int val = 0x00; val <= 0xff; ++val) {
         const int v0 = ((val & 0x0f) >> 0) - 8;
         const int v1 = ((val & 0xf0) >> 4) - 8;
@@ -92,10 +92,10 @@ constexpr bool test_int4x2chime_t() {
             return false;
         if (!(-8 <= v1 && v1 <= +7))
             return false;
-        const int4x2chime_t x(v0, v1);
+        const int4x2_swapped_withoffset_t x(v0, v1);
         if (x.val != val)
             return false;
-        const int4x2chime_t y{std::uint8_t(val)};
+        const int4x2_swapped_withoffset_t y{std::uint8_t(val)};
         if (y[0] != v0)
             return false;
         if (y[1] != v1)
@@ -103,7 +103,7 @@ constexpr bool test_int4x2chime_t() {
     }
     return true;
 }
-static_assert(test_int4x2chime_t());
+static_assert(test_int4x2_swapped_withoffset_t());
 
 } // namespace
 
@@ -114,7 +114,7 @@ static_assert(GetDataType_v<GetType_t<uint16>> == uint16);
 static_assert(GetDataType_v<GetType_t<uint32>> == uint32);
 static_assert(GetDataType_v<GetType_t<uint64>> == uint64);
 static_assert(GetDataType_v<GetType_t<int4x2>> == int4x2);
-static_assert(GetDataType_v<GetType_t<int4x2chime>> == int4x2chime);
+static_assert(GetDataType_v<GetType_t<int4x2_swapped_withoffset>> == int4x2_swapped_withoffset);
 static_assert(GetDataType_v<GetType_t<int8>> == int8);
 static_assert(GetDataType_v<GetType_t<int16>> == int16);
 static_assert(GetDataType_v<GetType_t<int32>> == int32);
@@ -141,14 +141,15 @@ std::string type_to_string(DataType type) {
             return "uint64";
         case int4x2:
             return "int4x2";
-        case int4x2chime:
-            return "int4x2chime";
+        case int4x2_swapped_withoffset:
+            return "int4x2_swapped_withoffset";
         case int8:
             return "int8";
         case int16:
             return "int16";
         case int32:
             return "int32";
+
         case int64:
             return "int64";
         case float16:
@@ -163,21 +164,21 @@ std::string type_to_string(DataType type) {
 }
 
 const std::unordered_map<std::string, DataType> string_to_type_map{
-    {"uint1x8", uint1x8},         //
-    {"uint4x2", uint4x2},         //
-    {"uint8", uint8},             //
-    {"uint16", uint16},           //
-    {"uint32", uint32},           //
-    {"uint64", uint64},           //
-    {"int4x2", int4x2},           //
-    {"int4x2chime", int4x2chime}, //
-    {"int8", int8},               //
-    {"int16", int16},             //
-    {"int32", int32},             //
-    {"int64", int64},             //
-    {"float16", float16},         //
-    {"float32", float32},         //
-    {"float64", float64},         //
+    {"uint1x8", uint1x8},                                     //
+    {"uint4x2", uint4x2},                                     //
+    {"uint8", uint8},                                         //
+    {"uint16", uint16},                                       //
+    {"uint32", uint32},                                       //
+    {"uint64", uint64},                                       //
+    {"int4x2", int4x2},                                       //
+    {"int4x2_swapped_withoffset", int4x2_swapped_withoffset}, //
+    {"int8", int8},                                           //
+    {"int16", int16},                                         //
+    {"int32", int32},                                         //
+    {"int64", int64},                                         //
+    {"float16", float16},                                     //
+    {"float32", float32},                                     //
+    {"float64", float64},                                     //
 };
 
 DataType string_to_type(const std::string& type_name) {

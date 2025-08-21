@@ -33,7 +33,7 @@ Cmake build options:
   Direct toolchain calls are used by default.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
 * `-DUSE_CUDA=ON` - Build with CUDA support, requires `nvcc`
-* `-DUSE_HDF5=ON` to enable the HDF5 writer. Add `-DHIGHFIVE_PATH=<path>` to optionally specify a path to HighFive.
+* `-DUSE_HDF5=ON` to enable the HDF5 writer.
 * `-DUSE_ASDF=ON` to enable to ASDF writer, and `-DUSE_GDAL=ON` for the GDAL writer.
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
 * `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
