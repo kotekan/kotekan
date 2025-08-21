@@ -1158,7 +1158,7 @@ cpu_affinity: []
 
 # Metadata pool
 main_pool:
-    kotekan_metadata_pool: chimeMetadata
+    kotekan_metadata_pool: chordMetadata
     num_metadata_objects: 30 * buffer_depth
 
 vis_pool:
