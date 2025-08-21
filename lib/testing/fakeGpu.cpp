@@ -210,12 +210,15 @@ uint8_t FakeTelescope::nyquist_zone() const {
     return 2;
 }
 
-timespec FakeTelescope::to_time(uint64_t /*seq*/) const {
-    return {0, 0};
+timespec FakeTelescope::to_time(uint64_t seq) const {
+    uint64_t ns = seq_length_nsec() * seq;
+    return {time_t(ns / 1000000000ULL), time_t(ns % 1000000000ULL)};
 }
 
-uint64_t FakeTelescope::to_seq(timespec /*time*/) const {
-    return 0;
+uint64_t FakeTelescope::to_seq(timespec time) const {
+    uint64_t ns = time.tv_sec * time_t(1000000000ULL) + time.tv_nsec;
+    assert(ns % seq_length_nsec() == 0);
+    return ns / seq_length_nsec();
 }
 
 uint64_t FakeTelescope::seq_length_nsec() const {
