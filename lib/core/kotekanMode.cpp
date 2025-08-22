@@ -8,6 +8,7 @@
 #include "bufferFactory.hpp"     // for bufferFactory
 #include "configTracker.hpp"     // for ConfigTracker
 #include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for datasetManager
 #include "kotekanLogging.hpp"    // for INFO_NON_OO
 #include "kotekanTrackers.hpp"   // for KotekanTrackers
 #include "metadata.hpp"          // for delete_metadata_pool
@@ -81,6 +82,10 @@ void kotekanMode::initalize_stages() {
     configUpdater& config_updater = configUpdater::instance();
     config_updater.apply_config(config);
 
+    // Apply config to datasetManager
+    if (config.exists("/", "dataset_manager"))
+        datasetManager::instance(config);
+    
     // Create ConfigTracker instance and register with the REST server.
     ConfigTracker::instance();
     ConfigTracker::instance().insertConfig(
