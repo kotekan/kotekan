@@ -41,6 +41,7 @@ BlockGpuPattern::BlockGpuPattern(kotekan::Config& config, const std::string& pat
 void BlockGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata, int frame_number,
                            freq_id_t freq_id) {
 
+    (void)freq_id;
     (void)frame_number;
 
     unsigned int nb1 = _num_elements / _block_size;
@@ -60,10 +61,6 @@ void BlockGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadat
 
     metadata->set_lost_timesamples(0);
     metadata->set_rfi_flagged_samples(0);
-    const size_t nfreq = freq_id + 1;
-    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
-    freqs[nfreq - 1] = freq_id;
-    metadata->set_coarse_freq(nfreq, freqs.data());
 }
 
 
@@ -72,6 +69,7 @@ LostSamplesGpuPattern::LostSamplesGpuPattern(kotekan::Config& config, const std:
 
 void LostSamplesGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                  int frame_number, freq_id_t freq_id) {
+    (void)freq_id;
     uint32_t norm = _samples_per_data_set - frame_number;
 
     // Every frame has one more lost packet than the last
@@ -88,10 +86,8 @@ void LostSamplesGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* m
 
     metadata->set_lost_timesamples(frame_number);
     metadata->set_rfi_flagged_samples(0);
-    const size_t nfreq = freq_id + 1;
-    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
-    freqs[nfreq - 1] = freq_id;
-    metadata->set_coarse_freq(nfreq, freqs.data());
+    // cannot set frequencies since I don't know which element of the data slice
+    // I am at
 }
 
 
@@ -100,6 +96,7 @@ LostWeightsGpuPattern::LostWeightsGpuPattern(kotekan::Config& config, const std:
 
 void LostWeightsGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                  int frame_number, freq_id_t freq_id) {
+    (void)freq_id;
 
     int32_t lost = ((frame_number + 1) % 4 < 2) ? _b : 0;
     uint32_t norm = (uint32_t)(_samples_per_data_set - lost);
@@ -119,10 +116,8 @@ void LostWeightsGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* m
 
     metadata->set_lost_timesamples(lost);
     metadata->set_rfi_flagged_samples(lost);
-    const size_t nfreq = freq_id + 1;
-    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
-    freqs[nfreq - 1] = freq_id;
-    metadata->set_coarse_freq(nfreq, freqs.data());
+    // cannot set frequencies since I don't know which element of the data slice
+    // I am at
 }
 
 AccumulateGpuPattern::AccumulateGpuPattern(kotekan::Config& config, const std::string& path) :
@@ -131,6 +126,7 @@ AccumulateGpuPattern::AccumulateGpuPattern(kotekan::Config& config, const std::s
 
 void AccumulateGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                 int frame_number, freq_id_t freq_id) {
+    (void)freq_id;
 
     for (size_t i = 0; i < _num_elements; i++) {
         for (size_t j = i; j < _num_elements; j++) {
@@ -152,10 +148,8 @@ void AccumulateGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* me
 
     metadata->set_lost_timesamples(0);
     metadata->set_rfi_flagged_samples(0);
-    const size_t nfreq = freq_id + 1;
-    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
-    freqs[nfreq - 1] = freq_id;
-    metadata->set_coarse_freq(nfreq, freqs.data());
+    // cannot set frequencies since I don't know which element of the data slice
+    // I am at
 }
 
 
@@ -165,7 +159,7 @@ GaussianGpuPattern::GaussianGpuPattern(kotekan::Config& config, const std::strin
 
 void GaussianGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                               int frame_number, freq_id_t freq_id) {
-
+    (void)freq_id;
     (void)frame_number;
 
     float f_auto = pow(_samples_per_data_set, 0.5);
@@ -187,10 +181,8 @@ void GaussianGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* meta
 
     metadata->set_lost_timesamples(0);
     metadata->set_rfi_flagged_samples(0);
-    const size_t nfreq = freq_id + 1;
-    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
-    freqs[nfreq - 1] = freq_id;
-    metadata->set_coarse_freq(nfreq, freqs.data());
+    // cannot set frequencies since I don't know which element of the data slice
+    // I am at
 }
 
 
@@ -209,6 +201,7 @@ PulsarGpuPattern::PulsarGpuPattern(kotekan::Config& config, const std::string& p
 
 void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                             int frame_number, freq_id_t freq_id) {
+    (void)freq_id;
     (void)frame_number;
 
     auto& tel = Telescope::instance();
@@ -236,10 +229,8 @@ void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metada
 
     metadata->set_lost_timesamples(0);
     metadata->set_rfi_flagged_samples(0);
-    const size_t nfreq = freq_id + 1;
-    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
-    freqs[nfreq - 1] = freq_id;
-    metadata->set_coarse_freq(nfreq, freqs.data());
+    // cannot set frequencies since I don't know which element of the data slice
+    // I am at
 }
 
 
@@ -248,6 +239,7 @@ MultiFreqGpuPattern::MultiFreqGpuPattern(kotekan::Config& config, const std::str
 
 void MultiFreqGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                int frame_number, freq_id_t freq_id) {
+    (void)freq_id;
     (void)frame_number;
 
     // Label the real with the freq_id and the imag with the product id.
@@ -263,8 +255,6 @@ void MultiFreqGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* met
 
     metadata->set_lost_timesamples(0);
     metadata->set_rfi_flagged_samples(0);
-    const size_t nfreq = freq_id + 1;
-    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
-    freqs[nfreq - 1] = freq_id;
-    metadata->set_coarse_freq(nfreq, freqs.data());
+    // cannot set frequencies since I don't know which element of the data slice
+    // I am at
 }
