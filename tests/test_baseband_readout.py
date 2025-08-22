@@ -135,10 +135,12 @@ def run_baseband(tdir_factory, params=None, rest_commands=None, expect_a_failure
     if params:
         p.update(params)
 
+    print("Initializing fake network buffer")
     fake_buffer = runner.FakeNetworkBuffer(
         stage_name=DATAGEN_PNAME, num_frames=p["total_frames"], type=p["type"]
     )
 
+    print("Initializing baseband dump buffer")
     write_buffer = runner.DumpBasebandBuffer(
         str(tmpdir),
         num_frames="buffer_depth * 4",

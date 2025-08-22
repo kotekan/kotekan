@@ -41,7 +41,6 @@ struct bufferFrameHeader {
  * seconds.
  *
  *
- *
  * @par buffers
  * @buffer buf The buffer to send to the remote server.
  *        @buffer_format any

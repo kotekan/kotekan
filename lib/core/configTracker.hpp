@@ -43,10 +43,7 @@ public:
     ConfigTracker(const ConfigTracker&) = delete;
     void operator=(const ConfigTracker&) = delete;
 
-    ~ConfigTracker() {
-        // restServer::instance().remove_get_callback("/config_tracker_configs");
-        // restServer::instance().remove_get_callback("/config_tracker_hashes");
-    }
+    ~ConfigTracker() { }
 
     /**
      * @brief Struct to hold a (host, port) pair.

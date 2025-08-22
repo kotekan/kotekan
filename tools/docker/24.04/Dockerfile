@@ -193,8 +193,11 @@ ENV HDF5_PLUGIN_PATH=/usr/local/lib/python3.12/dist-packages/hdf5plugin/plugins
 
 ENV KOTEKAN_BUILD_DIRNAME=build-2404
 
+# Code is often cloned into /code/kotekan
 # Don't worry about permission issues in here
 RUN git config --global --add safe.directory /code/kotekan
+# Add this to pythonpath
+ENV PYTHONPATH=/code/kotekan/python/
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]
