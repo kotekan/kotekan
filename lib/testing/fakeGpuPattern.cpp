@@ -12,7 +12,6 @@
 #include <regex>     // for match_results<>::_Base_type
 #include <stdexcept> // for runtime_error
 #include <time.h>    // for timespec  // IWYU pragma: keep
-#include <type_traits> // for make_signed
 #include <vector>    // for vector
 
 // Register test patterns
@@ -61,7 +60,10 @@ void BlockGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadat
 
     metadata->set_lost_timesamples(0);
     metadata->set_rfi_flagged_samples(0);
-    metadata->set_coarse_freq(1, reinterpret_cast<const std::make_signed<freq_id_t>::type *>(&freq_id));
+    const size_t nfreq = freq_id + 1;
+    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
+    freqs[nfreq - 1] = freq_id;
+    metadata->set_coarse_freq(nfreq, freqs.data());
 }
 
 
@@ -86,7 +88,10 @@ void LostSamplesGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* m
 
     metadata->set_lost_timesamples(frame_number);
     metadata->set_rfi_flagged_samples(0);
-    metadata->set_coarse_freq(1, reinterpret_cast<const std::make_signed<freq_id_t>::type *>(&freq_id));
+    const size_t nfreq = freq_id + 1;
+    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
+    freqs[nfreq - 1] = freq_id;
+    metadata->set_coarse_freq(nfreq, freqs.data());
 }
 
 
@@ -114,7 +119,10 @@ void LostWeightsGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* m
 
     metadata->set_lost_timesamples(lost);
     metadata->set_rfi_flagged_samples(lost);
-    metadata->set_coarse_freq(1, reinterpret_cast<const std::make_signed<freq_id_t>::type *>(&freq_id));
+    const size_t nfreq = freq_id + 1;
+    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
+    freqs[nfreq - 1] = freq_id;
+    metadata->set_coarse_freq(nfreq, freqs.data());
 }
 
 AccumulateGpuPattern::AccumulateGpuPattern(kotekan::Config& config, const std::string& path) :
@@ -144,7 +152,10 @@ void AccumulateGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* me
 
     metadata->set_lost_timesamples(0);
     metadata->set_rfi_flagged_samples(0);
-    metadata->set_coarse_freq(1, reinterpret_cast<const std::make_signed<freq_id_t>::type *>(&freq_id));
+    const size_t nfreq = freq_id + 1;
+    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
+    freqs[nfreq - 1] = freq_id;
+    metadata->set_coarse_freq(nfreq, freqs.data());
 }
 
 
@@ -176,7 +187,10 @@ void GaussianGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* meta
 
     metadata->set_lost_timesamples(0);
     metadata->set_rfi_flagged_samples(0);
-    metadata->set_coarse_freq(1, reinterpret_cast<const std::make_signed<freq_id_t>::type *>(&freq_id));
+    const size_t nfreq = freq_id + 1;
+    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
+    freqs[nfreq - 1] = freq_id;
+    metadata->set_coarse_freq(nfreq, freqs.data());
 }
 
 
@@ -222,7 +236,10 @@ void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metada
 
     metadata->set_lost_timesamples(0);
     metadata->set_rfi_flagged_samples(0);
-    metadata->set_coarse_freq(1, reinterpret_cast<const std::make_signed<freq_id_t>::type *>(&freq_id));
+    const size_t nfreq = freq_id + 1;
+    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
+    freqs[nfreq - 1] = freq_id;
+    metadata->set_coarse_freq(nfreq, freqs.data());
 }
 
 
@@ -231,6 +248,7 @@ MultiFreqGpuPattern::MultiFreqGpuPattern(kotekan::Config& config, const std::str
 
 void MultiFreqGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                int frame_number, freq_id_t freq_id) {
+    (void)frame_number;
 
     // Label the real with the freq_id and the imag with the product id.
     uint32_t prod_id = 0;
@@ -245,6 +263,8 @@ void MultiFreqGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* met
 
     metadata->set_lost_timesamples(0);
     metadata->set_rfi_flagged_samples(0);
-    const int frame_freq_id = freq_id + frame_number;
-    metadata->set_coarse_freq(1, &frame_freq_id);
+    const size_t nfreq = freq_id + 1;
+    std::vector<int> freqs(metadata->get_coarse_freq(), metadata->get_coarse_freq() + nfreq);
+    freqs[nfreq - 1] = freq_id;
+    metadata->set_coarse_freq(nfreq, freqs.data());
 }
