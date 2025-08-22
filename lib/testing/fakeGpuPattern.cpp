@@ -12,6 +12,7 @@
 #include <regex>     // for match_results<>::_Base_type
 #include <stdexcept> // for runtime_error
 #include <time.h>    // for timespec  // IWYU pragma: keep
+#include <type_traits> // for make_signed
 #include <vector>    // for vector
 
 // Register test patterns
@@ -41,9 +42,7 @@ BlockGpuPattern::BlockGpuPattern(kotekan::Config& config, const std::string& pat
 void BlockGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata, int frame_number,
                            freq_id_t freq_id) {
 
-    (void)metadata;
     (void)frame_number;
-    (void)freq_id;
 
     unsigned int nb1 = _num_elements / _block_size;
     unsigned int num_blocks = nb1 * (nb1 + 1) / 2;
@@ -59,6 +58,10 @@ void BlockGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadat
             }
         }
     }
+
+    metadata->set_lost_timesamples(0);
+    metadata->set_rfi_flagged_samples(0);
+    metadata->set_coarse_freq(1, reinterpret_cast<const std::make_signed<freq_id_t>::type *>(&freq_id));
 }
 
 
@@ -67,8 +70,6 @@ LostSamplesGpuPattern::LostSamplesGpuPattern(kotekan::Config& config, const std:
 
 void LostSamplesGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                  int frame_number, freq_id_t freq_id) {
-    (void)freq_id;
-
     uint32_t norm = _samples_per_data_set - frame_number;
 
     // Every frame has one more lost packet than the last
@@ -84,6 +85,8 @@ void LostSamplesGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* m
     }
 
     metadata->set_lost_timesamples(frame_number);
+    metadata->set_rfi_flagged_samples(0);
+    metadata->set_coarse_freq(1, reinterpret_cast<const std::make_signed<freq_id_t>::type *>(&freq_id));
 }
 
 
@@ -92,7 +95,6 @@ LostWeightsGpuPattern::LostWeightsGpuPattern(kotekan::Config& config, const std:
 
 void LostWeightsGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                  int frame_number, freq_id_t freq_id) {
-    (void)freq_id;
 
     int32_t lost = ((frame_number + 1) % 4 < 2) ? _b : 0;
     uint32_t norm = (uint32_t)(_samples_per_data_set - lost);
@@ -112,6 +114,7 @@ void LostWeightsGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* m
 
     metadata->set_lost_timesamples(lost);
     metadata->set_rfi_flagged_samples(lost);
+    metadata->set_coarse_freq(1, reinterpret_cast<const std::make_signed<freq_id_t>::type *>(&freq_id));
 }
 
 AccumulateGpuPattern::AccumulateGpuPattern(kotekan::Config& config, const std::string& path) :
@@ -120,9 +123,6 @@ AccumulateGpuPattern::AccumulateGpuPattern(kotekan::Config& config, const std::s
 
 void AccumulateGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                 int frame_number, freq_id_t freq_id) {
-
-    (void)metadata;
-    (void)freq_id;
 
     for (size_t i = 0; i < _num_elements; i++) {
         for (size_t j = i; j < _num_elements; j++) {
@@ -141,6 +141,10 @@ void AccumulateGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* me
                 (i - 4 * ((frame_number + 1) % 4 == 0) + 1) * _samples_per_data_set;
         }
     }
+
+    metadata->set_lost_timesamples(0);
+    metadata->set_rfi_flagged_samples(0);
+    metadata->set_coarse_freq(1, reinterpret_cast<const std::make_signed<freq_id_t>::type *>(&freq_id));
 }
 
 
@@ -151,9 +155,7 @@ GaussianGpuPattern::GaussianGpuPattern(kotekan::Config& config, const std::strin
 void GaussianGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                               int frame_number, freq_id_t freq_id) {
 
-    (void)metadata;
     (void)frame_number;
-    (void)freq_id;
 
     float f_auto = pow(_samples_per_data_set, 0.5);
     float f_cross = pow(_samples_per_data_set / 2, 0.5);
@@ -171,6 +173,10 @@ void GaussianGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* meta
             }
         }
     }
+
+    metadata->set_lost_timesamples(0);
+    metadata->set_rfi_flagged_samples(0);
+    metadata->set_coarse_freq(1, reinterpret_cast<const std::make_signed<freq_id_t>::type *>(&freq_id));
 }
 
 
@@ -213,6 +219,10 @@ void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metada
             }
         }
     }
+
+    metadata->set_lost_timesamples(0);
+    metadata->set_rfi_flagged_samples(0);
+    metadata->set_coarse_freq(1, reinterpret_cast<const std::make_signed<freq_id_t>::type *>(&freq_id));
 }
 
 
@@ -221,8 +231,6 @@ MultiFreqGpuPattern::MultiFreqGpuPattern(kotekan::Config& config, const std::str
 
 void MultiFreqGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                int frame_number, freq_id_t freq_id) {
-    (void)frame_number;
-    (void)metadata;
 
     // Label the real with the freq_id and the imag with the product id.
     uint32_t prod_id = 0;
@@ -234,4 +242,9 @@ void MultiFreqGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* met
             prod_id++;
         }
     }
+
+    metadata->set_lost_timesamples(0);
+    metadata->set_rfi_flagged_samples(0);
+    const int frame_freq_id = freq_id + frame_number;
+    metadata->set_coarse_freq(1, &frame_freq_id);
 }
