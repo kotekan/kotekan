@@ -1,5 +1,5 @@
-#ifndef CONFIGMTRACKER_H
-#define CONFIGMTRACKER_H
+#ifndef CONFIGTRACKER_H
+#define CONFIGTRACKER_H
 
 #include "Config.hpp"     // for Config
 #include "Stage.hpp"      // for Stage

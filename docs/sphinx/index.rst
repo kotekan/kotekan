@@ -40,5 +40,6 @@ Welcome to Kotekan's documentation!
    dev/dev_stage_tutorial
    dev/dev_unit_tests
    dev/dev_actions
+   dev/dev_config_tracker
 
 You can also peruse the full `doxygen docs <html/>`_.
