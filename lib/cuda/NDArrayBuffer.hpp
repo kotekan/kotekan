@@ -22,8 +22,40 @@
 #include <utility>
 #include <vector>
 
+// This affects copying from host to device. A standard buffer is
+// copied the usual way. A `do_once` buffer is copied only once, in
+// the beginning, and then holds its data. This is used e.g. for
+// beamforming phase matrices.
 enum buffer_type_t { standard = 0, do_once = 1 << 0 };
 
+// An `NDArrayBuffer` wraps a Kotekan buffer or a GPU buffer and
+// associates them with an `NDArray`. (An `NDArray` knows its type,
+// rank, and shape, and knows the "names" of its dimensions.) There is
+// also a type `NDArrayRingBuffer` wrapping a Kotekan ring buffer.
+//
+// In a typical scenario, a compute kernel creates an `NDArrayBuffer`
+// in its constructor. This simplifies applying "the usual" operations
+// to a Kotekan buffer, such as:
+// - register producers/consumers
+// - check and set metadata, especially those for its type and shape
+// - access buffer as `NDArray`, i.e. get a typed pointer to the data
+//   or find its shape
+//
+// Thoughts for the future: It is somewhat tedious to create an
+// `NDArrayBuffer` since one needs to know everything about the buffer
+// (name, size, type, shape, etc.). Kotekan already knows all this. It
+// would be convenient if Kotekan offered a way to directly obtain an
+// `NDArrayBuffer`.
+//
+// Kotekan often can have multiple buffers associated with the same
+// data, e.g. a Kotekan buffer on the host and a GPU buffer on the
+// device. (Kotekan buffers and GPU buffers use different APIs.)
+// `NDArrayBuffer` expects that these names follow a regular pattern:
+// - There is an "official" name, e.g. `voltage`
+// - Derived from this, the Kotekan host buffer is then called
+//   `host_voltage_buffer`
+// - Also derived from this, the GPU buffer is then called
+//   `voltage_buffer`
 template<typename T, std::size_t D>
 class NDArrayBuffer : public kotekan::kotekanLogging {
     const std::string buffer_name;        // "official" buffer name (for metadata)
