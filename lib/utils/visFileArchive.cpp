@@ -128,27 +128,35 @@ void visFileArchive::setup_file(const std::string& name,
     weight_type = metadata.at("weight_type");
 }
 
-
 template<typename T>
 void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
                                  size_t chunk_t, const T* data) {
     // DEBUG("writing {:d} freq, {:d} times, at ({:d},{:d}).", chunk_f, chunk_t, f_ind, t_ind);
+    auto ds = dset(name);
+
     if (name == "flags/inputs") {
         DEBUG2("writing {}...", name);
-        dset(name).select({0, t_ind}, {length("input"), chunk_t}).write(data);
+        auto sel = ds.select({0, t_ind}, {length("input"), chunk_t});
+        HighFive::DataSpace mem({length("input"), chunk_t});
+        write_hyperslab_raw(ds, sel, mem, data);
     } else if (name == "evec") {
         DEBUG2("writing {}...", name);
-        dset(name)
-            .select({f_ind, 0, 0, t_ind}, {chunk_f, length("ev"), length("input"), chunk_t})
-            .write(data);
+        auto sel = ds.select({f_ind, 0, 0, t_ind},
+                             {chunk_f, length("ev"), length("input"), chunk_t});
+        HighFive::DataSpace mem({chunk_f, length("ev"), length("input"), chunk_t});
+        write_hyperslab_raw(ds, sel, mem, data);
     } else if (name == "erms" || name == "flags/frac_lost" || name == "flags/frac_rfi"
                || name == "flags/dataset_id") {
         DEBUG2("writing {}...", name);
-        dset(name).select({f_ind, t_ind}, {chunk_f, chunk_t}).write(data);
+        auto sel = ds.select({f_ind, t_ind}, {chunk_f, chunk_t});
+        HighFive::DataSpace mem({chunk_f, chunk_t});
+        write_hyperslab_raw(ds, sel, mem, data);
     } else {
         DEBUG2("writing {}...", name);
-        size_t last_dim = dset(name).getSpace().getDimensions().at(1);
-        dset(name).select({f_ind, 0, t_ind}, {chunk_f, last_dim, chunk_t}).write(data);
+        size_t last_dim = ds.getSpace().getDimensions().at(1);
+        auto sel = ds.select({f_ind, 0, t_ind}, {chunk_f, last_dim, chunk_t});
+        HighFive::DataSpace mem({chunk_f, last_dim, chunk_t});
+        write_hyperslab_raw(ds, sel, mem, data);
     }
 }
 

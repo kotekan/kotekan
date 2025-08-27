@@ -8,12 +8,27 @@
 #include <highfive/H5DataSet.hpp>  // for DataSet
 #include <highfive/H5DataType.hpp> // for DataType
 #include <highfive/H5File.hpp>     // for File
+#include <hdf5.h>                  // H5Dwrite, etc.
 #include <map>                     // for map
 #include <memory>                  // for allocator, unique_ptr
 #include <stddef.h>                // for size_t
 #include <string>                  // for string
 #include <vector>                  // for vector
 
+template<typename T>
+static inline void write_hyperslab_raw(HighFive::DataSet ds,
+                                       const HighFive::Selection& sel,
+                                       const HighFive::DataSpace& mem,
+                                       const T* data) {
+    HighFive::AtomicType<T> dtype;
+
+    // Raw C API call with explicit memspace and filespace
+    if (H5Dwrite(ds.getId(), dtype.getId(),      // dataset + datatype
+                 mem.getId(), sel.getSpace().getId(), // memspace + filespace
+                 H5P_DEFAULT, static_cast<const void*>(data)) < 0) {
+        throw HighFive::DataSetException("H5Dwrite failed");
+    }
+}
 
 /** @brief A CHIME correlator archive file.
  *
