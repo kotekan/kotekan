@@ -69,6 +69,7 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
     wget https://bootstrap.pypa.io/get-pip.py && \
     python3 get-pip.py && \
     python3 -m pip install --upgrade \
+        astropy \
         bitshuffle \
         black==19.10b0 \
         breathe==4.35.* \
@@ -78,8 +79,10 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
         distro-info \
         flask \
         future \
+        gmpy2 \
         h5py \
         hdf5plugin \
+        mpmath \
         msgpack \
         numpy \
         pip \
