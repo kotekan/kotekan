@@ -78,6 +78,8 @@ add_library(
     setFRB1Phase.cpp
     setFRBBeams.cpp
     calcFRB2Weights.cpp
+    BeamformingPhaseUpdate.cpp
+    FloatPhaseUpdate.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
