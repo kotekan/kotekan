@@ -23,6 +23,8 @@ static inline void write_hyperslab_raw(HighFive::DataSet ds,
     HighFive::AtomicType<T> dtype;
 
     // Raw C API call with explicit memspace and filespace
+    // TODO: convert to Selection::write or Selection::write_raw if possible
+    //       headers currently don't seem to expose pointer+mem-dataspace write
     if (H5Dwrite(ds.getId(), dtype.getId(),      // dataset + datatype
                  mem.getId(), sel.getSpace().getId(), // memspace + filespace
                  H5P_DEFAULT, static_cast<const void*>(data)) < 0) {
