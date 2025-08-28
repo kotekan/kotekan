@@ -31,6 +31,8 @@ RUN apt update && \
         graphviz \
         iwyu \
         libairspy-dev \
+        libboost-filesystem-dev \
+        libboost-system-dev \
         libboost-test-dev \
         libbz2-dev \
         libdpdk-dev \
@@ -53,6 +55,7 @@ RUN apt update && \
         python3 \
         python3-dev \
         software-properties-common \
+        valgrind \
         wget \
         xtensor-dev \
         && \
@@ -172,7 +175,7 @@ RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig
 RUN mkdir src && \
     ( \
         cd src && \
-        git clone --recurse-submodules --single-branch --branch v3.1.0 https://github.com/highfive-devs/highfive && \
+        git clone --recurse-submodules --single-branch --branch v3.1.1 https://github.com/highfive-devs/highfive && \
         cd highfive && \
         cmake -B cmake-build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -205,8 +208,11 @@ ENV HDF5_PLUGIN_PATH=/usr/local/lib/python3.12/dist-packages/hdf5plugin/plugins
 
 ENV KOTEKAN_BUILD_DIRNAME=build-2404
 
+# Code is often cloned into /code/kotekan
 # Don't worry about permission issues in here
 RUN git config --global --add safe.directory /code/kotekan
+# Add this to pythonpath
+ENV PYTHONPATH=/code/kotekan/python/
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]
