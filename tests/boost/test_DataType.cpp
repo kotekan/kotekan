@@ -16,6 +16,7 @@ BOOST_AUTO_TEST_CASE(test1) {
     std::cout << "    uint32:      " << uint32 << "\n";
     std::cout << "    uint64:      " << uint64 << "\n";
     std::cout << "    int4x2:      " << int4x2 << "\n";
+    std::cout << "    int4x2_swapped_withoffset: " << int4x2_swapped_withoffset << "\n";
     std::cout << "    int8:        " << int8 << "\n";
     std::cout << "    int16:       " << int16 << "\n";
     std::cout << "    int32:       " << int32 << "\n";
