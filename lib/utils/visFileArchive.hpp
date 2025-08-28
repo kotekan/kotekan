@@ -8,7 +8,6 @@
 #include <highfive/H5DataSet.hpp>  // for DataSet
 #include <highfive/H5DataType.hpp> // for DataType
 #include <highfive/H5File.hpp>     // for File
-#include <hdf5.h>                  // H5Dwrite, etc.
 #include <map>                     // for map
 #include <memory>                  // for allocator, unique_ptr
 #include <stddef.h>                // for size_t

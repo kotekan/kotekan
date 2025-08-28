@@ -128,6 +128,7 @@ void visFileArchive::setup_file(const std::string& name,
     weight_type = metadata.at("weight_type");
 }
 
+
 template<typename T>
 void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
                                  size_t chunk_t, const T* data) {
