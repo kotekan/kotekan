@@ -1,9 +1,14 @@
+#include "asdfFiles.hpp"
+
+#include <DataType.hpp>
 #include <Stage.hpp>
 #include <StageFactory.hpp>
 #include <asdf/asdf.hxx>
+#include <atomic>
 #include <cassert>
 #include <chordMetadata.hpp>
 #include <cstdint>
+#include <cstring>
 #include <errno.h>
 #include <errors.h>
 #include <fstream>
@@ -20,42 +25,10 @@
 #include <vector>
 #include <visUtil.hpp>
 
-namespace {
-ASDF::scalar_type_id_t chord2asdf(const chordDataType type) {
-    switch (type) {
-        case uint4p4:
-            return ASDF::id_uint8; // TODO: Define ASDF uint4+4 type
-        case uint8:
-            return ASDF::id_uint8;
-        case uint16:
-            return ASDF::id_uint16;
-        case uint32:
-            return ASDF::id_uint32;
-        case uint64:
-            return ASDF::id_uint64;
-        case int4p4:
-            return ASDF::id_uint8; // TODO: Define ASDF int4+4 type
-        case int4p4chime:
-            return ASDF::id_uint8; // TODO: Define ASDF int4+4 type
-        case int8:
-            return ASDF::id_int8;
-        case int16:
-            return ASDF::id_int16;
-        case int32:
-            return ASDF::id_int32;
-        case int64:
-            return ASDF::id_int64;
-        case float16:
-            return ASDF::id_float16;
-        case float32:
-            return ASDF::id_float32;
-        case float64:
-            return ASDF::id_float64;
-        default:
-            assert(0);
-    }
-}
-} // namespace
+using namespace asdf;
+
+// Number of writers which are waiting for `max_frames`
+std::atomic<int> waiting_for_max_frames;
 
 /**
  * @class asdfFileWrite
@@ -98,6 +71,9 @@ public:
               }),
         buffer(get_buffer("in_buf")) {
         ASDF_CHECK_VERSION();
+
+        if (max_frames >= 0)
+            ++waiting_for_max_frames;
 
         buffer->register_consumer(unique_name);
     }
@@ -151,7 +127,7 @@ public:
 
                 // Create ASDF ndarray
                 const ASDF::scalar_type_id_t type = chord2asdf(meta->type);
-                const std::size_t typesize = chord_datatype_bytes(meta->type);
+                const std::size_t typesize = type_total_bytes(meta->type);
 
                 const int ndims = meta->dims;
                 std::vector<std::int64_t> dims(ndims);
@@ -187,8 +163,7 @@ public:
                     frame_copy.resize(size * typesize);
                     if (!(meta->stride[meta->dims - 1] == 1))
                         ERROR("name={} type={} dims={} laststride={}", meta->name,
-                              chord_datatype_string(meta->type), meta->dims,
-                              meta->stride[meta->dims - 1]);
+                              type_to_string(meta->type), meta->dims, meta->stride[meta->dims - 1]);
                     if (!(meta->stride[meta->dims - 1] == 1) && meta->dims == 4)
                         for (int d = 0; d < 4; ++d)
                             ERROR("dim[{}]={} stride[{}]={}", d, meta->dim[d], d, meta->stride[d]);
@@ -236,14 +211,18 @@ public:
                             }
                             break;
                         default:
-                            ERROR("meta->dims={}", meta->dims);
+                            FATAL_ERROR("meta->dims={}", meta->dims);
                             assert(0);
                             break;
                     }
                     block = std::make_shared<ASDF::ptr_block_t>(frame_copy.data(), size * typesize);
                 }
 
-                const auto compression = ASDF::compression_t::blosc;
+                // read segfault      const auto compression = ASDF::compression_t::blosc;
+                // write error        const auto compression = ASDF::compression_t::blosc2;
+                // too slow writing   const auto compression = ASDF::compression_t::bzip2;
+                const auto compression = ASDF::compression_t::zlib;
+                // working            const auto compression = ASDF::compression_t::none;
                 const int compression_level = 9;
 
                 const auto ndarray = std::make_shared<ASDF::ndarray>(
@@ -251,7 +230,8 @@ public:
                     ASDF::block_format_t::block, compression, compression_level,
                     std::vector<bool>(), std::make_shared<ASDF::datatype_t>(type),
                     ASDF::host_byteorder(), dims);
-                group->emplace(buffer->buffer_name, std::make_shared<ASDF::ndarray_entry>(ndarray));
+                const std::string ndarray_name = beautify_buffer_name(buffer->buffer_name);
+                group->emplace(ndarray_name, std::make_shared<ASDF::ndarray_entry>(ndarray));
 
                 // Describe metadata
 
@@ -273,6 +253,10 @@ public:
                     group->emplace("sample0_offset",
                                    std::make_shared<ASDF::int_entry>(meta->sample0_offset));
 
+                if (meta->offset_downsampling >= 0)
+                    group->emplace("offset_downsampling",
+                                   std::make_shared<ASDF::int_entry>(meta->offset_downsampling));
+
                 if (meta->nfreq >= 0) {
                     auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
                     for (int freq = 0; freq < meta->nfreq; ++freq)
@@ -286,6 +270,19 @@ public:
                             std::make_shared<ASDF::int_entry>(meta->time_downsampling_fpga[freq]));
                     group->emplace("time_downsampling_fpga", time_downsampling_fpga);
                 }
+
+                auto chord_metadata_version_attribute = std::make_shared<ASDF::sequence>();
+                for (std::size_t n = 0; n < chord_metadata_version.size(); ++n)
+                    chord_metadata_version_attribute->push_back(
+                        std::make_shared<ASDF::int_entry>(chord_metadata_version.at(n)));
+                group->emplace("chord_metadata_version", chord_metadata_version_attribute);
+
+                auto name = std::make_shared<ASDF::string_entry>(meta->get_name());
+                group->emplace("name", name);
+
+                auto type_attribute =
+                    std::make_shared<ASDF::string_entry>(type_to_string(meta->type));
+                group->emplace("type", type_attribute);
 
                 auto dim_names = std::make_shared<ASDF::sequence>();
                 for (int d = 0; d < ndims; ++d)
@@ -348,10 +345,15 @@ public:
             buffer->mark_frame_empty(unique_name, frame_id);
 
             if (max_frames >= 0 && frame_counter + 1 >= max_frames) {
-                WARN("Processed {} frames, shutting down Kotekan", frame_counter);
-                exit_kotekan(CLEAN_EXIT);
+                INFO("Processed {} frames, exiting", frame_counter + 1);
+                break;
             }
         } // for
+
+        if (--waiting_for_max_frames == 0) {
+            WARN("Shutting down Kotekan");
+            exit_kotekan(CLEAN_EXIT);
+        }
 
         DEBUG("exiting");
     }

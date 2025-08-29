@@ -79,8 +79,8 @@ add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wextr
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -Xcompiler -Wall")
 # Warning about missing override is called differently in clang and gcc
 include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag(-Winconsistent-missing-override HAVE_INCONSISTANT_MISSING_OVERRIDE)
-if(HAVE_INCONSISTANT_MISSING_OVERRIDE AND NOT ${IWYU})
+check_cxx_compiler_flag(-Winconsistent-missing-override HAVE_INCONSISTENT_MISSING_OVERRIDE)
+if(HAVE_INCONSISTENT_MISSING_OVERRIDE AND NOT ${IWYU})
     add_compile_options(
         $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Winconsistent-missing-override>)
 endif()
@@ -269,31 +269,8 @@ if(${USE_GDAL})
 endif()
 
 if(${USE_HDF5})
-    # only clone highfive if HIGHFIVE_PATH is not specified nor cached
-    if(NOT DEFINED HIGHFIVE_PATH)
-        message("HIGHFIVE_PATH not specified: Cloning HighFive repository")
-        include(ExternalProject)
-        find_package(Git REQUIRED)
-        ExternalProject_Add(
-            highfive
-            PREFIX ${CMAKE_BINARY_DIR}/ext
-            GIT_REPOSITORY https://github.com/jrs65/HighFive.git
-            GIT_TAG extensible-datasets
-            TIMEOUT 10
-            UPDATE_COMMAND ${GIT_EXECUTABLE} pull
-            CONFIGURE_COMMAND ""
-            BUILD_COMMAND ""
-            INSTALL_COMMAND ""
-            LOG_DOWNLOAD ON)
-        ExternalProject_Get_Property(highfive source_dir)
-        set(HIGHFIVE_PATH ${source_dir})
-    else()
-        # just to satisfy dependencies (dependencies on highfive are needed to make sure it is
-        # cloned before attempting to build kotekan)
-        add_custom_target(highfive COMMENT "Highfive path supplied manually.")
-    endif()
-    message("HDF5 enabled; using HighFive from: " ${HIGHFIVE_PATH})
     find_package(HDF5 REQUIRED)
+    find_package(HighFive REQUIRED)
     add_definitions(-DWITH_HDF5)
 endif()
 

@@ -178,8 +178,6 @@ Cmake build options
     Build with ASDF writer.
 * ``-DUSE_GDAL=ON``
     Build with GDAL writer.
-* ``-DHIGHFIVE_PATH=<path>``
-    To enable the HDF5 writer
 * ``-DUSE_AIRSPY=ON``
     Build the AirSpy producer. Requires libairspy.
 * ``-DUSE_FFTW=ON``

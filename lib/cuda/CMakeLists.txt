@@ -14,6 +14,8 @@ add_library(
     cudaDeviceInterface.cpp
     cudaEventContainer.cpp
     cudaProcess.cpp
+    NDArrayBuffer.cpp
+    NDArrayRingBuffer.cpp
     # Copy & general-purpose:
     cudaInputData.cpp
     cudaOutputData.cpp

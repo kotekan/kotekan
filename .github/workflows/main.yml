@@ -191,7 +191,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_ASDF=ON \
             -DUSE_GDAL=ON \
-            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_HDF5=ON \
             -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
@@ -254,7 +254,7 @@ jobs:
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
             -DCMAKE_BUILD_TYPE=Test \
-            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_HDF5=ON \
             -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
@@ -326,7 +326,7 @@ jobs:
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
             -DCMAKE_BUILD_TYPE=Test \
-            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_HDF5=ON \
             -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
@@ -460,9 +460,7 @@ jobs:
         -DCMAKE_BUILD_TYPE=Test \
         -DUSE_ASDF=ON \
         -DUSE_HDF5=ON \
-        -DHIGHFIVE_PATH=/code/build/HighFive \
-        -DUSE_LAPACK_BLAZE=ON \
-        -DBLAZE_PATH=/code/build/blaze \
+        -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
         -DARCH=haswell \
         -DNO_MEMLOCK=ON \
         -DUSE_OMP=ON \
