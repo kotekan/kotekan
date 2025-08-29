@@ -142,11 +142,11 @@ void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, s
         sel.write_raw(data, dtype);
     } else if (name == "evec") {
         DEBUG2("writing {}...", name);
-        auto sel = ds.select({f_ind, 0, 0, t_ind},
-                             {chunk_f, length("ev"), length("input"), chunk_t});
+        auto sel =
+            ds.select({f_ind, 0, 0, t_ind}, {chunk_f, length("ev"), length("input"), chunk_t});
         sel.write_raw(data, dtype);
-    } else if (name == "erms" || name == "flags/frac_lost" ||
-               name == "flags/frac_rfi" || name == "flags/dataset_id") {
+    } else if (name == "erms" || name == "flags/frac_lost" || name == "flags/frac_rfi"
+               || name == "flags/dataset_id") {
         DEBUG2("writing {}...", name);
         auto sel = ds.select({f_ind, t_ind}, {chunk_f, chunk_t});
         sel.write_raw(data, dtype);
