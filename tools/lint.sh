@@ -10,6 +10,17 @@ fi
 # kotekan root directory (infer from this script location)
 KOTEKAN_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
 
+# Prefer system-wide kotekan Python env for Python tooling (e.g., black)
+# Detect a usable black command, prioritizing /opt/kotekan_env when present.
+BLACK_CMD=""
+if [ -x /opt/kotekan_env/bin/black ]; then
+  BLACK_CMD="/opt/kotekan_env/bin/black"
+elif command -v black >/dev/null 2>&1; then
+  BLACK_CMD="$(command -v black)"
+elif [ -x /opt/kotekan_env/bin/python ] && /opt/kotekan_env/bin/python -m black --version >/dev/null 2>&1; then
+  BLACK_CMD="/opt/kotekan_env/bin/python -m black"
+fi
+
 # Flag to enable iwyu (default OFF)
 ENABLE_IWYU="OFF"
 
@@ -113,7 +124,12 @@ fi
 
 # black
 echo "Running black..."
-black --exclude="/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|build-iwyu|dist|docs|external|tools/iwyu)/" $KOTEKAN_DIR
+if [ -z "$BLACK_CMD" ]; then
+    echo "Error: could not find a usable 'black'. If available, consider using /opt/kotekan_env." >&2
+    exit 1
+fi
+echo "Using black at: $BLACK_CMD"
+$BLACK_CMD --exclude="/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|build-iwyu|dist|docs|external|tools/iwyu)/" $KOTEKAN_DIR
 if ! git diff --exit-code; then
     echo "Error: black found formatting issues" >&2
     ERROR=1
