@@ -1,11 +1,10 @@
 #define BOOST_TEST_MODULE "test_fmt"
-#include <boost/test/included/unit_test.hpp>
-
 #include "errors.h"
 #include "kotekanLogging.hpp" // for DEBUG, INFO, ERROR, FATAL_ERROR, WARN
 
 #include "fmt.hpp" // for format
 
+#include <boost/test/included/unit_test.hpp>
 #include <chrono> // for duration, operator-, seconds, operator/, operator>, tim...
 #include <thread>
 

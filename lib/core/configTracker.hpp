@@ -43,7 +43,7 @@ public:
     ConfigTracker(const ConfigTracker&) = delete;
     void operator=(const ConfigTracker&) = delete;
 
-    ~ConfigTracker() { }
+    ~ConfigTracker() {}
 
     /**
      * @brief Struct to hold a (host, port) pair.

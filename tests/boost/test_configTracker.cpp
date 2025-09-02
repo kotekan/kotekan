@@ -1,14 +1,14 @@
 #define BOOST_TEST_MODULE "test_configTracker"
 
-#include <boost/test/included/unit_test.hpp>
-#include <boost/filesystem.hpp>
-#include <fstream>
-#include <string>
+#include "configTracker.hpp" // for configTracker
+#include "restServer.hpp"    // for restServer
 
 #include "json.hpp" // for json_ref, basic_json<>::object_t, json
 
-#include "configTracker.hpp" // for configTracker
-#include "restServer.hpp" // for restServer
+#include <boost/filesystem.hpp>
+#include <boost/test/included/unit_test.hpp>
+#include <fstream>
+#include <string>
 
 using namespace kotekan;
 using json = nlohmann::json;
@@ -126,10 +126,9 @@ BOOST_AUTO_TEST_CASE(add_same_two_jsons_bad) {
                       std::runtime_error);
 }
 
-BOOST_AUTO_TEST_CASE(write_configs)
-{
+BOOST_AUTO_TEST_CASE(write_configs) {
     auto& tracker = ConfigTracker::instance();
-    
+
     // Some json
     json j1 = {{"key1", "value1"},
                {"key2", {{"subkey1", "subvalue1"}, {"subkey2", "subvalue2"}}},
@@ -143,7 +142,7 @@ BOOST_AUTO_TEST_CASE(write_configs)
     boost::filesystem::path temp_dir = boost::filesystem::temp_directory_path();
 
     tracker.writeConfigsToDisk(temp_dir.string());
-    
+
     // Verify the file exists and has content
     BOOST_CHECK(boost::filesystem::exists(temp_dir / "localhost_8080.json"));
 
@@ -158,7 +157,6 @@ BOOST_AUTO_TEST_CASE(write_configs)
     // Clean up - remove the temporary file
     boost::filesystem::remove(temp_dir / "localhost_8080.json");
     BOOST_CHECK(!boost::filesystem::exists(temp_dir / "localhost_8080.json"));
-
 }
 
 BOOST_AUTO_TEST_SUITE_END()

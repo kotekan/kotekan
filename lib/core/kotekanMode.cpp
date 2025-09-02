@@ -85,7 +85,7 @@ void kotekanMode::initalize_stages() {
     // Apply config to datasetManager
     if (config.exists("/", "dataset_manager"))
         datasetManager::instance(config);
-    
+
     // Create ConfigTracker instance and register with the REST server.
     ConfigTracker::instance();
     ConfigTracker::instance().insertConfig(
