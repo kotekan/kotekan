@@ -188,10 +188,6 @@ protected:
     /// State that is shared by instances of this command (at one point in the pipeline)
     std::shared_ptr<gpuCommandState> command_state;
 
-    /// Ensure serial execution of calls to the same instance
-    std::mutex execute_mutex;
-    std::unique_lock<std::mutex> execute_lock;
-
     /// The counter for the GPU frame we are currently processing.
     int64_t gpu_frame_id;
 
