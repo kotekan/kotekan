@@ -1,0 +1,154 @@
+##########################################
+#
+# chime_science_run_recv.yaml
+#
+# CHIME receiver node configuration used in the mid-November 2018 run.
+# This configuration turns off saving of the 26m datasets.
+#
+# For the N2 data it includes, 10 second calibration data,
+# full triangles for 10 frequencies at 10 seconds, and stacked
+# data over all frequencies.
+#
+# Author: Richard Shaw
+#
+##########################################
+---
+type: config
+log_level: info
+num_elements: 512
+buffer_depth: 64
+num_ev: 10
+
+# CPU affinity for most processes
+#
+# Only core 7 is unused by the high priority processes. /stacking and
+# /apply_gains each have three threads and three dedicated cores (1, 2, 3 for
+# stacking, 4, 5, 6 for apply_gains), however as each of these needs only about
+# 2.5 cores of conpute power, we have opened up one of the hyperthread pairs to
+# other stages (11 and 14, twinned with 3 and 6 respectively)
+cpu_affinity: [7, 11, 14, 15]
+
+telescope:
+  name: CHIMETelescope
+  allow_default_frequency_map: false
+  require_gps: false
+
+dataset_manager:
+  use_dataset_broker: True
+  ds_broker_host: "10.1.50.11" # recv1
+
+vis_pool:
+  kotekan_metadata_pool: VisMetadata
+  num_metadata_objects: 500 * buffer_depth
+
+vis_buffer:
+  metadata_pool: vis_pool
+  num_frames: buffer_depth
+  visbuf_2s_subset:
+    buffer_depth: 4096
+    kotekan_buffer: vis
+  visbuf_gated_2s_subset:
+    buffer_depth: 4096
+    kotekan_buffer: vis
+  visbuf_gated_2s_autoeig:
+    buffer_depth: 4096
+    num_prod: 512
+    kotekan_buffer: vis
+  visbuf_2s_mfreq:
+    buffer_depth: 1024
+    kotekan_buffer: vis
+  visbuf_gated_2s_mfreq:
+    buffer_depth: 1024
+    kotekan_buffer: vis
+
+# Subset of good frequencies to output whole for monitoring
+mfreq: &mfreq [107, 344, 619, 938]
+# Larger subset to be sent to map maker, spanning entire band
+mapfreq: &mapfreq [
+        1, 12, 23, 36, 47, 58, 70, 82, 92, 103, 184, 194, 205, 216,
+        231, 241, 252, 277, 288, 300, 311, 322, 332, 343, 354, 364,
+        376, 387, 399, 409, 420, 431, 442, 477, 488, 499, 509, 520,
+        532, 543, 606, 618, 663, 673, 704, 715, 726, 736, 747, 780,
+        818, 833, 844, 863, 885, 905, 919, 935, 947, 958, 969, 981,
+        995, 1006
+    ]
+
+# Kotekan stages
+buffer_recv:
+  log_level: warn
+  all_N2_subset:
+    kotekan_stage: bufferRecv
+    buf: visbuf_2s_subset
+    listen_port: 11024
+    cpu_affinity: [0, 8]
+    num_threads: 2
+  gated_N2_subset:
+    kotekan_stage: bufferRecv
+    buf: visbuf_gated_2s_subset
+    listen_port: 11025
+    cpu_affinity: [0, 8]
+    num_threads: 2
+
+vis_debug:
+  all:
+    kotekan_stage: visDebug
+    in_buf: visbuf_2s_subset
+  gated:
+    kotekan_stage: visDebug
+    in_buf: visbuf_gated_2s_subset
+
+count_check:
+  all:
+    kotekan_stage: countCheck
+    in_buf: visbuf_2s_subset
+  gated:
+    kotekan_stage: countCheck
+    in_buf: visbuf_gated_2s_subset
+
+# Generate the calibration stream
+cal_subset:
+  kotekan_stage: prodSubset
+  in_buf: visbuf_gated_2s_subset
+  out_buf: visbuf_gated_2s_autoeig
+  prod_subset_type: autos
+
+# Generate the monitoring freq full N^2 stream
+mfreq_subset:
+  gated:
+    kotekan_stage: VisFreqSubset
+    in_buf: visbuf_gated_2s_subset
+    out_buf: visbuf_gated_2s_mfreq
+    subset_list: *mapfreq
+  all:
+    kotekan_stage: VisFreqSubset
+    in_buf: visbuf_2s_subset
+    out_buf: visbuf_2s_mfreq
+    subset_list: *mapfreq
+
+# This stage is here to track the output dataset IDs in prometheus
+vis_dset_tracking:
+  gated:
+    kotekan_stage: visDebug
+    in_buf: visbuf_gated_2s_autoeig
+
+
+archive_writers:
+
+  file_length: 256
+  file_type: raw
+  root_path: /data/untransposed/
+
+  all_N2:
+    kotekan_stage: VisWriter
+    in_buf: visbuf_2s_mfreq
+    instrument_name: chimedroneN2
+
+  gated_N2:
+    kotekan_stage: VisWriter
+    in_buf: visbuf_gated_2s_mfreq
+    instrument_name: chimedronegatedN2
+
+  gated_autoeig:
+    kotekan_stage: VisWriter
+    in_buf: visbuf_gated_2s_autoeig
+    instrument_name: chimedronecal
