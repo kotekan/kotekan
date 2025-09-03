@@ -41,9 +41,6 @@ void runJulia() {
 
     INFO_F("juliaManager: Starting Julia run-time system");
     {
-        // // Taking this lock isn't necessary and doesn't help...
-        // std::unique_lock lk(julia_task_queue_mutex);
-
         // Required: setup the Julia context.
         jl_init();
     }

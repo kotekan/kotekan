@@ -9,7 +9,7 @@ using fmt::group_digits;
 
 // This prints out a Python literal used for making plots in post-processing, for debugging
 // and illustration purposes.
-static void print_py_status(const RingBuffer* const rb) {
+__attribute__((unused)) static void print_py_status(const RingBuffer* const rb) {
     std::ostringstream write_heads("{");
     for (const auto& [key, value] : rb->write_heads)
         write_heads << "\"" << key << "\": " << value << ", ";
@@ -69,23 +69,23 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_without_claiming(const std::strin
     // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
     const std::ptrdiff_t read_head = read_heads[name];
-    DEBUG("Ringbuffer {:s}: wait_without_claiming({:s}[{:d}]): "
-          "requested bytes: {}, initial bytes available: {}",
-          buffer_name, name, inst, group_digits(sz), group_digits(first_write_head - read_head));
-    DEBUG("Ringbuffer {:s}: wait_without_claiming({:s}[{:d}]): waiting...", buffer_name, name,
-          inst);
+    DEBUG2("Ringbuffer {:s}: wait_without_claiming({:s}[{:d}]): "
+           "requested bytes: {}, initial bytes available: {}",
+           buffer_name, name, inst, group_digits(sz), group_digits(first_write_head - read_head));
+    DEBUG2("Ringbuffer {:s}: wait_without_claiming({:s}[{:d}]): waiting...", buffer_name, name,
+           inst);
     print_full_status();
     full_cond.wait(lock, [&]() { return shutdown_signal || first_write_head - read_head >= sz; });
-    DEBUG("Ringbuffer {:s}: wait_without_claiming({:s}[{:d}]): waiting done.", buffer_name, name,
-          inst);
+    DEBUG2("Ringbuffer {:s}: wait_without_claiming({:s}[{:d}]): waiting done.", buffer_name, name,
+           inst);
     if (shutdown_signal) {
         return std::optional<std::ptrdiff_t>();
     }
     assert(first_write_head - read_head >= sz);
     const std::ptrdiff_t have_sz = first_write_head - read_head;
-    DEBUG("Ringbuffer {:s}: wait_without_claiming({:s}[{:d}]): "
-          "final bytes available: {}",
-          buffer_name, name, inst, group_digits(have_sz));
+    DEBUG2("Ringbuffer {:s}: wait_without_claiming({:s}[{:d}]): "
+           "final bytes available: {}",
+           buffer_name, name, inst, group_digits(have_sz));
     return std::optional<std::ptrdiff_t>(have_sz);
 }
 
@@ -96,19 +96,19 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::str
     // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
     const std::ptrdiff_t read_head = read_heads[name];
-    DEBUG("wait_and_claim_readable({:s}[{:d}]): "
-          "requested bytes: {}, initial bytes available: {}",
-          name, inst, group_digits(sz), group_digits(first_write_head - read_head));
-    DEBUG("wait_and_claim_readable({:s}[{:d}]): waiting...", name, inst);
+    DEBUG2("wait_and_claim_readable({:s}[{:d}]): "
+           "requested bytes: {}, initial bytes available: {}",
+           name, inst, group_digits(sz), group_digits(first_write_head - read_head));
+    DEBUG2("wait_and_claim_readable({:s}[{:d}]): waiting...", name, inst);
     print_full_status();
     full_cond.wait(lock, [&]() { return shutdown_signal || first_write_head - read_head >= sz; });
-    DEBUG("wait_and_claim_readable({:s}[{:d}]): waiting done.", name, inst);
+    DEBUG2("wait_and_claim_readable({:s}[{:d}]): waiting done.", name, inst);
     if (shutdown_signal) {
         return std::optional<std::ptrdiff_t>();
     }
     assert(first_write_head - read_head >= sz);
-    DEBUG("wait_and_claim_readable({:s}[{:d}]): final bytes available: {}", name, inst,
-          group_digits(sz));
+    DEBUG2("wait_and_claim_readable({:s}[{:d}]): final bytes available: {}", name, inst,
+           group_digits(sz));
     read_heads[name] += sz;
     // return the former read_head - that's where the consumer should start reading from.
     return std::optional<std::ptrdiff_t>(read_head);
@@ -119,21 +119,21 @@ RingBuffer::wait_and_claim_all_readable(const std::string& name, const int inst)
     // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
     const std::ptrdiff_t read_head = read_heads[name];
-    DEBUG("wait_and_claim_all_readable({:s}[{:d}]): "
-          "initial bytes available: {}",
-          name, inst, group_digits(first_write_head - read_head));
-    DEBUG("wait_and_claim_all_readable({:s}[{:d}]): waiting...", name, inst);
+    DEBUG2("wait_and_claim_all_readable({:s}[{:d}]): "
+           "initial bytes available: {}",
+           name, inst, group_digits(first_write_head - read_head));
+    DEBUG2("wait_and_claim_all_readable({:s}[{:d}]): waiting...", name, inst);
     print_full_status();
     full_cond.wait(lock, [&]() { return shutdown_signal || first_write_head - read_head > 0; });
-    DEBUG("wait_and_claim_all_readable({:s}[{:d}]): waiting done.", name, inst);
+    DEBUG2("wait_and_claim_all_readable({:s}[{:d}]): waiting done.", name, inst);
     if (shutdown_signal) {
         return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>();
     }
     assert(first_write_head - read_head > 0);
     const std::ptrdiff_t sz = first_write_head - read_head;
-    DEBUG("wait_and_claim_all_readable({:s}[{:d}]): "
-          "final bytes available: {}",
-          name, inst, group_digits(sz));
+    DEBUG2("wait_and_claim_all_readable({:s}[{:d}]): "
+           "final bytes available: {}",
+           name, inst, group_digits(sz));
     assert(sz > 0);
     read_heads[name] += sz;
     // return the former read_head - that's where the consumer should start reading from.
@@ -148,16 +148,16 @@ RingBuffer::peek_readable(const std::string& name, const int inst) {
     }
     const std::ptrdiff_t read_head = read_heads[name];
     const std::ptrdiff_t sz = first_write_head - read_head;
-    DEBUG("peek_readable({:s}[{:d}]): "
-          "bytes available: {}",
-          name, inst, group_digits(sz));
+    DEBUG2("peek_readable({:s}[{:d}]): "
+           "bytes available: {}",
+           name, inst, group_digits(sz));
     return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>(std::make_pair(read_head, sz));
 }
 
 void RingBuffer::finish_read(const std::string& name, const int inst, const std::ptrdiff_t sz) {
-    DEBUG("finish_read({:s}[{:d}]): "
-          "consumed bytes: {}",
-          name, inst, group_digits(sz));
+    DEBUG2("finish_read({:s}[{:d}]): "
+           "consumed bytes: {}",
+           name, inst, group_digits(sz));
     assert(sz > 0);
     // Advance the last_read_tail for this consumer
     {
@@ -182,23 +182,23 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_for_writable(const std::string& n
                                                             const std::ptrdiff_t sz) {
     assert(sz > 0);
     std::unique_lock<std::recursive_mutex> lock(mutex);
-    DEBUG("wait_for_writable({:s}[{:d}]): "
-          "requested bytes: {}, initial bytes available: {}",
-          name, inst, group_digits(sz), group_digits(size - (write_next[name] - last_read_tail)));
-    DEBUG("wait_for_writable({:s}[{:d}]): waiting...", name, inst);
+    DEBUG2("wait_for_writable({:s}[{:d}]): "
+           "requested bytes: {}, initial bytes available: {}",
+           name, inst, group_digits(sz), group_digits(size - (write_next[name] - last_read_tail)));
+    DEBUG2("wait_for_writable({:s}[{:d}]): waiting...", name, inst);
     print_full_status();
     empty_cond.wait(
         lock, [&]() { return shutdown_signal || write_next[name] - last_read_tail + sz <= size; });
-    DEBUG("wait_for_writable({:s}[{:d}]): waiting done.", name, inst);
+    DEBUG2("wait_for_writable({:s}[{:d}]): waiting done.", name, inst);
     assert(write_next[name] >= last_read_tail);
     if (shutdown_signal) {
         return std::optional<std::ptrdiff_t>();
     }
     assert(write_next[name] - last_read_tail + sz <= size);
     const std::ptrdiff_t res = write_next[name];
-    DEBUG("wait_for_writable({:s}[{:d}]): "
-          "final bytes available: {}",
-          name, inst, group_digits(sz));
+    DEBUG2("wait_for_writable({:s}[{:d}]): "
+           "final bytes available: {}",
+           name, inst, group_digits(sz));
     write_next[name] += sz;
     return std::optional<std::ptrdiff_t>(res);
 }
@@ -211,9 +211,9 @@ RingBuffer::get_writable(const std::string& name, const int inst) {
     }
     const std::ptrdiff_t n = size - (write_next[name] - last_read_tail);
     assert(n >= 0);
-    DEBUG("get_writable({:s}[{:d}]): "
-          "bytes available: {}",
-          name, inst, group_digits(n));
+    DEBUG2("get_writable({:s}[{:d}]): "
+           "bytes available: {}",
+           name, inst, group_digits(n));
     return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>(
         std::make_pair(write_next[name], n));
 }
@@ -221,9 +221,9 @@ RingBuffer::get_writable(const std::string& name, const int inst) {
 void RingBuffer::finish_write(const std::string& name, const int inst, const std::ptrdiff_t sz) {
     assert(sz > 0);
     std::unique_lock<std::recursive_mutex> lock(mutex);
-    DEBUG("finish_write({:s}[{:d}]): "
-          "produced bytes: {}",
-          name, inst, group_digits(sz));
+    DEBUG2("finish_write({:s}[{:d}]): "
+           "produced bytes: {}",
+           name, inst, group_digits(sz));
     // print_full_status();
     assert(write_heads[name] >= last_read_tail);
     assert(write_heads[name] + sz - last_read_tail <= size);
@@ -236,8 +236,8 @@ void RingBuffer::finish_write(const std::string& name, const int inst, const std
             oldest = std::min(oldest, it.second);
         first_write_head = oldest;
     }
-    DEBUG("finish_write {:s}[{:d}]: new first_write_head: {}", name, inst,
-          group_digits(first_write_head));
+    DEBUG2("finish_write {:s}[{:d}]: new first_write_head: {}", name, inst,
+           group_digits(first_write_head));
 
     if (read_tails.empty()) {
         // if there are no consumers then mark all available data as consumed

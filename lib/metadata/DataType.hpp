@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <initializer_list>
 #include <iostream>
 #include <limits>
@@ -114,18 +115,18 @@ struct int4x2_t {
 };
 
 // offset-encoded (stored is value + 8), low and high values swapped
-struct int4x2chime_t {
+struct int4x2_swapped_withoffset_t {
     std::uint8_t val;
 
-    int4x2chime_t() = default;
-    int4x2chime_t(const int4x2chime_t&) = default;
-    int4x2chime_t(int4x2chime_t&&) = default;
-    int4x2chime_t& operator=(const int4x2chime_t&) = default;
-    int4x2chime_t& operator=(int4x2chime_t&&) = default;
-    constexpr int4x2chime_t(std::initializer_list<std::uint8_t> vals) :
+    int4x2_swapped_withoffset_t() = default;
+    int4x2_swapped_withoffset_t(const int4x2_swapped_withoffset_t&) = default;
+    int4x2_swapped_withoffset_t(int4x2_swapped_withoffset_t&&) = default;
+    int4x2_swapped_withoffset_t& operator=(const int4x2_swapped_withoffset_t&) = default;
+    int4x2_swapped_withoffset_t& operator=(int4x2_swapped_withoffset_t&&) = default;
+    constexpr int4x2_swapped_withoffset_t(std::initializer_list<std::uint8_t> vals) :
         val((KOTEKAN_ASSERT(vals.size() == 1), *vals.begin())) {}
 
-    constexpr int4x2chime_t(std::int8_t v0, std::int8_t v1) :
+    constexpr int4x2_swapped_withoffset_t(std::int8_t v0, std::int8_t v1) :
         val((((unsigned)(v0 + 8) & 0xf) << 0) | (((unsigned)(v1 + 8) & 0xf) << 4)) {}
     constexpr std::int8_t operator[](int n) const {
         KOTEKAN_ASSERT(0 <= n && n < 2);
@@ -133,7 +134,7 @@ struct int4x2chime_t {
         return bits - 8;
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const int4x2chime_t x) {
+    friend std::ostream& operator<<(std::ostream& os, const int4x2_swapped_withoffset_t x) {
         return os << x[0] << "," << x[1];
     }
 };
@@ -177,8 +178,8 @@ enum DataType {
     uint16,
     uint32,
     uint64,
-    int4x2,      // 2 signed 4-bit integers (packed into a byte)
-    int4x2chime, // offset-encoded (stored is value + 8), low and high values swapped
+    int4x2,                    // 2 signed 4-bit integers (packed into a byte)
+    int4x2_swapped_withoffset, // offset-encoded (stored is value + 8), low and high values swapped
     int8,
     int16,
     int32,
@@ -206,7 +207,7 @@ constexpr std::size_t type_value_bits(DataType type) {
             return 64;
         case int4x2:
             return 4;
-        case int4x2chime:
+        case int4x2_swapped_withoffset:
             return 4;
         case int8:
             return 8;
@@ -245,7 +246,7 @@ constexpr std::size_t type_total_bytes(DataType type) {
             return 8;
         case int4x2:
             return 1;
-        case int4x2chime:
+        case int4x2_swapped_withoffset:
             return 1;
         case int8:
             return 1;
@@ -379,7 +380,8 @@ struct GetDataType<uint4x2_t> : std::integral_constant<DataType, uint4x2> {};
 template<>
 struct GetDataType<int4x2_t> : std::integral_constant<DataType, int4x2> {};
 template<>
-struct GetDataType<int4x2chime_t> : std::integral_constant<DataType, int4x2chime> {};
+struct GetDataType<int4x2_swapped_withoffset_t>
+    : std::integral_constant<DataType, int4x2_swapped_withoffset> {};
 
 // Use e.g. as `DataType double_type = GetDataType_v<double>`
 template<typename T>
@@ -416,8 +418,8 @@ struct GetType<int4x2> {
     using type = int4x2_t;
 };
 template<>
-struct GetType<int4x2chime> {
-    using type = int4x2chime_t;
+struct GetType<int4x2_swapped_withoffset> {
+    using type = int4x2_swapped_withoffset_t;
 };
 template<>
 struct GetType<int8> {
@@ -493,7 +495,8 @@ struct PoisonValue<signed long long>
 template<>
 struct PoisonValue<float16_t> {
     // Unfortunately, `float16_t` does not have any `constexpr` constructors
-    inline static const float16_t value = std::numeric_limits<float>::quiet_NaN();
+    inline static const float16_t value =
+        static_cast<float16_t>(std::numeric_limits<float>::quiet_NaN());
     using value_type = float16_t;
     operator value_type() const noexcept {
         return value;
@@ -577,9 +580,9 @@ struct PoisonValue<int4x2_t> {
 };
 
 template<>
-struct PoisonValue<int4x2chime_t> {
-    static constexpr int4x2chime_t value{0x00};
-    using value_type = int4x2chime_t;
+struct PoisonValue<int4x2_swapped_withoffset_t> {
+    static constexpr int4x2_swapped_withoffset_t value{0x00};
+    using value_type = int4x2_swapped_withoffset_t;
     constexpr operator value_type() const noexcept {
         return value;
     }

@@ -40,10 +40,6 @@
 #include <vector>      // for vector
 
 
-#ifdef WITH_HSA
-#include "hsaBase.h"
-#endif
-
 using std::string;
 using json = nlohmann::json;
 using namespace kotekan;
@@ -494,10 +490,6 @@ int main(int argc, char** argv) {
                 break;
         }
     }
-
-#ifdef WITH_HSA
-    kotekan_hsa_start();
-#endif
 
     if (string(config_file_name) == "none") {
         __enable_syslog = 1;

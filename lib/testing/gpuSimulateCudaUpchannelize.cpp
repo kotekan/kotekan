@@ -230,10 +230,10 @@ void upchan_simple_cxx(const float16_t* __restrict__ const W, const float16_t* _
                             set_storage(to_array(quantize<value_t>(Ebar1, 7)));
 
                     } // tbar
-                }     // u
-            }         // d
-        }             // p
-    }                 // f
+                } // u
+            } // d
+        } // p
+    } // f
 }
 
 

@@ -9,8 +9,6 @@ add_library(
     FakeVis.cpp
     FakeHFB.cpp
     FakeVisPattern.cpp
-    gpuBeamformSimulate.cpp
-    gpuTrackingBeamformSimulate.cpp
     gpuSimulate.cpp
     gpuSimulateCudaBasebandBeamformer.cpp
     gpuSimulateCudaFRBBeamformer.cpp

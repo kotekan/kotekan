@@ -72,7 +72,7 @@ public:
  */
 struct BipWriteReservation {
     /// Reserved writeable area
-    const gsl::span<uint8_t> data;
+    const gsl_lite::span<uint8_t> data;
     /// Length of the reserved writeable area
     const size_t length;
 
@@ -137,7 +137,7 @@ private:
 
 struct BipReadReservation {
     /// Reserved readable area
-    const gsl::span<const uint8_t> data;
+    const gsl_lite::span<const uint8_t> data;
     /// For convenience, length of the reserved readable area
     const size_t length;
 

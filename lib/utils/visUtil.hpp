@@ -397,7 +397,7 @@ inline constexpr uint32_t gpu_N2_size(uint32_t N, uint32_t block) {
  * @param output    Region of memory to write into.
  */
 void copy_vis_triangle(const int32_t* inputdata, const std::vector<uint32_t>& inputmap,
-                       size_t block, size_t N, gsl::span<cfloat> output);
+                       size_t block, size_t N, gsl_lite::span<cfloat> output);
 
 
 /**

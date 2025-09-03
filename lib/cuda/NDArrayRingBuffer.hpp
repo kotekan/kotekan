@@ -32,10 +32,22 @@
 using kotekan::div_noremainder;
 using kotekan::mod;
 
+// When reading data from a ringbuffer there is a difference between
+// the "read" data, which are the input to the compute kernel, and the
+// "claimed" data, which are the data that will have been processed
+// and do not need to be seen again. The difference between these is
+// the "overlap", which are data that are used in this iteration and
+// which will have to be seen again during the next iteration. It is
+//
+//     overlap = read - claimed
 struct read_descriptor_t {
     std::ptrdiff_t claimed, read;
 };
 
+// The "valid" data in a ringbuffer, i.e. the data that can be either
+// read or written, are described by their begin (inclusive) and end
+// (exclusive) index. These are array indices for the slowest
+// dimension in an `NDArray`, not byte offsets.
 struct extent_t {
     std::ptrdiff_t m_begin, m_end;
 
@@ -60,6 +72,50 @@ public:
     }
 };
 
+// An `NDArrayRingBuffer` wraps a Kotekan buffer or a GPU buffer and
+// their associated signal buffer. (Kotekan implements ringbuffers as
+// a "signal buffer" overlaying a regular buffer.) The
+// `NDArrayRingBuffer` also associates them with an `NDArray`. (An
+// `NDArray` knows its type, rank, and shape, and knows the "names" of
+// its dimensions.) There is also an `NDArrayBuffer` types wrapping a
+// regular, non-ring Kotekan buffer.
+//
+// In a typical scenario, a compute kernel creates an `NDArrayRingBuffer`
+// in its constructor. This simplifies applying "the usual" operations
+// to a Kotekan buffer, such as:
+// - register producers/consumers
+// - check and set metadata, especially those for its type and shape
+// - claim and release data for reading or writing via
+//   `wait_for_writable` and `wait_and_claim_readable`, and
+//   `finish_write` and `finish_read`.
+// - access buffer as `NDArray`, i.e. get a typed pointer to the data
+//   or find its shape
+// - poisoning a buffer and checking for poison for debugging
+//
+// The typical life cycle of an `NDArrayRingBuffer` is:
+// - In `wait_on_precondition`, claim data for reading or claim space
+//   for writing
+// - In `execute`, use the valid region of the buffer as usual
+// - In `finalize_frame`, release the claimed data or space
+//
+// Thoughts for the future: It is somewhat tedious to create an
+// `NDArrayRingBuffer` since one needs to know everything about the
+// buffer (name, size, type, shape, etc.). Kotekan already knows all
+// this. It would be convenient if Kotekan offered a way to directly
+// obtain an `NDArrayRingBuffer`.
+//
+// Kotekan often can have multiple buffers associated with the same
+// data, e.g. a Kotekan buffer on the host and a GPU buffer on the
+// device. (Kotekan buffers and GPU buffers use different APIs.)
+// `NDArrayRingBuffer` expects that these names follow a regular
+// pattern:
+// - There is an "official" name, e.g. `voltage`
+// - Derived from this, the Kotekan host buffer is then called
+//   `host_voltage_buffer`
+// - Also derived from this, the GPU buffer is then called
+//   `voltage_buffer`
+// - Also derived from this, the signal buffer is then called
+//   `host_voltage_ringbuffer`
 template<typename T, std::size_t D>
 class NDArrayRingBuffer : public kotekan::kotekanLogging {
     static_assert(D > 0);
@@ -168,7 +224,10 @@ public:
         }
     }
 
-    // Returns 0 if all is good, -1 if we should terminate
+    // `wait_for writable` is the main function to claim space for
+    // writing. Input is the required number of elements, counted in
+    // terms of the slowest varying dimension of the `NDArray`.
+    // Returns 0 if all is good, -1 if we should terminate.
     int wait_for_writable(const std::ptrdiff_t produced_elements) {
         assert(write_valid.size() == 0);
         assert(read_valid.size() == 0);
@@ -197,7 +256,13 @@ public:
         assert(write_valid.size() == 0);
     }
 
-    // Returns 0 if all is good, -1 if we should terminate
+    // `wait_and_claim_readable` is the main function to claim data
+    // for reading. Input is a callback function that receives the
+    // currently available number of elements as input, and then
+    // returns how many elements will be read and claimed (see above).
+    // `wait_and_claim_readable` waits for data in the ringbuffer
+    // until a strictly positive number of elements will be claimed.
+    // Returns 0 if all is good, -1 if we should terminate.
     int wait_and_claim_readable(
         const std::function<read_descriptor_t(std::ptrdiff_t)>& calc_read_descriptor) {
         assert(write_valid.size() == 0);

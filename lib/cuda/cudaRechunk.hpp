@@ -8,8 +8,7 @@ class cudaRechunkState : public cudaCommandState {
 public:
     cudaRechunkState(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device) :
-        cudaCommandState(config, unique_name, host_buffers, device),
-        cols_accumulated(0) {}
+        cudaCommandState(config, unique_name, host_buffers, device), cols_accumulated(0) {}
     int cols_accumulated;
 };
 

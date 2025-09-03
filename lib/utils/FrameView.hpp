@@ -89,11 +89,11 @@ protected:
 };
 
 template<typename T>
-gsl::span<T> bind_span(uint8_t* start, std::pair<size_t, size_t> range) {
+gsl_lite::span<T> bind_span(uint8_t* start, std::pair<size_t, size_t> range) {
     T* span_start = (T*)(start + range.first);
     T* span_end = (T*)(start + range.second);
 
-    return gsl::span<T>(span_start, span_end);
+    return gsl_lite::span<T>(span_start, span_end);
 }
 
 template<typename T>
