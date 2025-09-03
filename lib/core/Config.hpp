@@ -53,16 +53,16 @@ public:
      * @param name      Name of the value.
      * @return  The requested value.
      */
-    template<class T, typename std::enable_if<std::is_arithmetic<T>::value, T>::type* = nullptr>
+    template<class T,
+             typename std::enable_if<std::is_arithmetic<T>::value && !std::is_same<bool, T>::value,
+                                     T>::type* = nullptr>
     T get(const std::string& base_path, const std::string& name) const {
         nlohmann::json json_value = get_value(base_path, name);
         T value;
         try {
             // If the expected type is a number and the value
             // isn't already a number then try using the configEval parser
-            if (std::is_arithmetic<T>::value && !std::is_same<bool, T>::value
-                && !json_value.is_number()) {
-
+            if (std::is_arithmetic<T>::value && !json_value.is_number()) {
                 try {
                     Config::configEval<T> eval(*this, base_path, name);
                     value = eval.compute_result();
@@ -86,12 +86,14 @@ public:
     }
 
     /**
-     * @brief Get a config value for a non-arithmetic type (i.e. string or vector)
+     * @brief Get a config value for a non-arithmetic type (string, vector, bool, etc.)
      * @param base_path Path to the value in the config.
      * @param name      Name of the value.
      * @return  The requested value.
      */
-    template<class T, typename std::enable_if<!std::is_arithmetic<T>::value, T>::type* = nullptr>
+    template<class T,
+             typename std::enable_if<!std::is_arithmetic<T>::value || std::is_same<bool, T>::value,
+                                     T>::type* = nullptr>
     T get(const std::string& base_path, const std::string& name) const {
         nlohmann::json json_value = get_value(base_path, name);
         T value;

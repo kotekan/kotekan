@@ -42,7 +42,7 @@ gpuCommand* hipProcess::create_command(const std::string& cmd_name,
     return cmd;
 }
 
-void hipProcess::queue_commands(int gpu_frame_id) {
+void hipProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
     hipEvent_t signal = nullptr;
     for (auto& command : commands) {
         // Feed the last signal into the next operation

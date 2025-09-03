@@ -3,7 +3,7 @@
 #include "Config.hpp"         // for Config
 #include "Stage.hpp"          // for Stage
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "buffer.hpp"         // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "chimeMetadata.hpp"  // for set_first_packet_recv_time, set_fpga_seq_num, set_gps...
 #include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "factory.hpp"        // for FACTORY
@@ -15,7 +15,7 @@
 #include "gsl-lite.hpp" // for span
 
 #include <atomic>     // for atomic_bool
-#include <csignal>    // for raise, SIGINT
+#include <csignal>    // for raise, SIGTERM
 #include <cstdint>    // for int32_t
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
@@ -59,7 +59,7 @@ FakeGpu::FakeGpu(kotekan::Config& config, const std::string& unique_name,
     // Validate and create test pattern
     if (!FACTORY(FakeGpuPattern)::exists(pattern_name)) {
         ERROR("Test pattern \"%s\" does not exist.", pattern_name.c_str());
-        std::raise(SIGINT);
+        std::raise(SIGTERM);
     }
     pattern = FACTORY(FakeGpuPattern)::create_unique(pattern_name, config, unique_name);
 
@@ -71,7 +71,7 @@ FakeGpu::FakeGpu(kotekan::Config& config, const std::string& unique_name,
     if ((unsigned int)out_buf->frame_size < expected_frame_size) {
         ERROR("Buffer size too small (%i bytes, minimum required %i bytes)", out_buf->frame_size,
               expected_frame_size);
-        std::raise(SIGINT);
+        std::raise(SIGTERM);
     }
 }
 
@@ -117,7 +117,7 @@ void FakeGpu::main_thread() {
         // Test if this will be dropped or not, and only fill out the buffer
         // (and advance) if it won't
         if (drop(gen) < drop_probability) {
-            DEBUG("Dropping frame.")
+            DEBUG("Dropping frame.");
 
         } else {
 

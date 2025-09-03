@@ -39,10 +39,10 @@ public:
 
 private:
     /// Input buffer
-    struct Buffer* in_buf;
+    Buffer* in_buf;
 
     /// The output buffers to put frames into
-    std::vector<struct Buffer*> out_bufs;
+    std::vector<Buffer*> out_bufs;
 };
 
 #endif

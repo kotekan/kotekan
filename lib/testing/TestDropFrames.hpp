@@ -45,8 +45,8 @@ public:
 
 private:
     /// Initializes internal variables from config, allocates reorder_map, gain, get metadata buffer
-    struct Buffer* in_buf;
-    struct Buffer* out_buf;
+    Buffer* in_buf;
+    Buffer* out_buf;
 
     /// Number of time samples, should be a multiple of 3x128 for FRB, standard ops is 49152
     uint32_t _samples_per_data_set;

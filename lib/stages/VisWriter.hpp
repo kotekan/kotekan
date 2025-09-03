@@ -8,7 +8,7 @@
 
 #include "BaseWriter.hpp"      // for BaseWriter
 #include "Config.hpp"          // for Config
-#include "buffer.h"            // for Buffer
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t
 

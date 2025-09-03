@@ -48,9 +48,7 @@ public:
     dpdkRXhandler(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container, int port) :
         config(config),
-        unique_name(unique_name),
-        buffer_container(buffer_container),
-        port(port) {
+        unique_name(unique_name), buffer_container(buffer_container), port(port) {
 
         set_log_level(config.get<std::string>(unique_name, "log_level"));
     };
@@ -129,7 +127,7 @@ protected:
  *                          of ports in the system, even if they aren't being used by the current
  *                          config. There must be a valid handler for every port
  *                          referenced in @c lcore_port_map
- * @conf   master_lcore_cpu The CPU ID of the master lcore (which just handles simple things like
+ * @conf   main_lcore_cpu The CPU ID of the main lcore (which just handles simple things like
  *                          updating stats, and other low volume operatings)
  *
  * @par Optional config, don't change unless you know what you are doing.
@@ -171,9 +169,9 @@ private:
      * @brief Starts the DPDK framework (ELA)
      *
      * @param lcore_cpu_map The mapping of lcores to CPU cores
-     * @param master_lcore_cpu The master core CPU ID to bind too
+     * @param main_lcore_cpu The main core CPU ID to bind too
      */
-    void dpdk_init(std::vector<int> lcore_cpu_map, uint32_t master_lcore_cpu);
+    void dpdk_init(std::vector<int> lcore_cpu_map, uint32_t main_lcore_cpu);
 
     /**
      * @brief Sets up a port for use with DPDK

@@ -8,7 +8,7 @@
 
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
-#include "buffer.h"              // for Buffer
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
 #include "prometheusMetrics.hpp" // for MetricFamily, Counter, Gauge
@@ -181,8 +181,6 @@ protected:
      * @param frame     VisFrameView frame to write
      * @param t         timestamp for sample
      * @param freq_ind  the index for the frequency associated with the frame
-     *
-     * @return          True if frame successfully written, False otherwise.
      **/
     void add_sample(const VisFrameView& frame, time_ctype t, uint32_t freq_ind);
 

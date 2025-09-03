@@ -195,10 +195,7 @@ inline visFileBundle::visFileBundle(const std::string& type, const std::string& 
                                     size_t rollover, size_t window_size,
                                     const kotekan::logLevel log_level, InitArgs... args) :
     root_path(root_path),
-    acq_fmt(acq_fmt),
-    file_fmt(file_fmt),
-    rollover(rollover),
-    window_size(window_size) {
+    acq_fmt(acq_fmt), file_fmt(file_fmt), rollover(rollover), window_size(window_size) {
 
     set_log_level(log_level);
 

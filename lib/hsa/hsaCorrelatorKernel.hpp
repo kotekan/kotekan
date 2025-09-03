@@ -29,10 +29,10 @@ public:
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
 private:
-    int32_t input_frame_len;
-    int32_t presum_len;
-    int32_t corr_frame_len;
-    int32_t block_map_len;
+    size_t input_frame_len;
+    size_t presum_len;
+    size_t corr_frame_len;
+    size_t block_map_len;
 
     uint32_t* host_block_map;
     corr_kernel_config_t* host_kernel_args;

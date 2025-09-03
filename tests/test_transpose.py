@@ -84,7 +84,7 @@ def new_gains():
     nfreq = len(freq)
     nelm = writer_params["num_elements"]
     gain = np.ones((nfreq, nelm), dtype=np.complex64)
-    weight = gain.astype(np.bool8)
+    weight = gain.astype(np.bool_)
 
     return gain, weight
 
@@ -94,7 +94,7 @@ def old_gains():
     nfreq = len(freq)
     nelm = writer_params["num_elements"]
     gain = np.ones((nfreq, nelm), dtype=np.complex64)
-    weight = gain.astype(np.bool8)
+    weight = gain.astype(np.bool_)
 
     return gain, weight
 

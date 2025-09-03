@@ -10,6 +10,7 @@ import numpy as np
 import csv
 import random
 import copy
+import sys
 
 from kotekan import visbuffer
 from kotekan import runner
@@ -272,6 +273,10 @@ def test_pattern_no_noise_freq(tmpdir_factory):
     )
 
 
+@pytest.mark.skipif(
+    sys.version_info > (3, 7),
+    reason="Test only passes when comet works, which needs old python3.7.",
+)
 def test_no_noise_freq(test_pattern_no_noise_freq):
     # A test was started by sending a command to the endpoint, so the files should exist.
     # But they should be empty, since there was no noise added to the test pattern data.

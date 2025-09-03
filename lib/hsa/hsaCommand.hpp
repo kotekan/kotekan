@@ -56,13 +56,20 @@ public:
     // Should clean any signals used by the command.
     // Note that as a byproduct of this, one shouldn't use the signal after this
     // function has been cased.
-    virtual void finalize_frame(int frame_id) override;
+    virtual void finalize_frame() override;
+    virtual void finalize_frame(int frame_id);
+
+    virtual int wait_on_precondition() override;
+    virtual int wait_on_precondition(int frame_id);
 
     gpuCommandType get_command_type();
 
     std::string get_kernel_file_name();
 
 protected:
+    int gpu_frame_counter_finalize;
+    int gpu_frame_counter_waitprecond;
+
     // Extract the code handle for the specified kernelName from the specified fileName
     // Returns a 64-bit code object which can be used with an AQL packet
     uint64_t load_hsaco_file(std::string& file_name, std::string& kernel_name);

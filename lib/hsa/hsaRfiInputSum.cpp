@@ -1,7 +1,7 @@
 #include "hsaRfiInputSum.hpp"
 
 #include "Config.hpp"             // for Config
-#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
+#include "buffer.hpp"             // for Buffer, mark_frame_empty, register_consumer, wait_for_...
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "chimeMetadata.hpp"      // for get_rfi_num_bad_inputs
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL

@@ -32,13 +32,17 @@ class VisMetadata(ctypes.Structure):
     ]
 
 
-class psrCoord(ctypes.Structure):
-    """Struct repr of psrCoord field in ChimeMetadata."""
+# The number of pulsar beams currently being used
+NBEAM = 20
+
+
+class BeamCoord(ctypes.Structure):
+    """Struct repr of BeamCoord field in ChimeMetadata."""
 
     _fields_ = [
-        ("ra", ctypes.ARRAY(ctypes.c_float, 10)),
-        ("dec", ctypes.ARRAY(ctypes.c_float, 10)),
-        ("scaling", ctypes.ARRAY(ctypes.c_uint32, 10)),
+        ("ra", ctypes.c_float * NBEAM),
+        ("dec", ctypes.c_float * NBEAM),
+        ("scaling", ctypes.c_uint32 * NBEAM),
     ]
 
 
@@ -50,9 +54,12 @@ class ChimeMetadata(ctypes.Structure):
         ("first_packet_recv_time", timespec.timeval),
         ("gps_time", timespec.time_spec),
         ("lost_timesamples", ctypes.c_int32),
-        ("stream_ID", ctypes.c_uint16),
-        ("psrCoord", psrCoord),
-        ("rfi_zeroed", ctypes.c_uint32),
+        ("rfi_flagged_samples", ctypes.c_int32),
+        ("rfi_zeroed", ctypes.c_int32),
+        ("rfi_num_bad_inputs", ctypes.c_int32),
+        ("stream_id", ctypes.c_uint16),
+        ("dataset_id", ctypes.c_uint8 * 16),
+        ("beam_coord", BeamCoord),
     ]
 
 

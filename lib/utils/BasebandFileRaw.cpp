@@ -15,8 +15,7 @@
 
 
 BasebandFileRaw::BasebandFileRaw(const std::string& name, const uint32_t frame_size) :
-    name(name),
-    frame_size(frame_size) {
+    name(name), frame_size(frame_size) {
 
     write_index = 0;
 

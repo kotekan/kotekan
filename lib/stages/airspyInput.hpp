@@ -9,7 +9,7 @@
 
 #include "Config.hpp"
 #include "Stage.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "errors.h"
 #include "util.h"
 
@@ -113,7 +113,7 @@ public:
 
 private:
     /// kotekan buffer object which will be fed
-    struct Buffer* buf;
+    Buffer* buf;
     /// handle to the airspy device itself
     struct airspy_device* a_device;
 

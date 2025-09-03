@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for print_full_status, Buffer, get_last_arrival_time, get_num...
+#include "buffer.hpp"          // for print_full_status, Buffer, get_last_arrival_time, get_num...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for FATAL_ERROR
 #include "util.h"              // for e_time
@@ -37,7 +37,7 @@ void monitorBuffer::main_thread() {
     while (!stop_thread) {
         sleep(1);
         double cur_time = e_time();
-        for (struct Buffer* buf : buffers) {
+        for (Buffer* buf : buffers) {
             double last_arrival = get_last_arrival_time(buf);
             if ((cur_time - last_arrival) > timeout && last_arrival > 1) {
                 for (auto& buf : buffer_container.get_buffer_map()) {

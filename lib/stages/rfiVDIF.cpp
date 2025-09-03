@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO
 #include "util.h"              // for e_time
@@ -56,7 +56,7 @@ void rfiVDIF::main_thread() {
     uint32_t VDIF_BLOCK_SIZE = _num_local_freq + sizeof(VDIFHeader);
     // Counters and indices
     uint32_t i, j, k, block_counter, power, rfi_index;
-    long ptr_counter;
+    size_t ptr_counter;
     // Holders for real/imag componenets
     char real, imag;
     // Total integration length

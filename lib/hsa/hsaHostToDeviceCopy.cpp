@@ -16,9 +16,7 @@ hsaHostToDeviceCopy::hsaHostToDeviceCopy(Config& config, const std::string& uniq
                                          hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaHostToDeviceCopy", ""),
     in_buf(host_buffers.get_buffer(config.get<std::string>(unique_name, "in_buf"))),
-    in_buf_id(in_buf),
-    in_buf_precondition_id(in_buf),
-    in_buf_finalize_id(in_buf),
+    in_buf_id(in_buf), in_buf_precondition_id(in_buf), in_buf_finalize_id(in_buf),
     _gpu_memory_name(config.get<std::string>(unique_name, "gpu_memory_name")) {
     command_type = gpuCommandType::COPY_IN;
 

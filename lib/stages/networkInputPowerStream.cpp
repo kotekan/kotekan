@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for mark_frame_full, wait_for_empty_frame, register_producer
+#include "buffer.hpp"          // for mark_frame_full, wait_for_empty_frame, register_producer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR
 #include "powerStreamUtil.hpp" // for IntensityHeader, IntensityPacketHeader
@@ -98,7 +98,7 @@ void networkInputPowerStream::main_thread() {
                     uint32_t len =
                         recvfrom(socket_fd, local_buf, packet_length, 0, nullptr, nullptr);
                     if (len != packet_length) {
-                        ERROR("BAD UDP PACKET! {:d} {:d}", len, errno)
+                        ERROR("BAD UDP PACKET! {:d} {:d}", len, errno);
                     } else {
                         memcpy(frame + t * elems * (freqs + 1) * sizeof(uint)
                                    + e * (freqs + 1) * sizeof(uint),

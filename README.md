@@ -1,15 +1,18 @@
-![](https://github.com/kotekan/kotekan/workflows/include-what-you-use/badge.svg?branch=develop)
 
 # Documentation
 
-Compiled docs are currently available at http://lwlab.dunlap.utoronto.ca/kotekan.
-One day we'll move them to readthedocs...
+Compiled docs are available at https://kotekan.readthedocs.io/en/latest/.
+
+[![Documentation Status](https://readthedocs.org/projects/kotekan/badge/?version=latest)](https://kotekan.readthedocs.io/en/latest/?badge=latest)
+
 
 # Build Instructions
 
+[![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yml/badge.svg)](https://github.com/kotekan/kotekan/actions/workflows/main.yml)
+
 Detailed instructions at http://lwlab.dunlap.utoronto.ca/kotekan/compiling/general.html.
 
-The project is build using cmake, so you will need to install cmake
+This project is built using cmake, so you will need to install cmake
 before starting a build.
 
 To build just the base framework:
@@ -22,9 +25,10 @@ Cmake build options:
 
 * `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with asserts, debug logging and debug symbols.
 * `-DCMAKE_BUILD_TYPE=Test` - Builds the project with asserts, debug logging, but without debug
-symbols.
-* `-DUSE_DPDK=ON` - Include DPDK support.  Optional `-DRTE_SDK=<build-location>` and
-  `-DRTE_TARGET=x86_64-native-linuxapp-gcc` can be provided for non standard build locations.
+  symbols.
+* `-DUSE_OLD_DPDK=ON` - Include DPDK support for older (<19.11) versions.  
+  Optional `-DRTE_SDK=<build-location>` and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`
+  can be provided for non standard build locations.
 * `-DUSE_HSA=ON` - Build with HSA support if available. On by default.
 * `-DUSE_OLD_ROCM=ON` - Build for ROCm versions 2.3 or older. Off by default.
 * `-DUSE_CLOC=ON` - For HSA, use cloc.sh to compile .hsaco binaries.
@@ -42,20 +46,25 @@ symbols.
   it is not part of the base compile, even when enabled.
 * `-DUSE_OMP=ON` Build stages using OpenMP. This requires a compiler supporting OpenMP (>= 3.0)
 * `-DOPENSSL_ROOT_DIR=<openssl_root_dir>` Only required for non-standard install locations of OpenSSL
-* `-DWITH_TESTS=ON` Build kotekans test library and C++ unit tests using The Boost Test Framework.
+* `-DWITH_TESTS=ON` Build kotekans test library.
+* `-DWITH_BOOST_TESTS=ON` Build C++ unit tests using The Boost Test Framework.
   pytest-cpp needs to be installed for pytest to find them.
 * `-DSUPERDEBUG=ON` Add extra debugging info and turn off all optimisation to improve coverage.
 * `-DSANITIZE=ON` Turn on extra Clang sanitizers (currently the address sanitizer) for finding issues.
 
 **Examples:**
 
-To build with HSA, DPDK and debug symbols:
+To build with OpenCL and debug symbols and logging:
 
-    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug ..
+    cmake -DUSE_OPENCL=ON -DCMAKE_BUILD_TYPE=Debug ..
 
-To build with OpenCL and DPDK:
+To build with CUDA:
 
-    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_OPENCL=ON ..
+    cmake -DUSE_CUDA=ON ..
+
+To build with HSA, old DPDK and debug symbols (CHIME):
+
+    cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_OLD_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug ..
 
 To install kotekan (only works on CentOS at the moment):
 
@@ -83,4 +92,5 @@ For example:
 
 When installed kotekan's config files are located at /etc/kotekan/
 
-If running with no options then kotekan just starts a rest server, and waits for someone to send it a config in json format on port `12048`
+If running with no options then kotekan just starts a rest server, and waits for someone to send it a config in json
+format on port `12048`

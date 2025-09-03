@@ -1,14 +1,15 @@
 #include "invalidateVDIFframes.hpp"
 
-#include "StageFactory.hpp"  // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"          // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
-#include "chimeMetadata.hpp" // for atomic_add_lost_timesamples
-#include "prometheusMetrics.hpp"
-#include "vdif_functions.h" // for VDIFHeader
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"            // for Buffer, mark_frame_empty, mark_frame_full, register_con...
+#include "chimeMetadata.hpp"     // for atomic_add_lost_timesamples
+#include "prometheusMetrics.hpp" // for Metrics, Counter
+#include "vdif_functions.h"      // for VDIFHeader
 
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <stddef.h>   // for size_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -52,7 +53,7 @@ void invalidateVDIFframes::main_thread() {
         if (flag_frame == nullptr)
             break;
 
-        for (int32_t i = 0; i < lost_samples_buf->frame_size; ++i) {
+        for (size_t i = 0; i < lost_samples_buf->frame_size; ++i) {
             frame_location = i * vdif_frame_size * num_elements;
             // Check array bounds
             assert((frame_location + vdif_frame_size * num_elements)

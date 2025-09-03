@@ -50,7 +50,7 @@ public:
     bool update_bad_inputs_callback(nlohmann::json& json);
 
 private:
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// Stage variables
 

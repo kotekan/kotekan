@@ -3,7 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"         // for Telescope
-#include "buffer.h"              // for Buffer, mark_frame_empty, wait_for_full_frame, register...
+#include "buffer.hpp"            // for Buffer, mark_frame_empty, wait_for_full_frame, register...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chimeMetadata.hpp"     // for get_fpga_seq_num
 #include "kotekanLogging.hpp"    // for DEBUG, INFO
@@ -11,21 +11,24 @@
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>   // for find, max, min
-#include <atomic>      // for atomic_bool
-#include <cstdint>     // for int32_t
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <algorithm>  // for find, max, min
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#ifdef __AVX2__
 #include <immintrin.h> // for _mm256_broadcast_ss, __m256, _mm256_load_ps, _mm256_min_ps
 #include <mm_malloc.h> // for posix_memalign
+#endif
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
 #include <stdlib.h>    // for free, calloc, malloc
 #include <string.h>    // for memcpy, memset
 #include <sys/types.h> // for uint
 #include <time.h>      // for timespec
+#ifdef __AVX2__
 #include <xmmintrin.h> // for _mm_max_ps, _mm_min_ps, _mm_store_ss, __m128, _mm_shuff...
-
+#endif
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -64,7 +67,7 @@ frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
     udp_packet_size =
         _nbeams * _num_gpus * _factor_upchan_out * _timesamples_per_frb_packet + udp_header_size;
 
-    in_buf = (struct Buffer**)malloc(_num_gpus * sizeof(struct Buffer*));
+    in_buf = (Buffer**)malloc(_num_gpus * sizeof(Buffer*));
     for (int i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer(fmt::format(fmt("in_buf_{:d}"), i));
         register_consumer(in_buf[i], unique_name.c_str());
@@ -403,6 +406,6 @@ void frbPostProcess::main_thread() {
 }
 #else
 void frbPostProcess::main_thread() {
-    ERROR("No AVX2 intrinsics present on this node")
+    ERROR("AVX2 support is not enabled in this build")
 }
 #endif

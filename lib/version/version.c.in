@@ -3,45 +3,44 @@
 
 #include "version.h"
 
-char * __kotekan_version = "@FULL_KOTEKAN_VERSION@";
+char* __kotekan_version = "@FULL_KOTEKAN_VERSION@";
 
-char * __git_branch = "@GIT_BRANCH@";
+char* __git_branch = "@GIT_BRANCH@";
 
-char * __git_commit_hash = "@GIT_COMMIT_HASH@";
+char* __git_commit_hash = "@GIT_COMMIT_HASH@";
 
-char * __cmake_build_options =
-        " CMAKE_BUILD_TYPE: @CMAKE_BUILD_TYPE@ \n"
-        " CMAKE_CXX_COMPILER: @CMAKE_CXX_COMPILER@\n"
-        " CMAKE_C_COMPILER: @CMAKE_C_COMPILER@\n"
-        " USE_DPDK: @USE_DPDK@\n"
-        " - RTE_SDK: @RTE_SDK@\n"
-        " - RTE_TARGET: @RTE_TARGET@\n"
-        " USE_HSA: @USE_HSA@\n"
-        " USE_CLOC: @USE_CLOC@\n"
-        " USE_OPENCL: @USE_OPENCL@\n"
-        " USE_HCC: @USE_HCC@\n"
-        " USE_CUDA: @USE_CUDA@\n"
-        " USE_HDF5: @USE_HDF5@\n"
-        " - HIGHFIVE_PATH: @HIGHFIVE_PATH@\n"
-        " USE_LAPACK: @USE_LAPACK@\n"
-        " - OPENBLAS_PATH: @OPENBLAS_PATH@\n"
-        " USE_AIRSPY: @USE_AIRSPY@\n"
-        " USE_FFTW: @USE_FFTW@\n"
-        " USE_OMP: @USE_OMP@\n"
-        " USE_OPENSSL: @USE_OPENSSL@\n";
+char* __cmake_build_options = " CMAKE_BUILD_TYPE: @CMAKE_BUILD_TYPE@ \n"
+                              " CMAKE_CXX_COMPILER: @CMAKE_CXX_COMPILER@\n"
+                              " CMAKE_C_COMPILER: @CMAKE_C_COMPILER@\n"
+                              " USE_OLD_DPDK: @USE_OLD_DPDK@\n"
+                              " - RTE_SDK: @RTE_SDK@\n"
+                              " - RTE_TARGET: @RTE_TARGET@\n"
+                              " USE_HSA: @USE_HSA@\n"
+                              " USE_CLOC: @USE_CLOC@\n"
+                              " USE_OPENCL: @USE_OPENCL@\n"
+                              " USE_HCC: @USE_HCC@\n"
+                              " USE_CUDA: @USE_CUDA@\n"
+                              " USE_HDF5: @USE_HDF5@\n"
+                              " - HIGHFIVE_PATH: @HIGHFIVE_PATH@\n"
+                              " USE_LAPACK: @USE_LAPACK@\n"
+                              " - OPENBLAS_PATH: @OPENBLAS_PATH@\n"
+                              " USE_AIRSPY: @USE_AIRSPY@\n"
+                              " USE_FFTW: @USE_FFTW@\n"
+                              " USE_OMP: @USE_OMP@\n"
+                              " USE_OPENSSL: @USE_OPENSSL@\n";
 
-char * get_kotekan_version() {
+char* get_kotekan_version() {
     return __kotekan_version;
 }
 
-char * get_git_branch() {
+char* get_git_branch() {
     return __git_branch;
 }
 
-char * get_git_commit_hash() {
+char* get_git_commit_hash() {
     return __git_commit_hash;
 }
 
-char * get_cmake_build_options() {
+char* get_cmake_build_options() {
     return __cmake_build_options;
 }

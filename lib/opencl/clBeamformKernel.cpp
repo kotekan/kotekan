@@ -13,9 +13,10 @@ using kotekan::Config;
 REGISTER_CL_COMMAND(clBeamformKernel);
 
 clBeamformKernel::clBeamformKernel(Config& config, const std::string& unique_name,
-                                   bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "gpu_beamforming",
-              "beamform_tree_scale.cl") {
+                                   bufferContainer& host_buffers, clDeviceInterface& device,
+                                   int inst) :
+    clCommand(config, unique_name, host_buffers, device, inst, no_cl_command_state,
+              "gpu_beamforming", "beamform_tree_scale.cl") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_data_sets = config.get<int>(unique_name, "num_data_sets");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
@@ -90,17 +91,18 @@ void clBeamformKernel::build() {
     lws[2] = 1;
 }
 
-cl_event clBeamformKernel::execute(int gpu_frame_id, cl_event pre_event) {
-    pre_execute(gpu_frame_id);
+cl_event clBeamformKernel::execute(cl_event pre_event) {
+    pre_execute();
 
     // TODO Make this a config file option
     // 390625 == 1 second.
     const uint64_t phase_update_period = 390625;
 
-    int64_t current_seq = get_fpga_seq_num(network_buf, gpu_frame_id);
+    int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
+    int64_t current_seq = get_fpga_seq_num(network_buf, gpu_frame_index);
     int64_t bankID = (current_seq / phase_update_period) % 2;
 
-    stream_t streamID = get_stream_id(network_buf, gpu_frame_id);
+    stream_t streamID = get_stream_id(network_buf, gpu_frame_index);
 
     uint32_t input_frame_len = _num_elements * num_local_freq * _samples_per_data_set;
 
@@ -118,9 +120,9 @@ cl_event clBeamformKernel::execute(int gpu_frame_id, cl_event pre_event) {
     setKernelArg(3, phase_memory);
 
     CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, nullptr, gws, lws, 1,
-                                          &pre_event, &post_events[gpu_frame_id]));
+                                          &pre_event, &post_event));
 
-    return post_events[gpu_frame_id];
+    return post_event;
 }
 
 

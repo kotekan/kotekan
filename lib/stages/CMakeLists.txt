@@ -17,6 +17,8 @@ add_library(
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
+    $<$<BOOL:${USE_ASDF}>:asdfFileWrite.cpp>
+    $<$<BOOL:${USE_HDF5}>:hdf5FileWrite.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
     streamSingleDishVDIF.cpp
@@ -50,6 +52,7 @@ add_library(
     bufferDelay.cpp
     BufferSplit.cpp
     InputSubset.cpp
+    $<$<BOOL:${Julia_FOUND}>:FEngine.cpp>
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
@@ -74,7 +77,13 @@ add_library(
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
-    hexDump.cpp)
+    hexDump.cpp
+    printSparse.cpp
+    ExampleProducer.cpp
+    ExampleConsumer.cpp
+    ExampleDotProduct.cpp
+    # Julia
+    $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
 target_include_directories(kotekan_stages PRIVATE .)
 
@@ -90,6 +99,12 @@ if(${USE_FFTW})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
 endif()
 
+if(${USE_ASDF})
+    target_include_directories(kotekan_stages PRIVATE ${ASDF_CXX_INCLUDE_DIRS})
+    target_link_options(kotekan_stages PUBLIC ${ASDF_CXX_LDFLAGS})
+    target_link_libraries(kotekan_stages PUBLIC ${ASDF_CXX_LIBRARIES})
+endif()
+
 if(${USE_HDF5})
     target_sources(kotekan_stages PRIVATE applyGains.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
@@ -98,6 +113,12 @@ endif()
 
 if(${USE_HDF5} AND ${USE_OMP})
     target_sources(kotekan_stages PRIVATE Transpose.cpp VisTranspose.cpp HFBTranspose.cpp)
+endif()
+
+if(${Julia_FOUND})
+    target_include_directories(kotekan_stages INTERFACE ${JULIA_INCLUDE_DIRS})
+    target_link_libraries(kotekan_stages INTERFACE ${JULIA_LIBRARY})
+    add_definitions(-DWITH_JULIA)
 endif()
 
 if(${USE_OMP})

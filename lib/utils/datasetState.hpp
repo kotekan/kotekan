@@ -407,8 +407,7 @@ public:
      * @param num_stack Number of stacked visibilities.
      */
     stackState(uint32_t num_stack, std::vector<rstack_ctype>&& rstack_map) :
-        _num_stack(num_stack),
-        _rstack_map(rstack_map) {}
+        _num_stack(num_stack), _rstack_map(rstack_map) {}
 
     /**
      * @brief Get stack map information (read only).
@@ -494,8 +493,7 @@ public:
     metadataState(std::string weight_type, std::string instrument_name,
                   std::string git_version_tag) :
         _weight_type(weight_type),
-        _instrument_name(instrument_name),
-        _git_version_tag(git_version_tag) {}
+        _instrument_name(instrument_name), _git_version_tag(git_version_tag) {}
 
     /**
      * @brief Get the weight type (read only).
@@ -552,8 +550,7 @@ public:
      * @param  spec  gateSpec to describe what's happening.
      **/
     gatingState(const gateSpec& spec) :
-        gating_type(FACTORY(gateSpec)::label(spec)),
-        gating_data(spec.to_dm_json()) {}
+        gating_type(FACTORY(gateSpec)::label(spec)), gating_data(spec.to_dm_json()) {}
 
     /**
      * @brief Construct a gating state
@@ -561,8 +558,7 @@ public:
      * @param  data   Full serialised data.
      **/
     gatingState(const nlohmann::json& data) :
-        gating_type(data["type"].get<std::string>()),
-        gating_data(data["data"]) {}
+        gating_type(data["type"].get<std::string>()), gating_data(data["data"]) {}
 
 
     /**
@@ -610,8 +606,7 @@ public:
      * @param  transition_interval  The length of time to blend updates over.
      */
     gainState(std::string update_id, double transition_interval) :
-        _update_id(update_id),
-        _transition_interval(transition_interval){};
+        _update_id(update_id), _transition_interval(transition_interval){};
 
     /**
      * @brief Get the update_id
@@ -834,8 +829,7 @@ public:
      * @param thresholds    Vector of pairs: thresholds and fractions
      */
     RFIFrameDropState(bool enabled, std::vector<std::pair<float, float>> thresholds) :
-        enabled(enabled),
-        thresholds(thresholds) {}
+        enabled(enabled), thresholds(thresholds) {}
 
     /**
      * @brief Get RFI frame-dropping enabled information.

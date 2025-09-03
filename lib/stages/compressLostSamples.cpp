@@ -1,7 +1,7 @@
 #include "compressLostSamples.hpp"
 
 #include "StageFactory.hpp"  // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"          // for allocate_new_metadata_object, copy_metadata, mark_frame_empty
+#include "buffer.hpp"        // for allocate_new_metadata_object, copy_metadata, mark_frame_empty
 #include "chimeMetadata.hpp" // for atomic_add_lost_timesamples, zero_lost_samples
 
 #include <atomic>      // for atomic_bool

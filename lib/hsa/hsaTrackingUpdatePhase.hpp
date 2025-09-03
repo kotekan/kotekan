@@ -9,7 +9,7 @@
 
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
-#include "buffer.h"               // for Buffer
+#include "buffer.hpp"             // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "chimeMetadata.hpp"      // for beamCoord
 #include "hsa/hsa.h"              // for hsa_signal_t
@@ -92,9 +92,9 @@ public:
 
 private:
     /// Length of array of phases in bytes, should be 2048 x _num_beams x 2 for complex
-    int32_t phase_frame_len;
+    size_t phase_frame_len;
     /// Length of the array of scaling values in bytes.
-    int32_t scaling_frame_len;
+    size_t scaling_frame_len;
     /// One of two alternating array of host phase
     float* host_phase_0;
     /// One of two alternating array of host scaling
@@ -104,8 +104,8 @@ private:
     /// Two of two alternating array of host scaling
     float* host_scaling_1;
     /// Gain stuff--------------------------------
-    struct Buffer* gain_buf;
-    int32_t gain_len;
+    Buffer* gain_buf;
+    size_t gain_len;
     int32_t gain_buf_id;
     /// Array of gains, float size of 2048 * 2 * _num_beams
     float* host_gain;

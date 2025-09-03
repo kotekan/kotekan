@@ -84,7 +84,7 @@ public:
 
 private:
     /// The input buffer to send frames from.
-    struct Buffer* buf;
+    Buffer* buf;
 
     /// The server port to connect to.
     uint32_t server_port;

@@ -24,8 +24,8 @@ struct gpu_mem_config_t {
 
 class hsaDeviceInterface : public gpuDeviceInterface {
 public:
-    hsaDeviceInterface(kotekan::Config& config, int32_t gpu_id, int gpu_buffer_depth,
-                       uint32_t numa_node);
+    hsaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
+                       int gpu_buffer_depth, uint32_t numa_node);
     virtual ~hsaDeviceInterface();
 
     // Note, if precede_signal is 0, then we don't wait on any signal.
@@ -51,7 +51,7 @@ public:
     uint32_t get_gpu_numa_node();
 
 protected:
-    void* alloc_gpu_memory(int len) override;
+    void* alloc_gpu_memory(size_t len) override;
     void free_gpu_memory(void*) override;
 
     // GPU HSA variables

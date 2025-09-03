@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, allocate_new_metadata_object, get_metadata_container
+#include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, get_metadata_container
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO, FATAL_ERROR
 #include "metadata.h"          // for metadataContainer
@@ -13,13 +13,11 @@
 #include <errno.h>    // for errno
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint32_t, uint8_t
 #include <string.h>   // for strerror
 #include <sys/stat.h> // for stat
 #include <unistd.h>   // for sleep
-#include <vector>     // for vector
 
 
 inline bool file_exists(char* name) {
@@ -114,7 +112,7 @@ void rawFileRead::main_thread() {
             // If metadata exists then lets read it in.
             if (metadata_size != 0) {
                 allocate_new_metadata_object(buf, frame_id);
-                struct metadataContainer* mc = get_metadata_container(buf, frame_id);
+                metadataContainer* mc = get_metadata_container(buf, frame_id);
                 assert(metadata_size == mc->metadata_size);
                 if (fread(mc->metadata, metadata_size, 1, fp) != 1) {
                     ERROR("rawFileRead: Failed to read file {:s} metadata,", full_path);
@@ -123,7 +121,7 @@ void rawFileRead::main_thread() {
                 INFO("rawFileRead: Read in metadata from file {:s}", full_path);
             }
 
-            int bytes_read = fread((void*)frame, sizeof(char), buf->frame_size, fp);
+            size_t bytes_read = fread((void*)frame, sizeof(char), buf->frame_size, fp);
 
             if (bytes_read != buf->frame_size) {
                 ERROR("rawFileRead: Failed to read file {:s}!", full_path);

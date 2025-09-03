@@ -140,7 +140,7 @@ public:
 
 private:
     /// pointer to Input FRB buffer
-    struct Buffer* in_buf;
+    Buffer* in_buf;
 
     /// frb packet size
     int udp_frb_packet_size;

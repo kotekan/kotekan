@@ -1,6 +1,6 @@
 #include "cudaEventContainer.hpp"
 
-#include "buffer.h"
+#include "buffer.hpp"
 #include "errors.h"
 
 #include <unistd.h>

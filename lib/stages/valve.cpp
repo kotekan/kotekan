@@ -3,7 +3,7 @@
 #include "Config.hpp"
 #include "Stage.hpp"        // for Stage
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for Buffer, allocate_new_metadata_object, get_num_consumers
+#include "buffer.hpp"       // for Buffer, allocate_new_metadata_object, get_num_consumers
 #include "bufferContainer.hpp"
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
 #include "metadata.h"            // for metadataContainer

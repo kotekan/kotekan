@@ -11,7 +11,7 @@
 #include "FrameView.hpp"   // for FrameView
 #include "HFBMetadata.hpp" // for HFBMetadata
 #include "Telescope.hpp"   // for freq_id_t
-#include "buffer.h"        // for Buffer
+#include "buffer.hpp"      // for Buffer
 #include "dataset.hpp"     // for dset_id_t
 #include "visUtil.hpp"     // IWYU pragma: keep
 

@@ -1,0 +1,104 @@
+name: Daily Job Scheduler
+
+on:
+  schedule:
+    # Run every day at 8 AM UTC (4 AM ET / 1 AM PT)
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      branches:
+        description: 'Custom branch name or comma-separated list (e.g., "feature/test" or "feature/a,feature/b")'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  determine-branches:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Determine which branches to run
+        id: set-matrix
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let branches = [];
+            
+            if (context.eventName === 'workflow_dispatch' && '${{ github.event.inputs.branches }}') {
+              // Manual trigger with custom branches
+              const input = '${{ github.event.inputs.branches }}';
+              branches = input.split(',').map(b => b.trim()).filter(b => b);
+              console.log('Manual trigger for branches:', branches);
+            } else {
+              // Scheduled trigger or manual without custom branches
+              branches = ['chord','develop'];
+              console.log('Running scheduled branches:', branches);
+            }
+            
+            const matrix = { branch: branches };
+            core.setOutput('matrix', JSON.stringify(matrix));
+            return matrix;
+
+  trigger-workflows:
+    needs: determine-branches
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    strategy:
+      matrix: ${{ fromJson(needs.determine-branches.outputs.matrix) }}
+      fail-fast: false
+    steps:
+      - name: Trigger workflow on ${{ matrix.branch }}
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const branch = '${{ matrix.branch }}';
+            
+            try {
+              // Check if branch exists
+              await github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: branch
+              });
+              
+              // Trigger the CI tests workflow
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'scheduled_tasks.yml',
+                ref: branch,
+                inputs: {
+                  trigger_source: context.eventName === 'schedule' ? 'scheduled' : 'manual',
+                  triggered_at: new Date().toISOString(),
+                  schedule_type: context.eventName === 'schedule' ? 
+                    context.payload.schedule : 'manual'
+                }
+              });
+
+              // Trigger the IWYU workflow
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'iwyu.yml',
+                ref: branch,
+                inputs: {
+                  trigger_source: context.eventName === 'schedule' ? 'scheduled' : 'manual',
+                  triggered_at: new Date().toISOString(),
+                  schedule_type: context.eventName === 'schedule' ? 
+                    context.payload.schedule : 'manual'
+                }
+              });
+              
+              console.log(`Successfully triggered workflow on branch: ${branch}`);
+            } catch (error) {
+              if (error.status === 404) {
+                console.log(`Branch '${branch}' or workflow 'scheduled_tasks.yml' not found, skipping...`);
+              } else {
+                console.error(`Error triggering workflow on ${branch}:`, error.message);
+                throw error;
+              }
+            }

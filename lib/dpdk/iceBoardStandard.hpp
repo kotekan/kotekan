@@ -10,7 +10,7 @@
 #include "Config.hpp"
 #include "ICETelescope.hpp"
 #include "Telescope.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "chimeMetadata.hpp"
 #include "iceBoardHandler.hpp"
@@ -63,7 +63,7 @@ protected:
     bool copy_packet(struct rte_mbuf* mbuf);
 
     /// The output buffer
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// The current frame.
     uint8_t* out_frame;
@@ -72,7 +72,7 @@ protected:
     int32_t out_frame_id = 0;
 
     /// The flag buffer tracking lost samples
-    struct Buffer* lost_samples_buf;
+    Buffer* lost_samples_buf;
 
     // Parameters saved from the config files
     dset_id_t fpga_dataset;
@@ -224,7 +224,7 @@ inline bool iceBoardStandard::handle_lost_samples(int64_t lost_samples) {
 
     // TODO this could be made more efficient by breaking it down into blocks of memsets.
     while (lost_samples > 0) {
-        if (unlikely(lost_sample_location * sample_size == out_buf->frame_size)) {
+        if (unlikely((size_t)(lost_sample_location * sample_size) == out_buf->frame_size)) {
             if (!advance_frame(temp_seq)) {
                 return false;
             }
@@ -246,10 +246,10 @@ inline bool iceBoardStandard::copy_packet(struct rte_mbuf* mbuf) {
     // Note this assumes that frame_size is divisable by samples_per_packet,
     // or the assert below will fail.
     int64_t sample_location = cur_seq - get_fpga_seq_num(out_buf, out_frame_id);
-    assert(sample_location * sample_size <= out_buf->frame_size);
+    assert((size_t)(sample_location * sample_size) <= out_buf->frame_size);
 
     // Check if we are at the end of the current frame
-    if (unlikely(sample_location * sample_size == out_buf->frame_size)) {
+    if (unlikely((size_t)(sample_location * sample_size) == out_buf->frame_size)) {
         // If there are no new frames to fill, we are just dropping the packet
         if (!advance_frame(cur_seq))
             return false;

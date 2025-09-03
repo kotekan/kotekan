@@ -22,7 +22,7 @@ public:
     void packet_grab_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
 private:
-    struct Buffer* buf;
+    Buffer* buf;
     int link_id;
 
     bool got_packets = false;

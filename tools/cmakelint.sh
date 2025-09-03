@@ -12,6 +12,8 @@ fi
 
 echo "Checking all cmake files in '$path' and its subdirectories."
 
+git config --global --add safe.directory /code/kotekan
+
 # Run cmakelint on all CMakeList.txt recursively.
 shopt -s globstar
 for file in "$path"/{,**/}CMakeLists.txt; do

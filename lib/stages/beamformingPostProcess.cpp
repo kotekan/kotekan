@@ -4,7 +4,7 @@
 #include "Config.hpp"           // for Config
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"        // for stream_t
-#include "buffer.h"             // for Buffer, wait_for_empty_frame, mark_frame_empty, mark_fra...
+#include "buffer.hpp"           // for Buffer, wait_for_empty_frame, mark_frame_empty, mark_fra...
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "chimeMetadata.hpp"    // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
 #include "vdif_functions.h"     // for VDIFHeader
@@ -37,7 +37,7 @@ beamformingPostProcess::beamformingPostProcess(Config& config, const std::string
     _num_fpga_links = config.get<uint32_t>(unique_name, "num_links");
     //_num_gpus = config.get_int("/gpu", "num_gpus");
     _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
-    in_buf = (struct Buffer**)malloc(_num_gpus * sizeof(struct Buffer*));
+    in_buf = (Buffer**)malloc(_num_gpus * sizeof(Buffer*));
     for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer(fmt::format(fmt("beam_in_buf_{:d}"), i));
         register_consumer(in_buf[i], unique_name.c_str());

@@ -3,7 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "FrameView.hpp"         // for FrameView
 #include "Hash.hpp"              // for operator<
-#include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "buffer.hpp"            // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t, datasetManager
 #include "datasetState.hpp"      // for metadataState, _factory_aliasdatasetState

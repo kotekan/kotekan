@@ -147,7 +147,13 @@ std::string Config::get_md5sum() const {
     unsigned char md5sum[MD5_DIGEST_LENGTH];
 
     vector<std::uint8_t> v_msgpack = json::to_msgpack(_json);
+
+    // The MD5 function is deprecated in openssl 3.0, but we want to
+    // maintain compatibility.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     MD5((const unsigned char*)v_msgpack.data(), v_msgpack.size(), md5sum);
+#pragma GCC diagnostic pop
 
     char md5str[33];
     for (int i = 0; i < 16; i++)

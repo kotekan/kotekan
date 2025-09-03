@@ -3,7 +3,7 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for Buffer
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "visUtil.hpp"         // for frameID
 
@@ -41,6 +41,7 @@
  *                 of this function requires internal names to select frame.
  *        @buffer_format any, but all must be the same type.
  *        @buffer_metadata any, but all must be the same type.
+ *
  * @buffer out_buf Buffer to get all the frames from the @c in_bufs
  *        @buffer_format Matches the input buffers
  *        @buffer_metadata Matches the input buffers
@@ -83,7 +84,7 @@ protected:
     std::vector<std::tuple<std::string, Buffer*, frameID>> in_bufs;
 
     /// The output buffer to put frames into
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// The in seconds to wait for a new frame on one of the input buffers.
     double _timeout;

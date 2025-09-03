@@ -69,7 +69,7 @@ public:
 
 private:
     /// The buffer to allow inspections on.
-    struct Buffer* in_buf;
+    Buffer* in_buf;
 
     /// The name (from the config) of the buffer we are inspecting
     std::string in_buf_config_name;

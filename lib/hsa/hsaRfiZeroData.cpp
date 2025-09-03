@@ -1,7 +1,7 @@
 #include "hsaRfiZeroData.hpp"
 
 #include "Config.hpp"             // for Config
-#include "buffer.h"               // for Buffer
+#include "buffer.hpp"             // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "chimeMetadata.hpp"      // for set_rfi_zeroed
 #include "configUpdater.hpp"      // for configUpdater

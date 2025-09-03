@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "buffer.hpp"          // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 
@@ -81,7 +81,7 @@ void streamSingleDishVDIF::main_thread() {
 
         // Send data to remote server.
         // TODO rate limit this output
-        for (int i = 0; i < in_buf->frame_size / packet_size; ++i) {
+        for (size_t i = 0; i < in_buf->frame_size / packet_size; ++i) {
 
             int bytes_sent = sendto(socket_fd, (void*)&frame[packet_size * i], packet_size, 0,
                                     (struct sockaddr*)&saddr_remote, saddr_len);

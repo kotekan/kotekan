@@ -21,7 +21,7 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* buf;
+    Buffer* buf;
     int num_links_in_group;
     int link_id;
     int pattern;

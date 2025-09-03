@@ -14,11 +14,7 @@
 #include <stddef.h> // for size_t
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
-
-
-// Type: one of "random", "const"
-// Value: the value of the constant
-//
+#include <vector>   // for vector
 
 /**
  * @class testDataGen
@@ -29,8 +25,14 @@
  *         @buffer_format any format
  *         @buffer_metadata chimeMetadata
  *
- * @conf  type                  String. "const", "random", "ramp", or "tpluse".
+ * @conf  type                  String. "const", "random", "random_signed", "ramp", or "tpluse".
  * @conf  value                 Int. Required for type "const" and "ramp".
+ * @conf  values                Vector of ints. Only used for type "onehot" - sets the array element
+ * to a different value for each frame; loops through the values.
+ * @conf  seed                  Int. For type "random", "random_signed", and "onehot".  If non-zero,
+ * seeds the random number generator on startup for reproducible results.
+ * @conf  reuse_random          Bool, default False.  For "random" types, only generate each random
+ * block once, then keep re-using it.
  * @conf  wait                  Bool, default True. Produce data a set cadence.
  *                              Otherwise just as fast as possible.
  * @conf  samples_per_data_set  Int. How often to produce data.
@@ -65,20 +67,27 @@ public:
 private:
     void rest_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     bool can_i_go(int frame_id_abs);
-    struct Buffer* buf;
+    Buffer* buf;
     std::string type;
     std::string endpoint;
     int value;
+    std::vector<int> _value_array;
+    float fvalue;
+    std::vector<float> _fvalue_array;
     int step_to_frame;
     bool _pathfinder_test_mode;
     int samples_per_data_set;
     bool wait;
     std::string rest_mode;
     int num_frames;
+    bool _reuse_random;
     size_t _num_freq_in_frame;
     stream_t stream_id;
     uint32_t _first_frame_index;
     uint32_t num_links;
+    int _seed;
+    std::vector<int> _array_shape;
+    std::vector<std::string> _dim_name;
 
     // kotekan trackers example
     std::shared_ptr<StatTracker> timer;

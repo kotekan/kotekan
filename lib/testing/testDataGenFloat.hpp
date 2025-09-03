@@ -18,7 +18,7 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* buf;
+    Buffer* buf;
     std::string type;
     int seed;
     float value;

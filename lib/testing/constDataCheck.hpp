@@ -50,7 +50,7 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* buf;
+    Buffer* buf;
     std::vector<int32_t> ref_real;
     std::vector<int32_t> ref_imag;
     int num_frames_to_test;

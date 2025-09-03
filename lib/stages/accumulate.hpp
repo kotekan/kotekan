@@ -17,8 +17,8 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* in_buf;
-    struct Buffer* out_buf;
+    Buffer* in_buf;
+    Buffer* out_buf;
 
     int32_t _samples_per_data_set;
     int32_t _num_gpu_frames;

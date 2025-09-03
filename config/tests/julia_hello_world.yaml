@@ -1,0 +1,14 @@
+##########################################
+#
+# Julia Hello World
+#
+##########################################
+---
+type: config
+log_level: debug   # info
+cpu_affinity: [2,3,4,5,8,9,10,11]
+
+# Stages
+julia_hello_world:
+    kotekan_stage: juliaHelloWorld
+...

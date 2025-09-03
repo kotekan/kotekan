@@ -48,7 +48,7 @@ public:
 
 private:
     /// Internal list of buffers to check
-    std::vector<struct Buffer*> buffers;
+    std::vector<Buffer*> buffers;
 
     /// The timeout after which kotekan exits.
     int timeout;

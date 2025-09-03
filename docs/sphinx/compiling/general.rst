@@ -168,9 +168,10 @@ Cmake build options
     Builds the project with asserts, debug logging and debug symbols.
 * ``-DCMAKE_BUILD_TYPE=Test``
     Builds the project with asserts and debug logging but without debug symbols.
-* ``-DUSE_DPDK=ON``
-    Builds with DPDK support, for source installs requires: `-DRTE_SDK=<dir>`
+* ``-DUSE_OLD_DPDK=ON``
+    Builds with DPDK support (<19.11), for source installs requires: `-DRTE_SDK=<dir>`
     and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`
+    Not needed for newer versions of DPDK on Ubuntu 22.04
     See :ref:`dpdk` for more details.
 * ``-DUSE_HSA=ON``
     Build with HSA support if available. Off by default.
@@ -197,6 +198,8 @@ Cmake build options
 * ``-DOPENSSL_ROOT_DIR=<openssl_root_dir>``
     Location of the openssl libs and includes.
 * ``-DWITH_TESTS=ON``
+    Build kotekans test library.
+* ``-DWITH_BOOST_TESTS=ON``
     Build tests using The Boost Test Framework. pytest-cpp needs to be installed for pytest to find them.
 * ``-DSUPERDEBUG=ON``
     Add extra debugging info and turn off all optimisation to improve coverage.

@@ -62,7 +62,7 @@ private:
                       const uint64_t fpga_seq_num, struct timeval* time_now,
                       struct beamCoord* beam_coord, uint16_t* freq_ids);
 
-    struct Buffer* pulsar_buf;
+    Buffer* pulsar_buf;
 
     /// number of GPUs same as number of frequencies per node.
     int32_t _num_gpus;

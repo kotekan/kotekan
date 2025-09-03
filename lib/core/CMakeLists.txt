@@ -4,7 +4,7 @@ add_library(
     kotekan_core
     basebandReadoutManager.cpp
     basebandApiManager.cpp
-    buffer.c
+    buffer.cpp
     bufferContainer.cpp
     bufferFactory.cpp
     Config.cpp
@@ -19,8 +19,16 @@ add_library(
     prometheusMetrics.cpp
     restServer.cpp
     Stage.cpp
-    StageFactory.cpp)
+    StageFactory.cpp
+    $<$<BOOL:${Julia_FOUND}>:juliaManager.cpp>)
+
 target_include_directories(kotekan_core PUBLIC .)
+
+if(${Julia_FOUND})
+    target_include_directories(kotekan_core INTERFACE ${JULIA_INCLUDE_DIRS})
+    target_link_libraries(kotekan_core INTERFACE ${JULIA_LIBRARY})
+    add_definitions(-DWITH_JULIA)
+endif()
 
 # Libnuma is optionally used by buffer.c
 find_package(NUMA)
@@ -45,6 +53,6 @@ find_package(LIBEVENT REQUIRED)
 target_link_libraries(
     kotekan_core
     PRIVATE libexternal ${CMAKE_THREAD_LIBS_INIT} kotekan_libs
-    PUBLIC ${LIBEVENT_BASE} ${LIBEVENT_CORE} ${LIBEVENT_PTHREADS} ${LIBEVENT_EXTRA} event)
+    PUBLIC ${LIBEVENT_BASE} ${LIBEVENT_CORE} ${LIBEVENT_PTHREADS} ${LIBEVENT_EXTRA})
 
 target_include_directories(kotekan_core INTERFACE ${LIBEVENT_INCLUDE_DIR})

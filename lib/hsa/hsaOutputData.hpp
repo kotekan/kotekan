@@ -2,7 +2,7 @@
 #define HSA_OUTPUT_DATA_H
 
 #include "Config.hpp"             // for Config
-#include "buffer.h"               // for Buffer
+#include "buffer.hpp"             // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "hsa/hsa.h"              // for hsa_signal_t
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface

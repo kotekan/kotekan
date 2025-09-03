@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for get_lost_timesamples
 #include "kotekanLogging.hpp"  // for ERROR, INFO
@@ -204,12 +204,18 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
 
             ssize_t bytes_writen = write(fd, frame, buf->frame_size);
 
-            if (bytes_writen != buf->frame_size) {
+            if ((size_t)bytes_writen != buf->frame_size) {
                 ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
                 exit(-1);
             } else {
                 // INFO("Data writen to file!");
             }
+
+#ifdef __linux__
+            // To free the cache memory
+            syncfs(fd);
+            posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+#endif
 
             if (close(fd) == -1) {
                 ERROR("Cannot close file {:s}", file_name);

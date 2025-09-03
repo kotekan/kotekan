@@ -52,10 +52,10 @@ public:
 
 private:
     /// The buffer with the network data
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// The buffer with the array of flags indicating lost data.
-    struct Buffer* lost_samples_buf;
+    Buffer* lost_samples_buf;
 
     /// Current ID for out_buf
     int32_t out_buf_frame_id = 0;

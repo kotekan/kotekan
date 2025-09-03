@@ -115,7 +115,7 @@ dpdk:
   kotekan_stage: dpdkCore
   # Format is index = lcore, value = cpu core
   lcore_cpu_map: [0,1,4,5]
-  master_lcore_cpu: 3
+  main_lcore_cpu: 3
   num_mem_channels: 3
   fpga_packet_size: 4680
   alignment: samples_per_data_set

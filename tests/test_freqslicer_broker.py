@@ -4,6 +4,7 @@ from subprocess import Popen
 import time
 import shutil
 import signal
+import sys
 
 from kotekan import runner
 
@@ -170,10 +171,14 @@ def subset_data(tmpdir_factory):
         ]
     finally:
         pid = broker.pid
-        os.kill(pid, signal.SIGINT)
+        os.kill(pid, signal.SIGTERM)
         broker.terminate()
 
 
+@pytest.mark.skipif(
+    sys.version_info > (3, 7),
+    reason="Test only passes when comet works, which needs old python3.7.",
+)
 @pytest.mark.serial
 def test_subset_broker(subset_data):
     data_gen = subset_data[0]

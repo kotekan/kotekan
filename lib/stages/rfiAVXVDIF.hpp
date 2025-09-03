@@ -58,9 +58,9 @@ private:
     // Declraes arrays and instanciates correct number of fastSKVDIF instances
     void parallelSpectralKurtosis(uint32_t loop_idx, uint32_t loop_length);
     // Input buffer (VDIF)
-    struct Buffer* buf_in;
+    Buffer* buf_in;
     // Output buffer (SK estimates)
-    struct Buffer* buf_out;
+    Buffer* buf_out;
     // General Config Parameters
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;

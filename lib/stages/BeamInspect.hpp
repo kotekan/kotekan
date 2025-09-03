@@ -28,7 +28,7 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* in_buf;
+    Buffer* in_buf;
 };
 
 #endif // KOTEKAN_BEAMINSPECT_HPP

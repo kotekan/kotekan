@@ -2,7 +2,7 @@
 
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for get_num_full_frames, print_buffer_status, Buffer
+#include "buffer.hpp"            // for get_num_full_frames, print_buffer_status, Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily

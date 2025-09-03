@@ -1,6 +1,6 @@
 #include "bufferContainer.hpp"
 
-#include "buffer.h"
+#include "buffer.hpp"
 
 #include "fmt.hpp" // for format, fmt
 

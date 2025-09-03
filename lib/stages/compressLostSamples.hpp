@@ -54,10 +54,10 @@ public:
 
 private:
     /// Lost samples buffer
-    struct Buffer* in_buf;
+    Buffer* in_buf;
 
     /// Compressed lost samples buffer
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// Config variables
     uint32_t _samples_per_data_set;

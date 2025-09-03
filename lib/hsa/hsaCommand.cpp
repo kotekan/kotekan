@@ -26,9 +26,9 @@ hsaCommand::hsaCommand(Config& config_, const std::string& unique_name_,
                        bufferContainer& host_buffers_, hsaDeviceInterface& device_,
                        const std::string& default_kernel_command,
                        const std::string& default_kernel_file_name) :
-    gpuCommand(config_, unique_name_, host_buffers_, device_, default_kernel_command,
-               default_kernel_file_name),
-    device(device_) {
+    gpuCommand(config_, unique_name_, host_buffers_, device_, 0, std::shared_ptr<gpuCommandState>(),
+               default_kernel_command, default_kernel_file_name),
+    gpu_frame_counter_finalize(0), gpu_frame_counter_waitprecond(0), device(device_) {
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     // Set the local log level.
@@ -90,6 +90,21 @@ void hsaCommand::allocate_kernel_arg_memory(int max_size) {
         hsa_status = hsa_memory_allocate(device.get_kernarg_region(), max_size, &kernel_args[i]);
         HSA_CHECK(hsa_status);
     }
+}
+
+int hsaCommand::wait_on_precondition() {
+    int r = wait_on_precondition(gpu_frame_counter_waitprecond % _gpu_buffer_depth);
+    gpu_frame_counter_waitprecond++;
+    return r;
+}
+
+int hsaCommand::wait_on_precondition(int) {
+    return 0;
+}
+
+void hsaCommand::finalize_frame() {
+    finalize_frame(gpu_frame_counter_finalize % _gpu_buffer_depth);
+    gpu_frame_counter_finalize++;
 }
 
 void hsaCommand::finalize_frame(int frame_id) {

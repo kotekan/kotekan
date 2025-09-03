@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for DEBUG
 
@@ -44,7 +44,7 @@ simpleAutocorr::~simpleAutocorr() {
 
 void simpleAutocorr::main_thread() {
     float* in_local;
-    uint* out_local;
+    uint* out_local = nullptr;
 
     float re, im;
     frame_in = 0;

@@ -60,7 +60,7 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* buf[4];
+    Buffer* buf[4];
     std::string type;
     std::vector<int32_t> value;
 };

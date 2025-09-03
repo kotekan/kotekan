@@ -7,7 +7,7 @@
 #define HSA_HOST_TO_DEVICE_COPY_H
 
 #include "Config.hpp"             // for Config
-#include "buffer.h"               // for Buffer
+#include "buffer.hpp"             // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "hsa/hsa.h"              // for hsa_signal_t
 #include "hsaCommand.hpp"         // for hsaCommand

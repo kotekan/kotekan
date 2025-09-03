@@ -60,7 +60,7 @@ private:
     void receive_packet(void* buffer, int length, int socket_fd);
 
     /// Output kotekanBuffer.
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// Port of the listening receiver.
     uint32_t port;

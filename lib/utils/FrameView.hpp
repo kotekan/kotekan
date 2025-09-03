@@ -6,7 +6,7 @@
 #ifndef FRAMEVIEW_HPP
 #define FRAMEVIEW_HPP
 
-#include "buffer.h" // for Buffer
+#include "buffer.hpp" // for Buffer
 
 #include "gsl-lite.hpp" // for span
 

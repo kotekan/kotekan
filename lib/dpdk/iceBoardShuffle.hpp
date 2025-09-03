@@ -10,7 +10,7 @@
 
 #include "Config.hpp"
 #include "Telescope.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "chimeMetadata.hpp"
 #include "iceBoardHandler.hpp"
@@ -123,13 +123,13 @@ protected:
     static const uint32_t shuffle_size = 4;
 
     /// The buffers which are filled by this port
-    struct Buffer* out_bufs[shuffle_size];
+    Buffer* out_bufs[shuffle_size];
 
     /// The active frame for the buffers to fill
     uint8_t* out_buf_frame[shuffle_size];
 
     /// The flag buffer tracking lost samples
-    struct Buffer* lost_samples_buf;
+    Buffer* lost_samples_buf;
 
     // Parameters saved from the config files
     dset_id_t fpga_dataset;
@@ -464,7 +464,7 @@ inline bool iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
         // TODO this assumes the frame size of all the output buffers are the
         // same, which should be true in all cases, but should still be tested
         // elsewhere.
-        if (unlikely(lost_sample_location * sample_size == out_bufs[0]->frame_size)) {
+        if (unlikely((size_t)(lost_sample_location * sample_size) == out_bufs[0]->frame_size)) {
             // If advance_frames() returns false then we are in shutdown mode.
             if (!advance_frames(temp_seq))
                 return false;
@@ -503,10 +503,10 @@ inline void iceBoardShuffle::copy_packet_shuffle(struct rte_mbuf* mbuf) {
     int64_t sample_location;
 
     sample_location = cur_seq - get_fpga_seq_num(out_bufs[0], out_buf_frame_ids[0]);
-    assert(sample_location * sample_size <= out_bufs[0]->frame_size);
+    assert((size_t)(sample_location * sample_size) <= out_bufs[0]->frame_size);
     assert(sample_location >= 0);
     assert(get_mbuf_seq_num(mbuf) == cur_seq);
-    if (unlikely(sample_location * sample_size == out_bufs[0]->frame_size)) {
+    if (unlikely((size_t)(sample_location * sample_size) == out_bufs[0]->frame_size)) {
         // If there are no new frames to fill, we are just dropping the packet
         if (!advance_frames(cur_seq))
             return;

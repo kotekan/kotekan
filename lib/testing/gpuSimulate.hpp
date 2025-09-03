@@ -19,8 +19,8 @@ public:
 private:
     int dot4b(uint a, uint b);
 
-    struct Buffer* input_buf;
-    struct Buffer* output_buf;
+    Buffer* input_buf;
+    Buffer* output_buf;
 
     uint32_t* host_block_map;
 

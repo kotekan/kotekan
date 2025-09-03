@@ -71,7 +71,7 @@ dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [0,2,3,4,6,8,9,10]
-    master_lcore_cpu: 4
+    main_lcore_cpu: 4
     fpga_packet_size: 4680
     alignment: samples_per_data_set * 100
     # Format is index = lcore, value = array of port IDs

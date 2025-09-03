@@ -4,7 +4,7 @@
 #include "Hash.hpp"              // for Hash, operator<
 #include "Stack.hpp"             // for stack_chime_in_cyl, stack_diagonal
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, mark_frame_full
+#include "buffer.hpp"            // for wait_for_full_frame, mark_frame_empty, mark_frame_full
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"      // for stackState, prodState, inputState
@@ -48,12 +48,9 @@ baselineCompression::baselineCompression(Config& config, const std::string& uniq
                                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&baselineCompression::main_thread, this)),
-    in_buf(get_buffer("in_buf")),
-    out_buf(get_buffer("out_buf")),
-    frame_id_in(in_buf),
-    frame_id_out(out_buf),
-    compression_residuals_metric(Metrics::instance().add_gauge(
-        "kotekan_baselinecompression_residuals", unique_name, {"freq_id"})),
+    in_buf(get_buffer("in_buf")), out_buf(get_buffer("out_buf")), frame_id_in(in_buf),
+    frame_id_out(out_buf), compression_residuals_metric(Metrics::instance().add_gauge(
+                               "kotekan_baselinecompression_residuals", unique_name, {"freq_id"})),
     compression_time_seconds_metric(Metrics::instance().add_gauge(
         "kotekan_baselinecompression_time_seconds", unique_name, {"thread_id"})),
     compression_frame_counter(Metrics::instance().add_counter(

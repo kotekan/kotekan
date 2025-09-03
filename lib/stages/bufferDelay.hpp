@@ -40,10 +40,10 @@ public:
 
 protected:
     /// The input buffer to delay frames from
-    struct Buffer* in_buf;
+    Buffer* in_buf;
 
     /// The output buffer to release frames to
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// Config variables
     /// Flag to copy or swap frames

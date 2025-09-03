@@ -38,7 +38,7 @@ Example test ``tests/boost/test_<name>.cpp``:
 
 * Add ``add_executable(test_<name> test_<name>.cpp)`` and ``target_link_libraries(test_<name> PRIVATE <all_used_libs>)`` to ``/tests/boost/CMakeLists.txt``.
 
-* Build kotekan with the cmake option ``-DWITH_TESTS=ON`` under ``/kotekan/build``.
+* Build kotekan with the cmake option ``-DWITH_BOOST_TESTS=ON`` under ``/kotekan/build``.
 
 * Make sure ``pytest-cpp`` is installed.
 

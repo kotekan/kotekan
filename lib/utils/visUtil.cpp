@@ -268,17 +268,8 @@ void SlidingWindowMinMax::remove_head(double val) {
 }
 
 StatTracker::StatTracker(std::string name, std::string unit, size_t size, bool is_optimized) :
-    rbuf(std::make_unique<sample[]>(size)),
-    end(0),
-    buf_size(size),
-    count(0),
-    avg(0),
-    dist(0),
-    var(0),
-    std_dev(0),
-    name(name),
-    unit(unit),
-    is_optimized(is_optimized){};
+    rbuf(std::make_unique<sample[]>(size)), end(0), buf_size(size), count(0), avg(0), dist(0),
+    var(0), std_dev(0), name(name), unit(unit), is_optimized(is_optimized){};
 
 void StatTracker::add_sample(double new_val) {
     std::lock_guard<std::recursive_mutex> lock(tracker_lock);

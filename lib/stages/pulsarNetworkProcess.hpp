@@ -61,7 +61,7 @@ public:
 
 private:
     /// pointer to Input Pulsar buffer
-    struct Buffer* in_buf;
+    Buffer* in_buf;
 
     /// pulsar packet size
     int udp_pulsar_packet_size;

@@ -2,7 +2,7 @@
 #define HSA_INPUT_DATA_H
 
 #include "Config.hpp"             // for Config
-#include "buffer.h"               // for Buffer
+#include "buffer.hpp"             // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "hsa/hsa.h"              // for hsa_signal_t
 #include "hsaCommand.hpp"         // for hsaCommand
@@ -29,7 +29,7 @@ private:
     int32_t network_buffer_precondition_id;
     int32_t network_buffer_finalize_id;
     Buffer* network_buf;
-    int32_t input_frame_len;
+    size_t input_frame_len;
 
     // TODO maybe factor these into a CHIME command object class?
     int32_t _num_local_freq;

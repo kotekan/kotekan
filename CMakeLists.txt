@@ -36,7 +36,8 @@ option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_CUDA "Build CUDA GPU Framework" OFF)
 option(USE_HIP "Build HIP GPU Framework" OFF)
-option(USE_DPDK "Enable DPDK Framework" OFF)
+option(USE_OLD_DPDK "Enable old versions of DPDK (<19.11)" OFF)
+option(USE_ASDF "Build ASDF output stages" OFF)
 option(USE_HDF5 "Build HDF5 output stages" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
 option(USE_OLD_ROCM "Build for ROCm versions 2.3 or older" OFF)
@@ -44,7 +45,8 @@ option(NO_MEMLOCK "Do not lock buffer memory (useful when running in Docker)" OF
 option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
 option(SANITIZE "Enable clang sanitizers for testing" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
-option(WITH_TESTS "Compile testing library and boost C++ unit tests" OFF)
+option(WITH_TESTS "Compile testing library" OFF)
+option(WITH_BOOST_TESTS "Compile boost C++ unit tests" OFF)
 option(IWYU "Enable include-what-you-use and print suggestions to stderr" OFF)
 option(CCACHE "Use ccache to speed up the build" OFF)
 option(WERROR "Warnings are errors" OFF)
@@ -69,8 +71,8 @@ add_compile_options(-Wall -Wextra)
 add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wzero-as-null-pointer-constant>)
 # Warning about missing override is called differently in clang and gcc
 include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag(-Winconsistent-missing-override HAVE_INCONSISTANT_MISSING_OVERRIDE)
-if(HAVE_INCONSISTANT_MISSING_OVERRIDE AND NOT ${IWYU})
+check_cxx_compiler_flag(-Winconsistent-missing-override HAVE_INCONSISTENT_MISSING_OVERRIDE)
+if(HAVE_INCONSISTENT_MISSING_OVERRIDE AND NOT ${IWYU})
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Winconsistent-missing-override>)
 endif()
 check_cxx_compiler_flag(-Wsuggest-override HAVE_SUGGEST_OVERRIDE)
@@ -239,15 +241,21 @@ endif()
 message("GPU Modules Included: " ${GPU_MODULES})
 
 set(INPUT_MODULES "")
-if(${USE_DPDK})
-    set(INPUT_MODULES ${INPUT_MODULES} "DPDK ")
-    find_package(DPDK REQUIRED)
-endif()
 if(${USE_AIRSPY})
     add_definitions(-DWITH_AIRSPY)
     set(INPUT_MODULES ${INPUT_MODULES} "AIRSPY ")
 endif()
 message("Input Modules Included: " ${INPUT_MODULES})
+
+if(${USE_ASDF})
+    message("ASDF enabled")
+    find_package(asdf-cxx REQUIRED)
+    if(NOT ASDF_CXX_FOUND)
+        message(FATAL_ERROR "ASDF not found")
+    endif()
+    message(STATUS "ASDF found")
+    add_definitions(-DWITH_ASDF_CXX)
+endif()
 
 if(${USE_HDF5})
     # only clone highfive if HIGHFIVE_PATH is not specified nor cached
@@ -319,8 +327,9 @@ if(${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
 endif()
 
-# Turn off memlocking of buffers. This is useful when running in restricted environments e.g. Docker
-# containers
+# Prevent memory locking and setting any memory policies. This is useful when running in restricted
+# environments, e.g. Docker containers.  Note this can also be done with the configuration file for
+# systems which do support memory locking, but where some memory shouldn't be memory locked.
 if(${NO_MEMLOCK})
     message("Do not lock buffer memory.")
     add_definitions(-DWITH_NO_MEMLOCK)
@@ -333,7 +342,7 @@ add_subdirectory(external)
 add_subdirectory(config)
 
 # Testing with boost
-if(${WITH_TESTS})
+if(${WITH_BOOST_TESTS})
     set(_BOOST_TESTS_DIR
         tests/boost/
         CACHE INTERNAL "Path to boost test sources")

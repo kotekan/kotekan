@@ -64,9 +64,9 @@ public:
 
 private:
     /// Input length, (nsamp+32) x num_elem x 2
-    int32_t input_frame_len;
+    size_t input_frame_len;
     /// Output length, num_frb_total_beams x (nsamp/downsample_time/downsample_freq)
-    int32_t output_frame_len;
+    size_t output_frame_len;
 
     /// Number of elements, should be 2048
     int32_t _num_elements;
