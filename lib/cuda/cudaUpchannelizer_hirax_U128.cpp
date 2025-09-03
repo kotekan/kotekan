@@ -161,7 +161,7 @@ private:
     //
     // E: voltage_name
     static constexpr const char* E_quantity = "E";
-    static constexpr kotekan::DataType E_type = kotekan::int4x2chime;
+    static constexpr kotekan::DataType E_type = kotekan::int4x2_swapped_withoffset;
     enum E_indices {
         E_index_D,
         E_index_P,
@@ -197,7 +197,7 @@ private:
     //
     // Ebar: upchan_U128_voltage_name
     static constexpr const char* Ebar_quantity = "Ebar";
-    static constexpr kotekan::DataType Ebar_type = kotekan::int4x2chime;
+    static constexpr kotekan::DataType Ebar_type = kotekan::int4x2_swapped_withoffset;
     enum Ebar_indices {
         Ebar_index_D,
         Ebar_index_P,

@@ -136,7 +136,7 @@ private:
     //
     // E: voltage_name
     static constexpr const char* E_quantity = "E";
-    static constexpr kotekan::DataType E_type = kotekan::int4x2chime;
+    static constexpr kotekan::DataType E_type = kotekan::int4x2_swapped_withoffset;
     enum E_indices {
         E_index_D,
         E_index_P,
@@ -207,7 +207,7 @@ private:
     //
     // J: bb_beams_name
     static constexpr const char* J_quantity = "J";
-    static constexpr kotekan::DataType J_type = kotekan::int4x2chime;
+    static constexpr kotekan::DataType J_type = kotekan::int4x2_swapped_withoffset;
     enum J_indices {
         J_index_T,
         J_index_P,

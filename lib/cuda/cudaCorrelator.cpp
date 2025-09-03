@@ -84,7 +84,8 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
 
     const std::ptrdiff_t time_offset =
         voltage.get_read_valid().begin() % voltage.get_ndarray().extent(0);
-    const kotekan::int4x2chime_t* const input_memory = &voltage.get_ndarray()(time_offset, 0, 0, 0);
+    const kotekan::int4x2_swapped_withoffset_t* const input_memory =
+        &voltage.get_ndarray()(time_offset, 0, 0, 0);
 
     // aka "nt_outer" in n2k.hpp
     const int num_subintegrations = _samples_per_data_set / _sub_integration_ntime;

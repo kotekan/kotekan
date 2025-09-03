@@ -160,7 +160,7 @@ private:
     //
     // Ebar: voltage_name
     static constexpr const char* Ebar_quantity = "Ebar";
-    static constexpr kotekan::DataType Ebar_type = kotekan::int4x2chime;
+    static constexpr kotekan::DataType Ebar_type = kotekan::int4x2_swapped_withoffset;
     enum Ebar_indices {
         Ebar_index_D,
         Ebar_index_P,

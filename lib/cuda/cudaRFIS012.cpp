@@ -66,7 +66,7 @@ private:
 
     // Buffers
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_mask;
-    NDArrayRingBuffer<kotekan::int4x2chime_t, 4> voltage;
+    NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012;
 };
 
@@ -187,7 +187,7 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     // rfi_S012.set_to_poison(0xff);
 
     const kotekan::uint1x8_t* const pl_mask_memory = pl_mask.get_ndarray().data();
-    const kotekan::int4x2chime_t* const voltage_memory = voltage.get_ndarray().data();
+    const kotekan::int4x2_swapped_withoffset_t* const voltage_memory = voltage.get_ndarray().data();
     std::uint64_t* const rfi_S012_memory = rfi_S012.get_ndarray().data();
 
     const std::ptrdiff_t Tsize = voltage.get_ndarray().extent(0);

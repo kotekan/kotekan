@@ -563,7 +563,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     Dict(
                         "name" => "Ein",
                         "kotekan_name" => "input_voltage_name",
-                        "type" => "int4x2chime",
+                        "type" => "int4x2_swapped_withoffset",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
                             Dict("label" => "P", "length" => P),
@@ -577,7 +577,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     Dict(
                         "name" => "E",
                         "kotekan_name" => "output_voltage_name",
-                        "type" => "int4x2chime",
+                        "type" => "int4x2_swapped_withoffset",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
                             Dict("label" => "P", "length" => P),

@@ -1238,7 +1238,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     Dict(
                         "name" => "E",
                         "kotekan_name" => "voltage_name",
-                        "type" => "int4x2chime",
+                        "type" => "int4x2_swapped_withoffset",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
                             Dict("label" => "P", "length" => P),
@@ -1268,7 +1268,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     ),
                     Dict(
                         "name" => "J",
-                        "type" => "int4x2chime",
+                        "type" => "int4x2_swapped_withoffset",
                         "kotekan_name" => "bb_beams_name",
                         "axes" => [
                             Dict("label" => "T", "length" => Tout),

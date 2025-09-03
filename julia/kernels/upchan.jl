@@ -1940,7 +1940,7 @@ function fix_ptx_kernel()
                 Dict(
                     "name" => "E",
                     "kotekan_name" => "voltage_name",
-                    "type" => "int4x2chime",
+                    "type" => "int4x2_swapped_withoffset",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
@@ -1955,7 +1955,7 @@ function fix_ptx_kernel()
                 Dict(
                     "name" => "Ebar",
                     "kotekan_name" => "upchan_U$(U)_voltage_name",
-                    "type" => "int4x2chime",
+                    "type" => "int4x2_swapped_withoffset",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),

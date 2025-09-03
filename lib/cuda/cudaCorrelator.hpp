@@ -79,7 +79,7 @@ private:
     const std::string _n2k_correlation_name;
 
     // Signalling ring buffer for the input (voltage) data.
-    NDArrayRingBuffer<kotekan::int4x2chime_t, 4> voltage;
+    NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
     NDArrayBuffer<std::int32_t, 6> n2k_correlation;
 
     // Cuda kernel wrapper object
