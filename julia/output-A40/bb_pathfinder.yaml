@@ -16,7 +16,7 @@ kernel-description:
     sampling-time-μsec: 5.12
     shift-parameter-σ: 2
   compile-parameters:
-    minthreads: 128
+    minthreads: [32, 4]
     blocks_per_sm: 8
   call-parameters:
     threads: [32, 4]

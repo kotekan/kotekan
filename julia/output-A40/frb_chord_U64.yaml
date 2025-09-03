@@ -19,7 +19,7 @@ kernel-description:
     sampling-time-μsec: 5.12
     upchannelization-factor: 64
   compile-parameters:
-    minthreads: 768
+    minthreads: [32, 24]
     blocks_per_sm: 1
   call-parameters:
     threads: [32, 24]

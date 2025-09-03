@@ -1695,7 +1695,7 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
             sampling-time-μsec: $sampling_time_μsec
             upchannelization-factor: $U
           compile-parameters:
-            minthreads: $(num_threads * num_warps)
+            minthreads: [$num_threads, $num_warps]
             blocks_per_sm: $num_blocks_per_sm
             blocks_per_frequency: $num_blocks_per_frequency
           call-parameters:
@@ -1797,7 +1797,7 @@ function fix_ptx_kernel()
         sampling-time-μsec: $sampling_time_μsec
         upchannelization-factor: $U
       compile-parameters:
-        minthreads: $(num_threads * num_warps)
+        minthreads: [$num_threads, $num_warps]
         blocks_per_sm: $num_blocks_per_sm
         blocks_per_frequency: $num_blocks_per_frequency
       call-parameters:

@@ -1119,7 +1119,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             sampling-time-μsec: $sampling_time_μsec
             shift-parameter-σ: $σ
           compile-parameters:
-            minthreads: $(num_threads * num_warps)
+            minthreads: [$num_threads, $num_warps]
             blocks_per_sm: $num_blocks_per_sm
           call-parameters:
             threads: [$num_threads, $num_warps]
@@ -1496,7 +1496,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             sampling-time-μsec: $sampling_time_μsec
             shift-parameter-σ: $σ
           compile-parameters:
-            minthreads: $(num_threads * num_warps)
+            minthreads: [$num_threads, $num_warps]
             blocks_per_sm: $num_blocks_per_sm
           call-parameters:
             threads: [$num_threads, $num_warps]

@@ -392,7 +392,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
             number-of-polarizations: $P
             number-of-timesamples: $T
           compile-parameters:
-            minthreads: $(num_threads * num_warps)
+            minthreads: [$num_threads, $num_warps]
             blocks_per_sm: $num_blocks_per_sm
           call-parameters:
             threads: [$num_threads, $num_warps]

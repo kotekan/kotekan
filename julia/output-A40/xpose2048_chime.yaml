@@ -9,7 +9,7 @@ kernel-description:
     number-of-polarizations: 2
     number-of-timesamples: 65536
   compile-parameters:
-    minthreads: 512
+    minthreads: [32, 16]
     blocks_per_sm: 1
   call-parameters:
     threads: [32, 16]
