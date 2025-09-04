@@ -8,6 +8,7 @@
 #define ICE_BOARD_STANDARD_HPP
 
 #include "Config.hpp"
+#include "chordMetadata.hpp"
 #include "ICETelescope.hpp"
 #include "Telescope.hpp"
 #include "buffer.hpp"
@@ -198,16 +199,18 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
     // Set metadata values.
     out_buf->allocate_new_metadata_object(out_frame_id);
 
-    set_first_packet_recv_time(out_buf, out_frame_id, now);
+    get_chord_metadata(out_buf, out_frame_id)->set_first_packet_recv_time(now);
+
+    get_chord_metadata(out_buf, out_frame_id)->set_fpga_seq_num(new_seq);
 
     if (tel.gps_time_enabled()) {
         struct timespec gps_time = tel.to_time(new_seq);
-        set_gps_time(out_buf, out_frame_id, gps_time);
+        get_chord_metadata(out_buf, out_frame_id)->set_gps_time(gps_time);
     }
 
-    ice_set_stream_id_t(out_buf, out_frame_id, port_stream_id);
-    set_fpga_seq_num(out_buf, out_frame_id, new_seq);
-    set_dataset_id(out_buf, out_frame_id, fpga_dataset);
+    stream_t encoded_id = ice_encode_stream_id(port_stream_id);
+    get_chord_metadata(out_buf, out_frame_id)->set_stream_id(encoded_id);
+    get_chord_metadata(out_buf, out_frame_id)->set_dataset_id(fpga_dataset);
 
     return true;
 }
@@ -218,7 +221,7 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
 inline bool iceBoardStandard::handle_lost_samples(int64_t lost_samples) {
 
     int64_t lost_sample_location =
-        last_seq + samples_per_packet - get_fpga_seq_num(out_buf, out_frame_id);
+        last_seq + samples_per_packet - get_chord_metadata(out_buf, out_frame_id)->get_fpga_seq_num();
     uint64_t temp_seq = last_seq + samples_per_packet;
 
     // TODO this could be made more efficient by breaking it down into blocks of memsets.
@@ -244,7 +247,7 @@ inline bool iceBoardStandard::copy_packet(struct rte_mbuf* mbuf) {
 
     // Note this assumes that frame_size is divisable by samples_per_packet,
     // or the assert below will fail.
-    int64_t sample_location = cur_seq - get_fpga_seq_num(out_buf, out_frame_id);
+    int64_t sample_location = cur_seq - get_chord_metadata(out_buf, out_frame_id)->get_fpga_seq_num();
     assert((size_t)(sample_location * sample_size) <= out_buf->frame_size);
 
     // Check if we are at the end of the current frame

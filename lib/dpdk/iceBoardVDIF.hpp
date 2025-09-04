@@ -8,6 +8,7 @@
 #define ICE_BOARD_VDIF
 
 #include "Config.hpp"
+#include "chordMetadata.hpp"
 #include "ICETelescope.hpp"
 #include "Telescope.hpp"
 #include "buffer.hpp"
@@ -219,14 +220,15 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
     out_buf->allocate_new_metadata_object(out_buf_frame_id);
 
     if (port == 0)
-        set_first_packet_recv_time(out_buf, out_buf_frame_id, now);
+        get_chord_metadata(out_buf, out_buf_frame_id)->set_first_packet_recv_time(now);
+
+    // required for gps_time (which is computed from this)
+    get_chord_metadata(out_buf, out_buf_frame_id)->set_fpga_seq_num(new_seq);
 
     if (tel.gps_time_enabled()) {
         struct timespec gps_time = tel.to_time(new_seq);
-        set_gps_time(out_buf, out_buf_frame_id, gps_time);
+        get_chord_metadata(out_buf, out_buf_frame_id)->set_gps_time(gps_time);
     }
-
-    set_fpga_seq_num(out_buf, out_buf_frame_id, new_seq);
 
     // Advance the lost samples frame
     if (!first_time) {
@@ -245,7 +247,7 @@ inline void iceBoardVDIF::handle_lost_samples(int64_t lost_samples) {
     const int64_t frame_size = vdif_packet_len * num_elements;
 
     int64_t lost_sample_location =
-        last_seq + samples_per_packet - get_fpga_seq_num(out_buf, out_buf_frame_id);
+        last_seq + samples_per_packet - get_chord_metadata(out_buf, out_buf_frame_id)->get_fpga_seq_num();
     uint64_t temp_seq = last_seq + samples_per_packet;
 
     // TODO this could be made more efficient by breaking it down into blocks of memsets.
@@ -268,7 +270,7 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
 
     const int64_t frame_size = vdif_packet_len * num_elements;
 
-    int64_t vdif_frame_location = cur_seq - get_fpga_seq_num(out_buf, out_buf_frame_id);
+    int64_t vdif_frame_location = cur_seq - get_chord_metadata(out_buf, out_buf_frame_id)->get_fpga_seq_num();
 
     if (unlikely((size_t)(vdif_frame_location * frame_size) == out_buf->frame_size)) {
         advance_vdif_frame(cur_seq);
