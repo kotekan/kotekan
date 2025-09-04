@@ -1,3 +1,4 @@
+# check=skip=UndefinedVar
 FROM ubuntu:24.04
 
 # So tzdata package doesn't ask for user interaction
@@ -8,116 +9,144 @@ WORKDIR /code/build
 
 # Install any needed packages to run cmake with full CHORD build options
 RUN apt update && \
-    apt install -y software-properties-common && \
-    apt upgrade -y && \
-    apt install -y build-essential pkg-config && \
-    apt install -y git \
-                   file \
-                   wget \
-                   coreutils && \
-    apt install -y ccache \
-                   gcc-12 \
-                   g++-12 \
-                   make \
-                   cmake \
-                   clang \
-                   libclang-dev \
-                   llvm-dev \
-                   clang-format \
-                   flex \
-                   bison \
-                   iwyu \
-                   gdb && \
-    apt install -y dpdk \
-                   dpdk-dev \
-                   libdpdk-dev \
-                   libhdf5-dev \
-                   libhdf5-serial-dev \
-                   libfftw3-dev \
-                   libairspy-dev \
-                   libboost-test-dev \
-                   libevent-dev \
-                   libnuma-dev \
-                   libssl-dev \
-                   libyaml-cpp-dev \
-                   libsystemd-dev \
-                   libgdal-dev && \
-    apt install -y python3 \
-                   python3-dev && \
+    apt install -y \
+        bison \
+        build-essential \
+        ccache \
+        clang \
+        clang-format \
+        cmake \
+        coreutils \
+        curl \
+        default-jre \
+        doxygen \
+        dpdk \
+        dpdk-dev \
+        file \
+        flex \
+        g++ \
+        gcc \
+        gdb \
+        git \
+        graphviz \
+        iwyu \
+        libairspy-dev \
+        libboost-filesystem-dev \
+        libboost-system-dev \
+        libboost-test-dev \
+        libbz2-dev \
+        libdpdk-dev \
+        libevent-dev \
+        libfftw3-dev \
+        libgdal-dev \
+        libhdf5-dev \
+        libhdf5-serial-dev \
+        liblapack-dev \
+        liblapacke-dev \
+        liblz4-dev \
+        libnuma-dev \
+        libopenblas-dev \
+        libssl-dev \
+        libsystemd-dev \
+        libxtensor-dev \
+        libyaml-cpp-dev \
+        make \
+        pkg-config \
+        python3 \
+        python3-dev \
+        software-properties-common \
+        valgrind \
+        wget \
+        xtensor-dev \
+        && \
     apt clean && apt autoclean
 
 # Install pip and python packages
-# Overwrite system install of python/pip if needed
-RUN rm /usr/lib/python*/EXTERNALLY-MANAGED
 # Disable pip caching (keep docker image size smaller)
 ENV PIP_NO_CACHE_DIR=1
-RUN wget https://bootstrap.pypa.io/get-pip.py && python3 get-pip.py
-RUN python3 -m pip install --upgrade pip \
-                                     distro-info \
-                                     setuptools \
-                                     wheel \
-                                     pkgconfig
+# Overwrite system install of python/pip if needed
+RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
+    wget https://bootstrap.pypa.io/get-pip.py && \
+    python3 get-pip.py && \
+    python3 -m pip install --upgrade \
+        astropy \
+        bitshuffle \
+        black==19.10b0 \
+        breathe==4.35.* \
+        click==8.0.2 \
+        cmake_format \
+        cython \
+        distro-info \
+        flask \
+        future \
+        gmpy2 \
+        h5py \
+        hdf5plugin \
+        mpmath \
+        msgpack \
+        numpy \
+        pip \
+        pkgconfig \
+        posix_ipc \
+        pytest \
+        pytest-cpp \
+        pytest-localserver \
+        pytest-timeout \
+        pytest-xdist \
+        requests \
+        setuptools \
+        sphinx==6.2.* \
+        sphinx_rtd_theme==2.0.* \
+        sphinxcontrib-plantuml==0.25 \
+        tabulate \
+        wheel
+
+# Uncomment this to check what version got installed
+# RUN python3 -m pip show <package>
+# RUN apt-cache policy <package>
+
 # We want the `python` command to point to python3
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# Install kotekan python dependencies
-RUN python3 -m pip install cython \
-                           numpy \
-                           cmake_format \
-                           click==8.0.2 \
-                           black==19.10b0 \
-                           flask
-RUN python3 -m pip install h5py \
-                           hdf5plugin \
-                           bitshuffle
-RUN python3 -m pip install msgpack \
-                           future \
-                           requests \
-                           pyyaml \
-                           tabulate \
-                           pytest \
-                           pytest-xdist \
-                           pytest-cpp \
-                           pytest-localserver \
-                           pytest-timeout \
-                           posix_ipc \
-                           astropy \
-                           gmpy2 \
-                           mpmath
+# CUDA / opencl driver installs and packages
+RUN mkdir src && \
+    ( \
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb && \
+        dpkg -i cuda-keyring_1.1-1_all.deb && \
+        apt -y update && \
+        apt-get install -y cuda-toolkit nvidia-open && \
+        apt-get install -y --no-install-recommends libopencl-clang-17-dev opencl-headers ocl-icd-opencl-dev && \
+        apt-get clean && \
+    true) && \
+    rm -rf src
 
-# CUDA / GPU tools
-RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
-RUN dpkg -i cuda-keyring_1.1-1_all.deb
-RUN apt -y update && \
-    apt-get install -y cuda-toolkit nvidia-open && apt-get clean
 ENV CUDADIR=/usr/local/cuda
-ENV LD_LIBRARY_PATH="${CUDADIR}/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
 ENV PATH="${PATH:+${PATH}:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
+ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
 
-RUN apt-get install -y --no-install-recommends \
-  libopencl-clang-17-dev opencl-headers ocl-icd-opencl-dev
-
-# Install OpenBLAS and clone Blaze for the eigenvalue processes
-RUN apt update && \
-    apt install -y libopenblas-dev \
-                   liblapack-dev \
-                   liblapacke-dev \
-                   && \
-    apt clean && apt autoclean && \
-    git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
-    cd blaze && git checkout v3.8.2 && \
-    cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ && make install && cd ..
+# Install Blaze for the eigenvalue processes
+RUN mkdir src && \
+    ( \
+        git clone -b v3.8.2 https://bitbucket.org/blaze-lib/blaze.git blaze && \
+        cd blaze && \
+        git checkout && \
+        cmake -B cmake-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            && \
+        cmake --build cmake-build --parallel $(nproc) && \
+        cmake --install cmake-build && \
+    true) && \
+    rm -rf src
 
 # Install Blosc2 (a prerequisite for ASDF)
-RUN apt update && apt install -y libbz2-dev liblz4-dev && \
-    apt clean && apt autoclean
 RUN mkdir src && \
     (cd src && \
     wget https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.14.4.tar.gz && \
     tar xzf v2.14.4.tar.gz && \
     cd c-blosc2-2.14.4 && \
-    cmake -B build -S . \
+    cmake -B cmake-build \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr/local \
         -DBUILD_BENCHMARKS=OFF \
@@ -125,8 +154,8 @@ RUN mkdir src && \
         -DBUILD_FUZZERS=OFF \
         -DBUILD_TESTS=OFF \
         && \
-    cmake --build build --parallel $(nproc) && \
-    cmake --install build && \
+    cmake --build cmake-build --parallel $(nproc) && \
+    cmake --install cmake-build && \
     true) && \
     rm -rf src
 
@@ -137,48 +166,37 @@ RUN mkdir src && \
         git clone -n https://github.com/jbmertens/asdf-cxx && \
         cd asdf-cxx && \
         git checkout 13a7112 && \
-        cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
-        cmake --build build --parallel $(nproc) && \
-        cmake --install build && \
+        cmake -B cmake-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
+        cmake --build cmake-build --parallel $(nproc) && \
+        cmake --install cmake-build && \
     true) && \
     rm -rf src
 # Depends on lz4.pc (called liblz4.pc in apt install)
 RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig/lz4.pc
 
 # Clone HighFive
-RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
- cd HighFive && git pull && cd ..
-ENV HIGHFIVE_PATH=/code/build/HighFive
+RUN mkdir src && \
+    ( \
+        cd src && \
+        git clone --recurse-submodules --single-branch --branch v.3.1.1 https://github.com/highfive-devs/highfive && \
+        cd highfive && \
+        cmake -B cmake-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DHIGHFIVE_UNIT_TESTS=OFF \
+            -DHIGHFIVE_EXAMPLES=OFF \
+            -DHIGHFIVE_BUILD_DOCS=OFF \
+            -DHIGHFIVE_TEST_HALF_FLOAT=ON \
+            && \
+        cmake --build cmake-build --parallel $(nproc) && \
+        cmake --install cmake-build && \
+    true) && \
+    rm -rf src
 
-# Documentation libs
-RUN apt update && \
-    apt install -y doxygen graphviz default-jre && \
-    apt clean && apt autoclean
-RUN python3 -m pip install breathe==4.35.* \
-                           sphinx==6.2.* \
-                           sphinx_rtd_theme==2.0.* \
-                           sphinxcontrib-plantuml==0.25
-
-# Julia
-RUN apt-get update && apt-get install -y curl \
-    && curl -fsSL https://install.julialang.org | sh -s -- -y
+# Install Julia
+RUN curl -fsSL https://install.julialang.org | sh -s -- -y
 ENV PATH="$PATH:/root/.juliaup/bin"
-
-# Update Julia...
-RUN juliaup self update && juliaup update
-
-# Install Xtensor (for Zarr file format)
-RUN apt-get update && \
-    apt-get -y install libxtensor-dev xtensor-dev && \
-    apt-get clean && apt-get autoclean
-
-
-# Uncomment this to check what version got installed
-# RUN python3 -m pip show <package>
-# RUN apt-cache policy <package>
-
-# Clean any unwanted caches
-RUN apt-get clean && apt-get autoclean
+RUN juliaup add 1.11 && juliaup default 1.11
 
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR=1
@@ -193,9 +211,11 @@ ENV HDF5_PLUGIN_PATH=/usr/local/lib/python3.12/dist-packages/hdf5plugin/plugins
 
 ENV KOTEKAN_BUILD_DIRNAME=build-2404
 
+# Code is often cloned into /code/kotekan
 # Don't worry about permission issues in here
 RUN git config --global --add safe.directory /code/kotekan
+# Add this to pythonpath
+ENV PYTHONPATH=/code/kotekan/python/
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]
-

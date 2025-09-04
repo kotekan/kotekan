@@ -34,6 +34,7 @@ bufferStatus::bufferStatus(Config& config, const std::string& unique_name,
     // Apply config.
     time_delay = config.get_default<int>(unique_name, "time_delay", 1000000);
     print_status = config.get_default<bool>(unique_name, "print_status", true);
+    print_full_status = config.get_default<bool>(unique_name, "print_full_status", false);
 }
 
 bufferStatus::~bufferStatus() {}
@@ -64,11 +65,18 @@ void bufferStatus::main_thread() {
             frames_counter.labels({buffer_name}).set(buf->num_frames);
         }
 
-        if (print_status && (now - last_print_time) > ((double)time_delay / 1000000.0)) {
+        if ((now - last_print_time) > ((double)time_delay / 1000000.0)) {
             last_print_time = now;
-            INFO("BUFFER_STATUS");
-            for (auto& buf_entry : buffers)
-                buf_entry.second->print_buffer_status();
+            if (print_status) {
+                INFO("BUFFER_STATUS");
+                for (auto& buf_entry : buffers)
+                    buf_entry.second->print_buffer_status();
+            }
+            if (print_full_status) {
+                INFO("FULL_BUFFER_STATUS");
+                for (auto& buf_entry : buffers)
+                    buf_entry.second->print_full_status();
+            }
         }
     }
     INFO("Closing Buffer Status thread");

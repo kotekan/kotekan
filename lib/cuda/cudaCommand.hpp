@@ -113,6 +113,10 @@ public:
      **/
     virtual void finalize_frame() override;
 
+    cudaDeviceInterface& get_device() {
+        return device;
+    }
+
     /**
      * Returns the id of the cuda stream used by this command object.
      */
@@ -127,10 +131,10 @@ protected:
     // For subclassers to call to create & record a GPU ending event.
     cudaEvent_t record_end_event();
 
-    /// Event queued after the kernel/copy for synchronization and profiling
-    cudaEvent_t end_event;
     /// Extra event created at the start of kernels/copies for profiling
     cudaEvent_t start_event;
+    /// Event queued after the kernel/copy for synchronization and profiling
+    cudaEvent_t end_event;
 
     cudaDeviceInterface& device;
 

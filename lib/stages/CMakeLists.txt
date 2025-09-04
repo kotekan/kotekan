@@ -17,12 +17,15 @@ add_library(
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
+    $<$<BOOL:${USE_ASDF}>:asdfFileRead.cpp>
     $<$<BOOL:${USE_ASDF}>:asdfFileWrite.cpp>
     $<$<BOOL:${USE_GDAL}>:gdalFileRead.cpp>
     $<$<BOOL:${USE_GDAL}>:gdalFileWrite.cpp>
     $<$<BOOL:${USE_GDAL}>:gdalVisWrite.cpp>
     $<$<BOOL:${USE_GDAL}>:gdalFiles.cpp>
+    $<$<BOOL:${USE_HDF5}>:hdf5FileRead.cpp>
     $<$<BOOL:${USE_HDF5}>:hdf5FileWrite.cpp>
+    $<$<BOOL:${USE_HDF5}>:hdf5Files.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
     streamSingleDishVDIF.cpp
