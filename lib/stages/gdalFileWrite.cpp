@@ -24,9 +24,9 @@
 #include <utility>
 #include <vector>
 #include <visUtil.hpp>
+#include <waitingForMaxFrames.hpp>
 
 using namespace gdal;
-
 
 /**
  * @class gdalFileWrite

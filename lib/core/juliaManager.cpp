@@ -41,7 +41,6 @@ void runJulia() {
 
     INFO_F("juliaManager: Starting Julia run-time system");
     {
-
         // Required: setup the Julia context.
         jl_init();
     }

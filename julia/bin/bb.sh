@@ -16,36 +16,36 @@ setups='chime chord hirax pathfinder'
 mkdir -p output-${card}
 
 # Delete previous output (so that we don't accidentally re-use it)
-for setup in $setups; do
-    rm -f output-${card}/bb_$setup.cxx
-    rm -f output-${card}/bb_$setup.jl
-    rm -f output-${card}/bb_$setup.ptx
-    rm -f output-${card}/bb_$setup.sass
-    rm -f output-${card}/bb_$setup.yaml
-    rm -f ../lib/cuda/cudaBasebandBeamformer_$setup.cpp
-    rm -f ../lib/cuda/kernels/BasebandBeamformer_$setup.jl
-    rm -f ../lib/cuda/kernels/BasebandBeamformer_$setup.ptx
-    rm -f ../lib/cuda/kernels/BasebandBeamformer_$setup.yaml
+for setup in ${setups}; do
+    rm -f output-${card}/bb_${setup}.cxx
+    rm -f output-${card}/bb_${setup}.jl
+    rm -f output-${card}/bb_${setup}.ptx
+    rm -f output-${card}/bb_${setup}.sass
+    rm -f output-${card}/bb_${setup}.yaml
+    rm -f ../lib/cuda/cudaBasebandBeamformer_${setup}.cpp
+    rm -f ../lib/cuda/kernels/BasebandBeamformer_${setup}.jl
+    rm -f ../lib/cuda/kernels/BasebandBeamformer_${setup}.ptx
+    rm -f ../lib/cuda/kernels/BasebandBeamformer_${setup}.yaml
 done
 
 # Generate kernel
-for setup in $setups; do
-    julia --project=@. --optimize kernels/bb_$setup.jl 2>&1 | tee output-${card}/bb_$setup.out &
+for setup in ${setups}; do
+    julia --project=@. --optimize kernels/bb_${setup}.jl 2>&1 | tee output-${card}/bb_${setup}.out &
 done
 wait
 
 # Check whether kernels were generated
-for setup in $setups; do
-    test -f output-${card}/bb_$setup.cxx
-    test -f output-${card}/bb_$setup.jl
-    test -f output-${card}/bb_$setup.ptx
-    test -f output-${card}/bb_$setup.sass
-    test -f output-${card}/bb_$setup.yaml
+for setup in ${setups}; do
+    test -f output-${card}/bb_${setup}.cxx
+    test -f output-${card}/bb_${setup}.jl
+    test -f output-${card}/bb_${setup}.ptx
+    test -f output-${card}/bb_${setup}.sass
+    test -f output-${card}/bb_${setup}.yaml
 done
 
 # Format generated C++ code
-for setup in $setups; do
-    clang-format -i output-${card}/bb_$setup.cxx &
+for setup in ${setups}; do
+    clang-format-14 -i output-${card}/bb_${setup}.cxx &
 done
 
 # Format generated Julia code
@@ -53,9 +53,9 @@ julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("'ou
 wait
 
 # Copy kernels into Kotekan
-for setup in $setups; do
-    cp output-${card}/bb_$setup.cxx ../lib/cuda/cudaBasebandBeamformer_$setup.cpp
-    cp output-${card}/bb_$setup.jl ../lib/cuda/kernels/BasebandBeamformer_$setup.jl
-    cp output-${card}/bb_$setup.ptx ../lib/cuda/kernels/BasebandBeamformer_$setup.ptx
-    cp output-${card}/bb_$setup.yaml ../lib/cuda/kernels/BasebandBeamformer_$setup.yaml
+for setup in ${setups}; do
+    cp output-${card}/bb_${setup}.cxx ../lib/cuda/cudaBasebandBeamformer_${setup}.cpp
+    cp output-${card}/bb_${setup}.jl ../lib/cuda/kernels/BasebandBeamformer_${setup}.jl
+    cp output-${card}/bb_${setup}.ptx ../lib/cuda/kernels/BasebandBeamformer_${setup}.ptx
+    cp output-${card}/bb_${setup}.yaml ../lib/cuda/kernels/BasebandBeamformer_${setup}.yaml
 done

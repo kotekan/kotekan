@@ -26,6 +26,32 @@ default_params = {
     "buffer_depth": 5,
     "num_diagonals_filled": 0,
     "dataset_manager": {"use_dataset_broker": False},
+    "earth_rotation_data": {
+        "kotekan_update_endpoint": "json",
+        "earth_orientation_parameter_table": [
+            {"time_inst_ns": 0, "delta_UT1_inst": 0.0, "x_pm": 0.0, "y_pm": 0.0,},
+            {
+                "time_inst_ns": 3_000_000_000 * 1_000_000_000,
+                "delta_UT1_inst": 0.0,
+                "x_pm": 0.0,
+                "y_pm": 0.0,
+            },
+        ],
+    },
+    "telescope": {
+        "name": "CHORDTelescope",
+        "require_gps": False,
+        "inst_long_deg": -119.62081125,
+        "inst_lat_deg": 49.32075144444,
+        "inst_grid_x_axis": [1, 0, 0],
+        "inst_grid_y_axis": [0, 1, 0],
+        "inst_dish_alt_axis": [1, 0, 0],
+        "inst_dish_vert_axis": [0, 0, 1],
+        "inst_alt_deg": 90.0,
+        "dish_positions": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+        "updatable_config": "/earth_rotation_data",
+    },
+    "gps_time": {"frame0_nano": 0},
 }
 
 
@@ -36,11 +62,11 @@ def run_eigenvis(tdir_factory, params=None):
 
     tmpdir = tdir_factory.mktemp("eigenvis")
 
-    fakevis_buffer = runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeN2VisBuffer(
         freq_ids=params["freq"], num_frames=params["total_frames"], mode=params["mode"]
     )
 
-    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpN2Buffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
         "eigenVis", {}, fakevis_buffer, dump_buffer, params

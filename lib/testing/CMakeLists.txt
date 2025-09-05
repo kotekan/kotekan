@@ -7,6 +7,7 @@ add_library(
     fakeGpu.cpp
     fakeGpuPattern.cpp
     FakeVis.cpp
+    FakeN2.cpp
     FakeHFB.cpp
     FakeVisPattern.cpp
     gpuSimulate.cpp
@@ -20,11 +21,14 @@ add_library(
     testDataGenQuad.cpp
     testDataGenFloat.cpp
     TestDropFrames.cpp
+    testCHORDTelescope.cpp
+    TimeUtilDump.cpp
     GenHFBFrames.cpp
     pulsarSimProcess.cpp
     visNoise.cpp
     visDrop.cpp
-    zeroLowerTriangle.cpp)
+    zeroLowerTriangle.cpp
+    visTestPattern.cpp)
 
 target_include_directories(kotekan_testing PUBLIC .)
 

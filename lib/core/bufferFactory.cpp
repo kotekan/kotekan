@@ -2,6 +2,7 @@
 
 #include "Config.hpp"         // for Config
 #include "HFBFrameView.hpp"   // for HFBFrameView
+#include "N2FrameView.hpp"    // for N2FrameView
 #include "buffer.hpp"         // for create_buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.hpp"       // for metadataPool // IWYU pragma: keep
@@ -88,6 +89,8 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         frame_size = config.get<size_t>(location, "frame_size");
     } else if (type_name == "vis") {
         frame_size = VisFrameView::calculate_frame_size(config, location);
+    } else if (type_name == "N2") {
+        frame_size = N2FrameView::calculate_frame_size(config, location);
     } else if (type_name == "hfb") {
         frame_size = HFBFrameView::calculate_frame_size(config, location);
     }

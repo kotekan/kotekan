@@ -6,29 +6,81 @@
 
 # Stages
 
+# Send the intermediate pl statistics back to the host. Remove this
+# once the pl pipeline is complete.
+
+run_recv_rfi_S012:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_S012_ringbuffer_in: host_rfi_S012_ringbuffer
+        out_buffers:
+            host_rfi_S012_buffer_out: host_rfi_S012_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_S012_ringbuffer_in
+          gpu_mem_input: rfi_S012_buffer
+          output_size: sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * num_times / rfi_downsampling_factor
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_S012_buffer_out
+
+run_recv_rfi_S012tilde:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_S012tilde_ringbuffer_in: host_rfi_S012tilde_ringbuffer
+        out_buffers:
+            host_rfi_S012tilde_buffer_out: host_rfi_S012tilde_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_S012tilde_ringbuffer_in
+          gpu_mem_input: rfi_S012tilde_buffer
+          output_size: sizeof_uint64 * 3 * num_frequencies * num_times / rfi_downsampling_factor
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_S012tilde_buffer_out
+
 # Output
 
 write_data:
     # base_dir:
     skip_writing: true
+    write_pl_mask:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_pl_mask_buffer
+        file_name: pl_mask
+    write_bf_mask:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_bf_mask_buffer
+        file_name: bf_mask
+    write_rfi_S012:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_rfi_S012_buffer
+        file_name: rfi_S012
+    write_rfi_S012tilde:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_rfi_S012tilde_buffer
+        file_name: rfi_S012tilde
     write_n2k_correlation:
-        kotekan_stage: asdfFileWrite
+        kotekan_stage: hdf5FileWrite
         in_buf: host_n2k_correlation_buffer
         file_name: n2k_correlation
         bounded: true
     write_bb_beams:
-        kotekan_stage: asdfFileWrite
+        kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beams_buffer
         file_name: bb_beams
         bounded: true
     write_frb3_beams:
-        kotekan_stage: asdfFileWrite
+        kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_buffer
         file_name: frb3_beams
         bounded: true
     write_frb3_beams_meanstd:
-        kotekan_stage: asdfFileWrite
+        kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_meanstd_buffer
         file_name: frb3_beams_meanstd
         bounded: true
-        max_frames: 9
+        max_frames: 15
+

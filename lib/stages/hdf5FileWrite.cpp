@@ -24,10 +24,10 @@
 #include <utility>
 #include <vector>
 #include <visUtil.hpp>
+#include <waitingForMaxFrames.hpp>
 
 using namespace hdf5;
 using namespace HighFive;
-
 
 /**
  * @class hdf5FileWrite
