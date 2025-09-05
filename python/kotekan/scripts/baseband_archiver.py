@@ -180,9 +180,7 @@ def process_raw_file(
             event_id, freq_id = (frame_metadata.event_id, frame_metadata.freq_id)
 
             if not dry_run:
-                archive_file, archive_file_name = create_baseband_archive(
-                    frame_metadata, root
-                )
+                archive_file, archive_file_name = create_baseband_archive(frame_metadata, root)
                 add_index_map(archive_file, config)
 
             # Use the first captured sample (`time0_fpga`) as the start of the
