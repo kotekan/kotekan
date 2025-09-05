@@ -63,5 +63,5 @@ To include **FFTW** stages:
 
     sudo yum install fftw3
     cd <kotekan_dir>/build
-    cmake .. -DUSE_FFTW=ON
-
+    # FFTW enables automatically if installed; disable with -DUSE_FFTW=OFF
+    cmake ..

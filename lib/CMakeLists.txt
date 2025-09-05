@@ -4,12 +4,24 @@ project(kotekan_libs)
 
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
-# Julia is a covnenient language to implement stages for testing and development
-find_package(Julia)
-if(${Julia_FOUND})
-    message("Julia support enabled")
+# Julia is a convenient language to implement stages for testing and development
+if(${USE_JULIA})
+    # Top-level may have already set Julia_FOUND and variables; call as a fallback.
+    if(NOT DEFINED Julia_FOUND)
+        find_package(Julia QUIET)
+    endif()
+    if(${Julia_FOUND})
+        message(STATUS "Julia support enabled")
+    else()
+        message(
+            WARNING
+                "${ColorYellow}Julia not found; Julia features disabled in kotekan_lib${ColorReset}"
+        )
+    endif()
 else()
-    message("Julia not found, support disabled in kotekan_lib")
+    # Honor explicit disable
+    set(Julia_FOUND OFF)
+    # No extra message here; top-level already reports explicit disable or not-found.
 endif()
 
 add_library(kotekan_libs INTERFACE)
@@ -66,30 +78,53 @@ endif()
 # Don't include DPDK for boost tests
 if(${WITH_BOOST_TESTS})
     # DPDK + boost tests = linker issues.
-    message(STATUS "Note that DPDK will *NOT* be included for builds with tests.")
-    # So do nothing...
+    set(DPDK_ENABLED
+        OFF
+        CACHE BOOL "DPDK available")
+    set(DPDK_REASON
+        "disabled (boost tests)"
+        CACHE STRING "")
 else()
     # Include the old DPDK if the USE_OLD_DPDK flag is given.
     if(${USE_OLD_DPDK})
         add_definitions(-DOLD_DPDK)
         add_subdirectory(dpdk)
         target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
+        set(DPDK_ENABLED
+            ON
+            CACHE BOOL "DPDK available")
+        set(DPDK_REASON
+            "old DPDK selected (-DUSE_OLD_DPDK=ON)"
+            CACHE STRING "")
     else()
         # Check for the new DPDK versions automatically
         find_package(PkgConfig)
         if(PKG_CONFIG_FOUND)
             pkg_check_modules(DPDK libdpdk>=19.11)
             if(DPDK_FOUND)
-                message(STATUS "Found DPDK, including support for DPDK networking")
                 add_subdirectory(dpdk)
                 target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
+                set(DPDK_ENABLED
+                    ON
+                    CACHE BOOL "DPDK available")
+                set(DPDK_REASON
+                    "found (>=19.11)"
+                    CACHE STRING "")
             else()
-                message(
-                    STATUS
-                        "No DPDK package found, for older versions (<19.11) use -DUSE_OLD_DPDK=ON")
+                set(DPDK_ENABLED
+                    OFF
+                    CACHE BOOL "DPDK available")
+                set(DPDK_REASON
+                    "not found (>=19.11). Try -DUSE_OLD_DPDK=ON"
+                    CACHE STRING "")
             endif()
         else()
-            message(STATUS "pkg-config needed to include DPDK (>=19.11) support")
+            set(DPDK_ENABLED
+                OFF
+                CACHE BOOL "DPDK available")
+            set(DPDK_REASON
+                "pkg-config not found"
+                CACHE STRING "")
         endif()
     endif()
 endif()

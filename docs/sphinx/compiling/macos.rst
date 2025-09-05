@@ -33,7 +33,8 @@ To include **FFTW** stages:
 
     brew install fftw
     cd <kotekan_dir>/build
-    cmake .. -DUSE_FFTW=ON
+    # FFTW enables automatically if installed; disable with -DUSE_FFTW=OFF
+    cmake ..
 
 To include **OpenSSL** support (for optional support of HASH functions, md5, etc.)
 
@@ -59,7 +60,8 @@ To enable **HDF5** writing and linear algebra tools install:
     cmake --build cmake-build
     cmake --install cmake-build
     popd
-    cmake -DUSE_HDF5=ON -DUSE_LAPACK=ON
+    # HDF5 and LAPACK/Blaze enable automatically if installed; disable with -DUSE_HDF5=OFF -DUSE_LAPACK_BLAZE=OFF
+    cmake ..
 
 For a comprehensive build, you'll want
 

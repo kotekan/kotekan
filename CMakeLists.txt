@@ -4,25 +4,12 @@ project(
     KOTEKAN
     DESCRIPTION "A high performance radio data processing pipeline"
     LANGUAGES C CXX)
-set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
+set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake ${KOTEKAN_SOURCE_DIR}/cmake/Modules)
+include(cmake/Color.cmake)
+include(cmake/Options.cmake)
+include(cmake/Toolchain.cmake)
 
-# Require at least c++17 support from the compiler
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# this makes sure we use -std=c++17, not -std=gnu++17
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-# set C standard to gnu99
-set(CMAKE_C_STANDARD 99)
-
-# Set OpenCL version explicitly (quiets a build warning)
-add_definitions(-DCL_TARGET_OPENCL_VERSION=220)
-
-# This quiets a noisy cmake warning on newer versions, triggered by some of our CMake/FindXYZ.cmake
-# scripts.
-if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0")
-    cmake_policy(SET CMP0075 NEW)
-endif()
+# Toolchain and options now handled by included modules
 
 # Fix a problem with homebrew linking on MacOS >= 10.14 See
 # https://stackoverflow.com/questions/54068035
@@ -30,289 +17,34 @@ if(APPLE)
     link_directories(/usr/local/lib)
 endif()
 
-# optional modules for GPUs and the like
-option(USE_AIRSPY "Build Airspy Producer" OFF)
-option(USE_FFTW "Build with FFTW F-engine" OFF)
-option(USE_LAPACK_BLAZE "Build with LAPACK Linear Algebra (OpenBLAS) and Blaze support" OFF)
-option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
-option(USE_CUDA "Build CUDA GPU Framework" OFF)
-option(USE_HIP "Build HIP GPU Framework" OFF)
-option(USE_OLD_DPDK "Enable old versions of DPDK (<19.11)" OFF)
-option(USE_ASDF "Build ASDF output stages" OFF)
-option(USE_GDAL "Build GDAL output stages" OFF)
-option(USE_HDF5 "Build HDF5 output stages" OFF)
-option(USE_OMP "Enable OpenMP" OFF)
-option(USE_OLD_ROCM "Build for ROCm versions 2.3 or older" OFF)
-option(NO_MEMLOCK "Do not lock buffer memory (useful when running in Docker)" OFF)
-option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
-option(SANITIZE "Enable clang sanitizers for testing" OFF)
-option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
-option(WITH_TESTS "Compile testing library" OFF)
-option(WITH_BOOST_TESTS "Compile boost C++ unit tests" OFF)
-option(IWYU "Enable include-what-you-use and print suggestions to stderr" OFF)
-option(CCACHE "Use ccache to speed up the build" OFF)
-option(WERROR "Warnings are errors" OFF)
-
-if(${CCACHE})
-    find_program(CCACHE_PROGRAM ccache)
-    if(CCACHE_PROGRAM)
-        message("Using ccache from " ${CCACHE_PROGRAM})
-        set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
-    else()
-        message("Unable to find ccache")
-    endif()
-endif()
-
-# Compiler warnings
-if(${WERROR})
-    message("Treating all warnings as errors")
-    if(${CMAKE_CUDA_COMPILER})
-        add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:--warn-no-error>)
-    endif()
-    add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Werror>)
-endif()
-# lots of warnings and all warnings as errors
-add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wall>)
-add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wextra>)
-# This warning produces too many false positives in the CUDA header files
-# add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wzero-as-null-pointer-constant>)
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -Xcompiler -Wall")
-# Warning about missing override is called differently in clang and gcc
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag(-Winconsistent-missing-override HAVE_INCONSISTENT_MISSING_OVERRIDE)
-if(HAVE_INCONSISTENT_MISSING_OVERRIDE AND NOT ${IWYU})
-    add_compile_options(
-        $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Winconsistent-missing-override>)
-endif()
-check_cxx_compiler_flag(-Wsuggest-override HAVE_SUGGEST_OVERRIDE)
-if(HAVE_SUGGEST_OVERRIDE AND NOT ${IWYU})
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override>)
-endif()
 
-# optimization
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")
-
-# Improve debugging by turning off all optimisations.
-if(${SUPERDEBUG})
-    message("Superdebugging enabled!!")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
-endif()
-
-# Turn on sanitizers for finding memory issues.
-if(${SANITIZE})
-    message("Sanitization enabled!!")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fno-optimize-sibling-calls -fsanitize=address")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_DEBUG
-        "${CMAKE_CXX_FLAGS_DEBUG} -fno-optimize-sibling-calls -fsanitize=address")
-endif()
-
-if(${USE_OPENCL})
-    set(ENV{AMDAPPSDKROOT} /opt/rocm/opencl)
-    find_package(OPENCL REQUIRED)
-    set(USE_OPENCL ${OPENCL_FOUND})
-endif()
-
-if(${USE_HIP})
-    find_package(HIP)
-    set(USE_HIP ${HIP_FOUND})
-endif()
-
-if(${USE_CUDA})
-    set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda)
-    set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
-    set(USE_CUDA ${CUDA_FOUND})
-    enable_language(CUDA)
-
-    find_package(CUDAToolkit REQUIRED)
-    message(STATUS "Compiling with CUDA tools in ${CUDAToolkit_INCLUDE_DIRS}.")
-endif()
+include(cmake/Features/FeatureGPU.cmake)
 
 if(${USE_AIRSPY})
     find_package(LIBAIRSPY)
     set(USE_AIRSPY ${LIBAIRSPY_FOUND})
 endif()
 
-if(${USE_FFTW})
-    find_package(FFTW)
-    set(USE_FFTW ${FFTW_FOUND})
-    add_definitions(-DWITH_FFTW)
-endif()
+include(cmake/Features/FeatureMath.cmake)
 
-if(NOT DEFINED ARCH)
-    set(ARCH "native")
-endif()
+# Math features handled in FeatureMath
 
-include(CheckIncludeFileCXX)
-if(${USE_LAPACK_BLAZE})
+# Toolchain covers build types, IWYU, and GPU summary
 
-    set(BLA_VENDOR OpenBLAS)
-    find_package(BLAS REQUIRED)
-    find_path(
-        BLAS_INCLUDE_DIRS cblas.h
-        PATHS /usr/include /usr/local/include
-        PATH_SUFFIXES openblas)
-    message("Using BLAS ${BLAS_LIBRARIES}")
-    message("Using BLAS includes ${BLAS_INCLUDE_DIRS}")
-    find_package(LAPACK REQUIRED)
-    message("Using LAPACK ${LAPACK_LIBRARIES}")
-    find_package(LAPACKE REQUIRED)
-    message("Using LAPACKE ${LAPACKE_LIBRARIES}")
-
-    # Attempt to find the Blaze package
-    find_package(Blaze REQUIRED)
-
-    if(BLAZE_FOUND)
-        message(STATUS "Blaze found. BLAZE_PATH is ${BLAZE_PATH}")
-    else()
-        message(STATUS "Please set BLAZE_PATH or install Blaze in /usr/local/include.")
-        message(FATAL_ERROR "Blaze headers not found.")
-    endif()
-    add_definitions(-DBLAZE_BLAS_MODE=1)
-    add_definitions(-DBLAZE_BLAS_IS_PARALLEL=1)
-endif()
-
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    # enable all MacOS specific code
-    add_definitions(-DMAC_OSX)
-endif()
-
-# Create custom build type for testing: no debug info, but asserts
-string(REGEX REPLACE "( -DNDEBUG$|-DNDEBUG )" "" CMAKE_CXX_FLAGS_TEST "${CMAKE_CXX_FLAGS_RELEASE}")
-string(REGEX REPLACE "( -DNDEBUG$|-DNDEBUG )" "" CMAKE_C_FLAGS_TEST "${CMAKE_C_FLAGS_RELEASE}")
-
-# Set a default build type if none was specified
-set(DEFAULT_BUILD_TYPE "Debug")
-# Set the possible values of build type for cmake-gui
-set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "Test")
-if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    message(STATUS "Setting build type to '${DEFAULT_BUILD_TYPE}' as none was specified.")
-    set(CMAKE_BUILD_TYPE "${DEFAULT_BUILD_TYPE}")
-endif()
-
-# Enable debug logging for Debug and Test builds
-if(CMAKE_BUILD_TYPE MATCHES Debug OR CMAKE_BUILD_TYPE MATCHES Test)
-    add_definitions(-DDEBUGGING)
-    message("DEBUG logging enabled")
-    message("Asserts enabled")
-endif()
-
-# include-what-you-use: this has to be set before any targets are added
-if(IWYU)
-    find_program(IWYU_PATH NAMES include-what-you-use iwyu)
-    if(NOT IWYU_PATH)
-        message(FATAL_ERROR "Could not find the program include-what-you-use")
-    endif()
-    if(NOT IWYU_MAPPING_FILE)
-        set(IWYU_MAPPING_FILE "${KOTEKAN_SOURCE_DIR}/iwyu.kotekan.imp")
-    endif()
-    message("IWYU enabled: Using iwyu from ${IWYU_PATH} and mapping file ${IWYU_MAPPING_FILE}")
-    execute_process(
-        COMMAND ${IWYU_PATH} "--version"
-        OUTPUT_VARIABLE IWYU_VERSION
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
-    message("IWYU version: ${IWYU_VERSION}")
-    set(IWYU_PATH_AND_OPTIONS
-        ${IWYU_PATH}
-        -Xiwyu
-        --max_line_length=100
-        -Xiwyu
-        --mapping_file=${IWYU_MAPPING_FILE}
-        -Xiwyu
-        --no_fwd_decls)
-    set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE ${IWYU_PATH_AND_OPTIONS})
-    set(CMAKE_C_INCLUDE_WHAT_YOU_USE ${IWYU_PATH_AND_OPTIONS})
-endif()
-
-set(GPU_MODULES "")
-if(${USE_HIP})
-    add_definitions(-DWITH_HIP)
-    set(GPU_MODULES ${GPU_MODULES} "HIP ")
-endif()
-if(${USE_OPENCL})
-    set(GPU_MODULES ${GPU_MODULES} "OpenCL ")
-endif()
-if(${USE_CUDA})
-    add_definitions(-DWITH_CUDA)
-    set(GPU_MODULES ${GPU_MODULES} "CUDA ")
-endif()
-message("GPU Modules Included: " ${GPU_MODULES})
-
-set(INPUT_MODULES "")
 if(${USE_AIRSPY})
     add_definitions(-DWITH_AIRSPY)
-    set(INPUT_MODULES ${INPUT_MODULES} "AIRSPY ")
-endif()
-message("Input Modules Included: " ${INPUT_MODULES})
-
-if(${USE_ASDF})
-    message("ASDF enabled")
-    find_package(asdf-cxx REQUIRED)
-    if(NOT ASDF_CXX_FOUND)
-        message(FATAL_ERROR "ASDF not found")
-    endif()
-    message(STATUS "ASDF found")
-    add_definitions(-DWITH_ASDF_CXX)
 endif()
 
-if(${USE_GDAL})
-    message("GDAL enabled")
-    find_package(GDAL REQUIRED)
-    if(NOT GDAL_FOUND)
-        message(FATAL_ERROR "GDAL not found")
-    endif()
-    message(STATUS "GDAL found")
-    add_definitions(-DWITH_GDAL)
-endif()
+include(cmake/Features/FeatureIO.cmake)
 
-if(${USE_HDF5})
-    find_package(HDF5 REQUIRED)
-    find_package(HighFive REQUIRED)
-    add_definitions(-DWITH_HDF5)
-endif()
+# Julia runtime and bindings
+include(cmake/Features/FeatureJulia.cmake)
+
+# Final feature summary (printed after all configuration)
 
 find_package(Threads REQUIRED)
-
-add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-D_GNU_SOURCE>)
-add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-march=${ARCH}>)
-add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-mtune=${ARCH}>)
-add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-I/opt/rocm/include>)
-
-# OpenMP flag
-if(${USE_OMP})
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
-endif()
-
-set(CMAKE_INSTALL_PREFIX "/")
-
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    # On MacOS turn off ASLR for better debugging/profiling
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm -Wl,-no_pie")
-else()
-    set(CMAKE_EXE_LINKER_FLAGS
-        "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
-endif()
-
-# Disable complex math NaN/INFO range checking for performance
-check_cxx_compiler_flag(-fcx-limited-range HAVE_CX_LIMITED_RANGE)
-if(HAVE_CX_LIMITED_RANGE AND NOT ${IWYU})
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcx-limited-range")
-endif()
-
-include(CheckCCompilerFlag)
-check_c_compiler_flag(-fcx-limited-range HAVE_C_LIMITED_RANGE)
-if(HAVE_C_LIMITED_RANGE AND NOT ${IWYU})
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fcx-limited-range")
-endif()
-
-if(${USE_OPENCL})
-    install(DIRECTORY lib/opencl/kernels DESTINATION /var/lib/kotekan/opencl)
-endif()
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
+# Flags and link options handled in Toolchain; OpenCL install handled in FeatureGPU
 
 if(${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
@@ -322,7 +54,6 @@ endif()
 # environments, e.g. Docker containers.  Note this can also be done with the configuration file for
 # systems which do support memory locking, but where some memory shouldn't be memory locked.
 if(${NO_MEMLOCK})
-    message("Do not lock buffer memory.")
     add_definitions(-DWITH_NO_MEMLOCK)
 endif()
 
@@ -337,10 +68,10 @@ if(${WITH_BOOST_TESTS})
     set(_BOOST_TESTS_DIR
         tests/boost/
         CACHE INTERNAL "Path to boost test sources")
-    message("BOOST_TESTS enabled: building tests in " ${_BOOST_TESTS_DIR})
+    message(STATUS "BOOST_TESTS enabled: building tests in ${_BOOST_TESTS_DIR}")
     add_subdirectory(${_BOOST_TESTS_DIR})
 else()
-    message("BOOST_TESTS disabled")
+    message(STATUS "BOOST_TESTS disabled")
 endif()
 
 # Enforce code formatting rules with clang-format.
@@ -354,6 +85,9 @@ else()
     message(STATUS "clang-format found: ${CLANG_FORMAT_PATH}")
     set(DO_CLANG_FORMAT "${CLANG_FORMAT_PATH}" "-i -style=file")
 endif()
+
+# Final feature summary (last)
+include(cmake/Summary.cmake)
 
 # Remove files containing substring from a list of file names.
 function(exclude_files_containing var exclude_string)

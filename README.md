@@ -33,11 +33,9 @@ Cmake build options:
   Direct toolchain calls are used by default.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
 * `-DUSE_CUDA=ON` - Build with CUDA support, requires `nvcc`
-* `-DUSE_HDF5=ON` to enable the HDF5 writer.
-* `-DUSE_ASDF=ON` to enable to ASDF writer, and `-DUSE_GDAL=ON` for the GDAL writer.
+* `-DUSE_HDF5=ON`, `-DUSE_ASDF=ON`, or `-DUSE_GDAL=ON`: HDF5, ASDF, and GDAL are auto‑enable if installed.
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
-* `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
-* `-DUSE_LAPACK_BLAZE=ON` - Build stages depending on LAPACK and Blaze. Add `-DBLAZE_PATH=<blaze_path>` to optionally specify a path to BLAZE headers.
+* `-DUSE_FFTW=OFF` or `-DUSE_LAPACK_BLAZE=OFF` - FFTW and LAPACK/Blaze are auto‑enabled if installed. Optionally set `-DBLAZE_PATH=<blaze_path>` for Blaze headers.
 * `-DCOMPILE_DOCS=ON` - Build kotekan documentation. Requires doxygen,
   sphinx (+ sphinx_rtd_theme), and breathe.
   Note that docs will only compile if explicitly told to,
@@ -59,6 +57,8 @@ To build with OpenCL and debug symbols and logging:
 To build with CUDA:
 
     cmake -DUSE_CUDA=ON ..
+
+At the end of configuration, CMake prints a colorized feature summary indicating which features were enabled (found) or disabled (missing/explicitly off). Use `-DUSE_<FEATURE>=ON|OFF` to include or exclude a feature that is present on your system.
 
 To install kotekan (only works on CentOS at the moment):
 

@@ -172,18 +172,13 @@ Cmake build options
     Build with OpenCL support.
 * ``-DUSE_CUDA=ON``
     Build support for CUDA kernels and Nvidia GPUs, requires `nvcc`
-* ``-DUSE_HDF5=ON``
-    Build with HDF5 support. Requires HighFive, Bitshuffle and h5py.
-* ``-DUSE_ASDF=ON``
-    Build with ASDF writer.
-* ``-DUSE_GDAL=ON``
-    Build with GDAL writer.
+* HDF5/ASDF/GDAL auto‑enable when installed; disable with ``-DUSE_HDF5=OFF``, ``-DUSE_ASDF=OFF``, or ``-DUSE_GDAL=OFF``.
 * ``-DUSE_AIRSPY=ON``
     Build the AirSpy producer. Requires libairspy.
-* ``-DUSE_FFTW=ON``
-    Build an FFTW-based F-engine. Requires FFTW3.
-* ``-DUSE_LAPACK_BLAZE=ON``
-    Build stages depending on LAPACK and BLAZE.
+* ``-DUSE_FFTW=OFF``
+    Disable building the FFTW-based F-engine (FFTW enables automatically if installed).
+* ``-DUSE_LAPACK_BLAZE=OFF``
+    Disable stages depending on LAPACK and BLAZE (they enable automatically if installed).
 * ``-DUSE_OMP=ON``
     Build stages using OpenMP. This requires a compiler supporting OpenMP (>= 3.0, see `OpenMP Compilers and Tools <https://www.openmp.org/resources/openmp-compilers-tools/>`).
 * ``-DCOMPILE_DOCS=ON``
@@ -213,6 +208,8 @@ To build with OpenCL and DPDK:
 .. code:: bash
 
     cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_OLD_DPDK=ON -DUSE_OPENCL=ON ..
+
+At the end of configuration, a colorized feature summary lists enabled/disabled features and reasons (found/missing/explicitly off). Use ``-DUSE_<FEATURE>=OFF`` to exclude a feature present on your system.
 
 To install kotekan:
 

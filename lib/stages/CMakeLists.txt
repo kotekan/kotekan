@@ -135,11 +135,11 @@ endif()
 
 if(${USE_LAPACK_BLAZE})
     target_sources(kotekan_stages PRIVATE eigenVis.cpp RingMapMaker.cpp EigenVisIter.cpp)
-    target_include_directories(kotekan_stages SYSTEM PRIVATE ${BLAS_INCLUDE_DIRS}
-                                                             ${LAPACKE_INCLUDE_DIRS} ${BLAZE_PATH})
-    target_link_libraries(kotekan_stages PRIVATE ${BLAS_LIBRARIES})
-    target_link_libraries(kotekan_stages PRIVATE ${LAPACK_LIBRARIES})
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${LAPACKE_INCLUDE_DIRS} ${BLAZE_PATH})
     target_link_libraries(kotekan_stages PRIVATE ${LAPACKE_LIBRARIES})
+    if(DEFINED OPENBLAS_EXTRA_LIB AND OPENBLAS_EXTRA_LIB)
+        target_link_libraries(kotekan_stages PRIVATE ${OPENBLAS_EXTRA_LIB})
+    endif()
 endif()
 
 # Libevent is required for bufferRecv

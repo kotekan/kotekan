@@ -27,7 +27,8 @@ To include **FFTW** stages:
 
     sudo apt-get install fftw3
     cd <kotekan_dir>/build
-    cmake .. -DUSE_FFTW=ON
+    # FFTW enables automatically if installed; disable with -DUSE_FFTW=OFF
+    cmake ..
 
 
 With these installed, you should be able to build & run kotekan!
