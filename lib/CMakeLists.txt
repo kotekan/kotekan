@@ -40,9 +40,9 @@ target_link_libraries(kotekan_libs INTERFACE kotekan_version)
 
 target_link_libraries(kotekan_libs INTERFACE libexternal)
 
-# Build C++ testing helpers when requested. WITH_TESTS builds and links the
-# lib/testing helper stages into the main kotekan binary. WITH_BOOST_TESTS also
-# requires these helpers and additionally builds the unit tests under tests/boost.
+# Build C++ testing helpers when requested. WITH_TESTS builds and links the lib/testing helper
+# stages into the main kotekan binary. WITH_BOOST_TESTS also requires these helpers and additionally
+# builds the unit tests under tests/boost.
 if(${WITH_TESTS} OR ${WITH_BOOST_TESTS})
     add_subdirectory(testing)
     target_link_libraries(kotekan_libs INTERFACE kotekan_testing)

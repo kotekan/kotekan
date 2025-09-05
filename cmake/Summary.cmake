@@ -20,7 +20,9 @@ function(kpad_right OUT_VAR IN_STR WIDTH)
         endwhile()
         set(_res "${_res}${_spaces}")
     endif()
-    set(${OUT_VAR} "${_res}" PARENT_SCOPE)
+    set(${OUT_VAR}
+        "${_res}"
+        PARENT_SCOPE)
 endfunction()
 
 function(kfeature_row NAME ENABLED REASON PRESENT)
@@ -53,7 +55,7 @@ function(kfeature_row NAME ENABLED REASON PRESENT)
 
     set(_toggle_note "")
     if(NOT "${_toggle_var}" STREQUAL "")
-        set(_toggle_note ", -D${_toggle_var}=ON/OFF")
+        set(_toggle_note ", -D${_toggle_var}")
     endif()
     message(STATUS "${_color}${_name_col} ${_state_col} (${REASON}${_toggle_note})${KTK_RESET}")
 endfunction()
@@ -146,7 +148,7 @@ if(DEFINED OPENSSL_ENABLED)
 endif()
 if(DEFINED DPDK_ENABLED)
     # Note: When WITH_BOOST_TESTS=ON, DPDK is disabled to avoid linker issues
-    kfeature_row("DPDK" "${DPDK_ENABLED}" "${DPDK_REASON}, -DUSE_OLD_DPDK=ON/OFF" OFF)
+    kfeature_row("DPDK" "${DPDK_ENABLED}" "${DPDK_REASON}, -DUSE_OLD_DPDK" OFF)
 endif()
 
 # Build meta
@@ -179,20 +181,18 @@ if(${NO_MEMLOCK})
 else()
     set(NOMEMLOCK_REASON "disabled")
 endif()
-kfeature_row("No Memlock" "${NOMEMLOCK_ENABLED}"
-             "${NOMEMLOCK_REASON}, -DNO_MEMLOCK=ON/OFF" OFF)
-kfeature_row("ccache" "${CCACHE_ENABLED}" "${CCACHE_REASON}, -DCCACHE=ON/OFF" OFF)
+kfeature_row("No Memlock" "${NOMEMLOCK_ENABLED}" "${NOMEMLOCK_REASON}, -DNO_MEMLOCK" OFF)
+kfeature_row("ccache" "${CCACHE_ENABLED}" "${CCACHE_REASON}, -DCCACHE" OFF)
 set(WERROR_REASON "disabled")
 if(${WERROR_ENABLED})
     set(WERROR_REASON "enabled")
 endif()
-kfeature_row("Warnings-as-errors" "${WERROR_ENABLED}" "${WERROR_REASON}, -DWERROR=ON/OFF"
-             OFF)
+kfeature_row("Warnings-as-errors" "${WERROR_ENABLED}" "${WERROR_REASON}, -DWERROR" OFF)
 set(IWYU_REASON "disabled")
 if(${IWYU_ENABLED})
     set(IWYU_REASON "enabled")
 endif()
-kfeature_row("include-what-you-use" "${IWYU_ENABLED}" "${IWYU_REASON}, -DIWYU=ON/OFF" OFF)
+kfeature_row("include-what-you-use" "${IWYU_ENABLED}" "${IWYU_REASON}, -DIWYU" OFF)
 
 # Compilers
 kfeature_header("Compilers")
