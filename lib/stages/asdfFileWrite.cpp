@@ -373,8 +373,8 @@ public:
                     group->emplace("gain", evec_array);
 
                     group->emplace(
-                        "n_valid_fpga_ticks_in_frame",
-                        std::make_shared<ASDF::int_entry>(meta->n_valid_fpga_ticks_in_frame));
+                        "n_valid_fpga_ticks",
+                        std::make_shared<ASDF::int_entry>(meta->n_valid_fpga_ticks));
                     group->emplace("num_elements",
                                    std::make_shared<ASDF::int_entry>(meta->num_elements));
                     group->emplace("num_prod", std::make_shared<ASDF::int_entry>(meta->num_prod));

@@ -396,7 +396,7 @@ def test_metadata(n2_data):
         assert frame.metadata.freq_id == 0
         assert frame.metadata.fpga_start_tick == frame_meta[i]["seq_start"]
         assert frame.metadata.frame_length_fpga_ticks == frame_meta[i]["seq_len"]
-        assert frame.metadata.n_valid_fpga_ticks_in_frame == frame_meta[i]["seq_valid"]
+        assert frame.metadata.n_valid_fpga_ticks == frame_meta[i]["seq_valid"]
         assert frame.metadata.n_rfi_fpga_ticks == frame_meta[i]["seq_rfi"]
 
 

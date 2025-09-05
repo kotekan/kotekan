@@ -67,7 +67,7 @@ public:
     /// The nominal frame length in FPGA ticks (fpga_seq_length in VisFrameView)
     uint64_t& frame_length_fpga_ticks;
     /// The actual amount of data accumulated in FPGA ticks (fpga_seq_total)
-    uint64_t& n_valid_fpga_ticks_in_frame;
+    uint64_t& n_valid_fpga_ticks;
     /// The number of lost samples due to RFI (rfi_total)
     uint64_t& n_rfi_fpga_ticks;
 

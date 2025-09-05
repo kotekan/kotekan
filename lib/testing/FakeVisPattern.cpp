@@ -129,7 +129,7 @@ void FillIJMissingVisPattern::fill(VisFrameView& frame) {
 void FillIJMissingVisPattern::fill(N2FrameView& frame) {
     FillIJVisPattern::fill(frame);
 
-    frame._metadata->n_valid_fpga_ticks_in_frame = frame._metadata->frame_length_fpga_ticks - 2;
+    frame._metadata->n_valid_fpga_ticks = frame._metadata->frame_length_fpga_ticks - 2;
     frame._metadata->n_rfi_fpga_ticks = 1;
 }
 
@@ -557,7 +557,7 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
 
 void PointSourceVisPattern::fill(N2FrameView& frame) {
 
-    frame._metadata->n_valid_fpga_ticks_in_frame =
+    frame._metadata->n_valid_fpga_ticks =
         frame._metadata->frame_length_fpga_ticks - n_rfi_ticks - n_lost_ticks;
     frame._metadata->n_rfi_fpga_ticks = n_rfi_ticks;
 

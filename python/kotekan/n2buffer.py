@@ -50,7 +50,7 @@ class N2Metadata(ctypes.Structure):
         ("fpga_start_tick", ctypes.c_uint64),
         ("frame_start_time_ns", ctypes.c_uint64),
         ("frame_length_fpga_ticks", ctypes.c_uint64),
-        ("n_valid_fpga_ticks_in_frame", ctypes.c_uint64),
+        ("n_valid_fpga_ticks", ctypes.c_uint64),
         ("n_rfi_fpga_ticks", ctypes.c_uint64),
     ]
 

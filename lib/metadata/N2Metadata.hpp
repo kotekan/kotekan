@@ -41,11 +41,11 @@ struct N2MetadataFormat {
     /// Nominal length of the frame in FPGA ticks
     uint64_t frame_length_fpga_ticks;
     /// Amount of data that actually went into the frame (in FPGA ticks)
-    uint64_t n_valid_fpga_ticks_in_frame;
+    uint64_t n_valid_fpga_ticks;
     /// The number of FPGA frames flagged as containing RFI. NOTE: This value
     /// might contain overlap with lost samples, as that counts missing samples
     /// as well as RFI. For renormalization this value should NOT be used, use
-    /// lost samples (= @c frame_length_fpga_ticks - @c n_valid_fpga_ticks_in_frame) instead.
+    /// lost samples (= @c frame_length_fpga_ticks - @c n_valid_fpga_ticks) instead.
     uint64_t n_rfi_fpga_ticks;
 };
 
@@ -128,7 +128,7 @@ alloc_N2_from_chord_metadata(Buffer* chord_buf, size_t chord_frame_id, Buffer* N
     N2_meta->fpga_start_tick = 0;
     N2_meta->frame_start_time_ns = 0;
     N2_meta->frame_length_fpga_ticks = 0;
-    N2_meta->n_valid_fpga_ticks_in_frame = 0;
+    N2_meta->n_valid_fpga_ticks = 0;
     N2_meta->n_rfi_fpga_ticks = 0;
 
     N2_meta->freq_Hz = 0.0;

@@ -137,7 +137,7 @@ def test_metadata(n2_data):
     for frame in n2_data:
         assert frame.metadata.freq_id == fakevis_params["freq_ids"][0]
         assert frame.metadata.frame_length_fpga_ticks == frame_length
-        assert frame.metadata.n_valid_fpga_ticks_in_frame == frame_total
+        assert frame.metadata.n_valid_fpga_ticks == frame_total
         assert frame.metadata.n_rfi_fpga_ticks == rfi_total
         assert frame.metadata.freq_Hz == freq_Hz
 

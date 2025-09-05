@@ -194,8 +194,8 @@ void N2TimeDownsample::main_thread() {
             //Initialize the weights, and weigh vis/weight by number of samples.
             for (size_t i = 0; i < nprod; i++) {
                 output_frame.weight[i] = (output_frame.weight[i] != 0.0f) ? 1. / output_frame.weight[i] : 0.0f;
-                output_frame.vis[i] *= output_frame.n_valid_fpga_ticks_in_frame;
-                output_frame.weight[i] *= output_frame.n_valid_fpga_ticks_in_frame;
+                output_frame.vis[i] *= output_frame.n_valid_fpga_ticks;
+                output_frame.weight[i] *= output_frame.n_valid_fpga_ticks;
             }
 
             if (do_fringestop) {
@@ -222,7 +222,7 @@ void N2TimeDownsample::main_thread() {
 
             // evec and eval averages are weighted by number of valid samples
             for (uint32_t i = 0; i < num_eigenvectors; i++) {
-                output_frame.eval[i] *= output_frame.n_valid_fpga_ticks_in_frame;
+                output_frame.eval[i] *= output_frame.n_valid_fpga_ticks;
                 for (uint32_t j = 0; j < num_elements; j++) {
                     // Eigenvectors get phases too, but are computed to always
                     // have 0 phase in first element, so ensure the first
@@ -230,10 +230,10 @@ void N2TimeDownsample::main_thread() {
                     int k = i * num_elements + j;
                     size_t d_j = j % num_dishes;
                     output_frame.evec[k] *= fringe_phase[d_j] * std::conj(fringe_phase[0]);
-                    output_frame.evec[k] *= output_frame.n_valid_fpga_ticks_in_frame;
+                    output_frame.evec[k] *= output_frame.n_valid_fpga_ticks;
                 }
             }
-            output_frame.erms *= output_frame.n_valid_fpga_ticks_in_frame;
+            output_frame.erms *= output_frame.n_valid_fpga_ticks;
 
             // Go to next frame
             nframes += 1;
@@ -263,7 +263,7 @@ void N2TimeDownsample::main_thread() {
                     // Computing the total phase in double precision
                     // in case one of the dish phases is small.
                     // Adding the weighting by valid samples here as well.
-                    std::complex<double> w_doub = (fringe_phase[d_i] * std::conj(fringe_phase[d_j])) * ((double) frame.n_valid_fpga_ticks_in_frame);
+                    std::complex<double> w_doub = (fringe_phase[d_i] * std::conj(fringe_phase[d_j])) * ((double) frame.n_valid_fpga_ticks);
 
                     // Now truncate the phase to a float to match vis[]
                     // Have to be explicit about this, compiler complains
@@ -278,10 +278,10 @@ void N2TimeDownsample::main_thread() {
 
             // average inverse weights, i.e. variance
             for (size_t i = 0; i < nprod; i++) {
-                output_frame.weight[i] += (frame.weight[i] != 0.0f) ? frame.n_valid_fpga_ticks_in_frame / frame.weight[i] : 0.0f;
+                output_frame.weight[i] += (frame.weight[i] != 0.0f) ? frame.n_valid_fpga_ticks / frame.weight[i] : 0.0f;
             }
             for (uint32_t i = 0; i < num_eigenvectors; i++) {
-                output_frame.eval[i] += frame.eval[i] * frame.n_valid_fpga_ticks_in_frame;
+                output_frame.eval[i] += frame.eval[i] * frame.n_valid_fpga_ticks;
                 for (uint32_t j = 0; j < num_elements; j++) {
                     int k = i * num_elements + j;
                     size_t d_j = j % num_dishes;
@@ -289,13 +289,13 @@ void N2TimeDownsample::main_thread() {
                     std::complex<double> phase_doub = fringe_phase[d_j] * std::conj(fringe_phase[0]);
                     N2::cfloat phase{(float)phase_doub.real(),
                                      (float)phase_doub.imag()};
-                    output_frame.evec[k] += frame.evec[k] * phase * ((float) frame.n_valid_fpga_ticks_in_frame);
+                    output_frame.evec[k] += frame.evec[k] * phase * ((float) frame.n_valid_fpga_ticks);
                 }
             }
-            output_frame.erms += frame.erms * frame.n_valid_fpga_ticks_in_frame;
+            output_frame.erms += frame.erms * frame.n_valid_fpga_ticks;
 
             // Accumulate integration totals
-            output_frame.n_valid_fpga_ticks_in_frame += frame.n_valid_fpga_ticks_in_frame;
+            output_frame.n_valid_fpga_ticks += frame.n_valid_fpga_ticks;
             output_frame.n_rfi_fpga_ticks += frame.n_rfi_fpga_ticks;
             output_frame.frame_length_fpga_ticks += frame.frame_length_fpga_ticks;
 
@@ -315,21 +315,21 @@ void N2TimeDownsample::main_thread() {
             }
 
             // Otherwise, stop accumulating
-            if(output_frame.n_valid_fpga_ticks_in_frame > 0) {
+            if(output_frame.n_valid_fpga_ticks > 0) {
                 for (size_t i = 0; i < nprod; i++) {
 
-                    output_frame.vis[i] /= output_frame.n_valid_fpga_ticks_in_frame;
+                    output_frame.vis[i] /= output_frame.n_valid_fpga_ticks;
                     // extra factor of nsamp for sample variance
-                    output_frame.weight[i] = output_frame.n_valid_fpga_ticks_in_frame * nframes / output_frame.weight[i];
+                    output_frame.weight[i] = output_frame.n_valid_fpga_ticks * nframes / output_frame.weight[i];
                 }
                 for (uint32_t i = 0; i < num_eigenvectors; i++) {
-                    output_frame.eval[i] /= output_frame.n_valid_fpga_ticks_in_frame;
+                    output_frame.eval[i] /= output_frame.n_valid_fpga_ticks;
                     for (uint32_t j = 0; j < num_elements; j++) {
                         int k = i * num_elements + j;
-                        output_frame.evec[k] /= output_frame.n_valid_fpga_ticks_in_frame;
+                        output_frame.evec[k] /= output_frame.n_valid_fpga_ticks;
                     }
                 }
-                output_frame.erms /= output_frame.n_valid_fpga_ticks_in_frame;
+                output_frame.erms /= output_frame.n_valid_fpga_ticks;
             } else {
                 //Likely redundant, if we're here, only 0's could have
                 // been added to these anyways.

@@ -24,7 +24,7 @@ size_t N2Metadata::set_from_bytes(const char* bytes, size_t length) {
     frame_start_time_ns = fmt->frame_start_time_ns;
     frame_length_fpga_ticks = fmt->frame_length_fpga_ticks;
 
-    n_valid_fpga_ticks_in_frame = fmt->n_valid_fpga_ticks_in_frame;
+    n_valid_fpga_ticks = fmt->n_valid_fpga_ticks;
     n_rfi_fpga_ticks = fmt->n_rfi_fpga_ticks;
 
     freq_id = fmt->freq_id; // this is an int in chordMetadata, maybe change later
@@ -47,7 +47,7 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->frame_start_time_ns = frame_start_time_ns;
     fmt->frame_length_fpga_ticks = frame_length_fpga_ticks;
 
-    fmt->n_valid_fpga_ticks_in_frame = n_valid_fpga_ticks_in_frame;
+    fmt->n_valid_fpga_ticks = n_valid_fpga_ticks;
     fmt->n_rfi_fpga_ticks = n_rfi_fpga_ticks;
 
     fmt->freq_id = freq_id; // this is an int in chordMetadata, maybe change later
