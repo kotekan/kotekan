@@ -17,7 +17,7 @@ char* __cmake_build_options = " CMAKE_BUILD_TYPE: @CMAKE_BUILD_TYPE@ \n"
                               " - RTE_SDK: @RTE_SDK@\n"
                               " - RTE_TARGET: @RTE_TARGET@\n"
                               " USE_OPENCL: @USE_OPENCL@\n"
-                              " USE_HCC: @USE_HCC@\n"
+                              " USE_HIP: @USE_HIP@\n"
                               " USE_CUDA: @USE_CUDA@\n"
                               " USE_HDF5: @USE_HDF5@\n"
                               " USE_ASDF: @USE_ASDF@\n"
@@ -27,7 +27,16 @@ char* __cmake_build_options = " CMAKE_BUILD_TYPE: @CMAKE_BUILD_TYPE@ \n"
                               " USE_AIRSPY: @USE_AIRSPY@\n"
                               " USE_FFTW: @USE_FFTW@\n"
                               " USE_OMP: @USE_OMP@\n"
-                              " USE_OPENSSL: @USE_OPENSSL@\n";
+                              " USE_OPENSSL: @USE_OPENSSL@\n"
+                              " USE_NUMA: @USE_NUMA@\n"
+                              " USE_JULIA: @USE_JULIA@\n"
+                              " NO_MEMLOCK: @NO_MEMLOCK@\n"
+                              " WITH_TESTS: @WITH_TESTS@\n"
+                              " WITH_BOOST_TESTS: @WITH_BOOST_TESTS@\n"
+                              " COMPILE_DOCS: @COMPILE_DOCS@\n"
+                              " IWYU: @IWYU@\n"
+                              " CCACHE: @CCACHE@\n"
+                              " WERROR: @WERROR@\n";
 
 char* get_kotekan_version() {
     return __kotekan_version;
