@@ -224,10 +224,12 @@ void N2TimeDownsample::main_thread() {
             for (uint32_t i = 0; i < num_eigenvectors; i++) {
                 output_frame.eval[i] *= output_frame.n_valid_fpga_ticks_in_frame;
                 for (uint32_t j = 0; j < num_elements; j++) {
-                    // Eigenvectors get phases too.
+                    // Eigenvectors get phases too, but are computed to always
+                    // have 0 phase in first element, so ensure the first
+                    // element in each is unchanged.
                     int k = i * num_elements + j;
                     size_t d_j = j % num_dishes;
-                    output_frame.evec[k] *= fringe_phase[d_j];
+                    output_frame.evec[k] *= fringe_phase[d_j] * std::conj(fringe_phase[0]);
                     output_frame.evec[k] *= output_frame.n_valid_fpga_ticks_in_frame;
                 }
             }
@@ -283,8 +285,10 @@ void N2TimeDownsample::main_thread() {
                 for (uint32_t j = 0; j < num_elements; j++) {
                     int k = i * num_elements + j;
                     size_t d_j = j % num_dishes;
-                    N2::cfloat phase{(float)fringe_phase[d_j].real(),
-                                     (float)fringe_phase[d_j].imag()};
+                    //Ensure 1st element of each evec doesn't get a phase.
+                    std::complex<double> phase_doub = fringe_phase[d_j] * std::conj(fringe_phase[0]);
+                    N2::cfloat phase{(float)phase_doub.real(),
+                                     (float)phase_doub.imag()};
                     output_frame.evec[k] += frame.evec[k] * phase * ((float) frame.n_valid_fpga_ticks_in_frame);
                 }
             }
