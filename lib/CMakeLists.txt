@@ -2,7 +2,7 @@
 # symbols are ever added it will need to be turned back into a standard CMake library
 project(kotekan_libs)
 
-set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
+set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake ${KOTEKAN_SOURCE_DIR}/cmake/Modules)
 
 # Julia is a convenient language to implement stages for testing and development
 if(${USE_JULIA})
@@ -40,6 +40,9 @@ target_link_libraries(kotekan_libs INTERFACE kotekan_version)
 
 target_link_libraries(kotekan_libs INTERFACE libexternal)
 
+# Build C++ testing helpers when requested. WITH_TESTS builds and links the
+# lib/testing helper stages into the main kotekan binary. WITH_BOOST_TESTS also
+# requires these helpers and additionally builds the unit tests under tests/boost.
 if(${WITH_TESTS} OR ${WITH_BOOST_TESTS})
     add_subdirectory(testing)
     target_link_libraries(kotekan_libs INTERFACE kotekan_testing)

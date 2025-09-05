@@ -38,8 +38,6 @@ if(${USE_HIP})
 endif()
 
 if(${USE_CUDA})
-    set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda)
-    set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
     set(USE_CUDA ${CUDA_FOUND})
     enable_language(CUDA)
     find_package(CUDAToolkit REQUIRED)

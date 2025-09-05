@@ -10,7 +10,8 @@ Compiled docs are available at https://kotekan.readthedocs.io/en/latest/.
 
 [![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yml/badge.svg)](https://github.com/kotekan/kotekan/actions/workflows/main.yml)
 
-Detailed instructions at http://lwlab.dunlap.utoronto.ca/kotekan/compiling/general.html.
+Detailed instructions at https://kotekan.readthedocs.io/en/latest/.
+Full list of CMake options: https://kotekan.readthedocs.io/en/latest/compiling/cmake_options.html
 
 This project is built using cmake, so you will need to install cmake
 before starting a build.
@@ -42,9 +43,8 @@ Cmake build options:
   it is not part of the base compile, even when enabled.
 * `-DUSE_OMP=ON` Build stages using OpenMP. This requires a compiler supporting OpenMP (>= 3.0)
 * `-DOPENSSL_ROOT_DIR=<openssl_root_dir>` Only required for non-standard install locations of OpenSSL
-* `-DWITH_TESTS=ON` Build kotekans test library.
-* `-DWITH_BOOST_TESTS=ON` Build C++ unit tests using The Boost Test Framework.
-  pytest-cpp needs to be installed for pytest to find them.
+* `-DWITH_TESTS=ON` Build and link kotekan's C++ testing helper library in `lib/testing` (used by some example/QA configs). This does not build Boost unit tests.
+* `-DWITH_BOOST_TESTS=ON` Build the C++ unit tests under `tests/boost` (Boost.Test). Also disables DPDK to avoid linker issues in that configuration. `pytest-cpp` is required for pytest to discover and run them.
 * `-DSUPERDEBUG=ON` Add extra debugging info and turn off all optimisation to improve coverage.
 * `-DSANITIZE=ON` Turn on extra Clang sanitizers (currently the address sanitizer) for finding issues.
 
@@ -58,7 +58,7 @@ To build with CUDA:
 
     cmake -DUSE_CUDA=ON ..
 
-At the end of configuration, CMake prints a colorized feature summary indicating which features were enabled (found) or disabled (missing/explicitly off). Use `-DUSE_<FEATURE>=ON|OFF` to include or exclude a feature that is present on your system.
+At the end of configuration, CMake prints a colorized feature summary indicating which features were enabled (found) or disabled (missing/explicitly off). Each feature row shows its toggle flag, e.g. `CUDA: ON (found, toggle: -DUSE_CUDA=ON/OFF)`. Use `-D<OPTION>=ON|OFF` to include or exclude a feature present on your system.
 
 To install kotekan (only works on CentOS at the moment):
 

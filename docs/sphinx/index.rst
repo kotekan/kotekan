@@ -9,6 +9,7 @@ Welcome to Kotekan's documentation!
    overview
    overview_theory_of_operation
    compiling/general
+   compiling/cmake_options
 
 
 .. toctree::
