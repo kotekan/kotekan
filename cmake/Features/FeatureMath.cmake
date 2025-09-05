@@ -42,27 +42,38 @@ if(${USE_LAPACK_BLAZE})
     if(_missing_lapack_blaze STREQUAL "")
         set(LAPACK_BLAZE_ENABLED ON)
         set(LAPACK_BLAZE_REASON "found")
-        kmsg_ok("LAPACK/Blaze found: enabling linear algebra stages (disable with -DUSE_LAPACK_BLAZE=OFF)")
+        kmsg_ok(
+            "LAPACK/Blaze found: enabling linear algebra stages (disable with"
+            " -DUSE_LAPACK_BLAZE=OFF)")
         kmsg_status("Using LAPACKE includes ${LAPACKE_INCLUDE_DIRS}")
         kmsg_status("Using LAPACKE libraries ${LAPACKE_LIBRARIES}")
         kmsg_status("Blaze found. BLAZE_PATH is ${BLAZE_PATH}")
         add_definitions(-DBLAZE_BLAS_MODE=1)
         add_definitions(-DBLAZE_BLAS_IS_PARALLEL=1)
 
-        # Ensure OpenBLAS is linked if generic BLAS was selected by LAPACKE but code uses OpenBLAS API
+        # Ensure OpenBLAS is linked if generic BLAS was selected by LAPACKE but
+        # code uses OpenBLAS API
         string(JOIN ";" _lapacke_libs_str ${LAPACKE_LIBRARIES})
         if(NOT _lapacke_libs_str MATCHES "openblas")
-            find_library(OPENBLAS_EXTRA_LIB NAMES openblas PATHS /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib)
+            find_library(
+                OPENBLAS_EXTRA_LIB
+                NAMES openblas
+                PATHS /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib)
             if(OPENBLAS_EXTRA_LIB)
-                set(OPENBLAS_EXTRA_LIB ${OPENBLAS_EXTRA_LIB} CACHE FILEPATH "OpenBLAS lib for explicit linking")
-                kmsg_status("Detected generic BLAS; adding OpenBLAS explicitly: ${OPENBLAS_EXTRA_LIB}")
+                set(OPENBLAS_EXTRA_LIB ${OPENBLAS_EXTRA_LIB}
+                    CACHE FILEPATH "OpenBLAS lib for explicit linking")
+                kmsg_status(
+                    "Detected generic BLAS; adding OpenBLAS explicitly:"
+                    " ${OPENBLAS_EXTRA_LIB}")
             endif()
         endif()
     else()
         set(USE_LAPACK_BLAZE OFF)
         set(LAPACK_BLAZE_ENABLED OFF)
         set(LAPACK_BLAZE_REASON "missing: ${_missing_lapack_blaze}")
-        kmsg_warn("LAPACK/Blaze not fully found (missing: ${_missing_lapack_blaze}); LAPACK/Blaze stages disabled.")
+        kmsg_warn(
+            "LAPACK/Blaze not fully found (missing: ${_missing_lapack_blaze});"
+            " LAPACK/Blaze stages disabled.")
         kmsg_status("To skip these checks, configure with -DUSE_LAPACK_BLAZE=OFF")
     endif()
 else()

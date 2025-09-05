@@ -15,16 +15,23 @@ if(NOT DEFINED KOTEKAN_COLOR_LOADED)
         set(KTK_YELLOW "")
     endif()
 
-    # Prior (non-summary) messages: keep uncolored and non-warning for readability
-    function(kmsg_ok MSG)
-        # Intentionally silent before summary to avoid redundancy
+    # Prior (non-summary) messages: keep uncolored and non-warning for readability kmsg_ok: Print an
+    # OK/info message during configure (currently suppressed)
+    function(kmsg_ok msg)
+        if(FALSE)
+            # no-op
+        endif()
     endfunction()
 
-    function(kmsg_warn MSG)
-        # Intentionally silent before summary to avoid redundancy
+    # kmsg_warn: Print a warning-style message during configure (currently suppressed)
+    function(kmsg_warn msg)
+        if(FALSE)
+            # no-op
+        endif()
     endfunction()
 
-    function(kmsg_status MSG)
-        message(STATUS "${MSG}")
+    # kmsg_status: Print a standard STATUS line (used by the feature summary)
+    function(kmsg_status msg)
+        message(STATUS "${msg}")
     endfunction()
 endif()

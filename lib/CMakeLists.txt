@@ -6,22 +6,13 @@ set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake ${KOTEKAN_SOURCE_DIR}/cmake/Mo
 
 # Julia is a convenient language to implement stages for testing and development
 if(${USE_JULIA})
-    # Top-level may have already set Julia_FOUND and variables; call as a fallback.
-    if(NOT DEFINED Julia_FOUND)
-        find_package(Julia QUIET)
-    endif()
-    if(${Julia_FOUND})
+    find_package(Julia QUIET)
+    if(Julia_FOUND)
         message(STATUS "Julia support enabled")
     else()
-        message(
-            WARNING
-                "${ColorYellow}Julia not found; Julia features disabled in kotekan_lib${ColorReset}"
-        )
+        message(WARNING "${ColorYellow}Julia not found; Julia features disabled in"
+                        " kotekan_lib${ColorReset}")
     endif()
-else()
-    # Honor explicit disable
-    set(Julia_FOUND OFF)
-    # No extra message here; top-level already reports explicit disable or not-found.
 endif()
 
 add_library(kotekan_libs INTERFACE)

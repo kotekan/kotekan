@@ -6,21 +6,19 @@ include(${CMAKE_CURRENT_LIST_DIR}/../Color.cmake)
 set(JULIA_ENABLED OFF)
 set(JULIA_REASON "disabled")
 if(${USE_JULIA})
-    # Best practice: use the provided FindJulia.cmake when the Julia executable can run
-    find_program(_JULIA_EXE julia)
-    set(_Julia_can_run OFF)
-    if(_JULIA_EXE)
-        execute_process(COMMAND "${_JULIA_EXE}" --startup-file=no --version
-                        RESULT_VARIABLE _JULIA_RV OUTPUT_QUIET ERROR_QUIET)
-        if(_JULIA_RV EQUAL 0)
-            set(_Julia_can_run ON)
+    # Only try FindJulia if the julia executable can run
+    find_program(_julia_exe julia)
+    set(_julia_can_run OFF)
+    if(_julia_exe)
+        execute_process(COMMAND "${_julia_exe}" --startup-file=no --version
+                        RESULT_VARIABLE _julia_rv OUTPUT_QUIET ERROR_QUIET)
+        if(_julia_rv EQUAL 0)
+            set(_julia_can_run ON)
         endif()
     endif()
 
-    if(_Julia_can_run)
+    if(_julia_can_run)
         find_package(Julia QUIET)
-    else()
-        set(Julia_FOUND OFF)
     endif()
 
     if(Julia_FOUND)
@@ -34,6 +32,5 @@ if(${USE_JULIA})
         # No immediate warning; the final summary will report this once.
     endif()
 else()
-    set(Julia_FOUND OFF)
     kmsg_status("Julia disabled via -DUSE_JULIA=OFF")
 endif()
