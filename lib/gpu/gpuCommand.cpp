@@ -55,7 +55,8 @@ void gpuCommand::start_frame(int64_t _gpu_frame_id) {
     gpu_frame_id = _gpu_frame_id;
 }
 
-void gpuCommand::finalize_frame() {}
+void gpuCommand::finalize_frame() {
+}
 
 int gpuCommand::wait_on_precondition() {
     return 0;

@@ -6,6 +6,7 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include <DataType.hpp>
 #include <bufferContainer.hpp>
 #include <chordMetadata.hpp>
 #include <cudaCommand.hpp>
@@ -53,7 +54,7 @@ private:
             dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using kernel_arg = CuDeviceArray<int32_t, 1>;
+    using kernel_arg = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
     {{#kernel_design_parameters}}
@@ -76,7 +77,8 @@ private:
     // Kernel arguments:
     {{#kernel_arguments}}
         // {{{name}}}: {{{kotekan_name}}}
-        static constexpr chordDataType {{{name}}}_type = {{{type}}};
+        static constexpr const char *{{{name}}}_quantity = "{{{name}}}";
+        static constexpr kotekan::DataType {{{name}}}_type = kotekan::{{{type}}};
         static constexpr std::size_t {{{name}}}_rank = 0
             {{#axes}}
                 +1
@@ -92,7 +94,7 @@ private:
                 {{{length}}},
             {{/axes}}
         };
-        static constexpr std::size_t {{{name}}}_length = chord_datatype_bytes({{{name}}}_type)
+        static constexpr std::size_t {{{name}}}_length = type_total_bytes({{{name}}}_type)
             {{#axes}}
                 * {{{length}}}
             {{/axes}}
@@ -103,7 +105,7 @@ private:
 
     // Kotekan buffer names
     {{#kernel_arguments}}
-        const std::string {{{name}}}_memname;
+        const std::string {{{name}}}_name;
     {{/kernel_arguments}}
 
     // Host-side buffer arrays
@@ -125,10 +127,10 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         "{{{kernel_name}}}", "{{{kernel_name}}}.ptx")
     {{#kernel_arguments}}
         {{#hasbuffer}}
-            , {{{name}}}_memname(config.get<std::string>(unique_name, "{{{kotekan_name}}}"))
+            , {{{name}}}_name(config.get<std::string>(unique_name, "{{{kotekan_name}}}"))
         {{/hasbuffer}}
         {{^hasbuffer}}
-            , {{{name}}}_memname(unique_name + "/{{{kotekan_name}}}")
+            , {{{name}}}_name(unique_name + "/{{{kotekan_name}}}")
         {{/hasbuffer}}
     {{/kernel_arguments}}
 
@@ -141,7 +143,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     // Add Graphviz entries for the GPU buffers used by this kernel
     {{#kernel_arguments}}
         {{#hasbuffer}}
-            gpu_buffers_used.push_back(std::make_tuple({{{name}}}_memname, true, true, false));
+            gpu_buffers_used.push_back(std::make_tuple({{{name}}}_name, true, true, false));
         {{/hasbuffer}}
         {{^hasbuffer}}
             gpu_buffers_used.push_back(std::make_tuple(get_name() + "_{{{kotekan_name}}}", false, true, true));
@@ -167,10 +169,12 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     {{#kernel_arguments}}
         {{#hasbuffer}}
+            const std::string {{{name}}}_memname = {{{name}}}_name + "_buffer";
             void* const {{{name}}}_memory =
                 device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
         {{/hasbuffer}}
         {{^hasbuffer}}
+            const std::string {{{name}}}_memname = {{{name}}}_name + "_buffer";
             void* const {{{name}}}_memory = device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length);
         {{/hasbuffer}}
     {{/kernel_arguments}}
@@ -296,7 +300,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
                                                       (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
-        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel returned error code: {}", error_code);
 
     for (std::size_t i = 0; i < info_host.size(); ++i)
         if (info_host[i] != 0)
@@ -305,9 +309,3 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     return record_end_event();
 }
-
-/*
-void cuda{{{kernel_name}}}::finalize_frame() {
-    cudaCommand::finalize_frame();
-}
-*/

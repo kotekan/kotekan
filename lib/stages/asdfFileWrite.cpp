@@ -26,11 +26,9 @@
 #include <utility>
 #include <vector>
 #include <visUtil.hpp> // for current_time
+#include <waitingForMaxFrames.hpp>
 
 using namespace asdf;
-
-// Number of writers which are waiting for `max_frames`
-std::atomic<int> waiting_for_max_frames;
 
 /**
  * @class asdfFileWrite

@@ -31,6 +31,7 @@ add_library(
     cudaBasebandBeamformer_hirax.cpp
     cudaBasebandBeamformer_pathfinder.cpp
     cudaCHIMEFRBBeamformer_chime_U16.cpp
+    cudaCHIMEFRBBeamformer_chime_U128.cpp
     cudaFRBBeamformer_chord_U1.cpp
     cudaFRBBeamformer_chord_U2.cpp
     cudaFRBBeamformer_chord_U4.cpp
@@ -67,6 +68,7 @@ add_library(
     cudaUpchannelizer_chime_U16.cpp
     cudaUpchannelizer_chime_U32.cpp
     cudaUpchannelizer_chime_U64.cpp
+    cudaUpchannelizer_chime_U128.cpp
     cudaUpchannelizer_chord_U2.cpp
     cudaUpchannelizer_chord_U4.cpp
     cudaUpchannelizer_chord_U8.cpp
@@ -85,6 +87,11 @@ add_library(
     cudaUpchannelizer_pathfinder_U16.cpp
     cudaUpchannelizer_pathfinder_U32.cpp
     cudaUpchannelizer_pathfinder_U64.cpp
+    cudaRFIS012.cpp
+    cudaRFIS012bar.cpp
+    cudaRFIS012tilde.cpp
+    cudaRFISKbar.cpp
+    cudaRFISKtilde.cpp
     chordMVPSetup.cpp)
 
 # C++17
