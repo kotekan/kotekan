@@ -505,7 +505,8 @@ public:
         assert(get_write_valid().size() > 0);
 
         T poison;
-        std::memset(&poison, poison_value, sizeof poison);
+        // The cast suppresses a bogus -Wclass-memaccess on GCC.
+        std::memset(static_cast<void*>(&poison), poison_value, sizeof poison);
         const auto check = [=](const T x) {
             using std::isfinite, kotekan::isfinite;
             if constexpr (std::is_floating_point_v<T> || std::is_same_v<T, float16_t>)

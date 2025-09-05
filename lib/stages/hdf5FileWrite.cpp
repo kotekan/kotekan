@@ -25,12 +25,10 @@
 #include <utility>
 #include <vector>
 #include <visUtil.hpp>
+#include <waitingForMaxFrames.hpp>
 
 using namespace hdf5;
 using namespace HighFive;
-
-// Number of writers which are waiting for `max_frames`
-extern std::atomic<int> waiting_for_max_frames;
 
 /**
  * @class hdf5FileWrite

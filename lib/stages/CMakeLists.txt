@@ -17,6 +17,7 @@ add_library(
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
+    waitingForMaxFrames.cpp
     $<$<BOOL:${USE_ASDF}>:asdfFileRead.cpp>
     $<$<BOOL:${USE_ASDF}>:asdfFileWrite.cpp>
     $<$<BOOL:${USE_GDAL}>:gdalFileRead.cpp>
