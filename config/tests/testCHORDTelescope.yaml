@@ -1,0 +1,69 @@
+---
+type: config
+# Logging level can be OFF, ERROR, WARN, INFO, DEBUG, or DEBUG2
+log_level: DEBUG
+# Which CPUs is kotekan allowed to run on?
+cpu_affinity: [5]
+
+# Constants
+sizeof_float: 4
+
+giga: 1000000000
+
+sec_in_jyear: 36525 * 864
+nsec_in_jyear: sec_in_jyear * giga
+
+sec_in_day: 86400
+nsec_in_day: sec_in_day * giga
+
+earth_rotation_data:
+  kotekan_update_endpoint: "json"
+  earth_orientation_parameter_table: [
+    {
+      time_inst_ns: 1578010000000000300,
+      delta_UT1_inst: 0.5,
+      x_pm: 0.1,
+      y_pm: 0.2
+    }]
+#, {
+#  time_inst_ns: 1578040000000000380,
+#  delta_UT1_inst: 0.801234,
+#  x_pm: 3.0,
+#  y_pm: 4.0,
+#}, {
+#  time_inst_ns: 1578030000000000350,
+#  delta_UT1_inst: 0.1,
+#  x_pm: -0.5,
+#  y_pm: -0.6,
+#}]
+
+
+telescope:
+  name: CHORDTelescope
+  require_gps: false
+  inst_long_deg: -119.62081125
+  inst_lat_deg: 49.3207514444444444
+  inst_grid_x_axis: [1.0, 0.0, 0.0]
+  inst_grid_y_axis: [0.0, 1.0, 0.0]
+  inst_alt_deg: 90.0
+  inst_dish_alt_axis: [1.0, 0.0, 0.0]
+  inst_dish_vert_axis: [0.0, 0.0, 1.0]
+  dish_positions: [[0.0, 1.0, 2.0],
+                   [0.0, 2.0, 2.0],
+                   [0.0, 3.0, 2.0],
+                   [1.0, 1.0, 2.0],
+                   [1.0, 2.0, 2.0],
+                   [1.0, 3.0, 2.0]]
+
+  updatable_config: "/earth_rotation_data"
+gps_time:
+  frame0_nano: 50 * nsec_in_jyear
+
+updates:
+  kotekan_update_endpoint: "json"
+  var: 1.2
+
+# Add a consumer stage that prints the output buffer to screen
+screen_dump:
+  kotekan_stage: TestCHORDTelescope
+  updatable_config: "/updates"

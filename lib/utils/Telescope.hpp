@@ -1,8 +1,9 @@
 #ifndef TELESCOPE_HPP
 #define TELESCOPE_HPP
 
-#include "Config.hpp"         // for Config
-#include "buffer.hpp"         // for Buffer
+#include "Config.hpp" // for Config
+#include "buffer.hpp" // for Buffer
+#include "errors.h"
 #include "factory.hpp"        // for CREATE_FACTORY, Factory, REGISTER_NAMED_TYPE_WITH_FACTORY
 #include "kotekanLogging.hpp" // for kotekanLogging
 
@@ -34,7 +35,6 @@ struct stream_t {
     uint64_t id;
 };
 
-
 /**
  * @brief A class to hold telescope specific functionality.
  *
@@ -61,6 +61,35 @@ public:
 
 
     virtual ~Telescope() = default;
+
+    /**
+     * @brief   Get the type name of this telescope object.
+     *
+     * @returns     The type of the telescope object as a string.
+     **/
+    std::string get_name() const {
+        return FACTORY(Telescope)::label(*this);
+    }
+
+    /**
+     * @brief   Cast this telescope object to a specific type.
+     *
+     * @returns     const reference of the specified Telesope type
+     *
+     * @throws      Exception if the cast is invalid. Can happen if the
+     *              kotekan config is initializing an incompatible
+     *              type of Telescope
+     **/
+    template<typename T>
+    const T& cast() const {
+        try {
+            return dynamic_cast<const T&>(*this);
+        } catch (const std::exception& e) {
+            ERROR("Could not cast Telescope of type {:s} to type {:s}", this->get_name(),
+                  FACTORY(Telescope)::label<T>());
+            throw;
+        }
+    }
 
     /**
      * Get the frequency ID from the FPGA stream ID.
