@@ -16,6 +16,7 @@ write_data:
         kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
+        bounded: true
         max_frames: 10
     write_bb_beam_positions:
         kotekan_stage: asdfFileWrite
@@ -104,6 +105,7 @@ write_data2:
         kotekan_stage: gdalFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
+        bounded: true
         max_frames: 10
     write_bb_beam_positions:
         kotekan_stage: gdalFileWrite

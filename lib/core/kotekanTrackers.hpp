@@ -11,6 +11,8 @@
 #include <mutex>    // for mutex
 #include <stddef.h> // for size_t
 #include <string>   // for string
+#include <unordered_set>
+#include <vector>
 
 namespace kotekan {
 
@@ -127,6 +129,16 @@ public:
      */
     void dump_trackers();
 
+    // Trigger a shutdown check via the active kotekan mode (if set).
+    void maybe_shutdown_if_inactive();
+
+    // Track stages that should determine shutdown ("bounded" stages).
+    // Bounded stages are those with a finite end condition (e.g., max_frames),
+    // and may be extended to other signals in the future.
+    void set_bounded_stages(const std::vector<std::string>& names);
+    void mark_stage_unregistered(const std::string& name);
+    bool all_bounded_unregistered() const;
+
 private:
     KotekanTrackers();
     ~KotekanTrackers();
@@ -143,6 +155,11 @@ private:
 
     /// Reference back to the active kotekan_mode object
     kotekan::kotekanMode* kotekan_mode_ptr = nullptr;
+
+    // Shutdown coordination: set of stages that have a max_frames bound,
+    // and the subset that have completed/unregistered.
+    std::unordered_set<std::string> bounded_stages_;
+    std::unordered_set<std::string> unregistered_stages_;
 };
 
 } // namespace kotekan

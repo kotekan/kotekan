@@ -65,5 +65,6 @@ asdf_write:
     base_dir: /code/kotekan/build-2404/data/
     file_name: asdf_test_verify
     prefix_hostname: false
+    bounded: true
     max_frames: 10
     skip_writing: true

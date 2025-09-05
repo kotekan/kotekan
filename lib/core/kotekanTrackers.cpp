@@ -191,4 +191,44 @@ void KotekanTrackers::dump_trackers() {
     INFO_NON_OO("Dumped kotekan statistic tracker (debug) data to {:s}", dump_path);
 }
 
+void KotekanTrackers::maybe_shutdown_if_inactive() {
+    if (kotekan_mode_ptr != nullptr) {
+        kotekan_mode_ptr->maybe_shutdown_if_inactive();
+    }
+}
+
+// Provide a C++ global helper for code paths that can't include the header
+// without adding dependencies.
+void kotekan_trackers_maybe_shutdown_if_inactive() {
+    try {
+        KotekanTrackers::instance().maybe_shutdown_if_inactive();
+    } catch (...) {
+        // Ignore if trackers not initialized yet.
+    }
+}
+
+// Record the set of stages that should determine shutdown completion.
+void KotekanTrackers::set_bounded_stages(const std::vector<std::string>& names) {
+    std::lock_guard<std::mutex> lock(trackers_lock);
+    bounded_stages_.clear();
+    unregistered_stages_.clear();
+    for (auto& n : names) {
+        if (!n.empty())
+            bounded_stages_.insert(n);
+    }
+}
+
+// Mark a stage as unregistered/completed, if it is bounded.
+void KotekanTrackers::mark_stage_unregistered(const std::string& name) {
+    std::lock_guard<std::mutex> lock(trackers_lock);
+    if (bounded_stages_.find(name) != bounded_stages_.end()) {
+        unregistered_stages_.insert(name);
+    }
+}
+
+bool KotekanTrackers::all_bounded_unregistered() const {
+    // No lock here: conservative snapshotting is fine (used for shutdown checks only).
+    return !bounded_stages_.empty() && (unregistered_stages_.size() == bounded_stages_.size());
+}
+
 } // namespace kotekan

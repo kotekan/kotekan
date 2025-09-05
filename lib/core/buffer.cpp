@@ -95,6 +95,20 @@ void GenericBuffer::register_producer(const std::string& name) {
     }
 }
 
+void GenericBuffer::unregister_producer(const std::string& name) {
+    {
+        buffer_lock lock(mutex);
+        DEBUG("Unregistering producer {:s} for buffer {:s}", name, buffer_name);
+        size_t nrem = producers.erase(name);
+        if (nrem == 0) {
+            ERROR("The producer {:s} hasn't been registered, cannot unregister!", name);
+            return;
+        }
+    }
+    // Signal consumers in case removing this producer affects wake conditions
+    full_cond.notify_all();
+}
+
 int GenericBuffer::get_num_consumers() {
     buffer_lock lock(mutex);
     return consumers.size();
@@ -103,6 +117,16 @@ int GenericBuffer::get_num_consumers() {
 int GenericBuffer::get_num_producers() {
     buffer_lock lock(mutex);
     return producers.size();
+}
+
+bool GenericBuffer::has_consumer(const std::string& name) {
+    buffer_lock lock(mutex);
+    return consumers.find(name) != consumers.end();
+}
+
+bool GenericBuffer::has_producer(const std::string& name) {
+    buffer_lock lock(mutex);
+    return producers.find(name) != producers.end();
 }
 
 void GenericBuffer::pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {

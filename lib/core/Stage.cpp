@@ -1,8 +1,9 @@
 #include "Stage.hpp"
 
 #include "Config.hpp"          // for Config
-#include "buffer.hpp"          // for Buffer
+#include "buffer.hpp"          // for Buffer, GenericBuffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanTrackers.hpp" // for KotekanTrackers
 #include "util.h"              // for string_tail
 
 #include "fmt.hpp" // for format
@@ -105,6 +106,12 @@ void Stage::start() {
         register_tid(tid);
 #endif
         main_thread_fn(std::ref(*this));
+        // Ensure buffer registrations and any external resources are released.
+        try {
+            unregister();
+        } catch (...) {
+            // Avoid throwing across thread boundary; rely on logs from unregister.
+        }
 #if !defined(MAC_OSX)
         unregister_tid(tid);
 #endif
@@ -138,6 +145,65 @@ void Stage::stop() {
 }
 
 void Stage::main_thread() {}
+
+void Stage::unregister() {
+    // First, invoke any explicit unregistration actions recorded by the stage.
+    // Execute in reverse registration order for symmetry with construction.
+    for (auto it = producer_unregs_.rbegin(); it != producer_unregs_.rend(); ++it) {
+        if (*it)
+            (*it)();
+    }
+    for (auto it = consumer_unregs_.rbegin(); it != consumer_unregs_.rend(); ++it) {
+        if (*it)
+            (*it)();
+    }
+    producer_unregs_.clear();
+    consumer_unregs_.clear();
+
+    // Then, as a safety net, scan all buffers and unregister this stage name
+    // wherever found. This keeps legacy stages (which don't track) correct.
+    for (auto& kv : buffer_container.get_buffer_map()) {
+        GenericBuffer* g = kv.second;
+        if (!g)
+            continue;
+        if (g->has_consumer(unique_name))
+            g->unregister_consumer(unique_name);
+        if (g->has_producer(unique_name))
+            g->unregister_producer(unique_name);
+    }
+
+    // Notify trackers that this stage has unregistered and perform a shutdown check.
+    try {
+        KotekanTrackers::instance().mark_stage_unregistered(unique_name);
+    } catch (...) {
+        // Ignore if trackers not initialized yet.
+    }
+    // Ask kotekan to maybe shutdown based on current state.
+    extern void kotekan_trackers_maybe_shutdown_if_inactive();
+    kotekan_trackers_maybe_shutdown_if_inactive();
+}
+
+void Stage::track_consumer_unreg(UnregFn fn) {
+    if (fn)
+        consumer_unregs_.push_back(std::move(fn));
+}
+
+void Stage::track_producer_unreg(UnregFn fn) {
+    if (fn)
+        producer_unregs_.push_back(std::move(fn));
+}
+
+void Stage::track_consumer_unreg_for(Buffer* buf, std::function<void(Buffer*)> fn) {
+    if (!buf || !fn)
+        return;
+    consumer_unregs_.push_back([this, buf, fn]() { fn(buf); });
+}
+
+void Stage::track_producer_unreg_for(Buffer* buf, std::function<void(Buffer*)> fn) {
+    if (!buf || !fn)
+        return;
+    producer_unregs_.push_back([this, buf, fn]() { fn(buf); });
+}
 
 Stage::~Stage() {
     stop_thread = true;
