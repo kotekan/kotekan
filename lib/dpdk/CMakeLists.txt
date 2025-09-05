@@ -24,5 +24,6 @@ else()
     message(FATAL_ERROR "kotekan_dpdk requested but KOTEKAN_DPDK_MODE is not NEW or OLD")
 endif()
 
-target_link_libraries(kotekan_dpdk PRIVATE ${DPDK_LIBRARIES} ${NUMA_LIBRARY} libexternal kotekan_libs)
+target_link_libraries(kotekan_dpdk PRIVATE ${DPDK_LIBRARIES} ${NUMA_LIBRARY} libexternal
+                                           kotekan_libs)
 target_include_directories(kotekan_dpdk PUBLIC .)

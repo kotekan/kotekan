@@ -7,9 +7,12 @@ option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_CUDA "Build CUDA GPU Framework" OFF)
 option(USE_HIP "Build HIP GPU Framework" OFF)
 # DPDK selection: new consolidated flag plus legacy boolean for backward compatibility
-set(USE_DPDK "ON" CACHE STRING "DPDK usage: ON (auto), OFF, NEW, OLD")
+set(USE_DPDK
+    "ON"
+    CACHE STRING "DPDK usage: ON (auto), OFF, NEW, OLD")
 set_property(CACHE USE_DPDK PROPERTY STRINGS ON OFF NEW OLD)
-option(USE_OLD_DPDK "[deprecated] Enable old versions of DPDK (<19.11). Use -DUSE_DPDK=OLD instead." OFF)
+option(USE_OLD_DPDK
+       "[deprecated] Enable old versions of DPDK (<19.11). Use -DUSE_DPDK=OLD instead." OFF)
 option(USE_ASDF "Build ASDF output stages" ON)
 option(USE_GDAL "Build GDAL output stages" ON)
 option(USE_HDF5 "Build HDF5 output stages" ON)

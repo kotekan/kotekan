@@ -55,9 +55,12 @@ function(kfeature_row name enabled reason present)
 
     set(toggle_note "")
     if(NOT "${toggle_var}" STREQUAL "")
-        # If the toggle is a cached BOOL option, show the explicit
-        # command-line form with =ON/=OFF. Otherwise, just show -D<VAR>.
-        get_property(_ktk_toggle_type CACHE ${toggle_var} PROPERTY TYPE)
+        # If the toggle is a cached BOOL option, show the explicit command-line form with =ON/=OFF.
+        # Otherwise, just show -D<VAR>.
+        get_property(
+            _ktk_toggle_type
+            CACHE ${toggle_var}
+            PROPERTY TYPE)
         if("${_ktk_toggle_type}" STREQUAL "BOOL")
             if(enabled)
                 set(toggle_note ", -D${toggle_var}=ON")
@@ -167,7 +170,8 @@ if(DEFINED OPENSSL_ENABLED)
         kfeature_row("OpenSSL" "${OPENSSL_ENABLED}" "${OPENSSL_REASON}" OFF USE_OPENSSL)
     else()
         # Hint: use -DOPENSSL_ROOT_DIR=<path> for non-standard installs
-        set(_ossl_reason "${OPENSSL_REASON}; use -DOPENSSL_ROOT_DIR=<path> for non-standard installs")
+        set(_ossl_reason
+            "${OPENSSL_REASON}; use -DOPENSSL_ROOT_DIR=<path> for non-standard installs")
         kfeature_row("OpenSSL" "${OPENSSL_ENABLED}" "${_ossl_reason}" OFF USE_OPENSSL)
     endif()
 endif()
