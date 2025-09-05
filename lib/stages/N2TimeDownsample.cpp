@@ -193,7 +193,7 @@ void N2TimeDownsample::main_thread() {
 
             //Initialize the weights, and weigh vis/weight by number of samples.
             for (size_t i = 0; i < nprod; i++) {
-                output_frame.weight[i] = 1. / output_frame.weight[i];
+                output_frame.weight[i] = (output_frame.weight[i] != 0.0f) ? 1. / output_frame.weight[i] : 0.0f;
                 output_frame.vis[i] *= output_frame.n_valid_fpga_ticks_in_frame;
                 output_frame.weight[i] *= output_frame.n_valid_fpga_ticks_in_frame;
             }
@@ -276,7 +276,7 @@ void N2TimeDownsample::main_thread() {
 
             // average inverse weights, i.e. variance
             for (size_t i = 0; i < nprod; i++) {
-                output_frame.weight[i] += frame.n_valid_fpga_ticks_in_frame / frame.weight[i];
+                output_frame.weight[i] += (frame.weight[i] != 0.0f) ? frame.n_valid_fpga_ticks_in_frame / frame.weight[i] : 0.0f;
             }
             for (uint32_t i = 0; i < num_eigenvectors; i++) {
                 output_frame.eval[i] += frame.eval[i] * frame.n_valid_fpga_ticks_in_frame;
@@ -311,19 +311,37 @@ void N2TimeDownsample::main_thread() {
             }
 
             // Otherwise, stop accumulating
-            for (size_t i = 0; i < nprod; i++) {
-                output_frame.vis[i] /= output_frame.n_valid_fpga_ticks_in_frame;
-                // extra factor of nsamp for sample variance
-                output_frame.weight[i] = output_frame.n_valid_fpga_ticks_in_frame * nframes / output_frame.weight[i];
-            }
-            for (uint32_t i = 0; i < num_eigenvectors; i++) {
-                output_frame.eval[i] /= output_frame.n_valid_fpga_ticks_in_frame;
-                for (uint32_t j = 0; j < num_elements; j++) {
-                    int k = i * num_elements + j;
-                    output_frame.evec[k] /= output_frame.n_valid_fpga_ticks_in_frame;
+            if(output_frame.n_valid_fpga_ticks_in_frame > 0) {
+                for (size_t i = 0; i < nprod; i++) {
+
+                    output_frame.vis[i] /= output_frame.n_valid_fpga_ticks_in_frame;
+                    // extra factor of nsamp for sample variance
+                    output_frame.weight[i] = output_frame.n_valid_fpga_ticks_in_frame * nframes / output_frame.weight[i];
                 }
+                for (uint32_t i = 0; i < num_eigenvectors; i++) {
+                    output_frame.eval[i] /= output_frame.n_valid_fpga_ticks_in_frame;
+                    for (uint32_t j = 0; j < num_elements; j++) {
+                        int k = i * num_elements + j;
+                        output_frame.evec[k] /= output_frame.n_valid_fpga_ticks_in_frame;
+                    }
+                }
+                output_frame.erms /= output_frame.n_valid_fpga_ticks_in_frame;
+            } else {
+                //Likely redundant, if we're here, only 0's could have
+                // been added to these anyways.
+                for (size_t i = 0; i < nprod; i++) {
+                    output_frame.vis[i] = 0.0f;
+                    output_frame.weight[i] = 0.0f;
+                }
+                for (uint32_t i = 0; i < num_eigenvectors; i++) {
+                    output_frame.eval[i] = 0.0f;
+                    for (uint32_t j = 0; j < num_elements; j++) {
+                        int k = i * num_elements + j;
+                        output_frame.evec[k] = 0.0f;
+                    }
+                }
+                output_frame.erms = 0.0f;
             }
-            output_frame.erms /= output_frame.n_valid_fpga_ticks_in_frame;
 
             DEBUG("Output frame - num_elements: {:d}", output_frame.num_elements);
             DEBUG("Output T:   {:d}s + {:d}ns", output_frame.eop.t_inst / GIGA,
