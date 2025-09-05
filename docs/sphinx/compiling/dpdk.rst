@@ -23,7 +23,7 @@ To install DPDK on ubuntu 18.04 simply run:
 
      sudo apt install dpdk dpdk-dev dpdk-igb-uio-dkms
 
-Then include ``-DUSE_OLD_DPDK=ON`` in the cmake options.
+Then include ``-DUSE_DPDK=OLD`` in the CMake options (legacy ``-DUSE_OLD_DPDK=ON`` is also accepted).
 
 
 Setup
@@ -71,7 +71,7 @@ Unpack it in ``/opt/`` and run:
 
 It will give a warning about install path being missing, just ingore it.
 
-When running CMAKE include the following options ``-DUSE_OLD_DPDK=ON -DRTE_SDK=/opt/dpdk-stable-16.11.10/ -DRTE_TARGET=x86_64-native-linuxapp-gcc``
+When running CMake include the following options ``-DUSE_DPDK=OLD -DRTE_SDK=/opt/dpdk-stable-16.11.10/ -DRTE_TARGET=x86_64-native-linuxapp-gcc`` (legacy ``-DUSE_OLD_DPDK=ON`` is also accepted).
 
 Startup scripts source install
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

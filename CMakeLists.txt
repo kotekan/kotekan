@@ -20,6 +20,7 @@ endif()
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -Xcompiler -Wall")
 
 include(cmake/Features/FeatureGPU.cmake)
+include(cmake/Features/FeatureDPDK.cmake)
 
 if(${USE_AIRSPY})
     find_package(LIBAIRSPY)

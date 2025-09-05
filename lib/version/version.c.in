@@ -12,6 +12,7 @@ char* __git_commit_hash = "@GIT_COMMIT_HASH@";
 char* __cmake_build_options = " CMAKE_BUILD_TYPE: @CMAKE_BUILD_TYPE@ \n"
                               " CMAKE_CXX_COMPILER: @CMAKE_CXX_COMPILER@\n"
                               " CMAKE_C_COMPILER: @CMAKE_C_COMPILER@\n"
+                              " USE_DPDK: @USE_DPDK@ (mode: @KOTEKAN_DPDK_MODE@)\n"
                               " USE_OLD_DPDK: @USE_OLD_DPDK@\n"
                               " - RTE_SDK: @RTE_SDK@\n"
                               " - RTE_TARGET: @RTE_TARGET@\n"

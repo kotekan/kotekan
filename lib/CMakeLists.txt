@@ -69,58 +69,14 @@ if(${USE_OPENCL}
     target_link_libraries(kotekan_libs INTERFACE kotekan_gpu)
 endif()
 
-# Don't include DPDK for boost tests
-if(${WITH_BOOST_TESTS})
-    # DPDK + boost tests = linker issues.
-    set(DPDK_ENABLED
-        OFF
-        CACHE BOOL "DPDK available")
-    set(DPDK_REASON
-        "disabled (boost tests)"
-        CACHE STRING "")
-else()
-    # Include the old DPDK if the USE_OLD_DPDK flag is given.
-    if(${USE_OLD_DPDK})
+# DPDK selection and summary handled in FeatureDPDK.cmake.
+# Here we honor the effective decision and wire targets accordingly.
+if(DEFINED DPDK_ENABLED AND DPDK_ENABLED)
+    if(DEFINED KOTEKAN_DPDK_MODE AND (KOTEKAN_DPDK_MODE STREQUAL "OLD"))
         add_definitions(-DOLD_DPDK)
-        add_subdirectory(dpdk)
-        target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
-        set(DPDK_ENABLED
-            ON
-            CACHE BOOL "DPDK available")
-        set(DPDK_REASON
-            "old DPDK selected (-DUSE_OLD_DPDK=ON)"
-            CACHE STRING "")
-    else()
-        # Check for the new DPDK versions automatically
-        find_package(PkgConfig)
-        if(PKG_CONFIG_FOUND)
-            pkg_check_modules(DPDK libdpdk>=19.11)
-            if(DPDK_FOUND)
-                add_subdirectory(dpdk)
-                target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
-                set(DPDK_ENABLED
-                    ON
-                    CACHE BOOL "DPDK available")
-                set(DPDK_REASON
-                    "found (>=19.11)"
-                    CACHE STRING "")
-            else()
-                set(DPDK_ENABLED
-                    OFF
-                    CACHE BOOL "DPDK available")
-                set(DPDK_REASON
-                    "not found (>=19.11). Try -DUSE_OLD_DPDK=ON"
-                    CACHE STRING "")
-            endif()
-        else()
-            set(DPDK_ENABLED
-                OFF
-                CACHE BOOL "DPDK available")
-            set(DPDK_REASON
-                "pkg-config not found"
-                CACHE STRING "")
-        endif()
     endif()
+    add_subdirectory(dpdk)
+    target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
 endif()
 
 # HDF5 stuff

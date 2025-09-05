@@ -82,9 +82,9 @@ This section maps common CMake options (see :doc:`cmake_options`) to the package
 - ``USE_OMP`` (OpenMP)
   - Provided by your compiler; no extra package typically required with GCC on Ubuntu.
 
-- ``USE_OLD_DPDK`` / DPDK support
+- ``USE_DPDK`` / DPDK support
   - Ubuntu packages: ``dpdk``, ``libdpdk-dev`` (and ``dpdk-dev``)
-  - Newer DPDK (>=19.11) is detected automatically; enable ``-DUSE_OLD_DPDK=ON`` only for legacy versions.
+  - Default is ``ON`` (auto): prefer NEW (>=19.11) via pkg-config, else fall back to OLD (<19.11). Force a mode with ``-DUSE_DPDK=NEW`` or ``-DUSE_DPDK=OLD``. The legacy ``-DUSE_OLD_DPDK=ON`` is still accepted and maps to ``OLD``.
 
 - ``WITH_TESTS`` (C++ testing helpers in ``lib/testing``)
   - No extra system packages beyond base requirements.
@@ -221,11 +221,12 @@ Cmake build options
     Builds the project with asserts, debug logging and debug symbols.
 * ``-DCMAKE_BUILD_TYPE=Test``
     Builds the project with asserts and debug logging but without debug symbols.
-* ``-DUSE_OLD_DPDK=ON``
-    Builds with DPDK support (<19.11), for source installs requires: `-DRTE_SDK=<dir>`
-    and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`
+* ``-DUSE_DPDK=ON|OFF|NEW|OLD``
+    Control DPDK support. Default ``ON`` auto-detects: prefer NEW (>=19.11 via pkg-config),
+    else fall back to OLD (<19.11 via FindDPDK). For legacy/source installs specify ``OLD``
+    and provide `-DRTE_SDK=<dir>` and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`.
     Not needed for newer versions of DPDK on Ubuntu 22.04+.
-    See :ref:`dpdk` for more details.
+    The legacy ``-DUSE_OLD_DPDK=ON`` is still accepted and maps to ``OLD``. See :ref:`dpdk`.
 * ``-DUSE_OLD_ROCM=ON``
     Build for ROCm versions 2.3 or older. Off by default.
 * ``-DUSE_OPENCL=ON``
@@ -261,13 +262,13 @@ To build with (old) DPDK and debug symbols:
 
 .. code:: bash
 
-    cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_OLD_DPDK=ON -DCMAKE_BUILD_TYPE=Debug ..
+    cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=OLD -DCMAKE_BUILD_TYPE=Debug ..
 
 To build with OpenCL and DPDK:
 
 .. code:: bash
 
-    cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_OLD_DPDK=ON -DUSE_OPENCL=ON ..
+    cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=OLD -DUSE_OPENCL=ON ..
 
 At the end of configuration, a colorized feature summary lists enabled/disabled features, reasons, and the toggle flag (e.g., ``toggle: -DUSE_CUDA=ON/OFF``). Use ``-D<OPTION>=ON|OFF`` to include or exclude a feature present on your system.
 

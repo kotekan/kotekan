@@ -55,7 +55,18 @@ function(kfeature_row name enabled reason present)
 
     set(toggle_note "")
     if(NOT "${toggle_var}" STREQUAL "")
-        set(toggle_note ", -D${toggle_var}")
+        # If the toggle is a cached BOOL option, show the explicit
+        # command-line form with =ON/=OFF. Otherwise, just show -D<VAR>.
+        get_property(_ktk_toggle_type CACHE ${toggle_var} PROPERTY TYPE)
+        if("${_ktk_toggle_type}" STREQUAL "BOOL")
+            if(enabled)
+                set(toggle_note ", -D${toggle_var}=ON")
+            else()
+                set(toggle_note ", -D${toggle_var}=OFF")
+            endif()
+        else()
+            set(toggle_note ", -D${toggle_var}")
+        endif()
     endif()
     message(STATUS "${color}${name_col} ${state_col} (${reason}${toggle_note})${KTK_RESET}")
 endfunction()
@@ -73,9 +84,10 @@ endfunction()
 
 # GPU
 kfeature_header("GPU Features")
+# Alphabetical: CUDA, HIP, OpenCL
 kfeature_row("CUDA" "${CUDA_ENABLED}" "${CUDA_REASON}" OFF USE_CUDA)
-kfeature_row("OpenCL" "${OPENCL_ENABLED}" "${OPENCL_REASON}" OFF USE_OPENCL)
 kfeature_row("HIP" "${HIP_ENABLED}" "${HIP_REASON}" OFF USE_HIP)
+kfeature_row("OpenCL" "${OPENCL_ENABLED}" "${OPENCL_REASON}" OFF USE_OPENCL)
 
 # IO
 kfeature_header("I/O Formats")
@@ -125,6 +137,7 @@ kfeature_row("LAPACK/Blaze" "${LAPACK_BLAZE_ENABLED}" "${LAPACK_BLAZE_REASON}"
 
 # Other
 kfeature_header("Other")
+# Alphabetical: Airspy, DPDK, Julia, NUMA, OpenMP, OpenSSL
 set(AIRSPY_ENABLED ${USE_AIRSPY})
 if(${USE_AIRSPY})
     set(AIRSPY_REASON "enabled")
@@ -132,6 +145,15 @@ else()
     set(AIRSPY_REASON "disabled")
 endif()
 kfeature_row("Airspy" "${AIRSPY_ENABLED}" "${AIRSPY_REASON}" OFF USE_AIRSPY)
+if(DEFINED DPDK_ENABLED)
+    # Note: When WITH_BOOST_TESTS=ON, DPDK is disabled to avoid linker issues
+    kfeature_row("DPDK" "${DPDK_ENABLED}" "${DPDK_REASON}" OFF)
+endif()
+kfeature_row("Julia" "${JULIA_ENABLED}" "${JULIA_REASON}" OFF USE_JULIA)
+if(DEFINED NUMA_ENABLED)
+    # Optional: can be toggled with -DUSE_NUMA=ON|OFF
+    kfeature_row("NUMA" "${NUMA_ENABLED}" "${NUMA_REASON}" OFF USE_NUMA)
+endif()
 set(OMP_ENABLED ${USE_OMP})
 if(${USE_OMP})
     set(OMP_REASON "enabled")
@@ -139,22 +161,23 @@ else()
     set(OMP_REASON "disabled")
 endif()
 kfeature_row("OpenMP" "${OMP_ENABLED}" "${OMP_REASON}" OFF USE_OMP)
-kfeature_row("Julia" "${JULIA_ENABLED}" "${JULIA_REASON}" OFF USE_JULIA)
-# From lib/core: NUMA and OpenSSL
-if(DEFINED NUMA_ENABLED)
-    kfeature_row("NUMA" "${NUMA_ENABLED}" "${NUMA_REASON}" OFF)
-endif()
 if(DEFINED OPENSSL_ENABLED)
-    kfeature_row("OpenSSL" "${OPENSSL_ENABLED}" "${OPENSSL_REASON}" OFF)
-endif()
-if(DEFINED DPDK_ENABLED)
-    # Note: When WITH_BOOST_TESTS=ON, DPDK is disabled to avoid linker issues
-    kfeature_row("DPDK" "${DPDK_ENABLED}" "${DPDK_REASON}, -DUSE_OLD_DPDK" OFF)
+    # Optional: can be toggled with -DUSE_OPENSSL=ON|OFF
+    if(OPENSSL_ENABLED)
+        kfeature_row("OpenSSL" "${OPENSSL_ENABLED}" "${OPENSSL_REASON}" OFF USE_OPENSSL)
+    else()
+        # Hint: use -DOPENSSL_ROOT_DIR=<path> for non-standard installs
+        set(_ossl_reason "${OPENSSL_REASON}; use -DOPENSSL_ROOT_DIR=<path> for non-standard installs")
+        kfeature_row("OpenSSL" "${OPENSSL_ENABLED}" "${_ossl_reason}" OFF USE_OPENSSL)
+    endif()
 endif()
 
 # Build meta
 kfeature_header("Build")
-kfeature_kv("Build Type" "${CMAKE_BUILD_TYPE} (-DCMAKE_BUILD_TYPE=Debug|Release|Test)")
+# Build Type aligned so value starts where ON/OFF would
+set(_bt_name "Build Type:")
+kpad_right(_bt_name "${_bt_name}" ${_kfeature_name_col_width})
+kmsg_status("${_bt_name} ${CMAKE_BUILD_TYPE} (-DCMAKE_BUILD_TYPE=Debug|Release|Test)")
 set(DOCS_ENABLED ${COMPILE_DOCS})
 if(${COMPILE_DOCS})
     set(DOCS_REASON "enabled")
@@ -182,18 +205,18 @@ if(${NO_MEMLOCK})
 else()
     set(NOMEMLOCK_REASON "disabled")
 endif()
-kfeature_row("No Memlock" "${NOMEMLOCK_ENABLED}" "${NOMEMLOCK_REASON}, -DNO_MEMLOCK" OFF)
-kfeature_row("ccache" "${CCACHE_ENABLED}" "${CCACHE_REASON}, -DCCACHE" OFF)
+kfeature_row("No Memlock" "${NOMEMLOCK_ENABLED}" "${NOMEMLOCK_REASON}" OFF NO_MEMLOCK)
+kfeature_row("ccache" "${CCACHE_ENABLED}" "${CCACHE_REASON}" OFF CCACHE)
 set(WERROR_REASON "disabled")
 if(${WERROR_ENABLED})
     set(WERROR_REASON "enabled")
 endif()
-kfeature_row("Warnings-as-errors" "${WERROR_ENABLED}" "${WERROR_REASON}, -DWERROR" OFF)
+kfeature_row("Warnings-as-errors" "${WERROR_ENABLED}" "${WERROR_REASON}" OFF WERROR)
 set(IWYU_REASON "disabled")
 if(${IWYU_ENABLED})
     set(IWYU_REASON "enabled")
 endif()
-kfeature_row("include-what-you-use" "${IWYU_ENABLED}" "${IWYU_REASON}, -DIWYU" OFF)
+kfeature_row("include-what-you-use" "${IWYU_ENABLED}" "${IWYU_REASON}" OFF IWYU)
 
 # Compilers
 kfeature_header("Compilers")
