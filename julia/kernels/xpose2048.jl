@@ -16,6 +16,9 @@ if CUDA.functional()
     @assert name(device()) == "NVIDIA $card"
 end
 
+chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
+unchimify(x) = chimify(x)
+
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 ilog2(i::Integer) = (j = round(Int, log2(i)); @assert 2^j == i; j)
 
@@ -368,7 +371,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     shmem_bytes = kernel_setup.shmem_bytes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm xpose2048_kernel(
+    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm xpose2048_kernel(
         Int32(0),
         Int32(0),
         Int32(0),
@@ -403,8 +406,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     Tmax = Int32(Tinmax)
 
     println("Copying data from CPU to GPU...")
-    Ein_cuda = CuArray(Ein_memory)
-    E_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), length(E_memory))
+    Ein_cuda = CuArray(chimify.(Ein_memory))
+    E_cuda = CUDA.fill(chimify(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), length(E_memory))
     scatter_indices_cuda = CuArray(scatter_indices_memory)
     info_cuda = CUDA.fill(-1i32, length(info_memory))
 
@@ -425,7 +428,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     synchronize()
 
     println("Copying data back from GPU to CPU...")
-    E_memory = Array(E_cuda)
+    E_memory = unchimify.(Array(E_cuda))
     @assert all(!isnan, (@view E_memory[1:(D * P * F * Tmax)]))
     info_memory = Array(info_cuda)
     @assert all(info_memory .== 0)
@@ -452,7 +455,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
             number-of-polarizations: $P
             number-of-timesamples: $T
           compile-parameters:
-            minthreads: $(num_threads * num_warps)
+            minthreads: [$num_threads, $num_warps]
             blocks_per_sm: $num_blocks_per_sm
           call-parameters:
             threads: [$num_threads, $num_warps]
@@ -522,41 +525,45 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                 "kernel_symbol" => kernel_symbol,
                 "kernel_arguments" => [
                     Dict(
-                        "name" => "Tinmin",
-                        "kotekan_name" => "Tinmin",
+                        "name" => "Tin_min",
+                        "kotekan_name" => "Tin_min",
                         "type" => "int32",
                         "isoutput" => false,
                         "hasbuffer" => false,
+                        "hasringbuffer" => false,
                         "isscalar" => true,
                     ),
                     Dict(
-                        "name" => "Tinmax",
-                        "kotekan_name" => "Tinmax",
+                        "name" => "Tin_max",
+                        "kotekan_name" => "Tin_max",
                         "type" => "int32",
                         "isoutput" => false,
                         "hasbuffer" => false,
+                        "hasringbuffer" => false,
                         "isscalar" => true,
                     ),
                     Dict(
-                        "name" => "Tmin",
-                        "kotekan_name" => "Tmin",
+                        "name" => "T_min",
+                        "kotekan_name" => "T_min",
                         "type" => "int32",
                         "isoutput" => false,
                         "hasbuffer" => false,
+                        "hasringbuffer" => false,
                         "isscalar" => true,
                     ),
                     Dict(
-                        "name" => "Tmax",
-                        "kotekan_name" => "Tmax",
+                        "name" => "T_max",
+                        "kotekan_name" => "T_max",
                         "type" => "int32",
                         "isoutput" => false,
                         "hasbuffer" => false,
+                        "hasringbuffer" => false,
                         "isscalar" => true,
                     ),
                     Dict(
                         "name" => "Ein",
-                        "kotekan_name" => "gpu_mem_input_voltage",
-                        "type" => "int4p4chime",
+                        "kotekan_name" => "input_voltage_name",
+                        "type" => "int4x2_swapped_withoffset",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
                             Dict("label" => "P", "length" => P),
@@ -565,11 +572,12 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                         ],
                         "isoutput" => false,
                         "hasbuffer" => true,
+                        "hasringbuffer" => true,
                     ),
                     Dict(
                         "name" => "E",
-                        "kotekan_name" => "gpu_mem_output_voltage",
-                        "type" => "int4p4chime",
+                        "kotekan_name" => "output_voltage_name",
+                        "type" => "int4x2_swapped_withoffset",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
                             Dict("label" => "P", "length" => P),
@@ -578,14 +586,16 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                         ],
                         "isoutput" => true,
                         "hasbuffer" => true,
+                        "hasringbuffer" => true,
                     ),
                     Dict(
                         "name" => "scatter_indices",
-                        "kotekan_name" => "gpu_mem_scatter_indices",
+                        "kotekan_name" => "scatter_indices_name",
                         "type" => "int32",
                         "axes" => [Dict("label" => "D", "length" => D), Dict("label" => "P", "length" => P)],
                         "isoutput" => false,
                         "hasbuffer" => true,
+                        "do_once" => true,
                     ),
                     Dict(
                         "name" => "info",

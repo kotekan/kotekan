@@ -15,6 +15,7 @@
 #include "fmt.hpp"
 
 #include <memory>
+#include <mutex>    // for lock, mutex
 #include <stdint.h> // for int32_t
 #include <string>   // for string, allocator
 

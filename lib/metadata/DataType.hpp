@@ -224,7 +224,7 @@ constexpr std::size_t type_value_bits(DataType type) {
         case float64:
             return 64;
         default:
-            return -1;
+            return 0;
     }
 }
 
@@ -263,7 +263,7 @@ constexpr std::size_t type_total_bytes(DataType type) {
         case float64:
             return 8;
         default:
-            return -1;
+            return 0;
     }
 }
 

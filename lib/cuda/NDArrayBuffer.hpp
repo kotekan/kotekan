@@ -232,7 +232,8 @@ public:
     void check_for_poison(const std::uint8_t poison_value) {
 #ifdef DEBUGGING
         T poison;
-        std::memset(&poison, poison_value, sizeof poison);
+        // The cast suppresses a bogus -Wclass-memaccess on GCC.
+        std::memset(static_cast<void*>(&poison), poison_value, sizeof poison);
         const auto check = [=](const T x) { return std::memcmp(&x, &poison, sizeof poison) == 0; };
         const std::ptrdiff_t buffer_length = length_in_bytes();
         const void* const buffer_device_ptr = ndarray.data();
