@@ -212,7 +212,7 @@ void eigenVis::main_thread() {
         }
 
         INFO("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:3.1f} s.", str_evals, rms,
-             ((double) elapsed_time) / 1e9);
+             ((double)elapsed_time) / 1e9);
 
         // Update average write time in prometheus
         calc_time.add_sample(elapsed_time);

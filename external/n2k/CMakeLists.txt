@@ -81,8 +81,7 @@ target_link_libraries(n2k gputils)
 target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# Set architecture flags
-# set_target_properties(n2k PROPERTIES CUDA_ARCHITECTURES "80;86;89;90")
+# Set architecture flags set_target_properties(n2k PROPERTIES CUDA_ARCHITECTURES "80;86;89;90")
 set_target_properties(n2k PROPERTIES CUDA_ARCHITECTURES "86;89")
 
 # Set language for CUDA files

@@ -1,8 +1,8 @@
-#include <N2FrameView.hpp>
-#include <N2Metadata.hpp>
 #include "asdfFiles.hpp"
 
 #include <DataType.hpp>
+#include <N2FrameView.hpp>
+#include <N2Metadata.hpp>
 #include <Stage.hpp>
 #include <StageFactory.hpp>
 #include <asdf/asdf.hxx>
@@ -262,8 +262,8 @@ public:
                                        std::make_shared<ASDF::int_entry>(meta->sample0_offset));
 
                     if (meta->offset_downsampling >= 0)
-                        group->emplace("offset_downsampling",
-                                       std::make_shared<ASDF::int_entry>(meta->offset_downsampling));
+                        group->emplace("offset_downsampling", std::make_shared<ASDF::int_entry>(
+                                                                  meta->offset_downsampling));
 
                     if (meta->nfreq >= 0) {
                         auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
@@ -274,8 +274,8 @@ public:
 
                         auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
                         for (int freq = 0; freq < meta->nfreq; ++freq)
-                            time_downsampling_fpga->push_back(
-                                std::make_shared<ASDF::int_entry>(meta->time_downsampling_fpga[freq]));
+                            time_downsampling_fpga->push_back(std::make_shared<ASDF::int_entry>(
+                                meta->time_downsampling_fpga[freq]));
                         group->emplace("time_downsampling_fpga", time_downsampling_fpga);
                     }
 
@@ -372,9 +372,8 @@ public:
                         std::vector<int64_t>{meta->num_elements});
                     group->emplace("gain", evec_array);
 
-                    group->emplace(
-                        "n_valid_fpga_ticks",
-                        std::make_shared<ASDF::int_entry>(meta->n_valid_fpga_ticks));
+                    group->emplace("n_valid_fpga_ticks",
+                                   std::make_shared<ASDF::int_entry>(meta->n_valid_fpga_ticks));
                     group->emplace("num_elements",
                                    std::make_shared<ASDF::int_entry>(meta->num_elements));
                     group->emplace("num_prod", std::make_shared<ASDF::int_entry>(meta->num_prod));

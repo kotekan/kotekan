@@ -191,9 +191,10 @@ void N2TimeDownsample::main_thread() {
             // Set the output to target EOP.
             output_frame.eop = eop_target;
 
-            //Initialize the weights, and weigh vis/weight by number of samples.
+            // Initialize the weights, and weigh vis/weight by number of samples.
             for (size_t i = 0; i < nprod; i++) {
-                output_frame.weight[i] = (output_frame.weight[i] != 0.0f) ? 1. / output_frame.weight[i] : 0.0f;
+                output_frame.weight[i] =
+                    (output_frame.weight[i] != 0.0f) ? 1. / output_frame.weight[i] : 0.0f;
                 output_frame.vis[i] *= output_frame.n_valid_fpga_ticks;
                 output_frame.weight[i] *= output_frame.n_valid_fpga_ticks;
             }
@@ -263,7 +264,8 @@ void N2TimeDownsample::main_thread() {
                     // Computing the total phase in double precision
                     // in case one of the dish phases is small.
                     // Adding the weighting by valid samples here as well.
-                    std::complex<double> w_doub = (fringe_phase[d_i] * std::conj(fringe_phase[d_j])) * ((double) frame.n_valid_fpga_ticks);
+                    std::complex<double> w_doub = (fringe_phase[d_i] * std::conj(fringe_phase[d_j]))
+                                                  * ((double)frame.n_valid_fpga_ticks);
 
                     // Now truncate the phase to a float to match vis[]
                     // Have to be explicit about this, compiler complains
@@ -278,18 +280,20 @@ void N2TimeDownsample::main_thread() {
 
             // average inverse weights, i.e. variance
             for (size_t i = 0; i < nprod; i++) {
-                output_frame.weight[i] += (frame.weight[i] != 0.0f) ? frame.n_valid_fpga_ticks / frame.weight[i] : 0.0f;
+                output_frame.weight[i] +=
+                    (frame.weight[i] != 0.0f) ? frame.n_valid_fpga_ticks / frame.weight[i] : 0.0f;
             }
             for (uint32_t i = 0; i < num_eigenvectors; i++) {
                 output_frame.eval[i] += frame.eval[i] * frame.n_valid_fpga_ticks;
                 for (uint32_t j = 0; j < num_elements; j++) {
                     int k = i * num_elements + j;
                     size_t d_j = j % num_dishes;
-                    //Ensure 1st element of each evec doesn't get a phase.
-                    std::complex<double> phase_doub = fringe_phase[d_j] * std::conj(fringe_phase[0]);
-                    N2::cfloat phase{(float)phase_doub.real(),
-                                     (float)phase_doub.imag()};
-                    output_frame.evec[k] += frame.evec[k] * phase * ((float) frame.n_valid_fpga_ticks);
+                    // Ensure 1st element of each evec doesn't get a phase.
+                    std::complex<double> phase_doub =
+                        fringe_phase[d_j] * std::conj(fringe_phase[0]);
+                    N2::cfloat phase{(float)phase_doub.real(), (float)phase_doub.imag()};
+                    output_frame.evec[k] +=
+                        frame.evec[k] * phase * ((float)frame.n_valid_fpga_ticks);
                 }
             }
             output_frame.erms += frame.erms * frame.n_valid_fpga_ticks;
@@ -315,12 +319,13 @@ void N2TimeDownsample::main_thread() {
             }
 
             // Otherwise, stop accumulating
-            if(output_frame.n_valid_fpga_ticks > 0) {
+            if (output_frame.n_valid_fpga_ticks > 0) {
                 for (size_t i = 0; i < nprod; i++) {
 
                     output_frame.vis[i] /= output_frame.n_valid_fpga_ticks;
                     // extra factor of nsamp for sample variance
-                    output_frame.weight[i] = output_frame.n_valid_fpga_ticks * nframes / output_frame.weight[i];
+                    output_frame.weight[i] =
+                        output_frame.n_valid_fpga_ticks * nframes / output_frame.weight[i];
                 }
                 for (uint32_t i = 0; i < num_eigenvectors; i++) {
                     output_frame.eval[i] /= output_frame.n_valid_fpga_ticks;
@@ -331,8 +336,8 @@ void N2TimeDownsample::main_thread() {
                 }
                 output_frame.erms /= output_frame.n_valid_fpga_ticks;
             } else {
-                //Likely redundant, if we're here, only 0's could have
-                // been added to these anyways.
+                // Likely redundant, if we're here, only 0's could have
+                //  been added to these anyways.
                 for (size_t i = 0; i < nprod; i++) {
                     output_frame.vis[i] = 0.0f;
                     output_frame.weight[i] = 0.0f;
