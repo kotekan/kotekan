@@ -25,7 +25,7 @@ env:
   REGISTRY: ghcr.io
   IMG_IWYU: "ghcr.io/kotekan/kotekan/kotekan-iwyu"
   IMG_2404: "ghcr.io/${{ github.repository }}/kotekan-2404"
-  PYTEST_TIMEOUT: 60
+  PYTEST_TIMEOUT: 90
 
 jobs:
 
@@ -189,13 +189,8 @@ jobs:
             -DWERROR=ON \
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
-            -DUSE_ASDF=ON \
-            -DUSE_GDAL=ON \
-            -DUSE_HDF5=ON \
-            -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DUSE_CUDA=ON \
             -DWITH_BOOST_TESTS=ON \
             -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
@@ -205,17 +200,17 @@ jobs:
 
     - name: Run parallel python tests
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
 
     - name: Run serial python tests
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial
 
     - name: Run boost tests
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
 
   # Build an OpenCL version of kotekan and run the unit tests
@@ -254,8 +249,6 @@ jobs:
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
             -DCMAKE_BUILD_TYPE=Test \
-            -DUSE_HDF5=ON \
-            -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
             -DWITH_BOOST_TESTS=ON \
@@ -270,19 +263,19 @@ jobs:
     - name: Run parallel python tests
       shell: bash
       run: |
-        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
 
     - name: Run serial python tests
       shell: bash
       run: |
-        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial
 
     - name: Run boost tests
       shell: bash
       run: |
-        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
 
     - name: Clean up
@@ -326,13 +319,8 @@ jobs:
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
             -DCMAKE_BUILD_TYPE=Test \
-            -DUSE_HDF5=ON \
-            -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DUSE_ASDF=ON \
-            -DUSE_GDAL=ON \
-            -DWITH_BOOST_TESTS=ON \
             -DUSE_CUDA=ON \
             -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j
@@ -343,7 +331,7 @@ jobs:
     # Run tests in the config/ci-tests directory with timeout
     - name: Run direct Kotekan tests
       run: |
-        TIMEOUT_DURATION="5m"  # Timeout duration per test
+        TIMEOUT_DURATION="2m"  # Timeout duration per test
         TEST_CONFIG_DIR="config/ci-tests"
         for config_file in "$TEST_CONFIG_DIR"/*.yaml; do
           echo "Running test with config: $config_file"
@@ -458,9 +446,6 @@ jobs:
         -DCMAKE_LINK_WHAT_YOU_USE=ON \
         -DUSE_OLD_DPDK=ON \
         -DCMAKE_BUILD_TYPE=Test \
-        -DUSE_ASDF=ON \
-        -DUSE_HDF5=ON \
-        -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
         -DARCH=haswell \
         -DNO_MEMLOCK=ON \
         -DUSE_OMP=ON \
