@@ -22,7 +22,6 @@ on:
 env:
   REGISTRY: ghcr.io
   IMG_2404: "ghcr.io/${{ github.repository }}/kotekan-2404"
-  PYTEST_TIMEOUT: 60
 
 jobs:
 

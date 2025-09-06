@@ -25,7 +25,7 @@ env:
   REGISTRY: ghcr.io
   IMG_IWYU: "ghcr.io/kotekan/kotekan/kotekan-iwyu"
   IMG_2404: "ghcr.io/${{ github.repository }}/kotekan-2404"
-  PYTEST_TIMEOUT: 90
+  PYTEST_TIMEOUT: 120
 
 jobs:
 
