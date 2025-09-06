@@ -67,7 +67,7 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
 
     socket_fd = -1;
 
-    config_tracker_update = true;
+    use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
     config_tracker_combined_hash = "";
 }
 
@@ -99,41 +99,69 @@ void bufferSend::main_thread() {
                  buf->buffer_name, frame_id, server_ip, server_port);
             dropped_frame_counter.inc();
         } else if (connected) {
-            // Send header
-            struct bufferFrameHeader header;
-            const size_t header_len = sizeof(struct bufferFrameHeader);
             int32_t n = 0;
             int32_t n_sent = 0;
 
             auto meta = buf->get_metadata(frame_id);
+            auto metadata_size = meta->get_serialized_size();
+            auto frame_size = buf->frame_size;
+            size_t header_len;
 
-            header.frame_size = buf->frame_size;
-            header.metadata_size = meta->get_serialized_size();
-            // Check if config tracker data has been updated since last transmission
-            if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
-                DEBUG("Config tracker data has been updated, sending new config tracker data.");
-                header.config_tracker_update = true;
+            // Send header
+            // Use NoTrack header version if there is a config setting to enable it.
+            if(use_config_tracker)
+            {
+                struct bufferFrameHeader header;
+                header_len = sizeof(struct bufferFrameHeader);
+
+                header.frame_size = buf->frame_size;
+                header.metadata_size = meta->get_serialized_size();
+                // Check if config tracker data has been updated since last transmission
+                if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
+                    DEBUG("Config tracker data has been updated, sending new config tracker data.");
+                    header.config_tracker_update = true;
+                } else {
+                    header.config_tracker_update = false;
+                }
+
+                DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}",
+                    header.frame_size, header.metadata_size, header.config_tracker_update);
+
+                // Recover from partial sends
+                DEBUG2("Sending header");
+                while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
+                                MSG_NOSIGNAL))
+                    > 0) {
+                    n_sent += n;
+                }
+
             } else {
-                header.config_tracker_update = false;
-            }
+                struct bufferFrameHeaderNoTrack header;
+                const size_t header_len = sizeof(struct bufferFrameHeaderNoTrack);
 
-            DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}",
-                   header.frame_size, header.metadata_size, header.config_tracker_update);
+                header.frame_size = buf->frame_size;
+                header.metadata_size = meta->get_serialized_size();
 
-            // Recover from partial sends
-            DEBUG2("Sending header");
-            while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
-                             MSG_NOSIGNAL))
-                   > 0) {
-                n_sent += n;
+                DEBUG2("frame_size: {:d}, metadata_size: {:d}",
+                    header.frame_size, header.metadata_size);
+
+                // Recover from partial sends
+                DEBUG2("Sending header");
+                while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
+                                MSG_NOSIGNAL))
+                    > 0) {
+                    n_sent += n;
+                }
             }
+            
             // Handle errors
             if (n < 0) {
                 ERROR("Error {:s}, failed to send header to {:s}:{:d}", strerror(errno), server_ip,
-                      server_port);
+                    server_port);
                 close_connection();
                 continue;
             }
+
 
             // If the frame sent successfully,
             if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
@@ -145,9 +173,9 @@ void bufferSend::main_thread() {
             DEBUG2("Sending metadata");
             n_sent = 0;
             {
-                char metabuf[header.metadata_size];
+                char metabuf[metadata_size];
                 meta->serialize(metabuf);
-                while ((n = send(socket_fd, &metabuf + n_sent, header.metadata_size - n_sent,
+                while ((n = send(socket_fd, &metabuf + n_sent, metadata_size - n_sent,
                                  MSG_NOSIGNAL))
                        > 0) {
                     n_sent += n;
@@ -162,9 +190,9 @@ void bufferSend::main_thread() {
             DEBUG2("Sent metadata: {:d}", n_sent);
 
             // Send buffer frame.
-            DEBUG2("Sending frame with {:d} bytes", header.frame_size);
+            DEBUG2("Sending frame with {:d} bytes", frame_size);
             n_sent = 0;
-            while ((n = send(socket_fd, &frame[n_sent], (int32_t)header.frame_size - n_sent,
+            while ((n = send(socket_fd, &frame[n_sent], (int32_t)frame_size - n_sent,
                              MSG_NOSIGNAL))
                    > 0) {
                 n_sent += n;

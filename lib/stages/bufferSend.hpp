@@ -27,7 +27,20 @@
 struct bufferFrameHeader {
     uint32_t metadata_size;
     uint32_t frame_size;
+    /// Flag to indicate if config tracker data has been updated
+    /// This is set to true if the config tracker data has changed since the last transmission.
+    /// This is used to avoid sending the config tracker data on every frame.
     bool config_tracker_update;
+};
+
+/**
+ * @struct bufferFrameHeaderNoConfigTracker
+ * @brief Internal struct for sending the transfer details (no config_tracker_update)
+ */
+#pragma pack()
+struct bufferFrameHeaderNoConfigTracker {
+    uint32_t metadata_size;
+    uint32_t frame_size;
 };
 
 /**
@@ -105,10 +118,8 @@ private:
     /// Threshold to drop frames
     float drop_threshold;
 
-    /// Flag to indicate if config tracker data has been updated
-    /// This is set to true if the config tracker data has changed since the last transmission.
-    /// This is used to avoid sending the config tracker data on every frame.
-    bool config_tracker_update;
+    /// Flag to indicate if config tracker header data should be sent
+    bool use_config_tracker;
 
     /// Serialized list of current config tracker hashes
     std::string config_tracker_combined_hash;

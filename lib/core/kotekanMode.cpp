@@ -87,12 +87,14 @@ void kotekanMode::initalize_stages() {
         datasetManager::instance(config);
 
     // Create ConfigTracker instance and register with the REST server.
-    ConfigTracker::instance();
-    ConfigTracker::instance().insertConfig(
-        restServer::instance().bind_address(), restServer::instance().port(),
-        config.get_full_config_json(), get_kotekan_version(), get_git_branch(),
-        get_git_commit_hash(), get_cmake_build_options());
-    ConfigTracker::instance().register_with_server(&restServer::instance());
+    if(config.get_default<bool>(unique_name, "use_config_tracker", true)) {
+        ConfigTracker::instance();
+        ConfigTracker::instance().insertConfig(
+            restServer::instance().bind_address(), restServer::instance().port(),
+            config.get_full_config_json(), get_kotekan_version(), get_git_branch(),
+            get_git_commit_hash(), get_cmake_build_options());
+        ConfigTracker::instance().register_with_server(&restServer::instance());
+    }
 
     // Apply config for Telescope class
     Telescope::instance(config);
