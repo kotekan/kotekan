@@ -41,17 +41,8 @@ void runJulia() {
 
     INFO_F("juliaManager: Starting Julia run-time system");
     {
-        // Taking this lock isn't necessary and doesn't help...
-        std::unique_lock lk(julia_task_queue_mutex);
-
         // Required: setup the Julia context.
         jl_init();
-
-        atexit([]() {
-            // Strongly recommended: notify Julia that the program is about to terminate. This
-            // allows Julia time to cleanup pending write requests and run all finalizers.
-            jl_atexit_hook(0);
-        });
     }
 
     INFO_F("juliaManager: Julia run-time system is running");
@@ -115,6 +106,10 @@ void runJulia() {
     }
 
 terminate:
+    // Strongly recommended: notify Julia that the program is about to terminate. This
+    // allows Julia time to cleanup pending write requests and run all finalizers.
+    jl_atexit_hook(0);
+
     INFO_F("juliaManager: Stopped Julia run-time system");
 }
 

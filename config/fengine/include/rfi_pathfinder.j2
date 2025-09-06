@@ -1,0 +1,242 @@
+# -*-yaml-*-
+
+# CHORD pathfinder RFI setup
+
+################################################################################
+
+# from 5.12 μs to 1.31072 ms
+rfi_downsampling_factor: 256
+# from  1.31072 ms to 31.45728 ms
+rfi_second_downsampling_factor: 24
+
+rfi_sk_rfimask_sigmas: 5.0
+rfi_single_feed_min_good_frac: 0.8
+rfi_feed_averaged_min_good_frac: 0.8
+rfi_mu_min: 2.0
+rfi_mu_max: 20.0
+
+################################################################################
+
+# Buffers
+
+rfi_num_times: 256      # 1.31072 ms cadence
+rfi_num_times_bar: 32   # 31.45728 ms cadence
+
+host_rfi_S012_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times
+    type: uint64
+    dimnames: ["Trfi", "F", "S", "P", "D"]
+    shape: [rfi_num_times, num_frequencies, 3, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+host_rfi_S012_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times
+    type: uint64
+    dimnames: ["Trfi", "F", "S", "P", "D"]
+    shape: [buffer_depth * rfi_num_times, num_frequencies, 3, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+
+host_rfi_S012bar_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar
+    type: uint64
+    dimnames: ["Trfibar", "F", "S", "P", "D"]
+    shape: [rfi_num_times_bar, num_frequencies, 3, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+host_rfi_S012bar_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar
+    type: uint64
+    dimnames: ["Trfibar", "F", "S", "P", "D"]
+    shape: [buffer_depth * rfi_num_times_bar, num_frequencies, 3, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+
+host_rfi_S012tilde_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_uint64 * 3 * num_frequencies * rfi_num_times
+    type: uint64
+    dimnames: ["Trfi", "F", "S"]
+    shape: [rfi_num_times, num_frequencies, 3]
+    metadata_pool: main_pool
+host_rfi_S012tilde_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_uint64 * 3 * num_frequencies * rfi_num_times
+    type: uint64
+    dimnames: ["Trfi", "F", "S"]
+    shape: [buffer_depth * rfi_num_times, num_frequencies, 3]
+    metadata_pool: main_pool
+
+host_rfi_SKtilde_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_float32 * 3 * num_frequencies * rfi_num_times
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [rfi_num_times, num_frequencies, 3]
+    metadata_pool: main_pool
+host_rfi_SKtilde_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_float32 * 3 * num_frequencies * rfi_num_times
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [buffer_depth * rfi_num_times, num_frequencies, 3]
+    metadata_pool: main_pool
+
+host_rfi_RFImask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_frequencies * num_times / 8
+    type: uint1x8
+    dimnames: ["T16hi8", "F", "T16lo8"]
+    shape: [num_times / 128, num_frequencies, 8]
+    metadata_pool: main_pool
+host_rfi_RFImask_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * num_frequencies * num_times / 8
+    type: uint1x8
+    dimnames: ["T16hi8", "F", "T16lo8"]
+    shape: [buffer_depth * num_times / 128, num_frequencies, 8]
+    metadata_pool: main_pool
+
+host_rfi_SKbar_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_float32 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar
+    type: float32
+    dimnames: ["Trfi", "F", "S", "P", "D"]
+    shape: [rfi_num_times_bar, num_frequencies, 3, num_polarizaions, num_dishes]
+    metadata_pool: main_pool
+host_rfi_SKbar_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_float32 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar
+    type: float32
+    dimnames: ["Trfi", "F", "S", "P", "D"]
+    shape: [buffer_depth * rfi_num_times_bar, num_frequencies, 3, num_polarizaions, num_dishes]
+    metadata_pool: main_pool
+
+host_rfi_SKbartilde_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_float32 * 3 * num_frequencies * rfi_num_times_bar
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [rfi_num_times_bar, num_frequencies, 3]
+    metadata_pool: main_pool
+host_rfi_SKbartilde_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_float32 * 3 * num_frequencies * rfi_num_times_bar
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [buffer_depth * rfi_num_times_bar, num_frequencies, 3]
+    metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+run_rfi_S012:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+        out_buffers:
+            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+        commands:
+        - name: cudaRFIS012
+          pl_mask_name: pl_mask
+          voltage_name: voltage
+          rfi_S012_name: rfi_S012
+
+run_rfi_S012tilde:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+        out_buffers:
+            host_rfi_S012tilde_ringbuffer: host_rfi_S012tilde_ringbuffer
+        commands:
+        - name: cudaInputData
+          # TODO: Don't double-copy bf_mask
+          do_once: true
+          in_buf: host_bf_mask_buffer
+          gpu_mem: bf_mask_buffer
+        - name: cudaSyncInput
+        - name: cudaRFIS012tilde
+          bf_mask_name: bf_mask
+          rfi_S012_name: rfi_S012
+          rfi_S012tilde_name: rfi_S012tilde
+
+run_rfi_S012bar:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+        out_buffers:
+            host_rfi_S012bar_ringbuffer: host_rfi_S012bar_ringbuffer
+        commands:
+        - name: cudaRFIS012bar
+          bf_mask_name: bf_mask
+          rfi_S012_name: rfi_S012
+          rfi_S012bar_name: rfi_S012bar
+
+run_rfi_SKtilde:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+        out_buffers:
+            host_rfi_SKtilde_ringbuffer: host_rfi_SKtilde_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+        commands:
+        - name: cudaInputData
+          # TODO: Don't double-copy bf_mask
+          do_once: true
+          in_buf: host_bf_mask_buffer
+          gpu_mem: bf_mask_buffer
+        - name: cudaSyncInput
+        - name: cudaRFISKtilde
+          bf_mask_name: bf_mask
+          rfi_S012_name: rfi_S012
+          rfi_SKtilde_name: rfi_SKtilde
+          rfi_RFImask_name: rfi_RFImask
+
+run_rfi_SKbar:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+            host_rfi_S012bar_ringbuffer: host_rfi_S012bar_ringbuffer
+        out_buffers:
+            host_rfi_SKbar_ringbuffer: host_rfi_SKbar_ringbuffer
+            host_rfi_SKbartilde_ringbuffer: host_rfi_SKbartilde_ringbuffer
+        commands:
+        - name: cudaInputData
+          # TODO: Don't double-copy bf_mask
+          do_once: true
+          in_buf: host_bf_mask_buffer
+          gpu_mem: bf_mask_buffer
+        - name: cudaSyncInput
+        - name: cudaRFISKbar
+          bf_mask_name: bf_mask
+          rfi_S012bar_name: rfi_S012bar
+          rfi_SKbar_name: rfi_SKbar
+          rfi_SKbartilde_name: rfi_SKbartilde

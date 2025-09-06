@@ -13,6 +13,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
         kotekan
         PRIVATE -Wl,--whole-archive $<TARGET_PROPERTY:kotekan_libs,INTERFACE_LINK_LIBRARIES>
                 -Wl,--no-whole-archive)
+    if(${USE_ASDF})
+        target_link_libraries(kotekan PRIVATE blosc)
+    endif()
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     target_link_libraries(kotekan PRIVATE -Wl,-all_load kotekan_libs)
 else()

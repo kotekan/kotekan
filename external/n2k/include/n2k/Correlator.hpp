@@ -61,6 +61,9 @@ struct CorrelatorParams
 
     // Convention for packing an int4+4 (Re,Im) pair into an byte. (CHIME/CHORD use 'false' here.)
     static constexpr bool real_part_in_low_bits = false;
+
+    // Is signed int4 represented as offset-encoded or twos-complement? (CHIME/CHORD use 'true' here.)
+    static constexpr bool offset_encoded = true;
     
     // These switches will artificially remove an important part of the processing, in order
     // to measure computational overhead of key steps (but making the kernel incorrect!)
