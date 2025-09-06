@@ -476,6 +476,9 @@ Type Config::configEval<Type>::factor() {
 // Tell the compiler that all those are instantiated in Config.cpp,
 // so that they are not built inline everywhere they are used
 // (would add >60MB to the binary).
+// However, allow CUDA translation units to instantiate locally to avoid
+// NVCC/Clang host-link issues in intermediate device-link stages.
+#ifndef __CUDACC__
 extern template float Config::get(const std::string& base_path, const std::string& name) const;
 extern template double Config::get(const std::string& base_path, const std::string& name) const;
 extern template unsigned char Config::get(const std::string& base_path,
@@ -520,6 +523,7 @@ extern template std::vector<std::string> Config::get(const std::string& base_pat
                                                      const std::string& name) const;
 extern template std::vector<nlohmann::json> Config::get(const std::string& base_path,
                                                         const std::string& name) const;
+#endif
 
 } // namespace kotekan
 

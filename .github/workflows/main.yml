@@ -463,6 +463,7 @@ jobs:
         -DUSE_OMP=ON \
         -DUSE_CUDA=ON \
         -DWITH_TESTS=ON \
+        -DWITH_BOOST_TESTS=ON \
         -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s

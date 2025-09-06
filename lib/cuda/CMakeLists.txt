@@ -102,7 +102,9 @@ target_sources(kotekan_cuda PRIVATE cudaCorrelator.cpp)
 
 target_link_libraries(
     kotekan_cuda
-    PRIVATE libexternal kotekan_libs -lstdc++
+    # Link directly against kotekan_core; make it PUBLIC so consumers inherit it
+    PUBLIC kotekan_core
+    PRIVATE libexternal -lstdc++ kotekan_libs
     INTERFACE ${CUDA_LIBRARIES} cublas cuda nvrtc nvptxcompiler_static)
 
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
