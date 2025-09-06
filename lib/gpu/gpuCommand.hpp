@@ -15,6 +15,7 @@
 #include "fmt.hpp"
 
 #include <memory>
+#include <mutex>    // for lock, mutex
 #include <stdint.h> // for int32_t
 #include <string>   // for string, allocator
 
@@ -152,6 +153,18 @@ public:
     /// Almost the same as excute_time, but divided by the frame arrival period
     std::shared_ptr<StatTracker> utilization;
 
+    kotekan::bufferContainer get_host_buffers() {
+        return host_buffers;
+    }
+
+    int get_instance_num() const {
+        return instance_num;
+    }
+
+    int32_t get_gpu_buffer_depth() const {
+        return _gpu_buffer_depth;
+    }
+
 protected:
     /// A unique name used for the gpu command. Used in indexing commands in a list and referencing
     /// them by this value.
@@ -192,6 +205,15 @@ protected:
 
     /// For get_gpu_buffers: a list of GPU buffers used by this command.
     std::vector<std::tuple<std::string, bool, bool, bool>> gpu_buffers_used;
+
+public:
+    struct gpu_buffer_descriptor {
+        std::string name;
+        bool is_array;
+        bool does_read;
+        bool does_write;
+    };
+    void register_gpu_buffer_user(const gpu_buffer_descriptor& desc);
 };
 
 #endif // GPU_COMMAND_H

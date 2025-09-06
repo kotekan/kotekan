@@ -177,6 +177,8 @@ public:
     void set_log_level(const std::string& string_log_level);
     void set_log_prefix(const std::string& log_prefix);
 
+    logLevel get_log_level() const;
+
     template<typename... Args>
     static void internal_logging(int type, fmt::basic_string_view<char> log_prefix,
                                  const fmt::basic_string_view<char> format, const Args&... args);

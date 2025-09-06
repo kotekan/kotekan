@@ -2,6 +2,7 @@
 
 #include <Stage.hpp>
 #include <StageFactory.hpp>
+#include <atomic>
 #include <cassert>
 #include <chordMetadata.hpp>
 #include <complex>
@@ -24,6 +25,7 @@
 #include <utility>
 #include <vector>
 #include <visUtil.hpp>
+#include <waitingForMaxFrames.hpp>
 
 using namespace gdal;
 
@@ -55,6 +57,8 @@ class gdalFileWrite : public kotekan::Stage {
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
 
+    const bool create_sozip = false; // Produces errors, does not write attributes
+
     const int max_frames = config.get_default<int>(unique_name, "max_frames", -1);
     const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
 
@@ -70,6 +74,9 @@ public:
         buffer(get_buffer("in_buf")) {
 
         GDALAllRegister();
+
+        if (max_frames >= 0)
+            ++waiting_for_max_frames;
 
         buffer->register_consumer(unique_name);
     }
@@ -113,26 +120,32 @@ public:
             const double this_time = current_time();
             const double elapsed_time = this_time - start_time;
 
-            // This is not a warning, but it should be displayed even
-            // when regular INFO messages are not
-            WARN("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
+            INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
                  frame_counter, meta->sample0_offset, elapsed_time);
 
             if (!skip_writing) {
 
                 // Choose file format (driver)
                 const auto driver_manager = GetGDALDriverManager();
+                assert(driver_manager);
                 const std::string driver_name = "Zarr";
                 const auto driver = driver_manager->GetDriverByName(driver_name.c_str());
+                if (!driver)
+                    FATAL_ERROR("Could not get {:s} driver", driver_name);
 
                 // Define file name
                 std::ostringstream buf;
+                if (create_sozip)
+                    buf << "/vsizip/";
                 buf << base_dir << "/";
                 if (prefix_hostname) {
                     char hostname[256];
                     gethostname(hostname, sizeof hostname);
                     buf << hostname << "_";
                 }
+                if (create_sozip)
+                    buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_counter
+                        << ".zarr.zip/";
                 buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_counter
                     << ".zarr";
                 const std::string full_path = buf.str();
@@ -151,8 +164,8 @@ public:
                 const std::vector<std::string> root_group_options{};
                 const auto root_group_options_c = convert_to_cstring_list(root_group_options);
                 const std::vector<std::string> options{
-                    "FORMAT=ZARR_V2",
-                    // "FORMAT=ZARR_V3",
+                    // "FORMAT=ZARR_V2",
+                    "FORMAT=ZARR_V3",
                 };
                 const auto options_c = convert_to_cstring_list(options);
                 const auto dataset = std::unique_ptr<GDALDataset>(driver->CreateMultiDimensional(
@@ -161,6 +174,7 @@ public:
                     FATAL_ERROR("Could not create GDAL file {:s}", full_path);
 
                 const auto group = dataset->GetRootGroup();
+                assert(group);
 
                 // Write metadata (attributes)
 
@@ -176,7 +190,7 @@ public:
                 }
 
                 {
-                    const std::string type_value = chord_datatype_string(meta->type);
+                    const std::string type_value = type_to_string(meta->type);
                     const auto type_datatype =
                         GDALExtendedDataType::CreateString(type_value.size());
                     const auto type =
@@ -227,6 +241,15 @@ public:
                         GDALExtendedDataType::Create(get_gdal_datatype(meta->sample0_offset)));
                     const bool success =
                         sample0_offset->Write(&meta->sample0_offset, sizeof meta->sample0_offset);
+                    assert(success);
+                }
+
+                if (meta->offset_downsampling >= 0) {
+                    const auto offset_downsampling = group->CreateAttribute(
+                        "offset_downsampling", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(meta->offset_downsampling)));
+                    const bool success = offset_downsampling->Write(
+                        &meta->offset_downsampling, sizeof meta->offset_downsampling);
                     assert(success);
                 }
 
@@ -290,17 +313,17 @@ public:
                 // Array rank
                 const int ndims = meta->dims;
 
-                INFO("name={} type={} typesize={} ndims={} dims={}", meta->get_name(),
-                     meta->get_type_string(), chord_datatype_bytes(meta->type), meta->dims,
-                     meta->get_dimensions_string());
+                DEBUG("name={} type={} typesize={} ndims={} dims={}", meta->get_name(),
+                      meta->get_type_string(), type_total_bytes(meta->type), meta->dims,
+                      meta->get_dimensions_string());
                 for (int d = 0; d < ndims; ++d)
-                    INFO("    [{}] name={} size={}", d, meta->get_dimension_name(d), meta->dim[d]);
-                INFO("    buffer addr={} size={}", (const void*)frame, buffer->frame_size);
+                    DEBUG("    [{}] name={} size={}", d, meta->get_dimension_name(d), meta->dim[d]);
+                DEBUG("    buffer addr={} size={}", (const void*)frame, buffer->frame_size);
 
                 // Array element type
                 const auto datatype = GDALExtendedDataType::Create(chord2gdal(meta->type));
                 const std::int64_t datatypesize = GDALGetDataTypeSizeBytes(chord2gdal(meta->type));
-                assert(datatypesize == std::int64_t(chord_datatype_bytes(meta->type)));
+                assert(datatypesize == std::int64_t(type_total_bytes(meta->type)));
 
                 // Array size
                 std::vector<std::shared_ptr<GDALDimension>> dimensions(ndims);
@@ -338,10 +361,8 @@ public:
                     bbuf << (d == 0 ? "" : ",") << blocksize.at(d);
                 const std::string blocksize_str = bbuf.str();
                 const std::vector<std::string> array_options{
-                    "COMPRESS=BLOSC",
-                    blocksize_str,
-                    "BLOSC_CLEVEL=9",
-                    "BLOSC_SHUFFLE=BIT",
+                    "COMPRESS=BLOSC",    blocksize_str,      "BLOSC_CLEVEL=9",
+                    "BLOSC_SHUFFLE=BIT", "BLOSC_CNAME=zstd",
                 };
                 const auto array_options_c = convert_to_cstring_list(array_options);
                 const auto mdarray = group->CreateMDArray(meta->get_name(), dimensions, datatype,
@@ -364,6 +385,9 @@ public:
                     assert(success);
                 }
 
+                const CPLErr err = dataset->Close();
+                assert(!err);
+
             } // if !skip_writing
 
             // Stop timer
@@ -376,10 +400,15 @@ public:
             buffer->mark_frame_empty(unique_name, frame_id);
 
             if (max_frames >= 0 && frame_counter + 1 >= max_frames) {
-                WARN("Processed {} frames, shutting down Kotekan", frame_counter);
-                exit_kotekan(CLEAN_EXIT);
+                WARN("Processed {} frames", frame_counter + 1);
+                break;
             }
         } // for
+
+        if (--waiting_for_max_frames == 0) {
+            WARN("Shutting down Kotekan");
+            exit_kotekan(CLEAN_EXIT);
+        }
 
         DEBUG("exiting");
     }

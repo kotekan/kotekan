@@ -70,6 +70,33 @@ struct DispersedSource
     siny::Float
 end
 
+struct FRBSource
+    # Spectrum
+    t₀::Float
+    t₁::Float
+    f₀::Float
+    f₁::Float
+    # Scale
+    adc_frequency::Float
+    pfb_nsamples::Int
+    scale::Int
+    # Time envelope (Gaussian)
+    tc::Float
+    tw::Float
+    # Frequency envelope (bandpass)
+    floc::Float
+    flow::Float
+    fhic::Float
+    fhiw::Float
+    # Amplitude
+    A::Complex{Float}
+    # Sky locations
+    sinx::Float
+    siny::Float
+
+    frb::Vector{Complex{Float}}
+end
+
 function eval_noise(noise::Noise)
     return noise.A * randn(Complex{Float})
 end
@@ -105,7 +132,7 @@ function eval_source(source::Source, Δt::Float, n::Integer)
     return source.A * cispi(2 * α)
 end
 
-function dispersed_frequency(dispersed_source::DispersedSource, t::Float)
+function dispersed_frequency(dispersed_source::DispersedSource, t::Float64)
     # relation:
     #     t(f) = ts + T / f^2
     #     f(t) = sqrt(T / (t - ts))
@@ -115,17 +142,19 @@ function dispersed_frequency(dispersed_source::DispersedSource, t::Float)
     #     T  = f0^2 f1^2 (t1 - t0) / (f0^2 - f1^2)
     #     ts = (f0^2 t0 - f1^2 t1) / (f0^2 - f1^2)
 
-    t₀ = dispersed_source.t₀
-    t₁ = dispersed_source.t₁
-    f₀ = dispersed_source.f₀
-    f₁ = dispersed_source.f₁
+    t₀ = Float64(dispersed_source.t₀)
+    t₁ = Float64(dispersed_source.t₁)
+    f₀ = Float64(dispersed_source.f₀)
+    f₁ = Float64(dispersed_source.f₁)
 
     T = f₀^2 * f₁^2 * (t₁ - t₀) / (f₀^2 - f₁^2)
     ts = (f₀^2 * t₀ - f₁^2 * t₁) / (f₀^2 - f₁^2)
 
     f = sqrt(T / (t - ts))
 
-    return f
+    f = 300e+6 + 10e+8 * t
+
+    return Float(f)
 end
 
 function eval_dispersed_source(dispersed_source::DispersedSource, t::Float64)
@@ -134,9 +163,104 @@ function eval_dispersed_source(dispersed_source::DispersedSource, t::Float64)
     A = dispersed_source.A
     t₀ <= t <= t₁ || return Complex{Float}(0)
 
-    f = dispersed_frequency(dispersed_source, Float32(t))
+    f = dispersed_frequency(dispersed_source, t)
     Δf = dispersed_source.Δf
     return A * Complex{Float}(cispi(2 * f * t))   # * exp(-(f / Δf)^2 / 2)
+end
+
+gauss(x, W) = exp(-(x / W)^2 / 2)
+logistic(x) = 1 / (1 + exp(-x))
+lopass(x, x₀, Δx) = logistic((x₀ - x) / Δx)
+hipass(x, x₀, Δx) = logistic((x - x₀) / Δx)
+
+function time_delay(frb_source::FRBSource, f::Float)
+    f == 0 && return Float(0)
+
+    t₀ = frb_source.t₀
+    t₁ = frb_source.t₁
+    f₀ = frb_source.f₀
+    f₁ = frb_source.f₁
+
+    T = (t₀ - t₁) / (1 / f₀^2 - 1 / f₁^2)
+    ts = (t₁ / f₀^2 - t₀ / f₁^2) / (1 / f₀^2 - 1 / f₁^2)
+
+    dt = ts + T / f^2
+
+    return dt::Float
+end
+
+# Time envelope
+function time_envelope(frb_source::FRBSource, t::Float)
+    tc = frb_source.tc
+    tw = frb_source.tw
+    return gauss(t - tc, tw)
+end
+
+# Frequency envelope
+function freq_envelope(frb_source::FRBSource, f::Float)
+    floc = frb_source.floc
+    flow = frb_source.flow
+    fhic = frb_source.fhic
+    fhiw = frb_source.fhiw
+    return hipass(f, floc, flow) * lopass(f, fhic, fhiw)
+end
+
+function make_frb_source(frb_source::FRBSource, sample0::Int, nsamples::Int)
+    # adcfreq::Float = 3200e+6       # 3200 MHz, ADC sampling frequency
+    adcfreq = frb_source.adc_frequency
+    # nsamples = 16384               # 16384
+    pfb_nsamples = frb_source.pfb_nsamples
+    Δf::Float = adcfreq / pfb_nsamples # 195.3125 kHz
+    Δt::Float = 1 / Δf                 # 5.12 us
+
+    # We upchannelize and thus need to have a higher frequency resolution
+    # scale = 64
+    scale = frb_source.scale
+    # ntimes1 = 2 * 8192          # (frames) times (times per frames)
+    ntimes1 = ceil(Int, (frb_source.t₁ + 10 * frb_source.tw) / Δt)
+    ntimes1 = cld(ntimes1, scale) * scale
+    @assert ntimes1 % scale == 0
+    ntimes = ntimes1 ÷ scale
+    @assert pfb_nsamples % 2 == 0
+    nfreqs = pfb_nsamples ÷ 2 * scale + 1
+
+    A::Float = frb_source.A
+    F::Float = adcfreq / 2          # 1600 MHz
+    T::Float = ntimes1 * Δt         # 41.94304 ms
+
+    phystime(time::Integer) = time * T / ntimes
+    physfreq(freq::Integer) = freq * F / nfreqs
+
+    # Create FRB (for both polarizations)
+    frb_re = Array{Complex{Float}}(undef, nfreqs, ntimes)
+    frb_im = Array{Complex{Float}}(undef, nfreqs, ntimes)
+    # @showprogress desc = "FRB" dt = 1 @threads for freq in 1:nfreqs
+    for freq in 1:nfreqs
+        f = physfreq(freq - 1)
+        fenv = freq_envelope(frb_source, f)
+        dt = time_delay(frb_source, f)
+        for time in 1:ntimes
+            t = phystime(time - 1)
+            t′ = t - dt
+            tenv = time_envelope(frb_source, t′)
+            frb_re[freq, time] = tenv * fenv * A * randn(Complex{Float})
+            frb_im[freq, time] = tenv * fenv * A * randn(Complex{Float})
+        end
+    end
+
+    # Convert into time stream
+    samples_re = reshape(irfft(frb_re, 2 * (nfreqs - 1), 1), :)
+    samples_im = reshape(irfft(frb_im, 2 * (nfreqs - 1), 1), :)
+    samples = Complex.(samples_re, samples_im)
+
+    samples = samples[(1 + sample0):end]
+    old_nsamples = length(samples)
+    if nsamples > old_nsamples
+        resize!(samples, nsamples)
+        samples[(old_nsamples + 1):end] = 0
+    end
+
+    return samples::AbstractVector{Complex{Float}}
 end
 
 ################################################################################
@@ -177,18 +301,19 @@ end
 struct ADCFrame{T}
     t₀::Float
     Δt::Float
-    data::Array{T,3}            # [time, dish, polr]
+    data::Array{T,3}            # [sample, dish, polr]
 end
 
 function adc_sample(
     ::Type{T},
     noise::Noise,
     sources::Vector{Source},
-    dispersed_source::DispersedSource,
+    dispersed_sources::Vector{DispersedSource},
+    frb_sources::Vector{FRBSource},
     dishes::Dishes,
     adc::ADC,
-    time0::Int,
-    ntimes::Int,
+    sample0::Int,
+    nsamples::Int,
 ) where {T<:Real}
     t₀ = adc.t₀
     Δt = adc.Δt
@@ -196,35 +321,98 @@ function adc_sample(
     ndishes = length(dishes.locations)
     npolrs = 2
 
-    source_samples = Complex{T}[eval_source(sources[source], Δt, time0 + time - 1) for source in 1:nsources, time in 1:ntimes]
+    source_samples = Complex{T}[
+        eval_source(sources[source], Δt, sample0 + sample - 1) for source in 1:nsources, sample in 1:nsamples
+    ]::AbstractArray{Complex{T},2}
     dispersed_source_samples = Complex{T}[
-        eval_dispersed_source(dispersed_source, Δt * Float64(time0 + time - 1)) for time in 1:ntimes
-    ]
+        eval_dispersed_source(dispersed_source, Δt * Float64(sample0 + sample - 1)) for dispersed_source in dispersed_sources,
+        sample in 1:nsamples
+    ]::AbstractArray{Complex{T},2}
+    frb_samples = let
+        if length(frb_sources) == 0
+            zeros(Complex{T}, 0, nsamples)
+        elseif length(frb_sources) == 1
+            samples = make_frb_source(frb_sources[1], sample0, nsamples)
+            samples = reshape(samples, 1, :)
+            samples
+        else
+            @assert false
+        end
+    end::AbstractArray{Complex{T},2}
 
-    data = Array{T}(undef, ntimes, ndishes, npolrs)
-    # @showprogress desc = "ADC" dt = 1 @threads for dish in 1:ndishes
+    data = Array{T}(undef, nsamples, ndishes, npolrs)
     for dish in 1:ndishes
         location = dishes.locations[dish]
         dishx, dishy = location
         ϕs = Complex{T}[
             let
-                f₀ = source.f₀
+                f = source.f₀
                 t₁ = t₀ - source.sinx * dishx / c₀ - source.siny * dishy / c₀
-                cispi(2 * f₀ * t₁)
+                # TODO: This overflows
+                cispi(2 * f * t₁)
             end for source in sources
         ]
-        dϕs = let
-            f₀ = dispersed_source.f₀
-            t₁ = t₀ - dispersed_source.sinx * dishx / c₀ - dispersed_source.siny * dishy / c₀
-            cispi(2 * f₀ * t₁)
+        dϕs = Complex{T}[
+            let
+                # This is wrong, need to use actual frequency, not starting frequency
+                # f = dispersed_source.f₀
+                # This is better, estimate the average time
+                t = t₀ + Δt * Float64(nsamples - 1) / 2
+                if dispersed_source.t₀ <= t <= dispersed_source.t₁
+                    f = dispersed_frequency(dispersed_source, t)
+                else
+                    f = Float(0)
+                end
+                t₁ = t₀ - dispersed_source.sinx * dishx / c₀ - dispersed_source.siny * dishy / c₀
+                # TODO: This overflows
+                cispi(2 * f * t₁)
+            end for dispersed_source in dispersed_sources
+        ]
+        fϕs = Complex{T}[
+            # This is wrong. The dish position is ignored.
+            1 for frb_source in frb_sources
+        ]
+        # for sample in 1:nsamples
+        #     val =
+        #         eval_noise(noise) +
+        #         sum(ϕs[source] * source_samples[source, sample] for source in 1:nsources; init=Complex{T}(0)) +
+        #         sum(
+        #             dϕs[dsource] * dispersed_source_samples[dsource, sample] for dsource in 1:length(dispersed_sources);
+        #             init=Complex{T}(0),
+        #         )
+        #     data[sample, dish, 1] = real(val)
+        #     data[sample, dish, 2] = imag(val)
+        # end
+        for sample in 1:nsamples
+            val = eval_noise(noise)
+            data[sample, dish, 1] = real(val)
+            data[sample, dish, 2] = imag(val)
         end
-        for time in 1:ntimes
-            val =
-                eval_noise(noise) +
-                sum(ϕs[source] * source_samples[source, time] for source in 1:nsources; init=Complex{T}(0)) +
-                dϕs * dispersed_source_samples[time]
-            data[time, dish, 1] = real(val)
-            data[time, dish, 2] = imag(val)
+        if !isempty(source_samples)
+            for sample in 1:nsamples
+                val = sum(ϕs[source] * source_samples[source, sample] for source in 1:nsources; init=Complex{T}(0))
+                data[sample, dish, 1] += real(val)
+                data[sample, dish, 2] += imag(val)
+            end
+        end
+        if !isempty(dispersed_source_samples)
+            for sample in 1:nsamples
+                val = sum(
+                    dϕs[dsource] * dispersed_source_samples[dsource, sample] for dsource in 1:length(dispersed_sources);
+                    init=Complex{T}(0),
+                )
+                data[sample, dish, 1] += real(val)
+                data[sample, dish, 2] += imag(val)
+            end
+        end
+        if !isempty(frb_samples)
+            @assert length(frb_sources) == 1
+            for sample in 1:nsamples
+                # val = sum(fϕs[fsource] * frb_samples[fsource, sample] for fsource in 1:1; init=Complex{T}(0))
+                val = fϕs[1] * frb_samples[1, sample]
+                data[sample, dish, 1] += real(val)
+                data[sample, dish, 2] += imag(val)
+            end
         end
     end
 
@@ -368,7 +556,6 @@ function f_engine(pfb::PFB, adcframe::ADCFrame{T}) where {T<:Real}
     FFTs = [plan_rfft(indatas[thread], 1) for thread in 1:Threads.nthreads()]
 
     fdata = Array{Complex{T}}(undef, length(frequency_channels), ntimes′, ndishes, npolrs)
-    # @showprogress desc = "PFB" dt = 1 @threads for time′_dish_polr in CartesianIndices((ntimes′, ndishes, npolrs))
     for time′_dish_polr in CartesianIndices((ntimes′, ndishes, npolrs))
         thread = Threads.threadid()
         FFT = FFTs[thread]
@@ -425,7 +612,8 @@ function f_engine_16(pfb::PFB, adcframe::ADCFrame{T}) where {T<:Real}
     FFTs = [plan_rfft(indatas[thread], 2) for thread in 1:Threads.nthreads()]
 
     fdata = Array{Complex{T}}(undef, length(frequency_channels), ntimes′, ndishes, npolrs)
-    @showprogress desc = "PFB" dt = 1 @threads for time′_dish_polr in CartesianIndices((ntimes′, ndishes ÷ groupsize, npolrs))
+    # @showprogress desc = "PFB" dt = 1 @threads for time′_dish_polr in CartesianIndices((ntimes′, ndishes ÷ groupsize, npolrs))
+    for time′_dish_polr in CartesianIndices((ntimes′, ndishes ÷ groupsize, npolrs))
         thread = Threads.threadid()
         FFT = FFTs[thread]
         indata = indatas[thread]
@@ -500,7 +688,7 @@ function f_engine_cuda(pfb::PFB, adcframe::ADCFrame{T}) where {T<:Real}
     FFTs = [plan_rfft(indatas[thread], 1) for thread in 1:Threads.nthreads()]
 
     fdata = Array{Complex{T}}(undef, length(frequency_channels), ntimes′, ndishes, npolrs)
-    @showprogress desc = "PFB" dt = 1 @threads for time′_dish_polr in CartesianIndices((ntimes′, ndishes, npolrs))
+    for time′_dish_polr in CartesianIndices((ntimes′, ndishes, npolrs))
         thread = Threads.threadid()
         FFT = FFTs[thread]
         indata = indatas[thread]
@@ -671,6 +859,7 @@ mutable struct Setup
     noise::Noise
     sources::Vector{Source}
     dispersed_source::DispersedSource
+    frb_source::FRBSource
 
     # Dishes
     dishes::Dishes
@@ -690,11 +879,23 @@ function setup(
     source_channels::Vector{Float},
     source_amplitudes::Vector{Float},
     dispersed_source_start_time::Float,
-    dispersed_source_end_time::Float,
+    dispersed_source_stop_time::Float,
     dispersed_source_start_frequency::Float,
-    dispersed_source_end_frequency::Float,
+    dispersed_source_stop_frequency::Float,
     dispersed_source_linewidth::Float,
     dispersed_source_amplitude::Float,
+    frb_source_start_time::Float,
+    frb_source_stop_time::Float,
+    frb_source_start_frequency::Float,
+    frb_source_stop_frequency::Float,
+    frb_source_scale::Int,
+    frb_source_time_envelope_centre::Float,
+    frb_source_time_envelope_width::Float,
+    frb_source_frequency_envelope_lo_centre::Float,
+    frb_source_frequency_envelope_lo_width::Float,
+    frb_source_frequency_envelope_hi_centre::Float,
+    frb_source_frequency_envelope_hi_width::Float,
+    frb_source_amplitude::Float,
     source_position_ew::Float,
     source_position_ns::Float,
     num_dish_locations_ew::Int64,
@@ -716,34 +917,46 @@ function setup(
     nframes::Int64,
 )
     println("F-Engine setup:")
-    println("    - noise_amplitude:                  $noise_amplitude")
-    println("    - source_channels:                  $source_channels")
-    println("    - source_amplitudes:                $source_amplitudes")
-    println("    - dispersed_source_start_time:      $dispersed_source_start_time")
-    println("    - dispersed_source_end_time:        $dispersed_source_end_time")
-    println("    - dispersed_source_start_frequency: $dispersed_source_start_frequency")
-    println("    - dispersed_source_end_frequency:   $dispersed_source_end_frequency")
-    println("    - dispersed_source_linewidth:       $dispersed_source_linewidth")
-    println("    - dispersed_source_amplitude:       $dispersed_source_amplitude")
-    println("    - source_position_ew:               $source_position_ew")
-    println("    - source_position_ns:               $source_position_ns")
-    println("    - num_dish_locations_ew:            $num_dish_locations_ew")
-    println("    - num_dish_locations_ns:            $num_dish_locations_ns")
-    println("    - dish_indices:                     $dish_indices")
-    println("    - dish_separation_ew:               $dish_separation_ew")
-    println("    - dish_separation_ns:               $dish_separation_ns")
-    println("    - ndishes:                          $ndishes")
-    println("    - adc_frequency:                    $adc_frequency")
-    println("    - ntaps:                            $ntaps")
-    println("    - nsamples:                         $nsamples")
-    println("    - nfreqs:                           $nfreqs")
-    println("    - frequency_channels:               $frequency_channels")
-    println("    - ntimes:                           $ntimes")
-    println("    - bb_num_beams_ew:                  $bb_num_beams_ew")
-    println("    - bb_num_beams_ns:                  $bb_num_beams_ns")
-    println("    - bb_beam_separation_ew:            $bb_beam_separation_ew")
-    println("    - bb_beam_separation_ns:            $bb_beam_separation_ns")
-    println("    - nframes:                          $nframes")
+    println("    - noise_amplitude:                         $noise_amplitude")
+    println("    - source_channels:                         $source_channels")
+    println("    - source_amplitudes:                       $source_amplitudes")
+    println("    - dispersed_source_start_time:             $dispersed_source_start_time")
+    println("    - dispersed_source_stop_time:              $dispersed_source_stop_time")
+    println("    - dispersed_source_start_frequency:        $dispersed_source_start_frequency")
+    println("    - dispersed_source_stop_frequency:         $dispersed_source_stop_frequency")
+    println("    - dispersed_source_linewidth:              $dispersed_source_linewidth")
+    println("    - dispersed_source_amplitude:              $dispersed_source_amplitude")
+    println("    - frb_source_start_time:                   $frb_source_start_time")
+    println("    - frb_source_stop_time:                    $frb_source_stop_time")
+    println("    - frb_source_start_frequency:              $frb_source_start_frequency")
+    println("    - frb_source_stop_frequency:               $frb_source_stop_frequency")
+    println("    - frb_source_scale:                        $frb_source_scale")
+    println("    - frb_source_time_envelope_centre:         $frb_source_time_envelope_centre")
+    println("    - frb_source_time_envelope_width:          $frb_source_time_envelope_width")
+    println("    - frb_source_frequency_envelope_lo_centre: $frb_source_frequency_envelope_lo_centre")
+    println("    - frb_source_frequency_envelope_lo_width:  $frb_source_frequency_envelope_lo_width")
+    println("    - frb_source_frequency_envelope_hi_centre: $frb_source_frequency_envelope_hi_centre")
+    println("    - frb_source_frequency_envelope_hi_width:  $frb_source_frequency_envelope_hi_width")
+    println("    - frb_source_amplitude:                    $frb_source_amplitude")
+    println("    - source_position_ew:                      $source_position_ew")
+    println("    - source_position_ns:                      $source_position_ns")
+    println("    - num_dish_locations_ew:                   $num_dish_locations_ew")
+    println("    - num_dish_locations_ns:                   $num_dish_locations_ns")
+    println("    - dish_indices:                            $dish_indices")
+    println("    - dish_separation_ew:                      $dish_separation_ew")
+    println("    - dish_separation_ns:                      $dish_separation_ns")
+    println("    - ndishes:                                 $ndishes")
+    println("    - adc_frequency:                           $adc_frequency")
+    println("    - ntaps:                                   $ntaps")
+    println("    - nsamples:                                $nsamples")
+    println("    - nfreqs:                                  $nfreqs")
+    println("    - frequency_channels:                      $frequency_channels")
+    println("    - ntimes:                                  $ntimes")
+    println("    - bb_num_beams_ew:                         $bb_num_beams_ew")
+    println("    - bb_num_beams_ns:                         $bb_num_beams_ns")
+    println("    - bb_beam_separation_ew:                   $bb_beam_separation_ew")
+    println("    - bb_beam_separation_ns:                   $bb_beam_separation_ns")
+    println("    - nframes:                                 $nframes")
 
     println("Setting up sources...")
     noise = Noise(noise_amplitude)
@@ -758,14 +971,38 @@ function setup(
     ]
     dispersed_source = let
         t₀ = dispersed_source_start_time
-        t₁ = dispersed_source_end_time
+        t₁ = dispersed_source_stop_time
         f₀ = dispersed_source_start_frequency
-        f₁ = dispersed_source_end_frequency
+        f₁ = dispersed_source_stop_frequency
         Δf = dispersed_source_linewidth
         A = Complex{Float}(dispersed_source_amplitude)
         sin_ew = sin(source_position_ew) # east-west
         sin_ns = sin(source_position_ns) # north-south
         DispersedSource(t₀, t₁, f₀, f₁, Δf, A, sin_ew, sin_ns)
+    end
+    frb_source = let
+        A = Complex{Float}(frb_source_amplitude)
+        sin_ew = sin(source_position_ew) # east-west
+        sin_ns = sin(source_position_ns) # north-south
+        FRBSource(
+            frb_source_start_time,
+            frb_source_stop_time,
+            frb_source_start_frequency,
+            frb_source_stop_frequency,
+            adc_frequency,
+            nsamples,
+            frb_source_scale,
+            frb_source_time_envelope_centre,
+            frb_source_time_envelope_width,
+            frb_source_frequency_envelope_lo_centre,
+            frb_source_frequency_envelope_lo_width,
+            frb_source_frequency_envelope_hi_centre,
+            frb_source_frequency_envelope_hi_width,
+            frb_source_amplitude,
+            sin_ew,
+            sin_ns,
+            Complex{Float}[],
+        )
     end
 
     println("Setting up dishes...")
@@ -800,7 +1037,7 @@ function setup(
     println("Setting up baseband beams...")
     bb_beams = make_baseband_beams(bb_num_beams_ew, bb_num_beams_ns, bb_beam_separation_ew, bb_beam_separation_ns)
 
-    return Setup(noise, sources, dispersed_source, dishes, adc, pfb, bb_beams)
+    return Setup(noise, sources, dispersed_source, frb_source, dishes, adc, pfb, bb_beams)
 end
 
 # frequencies = mappedarray(c -> fframe.Δf * c, frequency_channels)
@@ -812,11 +1049,23 @@ function setup(
     source_channels_ptr=Ptr{Cfloat}(),
     source_amplitudes_ptr=Ptr{Cfloat}(),
     dispersed_source_start_time=0.1,
-    dispersed_source_end_time=2.5,
+    dispersed_source_stop_time=2.5,
     dispersed_source_start_frequency=1500e6,
-    dispersed_source_end_frequency=300e6,
+    dispersed_source_stop_frequency=300e6,
     dispersed_source_linewidth=1.0,
     dispersed_source_amplitude=0.0,
+    frb_source_start_time=0.1,
+    frb_source_stop_time=2.5,
+    frb_source_start_frequency=1500e6,
+    frb_source_stop_frequency=300e6,
+    frb_source_scale=64,
+    frb_source_time_envelope_centre=5e-3,
+    frb_source_time_envelope_width=2e-3,
+    frb_source_frequency_envelope_lo_centre=250e6,
+    frb_source_frequency_envelope_lo_width=50e6,
+    frb_source_frequency_envelope_hi_centre=1550e6,
+    frb_source_frequency_envelope_hi_width=50e6,
+    frb_source_amplitude=0.0,
     source_position_ew=0.02,
     source_position_ns=0.03,
     num_dish_locations_ew=8,
@@ -875,11 +1124,23 @@ function setup(
         source_channels::Vector{Float},
         source_amplitudes::Vector{Float},
         Float(dispersed_source_start_time),
-        Float(dispersed_source_end_time),
+        Float(dispersed_source_stop_time),
         Float(dispersed_source_start_frequency),
-        Float(dispersed_source_end_frequency),
+        Float(dispersed_source_stop_frequency),
         Float(dispersed_source_linewidth),
         Float(dispersed_source_amplitude),
+        Float(frb_source_start_time),
+        Float(frb_source_stop_time),
+        Float(frb_source_start_frequency),
+        Float(frb_source_stop_frequency),
+        Int64(frb_source_scale),
+        Float(frb_source_time_envelope_centre),
+        Float(frb_source_time_envelope_width),
+        Float(frb_source_frequency_envelope_lo_centre),
+        Float(frb_source_frequency_envelope_lo_width),
+        Float(frb_source_frequency_envelope_hi_centre),
+        Float(frb_source_frequency_envelope_hi_width),
+        Float(frb_source_amplitude),
         Float(source_position_ew),
         Float(source_position_ns),
         Int64(num_dish_locations_ew),
@@ -982,6 +1243,8 @@ end
 function set_E!(
     ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, npolrs::Int64, nfreqs::Int64, ntimes::Int64, setup::Setup, frame_index::Int64
 )
+    try
+
     E = unsafe_wrap(Array, reinterpret(Ptr{Int4x2}, ptr), (ndishes, npolrs, nfreqs, ntimes))
     @assert sizeof(E) == sz
 
@@ -1005,16 +1268,19 @@ function set_E!(
     nchunks = ntimes ÷ chunk_size
     walltimes = zeros(4, nchunks)
     @showprogress desc = "Generating E-field" dt = 1 @threads for chunk_index in 1:nchunks
-        # for chunk_index in 1:nchunks
         # println("Generating E-field (chunk $chunk_index/$nchunks)...")
         time0 = (chunk_index - 1) * chunk_size + 1
         time1 = time0 + chunk_size - 1
 
         # println("ADC sampling...")
         t0 = time()
-        adc_time0 = (frame_index - 1) * ntimes + (chunk_index - 1) * chunk_size
-        adc_ntimes = pfb.nsamples * (chunk_size + pfb.ntaps - 1)
-        adcframe = adc_sample(Float, setup.noise, setup.sources, setup.dispersed_source, setup.dishes, adc, adc_time0, adc_ntimes)
+        adc_sample0 = pfb.nsamples * ((frame_index - 1) * ntimes + (chunk_index - 1) * chunk_size)
+        adc_nsamples = pfb.nsamples * (chunk_size + pfb.ntaps - 1)
+        adc_dispersed_sources = setup.dispersed_source.A == 0 ? DispersedSource[] : DispersedSource[setup.dispersed_source]
+        adc_frb_sources = setup.frb_source.A == 0 ? FRBSource[] : FRBSource[setup.frb_source]
+        adcframe = adc_sample(
+            Float, setup.noise, setup.sources, adc_dispersed_sources, adc_frb_sources, setup.dishes, adc, adc_sample0, adc_nsamples
+        )
         t1 = time()
         walltimes[1, chunk_index] = t1 - t0
 
@@ -1040,6 +1306,11 @@ function set_E!(
     end
 
     # @show walltimes
+
+    catch ex
+        println("set_E!: Caught exception")
+        println(ex)
+    end
 
     return nothing
 end

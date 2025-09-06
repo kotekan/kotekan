@@ -133,22 +133,28 @@ template<typename T>
 void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
                                  size_t chunk_t, const T* data) {
     // DEBUG("writing {:d} freq, {:d} times, at ({:d},{:d}).", chunk_f, chunk_t, f_ind, t_ind);
+    auto ds = dset(name);
+    HighFive::AtomicType<T> dtype;
+
     if (name == "flags/inputs") {
         DEBUG2("writing {}...", name);
-        dset(name).select({0, t_ind}, {length("input"), chunk_t}).write(data);
+        auto sel = ds.select({0, t_ind}, {length("input"), chunk_t});
+        sel.write_raw(data, dtype);
     } else if (name == "evec") {
         DEBUG2("writing {}...", name);
-        dset(name)
-            .select({f_ind, 0, 0, t_ind}, {chunk_f, length("ev"), length("input"), chunk_t})
-            .write(data);
+        auto sel =
+            ds.select({f_ind, 0, 0, t_ind}, {chunk_f, length("ev"), length("input"), chunk_t});
+        sel.write_raw(data, dtype);
     } else if (name == "erms" || name == "flags/frac_lost" || name == "flags/frac_rfi"
                || name == "flags/dataset_id") {
         DEBUG2("writing {}...", name);
-        dset(name).select({f_ind, t_ind}, {chunk_f, chunk_t}).write(data);
+        auto sel = ds.select({f_ind, t_ind}, {chunk_f, chunk_t});
+        sel.write_raw(data, dtype);
     } else {
         DEBUG2("writing {}...", name);
-        size_t last_dim = dset(name).getSpace().getDimensions().at(1);
-        dset(name).select({f_ind, 0, t_ind}, {chunk_f, last_dim, chunk_t}).write(data);
+        size_t last_dim = ds.getSpace().getDimensions().at(1);
+        auto sel = ds.select({f_ind, 0, t_ind}, {chunk_f, last_dim, chunk_t});
+        sel.write_raw(data, dtype);
     }
 }
 
@@ -267,7 +273,8 @@ void visFileArchive::create_dataset(const std::string& name, const std::vector<s
     if (stacked)
         size_map["stack"] = std::make_tuple(length("stack"), chunk[1]);
 
-    std::vector<size_t> cur_dims, max_dims, chunk_dims;
+    std::vector<size_t> cur_dims, max_dims;
+    std::vector<hsize_t> chunk_dims;
 
     for (auto axis : axes) {
         auto cs = size_map[axis];
@@ -277,30 +284,18 @@ void visFileArchive::create_dataset(const std::string& name, const std::vector<s
 
     DataSpace space = DataSpace(cur_dims);
 
+    // Add chunking and bitshuffle filter to plist
+    RawPropertyList<PropertyType::DATASET_CREATE> props;
+    // Set dataset creation properties to enable chunking
+    (*(DataSetCreateProps*)&props).add(Chunking(chunk_dims));
     if (compress) {
-        // Add chunking and bitshuffle filter to plist
-        // Pulled this out of HighFive createDataSet source
-        std::vector<hsize_t> real_chunk(chunk_dims.size());
-        std::copy(chunk_dims.begin(), chunk_dims.end(), real_chunk.begin());
-        // Set dataset creation properties to enable chunking
-        hid_t plist = H5Pcreate(H5P_DATASET_CREATE);
-        if (H5Pset_chunk(plist, int(chunk_dims.size()), &(real_chunk.at(0))) < 0) {
-            HDF5ErrMapper::ToException<DataSpaceException>("Failed trying to create chunk.");
-        }
         // Set bitshuffle compression filter
-        if (H5Pset_filter(plist, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY, BSHUF_CD.size(),
-                          BSHUF_CD.data())
-            < 0) {
-            HDF5ErrMapper::ToException<DataSpaceException>(
-                "Failed trying to set bishuffle filter.");
-        }
-
-        DataSet dset = file->createDataSet(name, space, type, plist);
-        dset.createAttribute<std::string>("axis", DataSpace::From(axes)).write(axes);
-    } else {
-        DataSet dset = file->createDataSet(name, space, type, chunk_dims);
-        dset.createAttribute<std::string>("axis", DataSpace::From(axes)).write(axes);
+        props.add(H5Pset_filter, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY, BSHUF_CD.size(),
+                  BSHUF_CD.data());
     }
+
+    DataSet dset = file->createDataSet(name, space, type, props);
+    dset.createAttribute<std::string>("axis", DataSpace::From(axes)).write(axes);
 }
 
 // Quick functions for fetching datasets and dimensions

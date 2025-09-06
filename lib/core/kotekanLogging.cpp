@@ -70,9 +70,17 @@ void kotekanLogging::set_log_level(const std::string& s_log_level) {
     set_log_level(log_level);
 }
 
+logLevel kotekanLogging::get_log_level() const {
+    return logLevel(_member_log_level);
+}
+
 void kotekanLogging::vset_error_message(const fmt::basic_string_view<char> format,
                                         fmt::format_args args) {
-    fmt::format_to_n(__err_msg, __max_log_msg_len, fmt::vformat(format, args));
+    // Note: We should protect `__err_msg` with a lock
+    auto result = fmt::format_to_n(__err_msg, __max_log_msg_len - 1, fmt::vformat(format, args));
+    char* next = result.out;
+    // Ensure NUL termination
+    *next = '\0';
 }
 
 } // namespace kotekan

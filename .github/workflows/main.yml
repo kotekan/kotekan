@@ -191,7 +191,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_ASDF=ON \
             -DUSE_GDAL=ON \
-            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_HDF5=ON \
             -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
@@ -254,7 +254,7 @@ jobs:
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
             -DCMAKE_BUILD_TYPE=Test \
-            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_HDF5=ON \
             -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
@@ -326,7 +326,7 @@ jobs:
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
             -DCMAKE_BUILD_TYPE=Test \
-            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_HDF5=ON \
             -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
@@ -414,23 +414,11 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Run cmakelint
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" tools/cmakelint.sh /code/kotekan
-
-    - name: Run black
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" black --exclude="docs|external" --check .
-
-    - name: Run clang-format
-      run: |
-        mkdir -p build-check-format
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-check-format/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ..
-        docker run "${OPTS[@]}" make clang-format
-        git diff --exit-code
+    - name: Run lint.sh
+      shell: bash
+      run:
+        set -e
+        docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan
 
   # Build a clang version of kotekan
   # Note that this build isn't working at the moment, so for now only run it upon request.
@@ -469,7 +457,7 @@ jobs:
         -DCMAKE_BUILD_TYPE=Test \
         -DUSE_ASDF=ON \
         -DUSE_GDAL=ON \
-        -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+        -DUSE_HDF5=ON \
         -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
         -DNO_MEMLOCK=ON \
         -DUSE_OMP=ON \

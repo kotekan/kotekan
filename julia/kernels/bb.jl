@@ -21,6 +21,8 @@ if CUDA.functional()
     @assert replace(name(device()), ' ' => '_') == "NVIDIA_$card"
 end
 
+chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
+unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 # shift(x::Number, s) = (@assert s ≥ 0; s == 0 ? x : (x + (1 << (s - 1))) >> s)
 shift(x::Number, s) = (@assert s ≥ 1; (x + (1 << (s - 1))) >> s)
@@ -664,28 +666,22 @@ function make_bb_kernel()
         @assert false
     end
 
-    if!(
-        emitter,
-        quote
-            let
-                thread = IndexSpaces.cuda_threadidx()
-                warp = IndexSpaces.cuda_warpidx()
-                thread == 0i32 && warp == 0i32
-            end
-        end,
-    ) do emitter
+    if!(emitter, quote
+        let
+            thread = IndexSpaces.cuda_threadidx()
+            warp = IndexSpaces.cuda_warpidx()
+            thread == 0i32 && warp == 0i32
+        end
+    end) do emitter
         apply!(emitter, :logval => layout_log_registers, 0i32)
         store!(emitter, :log_memory => layout_log_memory, :logval)
         return nothing
     end
     sync_threads!(emitter)
 
-    push!(
-        emitter.statements,
-        quote
-            hasoverflow = false
-        end,
-    )
+    push!(emitter.statements, quote
+        hasoverflow = false
+    end)
 
     if D == 1024
         layout_A0_registers = Layout([
@@ -784,12 +780,9 @@ function make_bb_kernel()
     @assert emitter.environment[:A] == layout_A_registers
 
     loop!(emitter, Time(:time, loopT1.offset, loopT1.length) => loopT1) do emitter
-        push!(
-            emitter.statements,
-            quote
-                Tmin + T1 ≥ Tmax && break
-            end,
-        )
+        push!(emitter.statements, quote
+            Tmin + T1 ≥ Tmax && break
+        end)
 
         loop!(emitter, Time(:time, loopT2.offset, loopT2.length) => loopT2) do emitter
 
@@ -977,7 +970,8 @@ function make_bb_kernel()
                 :J,
                 Register(:cplx, 1, C) => SIMD(:simd, 4, 2),
                 Register(:time, 8, 2) => SIMD(:simd, 8, 2),
-                Register(:time, 16, 2) => SIMD(:simd, 16, 2),
+                Register(:time, 16, 2) => SIMD(:simd, 16, 2);
+                swapped_withoffset=true,
             )
 
             unselect!(emitter, :Jper, :J, loopT2 => Register(:time, loopT2.offset, loopT2.length))
@@ -998,23 +992,17 @@ function make_bb_kernel()
         return nothing
     end
 
-    push!(
-        emitter.statements,
-        quote
-            any_hasoverflow = sync_threads_or(hasoverflow)
-        end,
-    )
+    push!(emitter.statements, quote
+        any_hasoverflow = sync_threads_or(hasoverflow)
+    end)
     if!(emitter, :any_hasoverflow) do emitter
-        if!(
-            emitter,
-            quote
-                let
-                    thread = IndexSpaces.cuda_threadidx()
-                    warp = IndexSpaces.cuda_warpidx()
-                    thread == 0i32 && warp == 0i32
-                end
-            end,
-        ) do emitter
+        if!(emitter, quote
+            let
+                thread = IndexSpaces.cuda_threadidx()
+                warp = IndexSpaces.cuda_warpidx()
+                thread == 0i32 && warp == 0i32
+            end
+        end) do emitter
             apply!(emitter, :logval => layout_log_registers, 1i32)
             store!(emitter, :log_memory => layout_log_memory, :logval)
         end
@@ -1023,14 +1011,12 @@ function make_bb_kernel()
     apply!(emitter, :info => layout_info_registers, 0i32)
     store!(emitter, :info_memory => layout_info_memory, :info)
 
-    stmts = clean_code(
-        quote
-            @inbounds begin
-                $(emitter.init_statements...)
-                $(emitter.statements...)
-            end
-        end,
-    )
+    stmts = clean_code(quote
+        @inbounds begin
+            $(emitter.init_statements...)
+            $(emitter.statements...)
+        end
+    end)
 
     return stmts
 end
@@ -1074,7 +1060,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     shmem_bytes = kernel_setup.shmem_bytes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm bb(
+    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm bb(
         Int32(0),
         Int32(0),
         CUDA.zeros(Int8x4, 0),
@@ -1133,7 +1119,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             sampling-time-μsec: $sampling_time_μsec
             shift-parameter-σ: $σ
           compile-parameters:
-            minthreads: $(num_threads * num_warps)
+            minthreads: [$num_threads, $num_warps]
             blocks_per_sm: $num_blocks_per_sm
           call-parameters:
             threads: [$num_threads, $num_warps]
@@ -1213,24 +1199,28 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 "kernel_symbol" => kernel_symbol,
                 "kernel_arguments" => [
                     Dict(
-                        "name" => "Tmin",
-                        "kotekan_name" => "Tmin",
+                        "name" => "T_min",
+                        "kotekan_name" => "T_min",
                         "type" => "int32",
                         "isoutput" => false,
-                        "hasbuffer" => false,
                         "isscalar" => true,
+                        "hasbuffer" => false,
+                        "hasringbuffer" => false,
+                        "do_once" => false,
                     ),
                     Dict(
-                        "name" => "Tmax",
-                        "kotekan_name" => "Tmax",
+                        "name" => "T_max",
+                        "kotekan_name" => "T_max",
                         "type" => "int32",
                         "isoutput" => false,
-                        "hasbuffer" => false,
                         "isscalar" => true,
+                        "hasbuffer" => false,
+                        "hasringbuffer" => false,
+                        "do_once" => false,
                     ),
                     Dict(
                         "name" => "A",
-                        "kotekan_name" => "gpu_mem_phase",
+                        "kotekan_name" => "bb_phase_name",
                         "type" => "int8",
                         "axes" => [
                             Dict("label" => "C", "length" => C),
@@ -1240,13 +1230,15 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                             Dict("label" => "F", "length" => F),
                         ],
                         "isoutput" => false,
-                        "hasbuffer" => true,
                         "isscalar" => false,
+                        "hasbuffer" => true,
+                        "hasringbuffer" => false,
+                        "do_once" => true,
                     ),
                     Dict(
                         "name" => "E",
-                        "kotekan_name" => "gpu_mem_voltage",
-                        "type" => "int4p4chime",
+                        "kotekan_name" => "voltage_name",
+                        "type" => "int4x2_swapped_withoffset",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
                             Dict("label" => "P", "length" => P),
@@ -1254,12 +1246,14 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                             Dict("label" => "T", "length" => T),
                         ],
                         "isoutput" => false,
-                        "hasbuffer" => true,
                         "isscalar" => false,
+                        "hasbuffer" => true,
+                        "hasringbuffer" => true,
+                        "do_once" => false,
                     ),
                     Dict(
                         "name" => "s",
-                        "kotekan_name" => "gpu_mem_output_scaling",
+                        "kotekan_name" => "bb_shift_name",
                         "type" => "int32",
                         "axes" => [
                             Dict("label" => "B", "length" => B),
@@ -1267,12 +1261,15 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                             Dict("label" => "F", "length" => F),
                         ],
                         "isoutput" => false,
+                        "isscalar" => false,
                         "hasbuffer" => true,
+                        "hasringbuffer" => false,
+                        "do_once" => true,
                     ),
                     Dict(
                         "name" => "J",
-                        "type" => "int4p4",
-                        "kotekan_name" => "gpu_mem_formed_beams",
+                        "type" => "int4x2_swapped_withoffset",
+                        "kotekan_name" => "bb_beams_name",
                         "axes" => [
                             Dict("label" => "T", "length" => Tout),
                             Dict("label" => "P", "length" => P),
@@ -1280,8 +1277,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                             Dict("label" => "B", "length" => B),
                         ],
                         "isoutput" => true,
-                        "hasbuffer" => true,
                         "isscalar" => false,
+                        "hasbuffer" => true,
+                        "hasringbuffer" => false,
+                        "do_once" => false,
                     ),
                     Dict(
                         "name" => "info",
@@ -1293,8 +1292,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                             Dict("label" => "block", "length" => num_blocks),
                         ],
                         "isoutput" => true,
-                        "hasbuffer" => false,
                         "isscalar" => false,
+                        "hasbuffer" => false,
+                        "hasringbuffer" => false,
+                        "do_once" => false,
                     ),
                     Dict(
                         "name" => "log",
@@ -1302,8 +1303,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "type" => "int32",
                         "axes" => [Dict("label" => "block", "length" => num_blocks)],
                         "isoutput" => true,
-                        "hasbuffer" => false,
                         "isscalar" => false,
+                        "hasbuffer" => false,
+                        "hasringbuffer" => false,
+                        "do_once" => false,
                     ),
                 ],
             ),
@@ -1429,9 +1432,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     println("Copying data from CPU to GPU...")
     A_cuda = CuArray(A_memory)
-    E_cuda = CuArray(E_memory)
+    E_cuda = CuArray(chimify.(E_memory))
     s_cuda = CuArray(s_memory)
-    J_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), idiv(Tout, 4) * P * F * B)
+    J_cuda = CUDA.fill(chimify(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), idiv(Tout, 4) * P * F * B)
     info_cuda = CUDA.fill(-1i32, num_threads * num_warps * num_blocks)
     log_cuda = CUDA.fill(0i32, num_blocks)
 
@@ -1493,7 +1496,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             sampling-time-μsec: $sampling_time_μsec
             shift-parameter-σ: $σ
           compile-parameters:
-            minthreads: $(num_threads * num_warps)
+            minthreads: [$num_threads, $num_warps]
             blocks_per_sm: $num_blocks_per_sm
           call-parameters:
             threads: [$num_threads, $num_warps]
@@ -1509,7 +1512,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     end
 
     println("Copying data back from GPU to CPU...")
-    J_memory = Array(J_cuda)
+    J_memory = unchimify.(Array(J_cuda))
     info_memory = Array(info_cuda)
     log_memory = Array(log_cuda)
     @assert all(info_memory .== 0)

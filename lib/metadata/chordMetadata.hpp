@@ -18,217 +18,6 @@
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #pragma pack()
 
-// TODO: Switch to `chord::DataType` instead
-enum chordDataType {
-    unknown_type,
-    uint4p4,
-    uint8,
-    uint16,
-    uint32,
-    uint64,
-    int4p4,
-    int4p4chime, // offset-encoded (stored is value + 8), low and high values swapped
-    int8,
-    int16,
-    int32,
-    int64,
-    float16,
-    float32,
-    float64,
-};
-
-namespace detail {
-constexpr chordDataType unsigned_from_size(const std::size_t bits) {
-    switch (bits) {
-        case 8:
-            return uint8;
-        case 16:
-            return uint16;
-        case 32:
-            return uint32;
-        case 64:
-            return uint64;
-        default:
-            return unknown_type;
-    }
-}
-constexpr chordDataType signed_from_size(const std::size_t bits) {
-    switch (bits) {
-        case 8:
-            return int8;
-        case 16:
-            return int16;
-        case 32:
-            return int32;
-        case 64:
-            return int64;
-        default:
-            return unknown_type;
-    }
-}
-constexpr chordDataType real_from_size(const std::size_t bits) {
-    switch (bits) {
-        case 16:
-            return float16;
-        case 32:
-            return float32;
-        case 64:
-            return float64;
-        default:
-            return unknown_type;
-    }
-}
-} // namespace detail
-
-template<chordDataType>
-struct chordDataType_type;
-template<>
-struct chordDataType_type<uint4p4> {
-    using type = std::uint8_t;
-};
-template<>
-struct chordDataType_type<int4p4> {
-    using type = std::uint8_t;
-};
-template<>
-struct chordDataType_type<int4p4chime> {
-    using type = std::uint8_t;
-};
-template<>
-struct chordDataType_type<uint8> {
-    using type = std::uint8_t;
-};
-template<>
-struct chordDataType_type<uint16> {
-    using type = std::uint16_t;
-};
-template<>
-struct chordDataType_type<uint32> {
-    using type = std::uint32_t;
-};
-template<>
-struct chordDataType_type<uint64> {
-    using type = std::uint64_t;
-};
-template<>
-struct chordDataType_type<int8> {
-    using type = std::int8_t;
-};
-template<>
-struct chordDataType_type<int16> {
-    using type = std::int16_t;
-};
-template<>
-struct chordDataType_type<int32> {
-    using type = std::int32_t;
-};
-template<>
-struct chordDataType_type<int64> {
-    using type = std::int64_t;
-};
-#if KOTEKAN_FLOAT16
-template<>
-struct chordDataType_type<float16> {
-    using type = float16_t;
-};
-#endif
-template<>
-struct chordDataType_type<float32> {
-    using type = float;
-};
-template<>
-struct chordDataType_type<float64> {
-    using type = double;
-};
-template<chordDataType val>
-using chordDataType_type_t = typename chordDataType_type<val>::type;
-
-template<typename T>
-struct chordDataType_value;
-template<>
-struct chordDataType_value<unsigned char>
-    : std::integral_constant<chordDataType, detail::unsigned_from_size(sizeof(unsigned char))> {};
-template<>
-struct chordDataType_value<unsigned short>
-    : std::integral_constant<chordDataType, detail::unsigned_from_size(sizeof(unsigned short))> {};
-template<>
-struct chordDataType_value<unsigned int>
-    : std::integral_constant<chordDataType, detail::unsigned_from_size(sizeof(unsigned int))> {};
-template<>
-struct chordDataType_value<unsigned long>
-    : std::integral_constant<chordDataType, detail::unsigned_from_size(sizeof(unsigned long))> {};
-template<>
-struct chordDataType_value<unsigned long long>
-    : std::integral_constant<chordDataType,
-                             detail::unsigned_from_size(sizeof(unsigned long long))> {};
-template<>
-struct chordDataType_value<signed char>
-    : std::integral_constant<chordDataType, detail::signed_from_size(sizeof(signed char))> {};
-template<>
-struct chordDataType_value<signed short>
-    : std::integral_constant<chordDataType, detail::signed_from_size(sizeof(signed short))> {};
-template<>
-struct chordDataType_value<signed int>
-    : std::integral_constant<chordDataType, detail::signed_from_size(sizeof(signed int))> {};
-template<>
-struct chordDataType_value<signed long>
-    : std::integral_constant<chordDataType, detail::signed_from_size(sizeof(signed long))> {};
-template<>
-struct chordDataType_value<signed long long>
-    : std::integral_constant<chordDataType, detail::signed_from_size(sizeof(signed long long))> {};
-#if KOTEKAN_FLOAT16
-template<>
-struct chordDataType_value<float16_t>
-    : std::integral_constant<chordDataType, detail::real_from_size(sizeof(float16_t))> {};
-#endif
-template<>
-struct chordDataType_value<float>
-    : std::integral_constant<chordDataType, detail::real_from_size(sizeof(float))> {};
-template<>
-struct chordDataType_value<double>
-    : std::integral_constant<chordDataType, detail::real_from_size(sizeof(double))> {};
-template<typename T>
-constexpr chordDataType chordDataType_value_v = chordDataType_value<T>::value;
-
-constexpr std::size_t chord_datatype_bytes(chordDataType type) {
-    switch (type) {
-        case uint4p4:
-            return 1;
-        case uint8:
-            return 1;
-        case uint16:
-            return 2;
-        case uint32:
-            return 4;
-        case uint64:
-            return 8;
-        case int4p4:
-            return 1;
-        case int4p4chime:
-            return 1;
-        case int8:
-            return 1;
-        case int16:
-            return 2;
-        case int32:
-            return 4;
-        case int64:
-            return 8;
-        case float16:
-            return 2;
-        case float32:
-            return 4;
-        case float64:
-            return 8;
-        case unknown_type:
-        default:
-            return -1;
-    }
-}
-
-const char* chord_datatype_string(chordDataType type);
-chordDataType chord_datatype_from_string(const std::string& type);
-
 // Maximum number of frequencies in metadata array
 const int CHORD_META_MAX_FREQ = 1024;
 
@@ -237,6 +26,9 @@ const int CHORD_META_MAX_DIM = 10;
 
 // Maximum length of dimension names for arrays
 const int CHORD_META_MAX_DIMNAME = 20;
+
+// Maximum number of visibility matrix samples in a frame
+const int CHORD_META_MAX_VIS_SAMPLES = 64;
 
 class chordMetadata : public metadataObject {
 public:
@@ -253,10 +45,27 @@ public:
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
 
+    /// The ICEBoard sequence number
+    int64_t fpga_seq_num;
+    /// The system time when the first packet in the frame was captured
+    struct timeval first_packet_recv_time;
+    /// The GPS time of @c fpga_seq_num.
+    struct timespec gps_time;
+    /// The stream ID from the ICEBoard
+    /// Note in the case of CHIME-2048 the normally unused section
+    /// Encodes the port-shuffle frequency information
+    uint16_t stream_ID;
+
     int frame_counter;
 
+    // TODO: Replace by NDArray
     char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
-    chordDataType type;
+    kotekan::DataType type;
+
+    /// Track the number of lost fpga samples in each gpu sub-integration
+    int lost_fpga_samples[CHORD_META_MAX_FREQ][CHORD_META_MAX_VIS_SAMPLES];
+    /// Track the number of rfi-flagged samples in each gpu sub-integration
+    int rfi_flagged_samples[CHORD_META_MAX_FREQ][CHORD_META_MAX_VIS_SAMPLES];
 
     int dims;
     int dim[CHORD_META_MAX_DIM];
@@ -277,14 +86,16 @@ public:
     // shifting metadata in time to re-use metadata objects.)
     //
     // The actual (possibly fractional) time sample index is calculated as follows:
-    //     T_actual = (sample0_offset + T + half_fpga_sample0[F] / 2) / time_downsampling_fpga[F]
-    // where `T` is the time sample index and `F` is the coarse frequency index.
+    //     T_actual = (sample0_offset + T / offset_downsampling + half_fpga_sample0[F] / 2) /
+    //                time_downsampling_fpga[F]
+    // where `T` is the time sample index (the slowest varying index)
+    // and `F` is the coarse frequency index.
     int64_t sample0_offset;
+    int offset_downsampling;
 
-    // Number of bytes per time sample
     size_t sample_bytes() const {
         // The number of bytes per sample is the number of bytes needed to store one array slice.
-        return chord_datatype_bytes(type) * stride[0];
+        return type_total_bytes(type) * stride[0];
     }
 
     // Per-frequency arrays
@@ -302,6 +113,8 @@ public:
     // the upchannelization factor that each frequency has gone through (1 for = FPGA)
     // Also indexed by the local coarse frequency channel.
     int freq_upchan_factor[CHORD_META_MAX_FREQ];
+
+    // TODO: Store upchannelization index as well
 
     // Time sampling -- for each coarse frequency channel, 2x the FPGA
     // sample number of the first sample.  The 2x is there to handle
@@ -332,7 +145,7 @@ public:
     }
 
     std::string get_type_string() const {
-        return std::string(chord_datatype_string(type));
+        return type_to_string(type);
     }
 
     std::string get_dimensions_string() const {

@@ -12,10 +12,17 @@ upchannelization_factor: 16
 # The GPU-local (not global) channel index range for each upchannelization factor
 
 # actual = 0, scaled = 0
+upchan_U128_max_num_channels: 0
+upchan_U128_min_channel: 0
+upchan_U128_max_channel: 0
+upchan_U128_min_output_channel: upchan_all_min_output_channel
+upchan_U128_max_output_channel: upchan_U128_min_output_channel + (upchan_U128_max_channel - upchan_U128_min_channel) * 128
+
+# actual = 0, scaled = 0
 upchan_U64_max_num_channels: 0
 upchan_U64_min_channel: 0
 upchan_U64_max_channel: 0
-upchan_U64_min_output_channel: upchan_all_min_output_channel
+upchan_U64_min_output_channel: upchan_U128_min_output_channel
 upchan_U64_max_output_channel: upchan_U64_min_output_channel + (upchan_U64_max_channel - upchan_U64_min_channel) * 64
 
 # actual = 0, scaled = 0
@@ -25,6 +32,7 @@ upchan_U32_max_channel: 0
 upchan_U32_min_output_channel: upchan_U64_max_output_channel
 upchan_U32_max_output_channel: upchan_U32_min_output_channel + (upchan_U32_max_channel - upchan_U32_min_channel) * 32
 
+# TODO: use U128, then average (?) over frequencies in other kernels, produce 2 FRB outputs, the high-res F with low-res T
 # actual = 16, scaled = 256
 upchan_U16_max_num_channels: 16
 upchan_U16_min_channel: 0
@@ -79,6 +87,16 @@ upchan_U64_gains: [
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 ]
+upchan_U128_gains: [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+]
 
 ################################################################################
 
@@ -120,6 +138,12 @@ host_upchan_U64_gain_buffer:
     kotekan_buffer: standard
     num_frames: 1
     frame_size: 1   # sizeof_float16 * upchan_U64_max_num_channels * 64
+    metadata_pool: main_pool
+
+host_upchan_U128_gain_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1   # sizeof_float16 * upchan_U128_max_num_channels * 128
     metadata_pool: main_pool
 
 # Voltages
@@ -183,6 +207,16 @@ host_upchan_U16_voltage_ringbuffer:
 #     kotekan_buffer: ring
 #     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U64_max_num_channels * 64) * (num_times / 64)
 #     metadata_pool: main_pool
+# 
+# host_upchan_U128_voltage_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: num_dishes * num_polarizations * (upchan_U128_max_num_channels * 128) * (num_times / 128)
+#     metadata_pool: main_pool
+# host_upchan_U128_voltage_ringbuffer:
+#     kotekan_buffer: ring
+#     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U128_max_num_channels * 128) * (num_times / 128)
+#     metadata_pool: main_pool
 
 ################################################################################
 
@@ -193,22 +227,20 @@ host_upchan_U16_voltage_ringbuffer:
 #         kotekan_stage: cudaProcess
 #         gpu_id: 0
 #         in_buffers:
-#             host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
-#             host_upchan_U2_gain_buffer_in: host_upchan_U2_gain_buffer
+#             host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+#             host_upchan_U2_gain_buffer: host_upchan_U2_gain_buffer
 #         out_buffers:
-#             host_upchan_U2_voltage_ringbuffer_out: host_upchan_U2_voltage_ringbuffer
+#             host_upchan_U2_voltage_ringbuffer: host_upchan_U2_voltage_ringbuffer
 #         commands:
 #         - name: cudaInputData
 #           do_once: true
-#           in_buf: host_upchan_U2_gain_buffer_in
+#           in_buf: host_upchan_U2_gain_buffer
 #           gpu_mem: upchan_U2_gain_buffer
 #         - name: cudaSyncInput
 #         - name: cudaUpchannelizer_chime_U2
-#           in_signal: host_xposed_voltage_ringbuffer_in
-#           out_signal: host_upchan_U2_voltage_ringbuffer_out
-#           gpu_mem_input_voltage: voltage_buffer
-#           gpu_mem_gain: upchan_U2_gain_buffer
-#           gpu_mem_output_voltage: upchan_U2_voltage_buffer
+#           voltage_name: xposed_voltage
+#           upchan_U2_gain_name: upchan_U2_gain
+#           upchan_U2_voltage_name: upchan_U2_voltage
 #           Fmin: upchan_U2_min_channel
 #           Fmax: upchan_U2_max_channel
 # 
@@ -217,22 +249,20 @@ host_upchan_U16_voltage_ringbuffer:
 #         kotekan_stage: cudaProcess
 #         gpu_id: 0
 #         in_buffers:
-#             host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
-#             host_upchan_U4_gain_buffer_in: host_upchan_U4_gain_buffer
+#             host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+#             host_upchan_U4_gain_buffer: host_upchan_U4_gain_buffer
 #         out_buffers:
-#             host_upchan_U4_voltage_ringbuffer_out: host_upchan_U4_voltage_ringbuffer
+#             host_upchan_U4_voltage_ringbuffer: host_upchan_U4_voltage_ringbuffer
 #         commands:
 #         - name: cudaInputData
 #           do_once: true
-#           in_buf: host_upchan_U4_gain_buffer_in
+#           in_buf: host_upchan_U4_gain_buffer
 #           gpu_mem: upchan_U4_gain_buffer
 #         - name: cudaSyncInput
 #         - name: cudaUpchannelizer_chime_U4
-#           in_signal: host_xposed_voltage_ringbuffer_in
-#           out_signal: host_upchan_U4_voltage_ringbuffer_out
-#           gpu_mem_input_voltage: voltage_buffer
-#           gpu_mem_gain: upchan_U4_gain_buffer
-#           gpu_mem_output_voltage: upchan_U4_voltage_buffer
+#           voltage_name: xposed_voltage
+#           upchan_U4_gain_name: upchan_U4_gain
+#           upchan_U4_voltage_name: upchan_U4_voltage
 #           Fmin: upchan_U4_min_channel
 #           Fmax: upchan_U4_max_channel
 # 
@@ -241,22 +271,20 @@ host_upchan_U16_voltage_ringbuffer:
 #         kotekan_stage: cudaProcess
 #         gpu_id: 0
 #         in_buffers:
-#             host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
-#             host_upchan_U8_gain_buffer_in: host_upchan_U8_gain_buffer
+#             host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+#             host_upchan_U8_gain_buffer: host_upchan_U8_gain_buffer
 #         out_buffers:
-#             host_upchan_U8_voltage_ringbuffer_out: host_upchan_U8_voltage_ringbuffer
+#             host_upchan_U8_voltage_ringbuffer: host_upchan_U8_voltage_ringbuffer
 #         commands:
 #         - name: cudaInputData
 #           do_once: true
-#           in_buf: host_upchan_U8_gain_buffer_in
+#           in_buf: host_upchan_U8_gain_buffer
 #           gpu_mem: upchan_U8_gain_buffer
 #         - name: cudaSyncInput
 #         - name: cudaUpchannelizer_chime_U8
-#           in_signal: host_xposed_voltage_ringbuffer_in
-#           out_signal: host_upchan_U8_voltage_ringbuffer_out
-#           gpu_mem_input_voltage: voltage_buffer
-#           gpu_mem_gain: upchan_U8_gain_buffer
-#           gpu_mem_output_voltage: upchan_U8_voltage_buffer
+#           voltage_name: xposed_voltage
+#           upchan_U8_gain_name: upchan_U8_gain
+#           upchan_U8_voltage_name: upchan_U8_voltage
 #           Fmin: upchan_U8_min_channel
 #           Fmax: upchan_U8_max_channel
 
@@ -265,22 +293,20 @@ run_upchan_U16:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
-            host_upchan_U16_gain_buffer_in: host_upchan_U16_gain_buffer
+            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+            host_upchan_U16_gain_buffer: host_upchan_U16_gain_buffer
         out_buffers:
-            host_upchan_U16_voltage_ringbuffer_out: host_upchan_U16_voltage_ringbuffer
+            host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_upchan_U16_gain_buffer_in
+          in_buf: host_upchan_U16_gain_buffer
           gpu_mem: upchan_U16_gain_buffer
         - name: cudaSyncInput
         - name: cudaUpchannelizer_chime_U16
-          in_signal: host_xposed_voltage_ringbuffer_in
-          out_signal: host_upchan_U16_voltage_ringbuffer_out
-          gpu_mem_input_voltage: voltage_buffer
-          gpu_mem_gain: upchan_U16_gain_buffer
-          gpu_mem_output_voltage: upchan_U16_voltage_buffer
+          voltage_name: xposed_voltage
+          upchan_U16_gain_name: upchan_U16_gain
+          upchan_U16_voltage_name: upchan_U16_voltage
           Fmin: upchan_U16_min_channel
           Fmax: upchan_U16_max_channel
 
@@ -289,22 +315,20 @@ run_upchan_U16:
 #         kotekan_stage: cudaProcess
 #         gpu_id: 0
 #         in_buffers:
-#             host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
-#             host_upchan_U32_gain_buffer_in: host_upchan_U32_gain_buffer
+#             host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+#             host_upchan_U32_gain_buffer: host_upchan_U32_gain_buffer
 #         out_buffers:
-#             host_upchan_U32_voltage_ringbuffer_out: host_upchan_U32_voltage_ringbuffer
+#             host_upchan_U32_voltage_ringbuffer: host_upchan_U32_voltage_ringbuffer
 #         commands:
 #         - name: cudaInputData
 #           do_once: true
-#           in_buf: host_upchan_U32_gain_buffer_in
+#           in_buf: host_upchan_U32_gain_buffer
 #           gpu_mem: upchan_U32_gain_buffer
 #         - name: cudaSyncInput
 #         - name: cudaUpchannelizer_chime_U32
-#           in_signal: host_xposed_voltage_ringbuffer_in
-#           out_signal: host_upchan_U32_voltage_ringbuffer_out
-#           gpu_mem_input_voltage: voltage_buffer
-#           gpu_mem_gain: upchan_U32_gain_buffer
-#           gpu_mem_output_voltage: upchan_U32_voltage_buffer
+#           voltage_name: xposed_voltage
+#           upchan_U32_gain_name: upchan_U32_gain
+#           upchan_U32_voltage_name: upchan_U32_voltage
 #           Fmin: upchan_U32_min_channel
 #           Fmax: upchan_U32_max_channel
 # 
@@ -313,21 +337,41 @@ run_upchan_U16:
 #         kotekan_stage: cudaProcess
 #         gpu_id: 0
 #         in_buffers:
-#             host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
-#             host_upchan_U64_gain_buffer_in: host_upchan_U64_gain_buffer
+#             host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+#             host_upchan_U64_gain_buffer: host_upchan_U64_gain_buffer
 #         out_buffers:
-#             host_upchan_U64_voltage_ringbuffer_out: host_upchan_U64_voltage_ringbuffer
+#             host_upchan_U64_voltage_ringbuffer: host_upchan_U64_voltage_ringbuffer
 #         commands:
 #         - name: cudaInputData
 #           do_once: true
-#           in_buf: host_upchan_U64_gain_buffer_in
+#           in_buf: host_upchan_U64_gain_buffer
 #           gpu_mem: upchan_U64_gain_buffer
 #         - name: cudaSyncInput
 #         - name: cudaUpchannelizer_chime_U64
-#           in_signal: host_xposed_voltage_ringbuffer_in
-#           out_signal: host_upchan_U64_voltage_ringbuffer_out
-#           gpu_mem_input_voltage: voltage_buffer
-#           gpu_mem_gain: upchan_U64_gain_buffer
-#           gpu_mem_output_voltage: upchan_U64_voltage_buffer
+#           voltage_name: xposed_voltage
+#           upchan_U64_gain_name: upchan_U64_gain
+#           upchan_U64_voltage_name: upchan_U64_voltage
 #           Fmin: upchan_U64_min_channel
 #           Fmax: upchan_U64_max_channel
+# 
+# run_upchan_U128:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+#             host_upchan_U128_gain_buffer: host_upchan_U128_gain_buffer
+#         out_buffers:
+#             host_upchan_U128_voltage_ringbuffer: host_upchan_U128_voltage_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_upchan_U128_gain_buffer
+#           gpu_mem: upchan_U128_gain_buffer
+#         - name: cudaSyncInput
+#         - name: cudaUpchannelizer_chime_U128
+#           voltage_name: xposed_voltage
+#           upchan_U128_gain_name: upchan_U128_gain
+#           upchan_U128_voltage_name: upchan_U128_voltage
+#           Fmin: upchan_U128_min_channel
+#           Fmax: upchan_U128_max_channel

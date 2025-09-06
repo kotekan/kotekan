@@ -22,6 +22,9 @@ class gdalFileRead : public kotekan::Stage {
     const std::string input_dir = config.get<std::string>(unique_name, "input_dir");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
+    const bool do_once = config.get_default<bool>(unique_name, "do_once", false);
+
+    const bool read_sozip = false;
 
     Buffer* const buffer;
 
@@ -50,20 +53,32 @@ public:
         for (int frame_index = 0;; ++frame_index) {
             const int frame_id = frame_index % buffer->num_frames;
 
+        wait:
+
             if (stop_thread)
                 break;
+
+            if (do_once && frame_index > 0) {
+                sleep(1);
+                goto wait;
+            }
 
             // Start timer
             const double t0 = current_time();
 
             // Define file name
             std::ostringstream buf;
+            if (read_sozip)
+                buf << "/vsizip/";
             buf << input_dir << "/";
             if (prefix_hostname) {
                 char hostname[256];
                 gethostname(hostname, sizeof hostname);
                 buf << hostname << "_";
             }
+            if (read_sozip)
+                buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_index
+                    << ".zarr.zip/";
             buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_index << ".zarr";
             const std::string full_path = buf.str();
 
@@ -120,10 +135,10 @@ public:
                 const auto type_datatype = type->GetDataType();
                 assert(type_datatype.GetClass() == GEDTC_STRING);
                 const std::string type_value = std::string(type->ReadAsString());
-                meta->type = chord_datatype_from_string(type_value);
+                meta->type = kotekan::string_to_type(type_value);
                 DEBUG("[{:s}/{:d}] meta->type={}", buffer->buffer_name, frame_index,
-                      chord_datatype_string(meta->type));
-                assert(meta->type != unknown_type);
+                      type_to_string(meta->type));
+                assert(meta->type != kotekan::unknown_type);
             }
 
             {
@@ -198,6 +213,18 @@ public:
                     assert(meta->sample0_offset >= 0);
                 } else {
                     meta->sample0_offset = -1;
+                }
+            }
+
+            {
+                const auto offset_downsampling = group->GetAttribute("offset_downsampling");
+                if (offset_downsampling) {
+                    const auto offset_downsampling_shape = offset_downsampling->GetDimensionsSize();
+                    assert(offset_downsampling_shape.empty());
+                    meta->offset_downsampling = offset_downsampling->ReadAsInt();
+                    assert(meta->offset_downsampling > 0);
+                } else {
+                    meta->offset_downsampling = -1;
                 }
             }
 
@@ -310,6 +337,9 @@ public:
                                   frame, frame, buffer->frame_size);
                 assert(success);
             }
+
+            const CPLErr err = dataset->Close();
+            assert(!err);
 
             // Mark buffer as full
             DEBUG("[{:s}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);

@@ -8,6 +8,7 @@
 n2k_sub_integration_ntime: 8192
 # n2k_samples_per_data_set = max(num_times, n2k_sub_integration_ntime)
 n2k_samples_per_data_set: 8192
+# TODO: Check that this is 30 ms, Kendrick wants 30 ms
 
 ################################################################################
 
@@ -35,19 +36,18 @@ run_n2k:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
         out_buffers:
-            host_n2k_correlation_buffer_out: host_n2k_correlation_buffer
+            host_n2k_correlation_buffer: host_n2k_correlation_buffer
         commands:
         - name: cudaCorrelator
           num_elements: num_dishes * num_polarizations
           num_local_freq: num_frequencies
           samples_per_data_set: n2k_samples_per_data_set
           sub_integration_ntime: n2k_sub_integration_ntime
-          in_signal: host_voltage_ringbuffer_in
-          gpu_mem_voltage: voltage_buffer
-          gpu_mem_correlation_triangle: n2k_correlation_matrix_buffer
+          voltage_name: voltage
+          n2k_correlation_name: n2k_correlation
         - name: cudaSyncOutput
         - name: cudaOutputData
-          gpu_mem: n2k_correlation_matrix_buffer
-          out_buf: host_n2k_correlation_buffer_out
+          gpu_mem: n2k_correlation_buffer
+          out_buf: host_n2k_correlation_buffer

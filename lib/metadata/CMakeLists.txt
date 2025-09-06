@@ -7,6 +7,7 @@ add_library(
     HFBMetadata.cpp
     BasebandMetadata.cpp
     BeamMetadata.cpp
+    N2Metadata.cpp
     DataType.cpp
     Metadata.cpp
     NDArray.cpp

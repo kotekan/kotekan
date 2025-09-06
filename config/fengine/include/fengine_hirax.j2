@@ -77,11 +77,27 @@ frequency_channels: [
 
 # Input frames
 
-num_times: 16384
+num_times: 16384                # frame length is 16384 * 2.56 us = 41.94304 ms
 
 ################################################################################
 
 # Buffers
+
+host_bf_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    metadata_pool: main_pool
+
+host_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 8 * num_dishes * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 8 / 8)
+    metadata_pool: main_pool
+host_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * 8 * num_dishes * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 8 / 8)
+    metadata_pool: main_pool
 
 host_voltage_buffer:
     kotekan_buffer: standard
@@ -93,34 +109,64 @@ host_voltage_ringbuffer:
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times
     metadata_pool: main_pool
 
-host_expected_bb_beams_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
-    metadata_pool: main_pool
-
-host_expected_frb1_beams_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
-    metadata_pool: main_pool
+# host_expected_bb_beams_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
+#     metadata_pool: main_pool
+# 
+# host_expected_frb1_beams_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+#     metadata_pool: main_pool
 
 ################################################################################
 
 # Stages
+
+# run_send_bf_mask:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_bf_mask_buffer: host_bf_mask_buffer
+#         out_buffers:
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_bf_mask_buffer
+#           gpu_mem: bf_mask_buffer
+#         - name: cudaSyncInput
+
+run_send_pl_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_mask_buffer: host_pl_mask_buffer
+        out_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_dishes * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 8)
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_pl_mask_buffer
+          signal_buf: host_pl_mask_ringbuffer
+          gpu_mem_output: pl_mask_buffer
 
 run_send_voltage:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_buffer_in: host_voltage_buffer
+            host_voltage_buffer: host_voltage_buffer
         out_buffers:
-            host_voltage_ringbuffer_out: host_voltage_ringbuffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
         commands:
         - name: cudaCopyToRingbuffer
           input_size: num_dishes * num_polarizations * num_frequencies * num_times
           ring_buffer_size: buffer_depth * input_size
-          in_buf: host_voltage_buffer_in
-          signal_buf: host_voltage_ringbuffer_out
+          in_buf: host_voltage_buffer
+          signal_buf: host_voltage_ringbuffer
           gpu_mem_output: voltage_buffer

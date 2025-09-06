@@ -11,15 +11,16 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json, basic_json<>::object_t, basic_json<>::value_type
 
-#include <algorithm>   // for max
-#include <atomic>      // for atomic_bool
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, ref, _1, fun...
-#include <iosfwd>      // for std
-#include <pthread.h>   // for pthread_setaffinity_np
-#include <regex>       // for match_results<>::_Base_type
-#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <set>         // for set
+#include <algorithm>  // for max
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, ref, _1, fun...
+#include <iosfwd>     // for std
+#include <pthread.h>  // for pthread_setaffinity_np
+#include <regex>      // for match_results<>::_Base_type
+#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <set>        // for set
+#include <sstream>
 #include <stdexcept>   // for runtime_error
 #include <sys/types.h> // for uint
 
@@ -156,9 +157,19 @@ void gpuProcess::main_thread() {
     bool first_run = true;
 
     while (!stop_thread) {
+        const int ic = gpu_frame_counter % final_signals.size();
+
+        DEBUG2("Waiting for free slot for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
+               unique_name);
+
+        // We make sure we aren't using a gpu frame that's currently in-flight.
+        final_signals[ic]->wait_for_free_slot();
+
+        // Update the gpu_frame_counter and perform any reset actions on the command object
+        // for this frame.
 
         for (auto& command : commands) {
-            int ic = gpu_frame_counter % command.size();
+            assert(command.size() == final_signals.size());
             command[ic]->start_frame(gpu_frame_counter);
         }
 
@@ -168,7 +179,6 @@ void gpuProcess::main_thread() {
         DEBUG2("Waiting on preconditions for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
                unique_name);
         for (auto& command : commands) {
-            int ic = gpu_frame_counter % command.size();
             if (command[ic]->wait_on_precondition() != 0) {
                 INFO("Received exit signal from GPU command precondition (Command '{:s}')",
                      command[ic]->get_name());
@@ -176,19 +186,17 @@ void gpuProcess::main_thread() {
             }
         }
 
-        DEBUG("Waiting for free slot for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
-              unique_name);
-        // We make sure we aren't using a gpu frame that's currently in-flight.
-        int ic = gpu_frame_counter % final_signals.size();
-        final_signals[ic]->wait_for_free_slot();
-        DEBUG("Waited for free slot for GPU[{:d}][{:d}] {:s}, queuing commands", gpu_id,
-              gpu_frame_counter, unique_name);
+        DEBUG2("Preconditions met for GPU[{:d}][{:d}] {:s}, queuing commands", gpu_id,
+               gpu_frame_counter, unique_name);
+        // Queue the commands for this frame.  This calls execute on each commandObject.
         queue_commands(gpu_frame_counter);
+
+        // Launch the results thread if it hasn't been launched yet.
         if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
 
-            // Requires Linux, this could possibly be made more general someday.
-            // TODO Move to config
+            // Set the CPU affinity for the results thread, uses the "cpu_affinity" from the
+            // gpuProcess config.
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
             for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
@@ -219,7 +227,7 @@ void gpuProcess::results_thread() {
         // Wait for a signal to be completed
         DEBUG2("Waiting for signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id,
                gpu_frame_counter, e_time());
-        int ic = gpu_frame_counter % final_signals.size();
+        const int ic = gpu_frame_counter % final_signals.size();
         if (final_signals[ic]->wait_for_signal() == -1) {
             // If wait_for_signal returns -1, then we don't have a signal to wait on,
             // but we have been given a shutdown request, so break this loop.
@@ -237,26 +245,24 @@ void gpuProcess::results_thread() {
             // which is always called, or make sure that all finalize_frame calls can
             // run even when there is a shutdown in progress.
             if (!stop_thread) {
-                ic = gpu_frame_counter % command.size();
+                assert(command.size() == final_signals.size());
                 command[ic]->finalize_frame();
             }
         }
         DEBUG2("Finished finalizing frames for gpu[{:d}][{:d}]", gpu_id, gpu_frame_counter);
 
         if (log_profiling) {
-            std::string output = "";
-            for (size_t i = 0; i < commands.size(); ++i) {
-                ic = gpu_frame_counter % commands[i].size();
-                output =
-                    fmt::format(fmt("{:s}command: {:s} ({:30s}) metrics: {:s}; \n"), output,
-                                commands[i][ic]->get_unique_name(), commands[i][ic]->get_name(),
-                                commands[i][ic]->get_performance_metric_string());
+            std::ostringstream output;
+            for (auto& command : commands) {
+                assert(command.size() == final_signals.size());
+                output << fmt::format(fmt("command: {:s} ({:30s}) metrics: {:s}; \n"),
+                                      command[ic]->get_unique_name(), command[ic]->get_name(),
+                                      command[ic]->get_performance_metric_string());
             }
-            INFO("GPU[{:d}] frame {:d} Profiling: \n{:s}", gpu_id, gpu_frame_counter, output);
+            INFO("GPU[{:d}] frame {:d} Profiling: \n{:s}", gpu_id, gpu_frame_counter, output.str());
         }
 
         DEBUG2("Resetting signal for gpu[{:d}][{:d}]", gpu_id, gpu_frame_counter);
-        ic = gpu_frame_counter % final_signals.size();
         final_signals[ic]->reset();
         gpu_frame_counter++;
     }
