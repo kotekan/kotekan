@@ -66,7 +66,7 @@ jobs:
     - name: Build kotekan
       shell: bash
       run: |
-        OPTS=(--pull=always --privileged --rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/ ${{ IMG_2404 }}:chord)
+        OPTS=(--pull=always --privileged --rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/ ${IMG_2404}:chord)
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
