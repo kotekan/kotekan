@@ -561,11 +561,11 @@ public:
         struct stat info;
         if (stat(directory.c_str(), &info) != 0) {
             std::string err = "Directory does not exist: " + directory;
-            ERROR_NON_OO("ConfigTracker: {}", err);
+            FATAL_ERROR_NON_OO("ConfigTracker: {}", err);
         }
         if (!(info.st_mode & S_IFDIR)) {
             std::string err = "Path is not a directory: " + directory;
-            ERROR_NON_OO("ConfigTracker: {}", err);
+            FATAL_ERROR_NON_OO("ConfigTracker: {}", err);
         }
 
         std::lock_guard<std::mutex> lock(_lock);
@@ -585,7 +585,7 @@ public:
                 {
                     std::ofstream file(temp_filename);
                     if (!file) {
-                        ERROR_NON_OO("ConfigTracker: Cannot open file for writing");
+                        FATAL_ERROR_NON_OO("ConfigTracker: Cannot open file for writing");
                     }
 
                     // Write with pretty formatting
@@ -593,20 +593,20 @@ public:
                                                        nlohmann::json::error_handler_t::strict);
 
                     if (!file.good()) {
-                        ERROR_NON_OO("ConfigTracker: Write failed");
+                        FATAL_ERROR_NON_OO("ConfigTracker: Write failed");
                     }
                 } // file closed
 
                 // Atomically rename temp file to final name
                 if (std::rename(temp_filename.c_str(), filename.c_str()) != 0) {
-                    ERROR_NON_OO("ConfigTracker: Failed to rename temp file");
+                    FATAL_ERROR_NON_OO("ConfigTracker: Failed to rename temp file");
                 }
 
                 ++written;
 
             } catch (const std::exception& e) {
                 std::string err = "Error writing " + filename + ": " + e.what();
-                ERROR_NON_OO("{}", err);
+                FATAL_ERROR_NON_OO("{}", err);
 
                 // Clean up temp file if it exists
                 std::remove((filename + ".tmp").c_str());

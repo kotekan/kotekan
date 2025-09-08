@@ -206,7 +206,7 @@ void bufferSend::main_thread() {
             DEBUG("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id, server_ip,
                   server_port);
 
-            /// Set to true sine we've set a transmission.
+            // Set to true since we've sent a transmission.
             first_transmission_sent = true;
 
         } else {
