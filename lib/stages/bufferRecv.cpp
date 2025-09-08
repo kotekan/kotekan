@@ -65,8 +65,36 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     connection_timeout = config.get_default<int>(unique_name, "connection_timeout", 60);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
     use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
-    upstream_rest_port = static_cast<uint16_t>(
-        config.get_default<uint32_t>(unique_name, "upstream_rest_port", PORT_REST_SERVER));
+
+    // Optional per-connection upstream REST port overrides (list of "host:port" strings)
+    if (config.exists(unique_name, "upstream_rest_endpoints")) {
+        try {
+            auto entries =
+                config.get<std::vector<std::string>>(unique_name, "upstream_rest_endpoints");
+            for (const auto& ep : entries) {
+                auto parts = regex_split(ep, ":");
+                if (parts.size() != 2) {
+                    WARN("Invalid upstream_rest_endpoints entry: {:s} (expected host:port)", ep);
+                    continue;
+                }
+                uint16_t port = 0;
+                try {
+                    int p = std::stoi(parts[1]);
+                    if (p < 0 || p > 65535) {
+                        throw std::out_of_range("port out of range");
+                    }
+                    port = static_cast<uint16_t>(p);
+                } catch (const std::exception& e) {
+                    WARN("Invalid port in upstream_rest_endpoints entry: {:s} ({:s})", ep,
+                         e.what());
+                    continue;
+                }
+                upstream_rest_port_overrides[parts[0]] = port;
+            }
+        } catch (const std::exception& e) {
+            WARN("Failed to parse upstream_rest_endpoints: {:s}", e.what());
+        }
+    }
 
     buf = get_buffer("buf");
     buf->register_producer(unique_name);
@@ -169,9 +197,18 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     INFO("New connection from client: {:s}:{:d}", ip_str, port);
 
     // New connection instance
+    // Resolve per-connection upstream REST port (override by client IP if configured)
+    uint16_t conn_upstream_rest_port = PORT_REST_SERVER;
+    auto it_override = upstream_rest_port_overrides.find(std::string(ip_str));
+    if (it_override != upstream_rest_port_overrides.end()) {
+        conn_upstream_rest_port = it_override->second;
+        DEBUG("Using per-connection upstream REST port {} for client {}", conn_upstream_rest_port,
+              ip_str);
+    }
+
     connInstance* instance =
         new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
-                         ip_str, port, read_timeout, use_config_tracker);
+                         ip_str, port, read_timeout, use_config_tracker, conn_upstream_rest_port);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -337,9 +374,10 @@ std::string bufferRecv::dot_string(const std::string& prefix) const {
 
 connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                            const std::string& client_ip, int port, struct timeval read_timeout,
-                           bool use_config_tracker) :
+                           bool use_config_tracker, uint16_t upstream_rest_port) :
     producer_name(producer_name), buf(buf), buffer_recv(buffer_recv), client_ip(client_ip),
-    port(port), read_timeout(read_timeout), use_config_tracker(use_config_tracker) {
+    port(port), read_timeout(read_timeout), use_config_tracker(use_config_tracker),
+    upstream_rest_port(upstream_rest_port) {
 
     frame_space = buffer_malloc(buf->aligned_frame_size, buf->numa_node, buf->use_hugepages,
                                 buf->mlock_frames, false);

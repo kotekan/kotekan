@@ -20,6 +20,7 @@
 #include <deque>              // for deque
 #include <event2/event.h>     // for event_add
 #include <event2/util.h>      // for evutil_socket_t
+#include <map>                // for map
 #include <mutex>              // for mutex
 #include <stdint.h>           // for uint32_t, uint8_t
 #include <stdio.h>            // for size_t
@@ -56,7 +57,10 @@ class connInstance;
  * @conf num_threads         Int, default 1.  The number of worker threads to use
  * @conf connection_timeout  Int, default 60.  Number of seconds before timeout on transfer
  * @conf drop_frames         Bool, default true.  Whether to drop frames when buffer fills.
- * @conf upstream_rest_port  Int, default 12048. REST port to query upstream ConfigTracker.
+ * @conf upstream_rest_endpoints  List[str], default empty. Optional list of
+ *        "host:port" entries specifying non-standard upstream REST ports to use for
+ *        particular senders. If the client IP (as seen by bufferRecv) matches a host in this
+ *        list, that port overrides the default REST port (PORT_REST_SERVER) for that connection.
  *
  * @par Metrics
  * @metric kotekan_buffer_recv_transfer_time_seconds
@@ -126,8 +130,8 @@ private:
     /// Whether to drop frames when buffer starts filling up
     bool drop_frames;
 
-    /// REST port to use when fetching upstream configs
-    uint16_t upstream_rest_port;
+    /// Optional per-host overrides for upstream REST ports
+    std::map<std::string, uint16_t> upstream_rest_port_overrides;
 
     /// A lock on the current frame, since many systems may ask for the next frame
     std::mutex next_frame_lock;
@@ -242,7 +246,7 @@ public:
     /// Constructor
     connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                  const std::string& client_ip, int port, struct timeval read_timeout,
-                 bool use_config_tracker);
+                 bool use_config_tracker, uint16_t upstream_rest_port);
 
     /// Destructor
     ~connInstance();
@@ -308,6 +312,9 @@ public:
 
     /// Whether to use the config tracker
     bool use_config_tracker;
+
+    /// Upstream REST port for this connection (may override stage default)
+    uint16_t upstream_rest_port;
 
     /// Pointer to the local memory space which matching the size of the incoming frame.
     uint8_t* frame_space;

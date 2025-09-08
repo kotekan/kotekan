@@ -1,3 +1,20 @@
+/**
+ * @file
+ * @brief Configuration tracker singleton and REST endpoints.
+ *
+ * Tracks the startup-time configuration JSON for participating Kotekan instances,
+ * exposes REST endpoints to query stored configs and their hashes, and maintains a
+ * combined hash summarizing the local tracker state.
+ *
+ * - kotekan::ConfigTracker
+ *   -- instance
+ *   -- insertConfig
+ *   -- hasConfig
+ *   -- getTrackerHash
+ *   -- register_with_server
+ *   -- getUpstreamConfigs
+ *   -- writeConfigsToDisk
+ */
 #ifndef CONFIGTRACKER_H
 #define CONFIGTRACKER_H
 
@@ -599,6 +616,12 @@ public:
         return written;
     }
 
+    /**
+     * @brief Clear all tracked configurations and hashes.
+     *
+     * Empties the internal maps and clears the combined tracker hash. Intended
+     * primarily for tests or controlled re-initialization.
+     */
     void reset() {
         std::lock_guard<std::mutex> lock(_lock);
         _configs.clear();

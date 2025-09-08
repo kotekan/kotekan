@@ -48,3 +48,26 @@ Threading & Safety
 - The tracker is process-local; network exchange happens via the REST client/servers under the hood.
 - Hash collisions are unlikely in practice; if the same hash is mapped to different endpoints,
   execution aborts to avoid misattribution.
+
+Per-Connection REST Ports
+-------------------------
+When receiving frames over the network, ``bufferRecv`` may need to pull upstream configurations
+from the sender’s REST server (only when the config tracker is enabled).
+
+- Default: the receiver assumes the sender’s REST server is on port ``12048`` (``PORT_REST_SERVER``).
+- Override: use the stage config key ``upstream_rest_endpoints`` to specify non‑standard ports
+  per client. Entries are matched against the client IP as seen by ``bufferRecv``.
+
+Example::
+
+  buffer_recv:
+    type: bufferRecv
+    listen_port: 11024
+    use_config_tracker: true
+    upstream_rest_endpoints:
+      - "10.1.2.3:13000"
+      - "192.168.5.10:14080"
+
+Notes
+- This setting is only meaningful when ``use_config_tracker: true``.
+- If a client IP is not listed, the default port ``12048`` is used.
