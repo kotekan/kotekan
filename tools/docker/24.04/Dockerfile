@@ -45,8 +45,10 @@ RUN apt update && \
         liblapacke-dev \
         liblz4-dev \
         libnuma-dev \
+        libomp-dev \
         libopenblas-dev \
         libssl-dev \
+        libstdc++-14-dev \
         libsystemd-dev \
         libxtensor-dev \
         libyaml-cpp-dev \
