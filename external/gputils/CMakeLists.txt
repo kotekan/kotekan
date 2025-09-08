@@ -47,7 +47,7 @@ message(STATUS "CUFILES: ${CUFILES}")
 # Add library targets
 add_library(gputils ${HFILES} ${CUFILES})
 
-# Set architecture flags set_target_properties(gputils PROPERTIES CUDA_ARCHITECTURES "80;86;89;90")
+# Set architecture flags
 set_target_properties(gputils PROPERTIES CUDA_ARCHITECTURES "86;89")
 
 # Set language for CUDA files
