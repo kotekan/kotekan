@@ -421,7 +421,8 @@ void connInstance::internal_read_callback() {
 
                     metadata_size = buf_frame_header.metadata_size;
                     frame_size = buf_frame_header.frame_size;
-                    config_tracker_update = buf_frame_header.config_tracker_update;
+                    // header field is uint32_t on the wire; convert to bool
+                    config_tracker_update = (buf_frame_header.config_tracker_update != 0);
                 } else {
                     DEBUG2("Using no config tracker header");
                     bufferFrameHeaderNoConfigTracker buf_frame_header;

@@ -21,27 +21,29 @@
 
 /**
  * @struct bufferFrameHeader
- * @brief Internal struct for sending the transfer details.
+ * @brief Stable wire header for transfer details.
+ *
+ * Uses fixed-width types and explicit padding to make the layout
+ * consistent across compilers/ABIs without relying on packing pragmas.
  */
-#pragma pack()
 struct bufferFrameHeader {
     uint32_t metadata_size;
     uint32_t frame_size;
-    /// Flag to indicate if config tracker data has been updated
-    /// This is set to true if the config tracker data has changed since the last transmission.
-    /// This is used to avoid sending the config tracker data on every frame.
-    bool config_tracker_update;
+    /// 0 = no update, 1 = update
+    uint32_t config_tracker_update;
 };
+static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader must be 12 bytes");
 
 /**
  * @struct bufferFrameHeaderNoConfigTracker
- * @brief Internal struct for sending the transfer details (no config_tracker_update)
+ * @brief Wire header without the config tracker flag.
  */
-#pragma pack()
 struct bufferFrameHeaderNoConfigTracker {
     uint32_t metadata_size;
     uint32_t frame_size;
 };
+static_assert(sizeof(bufferFrameHeaderNoConfigTracker) == 8,
+              "bufferFrameHeaderNoConfigTracker must be 8 bytes");
 
 /**
  * @brief Sends a buffer, metadata, and flag for whether config data was updated over TCP.

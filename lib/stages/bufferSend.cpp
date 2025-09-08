@@ -111,7 +111,7 @@ void bufferSend::main_thread() {
             // Use NoTrack header version if there is a config setting to enable it.
             if(use_config_tracker)
             {
-                bufferFrameHeader header;
+                bufferFrameHeader header{}; // zero-initialize
                 header_len = sizeof(bufferFrameHeader);
 
                 header.frame_size = buf->frame_size;
@@ -119,9 +119,9 @@ void bufferSend::main_thread() {
                 // Check if config tracker data has been updated since last transmission
                 if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
                     DEBUG("Config tracker data has been updated, sending new config tracker data.");
-                    header.config_tracker_update = true;
+                    header.config_tracker_update = 1u;
                 } else {
-                    header.config_tracker_update = false;
+                    header.config_tracker_update = 0u;
                 }
 
                 DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}",
