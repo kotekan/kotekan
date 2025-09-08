@@ -131,3 +131,6 @@ add_custom_target(
     test_timeUtil_script ALL
     DEPENDS ${PROJECT_BINARY_DIR}/timeUtil.py
     COMMENT "Generating timeUtil.py script")
+
+add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)
+target_link_libraries(test_CHORDTelescope PRIVATE kotekan_utils)
