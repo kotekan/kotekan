@@ -58,7 +58,7 @@ To build with CUDA:
 
 At the end of configuration, CMake prints a colorized feature summary indicating which features were enabled (found) or disabled (missing/explicitly off). Each feature row shows its toggle flag, e.g. `CUDA: ON (found, toggle: -DUSE_CUDA=ON/OFF)`. Use `-D<OPTION>=ON|OFF` to include or exclude a feature present on your system.
 
-To install kotekan (only works on CentOS at the moment):
+To install kotekan:
 
 	make install
 

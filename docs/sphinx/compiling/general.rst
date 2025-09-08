@@ -19,7 +19,6 @@ Compiling **Kotekan**
    :maxdepth: 1
 
    ubuntu
-   centos
    macos
 
 Base Requirements
