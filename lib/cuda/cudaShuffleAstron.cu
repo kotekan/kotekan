@@ -12,16 +12,17 @@ cudaShuffleAstron::cudaShuffleAstron(Config& config, const std::string& unique_n
     cudaCommand(config, unique_name, host_buffers, device, inst,
                 no_cuda_command_state,
                 "cudaShuffleRomein", "cudaShuffleRomein.cu") {
-    _num_elements = config.get<int>(unique_name, "num_elements");
-    _num_local_freq = config.get<int>(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
-    _num_data_sets = config.get<int>(unique_name, "num_data_sets");
-    _block_size = config.get<int>(unique_name, "block_size");
-    _num_blocks = config.get<int>(unique_name, "num_blocks");
-    _buffer_depth = config.get<int>(unique_name, "buffer_depth");
+    _num_elements = config.get_value(unique_name, "num_elements").get<int>();
+    _num_local_freq = config.get_value(unique_name, "num_local_freq").get<int>();
+    _samples_per_data_set = config.get_value(unique_name, "samples_per_data_set").get<int>();
+    _num_data_sets = config.get_value(unique_name, "num_data_sets").get<int>();
+    _block_size = config.get_value(unique_name, "block_size").get<int>();
+    _num_blocks = config.get_value(unique_name, "num_blocks").get<int>();
+    _buffer_depth = config.get_value(unique_name, "buffer_depth").get<int>();
 
-    _gpu_mem_voltage = config.get<std::string>(unique_name, "gpu_mem_voltage");
-    _gpu_mem_ordered_voltage = config.get<std::string>(unique_name, "gpu_mem_ordered_voltage");
+    _gpu_mem_voltage = config.get_value(unique_name, "gpu_mem_voltage").get<std::string>();
+    _gpu_mem_ordered_voltage =
+        config.get_value(unique_name, "gpu_mem_ordered_voltage").get<std::string>();
 
     set_command_type(gpuCommandType::KERNEL);
 }
