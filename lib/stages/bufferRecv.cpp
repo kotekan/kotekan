@@ -8,6 +8,7 @@
 #include "configTracker.hpp"     // for configTracker
 #include "metadata.hpp"          // for metadataPool
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
+#include "restServer.hpp"        // for PORT_REST_SERVER
 #include "util.h"                // for string_tail
 #include "visUtil.hpp"           // for current_time
 
@@ -64,6 +65,8 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     connection_timeout = config.get_default<int>(unique_name, "connection_timeout", 60);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
     use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
+    upstream_rest_port = static_cast<uint16_t>(config.get_default<uint32_t>(
+        unique_name, "upstream_rest_port", PORT_REST_SERVER));
 
     buf = get_buffer("buf");
     buf->register_producer(unique_name);
@@ -465,8 +468,8 @@ void connInstance::internal_read_callback() {
                 if (config_tracker_update) {
                     DEBUG(
                         "Config tracker data update requested, updating config tracker data.");
-                    // Need to get ip/port from the kotekan instance that sent the buffer
-                    ConfigTracker::instance().getUpstreamConfigs(client_ip, port);
+                    // Need to fetch configs from the sender's REST server
+                    ConfigTracker::instance().getUpstreamConfigs(client_ip, upstream_rest_port);
                 }
 
                 break;

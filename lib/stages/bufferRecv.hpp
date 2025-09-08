@@ -56,6 +56,7 @@ class connInstance;
  * @conf num_threads         Int, default 1.  The number of worker threads to use
  * @conf connection_timeout  Int, default 60.  Number of seconds before timeout on transfer
  * @conf drop_frames         Bool, default true.  Whether to drop frames when buffer fills.
+ * @conf upstream_rest_port  Int, default 12048. REST port to query upstream ConfigTracker.
  *
  * @par Metrics
  * @metric kotekan_buffer_recv_transfer_time_seconds
@@ -124,6 +125,9 @@ private:
 
     /// Whether to drop frames when buffer starts filling up
     bool drop_frames;
+
+    /// REST port to use when fetching upstream configs
+    uint16_t upstream_rest_port;
 
     /// A lock on the current frame, since many systems may ask for the next frame
     std::mutex next_frame_lock;
