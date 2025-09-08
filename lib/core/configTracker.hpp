@@ -496,7 +496,7 @@ public:
                 }
             }
 
-            // If it doesn't exist, fetch the config from the upstream server
+            // If it doesn't exist, fetch the config from the immediate upstream server
             request_json = {{"hash", hash}};
             reply = restClient::instance().make_request_blocking("/config_tracker_configs",
                                                                  request_json, host, port, 1, -1);
@@ -518,11 +518,12 @@ public:
                 continue;
             }
 
-            // Check if the response contains the config
-            std::string host_port_str = host + ":" + std::to_string(port);
+            // Check if the response contains the config under the owner
+            // (upstream_host:upstream_port)
+            std::string host_port_str = upstream_host + ":" + std::to_string(upstream_port);
             if (config_response_json.contains(host_port_str)) {
                 ConfigInfo info = ConfigInfo(config_response_json[host_port_str]);
-                insertConfig(host, port, info);
+                insertConfig(upstream_host, upstream_port, info);
             } else {
                 // If the config was not found, log an error or take appropriate action
                 ERROR_NON_OO("ConfigTracker: Config not found for hash: {}", hash);

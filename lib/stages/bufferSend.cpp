@@ -109,8 +109,7 @@ void bufferSend::main_thread() {
 
             // Send header
             // Use NoTrack header version if there is a config setting to enable it.
-            if(use_config_tracker)
-            {
+            if (use_config_tracker) {
                 bufferFrameHeader header{}; // zero-initialize
                 header_len = sizeof(bufferFrameHeader);
 
@@ -125,13 +124,13 @@ void bufferSend::main_thread() {
                 }
 
                 DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}",
-                    header.frame_size, header.metadata_size, header.config_tracker_update);
+                       header.frame_size, header.metadata_size, header.config_tracker_update);
 
                 // Recover from partial sends
                 DEBUG2("Sending header");
                 while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
-                                MSG_NOSIGNAL))
-                    > 0) {
+                                 MSG_NOSIGNAL))
+                       > 0) {
                     n_sent += n;
                 }
 
@@ -142,22 +141,22 @@ void bufferSend::main_thread() {
                 header.frame_size = buf->frame_size;
                 header.metadata_size = meta->get_serialized_size();
 
-                DEBUG2("frame_size: {:d}, metadata_size: {:d}",
-                    header.frame_size, header.metadata_size);
+                DEBUG2("frame_size: {:d}, metadata_size: {:d}", header.frame_size,
+                       header.metadata_size);
 
                 // Recover from partial sends
                 DEBUG2("Sending header");
                 while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
-                                MSG_NOSIGNAL))
-                    > 0) {
+                                 MSG_NOSIGNAL))
+                       > 0) {
                     n_sent += n;
                 }
             }
-            
+
             // Handle errors
             if (n < 0) {
                 ERROR("Error {:s}, failed to send header to {:s}:{:d}", strerror(errno), server_ip,
-                    server_port);
+                      server_port);
                 close_connection();
                 continue;
             }
@@ -175,9 +174,9 @@ void bufferSend::main_thread() {
             {
                 char metabuf[metadata_size];
                 meta->serialize(metabuf);
-                while ((n = send(socket_fd, &metabuf + n_sent, metadata_size - n_sent,
-                                 MSG_NOSIGNAL))
-                       > 0) {
+                while (
+                    (n = send(socket_fd, &metabuf + n_sent, metadata_size - n_sent, MSG_NOSIGNAL))
+                    > 0) {
                     n_sent += n;
                 }
             }
@@ -192,8 +191,7 @@ void bufferSend::main_thread() {
             // Send buffer frame.
             DEBUG2("Sending frame with {:d} bytes", frame_size);
             n_sent = 0;
-            while ((n = send(socket_fd, &frame[n_sent], (int32_t)frame_size - n_sent,
-                             MSG_NOSIGNAL))
+            while ((n = send(socket_fd, &frame[n_sent], (int32_t)frame_size - n_sent, MSG_NOSIGNAL))
                    > 0) {
                 n_sent += n;
                 // DEBUG("Total sent: {:d}", n_sent);

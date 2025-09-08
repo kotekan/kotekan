@@ -65,8 +65,8 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     connection_timeout = config.get_default<int>(unique_name, "connection_timeout", 60);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
     use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
-    upstream_rest_port = static_cast<uint16_t>(config.get_default<uint32_t>(
-        unique_name, "upstream_rest_port", PORT_REST_SERVER));
+    upstream_rest_port = static_cast<uint16_t>(
+        config.get_default<uint32_t>(unique_name, "upstream_rest_port", PORT_REST_SERVER));
 
     buf = get_buffer("buf");
     buf->register_producer(unique_name);
@@ -169,9 +169,9 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     INFO("New connection from client: {:s}:{:d}", ip_str, port);
 
     // New connection instance
-    connInstance* instance = new connInstance(accept_args->unique_name, accept_args->buf,
-                                              accept_args->buffer_recv, ip_str, port, read_timeout,
-                                              use_config_tracker);
+    connInstance* instance =
+        new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
+                         ip_str, port, read_timeout, use_config_tracker);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -336,7 +336,8 @@ std::string bufferRecv::dot_string(const std::string& prefix) const {
 }
 
 connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
-                           const std::string& client_ip, int port, struct timeval read_timeout, bool use_config_tracker) :
+                           const std::string& client_ip, int port, struct timeval read_timeout,
+                           bool use_config_tracker) :
     producer_name(producer_name), buf(buf), buffer_recv(buffer_recv), client_ip(client_ip),
     port(port), read_timeout(read_timeout), use_config_tracker(use_config_tracker) {
 
@@ -408,18 +409,19 @@ void connInstance::internal_read_callback() {
             case connState::header:
                 start_time = current_time();
 
-                if(use_config_tracker) {
+                if (use_config_tracker) {
                     DEBUG2("Using config tracker header");
                     bufferFrameHeader buf_frame_header;
 
                     n = read(fd, (void*)(((int8_t*)&buf_frame_header) + bytes_read),
-                            sizeof(bufferFrameHeader) - bytes_read);
+                             sizeof(bufferFrameHeader) - bytes_read);
                     if (n <= 0) {
                         handle_error("reading header", errno, n);
                         return;
                     }
                     bytes_read += n;
-                    DEBUG2("Header read bytes: {:d}, bytes_read {:d}, expected: {:d}", n, bytes_read, sizeof(bufferFrameHeader));
+                    DEBUG2("Header read bytes: {:d}, bytes_read {:d}, expected: {:d}", n,
+                           bytes_read, sizeof(bufferFrameHeader));
                     assert(bytes_read == sizeof(bufferFrameHeader));
 
                     metadata_size = buf_frame_header.metadata_size;
@@ -431,30 +433,31 @@ void connInstance::internal_read_callback() {
                     bufferFrameHeaderNoConfigTracker buf_frame_header;
 
                     n = read(fd, (void*)(((int8_t*)&buf_frame_header) + bytes_read),
-                            sizeof(bufferFrameHeaderNoConfigTracker) - bytes_read);
+                             sizeof(bufferFrameHeaderNoConfigTracker) - bytes_read);
                     if (n <= 0) {
                         handle_error("reading header", errno, n);
                         return;
                     }
                     bytes_read += n;
-                    DEBUG2("Header read bytes: {:d}, bytes_read {:d}, expected: {:d}", n, bytes_read, sizeof(bufferFrameHeaderNoConfigTracker));
+                    DEBUG2("Header read bytes: {:d}, bytes_read {:d}, expected: {:d}", n,
+                           bytes_read, sizeof(bufferFrameHeaderNoConfigTracker));
                     assert(bytes_read == sizeof(bufferFrameHeaderNoConfigTracker));
 
                     metadata_size = buf_frame_header.metadata_size;
                     frame_size = buf_frame_header.frame_size;
                 }
-                
+
                 state = connState::metadata;
                 bytes_read = 0;
 
                 DEBUG2("Got header: metadata_size: {:d}, frame_size: {:d}, "
-                        "config_tracker_update: {:d}",
-                        metadata_size, frame_size, config_tracker_update);
-                
-                
+                       "config_tracker_update: {:d}",
+                       metadata_size, frame_size, config_tracker_update);
+
+
                 if ((unsigned int)buf->frame_size != frame_size) {
                     ERROR("Frame size does not match between server: {:d} and client: {:d}",
-                            buf->frame_size, frame_size);
+                          buf->frame_size, frame_size);
                     decrement_ref_count();
                     close_instance();
                     return;
@@ -466,16 +469,14 @@ void connInstance::internal_read_callback() {
                     return;
                 }
                 if (config_tracker_update) {
-                    DEBUG(
-                        "Config tracker data update requested, updating config tracker data.");
+                    DEBUG("Config tracker data update requested, updating config tracker data.");
                     // Need to fetch configs from the sender's REST server
                     ConfigTracker::instance().getUpstreamConfigs(client_ip, upstream_rest_port);
                 }
 
                 break;
             case connState::metadata:
-                n = read(fd, (void*)(metadata_space + bytes_read),
-                         metadata_size - bytes_read);
+                n = read(fd, (void*)(metadata_space + bytes_read), metadata_size - bytes_read);
                 if (n <= 0) {
                     handle_error("reading header", errno, n);
                     return;
@@ -489,8 +490,7 @@ void connInstance::internal_read_callback() {
                 }
                 break;
             case connState::frame:
-                n = read(fd, (void*)(frame_space + bytes_read),
-                         frame_size - bytes_read);
+                n = read(fd, (void*)(frame_space + bytes_read), frame_size - bytes_read);
                 if (n <= 0) {
                     handle_error("reading header", errno, n);
                     return;
