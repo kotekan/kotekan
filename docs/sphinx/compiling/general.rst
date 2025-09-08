@@ -26,9 +26,9 @@ Base Requirements
 
 The minimal toolchain for a standard build includes:
 
-* Compilers and build tools: ``build-essential``, ``cmake``, ``pkg-config``, ``make``, ``git``
+* C++ compiler: GCC or Clang (C++17), plus build tools: ``build-essential``, ``cmake``, ``pkg-config``, ``make``, ``git``
 * Libraries: ``libevent-dev``, ``libssl-dev``, ``libyaml-cpp-dev``
-* Python: ``python3``, ``python3-dev`` (plus runtime packages; see below for testing/docs)
+* Python: ``python3``, ``python3-dev``; Python packages: ``pyyaml``, ``jinja2``, ``requests``, ``tabulate``, ``futures``
 * Optional but useful: ``ccache``, ``clang-format``, ``iwyu``
 
 On Ubuntu (24.04 reference), install with:
@@ -38,7 +38,8 @@ On Ubuntu (24.04 reference), install with:
    sudo apt update && sudo apt install \
      build-essential cmake pkg-config git make \
      libevent-dev libssl-dev libyaml-cpp-dev \
-     python3 python3-dev
+     python3 python3-dev \
+     python3-yaml python3-jinja2 python3-requests python3-tabulate
 
 Packages by Feature
 ===================
@@ -110,15 +111,18 @@ For linting, testing, and documentation, install these Python packages (often in
      pytest-cpp \
      sphinx==6.2.* sphinx_rtd_theme==2.0.* breathe==4.35.* \
      h5py hdf5plugin bitshuffle \
-     numpy requests tabulate
+     numpy \
+     requests tabulate \
+     pyyaml jinja2 \
+     msgpack posix_ipc \
+     future futures
+
 
 Notes
 =====
 
-- The Dockerfile at ``tools/docker/24.04/Dockerfile`` contains the authoritative package list for a full‑featured build environment on Ubuntu 24.04, including CUDA, OpenCL, DPDK, ASDF, Blaze, and HighFive. Use it as a reference for required versions and extra steps (e.g., building Blosc2/ASDF/Blaze/HighFive from source).
+- The Dockerfile at ``tools/docker/24.04/Dockerfile`` contains the authoritative package list for a full‑featured build environment on Ubuntu 24.04, including CUDA, OpenCL, DPDK, ASDF, Blaze, and HighFive. Use it as a reference for required versions and extra steps (e.g., building Blosc2/ASDF/Blaze/HighFive from source), since this documentation may get out of date.
 - Many features auto‑enable when their dependencies are detected. Disable them explicitly with ``-DUSE_<FEATURE>=OFF``. The configuration summary shows each feature’s toggle flag and status.
-* OpenSSL (Package is called ``libssl-dev`` on Ubuntu).
-* Optional python packages can be installed with ``pip3 install -r python/requirements.txt``
 
 Unit tests:
 -----------
