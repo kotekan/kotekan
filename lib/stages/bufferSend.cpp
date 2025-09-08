@@ -111,8 +111,8 @@ void bufferSend::main_thread() {
             // Use NoTrack header version if there is a config setting to enable it.
             if(use_config_tracker)
             {
-                struct bufferFrameHeader header;
-                header_len = sizeof(struct bufferFrameHeader);
+                bufferFrameHeader header;
+                header_len = sizeof(bufferFrameHeader);
 
                 header.frame_size = buf->frame_size;
                 header.metadata_size = meta->get_serialized_size();
@@ -136,8 +136,8 @@ void bufferSend::main_thread() {
                 }
 
             } else {
-                struct bufferFrameHeaderNoTrack header;
-                const size_t header_len = sizeof(struct bufferFrameHeaderNoTrack);
+                bufferFrameHeaderNoConfigTracker header;
+                const size_t header_len = sizeof(bufferFrameHeaderNoConfigTracker);
 
                 header.frame_size = buf->frame_size;
                 header.metadata_size = meta->get_serialized_size();

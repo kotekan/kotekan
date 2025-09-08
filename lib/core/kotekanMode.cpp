@@ -87,7 +87,7 @@ void kotekanMode::initalize_stages() {
         datasetManager::instance(config);
 
     // Create ConfigTracker instance and register with the REST server.
-    if(config.get_default<bool>(unique_name, "use_config_tracker", true)) {
+    if(config.get_default<bool>("/", "use_config_tracker", true)) {
         ConfigTracker::instance();
         ConfigTracker::instance().insertConfig(
             restServer::instance().bind_address(), restServer::instance().port(),

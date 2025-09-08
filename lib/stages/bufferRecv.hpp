@@ -128,6 +128,9 @@ private:
     /// A lock on the current frame, since many systems may ask for the next frame
     std::mutex next_frame_lock;
 
+    /// Whether to use the config tracker
+    bool use_config_tracker;
+
     static void read_callback(evutil_socket_t fd, short what, void* arg);
     static void accept_connection(evutil_socket_t listener, short event, void* arg);
 
@@ -234,7 +237,7 @@ class connInstance : public kotekan::kotekanLogging {
 public:
     /// Constructor
     connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
-                 const std::string& client_ip, int port, struct timeval read_timeout);
+                 const std::string& client_ip, int port, struct timeval read_timeout, bool use_config_tracker);
 
     /// Destructor
     ~connInstance();
@@ -298,15 +301,17 @@ public:
     /// The start time of a new frame read
     double start_time;
 
-    /// The buffer transfer header
-    struct bufferFrameHeader buf_frame_header;
+    /// Whether to use the config tracker
+    bool use_config_tracker;
 
     /// Pointer to the local memory space which matching the size of the incoming frame.
     uint8_t* frame_space;
 
+    /// The expected size of the metadata, used to allocate @c metadata_space
+    size_t expected_metadata_size;
+
     /// Pointer to local memory for storing the metadata of the incoming frame.
     uint8_t* metadata_space;
-    size_t metadata_size;
 
     /// Lock to make sure only one instance of this jobs call backs is run at any one time.
     std::mutex instance_lock;
