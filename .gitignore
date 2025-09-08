@@ -16,5 +16,6 @@
 build-*
 docs/sphinx/html/*
 .ccache/*
+scratch/*
 Manifest*.toml
 *.log

@@ -1,0 +1,163 @@
+type: config
+log_level: debug
+
+num_gpus: 1
+buffer_depth: 4
+num_gpu_frames: 4
+num_freq_in_frame: 4 # frequencies in (N2k) frame. Vis output will be 1 freq / frame.
+cpu_affinity: [2,3,4,5,8,9,10,11]
+sizeof_float: 4
+frame_arrival_period: 0.00000256 * samples_per_data_set
+sizeof_int: 4
+
+# For faster CHORD testing, we're using...
+sub_integration_ntime: 1024
+samples_per_data_set: 2048
+num_elements: 1024
+num_local_freq: 16
+# vis matrix size
+vis_blocks_tr_root: (num_elements + 1) / 16
+num_vis_blocks: vis_blocks_tr_root * (vis_blocks_tr_root + 1) / 2
+
+num_ev: 4
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+vis_pool:
+  kotekan_metadata_pool: N2Metadata
+  num_metadata_objects: 200 * buffer_depth
+
+# Buffers
+host_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+
+host_correlation_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * num_vis_blocks * 2 * sizeof_int
+    metadata_pool: main_pool
+
+n2accum_buffer:
+    kotekan_buffer: N2
+    num_frames: buffer_depth * num_freq_in_frame
+    metadata_pool: vis_pool
+
+host_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+
+n2accum_recv_buffer:
+    kotekan_buffer: N2
+    num_frames: buffer_depth * num_freq_in_frame
+    metadata_pool: vis_pool
+
+n2accum_eig_buffer:
+    kotekan_buffer: N2
+    num_frames: buffer_depth * num_freq_in_frame
+    metadata_pool: vis_pool
+
+
+# Kotekan stages
+gen_data:
+    # type: const
+    # value: 34 # 1i # 34 # = 2 + 2i
+    type: random_signed
+    value: 1532
+    kotekan_stage: testDataGen
+    out_buf: host_voltage_buffer
+    array_shape: [ 2048, 16, 2, 512 ]
+    dim_name: ["T", "F", "P", "D" ]
+
+run_send_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_buffer_in: host_voltage_buffer
+        out_buffers:
+            host_voltage_ringbuffer_out: host_voltage_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: samples_per_data_set * num_elements * num_local_freq
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_voltage_buffer_in
+          signal_buf: host_voltage_ringbuffer_out
+          gpu_mem_output: voltage_buffer
+
+run_n2k:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_ringbuffer_in: host_voltage_ringbuffer
+        out_buffers:
+            host_correlation: host_correlation_buffer
+        commands:
+        - name: cudaCorrelator
+          in_signal: host_voltage_ringbuffer_in
+          gpu_mem_voltage: voltage_buffer
+          gpu_mem_correlation_triangle: correlation_matrix
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: correlation_matrix
+          out_buf: host_correlation
+
+N2_accumulate_processes:
+    log_level: DEBUG
+    integration_time: 1.0
+    kotekan_stage: N2Accumulate
+    in_buf: host_correlation_buffer
+    out_buf: n2accum_buffer
+    n_accum_per_day: 1.0 # evenly divide... put in nearest bin (prev or next)
+
+# buffer to send:
+# Transmit all the data to the receiver node
+buffer_send:
+  server_ip: 127.0.0.1
+  reconnect_time: 20
+  log_level: warn
+  n2:
+    kotekan_stage: bufferSend
+    buf: n2accum_buffer
+    server_port: 11024
+
+buffer_recv:
+  log_level: debug
+  n2:
+    kotekan_stage: bufferRecv
+    buf: n2accum_recv_buffer
+    listen_port: 11024
+    cpu_affinity: [0, 8]
+    num_threads: 2
+
+N2_eigencalc:
+    log_level: DEBUG
+    kotekan_stage: EigenVisIter
+
+    in_buf: n2accum_recv_buffer
+    out_buf: n2accum_eig_buffer
+
+    # Convergence config
+    tol_eval: 0.001
+    tol_evec: 0.01
+    max_iterations: 10
+    num_ev_conv: 2
+    krylov: 2
+    subspace: 1
+
+
+
+N2_writer:
+    log_level: DEBUG
+    kotekan_stage: asdfFileWrite
+    max_frames: 10
+    base_dir: /code/kotekan/build-2204/data/
+    file_name: n2_verify
+    in_buf: n2accum_eig_buffer
