@@ -10,22 +10,23 @@
 #include "Config.hpp"         // for Config
 #include "FrameView.hpp"      // for FrameView
 #include "Hash.hpp"           // for Hash
-#include "Telescope.hpp"      // for freq_id_t
+#include "Telescope.hpp"      // for Telescope, freq_id_t
 #include "buffer.hpp"         // for Buffer
-#include "chimeMetadata.hpp"  // for chimeMetadata
 #include "datasetManager.hpp" // for dset_id_t
-#include "metadata.hpp"       // for metadataObject
+#include "metadata.hpp"       // for metadataObject, metadataPool
 #include "visUtil.hpp"        // for cfloat, struct_layout
 
 #include "gsl-lite.hpp" // for span
 #include "json.hpp"     // for json
 
-#include <memory>   // for shared_ptr
-#include <set>      // for set
-#include <stdint.h> // for uint32_t, uint64_t
-#include <string>   // for string
-#include <time.h>   // for size_t, timespec
-#include <tuple>    // for tuple
+#include <assert.h>   // for assert
+#include <memory>     // for shared_ptr, allocator, __shared_ptr_access, weak_ptr
+#include <set>        // for set
+#include <stdint.h>   // for uint32_t, uint64_t
+#include <string>     // for char_traits, operator==, basic_string, string
+#include <sys/time.h> // for TIMEVAL_TO_TIMESPEC
+#include <time.h>     // for size_t, timespec
+#include <tuple>      // for make_tuple, tuple
 
 
 /**
@@ -85,6 +86,18 @@ public:
     uint32_t num_ev;
 };
 
+/**
+ * @brief Check if the metadata is of type visMetadata.
+ */
+inline bool metadata_is_vis(const std::shared_ptr<metadataObject> mc) {
+    if (!mc)
+        return false;
+    std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+    assert(pool);
+    return (pool->type_name == "VisMetadata");
+    return false;
+}
+
 void to_json(nlohmann::json& j, const VisMetadata& m);
 void from_json(const nlohmann::json& j, VisMetadata& m);
 
@@ -93,7 +106,7 @@ void from_json(const nlohmann::json& j, VisMetadata& m);
  * @brief Provide a structured view of a visibility buffer.
  *
  * This class inherits from the FrameView base class and sets up a view on a visibility buffer with
- *the ability to interact with the data and metadata. Structural parameters can only be set at
+ * the ability to interact with the data and metadata. Structural parameters can only be set at
  * creation, everything else is returned as a reference or pointer so can be
  * modified at will.
  *
@@ -214,19 +227,43 @@ public:
     void copy_data(VisFrameView frame_to_copy, const std::set<VisField>& skip_members);
 
     /**
-     * @brief Fill the VisMetadata from a chimeMetadata struct.
+     * @brief Fill the VisMetadata from a chordMetadata or chimeMetadata object.
      *
      * The time field is filled with the GPS time if it is set (checked via
      * `Telescope.gps_time_enabled`), otherwise the `first_packet_recv_time` is
-     * used. Also note, there is no dataset information in chimeMetadata so the
-     * `dataset_id` is set to zero.
+     * used. Also note, there is no dataset information in the chime/chord metadata so
+     * the `dataset_id` is set to zero.
      *
      * @param chime_metadata Metadata to fill from.
      * @param ind            Frequency ind for multifrequency buffers (use zero
      *                       if not multifrequency)
      *
      **/
-    void fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind);
+    template<typename CH_Metadata>
+    void fill_metadata(const std::shared_ptr<CH_Metadata> metadata, uint32_t f_ind) {
+
+        auto& tel = Telescope::instance();
+
+        // Set to zero as there's no information about it.
+        dataset_id = dset_id_t::null;
+
+        // Set the frequency index from the stream id of the metadata
+        freq_id = tel.to_freq_id({(uint64_t)metadata->stream_ID}, f_ind);
+
+        // Set the time
+        uint64_t fpga_seq = metadata->fpga_seq_num;
+
+        timespec ts;
+
+        // Use the GPS time if appropriate.
+        if (tel.gps_time_enabled()) {
+            ts = metadata->gps_time;
+        } else {
+            TIMEVAL_TO_TIMESPEC(&(metadata->first_packet_recv_time), &ts);
+        }
+
+        time = std::make_tuple(fpga_seq, ts);
+    }
 
     /**
      * @brief Populate metadata.

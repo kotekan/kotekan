@@ -103,7 +103,8 @@ public:
      * shutting down.  On success, the returned value is the number of
      * bytes available to be claimed.
      */
-    std::optional<std::ptrdiff_t> wait_without_claiming(const std::string& consumer_name, int inst);
+    std::optional<std::ptrdiff_t> wait_without_claiming(const std::string& consumer_name, int inst,
+                                                        std::ptrdiff_t sz);
 
     /**
      * @brief Called by a consumer before reading its next chunk of

@@ -4,6 +4,7 @@
 #include "BeamMetadata.hpp"     // for BeamMetadata
 #include "Config.hpp"           // for Config
 #include "HFBMetadata.hpp"      // for HFBMetadata
+#include "N2Metadata.hpp"       // for N2Metadata
 #include "chimeMetadata.hpp"    // for chimeMetadata
 #include "chordMetadata.hpp"    // for chordMetadata
 #include "kotekanLogging.hpp"   // for INFO_NON_OO
@@ -90,6 +91,10 @@ std::shared_ptr<metadataPool> metadataFactory::new_pool(const std::string& pool_
 
     if (pool_type == "VisMetadata") {
         return metadataPool::create(num_metadata_objects, sizeof(VisMetadata), location, pool_type);
+    }
+
+    if (pool_type == "N2Metadata") {
+        return metadataPool::create(num_metadata_objects, sizeof(N2Metadata), location, pool_type);
     }
 
     if (pool_type == "HFBMetadata") {

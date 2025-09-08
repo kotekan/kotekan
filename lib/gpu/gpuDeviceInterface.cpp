@@ -172,6 +172,9 @@ gpuDeviceInterface::get_gpu_memory_array_metadata(const std::string& name, const
     }
     // mod the index by the array size (buffer depth)
     uint32_t depth = gpu_memory[name].metadata_pointers.size();
+    if (depth == 0) {
+        FATAL_ERROR("get_gpu_memory_array_metadata for name \"{:s}\": depth is zero.", name);
+    }
     assert(depth > 0);
     uint32_t index = index_ % depth;
     // If view, recurse

@@ -6,7 +6,10 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
-#include <array>
+#include <array>   // for array
+#include <cstdint> // for int64_t
+#include <string>  // for string, basic_string
+#include <vector>  // for vector
 
 #ifdef WITH_CUDA
 #include <nvtx3/nvToolsExt.h>
@@ -63,6 +66,18 @@ class FEngine : public kotekan::Stage {
     const float dispersed_source_stop_frequency;
     const float dispersed_source_linewidth;
     const float dispersed_source_amplitude;
+    const float frb_source_start_time;
+    const float frb_source_stop_time;
+    const float frb_source_start_frequency;
+    const float frb_source_stop_frequency;
+    const int frb_source_scale;
+    const float frb_source_time_envelope_centre;
+    const float frb_source_time_envelope_width;
+    const float frb_source_frequency_envelope_lo_centre;
+    const float frb_source_frequency_envelope_lo_width;
+    const float frb_source_frequency_envelope_hi_centre;
+    const float frb_source_frequency_envelope_hi_width;
+    const float frb_source_amplitude;
     const float source_position_ew;
     const float source_position_ns;
 
@@ -111,6 +126,7 @@ class FEngine : public kotekan::Stage {
     // FRB beamformer setup
     const int frb1_num_beams_P;
     const int frb1_num_beams_Q;
+    const float frb1_input_scale;
     const int frb2_num_beams_ew;
     const int frb2_num_beams_ns;
     const float frb2_bore_z;
@@ -125,6 +141,8 @@ class FEngine : public kotekan::Stage {
 
     // Kotekan
     const std::int64_t dish_positions_frame_size;
+    const std::int64_t bf_mask_frame_size;
+    const std::int64_t pl_mask_frame_size;
     const std::int64_t E_frame_size;
     const std::int64_t scatter_indices_frame_size;
     const std::int64_t bb_beam_positions_frame_size;
@@ -137,16 +155,20 @@ class FEngine : public kotekan::Stage {
     const std::int64_t I1_frame_size;
 
     Buffer* const dish_positions_buffer;
+    // int8 bf_mask[dish][polr]
+    Buffer* const bf_mask_buffer; // 0=bad, 1=good
+    // bool pl_mask[time / 2 % 64][dish][polr][freq / 4][time / 2 / 64]
+    Buffer* const pl_mask_buffer; // 0=bad, 1=good
     Buffer* const E_buffer;
     Buffer* const scatter_indices_buffer;
     Buffer* const bb_beam_positions_buffer;
     Buffer* const A_buffer;
     Buffer* const s_buffer;
-    Buffer* const J_buffer;
+    // Buffer* const J_buffer;
     std::array<Buffer*, Usize> const G_buffers;
     std::array<Buffer*, Usize> const W1_buffers;
     Buffer* const W2_buffer;
-    Buffer* const I1_buffer;
+    // Buffer* const I1_buffer;
 
 public:
     FEngine(kotekan::Config& config, const std::string& unique_name,

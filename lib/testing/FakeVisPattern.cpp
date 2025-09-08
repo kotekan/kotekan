@@ -1,9 +1,11 @@
 #include "FakeVisPattern.hpp"
 
+#include "CHORDTelescope.hpp" // for CHORDTelescope
 #include "Config.hpp"         // for Config
 #include "Hash.hpp"           // for Hash
 #include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
 #include "datasetState.hpp"   // for flagState, inputState
+#include "timeUtil.hpp"       // for get_ERA_from_time
 #include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat, input_ctype, ts_to_double, cmap
 
@@ -15,6 +17,7 @@
 #include <complex>   // for complex, operator*
 #include <cstdint>   // for uint32_t, uint16_t
 #include <exception> // for exception
+// #include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
 #include <map>       // for map, map<>::mapped_type
 #include <math.h>    // for cosf, sinf
 #include <regex>     // for match_results<>::_Base_type
@@ -22,6 +25,7 @@
 #include <tuple>     // for get
 #include <vector>    // for vector, __alloc_traits<>::value_type
 
+static constexpr double C = 299792458.0;
 
 // Register test patterns
 REGISTER_FAKE_VIS_PATTERN(DefaultVisPattern, "default");
@@ -33,6 +37,7 @@ REGISTER_FAKE_VIS_PATTERN(TestPatternSimpleVisPattern, "test_pattern_simple");
 REGISTER_FAKE_VIS_PATTERN(TestPatternFreqVisPattern, "test_pattern_freq");
 REGISTER_FAKE_VIS_PATTERN(TestPatternInputVisPattern, "test_pattern_inputs");
 REGISTER_FAKE_VIS_PATTERN(ChangeStatePattern, "change_state");
+REGISTER_FAKE_VIS_PATTERN(PointSourceVisPattern, "point_source");
 
 
 FakeVisPattern::FakeVisPattern(kotekan::Config& config, const std::string& path) {
@@ -66,11 +71,40 @@ void DefaultVisPattern::fill(VisFrameView& frame) {
     }
 }
 
+void DefaultVisPattern::fill(N2FrameView& frame) {
+    auto out_vis = frame.vis;
+    // Set diagonal elements to (0, row)
+    for (uint32_t i = 0; i < frame.num_elements; i++) {
+        uint32_t pi = cmap(i, i, frame.num_elements);
+        out_vis[pi] = {0., (float)i};
+    }
+    // Save metadata in first few cells
+    if (out_vis.size() < 3) {
+        FATAL_ERROR("Number of elements ({:d}) is too small to encode the 3 debugging values of "
+                    "fill-mode 'default' in fake visibilities.\nExiting...",
+                    frame.num_elements);
+    } else {
+        out_vis[0] = {(float)frame._metadata->frame_start_time_ns, 0.0};
+        out_vis[1] = {(float)frame._metadata->frame_start_time_ns, 0.0};
+        out_vis[2] = {(float)frame.freq_id, 0.};
+    }
+}
+
 FillIJVisPattern::FillIJVisPattern(kotekan::Config& config, const std::string& path) :
     FakeVisPattern(config, path) {}
 
 
 void FillIJVisPattern::fill(VisFrameView& frame) {
+    int ind = 0;
+    for (uint32_t i = 0; i < frame.num_elements; i++) {
+        for (uint32_t j = i; j < frame.num_elements; j++) {
+            frame.vis[ind] = {(float)i, (float)j};
+            ind++;
+        }
+    }
+}
+
+void FillIJVisPattern::fill(N2FrameView& frame) {
     int ind = 0;
     for (uint32_t i = 0; i < frame.num_elements; i++) {
         for (uint32_t j = i; j < frame.num_elements; j++) {
@@ -92,6 +126,12 @@ void FillIJMissingVisPattern::fill(VisFrameView& frame) {
     frame.rfi_total = 1;
 }
 
+void FillIJMissingVisPattern::fill(N2FrameView& frame) {
+    FillIJVisPattern::fill(frame);
+
+    frame._metadata->n_valid_fpga_ticks = frame._metadata->frame_length_fpga_ticks - 2;
+    frame._metadata->n_rfi_fpga_ticks = 1;
+}
 
 PhaseIJVisPattern::PhaseIJVisPattern(kotekan::Config& config, const std::string& path) :
     FakeVisPattern(config, path) {}
@@ -108,6 +148,16 @@ void PhaseIJVisPattern::fill(VisFrameView& frame) {
     }
 }
 
+void PhaseIJVisPattern::fill(N2FrameView& frame) {
+    int ind = 0;
+    for (uint32_t i = 0; i < frame.num_elements; i++) {
+        for (uint32_t j = i; j < frame.num_elements; j++) {
+            float phase = (float)i - (float)j;
+            frame.vis[ind] = {cosf(phase), sinf(phase)};
+            ind++;
+        }
+    }
+}
 
 ChimeVisPattern::ChimeVisPattern(kotekan::Config& config, const std::string& path) :
     FakeVisPattern(config, path) {}
@@ -128,6 +178,11 @@ void ChimeVisPattern::fill(VisFrameView& frame) {
     }
 }
 
+void ChimeVisPattern::fill(N2FrameView& frame) {
+    std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
+    ERROR("Invalid fill pattern (ChimeVisPattern) for N2 frame {:d}.", pool->type_name);
+}
+
 
 TestPatternSimpleVisPattern::TestPatternSimpleVisPattern(kotekan::Config& config,
                                                          const std::string& path) :
@@ -137,6 +192,35 @@ TestPatternSimpleVisPattern::TestPatternSimpleVisPattern(kotekan::Config& config
 
 
 void TestPatternSimpleVisPattern::fill(VisFrameView& frame) {
+    // Fill vis
+    int ind = 0;
+    for (uint32_t i = 0; i < frame.num_elements; i++) {
+        for (uint32_t j = i; j < frame.num_elements; j++) {
+            frame.vis[ind] = test_pattern_value;
+            ind++;
+        }
+    }
+
+    // Fill ev (slightly different to the vals in fill_non_vis)
+    for (uint32_t i = 0; i < frame.num_ev; i++) {
+        for (uint32_t j = 0; j < frame.num_elements; j++) {
+            int k = i * frame.num_elements + j;
+            frame.evec[k] = {(float)i, 1};
+        }
+        frame.eval[i] = i;
+    }
+
+    // Fill weights (slightly different to the vals in fill_non_vis)
+    ind = 0;
+    for (uint32_t i = 0; i < frame.num_elements; i++) {
+        for (uint32_t j = i; j < frame.num_elements; j++) {
+            frame.weight[ind] = 1.;
+            ind++;
+        }
+    }
+}
+
+void TestPatternSimpleVisPattern::fill(N2FrameView& frame) {
     // Fill vis
     int ind = 0;
     for (uint32_t i = 0; i < frame.num_elements; i++) {
@@ -236,6 +320,11 @@ void TestPatternFreqVisPattern::fill(VisFrameView& frame) {
     }
 }
 
+void TestPatternFreqVisPattern::fill(N2FrameView& frame) {
+    std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
+    ERROR("Invalid fill pattern (ChimeVisPattern) for N2 frame {:d}.", pool->type_name);
+}
+
 
 TestPatternInputVisPattern::TestPatternInputVisPattern(kotekan::Config& config,
                                                        const std::string& path) :
@@ -288,6 +377,11 @@ void TestPatternInputVisPattern::fill(VisFrameView& frame) {
             ind++;
         }
     }
+}
+
+void TestPatternInputVisPattern::fill(N2FrameView& frame) {
+    std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
+    ERROR("Invalid fill pattern (ChimeVisPattern) for N2 frame {:d}.", pool->type_name);
 }
 
 
@@ -369,4 +463,219 @@ state_id_t ChangeStatePattern::gen_state_gains() {
     std::string update_id = fmt::format("gain_update_{}", _gain_update_ind);
     auto& dm = datasetManager::instance();
     return dm.create_state<gainState>(update_id, _gain_update_ind++).first;
+}
+
+PointSourceVisPattern::PointSourceVisPattern(kotekan::Config& config, const std::string& path) :
+    FakeVisPattern(config, path) {
+    ra = config.get<double>(path, "ra");
+    dec = config.get<double>(path, "dec");
+    stokes_I = config.get_default<double>(path, "stokes_I", 1.0);
+    stokes_Q = config.get_default<double>(path, "stokes_Q", 0.0);
+    stokes_U = config.get_default<double>(path, "stokes_U", 0.0);
+    stokes_V = config.get_default<double>(path, "stokes_V", 0.0);
+    noise_var = config.get_default<double>(path, "noise_var", 0.01);
+    n_rfi_ticks = config.get_default<uint32_t>(path, "n_rfi_ticks", 0);
+    n_lost_ticks = config.get_default<uint32_t>(path, "n_lost_ticks", 0);
+}
+
+void PointSourceVisPattern::fill(VisFrameView& frame) {
+
+    frame.fpga_seq_total = frame.fpga_seq_length - n_rfi_ticks - n_lost_ticks;
+    frame.rfi_total = n_rfi_ticks;
+
+    const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
+
+    uint32_t num_dishes = tel.get_num_dishes();
+    uint32_t num_elements = frame.num_elements;
+
+
+    timespec time = tel.to_time(std::get<0>(frame.time) + frame.fpga_seq_length / 2);
+    struct EOP eop = tel.get_EOP_at_time(time);
+
+    std::array<double, 3> n = tel.get_sky_vec_in_tel_coords(ra, dec, eop);
+
+    double f = tel.to_freq(frame.freq_id);
+    double lambda = C / f;
+
+    /*
+    n[0] = 0.0;
+    n[1] = 0.0;
+    n[2] = 1.0;
+    */
+
+    INFO("Making fake vis at t: {:d} s + {:d} ns", time.tv_sec, time.tv_nsec);
+    INFO("     telescope dt_ns: {}", tel.seq_length_nsec());
+    INFO("          start tick: {}", std::get<0>(frame.time));
+    INFO("          Frame time: {:d} ns",
+         std::get<1>(frame.time).tv_sec * 1000000000 + std::get<1>(frame.time).tv_nsec);
+    INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
+    INFO("                   ERA: {:.10f} deg", eop.ERA_deg);
+    INFO("                   xp: {:.10f} arcsec", eop.xp_as);
+    INFO("                   yp: {:.10f} arcsec", eop.yp_as);
+    INFO("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
+
+    int ind = 0;
+    for (uint32_t el_i = 0; el_i < num_elements; el_i++) {
+        for (uint32_t el_j = el_i; el_j < num_elements; el_j++) {
+
+            uint32_t dish_i = el_i % (num_dishes);
+            uint32_t dish_j = el_j % (num_dishes);
+            uint32_t pol_i = el_i / num_dishes;
+            uint32_t pol_j = el_j / num_dishes;
+
+            std::array<double, 3> pos_i = tel.get_dish_position(dish_i);
+            std::array<double, 3> pos_j = tel.get_dish_position(dish_j);
+
+            double phase = 2 * M_PI
+                           * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]
+                              + (pos_i[2] - pos_j[2]) * n[2])
+                           / lambda;
+
+            double cp = cos(phase);
+            double sp = sin(phase);
+
+            double power_r = 0;
+            double power_i = 0;
+            if (pol_i == 0 && pol_j == 0)
+                power_r = stokes_I + stokes_Q;
+            else if (pol_i == 1 && pol_j == 1)
+                power_r = stokes_I - stokes_Q;
+            else if (pol_i == 0 && pol_j == 1) {
+                power_r = stokes_U;
+                power_i = stokes_V;
+            } else if (pol_i == 1 && pol_j == 0) {
+                power_r = stokes_U;
+                power_i = -stokes_V;
+            }
+
+            frame.vis[ind] = {(float)(power_r * cp - power_i * sp),
+                              (float)(power_r * sp + power_i * cp)};
+            ind++;
+        }
+    }
+}
+
+void PointSourceVisPattern::fill(N2FrameView& frame) {
+
+    frame._metadata->n_valid_fpga_ticks =
+        frame._metadata->frame_length_fpga_ticks - n_rfi_ticks - n_lost_ticks;
+    frame._metadata->n_rfi_fpga_ticks = n_rfi_ticks;
+
+    const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
+
+    uint32_t num_dishes = tel.get_num_dishes();
+    uint32_t num_elements = frame.num_elements;
+
+    timespec time = tel.to_time(frame.fpga_start_tick + frame.frame_length_fpga_ticks / 2);
+
+    struct EOP eop = tel.get_EOP_at_time(time);
+
+    std::array<double, 3> n = tel.get_sky_vec_in_tel_coords(ra, dec, eop);
+
+    double f = tel.to_freq(frame.freq_id);
+    double lambda = C / f;
+
+    frame._metadata->freq_Hz = f;
+    frame._metadata->eop = eop;
+
+    /*
+    n[0] = 0.0;
+    n[1] = 0.0;
+    n[2] = 1.0;
+    */
+
+    INFO("Making fake vis at t: {:d} s + {:d} ns", time.tv_sec, time.tv_nsec);
+    INFO("     telescope dt_ns: {}", tel.seq_length_nsec());
+    INFO("          start tick: {}", frame.fpga_start_tick);
+    INFO("          Frame time: {:d} ns", frame.frame_start_time_ns);
+    INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
+    INFO("                   ERA: {:.10f} deg", eop.ERA_deg);
+    INFO("                   xp: {:.10f} arcsec", eop.xp_as);
+    INFO("                   yp: {:.10f} arcsec", eop.yp_as);
+    INFO("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
+
+    int ind = 0;
+    for (uint32_t el_i = 0; el_i < num_elements; el_i++) {
+        for (uint32_t el_j = el_i; el_j < num_elements; el_j++) {
+
+            uint32_t dish_i = el_i % (num_dishes);
+            uint32_t dish_j = el_j % (num_dishes);
+            uint32_t pol_i = el_i / num_dishes;
+            uint32_t pol_j = el_j / num_dishes;
+
+            std::array<double, 3> pos_i = tel.get_dish_position(dish_i);
+            std::array<double, 3> pos_j = tel.get_dish_position(dish_j);
+
+            double phase = 2 * M_PI
+                           * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]
+                              + (pos_i[2] - pos_j[2]) * n[2])
+                           / lambda;
+
+            double cp = cos(phase);
+            double sp = sin(phase);
+
+            double power_r = 0;
+            double power_i = 0;
+            if (pol_i == 0 && pol_j == 0)
+                power_r = stokes_I + stokes_Q;
+            else if (pol_i == 1 && pol_j == 1)
+                power_r = stokes_I - stokes_Q;
+            else if (pol_i == 0 && pol_j == 1) {
+                power_r = stokes_U;
+                power_i = stokes_V;
+            } else if (pol_i == 1 && pol_j == 0) {
+                power_r = stokes_U;
+                power_i = -stokes_V;
+            }
+
+            frame.vis[ind] = {(float)(power_r * cp - power_i * sp),
+                              (float)(power_r * sp + power_i * cp)};
+            ind++;
+        }
+    }
+
+    /*
+    //Memory for LAPACK
+    std::vector<N2::cfloat> vis_square;
+    std::vector<N2::cfloat> evecs;
+    std::vector<float> evals;
+
+    vis_square.resize(num_elements * num_elements, 0);
+    evecs.resize(num_elements * frame.num_ev, 0);
+    evals.resize(frame.num_ev, 0);
+
+    uint32_t vis_idx = 0;
+
+    for(uint32_t i = 0; i < num_elements; i++) {
+        for(uint32_t j = i; j < num_elements; j++) {
+            vis_square[i * num_elements + j] = frame.vis[vis_idx];
+            vis_idx++;
+        }
+    }
+
+
+    int info;
+    int64_t nside = num_elements;
+    int ev_found;
+    int isuppz[2*frame.num_ev];
+
+    info = LAPACKE_cheevr(LAPACK_ROW_MAJOR, 'V', 'I', 'U', nside,
+                   (lapack_complex_float *)vis_square.data(), nside,
+                   0.0, 0.0, nside-frame.num_ev+1, nside,
+                   0.0, &ev_found, evals.data(),
+                   (lapack_complex_float *)evecs.data(), frame.num_ev,
+                   isuppz);
+
+    INFO("LAPACKE INFO = {}.  Found {} eigenvalues", info, ev_found);
+
+    for(uint32_t i = 0; i < frame.num_ev; i++)
+    {
+        frame.eval[i] = evals[frame.num_ev-i-1];
+        for(uint32_t j = 0; j < num_elements; j++)
+        {
+            frame.evec[i*num_elements + j]
+                = evecs[frame.num_ev*j + (frame.num_ev-i-1)];
+        }
+    }
+    */
 }

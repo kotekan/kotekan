@@ -1,6 +1,8 @@
 #include "dpdkCore.hpp"
 
 #include <algorithm>               // for max
+#include <cinttypes>               // for uint32_t, uint16_t, int32_t, uint8_t
+#include <functional>              // for bind, function
 #include <numa.h>                  // for numa_node_of_cpu, numa_num_configured_nodes
 #include <rte_branch_prediction.h> // for unlikely
 #include <rte_config.h>            // for RTE_PKTMBUF_HEADROOM
@@ -12,12 +14,14 @@
 #include <rte_mbuf.h>              // for rte_pktmbuf_free, rte_pktmbuf_init, rte_pktmbuf_pool_...
 #include <rte_mbuf_core.h>         // for rte_mbuf
 #include <rte_mempool.h>           // for rte_mempool_create, rte_mempool_free
-#include <stdint.h>                // for uint32_t, uint16_t, int32_t, uint8_t
+#include <stdexcept>               // for runtime_error
 #include <stdio.h>                 // for fprintf, size_t, stderr
 #include <stdlib.h>                // for malloc, free
 #include <string.h>                // for strncpy, memset
 #include <sys/types.h>             // for uint
 #include <unistd.h>                // for sleep
+#include <vector>                  // for vector
+
 // cinttypes needed by some CentOS systems.
 #include "Config.hpp"           // for Config
 #include "ICETelescope.hpp"     // for ice_stream_id_t
@@ -29,11 +33,6 @@
 
 #include "fmt.hpp"  // for compile_string_to_view, format, fmt, format_string
 #include "json.hpp" // for basic_json, iter_impl, json
-
-#include <cinttypes>  // IWYU pragma: keep
-#include <functional> // for bind, function
-#include <stdexcept>  // for runtime_error
-#include <vector>     // for vector
 
 using nlohmann::json;
 using std::string;

@@ -191,7 +191,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_ASDF=ON \
             -DUSE_GDAL=ON \
-            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_HDF5=ON \
             -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
@@ -254,7 +254,7 @@ jobs:
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
             -DCMAKE_BUILD_TYPE=Test \
-            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_HDF5=ON \
             -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
@@ -326,7 +326,7 @@ jobs:
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
             -DCMAKE_BUILD_TYPE=Test \
-            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_HDF5=ON \
             -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
@@ -449,24 +449,21 @@ jobs:
       env:
         CC: clang
         CXX: clang++
-      if: env.RUN_2404_CLANG_TESTS
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ -e CC -e CXX ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-        -DWERROR=ON \
         -DCMAKE_LINK_WHAT_YOU_USE=ON \
-        -DUSE_OLD_DPDK=ON \
         -DCMAKE_BUILD_TYPE=Test \
         -DUSE_ASDF=ON \
+        -DUSE_GDAL=ON \
         -DUSE_HDF5=ON \
-        -DHIGHFIVE_PATH=/code/build/HighFive \
-        -DUSE_LAPACK_BLAZE=ON \
-        -DBLAZE_PATH=/code/build/blaze \
-        -DARCH=haswell \
+        -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
         -DNO_MEMLOCK=ON \
         -DUSE_OMP=ON \
+        -DUSE_CUDA=ON \
         -DWITH_TESTS=ON \
+        -DWITH_BOOST_TESTS=ON \
         -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s

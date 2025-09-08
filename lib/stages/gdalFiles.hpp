@@ -1,8 +1,8 @@
 #ifndef GDALFILES_HPP
 #define GDALFILES_HPP
 
+#include <DataType.hpp>
 #include <array>
-#include <chordMetadata.hpp>
 #include <complex>
 #include <gdal.h>
 #include <type_traits>
@@ -15,7 +15,7 @@ namespace gdal {
 // that understands X.Z even when Y > Z.
 constexpr std::array<int, 2> chord_metadata_version{1, 0};
 
-GDALDataType chord2gdal(const chordDataType type);
+GDALDataType chord2gdal(const kotekan::DataType type);
 
 template<typename T>
 struct gdal_datatype;

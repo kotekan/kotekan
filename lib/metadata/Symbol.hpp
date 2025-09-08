@@ -1,6 +1,7 @@
 #ifndef SYMBOL_HPP
 #define SYMBOL_HPP
 
+#include <array>         // for array
 #include <cstring>       // for size_t
 #include <functional>    // for equal_to, less
 #include <iostream>      // for ostream
@@ -86,6 +87,21 @@ public:
     // Output a symbol
     friend std::ostream& operator<<(std::ostream& os, Symbol sym);
 };
+
+template<std::size_t D>
+std::array<kotekan::Symbol, D> strings_to_symbols(const std::array<std::string, D>& strings) {
+    std::array<kotekan::Symbol, D> symbols;
+    for (std::size_t d = 0; d < D; ++d)
+        symbols[d] = strings[d];
+    return symbols;
+}
+template<std::size_t D>
+std::array<kotekan::Symbol, D> strings_to_symbols(const std::array<const char*, D>& strings) {
+    std::array<kotekan::Symbol, D> symbols;
+    for (std::size_t d = 0; d < D; ++d)
+        symbols[d] = strings[d];
+    return symbols;
+}
 
 } // namespace kotekan
 

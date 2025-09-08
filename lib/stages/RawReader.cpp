@@ -14,7 +14,6 @@
 
 #include <functional> // for bind, function
 #include <future>     // for async, future
-#include <stddef.h>   // for size_t
 #include <tuple>      // for get
 
 using kotekan::bufferContainer;

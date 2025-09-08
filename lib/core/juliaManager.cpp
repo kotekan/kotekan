@@ -1,16 +1,18 @@
 #include "juliaManager.hpp"
 
-#include <any>
-#include <chrono>
-#include <condition_variable>
-#include <cstdlib>
-#include <future>
-#include <julia.h>
-#include <kotekanLogging.hpp>
-#include <mutex>
-#include <queue>
-#include <thread>
-#include <tuple>
+#include "errors.h"        // for INFO_F, DEBUG_F
+#include "julia_fasttls.h" // for JULIA_DEFINE_FAST_TLS
+
+#include <algorithm>     // for copy
+#include <any>           // for any
+#include <assert.h>      // for assert
+#include <bits/chrono.h> // for operator""ms
+#include <future>        // for promise, future
+#include <julia.h>       // for jl_atexit_hook, jl_init
+#include <mutex>         // for unique_lock, mutex
+#include <queue>         // for queue
+#include <thread>        // for thread, sleep_for
+#include <utility>       // for move
 
 // Only define this once, in an executable (not in a shared library) if you want fast code.
 JULIA_DEFINE_FAST_TLS
@@ -41,17 +43,8 @@ void runJulia() {
 
     INFO_F("juliaManager: Starting Julia run-time system");
     {
-        // Taking this lock isn't necessary and doesn't help...
-        std::unique_lock lk(julia_task_queue_mutex);
-
         // Required: setup the Julia context.
         jl_init();
-
-        atexit([]() {
-            // Strongly recommended: notify Julia that the program is about to terminate. This
-            // allows Julia time to cleanup pending write requests and run all finalizers.
-            jl_atexit_hook(0);
-        });
     }
 
     INFO_F("juliaManager: Julia run-time system is running");
@@ -115,6 +108,10 @@ void runJulia() {
     }
 
 terminate:
+    // Strongly recommended: notify Julia that the program is about to terminate. This
+    // allows Julia time to cleanup pending write requests and run all finalizers.
+    jl_atexit_hook(0);
+
     INFO_F("juliaManager: Stopped Julia run-time system");
 }
 
