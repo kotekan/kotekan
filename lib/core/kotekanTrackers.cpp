@@ -207,6 +207,6 @@ void kotekan_trackers_maybe_shutdown_if_inactive() {
     }
 }
 
-// No bounded stage tracking in this mode.
+// No bounded-stage shutdown in this mode.
 
 } // namespace kotekan

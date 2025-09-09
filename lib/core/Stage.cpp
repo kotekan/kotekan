@@ -236,7 +236,6 @@ void Stage::unregister() {
         }
     }
 
-    // Ask kotekan to maybe shutdown based on current state.
     extern void kotekan_trackers_maybe_shutdown_if_inactive();
     kotekan_trackers_maybe_shutdown_if_inactive();
 }

@@ -165,6 +165,8 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     // New connection instance
     connInstance* instance = new connInstance(accept_args->unique_name, accept_args->buf,
                                               accept_args->buffer_recv, ip_str, port, read_timeout);
+    // Track active connections
+    active_connections.fetch_add(1, std::memory_order_relaxed);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -303,6 +305,17 @@ void bufferRecv::main_thread() {
     }
 }
 
+void bufferRecv::notify_connection_closed() {
+    int remaining = active_connections.fetch_sub(1, std::memory_order_relaxed) - 1;
+    if (remaining <= 0) {
+        // No more active connections; request the stage to stop and break the event loop so the
+        // stage can exit and unregister, allowing end-of-data shutdown to proceed.
+        stop_thread = true;
+        if (base)
+            event_base_loopbreak(base);
+    }
+}
+
 int bufferRecv::get_next_frame() {
     std::lock_guard<std::mutex> lock(next_frame_lock);
 
@@ -349,6 +362,9 @@ connInstance::~connInstance() {
     event_free(event_read);
     buffer_free(frame_space, buf->aligned_frame_size, buf->use_hugepages);
     free(metadata_space);
+    // Notify parent that this connection has closed.
+    if (buffer_recv)
+        buffer_recv->notify_connection_closed();
 }
 
 void connInstance::increment_ref_count() {

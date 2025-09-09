@@ -175,8 +175,12 @@ void bufferSend::main_thread() {
         frame_id = (frame_id + 1) % buf->num_frames;
     }
 
+    // Ensure the connection thread exits even if we are ending due to end-of-data
     close_connection();
-    connect_thread.join();
+    stop_thread = true;
+    connection_state_cv.notify_all();
+    if (connect_thread.joinable())
+        connect_thread.join();
 }
 
 void bufferSend::close_connection() {

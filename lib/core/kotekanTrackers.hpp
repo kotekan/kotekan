@@ -149,7 +149,7 @@ private:
     /// Reference back to the active kotekan_mode object
     kotekan::kotekanMode* kotekan_mode_ptr = nullptr;
 
-    // (No bounded stage tracking; shutdown is determined by buffer registrations.)
+    // No bounded-stage shutdown; end is determined by buffer registrations.
 };
 
 } // namespace kotekan

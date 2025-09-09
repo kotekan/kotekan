@@ -104,7 +104,7 @@ void kotekanMode::initalize_stages() {
     StageFactory stage_factory(config, buffer_container);
     stages = stage_factory.build_stages();
 
-    // No special "bounded" stage handling needed for clean shutdown.
+    // No bounded-stage shutdown; producers dictate end-of-data.
 
     // Update REST server
     restServer::instance().set_server_affinity(config);

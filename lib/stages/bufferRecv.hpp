@@ -17,6 +17,7 @@
 #include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily
 
 #include <condition_variable> // for condition_variable
+#include <atomic>
 #include <deque>              // for deque
 #include <event2/event.h>     // for event_add
 #include <event2/util.h>      // for evutil_socket_t
@@ -193,6 +194,12 @@ private:
      * @brief The worker thread for handing read callbacks.
      */
     void worker_thread();
+
+    // Track number of active client connections.
+    std::atomic<int> active_connections{0};
+
+    // Called by a connection instance when it is destroyed.
+    void notify_connection_closed();
 };
 
 /**
