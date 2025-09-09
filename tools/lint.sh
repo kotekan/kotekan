@@ -93,7 +93,7 @@ if ! [ $ENABLE_IWYU = "OFF" ]; then
     CXX=clang++
     CC=clang
     echo "Running iwyu. If it fails make sure cmake compiles with
-          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first.\nThis could take a while..."
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first. This could take a while..."
     mkdir -p ${KOTEKAN_DIR}/build-iwyu
     (cd ${KOTEKAN_DIR}/build-iwyu && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DIWYU=ON ..)
     (cd ${KOTEKAN_DIR}/build-iwyu && iwyu_tool -j $N_JOBS -p . -- -Xiwyu --no_fwd_decls -Xiwyu --max_line_length=100 -Xiwyu --mapping_file=${KOTEKAN_DIR}/iwyu.kotekan.imp | tee iwyu.out)
