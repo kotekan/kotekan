@@ -1,8 +1,8 @@
 #include "HFBMetadata.hpp"
 
-#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
+#include "visUtil.hpp"
 
-#include <assert.h> // for assert
+#include <assert.h>
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, HFBMetadata);
 

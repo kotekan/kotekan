@@ -1,6 +1,5 @@
 #include "BipBuffer.hpp"
 
-#include "core.h"             // for compile_string_to_view
 #include "kotekanLogging.hpp" // for DEBUG2_NON_OO
 
 #include <algorithm> // for min, max
