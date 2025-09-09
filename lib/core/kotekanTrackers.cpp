@@ -207,28 +207,6 @@ void kotekan_trackers_maybe_shutdown_if_inactive() {
     }
 }
 
-// Record the set of stages that should determine shutdown completion.
-void KotekanTrackers::set_bounded_stages(const std::vector<std::string>& names) {
-    std::lock_guard<std::mutex> lock(trackers_lock);
-    bounded_stages_.clear();
-    unregistered_stages_.clear();
-    for (auto& n : names) {
-        if (!n.empty())
-            bounded_stages_.insert(n);
-    }
-}
-
-// Mark a stage as unregistered/completed, if it is bounded.
-void KotekanTrackers::mark_stage_unregistered(const std::string& name) {
-    std::lock_guard<std::mutex> lock(trackers_lock);
-    if (bounded_stages_.find(name) != bounded_stages_.end()) {
-        unregistered_stages_.insert(name);
-    }
-}
-
-bool KotekanTrackers::all_bounded_unregistered() const {
-    // No lock here: conservative snapshotting is fine (used for shutdown checks only).
-    return !bounded_stages_.empty() && (unregistered_stages_.size() == bounded_stages_.size());
-}
+// No bounded stage tracking in this mode.
 
 } // namespace kotekan

@@ -214,6 +214,7 @@ exit_loop:
     INFO("Waiting for GPU packet queues to finish up before freeing memory.");
     if (results_thread_handle.joinable())
         results_thread_handle.join();
+
 }
 
 

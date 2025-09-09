@@ -3,7 +3,6 @@
 #include "Config.hpp"          // for Config
 #include "buffer.hpp"          // for Buffer, GenericBuffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanTrackers.hpp" // for KotekanTrackers
 #include "util.h"              // for string_tail
 
 #include "fmt.hpp" // for format
@@ -57,6 +56,48 @@ std::vector<Buffer*> Stage::get_buffer_array(const std::string& name) {
         bufs.push_back(buffer_container.get_buffer(buf_name));
     }
 
+    return bufs;
+}
+
+Buffer* Stage::get_buffer_as_consumer(const std::string& tag) {
+    Buffer* buf = get_buffer(tag);
+    if (buf) {
+        buf->register_consumer(unique_name);
+        // Track unregistration to be called on exit
+        track_consumer_unreg_for(buf, [this](Buffer* b) { b->unregister_consumer(unique_name); });
+    }
+    return buf;
+}
+
+Buffer* Stage::get_buffer_as_producer(const std::string& tag) {
+    Buffer* buf = get_buffer(tag);
+    if (buf) {
+        buf->register_producer(unique_name);
+        // Track unregistration to be called on exit
+        track_producer_unreg_for(buf, [this](Buffer* b) { b->unregister_producer(unique_name); });
+    }
+    return buf;
+}
+
+std::vector<Buffer*> Stage::get_buffer_array_as_consumer(const std::string& tag) {
+    auto bufs = get_buffer_array(tag);
+    for (auto* b : bufs) {
+        if (!b)
+            continue;
+        b->register_consumer(unique_name);
+        track_consumer_unreg_for(b, [this](Buffer* bb) { bb->unregister_consumer(unique_name); });
+    }
+    return bufs;
+}
+
+std::vector<Buffer*> Stage::get_buffer_array_as_producer(const std::string& tag) {
+    auto bufs = get_buffer_array(tag);
+    for (auto* b : bufs) {
+        if (!b)
+            continue;
+        b->register_producer(unique_name);
+        track_producer_unreg_for(b, [this](Buffer* bb) { bb->unregister_producer(unique_name); });
+    }
     return bufs;
 }
 
@@ -170,14 +211,31 @@ void Stage::unregister() {
             g->unregister_consumer(unique_name);
         if (g->has_producer(unique_name))
             g->unregister_producer(unique_name);
+        // Also unregister any buffer registrations from subordinate components whose
+        // registration names are nested under this stage's unique name (e.g., GPU commands
+        // created under "<stage>/commands/N").
+        const std::string prefix = unique_name + "/";
+        // Collect names first to avoid iterator invalidation during erase.
+        std::vector<std::string> to_remove_cons;
+        for (auto const& it : g->consumers) {
+            const std::string& nm = it.first;
+            if (nm.compare(0, prefix.size(), prefix) == 0)
+                to_remove_cons.push_back(nm);
+        }
+        for (auto const& nm : to_remove_cons) {
+            g->unregister_consumer(nm);
+        }
+        std::vector<std::string> to_remove_prod;
+        for (auto const& it : g->producers) {
+            const std::string& nm = it.first;
+            if (nm.compare(0, prefix.size(), prefix) == 0)
+                to_remove_prod.push_back(nm);
+        }
+        for (auto const& nm : to_remove_prod) {
+            g->unregister_producer(nm);
+        }
     }
 
-    // Notify trackers that this stage has unregistered and perform a shutdown check.
-    try {
-        KotekanTrackers::instance().mark_stage_unregistered(unique_name);
-    } catch (...) {
-        // Ignore if trackers not initialized yet.
-    }
     // Ask kotekan to maybe shutdown based on current state.
     extern void kotekan_trackers_maybe_shutdown_if_inactive();
     kotekan_trackers_maybe_shutdown_if_inactive();

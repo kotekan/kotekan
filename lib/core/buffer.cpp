@@ -348,15 +348,33 @@ uint8_t* Buffer::wait_for_full_frame(const std::string& consumer_name, const int
     auto& con = consumers.at(consumer_name);
     DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting...", consumer_name, ID);
     print_full_status();
-    // This wait exits when is_full == 1 (i.e. a full buffer) AND
-    // when this producer hasn't already marked this buffer as done
-    full_cond.wait(lock, [&]() { return (is_full[ID] && !con.is_done[ID]) || shutdown_signal; });
+    // This wait exits when:
+    //  - the requested frame is full and this consumer hasn't marked it done, OR
+    //  - a shutdown signal is set, OR
+    //  - there are no producers left AND there are no full frames remaining
+    full_cond.wait(lock, [&]() {
+        if ((is_full[ID] && !con.is_done[ID]) || shutdown_signal)
+            return true;
+        if (producers.empty()) {
+            bool any_full = false;
+            for (int i = 0; i < num_frames; ++i) {
+                if (is_full[i]) {
+                    any_full = true;
+                    break;
+                }
+            }
+            if (!any_full)
+                return true; // graceful end-of-data condition
+        }
+        return false;
+    });
     DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting done.", consumer_name, ID);
-    assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
-    lock.unlock();
-
-    if (shutdown_signal)
+    // If shutting down, or we detected end-of-data (no producers and no full frames), return
+    // nullptr to signal termination to the caller.
+    if (shutdown_signal || (producers.empty() && !is_full[ID])) {
         return nullptr;
+    }
+    lock.unlock();
     con.last_frame_acquired = ID;
     return frames[ID];
 }
@@ -370,14 +388,29 @@ int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
     auto& con = consumers.at(name);
 
     DEBUG2("wait_for_full_frame_timeout({:s}[{:d}]): waiting...", name, ID);
-    bool st = full_cond.wait_until(
-        lock, deadline, [&]() { return (is_full[ID] && !con.is_done[ID]) || shutdown_signal; });
+    bool st = full_cond.wait_until(lock, deadline, [&]() {
+        if ((is_full[ID] && !con.is_done[ID]) || shutdown_signal)
+            return true;
+        if (producers.empty()) {
+            bool any_full = false;
+            for (int i = 0; i < num_frames; ++i) {
+                if (is_full[i]) {
+                    any_full = true;
+                    break;
+                }
+            }
+            if (!any_full)
+                return true;
+        }
+        return false;
+    });
     DEBUG2("wait_for_full_frame_timeout({:s}[{:d}]): waiting done.", name, ID);
     if (st)
-        assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
+        assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal
+               || (producers.empty() && !is_full[ID]));
     lock.unlock();
 
-    if (shutdown_signal)
+    if (shutdown_signal || (producers.empty() && !is_full[ID]))
         return -1;
 
     if (!st)
@@ -568,6 +601,20 @@ void Buffer::mark_frame_empty(const std::string& consumer_name, const int ID) {
         consumers.at(consumer_name).last_frame_released = ID;
         if (private_consumers_done(ID)) {
             broadcast = private_mark_frame_empty(ID);
+        }
+        // If this call caused the very last full frame to be cleared and there are no producers
+        // left on this buffer, wake up any consumers waiting so they can exit gracefully.
+        if (producers.empty()) {
+            bool any_full = false;
+            for (int i = 0; i < num_frames; ++i) {
+                if (is_full[i]) {
+                    any_full = true;
+                    break;
+                }
+            }
+            if (!any_full) {
+                full_cond.notify_all();
+            }
         }
     }
 

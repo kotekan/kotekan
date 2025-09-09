@@ -172,8 +172,8 @@ public:
         // NDArray
         quantity(quantity), // e.g. "J"
         ndarray(extents, dimnames, get_buffer_pointer(extents)),
-        // State
-        write_valid(0, 0), read_valid(0, 0), read_claimed(0, 0)
+    // State
+    write_valid(0, 0), read_valid(0, 0), read_claimed(0, 0)
     //
     {
         set_log_level(cuda_command.get_log_level());

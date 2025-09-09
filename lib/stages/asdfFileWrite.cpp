@@ -25,7 +25,6 @@
 #include <utility>
 #include <vector>
 #include <visUtil.hpp> // for current_time
-#include <waitingForMaxFrames.hpp>
 
 using namespace asdf;
 

@@ -130,6 +130,32 @@ protected:
      */
     std::vector<Buffer*> get_buffer_array(const std::string& name);
 
+    /**
+     * @brief Convenience: fetch and register as consumer on buffer referenced by config tag.
+     *
+     * Calls `get_buffer(tag)`, then `buf->register_consumer(unique_name)`, and records an
+     * unregister action so the base class will unregister on thread exit.
+     */
+    Buffer* get_buffer_as_consumer(const std::string& tag);
+
+    /**
+     * @brief Convenience: fetch and register as producer on buffer referenced by config tag.
+     *
+     * Calls `get_buffer(tag)`, then `buf->register_producer(unique_name)`, and records an
+     * unregister action so the base class will unregister on thread exit.
+     */
+    Buffer* get_buffer_as_producer(const std::string& tag);
+
+    /**
+     * @brief Convenience: array variant for consumers.
+     */
+    std::vector<Buffer*> get_buffer_array_as_consumer(const std::string& tag);
+
+    /**
+     * @brief Convenience: array variant for producers.
+     */
+    std::vector<Buffer*> get_buffer_array_as_producer(const std::string& tag);
+
     bufferContainer& buffer_container;
 
 private:
