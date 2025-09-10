@@ -66,21 +66,16 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_n2k_correlation_buffer
         file_name: n2k_correlation
-        bounded: true
     write_bb_beams:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beams_buffer
         file_name: bb_beams
-        bounded: true
     write_frb3_beams:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_buffer
         file_name: frb3_beams
-        bounded: true
     write_frb3_beams_meanstd:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_meanstd_buffer
         file_name: frb3_beams_meanstd
-        bounded: true
         max_frames: 15
-

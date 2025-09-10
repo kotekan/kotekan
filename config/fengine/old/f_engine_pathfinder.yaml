@@ -1376,6 +1376,5 @@ write_data:
         kotekan_stage: asdfFileWrite
         in_buf: host_frb3_beams_meanstd_buffer
         file_name: frb3_beams_meanstd
-        bounded: true
         max_frames: 1
 ...
