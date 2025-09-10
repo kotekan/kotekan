@@ -140,7 +140,18 @@ public:
     static restServer& instance();
 
     /**
-     * @brief Checks if the given string is a valid address (IPv4, IPv6, or hostname)
+     * @brief Validate a bind address.
+     *
+     * Accepts the following forms:
+     *  - IPv4 literals (e.g., "127.0.0.1", "0.0.0.0").
+     *  - IPv6 literals (e.g., "::1", "2001:db8::1").
+     *  - Hostnames consisting only of letters, digits, dots, hyphens, and underscores
+     *
+     * This is a syntactic check. For hostnames, it does not resolve DNS; use
+     * @ref canBindToAddress to check actual bindability.
+     *
+     * @param address Address string to validate (no port or scheme).
+     * @return true if syntactically valid; false otherwise.
      */
     bool isValidAddress(const std::string& address) const;
 

@@ -102,3 +102,27 @@ To override that and pin it to say cores 3,4:
 
     rest_server:
         cpu_affinity: [3,4]
+
+Binding and Addresses
+*********************
+The REST server binds on a specific address and port when started:
+
+- Use ``restServer::start(bind_address, port)`` to select the interface and port.
+- The helper ``restServer::isValidAddress()`` performs a syntactic validation of the
+  address string before attempting to bind.
+
+Valid address forms:
+
+- IPv4 literals: e.g., ``127.0.0.1``, ``0.0.0.0``
+- IPv6 literals: e.g., ``::1``, ``2001:db8::1`` (bare address, no brackets)
+- Hostnames containing only letters, digits, dots, hyphens, and underscores:
+  e.g., ``localhost``, ``example-host``, ``sub.domain``
+
+Not accepted by ``isValidAddress()``:
+
+- Addresses including ports: ``127.0.0.1:8080``, ``example.com:12048``
+- URIs with schemes: ``http://example.com``
+- Bracketed IPv6 forms: ``[::1]``
+
+To verify that an address and port can actually be used on the host, call
+``restServer::canBindToAddress(bind_address, port)``.
