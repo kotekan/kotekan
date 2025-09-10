@@ -66,7 +66,8 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
     use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
 
-    // Optional per-connection upstream REST port overrides for a given host (list of "host:port" strings)
+    // Optional per-connection upstream REST port overrides for a given host (list of "host:port"
+    // strings)
     if (config.exists(unique_name, "upstream_rest_endpoints")) {
         try {
             auto entries =
@@ -74,7 +75,8 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
             for (const auto& ep : entries) {
                 auto parts = regex_split(ep, ":");
                 if (parts.size() != 2) {
-                    FATAL_ERROR("Invalid upstream_rest_endpoints entry: {:s} (expected host:port)", ep);
+                    FATAL_ERROR("Invalid upstream_rest_endpoints entry: {:s} (expected host:port)",
+                                ep);
                 }
                 uint16_t port = 0;
                 int p = std::stoi(parts[1]);
