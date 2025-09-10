@@ -142,7 +142,7 @@ public:
     /**
      * @brief Checks if the given string is a valid address (IPv4, IPv6, or hostname)
      */
-    bool isValidAddress(const std::string& address);
+    bool isValidAddress(const std::string& address) const;
 
     /**
      * @brief Checks if the given IP address and port can be bound to.
@@ -155,7 +155,7 @@ public:
      * @param port The port to check.
      * @return true if the address can be bound, false otherwise.
      */
-    bool canBindToAddress(const std::string& ip, u_short port);
+    bool canBindToAddress(const std::string& ip, const u_short port) const;
 
     /**
      * @brief Start the rest server, should only be called once by the framework

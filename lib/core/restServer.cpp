@@ -61,7 +61,7 @@ restServer::~restServer() {
 }
 
 // Validation function that accepts both IPs and hostnames
-bool restServer::isValidAddress(const std::string& address) {
+bool restServer::isValidAddress(const std::string& address) const {
     // First check if it's a valid IPv4 address
     struct sockaddr_in sa4;
     if (inet_pton(AF_INET, address.c_str(), &(sa4.sin_addr)) == 1) {
@@ -90,7 +90,7 @@ bool restServer::isValidAddress(const std::string& address) {
     return true;
 }
 
-bool restServer::canBindToAddress(const std::string& address, u_short port) {
+bool restServer::canBindToAddress(const std::string& address, const u_short port) const {
     DEBUG_NON_OO("restServer: Checking if we can bind to address {:s}:{:d}", address, port);
 
     // Use getaddrinfo to resolve the address (works for both IPs and hostnames)

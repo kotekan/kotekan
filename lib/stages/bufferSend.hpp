@@ -26,12 +26,14 @@
  * Uses fixed-width types and explicit padding to make the layout
  * consistent across compilers/ABIs without relying on packing pragmas.
  */
+#pragma pack(push, 1)
 struct bufferFrameHeader {
     uint32_t metadata_size;
     uint32_t frame_size;
     /// 0 = no update, 1 = update
     uint32_t config_tracker_update;
 };
+#pragma pack(pop)
 static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader must be 12 bytes");
 
 /**
