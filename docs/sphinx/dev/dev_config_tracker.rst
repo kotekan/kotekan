@@ -30,31 +30,33 @@ Operational Flow
 ----------------
 
 1. **Startup registration**
-   The local node registers its full filtered config with the tracker and exposes the REST endpoints.
+   The local node registers its config with the tracker as a part of kotekan startup, and 
+   the tracker exposes the REST endpoints.
 
 2. **Sending data**
-   The sender compares its current tracker-combined-hash to the one last sent. If changed,
-   it sets a flag in the frame header (``config_tracker_update = true``) to prompt receivers
-   to refresh configuration state.
+   A sender (using ``bufferSend``) compares its current tracker-combined-hash to the one last
+   sent. If changed, it sets a flag in the frame header (``config_tracker_update = true``) to
+   prompt receivers (using ``bufferRecv``) to refresh configuration state.
 
 3. **Receiving data**
    Upon seeing ``config_tracker_update = true``, the receiver calls
-   ``getUpstreamConfigs(client_ip, client_port)`` to retrieve any missing configs by hash.
+   ``getUpstreamConfigs(client_ip, client_port)`` to retrieve any missing configs.
+   (See the full `doxygen docs <html/>`_ or code for implementation details.)
    The receiver blocks further processing until required configs are present locally.
 
 Threading & Safety
 ------------------
 - All public methods that touch shared state take internal locks.
 - The tracker is process-local; network exchange happens via the REST client/servers under the hood.
-- Hash collisions are unlikely in practice; if the same hash is mapped to different endpoints,
-  execution aborts to avoid misattribution.
+- Hash collisions are unlikely in practice. If a different hash is found at the same endpoint,
+  execution aborts to avoid state contamination.
 
 Per-Connection REST Ports
 -------------------------
 When receiving frames over the network, ``bufferRecv`` may need to pull upstream configurations
-from the sender’s REST server (only when the config tracker is enabled).
+from the sender's REST server (only when the config tracker is enabled).
 
-- Default: the receiver assumes the sender’s REST server is on port ``12048`` (``PORT_REST_SERVER``).
+- Default: the receiver assumes the sender's REST server is on port ``12048`` (``PORT_REST_SERVER``).
 - Override: use the stage config key ``upstream_rest_endpoints`` to specify non‑standard ports
   per client. Entries are matched against the client IP as seen by ``bufferRecv``.
 
@@ -70,4 +72,4 @@ Example::
 
 Notes
 - This setting is only meaningful when ``use_config_tracker: true``.
-- If a client IP is not listed, the default port ``12048`` is used.
+- If a client IP:port is not listed, the default port ``12048`` is used for the IP.

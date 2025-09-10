@@ -66,7 +66,7 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
     use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
 
-    // Optional per-connection upstream REST port overrides (list of "host:port" strings)
+    // Optional per-connection upstream REST port overrides for a given host (list of "host:port" strings)
     if (config.exists(unique_name, "upstream_rest_endpoints")) {
         try {
             auto entries =
@@ -74,25 +74,18 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
             for (const auto& ep : entries) {
                 auto parts = regex_split(ep, ":");
                 if (parts.size() != 2) {
-                    WARN("Invalid upstream_rest_endpoints entry: {:s} (expected host:port)", ep);
-                    continue;
+                    FATAL_ERROR("Invalid upstream_rest_endpoints entry: {:s} (expected host:port)", ep);
                 }
                 uint16_t port = 0;
-                try {
-                    int p = std::stoi(parts[1]);
-                    if (p < 0 || p > 65535) {
-                        throw std::out_of_range("port out of range");
-                    }
-                    port = static_cast<uint16_t>(p);
-                } catch (const std::exception& e) {
-                    WARN("Invalid port in upstream_rest_endpoints entry: {:s} ({:s})", ep,
-                         e.what());
-                    continue;
+                int p = std::stoi(parts[1]);
+                if (p < 0 || p > 65535) {
+                    FATAL_ERROR("Invalid port in upstream_rest_endpoints entry: {:s}", ep);
                 }
+                port = static_cast<uint16_t>(p);
                 upstream_rest_port_overrides[parts[0]] = port;
             }
         } catch (const std::exception& e) {
-            WARN("Failed to parse upstream_rest_endpoints: {:s}", e.what());
+            FATAL_ERROR("Failed to parse upstream_rest_endpoints: {:s}", e.what());
         }
     }
 
