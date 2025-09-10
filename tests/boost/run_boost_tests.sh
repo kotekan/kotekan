@@ -86,7 +86,7 @@ echo "Summary: $passed passed, $failed failed"
 
 # List failed tests
 if [ ${#failed_tests[@]} -gt 0 ]; then
-    echo "Failed tests:"
+    echo "Failed tests:" >&2
     for test in "${failed_tests[@]}"; do
         echo "  $test" >&2
     done

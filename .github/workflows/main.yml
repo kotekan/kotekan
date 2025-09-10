@@ -205,17 +205,17 @@ jobs:
 
     - name: Run parallel python tests
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
 
     - name: Run serial python tests
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial
 
     - name: Run boost tests
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" /code/kotekan/tests/boost/run_boost_tests.sh -v -t ${PYTEST_TIMEOUT} /code/kotekan/build-2404/tests/boost
 
   # Build an OpenCL version of kotekan and run the unit tests
@@ -266,24 +266,6 @@ jobs:
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
         df -h
-
-    - name: Run parallel python tests
-      shell: bash
-      run: |
-        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
-
-    - name: Run serial python tests
-      shell: bash
-      run: |
-        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial
-
-    - name: Run boost tests
-      shell: bash
-      run: |
-        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
 
     - name: Clean up
       run: |
@@ -416,7 +398,7 @@ jobs:
 
     - name: Run lint.sh
       shell: bash
-      run:
+      run: |
         set -e
         docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan
 
