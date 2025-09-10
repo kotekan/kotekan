@@ -129,7 +129,7 @@ void bufferSend::main_thread() {
             {
                 char metabuf[header.metadata_size];
                 meta->serialize(metabuf);
-                while ((n = send(socket_fd, &metabuf + n_sent, header.metadata_size - n_sent,
+                while ((n = send(socket_fd, metabuf + n_sent, header.metadata_size - n_sent,
                                  MSG_NOSIGNAL))
                        > 0) {
                     n_sent += n;

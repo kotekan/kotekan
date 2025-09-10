@@ -133,8 +133,8 @@ private:
     /// How long to wait (seconds) after the last connection closes before exiting.
     int linger_after_last_disconnect;
 
-    /// Start time for the post-disconnect grace period.
-    std::chrono::steady_clock::time_point last_no_connection_time;
+    /// Start time for the post-disconnect grace period (steady_clock nanos since epoch).
+    std::atomic<long long> last_no_connection_ns{0};
 
     /// True while we are within the grace window waiting for reconnects.
     std::atomic<bool> waiting_for_reconnect{false};

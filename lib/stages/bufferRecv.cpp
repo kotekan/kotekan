@@ -205,9 +205,17 @@ void bufferRecv::timer(evutil_socket_t fd, short event, void* arg) {
             event_base_loopbreak(buff_recv->base);
             return;
         }
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed = now - buff_recv->last_no_connection_time;
-        if (elapsed >= std::chrono::seconds(buff_recv->linger_after_last_disconnect)) {
+        auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::steady_clock::now().time_since_epoch())
+                          .count();
+        auto start_ns = buff_recv->last_no_connection_ns.load(std::memory_order_relaxed);
+        if (start_ns == 0)
+            return; // not initialized yet
+        auto elapsed_ns = now_ns - start_ns;
+        if (elapsed_ns >=
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::seconds(buff_recv->linger_after_last_disconnect))
+                .count()) {
             // Grace period expired; exit the event loop so the stage can shut down.
             buff_recv->stop_thread = true;
             event_base_loopbreak(buff_recv->base);
@@ -333,7 +341,9 @@ void bufferRecv::notify_connection_closed() {
     if (remaining <= 0) {
         // No active connections remain; enter a grace period to allow reconnects.
         waiting_for_reconnect.store(true, std::memory_order_relaxed);
-        last_no_connection_time = std::chrono::steady_clock::now();
+        last_no_connection_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                     std::chrono::steady_clock::now().time_since_epoch())
+                                     .count();
         INFO("No active connections; waiting up to {:d}s for reconnects before shutdown.",
              linger_after_last_disconnect);
     }
