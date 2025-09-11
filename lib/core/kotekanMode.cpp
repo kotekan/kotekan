@@ -78,6 +78,17 @@ kotekanMode::~kotekanMode() {
 
 void kotekanMode::initalize_stages() {
 
+    // Create Config Updater
+    configUpdater& config_updater = configUpdater::instance();
+    config_updater.apply_config(config);
+
+    // Apply config to datasetManager
+    if (config.exists("/", "dataset_manager"))
+        datasetManager::instance(config);
+
+    // Apply config for Telescope class
+    Telescope::instance(config);
+
     // Create and register kotekan trackers before stages created
     KotekanTrackers::instance(config).register_with_server(&restServer::instance());
     KotekanTrackers::instance().set_kotekan_mode_ptr(this);
@@ -104,17 +115,6 @@ void kotekanMode::initalize_stages() {
 
     restServer::instance().register_get_callback(
         "/pipeline_dot", std::bind(&kotekanMode::pipeline_dot_graph_callback, this, _1));
-
-    // Create Config Updater
-    configUpdater& config_updater = configUpdater::instance();
-    config_updater.apply_config(config);
-
-    // Apply config to datasetManager
-    if (config.exists("/", "dataset_manager"))
-        datasetManager::instance(config);
-
-    // Apply config for Telescope class
-    Telescope::instance(config);
 
     // Register ConfigTracker endpoints and insert local startup config so the tracker
     // can propagate configs to downstream instances.
