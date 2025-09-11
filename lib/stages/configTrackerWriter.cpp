@@ -1,12 +1,11 @@
 #include "configTrackerWriter.hpp"
 
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
-#include "configTracker.hpp"   // for ConfigTracker
-#include "kotekanLogging.hpp"  // for logging macros
-
-#include <filesystem>
+#include "configTracker.hpp"  // for ConfigTracker
+#include "kotekanLogging.hpp" // for logging macros
 
 #include <chrono>
+#include <filesystem>
 #include <thread>
 
 using kotekan::Config;
@@ -16,7 +15,8 @@ REGISTER_KOTEKAN_STAGE(configTrackerWriter);
 
 configTrackerWriter::configTrackerWriter(Config& config, const std::string& unique_name,
                                          kotekan::bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&configTrackerWriter::main_thread, this)),
+    Stage(config, unique_name, buffer_container,
+          std::bind(&configTrackerWriter::main_thread, this)),
     _base_dir(config.get<std::string>(unique_name, "base_dir")) {
 
     namespace fs = std::filesystem;

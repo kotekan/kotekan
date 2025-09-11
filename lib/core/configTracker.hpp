@@ -516,8 +516,8 @@ public:
             // If it doesn't exist, fetch the config from the immediate upstream server.
             // Use GET with query string to match the registered GET endpoint.
             const std::string path_configs = std::string("/config_tracker_configs?hash=") + hash;
-            reply = restClient::instance().make_request_blocking(path_configs, {}, host, port, 1,
-                                                                 -1);
+            reply =
+                restClient::instance().make_request_blocking(path_configs, {}, host, port, 1, -1);
             // Check if the request was successful
             if (!reply.first) {
                 ERROR_NON_OO("ConfigTracker: Failed to get config for hash: {} from upstream host: "
