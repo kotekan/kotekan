@@ -120,18 +120,19 @@ void N2Accumulate::main_thread() {
         int32_t* input = (int32_t*)in_frame;
 
         std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
-        size_t in_frame_num = frame_metadata->fpga_seq_num / _n_fpga_samples_per_N2_frame;
+        size_t in_frame_num = frame_metadata->get_fpga_seq_num() / _n_fpga_samples_per_N2_frame;
 
         // Start and end times of this frame
         bool gps_time_enabled = false;
         // Here we'll just use raw nanoseconds
         uint64_t t_frame_s;
         if (gps_time_enabled) {
-            t_frame_s = N2::ts_to_uint64(frame_metadata->gps_time);
+            t_frame_s = N2::ts_to_uint64(frame_metadata->get_gps_time());
         } else {
             // If GPS time is not set, fall back to system time.
             timespec ts;
-            TIMEVAL_TO_TIMESPEC(&frame_metadata->first_packet_recv_time, &ts);
+            timeval tv = frame_metadata->get_first_packet_recv_time();
+            TIMEVAL_TO_TIMESPEC(&tv, &ts);
             t_frame_s = N2::ts_to_uint64(ts);
         }
         // uint64_t t_frame_e = t_frame_s + _in_frame_duration_nsec;
