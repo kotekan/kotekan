@@ -216,31 +216,6 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" /code/kotekan/tests/boost/run_boost_tests.sh -v -t ${PYTEST_TIMEOUT} /code/kotekan/build-2404/tests/boost
 
-  # Run shell script tests
-  # Build a full version of kotekan and run the unit tests
-  build-full-tests-2404:
-    runs-on: ubuntu-latest
-    needs: build-docker-2404
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    
-    # Run all shell scripts named as test_*.sh in tests/ci-scripts/push
-    - name: Run shell script tests
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        for script in tests/ci-scripts/push/test_*.sh; do
-          echo "Running $script"
-          docker run "${OPTS[@]}" bash "$script"
-        done
-
   # Build an OpenCL version of kotekan and run the unit tests
   build-opencl-2404:
     runs-on: self-hosted
@@ -471,3 +446,32 @@ jobs:
         -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
+
+  # Run shell script tests
+  # Build a full version of kotekan and run the unit tests
+  run-shell-tests-2404:
+    runs-on: ubuntu-latest
+    needs: build-docker-2404
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    # Run all shell scripts named as test_*.sh in tests/ci-scripts/push
+    - name: Run shell script tests
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        for script in tests/ci-scripts/push/test_*.sh; do
+          echo "Running $script"
+          docker run "${OPTS[@]}" bash "$script"
+          if [ $? -ne 0 ]; then
+            echo "$script failed"
+            exit 1
+          fi
+        done
