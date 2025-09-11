@@ -29,8 +29,6 @@ env:
 
 jobs:
 
-  # 2404 Tests
-
   # Ubuntu 24.04 docker image build and push
   build-docker-2404:
     runs-on: ubuntu-latest
@@ -269,8 +267,102 @@ jobs:
       run: |
         rm -rf kotekan
 
+  # Build a clang version of kotekan
+  # Note that this build isn't working at the moment, so for now only run it upon request.
+  build-clang-2404:
+    runs-on: ubuntu-latest
+    needs: build-docker-2404
 
-  # Build a version of kotekan and run some direct tests
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Cache ccache files
+      uses: actions/cache@v4
+      with:
+        path: .ccache
+        key: ccache-clang-build-2404-${{ github.sha }}
+        restore-keys: |
+          ccache-clang-build-2404
+
+    - name: Build kotekan
+      env:
+        CC: clang
+        CXX: clang++
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ -e CC -e CXX ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+        -DCMAKE_LINK_WHAT_YOU_USE=ON \
+        -DCMAKE_BUILD_TYPE=Test \
+        -DUSE_ASDF=ON \
+        -DUSE_GDAL=ON \
+        -DUSE_HDF5=ON \
+        -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
+        -DNO_MEMLOCK=ON \
+        -DUSE_OMP=ON \
+        -DUSE_CUDA=ON \
+        -DWITH_TESTS=ON \
+        -DWITH_BOOST_TESTS=ON \
+        -DCCACHE=ON ..
+        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" ccache -s
+
+  # Build kotekan documentation
+  build-docs:
+    runs-on: ubuntu-latest
+    needs: build-docker-2404
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build kotekan docs
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-docs/ "${{ needs.build-docker-2404.outputs.docker_img_name }}")
+        docker run "${OPTS[@]}" \
+          cmake \
+            -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCOMPILE_DOCS=ON \
+            ..
+        docker run "${OPTS[@]}" make doc
+        docker run "${OPTS[@]}" make sphinx
+
+  # Linting
+  lint:
+    runs-on: ubuntu-latest
+    needs: build-docker-2404
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Run lint.sh
+      shell: bash
+      run: |
+        set -e
+        docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan
+
+  # Build a version of kotekan locally, and run some direct tests
   build-direct-tests-2404:
     runs-on: self-hosted
     container: 
@@ -352,103 +444,7 @@ jobs:
       run: |
         rm -rf kotekan
 
-  # Build kotekan documentation
-  build-docs:
-    runs-on: ubuntu-latest
-    needs: build-docker-2404
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Build kotekan docs
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-docs/ "${{ needs.build-docker-2404.outputs.docker_img_name }}")
-        docker run "${OPTS[@]}" \
-          cmake \
-            -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-            -DWERROR=ON \
-            -DCOMPILE_DOCS=ON \
-            ..
-        docker run "${OPTS[@]}" make doc
-        docker run "${OPTS[@]}" make sphinx
-
-  # Linting
-  lint:
-    runs-on: ubuntu-latest
-    needs: build-docker-2404
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Run lint.sh
-      shell: bash
-      run: |
-        set -e
-        docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan
-
-  # Build a clang version of kotekan
-  # Note that this build isn't working at the moment, so for now only run it upon request.
-  build-clang-2404:
-    runs-on: ubuntu-latest
-    needs: build-docker-2404
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Cache ccache files
-      uses: actions/cache@v4
-      with:
-        path: .ccache
-        key: ccache-clang-build-2404-${{ github.sha }}
-        restore-keys: |
-          ccache-clang-build-2404
-
-    - name: Build kotekan
-      env:
-        CC: clang
-        CXX: clang++
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ -e CC -e CXX ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" ccache -s
-        docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-        -DCMAKE_LINK_WHAT_YOU_USE=ON \
-        -DCMAKE_BUILD_TYPE=Test \
-        -DUSE_ASDF=ON \
-        -DUSE_GDAL=ON \
-        -DUSE_HDF5=ON \
-        -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
-        -DNO_MEMLOCK=ON \
-        -DUSE_OMP=ON \
-        -DUSE_CUDA=ON \
-        -DWITH_TESTS=ON \
-        -DWITH_BOOST_TESTS=ON \
-        -DCCACHE=ON ..
-        docker run "${OPTS[@]}" make -j 2
-        docker run "${OPTS[@]}" ccache -s
-
-  # Run shell script tests
-  # Build a full version of kotekan and run the unit tests
+  # Run any shell script tests in tests/ci-scripts/push_pull
   run-shell-tests-2404:
     runs-on: ubuntu-latest
     needs: build-docker-2404

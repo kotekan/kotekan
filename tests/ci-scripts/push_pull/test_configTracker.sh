@@ -17,7 +17,7 @@ else
     echo "kotekan executable not found in expected location: ${KOTEKAN_BUILD_DIR}/kotekan/kotekan. Attempting to build kotekan."
     # Attempt to build kotekan if the executable is not found
     cd "${KOTEKAN_BUILD_DIR}"
-    cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated -DWERROR=ON -DCMAKE_LINK_WHAT_YOU_USE=ON -DCMAKE_BUILD_TYPE=Test -DUSE_ASDF=ON -DUSE_GDAL=ON -DUSE_HDF5=ON -DUSE_LAPACK_BLAZE=ON -DNO_MEMLOCK=ON -DUSE_OMP=ON -DUSE_CUDA=ON -DUSE_FFTW=ON -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON -DCCACHE=ON ..
+    cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated -DWERROR=ON -DCMAKE_LINK_WHAT_YOU_USE=ON -DCMAKE_BUILD_TYPE=Test -DNO_MEMLOCK=ON -DUSE_OMP=ON -DUSE_CUDA=ON -DCCACHE=ON ..
     # Check for errors
     if [ $? -ne 0 ]; then
         echo "CMake configuration failed. Please check the output for errors."
@@ -63,32 +63,51 @@ EXIT_STATUS_2=$?
 
 sleep 1 # Wait a moment to ensure output is flushed
 
+ERROR=0
+
 # Print exit statuses
 echo "kotekan instance 1 exit status: $EXIT_STATUS_1"
 echo "kotekan instance 2 exit status: $EXIT_STATUS_2"
 # Exit with error if either instance did not exit cleanly
 if [ $EXIT_STATUS_1 -ne 0 ] || [ $EXIT_STATUS_2 -ne 0 ]; then
     echo "One or both kotekan instances did not exit cleanly!"
-    exit 1
+    ERROR=1
 fi
 
 # Verify that the config writer produced exactly two JSON files
 if [ "$(ls -1 "${CONFIG_OUT_DIR}"/*.json 2>/dev/null | wc -l)" -ne 2 ]; then
     echo "Expected 2 JSON files in ${CONFIG_OUT_DIR}, found $(ls -1 "${CONFIG_OUT_DIR}"/*.json 2>/dev/null | wc -l)"
-    exit 1
+    ERROR=1
 fi
 
-# We expect 127.0.0.1_12048.json to exist and have a md5sum 60972de19e3a2c6e780e77744b557050
-md5sum -c --status <(echo "60972de19e3a2c6e780e77744b557050  ${CONFIG_OUT_DIR}/127.0.0.1_12048.json")
+# Prune node/code-dependent lines from json output before comparing
+for file in "${CONFIG_OUT_DIR}"/*.json; do
+    # Remove lines with "kotekan_build_branch", "kotekan_git_commit_hash", "kotekan_version"
+    sed -i '/"kotekan_build_branch":/d' "$file"
+    sed -i '/"kotekan_git_commit_hash":/d' "$file"
+    sed -i '/"kotekan_version":/d' "$file"
+done
+
+# We expect the modified 127.0.0.1_12048.json to exist and have a md5sum c46b468ea28873a80ebc76f9f1648076
+md5sum -c --status <(echo "c46b468ea28873a80ebc76f9f1648076  ${CONFIG_OUT_DIR}/127.0.0.1_12048.json")
 if [ $? -ne 0 ]; then
     echo "MD5 checksum for ${CONFIG_OUT_DIR}/127.0.0.1_12048.json does not match expected value"
-    exit 1
+    echo "File contents:"
+    cat "${CONFIG_OUT_DIR}/127.0.0.1_12048.json"
+    ERROR=1
 fi
 
-# We expect 127.0.0.1_12748.json to exist and have a md5sum 311dd13a157ff40d14ebe5c95b8cfeb9
-md5sum -c --status <(echo "311dd13a157ff40d14ebe5c95b8cfeb9  ${CONFIG_OUT_DIR}/127.0.0.1_12748.json")
+# We expect the modified 127.0.0.1_12748.json to exist and have a md5sum 01c90bf3d9c22a2222b9b17252b1d464
+md5sum -c --status <(echo "01c90bf3d9c22a2222b9b17252b1d464  ${CONFIG_OUT_DIR}/127.0.0.1_12748.json")
 if [ $? -ne 0 ]; then
-    echo "MD5 checksum for ${CONFIG_OUT_DIR}/127.0.0.1_12748.json does not match expected value"
+    echo "MD5 checksum for ${CONFIG_OUT_DIR}/127.0.0.1_12748.json does not match expected value."
+    echo "File contents:"
+    cat "${CONFIG_OUT_DIR}/127.0.0.1_12748.json"
+    ERROR=1
+fi
+
+if [ $ERROR -ne 0 ]; then
+    echo "configTrackerWriter test failed!"
     exit 1
 fi
 

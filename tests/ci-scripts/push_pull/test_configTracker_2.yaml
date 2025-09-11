@@ -23,7 +23,6 @@ recv_buffer:
     frame_size: num_frame_samples
     metadata_pool: main_pool
 
-
 buffer_recv:
   log_level: debug
   recv:

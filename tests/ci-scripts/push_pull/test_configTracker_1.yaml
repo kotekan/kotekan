@@ -23,7 +23,6 @@ send_buffer:
     frame_size: num_frame_samples
     metadata_pool: main_pool
 
-
 # Kotekan stages
 gen_data:
     # type: const
@@ -35,7 +34,6 @@ gen_data:
     array_shape: [ 2048 ]
     dim_name: ["S"]
 
-# buffer to send:
 # Transmit all the data to the receiver node
 buffer_send:
   server_ip: 127.0.0.1
