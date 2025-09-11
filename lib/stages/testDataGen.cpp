@@ -200,9 +200,11 @@ void testDataGen::main_thread() {
         std::shared_ptr<chordMetadata> chordmeta;
         if (metadata_is_chord(buf, frame_id)) {
             chordmeta = get_chord_metadata(buf, frame_id);
+            chordmeta->set_name("E");
             chordmeta->dims = (int)_array_shape.size();
             for (int d = 0; d < chordmeta->dims; ++d)
                 chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
+            chordmeta->set_strides_simple();
         }
 
         unsigned char temp_output;
@@ -218,7 +220,7 @@ void testDataGen::main_thread() {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
             if (chordmeta)
-                chordmeta->type = kotekan::int4x2;
+                chordmeta->type = kotekan::int4x2_swapped_withoffset;
         } else if (type == "const8") {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
@@ -243,7 +245,7 @@ void testDataGen::main_thread() {
 #endif
         } else if (type == "random_signed") {
             if (chordmeta)
-                chordmeta->type = kotekan::int4x2;
+                chordmeta->type = kotekan::int4x2_swapped_withoffset;
         }
         if (type == "onehot") {
             int val = value;

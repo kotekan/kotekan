@@ -42,6 +42,11 @@
  * Note: While the output is only supposed to fill the upper triangle
  * of the correlation matrices, this implementation fills a few of the
  * below-the-diagonal elements with non-zero values.
+ *
+ * TODO: -Update docs to note new parameter names,
+ *       -buffer name requirements (for NDArray conventions)
+ *       -input data name in metadata must be "E"
+ *       -input data type must be int4x2_swapped_withoffset_t
  */
 class cudaCorrelator : public cudaCommand {
 public:
