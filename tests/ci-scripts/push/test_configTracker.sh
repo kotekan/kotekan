@@ -4,9 +4,11 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Directory name where kotekan was built, relative to the root of the repository
 # Use KOTEKAN_BUILD_DIRNAME environment variable if set, otherwise default to "build"
-KOTEKAN_BUILD_DIR="${SCRIPT_DIR}/../../${KOTEKAN_BUILD_DIRNAME:-build}"
+KOTEKAN_BUILD_DIR="${SCRIPT_DIR}/../../../${KOTEKAN_BUILD_DIRNAME:-build}"
 # Resolve to absolute path
 KOTEKAN_BUILD_DIR="$(realpath "${KOTEKAN_BUILD_DIR}")"
+# Create build directory if it does not exist
+mkdir -p "${KOTEKAN_BUILD_DIR}"
 
 # Check if kotekan executable exists in an expected location
 if [ -f "${KOTEKAN_BUILD_DIR}/kotekan/kotekan" ]; then
