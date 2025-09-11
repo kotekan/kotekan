@@ -45,4 +45,4 @@ hex_dump:
 config_writer:
     log_level: DEBUG
     kotekan_stage: configTrackerWriter
-    base_dir: ./config_writes
+    base_dir: config_writes

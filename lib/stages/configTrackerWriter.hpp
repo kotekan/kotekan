@@ -8,7 +8,8 @@
  *
  * - configTrackerWriter : public kotekan::Stage
  *
- * @conf base_dir  String. Directory to write JSON files into. Must exist.
+ * @conf base_dir  String. Directory to write JSON files into. If it doesn't
+ *                 exist, it will be created. Logs the absolute path.
  */
 #ifndef CONFIG_TRACKER_WRITER_HPP
 #define CONFIG_TRACKER_WRITER_HPP
@@ -30,7 +31,8 @@ public:
 private:
     // Output directory for config files
     const std::string _base_dir;
+    // Absolute, normalized path resolved from _base_dir
+    std::string _output_dir_abs;
 };
 
 #endif // CONFIG_TRACKER_WRITER_HPP
-
