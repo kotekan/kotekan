@@ -467,7 +467,7 @@ jobs:
     - name: Run shell script tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        for script in tests/ci-scripts/push/test_*.sh; do
+        for script in tests/ci-scripts/push_pull/test_*.sh; do
           echo "Running $script"
           docker run "${OPTS[@]}" bash "$script"
           if [ $? -ne 0 ]; then
