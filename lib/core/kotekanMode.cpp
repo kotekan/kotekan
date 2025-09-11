@@ -78,27 +78,6 @@ kotekanMode::~kotekanMode() {
 
 void kotekanMode::initalize_stages() {
 
-    // Create Config Updater
-    configUpdater& config_updater = configUpdater::instance();
-    config_updater.apply_config(config);
-
-    // Apply config to datasetManager
-    if (config.exists("/", "dataset_manager"))
-        datasetManager::instance(config);
-
-    // Create ConfigTracker instance and register with the REST server.
-    if (config.get_default<bool>("/", "use_config_tracker", true)) {
-        ConfigTracker::instance();
-        ConfigTracker::instance().insertConfig(
-            restServer::instance().bind_address(), restServer::instance().port(),
-            config.get_full_config_json(), get_kotekan_version(), get_git_branch(),
-            get_git_commit_hash(), get_cmake_build_options());
-        ConfigTracker::instance().register_with_server(&restServer::instance());
-    }
-
-    // Apply config for Telescope class
-    Telescope::instance(config);
-
     // Create and register kotekan trackers before stages created
     KotekanTrackers::instance(config).register_with_server(&restServer::instance());
     KotekanTrackers::instance().set_kotekan_mode_ptr(this);
@@ -125,6 +104,38 @@ void kotekanMode::initalize_stages() {
 
     restServer::instance().register_get_callback(
         "/pipeline_dot", std::bind(&kotekanMode::pipeline_dot_graph_callback, this, _1));
+
+    // Create Config Updater
+    configUpdater& config_updater = configUpdater::instance();
+    config_updater.apply_config(config);
+
+    // Apply config to datasetManager
+    if (config.exists("/", "dataset_manager"))
+        datasetManager::instance(config);
+
+    // Apply config for Telescope class
+    Telescope::instance(config);
+
+    // Register ConfigTracker endpoints and insert local startup config so the tracker
+    // can propagate configs to downstream instances.
+    // This enables stages like bufferSend/bufferRecv to coordinate via the tracker,
+    // and allows configTrackerWriter to persist configs when they change.
+    ConfigTracker::instance().register_with_server(&restServer::instance());
+    try {
+        auto cfg_json = config.get_full_config_json();
+        // Use the bound REST address and port for identification. If bound to 0.0.0.0, use
+        // loopback which will work for local tests.
+        std::string host = restServer::instance().bind_address();
+        if (host == "0.0.0.0")
+            host = "127.0.0.1";
+        uint16_t port = restServer::instance().port();
+
+        ConfigTracker::instance().insertConfig(host, port, cfg_json, get_kotekan_version(),
+                                               get_git_branch(), get_git_commit_hash(),
+                                               get_cmake_build_options());
+    } catch (const std::exception& e) {
+        ERROR_NON_OO("Failed to insert local config into ConfigTracker: {:s}", e.what());
+    }
 }
 
 void kotekanMode::join() {
