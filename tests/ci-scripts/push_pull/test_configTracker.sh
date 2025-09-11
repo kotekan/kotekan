@@ -17,7 +17,7 @@ else
     echo "kotekan executable not found in expected location: ${KOTEKAN_BUILD_DIR}/kotekan/kotekan. Attempting to build kotekan."
     # Attempt to build kotekan if the executable is not found
     cd "${KOTEKAN_BUILD_DIR}"
-    cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated -DWERROR=ON -DCMAKE_LINK_WHAT_YOU_USE=ON -DCMAKE_BUILD_TYPE=Test -DNO_MEMLOCK=ON -DUSE_OMP=ON -DUSE_CUDA=ON -DCCACHE=ON ..
+    cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated -DWERROR=ON -DCMAKE_LINK_WHAT_YOU_USE=ON -DCMAKE_BUILD_TYPE=Test -DNO_MEMLOCK=ON -DUSE_OMP=ON -DCCACHE=ON ..
     # Check for errors
     if [ $? -ne 0 ]; then
         echo "CMake configuration failed. Please check the output for errors."
@@ -82,27 +82,36 @@ fi
 
 # Prune node/code-dependent lines from json output before comparing
 for file in "${CONFIG_OUT_DIR}"/*.json; do
-    # Remove lines with "kotekan_build_branch", "kotekan_git_commit_hash", "kotekan_version"
+    # Remove lines with "kotekan_build_branch", "kotekan_git_commit_hash", "kotekan_version", "kotekan_cmake_options"
     sed -i '/"kotekan_build_branch":/d' "$file"
     sed -i '/"kotekan_git_commit_hash":/d' "$file"
     sed -i '/"kotekan_version":/d' "$file"
+    sed -i '/"kotekan_cmake_options":/d' "$file"
 done
 
-# We expect the modified 127.0.0.1_12048.json to exist and have a md5sum c46b468ea28873a80ebc76f9f1648076
-md5sum -c --status <(echo "c46b468ea28873a80ebc76f9f1648076  ${CONFIG_OUT_DIR}/127.0.0.1_12048.json")
+# We expect the modified 127.0.0.1_12048.json to exist and have a md5sum 3671d872fa7934222839a33bb0a485d5
+md5sum -c --status <(echo "3671d872fa7934222839a33bb0a485d5  ${CONFIG_OUT_DIR}/127.0.0.1_12048.json")
 if [ $? -ne 0 ]; then
     echo "MD5 checksum for ${CONFIG_OUT_DIR}/127.0.0.1_12048.json does not match expected value"
     echo "File contents:"
+    echo "--------------"
     cat "${CONFIG_OUT_DIR}/127.0.0.1_12048.json"
+    echo ""
+    echo "--------------"
+    echo ""
     ERROR=1
 fi
 
-# We expect the modified 127.0.0.1_12748.json to exist and have a md5sum 01c90bf3d9c22a2222b9b17252b1d464
-md5sum -c --status <(echo "01c90bf3d9c22a2222b9b17252b1d464  ${CONFIG_OUT_DIR}/127.0.0.1_12748.json")
+# We expect the modified 127.0.0.1_12748.json to exist and have a md5sum 057f3698eaaf7adc01f0ad3db909c5b7
+md5sum -c --status <(echo "057f3698eaaf7adc01f0ad3db909c5b7  ${CONFIG_OUT_DIR}/127.0.0.1_12748.json")
 if [ $? -ne 0 ]; then
     echo "MD5 checksum for ${CONFIG_OUT_DIR}/127.0.0.1_12748.json does not match expected value."
     echo "File contents:"
+    echo "--------------"
     cat "${CONFIG_OUT_DIR}/127.0.0.1_12748.json"
+    echo ""
+    echo "--------------"
+    echo ""
     ERROR=1
 fi
 

@@ -362,7 +362,7 @@ jobs:
         set -e
         docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan
 
-  # Build a version of kotekan locally, and run some direct tests
+  # Build a version of kotekan locally, and run configs in config/ci-tests
   build-direct-tests-2404:
     runs-on: self-hosted
     container: 
@@ -412,7 +412,7 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         df -h
 
-    # Run tests in the config/ci-tests directory with timeout
+    # Run kotekan using configs in the config/ci-tests directory with a timeout
     - name: Run direct Kotekan tests
       run: |
         TIMEOUT_DURATION="5m"  # Timeout duration per test
@@ -444,7 +444,7 @@ jobs:
       run: |
         rm -rf kotekan
 
-  # Run any shell script tests in tests/ci-scripts/push_pull
+  # Run any shell script tests in tests/ci-scripts/push_pull/test_*.sh
   run-shell-tests-2404:
     runs-on: ubuntu-latest
     needs: build-docker-2404
@@ -459,7 +459,6 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     
-    # Run all shell scripts named as test_*.sh in tests/ci-scripts/push
     - name: Run shell script tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
