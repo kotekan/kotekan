@@ -55,17 +55,6 @@ public:
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
 
-    /// The ICEBoard sequence number
-    int64_t fpga_seq_num;
-    /// The system time when the first packet in the frame was captured
-    struct timeval first_packet_recv_time;
-    /// The GPS time of @c fpga_seq_num.
-    struct timespec gps_time;
-    /// The stream ID from the ICEBoard
-    /// Note in the case of CHIME-2048 the normally unused section
-    /// Encodes the port-shuffle frequency information
-    uint16_t stream_ID;
-
     int frame_counter;
 
     // TODO: Replace by NDArray
