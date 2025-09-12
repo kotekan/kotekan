@@ -75,7 +75,7 @@ gen_data:
     out_buf: host_voltage_buffer
     array_shape: [ 2048, 16, 2, 64 ]
     dim_name: ["T", "F", "P", "D" ]
-    num_frames: -1
+    num_frames: buffer_depth  # Must be at least what check_data expects
 
 run_send_voltage:
     gpu_0:
