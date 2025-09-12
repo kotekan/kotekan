@@ -82,10 +82,16 @@ void gpuSimulateN2k::main_thread() {
                                     int iy = (t * _num_local_freq + f) * _num_elements
                                              + (16 * jhi + jlo);
 
+                                    /*
                                     int xi = ((input[ix] + 8) & 0xf) - 8;
                                     int xr = (((input[ix] >> 4) + 8) & 0xf) - 8;
                                     int yi = ((input[iy] + 8) & 0xf) - 8;
                                     int yr = (((input[iy] >> 4) + 8) & 0xf) - 8;
+                                    */
+                                    int xi =  (input[ix] & 0x0f)       - 8;
+                                    int xr = ((input[ix] & 0xf0) >> 4) - 8;
+                                    int yi =  (input[iy] & 0x0f)       - 8;
+                                    int yr = ((input[iy] & 0xf0) >> 4) - 8;
                                     real += xr * yr + xi * yi;
                                     imag += xi * yr - yi * xr;
                                 }
@@ -112,7 +118,38 @@ void gpuSimulateN2k::main_thread() {
                 break;
         } // tout
 
-        input_buf->pass_metadata(input_frame_id, output_buf, output_frame_id);
+        //input_buf->pass_metadata(input_frame_id, output_buf, output_frame_id);
+        output_buf->allocate_new_metadata_object(output_frame_id);    
+        const std::shared_ptr<metadataObject> mc = output_buf->get_metadata(output_frame_id);
+        if(!mc) {
+            FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata",
+                        output_buf->buffer_name, output_frame_id);
+        }
+        assert(mc);
+        if(!metadata_is_chord(mc)) {
+            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
+                        output_buf->buffer_name, output_frame_id);
+        }
+        assert(metadata_is_chord(mc));
+        const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
+        assert(meta_out);
+
+        meta_out->set_name("cpusim_correlation");
+        meta_out->type = kotekan::int32;
+        meta_out->dims = 6;
+        assert(meta_out->dims <= CHORD_META_MAX_DIM);
+        meta_out->set_array_dimension(0, nt_outer, "Tc");
+        meta_out->set_array_dimension(1, _num_local_freq, "F");
+        meta_out->set_array_dimension(2, (_num_elements/16) * (_num_elements/16 + 1)/2, "DPhi");
+        meta_out->set_array_dimension(3, 16, "DPlo1");
+        meta_out->set_array_dimension(4, 16, "DPlo2");
+        meta_out->set_array_dimension(5, 2, "C");
+        meta_out->set_strides_simple();
+        meta_out->nfreq = _num_local_freq;
+        assert(meta_out->nfreq <= CHORD_META_MAX_FREQ);
+        meta_out->sample0_offset = 0;
+        meta_out->offset_downsampling = 1;
+
         input_buf->mark_frame_empty(unique_name, input_frame_id);
 
         // Pretend some samples were lost
