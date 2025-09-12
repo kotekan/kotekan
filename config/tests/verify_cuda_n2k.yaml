@@ -30,8 +30,8 @@ samples_per_data_set: 2048
 num_times: 2048  # New N2K needs this. TODO: document.
 #sub_integration_ntime: 16384
 #samples_per_data_set: 32768
-num_elements: 128
-num_local_freq: 1
+num_elements: 1024
+num_local_freq: 16
 # vis matrix size
 vis_blocks_tr_root: (num_elements + 1) / 16
 num_vis_blocks: vis_blocks_tr_root * (vis_blocks_tr_root + 1) / 2
@@ -69,13 +69,13 @@ host_voltage_ringbuffer:
 gen_data:
     # type: const
     # value: 34 # 1i # 34 # = 2 + 2i
-    type: const # random_signed
-    value: 112
+    type: random_signed
+    value: 120
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
-    array_shape: [ 2048, 1, 2, 64 ]
+    array_shape: [ 2048, 16, 2, 512 ]
     dim_name: ["T", "F", "P", "D" ]
-    num_frames: 1
+    num_frames: -1
 
 run_send_voltage:
     gpu_0:
