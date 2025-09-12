@@ -42,6 +42,13 @@ cudaDeviceInterface::~cudaDeviceInterface() {
     cleanup_memory();
 }
 
+void cudaDeviceInterface::release(int32_t gpu_id) {
+    auto it = inst_map.find(gpu_id);
+    if (it != inst_map.end()) {
+        inst_map.erase(it);
+    }
+}
+
 void cudaDeviceInterface::set_thread_device() {
     CHECK_CUDA_ERROR(cudaSetDevice(gpu_id));
 }

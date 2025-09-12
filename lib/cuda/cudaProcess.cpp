@@ -36,6 +36,12 @@ cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
 
 cudaProcess::~cudaProcess() {
     CHECK_CUDA_ERROR(cudaProfilerStop());
+    // Ensure this thread is set to the correct device before final CUDA cleanup.
+    if (device) {
+        device->set_thread_device();
+    }
+    // Drop the cached device instance so its destructor runs before process exit.
+    cudaDeviceInterface::release(gpu_id);
 }
 
 gpuEventContainer* cudaProcess::create_signal() {

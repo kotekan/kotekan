@@ -36,6 +36,9 @@ public:
     cudaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id);
     ~cudaDeviceInterface();
 
+    // Remove the cached instance for a given GPU id, allowing early destruction.
+    static void release(int32_t gpu_id);
+
     void prepareStreams(uint32_t num_streams);
     cudaStream_t getStream(int32_t cuda_stream_id);
 
