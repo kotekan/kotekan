@@ -69,7 +69,7 @@ host_voltage_ringbuffer:
 gen_data:
     # type: const
     # value: 34 # 1i # 34 # = 2 + 2i
-    type: random_signed
+    type: random_signed_offset  # const_offset
     value: 120
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
