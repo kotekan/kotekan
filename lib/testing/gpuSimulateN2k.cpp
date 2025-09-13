@@ -118,7 +118,6 @@ void gpuSimulateN2k::main_thread() {
                 break;
         } // tout
 
-        // input_buf->pass_metadata(input_frame_id, output_buf, output_frame_id);
         output_buf->allocate_new_metadata_object(output_frame_id);
         const std::shared_ptr<metadataObject> mc = output_buf->get_metadata(output_frame_id);
         if (!mc) {

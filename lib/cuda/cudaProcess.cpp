@@ -35,11 +35,10 @@ cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
 }
 
 cudaProcess::~cudaProcess() {
-    CHECK_CUDA_ERROR(cudaProfilerStop());
     // Ensure this thread is set to the correct device before final CUDA cleanup.
-    if (device) {
+    if (device)
         device->set_thread_device();
-    }
+    CHECK_CUDA_ERROR(cudaProfilerStop());
     // With weak_ptr cache, simply letting the last shared_ptr go triggers cleanup.
 }
 
