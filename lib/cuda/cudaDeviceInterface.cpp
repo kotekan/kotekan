@@ -10,7 +10,7 @@
 
 using kotekan::Config;
 
-std::map<int, std::weak_ptr<cudaDeviceInterface>> cudaDeviceInterface::inst_map;
+std::map<int32_t, std::weak_ptr<cudaDeviceInterface>> cudaDeviceInterface::inst_map;
 
 // Protects access to inst_map
 static std::mutex cuda_inst_map_mutex;
@@ -21,10 +21,13 @@ cudaDeviceInterface::get(int32_t gpu_id, const std::string& name, Config& config
     auto it = inst_map.find(gpu_id);
     if (it != inst_map.end()) {
         if (auto existing = it->second.lock())
+            // it->second is a std::weak_ptr. lock() attempts to create a new
+            // shared_ptr that shares ownership with any existing shared owners.
+            // If the weak_ptr has not expired, 'existing' becomes a valid shared_ptr.
             return existing;
     }
-    auto dev = std::make_shared<cudaDeviceInterface>(config, name, gpu_id);
-    inst_map[gpu_id] = dev; // store weak reference
+    auto dev = std::make_shared<cudaDeviceInterface>(config, name, gpu_id); // creates an owning std::shared_ptr
+    inst_map[gpu_id] = dev; // store weak reference (implicit conversion)
     return dev;
 }
 

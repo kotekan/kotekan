@@ -105,7 +105,7 @@ protected:
     std::vector<cudaStream_t> streams;
 
     // Cache of device instances (weak to avoid lifetime extension)
-    static std::map<int, std::weak_ptr<cudaDeviceInterface>> inst_map;
+    static std::map<int32_t, std::weak_ptr<cudaDeviceInterface>> inst_map;
 };
 
 #endif // CUDA_DEVICE_INTERFACE_H
