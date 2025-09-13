@@ -40,8 +40,7 @@ cudaProcess::~cudaProcess() {
     if (device) {
         device->set_thread_device();
     }
-    // Drop the cached device instance so its destructor runs before process exit.
-    cudaDeviceInterface::release(gpu_id);
+    // With weak_ptr cache, simply letting the last shared_ptr go triggers cleanup.
 }
 
 gpuEventContainer* cudaProcess::create_signal() {
