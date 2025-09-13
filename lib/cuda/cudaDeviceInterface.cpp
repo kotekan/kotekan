@@ -26,7 +26,8 @@ cudaDeviceInterface::get(int32_t gpu_id, const std::string& name, Config& config
             // If the weak_ptr has not expired, 'existing' becomes a valid shared_ptr.
             return existing;
     }
-    auto dev = std::make_shared<cudaDeviceInterface>(config, name, gpu_id); // creates an owning std::shared_ptr
+    auto dev = std::make_shared<cudaDeviceInterface>(config, name,
+                                                     gpu_id); // creates an owning std::shared_ptr
     inst_map[gpu_id] = dev; // store weak reference (implicit conversion)
     return dev;
 }
