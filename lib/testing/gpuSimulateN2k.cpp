@@ -82,12 +82,9 @@ void gpuSimulateN2k::main_thread() {
                                     int iy = (t * _num_local_freq + f) * _num_elements
                                              + (16 * jhi + jlo);
 
-                                    /*
-                                    int xi = ((input[ix] + 8) & 0xf) - 8;
-                                    int xr = (((input[ix] >> 4) + 8) & 0xf) - 8;
-                                    int yi = ((input[iy] + 8) & 0xf) - 8;
-                                    int yr = (((input[iy] >> 4) + 8) & 0xf) - 8;
-                                    */
+                                    // Decode input with the CHIME convention:
+                                    // offset encoded by 8, imaginary part in
+                                    // lo 4 bits, real part in high 4 bits.
                                     int xi = (input[ix] & 0x0f) - 8;
                                     int xr = ((input[ix] & 0xf0) >> 4) - 8;
                                     int yi = (input[iy] & 0x0f) - 8;
@@ -118,6 +115,11 @@ void gpuSimulateN2k::main_thread() {
                 break;
         } // tout
 
+        // Fetch input metadata
+        const std::shared_ptr<const metadataObject> mc_in = input_buf->get_metadata(input_frame_id);
+        const std::shared_ptr<const chordMetadata> meta_in = (mc_in && metadata_is_chord(mc_in)) ? get_chord_metadata(mc_in) : nullptr;
+
+        // Create output metadata
         output_buf->allocate_new_metadata_object(output_frame_id);
         const std::shared_ptr<metadataObject> mc = output_buf->get_metadata(output_frame_id);
         if (!mc) {
@@ -147,8 +149,16 @@ void gpuSimulateN2k::main_thread() {
         meta_out->set_strides_simple();
         meta_out->nfreq = _num_local_freq;
         assert(meta_out->nfreq <= CHORD_META_MAX_FREQ);
-        meta_out->sample0_offset = 0;
-        meta_out->offset_downsampling = 1;
+        
+        if(meta_in) {
+            meta_out->fpga_seq_num = meta_in->fpga_seq_num;
+            meta_out->sample0_offset = meta_in->sample0_offset;
+            meta_out->offset_downsampling = meta_in->offset_downsampling;
+        } else {
+            meta_out->fpga_seq_num = 0;
+            meta_out->sample0_offset = 0;
+            meta_out->offset_downsampling = 1;
+        }
 
         input_buf->mark_frame_empty(unique_name, input_frame_id);
 

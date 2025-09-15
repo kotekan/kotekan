@@ -218,6 +218,7 @@ void testDataGen::main_thread() {
         uint n_to_set = buf->frame_size / sizeof(uint8_t);
 
         if (chordmeta) {
+            chordmeta->fpga_seq_num = seq_num;
             chordmeta->sample0_offset = frame_id_abs * samples_per_data_set;
             chordmeta->offset_downsampling = 1;
         }
