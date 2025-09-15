@@ -54,6 +54,19 @@ if(${USE_HDF5})
         set(HDF5_ENABLED ON)
         set(HDF5_REASON "found")
         kmsg_ok("HDF5 found: enabling HDF5 stages (disable with -DUSE_HDF5=OFF)")
+
+        # Try to locate the runtime HDF5 plugin directory (e.g., libh5blosc)
+        # This avoids runtime errors when HDF5_PLUGIN_PATH is not set.
+        find_package(HDF5Plugin QUIET)
+        if(HDF5Plugin_PLUGIN_DIR)
+            set(KOTEKAN_HDF5_PLUGIN_DIR
+                "${HDF5Plugin_PLUGIN_DIR}"
+                CACHE INTERNAL "Detected HDF5 plugin directory for runtime use")
+            kmsg_status("HDF5 plugin dir detected: ${KOTEKAN_HDF5_PLUGIN_DIR} (will set at runtime)")
+        else()
+            set(KOTEKAN_HDF5_PLUGIN_DIR "" CACHE INTERNAL "")
+            kmsg_warn("HDF5 plugins not found (libh5blosc, etc.). Set HDF5_PLUGIN_PATH if needed.")
+        endif()
     else()
         set(USE_HDF5 OFF)
         set(_missing_hdf5 "")
