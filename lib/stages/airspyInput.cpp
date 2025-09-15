@@ -119,7 +119,7 @@ struct airspy_device* airspyInput::init_device() {
             ERROR("Unsupported sample rate: {:f} Hz", sample_bw);
             return nullptr;
         }
-        INFO("Selected sample rate: {:d} Hz -> idx {:d}", sample_bw, samplerate_idx)
+        INFO("Selected sample rate: {:d} Hz -> idx {:d}", sample_bw, samplerate_idx);
         result = airspy_set_samplerate(dev, samplerate_idx);
         if (result != AIRSPY_SUCCESS) {
             ERROR("airspy_set_samplerate() failed: {:s} ({:d})",

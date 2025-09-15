@@ -143,8 +143,9 @@ add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-I/opt
 
 # OpenMP flags
 set(_ktk_omp_reason "disabled")
-if(DEFINED CACHE{KOTEKAN_USE_OMP_REASON})
-    set(_ktk_omp_reason ${CACHE{KOTEKAN_USE_OMP_REASON}})
+get_property(_ktk_omp_cache_has CACHE KOTEKAN_USE_OMP_REASON PROPERTY TYPE SET)
+if(_ktk_omp_cache_has)
+    get_property(_ktk_omp_reason CACHE KOTEKAN_USE_OMP_REASON PROPERTY VALUE)
 endif()
 if(${USE_OMP})
     find_package(OpenMP QUIET)
