@@ -20,6 +20,7 @@ add_library(
     testDataCheck.cpp
     testDataGenQuad.cpp
     testDataGenFloat.cpp
+    testRfiGen.cpp
     TestDropFrames.cpp
     testCHORDTelescope.cpp
     TimeUtilDump.cpp

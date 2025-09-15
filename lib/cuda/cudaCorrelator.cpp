@@ -25,11 +25,16 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     _sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
     _voltage_name(config.get<std::string>(unique_name, "voltage_name")),
+    _rfimask_name(config.get<std::string>(unique_name, "rfimask_name")),
     _n2k_correlation_name(config.get<std::string>(unique_name, "n2k_correlation_name")),
     voltage(_voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{_buffer_depth * _num_times, _num_local_freq, 2,
                                           _num_elements / 2},
             std::array<std::string, 4>{"T", "F", "P", "D"}, *this),
+    rfimask(_rfimask_name, "n2rfimask", 
+            std::array<std::ptrdiff_t, 2>{_buffer_depth * _num_local_freq,
+                _samples_per_data_set / 32},
+            std::array<std::string, 2>{"F", "Tn2rfi"}, *this),
     n2k_correlation([&]() {
         // aka "nt_outer" in n2k.hpp
         const int num_subintegrations = _samples_per_data_set / _sub_integration_ntime;
@@ -49,15 +54,18 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
             "The sub_integration_ntime parameter must evenly divide samples_per_data_set");
 
     voltage.register_consumer();
+    rfimask.register_consumer();
 
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(_n2k_correlation_name, true, false, true));
 
     // TODO: code for rfi mask. Just using a placeholder zero mask for now.
+    /*
     void* device_rfimask = device.get_gpu_memory("rfimask", _num_local_freq * _samples_per_data_set
                                                                 * sizeof(uint) / 32);
     cudaMemset(device_rfimask, 0xFF, _num_local_freq * _samples_per_data_set * sizeof(uint) / 32);
     rfimask = reinterpret_cast<uint*>(device_rfimask);
+    */
 
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaCorrelator");
@@ -66,39 +74,60 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
 cudaCorrelator::~cudaCorrelator() {}
 
 int cudaCorrelator::wait_on_precondition() {
-    // Wait for data to be available in input ringbuffer
-    DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const int code = voltage.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+    // Wait for voltage data to be available in input ringbuffer
+    DEBUG("Waiting for input voltage ringbuffer data for frame {:d}...", gpu_frame_id);
+    const int code_voltage = voltage.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
         if (available_elements < _samples_per_data_set)
             return read_descriptor_t{.claimed = 0, .read = 0};
         else
             return read_descriptor_t{.claimed = _samples_per_data_set,
                                      .read = _samples_per_data_set};
     });
-    DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
-    return code;
+    DEBUG("Finished waiting for input voltage for data frame {:d}.", gpu_frame_id);
+
+    // Exit early if an error should be reported
+    if (code_voltage)
+        return code_voltage;
+
+    // Now wait for rfimask to be available
+    DEBUG("Waiting for input rfi ringbuffer data for frame {:d}...", gpu_frame_id);
+    const int code_rfi = rfimask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+        if (available_elements < _num_local_freq)
+            return read_descriptor_t{.claimed = 0, .read = 0};
+        else
+            return read_descriptor_t{.claimed = _num_local_freq,
+                                     .read = _num_local_freq};
+    });
+    DEBUG("Finished waiting for input ringbuffer for data frame {:d}.", gpu_frame_id);
+    return code_rfi;
 }
 
 cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
-    const std::ptrdiff_t time_offset =
+    const std::ptrdiff_t voltage_time_offset =
         voltage.get_read_valid().begin() % voltage.get_ndarray().extent(0);
     const kotekan::int4x2_swapped_withoffset_t* const input_memory =
-        &voltage.get_ndarray()(time_offset, 0, 0, 0);
+        &voltage.get_ndarray()(voltage_time_offset, 0, 0, 0);
+    
+    const std::ptrdiff_t rfi_read_offset =
+        rfimask.get_read_valid().begin() % rfimask.get_ndarray().extent(0);
+    const std::uint32_t* const rfimask_memory =
+        &rfimask.get_ndarray()(rfi_read_offset, 0);
 
     // aka "nt_outer" in n2k.hpp
     const int num_subintegrations = _samples_per_data_set / _sub_integration_ntime;
 
     record_start_event();
 
-    n2correlator.launch(n2k_correlation.get_ndarray().data(), (int8_t*)input_memory, rfimask,
+    n2correlator.launch(n2k_correlation.get_ndarray().data(), (int8_t*)input_memory, (std::uint32_t *) rfimask_memory,
                         num_subintegrations, _sub_integration_ntime,
                         device.getStream(cuda_stream_id), true);
 
     CHECK_CUDA_ERROR(cudaGetLastError());
 
     voltage.check_metadata();
+    rfimask.check_metadata();
     n2k_correlation.set_metadata(voltage.get_metadata());
 
     // Since we do not use a ring buffer we need to set `meta->sample0_offset`
@@ -120,5 +149,6 @@ void cudaCorrelator::finalize_frame() {
     // Advance the input ringbuffer
     DEBUG("Advancing input ringbuffer by {:d} samples", _samples_per_data_set);
     voltage.finish_read();
+    rfimask.finish_read();
     cudaCommand::finalize_frame();
 }
