@@ -142,8 +142,8 @@ struct int4x2_swapped_withoffset_t {
 #if KOTEKAN_FLOAT16
 // In C++17, std::memcpy is not constexpr, so these can't be constexpr.
 // In C++20+, prefer std::bit_cast to keep them constexpr-capable.
-#  if (__cplusplus >= 202002L) || defined(__cpp_lib_bit_cast)
-#    include <bit>
+#if (__cplusplus >= 202002L) || defined(__cpp_lib_bit_cast)
+#include <bit>
 constexpr inline bool isfinite(const float16_t x) {
     const std::uint16_t bits = std::bit_cast<std::uint16_t>(x);
     return (bits & 0b0111110000000000) != 0b0111110000000000;
@@ -162,7 +162,7 @@ constexpr inline bool signbit(const float16_t x) {
     const std::uint16_t bits = std::bit_cast<std::uint16_t>(x);
     return bits >> 15;
 }
-#  else
+#else
 inline bool isfinite(const float16_t x) {
     std::uint16_t bits = 0;
     std::memcpy(&bits, &x, sizeof bits);
@@ -184,7 +184,7 @@ inline bool signbit(const float16_t x) {
     std::memcpy(&bits, &x, sizeof bits);
     return bits >> 15;
 }
-#  endif
+#endif
 
 inline std::ostream& operator<<(std::ostream& os, const float16_t x) {
     return os << float(x);
