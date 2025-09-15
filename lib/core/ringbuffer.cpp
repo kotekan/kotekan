@@ -75,10 +75,20 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_without_claiming(const std::strin
     DEBUG2("Ringbuffer {:s}: wait_without_claiming({:s}[{:d}]): waiting...", buffer_name, name,
            inst);
     print_full_status();
-    full_cond.wait(lock, [&]() { return shutdown_signal || first_write_head - read_head >= sz; });
+    full_cond.wait(lock, [&]() {
+        if (shutdown_signal)
+            return true;
+        if (first_write_head - read_head >= sz)
+            return true;
+        // If there are no producers left and we don't have enough data, we will never satisfy
+        // this request; wake to allow caller to exit gracefully.
+        if (producers.empty() && first_write_head - read_head < sz)
+            return true;
+        return false;
+    });
     DEBUG2("Ringbuffer {:s}: wait_without_claiming({:s}[{:d}]): waiting done.", buffer_name, name,
            inst);
-    if (shutdown_signal) {
+    if (shutdown_signal || (producers.empty() && first_write_head - read_head < sz)) {
         return std::optional<std::ptrdiff_t>();
     }
     assert(first_write_head - read_head >= sz);
@@ -101,9 +111,17 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::str
            name, inst, group_digits(sz), group_digits(first_write_head - read_head));
     DEBUG2("wait_and_claim_readable({:s}[{:d}]): waiting...", name, inst);
     print_full_status();
-    full_cond.wait(lock, [&]() { return shutdown_signal || first_write_head - read_head >= sz; });
+    full_cond.wait(lock, [&]() {
+        if (shutdown_signal)
+            return true;
+        if (first_write_head - read_head >= sz)
+            return true;
+        if (producers.empty() && first_write_head - read_head < sz)
+            return true;
+        return false;
+    });
     DEBUG2("wait_and_claim_readable({:s}[{:d}]): waiting done.", name, inst);
-    if (shutdown_signal) {
+    if (shutdown_signal || (producers.empty() && first_write_head - read_head < sz)) {
         return std::optional<std::ptrdiff_t>();
     }
     assert(first_write_head - read_head >= sz);
@@ -124,9 +142,17 @@ RingBuffer::wait_and_claim_all_readable(const std::string& name, const int inst)
            name, inst, group_digits(first_write_head - read_head));
     DEBUG2("wait_and_claim_all_readable({:s}[{:d}]): waiting...", name, inst);
     print_full_status();
-    full_cond.wait(lock, [&]() { return shutdown_signal || first_write_head - read_head > 0; });
+    full_cond.wait(lock, [&]() {
+        if (shutdown_signal)
+            return true;
+        if (first_write_head - read_head > 0)
+            return true;
+        if (producers.empty() && first_write_head - read_head <= 0)
+            return true;
+        return false;
+    });
     DEBUG2("wait_and_claim_all_readable({:s}[{:d}]): waiting done.", name, inst);
-    if (shutdown_signal) {
+    if (shutdown_signal || (producers.empty() && first_write_head - read_head <= 0)) {
         return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>();
     }
     assert(first_write_head - read_head > 0);

@@ -2,7 +2,6 @@
 
 #include <Stage.hpp>
 #include <StageFactory.hpp>
-#include <atomic>
 #include <cassert>
 #include <chordMetadata.hpp>
 #include <complex>
@@ -25,7 +24,6 @@
 #include <utility>
 #include <vector>
 #include <visUtil.hpp>
-#include <waitingForMaxFrames.hpp>
 
 using namespace gdal;
 
@@ -74,9 +72,6 @@ public:
         buffer(get_buffer("in_buf")) {
 
         GDALAllRegister();
-
-        if (max_frames >= 0)
-            ++waiting_for_max_frames;
 
         buffer->register_consumer(unique_name);
     }
@@ -404,11 +399,6 @@ public:
                 break;
             }
         } // for
-
-        if (--waiting_for_max_frames == 0) {
-            WARN("Shutting down Kotekan");
-            exit_kotekan(CLEAN_EXIT);
-        }
 
         DEBUG("exiting");
     }

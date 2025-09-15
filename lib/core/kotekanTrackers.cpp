@@ -191,4 +191,22 @@ void KotekanTrackers::dump_trackers() {
     INFO_NON_OO("Dumped kotekan statistic tracker (debug) data to {:s}", dump_path);
 }
 
+void KotekanTrackers::maybe_shutdown_if_inactive() {
+    if (kotekan_mode_ptr != nullptr) {
+        kotekan_mode_ptr->maybe_shutdown_if_inactive();
+    }
+}
+
+// Provide a C++ global helper for code paths that can't include the header
+// without adding dependencies.
+void kotekan_trackers_maybe_shutdown_if_inactive() {
+    try {
+        KotekanTrackers::instance().maybe_shutdown_if_inactive();
+    } catch (...) {
+        // Ignore if trackers not initialized yet.
+    }
+}
+
+// No bounded-stage shutdown in this mode.
+
 } // namespace kotekan

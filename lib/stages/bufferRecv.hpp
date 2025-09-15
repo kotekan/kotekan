@@ -17,6 +17,8 @@
 #include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily
 
 #include <condition_variable> // for condition_variable
+#include <chrono>
+#include <atomic>
 #include <deque>              // for deque
 #include <event2/event.h>     // for event_add
 #include <event2/util.h>      // for evutil_socket_t
@@ -56,6 +58,9 @@ class connInstance;
  * @conf num_threads         Int, default 1.  The number of worker threads to use
  * @conf connection_timeout  Int, default 60.  Number of seconds before timeout on transfer
  * @conf drop_frames         Bool, default true.  Whether to drop frames when buffer fills.
+ * @conf linger_after_last_disconnect  Int, default 10. Seconds to wait after the last
+ *       client disconnects before breaking the event loop and exiting the stage. Set to 0 to
+ *       exit immediately (legacy behavior).
  *
  * @par Metrics
  * @metric kotekan_buffer_recv_transfer_time_seconds
@@ -125,6 +130,15 @@ private:
     /// Whether to drop frames when buffer starts filling up
     bool drop_frames;
 
+    /// How long to wait (seconds) after the last connection closes before exiting.
+    int linger_after_last_disconnect;
+
+    /// Start time for the post-disconnect grace period (steady_clock nanos since epoch).
+    std::atomic<long long> last_no_connection_ns{0};
+
+    /// True while we are within the grace window waiting for reconnects.
+    std::atomic<bool> waiting_for_reconnect{false};
+
     /// A lock on the current frame, since many systems may ask for the next frame
     std::mutex next_frame_lock;
 
@@ -193,6 +207,12 @@ private:
      * @brief The worker thread for handing read callbacks.
      */
     void worker_thread();
+
+    // Track number of active client connections.
+    std::atomic<int> active_connections{0};
+
+    // Called by a connection instance when it is destroyed.
+    void notify_connection_closed();
 };
 
 /**

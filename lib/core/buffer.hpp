@@ -154,6 +154,17 @@ public:
     virtual void register_producer(const std::string& name);
 
     /**
+     * @brief Removes the producer with the given name
+     *
+     * In general stages don't need to call this explicitly. The framework
+     * base stage class will unregister producers automatically when a stage
+     * exits. This API is provided for symmetry and advanced use-cases.
+     *
+     * @param name The name of the producer to unregister
+     */
+    virtual void unregister_producer(const std::string& name);
+
+    /**
      * @brief Get the number of consumers on this buffer
      *
      * @return int The number of consumers on the buffer
@@ -166,6 +177,16 @@ public:
      * @return int The number of producers on this buffer
      */
     int get_num_producers();
+
+    /**
+     * @brief Check if a consumer name is currently registered on this buffer.
+     */
+    bool has_consumer(const std::string& name);
+
+    /**
+     * @brief Check if a producer name is currently registered on this buffer.
+     */
+    bool has_producer(const std::string& name);
 
     /**
      * @brief Allocates a new metadata object from the associated pool

@@ -37,6 +37,7 @@ gen_data:
     out_buf: send_buffer
     array_shape: [ 2048 ]
     dim_name: ["S"]
+    num_frames: 10
 
 # buffer to send:
 # Transmit all the data to the receiver node
@@ -65,5 +66,4 @@ asdf_write:
     base_dir: /code/kotekan/build-2404/data/
     file_name: asdf_test_verify
     prefix_hostname: false
-    max_frames: 10
     skip_writing: true

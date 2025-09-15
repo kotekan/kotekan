@@ -61,6 +61,8 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     connection_timeout = config.get_default<int>(unique_name, "connection_timeout", 60);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
+    linger_after_last_disconnect =
+        config.get_default<int>(unique_name, "linger_after_last_disconnect", 10);
 
     buf = get_buffer("buf");
     buf->register_producer(unique_name);
@@ -165,6 +167,10 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     // New connection instance
     connInstance* instance = new connInstance(accept_args->unique_name, accept_args->buf,
                                               accept_args->buffer_recv, ip_str, port, read_timeout);
+    // Track active connections
+    active_connections.fetch_add(1, std::memory_order_relaxed);
+    // A new connection cancels any pending grace period.
+    waiting_for_reconnect.store(false, std::memory_order_relaxed);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -188,6 +194,33 @@ void bufferRecv::timer(evutil_socket_t fd, short event, void* arg) {
     bufferRecv* buff_recv = (bufferRecv*)arg;
     if (buff_recv->stop_thread) {
         event_base_loopbreak(buff_recv->base);
+        return;
+    }
+
+    // If we are in a post-disconnect grace period with no connections, check timeout.
+    if (buff_recv->waiting_for_reconnect.load(std::memory_order_relaxed)
+        && buff_recv->active_connections.load(std::memory_order_relaxed) <= 0) {
+        if (buff_recv->linger_after_last_disconnect <= 0) {
+            buff_recv->stop_thread = true;
+            event_base_loopbreak(buff_recv->base);
+            return;
+        }
+        auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::steady_clock::now().time_since_epoch())
+                          .count();
+        auto start_ns = buff_recv->last_no_connection_ns.load(std::memory_order_relaxed);
+        if (start_ns == 0)
+            return; // not initialized yet
+        auto elapsed_ns = now_ns - start_ns;
+        if (elapsed_ns >=
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::seconds(buff_recv->linger_after_last_disconnect))
+                .count()) {
+            // Grace period expired; exit the event loop so the stage can shut down.
+            buff_recv->stop_thread = true;
+            event_base_loopbreak(buff_recv->base);
+            return;
+        }
     }
 }
 
@@ -303,6 +336,19 @@ void bufferRecv::main_thread() {
     }
 }
 
+void bufferRecv::notify_connection_closed() {
+    int remaining = active_connections.fetch_sub(1, std::memory_order_relaxed) - 1;
+    if (remaining <= 0) {
+        // No active connections remain; enter a grace period to allow reconnects.
+        waiting_for_reconnect.store(true, std::memory_order_relaxed);
+        last_no_connection_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                     std::chrono::steady_clock::now().time_since_epoch())
+                                     .count();
+        INFO("No active connections; waiting up to {:d}s for reconnects before shutdown.",
+             linger_after_last_disconnect);
+    }
+}
+
 int bufferRecv::get_next_frame() {
     std::lock_guard<std::mutex> lock(next_frame_lock);
 
@@ -349,6 +395,9 @@ connInstance::~connInstance() {
     event_free(event_read);
     buffer_free(frame_space, buf->aligned_frame_size, buf->use_hugepages);
     free(metadata_space);
+    // Notify parent that this connection has closed.
+    if (buffer_recv)
+        buffer_recv->notify_connection_closed();
 }
 
 void connInstance::increment_ref_count() {

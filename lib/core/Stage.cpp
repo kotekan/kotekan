@@ -1,7 +1,7 @@
 #include "Stage.hpp"
 
 #include "Config.hpp"          // for Config
-#include "buffer.hpp"          // for Buffer
+#include "buffer.hpp"          // for Buffer, GenericBuffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "util.h"              // for string_tail
 
@@ -59,6 +59,48 @@ std::vector<Buffer*> Stage::get_buffer_array(const std::string& name) {
     return bufs;
 }
 
+Buffer* Stage::get_buffer_as_consumer(const std::string& tag) {
+    Buffer* buf = get_buffer(tag);
+    if (buf) {
+        buf->register_consumer(unique_name);
+        // Track unregistration to be called on exit
+        track_consumer_unreg_for(buf, [this](Buffer* b) { b->unregister_consumer(unique_name); });
+    }
+    return buf;
+}
+
+Buffer* Stage::get_buffer_as_producer(const std::string& tag) {
+    Buffer* buf = get_buffer(tag);
+    if (buf) {
+        buf->register_producer(unique_name);
+        // Track unregistration to be called on exit
+        track_producer_unreg_for(buf, [this](Buffer* b) { b->unregister_producer(unique_name); });
+    }
+    return buf;
+}
+
+std::vector<Buffer*> Stage::get_buffer_array_as_consumer(const std::string& tag) {
+    auto bufs = get_buffer_array(tag);
+    for (auto* b : bufs) {
+        if (!b)
+            continue;
+        b->register_consumer(unique_name);
+        track_consumer_unreg_for(b, [this](Buffer* bb) { bb->unregister_consumer(unique_name); });
+    }
+    return bufs;
+}
+
+std::vector<Buffer*> Stage::get_buffer_array_as_producer(const std::string& tag) {
+    auto bufs = get_buffer_array(tag);
+    for (auto* b : bufs) {
+        if (!b)
+            continue;
+        b->register_producer(unique_name);
+        track_producer_unreg_for(b, [this](Buffer* bb) { bb->unregister_producer(unique_name); });
+    }
+    return bufs;
+}
+
 void Stage::apply_cpu_affinity() {
 
     std::lock_guard<std::mutex> lock(cpu_affinity_lock);
@@ -105,6 +147,12 @@ void Stage::start() {
         register_tid(tid);
 #endif
         main_thread_fn(std::ref(*this));
+        // Ensure buffer registrations and any external resources are released.
+        try {
+            unregister();
+        } catch (...) {
+            // Avoid throwing across thread boundary; rely on logs from unregister.
+        }
 #if !defined(MAC_OSX)
         unregister_tid(tid);
 #endif
@@ -138,6 +186,81 @@ void Stage::stop() {
 }
 
 void Stage::main_thread() {}
+
+void Stage::unregister() {
+    // First, invoke any explicit unregistration actions recorded by the stage.
+    // Execute in reverse registration order for symmetry with construction.
+    for (auto it = producer_unregs_.rbegin(); it != producer_unregs_.rend(); ++it) {
+        if (*it)
+            (*it)();
+    }
+    for (auto it = consumer_unregs_.rbegin(); it != consumer_unregs_.rend(); ++it) {
+        if (*it)
+            (*it)();
+    }
+    producer_unregs_.clear();
+    consumer_unregs_.clear();
+
+    // Then, as a safety net, scan all buffers and unregister this stage name
+    // wherever found. This keeps legacy stages (which don't track) correct.
+    for (auto& kv : buffer_container.get_buffer_map()) {
+        GenericBuffer* g = kv.second;
+        if (!g)
+            continue;
+        if (g->has_consumer(unique_name))
+            g->unregister_consumer(unique_name);
+        if (g->has_producer(unique_name))
+            g->unregister_producer(unique_name);
+        // Also unregister any buffer registrations from subordinate components whose
+        // registration names are nested under this stage's unique name (e.g., GPU commands
+        // created under "<stage>/commands/N").
+        const std::string prefix = unique_name + "/";
+        // Collect names first to avoid iterator invalidation during erase.
+        std::vector<std::string> to_remove_cons;
+        for (auto const& it : g->consumers) {
+            const std::string& nm = it.first;
+            if (nm.compare(0, prefix.size(), prefix) == 0)
+                to_remove_cons.push_back(nm);
+        }
+        for (auto const& nm : to_remove_cons) {
+            g->unregister_consumer(nm);
+        }
+        std::vector<std::string> to_remove_prod;
+        for (auto const& it : g->producers) {
+            const std::string& nm = it.first;
+            if (nm.compare(0, prefix.size(), prefix) == 0)
+                to_remove_prod.push_back(nm);
+        }
+        for (auto const& nm : to_remove_prod) {
+            g->unregister_producer(nm);
+        }
+    }
+
+    extern void kotekan_trackers_maybe_shutdown_if_inactive();
+    kotekan_trackers_maybe_shutdown_if_inactive();
+}
+
+void Stage::track_consumer_unreg(UnregFn fn) {
+    if (fn)
+        consumer_unregs_.push_back(std::move(fn));
+}
+
+void Stage::track_producer_unreg(UnregFn fn) {
+    if (fn)
+        producer_unregs_.push_back(std::move(fn));
+}
+
+void Stage::track_consumer_unreg_for(Buffer* buf, std::function<void(Buffer*)> fn) {
+    if (!buf || !fn)
+        return;
+    consumer_unregs_.push_back([this, buf, fn]() { fn(buf); });
+}
+
+void Stage::track_producer_unreg_for(Buffer* buf, std::function<void(Buffer*)> fn) {
+    if (!buf || !fn)
+        return;
+    producer_unregs_.push_back([this, buf, fn]() { fn(buf); });
+}
 
 Stage::~Stage() {
     stop_thread = true;

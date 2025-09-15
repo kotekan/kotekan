@@ -11,6 +11,7 @@
 #include <mutex>    // for mutex
 #include <stddef.h> // for size_t
 #include <string>   // for string
+#include <vector>
 
 namespace kotekan {
 
@@ -127,6 +128,10 @@ public:
      */
     void dump_trackers();
 
+    // Trigger a shutdown check via the active kotekan mode (if set).
+    void maybe_shutdown_if_inactive();
+
+
 private:
     KotekanTrackers();
     ~KotekanTrackers();
@@ -143,6 +148,8 @@ private:
 
     /// Reference back to the active kotekan_mode object
     kotekan::kotekanMode* kotekan_mode_ptr = nullptr;
+
+    // No bounded-stage shutdown; end is determined by buffer registrations.
 };
 
 } // namespace kotekan

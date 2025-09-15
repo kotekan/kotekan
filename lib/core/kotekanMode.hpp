@@ -57,6 +57,12 @@ public:
     // HTTP callback that dumps the current pipeline graph in `dot` format.
     void pipeline_dot_graph_callback(connectionInstance& conn);
 
+    // Check if all buffers have no registered producers/consumers and trigger shutdown.
+    void maybe_shutdown_if_inactive();
+
+    // Exposed for checks/testing; returns true if all buffers have lost registrations.
+    bool all_buffers_unregistered() const;
+
 private:
     Config& config;
     bufferContainer buffer_container;

@@ -12,6 +12,7 @@
 #include <string>      // for string
 #include <sys/types.h> // for pid_t
 #include <thread>      // for thread
+#include <utility>     // for std::pair
 #include <vector>      // for vector
 
 #ifdef MAC_OSX
@@ -29,11 +30,19 @@ public:
     virtual ~Stage();
     virtual void start();
     virtual void main_thread();
+    /**
+     * @brief Called when the stage is about to exit its main thread.
+     *
+     * Default: no-op. Override in derived stages to unregister from buffers,
+     * release external resources, etc. The base class also calls any tracked
+     * unregisters recorded via mark_* helpers (see below).
+     */
+    virtual void unregister();
 
     std::string get_unique_name() const;
 
     /**
-     * @brief Attempts to join the stage's @c main_thread with a tineout
+     * @brief Attempts to join the stage's @c main_thread with a timeout
      *
      * Should only be called after a call to @c stop()
      *
@@ -75,6 +84,28 @@ protected:
 
     std::thread this_thread;
 
+    // --- Optional helpers for derived classes --------------------------------
+    //
+    // If your stage calls into Buffer APIs like register_consumer/register_producer,
+    // call these helpers *after* a successful register to let the base class track
+    // what to undo. During Stage::unregister() we’ll invoke the corresponding
+    // unregister callbacks you record here (in reverse order).
+    //
+    // Use whichever overload matches how you prefer to store callsites:
+    //  - direct function pointers/lambdas, or
+    //  - just mark a Buffer* and we’ll call provided functors later.
+    //
+    using UnregFn = std::function<void()>;
+
+    // Record an explicit unregistration action (e.g., a lambda that calls
+    // buf->unregister_consumer(unique_name) or similar).
+    void track_consumer_unreg(UnregFn fn);
+    void track_producer_unreg(UnregFn fn);
+
+    // Convenience: track a Buffer* plus an unregistration functor you supply.
+    void track_consumer_unreg_for(Buffer* buf, std::function<void(Buffer*)> fn);
+    void track_producer_unreg_for(Buffer* buf, std::function<void(Buffer*)> fn);
+
     // Set the cores the main thread is allowed to run on to the
     // cores given in cpu_affinity_
     // Also applies the list to the main thread if it is running.
@@ -99,6 +130,32 @@ protected:
      */
     std::vector<Buffer*> get_buffer_array(const std::string& name);
 
+    /**
+     * @brief Convenience: fetch and register as consumer on buffer referenced by config tag.
+     *
+     * Calls `get_buffer(tag)`, then `buf->register_consumer(unique_name)`, and records an
+     * unregister action so the base class will unregister on thread exit.
+     */
+    Buffer* get_buffer_as_consumer(const std::string& tag);
+
+    /**
+     * @brief Convenience: fetch and register as producer on buffer referenced by config tag.
+     *
+     * Calls `get_buffer(tag)`, then `buf->register_producer(unique_name)`, and records an
+     * unregister action so the base class will unregister on thread exit.
+     */
+    Buffer* get_buffer_as_producer(const std::string& tag);
+
+    /**
+     * @brief Convenience: array variant for consumers.
+     */
+    std::vector<Buffer*> get_buffer_array_as_consumer(const std::string& tag);
+
+    /**
+     * @brief Convenience: array variant for producers.
+     */
+    std::vector<Buffer*> get_buffer_array_as_producer(const std::string& tag);
+
     bufferContainer& buffer_container;
 
 private:
@@ -117,6 +174,10 @@ private:
 
     // List of stage tids used for CPU usage tracking
     std::vector<pid_t> thread_list;
+
+    // Tracked unregistration actions (executed on thread exit).
+    std::vector<UnregFn> consumer_unregs_;
+    std::vector<UnregFn> producer_unregs_;
 };
 
 } // namespace kotekan

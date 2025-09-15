@@ -65,5 +65,5 @@ asdf_write:
     base_dir: /code/kotekan/build-2404/data/
     file_name: asdf_test_verify
     prefix_hostname: false
-    max_frames: 10
+    # Producer determines frames in new model
     skip_writing: true

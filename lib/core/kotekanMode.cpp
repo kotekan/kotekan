@@ -8,6 +8,7 @@
 #include "bufferFactory.hpp"     // for bufferFactory
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for datasetManager
+#include "errors.h"              // for exit_kotekan, ReturnCode
 #include "kotekanLogging.hpp"    // for INFO_NON_OO
 #include "kotekanTrackers.hpp"   // for KotekanTrackers
 #include "metadata.hpp"          // for delete_metadata_pool
@@ -103,6 +104,8 @@ void kotekanMode::initalize_stages() {
     StageFactory stage_factory(config, buffer_container);
     stages = stage_factory.build_stages();
 
+    // No bounded-stage shutdown; producers dictate end-of-data.
+
     // Update REST server
     restServer::instance().set_server_affinity(config);
 
@@ -196,6 +199,27 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
 
     dot += "}\n";
     conn.send_text_reply(dot);
+}
+
+bool kotekanMode::all_buffers_unregistered() const {
+    for (auto& kv : buffer_container.get_buffer_map()) {
+        auto* g = kv.second;
+        if (!g)
+            continue;
+        if (!g->consumers.empty())
+            return false;
+        if (!g->producers.empty())
+            return false;
+    }
+    return true;
+}
+
+void kotekanMode::maybe_shutdown_if_inactive() {
+    // If absolutely all buffers are unregistered, shut down.
+    if (all_buffers_unregistered()) {
+        WARN_NON_OO("All buffers have lost producer/consumer registrations; shutting down.");
+        exit_kotekan(ReturnCode::CLEAN_EXIT);
+    }
 }
 
 } // namespace kotekan
