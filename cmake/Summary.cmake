@@ -1,4 +1,7 @@
-# Final feature summary table
+# Final feature summary table.
+#
+# Developer note: when adding new configure options or feature toggles, update
+# the flag lists below so the summary remains complete.
 
 include_guard(GLOBAL)
 include(${CMAKE_CURRENT_LIST_DIR}/Color.cmake)
@@ -142,10 +145,14 @@ kfeature_row("LAPACK/Blaze" "${LAPACK_BLAZE_ENABLED}" "${LAPACK_BLAZE_REASON}"
 kfeature_header("Other")
 # Alphabetical: Airspy, DPDK, Julia, NUMA, OpenMP, OpenSSL
 set(AIRSPY_ENABLED ${USE_AIRSPY})
-if(${USE_AIRSPY})
-    set(AIRSPY_REASON "enabled")
+if(DEFINED KOTEKAN_AIRSPY_REASON)
+    set(AIRSPY_REASON "${KOTEKAN_AIRSPY_REASON}")
 else()
-    set(AIRSPY_REASON "disabled")
+    if(${USE_AIRSPY})
+        set(AIRSPY_REASON "enabled")
+    else()
+        set(AIRSPY_REASON "disabled")
+    endif()
 endif()
 kfeature_row("Airspy" "${AIRSPY_ENABLED}" "${AIRSPY_REASON}" OFF USE_AIRSPY)
 if(DEFINED DPDK_ENABLED)
@@ -158,10 +165,14 @@ if(DEFINED NUMA_ENABLED)
     kfeature_row("NUMA" "${NUMA_ENABLED}" "${NUMA_REASON}" OFF USE_NUMA)
 endif()
 set(OMP_ENABLED ${USE_OMP})
-if(${USE_OMP})
-    set(OMP_REASON "enabled")
+if(DEFINED KOTEKAN_USE_OMP_REASON)
+    set(OMP_REASON "${KOTEKAN_USE_OMP_REASON}")
 else()
-    set(OMP_REASON "disabled")
+    if(${USE_OMP})
+        set(OMP_REASON "enabled")
+    else()
+        set(OMP_REASON "disabled")
+    endif()
 endif()
 kfeature_row("OpenMP" "${OMP_ENABLED}" "${OMP_REASON}" OFF USE_OMP)
 if(DEFINED OPENSSL_ENABLED)
@@ -221,6 +232,44 @@ if(${IWYU_ENABLED})
     set(IWYU_REASON "enabled")
 endif()
 kfeature_row("include-what-you-use" "${IWYU_ENABLED}" "${IWYU_REASON}" OFF IWYU)
+
+# Flag overrides requested by users; show compact key=value list.
+set(_ktk_flag_openssl "")
+if(DEFINED OPENSSL_ROOT_DIR AND NOT "${OPENSSL_ROOT_DIR}" STREQUAL "")
+    set(_ktk_flag_openssl "OPENSSL_ROOT_DIR='${OPENSSL_ROOT_DIR}'")
+else()
+    set(_ktk_flag_openssl "OPENSSL_ROOT_DIR=")
+endif()
+
+if(DEFINED BLAZE_PATH AND NOT "${BLAZE_PATH}" STREQUAL "")
+    set(_ktk_flag_blaze "BLAZE_PATH='${BLAZE_PATH}'")
+else()
+    set(_ktk_flag_blaze "BLAZE_PATH=")
+endif()
+
+if(DEFINED KOTEKAN_CL_TARGET_OPENCL_VERSION
+   AND NOT "${KOTEKAN_CL_TARGET_OPENCL_VERSION}" STREQUAL "")
+    set(_ktk_flag_cl "CL_TARGET_OPENCL_VERSION=${KOTEKAN_CL_TARGET_OPENCL_VERSION}")
+else()
+    set(_ktk_flag_cl "CL_TARGET_OPENCL_VERSION=")
+endif()
+
+if(DEFINED CMAKE_INSTALL_PREFIX AND NOT "${CMAKE_INSTALL_PREFIX}" STREQUAL "")
+    set(_ktk_flag_prefix "CMAKE_INSTALL_PREFIX='${CMAKE_INSTALL_PREFIX}'")
+else()
+    set(_ktk_flag_prefix "CMAKE_INSTALL_PREFIX=")
+endif()
+
+if(DEFINED CUDAToolkit_ROOT AND NOT "${CUDAToolkit_ROOT}" STREQUAL "")
+    set(_ktk_flag_cuda "CUDAToolkit_ROOT='${CUDAToolkit_ROOT}'")
+else()
+    set(_ktk_flag_cuda "CUDAToolkit_ROOT=")
+endif()
+
+set(_ktk_flag_summary
+    "${_ktk_flag_openssl} ${_ktk_flag_blaze} ${_ktk_flag_cl} ${_ktk_flag_prefix} ${_ktk_flag_cuda}")
+kmsg_status("Flag Overrides: ${_ktk_flag_summary}")
+kmsg_status("Cache Hint: run 'cmake -U<VAR> .' or remove CMakeCache.txt to reset")
 
 # Compilers
 kfeature_header("Compilers")

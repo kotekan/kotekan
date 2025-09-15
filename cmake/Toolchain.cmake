@@ -11,7 +11,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_STANDARD 99)
 
 # OpenCL version macro (quiets a build warning)
-add_definitions(-DCL_TARGET_OPENCL_VERSION=220)
+set(_ktk_cl_target_default "220")
+if(DEFINED CL_TARGET_OPENCL_VERSION AND NOT "${CL_TARGET_OPENCL_VERSION}" STREQUAL "")
+    set(_ktk_cl_target "${CL_TARGET_OPENCL_VERSION}")
+else()
+    set(_ktk_cl_target "${_ktk_cl_target_default}")
+endif()
+set(KOTEKAN_CL_TARGET_OPENCL_VERSION
+    "${_ktk_cl_target}"
+    CACHE INTERNAL "Effective CL_TARGET_OPENCL_VERSION used for compilation")
+add_definitions(-DCL_TARGET_OPENCL_VERSION=${_ktk_cl_target})
 
 # ccache
 set(CCACHE_ENABLED OFF)
@@ -109,7 +118,7 @@ else()
 endif()
 
 # Default build type
-set(DEFAULT_BUILD_TYPE "Debug")
+set(DEFAULT_BUILD_TYPE "Test")
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "Test")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     message(STATUS "Setting build type to '${DEFAULT_BUILD_TYPE}' as none was specified.")
@@ -133,10 +142,35 @@ add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-mtune
 add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-I/opt/rocm/include>)
 
 # OpenMP flags
-if(${USE_OMP})
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+set(_ktk_omp_reason "disabled")
+if(DEFINED CACHE{KOTEKAN_USE_OMP_REASON})
+    set(_ktk_omp_reason ${CACHE{KOTEKAN_USE_OMP_REASON}})
 endif()
+if(${USE_OMP})
+    find_package(OpenMP QUIET)
+    if(OpenMP_FOUND)
+        set(_ktk_omp_reason "found")
+        if(OpenMP_C_FLAGS)
+            string(APPEND CMAKE_C_FLAGS " ${OpenMP_C_FLAGS}")
+        endif()
+        if(OpenMP_CXX_FLAGS)
+            string(APPEND CMAKE_CXX_FLAGS " ${OpenMP_CXX_FLAGS}")
+        endif()
+        if(OpenMP_EXE_LINKER_FLAGS)
+            string(APPEND CMAKE_EXE_LINKER_FLAGS " ${OpenMP_EXE_LINKER_FLAGS}")
+        endif()
+    else()
+        set(_ktk_omp_reason "not found (auto-disabled)")
+        set(USE_OMP OFF CACHE BOOL "Enable OpenMP" FORCE)
+        kmsg_warn("OpenMP requested but compiler support not found; disabling USE_OMP.")
+    endif()
+else()
+    if(NOT "${_ktk_omp_reason}" STREQUAL "not found (auto-disabled)")
+        set(_ktk_omp_reason "disabled")
+    endif()
+endif()
+set(KOTEKAN_USE_OMP_REASON "${_ktk_omp_reason}"
+    CACHE STRING "OpenMP detection summary" FORCE)
 
 # Linker defaults
 if(APPLE)

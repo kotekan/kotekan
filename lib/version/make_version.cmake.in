@@ -1,5 +1,9 @@
 # Template for the script to generate the version.c
-# file from the version.c.in template
+# file from the version.c.in template.
+#
+# Developer note: when adding new CMake options, ensure they are mirrored here
+# (and in version.c.in) so build metadata stays in sync with the docs and
+# configure summary.
 # Yes this is generating a file to generate a file,
 # and no I'm not happy this is how it has to work -AR
 
@@ -13,9 +17,6 @@ set(CMAKE_CXX_COMPILER "@CMAKE_CXX_COMPILER@")
 set(CMAKE_C_COMPILER "@CMAKE_C_COMPILER@")
 set(USE_DPDK "@USE_DPDK@")
 set(KOTEKAN_DPDK_MODE "@KOTEKAN_DPDK_MODE@")
-set(USE_OLD_DPDK "@USE_OLD_DPDK@")
-set(RTE_SDK "@RTE_SDK@")
-set(RTE_TARGET "@RTE_TARGET@")
 set(USE_OPENCL "@USE_OPENCL@")
 set(USE_HIP "@USE_HIP@")
 set(USE_CUDA "@USE_CUDA@")

@@ -1,26 +1,37 @@
-# All user-facing build options (no logic here)
+# All user-facing build options (no logic here).
+#
+# Developer note: when adding a new option, also update the configure summary
+# (cmake/Summary.cmake), the documentation (Sphinx CMake option pages), and the
+# version metadata (lib/version/version.c.in).
 
-option(USE_AIRSPY "Build Airspy Producer" OFF)
-option(USE_FFTW "Build with FFTW F-engine" ON)
-option(USE_LAPACK_BLAZE "Build with LAPACK Linear Algebra (OpenBLAS) and Blaze support" ON)
-option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
-option(USE_CUDA "Build CUDA GPU Framework" OFF)
-option(USE_HIP "Build HIP GPU Framework" OFF)
-# DPDK selection: new consolidated flag plus legacy boolean for backward compatibility
+function(_ktk_option name description default_value)
+    if(DEFINED CACHE{${name}})
+        set(default_value ${CACHE{${name}}})
+    endif()
+    option(${name} "${description}" ${default_value})
+endfunction()
+
+_ktk_option(USE_AIRSPY "Build Airspy Producer" ON)
+_ktk_option(USE_FFTW "Build with FFTW F-engine" ON)
+_ktk_option(USE_LAPACK_BLAZE "Build with LAPACK Linear Algebra (OpenBLAS) and Blaze support" ON)
+_ktk_option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
+_ktk_option(USE_CUDA "Build CUDA GPU Framework" ON)
+_ktk_option(USE_HIP "Build HIP GPU Framework" OFF)
+# DPDK selection (>=19.11 via pkg-config)
 set(USE_DPDK
     "ON"
-    CACHE STRING "DPDK usage: ON (auto), OFF, NEW, OLD")
-set_property(CACHE USE_DPDK PROPERTY STRINGS ON OFF NEW OLD)
-option(USE_OLD_DPDK
-       "[deprecated] Enable old versions of DPDK (<19.11). Use -DUSE_DPDK=OLD instead." OFF)
-option(USE_ASDF "Build ASDF output stages" ON)
-option(USE_GDAL "Build GDAL output stages" ON)
-option(USE_HDF5 "Build HDF5 output stages" ON)
-option(USE_JULIA "Build Julia-based features" ON)
-option(USE_OMP "Enable OpenMP" OFF)
+    CACHE STRING "DPDK usage: ON (auto), OFF")
+set_property(CACHE USE_DPDK PROPERTY STRINGS ON OFF)
+_ktk_option(USE_ASDF "Build ASDF output stages" ON)
+_ktk_option(USE_GDAL "Build GDAL output stages" ON)
+_ktk_option(USE_HDF5 "Build HDF5 output stages" ON)
+_ktk_option(USE_JULIA "Build Julia-based features" ON)
+_ktk_option(USE_OMP "Enable OpenMP" ON)
+
 option(USE_OLD_ROCM "Build for ROCm versions 2.3 or older" OFF)
-option(USE_NUMA "Enable NUMA support in core (libnuma)" ON)
-option(USE_OPENSSL "Enable OpenSSL (hash) support in core" ON)
+
+_ktk_option(USE_NUMA "Enable NUMA support in core (libnuma)" ON)
+_ktk_option(USE_OPENSSL "Enable OpenSSL (hash) support in core" ON)
 option(NO_MEMLOCK "Do not lock buffer memory (useful when running in Docker)" OFF)
 option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
 option(SANITIZE "Enable clang sanitizers for testing" OFF)
@@ -29,4 +40,5 @@ option(WITH_TESTS "Build and link lib/testing helper library (does not build Boo
 option(WITH_BOOST_TESTS "Compile boost C++ unit tests" OFF)
 option(IWYU "Enable include-what-you-use and print suggestions to stderr" OFF)
 option(CCACHE "Use ccache to speed up the build" OFF)
-option(WERROR "Warnings are errors" OFF)
+option(WERROR "Warnings are errors" ON)
+option(CMAKE_LINK_WHAT_YOU_USE "Report missing link dependencies while building" OFF)

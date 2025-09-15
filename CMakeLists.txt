@@ -22,9 +22,30 @@ set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -Xcompiler -Wall")
 include(cmake/Features/FeatureGPU.cmake)
 include(cmake/Features/FeatureDPDK.cmake)
 
+set(_ktk_airspy_reason "disabled")
+if(DEFINED CACHE{KOTEKAN_AIRSPY_REASON})
+    set(_ktk_airspy_reason ${CACHE{KOTEKAN_AIRSPY_REASON}})
+endif()
 if(${USE_AIRSPY})
-    find_package(LIBAIRSPY)
-    set(USE_AIRSPY ${LIBAIRSPY_FOUND})
+    find_package(LIBAIRSPY QUIET)
+    if(LIBAIRSPY_FOUND)
+        set(USE_AIRSPY ON CACHE BOOL "Build Airspy Producer" FORCE)
+        set(KOTEKAN_AIRSPY_REASON "found" CACHE STRING "Airspy detection summary" FORCE)
+        add_definitions(-DWITH_AIRSPY)
+    else()
+        set(USE_AIRSPY OFF CACHE BOOL "Build Airspy Producer" FORCE)
+        set(KOTEKAN_AIRSPY_REASON
+            "not found (requires libairspy)"
+            CACHE STRING "Airspy detection summary" FORCE)
+        kmsg_warn("Airspy requested but libairspy not found; disabling Airspy support.")
+    endif()
+else()
+    if(NOT "${_ktk_airspy_reason}" STREQUAL "not found (requires libairspy)")
+        set(_ktk_airspy_reason "disabled")
+    endif()
+    set(KOTEKAN_AIRSPY_REASON
+        "${_ktk_airspy_reason}"
+        CACHE STRING "Airspy detection summary" FORCE)
 endif()
 
 include(cmake/Features/FeatureMath.cmake)
@@ -32,10 +53,6 @@ include(cmake/Features/FeatureMath.cmake)
 # Math features handled in FeatureMath
 
 # Toolchain covers build types, IWYU, and GPU summary
-
-if(${USE_AIRSPY})
-    add_definitions(-DWITH_AIRSPY)
-endif()
 
 include(cmake/Features/FeatureIO.cmake)
 

@@ -15,13 +15,8 @@ if(DEFINED KOTEKAN_DPDK_MODE AND (KOTEKAN_DPDK_MODE STREQUAL "NEW"))
     set(DPDK_LIBRARIES ${DPDK_STATIC_LDFLAGS})
     message(STATUS "DPDK include dirs: ${DPDK_INCLUDE_DIRS}")
     target_include_directories(kotekan_dpdk SYSTEM PRIVATE ${DPDK_INCLUDE_DIRS})
-elseif(DEFINED KOTEKAN_DPDK_MODE AND (KOTEKAN_DPDK_MODE STREQUAL "OLD"))
-    # OLD: rely on our FindDPDK module
-    find_package(DPDK REQUIRED)
-    message(STATUS "DPDK include dir: ${DPDK_INCLUDE_DIR}")
-    target_include_directories(kotekan_dpdk SYSTEM PRIVATE ${DPDK_INCLUDE_DIR})
 else()
-    message(FATAL_ERROR "kotekan_dpdk requested but KOTEKAN_DPDK_MODE is not NEW or OLD")
+    message(FATAL_ERROR "kotekan_dpdk requested but KOTEKAN_DPDK_MODE is not NEW")
 endif()
 
 target_link_libraries(kotekan_dpdk PRIVATE ${DPDK_LIBRARIES} ${NUMA_LIBRARY} libexternal

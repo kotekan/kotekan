@@ -27,7 +27,7 @@ Cmake build options:
 * `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with asserts, debug logging and debug symbols.
 * `-DCMAKE_BUILD_TYPE=Test` - Builds the project with asserts, debug logging, but without debug
   symbols.
-* `-DUSE_DPDK=ON|OFF|NEW|OLD` - Control DPDK support. Default `ON` auto‑detects: prefer NEW (>=19.11 via pkg‑config), else fall back to OLD (via FindDPDK). Use `OLD` for legacy (<19.11) installs (optionally with `-DRTE_SDK=<build-location>` and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`). `OFF` disables DPDK entirely. The legacy flag `-DUSE_OLD_DPDK=ON` is still accepted and maps to `-DUSE_DPDK=OLD`.
+* `-DUSE_DPDK=ON|OFF` - Control DPDK support. Default `ON` enables DPDK when libdpdk (>=19.11) is found via pkg-config; `OFF` disables DPDK entirely.
 * `-DUSE_OLD_ROCM=ON` - Build for ROCm versions 2.3 or older. Off by default.
   Direct toolchain calls are used by default.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.

@@ -84,7 +84,7 @@ This section maps common CMake options (see :doc:`cmake_options`) to the package
 
 - ``USE_DPDK`` / DPDK support
   - Ubuntu packages: ``dpdk``, ``libdpdk-dev`` (and ``dpdk-dev``)
-  - Default is ``ON`` (auto): prefer NEW (>=19.11) via pkg-config, else fall back to OLD (<19.11). Force a mode with ``-DUSE_DPDK=NEW`` or ``-DUSE_DPDK=OLD``. The legacy ``-DUSE_OLD_DPDK=ON`` is still accepted and maps to ``OLD``.
+  - Default is ``ON`` and enables DPDK when libdpdk (>=19.11) is available via pkg-config. Use ``-DUSE_DPDK=OFF`` to disable it explicitly.
 
 - ``WITH_TESTS`` (C++ testing helpers in ``lib/testing``)
   - No extra system packages beyond base requirements.
@@ -224,12 +224,9 @@ Cmake build options
     Builds the project with asserts, debug logging and debug symbols.
 * ``-DCMAKE_BUILD_TYPE=Test``
     Builds the project with asserts and debug logging but without debug symbols.
-* ``-DUSE_DPDK=ON|OFF|NEW|OLD``
-    Control DPDK support. Default ``ON`` auto-detects: prefer NEW (>=19.11 via pkg-config),
-    else fall back to OLD (<19.11 via FindDPDK). For legacy/source installs specify ``OLD``
-    and provide `-DRTE_SDK=<dir>` and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`.
-    Not needed for newer versions of DPDK on Ubuntu 22.04+.
-    The legacy ``-DUSE_OLD_DPDK=ON`` is still accepted and maps to ``OLD``. See :ref:`dpdk`.
+* ``-DUSE_DPDK=ON|OFF``
+    Control DPDK support. Default ``ON`` enables DPDK when libdpdk (>=19.11) is available via
+    pkg-config. Use ``OFF`` to disable explicitly.
 * ``-DUSE_OLD_ROCM=ON``
     Build for ROCm versions 2.3 or older. Off by default.
 * ``-DUSE_OPENCL=ON``
@@ -261,19 +258,23 @@ Cmake build options
 Examples
 ---------
 
-To build with (old) DPDK and debug symbols:
+To build with DPDK and debug symbols:
 
 .. code:: bash
 
-    cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=OLD -DCMAKE_BUILD_TYPE=Debug ..
+    cmake -DUSE_DPDK=ON -DCMAKE_BUILD_TYPE=Debug ..
 
 To build with OpenCL and DPDK:
 
 .. code:: bash
 
-    cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=OLD -DUSE_OPENCL=ON ..
+    cmake -DUSE_DPDK=ON -DUSE_OPENCL=ON ..
 
 At the end of configuration, a colorized feature summary lists enabled/disabled features, reasons, and the toggle flag (e.g., ``toggle: -DUSE_CUDA=ON/OFF``). Use ``-D<OPTION>=ON|OFF`` to include or exclude a feature present on your system.
+
+.. note:: Developers adding new build options should refresh the summary logic
+   (``cmake/Summary.cmake``), this guide, and the version metadata in
+   ``lib/version/version.c.in``.
 
 To install kotekan:
 
