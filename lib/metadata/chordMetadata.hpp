@@ -189,10 +189,10 @@ public:
         // Compute the strides from the set dims assuming simple contiguous
         // access.
         assert(this->dims > 0);
-        this->stride[this->dims-1] = 1;
-        for(int d = this->dims-2; d >= 0; d--) {
-            assert(this->dim[d+1] > 0);
-            this->stride[d] = this->dim[d+1]*stride[d+1];
+        this->stride[this->dims - 1] = 1;
+        for (int d = this->dims - 2; d >= 0; d--) {
+            assert(this->dim[d + 1] > 0);
+            this->stride[d] = this->dim[d + 1] * stride[d + 1];
         }
     }
 
