@@ -10,7 +10,7 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: debug
+log_level: DEBUG2
 #num_links: 4
 #freq_array: [4,7,10,16]
 #timesamples_per_packet: 2
@@ -27,9 +27,10 @@ sizeof_int: 4
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 1024
 samples_per_data_set: 2048
+num_times: 2048  # New N2K needs this. TODO: document.
 #sub_integration_ntime: 16384
 #samples_per_data_set: 32768
-num_elements: 1024
+num_elements: 128
 num_local_freq: 16
 # vis matrix size
 vis_blocks_tr_root: (num_elements + 1) / 16
@@ -53,12 +54,6 @@ host_correlation_buffer:
     frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * num_vis_blocks * 2 * sizeof_int
     metadata_pool: main_pool
 
-simulated_correlation_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * num_vis_blocks * 2 * sizeof_int
-    metadata_pool: main_pool
-
 # Ringbuffer signalling buffer
 host_voltage_ringbuffer:
     kotekan_buffer: ring
@@ -68,12 +63,13 @@ host_voltage_ringbuffer:
 gen_data:
     # type: const
     # value: 34 # 1i # 34 # = 2 + 2i
-    type: random_signed
-    value: 1532
+    type: random_signed_offset  # const_offset
+    value: 120
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
-    array_shape: [ 2048, 16, 2, 512 ]
+    array_shape: [ 2048, 16, 2, 64 ]
     dim_name: ["T", "F", "P", "D" ]
+    num_frames: buffer_depth  # Must be at least what write_n2k_correlation expects
 
 run_send_voltage:
     gpu_0:
@@ -96,27 +92,28 @@ run_n2k:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
         out_buffers:
             host_correlation: host_correlation_buffer
         commands:
         - name: cudaCorrelator
-          in_signal: host_voltage_ringbuffer_in
-          gpu_mem_voltage: voltage_buffer
-          gpu_mem_correlation_triangle: correlation_matrix
+          # in_signal: host_voltage_ringbuffer_in
+          # gpu_mem_voltage: voltage_buffer
+          # gpu_mem_correlation_triangle: correlation_matrix
+          n2k_correlation_name: correlation
+          voltage_name: voltage
         - name: cudaSyncOutput
         - name: cudaOutputData
-          gpu_mem: correlation_matrix
+          gpu_mem: correlation_buffer
           out_buf: host_correlation
 
-cpu:
-    kotekan_stage: gpuSimulateN2k
-    log_level: debug
-    network_in_buf: host_voltage_buffer
-    corr_out_buf: simulated_correlation_buffer
 
-check_data:
-    kotekan_stage: testDataCheckInt
-    first_buf: host_correlation_buffer
-    second_buf: simulated_correlation_buffer
-    num_frames_to_test: buffer_depth
+write_n2k_correlation:
+   kotekan_stage: hdf5FileWrite
+   base_dir: data
+   file_name: n2k_corr
+   prefix_hostname: false
+   max_frames: buffer_depth  # Will trigger exit after writing this many frames
+   skip_writing: false
+   in_buf: host_correlation_buffer
+

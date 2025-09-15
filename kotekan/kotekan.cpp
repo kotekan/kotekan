@@ -677,7 +677,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    INFO_NON_OO("kotekan shutdown with status: {:s}", get_exit_code_string(get_exit_code()));
+    enum ReturnCode exit_code = get_exit_code();
+
+    INFO_NON_OO("kotekan shutdown with status: {:s}", get_exit_code_string(exit_code));
 
     // Print error message if there is one.
     if (string(get_error_message()) != "not set") {
@@ -686,5 +688,10 @@ int main(int argc, char** argv) {
 
     closelog();
 
-    return get_exit_code();
+    // If a test was run and passed, we have already printed the status message,
+    // exit with a CLEAN_EXIT signal.
+    if(exit_code == TEST_PASSED)
+        exit_code = CLEAN_EXIT;
+
+    return exit_code;
 }

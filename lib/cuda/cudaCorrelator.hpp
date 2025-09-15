@@ -42,6 +42,11 @@
  * Note: While the output is only supposed to fill the upper triangle
  * of the correlation matrices, this implementation fills a few of the
  * below-the-diagonal elements with non-zero values.
+ *
+ * TODO: -Update docs to note new parameter names,
+ *       -buffer name requirements (for NDArray conventions)
+ *       -input data name in metadata must be "E"
+ *       -input data type must be int4x2_swapped_withoffset_t
  */
 class cudaCorrelator : public cudaCommand {
 public:
@@ -78,14 +83,14 @@ private:
     /// Name for the correlation output
     const std::string _n2k_correlation_name;
 
-    // Signalling ring buffer for the input (voltage) data.
+    /// Signaling ring buffer for the input (voltage) data.
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
     NDArrayBuffer<std::int32_t, 6> n2k_correlation;
 
-    // Cuda kernel wrapper object
+    /// Cuda kernel wrapper object
     n2k::Correlator n2correlator;
 
-    // Placeholder rfi mask
+    /// Placeholder rfi mask
     std::uint32_t* rfimask;
 };
 
