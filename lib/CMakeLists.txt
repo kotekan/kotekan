@@ -2,14 +2,17 @@
 # symbols are ever added it will need to be turned back into a standard CMake library
 project(kotekan_libs)
 
-set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
+set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake ${KOTEKAN_SOURCE_DIR}/cmake/Modules)
 
-# Julia is a covnenient language to implement stages for testing and development
-find_package(Julia)
-if(${Julia_FOUND})
-    message("Julia support enabled")
-else()
-    message("Julia not found, support disabled in kotekan_lib")
+# Julia is a convenient language to implement stages for testing and development
+if(${USE_JULIA})
+    find_package(Julia QUIET)
+    if(Julia_FOUND)
+        message(STATUS "Julia support enabled")
+    else()
+        message(WARNING "${ColorYellow}Julia not found; Julia features disabled in"
+                        " kotekan_lib${ColorReset}")
+    endif()
 endif()
 
 add_library(kotekan_libs INTERFACE)
@@ -28,6 +31,9 @@ target_link_libraries(kotekan_libs INTERFACE kotekan_version)
 
 target_link_libraries(kotekan_libs INTERFACE libexternal)
 
+# Build C++ testing helpers when requested. WITH_TESTS builds and links the lib/testing helper
+# stages into the main kotekan binary. WITH_BOOST_TESTS also requires these helpers and additionally
+# builds the unit tests under tests/boost.
 if(${WITH_TESTS} OR ${WITH_BOOST_TESTS})
     add_subdirectory(testing)
     target_link_libraries(kotekan_libs INTERFACE kotekan_testing)
@@ -63,35 +69,11 @@ if(${USE_OPENCL}
     target_link_libraries(kotekan_libs INTERFACE kotekan_gpu)
 endif()
 
-# Don't include DPDK for boost tests
-if(${WITH_BOOST_TESTS})
-    # DPDK + boost tests = linker issues.
-    message(STATUS "Note that DPDK will *NOT* be included for builds with tests.")
-    # So do nothing...
-else()
-    # Include the old DPDK if the USE_OLD_DPDK flag is given.
-    if(${USE_OLD_DPDK})
-        add_definitions(-DOLD_DPDK)
-        add_subdirectory(dpdk)
-        target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
-    else()
-        # Check for the new DPDK versions automatically
-        find_package(PkgConfig)
-        if(PKG_CONFIG_FOUND)
-            pkg_check_modules(DPDK libdpdk>=19.11)
-            if(DPDK_FOUND)
-                message(STATUS "Found DPDK, including support for DPDK networking")
-                add_subdirectory(dpdk)
-                target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
-            else()
-                message(
-                    STATUS
-                        "No DPDK package found, for older versions (<19.11) use -DUSE_OLD_DPDK=ON")
-            endif()
-        else()
-            message(STATUS "pkg-config needed to include DPDK (>=19.11) support")
-        endif()
-    endif()
+# DPDK selection and summary handled in FeatureDPDK.cmake. Here we honor the effective decision and
+# wire targets accordingly.
+if(DEFINED DPDK_ENABLED AND DPDK_ENABLED)
+    add_subdirectory(dpdk)
+    target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
 endif()
 
 # HDF5 stuff

@@ -4,7 +4,7 @@ MacOS
 
 MacOS is known to work with most (non-GPU / non-DPDK) options.
 
-You'll need to have `Homebrew <https://brew.sh/>`_ installed, along with Python (we recommend `Anaconda <https://anaconda.org/anaconda/python>`_).
+You'll need to have `Homebrew <https://brew.sh/>`_ installed, along with Python (we recommend `Anaconda <https://anaconda.org/anaconda/python>`_). When building using cmake, most of these features will be enabled by default if the installation is detected.
 
 .. code:: bash
 
@@ -24,7 +24,7 @@ To include **Airspy** input:
 
     brew install airspy
     cd <kotekan_dir>/build
-    cmake .. -DUSE_AIRSPY=ON
+    cmake ..
 
 
 To include **FFTW** stages:
@@ -33,7 +33,7 @@ To include **FFTW** stages:
 
     brew install fftw
     cd <kotekan_dir>/build
-    cmake .. -DUSE_FFTW=ON
+    cmake ..
 
 To include **OpenSSL** support (for optional support of HASH functions, md5, etc.)
 
@@ -59,7 +59,7 @@ To enable **HDF5** writing and linear algebra tools install:
     cmake --build cmake-build
     cmake --install cmake-build
     popd
-    cmake -DUSE_HDF5=ON -DUSE_LAPACK=ON
+    cmake ..
 
 For a comprehensive build, you'll want
 

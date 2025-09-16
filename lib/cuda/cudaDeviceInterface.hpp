@@ -104,8 +104,8 @@ protected:
     // Cuda Streams
     std::vector<cudaStream_t> streams;
 
-    // Singleton dictionary
-    static std::map<int, std::shared_ptr<cudaDeviceInterface>> inst_map;
+    // Cache of device instances (weak to avoid lifetime extension)
+    static std::map<int32_t, std::weak_ptr<cudaDeviceInterface>> inst_map;
 };
 
 #endif // CUDA_DEVICE_INTERFACE_H

@@ -57,7 +57,8 @@ public:
 
 private:
     // Frame parameters
-    size_t num_elements, num_eigenvectors;
+    size_t num_elements;
+    [[maybe_unused]] size_t num_eigenvectors = 0;
     size_t nprod;
 
     // Whether to apply fringestopping phases.

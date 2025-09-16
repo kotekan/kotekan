@@ -44,6 +44,19 @@ using std::string;
 using json = nlohmann::json;
 using namespace kotekan;
 
+// Ensure HDF5 plugin path is available at runtime if we know a default.
+#if defined(WITH_HDF5) && defined(DEFAULT_HDF5_PLUGIN_PATH)
+static inline void ensure_hdf5_plugin_env() {
+    const char* cur = getenv("HDF5_PLUGIN_PATH");
+    if ((cur == nullptr || cur[0] == '\0') && (sizeof(DEFAULT_HDF5_PLUGIN_PATH) > 1)) {
+        // Do not overwrite if user already sets it
+        setenv("HDF5_PLUGIN_PATH", DEFAULT_HDF5_PLUGIN_PATH, /*overwrite=*/0);
+    }
+}
+#else
+static inline void ensure_hdf5_plugin_env() {}
+#endif
+
 // Embedded script for converting the YAML config to json
 // Copied from python/scripts/config_to_json.py
 // TODO copy this in automatically at compile time.
@@ -408,6 +421,9 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
+    // Set HDF5_PLUGIN_PATH if unset and a default was detected at configure time.
+    ensure_hdf5_plugin_env();
+
     try {
         std::locale::global(std::locale::classic());
     } catch (const std::exception& ex) {
@@ -677,7 +693,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    INFO_NON_OO("kotekan shutdown with status: {:s}", get_exit_code_string(get_exit_code()));
+    enum ReturnCode exit_code = get_exit_code();
+
+    INFO_NON_OO("kotekan shutdown with status: {:s}", get_exit_code_string(exit_code));
 
     // Print error message if there is one.
     if (string(get_error_message()) != "not set") {
@@ -686,5 +704,10 @@ int main(int argc, char** argv) {
 
     closelog();
 
-    return get_exit_code();
+    // If a test was run and passed, we have already printed the status message,
+    // exit with a CLEAN_EXIT signal.
+    if (exit_code == TEST_PASSED)
+        exit_code = CLEAN_EXIT;
+
+    return exit_code;
 }

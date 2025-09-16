@@ -1161,7 +1161,7 @@ void FEngine::main_thread() {
                             dfreq
                             * (frequency_channels.at(freq0 % frequency_channels.size())
                                + ((freq1 + 0.5f) / float(upchannelization_factor) - 0.5f));
-                        const float c = 299792458; // speed of light
+                        const float c = 299792458.0f; // speed of light
                         const float wavelength = c / afreq;
 
                         for (int beamOut_ew = 0; beamOut_ew < frb2_num_beams_ew; ++beamOut_ew) {

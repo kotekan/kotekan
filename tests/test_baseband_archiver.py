@@ -169,7 +169,11 @@ def test_single_freq(tmpdir_factory):
 
     check_baseband_dump(saved_files[0])
 
-    archive_file_name = baseband_archiver.process_raw_file(saved_files[0], config)
+    # Write archives into a temporary, writable root for the test
+    archive_root = str(tmpdir_factory.mktemp("baseband_archive"))
+    archive_file_name = baseband_archiver.process_raw_file(
+        saved_files[0], config, root=archive_root
+    )
     print(archive_file_name)
     check_baseband_archive(archive_file_name)
 
@@ -179,7 +183,12 @@ def test_multi_freq(tmpdir_factory):
     saved_files = generate_baseband_raw_files(tmpdir_factory, 3)
     assert len(saved_files) == 3
 
+    # Write archives into a temporary, writable root for the test
+    archive_root = str(tmpdir_factory.mktemp("baseband_archive"))
+
     for freq_id, file_name in enumerate(saved_files):
         check_baseband_dump(file_name, freq_id)
-        archive_file_name = baseband_archiver.process_raw_file(file_name, config)
+        archive_file_name = baseband_archiver.process_raw_file(
+            file_name, config, root=archive_root
+        )
         check_baseband_archive(archive_file_name)

@@ -148,11 +148,11 @@ class FEngine : public kotekan::Stage {
     const std::int64_t bb_beam_positions_frame_size;
     const std::int64_t A_frame_size;
     const std::int64_t s_frame_size;
-    const std::int64_t J_frame_size;
+    [[maybe_unused]] const std::int64_t J_frame_size;
     const std::array<std::int64_t, Usize> G_frame_sizes;
     const std::array<std::int64_t, Usize> W1_frame_sizes;
     const std::int64_t W2_frame_size;
-    const std::int64_t I1_frame_size;
+    [[maybe_unused]] const std::int64_t I1_frame_size;
 
     Buffer* const dish_positions_buffer;
     // int8 bf_mask[dish][polr]
