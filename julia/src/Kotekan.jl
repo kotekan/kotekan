@@ -1,27 +1,28 @@
-# This is a placeholder - some Julia tools want the "src" directory to exist and want
-# a module with the same name as the package.  In the future we might actually build
-# out this package to interface the Kotekan code to Julia.
 module Kotekan
 
 using ASDF2
 using ArchGDAL
-using DimensionalData
 using CUDASIMDTypes
+using DimensionalData
 using GDAL
+using H5Zbitshuffle
+using HDF5
 using MappedArrays
 
 const AG = ArchGDAL
 
-export c2t, t2c, t2cso, i2t, i2c, i2cso
+export so, c2t, t2c, t2cso, i2t, i2c, i2cso
+# swapped and offset-encoded
+so(x::UInt8) = (((x >> 0x04) & 0x0f) | ((x << 0x04) & 0xf0)) ^ 0x88
+
 c2t(x::Complex) = (real(x), imag(x))
 t2c(x::NTuple{2}) = Complex(x...)
-# swapped and offset-encoded
-t2cso(x::NTuple{2}) = Complex(x[2] - Int8(8), x[1] - Int8(8))
+t2cso(x::NTuple{2}) = Complex(x[2] - Int8(8), x[1] - Int8(8)) # BROKEN
 
 i2t(x::Int4x2) = convert(NTuple{2,Int8}, x)
 
 i2c(x::Int4x2) = t2c(i2t(x))
-i2cso(x::Int4x2) = t2cso(i2t(x))
+i2cso(x::Int4x2) = t2cso(i2t(x)) # BROKEN
 
 export i4p4so2i8
 i4p4so2i8(x::UInt8) = (((x >>> 0x4) & 0x0f) % Int8 - Int8(8), ((x >>> 0x0) & 0x0f) % Int8 - Int8(8))
@@ -121,6 +122,65 @@ function read_gdal(filename::AbstractString)
         @info "mapping to Complex{Int8}..."
         data = mappedarray(i2cso ∘ Int4x2, data)
     elseif type == "uint4p4"
+        @assert eltype(data) == UInt8
+        @info "mapping to Int8..."
+        data = reinterpret(Int8, mappedarray(u4p42i8, data))
+        # dims[1] is now wrong!
+        dimsizes = Base.setindex(dimsizes, 2 * dimsizes[1], 1)
+    end
+    if dimnames[begin] == "C"
+        @info "mapping to Complex..."
+        data = reinterpret(reshape, Complex{eltype(data)}, data)
+        dims = dims[(begin + 1):end]
+        dimnames = dimnames[(begin + 1):end]
+        dimsizes = dimsizes[(begin + 1):end]
+    end
+
+    # Apply DimArray; do this last, it doesn't survive `mappedarray`
+    data = DimArray(data, ntuple(d -> Dim{Symbol(dimnames[d])}(1:dimsizes[d]), length(dimnames)))
+
+    return data::AbstractArray
+end
+
+export read_hdf5
+function read_hdf5(filename::AbstractString)
+    filename = expanduser(filename)
+
+    @info "reading file \"$filename\"..."
+    file = h5open(filename)
+
+    datasetname = keys(file)[begin]
+    @info "found dataset \"$datasetname\""
+    dataset = file[datasetname]
+
+    chord_metadata_version = dataset["chord_metadata_version"][]::AbstractVector{<:Integer}
+    major, minor = chord_metadata_version
+    @assert major == 1 && minor >= 0
+
+    name = dataset["name"][]::AbstractString
+    @info "found dataset quantity \"$name\""
+    type = dataset["type"][]::AbstractString
+    @info "found dataset type $type"
+
+    # TODO: Can we return a DiskArray here?
+    dims = ndims(dataset)
+    dimsizes = size(dataset)
+    @info "found dataset size $dimsizes"
+    dimnames = reverse(dataset["dim_names"][])::AbstractVector{<:AbstractString}
+    @info "found index names $dimnames"
+
+    data = dataset[]::AbstractArray
+
+    # Convert type if necessary
+    if type == "int4x2"
+        @assert eltype(data) == UInt8
+        @info "mapping to Complex{Int8}..."
+        data = mappedarray(i2c ∘ Int4x2, data)
+    elseif type == "int4x2chime"
+        @assert eltype(data) == UInt8
+        @info "mapping to Complex{Int8}..."
+        data = mappedarray(i2c ∘ Int4x2 ∘ so, data)
+    elseif type == "uint4x2"
         @assert eltype(data) == UInt8
         @info "mapping to Int8..."
         data = reinterpret(Int8, mappedarray(u4p42i8, data))
