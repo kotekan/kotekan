@@ -17,9 +17,11 @@ if(DEFINED CL_TARGET_OPENCL_VERSION AND NOT "${CL_TARGET_OPENCL_VERSION}" STREQU
 else()
     set(_ktk_cl_target "${_ktk_cl_target_default}")
 endif()
-set(KOTEKAN_CL_TARGET_OPENCL_VERSION
+# Cache the effective version with an INTERNAL cache entry (naming must start with _ for cmakelint)
+set(_KOTEKAN_CL_TARGET_OPENCL_VERSION
     "${_ktk_cl_target}"
     CACHE INTERNAL "Effective CL_TARGET_OPENCL_VERSION used for compilation")
+set(KOTEKAN_CL_TARGET_OPENCL_VERSION "${_ktk_cl_target}")
 add_definitions(-DCL_TARGET_OPENCL_VERSION=${_ktk_cl_target})
 
 # ccache
@@ -207,10 +209,14 @@ endif()
 include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag(-fcx-limited-range HAVE_CX_LIMITED_RANGE)
-if(HAVE_CX_LIMITED_RANGE AND NOT ${IWYU} AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+if(HAVE_CX_LIMITED_RANGE
+   AND NOT ${IWYU}
+   AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcx-limited-range")
 endif()
 check_c_compiler_flag(-fcx-limited-range HAVE_C_LIMITED_RANGE)
-if(HAVE_C_LIMITED_RANGE AND NOT ${IWYU} AND CMAKE_C_COMPILER_ID STREQUAL "GNU")
+if(HAVE_C_LIMITED_RANGE
+   AND NOT ${IWYU}
+   AND CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fcx-limited-range")
 endif()
