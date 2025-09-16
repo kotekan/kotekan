@@ -41,7 +41,7 @@ public:
     gpuEventContainer* create_signal() override;
     void queue_commands(int gpu_frame_counter) override;
 
-    void register_host_memory(struct Buffer* host_buffer) override;
+    void register_host_memory(Buffer* host_buffer) override;
 
     std::shared_ptr<cudaDeviceInterface> device;
 };

@@ -89,7 +89,6 @@ std::array<dset_id_t, 2> freqSplit::change_dataset_state(dset_id_t input_dset_id
 
 void freqSplit::main_thread() {
 
-    struct Buffer* buf;
     unsigned int frame_id = 0;
     unsigned int input_frame_id = 0;
     unsigned int freq;

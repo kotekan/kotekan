@@ -67,6 +67,19 @@ if(HAVE_SUGGEST_OVERRIDE AND NOT ${IWYU})
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override>)
 endif()
 
+# Clang-only: explicitly allow VLAs in C++ without promoting them to errors
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    check_cxx_compiler_flag(-Wno-vla-cxx-extension HAVE_CLANG_NO_WVLA_CXX_EXTENSION)
+    if(HAVE_CLANG_NO_WVLA_CXX_EXTENSION)
+        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-vla-cxx-extension>)
+    endif()
+    check_cxx_compiler_flag(-Wno-tautological-compare HAVE_CLANG_NO_TAUTOLOGICAL_COMPARE)
+    if(HAVE_CLANG_NO_TAUTOLOGICAL_COMPARE)
+        add_compile_options(
+            $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wno-tautological-compare>)
+    endif()
+endif()
+
 # Debug/opt flags
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")
