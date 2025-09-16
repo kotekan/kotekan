@@ -307,7 +307,7 @@ jobs:
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
             -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
-            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON \
             -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
             -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
             -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
@@ -372,7 +372,7 @@ jobs:
         docker run "${OPTS[@]}" \
           cmake -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
             -DCMAKE_LINK_WHAT_YOU_USE=OFF -DCCACHE=OFF \
-            -DUSE_OMP=OFF -DUSE_NUMA=OFF -DNO_MEMLOCK=OFF \
+            -DUSE_OMP=OFF -DUSE_NUMA=ON -DNO_MEMLOCK=OFF \
             -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF \
             -DUSE_ASDF=OFF -DUSE_HDF5=OFF -DUSE_GDAL=OFF \
             -DUSE_AIRSPY=OFF -DUSE_LAPACK_BLAZE=OFF -DUSE_FFTW=OFF -DUSE_JULIA=OFF \
