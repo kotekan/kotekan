@@ -11,18 +11,11 @@
 
 include_guard(GLOBAL)
 
-# Normalize option values
 set(_kotekan_use_dpdk "${USE_DPDK}")
-string(TOUPPER "${_kotekan_use_dpdk}" _kotekan_use_dpdk)
-if(NOT _kotekan_use_dpdk)
-    set(_kotekan_use_dpdk "ON")
-endif()
-if(NOT _kotekan_use_dpdk STREQUAL "OFF")
-    set(_kotekan_use_dpdk "ON")
-endif()
 
 # If building Boost tests, always disable DPDK
 if(WITH_BOOST_TESTS)
+    message(WARNING "Disabling DPDK because BOOST tests are enabled!")
     set(DPDK_ENABLED OFF CACHE BOOL "DPDK available" FORCE)
     set(DPDK_REASON "disabled (boost tests)" CACHE STRING "" FORCE)
     return()
