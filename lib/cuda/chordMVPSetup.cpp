@@ -1,5 +1,14 @@
 #include "chordMVPSetup.hpp"
 
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaMemset
+#include "gpuCommand.hpp"     // for gpuCommandType
+#include "kotekanLogging.hpp" // for INFO, DEBUG
+
+#include "fmt.hpp" // for compile_string_to_view, format, format_string
+
+#include <stddef.h> // for size_t
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 

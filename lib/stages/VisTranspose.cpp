@@ -2,32 +2,29 @@
 
 #include "Config.hpp"            // for Config
 #include "H5Support.hpp"         // for dset_id_str, DSET_ID_LEN
-#include "Hash.hpp"              // for Hash, operator!=
+#include "Hash.hpp"              // for Hash
 #include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for dset_id_t, datasetManager
-#include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
-#include "errors.h"              // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
-#include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t
+#include "datasetState.hpp"      // for metadataState, stackState, eigenvalueState, freqState
+#include "errors.h"              // for ReturnCode, exit_kotekan
+#include "kotekanLogging.hpp"    // for DEBUG, logLevel, ERROR, FATAL_ERROR, INFO
+#include "prometheusMetrics.hpp" // for Metrics
 #include "visBuffer.hpp"         // for VisFrameView
 #include "visFileArchive.hpp"    // for visFileArchive
 
-#include "fmt.hpp"      // for format
+#include "fmt.hpp"      // for compile_string_to_view, format, format_string
 #include "gsl-lite.hpp" // for span
-#include "json.hpp"     // for basic_json<>::object_t, json, basic_json,
+#include "json.hpp"     // for basic_json
 
-#include <algorithm>    // for max, fill, min
-#include <complex>      // for complex
-#include <cstdint>      // for uint32_t
-#include <cxxabi.h>     // for __forced_unwind
-#include <exception>    // for exception
-#include <future>       // for async, future
-#include <stdexcept>    // for out_of_range, invalid_argument
-#include <stdint.h>     // for uint32_t, uint64_t
-#include <sys/types.h>  // for uint
-#include <system_error> // for system_error
+#include <algorithm>   // for copy, fill, max, min
+#include <complex>     // for complex
+#include <future>      // for async, future, future_status
+#include <stdexcept>   // for invalid_argument
+#include <stdint.h>    // for uint32_t, uint64_t
+#include <sys/types.h> // for uint
+#include <utility>     // for pair
 
 
 using kotekan::bufferContainer;

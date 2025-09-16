@@ -1,29 +1,39 @@
-#include "asdfFiles.hpp"
+#include "Config.hpp"          // for Config
+#include "asdfFiles.hpp"       // for beautify_buffer_name, chord_metadata_version
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
+#include "metadata.hpp"        // for metadataObject
 
-#include <DataType.hpp>
-#include <Stage.hpp>
-#include <StageFactory.hpp>
-#include <asdf/asdf.hxx>
-#include <atomic>
-#include <cassert>
-#include <chordMetadata.hpp>
-#include <cstdint>
-#include <cstring>
-#include <errno.h>
-#include <errors.h>
-#include <fstream>
-#include <iomanip>
-#include <map>
-#include <memory>
-#include <optional>
-#include <prometheusMetrics.hpp>
-#include <sstream>
-#include <string>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <utility>
-#include <vector>
-#include <visUtil.hpp>
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <DataType.hpp>          // for string_to_type, type_to_string, DataType
+#include <Stage.hpp>             // for Stage
+#include <StageFactory.hpp>      // for REGISTER_KOTEKAN_STAGE
+#include <array>                 // for array
+#include <asdf/asdf.hxx>         // for asdf
+#include <asdf/config.hxx>       // for ASDF_CHECK_VERSION
+#include <asdf/datatype.hxx>     // for datatype_t
+#include <asdf/entry.hxx>        // for entry, group
+#include <asdf/memoized.hxx>     // for memoized
+#include <asdf/ndarray.hxx>      // for ndarray, block_t
+#include <cassert>               // for assert
+#include <chordMetadata.hpp>     // for chordMetadata, CHORD_META_MAX_FREQ, metadata_is_chord
+#include <cstddef>               // for ptrdiff_t
+#include <cstdint>               // for int64_t, uint32_t, uint8_t
+#include <cstring>               // for memcpy, strncpy
+#include <fstream>               // for basic_ostream, basic_ifstream, operator<<, ostringstream
+#include <functional>            // for function
+#include <iomanip>               // for operator<<, setfill, setw
+#include <map>                   // for map
+#include <memory>                // for shared_ptr, __shared_ptr_access, allocator, make_shared
+#include <optional>              // for optional
+#include <prometheusMetrics.hpp> // for Metrics, Gauge
+#include <sstream>               // for basic_ostringstream
+#include <string>                // for basic_string, char_traits, string, operator<<
+#include <unistd.h>              // for gethostname, sleep
+#include <vector>                // for vector
+#include <visUtil.hpp>           // for current_time
 
 using namespace asdf;
 

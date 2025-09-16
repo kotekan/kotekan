@@ -7,19 +7,23 @@
 #ifndef N2BUFFER_HPP
 #define N2BUFFER_HPP
 
-#include "CHORDTelescope.hpp" // for struct EOP
-#include "Config.hpp"         // for Config
-#include "FrameView.hpp"      // for FrameView
-#include "N2Metadata.hpp"     // for N2Metadata
-#include "N2Util.hpp"         // for cfloat
-#include "Telescope.hpp"      // for freq_id_t
-#include "buffer.hpp"         // for Buffer
+#include "Config.hpp"     // for Config
+#include "FrameView.hpp"  // for FrameView
+#include "N2Metadata.hpp" // for N2Metadata
+#include "N2Util.hpp"     // for cfloat, get_num_prod
+#include "buffer.hpp"     // for Buffer
 
 #include "gsl-lite.hpp" // for span
 
-#include <map>     // for map
-#include <set>     // for set
-#include <utility> // for pair
+#include <algorithm> // for max
+#include <map>       // for allocator, map
+#include <memory>    // for shared_ptr
+#include <set>       // for set
+#include <stddef.h>  // for size_t
+#include <stdint.h>  // for uint32_t, uint64_t
+#include <string>    // for basic_string, string
+#include <utility>   // for pair, make_pair
+#include <vector>    // for vector
 
 /**
  * @brief The fields within the N2FrameView.

@@ -1,29 +1,28 @@
 #include "N2TimeDownsample.hpp"
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope
+#include "CHORDTelescope.hpp"    // for EOP, CHORDTelescope, eop_null
 #include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
-// #include "visBuffer.hpp"         // for VisFrameView
-#include "N2FrameView.hpp"
-#include "timeUtil.hpp" // for get_ERA_from_UT1, get_UT1_from_ERA
-#include "visUtil.hpp"  // for frameID, modulo, cfloat, operator-, ts_to_double
 
-#include "gsl-lite.hpp" // for span
-
-#include <atomic>     // for atomic_bool
-#include <complex>    // for complex
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
+#include <algorithm>  // for copy, equal, max
+#include <complex>    // for complex, operator*, conj
+#include <functional> // for bind, function
 #include <stdexcept>  // for runtime_error
-#include <stdint.h>   // for uint32_t, uint64_t, int32_t
-#include <time.h>     // for timespec
-#include <tuple>      // for get
+#include <stdint.h>   // for uint32_t, int64_t, int32_t
 #include <vector>     // for vector
+// #include "visBuffer.hpp"         // for VisFrameView
+#include "N2FrameView.hpp" // for N2FrameView
+#include "N2Util.hpp"      // for cfloat
+#include "Telescope.hpp"   // for Telescope
+#include "timeUtil.hpp"    // for get_ERA_from_UT1, get_UT1_from_ERA
+#include "visUtil.hpp"     // for frameID, modulo
+
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
 
 #define GIGA 1'000'000'000L
 

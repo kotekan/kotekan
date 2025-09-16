@@ -1,6 +1,13 @@
 #include "cudaCorrelatorAstron.hpp"
 
-#include "math.h"
+#include "cuda.h"             // for cuGetErrorString, cuLaunchKernel, CUresult, cudaError_enum
+#include "gpuCommand.hpp"     // for gpuCommandType
+#include "kotekanLogging.hpp" // for INFO
+
+#include "fmt.hpp" // for format, format_string, compile_string_to_view
+
+#include <map>       // for map
+#include <stdexcept> // for runtime_error
 
 using kotekan::bufferContainer;
 using kotekan::Config;

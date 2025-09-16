@@ -2,20 +2,25 @@
 
 #include "Config.hpp"            // for Config
 #include "N2FrameView.hpp"       // for N2FrameView
-#include "N2Util.hpp"            // for frameID
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "N2Metadata.hpp"        // for alloc_N2_from_chord_metadata, N2Metadata
+#include "N2Util.hpp"            // for frameID, modulo, ts_to_uint64, cmap, get_num_prod, cfloat
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for register_producer, Buffer, allocate_new_metadata_object
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for chordMetadata, get_fpga_seq_num
-#include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, logLevel, DEBUG
-#include "prometheusMetrics.hpp" // for Metrics
+#include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"    // for DEBUG, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Gauge
 
-#include <algorithm>  // for copy, max, fill, copy_backward, equal, transform
-#include <assert.h>   // for assert
-#include <complex>    // for operator*, complex
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for fill, copy
+#include <complex>    // for norm, operator*, complex
+#include <functional> // for bind, function, placeholders
+#include <memory>     // for shared_ptr, __shared_ptr_access
 #include <sys/time.h> // for TIMEVAL_TO_TIMESPEC
-#include <time.h>     // for size_t, timespec
+#include <time.h>     // for size_t, timespec, timespec_get, TIME_UTC
 #include <vector>     // for vector
 
 

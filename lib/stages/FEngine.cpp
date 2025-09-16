@@ -1,26 +1,28 @@
-#include <Config.hpp>
-#include <FEngine.hpp>
-#include <Stage.hpp>
-#include <StageFactory.hpp>
-#include <algorithm>
-#include <cassert>
-#include <chimeMetadata.hpp>
-#include <chordMetadata.hpp>
-#include <cmath>
-#include <complex>
-#include <cstdint>
-#include <cstdio>
-#include <cstring>
-#include <fstream>
-#include <julia.h>
-#include <juliaManager.hpp>
-#include <string>
-#include <vector>
-#include <visUtil.hpp>
+#include "DataType.hpp"       // for float16_t, DataType, KOTEKAN_FLOAT16
+#include "kotekanLogging.hpp" // for DEBUG, FATAL_ERROR, INFO
 
-#ifdef WITH_CUDA
-#include <nvtx3/nvToolsExt.h>
-#endif
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <Config.hpp> // for Config
+#include <FEngine.hpp>
+#include <Stage.hpp>         // for Stage
+#include <StageFactory.hpp>  // for REGISTER_KOTEKAN_STAGE
+#include <algorithm>         // for max
+#include <cassert>           // for assert
+#include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM, CHO...
+#include <cmath>             // for cos, sin, M_PI
+#include <complex>           // for complex
+#include <cstddef>           // for ptrdiff_t, size_t
+#include <cstdint>           // for int64_t, uint8_t, uint64_t, int32_t, int8_t
+#include <cstdio>            // for snprintf, fprintf, stderr
+#include <cstring>           // for strncpy, memset
+#include <fstream>           // for basic_ifstream, basic_istream::seekg, basic_istream::read
+#include <functional>        // for function
+#include <julia.h>           // for jl_box_int64, jl_box_float32, jl_exception_occurred, jl_ty...
+#include <juliaManager.hpp>  // for juliaCall, juliaShutdown, juliaStartup
+#include <memory>            // for shared_ptr, __shared_ptr_access
+#include <string>            // for allocator, basic_string, string
+#include <vector>            // for vector
 
 #if !KOTEKAN_FLOAT16
 #warning "The F-Engine simulator requires float16 support"

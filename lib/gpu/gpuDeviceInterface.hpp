@@ -1,14 +1,16 @@
 #ifndef GPU_DEVICE_INTERFACE_H
 #define GPU_DEVICE_INTERFACE_H
 
-#include "Config.hpp"
+#include "Config.hpp"         // for Config
 #include "kotekanLogging.hpp" // for kotekanLogging
-#include "metadata.hpp"
+#include "metadata.hpp"       // for metadataObject, metadataPool
 
-#include <map> // for map
-#include <mutex>
+#include <map>      // for map
+#include <memory>   // for shared_ptr, weak_ptr
+#include <mutex>    // for recursive_mutex
+#include <stddef.h> // for size_t
 #include <stdint.h> // for uint32_t, int32_t
-#include <string>   // for string
+#include <string>   // for string, basic_string
 #include <vector>   // for vector
 
 /// Stores a named set of gpu pointer(s) with uniform size

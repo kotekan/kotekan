@@ -10,10 +10,9 @@
 
 // DPDK!
 extern "C" {
-// cinttypes needed by some CentOS systems.
-#include <cinttypes>    // IWYU pragma: keep
 #include <rte_ethdev.h> // for rte_eth_conf
-#include <stdint.h>     // for uint32_t, int32_t, uint8_t
+// cinttypes needed by some CentOS systems.
+#include <cinttypes> // for uint32_t, int32_t, uint8_t
 }
 
 #include "Config.hpp"          // for Config
@@ -21,9 +20,8 @@ extern "C" {
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for kotekanLogging
 
-#include <exception> // for exception
-#include <string>    // for string, allocator
-#include <vector>    // for vector
+#include <string> // for string, allocator, basic_string
+#include <vector> // for vector
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port

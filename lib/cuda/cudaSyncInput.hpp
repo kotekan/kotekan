@@ -1,9 +1,12 @@
 #ifndef KOTEKAN_CUDA_SYNC_INPUT_HPP
 #define KOTEKAN_CUDA_SYNC_INPUT_HPP
 
-#include "cudaSyncStream.hpp"
+#include "Config.hpp"              // for Config
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaSyncStream.hpp"      // for cudaSyncStream
 
-#include <vector>
+#include <string> // for string
 
 /**
  * @class cudaSyncInput

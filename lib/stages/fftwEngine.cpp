@@ -1,7 +1,14 @@
 #include "fftwEngine.hpp"
 
-#include "Config.hpp"
-#include "StageFactory.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "kotekanLogging.hpp" // for DEBUG
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <stdint.h>   // for int16_t
+#include <string.h>   // for memcpy
 
 using kotekan::bufferContainer;
 using kotekan::Config;

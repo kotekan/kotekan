@@ -1,7 +1,15 @@
 #ifndef CUDA_OUTPUT_DATA_H
 #define CUDA_OUTPUT_DATA_H
 
-#include "cudaCommand.hpp"
+#include "Config.hpp"              // for Config
+#include "buffer.hpp"              // for Buffer
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaPipelineState, cudaCommand
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for cudaEvent_t
+
+#include <string> // for string, basic_string
+#include <vector> // for vector
 
 /**
  * @class cudaOutputData

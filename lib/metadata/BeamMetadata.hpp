@@ -1,11 +1,14 @@
 #ifndef BEAMMETADATA_HPP
 #define BEAMMETADATA_HPP
 
-#include "Telescope.hpp"
-#include "buffer.hpp"
-#include "chimeMetadata.hpp"
-#include "dataset.hpp" // for dset_id_t
-#include "metadata.hpp"
+#include "Telescope.hpp"      // for stream_t
+#include "datasetManager.hpp" // for dset_id_t
+#include "metadata.hpp"       // for metadataObject
+
+#include "json.hpp" // for json
+
+#include <stdint.h> // for uint32_t, int64_t
+#include <time.h>   // for size_t, timespec
 
 class BeamMetadata : public metadataObject {
 public:

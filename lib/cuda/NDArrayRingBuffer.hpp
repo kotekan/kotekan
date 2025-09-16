@@ -1,33 +1,41 @@
 #ifndef NDARRAYRINGBUFFER_HPP
 #define NDARRAYRINGBUFFER_HPP
 
-#include <DataType.hpp>
-#include <NDArray.hpp>
-#include <Symbol.hpp>
-#include <algorithm>
-#include <array>
-#include <buffer.hpp>
-#include <cassert>
-#include <chordMetadata.hpp>
-#include <cmath>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <cudaCommand.hpp>
-#include <cudaDeviceInterface.hpp>
-#include <cudaUtils.hpp>
-#include <div.hpp>
-#include <functional>
-#include <gpuDeviceInterface.hpp>
-#include <iomanip>
-#include <kotekanLogging.hpp>
-#include <ostream>
-#include <ringbuffer.hpp>
-#include <sstream>
-#include <string>
-#include <type_traits>
-#include <utility>
-#include <vector>
+#include "bufferContainer.hpp" // for bufferContainer
+#include "cuda_runtime_api.h"  // for cudaMemcpy2D, cudaMemset2DAsync
+#include "driver_types.h"      // for CUstream_st, cudaMemcpyKind
+#include "metadata.hpp"        // for metadataObject
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <DataType.hpp>            // for uint_from_element_bits, operator<<, GetType_t, isfinite
+#include <NDArray.hpp>             // for NDArray
+#include <Symbol.hpp>              // for Symbol, strings_to_symbols, operator==
+#include <algorithm>               // for find_if
+#include <array>                   // for array
+#include <buffer.hpp>              // for GenericBuffer
+#include <cassert>                 // for assert
+#include <chordMetadata.hpp>       // for chordMetadata, get_chord_metadata
+#include <cmath>                   // for isfinite
+#include <cstddef>                 // for ptrdiff_t, size_t
+#include <cstdint>                 // for uint8_t
+#include <cstring>                 // for memcmp, memcpy, memset
+#include <cudaCommand.hpp>         // for cudaCommand
+#include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
+#include <cudaUtils.hpp>           // for CHECK_CUDA_ERROR
+#include <div.hpp>                 // for mod, div_noremainder
+#include <functional>              // for function
+#include <iomanip>                 // for setfill, operator<<, setw
+#include <iostream>                // for cerr
+#include <kotekanLogging.hpp>      // for FATAL_ERROR, kotekanLogging, ERROR
+#include <memory>                  // for shared_ptr, __shared_ptr_access
+#include <optional>                // for optional
+#include <ringbuffer.hpp>          // for RingBuffer
+#include <sstream>                 // for basic_ostream, operator<<, ostream, basic_ostringstream
+#include <string>                  // for basic_string, char_traits, string, operator+, allocator
+#include <type_traits>             // for is_floating_point_v, is_same_v
+#include <utility>                 // for pair
+#include <vector>                  // for vector
 
 using kotekan::div_noremainder;
 using kotekan::mod;

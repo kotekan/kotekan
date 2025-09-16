@@ -1,9 +1,10 @@
 #include "Telescope.hpp"
 
-#include "chimeMetadata.hpp" // for get_stream_id, stream_t
+#include "chimeMetadata.hpp" // for get_stream_id
 
-#include <exception> // for exception
-#include <stdexcept> // for invalid_argument, runtime_error
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <stdexcept> // for invalid_argument
 
 
 Telescope::Telescope(const std::string& log_level) {

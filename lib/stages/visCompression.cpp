@@ -1,37 +1,32 @@
 #include "visCompression.hpp"
 
 #include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for Hash, operator<
+#include "Hash.hpp"              // for operator<
 #include "Stack.hpp"             // for stack_chime_in_cyl, stack_diagonal
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for wait_for_full_frame, mark_frame_empty, mark_frame_full
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for dset_id_t, state_id_t, datasetManager
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t
 #include "datasetState.hpp"      // for stackState, prodState, inputState
 #include "kotekanLogging.hpp"    // for INFO, DEBUG, ERROR, FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Gauge, Counter, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
-#include "visUtil.hpp"           // for current_time, modulo, rstack_ctype, cfloat, frameID
+#include "visBuffer.hpp"         // for VisFrameView, VisField
+#include "visUtil.hpp"           // for modulo, current_time, rstack_ctype, frameID, prod_ctype
 
+#include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>    // for copy, max, fill, copy_backward, equal
-#include <atomic>       // for atomic_bool
-#include <complex>      // for complex, norm
-#include <cxxabi.h>     // for __forced_unwind
-#include <deque>        // for deque
-#include <exception>    // for exception
-#include <functional>   // for _Bind_helper<>::type, bind, function, placeholders
-#include <future>       // for async, future
-#include <iterator>     // for begin, end
-#include <memory>       // for allocator_traits<>::value_type
-#include <pthread.h>    // for pthread_setaffinity_np
-#include <regex>        // for match_results<>::_Base_type
-#include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>    // for invalid_argument, out_of_range, runtime_error
-#include <system_error> // for system_error
-#include <tuple>        // for tuple, tie
-#include <vector>       // for vector, __alloc_traits<>::value_type
+#include <algorithm>  // for copy, max, fill, equal
+#include <complex>    // for complex, conj, norm
+#include <functional> // for function, bind, placeholders
+#include <future>     // for async, future
+#include <iterator>   // for begin, end
+#include <pthread.h>  // for pthread_setaffinity_np
+#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <set>        // for set
+#include <stdexcept>  // for invalid_argument
+#include <tuple>      // for tuple, tie
+#include <vector>     // for vector
 
 
 using namespace std::placeholders;

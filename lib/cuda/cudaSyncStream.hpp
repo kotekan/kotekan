@@ -1,9 +1,15 @@
 #ifndef KOTEKAN_CUDA_SYNC_STREAM_HPP
 #define KOTEKAN_CUDA_SYNC_STREAM_HPP
 
-#include "cudaCommand.hpp"
+#include "Config.hpp"              // for Config
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for cudaEvent_t
 
-#include <vector>
+#include <stdint.h> // for int32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class cudaSyncStream

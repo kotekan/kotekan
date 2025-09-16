@@ -1,7 +1,9 @@
 #include "hdf5Files.hpp"
 
-#include <cassert>
-#include <cstdint>
+#include "DataType.hpp" // for DataType, float16_t
+
+#include <cassert> // for assert
+#include <cstdint> // for uint8_t, int16_t, int32_t, int64_t, int8_t, uint16_t, uint32_t
 
 namespace hdf5 {
 
