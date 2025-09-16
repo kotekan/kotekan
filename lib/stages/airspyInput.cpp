@@ -7,7 +7,6 @@
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <functional> // for bind, function
-#include <signal.h>   // for size_t
 #include <stdint.h>   // for uint32_t, uint8_t
 #include <stdlib.h>   // for malloc
 #include <string.h>   // for memcpy

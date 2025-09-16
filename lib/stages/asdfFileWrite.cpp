@@ -13,6 +13,7 @@
 #include <N2Metadata.hpp>          // for N2Metadata, metadata_is_N2
 #include <Stage.hpp>               // for Stage
 #include <StageFactory.hpp>        // for REGISTER_KOTEKAN_STAGE
+#include <algorithm>               // for max
 #include <array>                   // for array
 #include <asdf/asdf.hxx>           // for asdf
 #include <asdf/byteorder.hxx>      // for host_byteorder
@@ -25,9 +26,9 @@
 #include <atomic>                  // for __atomic_base, atomic
 #include <cassert>                 // for assert
 #include <chordMetadata.hpp>       // for chordMetadata, metadata_is_chord, get_chord_metadata
-#include <cstddef>                 // for ptrdiff_t
+#include <cstddef>                 // for ptrdiff_t, size_t
 #include <cstdint>                 // for int64_t, uint8_t, uint32_t
-#include <cstring>                 // for memcpy, size_t, strerror
+#include <cstring>                 // for memcpy, strerror
 #include <errno.h>                 // for errno, EEXIST, EISDIR
 #include <errors.h>                // for exit_kotekan, ReturnCode
 #include <functional>              // for function

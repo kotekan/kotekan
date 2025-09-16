@@ -14,6 +14,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
+#include <algorithm>         // for max
 #include <array>             // for array
 #include <chordMetadata.hpp> // for chordMetadata
 #include <cstddef>           // for ptrdiff_t

@@ -1,7 +1,7 @@
 #include "cudaFRBBeamReformer.hpp"
 
 #include "buffer.hpp"              // for GenericBuffer
-#include "cublas_v2.h"             // for cublasCreate, cublasDestroy, cublasSetStream
+#include "cublas_v2.h"             // for cublasGetStatusString, CUBLAS_STATUS_SUCCESS, cublasH...
 #include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "gpuCommand.hpp"          // for gpuCommandType
@@ -10,6 +10,7 @@
 #include "ringbuffer.hpp"          // for RingBuffer
 
 #include <DataType.hpp>      // for float16_t, DataType
+#include <algorithm>         // for max
 #include <assert.h>          // for assert
 #include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, metadata_is_chord
 #include <cstdlib>           // for abort
@@ -18,7 +19,7 @@
 #include <memory>            // for shared_ptr, __shared_ptr_access
 #include <optional>          // for optional
 #include <tuple>             // for tuple, make_tuple
-#include <vector>            // for allocator, vector
+#include <vector>            // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

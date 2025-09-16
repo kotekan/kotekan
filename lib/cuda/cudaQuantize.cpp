@@ -10,11 +10,12 @@
 #include "metadata.hpp"            // for metadataObject
 
 #include <DataType.hpp>      // for uint4x2_t, float16_t
+#include <algorithm>         // for max
 #include <array>             // for array
 #include <assert.h>          // for assert
 #include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, metadata_is_chord
 #include <cstddef>           // for size_t, ptrdiff_t
-#include <cstdint>           // for int32_t, int64_t
+#include <cstdint>           // for int64_t
 #include <cudaUtils.hpp>     // for CHECK_CUDA_ERROR
 #include <div.hpp>           // for div_noremainder
 #include <memory>            // for shared_ptr, __shared_ptr_access
