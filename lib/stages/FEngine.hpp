@@ -1,16 +1,20 @@
 #ifndef F_ENGINE_STAGE_H
 #define F_ENGINE_STAGE_H
 
-#include "Config.hpp"                      // for Config
-#include "Stage.hpp"                       // for Stage
-#include "buffer.hpp"                      // for Buffer
-#include "bufferContainer.hpp"             // for bufferContainer
-#include "nvtx3/nvtxDetail/nvtxImplCore.h" // for nvtxMarkA, nvtxRangePop, nvtxRangePushA
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+// Block IWYU from suggesting NVTX3’s private impl header.
+// (Use both forms to be safe.)
+// IWYU pragma: no_include "nvtx3/nvtxDetail/nvtxImplCore.h"
+// IWYU pragma: no_include <nvtx3/nvtxDetail/nvtxImplCore.h>
 
-#include <array>   // for array
-#include <cstdint> // for int64_t
-#include <string>  // for string, basic_string
-#include <vector>  // for vector
+#include <array>              // for array
+#include <cstdint>            // for int64_t
+#include <nvtx3/nvToolsExt.h> // IWYU pragma: keep
+#include <string>             // for string, basic_string
+#include <vector>             // for vector
 
 /**
  * @class FEngine
