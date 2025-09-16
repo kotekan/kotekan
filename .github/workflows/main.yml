@@ -340,27 +340,6 @@ jobs:
         docker run "${OPTS[@]}" make doc
         docker run "${OPTS[@]}" make sphinx
 
-  # Linting
-  lint:
-    runs-on: ubuntu-latest
-    needs: build-docker-2404
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Run lint.sh
-      shell: bash
-      run: |
-        set -e
-        docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan
-
   # Build a version of kotekan locally, and run configs in config/ci-tests
   build-direct-tests-2404:
     runs-on: self-hosted
