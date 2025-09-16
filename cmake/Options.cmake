@@ -4,6 +4,7 @@
 # the documentation (Sphinx CMake option pages), and the version metadata
 # (lib/version/version.c.in).
 
+# _ktk_option: declare an option and reuse cached value when present
 function(_ktk_option name description default_value)
     get_property(
         _ktk_cache_has
