@@ -1,7 +1,16 @@
 #include "airspyInput.hpp"
 
-#include "Config.hpp"
-#include "StageFactory.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "kotekanLogging.hpp" // for ERROR, INFO, DEBUG, FATAL_ERROR
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <signal.h>   // for size_t
+#include <stdint.h>   // for uint32_t, uint8_t
+#include <stdlib.h>   // for malloc
+#include <string.h>   // for memcpy
 
 using kotekan::bufferContainer;
 using kotekan::Config;

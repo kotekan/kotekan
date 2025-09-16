@@ -7,23 +7,19 @@
 #ifndef CUDA_COMMAND_H
 #define CUDA_COMMAND_H
 
-#include "Config.hpp"
-#include "assert.h"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "cudaDeviceInterface.hpp"
-#include "cudaEventContainer.hpp"
-#include "cudaUtils.hpp"
-#include "errors.h"
-#include "factory.hpp"
-#include "gpuCommand.hpp"
-#include "kotekanLogging.hpp"
+#include "Config.hpp"              // for Config
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for cudaEvent_t, CUevent_st
+#include "factory.hpp"             // for Factory, CREATE_FACTORY, REGISTER_NAMED_TYPE_WITH_FAC...
+#include "gpuCommand.hpp"          // for gpuCommand, gpuCommandState, gpuCommandType
+#include "kotekanLogging.hpp"      // for kotekanLogging
 
-#include <cuda.h>
-#include <signal.h>
-#include <stdio.h>
-#include <string>
-#include <vector>
+#include <map>      // for map
+#include <memory>   // for shared_ptr
+#include <stdint.h> // for int64_t, int32_t
+#include <string>   // for string, allocator, basic_string
+#include <vector>   // for vector
 
 class cudaPipelineState : public kotekan::kotekanLogging {
 public:

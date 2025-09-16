@@ -10,14 +10,15 @@
 #include "Config.hpp"          // for Config
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for kotekanLogging
-#include "kotekanTrackers.hpp" // for kotekanTrackers
+#include "visUtil.hpp"         // for StatTracker
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, format_string
 
-#include <memory>
-#include <mutex>    // for lock, mutex
-#include <stdint.h> // for int32_t
-#include <string>   // for string, allocator
+#include <memory>   // for allocator, shared_ptr
+#include <stdint.h> // for int32_t, int64_t
+#include <string>   // for string, basic_string
+#include <tuple>    // for tuple
+#include <vector>   // for vector
 
 class gpuDeviceInterface;
 

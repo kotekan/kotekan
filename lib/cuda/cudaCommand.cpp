@@ -1,8 +1,13 @@
 #include "cudaCommand.hpp"
 
-#include <cuda.h>
-#include <nvPTXCompiler.h>
-#include <nvrtc.h>
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaEventCreate, cudaEventDestroy, cudaEventRecord, cudaEv...
+#include "visUtil.hpp"        // for StatTracker
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <stdexcept> // for runtime_error
+#include <utility>   // for pair
 
 using kotekan::bufferContainer;
 using kotekan::Config;

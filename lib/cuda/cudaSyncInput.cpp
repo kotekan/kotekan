@@ -1,5 +1,10 @@
 #include "cudaSyncInput.hpp"
 
+#include "cudaCommand.hpp" // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascudaCommand
+#include "gpuCommand.hpp"  // for gpuCommandType
+
+#include <vector> // for allocator, vector
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 

@@ -1,19 +1,28 @@
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
-#include <NDArrayRingBuffer.hpp>
-#include <cassert>
-#include <chordMetadata.hpp>
-#include <cstddef>
-#include <cstring>
-#include <cudaCommand.hpp>
-#include <div.hpp>
-#include <memory>
-#include <metadata.hpp>
-#include <n2k.hpp>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <vector>
+#include "Config.hpp"              // for Config
+#include "NDArray.hpp"             // for NDArray
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for DEBUG
+#include "n2k/rfi_kernels.hpp"     // for SkKernel
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <DataType.hpp>          // for uint1x8_t
+#include <NDArrayBuffer.hpp>     // for NDArrayBuffer, buffer_type_t
+#include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include <algorithm>             // for min
+#include <array>                 // for array
+#include <cstddef>               // for ptrdiff_t
+#include <cstdint>               // for int8_t, uint64_t, uint8_t
+#include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include <div.hpp>               // for div_noremainder, round_down
+#include <functional>            // for function
+#include <memory>                // for allocator, shared_ptr
+#include <string>                // for basic_string, string
+#include <sys/types.h>           // for uint, ulong
+#include <vector>                // for vector
 
 using kotekan::div_noremainder;
 using kotekan::round_down;

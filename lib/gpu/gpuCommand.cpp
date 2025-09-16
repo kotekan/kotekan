@@ -1,13 +1,11 @@
 #include "gpuCommand.hpp"
 
-#include "Config.hpp" // for Config
+#include "Config.hpp"          // for Config
+#include "kotekanTrackers.hpp" // for KotekanTrackers
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, format_string
 
-#include <assert.h>  // for assert
-#include <exception> // for exception
-#include <regex>     // for match_results<>::_Base_type
-#include <stdexcept> // for runtime_error
+#include <algorithm> // for max
 #include <vector>    // for vector
 
 using kotekan::bufferContainer;

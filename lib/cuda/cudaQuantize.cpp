@@ -1,14 +1,27 @@
 #include "cudaQuantize.hpp"
 
-#include <DataType.hpp>
-#include <array>
-#include <chordMetadata.hpp>
-#include <cmath>
-#include <cstdint>
-#include <cudaUtils.hpp>
-#include <div.hpp>
-#include <string>
-#include <vector>
+#include "NDArray.hpp"             // for NDArray
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
+#include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cuda_fp16.h"             // for __half2, __half
+#include "cuda_runtime_api.h"      // for cudaGetLastError, cudaMemcpy
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "metadata.hpp"            // for metadataObject
+
+#include <DataType.hpp>      // for uint4x2_t, float16_t
+#include <array>             // for array
+#include <assert.h>          // for assert
+#include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, metadata_is_chord
+#include <cstddef>           // for size_t, ptrdiff_t
+#include <cstdint>           // for int32_t, int64_t
+#include <cudaUtils.hpp>     // for CHECK_CUDA_ERROR
+#include <div.hpp>           // for div_noremainder
+#include <memory>            // for shared_ptr, __shared_ptr_access
+#include <stdexcept>         // for runtime_error
+#include <string>            // for allocator, basic_string, string, operator+
+#include <tuple>             // for tuple, make_tuple
+#include <vector>            // for vector
 
 void launch_quantize_kernel(cudaStream_t stream, int nframes, const __half2* in_base,
                             __half2* outf_base, unsigned int* outi_base, const int* index_array);

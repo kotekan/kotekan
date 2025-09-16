@@ -1,5 +1,18 @@
 #include "cudaInputData.hpp"
 
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaHostRegister, cudaHostUnregister
+#include "gpuCommand.hpp"     // for gpuCommandType
+#include "metadata.hpp"       // for metadataObject
+
+#include "fmt.hpp" // for format, format_string
+
+#include <algorithm>   // for max
+#include <memory>      // for allocator, shared_ptr
+#include <stdint.h>    // for uint8_t
+#include <sys/types.h> // for uint, size_t
+#include <tuple>       // for tuple, make_tuple
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 

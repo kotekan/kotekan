@@ -1,5 +1,8 @@
 #include "gdalFiles.hpp"
 
+#include "DataType.hpp" // for DataType
+#include "gdal.h"       // for GDT_Byte, GDT_UInt16, GDALDataType, GDT_Float32, GDT_Float64
+
 namespace gdal {
 
 GDALDataType chord2gdal(const kotekan::DataType type) {

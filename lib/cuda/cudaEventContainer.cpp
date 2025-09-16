@@ -1,9 +1,7 @@
 #include "cudaEventContainer.hpp"
 
-#include "buffer.hpp"
-#include "errors.h"
-
-#include <unistd.h>
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR_NON_OO
+#include "cuda_runtime_api.h" // for cudaEventSynchronize
 
 void cudaEventContainer::set(void* sig) {
     signal = (cudaEvent_t)sig;

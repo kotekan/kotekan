@@ -6,24 +6,36 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
-#include <NDArrayRingBuffer.hpp>
-#include <algorithm>
-#include <array>
-#include <bufferContainer.hpp>
-#include <cassert>
-#include <chordMetadata.hpp>
-#include <cstring>
-#include <cudaCommand.hpp>
-#include <cudaDeviceInterface.hpp>
-#include <div.hpp>
-#include <fmt.hpp>
-#include <limits>
-#include <ringbuffer.hpp>
-#include <stdexcept>
-#include <string>
-#include <vector>
+#include "Config.hpp"         // for Config
+#include "NDArray.hpp"        // for NDArray
+#include "cuda.h"             // for cuFuncSetAttribute, cuGetErrorString, cuLaunchKernel
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR, CHECK_CU_ERROR
+#include "cuda_fp16.h"        // for __half
+#include "cuda_runtime_api.h" // for cudaHostRegister, cudaMemcpyAsync, cudaMemsetAsync
+#include "driver_types.h"     // for CUstream_st, cudaEvent_t, CUevent_st, cudaError, cuda...
+#include "gpuCommand.hpp"     // for gpuCommandType
+#include "kotekanLogging.hpp" // for ERROR
+
+#include <DataType.hpp>            // for DataType, type_total_bytes, GetType_t, int4x2_swapped...
+#include <NDArrayBuffer.hpp>       // for NDArrayBuffer, buffer_type_t
+#include <NDArrayRingBuffer.hpp>   // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include <algorithm>               // for max_element, min
+#include <array>                   // for array
+#include <bufferContainer.hpp>     // for bufferContainer
+#include <cassert>                 // for assert
+#include <chordMetadata.hpp>       // for chordMetadata
+#include <cstddef>                 // for ptrdiff_t, size_t, NULL
+#include <cstdint>                 // for int64_t, int32_t, uint32_t, uint8_t
+#include <cudaCommand.hpp>         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
+#include <div.hpp>                 // for mod, round_down, div, div_noremainder
+#include <fmt.hpp>                 // for compile_string_to_view
+#include <functional>              // for function
+#include <limits>                  // for numeric_limits
+#include <map>                     // for map
+#include <memory>                  // for shared_ptr, __shared_ptr_access
+#include <string>                  // for basic_string, allocator, string, operator+, operator<
+#include <vector>                  // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

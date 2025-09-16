@@ -2,24 +2,21 @@
 
 #include "Config.hpp"         // for Config
 #include "HFBFrameView.hpp"   // for HFBFrameView
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"         // for wait_for_full_frame, allocate_new_metadata_object, mark_fr...
-#include "kotekanLogging.hpp" // for DEBUG
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"         // for Buffer
+#include "kotekanLogging.hpp" // for FATAL_ERROR, DEBUG
 #include "truncate.hpp"       // for bit_truncate_float
-#include "visUtil.hpp"        // for cfloat
+#include "visUtil.hpp"        // for frameID, modulo
 
+#include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <atomic>      // for atomic_bool
-#include <cmath>       // for abs, sqrt
-#include <cstdint>     // for int32_t
+#include <cmath>       // for sqrt, abs
+#include <cstdint>     // for int32_t, uint32_t
 #include <cstring>     // for memset, size_t
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function
-#include <immintrin.h> // for _mm256_broadcast_ss, _mm256_div_ps, _mm256_loadu_ps, _mm25...
+#include <functional>  // for bind, function
+#include <immintrin.h> // for __m256, _mm256_div_ps, _mm256_loadu_ps, _mm256_set1_ps
 #include <mm_malloc.h> // for _mm_free, _mm_malloc
-#include <regex>       // for match_results<>::_Base_type
-#include <vector>      // for vector
 
 
 using kotekan::bufferContainer;

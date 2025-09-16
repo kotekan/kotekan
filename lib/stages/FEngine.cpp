@@ -12,9 +12,9 @@
 #include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM, CHO...
 #include <cmath>             // for cos, sin, M_PI
 #include <complex>           // for complex
-#include <cstddef>           // for ptrdiff_t
+#include <cstddef>           // for ptrdiff_t, size_t
 #include <cstdint>           // for int64_t, uint8_t, uint64_t, int32_t, int8_t
-#include <cstdio>            // for snprintf, fprintf, size_t, stderr
+#include <cstdio>            // for snprintf, fprintf, stderr
 #include <cstring>           // for strncpy, memset
 #include <fstream>           // for basic_ifstream, basic_istream::seekg, basic_istream::read
 #include <functional>        // for function
@@ -23,10 +23,6 @@
 #include <memory>            // for shared_ptr, __shared_ptr_access
 #include <string>            // for allocator, basic_string, string
 #include <vector>            // for vector
-
-#ifdef WITH_CUDA
-#include <nvtx3/nvToolsExt.h>
-#endif
 
 #if !KOTEKAN_FLOAT16
 #warning "The F-Engine simulator requires float16 support"

@@ -1,19 +1,16 @@
 #ifndef F_ENGINE_STAGE_H
 #define F_ENGINE_STAGE_H
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
+#include "Config.hpp"                      // for Config
+#include "Stage.hpp"                       // for Stage
+#include "buffer.hpp"                      // for Buffer
+#include "bufferContainer.hpp"             // for bufferContainer
+#include "nvtx3/nvtxDetail/nvtxImplCore.h" // for nvtxMarkA, nvtxRangePop, nvtxRangePushA
 
 #include <array>   // for array
 #include <cstdint> // for int64_t
 #include <string>  // for string, basic_string
 #include <vector>  // for vector
-
-#ifdef WITH_CUDA
-#include <nvtx3/nvToolsExt.h>
-#endif
 
 /**
  * @class FEngine

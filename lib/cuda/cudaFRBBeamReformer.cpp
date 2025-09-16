@@ -1,14 +1,24 @@
 #include "cudaFRBBeamReformer.hpp"
 
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
-#include <chordMetadata.hpp>
-#include <cmath>
-#include <cudaUtils.hpp>
-#include <div.hpp>
-#include <fmt.hpp>
-#include <vector>
-#include <visUtil.hpp>
+#include "buffer.hpp"              // for GenericBuffer
+#include "cublas_v2.h"             // for cublasCreate, cublasDestroy, cublasSetStream
+#include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for DEBUG, ERROR
+#include "metadata.hpp"            // for metadataObject
+#include "ringbuffer.hpp"          // for RingBuffer
+
+#include <DataType.hpp>      // for float16_t, DataType
+#include <assert.h>          // for assert
+#include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, metadata_is_chord
+#include <cstdlib>           // for abort
+#include <div.hpp>           // for div_noremainder, mod
+#include <fmt.hpp>           // for compile_string_to_view
+#include <memory>            // for shared_ptr, __shared_ptr_access
+#include <optional>          // for optional
+#include <tuple>             // for tuple, make_tuple
+#include <vector>            // for allocator, vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

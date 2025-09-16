@@ -7,19 +7,18 @@
 #ifndef AIRSPY_INPUT_HPP
 #define AIRSPY_INPUT_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.hpp"
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include <airspy.h>
-#include <signal.h>
-#include <unistd.h>
+#include <airspy.h>    // for airspy_transfer_t
+#include <pthread.h>   // for pthread_mutex_t
+#include <sys/types.h> // for uint
 
 #define BYTES_PER_SAMPLE 2
 
-#include <string>
+#include <string> // for string
 
 /**
  * @class airspyInput
