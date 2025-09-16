@@ -7,9 +7,10 @@
 #ifndef INTEGRATE_POWER_STREAM_H
 #define INTEGRATE_POWER_STREAM_H
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "bufferContainer.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
 #include <string> // for string
 

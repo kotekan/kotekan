@@ -1,12 +1,13 @@
 #ifndef GDALFILES_HPP
 #define GDALFILES_HPP
 
-#include <DataType.hpp>
-#include <array>
-#include <complex>
-#include <gdal.h>
-#include <type_traits>
-#include <vector>
+#include <DataType.hpp> // for KOTEKAN_FLOAT16, float16_t, DataType
+#include <array>        // for array
+#include <complex>      // for complex
+#include <gdal.h>       // for GDALDataType, GDT_UInt32, GDT_Byte, GDT_Int32, GDT_Int64, GDT_Int8
+#include <string>       // for string
+#include <type_traits>  // for integral_constant, is_signed_v, remove_cv_t, remove_reference_t
+#include <vector>       // for vector
 
 namespace gdal {
 
@@ -19,6 +20,7 @@ GDALDataType chord2gdal(const kotekan::DataType type);
 
 template<typename T>
 struct gdal_datatype;
+
 template<>
 struct gdal_datatype<unsigned char> : std::integral_constant<GDALDataType, GDT_Byte> {};
 template<>

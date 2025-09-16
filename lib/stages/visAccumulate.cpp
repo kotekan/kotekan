@@ -1,44 +1,41 @@
 #include "visAccumulate.hpp"
 
 #include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for operator!=
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Hash.hpp"              // for operator!=, Hash
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for register_producer, Buffer, allocate_new_metadata_object
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chimeMetadata.hpp"     // for chimeMetadata, get_dataset_id, get_fpga_seq_num, get_lo...
 #include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for state_id_t, dset_id_t, datasetManager
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
 #include "datasetState.hpp"      // for eigenvalueState, freqState, gatingState, inputState
 #include "factory.hpp"           // for FACTORY
-#include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, logLevel, DEBUG
-#include "metadata.hpp"          // for metadataContainer
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, DEBUG, logLevel, WARN
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
 #include "version.h"             // for get_git_commit_hash
 #include "visBuffer.hpp"         // for VisFrameView
-#include "visUtil.hpp"           // for prod_ctype, frameID, modulo, input_ctype, operator+
+#include "visUtil.hpp"           // for frameID, prod_ctype, input_ctype, modulo, freq_ctype
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span<>::iterator, span
-#include "json.hpp"     // for json, basic_json, iteration_proxy_value, basic_json<>::...
+#include "fmt.hpp"      // for compile_string_to_view, format, fmt, format_string
+#include "gsl-lite.hpp" // for span
+#include "json.hpp"     // for basic_json, iter_impl, iteration_proxy_value, json
 
-#include <algorithm>  // for copy, max, fill, copy_backward, equal, transform
+#include <algorithm>  // for max, fill, copy, equal, transform
 #include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
 #include <cmath>      // for pow
-#include <complex>    // for operator*, complex
+#include <complex>    // for conj, operator*, complex
 #include <cstring>    // for memcpy
 #include <exception>  // for exception
 #include <iterator>   // for back_insert_iterator, begin, end, back_inserter
-#include <mutex>      // for lock_guard, mutex
+#include <mutex>      // for mutex, lock_guard
 #include <numeric>    // for iota
-#include <optional>   // for optional
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error, invalid_argument
+#include <optional>   // for optional, nullopt
+#include <stdexcept>  // for invalid_argument, runtime_error
 #include <sys/time.h> // for TIMEVAL_TO_TIMESPEC
 #include <time.h>     // for size_t, timespec
 #include <tuple>      // for get
-#include <vector>     // for vector, vector<>::iterator, __alloc_traits<>::value_type
+#include <vector>     // for vector
 
 
 using namespace std::placeholders;
@@ -265,7 +262,6 @@ void visAccumulate::main_thread() {
     std::vector<std::reference_wrapper<internalState>> enabled_gated_datasets;
 
     uint32_t last_frame_count = 0;
-    uint32_t frames_in_this_cycle = 0;
 
     // Temporary arrays for storing intermediates
     std::vector<int32_t> vis_even(2 * num_prod_gpu);
@@ -349,7 +345,6 @@ void visAccumulate::main_thread() {
             }
 
             init = false;
-            frames_in_this_cycle = 0;
         }
 
         // We've started accumulating a new frame. Initialise the output and
@@ -455,7 +450,6 @@ void visAccumulate::main_thread() {
         // Move the input buffer on one step
         in_buf->mark_frame_empty(unique_name, in_frame_id++);
         last_frame_count = frame_count;
-        frames_in_this_cycle++;
     }
 }
 

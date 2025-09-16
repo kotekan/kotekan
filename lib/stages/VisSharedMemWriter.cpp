@@ -1,33 +1,32 @@
 #include "VisSharedMemWriter.hpp"
 
-#include "Hash.hpp"              // for operator==, operator<, Hash
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "datasetManager.hpp"    // for dset_id_t, datasetManager, fingerprint_t
+#include "Hash.hpp"              // for operator<, operator==, Hash
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "datasetManager.hpp"    // for datasetManager
 #include "datasetState.hpp"      // for freqState, _factory_aliasdatasetState
 #include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO, WARN
 #include "prometheusMetrics.hpp" // for Counter, Gauge, Metrics, MetricFamily
 #include "visBuffer.hpp"         // for VisFrameView, VisMetadata
-#include "visUtil.hpp"           // for time_ctype, frameID, operator<, modulo, current_time
+#include "visUtil.hpp"           // for time_ctype, frameID, modulo, operator<, current_time
 
-#include <algorithm>   // for copy, fill_n, copy_backward, equal, max
-#include <atomic>      // for atomic_bool
-#include <deque>       // for deque
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>   // for copy, fill_n, equal, max
+#include <assert.h>    // for assert
+#include <cstring>     // for strerror, memcpy, memset
 #include <errno.h>     // for errno, ENOENT
-#include <exception>   // for exception
 #include <fcntl.h>     // for O_CREAT, O_EXCL, O_RDWR
-#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <functional>  // for bind, function
 #include <iterator>    // for reverse_iterator
 #include <map>         // for map, _Rb_tree_iterator
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for runtime_error, out_of_range
-#include <stdio.h>     // for size_t, remove
-#include <string.h>    // for strerror, memcpy, memset
+#include <memory>      // for __shared_ptr_access, shared_ptr
+#include <stdexcept>   // for runtime_error
+#include <stdio.h>     // for remove
 #include <sys/mman.h>  // for mmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT...
 #include <sys/stat.h>  // for S_IRUSR, S_IWUSR
-#include <sys/time.h>  // for CLOCK_REALTIME
 #include <sys/types.h> // for uint
-#include <time.h>      // for clock_gettime, timespec
+#include <time.h>      // for clock_gettime, timespec, CLOCK_REALTIME
 #include <tuple>       // for get
 #include <unistd.h>    // for access, close, ftruncate, F_OK
 #include <utility>     // for pair

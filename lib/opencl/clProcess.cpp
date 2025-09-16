@@ -78,7 +78,7 @@ void clProcess::queue_commands(int gpu_frame_counter) {
     DEBUG("Commands executed.");
 }
 
-void clProcess::register_host_memory(struct Buffer* host_buffer) {
+void clProcess::register_host_memory(Buffer* host_buffer) {
     // Register the host memory in in_buf with the OpenCL run time.
     for (int i = 0; i < host_buffer->num_frames; i++) {
         cl_int err;

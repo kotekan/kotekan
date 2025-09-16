@@ -16,11 +16,10 @@
 #if defined WITH_CUDA
 // If we use CUDA, use its float16 type
 #include <cuda_fp16.h>
+
 using float16_t = __half;
 #define KOTEKAN_FLOAT16 1
 #else
-// If we don't use CUDA, see whether the compiler supports it
-#include <float.h>
 #if defined __FLT16_MAX__
 using float16_t = _Float16;
 #define KOTEKAN_FLOAT16 1

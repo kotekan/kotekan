@@ -3,26 +3,25 @@
 #include "Config.hpp"         // for Config
 #include "kotekanLogging.hpp" // for ERROR_NON_OO, WARN_NON_OO, INFO_NON_OO, DEBUG_NON_OO
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 
 #include <algorithm>               // for max
-#include <arpa/inet.h>             // for inet_pton, sockaddr_in6, sockaddr_in
+#include <arpa/inet.h>             // for ntohs, inet_pton, sockaddr_in6, sockaddr_in
 #include <assert.h>                // for assert
-#include <cstdint>                 // for int32_t
-#include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_free
+#include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_iovec
 #include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
 #include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
-#include <event2/keyvalq_struct.h> // for evkeyvalq, evkeyval, evkeyval::(anonymous)
+#include <event2/keyvalq_struct.h> // for evkeyvalq, evkeyval
 #include <event2/thread.h>         // for evthread_use_pthreads
 #include <evhttp.h>                // for evhttp_request
 #include <exception>               // for exception
 #include <mutex>                   // for unique_lock
-#include <netinet/in.h>            // for sockaddr_in, ntohs
+#include <netinet/in.h>            // for sockaddr_in
 #include <pthread.h>               // for pthread_setaffinity_np, pthread_setname_np
 #include <sched.h>                 // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdexcept>               // for runtime_error
-#include <stdlib.h>                // for exit, free, malloc, size_t
-#include <string>                  // for string, basic_string, allocator, operator!=, operator+
+#include <stdlib.h>                // for exit, free, malloc
+#include <string>                  // for basic_string, string, allocator, operator!=, operator<
 #include <sys/socket.h>            // for getsockname, socklen_t
 #include <sys/time.h>              // for timeval
 #include <unistd.h>                // for close
@@ -60,7 +59,7 @@ restServer::~restServer() {
     }
 }
 
-// Validation function that accepts both IPs and hostnames
+// Validation function that accepts both IPs and 'localhost'
 bool restServer::isValidAddress(const std::string& address) const {
     // First check if it's a valid IPv4 address
     struct sockaddr_in sa4;
@@ -68,26 +67,12 @@ bool restServer::isValidAddress(const std::string& address) const {
         return true;
     }
 
-    // Check if it's a valid IPv6 address
-    struct sockaddr_in6 sa6;
-    if (inet_pton(AF_INET6, address.c_str(), &(sa6.sin6_addr)) == 1) {
+    // For hostnames, we will only allow localhost for the rest server.
+    if (address == "localhost") {
         return true;
     }
 
-    // For hostnames, we can do basic validation or just let getaddrinfo handle it
-    // Basic hostname validation: non-empty, reasonable length, valid characters
-    if (address.empty() || address.length() > 253) {
-        return false;
-    }
-
-    // Allow alphanumeric characters, dots, hyphens, and underscores
-    for (char c : address) {
-        if (!std::isalnum(c) && c != '.' && c != '-' && c != '_') {
-            return false;
-        }
-    }
-
-    return true;
+    return false;
 }
 
 bool restServer::canBindToAddress(const std::string& address, const u_short port) const {

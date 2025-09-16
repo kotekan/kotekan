@@ -1,8 +1,8 @@
 #include "bufferSend.hpp"
 
 #include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for Buffer, get_num_full_frames, mark_frame_empty, register...
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "configTracker.hpp"     // for configTracker
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, DEBUG, WARN, INFO
@@ -10,22 +10,20 @@
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 #include "restServer.hpp"        // for restServer
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
 
-#include <arpa/inet.h> // for inet_addr
-#include <cerrno>      // for errno
-#include <chrono>
-#include <cstring>      // for strerror, size_t
-#include <exception>    // for exception
-#include <functional>   // for _Bind_helper<>::type, bind, ref, function
-#include <regex>        // for match_results<>::_Base_type
-#include <stdexcept>    // for runtime_error
-#include <strings.h>    // for bzero
-#include <sys/socket.h> // for send, MSG_NOSIGNAL, connect, setsockopt, socket, AF_INET
-#include <sys/time.h>   // for timeval
-#include <thread>       // for thread
-#include <unistd.h>     // for close, sleep
-#include <vector>       // for vector
+#include <arpa/inet.h>   // for inet_addr, htons
+#include <bits/chrono.h> // for seconds
+#include <cerrno>        // for errno
+#include <cstring>       // for strerror, size_t
+#include <functional>    // for bind, ref, function
+#include <memory>        // for __shared_ptr_access, shared_ptr
+#include <stdexcept>     // for runtime_error
+#include <strings.h>     // for bzero
+#include <sys/socket.h>  // for send, MSG_NOSIGNAL, AF_INET, connect, setsockopt, socket
+#include <sys/time.h>    // for timeval
+#include <thread>        // for thread
+#include <unistd.h>      // for close, sleep
 
 // Some systems don't support MSG_NOSIGNAL and don't include it in socket.h
 #ifndef MSG_NOSIGNAL

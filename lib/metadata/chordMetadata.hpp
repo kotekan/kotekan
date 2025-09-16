@@ -1,18 +1,22 @@
 #ifndef CHORD_METADATA
 #define CHORD_METADATA
 
-#include "DataType.hpp"
-#include "Telescope.hpp"
-#include "buffer.hpp"
-#include "metadata.hpp"
+#include "DataType.hpp"       // for type_to_string, type_total_bytes, DataType
+#include "buffer.hpp"         // for Buffer
+#include "kotekanLogging.hpp" // for WARN_NON_OO
+#include "metadata.hpp"       // for metadataObject, metadataPool
 
-#include <cassert>
-#include <cstdint>
-#include <sstream>
-#include <string>
-#include <sys/time.h>
-#include <type_traits>
-#include <vector>
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <cassert>    // for assert
+#include <cstdint>    // for int64_t, uint16_t
+#include <memory>     // for shared_ptr, __shared_ptr_access, static_pointer_cast, weak...
+#include <sstream>    // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
+#include <string.h>   // for size_t, strncpy, strnlen
+#include <string>     // for char_traits, basic_string, string, allocator, operator==
+#include <sys/time.h> // for timeval
+#include <time.h>     // for timespec
+#include <vector>     // for vector
 
 // One of the warning-silencing pragmas below only applied for gcc >= 8
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
@@ -183,6 +187,17 @@ public:
 #endif
         strncpy(this->dim_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
 #pragma GCC diagnostic pop
+    }
+
+    void set_strides_simple() {
+        // Compute the strides from the set dims assuming simple contiguous
+        // access.
+        assert(this->dims > 0);
+        this->stride[this->dims - 1] = 1;
+        for (int d = this->dims - 2; d >= 0; d--) {
+            assert(this->dim[d + 1] > 0);
+            this->stride[d] = this->dim[d + 1] * stride[d + 1];
+        }
     }
 
     void set_name(const std::string& name) {

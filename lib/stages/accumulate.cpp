@@ -1,20 +1,15 @@
 #include "accumulate.hpp"
 
 #include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"       // for stream_t
-#include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, mark_frame_empty
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for atomic_add_lost_timesamples, get_lost_timesamples, get_fi...
 
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
+#include <functional> // for bind, function
 #include <sys/time.h> // for timeval
 #include <time.h>     // for timespec
-#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

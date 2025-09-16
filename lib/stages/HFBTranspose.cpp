@@ -4,29 +4,26 @@
 #include "H5Support.hpp"         // for dset_id_str, DSET_ID_LEN
 #include "HFBFileArchive.hpp"    // for HFBFileArchive
 #include "HFBFrameView.hpp"      // for HFBFrameView
-#include "Hash.hpp"              // for Hash, operator!=
+#include "Hash.hpp"              // for Hash
 #include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"         // for Telescope
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for dset_id_t, datasetManager
-#include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
-#include "errors.h"              // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
-#include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t
+#include "datasetState.hpp"      // for metadataState, beamState, freqState, subfreqState, time...
+#include "errors.h"              // for ReturnCode, exit_kotekan
+#include "kotekanLogging.hpp"    // for DEBUG, ERROR, FATAL_ERROR, INFO, logLevel
+#include "prometheusMetrics.hpp" // for Metrics
 
-#include "fmt.hpp"      // for format
+#include "fmt.hpp"      // for compile_string_to_view, format, format_string
 #include "gsl-lite.hpp" // for span
-#include "json.hpp"     // for basic_json<>::object_t, json, basic_json,
+#include "json.hpp"     // for basic_json
 
-#include <algorithm>    // for max, fill, min
-#include <cstdint>      // for uint32_t
-#include <cxxabi.h>     // for __forced_unwind
-#include <exception>    // for exception
-#include <future>       // for async, future
-#include <stdexcept>    // for out_of_range, invalid_argument
-#include <stdint.h>     // for uint32_t, uint64_t
-#include <system_error> // for system_error
+#include <algorithm> // for copy, max, fill, min
+#include <future>    // for async, future, future_status
+#include <stdexcept> // for invalid_argument
+#include <stdint.h>  // for uint32_t, uint64_t
+#include <utility>   // for pair
 
 
 using kotekan::bufferContainer;

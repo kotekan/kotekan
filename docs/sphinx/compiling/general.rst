@@ -4,7 +4,7 @@
 Compiling **Kotekan**
 *********************
 
-**Kotekan** uses cmake to manage its compile-time settings. A host of options are supported, and will some day be described here.
+**Kotekan** uses cmake to manage its compile-time settings. For a complete list of user‑facing options, see :doc:`cmake_options`.
 
 
 
@@ -19,47 +19,110 @@ Compiling **Kotekan**
    :maxdepth: 1
 
    ubuntu
-   centos
    macos
 
-Required
-=========
-* ``pthread``
-* ``python`` and the following python packages ``pyyaml, jinja2``
-* `libevent <http://libevent.org/>`_
+Base Requirements
+=================
 
-Required for some options
-==========================
+The minimal toolchain for a standard build includes:
 
-* `DPDK <http://dpdk.org/>`_ (see :ref:`dpdk`)
-* `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_ (this also installs AMD OpenCL drivers and SDK)
-* `CUDA <https://developer.nvidia.com/cuda-downloads>`_ Required for use with Nvidia cards
-* `HDF5 <https://www.hdfgroup.org/HDF5/>`_::
+* C++ compiler: GCC or Clang (C++17), plus build tools: ``build-essential``, ``cmake``, ``pkg-config``, ``make``, ``git``
+* Libraries: ``libevent-dev``, ``libssl-dev``, ``libyaml-cpp-dev``
+* Python: ``python3``, ``python3-dev``; Python packages: ``pyyaml``, ``jinja2``, ``requests``, ``tabulate``, ``futures``
+* Optional but useful: ``ccache``, ``clang-format``, ``iwyu``
 
-    sudo apt-get install libhdf5-serial-dev
+On Ubuntu (24.04 reference), install with:
 
-* Branch ``extensible-datasets`` of jrs65's fork of `HighFive <https://github.com/jrs65/HighFive>`_
-* Clone HighFive in ``/opt`` with::
+.. code:: bash
 
-    git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git
+   sudo apt update && sudo apt install \
+     build-essential cmake pkg-config git make \
+     libevent-dev libssl-dev libyaml-cpp-dev \
+     python3 python3-dev \
+     python3-yaml python3-jinja2 python3-requests python3-tabulate
 
-* `h5py <http://docs.h5py.org/en/latest/build.html#source-installation>`_ (Install from source for bitshuffle)::
+Packages by Feature
+===================
 
-    pip install --no-binary=h5py h5py
+This section maps common CMake options (see :doc:`cmake_options`) to the packages typically needed on Ubuntu 24.04. For other distros, use the equivalent packages.
 
-* `Bitshuffle <https://github.com/kiyo-masui/bitshuffle>`_ (Needs to be installed after h5py)::
+- ``USE_CUDA`` (CUDA GPU backend)
+  - Ubuntu packages: ``cuda-toolkit`` (provides ``nvcc``)
+  - Tip: If not in a standard location, set ``-DCUDAToolkit_ROOT=<path>``.
 
-    export HDF5_PLUGIN_PATH=/usr/local/hdf5/lib/plugin
-    python setup.py install --h5plugin --h5plugin-dir=/usr/local/hdf5/lib/plugin
+- ``USE_OPENCL`` (OpenCL GPU backend)
+  - Ubuntu packages: ``opencl-headers``, ``ocl-icd-opencl-dev``, ``libopencl-clang-17-dev``
 
-* `fftw3 <http://www.fftw.org/>`_
-* `libairspy <https://github.com/airspy/airspyone_host/tree/master/libairspy>`_
-* `OpenBLAS <http://www.openblas.net/>`_ (Install package via ``sudo apt install libopenblas-dev`` on Ubuntu)
-* `LAPACK <http://www.netlib.org/lapack/>`_ (Install packages via: ``sudo apt install liblapack-dev liblapacke-dev`` on Ubuntu)
-* `Blaze <https://bitbucket.org/blaze-lib/blaze/src/master/>`_
-  * Download and unpack into `/opt`
-* OpenSSL (Package is called ``libssl-dev`` on Ubuntu).
-* Optional python packages can be installed with ``pip3 install -r python/requirements.txt``
+- ``USE_HIP`` (HIP/ROCm GPU backend)
+  - Install ROCm per vendor instructions. On Ubuntu, install HIP runtime/toolchain packages for your ROCm version.
+
+- ``USE_HDF5`` (HDF5 output)
+  - Ubuntu packages: ``libhdf5-dev`` (and/or ``libhdf5-serial-dev``)
+  - HighFive C++ headers are required; on Ubuntu, build and install HighFive from source (e.g., v3.1.1).
+
+- ``USE_ASDF`` (ASDF output)
+  - Requires ``asdf-cxx`` and dependencies. On Ubuntu:
+    * System packages: ``libbz2-dev``, ``liblz4-dev``, ``libssl-dev``
+    * Libraries from source: ``c-blosc2`` (v2.14+) and ``asdf-cxx``
+    * Note: On some systems, the pkg-config file name for lz4 is ``liblz4.pc``; ensure ``lz4.pc`` is visible to pkg-config or add a symlink.
+
+- ``USE_GDAL`` (GDAL output)
+  - Ubuntu packages: ``libgdal-dev``
+
+- ``USE_AIRSPY`` (Airspy producer)
+  - Ubuntu packages: ``libairspy-dev``
+
+- ``USE_FFTW`` (FFTW F-engine)
+  - Ubuntu packages: ``libfftw3-dev``
+
+- ``USE_LAPACK_BLAZE`` (LAPACK/OpenBLAS + Blaze stages)
+  - Ubuntu packages: ``libopenblas-dev``, ``liblapacke-dev``
+  - From source: Blaze headers (e.g., v3.8.2)
+
+- ``USE_OMP`` (OpenMP)
+  - Provided by your compiler; no extra package typically required with GCC on Ubuntu.
+
+- ``USE_DPDK`` / DPDK support
+  - Ubuntu packages: ``dpdk``, ``libdpdk-dev`` (and ``dpdk-dev``)
+  - Default is ``ON`` and enables DPDK when libdpdk (>=19.11) is available via pkg-config. Use ``-DUSE_DPDK=OFF`` to disable it explicitly.
+
+- ``WITH_TESTS`` (C++ testing helpers in ``lib/testing``)
+  - No extra system packages beyond base requirements.
+
+- ``WITH_BOOST_TESTS`` (Boost unit tests under ``tests/boost``)
+  - Ubuntu packages: ``libboost-test-dev`` (plus typical Boost dependencies)
+  - Note: This configuration disables DPDK to avoid linker issues.
+
+- ``COMPILE_DOCS`` (documentation)
+  - Ubuntu packages: ``doxygen``, ``graphviz``
+  - Python: ``sphinx``, ``breathe``, ``sphinx_rtd_theme`` (see below)
+
+Developer Python Packages
+=========================
+
+For linting, testing, and documentation, install these Python packages (often in a virtualenv):
+
+.. code:: bash
+
+   python3 -m pip install \
+     black \
+     cmake_format \
+     pytest pytest-xdist pytest-timeout \
+     pytest-cpp \
+     sphinx==6.2.* sphinx_rtd_theme==2.0.* breathe==4.35.* \
+     h5py hdf5plugin bitshuffle \
+     numpy \
+     requests tabulate \
+     pyyaml jinja2 \
+     msgpack posix_ipc \
+     future futures
+
+
+Notes
+=====
+
+- The Dockerfile at ``tools/docker/24.04/Dockerfile`` contains the authoritative package list for a full‑featured build environment on Ubuntu 24.04, including CUDA, OpenCL, DPDK, ASDF, Blaze, and HighFive. Use it as a reference for required versions and extra steps (e.g., building Blosc2/ASDF/Blaze/HighFive from source), since this documentation may get out of date.
+- Many features auto‑enable when their dependencies are detected. Disable them explicitly with ``-DUSE_<FEATURE>=OFF``. The configuration summary shows each feature’s toggle flag and status.
 
 Unit tests:
 -----------
@@ -161,29 +224,22 @@ Cmake build options
     Builds the project with asserts, debug logging and debug symbols.
 * ``-DCMAKE_BUILD_TYPE=Test``
     Builds the project with asserts and debug logging but without debug symbols.
-* ``-DUSE_OLD_DPDK=ON``
-    Builds with DPDK support (<19.11), for source installs requires: `-DRTE_SDK=<dir>`
-    and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`
-    Not needed for newer versions of DPDK on Ubuntu 22.04+.
-    See :ref:`dpdk` for more details.
+* ``-DUSE_DPDK=ON|OFF``
+    Control DPDK support. Default ``ON`` enables DPDK when libdpdk (>=19.11) is available via
+    pkg-config. Use ``OFF`` to disable explicitly.
 * ``-DUSE_OLD_ROCM=ON``
     Build for ROCm versions 2.3 or older. Off by default.
 * ``-DUSE_OPENCL=ON``
     Build with OpenCL support.
 * ``-DUSE_CUDA=ON``
     Build support for CUDA kernels and Nvidia GPUs, requires `nvcc`
-* ``-DUSE_HDF5=ON``
-    Build with HDF5 support. Requires HighFive, Bitshuffle and h5py.
-* ``-DUSE_ASDF=ON``
-    Build with ASDF writer.
-* ``-DUSE_GDAL=ON``
-    Build with GDAL writer.
+* HDF5/ASDF/GDAL auto‑enable when installed; disable with ``-DUSE_HDF5=OFF``, ``-DUSE_ASDF=OFF``, or ``-DUSE_GDAL=OFF``.
 * ``-DUSE_AIRSPY=ON``
     Build the AirSpy producer. Requires libairspy.
-* ``-DUSE_FFTW=ON``
-    Build an FFTW-based F-engine. Requires FFTW3.
-* ``-DUSE_LAPACK_BLAZE=ON``
-    Build stages depending on LAPACK and BLAZE.
+* ``-DUSE_FFTW=OFF``
+    Disable building the FFTW-based F-engine (FFTW enables automatically if installed).
+* ``-DUSE_LAPACK_BLAZE=OFF``
+    Disable stages depending on LAPACK and BLAZE (they enable automatically if installed).
 * ``-DUSE_OMP=ON``
     Build stages using OpenMP. This requires a compiler supporting OpenMP (>= 3.0, see `OpenMP Compilers and Tools <https://www.openmp.org/resources/openmp-compilers-tools/>`).
 * ``-DCOMPILE_DOCS=ON``
@@ -191,9 +247,9 @@ Cmake build options
 * ``-DOPENSSL_ROOT_DIR=<openssl_root_dir>``
     Location of the openssl libs and includes.
 * ``-DWITH_TESTS=ON``
-    Build kotekans test library.
+    Build and link kotekan's C++ testing helper library in ``lib/testing`` (used by some example/QA configs). This does not build Boost unit tests.
 * ``-DWITH_BOOST_TESTS=ON``
-    Build tests using The Boost Test Framework. pytest-cpp needs to be installed for pytest to find them.
+    Build the C++ unit tests under ``tests/boost`` (Boost.Test). Also disables DPDK to avoid linker issues in this configuration. ``pytest-cpp`` is required for pytest to discover and run them.
 * ``-DSUPERDEBUG=ON``
     Add extra debugging info and turn off all optimisation to improve coverage.
 * ``-DSANITIZE=ON``
@@ -202,17 +258,23 @@ Cmake build options
 Examples
 ---------
 
-To build with (old) DPDK and debug symbols:
+To build with DPDK and debug symbols:
 
 .. code:: bash
 
-    cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_OLD_DPDK=ON -DCMAKE_BUILD_TYPE=Debug ..
+    cmake -DUSE_DPDK=ON -DCMAKE_BUILD_TYPE=Debug ..
 
 To build with OpenCL and DPDK:
 
 .. code:: bash
 
-    cmake -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_OLD_DPDK=ON -DUSE_OPENCL=ON ..
+    cmake -DUSE_DPDK=ON -DUSE_OPENCL=ON ..
+
+At the end of configuration, a colorized feature summary lists enabled/disabled features, reasons, and the toggle flag (e.g., ``toggle: -DUSE_CUDA=ON/OFF``). Use ``-D<OPTION>=ON|OFF`` to include or exclude a feature present on your system.
+
+.. note:: Developers adding new build options should refresh the summary logic
+   (``cmake/Summary.cmake``), this guide, and the version metadata in
+   ``lib/version/version.c.in``.
 
 To install kotekan:
 

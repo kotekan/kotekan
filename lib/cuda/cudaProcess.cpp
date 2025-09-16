@@ -1,13 +1,20 @@
 #include "cudaProcess.hpp"
 
-#include "Stage.hpp"
-#include "StageFactory.hpp"
-#include "cuda_profiler_api.h"
-#include "unistd.h"
-#include "util.h"
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "cudaCommand.hpp"        // for cudaCommand, _factory_aliascudaCommandState, _factory_...
+#include "cudaEventContainer.hpp" // for cudaEventContainer
+#include "cudaUtils.hpp"          // for CHECK_CUDA_ERROR
+#include "cuda_profiler_api.h"    // for cudaProfilerStart, cudaProfilerStop
+#include "cuda_runtime_api.h"     // for cudaHostRegister
+#include "driver_types.h"         // for CUevent_st, cudaEvent_t, cudaHostRegisterDefault
+#include "factory.hpp"            // for FACTORY, FACTORY_VARIANT
+#include "kotekanLogging.hpp"     // for DEBUG, DEBUG2
 
-#include <iostream>
-#include <sys/time.h>
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm> // for fill, max
+#include <mutex>     // for recursive_mutex, lock_guard
+#include <stdint.h>  // for uint32_t, int32_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -35,7 +42,11 @@ cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
 }
 
 cudaProcess::~cudaProcess() {
+    // Ensure this thread is set to the correct device before final CUDA cleanup.
+    if (device)
+        device->set_thread_device();
     CHECK_CUDA_ERROR(cudaProfilerStop());
+    // With weak_ptr cache, simply letting the last shared_ptr go triggers cleanup.
 }
 
 gpuEventContainer* cudaProcess::create_signal() {

@@ -1,30 +1,30 @@
 #include "eigenVis.hpp"
 
 #include "Config.hpp"            // for Config
-#include "N2FrameView.hpp"       // for N2FrameView
-#include "N2Util.hpp"            // for cfloat, frameID, current_time, cmap
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
+#include "N2FrameView.hpp"       // for N2FrameView, N2Field, N2EigenMethod
+#include "N2Util.hpp"            // for frameID, modulo, cfloat, current_time, cmap, movingAverage
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
 #include "kotekanLogging.hpp"    // for DEBUG, ERROR, INFO
-#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
+#include "prometheusMetrics.hpp" // for Gauge, Counter, Metrics, MetricFamily
 
-#include "fmt.hpp"      // for format, fmt
+#include "fmt.hpp"      // for compile_string_to_view, format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for lower_bound, remove
-#include <cblas.h>    // for openblas_set_num_threads
-#include <cmath>      // for pow, sqrt
-#include <complex>    // for operator*, norm, complex
-#include <cstdint>    // for uint32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <lapacke.h>  // for LAPACKE_cheevr, LAPACK_COL_MAJOR
-#include <map>        // for map, map<>::mapped_type, operator==, map<>::iterator
-#include <numeric>    // for iota
-#include <stdexcept>  // for runtime_error
-#include <time.h>     // for size_t
-#include <tuple>      // for forward_as_tuple
-#include <utility>    // for move, pair, piecewise_construct
+#include <algorithm>   // for max, copy, fill, equal, lower_bound, remove
+#include <cblas.h>     // for openblas_set_num_threads
+#include <cmath>       // for pow, sqrt
+#include <complex>     // for complex, conj, operator*, norm
+#include <functional>  // for bind, function
+#include <lapack.h>    // for lapack_complex_float
+#include <lapacke.h>   // for LAPACKE_cheevr, LAPACK_COL_MAJOR
+#include <map>         // for map, operator==
+#include <numeric>     // for iota
+#include <set>         // for set
+#include <stdexcept>   // for runtime_error
+#include <sys/types.h> // for u_int64_t
+#include <tuple>       // for forward_as_tuple
+#include <utility>     // for piecewise_construct
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -62,7 +62,6 @@ void eigenVis::main_thread() {
 
     uint32_t num_elements = 0;
     bool initialized = false;
-    size_t lapack_failure_total = 0;
 
     // Memory for LAPACK interface.
     std::vector<N2::cfloat> vis_square;
@@ -159,7 +158,6 @@ void eigenVis::main_thread() {
         DEBUG("LAPACK exit status: {:d}", info);
         if (info) {
             ERROR("LAPACK failed with exit code {:d}", info);
-            lapack_failure_total++;
 
             // Update prometheus metric about LAPACK failures
             lapack_failure_counter.labels({std::to_string(freq_id)}).inc();

@@ -1,13 +1,19 @@
 #ifndef KOTEKAN_CUDA_CORRELATOR_H
 #define KOTEKAN_CUDA_CORRELATOR_H
 
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
-#include <NDArrayRingBuffer.hpp>
-#include <cstdint>
-#include <cudaCommand.hpp>
-#include <cudaDeviceInterface.hpp>
-#include <n2k/Correlator.hpp>
+#include "Config.hpp"          // for Config
+#include "bufferContainer.hpp" // for bufferContainer
+#include "driver_types.h"      // for cudaEvent_t
+
+#include <DataType.hpp>            // for int4x2_swapped_withoffset_t
+#include <NDArrayBuffer.hpp>       // for NDArrayBuffer
+#include <NDArrayRingBuffer.hpp>   // for NDArrayRingBuffer
+#include <cstdint>                 // for int32_t, uint32_t
+#include <cudaCommand.hpp>         // for cudaCommand, cudaPipelineState
+#include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
+#include <n2k/Correlator.hpp>      // for Correlator
+#include <string>                  // for string, basic_string
+#include <vector>                  // for vector
 
 /**
  * @class cudaCorrelator
@@ -42,6 +48,11 @@
  * Note: While the output is only supposed to fill the upper triangle
  * of the correlation matrices, this implementation fills a few of the
  * below-the-diagonal elements with non-zero values.
+ *
+ * TODO: -Update docs to note new parameter names,
+ *       -buffer name requirements (for NDArray conventions)
+ *       -input data name in metadata must be "E"
+ *       -input data type must be int4x2_swapped_withoffset_t
  */
 class cudaCorrelator : public cudaCommand {
 public:
@@ -78,14 +89,14 @@ private:
     /// Name for the correlation output
     const std::string _n2k_correlation_name;
 
-    // Signalling ring buffer for the input (voltage) data.
+    /// Signaling ring buffer for the input (voltage) data.
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
     NDArrayBuffer<std::int32_t, 6> n2k_correlation;
 
-    // Cuda kernel wrapper object
+    /// Cuda kernel wrapper object
     n2k::Correlator n2correlator;
 
-    // Placeholder rfi mask
+    /// Placeholder rfi mask
     std::uint32_t* rfimask;
 };
 

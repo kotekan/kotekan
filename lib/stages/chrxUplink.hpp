@@ -1,12 +1,13 @@
 #ifndef ACQ_UPLINK_H
 #define ACQ_UPLINK_H
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "bufferContainer.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
 #include <stdint.h> // for int32_t
-#include <string>   // for string
+#include <string>   // for string, basic_string
 
 
 class chrxUplink : public kotekan::Stage {

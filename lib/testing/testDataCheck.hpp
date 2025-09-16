@@ -141,7 +141,7 @@ void testDataCheck<A_Type>::main_thread() {
             }
         }
 
-        if (num_errors > 0) {
+        if (num_errors == 0) {
             INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained values that were equal.",
                  first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id);
             if (use_almost_equal) {

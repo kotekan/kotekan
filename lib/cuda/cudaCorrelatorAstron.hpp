@@ -7,8 +7,16 @@
 #ifndef CUDA_CORRELATOR_ASTRON_HPP
 #define CUDA_CORRELATOR_ASTRON_HPP
 
-#include "cudaCommand.hpp"
-#include "cudaDeviceInterface.hpp"
+#include "Config.hpp"              // for Config
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for cudaEvent_t
+
+#include <stddef.h> // for size_t
+#include <stdint.h> // for int32_t
+#include <string>   // for string, basic_string
+#include <vector>   // for vector
 
 /**
  * @class cudaCorrelatorAstron
@@ -61,9 +69,9 @@ private:
 
     // Kernel values.
     /// global work space dimension
-    size_t gws[3];
+    [[maybe_unused]] size_t gws[3];
     /// local work space dimension
-    size_t lws[3];
+    [[maybe_unused]] size_t lws[3];
 };
 
 #endif // CUDA_CORRELATOR_ASTRON_HPP

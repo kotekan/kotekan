@@ -6,12 +6,13 @@
 #ifndef N2_TIME_DOWNSAMP_HPP
 #define N2_TIME_DOWNSAMP_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
 #include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t
 #include <string>   // for string
 
 /**

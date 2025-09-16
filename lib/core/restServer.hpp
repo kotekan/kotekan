@@ -144,8 +144,7 @@ public:
      *
      * Accepts the following forms:
      *  - IPv4 literals (e.g., "127.0.0.1", "0.0.0.0").
-     *  - IPv6 literals (e.g., "::1", "2001:db8::1").
-     *  - Hostnames consisting only of letters, digits, dots, hyphens, and underscores
+     *  - localhost (only works for self-connections).
      *
      * This is a syntactic check. For hostnames, it does not resolve DNS; use
      * @ref canBindToAddress to check actual bindability.

@@ -1,32 +1,41 @@
-#include "Telescope.hpp" // for Telescope
-#include "gdalFiles.hpp"
+#include "Config.hpp"          // for Config
+#include "N2Util.hpp"          // for frameID, modulo
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "cpl_port.h"          // for GUInt64
+#include "cpl_string.h"        // for CSLSetNameValue, CSLDestroy
+#include "gdalFiles.hpp"       // for get_gdal_datatype, convert_to_cstring_list
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO, WARN
 
-#include <N2FrameView.hpp>
-#include <N2Metadata.hpp>
-#include <Stage.hpp>
-#include <StageFactory.hpp>
-#include <cassert>
-#include <chordMetadata.hpp>
-#include <complex>
-#include <cstdint>
-#include <errno.h>
-#include <errors.h>
-#include <fstream>
-#include <gdal.h>
-#include <gdal_priv.h>
-#include <iomanip>
-#include <map>
-#include <memory>
-#include <optional>
-#include <prometheusMetrics.hpp>
-#include <sstream>
-#include <string>
-#include <sys/stat.h>
-#include <type_traits>
-#include <unistd.h>
-#include <utility>
-#include <vector>
-#include <visUtil.hpp>
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <N2FrameView.hpp>       // for N2FrameView
+#include <N2Metadata.hpp>        // for N2Metadata, get_N2_metadata
+#include <Stage.hpp>             // for Stage
+#include <StageFactory.hpp>      // for REGISTER_KOTEKAN_STAGE
+#include <cassert>               // for assert
+#include <complex>               // for complex
+#include <cstdint>               // for uint64_t, uint32_t, uint8_t
+#include <ctime>                 // for gmtime, time_t
+#include <errno.h>               // for errno, EEXIST, EISDIR
+#include <errors.h>              // for exit_kotekan, ReturnCode
+#include <functional>            // for function
+#include <gdal.h>                // for GDALClose, GDALAllRegister, GDALOpenEx, GDT_CFloat32
+#include <gdal_priv.h>           // for GDALGroup, GDALExtendedDataType, GDALMDArray, GDALDataset
+#include <iomanip>               // for operator<<, put_time
+#include <map>                   // for map, operator!=, _Rb_tree_iterator
+#include <memory>                // for shared_ptr, allocator, __shared_ptr_access
+#include <prometheusMetrics.hpp> // for Metrics, Gauge
+#include <sstream>               // for basic_ostream, operator<<, basic_ostringstream, ostring...
+#include <string.h>              // for strerror
+#include <string>                // for basic_string, char_traits, string, operator<, operator<<
+#include <sys/stat.h>            // for stat, mkdir
+#include <unistd.h>              // for gethostname, size_t
+#include <utility>               // for pair
+#include <vector>                // for vector
+#include <visUtil.hpp>           // for current_time
 
 using namespace gdal;
 

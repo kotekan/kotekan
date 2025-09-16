@@ -1,27 +1,29 @@
 #include "BadInputFlag.hpp"
 
 #include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for operator!=, operator==, Hash, operator<
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for mark_frame_empty, mark_frame_full, register_consumer
+#include "Hash.hpp"              // for Hash, operator!=, operator==, operator<
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for dset_id_t, datasetManager, fingerprint_t
+#include "dataset.hpp"           // for dataset
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t, fingerprint_t
 #include "kotekanLogging.hpp"    // for FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
 #include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, modulo
 
+#include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for copy, copy_backward, equal, max
+#include <algorithm>  // for copy, equal, max
 #include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
 #include <cmath>      // for isinf, isnan
-#include <deque>      // for deque
-#include <functional> // for _Bind_helper<>::type, bind, function
+#include <functional> // for bind, function
 #include <future>     // for future
 #include <optional>   // for optional
 #include <stddef.h>   // for size_t
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

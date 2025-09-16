@@ -1,9 +1,17 @@
 #ifndef KOTEKAN_CUDA_COPYTORINGBUFFER_HPP
 #define KOTEKAN_CUDA_COPYTORINGBUFFER_HPP
 
-#include "cudaCommand.hpp"
-#include "cudaDeviceInterface.hpp"
-#include "ringbuffer.hpp"
+#include "Config.hpp"              // for Config
+#include "buffer.hpp"              // for Buffer
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for cudaEvent_t
+#include "ringbuffer.hpp"          // for RingBuffer
+
+#include <stddef.h> // for size_t
+#include <string>   // for string, basic_string
+#include <vector>   // for vector
 
 /**
  * @class cudaCopyToRingbuffer

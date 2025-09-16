@@ -1,7 +1,11 @@
 #include "N2FrameView.hpp"
 
-#include "FrameView.hpp" // for FrameView, bind_span
+#include "FrameView.hpp" // for bind_span, bind_scalar, FrameView
 #include "buffer.hpp"    // for Buffer
+
+#include <assert.h> // for assert
+#include <complex>  // for complex
+#include <cstring>  // for memset, size_t
 
 N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 
