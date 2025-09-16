@@ -39,7 +39,7 @@ namespace kotekan {
  * @class ConfigTracker
  * @brief Kotekan core component that tracks the (startup-time) configurations through a pipeline.
  *
- * This class must be registered with a kotekan REST server instance by
+ * The rest callbacks must be registered with a kotekan REST server instance by
  * using the @c register_with_server() function.
  *
  * This class is a singleton, and can be accessed with @c instance()
@@ -85,12 +85,16 @@ public:
      * configuration JSON object.
      */
     struct ConfigInfo {
-        nlohmann::json config;
-        std::string json_hash;
+        nlohmann::json config; /// Configuration data json (minus updatable_config)
+        std::string json_hash; /// Stored md5 hash of the ConfigInfo::config
 
+        /// Kotekan version information (should match lib/version details.)
         std::string kotekan_version;
+        /// Kotekan git branch (should match lib/version details.)
         std::string kotekan_build_branch;
+        /// Kotekan git commit (should match lib/version details.)
         std::string kotekan_git_commit_hash;
+        /// Kotekan build options information (should match lib/version details.)
         std::string kotekan_cmake_options;
 
         // Default constructor
@@ -135,7 +139,7 @@ public:
      *
      * @returns True if the sizes are consistent, false otherwise.
      */
-    bool check_num_configs_consistent() const {
+    void check_num_configs_consistent() const {
         std::lock_guard<std::mutex> lock(_lock);
         // _configs and _config_hashes should always have the same size
 
@@ -143,10 +147,7 @@ public:
             FATAL_ERROR_NON_OO(
                 "ConfigTracker: _configs and _config_hashes have different sizes: {} vs {}",
                 _configs.size(), _config_hashes.size());
-            return false;
         }
-
-        return true;
     }
 
     /**
@@ -158,52 +159,6 @@ public:
 
         std::lock_guard<std::mutex> lock(_lock);
         return _configs.size();
-    }
-
-    /**
-     * @brief Get the canonical hash of a (jsonified) config.
-     *
-     * This function generates a consistent hash for a given configuration JSON object.
-     * The JSON object should have any "updatable_config" fields stripped before hashing.
-     * (This function only checks for that, it does not strip them itself.)
-     *
-     * @param filtered_json The configuration JSON object to hash.
-     * @returns The canonical hash as a string.
-     */
-    std::string jsonHash(const nlohmann::json& filtered_json) const {
-        std::stringstream ss;
-
-        // nlohmann::json::dump() uses an alpha-ordered map for objects, so the
-        // config should be serialized in a consistent order.
-
-        // In order for this to hash configs correctly, this assumes the updatable_config
-        // field is removed, and versioning information has been added.
-        if (filtered_json.contains("updatable_config")) {
-            FATAL_ERROR_NON_OO(
-                "ConfigTracker: jsonHash called with updatable_config field present.");
-        }
-
-        // Stick to a string dump; less likely to run into floating point issues?
-        ss << filtered_json.dump(-1, '\0', false, nlohmann::json::error_handler_t::strict);
-
-        std::string serialized = ss.str();
-        unsigned char md5_result[MD5_DIGEST_LENGTH];
-
-        // The MD5 function is deprecated in openssl 3.0, but we want to
-        // maintain compatibility.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-        MD5(reinterpret_cast<const unsigned char*>(serialized.c_str()), serialized.size(),
-            md5_result);
-#pragma GCC diagnostic pop
-
-
-        std::stringstream md5_ss;
-        for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
-            md5_ss << std::hex << std::setw(2) << std::setfill('0')
-                   << static_cast<int>(md5_result[i]);
-
-        return md5_ss.str();
     }
 
     /**
@@ -260,6 +215,7 @@ public:
      * @brief Insert JSON configuration into the tracker.
      * This function checks requires "updatable_config" fields have been removed.
      * This is an overload that allows using a ConfigInfo object directly.
+     * Note that the host is case-sensitive (even though DNS is not).
      *
      * @param host The host where the kotekan instance with the configuration is running.
      * @param port The port where the kotekan instance with the configuration is running.
@@ -336,7 +292,7 @@ public:
             }
         }
 
-        std::string json_hash = jsonHash(filtered_json);
+        std::string json_hash = _jsonHash(filtered_json);
 
         ConfigInfo info =
             ConfigInfo(filtered_json, json_hash, kotekan_version, kotekan_build_branch,
@@ -644,6 +600,56 @@ private:
     std::string _tracker_hash;
 
     mutable std::mutex _lock;
+
+
+    /**
+     * @brief Get the md5 hash of a (jsonified) config.
+     *
+     * This function generates a hash for a given configuration JSON object.
+     * In the context of the configTracker, the JSON object should have any
+     * "updatable_config" fields stripped before hashing. (This function only
+     * checks for that, it does not strip them itself, instead relying on
+     * insertConfig to supply consistent information.)
+     *
+     * @param filtered_json The configuration JSON object to hash.
+     * @returns The canonical hash as a string.
+     */
+    std::string _jsonHash(const nlohmann::json& filtered_json) const {
+        std::stringstream ss;
+
+        // nlohmann::json::dump() uses an alpha-ordered map for objects, so the
+        // config should be serialized in a consistent order.
+
+        // In order for this to hash configs correctly, this assumes the updatable_config
+        // field is removed, and versioning information has been added.
+        if (filtered_json.contains("updatable_config")) {
+            FATAL_ERROR_NON_OO(
+                "ConfigTracker: _jsonHash called with updatable_config field present.");
+        }
+
+        // Stick to a string dump; less likely to run into floating point issues?
+        ss << filtered_json.dump(-1, '\0', false, nlohmann::json::error_handler_t::strict);
+
+        std::string serialized = ss.str();
+        unsigned char md5_result[MD5_DIGEST_LENGTH];
+
+        // The MD5 function is deprecated in openssl 3.0, but we want to
+        // maintain compatibility.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        MD5(reinterpret_cast<const unsigned char*>(serialized.c_str()), serialized.size(),
+            md5_result);
+#pragma GCC diagnostic pop
+
+        std::stringstream md5_ss;
+        for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
+            md5_ss << std::hex << std::setw(2) << std::setfill('0')
+                   << static_cast<int>(md5_result[i]);
+
+        return md5_ss.str();
+    }
+
+
 };
 
 } // namespace kotekan
