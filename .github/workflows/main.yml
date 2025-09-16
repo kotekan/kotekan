@@ -270,7 +270,6 @@ jobs:
         rm -rf kotekan
 
   # Build a clang version of kotekan
-  # Note that this build isn't working at the moment, so for now only run it upon request.
   build-clang-2404:
     runs-on: ubuntu-latest
     needs: build-docker-2404
@@ -301,18 +300,16 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ -e CC -e CXX ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-        -DCMAKE_LINK_WHAT_YOU_USE=ON \
-        -DCMAKE_BUILD_TYPE=Test \
-        -DUSE_ASDF=ON \
-        -DUSE_GDAL=ON \
-        -DUSE_HDF5=ON \
-        -DUSE_LAPACK_BLAZE=ON -DBLAZE_PATH=/code/build/blaze \
-        -DNO_MEMLOCK=ON \
-        -DUSE_OMP=ON \
-        -DUSE_CUDA=ON \
-        -DWITH_TESTS=ON \
-        -DWITH_BOOST_TESTS=ON \
-        -DCCACHE=ON ..
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON \
+            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
+            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
+            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
+            -DUSE_DPDK=OFF \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
+            ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
 
@@ -492,49 +489,3 @@ jobs:
       run: |
         set -e
         docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan
-
-  # Build a clang version of kotekan
-  # Note that this build isn't working at the moment, so for now only run it upon request.
-  build-clang-2404:
-    runs-on: ubuntu-latest
-    needs: build-docker-2404
-
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Cache ccache files
-      uses: actions/cache@v4
-      with:
-        path: .ccache
-        key: ccache-clang-build-2404-${{ github.sha }}
-        restore-keys: |
-          ccache-clang-build-2404
-
-    - name: Build kotekan
-      env:
-        CC: clang
-        CXX: clang++
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ -e CC -e CXX ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" ccache -s
-        docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
-            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
-            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON \
-            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
-            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
-            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
-            -DUSE_DPDK=OFF \
-            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
-            ..
-        docker run "${OPTS[@]}" make -j 2
-        docker run "${OPTS[@]}" ccache -s
