@@ -11,8 +11,8 @@ Keith Vanderlinde: vanderlinde@dunlap.utoronto.ca
 The live-view was written to accomodate a python 2 or 3 environment, 
 however python 3 should be used whenever possible.
 
-The live-view was written for a linux environment, preferably the latest version
-of ubuntu. However, Centos or Mac work also. 
+The live-view was written for a Linux environment, preferably the latest version
+of Ubuntu. macOS also works.
 
 numpy: sudo apt-get install python3-numpy
 

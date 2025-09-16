@@ -61,9 +61,9 @@ private:
 
     // Kernel values.
     /// global work space dimension
-    size_t gws[3];
+    [[maybe_unused]] size_t gws[3];
     /// local work space dimension
-    size_t lws[3];
+    [[maybe_unused]] size_t lws[3];
 };
 
 #endif // CUDA_CORRELATOR_ASTRON_HPP

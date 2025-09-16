@@ -265,7 +265,6 @@ void visAccumulate::main_thread() {
     std::vector<std::reference_wrapper<internalState>> enabled_gated_datasets;
 
     uint32_t last_frame_count = 0;
-    uint32_t frames_in_this_cycle = 0;
 
     // Temporary arrays for storing intermediates
     std::vector<int32_t> vis_even(2 * num_prod_gpu);
@@ -349,7 +348,6 @@ void visAccumulate::main_thread() {
             }
 
             init = false;
-            frames_in_this_cycle = 0;
         }
 
         // We've started accumulating a new frame. Initialise the output and
@@ -455,7 +453,6 @@ void visAccumulate::main_thread() {
         // Move the input buffer on one step
         in_buf->mark_frame_empty(unique_name, in_frame_id++);
         last_frame_count = frame_count;
-        frames_in_this_cycle++;
     }
 }
 

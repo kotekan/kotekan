@@ -7,7 +7,6 @@
 #include "gsl-lite.hpp" // for span
 #include "json.hpp"     // for json
 
-// cinttypes needed by some CentOS systems.
 #include <cinttypes> // IWYU pragma: keep
 #include <iostream>  // for istream, ostream
 #include <stdint.h>  // for uint64_t

@@ -19,6 +19,9 @@ N_JOBS=4
 # exit if one test fails
 EXIT_ON_FAILURE="ON"
 
+# Track if an error has occurred.
+ERROR=0
+
 usage() {
   echo "Usage: $0 [ -d KOTEKAN_DIR ] [ -i ENABLE_IWYU ] [ -j NUM_JOBS ] [-e ENABLE_EXIT_ON_FAILURE]
         Run all the linting tools to make sure the code passes kotekan's CI checks.
@@ -36,7 +39,7 @@ usage() {
                               \"OFF\")
         -j NUM_JOBS           Number of concurrent jobs for iwyu (Default: 4)
         -e ENABLE_EXIT_ON_FAILURE
-                              \"ON\" or \"OFF\" to enable or disable  exiting if a test fails
+                              \"ON\" or \"OFF\" to enable or disable exiting if a test fails
                               (default: \"ON\")
 " 1>&2
 }
@@ -105,7 +108,7 @@ fi
 
 # clang-format
 echo "Running clang-format..."
-find $KOTEKAN_DIR -type d \( -name "build-iwyu" -name "build" -o -name "external" \) -prune -o -type f -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
+find $KOTEKAN_DIR -type d \( -name "build-iwyu" -o -name "build" -o -name "external" \) -prune -o -type f -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
 if ! git diff --exit-code; then
     echo "Error: clang-format found formatting issues" >&2
     ERROR=1

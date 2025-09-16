@@ -38,7 +38,6 @@ recvSingleDishVDIF::~recvSingleDishVDIF() {}
 
 void recvSingleDishVDIF::main_thread() {
 
-    int file_num = 0;
     int frame_id = 0;
     uint8_t* frame = nullptr;
 
@@ -78,7 +77,6 @@ void recvSingleDishVDIF::main_thread() {
              frame_id);
         out_buf->mark_frame_full(unique_name, frame_id);
 
-        file_num++;
         frame_id = (frame_id + 1) % out_buf->num_frames;
     }
 

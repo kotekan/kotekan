@@ -591,8 +591,6 @@ void RedundantStack::main_thread() {
         }
 
         // Loop over the stacks and normalise (and invert the variances)
-        float vart = 0.0;
-        float normt = 0.0;
         for (uint32_t stack_ind = 0; stack_ind < num_stack; stack_ind++) {
 
             // Calculate the mean and accumulate weight and place in the frame
@@ -606,10 +604,6 @@ void RedundantStack::main_thread() {
                 ((output_frame.weight[stack_ind] != 0.0) ? 1.0 / output_frame.weight[stack_ind]
                                                          : 0.0);
             output_frame.weight[stack_ind] = norm * norm * iwgt;
-
-            // Accumulate to calculate the variance of the residuals
-            vart += stack_v2[stack_ind] - std::norm(output_frame.vis[stack_ind]) * norm;
-            normt += norm;
         }
 
         // Mark the buffers and move on

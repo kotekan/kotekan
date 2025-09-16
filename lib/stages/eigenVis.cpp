@@ -62,7 +62,6 @@ void eigenVis::main_thread() {
 
     uint32_t num_elements = 0;
     bool initialized = false;
-    size_t lapack_failure_total = 0;
 
     // Memory for LAPACK interface.
     std::vector<N2::cfloat> vis_square;
@@ -159,7 +158,6 @@ void eigenVis::main_thread() {
         DEBUG("LAPACK exit status: {:d}", info);
         if (info) {
             ERROR("LAPACK failed with exit code {:d}", info);
-            lapack_failure_total++;
 
             // Update prometheus metric about LAPACK failures
             lapack_failure_counter.labels({std::to_string(freq_id)}).inc();
