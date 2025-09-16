@@ -27,9 +27,6 @@ i2cso(x::Int4x2) = t2cso(i2t(x)) # BROKEN
 export i4p4so2i8
 i4p4so2i8(x::UInt8) = (((x >>> 0x4) & 0x0f) % Int8 - Int8(8), ((x >>> 0x0) & 0x0f) % Int8 - Int8(8))
 
-export i4p4so2i8
-i4p4so2i8(x::UInt8) = (((x >>> 0x4) & 0x0f) % Int8 - Int8(8), ((x >>> 0x0) & 0x0f) % Int8 - Int8(8))
-
 export u4p42i8
 u4p42i8(x::UInt8) = (((x >>> 0x0) & 0x0f) % Int8, ((x >>> 0x4) & 0x0f) % Int8)
 
