@@ -4,7 +4,7 @@ Ubuntu
 
 Ubuntu works well with all options.
 
-You'll need to have Python installed (we recommend `Anaconda <https://anaconda.org/anaconda/python>`_).
+You'll need to have Python installed (we recommend `Anaconda <https://anaconda.org/anaconda/python>`_). When building using cmake, most features will be enabled by default if the installation is detected.
 
 .. code:: bash
 
@@ -18,7 +18,7 @@ To include **Airspy** input:
 
     sudo apt-get install airspy-dev
     cd <kotekan_dir>/build
-    cmake .. -DUSE_AIRSPY=ON
+    cmake ..
 
 
 To include **FFTW** stages:
@@ -27,7 +27,6 @@ To include **FFTW** stages:
 
     sudo apt-get install fftw3
     cd <kotekan_dir>/build
-    # FFTW enables automatically if installed; disable with -DUSE_FFTW=OFF
     cmake ..
 
 
