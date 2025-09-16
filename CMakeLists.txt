@@ -9,8 +9,6 @@ include(cmake/Color.cmake)
 include(cmake/Options.cmake)
 include(cmake/Toolchain.cmake)
 
-# Toolchain and options now handled by included modules
-
 # Fix a problem with homebrew linking on MacOS >= 10.14 See
 # https://stackoverflow.com/questions/54068035
 if(APPLE)
@@ -23,18 +21,31 @@ include(cmake/Features/FeatureGPU.cmake)
 include(cmake/Features/FeatureDPDK.cmake)
 
 set(_ktk_airspy_reason "disabled")
-get_property(_ktk_airspy_cache_has CACHE KOTEKAN_AIRSPY_REASON PROPERTY TYPE SET)
+get_property(
+    _ktk_airspy_cache_has
+    CACHE KOTEKAN_AIRSPY_REASON
+    PROPERTY TYPE
+    SET)
 if(_ktk_airspy_cache_has)
-    get_property(_ktk_airspy_reason CACHE KOTEKAN_AIRSPY_REASON PROPERTY VALUE)
+    get_property(
+        _ktk_airspy_reason
+        CACHE KOTEKAN_AIRSPY_REASON
+        PROPERTY VALUE)
 endif()
 if(${USE_AIRSPY})
     find_package(LIBAIRSPY QUIET)
     if(LIBAIRSPY_FOUND)
-        set(USE_AIRSPY ON CACHE BOOL "Build Airspy Producer" FORCE)
-        set(KOTEKAN_AIRSPY_REASON "found" CACHE STRING "Airspy detection summary" FORCE)
+        set(USE_AIRSPY
+            ON
+            CACHE BOOL "Build Airspy Producer" FORCE)
+        set(KOTEKAN_AIRSPY_REASON
+            "found"
+            CACHE STRING "Airspy detection summary" FORCE)
         add_definitions(-DWITH_AIRSPY)
     else()
-        set(USE_AIRSPY OFF CACHE BOOL "Build Airspy Producer" FORCE)
+        set(USE_AIRSPY
+            OFF
+            CACHE BOOL "Build Airspy Producer" FORCE)
         set(KOTEKAN_AIRSPY_REASON
             "not found (requires libairspy)"
             CACHE STRING "Airspy detection summary" FORCE)
@@ -49,21 +60,16 @@ else()
         CACHE STRING "Airspy detection summary" FORCE)
 endif()
 
+# Math features handled in FeatureMath
 include(cmake/Features/FeatureMath.cmake)
 
-# Math features handled in FeatureMath
-
-# Toolchain covers build types, IWYU, and GPU summary
-
+# File writing (HDF5, GDAL, ASDF) handled in FeatureIO
 include(cmake/Features/FeatureIO.cmake)
 
 # Julia runtime and bindings
 include(cmake/Features/FeatureJulia.cmake)
 
-# Final feature summary (printed after all configuration)
-
 find_package(Threads REQUIRED)
-# Flags and link options handled in Toolchain; OpenCL install handled in FeatureGPU
 
 if(${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)

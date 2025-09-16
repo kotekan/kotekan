@@ -1,7 +1,7 @@
 # Final feature summary table.
 #
-# Developer note: when adding new configure options or feature toggles, update
-# the flag lists below so the summary remains complete.
+# Developer note: when adding new configure options or feature toggles, update the flag lists below
+# so the summary remains complete.
 
 include_guard(GLOBAL)
 include(${CMAKE_CURRENT_LIST_DIR}/Color.cmake)
@@ -247,8 +247,8 @@ else()
     set(_ktk_flag_blaze "BLAZE_PATH=")
 endif()
 
-if(DEFINED KOTEKAN_CL_TARGET_OPENCL_VERSION
-   AND NOT "${KOTEKAN_CL_TARGET_OPENCL_VERSION}" STREQUAL "")
+if(DEFINED KOTEKAN_CL_TARGET_OPENCL_VERSION AND NOT "${KOTEKAN_CL_TARGET_OPENCL_VERSION}" STREQUAL
+                                                "")
     set(_ktk_flag_cl "CL_TARGET_OPENCL_VERSION=${KOTEKAN_CL_TARGET_OPENCL_VERSION}")
 else()
     set(_ktk_flag_cl "CL_TARGET_OPENCL_VERSION=")

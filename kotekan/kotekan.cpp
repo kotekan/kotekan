@@ -706,7 +706,7 @@ int main(int argc, char** argv) {
 
     // If a test was run and passed, we have already printed the status message,
     // exit with a CLEAN_EXIT signal.
-    if(exit_code == TEST_PASSED)
+    if (exit_code == TEST_PASSED)
         exit_code = CLEAN_EXIT;
 
     return exit_code;

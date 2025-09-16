@@ -143,9 +143,16 @@ add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-I/opt
 
 # OpenMP flags
 set(_ktk_omp_reason "disabled")
-get_property(_ktk_omp_cache_has CACHE KOTEKAN_USE_OMP_REASON PROPERTY TYPE SET)
+get_property(
+    _ktk_omp_cache_has
+    CACHE KOTEKAN_USE_OMP_REASON
+    PROPERTY TYPE
+    SET)
 if(_ktk_omp_cache_has)
-    get_property(_ktk_omp_reason CACHE KOTEKAN_USE_OMP_REASON PROPERTY VALUE)
+    get_property(
+        _ktk_omp_reason
+        CACHE KOTEKAN_USE_OMP_REASON
+        PROPERTY VALUE)
 endif()
 if(${USE_OMP})
     find_package(OpenMP QUIET)
@@ -162,7 +169,9 @@ if(${USE_OMP})
         endif()
     else()
         set(_ktk_omp_reason "not found (auto-disabled)")
-        set(USE_OMP OFF CACHE BOOL "Enable OpenMP" FORCE)
+        set(USE_OMP
+            OFF
+            CACHE BOOL "Enable OpenMP" FORCE)
         kmsg_warn("OpenMP requested but compiler support not found; disabling USE_OMP.")
     endif()
 else()
@@ -170,7 +179,8 @@ else()
         set(_ktk_omp_reason "disabled")
     endif()
 endif()
-set(KOTEKAN_USE_OMP_REASON "${_ktk_omp_reason}"
+set(KOTEKAN_USE_OMP_REASON
+    "${_ktk_omp_reason}"
     CACHE STRING "OpenMP detection summary" FORCE)
 
 # Linker defaults

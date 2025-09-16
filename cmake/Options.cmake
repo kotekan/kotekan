@@ -1,13 +1,20 @@
 # All user-facing build options (no logic here).
 #
-# Developer note: when adding a new option, also update the configure summary
-# (cmake/Summary.cmake), the documentation (Sphinx CMake option pages), and the
-# version metadata (lib/version/version.c.in).
+# Developer note: when adding a new option, also update the configure summary (cmake/Summary.cmake),
+# the documentation (Sphinx CMake option pages), and the version metadata
+# (lib/version/version.c.in).
 
 function(_ktk_option name description default_value)
-    get_property(_ktk_cache_has CACHE ${name} PROPERTY TYPE SET)
+    get_property(
+        _ktk_cache_has
+        CACHE ${name}
+        PROPERTY TYPE
+        SET)
     if(_ktk_cache_has)
-        get_property(default_value CACHE ${name} PROPERTY VALUE)
+        get_property(
+            default_value
+            CACHE ${name}
+            PROPERTY VALUE)
     endif()
     option(${name} "${description}" ${default_value})
 endfunction()
