@@ -342,7 +342,6 @@ bool datasetManager::register_dataset_parser(std::string& reply) {
 }
 
 std::string datasetManager::summary() {
-    int id = 0;
     std::string out;
 
     // lock both of them at the same time to prevent deadlocks
@@ -355,7 +354,6 @@ std::string datasetManager::summary() {
             datasetState* dt = _states.at(t.second.state()).get();
 
             out += fmt::format(fmt("{:>30} : {}\n"), dt->type(), t.second.base_dset());
-            id++;
         } catch (std::out_of_range& e) {
             WARN_NON_OO("datasetManager::summary(): This datasetManager instance "
                         "does not know state {}, referenced by dataset {}. ({:s})",

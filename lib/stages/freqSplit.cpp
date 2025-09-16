@@ -131,6 +131,7 @@ void freqSplit::main_thread() {
         }
 
         auto& buffer_pair = out_bufs[buf_ind];
+        Buffer* buf;
         std::tie(buf, frame_id) = buffer_pair;
 
         INFO("Buffer {:d} has frame_id={:d}", buf_ind, frame_id);
