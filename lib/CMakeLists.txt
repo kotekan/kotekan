@@ -72,9 +72,6 @@ endif()
 # DPDK selection and summary handled in FeatureDPDK.cmake. Here we honor the effective decision and
 # wire targets accordingly.
 if(DEFINED DPDK_ENABLED AND DPDK_ENABLED)
-    if(DEFINED KOTEKAN_DPDK_MODE AND (KOTEKAN_DPDK_MODE STREQUAL "OLD"))
-        add_definitions(-DOLD_DPDK)
-    endif()
     add_subdirectory(dpdk)
     target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
 endif()
