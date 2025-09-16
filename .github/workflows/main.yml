@@ -145,14 +145,16 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-            -DWERROR=ON \
-            -DCMAKE_LINK_WHAT_YOU_USE=ON \
-            -DCMAKE_BUILD_TYPE=Test \
-            -DCCACHE=ON \
-            -DUSE_OMP=ON \
-            -DWITH_TESTS=ON \
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=OFF \
+            -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF \
+            -DUSE_ASDF=OFF -DUSE_HDF5=OFF -DUSE_GDAL=OFF \
+            -DUSE_AIRSPY=OFF -DUSE_LAPACK_BLAZE=OFF -DUSE_FFTW=OFF -DUSE_JULIA=OFF \
+            -DUSE_DPDK=OFF \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF \
             ..
-        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" make -j
         docker run "${OPTS[@]}" ccache -s
 
   # Build a full version of kotekan and run the unit tests
@@ -185,13 +187,15 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-            -DWERROR=ON \
-            -DCMAKE_LINK_WHAT_YOU_USE=ON \
-            -DCMAKE_BUILD_TYPE=Test \
-            -DNO_MEMLOCK=ON \
-            -DUSE_OMP=ON \
-            -DWITH_BOOST_TESTS=ON \
-            -DCCACHE=ON ..
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=OFF \
+            -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF \
+            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
+            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
+            -DUSE_DPDK=OFF \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
+            ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
@@ -246,14 +250,15 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-            -DWERROR=ON \
-            -DCMAKE_BUILD_TYPE=Test \
-            -DNO_MEMLOCK=ON \
-            -DUSE_OMP=ON \
-            -DWITH_BOOST_TESTS=ON \
-            -DUSE_CUDA=OFF \
-            -DUSE_OPENCL=ON \
-            -DCCACHE=ON ..
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON \
+            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
+            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
+            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
+            -DUSE_DPDK=ON \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF \
+            ..
         docker run "${OPTS[@]}" make -j 8
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
@@ -300,13 +305,15 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-            -DWERROR=ON \
-            -DCMAKE_BUILD_TYPE=Test \
-            -DNO_MEMLOCK=ON \
-            -DUSE_OMP=ON \
-            -DUSE_CUDA=ON \
-            -DWITH_TESTS=ON \
-            -DCCACHE=ON ..
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON \
+            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
+            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
+            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
+            -DUSE_DPDK=ON \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF \
+            ..
         docker run "${OPTS[@]}" make -j
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
@@ -363,9 +370,14 @@ jobs:
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-docs/ "${{ needs.build-docker-2404.outputs.docker_img_name }}")
         docker run "${OPTS[@]}" \
-          cmake \
-            -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-            -DWERROR=ON \
+          cmake -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=OFF -DCCACHE=OFF \
+            -DUSE_OMP=OFF -DUSE_NUMA=OFF -DNO_MEMLOCK=OFF \
+            -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF \
+            -DUSE_ASDF=OFF -DUSE_HDF5=OFF -DUSE_GDAL=OFF \
+            -DUSE_AIRSPY=OFF -DUSE_LAPACK_BLAZE=OFF -DUSE_FFTW=OFF -DUSE_JULIA=OFF \
+            -DUSE_DPDK=OFF \
+            -DWITH_TESTS=OFF -DWITH_BOOST_TESTS=OFF \
             -DCOMPILE_DOCS=ON \
             ..
         docker run "${OPTS[@]}" make doc
@@ -425,11 +437,15 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ -e CC -e CXX ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-        -DCMAKE_LINK_WHAT_YOU_USE=ON \
-        -DCMAKE_BUILD_TYPE=Test \
-        -DNO_MEMLOCK=ON \
-        -DWITH_TESTS=ON \
-        -DWITH_BOOST_TESTS=ON \
-        -DCCACHE=ON ..
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON \
+            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
+            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
+            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
+            -DUSE_DPDK=OFF \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
+            ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
