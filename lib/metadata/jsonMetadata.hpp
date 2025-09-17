@@ -113,25 +113,24 @@ void from_json(const nlohmann::json& j, beamCoord& c) {
 struct coarseFreq {
         int nfreq;
         int coarse_freq[CHORD_META_MAX_FREQ];
-
-        // TODO: turn into a from_json function?
-        coarseFreq(const metadata& md) {
-        md[NFREQ].get_to(nfreq);
-        const auto& freq(md[COARSE_FREQ]);
-        if(freq.size() > MAX_NUM_BEAMS)
-            throw std::runtime_error("Number of frequencies requested exceeds CHORD_META_MAX_FREQ");
-        size_t i = 0;
-        for(auto it = freq.cbegin() ; it != freq.cend() ; ++it) {
-            it->get_to(coarse_freq[i]);
-        }
-#ifdef DEBUG
-        for(size_t i = freq.size() ; i < CHORD_META_MAX_FREQ ; ++i) {
-            coarse_freq[i] = 0;
-        }
-#endif
-        }
 };
 
+static inline
+void from_json(const nlohmann::json& j, coarseFreq& f) {
+    j[NFREQ].get_to(f.nfreq);
+    const auto& freq(j[COARSE_FREQ]);
+    if(freq.size() > CHORD_META_MAX_FREQ)
+        throw std::runtime_error("Number of frequencies requested exceeds CHORD_META_MAX_FREQ");
+    size_t i = 0;
+    for(auto it = freq.cbegin() ; it != freq.cend() ; ++it) {
+        it->get_to(f.coarse_freq[i++]);
+    }
+#ifdef DEBUG
+    for(size_t i = freq.size() ; i < CHORD_META_MAX_FREQ ; ++i) {
+        f.coarse_freq[i] = 0;
+    }
+#endif
+    }
 }
 
 static inline
