@@ -20,7 +20,6 @@ GPU Backends
 - ``USE_CUDA``: Build CUDA GPU framework and CUDA stages. Requires ``nvcc`` and CUDAToolkit.
 - ``USE_OPENCL``: Build OpenCL GPU framework and stages. Requires OpenCL headers/libs.
 - ``USE_HIP``: Build HIP GPU framework and stages.
-- ``USE_OLD_ROCM``: Build for older ROCm (<= 2.3). Off by default.
 
 I/O and File Formats
 =====================

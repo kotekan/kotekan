@@ -227,8 +227,6 @@ Cmake build options
 * ``-DUSE_DPDK=ON|OFF``
     Control DPDK support. Default ``ON`` enables DPDK when libdpdk (>=19.11) is available via
     pkg-config. Use ``OFF`` to disable explicitly.
-* ``-DUSE_OLD_ROCM=ON``
-    Build for ROCm versions 2.3 or older. Off by default.
 * ``-DUSE_OPENCL=ON``
     Build with OpenCL support.
 * ``-DUSE_CUDA=ON``

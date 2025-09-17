@@ -20,7 +20,7 @@ if(NOT DEFINED KOTEKAN_COLOR_LOADED)
         message(WARNING "${KTK_YELLOW}${msg}${KTK_RESET}")
     endfunction()
 
-    # kmsg_warn: Print a warning-style message during configure
+    # kmsg_error: Print an error-style message during configure
     function(kmsg_error msg)
         message(SEND_ERROR "${KTK_RED}${msg}${KTK_RESET}")
     endfunction()

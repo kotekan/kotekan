@@ -28,8 +28,6 @@ Cmake build options:
 * `-DCMAKE_BUILD_TYPE=Test` - Builds the project with asserts, debug logging, but without debug
   symbols.
 * `-DUSE_DPDK=ON|OFF` - Control DPDK support. Default `ON` enables DPDK when libdpdk (>=19.11) is found via pkg-config; `OFF` disables DPDK entirely.
-* `-DUSE_OLD_ROCM=ON` - Build for ROCm versions 2.3 or older. Off by default.
-  Direct toolchain calls are used by default.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
 * `-DUSE_CUDA=ON` - Build with CUDA support, requires `nvcc`
 * `-DUSE_HDF5=ON`, `-DUSE_ASDF=ON`, or `-DUSE_GDAL=ON`: HDF5, ASDF, and GDAL are auto‑enable if installed.
