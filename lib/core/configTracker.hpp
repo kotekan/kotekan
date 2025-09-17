@@ -592,6 +592,11 @@ private:
                 "ConfigTracker: _insertConfig called with updatable_config field present.");
         }
 
+        // normalize localhost to 127.0.0.1
+        if (host == "localhost") {
+            host = "127.0.0.1";
+        }
+
         // Validate the host is a valid IPv4 address
         struct sockaddr_in sa4;
         if (inet_pton(AF_INET, host.c_str(), &(sa4.sin_addr)) != 1) {
