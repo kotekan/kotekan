@@ -530,6 +530,11 @@ int main(int argc, char** argv) {
 
     restServer& rest_server = restServer::instance();
     std::vector<std::string> address_parts = regex_split(bind_address, ":");
+    if (address_parts.at(0) == "" || address_parts.size() != 2) {
+        ERROR_NON_OO("The bind address {:s} is not valid, it should be in the form ip:port",
+                     bind_address.c_str());
+        exit(-1);
+    }
     rest_server.start(address_parts.at(0), std::stoi(address_parts.at(1)));
 
     if (string(config_file_name) != "none") {
