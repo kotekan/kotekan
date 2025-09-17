@@ -25,6 +25,7 @@
 
 #include "json.hpp" // for json
 
+#include <arpa/inet.h> // for inet_pton
 #include <iomanip>
 #include <map>   // for map
 #include <mutex> // for mutex
@@ -61,6 +62,8 @@ public:
     void operator=(const ConfigTracker&) = delete;
 
     ~ConfigTracker() {}
+
+private:
 
     /**
      * @brief Struct to hold a (host, port) pair.
@@ -131,8 +134,22 @@ public:
         }
     };
 
+public:
+
+    /**
+     * @brief Get the number of configurations stored in the tracker.
+     * @returns The number of configurations.
+     */
+    std::size_t n_configs() const {
+        check_num_configs_consistent();
+
+        std::lock_guard<std::mutex> lock(_lock);
+        return _configs.size();
+    }
+
     /**
      * @brief Check if the number of configs and hashes are consistent.
+     * (Mainly useful for debugging, should always be true. Exposed for boost tests.)
      *
      * This function checks if the number of configurations stored in _configs
      * matches the number of hashes stored in _config_hashes.
@@ -151,56 +168,6 @@ public:
     }
 
     /**
-     * @brief Get the number of configurations stored in the tracker.
-     * @returns The number of configurations.
-     */
-    std::size_t n_configs() const {
-        check_num_configs_consistent();
-
-        std::lock_guard<std::mutex> lock(_lock);
-        return _configs.size();
-    }
-
-    /**
-     * @brief Set a hash of the combined hash of all configurations stored in the tracker.
-     * i.e. a hash representing the current tracker state.
-     */
-    void setTrackerHash() {
-
-        std::stringstream ss;
-        {
-            std::lock_guard<std::mutex> lock(_lock);
-            for (const auto& [hash, _] : _config_hashes) {
-                ss << hash;
-            }
-        }
-
-        // Get hash of the concatenated hashes
-
-        unsigned char md5_result[MD5_DIGEST_LENGTH];
-
-        // The MD5 function is deprecated in openssl 3.0, but we want to
-        // maintain compatibility.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-        MD5(reinterpret_cast<const unsigned char*>(ss.str().c_str()), ss.str().size(), md5_result);
-#pragma GCC diagnostic pop
-
-        // Convert the MD5 result to a hex string
-        std::stringstream md5_ss;
-        for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
-            md5_ss << std::hex << std::setw(2) << std::setfill('0')
-                   << static_cast<int>(md5_result[i]);
-        {
-            std::lock_guard<std::mutex> lock(_lock);
-            // Store the combined hash
-            _tracker_hash = md5_ss.str();
-        }
-
-        DEBUG_NON_OO("ConfigTracker: Combined hash set to: {}", _tracker_hash);
-    }
-
-    /**
      * @brief Get a hash representation of all configurations stored in the tracker.
      *
      * @returns A string hash of the combined hash of all configurations, i.e. a hash
@@ -212,63 +179,7 @@ public:
     }
 
     /**
-     * @brief Insert JSON configuration into the tracker.
-     * This function checks requires "updatable_config" fields have been removed.
-     * This is an overload that allows using a ConfigInfo object directly.
-     * Note that the host is case-sensitive (even though DNS is not).
-     *
-     * @param host The host where the kotekan instance with the configuration is running.
-     * @param port The port where the kotekan instance with the configuration is running.
-     * @param config_info The configuration information to insert.
-     * @throws Error if a config with the same host and port already exists
-     */
-    void insertConfig(std::string host, uint16_t port, ConfigInfo config_info) {
-
-        // Make sure the config_info doesn't have an "updatable_config" field in its config
-        if (config_info.config.contains("updatable_config")) {
-            FATAL_ERROR_NON_OO(
-                "ConfigTracker: insertConfig called with updatable_config field present.");
-        }
-
-        HostPort host_port{host, port};
-
-        // Store the config in the map with its hash
-        {
-            std::lock_guard<std::mutex> lock(_lock);
-
-            if (_configs.count(host_port)) {
-                // If a config already exists with the same host and port,
-                // make sure the hash and version metadata match.
-                if (_configs[host_port].json_hash != config_info.json_hash
-                    || _configs[host_port].kotekan_version != config_info.kotekan_version
-                    || _configs[host_port].kotekan_build_branch != config_info.kotekan_build_branch
-                    || _configs[host_port].kotekan_git_commit_hash
-                           != config_info.kotekan_git_commit_hash
-                    || _configs[host_port].kotekan_cmake_options
-                           != config_info.kotekan_cmake_options) {
-                    FATAL_ERROR_NON_OO("ConfigTracker: conflicting configuration data present for "
-                                       "host: {}, port: {}",
-                                       host, port);
-                    return;
-                }
-                return;
-            }
-
-            _configs.emplace(host_port, config_info);
-            _config_hashes.emplace(config_info.json_hash, host_port);
-        }
-        // Sanity check to ensure that the number of configs is consistent
-        check_num_configs_consistent();
-
-        // Update the combined hash
-        setTrackerHash();
-        DEBUG_NON_OO("ConfigTracker: inserted config for host: {}, port: {}, hash: {}", host, port,
-                     config_info.json_hash);
-        DEBUG_NON_OO("ConfigTracker: _tracker_hash: {}", _tracker_hash);
-    }
-
-    /**
-     * @brief Insert JSON configuration into the tracker.
+     * @brief Insert raw (unfiltered) JSON configuration into the tracker.
      * Creates a ConfigInfo object from the parameters.
      * This function will strip "updatable_config" fields.
      *
@@ -280,7 +191,7 @@ public:
      * @param kotekan_git_commit_hash The git commit hash of Kotekan.
      * @param kotekan_cmake_options The CMake options used to build Kotekan.
      */
-    void insertConfig(std::string host, uint16_t port, const nlohmann::json& config_json,
+    void insertRawConfig(std::string host, uint16_t port, const nlohmann::json& config_json,
                       const std::string& kotekan_version, const std::string& kotekan_build_branch,
                       const std::string& kotekan_git_commit_hash,
                       const std::string& kotekan_cmake_options) {
@@ -298,27 +209,27 @@ public:
             ConfigInfo(filtered_json, json_hash, kotekan_version, kotekan_build_branch,
                        kotekan_git_commit_hash, kotekan_cmake_options);
 
-        // Call insertConfig with the constructed ConfigInfo
-        insertConfig(host, port, info);
+        // Call _insertConfig with the constructed ConfigInfo
+        _insertConfig(host, port, info);
     }
 
     /**
-     * @brief Determine if a config exists in the _configs map.
+     * @brief Check if a config exists in the _configs map.
      *
      * @param hash The hash of the config.
      * @returns True if the config exists, false otherwise.
      */
     bool hasConfig(std::string host, uint16_t port) const {
         std::lock_guard<std::mutex> lock(_lock);
-        return _configs.count({host, port}) != 0;
+        return _configs.count({host, port});
     }
 
     /**
-     * @brief check hasConfig using a hash string instead of host and port.
+     * @brief Check if a config exists using a hash string instead of host and port.
      */
     bool hasConfig(std::string hash) const {
         std::lock_guard<std::mutex> lock(_lock);
-        return _config_hashes.count(hash) != 0;
+        return _config_hashes.count(hash);
     }
 
     /**
@@ -390,9 +301,9 @@ public:
     }
 
     /**
-     * @brief Registers this class with the REST server, creating the
-     *        /trackers end point
-     * If a hash is provided, it will return the config for that hash.
+     * @brief Registers this object with the REST server, creating the
+     *        /config_tracker_configs and config_tracker_hashes end points.
+     * If a hash is provided to /config_tracker_configs, it will return the config for that hash.
      * @param rest_server The server to register with.
      */
     void register_with_server(restServer* rest_server) {
@@ -497,7 +408,7 @@ public:
             std::string host_port_str = upstream_host + ":" + std::to_string(upstream_port);
             if (config_response_json.contains(host_port_str)) {
                 ConfigInfo info = ConfigInfo(config_response_json[host_port_str]);
-                insertConfig(upstream_host, upstream_port, info);
+                _insertConfig(upstream_host, upstream_port, info);
             } else {
                 // If the config was not found, log an error or take appropriate action
                 ERROR_NON_OO("ConfigTracker: Config not found for hash: {}", hash);
@@ -517,7 +428,8 @@ public:
         // Check if directory exists and is writable
         struct stat info;
         if (stat(directory.c_str(), &info) != 0) {
-            std::string err = "Directory does not exist: " + directory;
+            // use strerror:
+            std::string err = "Error stating directory: " + directory + ", error: " + strerror(errno);
             FATAL_ERROR_NON_OO("ConfigTracker: {}", err);
         }
         if (!(info.st_mode & S_IFDIR)) {
@@ -601,15 +513,14 @@ private:
 
     mutable std::mutex _lock;
 
-
     /**
-     * @brief Get the md5 hash of a (jsonified) config.
+     * @brief Get the md5 hash of a (json) config.
      *
      * This function generates a hash for a given configuration JSON object.
-     * In the context of the configTracker, the JSON object should have any
+     * In the context of the configTracker, the JSON object must have any
      * "updatable_config" fields stripped before hashing. (This function only
-     * checks for that, it does not strip them itself, instead relying on
-     * insertConfig to supply consistent information.)
+     * checks for that, and errors, expecting a caller to supply
+     * consistent information.)
      *
      * @param filtered_json The configuration JSON object to hash.
      * @returns The canonical hash as a string.
@@ -618,7 +529,7 @@ private:
         std::stringstream ss;
 
         // nlohmann::json::dump() uses an alpha-ordered map for objects, so the
-        // config should be serialized in a consistent order.
+        // config gets serialized in a consistent order.
 
         // In order for this to hash configs correctly, this assumes the updatable_config
         // field is removed, and versioning information has been added.
@@ -627,7 +538,8 @@ private:
                 "ConfigTracker: _jsonHash called with updatable_config field present.");
         }
 
-        // Stick to a string dump; less likely to run into floating point issues?
+        // Stick to a string dump for now
+        // TODO: a binary dump storing the full double precision bit pattern could be more consistent.
         ss << filtered_json.dump(-1, '\0', false, nlohmann::json::error_handler_t::strict);
 
         std::string serialized = ss.str();
@@ -642,15 +554,123 @@ private:
 #pragma GCC diagnostic pop
 
         std::stringstream md5_ss;
+        md5_ss << std::hex << std::setw(2) << std::setfill('0');
         for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
-            md5_ss << std::hex << std::setw(2) << std::setfill('0')
-                   << static_cast<int>(md5_result[i]);
+            md5_ss << static_cast<int>(md5_result[i]);
 
         return md5_ss.str();
     }
 
+    /**
+     * @brief Insert configuration information into the tracker.
+     * Fatal kotekan error if a config with the same host and port already exists, are invalid, or
+     * the config includes an "updatable_config" field.
+     *
+     * @param host The (ipv4) host where the kotekan instance with the configuration is running.
+     * @param port The port where the kotekan instance with the configuration is running.
+     * @param config_info The configuration information to insert.
+     */
+    void _insertConfig(std::string host, uint16_t port, ConfigInfo config_info) {
 
-};
+        // Make sure the config_info doesn't have an "updatable_config" field in its config
+        if (config_info.config.contains("updatable_config")) {
+            FATAL_ERROR_NON_OO(
+                "ConfigTracker: _insertConfig called with updatable_config field present.");
+        }
+
+        // Validate the host is a valid IPv4 address
+        struct sockaddr_in sa4;
+        if (inet_pton(AF_INET, host.c_str(), &(sa4.sin_addr)) != 1) {
+            FATAL_ERROR_NON_OO("ConfigTracker: _insertConfig called with invalid IPv4 address: {}", host);
+        }
+
+        // Validate the port is in a valid range. port < 65535 by definition of uint16_t.
+        if (port == 0) {
+            FATAL_ERROR_NON_OO("ConfigTracker: _insertConfig called with invalid port: {}",
+                                port);
+        }
+
+        HostPort host_port{host, port};
+
+        // Store the config in the map with its hash
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+
+            if (_configs.count(host_port)) {
+                // If a config already exists with the same host and port,
+                // make sure the hash and version metadata match.
+                if (_configs[host_port].json_hash != config_info.json_hash
+                    || _configs[host_port].kotekan_version != config_info.kotekan_version
+                    || _configs[host_port].kotekan_build_branch != config_info.kotekan_build_branch
+                    || _configs[host_port].kotekan_git_commit_hash
+                           != config_info.kotekan_git_commit_hash
+                    || _configs[host_port].kotekan_cmake_options
+                           != config_info.kotekan_cmake_options) {
+                    FATAL_ERROR_NON_OO("ConfigTracker: conflicting configuration data present for "
+                                       "host: {}, port: {}",
+                                       host, port);
+                }
+                // Don't add anything
+                return;
+            }
+
+            _configs.emplace(host_port, config_info);
+            _config_hashes.emplace(config_info.json_hash, host_port);
+        }
+        // Sanity check to ensure that the number of configs is consistent
+        check_num_configs_consistent();
+
+        // Update the combined hash
+        _setTrackerHash();
+        {
+            // lock again to print debug info
+            std::lock_guard<std::mutex> lock(_lock);
+            DEBUG_NON_OO("ConfigTracker: inserted config for host: {}, port: {}, hash: {}", host, port,
+                        config_info.json_hash);
+            DEBUG_NON_OO("ConfigTracker: _tracker_hash: {}", _tracker_hash);
+        }
+    }
+
+    /**
+     * @brief Set a hash of the combined hash of all configurations stored in the tracker.
+     * i.e. a hash representing the current tracker state.
+     */
+    void _setTrackerHash() {
+
+        std::stringstream ss;
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+            for (const auto& [hash, _] : _config_hashes) {
+                ss << hash;
+            }
+        }
+
+        // Get hash of the concatenated hashes
+
+        unsigned char md5_result[MD5_DIGEST_LENGTH];
+
+        // The MD5 function is deprecated in openssl 3.0, but we want to
+        // maintain compatibility.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        MD5(reinterpret_cast<const unsigned char*>(ss.str().c_str()), ss.str().size(), md5_result);
+#pragma GCC diagnostic pop
+
+        // Convert the MD5 result to a hex string
+        std::stringstream md5_ss;
+        md5_ss << std::hex << std::setw(2) << std::setfill('0');
+        for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
+            md5_ss << static_cast<int>(md5_result[i]);
+        
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+            // Store the combined hash
+            _tracker_hash = md5_ss.str();
+            DEBUG_NON_OO("ConfigTracker: Combined hash set to: {}", _tracker_hash);
+        }
+    }
+
+}; // class ConfigTracker
 
 } // namespace kotekan
 

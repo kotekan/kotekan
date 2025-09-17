@@ -89,10 +89,12 @@ for file in "${CONFIG_OUT_DIR}"/*.json; do
     sed -i '/"kotekan_cmake_options":/d' "$file"
 done
 
-# We expect the modified 127.0.0.1_12048.json to exist and have a md5sum 3671d872fa7934222839a33bb0a485d5
-md5sum -c --status <(echo "3671d872fa7934222839a33bb0a485d5  ${CONFIG_OUT_DIR}/127.0.0.1_12048.json")
-if [ $? -ne 0 ]; then
-    echo "MD5 checksum for ${CONFIG_OUT_DIR}/127.0.0.1_12048.json does not match expected value"
+# We expect the modified 127.0.0.1_12048.json to exist and have the correct md5sum
+EXPECTED_HASH1="b4b5beb0768e88ed50f49bbbe0a2526d"
+HASH1=$(md5sum "${CONFIG_OUT_DIR}/127.0.0.1_12048.json" | awk '{print $1}')
+if [ "$HASH1" != "$EXPECTED_HASH1" ]; then
+    echo "MD5 checksum for ${CONFIG_OUT_DIR}/127.0.0.1_12048.json does not match expected value!"
+    echo "  Expected $EXPECTED_HASH1, got ${HASH1} instead."
     echo "File contents:"
     echo "--------------"
     cat "${CONFIG_OUT_DIR}/127.0.0.1_12048.json"
@@ -102,10 +104,12 @@ if [ $? -ne 0 ]; then
     ERROR=1
 fi
 
-# We expect the modified 127.0.0.1_12748.json to exist and have a md5sum 057f3698eaaf7adc01f0ad3db909c5b7
-md5sum -c --status <(echo "057f3698eaaf7adc01f0ad3db909c5b7  ${CONFIG_OUT_DIR}/127.0.0.1_12748.json")
-if [ $? -ne 0 ]; then
-    echo "MD5 checksum for ${CONFIG_OUT_DIR}/127.0.0.1_12748.json does not match expected value."
+# We expect the modified 127.0.0.1_12748.json to exist and have a md5sum
+EXPECTED_HASH2="63173271620d8a25531ccd971f52c24a"
+HASH2=$(md5sum "${CONFIG_OUT_DIR}/127.0.0.1_12748.json" | awk '{print $1}')
+if [ "$HASH2" != "$EXPECTED_HASH2" ]; then
+    echo "MD5 checksum for ${CONFIG_OUT_DIR}/127.0.0.1_12748.json does not match expected value!"
+    echo "  Expected $EXPECTED_HASH2, got ${HASH2} instead."
     echo "File contents:"
     echo "--------------"
     cat "${CONFIG_OUT_DIR}/127.0.0.1_12748.json"
@@ -120,5 +124,5 @@ if [ $ERROR -ne 0 ]; then
     exit 1
 fi
 
-echo "configTrackerWriter test passed: ${num_json} file(s) in ${CONFIG_OUT_DIR}"
+echo "configTrackerWriter test passed: Two matching config files found in ${CONFIG_OUT_DIR}."
 exit 0

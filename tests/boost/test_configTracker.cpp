@@ -17,9 +17,6 @@ using json = nlohmann::json;
 struct ConfigFixture {
     ConfigFixture() {
         auto& tracker = ConfigTracker::instance();
-        // restServer& rest_server = restServer::instance();
-        // if(rest_server.bind_address().empty())
-        //     rest_server.start("localhost", 12480);
         tracker.reset();
     }
 
@@ -41,13 +38,13 @@ BOOST_AUTO_TEST_CASE(add_json) {
               {"key3", "value3"}};
     // The hash of this should be ...
 
-    tracker.insertConfig("localhost", 8080, j, "1.0.0", "main", "abcdef1234567890",
+    tracker.insertRawConfig("127.0.0.1", 8080, j, "1.0.0", "main", "abcdef1234567890",
                          "CMAKE_BUILD_TYPE=Release");
 
     // Check hashing
     BOOST_TEST_MESSAGE("Config hash from getTrackerHash: " << tracker.getTrackerHash());
 
-    BOOST_CHECK_EQUAL(tracker.getTrackerHash(), "16f3adf520a3a7cca9831c7952c4749f");
+    BOOST_CHECK_EQUAL(tracker.getTrackerHash(), "c22c499bdcf3ad0414da2bba51d232");
     BOOST_CHECK_EQUAL(tracker.n_configs(), 1);
 }
 
@@ -65,11 +62,11 @@ BOOST_AUTO_TEST_CASE(add_two_jsons) {
                {"key5", {{"subkey3", "subvalue3"}, {"subkey4", "subvalue4"}}},
                {"key6", "value6"}};
 
-    tracker.insertConfig("localhost", 8080, j1, "1.0.0", "main", "abcdef1234567890",
+    tracker.insertRawConfig("127.0.0.1", 8080, j1, "1.0.0", "main", "abcdef1234567890",
                          "CMAKE_BUILD_TYPE=Release");
 
     // different port so no conflict
-    tracker.insertConfig("localhost", 9090, j2, "1.0.0", "main", "abcdef1234567890",
+    tracker.insertRawConfig("127.0.0.1", 9090, j2, "1.0.0", "main", "abcdef1234567890",
                          "CMAKE_BUILD_TYPE=Release");
 
     // Check hashing
@@ -93,11 +90,11 @@ BOOST_AUTO_TEST_CASE(add_same_two_jsons) {
                {"key6", "value6"},
                {"updatable_config", {{"key7", "value7"}, {"key8", "value8"}}}};
 
-    tracker.insertConfig("localhost", 8080, j1, "1.0.0", "main", "abcdef1234567890",
+    tracker.insertRawConfig("127.0.0.1", 8080, j1, "1.0.0", "main", "abcdef1234567890",
                          "CMAKE_BUILD_TYPE=Release");
 
     // same port, same config (updatable_config should be ignored!), so no conflict expected
-    tracker.insertConfig("localhost", 8080, j2, "1.0.0", "main", "abcdef1234567890",
+    tracker.insertRawConfig("127.0.0.1", 8080, j2, "1.0.0", "main", "abcdef1234567890",
                          "CMAKE_BUILD_TYPE=Release");
 
     BOOST_CHECK_EQUAL(tracker.n_configs(), 1);
@@ -117,11 +114,11 @@ BOOST_AUTO_TEST_CASE(add_same_two_jsons_bad) {
                {"key5", {{"subkey3", "subvalue3"}, {"subkey4", "subvalue4"}}},
                {"key6", "value6"}};
 
-    tracker.insertConfig("localhost", 8080, j1, "1.0.0", "main", "abcdef1234567890",
+    tracker.insertRawConfig("127.0.0.1", 8080, j1, "1.0.0", "main", "abcdef1234567890",
                          "CMAKE_BUILD_TYPE=Release");
 
     // same port, different config, so conflict *is* expected
-    BOOST_CHECK_THROW(tracker.insertConfig("localhost", 8080, j2, "1.0.0", "main",
+    BOOST_CHECK_THROW(tracker.insertRawConfig("127.0.0.1", 8080, j2, "1.0.0", "main",
                                            "abcdef1234567890", "CMAKE_BUILD_TYPE=Release"),
                       std::runtime_error);
 }
@@ -134,7 +131,7 @@ BOOST_AUTO_TEST_CASE(write_configs) {
                {"key2", {{"subkey1", "subvalue1"}, {"subkey2", "subvalue2"}}},
                {"key3", "value3"}};
 
-    tracker.insertConfig("localhost", 8080, j1, "1.0.0", "main", "abcdef1234567890",
+    tracker.insertRawConfig("127.0.0.1", 8080, j1, "1.0.0", "main", "abcdef1234567890",
                          "CMAKE_BUILD_TYPE=Release");
 
 
@@ -144,19 +141,19 @@ BOOST_AUTO_TEST_CASE(write_configs) {
     tracker.writeConfigsToDisk(temp_dir.string());
 
     // Verify the file exists and has content
-    BOOST_CHECK(boost::filesystem::exists(temp_dir / "localhost_8080.json"));
+    BOOST_CHECK(boost::filesystem::exists(temp_dir / "127.0.0.1_8080.json"));
 
     // Read back and verify content
     {
-        std::ifstream read_file(temp_dir / "localhost_8080.json");
+        std::ifstream read_file(temp_dir / "127.0.0.1_8080.json");
         std::string line;
         std::getline(read_file, line);
         BOOST_TEST(!line.empty()); // TODO: Add more specific content checks
     }
 
     // Clean up - remove the temporary file
-    boost::filesystem::remove(temp_dir / "localhost_8080.json");
-    BOOST_CHECK(!boost::filesystem::exists(temp_dir / "localhost_8080.json"));
+    boost::filesystem::remove(temp_dir / "127.0.0.1_8080.json");
+    BOOST_CHECK(!boost::filesystem::exists(temp_dir / "127.0.0.1_8080.json"));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

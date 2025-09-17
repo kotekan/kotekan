@@ -124,7 +124,7 @@ void kotekanMode::initalize_stages() {
             host = "127.0.0.1";
         uint16_t port = restServer::instance().port();
 
-        ConfigTracker::instance().insertConfig(host, port, cfg_json, get_kotekan_version(),
+        ConfigTracker::instance().insertRawConfig(host, port, cfg_json, get_kotekan_version(),
                                                get_git_branch(), get_git_commit_hash(),
                                                get_cmake_build_options());
     } catch (const std::exception& e) {
