@@ -2,18 +2,23 @@
  * @file
  * @brief Configuration tracker singleton and REST endpoints.
  *
- * Tracks the startup-time configuration JSON for participating Kotekan instances,
- * exposes REST endpoints to query stored configs and their hashes, and maintains a
- * combined hash summarizing the local tracker state.
+ * Tracks the startup-time configuration JSON for participating kotekan instances,
+ * exposes REST endpoints to query stored configs and their hashes, maintains a combined
+ * tracker hash, and supports persistence and synchronization with upstream trackers.
  *
  * - kotekan::ConfigTracker
  *   -- instance
- *   -- insertConfig
- *   -- hasConfig
+ *   -- n_configs
+ *   -- check_num_configs_consistent
  *   -- getTrackerHash
+ *   -- insertRawConfig
+ *   -- hasConfig
+ *   -- trackers_configs_callback
+ *   -- trackers_hashes_callback
  *   -- register_with_server
  *   -- getUpstreamConfigs
  *   -- writeConfigsToDisk
+ *   -- reset
  */
 #ifndef CONFIGTRACKER_H
 #define CONFIGTRACKER_H
