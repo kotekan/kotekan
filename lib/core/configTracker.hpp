@@ -122,6 +122,11 @@ private:
             kotekan_cmake_options = j.at("kotekan_cmake_options");
         }
 
+        // "from_json" function for nlohmann::json
+        static ConfigInfo from_json(const nlohmann::json& j) {
+            return ConfigInfo(j);
+        }
+
         // Convert to JSON
         nlohmann::json to_json() const {
             return nlohmann::json{{"config", config},
@@ -246,16 +251,16 @@ public:
         nlohmann::json return_json = {};
 
         auto query_args = conn.get_query();
+        // If a hash is provided, only return the config with that hash
+        std::string hash = "";
+        if (query_args.find("hash") != query_args.end()) {
+            hash = query_args["hash"];
+        }
 
         std::lock_guard<std::mutex> lock(_lock);
         for (const auto& config : _configs) {
-            // If a hash is provided, only return the config with that hash
-            if (query_args.find("hash") != query_args.end()) {
-                std::string hash = query_args["hash"];
-                if (!hash.empty() && config.second.json_hash != hash) {
-                    continue;
-                }
-            }
+            if (!hash.empty() && config.second.json_hash != hash)
+                continue;
 
             // Serialize the ConfigInformation into JSON
             const auto& host_port = config.first;
@@ -349,9 +354,11 @@ public:
         try {
             response_json = nlohmann::json::parse(reply.second);
         } catch (const nlohmann::json::parse_error& e) {
+            // Error, but not fatal if we can't parse the JSON
             ERROR_NON_OO("ConfigTracker: Failed to parse JSON response from upstream host: {}, "
                          "port: {}. Error: {}",
                          host, port, e.what());
+            DEBUG2_NON_OO("Response was: {}", reply.second);
             return;
         }
 
@@ -389,6 +396,7 @@ public:
                 ERROR_NON_OO("ConfigTracker: Failed to get config for hash: {} from upstream host: "
                              "{}, port: {}",
                              hash, upstream_host, upstream_port);
+                DEBUG2_NON_OO("Response was: {}", reply.second);
                 continue;
             }
             // Parse the response JSON
@@ -409,7 +417,7 @@ public:
                 ConfigInfo info = ConfigInfo(config_response_json[host_port_str]);
                 _insertConfig(upstream_host, upstream_port, info);
             } else {
-                // If the config was not found, log an error or take appropriate action
+                // If the config was not found, log a non-fatal error.
                 ERROR_NON_OO("ConfigTracker: Config not found for hash: {}", hash);
             }
         }
@@ -427,12 +435,12 @@ public:
         // Check if directory exists and is writable
         struct stat info;
         if (stat(directory.c_str(), &info) != 0) {
-            // use strerror:
             std::string err =
                 "Error stating directory: " + directory + ", error: " + strerror(errno);
             FATAL_ERROR_NON_OO("ConfigTracker: {}", err);
         }
-        if (!(info.st_mode & S_IFDIR)) {
+
+        if (!S_ISDIR(info.st_mode)) {
             std::string err = "Path is not a directory: " + directory;
             FATAL_ERROR_NON_OO("ConfigTracker: {}", err);
         }

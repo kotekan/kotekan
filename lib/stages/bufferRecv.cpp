@@ -49,6 +49,7 @@ REGISTER_KOTEKAN_STAGE(bufferRecv);
 bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
+    use_config_tracker(config.get_default<bool>(unique_name, "use_config_tracker", true)),
     dropped_frame_counter(
         Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)),
     transfer_time_seconds(Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
@@ -58,30 +59,23 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     connection_timeout = config.get_default<int>(unique_name, "connection_timeout", 60);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
-    use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
 
     // Optional per-connection upstream REST port overrides for a given host (list of "host:port"
     // strings)
     if (config.exists(unique_name, "upstream_rest_endpoints")) {
-        try {
-            auto entries =
-                config.get<std::vector<std::string>>(unique_name, "upstream_rest_endpoints");
-            for (const auto& ep : entries) {
-                auto parts = regex_split(ep, ":");
-                if (parts.size() != 2) {
-                    FATAL_ERROR("Invalid upstream_rest_endpoints entry: {:s} (expected host:port)",
-                                ep);
-                }
-                uint16_t port = 0;
-                int p = std::stoi(parts[1]);
-                if (p < 0 || p > 65535) {
-                    FATAL_ERROR("Invalid port in upstream_rest_endpoints entry: {:s}", ep);
-                }
-                port = static_cast<uint16_t>(p);
-                upstream_rest_port_overrides[parts[0]] = port;
+        auto entries = config.get<std::vector<std::string>>(unique_name, "upstream_rest_endpoints");
+        for (const auto& ep : entries) {
+            auto parts = regex_split(ep, ":");
+            if (parts.size() != 2) {
+                FATAL_ERROR("Invalid upstream_rest_endpoints entry: {:s} (expected host:port)", ep);
             }
-        } catch (const std::exception& e) {
-            FATAL_ERROR("Failed to parse upstream_rest_endpoints: {:s}", e.what());
+            uint16_t port = 0;
+            int p = std::stoi(parts[1]);
+            if (p < 0 || p > 65535) {
+                FATAL_ERROR("Invalid port in upstream_rest_endpoints entry: {:s}", ep);
+            }
+            port = static_cast<uint16_t>(p);
+            upstream_rest_port_overrides[parts[0]] = port;
         }
     }
 

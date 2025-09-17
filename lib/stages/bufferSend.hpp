@@ -24,18 +24,17 @@
  * @struct bufferFrameHeader
  * @brief Stable wire header for transfer details.
  *
- * Uses fixed-width types and explicit padding to make the layout
+ * Uses fixed-width types and explicit padding to (hopefully) make the layout
  * consistent across compilers/ABIs without relying on packing pragmas.
  */
-#pragma pack(push, 1)
 struct bufferFrameHeader {
     uint32_t metadata_size;
     uint32_t frame_size;
     /// 0 = no update, 1 = update
     uint32_t config_tracker_update;
+    // TODO: use other bits for versioning info, other features?
 };
-#pragma pack(pop)
-static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader must be 12 bytes");
+static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 bytes");
 
 /**
  * @struct bufferFrameHeaderNoConfigTracker
@@ -46,7 +45,7 @@ struct bufferFrameHeaderNoConfigTracker {
     uint32_t frame_size;
 };
 static_assert(sizeof(bufferFrameHeaderNoConfigTracker) == 8,
-              "bufferFrameHeaderNoConfigTracker must be 8 bytes");
+              "bufferFrameHeaderNoConfigTracker should be 8 bytes");
 
 /**
  * @brief Sends a buffer, metadata, and flag for whether config data was updated over TCP.

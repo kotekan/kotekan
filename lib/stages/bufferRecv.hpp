@@ -140,7 +140,7 @@ private:
     std::mutex next_frame_lock;
 
     /// Whether to use the config tracker
-    bool use_config_tracker;
+    const bool use_config_tracker;
 
     static void read_callback(evutil_socket_t fd, short what, void* arg);
     static void accept_connection(evutil_socket_t listener, short event, void* arg);
@@ -314,7 +314,7 @@ public:
     double start_time;
 
     /// Whether to use the config tracker
-    bool use_config_tracker;
+    const bool use_config_tracker;
 
     /// Upstream REST port for this connection (may override stage default)
     uint16_t upstream_rest_port;

@@ -106,7 +106,7 @@ void bufferSend::main_thread() {
             size_t header_len;
 
             // Send header
-            // Use NoTrack header version if there is a config setting to enable it.
+            // Use NoConfigTracker header version if there is a config setting to enable it.
             if (use_config_tracker) {
                 bufferFrameHeader header{}; // zero-initialize
                 header_len = sizeof(bufferFrameHeader);
@@ -146,7 +146,7 @@ void bufferSend::main_thread() {
                 DEBUG2("Sending header");
                 while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
                                  MSG_NOSIGNAL))
-                       > 0) {
+                       >= 0) {
                     n_sent += n;
                 }
             }
