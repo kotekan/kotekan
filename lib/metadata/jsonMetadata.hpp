@@ -60,55 +60,55 @@ struct beamCoord {
             scale = 0;
 #endif
     }
-
-    // TODO: turn into a from_json function?
-    beamCoord(const metadata& md) {
-        {
-        const auto& ra(md[RIGHT_ASCENSION]);
-        if(ra.size() > MAX_NUM_BEAMS)
-                throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
-        size_t i = 0;
-        for(auto it = ra.cbegin() ; it != ra.cend() ; ++it) {
-            it->get_to(right_ascension[i++]);
-        }
-#ifdef DEBUG
-        for(size_t i = ra.size() ; i < MAX_NUM_BEAMS ; ++i) {
-            right_ascension[i] = std::nanf("");
-        }
-#endif
-        }
-
-        {
-        const auto& dec(md[DECLINATION]);
-        if(dec.size() > MAX_NUM_BEAMS)
-                throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
-        size_t i = 0;
-        for(auto it = dec.cbegin() ; it != dec.cend() ; ++it) {
-                it->get_to(declination[i]);
-        }
-#ifdef DEBUG
-        for(size_t i = dec.size() ; i < MAX_NUM_BEAMS ; ++i) {
-            declination[i] = std::nanf("");
-        }
-#endif
-        }
-
-        {
-        const auto& scale(md[SCALING]);
-        if(scale.size() > MAX_NUM_BEAMS)
-            throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
-        size_t i = 0;
-        for(auto it = scale.cbegin() ; it != scale.cend() ; ++it) {
-            it->get_to(scaling[i]);
-        }
-#ifdef DEBUG
-        for(size_t i = scale.size() ; i < MAX_NUM_BEAMS ; ++i) {
-            scaling[i] = 0;
-        }
-#endif
-        }
-    }
 };
+
+static inline
+void from_json(const nlohmann::json& j, beamCoord& c) {
+    {
+    const auto& ra(j[RIGHT_ASCENSION]);
+    if(ra.size() > MAX_NUM_BEAMS)
+            throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
+    size_t i = 0;
+    for(auto it = ra.cbegin() ; it != ra.cend() ; ++it) {
+        it->get_to(c.right_ascension[i++]);
+    }
+#ifdef DEBUG
+    for(size_t i = ra.size() ; i < MAX_NUM_BEAMS ; ++i) {
+        c.right_ascension[i] = std::nanf("");
+    }
+#endif
+    }
+
+    {
+    const auto& dec(j[DECLINATION]);
+    if(dec.size() > MAX_NUM_BEAMS)
+            throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
+    size_t i = 0;
+    for(auto it = dec.cbegin() ; it != dec.cend() ; ++it) {
+            it->get_to(c.declination[i++]);
+    }
+#ifdef DEBUG
+    for(size_t i = dec.size() ; i < MAX_NUM_BEAMS ; ++i) {
+        c.declination[i] = std::nanf("");
+    }
+#endif
+    }
+
+    {
+    const auto& scale(j[SCALING]);
+    if(scale.size() > MAX_NUM_BEAMS)
+        throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
+    size_t i = 0;
+    for(auto it = scale.cbegin() ; it != scale.cend() ; ++it) {
+        it->get_to(c.scaling[i++]);
+    }
+#ifdef DEBUG
+    for(size_t i = scale.size() ; i < MAX_NUM_BEAMS ; ++i) {
+        c.scaling[i] = 0;
+    }
+#endif
+    }
+}
 
 struct coarseFreq {
         int nfreq;
