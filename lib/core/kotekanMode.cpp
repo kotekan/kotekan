@@ -125,8 +125,8 @@ void kotekanMode::initalize_stages() {
         uint16_t port = restServer::instance().port();
 
         ConfigTracker::instance().insertRawConfig(host, port, cfg_json, get_kotekan_version(),
-                                               get_git_branch(), get_git_commit_hash(),
-                                               get_cmake_build_options());
+                                                  get_git_branch(), get_git_commit_hash(),
+                                                  get_cmake_build_options());
     } catch (const std::exception& e) {
         ERROR_NON_OO("Failed to insert local config into ConfigTracker: {:s}", e.what());
     }

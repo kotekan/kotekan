@@ -64,7 +64,6 @@ public:
     ~ConfigTracker() {}
 
 private:
-
     /**
      * @brief Struct to hold a (host, port) pair.
      */
@@ -135,7 +134,6 @@ private:
     };
 
 public:
-
     /**
      * @brief Get the number of configurations stored in the tracker.
      * @returns The number of configurations.
@@ -192,9 +190,10 @@ public:
      * @param kotekan_cmake_options The CMake options used to build Kotekan.
      */
     void insertRawConfig(std::string host, uint16_t port, const nlohmann::json& config_json,
-                      const std::string& kotekan_version, const std::string& kotekan_build_branch,
-                      const std::string& kotekan_git_commit_hash,
-                      const std::string& kotekan_cmake_options) {
+                         const std::string& kotekan_version,
+                         const std::string& kotekan_build_branch,
+                         const std::string& kotekan_git_commit_hash,
+                         const std::string& kotekan_cmake_options) {
         // Strip updatable config fields before hashing
         nlohmann::json filtered_json;
         for (auto& [key, value] : config_json.items()) {
@@ -429,7 +428,8 @@ public:
         struct stat info;
         if (stat(directory.c_str(), &info) != 0) {
             // use strerror:
-            std::string err = "Error stating directory: " + directory + ", error: " + strerror(errno);
+            std::string err =
+                "Error stating directory: " + directory + ", error: " + strerror(errno);
             FATAL_ERROR_NON_OO("ConfigTracker: {}", err);
         }
         if (!(info.st_mode & S_IFDIR)) {
@@ -539,7 +539,8 @@ private:
         }
 
         // Stick to a string dump for now
-        // TODO: a binary dump storing the full double precision bit pattern could be more consistent.
+        // TODO: a binary dump storing the full double precision bit pattern could be more
+        // consistent.
         ss << filtered_json.dump(-1, '\0', false, nlohmann::json::error_handler_t::strict);
 
         std::string serialized = ss.str();
@@ -581,13 +582,13 @@ private:
         // Validate the host is a valid IPv4 address
         struct sockaddr_in sa4;
         if (inet_pton(AF_INET, host.c_str(), &(sa4.sin_addr)) != 1) {
-            FATAL_ERROR_NON_OO("ConfigTracker: _insertConfig called with invalid IPv4 address: {}", host);
+            FATAL_ERROR_NON_OO("ConfigTracker: _insertConfig called with invalid IPv4 address: {}",
+                               host);
         }
 
         // Validate the port is in a valid range. port < 65535 by definition of uint16_t.
         if (port == 0) {
-            FATAL_ERROR_NON_OO("ConfigTracker: _insertConfig called with invalid port: {}",
-                                port);
+            FATAL_ERROR_NON_OO("ConfigTracker: _insertConfig called with invalid port: {}", port);
         }
 
         HostPort host_port{host, port};
@@ -625,8 +626,8 @@ private:
         {
             // lock again to print debug info
             std::lock_guard<std::mutex> lock(_lock);
-            DEBUG_NON_OO("ConfigTracker: inserted config for host: {}, port: {}, hash: {}", host, port,
-                        config_info.json_hash);
+            DEBUG_NON_OO("ConfigTracker: inserted config for host: {}, port: {}, hash: {}", host,
+                         port, config_info.json_hash);
             DEBUG_NON_OO("ConfigTracker: _tracker_hash: {}", _tracker_hash);
         }
     }
@@ -661,7 +662,7 @@ private:
         md5_ss << std::hex << std::setw(2) << std::setfill('0');
         for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
             md5_ss << static_cast<int>(md5_result[i]);
-        
+
         {
             std::lock_guard<std::mutex> lock(_lock);
             // Store the combined hash

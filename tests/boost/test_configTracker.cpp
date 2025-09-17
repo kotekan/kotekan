@@ -39,7 +39,7 @@ BOOST_AUTO_TEST_CASE(add_json) {
     // The hash of this should be ...
 
     tracker.insertRawConfig("127.0.0.1", 8080, j, "1.0.0", "main", "abcdef1234567890",
-                         "CMAKE_BUILD_TYPE=Release");
+                            "CMAKE_BUILD_TYPE=Release");
 
     // Check hashing
     BOOST_TEST_MESSAGE("Config hash from getTrackerHash: " << tracker.getTrackerHash());
@@ -63,11 +63,11 @@ BOOST_AUTO_TEST_CASE(add_two_jsons) {
                {"key6", "value6"}};
 
     tracker.insertRawConfig("127.0.0.1", 8080, j1, "1.0.0", "main", "abcdef1234567890",
-                         "CMAKE_BUILD_TYPE=Release");
+                            "CMAKE_BUILD_TYPE=Release");
 
     // different port so no conflict
     tracker.insertRawConfig("127.0.0.1", 9090, j2, "1.0.0", "main", "abcdef1234567890",
-                         "CMAKE_BUILD_TYPE=Release");
+                            "CMAKE_BUILD_TYPE=Release");
 
     // Check hashing
     BOOST_TEST_MESSAGE("Config hash from getTrackerHash: " << tracker.getTrackerHash());
@@ -91,11 +91,11 @@ BOOST_AUTO_TEST_CASE(add_same_two_jsons) {
                {"updatable_config", {{"key7", "value7"}, {"key8", "value8"}}}};
 
     tracker.insertRawConfig("127.0.0.1", 8080, j1, "1.0.0", "main", "abcdef1234567890",
-                         "CMAKE_BUILD_TYPE=Release");
+                            "CMAKE_BUILD_TYPE=Release");
 
     // same port, same config (updatable_config should be ignored!), so no conflict expected
     tracker.insertRawConfig("127.0.0.1", 8080, j2, "1.0.0", "main", "abcdef1234567890",
-                         "CMAKE_BUILD_TYPE=Release");
+                            "CMAKE_BUILD_TYPE=Release");
 
     BOOST_CHECK_EQUAL(tracker.n_configs(), 1);
 }
@@ -115,11 +115,11 @@ BOOST_AUTO_TEST_CASE(add_same_two_jsons_bad) {
                {"key6", "value6"}};
 
     tracker.insertRawConfig("127.0.0.1", 8080, j1, "1.0.0", "main", "abcdef1234567890",
-                         "CMAKE_BUILD_TYPE=Release");
+                            "CMAKE_BUILD_TYPE=Release");
 
     // same port, different config, so conflict *is* expected
     BOOST_CHECK_THROW(tracker.insertRawConfig("127.0.0.1", 8080, j2, "1.0.0", "main",
-                                           "abcdef1234567890", "CMAKE_BUILD_TYPE=Release"),
+                                              "abcdef1234567890", "CMAKE_BUILD_TYPE=Release"),
                       std::runtime_error);
 }
 
@@ -132,7 +132,7 @@ BOOST_AUTO_TEST_CASE(write_configs) {
                {"key3", "value3"}};
 
     tracker.insertRawConfig("127.0.0.1", 8080, j1, "1.0.0", "main", "abcdef1234567890",
-                         "CMAKE_BUILD_TYPE=Release");
+                            "CMAKE_BUILD_TYPE=Release");
 
 
     // Create a temporary file path
