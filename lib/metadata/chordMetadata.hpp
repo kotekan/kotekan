@@ -223,7 +223,7 @@ public:
 
     /// The coordinates of the tracking beam (if applicable)
     beamCoord get_beam_coord() const {
-        return beamCoord(metadata);
+        return metadata[jsonMetadata::BEAM_COORD].template get<beamCoord>();
     }
 
     // TODO: add set_beam_coord
