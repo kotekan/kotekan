@@ -176,7 +176,7 @@ function read_hdf5(filename::AbstractString)
         @assert eltype(data) == UInt8
         @info "mapping to Complex{Int8}..."
         data = mappedarray(i2c ∘ Int4x2, data)
-    elseif type == "int4x2chime"
+    elseif type == "int4x2chime" || type == "int4x2_swapped_withoffset"
         @assert eltype(data) == UInt8
         @info "mapping to Complex{Int8}..."
         data = mappedarray(i2c ∘ Int4x2 ∘ so, data)

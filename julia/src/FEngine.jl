@@ -336,7 +336,7 @@ function adc_sample(
             zeros(Complex{T}, 0, nsamples)
         elseif length(frb_sources) == 1
             samples = make_frb_source(frb_sources[1], sample0, nsamples)
-            samples = reshape(samples, 1, nsamples)
+            samples = reshape(samples, 1, :)
             samples
         else
             @assert false
@@ -1258,8 +1258,6 @@ end
 function set_E!(
     ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, npolrs::Int64, nfreqs::Int64, ntimes::Int64, setup::Setup, frame_index::Int64
 )
-    try
-
     E = unsafe_wrap(Array, reinterpret(Ptr{Int4x2}, ptr), (ndishes, npolrs, nfreqs, ntimes))
     @assert sizeof(E) == sz
 
@@ -1283,6 +1281,7 @@ function set_E!(
     nchunks = ntimes ÷ chunk_size
     walltimes = zeros(4, nchunks)
     @showprogress desc = "Generating E-field" dt = 1 @threads for chunk_index in 1:nchunks
+     # for chunk_index in 1:nchunks
         # println("Generating E-field (chunk $chunk_index/$nchunks)...")
         time0 = (chunk_index - 1) * chunk_size + 1
         time1 = time0 + chunk_size - 1
@@ -1322,11 +1321,6 @@ function set_E!(
     # println("Done generating E-field.")
 
     # @show walltimes
-
-    catch ex
-        println("set_E!: Caught exception")
-        println(ex)
-    end
 
     return nothing
 end

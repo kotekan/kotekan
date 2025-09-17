@@ -1294,11 +1294,27 @@ void FEngine::main_thread() {
                         args[7] = jl_box_int64(E_frame_index % num_frames + 1);
                         jl_value_t* const res = jl_call(set_E, args, nargs);
                         if (jl_exception_occurred())
-                            fprintf(stderr, "Julia exception:\n%s",
-                                    jl_typeof_str(jl_exception_occurred()));
+                            FATAL_ERROR("Julia exception:\n{:s}",
+                                        jl_typeof_str(jl_exception_occurred()));
                         assert(res);
                         JL_GC_POP();
                     });
+                    for (int t = 0; t < num_times; ++t) {
+                        for (int f = 0; f < num_frequencies; ++f) {
+                            for (int p = 0; p < num_polarizations; ++p) {
+                                for (int d = 0; d < num_dishes; ++d) {
+                                    const int idx =
+                                        d
+                                        + num_dishes
+                                              * (p + num_polarizations * (f + num_frequencies * t));
+                                    const std::uint8_t e = E_frame[idx];
+                                    const std::int8_t ere = ((e >> 0x04) & 0x0f) - 8;
+                                    const std::int8_t eim = ((e >> 0x00) & 0x0f) - 8;
+                                    assert(ere != -8 && eim != -8);
+                                }
+                            }
+                        }
+                    }
                 } else {
                     // std::memset(E_frame, 0xcc,
                     //             num_dishes * num_polarizations * num_frequencies * num_times);
