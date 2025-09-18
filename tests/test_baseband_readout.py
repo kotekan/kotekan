@@ -15,16 +15,19 @@ import pytest
 from kotekan import runner
 
 
-def is_docker():
-    path = "/proc/self/cgroup"
-    return (
-        os.path.exists("/.dockerenv")
-        or os.path.isfile(path)
-        and any("docker" in line for line in open(path))
-    )
+def in_container() -> bool:
+    # Docker leaves /.dockerenv, Podman leaves /run/.containerenv
+    if os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv"):
+        return True
 
+    # fallback: cgroup check
+    try:
+        with open("/proc/1/cgroup", "rt", encoding="utf-8") as f:
+            return any("docker" in line or "podman" in line for line in f)
+    except OSError:
+        return False
 
-if is_docker():
+if in_container():
     pytest.skip("Does not work in Github Actions docker run.", allow_module_level=True)
 
 default_params = {
