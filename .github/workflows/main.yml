@@ -23,7 +23,6 @@ on:
 env:
   REGISTRY: ghcr.io
   IMG_2404: "ghcr.io/${{ github.repository }}/kotekan-2404"
-  IMG_2404_ACT: "kotekan-2404-act"
   PYTEST_TIMEOUT: 120
 
 jobs:
