@@ -1,8 +1,7 @@
 # Final feature summary table.
 #
 # Developer note: when adding new configure options or feature toggles, update the flag lists below
-# so the summary remains complete.
-# This file should just be informative, not affect the build.
+# so the summary remains complete. This file should just be informative, not affect the build.
 
 include_guard(GLOBAL)
 include(${CMAKE_CURRENT_LIST_DIR}/Color.cmake)
@@ -89,9 +88,7 @@ function(kfeature_kv name value)
     kmsg_status("${name}: ${value}")
 endfunction()
 
-
-# Check availability of various features
-# Then later on, print it.
+# Check availability of various features Then later on, print it.
 
 set(_asdf_present OFF)
 if("${USE_ASDF}" STREQUAL "OFF")
@@ -168,7 +165,6 @@ kfeature_row("Airspy" "${USE_AIRSPY}" "${AIRSPY_REASON}" "${USE_AIRSPY}" USE_AIR
 kfeature_row("DPDK" "${USE_DPDK}" "${DPDK_REASON}" "${USE_DPDK}" USE_DPDK)
 kfeature_row("Julia" "${USE_JULIA}" "${JULIA_REASON}" "${USE_JULIA}" USE_JULIA)
 
-
 # Build meta
 kfeature_header("Build")
 
@@ -191,8 +187,7 @@ if("${USE_OPENSSL}" STREQUAL "ON")
     set(_ossl_reason "${OPENSSL_REASON}")
 else()
     # Hint: use -DOPENSSL_ROOT_DIR=<path> for non-standard installs
-    set(_ossl_reason
-        "${OPENSSL_REASON}; use -DOPENSSL_ROOT_DIR=<path> for non-standard installs")
+    set(_ossl_reason "${OPENSSL_REASON}; use -DOPENSSL_ROOT_DIR=<path> for non-standard installs")
 endif()
 
 kfeature_row("NUMA" "${USE_NUMA}" "${NUMA_REASON}" OFF USE_NUMA)
@@ -240,7 +235,6 @@ if("${IWYU}" STREQUAL "ON")
     set(IWYU_REASON "enabled")
 endif()
 kfeature_row("include-what-you-use" "${IWYU}" "${IWYU_REASON}" OFF IWYU)
-
 
 # Flag overrides requested by users; show compact key=value list.
 

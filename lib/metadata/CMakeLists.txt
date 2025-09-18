@@ -16,6 +16,6 @@ add_library(
 target_link_libraries(kotekan_metadata PRIVATE kotekan_utils)
 target_include_directories(kotekan_metadata PUBLIC .)
 
-if(${USE_CUDA})
+if(CUDAToolkit_FOUND)
     target_include_directories(kotekan_metadata INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
 endif()

@@ -43,7 +43,9 @@ target_link_libraries(
 target_include_directories(kotekan_utils PUBLIC .)
 
 # HDF5 stuff
-if(${USE_HDF5})
+if(HDF5_FOUND
+   AND HighFive_FOUND
+   AND HDF5Plugin_PLUGIN_DIR)
     target_sources(kotekan_utils PRIVATE visFileH5.cpp visFileArchive.cpp HFBFileArchive.cpp)
     target_include_directories(kotekan_utils SYSTEM INTERFACE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(kotekan_utils PRIVATE HighFive::HighFive ${HDF5_HL_LIBRARIES}

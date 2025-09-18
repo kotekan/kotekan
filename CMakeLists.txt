@@ -32,7 +32,7 @@ if(_ktk_airspy_cache_has)
         CACHE KOTEKAN_AIRSPY_REASON
         PROPERTY VALUE)
 endif()
-if(${USE_AIRSPY})
+if("${USE_AIRSPY}" STREQUAL "AUTO" OR "${USE_AIRSPY}" STREQUAL "ON")
     find_package(LIBAIRSPY QUIET)
     if(LIBAIRSPY_FOUND)
         set(USE_AIRSPY

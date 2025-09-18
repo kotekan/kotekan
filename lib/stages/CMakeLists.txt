@@ -18,15 +18,15 @@ add_library(
     rawFileRead.cpp
     rawFileWrite.cpp
     waitingForMaxFrames.cpp
-    $<$<BOOL:${USE_ASDF}>:asdfFileRead.cpp>
-    $<$<BOOL:${USE_ASDF}>:asdfFileWrite.cpp>
-    $<$<BOOL:${USE_GDAL}>:gdalFileRead.cpp>
-    $<$<BOOL:${USE_GDAL}>:gdalFileWrite.cpp>
-    $<$<BOOL:${USE_GDAL}>:gdalVisWrite.cpp>
-    $<$<BOOL:${USE_GDAL}>:gdalFiles.cpp>
-    $<$<BOOL:${USE_HDF5}>:hdf5FileRead.cpp>
-    $<$<BOOL:${USE_HDF5}>:hdf5FileWrite.cpp>
-    $<$<BOOL:${USE_HDF5}>:hdf5Files.cpp>
+    $<$<BOOL:${ASDF_CXX_FOUND}>:asdfFileRead.cpp>
+    $<$<BOOL:${ASDF_CXX_FOUND}>:asdfFileWrite.cpp>
+    $<$<BOOL:${GDAL_FOUND}>:gdalFileRead.cpp>
+    $<$<BOOL:${GDAL_FOUND}>:gdalFileWrite.cpp>
+    $<$<BOOL:${GDAL_FOUND}>:gdalVisWrite.cpp>
+    $<$<BOOL:${GDAL_FOUND}>:gdalFiles.cpp>
+    $<$<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5FileRead.cpp>
+    $<$<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5FileWrite.cpp>
+    $<$<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5Files.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
     streamSingleDishVDIF.cpp
@@ -93,31 +93,33 @@ add_library(
 
 target_include_directories(kotekan_stages PRIVATE .)
 
-if(${USE_AIRSPY})
+if(LIBAIRSPY_FOUND)
     target_sources(kotekan_stages PRIVATE airspyInput.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${LIBAIRSPY_INCLUDE_DIR})
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${LIBAIRSPY_LIBRARIES})
 endif()
 
-if(${USE_FFTW})
+if(FFTW_FOUND)
     target_sources(kotekan_stages PRIVATE fftwEngine.cpp)
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
 endif()
 
-if(${USE_ASDF})
+if(ASDF_CXX_FOUND)
     target_include_directories(kotekan_stages PRIVATE ${ASDF_CXX_INCLUDE_DIRS})
     target_link_options(kotekan_stages PUBLIC ${ASDF_CXX_LDFLAGS})
     target_link_libraries(kotekan_stages PUBLIC ${ASDF_CXX_LIBRARIES})
 endif()
 
-if(${USE_GDAL})
+if(GDAL_FOUND)
     target_include_directories(kotekan_stages PRIVATE ${GDAL_INCLUDE_DIRS})
     target_link_options(kotekan_stages PUBLIC ${GDAL_LDFLAGS})
     target_link_libraries(kotekan_stages PUBLIC ${GDAL_LIBRARIES})
 endif()
 
-if(${USE_HDF5})
+if(HDF5_FOUND
+   AND HighFive_FOUND
+   AND HDF5Plugin_PLUGIN_DIR)
     target_sources(kotekan_stages PRIVATE applyGains.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
@@ -129,7 +131,10 @@ if(${USE_ZARR})
     target_link_libraries(kotekan_stages PUBLIC ${ZARR_CXX_LIBRARIES})
 endif()
 
-if(${USE_HDF5} AND ${USE_OMP})
+if(HDF5_FOUND
+   AND HighFive_FOUND
+   AND HDF5Plugin_PLUGIN_DIR
+   AND OpenMP_FOUND)
     target_sources(kotekan_stages PRIVATE Transpose.cpp VisTranspose.cpp HFBTranspose.cpp)
 endif()
 
@@ -139,11 +144,11 @@ if(${Julia_FOUND})
     add_definitions(-DWITH_JULIA)
 endif()
 
-if(${USE_OMP})
+if(OpenMP_FOUND)
     target_sources(kotekan_stages PRIVATE VisTruncate.cpp HFBTruncate.cpp)
 endif()
 
-if(${USE_LAPACK_BLAZE})
+if(LAPACKE_FOUND AND BLAZE_FOUND)
     target_sources(kotekan_stages PRIVATE eigenVis.cpp RingMapMaker.cpp EigenVisIter.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${LAPACKE_INCLUDE_DIRS} ${BLAZE_PATH})
     target_link_libraries(kotekan_stages PRIVATE ${LAPACKE_LIBRARIES})
@@ -172,7 +177,7 @@ if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR NOT CMAKE_CXX_COMPILER_ID MATCHE
     target_link_libraries(kotekan_stages PRIVATE atomic)
 endif()
 
-if(${USE_CUDA})
+if(CUDAToolkit_FOUND)
     target_include_directories(kotekan_stages PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
     message(STATUS "kotekan_stages include dirs: ")
     get_target_property(STAGES_INCLUDES kotekan_stages INCLUDE_DIRECTORIES)
