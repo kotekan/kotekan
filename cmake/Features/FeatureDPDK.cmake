@@ -1,68 +1,74 @@
-## Feature: DPDK
-# Centralize DPDK enable/disable and version selection logic.
+# Feature: DPDK
+# Centralizes the tri-state handling for DPDK discovery and messaging.
 
 # Inputs:
-#  - USE_DPDK: STRING one of ON (auto, default) or OFF
-#  - WITH_BOOST_TESTS: if ON, force DPDK off (to avoid linker issues)
+#  - USE_DPDK        : AUTO/ON/OFF toggle (AUTO probes via pkg-config)
+#  - WITH_BOOST_TESTS: if ON, force DPDK OFF to avoid linker issues
 
-# Outputs (cached summary variables used by Summary.cmake):
-#  - DPDK_ENABLED: BOOL whether we plan to build with DPDK
-#  - DPDK_REASON: STRING short human explanation
+# Outputs (for summary/consumers):
+#  - USE_DPDK    : normalized to ON or OFF after detection
+#  - DPDK_REASON : short human explanation for the status
 
 include_guard(GLOBAL)
+include(${CMAKE_CURRENT_LIST_DIR}/../Color.cmake)
 
-# Normalize option values
-set(_kotekan_use_dpdk "${USE_DPDK}")
-string(TOUPPER "${_kotekan_use_dpdk}" _kotekan_use_dpdk)
-if(NOT _kotekan_use_dpdk)
-    set(_kotekan_use_dpdk "ON")
-endif()
-if(NOT _kotekan_use_dpdk STREQUAL "OFF")
-    set(_kotekan_use_dpdk "ON")
-endif()
+set(DPDK_REASON "disabled")
 
 # If building Boost tests, always disable DPDK
 if(WITH_BOOST_TESTS)
-    set(DPDK_ENABLED OFF CACHE BOOL "DPDK available" FORCE)
-    set(DPDK_REASON "disabled (boost tests)" CACHE STRING "" FORCE)
+    set(USE_DPDK "OFF")
+    set(DPDK_REASON "disabled (boost tests)")
+    kmsg_warn("DPDK disabled while WITH_BOOST_TESTS=ON")
     return()
 endif()
 
-# Default summary outputs
-set(DPDK_ENABLED OFF CACHE BOOL "DPDK available")
-set(DPDK_REASON "disabled" CACHE STRING "" FORCE)
+macro(_kotekan_detect_dpdk OUT_FOUND)
+    set(${OUT_FOUND} OFF)
+    find_package(PkgConfig)
+    if(NOT PKG_CONFIG_FOUND)
+        return()
+    endif()
 
-# Helper: try pkg-config for consolidated libdpdk (>=19.11)
-macro(_kotekan_find_dpdk_pkgconfig)
-    find_package(PkgConfig REQUIRED)
-    if(PKG_CONFIG_FOUND)
-        pkg_check_modules(DPDK libdpdk>=19.11)
-        if(DPDK_FOUND)
-            set(DPDK_ENABLED ON CACHE BOOL "DPDK available" FORCE)
-            set(DPDK_REASON "found >=19.11 via pkg-config" CACHE STRING "" FORCE)
-        endif()
+    pkg_check_modules(DPDK libdpdk>=19.11)
+    if(DPDK_FOUND)
+        set(${OUT_FOUND} ON)
     endif()
 endmacro()
 
-# Resolve requested mode
-if("${_kotekan_use_dpdk}" STREQUAL "OFF")
-    set(DPDK_ENABLED OFF CACHE BOOL "DPDK available" FORCE)
-    set(DPDK_REASON "disabled (-DUSE_DPDK=OFF)" CACHE STRING "" FORCE)
-else()
-    # ON/AUTO: require libdpdk via pkg-config; if not available, disable
-    _kotekan_find_dpdk_pkgconfig()
-    if(NOT DPDK_ENABLED)
-        set(DPDK_ENABLED OFF CACHE BOOL "DPDK available" FORCE)
-        set(DPDK_REASON "not found (requires libdpdk >= 19.11 via pkg-config)"
-            CACHE STRING "" FORCE)
+if("${USE_DPDK}" STREQUAL "AUTO")
+    _kotekan_detect_dpdk(_dpdk_found)
+    if(_dpdk_found)
+        set(DPDK_REASON "auto-detected")
+        kmsg_ok("DPDK found (autodetected): enabling DPDK components (disable with -DUSE_DPDK=OFF)")
+    else()
+        if(PKG_CONFIG_FOUND)
+            set(DPDK_REASON "disabled, not found")
+            kmsg_warn("DPDK not found (default AUTO, continuing without). Requires libdpdk >= 19.11 via pkg-config.")
+        else()
+            set(DPDK_REASON "disabled, pkg-config missing")
+            kmsg_warn("pkg-config not available; cannot auto-detect DPDK. Install pkg-config or set -DUSE_DPDK=OFF.")
+        endif()
     endif()
+elseif("${USE_DPDK}" STREQUAL "ON")
+    _kotekan_detect_dpdk(_dpdk_found)
+    if(_dpdk_found)
+        set(DPDK_REASON "enabled, found")
+        kmsg_ok("DPDK explicitly enabled via -DUSE_DPDK=ON")
+    else()
+        if(PKG_CONFIG_FOUND)
+            set(DPDK_REASON "enabled, not found")
+            kmsg_error("DPDK not found when requested! Requires libdpdk >= 19.11 via pkg-config.")
+        else()
+            set(DPDK_REASON "enabled, pkg-config missing")
+            kmsg_error("pkg-config not available while DPDK requested; install pkg-config or disable DPDK.")
+        endif()
+    endif()
+else()
+    set(DPDK_REASON "disabled")
+    kmsg_status("DPDK explicitly disabled via -DUSE_DPDK=OFF")
 endif()
 
-# Persist normalized request for downstream logic
-set(USE_DPDK "${_kotekan_use_dpdk}" CACHE STRING "DPDK usage: ON (auto), OFF")
-set_property(CACHE USE_DPDK PROPERTY STRINGS ON OFF)
-
 # NUMA is required for DPDK components; provide a clear error if toggled off
-if(DPDK_ENABLED AND DEFINED USE_NUMA AND (NOT USE_NUMA))
-    message(FATAL_ERROR "DPDK requires NUMA support. Enable it with -DUSE_NUMA=ON or disable DPDK via -DUSE_DPDK=OFF.")
+if(USE_DPDK AND DEFINED USE_NUMA AND (NOT USE_NUMA))
+    kmsg_error("DPDK requires NUMA support. Enable it with -DUSE_NUMA=ON or disable DPDK via -DUSE_DPDK=OFF.")
 endif()

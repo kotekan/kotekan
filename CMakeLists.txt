@@ -69,8 +69,6 @@ include(cmake/Features/FeatureIO.cmake)
 # Julia runtime and bindings
 include(cmake/Features/FeatureJulia.cmake)
 
-find_package(Threads REQUIRED)
-
 if(${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
 endif()

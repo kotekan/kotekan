@@ -101,7 +101,6 @@ if(${SANITIZE})
 endif()
 
 # IWYU must be set before any targets are added
-set(IWYU_ENABLED OFF)
 if(IWYU)
     find_program(IWYU_PATH NAMES include-what-you-use iwyu)
     if(NOT IWYU_PATH)
@@ -127,9 +126,6 @@ if(IWYU)
         --no_fwd_decls)
     set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE ${IWYU_PATH_AND_OPTIONS})
     set(CMAKE_C_INCLUDE_WHAT_YOU_USE ${IWYU_PATH_AND_OPTIONS})
-    set(IWYU_ENABLED ON)
-else()
-    set(IWYU_ENABLED OFF)
 endif()
 
 # Default build type
@@ -233,3 +229,5 @@ if(HAVE_C_LIMITED_RANGE
    AND CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fcx-limited-range")
 endif()
+
+find_package(Threads REQUIRED)

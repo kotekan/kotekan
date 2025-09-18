@@ -1,35 +1,41 @@
-# Math feature detection and setup: FFTW, LAPACKE + Blaze
+# Math feature detection for FFTW and LAPACKE/Blaze.
+# Converts the USE_* tri-state toggles into ON/OFF decisions, captures reason
+# strings for the summary, and mirrors legacy *_ENABLED cache variables.
 
 include_guard(GLOBAL)
 include(${CMAKE_CURRENT_LIST_DIR}/../Color.cmake)
 
 # FFTW
-set(FFTW_ENABLED OFF)
-set(FFTW_REASON "disabled")
-if(${USE_FFTW})
-    find_package(FFTW QUIET)
+if("${USE_FFTW}" STREQUAL "AUTO" OR "${USE_FFTW}" STREQUAL "ON")
+    find_package(FFTW)
     if(FFTW_FOUND)
-        set(USE_FFTW ON)
-        set(FFTW_ENABLED ON)
-        set(FFTW_REASON "found")
         add_definitions(-DWITH_FFTW)
-        kmsg_ok("FFTW found: enabling FFTW F-engine (disable with -DUSE_FFTW=OFF)")
+        if("${USE_FFTW}" STREQUAL "AUTO")
+            set(FFTW_REASON "auto-detected")
+            kmsg_ok("FFTW found (autodetected): enabling FFTW F-engine (disable with -DUSE_FFTW=OFF)")
+        else()
+            set(FFTW_REASON "enabled, found")
+            kmsg_ok("FFTW explicitly enabled via -DUSE_FFTW=ON")
+        endif()
     else()
-        set(USE_FFTW OFF)
-        set(FFTW_ENABLED OFF)
-        set(FFTW_REASON "not found")
-        kmsg_error("FFTW not found; FFTW F-engine disabled.")
+        if("${USE_FFTW}" STREQUAL "AUTO")
+            set(FFTW_REASON "disabled, not found")
+            kmsg_warn("FFTW not found (default AUTO, continuing without).")
+        else()
+            set(FFTW_REASON "enabled, not found")
+            kmsg_error("FFTW not found when requested! Disable with -DUSE_FFTW=OFF.")
+        endif()
     endif()
 else()
-    kmsg_status("FFTW disabled via -DUSE_FFTW=OFF")
+    set(FFTW_REASON "disabled")
+    kmsg_status("FFTW explicitly disabled via -DUSE_FFTW=OFF")
 endif()
 
+
 # LAPACKE + Blaze
-set(LAPACK_BLAZE_ENABLED OFF)
-set(LAPACK_BLAZE_REASON "disabled")
-if(${USE_LAPACK_BLAZE})
-    find_package(LAPACKE QUIET)
-    find_package(Blaze QUIET)
+if("${USE_LAPACK_BLAZE}" STREQUAL "AUTO" OR "${USE_LAPACK_BLAZE}" STREQUAL "ON")
+    find_package(LAPACKE)
+    find_package(Blaze)
 
     set(_missing_lapack_blaze "")
     if(NOT LAPACKE_FOUND)
@@ -40,16 +46,21 @@ if(${USE_LAPACK_BLAZE})
     endif()
 
     if(_missing_lapack_blaze STREQUAL "")
-        set(LAPACK_BLAZE_ENABLED ON)
-        set(LAPACK_BLAZE_REASON "found")
-        kmsg_ok(
-            "LAPACK/Blaze found: enabling linear algebra stages (disable with"
-            " -DUSE_LAPACK_BLAZE=OFF)")
+        add_definitions(-DBLAZE_BLAS_MODE=1)
+        add_definitions(-DBLAZE_BLAS_IS_PARALLEL=1)
+
+        if("${USE_LAPACK_BLAZE}" STREQUAL "AUTO")
+            set(LAPACK_BLAZE_REASON "auto-detected")
+            kmsg_ok(
+                "LAPACK/Blaze found (autodetected): enabling linear algebra stages (disable with -DUSE_LAPACK_BLAZE=OFF)")
+        else()
+            set(LAPACK_BLAZE_REASON "enabled, found")
+            kmsg_ok("LAPACK/Blaze explicitly enabled via -DUSE_LAPACK_BLAZE=ON")
+        endif()
+
         kmsg_status("Using LAPACKE includes ${LAPACKE_INCLUDE_DIRS}")
         kmsg_status("Using LAPACKE libraries ${LAPACKE_LIBRARIES}")
         kmsg_status("Blaze found. BLAZE_PATH is ${BLAZE_PATH}")
-        add_definitions(-DBLAZE_BLAS_MODE=1)
-        add_definitions(-DBLAZE_BLAS_IS_PARALLEL=1)
 
         # Ensure OpenBLAS is linked if generic BLAS was selected by LAPACKE but
         # code uses OpenBLAS API
@@ -63,21 +74,24 @@ if(${USE_LAPACK_BLAZE})
                 set(OPENBLAS_EXTRA_LIB ${OPENBLAS_EXTRA_LIB}
                     CACHE FILEPATH "OpenBLAS lib for explicit linking")
                 kmsg_status(
-                    "Detected generic BLAS; adding OpenBLAS explicitly:"
-                    " ${OPENBLAS_EXTRA_LIB}")
+                    "Detected generic BLAS; adding OpenBLAS explicitly: ${OPENBLAS_EXTRA_LIB}")
             endif()
         endif()
     else()
-        set(USE_LAPACK_BLAZE OFF)
-        set(LAPACK_BLAZE_ENABLED OFF)
-        set(LAPACK_BLAZE_REASON "missing: ${_missing_lapack_blaze}")
-        kmsg_warn(
-            "LAPACK/Blaze not fully found (missing: ${_missing_lapack_blaze});"
-            " LAPACK/Blaze stages disabled.")
+        if("${USE_LAPACK_BLAZE}" STREQUAL "AUTO")
+            set(LAPACK_BLAZE_REASON "disabled, missing: ${_missing_lapack_blaze}")
+            kmsg_warn(
+                "LAPACK/Blaze not fully found (missing: ${_missing_lapack_blaze}); LAPACK/Blaze stages disabled.")
+        else()
+            set(LAPACK_BLAZE_REASON "enabled, missing: ${_missing_lapack_blaze}")
+            kmsg_error(
+                "LAPACK/Blaze not fully found (missing: ${_missing_lapack_blaze}) when requested! Disable with -DUSE_LAPACK_BLAZE=OFF.")
+        endif()
         kmsg_status("To skip these checks, configure with -DUSE_LAPACK_BLAZE=OFF")
     endif()
 else()
-    kmsg_status("LAPACK/Blaze disabled via -DUSE_LAPACK_BLAZE=OFF")
+    set(LAPACK_BLAZE_REASON "disabled")
+    kmsg_status("LAPACK/Blaze explicitly disabled via -DUSE_LAPACK_BLAZE=OFF")
 endif()
 
 # Mirror legacy variable for versioning/tests that expect USE_LAPACK
