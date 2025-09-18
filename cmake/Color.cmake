@@ -3,31 +3,26 @@
 if(NOT DEFINED KOTEKAN_COLOR_LOADED)
     set(KOTEKAN_COLOR_LOADED TRUE)
 
-    if(NOT WIN32)
-        string(ASCII 27 KTK_ESC)
-        set(KTK_RESET "${KTK_ESC}[0m")
-        set(KTK_GREEN "${KTK_ESC}[1;32m")
-        set(KTK_YELLOW "${KTK_ESC}[1;33m")
-        set(KTK_RED "${KTK_ESC}[1;31m")
-    else()
-        set(KTK_RESET "")
-        set(KTK_GREEN "")
-        set(KTK_YELLOW "")
-    endif()
+    string(ASCII 27 KTK_ESC)
+    set(KTK_RESET "${KTK_ESC}[0m")
+    set(KTK_GREEN "${KTK_ESC}[1;32m")
+    set(KTK_YELLOW "${KTK_ESC}[1;33m")
+    set(KTK_RED "${KTK_ESC}[1;31m")
 
     # Prior (non-summary) messages: keep uncolored and non-warning for readability kmsg_ok: Print an
-    # OK/info message during configure (currently suppressed)
+    # OK/info message during configure
     function(kmsg_ok msg)
-        if(FALSE)
-            # no-op
-        endif()
+        message(STATUS "${msg}")
     endfunction()
 
-    # kmsg_warn: Print a warning-style message during configure (currently suppressed)
+    # kmsg_warn: Print a warning-style message during configure
     function(kmsg_warn msg)
-        if(FALSE)
-            # no-op
-        endif()
+        message(WARNING "${KTK_YELLOW}${msg}${KTK_RESET}")
+    endfunction()
+
+    # kmsg_error: Print an error-style message during configure
+    function(kmsg_error msg)
+        message(SEND_ERROR "${KTK_RED}${msg}${KTK_RESET}")
     endfunction()
 
     # kmsg_status: Print a standard STATUS line (used by the feature summary)

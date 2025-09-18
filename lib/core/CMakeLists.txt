@@ -73,37 +73,28 @@ endif()
 if(USE_OPENSSL)
     find_package(OpenSSL)
     if(OPENSSL_FOUND)
-        set(OPENSSL_ENABLED
-            ON
-            CACHE BOOL "OpenSSL available")
         set(OPENSSL_REASON
             "found"
             CACHE STRING "")
         target_link_libraries(kotekan_core PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
         target_compile_definitions(kotekan_core PUBLIC WITH_SSL)
     else()
-        set(OPENSSL_ENABLED
-            OFF
-            CACHE BOOL "OpenSSL available")
         set(OPENSSL_REASON
             "not found"
             CACHE STRING "")
     endif()
 else()
-    set(OPENSSL_ENABLED
-        OFF
-        CACHE BOOL "OpenSSL available")
     set(OPENSSL_REASON
         "disabled (-DUSE_OPENSSL=OFF)"
         CACHE STRING "")
 endif()
 
-# Libevent base & pthreads is required for the restServer
+# Libevent core/extra & pthreads is required for the restServer
 find_package(LIBEVENT REQUIRED)
 
 target_link_libraries(
     kotekan_core
     PRIVATE libexternal ${CMAKE_THREAD_LIBS_INIT} kotekan_libs
-    PUBLIC ${LIBEVENT_BASE} ${LIBEVENT_CORE} ${LIBEVENT_PTHREADS} ${LIBEVENT_EXTRA} event)
+    PUBLIC ${LIBEVENT_CORE} ${LIBEVENT_PTHREADS} ${LIBEVENT_EXTRA})
 
 target_include_directories(kotekan_core INTERFACE ${LIBEVENT_INCLUDE_DIR})
