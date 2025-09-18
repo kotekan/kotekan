@@ -157,11 +157,11 @@ if(LAPACKE_FOUND AND BLAZE_FOUND)
     endif()
 endif()
 
-# Libevent is required for bufferRecv
+# Libevent core&pthreads is required for bufferRecv
 find_package(LIBEVENT REQUIRED)
 target_link_libraries(
     kotekan_stages
-    PUBLIC ${LIBEVENT_BASE}
+    PUBLIC ${LIBEVENT_CORE}
     PRIVATE ${LIBEVENT_PTHREAD})
 
 target_link_libraries(kotekan_stages PRIVATE kotekan_libs libexternal)
@@ -171,9 +171,10 @@ if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCH
     target_link_libraries(kotekan_stages PRIVATE rt)
 endif()
 
-# -latomic is needed for atomic operations in applyGains, but it doesn't need to be included
-# separately for clang on macOS
-if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+# -latomic was historically required for applyGains on some platforms, but newer toolchains on
+# x86_64 provide the necessary builtins without an extra library.  Add it only when the build
+# system requests it explicitly via KOTEKAN_FORCE_LIBATOMIC.
+if(KOTEKAN_FORCE_LIBATOMIC)
     target_link_libraries(kotekan_stages PRIVATE atomic)
 endif()
 

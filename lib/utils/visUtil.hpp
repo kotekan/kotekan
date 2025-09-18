@@ -27,7 +27,9 @@
 #include <complex>       // for complex, imag, real
 #include <cstdint>       // for uint32_t, int8_t, uint16_t, uint8_t, int64_t, uint64_t, int32_t
 #include <cstdlib>       // for size_t, div
-#include <cuda_fp16.h>   // for __half::operator float
+#ifdef WITH_CUDA
+#include <cuda_fp16.h>    // for __half::operator float
+#endif
 #include <deque>         // for deque
 #include <functional>    // for function
 #include <iosfwd>        // for ostream

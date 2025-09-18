@@ -52,9 +52,9 @@ if(HDF5_FOUND
                                                 ${HDF5_LIBRARIES})
 endif()
 
-# Libevent base&pthreads is required for the restClient
+# Libevent core/extra&pthreads is required for the restClient
 find_package(LIBEVENT REQUIRED)
-target_link_libraries(kotekan_utils PUBLIC ${LIBEVENT_BASE} ${LIBEVENT_PTHREADS})
+target_link_libraries(kotekan_utils PUBLIC ${LIBEVENT_CORE} ${LIBEVENT_EXTRA} ${LIBEVENT_PTHREADS})
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     target_sources(kotekan_utils PRIVATE osxBindCPU.cpp)
