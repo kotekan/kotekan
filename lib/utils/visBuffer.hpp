@@ -9,19 +9,24 @@
 
 #include "Config.hpp"         // for Config
 #include "FrameView.hpp"      // for FrameView
-#include "Telescope.hpp"      // for freq_id_t
+#include "Hash.hpp"           // for Hash
+#include "Telescope.hpp"      // for Telescope, freq_id_t
 #include "buffer.hpp"         // for Buffer
 #include "datasetManager.hpp" // for dset_id_t
-#include "visUtil.hpp"        // for cfloat
+#include "metadata.hpp"       // for metadataObject, metadataPool
+#include "visUtil.hpp"        // for cfloat, struct_layout
 
 #include "gsl-lite.hpp" // for span
+#include "json.hpp"     // for json
 
-#include <set>      // for set
-#include <stdint.h> // for uint32_t, uint64_t
-#include <string>   // for string
-#include <time.h>   // for size_t, timespec
-#include <tuple>    // for tuple
-#include <utility>  // for pair
+#include <assert.h>   // for assert
+#include <memory>     // for shared_ptr, allocator, __shared_ptr_access, weak_ptr
+#include <set>        // for set
+#include <stdint.h>   // for uint32_t, uint64_t
+#include <string>     // for char_traits, operator==, basic_string, string
+#include <sys/time.h> // for TIMEVAL_TO_TIMESPEC
+#include <time.h>     // for size_t, timespec
+#include <tuple>      // for make_tuple, tuple
 
 
 /**

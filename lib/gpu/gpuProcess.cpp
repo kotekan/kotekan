@@ -1,28 +1,30 @@
 #include "gpuProcess.hpp"
 
 #include "Config.hpp"             // for Config
-#include "gpuCommand.hpp"         // for gpuCommand, gpuCommandType, gpuCommandType::COPY_IN
-#include "gpuDeviceInterface.hpp" // for gpuDeviceInterface, Config
+#include "gpuCommand.hpp"         // for gpuCommand, gpuCommandType
+#include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
 #include "gpuEventContainer.hpp"  // for gpuEventContainer
-#include "kotekanLogging.hpp"     // for INFO, DEBUG2, DEBUG
+#include "kotekanLogging.hpp"     // for DEBUG2, INFO
 #include "restServer.hpp"         // for restServer, connectionInstance
 #include "util.h"                 // for e_time
+#include "visUtil.hpp"            // for StatTracker
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, basic_json<>::object_t, basic_json<>::value_type
+#include "fmt.hpp"  // for format, compile_string_to_view, format_string, fmt
+#include "json.hpp" // for json_ref, basic_json, json, iter_impl
 
-#include <algorithm>  // for max
-#include <atomic>     // for atomic_bool
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, ref, _1, fun...
-#include <iosfwd>     // for std
-#include <pthread.h>  // for pthread_setaffinity_np
-#include <regex>      // for match_results<>::_Base_type
-#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <set>        // for set
-#include <sstream>
-#include <stdexcept>   // for runtime_error
+#include <algorithm>   // for max
+#include <assert.h>    // for assert
+#include <cmath>       // for isnan
+#include <functional>  // for bind, ref, function, _1
+#include <map>         // for map
+#include <memory>      // for __shared_ptr_access, shared_ptr
+#include <pthread.h>   // for pthread_setaffinity_np
+#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <set>         // for set, operator!=, _Rb_tree_const_iterator, _Rb_tree_ite...
+#include <sstream>     // for basic_ostringstream, basic_ostream, ostringstream
 #include <sys/types.h> // for uint
+#include <tuple>       // for get, tuple
+#include <utility>     // for pair
 
 using kotekan::bufferContainer;
 using kotekan::Config;

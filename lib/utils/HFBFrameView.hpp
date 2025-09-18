@@ -13,15 +13,15 @@
 #include "Telescope.hpp"   // for freq_id_t
 #include "buffer.hpp"      // for Buffer
 #include "dataset.hpp"     // for dset_id_t
-#include "visUtil.hpp"     // IWYU pragma: keep
+#include "visUtil.hpp"     // for struct_layout
 
 #include "gsl-lite.hpp" // for span
 
+#include <memory>   // for shared_ptr
 #include <set>      // for set
 #include <stdint.h> // for uint32_t, uint64_t, int64_t
 #include <string>   // for string
 #include <time.h>   // for size_t, timespec
-#include <utility>  // for pair
 
 
 /**

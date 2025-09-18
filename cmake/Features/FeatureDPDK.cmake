@@ -12,8 +12,6 @@
 include_guard(GLOBAL)
 include(${CMAKE_CURRENT_LIST_DIR}/../Color.cmake)
 
-set(DPDK_REASON "disabled")
-
 # If building Boost tests, always disable DPDK
 if(WITH_BOOST_TESTS)
     set(USE_DPDK "OFF")

@@ -2,6 +2,7 @@
 #define KOTEKAN_STAGE_H
 
 #include "Config.hpp"          // for Config
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for kotekanLogging
 
@@ -9,7 +10,7 @@
 #include <functional>  // for function
 #include <mutex>       // for mutex
 #include <stdint.h>    // for uint32_t
-#include <string>      // for string
+#include <string>      // for string, basic_string
 #include <sys/types.h> // for pid_t
 #include <thread>      // for thread
 #include <vector>      // for vector

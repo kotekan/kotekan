@@ -6,14 +6,13 @@
 
 #ifndef FFTW_ENGINE_HPP
 #define FFTW_ENGINE_HPP
-#include "Stage.hpp"
-#include "buffer.hpp"
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include <fftw3.h>
-#include <string>
-#include <unistd.h>
+#include <fftw3.h> // for fftwf_complex, fftwf_plan, fftwf_plan_s
+#include <string>  // for string
 
 /**
  * @class fftwEngine

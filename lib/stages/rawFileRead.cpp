@@ -1,23 +1,23 @@
 #include "rawFileRead.hpp"
 
 #include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, get_metadata_container
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for ERROR, INFO, FATAL_ERROR
-#include "metadata.hpp"        // for metadataContainer
+#include "kotekanLogging.hpp"  // for INFO, ERROR, FATAL_ERROR
+#include "metadata.hpp"        // for metadataObject
+
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
-#include <cstdio>     // for fread, fclose, fopen, snprintf, FILE
+#include <cstdio>     // for fread, snprintf, fclose, fopen, fseek, ftell, rewind, FILE
 #include <errno.h>    // for errno
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <stdexcept>  // for runtime_error
+#include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <stdint.h>   // for uint32_t, uint8_t
 #include <string.h>   // for strerror
 #include <sys/stat.h> // for stat
-#include <unistd.h>   // for sleep
+#include <unistd.h>   // for gethostname, sleep
 
 
 inline bool file_exists(char* name) {

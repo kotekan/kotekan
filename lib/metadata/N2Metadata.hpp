@@ -1,18 +1,25 @@
 #ifndef N2_METADATA
 #define N2_METADATA
 
-#include "CHORDTelescope.hpp" // for struct EOP, eop_null
+#include "CHORDTelescope.hpp" // for EOP, eop_null
 #include "Config.hpp"         // for Config
 #include "N2Metadata.hpp"
-#include "N2Util.hpp"        // for frameID
-#include "N2Util.hpp"        // for get_num_prod
-#include "buffer.hpp"        // for Buffer
-#include "chordMetadata.hpp" // for chordMetadata
-#include "metadata.hpp"      // for metadataObject, metadataPool
+#include "N2Util.hpp"         // for frameID, get_num_prod
+#include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
+#include "kotekanLogging.hpp" // for WARN_NON_OO
+#include "metadata.hpp"       // for metadataObject, metadataPool
+
+#include "fmt.hpp" // for compile_string_to_view
 
 using kotekan::Config;
 
-#include <assert.h>
+#include <assert.h> // for assert
+#include <memory>   // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t, uint64_t, int32_t
+#include <string>   // for basic_string, operator==, char_traits, string
+#include <vector>   // for vector
 
 // Struct containing metadata fields for an N2 frame
 struct N2MetadataFormat {

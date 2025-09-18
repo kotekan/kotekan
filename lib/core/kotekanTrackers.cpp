@@ -1,21 +1,20 @@
 #include "kotekanTrackers.hpp"
 
-#include "kotekanLogging.hpp" // for ERROR_NON_OO
+#include "kotekanLogging.hpp" // for ERROR_NON_OO, INFO_NON_OO
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for basic_json<>::value_type, json, operator<<
+#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "json.hpp" // for json, operator<<
 
-#include <chrono>     // for system_clock, system_clock::time_point
-#include <errno.h>    // for errno
-#include <exception>  // for exception
-#include <fstream>    // for ofstream, ostream
-#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
-#include <stdexcept>  // for runtime_error
-#include <stdio.h>    // for sprintf
-#include <stdlib.h>   // for exit
-#include <time.h>     // for tm, localtime, time_t
-#include <unistd.h>   // for gethostname
-#include <utility>    // for pair
+#include <bits/chrono.h> // for system_clock
+#include <cstdio>        // for snprintf
+#include <ctime>         // for tm, localtime_r, time_t
+#include <errno.h>       // for errno
+#include <fstream>       // for basic_ofstream, basic_ostream, ofstream
+#include <functional>    // for bind, _1, function
+#include <stdexcept>     // for runtime_error
+#include <stdlib.h>      // for exit
+#include <unistd.h>      // for gethostname
+#include <utility>       // for pair
 
 namespace kotekan {
 

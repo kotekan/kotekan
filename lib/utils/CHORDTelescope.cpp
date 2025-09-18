@@ -1,21 +1,21 @@
 #include "CHORDTelescope.hpp"
 
-#include "Telescope.hpp"      // for REGISTER_TELESCOPE, Telescope, ...
-#include "configUpdater.hpp"  // for ConfigUpdater
-#include "kotekanLogging.hpp" // for WARN, INFO, FATAL_ERROR
+#include "Telescope.hpp"      // for Telescope, freq_id_t, REGISTER_TELESCOPE, _factory_aliasTe...
+#include "configUpdater.hpp"  // for configUpdater
+#include "kotekanLogging.hpp" // for WARN, INFO, DEBUG
 #include "restClient.hpp"     // for restClient
 #include "restServer.hpp"     // for restServer, connectionInstance
-#include "timeUtil.hpp"
+#include "timeUtil.hpp"       // for get_ERA_from_UT1, get_UT1_from_time, nanosec_i64_to_timespec
 
-#include "fmt.hpp"  // for format
-#include "json.hpp" //for basic_json, basic_json<>::object_t, basic_jason<>::value_type
+#include "fmt.hpp"  // for compile_string_to_view
+#include "json.hpp" // for basic_json, json, iter_impl, input_adapter
 
-#include <cstdint>   // for uint64_t  TODO: why not stdint.h?
-#include <exception> // for exception
-#include <math.h>    // for abs
-#include <regex>     // for match_results<>::_Base_type
-#include <stdexcept> // for runtime_error, invalid_argument
-#include <vector>    // for vector
+#include <algorithm>  // for lower_bound, copy, sort, max
+#include <exception>  // for exception
+#include <functional> // for bind, _1, function
+#include <math.h>     // for sin, cos, M_PI
+#include <stdexcept>  // for runtime_error
+#include <vector>     // for vector
 
 
 REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");

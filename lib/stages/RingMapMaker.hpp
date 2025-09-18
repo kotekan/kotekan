@@ -9,19 +9,19 @@
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t, fingerprint_t
 #include "datasetState.hpp"    // for stackState
 #include "restServer.hpp"      // for connectionInstance
-#include "visUtil.hpp"         // for input_ctype, prod_ctype, time_ctype, stack_ctype, cfloat
+#include "visUtil.hpp"         // for input_ctype, prod_ctype, time_ctype, stack_ctype, freq_ctype
 
-#include "fmt.hpp"  // for format
+#include "fmt.hpp"  // for format, format_string
 #include "json.hpp" // for json
 
-#include <algorithm> // for copy, max
+#include <algorithm> // for max
+#include <cmath>     // for acos, cos
 #include <map>       // for map
-#include <math.h>    // for cos
 #include <mutex>     // for mutex
 #include <stddef.h>  // for size_t
 #include <stdexcept> // for runtime_error
 #include <stdint.h>  // for uint32_t, int64_t, uint8_t
-#include <string>    // for string
+#include <string>    // for allocator, basic_string, string, operator<
 #include <tuple>     // for tuple
 #include <utility>   // for pair
 #include <vector>    // for vector

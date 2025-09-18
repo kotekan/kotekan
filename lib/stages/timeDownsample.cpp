@@ -1,21 +1,20 @@
 #include "timeDownsample.hpp"
 
 #include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
 #include "visBuffer.hpp"         // for VisFrameView
-#include "visUtil.hpp"           // for frameID, modulo, cfloat, operator-, ts_to_double
+#include "visUtil.hpp"           // for frameID, modulo, operator-, ts_to_double
 
+#include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <atomic>     // for atomic_bool
+#include <algorithm>  // for copy, equal, max
 #include <complex>    // for complex
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
+#include <functional> // for bind, function
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint32_t, uint64_t, int32_t
 #include <time.h>     // for timespec

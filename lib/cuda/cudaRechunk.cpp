@@ -1,8 +1,15 @@
 #include "cudaRechunk.hpp"
 
-#include "cudaUtils.hpp"
-#include "math.h"
-#include "mma.h"
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaMemcpyAsync, cudaMemcpy2DAsync
+#include "gpuCommand.hpp"     // for gpuCommandType
+#include "kotekanLogging.hpp" // for DEBUG
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm> // for max
+#include <assert.h>  // for assert
+#include <tuple>     // for tuple, make_tuple
 
 using kotekan::bufferContainer;
 using kotekan::Config;

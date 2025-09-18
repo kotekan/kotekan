@@ -257,7 +257,7 @@ function make_frb_source(frb_source::FRBSource, sample0::Int, nsamples::Int)
     old_nsamples = length(samples)
     if nsamples > old_nsamples
         resize!(samples, nsamples)
-        samples[(old_nsamples + 1):end] = 0
+        samples[(old_nsamples + 1):end] .= 0
     end
 
     return samples::AbstractVector{Complex{Float}}
@@ -321,19 +321,22 @@ function adc_sample(
     ndishes = length(dishes.locations)
     npolrs = 2
 
+    # println(":source_samples")
     source_samples = Complex{T}[
         eval_source(sources[source], Δt, sample0 + sample - 1) for source in 1:nsources, sample in 1:nsamples
     ]::AbstractArray{Complex{T},2}
+    # println(":dispersed_source_samples")
     dispersed_source_samples = Complex{T}[
         eval_dispersed_source(dispersed_source, Δt * Float64(sample0 + sample - 1)) for dispersed_source in dispersed_sources,
         sample in 1:nsamples
     ]::AbstractArray{Complex{T},2}
+    # println(":frb_samples")
     frb_samples = let
         if length(frb_sources) == 0
             zeros(Complex{T}, 0, nsamples)
         elseif length(frb_sources) == 1
             samples = make_frb_source(frb_sources[1], sample0, nsamples)
-            samples = reshape(samples, 1, :)
+            samples = reshape(samples, 1, nsamples)
             samples
         else
             @assert false
@@ -342,8 +345,10 @@ function adc_sample(
 
     data = Array{T}(undef, nsamples, ndishes, npolrs)
     for dish in 1:ndishes
+        # println(":dish=$dish")
         location = dishes.locations[dish]
         dishx, dishy = location
+        # println(":ϕs")
         ϕs = Complex{T}[
             let
                 f = source.f₀
@@ -352,6 +357,7 @@ function adc_sample(
                 cispi(2 * f * t₁)
             end for source in sources
         ]
+        # println(":dϕs")
         dϕs = Complex{T}[
             let
                 # This is wrong, need to use actual frequency, not starting frequency
@@ -368,6 +374,7 @@ function adc_sample(
                 cispi(2 * f * t₁)
             end for dispersed_source in dispersed_sources
         ]
+        # println(":fϕs")
         fϕs = Complex{T}[
             # This is wrong. The dish position is ignored.
             1 for frb_source in frb_sources
@@ -383,11 +390,13 @@ function adc_sample(
         #     data[sample, dish, 1] = real(val)
         #     data[sample, dish, 2] = imag(val)
         # end
+        # println(":noise")
         for sample in 1:nsamples
             val = eval_noise(noise)
             data[sample, dish, 1] = real(val)
             data[sample, dish, 2] = imag(val)
         end
+        # println(":sources")
         if !isempty(source_samples)
             for sample in 1:nsamples
                 val = sum(ϕs[source] * source_samples[source, sample] for source in 1:nsources; init=Complex{T}(0))
@@ -395,6 +404,7 @@ function adc_sample(
                 data[sample, dish, 2] += imag(val)
             end
         end
+        # println(":dispersed_sources")
         if !isempty(dispersed_source_samples)
             for sample in 1:nsamples
                 val = sum(
@@ -405,6 +415,7 @@ function adc_sample(
                 data[sample, dish, 2] += imag(val)
             end
         end
+        # println(":frb")
         if !isempty(frb_samples)
             @assert length(frb_sources) == 1
             for sample in 1:nsamples
@@ -415,6 +426,7 @@ function adc_sample(
             end
         end
     end
+    # println(":done")
 
     return ADCFrame(t₀, Δt, data)
 end
@@ -840,7 +852,10 @@ function baseband_phases(dishes::Dishes, frequencies::AbstractVector{Float}, bea
     A = Complex{Int8}[
         let
             dish_ew, dish_ns = dishes.locations[dish]
-            θ_ew, θ_ns, = beams.angles[beam]
+            θ_ew, θ_ns = beams.angles[beam]
+
+            #TODO: HYPOT?
+
             Δt = sin(θ_ew) * dish_ew / c₀ + sin(θ_ns) * dish_ns / c₀
             f = frequencies[freq]
             round(Int8, clamp(Float(127.5) * cispi(2 * f * Δt), Float(-127), Float(+127)))
@@ -1304,6 +1319,7 @@ function set_E!(
         t1 = time()
         walltimes[4, chunk_index] = t1 - t0
     end
+    # println("Done generating E-field.")
 
     # @show walltimes
 

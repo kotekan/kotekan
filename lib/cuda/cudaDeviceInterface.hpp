@@ -7,11 +7,18 @@
 #ifndef CUDA_DEVICE_INTERFACE_H
 #define CUDA_DEVICE_INTERFACE_H
 
-#include "cudaUtils.hpp"
-#include "cuda_runtime_api.h"
-#include "gpuDeviceInterface.hpp"
+#include "Config.hpp"             // for Config
+#include "driver_types.h"         // for cudaEvent_t, cudaStream_t
+#include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
 
-#include <cuda.h>
+#include <cuda.h>   // for CUfunction
+#include <map>      // for map
+#include <memory>   // for allocator, shared_ptr, weak_ptr
+#include <mutex>    // for recursive_mutex
+#include <stddef.h> // for size_t
+#include <stdint.h> // for int32_t, uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class cudaDeviceInterface

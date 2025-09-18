@@ -1,33 +1,28 @@
 #include "RingMapMaker.hpp"
 
-#include "Hash.hpp"              // for Hash, operator!=, operator<
+#include "Hash.hpp"              // for operator!=, operator<, Hash
 #include "Stack.hpp"             // for chimeFeed
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"         // for Telescope
 #include "dataset.hpp"           // for dataset
-#include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t, fingerprint_t
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN, INFO
 #include "prometheusMetrics.hpp" // for Metrics
-#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
+#include "visBuffer.hpp"         // for VisFrameView, VisField
 
-#include "gsl-lite.hpp" // for span, span<>::iterator
+#include "gsl-lite.hpp" // for span_iterator, span, at
 
-#include <atomic>       // for atomic_bool
-#include <cblas.h>      // for cblas_cgemv, CblasNoTrans, CblasRowMajor
-#include <complex>      // for operator*, complex, operator/, norm, operator-, operato...
-#include <cstdint>      // for uint64_t, uint32_t
-#include <cxxabi.h>     // for __forced_unwind
-#include <exception>    // for exception
-#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, function, _2
-#include <future>       // for async, future
-#include <iterator>     // for begin, end, back_insert_iterator, back_inserter
-#include <memory>       // for allocator_traits<>::value_type
-#include <numeric>      // for iota
-#include <optional>     // for optional
-#include <regex>        // for match_results<>::_Base_type
-#include <sys/types.h>  // for uint
-#include <system_error> // for system_error
-#include <tuple>        // for get, tuple, make_tuple, operator!=, operator<
+#include <cblas.h>     // for cblas_cgemv, CBLAS_ORDER, CBLAS_TRANSPOSE
+#include <complex>     // for complex, operator*, conj, operator/, exp, operator-
+#include <cstdint>     // for uint8_t
+#include <functional>  // for bind, function, _1, _2
+#include <future>      // for async, future
+#include <iterator>    // for begin, end, back_insert_iterator, back_inserter
+#include <numeric>     // for iota
+#include <optional>    // for optional
+#include <set>         // for set
+#include <sys/types.h> // for uint
+#include <tuple>       // for tuple, get, make_tuple, operator!=, operator<
 
 using namespace std::complex_literals;
 using namespace std::placeholders;

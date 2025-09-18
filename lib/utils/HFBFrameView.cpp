@@ -1,22 +1,19 @@
 #include "HFBFrameView.hpp"
 
 #include "FrameView.hpp" // for bind_span, FrameView
-#include "buffer.hpp"    // for Buffer, allocate_new_metadata_object
-#include "metadata.hpp"  // for metadataContainer
-#include "visUtil.hpp"   // for struct_alignment
+#include "buffer.hpp"    // for Buffer
+#include "visUtil.hpp"   // for struct_layout, struct_alignment
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for format, compile_string_to_view, fmt, format_string
 
 #include <algorithm> // for copy
 #include <complex>   // for complex  // IWYU pragma: keep
 #include <cstdint>   // for uint64_t // IWYU pragma: keep
+#include <cstring>   // for memset
 #include <ctime>     // for gmtime
-#include <exception> // for exception
 #include <map>       // for map
-#include <regex>     // for match_results<>::_Base_type
 #include <set>       // for set
 #include <stdexcept> // for runtime_error
-#include <string.h>  // for memset
 #include <tuple>     // for tuple, make_tuple
 #include <vector>    // for vector
 
