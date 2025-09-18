@@ -195,7 +195,7 @@ void gpuSimulateN2kCorr::main_thread() {
                 meta_in->time_downsampling_fpga[f] * _sub_integration_ntime;
         }
 
-        meta_out->fpga_seq_num = meta_in->fpga_seq_num;
+        meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->sample0_offset = meta_in->sample0_offset;
         meta_out->offset_downsampling = meta_in->offset_downsampling;
 
