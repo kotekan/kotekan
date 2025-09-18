@@ -123,6 +123,8 @@ if(HDF5_FOUND
     target_sources(kotekan_stages PRIVATE applyGains.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
+    # applyGains.cpp uses std::atomic<timespec>, which relies on libatomic on some platforms
+    target_link_libraries(kotekan_stages PRIVATE atomic)
 endif()
 
 if(${USE_ZARR})
@@ -172,8 +174,8 @@ if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCH
 endif()
 
 # -latomic was historically required for applyGains on some platforms, but newer toolchains on
-# x86_64 provide the necessary builtins without an extra library.  Add it only when the build
-# system requests it explicitly via KOTEKAN_FORCE_LIBATOMIC.
+# x86_64 provide the necessary builtins without an extra library.  Add it only when the build system
+# requests it explicitly via KOTEKAN_FORCE_LIBATOMIC.
 if(KOTEKAN_FORCE_LIBATOMIC)
     target_link_libraries(kotekan_stages PRIVATE atomic)
 endif()
