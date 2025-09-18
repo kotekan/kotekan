@@ -38,6 +38,9 @@
 #include <unistd.h>    // for close, optarg, dup2, execvp, fork, pipe, sleep, STDOUT...
 #include <utility>     // for pair
 #include <vector>      // for vector
+#ifdef WITH_HDF5
+    #include "hdf5.h"
+#endif
 
 
 using std::string;
@@ -46,15 +49,18 @@ using namespace kotekan;
 
 // Ensure HDF5 plugin path is available at runtime if we know a default.
 #if defined(WITH_HDF5) && defined(DEFAULT_HDF5_PLUGIN_PATH)
-static inline void ensure_hdf5_plugin_env() {
-    const char* cur = getenv("HDF5_PLUGIN_PATH");
-    if ((cur == nullptr || cur[0] == '\0') && (sizeof(DEFAULT_HDF5_PLUGIN_PATH) > 1)) {
-        // Do not overwrite if user already sets it
-        setenv("HDF5_PLUGIN_PATH", DEFAULT_HDF5_PLUGIN_PATH, /*overwrite=*/0);
+static inline int ensure_hdf5_plugin() {
+    if(sizeof(DEFAULT_HDF5_PLUGIN_PATH) > 1) {
+        herr_t err = H5PLappend(DEFAULT_HDF5_PLUGIN_PATH);
+        if(err < 0)
+            return -1;
     }
+    return 0;
 }
 #else
-static inline void ensure_hdf5_plugin_env() {}
+static inline int ensure_hdf5_plugin() {
+    return 0;
+}
 #endif
 
 // Embedded script for converting the YAML config to json
@@ -421,8 +427,11 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
-    // Set HDF5_PLUGIN_PATH if unset and a default was detected at configure time.
-    ensure_hdf5_plugin_env();
+    // Set HDF5_PLUGIN_PATH if a default was detected at configure time.
+    if(ensure_hdf5_plugin()) {
+        std::cerr << "ERROR: Could not set HDF5 plugin path." << std::endl;
+        return FATAL_ERROR;
+    }
 
     try {
         std::locale::global(std::locale::classic());

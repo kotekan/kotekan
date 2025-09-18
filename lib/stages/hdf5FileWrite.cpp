@@ -39,6 +39,7 @@
 #include <vector>                                // for vector
 #include <visUtil.hpp>                           // for current_time
 #include <waitingForMaxFrames.hpp>               // for waiting_for_max_frames
+#include "hdf5.h"
 
 using namespace hdf5;
 using namespace HighFive;
@@ -132,6 +133,25 @@ public:
 
             INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
                  frame_counter, meta->sample0_offset, elapsed_time);
+            unsigned int n_plugin_paths = 0;
+            herr_t err_h5 = H5PLsize(&n_plugin_paths);
+            if(err_h5 < 0)
+                INFO("BAD Could not get H5PL path list length");
+            else {
+                for(unsigned int plg_idx=0; plg_idx < n_plugin_paths; plg_idx++) {
+                    char plg_path[1024];
+                    err_h5 = H5PLget(plg_idx, plg_path, 1024);
+                    plg_path[1023] = '\0';
+                    if(err_h5 < 0)
+                        INFO("BAD Could not get H5PL path {:d}", plg_idx);
+                    else
+                        INFO("HDF5 Plugin path {:d}: {:s}", plg_idx, plg_path);
+                }
+            }
+            unsigned int h5_plg_ld_state = 0;
+            err_h5 = H5PLget_loading_state(&h5_plg_ld_state);
+            INFO("HDF5 Plugin load state: {:d}", h5_plg_ld_state);
+
 
             if (!skip_writing) {
 

@@ -1,22 +1,28 @@
 # cmake/FindHDF5Plugin.cmake
 # Try multiple strategies in order of preference
-find_path(HDF5Plugin_PLUGIN_DIR
-    NAMES libh5blosc.so libh5blosc.dylib h5blosc.dll
-    PATHS
-        # 1. Respect any existing HDF5_PLUGIN_PATH
-        $ENV{HDF5_PLUGIN_PATH}
-        # 2. System locations
-        ${HDF5_ROOT}/lib/plugin
-        /usr/lib/x86_64-linux-gnu/hdf5/plugins
-        /usr/lib/hdf5/plugins
-        /usr/local/lib/hdf5/plugins
-        # 3. Common conda/mamba locations
-        $ENV{CONDA_PREFIX}/lib/hdf5/plugins
-        $ENV{MAMBA_ROOT_PREFIX}/lib/hdf5/plugins
-    PATH_SUFFIXES plugins hdf5/plugins
-)
 
-# 4. Try Python hdf5plugin as fallback
+# 1. Use the HDF5_PLUGIN_DIR CLI argument without question
+if(HDF5_PLUGIN_DIR)
+    set(HDF5Plugin_PLUGIN_DIR "${HDF5_PLUGIN_DIR}")
+endif()
+
+# 2. Respect any existing environment HDF5_PLUGIN_PATH
+if(NOT HDF5Plugin_PLUGIN_DIR)
+    if($ENV{HDF5_PLUGIN_PATH})
+        # First parse the env var in case it contains multiple paths
+        cmake_path(CONVERT $ENV{HDF5_PLUGIN_PATH} TO_CMAKE_PATH_LIST ENV_HDF5_PLUGIN_PATH NORMALIZE)
+
+        # Now search in those paths
+        find_path(HDF5Plugin_PLUGIN_DIR
+            NAMES libh5blosc.so libh5blosc.dylib h5blosc.dll
+            PATHS
+                ${ENV_HDF5_PLUGIN_PATH}
+            PATH_SUFFIXES plugins hdf5/plugins
+        )
+    endif()
+endif()
+
+# 3. Try Python hdf5plugin, this is where the deployment plugins are.
 if(NOT HDF5Plugin_PLUGIN_DIR)
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_FOUND)
@@ -41,4 +47,19 @@ except: pass"
             set(HDF5Plugin_PLUGIN_DIR "${_hdf5plugin_path}")
         endif()
     endif()
+endif()
+
+# 4. Look in likely system/conda/etc locations.
+if(NOT HDF5Plugin_PLUGIN_DIR)
+    find_path(HDF5Plugin_PLUGIN_DIR
+        NAMES libh5blosc.so libh5blosc.dylib h5blosc.dll
+        PATHS
+            ${HDF5_ROOT}/lib/plugin
+            /usr/lib/x86_64-linux-gnu/hdf5/plugins
+            /usr/lib/hdf5/plugins
+            /usr/local/lib/hdf5/plugins
+            $ENV{CONDA_PREFIX}/lib/hdf5/plugins
+            $ENV{MAMBA_ROOT_PREFIX}/lib/hdf5/plugins
+        PATH_SUFFIXES plugins hdf5/plugins
+    )
 endif()
