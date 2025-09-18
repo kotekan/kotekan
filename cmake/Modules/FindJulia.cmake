@@ -95,6 +95,8 @@ if(Julia_EXECUTABLE)
         set(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES} .a;.dll)
     endif()
 
+    set(_kotekan_julia_used_fallback OFF)
+
     if(Julia_EXECUTABLE)
         execute_process(
             COMMAND ${Julia_EXECUTABLE} --startup-file=no -E "${USING_LIBDL}\n
@@ -127,10 +129,48 @@ if(Julia_EXECUTABLE)
             CMAKE_FIND_ROOT_PATH_BOTH)
     endif()
 
-    get_filename_component(JULIA_LIBRARY_DIR ${JULIA_LIBRARY} DIRECTORY)
+    if((NOT JULIA_LIBRARY) OR (NOT EXISTS "${JULIA_LIBRARY}"))
+        set(_kotekan_julia_used_fallback ON)
 
-    message(STATUS "JULIA_LIBRARY_DIR:    ${JULIA_LIBRARY_DIR}")
-    message(STATUS "JULIA_LIBRARY:        ${JULIA_LIBRARY}")
+        set(_julia_lib_search_paths)
+        if(JULIA_HOME)
+            get_filename_component(_julia_bindir "${JULIA_HOME}" DIRECTORY)
+            list(APPEND _julia_lib_search_paths
+                "${_julia_bindir}/lib"
+                "${_julia_bindir}/lib64")
+        endif()
+        if(Julia_PREFIX)
+            list(APPEND _julia_lib_search_paths "${Julia_PREFIX}/lib")
+        endif()
+
+        find_library(
+            JULIA_LIBRARY
+            NAMES libjulia.${Julia_VERSION_STRING} libjulia libjulia-debug julia
+            PATHS ${_julia_lib_search_paths}
+            NO_DEFAULT_PATH)
+
+        if(NOT JULIA_LIBRARY)
+            find_library(
+                JULIA_LIBRARY
+                NAMES libjulia.${Julia_VERSION_STRING} libjulia julia)
+        endif()
+    endif()
+
+    if(JULIA_LIBRARY)
+        get_filename_component(JULIA_LIBRARY_DIR "${JULIA_LIBRARY}" DIRECTORY)
+
+        if(_kotekan_julia_used_fallback)
+            message(WARNING
+                "Julia ${Julia_VERSION_STRING} does not expose libjulia via Libdl; "
+                "resolved path via fallback search. Please consider updating Julia.")
+        endif()
+
+        message(STATUS "JULIA_LIBRARY_DIR:    ${JULIA_LIBRARY_DIR}")
+        message(STATUS "JULIA_LIBRARY:        ${JULIA_LIBRARY}")
+    else()
+        message(FATAL_ERROR
+            "Julia library path could not be determined. Set JULIA_LIBRARY manually or update Julia.")
+    endif()
 
     # ##############################################################################################
     # JULIA_HOME #
