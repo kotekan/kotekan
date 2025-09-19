@@ -8,7 +8,7 @@ endif()
 
 # 2. Respect any existing environment HDF5_PLUGIN_PATH
 if(NOT HDF5Plugin_PLUGIN_DIR)
-    if($ENV{HDF5_PLUGIN_PATH})
+    if(DEFINED ENV{HDF5_PLUGIN_PATH})
         # First parse the env var in case it contains multiple paths
         cmake_path(CONVERT $ENV{HDF5_PLUGIN_PATH} TO_CMAKE_PATH_LIST ENV_HDF5_PLUGIN_PATH NORMALIZE)
 

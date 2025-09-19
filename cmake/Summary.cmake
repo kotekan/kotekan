@@ -251,6 +251,12 @@ else()
     set(_ktk_flag_blaze "BLAZE_PATH=")
 endif()
 
+if(DEFINED HDF5Plugin_PLUGIN_DIR AND NOT "${HDF5Plugin_PLUGIN_DIR}" STREQUAL "")
+    set(_ktk_flag_hdf5_plugin "HDF5_PLUGIN_DIR='${HDF5Plugin_PLUGIN_DIR}'")
+else()
+    set(_ktk_flag_hdf5_plugin "HDF5_PLUGIN_DIR=")
+endif()
+
 if(DEFINED KOTEKAN_CL_TARGET_OPENCL_VERSION AND NOT "${KOTEKAN_CL_TARGET_OPENCL_VERSION}" STREQUAL
                                                 "")
     set(_ktk_flag_cl "CL_TARGET_OPENCL_VERSION=${KOTEKAN_CL_TARGET_OPENCL_VERSION}")
@@ -271,7 +277,7 @@ else()
 endif()
 
 set(_ktk_flag_summary
-    "${_ktk_flag_openssl} ${_ktk_flag_blaze} ${_ktk_flag_cl} ${_ktk_flag_prefix} ${_ktk_flag_cuda}")
+    "${_ktk_flag_openssl} ${_ktk_flag_blaze} ${_ktk_flag_hdf5_plugin} ${_ktk_flag_cl} ${_ktk_flag_prefix} ${_ktk_flag_cuda}")
 kmsg_status("Flag Overrides: ${_ktk_flag_summary}")
 kmsg_status("Cache Hint: run 'cmake -U<VAR> .' or remove CMakeCache.txt to reset")
 

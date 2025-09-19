@@ -51,7 +51,7 @@ using namespace kotekan;
 #if defined(WITH_HDF5) && defined(DEFAULT_HDF5_PLUGIN_PATH)
 static inline int ensure_hdf5_plugin() {
     if(sizeof(DEFAULT_HDF5_PLUGIN_PATH) > 1) {
-        herr_t err = H5PLappend(DEFAULT_HDF5_PLUGIN_PATH);
+        herr_t err = H5PLprepend(DEFAULT_HDF5_PLUGIN_PATH);
         if(err < 0)
             return -1;
     }
