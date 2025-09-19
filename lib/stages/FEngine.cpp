@@ -172,8 +172,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     // Frame sizes
     dish_positions_frame_size(sizeof(float) * 2 * num_dishes),
     bf_mask_frame_size(sizeof(int8_t) * num_dishes * num_polarizations),
-    pl_mask_frame_size(sizeof(uint8_t) * num_dishes * num_polarizations * (num_frequencies / 4)
-                       * (num_times / 2 / 8)),
+    pl_mask_frame_size(sizeof(uint8_t) * (64 / 8) * (num_dishes / 8) * num_polarizations
+                       * (num_frequencies / 4) * (num_times / 2 / 64)),
     E_frame_size(sizeof(uint8_t) * num_dishes * num_polarizations * num_frequencies * num_times),
     scatter_indices_frame_size(sizeof(int) * num_dishes * num_polarizations),
     bb_beam_positions_frame_size(sizeof(float) * 2 * bb_num_beams),
@@ -1402,11 +1402,12 @@ void FEngine::main_thread() {
             profile_range_push("pl_mask_frame::fill");
             using std::max;
             if (E_frame_index < max(pl_mask_buffer->num_frames, num_frames)) {
-                assert(8 * num_dishes * num_polarizations * (num_frequencies / 4)
+                // 64/8 instead of 64 because we count uint1x8, not uint1
+                assert((64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4)
                            * (num_times / 2 / 64)
                        == pl_mask_frame_size);
                 std::memset(pl_mask_frame, 0xff,
-                            8 * num_dishes * num_polarizations * (num_frequencies / 4)
+                            (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4)
                                 * (num_times / 2 / 64));
                 // TODO: Make some packet loss happen
             }
@@ -1421,18 +1422,18 @@ void FEngine::main_thread() {
             pl_mask_metadata->type = kotekan::uint1x8;
             pl_mask_metadata->dims = 5;
             assert(pl_mask_metadata->dims <= CHORD_META_MAX_DIM);
-            std::strncpy(pl_mask_metadata->dim_name[0], "T16hi8",
+            std::strncpy(pl_mask_metadata->dim_name[0], "T2hi64",
                          sizeof pl_mask_metadata->dim_name[0]);
             std::strncpy(pl_mask_metadata->dim_name[1], "F4", sizeof pl_mask_metadata->dim_name[1]);
             std::strncpy(pl_mask_metadata->dim_name[2], "P", sizeof pl_mask_metadata->dim_name[2]);
-            std::strncpy(pl_mask_metadata->dim_name[3], "D", sizeof pl_mask_metadata->dim_name[3]);
-            std::strncpy(pl_mask_metadata->dim_name[4], "T16lo8",
+            std::strncpy(pl_mask_metadata->dim_name[3], "D8", sizeof pl_mask_metadata->dim_name[3]);
+            std::strncpy(pl_mask_metadata->dim_name[4], "T2lo64",
                          sizeof pl_mask_metadata->dim_name[4]);
-            pl_mask_metadata->dim[0] = num_times / 2 / 8 / 8;
+            pl_mask_metadata->dim[0] = num_times / 2 / 64;
             pl_mask_metadata->dim[1] = num_frequencies / 4;
             pl_mask_metadata->dim[2] = num_polarizations;
-            pl_mask_metadata->dim[3] = num_dishes;
-            pl_mask_metadata->dim[4] = 8;
+            pl_mask_metadata->dim[3] = num_dishes / 8;
+            pl_mask_metadata->dim[4] = 64 / 8; // because we count uint1x8, not uint1
             for (int d = pl_mask_metadata->dims - 1; d >= 0; --d)
                 if (d == pl_mask_metadata->dims - 1)
                     pl_mask_metadata->stride[d] = 1;
@@ -1441,20 +1442,19 @@ void FEngine::main_thread() {
                         pl_mask_metadata->stride[d + 1] * pl_mask_metadata->dim[d + 1];
             pl_mask_metadata->sample0_offset = seq_num;
             // This pl mask:
-            // - is downsampled by 2
-            // - is stored with 8 bits per byte (we count this as "downsampling" as well)
-            // - has a factor of 8 split off the slowest-varying index
+            // - is downsampled by 2 in time
+            // - has a factor of 64 split off the slowest-varying index
             //   (we count this as "downsampling" as well)
             // Only the slowest-varying index counts as "time" for the
             // ring buffer mechanics.
-            pl_mask_metadata->offset_downsampling = 2 * 8 * 8;
+            pl_mask_metadata->offset_downsampling = 2 * 64;
             pl_mask_metadata->nfreq = num_frequencies;
             assert(pl_mask_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
                 pl_mask_metadata->coarse_freq[freq] = frequency_channels.at(freq);
-                pl_mask_metadata->freq_upchan_factor[freq] = 1;
-                pl_mask_metadata->half_fpga_sample0[freq] = 7;
-                pl_mask_metadata->time_downsampling_fpga[freq] = 1;
+                pl_mask_metadata->freq_upchan_factor[freq] = 4;
+                pl_mask_metadata->half_fpga_sample0[freq] = 64;
+                pl_mask_metadata->time_downsampling_fpga[freq] = 2;
             }
             pl_mask_metadata->ndishes = num_dishes;
             pl_mask_metadata->n_dish_locations_ew = num_dish_locations_ew;

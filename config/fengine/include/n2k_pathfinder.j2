@@ -8,7 +8,6 @@
 n2k_sub_integration_ntime: 8192
 # n2k_samples_per_data_set = max(num_times, n2k_sub_integration_ntime)
 n2k_samples_per_data_set: 8192
-# TODO: Check that this is 30 ms, Kendrick wants 30 ms
 
 ################################################################################
 
@@ -27,16 +26,23 @@ host_n2k_correlation_buffer:
     frame_size: sizeof_int32 * num_components * n2k_triangle_size * num_frequencies * n2k_num_subintegrations
     metadata_pool: main_pool
 
+host_n2k_counts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_int32 * num_components * (num_dishes / 8) * num_polarizations * (num_dishes / 8) * num_polarizations * num_frequencies * n2k_num_subintegrations
+    metadata_pool: main_pool
+
 ################################################################################
 
 # Stages
 
-run_n2k:
+run_n2k_correlation:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         out_buffers:
             host_n2k_correlation_buffer: host_n2k_correlation_buffer
         commands:
@@ -46,8 +52,32 @@ run_n2k:
           samples_per_data_set: n2k_samples_per_data_set
           sub_integration_ntime: n2k_sub_integration_ntime
           voltage_name: voltage
+          rfi_RFImask_name: rfi_RFImask
           n2k_correlation_name: n2k_correlation
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: n2k_correlation_buffer
           out_buf: host_n2k_correlation_buffer
+
+#TODO run_n2k_counts:
+#TODO     gpu_0:
+#TODO         kotekan_stage: cudaProcess
+#TODO         gpu_id: 0
+#TODO         in_buffers:
+#TODO             host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+#TODO             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+#TODO         out_buffers:
+#TODO             host_n2k_counts_buffer: host_n2k_counts_buffer
+#TODO         commands:
+#TODO         - name: cudaPL1bitCorrelator
+#TODO           num_elements: num_dishes * num_polarizations
+#TODO           num_local_freq: num_frequencies
+#TODO           samples_per_data_set: n2k_samples_per_data_set
+#TODO           sub_integration_ntime: n2k_sub_integration_ntime
+#TODO           pl_expanded_mask_name: pl_expanded_mask
+#TODO           rfi_RFImask_name: rfi_RFImask
+#TODO           n2k_counts_name: n2k_counts
+#TODO         - name: cudaSyncOutput
+#TODO         - name: cudaOutputData
+#TODO           gpu_mem: n2k_counts_buffer
+#TODO           out_buf: host_n2k_counts_buffer

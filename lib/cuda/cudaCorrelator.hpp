@@ -86,18 +86,19 @@ private:
     /// Name for the voltage input
     const std::string _voltage_name;
 
+    /// Name for the rfi mask input
+    const std::string _rfi_RFImask_name;
+
     /// Name for the correlation output
     const std::string _n2k_correlation_name;
 
     /// Signaling ring buffer for the input (voltage) data.
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
+    NDArrayRingBuffer<kotekan::uint1x8_t, 3> rfi_RFImask;
     NDArrayBuffer<std::int32_t, 6> n2k_correlation;
 
     /// Cuda kernel wrapper object
     n2k::Correlator n2correlator;
-
-    /// Placeholder rfi mask
-    std::uint32_t* rfimask;
 };
 
 #endif // KOTEKAN_CUDA_CORRELATOR_H

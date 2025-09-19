@@ -1,0 +1,166 @@
+#include <DataType.hpp>
+#include <NDArrayRingBuffer.hpp>
+#include <cassert>
+#include <chordMetadata.hpp>
+#include <cstddef>
+#include <cstring>
+#include <cudaCommand.hpp>
+#include <div.hpp>
+#include <memory>
+#include <metadata.hpp>
+#include <n2k.hpp>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <vector>
+
+using kotekan::div_noremainder;
+using kotekan::round_down;
+
+class cudaPLMaskExpander : public cudaCommand {
+public:
+    cudaPLMaskExpander(kotekan::Config& config, const std::string& unique_name,
+                       kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                       const int instance_num);
+    virtual ~cudaPLMaskExpander();
+
+    int wait_on_precondition() override;
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
+    void finalize_frame() override;
+
+private:
+    // Parameters
+    const int buffer_depth;
+    const int num_times;
+    const int num_frequencies;
+    const int num_polarizations;
+    const int num_dishes;
+
+    // Kotekan buffer names
+    const std::string pl_mask_name;
+    const std::string pl_expanded_mask_name;
+
+    // Buffers
+    NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_mask;
+    NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_expanded_mask;
+};
+
+REGISTER_CUDA_COMMAND(cudaPLMaskExpander);
+
+cudaPLMaskExpander::cudaPLMaskExpander(kotekan::Config& config, const std::string& unique_name,
+                                       kotekan::bufferContainer& host_buffers,
+                                       cudaDeviceInterface& device, const int instance_num) :
+    cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
+                "cudaPLMaskExpander"),
+    // Parameters
+    buffer_depth(config.get<int>(unique_name, "buffer_depth")),
+    num_times(config.get<int>(unique_name, "num_times")),
+    num_frequencies(config.get<int>(unique_name, "num_frequencies")),
+    num_polarizations(config.get<int>(unique_name, "num_polarizations")),
+    num_dishes(config.get<int>(unique_name, "num_dishes")),
+    // Buffer names
+    pl_mask_name(config.get<std::string>(unique_name, "pl_mask_name")),
+    pl_expanded_mask_name(config.get<std::string>(unique_name, "pl_expanded_mask_name")),
+    // Buffers
+    pl_mask(pl_mask_name, "pl_mask",
+            std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 2 * 64),
+                                          div_noremainder(num_frequencies, 4), num_polarizations,
+                                          div_noremainder(num_dishes, 8), 64 / 8},
+            std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"}, *this),
+    pl_expanded_mask(pl_expanded_mask_name, "pl_mask",
+                     std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 64),
+                                                   num_frequencies, num_polarizations,
+                                                   div_noremainder(num_dishes, 8), 64 / 8},
+                     std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, *this)
+//
+{
+    // For pl_mask_T128_sample_bytes
+    if (num_frequencies % 4 != 0)
+        FATAL_ERROR("num_frequencies % 4 != 0");
+
+    pl_mask.register_consumer();
+    pl_expanded_mask.register_producer();
+
+    set_command_type(gpuCommandType::KERNEL);
+}
+
+cudaPLMaskExpander::~cudaPLMaskExpander() {}
+
+int cudaPLMaskExpander::wait_on_precondition() {
+    // Wait for data to be available in input ringbuffers
+    DEBUG("Waiting for pl_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const std::ptrdiff_t pl_mask_ringbuf = pl_mask.get_ndarray().extent(0);
+    const std::ptrdiff_t pl_mask_read_max = pl_mask_ringbuf / 4;
+    std::ptrdiff_t pl_mask_read = -1;
+    const int pl_mask_errcode =
+        pl_mask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+            using std::min;
+            pl_mask_read = min(available_elements, pl_mask_read_max);
+            return read_descriptor_t{.claimed = pl_mask_read, .read = pl_mask_read};
+        });
+    if (pl_mask_errcode < 0)
+        return pl_mask_errcode;
+    DEBUG("Done waiting for pl_mask input ringbuffer data for frame {:d}; will read {:d} elements",
+          gpu_frame_id, pl_mask_read);
+
+    DEBUG("Waiting for pl_expanded_mask output ringbuffer space for frame {:d}...", gpu_frame_id);
+    const std::ptrdiff_t pl_expanded_mask_written = pl_mask_read * 2;
+    const int pl_expanded_mask_errcode =
+        pl_expanded_mask.wait_for_writable(pl_expanded_mask_written);
+    if (pl_expanded_mask_errcode < 0)
+        return pl_expanded_mask_errcode;
+    DEBUG("Done waiting for pl_expanded_mask output ringbuffer data for frame {:d}; will write "
+          "{:d} elements",
+          gpu_frame_id, pl_expanded_mask_written);
+
+    return 0;
+}
+
+cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
+                                        const std::vector<cudaEvent_t>& /*pre_events*/) {
+    pre_execute();
+    record_start_event();
+
+    pl_mask.check_metadata();
+
+    pl_expanded_mask.set_metadata(pl_mask.get_metadata());
+    const auto& pl_expanded_mask_meta = pl_expanded_mask.get_metadata();
+    assert(pl_expanded_mask_meta->nfreq >= 0);
+    for (int freq = 0; freq < pl_expanded_mask_meta->nfreq; ++freq) {
+        pl_expanded_mask_meta->freq_upchan_factor[freq] =
+            div_noremainder(pl_expanded_mask_meta->freq_upchan_factor[freq], 4);
+        pl_expanded_mask_meta->time_downsampling_fpga[freq] =
+            div_noremainder(pl_expanded_mask_meta->time_downsampling_fpga[freq], 2);
+    }
+
+    // There is no poison value
+    // pl_expanded_mask.set_to_poison(0xff);
+
+    kotekan::uint1x8_t* const pl_mask_memory = pl_mask.get_ndarray().data();
+    const kotekan::uint1x8_t* const pl_expanded_mask_memory = pl_expanded_mask.get_ndarray().data();
+
+    const std::ptrdiff_t Tsize_in = pl_mask.get_ndarray().extent(0);
+    const std::ptrdiff_t Tmin_in = pl_mask.get_read_valid().begin();
+    const std::ptrdiff_t Tsize_out = pl_expanded_mask.get_ndarray().extent(0);
+    const std::ptrdiff_t Tmin_out = pl_expanded_mask.get_write_valid().begin();
+    const std::ptrdiff_t Tout = pl_expanded_mask.get_write_valid().size() * 64;
+
+    n2k::launch_pl_mask_expander((ulong*)pl_expanded_mask_memory, (const ulong*)pl_mask_memory,
+                                 Tmin_in, Tsize_in, Tmin_out, Tsize_out, Tout, num_frequencies,
+                                 (num_dishes / 8) * num_polarizations,
+                                 device.getStream(cuda_stream_id));
+
+    // There is no poison value
+    // pl_expanded_mask.check_for_poison(0xff);
+
+    return record_end_event();
+}
+
+void cudaPLMaskExpander::finalize_frame() {
+    // Advance the ring buffers
+    pl_mask.finish_read();
+    pl_expanded_mask.finish_write();
+
+    cudaCommand::finalize_frame();
+}

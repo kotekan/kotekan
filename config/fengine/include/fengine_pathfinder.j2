@@ -105,11 +105,21 @@ host_bf_mask_buffer:
 host_pl_mask_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: 8 * num_dishes * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 8 / 8)
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 64)
     metadata_pool: main_pool
 host_pl_mask_ringbuffer:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * 8 * num_dishes * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 8 / 8)
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 64)
+    metadata_pool: main_pool
+
+host_pl_expanded_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)
+    metadata_pool: main_pool
+host_pl_expanded_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)
     metadata_pool: main_pool
 
 host_voltage_buffer:
@@ -162,11 +172,24 @@ run_send_pl_mask:
             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
         commands:
         - name: cudaCopyToRingbuffer
-          input_size: num_dishes * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 8)
+          input_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 64)
           ring_buffer_size: buffer_depth * input_size
           in_buf: host_pl_mask_buffer
           signal_buf: host_pl_mask_ringbuffer
           gpu_mem_output: pl_mask_buffer
+
+run_expand_pl_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+        out_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskExpander
+          pl_mask_name: pl_mask
+          pl_expanded_mask_name: pl_expanded_mask
 
 run_send_voltage:
     gpu_0:
