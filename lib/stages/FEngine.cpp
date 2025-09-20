@@ -1452,9 +1452,9 @@ void FEngine::main_thread() {
             assert(pl_mask_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
                 pl_mask_metadata->coarse_freq[freq] = frequency_channels.at(freq);
-                pl_mask_metadata->freq_upchan_factor[freq] = 4;
+                pl_mask_metadata->freq_upchan_factor[freq] = 1; // we want 1/4 but we cannot
                 pl_mask_metadata->half_fpga_sample0[freq] = 64;
-                pl_mask_metadata->time_downsampling_fpga[freq] = 2;
+                pl_mask_metadata->time_downsampling_fpga[freq] = 2 * 64;
             }
             pl_mask_metadata->ndishes = num_dishes;
             pl_mask_metadata->n_dish_locations_ew = num_dish_locations_ew;

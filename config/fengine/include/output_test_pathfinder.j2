@@ -301,6 +301,10 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_n2k_correlation_buffer
         file_name: n2k_correlation
+    write_n2k_counts:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_n2k_counts_buffer
+        file_name: n2k_counts
     write_bb_beam_positions:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beam_positions_buffer

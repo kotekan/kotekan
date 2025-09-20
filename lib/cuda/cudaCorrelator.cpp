@@ -66,9 +66,8 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
         const std::array<std::ptrdiff_t, 6> n2k_lengths{
             num_subintegrations, _num_local_freq, triangle_num_blocks, blocksize, blocksize, 2};
         const std::array<std::string, 6> n2k_dimnames{"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"};
-        return NDArrayBuffer<std::int32_t, 6>(
-            _n2k_correlation_name, "n2k_correlation", n2k_lengths,
-            std::array<std::string, 6>{"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}, *this);
+        return NDArrayBuffer<std::int32_t, 6>(_n2k_correlation_name, "n2k_correlation", n2k_lengths,
+                                              n2k_dimnames, *this);
     }()),
     n2correlator(_num_elements, _num_local_freq) {
     if (_samples_per_data_set % _sub_integration_ntime)
@@ -129,8 +128,6 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     const std::shared_ptr<const chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
     const std::shared_ptr<chordMetadata> out_meta = n2k_correlation.get_metadata();
 
-    // Ensure consistency:
-
     // Since we do not use a ring buffer we need to set `meta->sample0_offset`
     // TODO: do this automatically in `NDArrayRingBuffer`
     out_meta->sample0_offset = voltage.get_read_valid().begin();
@@ -144,13 +141,18 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     // The ringbuffering here is fishy. We should fix the kernel instead.
 
     // Ensure consistency:
-    assert(rfi_RFImask.get_read_valid().begin() * 8 * 64 == voltage.get_read_valid().begin());
+    assert(in_meta->nfreq == rfi_meta->nfreq);
+    for (int freq = 0; freq < in_meta->nfreq; ++freq)
+        assert(voltage.get_read_valid().begin() * in_meta->time_downsampling_fpga[freq]
+               == rfi_RFImask.get_read_valid().begin() * rfi_meta->time_downsampling_fpga[freq]);
+
     const std::ptrdiff_t time_offset =
         voltage.get_read_valid().begin() % voltage.get_ndarray().extent(0);
     // Ensure there is no ring-buffer wrap-around
     assert((voltage.get_read_valid().end() - 1) % voltage.get_ndarray().extent(0) >= time_offset);
     const kotekan::int4x2_swapped_withoffset_t* const input_memory =
         &voltage.get_ndarray()(time_offset, 0, 0, 0);
+
     const std::ptrdiff_t rfi_time_offset =
         rfi_RFImask.get_read_valid().begin() % rfi_RFImask.get_ndarray().extent(0);
     // Ensure there is no ring-buffer wrap-around
