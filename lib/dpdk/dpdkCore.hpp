@@ -142,6 +142,7 @@ protected:
  * @conf   jumbo_frame      Bool. Default true Enable support for Jumbo frames
  * @conf   num_mem_channels Int. Default 4     The number of system memory channels
  * @conf   init_mem_alloc   Int.  Default 256  The initial memory allocation in MB
+ * @conf   pcie_block_list  Array of strings.  List of PCIe devices to block DPDK from using.
  *
  * @author Andre Renard
  */

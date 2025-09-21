@@ -1,0 +1,150 @@
+##########################################
+#
+# chime_upgrade_network.yaml
+#
+# Pipeline for testing the CHIME upgrade network logic
+#
+# Author: Andre Renard
+#
+##########################################
+---
+########################
+#### Global options ####
+########################
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+num_elements: 2048
+num_local_freq: 1
+samples_per_data_set: 49152
+buffer_depth: 8
+num_gpus: 2
+cpu_affinity: [0, 10, 11, 12, 13, 14, 15, 16, 16, 18, 19]
+
+# Constants
+sizeof_float: 4
+sizeof_int: 4
+sizeof_short: 2
+
+use_hugepages: true
+
+main_pool:
+  kotekan_metadata_pool: chordMetadata
+  num_metadata_objects: 30 * buffer_depth
+
+gpu_input_buffers:
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+    numa_0:
+        numa_node: 0
+{%- for id in range(16) %}
+        gpu_input_buffer_{{ id }}:
+            kotekan_buffer: standard
+{%- endfor %}
+
+lost_samples_buffer_0:
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set
+  metadata_pool: main_pool
+
+lost_samples_buffer_1:
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set
+  metadata_pool: main_pool
+
+lost_samples_buffer_2:
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set
+  metadata_pool: main_pool
+
+lost_samples_buffer_3:
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set
+  metadata_pool: main_pool
+
+
+# This configuration assumes that the system ports are ordered in as 4x10G
+# links for each QSFP+, and that each QSFP+ port comes from exactly one iceBoard
+# and that each iceBoard is in a _different_ crate pair, but also in the same
+# location in terms of slot, crate (within the crate pair), and link (on the board).
+dpdk:
+  kotekan_stage: dpdkCore
+  # Format is index = lcore, value = cpu core
+  lcore_cpu_map: [4,5,6,7,36,37,38,39]
+  main_lcore_cpu: 3
+  status_cadence: 60
+  # Set to true when using a switch to replicate packets
+  using_switch: true
+  alignment: samples_per_data_set * 4
+  # List of PCIe devices we don't want to attach too
+  # Required to exclude the ConnectX 6 Lx output NICs. 
+  pcie_block_list:
+    - 0d:00.0
+    - 0d:00.1
+    - 9f:00.0
+    - 9f:00.1
+  # Format is index = lcore, value = array of port IDs
+  # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+  # and lcore 1 to service ports 2 and 3.
+  lcore_port_map:
+    - [0, 4]
+    - [8, 12]
+    - [1, 5]
+    - [9, 13]
+    - [2, 6]
+    - [10, 14]
+    - [3, 7]
+    - [11, 15]
+
+  # One handler must be given per port, mapping is in port order.
+  handlers:
+{%- for id in range(4) %}
+    - dpdk_handler: iceBoardShuffle
+      link_group: 0
+      link_group_subid: {{ id }}
+      out_bufs:
+        - gpu_input_buffer_0
+        - gpu_input_buffer_1
+        - gpu_input_buffer_2
+        - gpu_input_buffer_3
+      lost_samples_buf: lost_samples_buffer_0
+
+    - dpdk_handler: iceBoardShuffle
+      link_group: 1
+      link_group_subid: {{ id }}
+      out_bufs:
+        - gpu_input_buffer_4
+        - gpu_input_buffer_5
+        - gpu_input_buffer_6
+        - gpu_input_buffer_7
+      lost_samples_buf: lost_samples_buffer_1
+
+    - dpdk_handler: iceBoardShuffle
+      link_group: 2
+      link_group_subid: {{ id }}
+      out_bufs:
+        - gpu_input_buffer_8
+        - gpu_input_buffer_9
+        - gpu_input_buffer_10
+        - gpu_input_buffer_11
+      lost_samples_buf: lost_samples_buffer_2
+
+    - dpdk_handler: iceBoardShuffle
+      link_group: 3
+      link_group_subid: {{ id }}
+      out_bufs:
+        - gpu_input_buffer_12
+        - gpu_input_buffer_13
+        - gpu_input_buffer_14
+        - gpu_input_buffer_15
+      lost_samples_buf: lost_samples_buffer_3
+{%- endfor %}
+
+

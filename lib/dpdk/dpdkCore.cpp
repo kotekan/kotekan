@@ -44,9 +44,6 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-/// TODO move this to an inline static once we go to C++17
-ice_stream_id_t iceBoardShuffle::all_stream_ids[iceBoardShuffle::shuffle_size];
-
 REGISTER_KOTEKAN_STAGE(dpdkCore);
 
 static bool __eal_initalized = false;
@@ -74,29 +71,17 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
 
     dpdk_init(lcore_cpu_map, main_lcore_cpu);
 
-#ifndef OLD_DPDK
     num_system_ports = rte_eth_dev_count_avail();
-#else
-    num_system_ports = rte_eth_dev_count();
-#endif
 
     // This default works well for ICE boards,
     // but we might change this to something more genertic
     memset((void*)&port_conf, 0, sizeof(struct rte_eth_conf));
-    uint32_t max_rx_pkt_len = config.get_default<uint32_t>(unique_name, "max_rx_pkt_len", 5000);
-#ifndef OLD_DPDK
+    uint32_t max_rx_pkt_len = config.get_default<uint32_t>(unique_name, "max_rx_pkt_len", 9000);
     port_conf.rxmode.max_lro_pkt_size = max_rx_pkt_len;
     port_conf.rxmode.mtu = max_rx_pkt_len;
     port_conf.rxmode.offloads =
         RTE_ETH_RX_OFFLOAD_KEEP_CRC | RTE_ETH_RX_OFFLOAD_IPV4_CKSUM | RTE_ETH_RX_OFFLOAD_UDP_CKSUM;
-#else
-    port_conf.rxmode.max_rx_pkt_len = max_rx_pkt_len;
-    port_conf.rxmode.jumbo_frame =
-        (uint16_t)config.get_default<bool>(unique_name, "jumbo_frame", true);
-    port_conf.rxmode.hw_strip_crc = 0;
-    port_conf.rxmode.header_split = 0;
-    port_conf.rxmode.hw_ip_checksum = 1;
-#endif
+
 
     // TODO reference why this needs to be 2048
     const uint32_t max_data_size = 2048;
@@ -233,30 +218,49 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
 
     DEBUG("Using DPDK lcore map: {:s}", dpdk_lcore_map);
 
-    // App name, this can be anything.
-    char arg0[] = "kotekan";
-    // Number of memory channels
-    char arg1[] = "-n";
-    char* arg2 = (char*)malloc(std::to_string(num_mem_channels).length() + 1);
-    strncpy(arg2, std::to_string(num_mem_channels).c_str(),
-            std::to_string(num_mem_channels).length() + 1);
-    // Lcore map
-    char arg3[] = "--lcores";
-    char* arg4 = (char*)malloc(dpdk_lcore_map.length() + 1);
-    strncpy(arg4, dpdk_lcore_map.c_str(), dpdk_lcore_map.length() + 1);
-    // Initial memory allocation
-    char arg5[] = "--socket-mem";
-    char* arg6 = (char*)malloc(init_mem_alloc.length() + 1);
-    strncpy(arg6, init_mem_alloc.c_str(), init_mem_alloc.length() + 1);
-    // Generate final options string for EAL initialization
-    char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], nullptr};
-    int argc2 = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
+    std::vector<std::string> str_args;
+    std::vector<char*> argv2_vec;
+
+    str_args.push_back("kotekan");
+    str_args.push_back("-n");
+    str_args.push_back(std::to_string(num_mem_channels));
+    str_args.push_back("--lcores");
+    str_args.push_back(dpdk_lcore_map);
+    str_args.push_back("--socket-mem");
+    str_args.push_back(init_mem_alloc);
+
+    // Get PCIe block list from config
+    // Used to block NICs that DPDK detects, but that shouldn't be used by DPDK
+    std::vector<std::string> pcie_block_list = config.get_default<std::vector<std::string>>(unique_name, "pcie_block_list", {});
+    for (const auto& pcie : pcie_block_list) {
+        str_args.push_back("-b");
+        str_args.push_back(pcie);
+    }
+
+    for (auto& s : str_args) {
+        argv2_vec.push_back(const_cast<char*>(s.c_str()));
+    }
+    argv2_vec.push_back(nullptr);
+    int argc2 = argv2_vec.size() - 1;
+
+
+    // Suppress deprecated warning for rte_memzone_max_set
+    // This is purely because it's an experimental API, but we have to use it
+    // since there number of ports we are using is too high for the default.
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+    rte_memzone_max_set(8192);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
     // Initialize the Environment Abstraction Layer (EAL).
     // Currently closing DPDKs EAL isn't offically supported,
     // so we only do it once.
     if (!__eal_initalized) {
-        int ret = rte_eal_init(argc2, argv2);
+        int ret = rte_eal_init(argc2, argv2_vec.data());
         if (ret < 0)
             throw std::runtime_error(
                 fmt::format(fmt("Failed to init DPDK EAL with error code: {:d}"), ret));
@@ -267,12 +271,7 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
 void dpdkCore::main_thread() {
 
     // Start the packet receiving lcores (basically pthreads)
-#ifndef OLD_DPDK
     rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MAIN);
-#else
-    // Support old DPDK versions
-    rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MASTER);
-#endif
 
     while (!stop_thread) {
         sleep(1);
@@ -354,11 +353,8 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
 
     // Report the port MAC address.
     // TODO record the MAC address for export to JSON
-#ifndef OLD_DPDK
     rte_ether_addr addr;
-#else
-    struct ether_addr addr;
-#endif
+
     rte_eth_macaddr_get(port, &addr);
     INFO("Port {:d} MAC: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} "
          "memory assigned to numa_node {:d}",
@@ -397,6 +393,10 @@ int dpdkCore::lcore_rx(void* args) {
         }
     }
 
+    // TODO Figure out why this sleep is need.  It seems like the when starting the E810
+    // ports, there is a delay between when they are started in DPDK and when they become
+    // ready.  There might be a function to check their readness state we could query?
+    sleep(40);
     while (!core->stop_thread) {
         for (uint32_t i = 0; i < num_local_ports; ++i) {
             uint32_t port = ports[i];
