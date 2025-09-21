@@ -11,6 +11,7 @@
 #include "buffer.hpp"           // for Buffer
 
 #include <cstddef> // for size_t
+#include <memory>  // for shared_ptr
 
 /**
  * @class HFBFrameView

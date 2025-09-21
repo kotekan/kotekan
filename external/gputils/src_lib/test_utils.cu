@@ -339,7 +339,7 @@ assert_arrays_equal(const Array<T> &arr1,
     template void print_array(              \
 	const Array<T> &arr,                \
 	const vector<string> &axis_names,   \
-	ostream &os)
+	ostream &os);
 
 #define INSTANTIATE_ASSERT_ARRAYS_EQUAL(T)  \
     template				    \
@@ -353,29 +353,29 @@ assert_arrays_equal(const Array<T> &arr1,
 	float epsabs,                       \
 	float epsrel,                       \
 	ssize_t max_display, 	            \
-	bool verbose)
+	bool verbose);
 
 #define INSTANTIATE_TEMPLATES(T) \
-    INSTANTIATE_PRINT_ARRAY(T); \
+    INSTANTIATE_PRINT_ARRAY(T) \
     INSTANTIATE_ASSERT_ARRAYS_EQUAL(T)
 
 
-INSTANTIATE_TEMPLATES(float);
-INSTANTIATE_TEMPLATES(double);
-INSTANTIATE_TEMPLATES(int);
-INSTANTIATE_TEMPLATES(long);
-INSTANTIATE_TEMPLATES(short);
-INSTANTIATE_TEMPLATES(char);
-INSTANTIATE_TEMPLATES(unsigned int);
-INSTANTIATE_TEMPLATES(unsigned long);
-INSTANTIATE_TEMPLATES(unsigned short);
-INSTANTIATE_TEMPLATES(unsigned char);
-INSTANTIATE_TEMPLATES(complex<float>);
-INSTANTIATE_TEMPLATES(complex<double>);
+INSTANTIATE_TEMPLATES(float)
+INSTANTIATE_TEMPLATES(double)
+INSTANTIATE_TEMPLATES(int)
+INSTANTIATE_TEMPLATES(long)
+INSTANTIATE_TEMPLATES(short)
+INSTANTIATE_TEMPLATES(char)
+INSTANTIATE_TEMPLATES(unsigned int)
+INSTANTIATE_TEMPLATES(unsigned long)
+INSTANTIATE_TEMPLATES(unsigned short)
+INSTANTIATE_TEMPLATES(unsigned char)
+INSTANTIATE_TEMPLATES(complex<float>)
+INSTANTIATE_TEMPLATES(complex<double>)
+INSTANTIATE_TEMPLATES(complex<int>)
 
 // FIXME implement assert_arrays_equal<__half>().
 // In the meantime, I'm instantiating print_array<__half>(), but not assert_arrays_equal<__half>().
-INSTANTIATE_PRINT_ARRAY(__half);
-
+INSTANTIATE_PRINT_ARRAY(__half)
 
 }  // namespace gputils

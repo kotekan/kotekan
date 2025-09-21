@@ -6,6 +6,9 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include <DataType.hpp>
+#include <NDArrayBuffer.hpp>
+#include <NDArrayRingBuffer.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -17,7 +20,6 @@
 #include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
-#include <ringbuffer.hpp>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -25,6 +27,16 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::round_down, kotekan::div_noremainder, kotekan::div, kotekan::mod;
+
+namespace {
+template<typename T, std::size_t D>
+std::array<T, D> reverse(const std::array<T, D>& values) {
+    std::array<T, D> result;
+    for (std::size_t d=0; d<D; ++d)
+        result[d] = values[D - 1 - d];
+    return result;
+}
+}
 
 /**
  * @class cuda{{{kernel_name}}}
@@ -55,18 +67,12 @@ private:
             dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using array_desc = CuDeviceArray<int32_t, 1>;
+    using array_desc = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
     {{#kernel_design_parameters}}
         static constexpr {{{type}}} {{{name}}} = {{{value}}};
     {{/kernel_design_parameters}}
-
-    // Kernel input and output sizes
-    std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
-    std::int64_t num_produced_elements(std::int64_t num_available_elements) const;
-
-    std::int64_t num_processed_elements(std::int64_t num_available_elements) const;
 
     // Kernel compile parameters:
     static constexpr int minthreads = {{{minthreads}}};
@@ -79,7 +85,7 @@ private:
     static constexpr int shmem_bytes = {{{shmem_bytes}}};
 
     // Kernel name:
-    const char* const kernel_symbol = "{{{kernel_symbol}}}";
+    static constexpr const char* kernel_symbol = "{{{kernel_symbol}}}";
 
     // Kernel arguments:
     enum class args {
@@ -91,8 +97,8 @@ private:
 
     {{#kernel_arguments}}
         // {{{name}}}: {{{kotekan_name}}}
-        static constexpr const char *{{{name}}}_name = "{{{name}}}";
-        static constexpr chordDataType {{{name}}}_type = {{{type}}};
+        static constexpr const char *{{{name}}}_quantity = "{{{name}}}";
+        static constexpr kotekan::DataType {{{name}}}_type = kotekan::{{{type}}};
         {{^isscalar}}
             enum {{{name}}}_indices {
                 {{#axes}}
@@ -110,12 +116,6 @@ private:
                     {{{length}}},
                 {{/axes}}
             };
-            static constexpr std::ptrdiff_t {{{name}}}_length = chord_datatype_bytes({{{name}}}_type)
-                {{#axes}}
-                    * {{{length}}}
-                {{/axes}}
-                ;
-            static_assert({{{name}}}_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
             static constexpr auto {{{name}}}_calc_stride = [](int dim) {
                 std::ptrdiff_t str = 1;
                 for (int d = 0; d < dim; ++d)
@@ -128,7 +128,9 @@ private:
                 {{/axes}}
                 {{{name}}}_calc_stride({{{name}}}_rank),
             };
-            static_assert({{{name}}}_length == chord_datatype_bytes({{{name}}}_type) * {{{name}}}_strides[{{{name}}}_rank]);
+            static constexpr std::ptrdiff_t {{{name}}}_length = {{{name}}}_strides[{{{name}}}_rank];
+            static constexpr std::ptrdiff_t {{{name}}}_length_in_bytes = type_total_bytes({{{name}}}_type) * {{{name}}}_length;
+            static_assert({{{name}}}_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
         {{/isscalar}}
         //
     {{/kernel_arguments}}
@@ -136,27 +138,30 @@ private:
     // Kotekan buffer names
     {{#kernel_arguments}}
         {{^isscalar}}
-            const std::string {{{name}}}_memname;
+            const std::string {{{name}}}_name;
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    // Host-side buffer arrays
+    // Buffers
     {{#kernel_arguments}}
         {{^isscalar}}
+            {{#hasbuffer}}
+                {{#hasringbuffer}}
+                    NDArrayRingBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
+                {{/hasringbuffer}}
+                {{^hasringbuffer}}
+                    NDArrayBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
+                {{/hasringbuffer}}
+            {{/hasbuffer}}
             {{^hasbuffer}}
-                std::vector<std::uint8_t> {{{name}}}_host;
+                NDArrayBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer;
+                std::vector<kotekan::GetType_t<{{{name}}}_type>> host_{{{name}}}_buffer;
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    static constexpr std::ptrdiff_t E_T_sample_bytes =
-        chord_datatype_bytes(E_type) * E_lengths[E_index_D] * E_lengths[E_index_P] * E_lengths[E_index_F];
-
-    RingBuffer* input_ringbuf_signal;
-
-    // How many samples we will process from the input ringbuffer
-    // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
-    std::ptrdiff_t Tmin, Tmax;
+    // To avoid trailing comma below
+    int dummy;
 };
 
 REGISTER_CUDA_COMMAND(cuda{{{kernel_name}}});
@@ -168,54 +173,70 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                                              const int instance_num):
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
         "{{{kernel_name}}}", "{{{kernel_name}}}.ptx"),
+
     {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
-                {{{name}}}_memname(config.get<std::string>(unique_name, "{{{kotekan_name}}}")),
+                {{{name}}}_name(config.get<std::string>(unique_name, "{{{kotekan_name}}}")),
             {{/hasbuffer}}
             {{^hasbuffer}}
-                {{{name}}}_memname(unique_name + "/{{{kotekan_name}}}"),
+                {{{name}}}_name(unique_name + "/{{{kotekan_name}}}"),
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
 
     {{#kernel_arguments}}
         {{^isscalar}}
+            {{#hasbuffer}}
+                {{#hasringbuffer}}
+                    {{{name}}}_buffer(
+                        {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
+                {{/hasringbuffer}}
+                {{^hasringbuffer}}
+                    {{{name}}}_buffer(
+                        {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this
+                        {{#do_once}}
+                            , buffer_type_t::do_once
+                        {{/do_once}}
+                        ),
+                {{/hasringbuffer}}
+            {{/hasbuffer}}
             {{^hasbuffer}}
-                {{{name}}}_host({{{name}}}_length),
+                {{{name}}}_buffer(
+                    {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
+                host_{{{name}}}_buffer({{{name}}}_length),
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
-    // Find input buffer used for signalling ring-buffer state
-    input_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal"))))
-{
-    // Check ringbuffer size
-    if (!(input_ringbuf_signal->size == E_length))
-        FATAL_ERROR("Need input_ringbuf_signal->size == E_length, but have input_ringbuf_signal->size={:d}, E_length={:d}",
-                    input_ringbuf_signal->size, E_length);
-    assert(input_ringbuf_signal->size == E_length);
 
+    dummy()                      // avoid trailing comma
+{
     // Register host memory
     {{#kernel_arguments}}
         {{^isscalar}}
             {{^hasbuffer}}
                 {
-                    const cudaError_t ierr = cudaHostRegister({{{name}}}_host.data(), {{{name}}}_host.size(), 0);
+                    const cudaError_t ierr = cudaHostRegister(host_{{{name}}}_buffer.data(),
+                                                              host_{{{name}}}_buffer.size() * sizeof *host_{{{name}}}_buffer.data(),
+                                                              0);
                     assert(ierr == cudaSuccess);
                 }
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    // Add Graphviz entries for the GPU buffers used by this kernel
     {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
-                gpu_buffers_used.push_back(std::make_tuple({{{name}}}_memname, true, true, false));
+                {{^isoutput}}
+                    {{{name}}}_buffer.register_consumer();
+                {{/isoutput}}
+                {{#isoutput}}
+                    {{{name}}}_buffer.register_producer();
+                {{/isoutput}}
             {{/hasbuffer}}
             {{^hasbuffer}}
-                gpu_buffers_used.push_back(std::make_tuple(get_name() + "_{{{kotekan_name}}}", false, true, true));
+                register_gpu_buffer_user({.name = {{{name}}}_name, .is_array = true, .does_read = true, .does_write = true});
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
@@ -230,148 +251,58 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         };
         device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "{{{kernel_name}}}_");
     }
-
-    if (instance_num == 0) {
-        input_ringbuf_signal->register_consumer(unique_name);
-    }
 }
 
 cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}
 
-std::int64_t cuda{{{kernel_name}}}::num_consumed_elements(std::int64_t num_available_elements) const {
-    return num_produced_elements(num_available_elements);
-}
-std::int64_t cuda{{{kernel_name}}}::num_produced_elements(std::int64_t num_available_elements) const {
-    return num_processed_elements(num_available_elements);
-}
-
-std::int64_t cuda{{{kernel_name}}}::num_processed_elements(std::int64_t num_available_elements) const {
-    assert(num_available_elements >= cuda_granularity_number_of_timesamples);
-    return cuda_granularity_number_of_timesamples;
-}
-
 int cuda{{{kernel_name}}}::wait_on_precondition() {
+    {
+        const int errcode = cudaCommand::wait_on_precondition();
+        if (errcode < 0)
+            return errcode;
+    }
+
     // Wait for data to be available in input ringbuffer
-    const std::ptrdiff_t input_bytes = cuda_granularity_number_of_timesamples * E_T_sample_bytes;
-    DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
-    DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::ptrdiff_t> val_in =
-        input_ringbuf_signal->wait_and_claim_readable(unique_name, instance_num, input_bytes);
-    DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
-    if (!val_in.has_value())
-        return -1;
-    const std::ptrdiff_t input_cursor = val_in.value();
-    DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
-
-    // How many inputs samples are available?
-    const std::ptrdiff_t T_available = div_noremainder(input_bytes, E_T_sample_bytes);
-    DEBUG("Available samples:      T_available: {:d}", T_available);
-
-    // How many outputs will we process and consume?
-    const std::ptrdiff_t T_processed = num_processed_elements(T_available);
-    const std::ptrdiff_t T_consumed = num_consumed_elements(T_available);
-    DEBUG("Will process (samples): T_processed: {:d}", T_processed);
-    DEBUG("Will consume (samples): T_consumed:  {:d}", T_consumed);
-    assert(T_processed > 0);
-    assert(T_consumed <= T_processed);
-    const std::ptrdiff_t T_consumed2 = num_consumed_elements(T_processed);
-    assert(T_consumed2 == T_consumed);
-
-    Tmin = div_noremainder(input_cursor, E_T_sample_bytes);
-    Tmax = Tmin + T_processed;
-    const std::ptrdiff_t Tlength = Tmax - Tmin;
-    DEBUG("Input samples:");
-    DEBUG("    Tmin:    {:d}", Tmin);
-    DEBUG("    Tmax:    {:d}", Tmax);
-    DEBUG("    Tlength: {:d}", Tlength);
+    const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
+    const std::ptrdiff_t T_read_max = T_ringbuf / 4;
+    {
+        const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
+            using std::min;
+            const std::ptrdiff_t T_read = round_down(min(T_available, T_read_max), cuda_granularity_number_of_timesamples);
+                return read_descriptor_t{.claimed = T_read, .read = T_read};
+        });
+        if (errcode < 0)
+            return errcode;
+    }
 
     return 0;
 }
 
 cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
-
-    {{#kernel_arguments}}
-        {{^isscalar}}
-            {{#hasbuffer}}
-                void* const {{{name}}}_memory =
-                    args::{{{name}}} == args::E ?
-                        device.get_gpu_memory({{{name}}}_memname, input_ringbuf_signal->size) :
-                    args::{{{name}}} == args::A || args::{{{name}}} == args::s ?
-                        device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length) :
-                        device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
-            {{/hasbuffer}}
-            {{^hasbuffer}}
-                void* const {{{name}}}_memory = device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length);
-            {{/hasbuffer}}
-        {{/isscalar}}
-    {{/kernel_arguments}}
-
-    {{#kernel_arguments}}
-        {{^isscalar}}
-            {{#hasbuffer}}
-                {{^isoutput}}
-                    // {{{name}}} is an input buffer: check metadata
-                    const std::shared_ptr<metadataObject> {{{name}}}_mc =
-                        args::{{{name}}} == args::E ?
-                            input_ringbuf_signal->get_metadata(0) :
-                            device.get_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
-                    assert({{{name}}}_mc);
-                    assert(metadata_is_chord({{{name}}}_mc));
-                    const std::shared_ptr<chordMetadata> {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
-                    DEBUG("input {{{name}}} array: {:s} {:s}",
-                          {{{name}}}_meta->get_type_string(),
-                          {{{name}}}_meta->get_dimensions_string());
-                    assert(std::strncmp({{{name}}}_meta->name, {{{name}}}_name, sizeof {{{name}}}_meta->name) == 0);
-                    assert({{{name}}}_meta->type == {{{name}}}_type);
-                    assert({{{name}}}_meta->dims == {{{name}}}_rank);
-                    for (std::ptrdiff_t dim = 0; dim < {{{name}}}_rank; ++dim) {
-                        assert(std::strncmp({{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim],
-                                            {{{name}}}_labels[dim],
-                                            sizeof {{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim]) == 0);
-                        if (args::{{{name}}} == args::E) {
-                            assert({{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] <= int({{{name}}}_lengths[dim]));
-                            assert({{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] == {{{name}}}_strides[dim]);
-                        } else {
-                            assert({{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] == int({{{name}}}_lengths[dim]));
-                            assert({{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] == {{{name}}}_strides[dim]);
-                        }
-                    }
-                    //
-                {{/isoutput}}
-                {{#isoutput}}
-                    // {{{name}}} is an output buffer: set metadata
-                    std::shared_ptr<metadataObject> const {{{name}}}_mc =
-                        device.create_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id, E_mc->parent_pool);
-                    std::shared_ptr<chordMetadata> const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
-                    *{{{name}}}_meta = *E_meta;
-                    std::strncpy({{{name}}}_meta->name, {{{name}}}_name, sizeof {{{name}}}_meta->name);
-                    {{{name}}}_meta->type = {{{name}}}_type;
-                    {{{name}}}_meta->dims = {{{name}}}_rank;
-                    for (std::ptrdiff_t dim = 0; dim < {{{name}}}_rank; ++dim) {
-                        std::strncpy({{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim],
-                                     {{{name}}}_labels[dim],
-                                     sizeof {{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim]);
-                        {{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] = {{{name}}}_lengths[dim];
-                        {{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] = {{{name}}}_strides[dim];
-                    }
-                    DEBUG("output {{{name}}} array: {:s} {:s}",
-                          {{{name}}}_meta->get_type_string(),
-                          {{{name}}}_meta->get_dimensions_string());
-                    //
-                {{/isoutput}}
-            {{/hasbuffer}}
-        {{/isscalar}}
-    {{/kernel_arguments}}
-
     record_start_event();
 
-    DEBUG("gpu_frame_id: {}", gpu_frame_id);
+    {{#kernel_arguments}}
+        {{^isscalar}}
+            void* const {{{name}}}_memory = {{{name}}}_buffer.get_ndarray().data();
+        {{/isscalar}}
+    {{/kernel_arguments}}
+
+    {{#kernel_arguments}}
+        {{#hasbuffer}}
+            {{^isoutput}}
+                {{{name}}}_buffer.check_metadata();
+            {{/isoutput}}
+            {{#isoutput}}
+                {{{name}}}_buffer.set_metadata(E_buffer.get_metadata());
+            {{/isoutput}}
+        {{/hasbuffer}}
+    {{/kernel_arguments}}
 
     const char* exc_arg = "exception";
     {{#kernel_arguments}}
         {{^isscalar}}
-            array_desc {{{name}}}_arg({{{name}}}_memory, {{{name}}}_length);
+            array_desc {{{name}}}_arg({{{name}}}_memory, {{{name}}}_length_in_bytes);
         {{/isscalar}}
         {{#isscalar}}
             std::{{{type}}}_t {{{name}}}_arg;
@@ -385,36 +316,28 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     };
 
     // Set E_memory to beginning of input ring buffer
-    E_arg = array_desc(E_memory, E_length);
+    E_arg = array_desc(E_memory, E_length_in_bytes);
 
     // Ringbuffer size
-    const std::ptrdiff_t T_ringbuf = input_ringbuf_signal->size / E_T_sample_bytes;
-    DEBUG("Input ringbuffer size (samples):  {:d}", T_ringbuf);
+    const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
 
-    const std::ptrdiff_t Tlength = Tmax - Tmin;
-    DEBUG("Processed input samples: {:d}", Tlength);
+    const std::ptrdiff_t T_min = E_buffer.get_read_valid().begin();
+    const std::ptrdiff_t T_max = E_buffer.get_read_valid().end();
 
-    DEBUG("Kernel arguments:");
-    DEBUG("    Tmin:    {:d}", Tmin);
-    DEBUG("    Tmax:    {:d}", Tmax);
+    const std::ptrdiff_t T_length = T_max - T_min;
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    Tmin_arg = mod(Tmin, T_ringbuf);
-    Tmax_arg = mod(Tmin, T_ringbuf) + Tlength;
+    T_min_arg = mod(T_min, T_ringbuf);
+    T_max_arg = mod(T_min, T_ringbuf) + T_length;
 
     // Update metadata
-    assert(J_meta->dim[J_rank - 1 - J_index_T] == int(Tlength));
-    assert(J_meta->dim[J_rank - 1 - J_index_T] == int(J_lengths[J_index_T]));
-
-    // Since we do not use a ring buffer we need to set `meta->sample0_offset`
-    J_meta->sample0_offset = Tmin;
-
-    assert(J_meta->nfreq >= 0);
-    assert(J_meta->nfreq == J_meta->nfreq);
-    for (int freq = 0; freq < J_meta->nfreq; ++freq) {
-        J_meta->freq_upchan_factor[freq] = J_meta->freq_upchan_factor[freq];
-        J_meta->time_downsampling_fpga[freq] = J_meta->time_downsampling_fpga[freq];
+    {
+        const std::shared_ptr<chordMetadata> J_meta = J_buffer.get_metadata();
+    
+        // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+        J_meta->sample0_offset = T_min;
+        assert(J_meta->offset_downsampling == 1);
     }
 
     // Copy inputs to device memory
@@ -423,8 +346,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
             {{^hasbuffer}}
                 {{^isoutput}}
                     CHECK_CUDA_ERROR(cudaMemcpyAsync({{{name}}}_memory,
-                                                     {{{name}}}_host.data(),
-                                                     {{{name}}}_length,
+                                                     host_{{{name}}}_buffer.data(),
+                                                     {{{name}}}_length_in_bytes,
                                                      cudaMemcpyHostToDevice,
                                                      device.getStream(cuda_stream_id)));
                 {{/isoutput}}
@@ -432,22 +355,24 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/isscalar}}
     {{/kernel_arguments}}
 
+    J_buffer.set_to_poison(0x00);
+    info_buffer.set_to_poison(0xff);
+    log_buffer.set_to_poison(0xff);
+
 #ifdef DEBUGGING
     // Initialize host-side buffer arrays
     {{#kernel_arguments}}
         {{^isscalar}}
             {{^hasbuffer}}
                 {{#isoutput}}
-                    CHECK_CUDA_ERROR(cudaMemsetAsync({{{name}}}_memory, 0xff, {{{name}}}_length, device.getStream(cuda_stream_id)));
+                    CHECK_CUDA_ERROR(cudaMemsetAsync({{{name}}}_memory,
+                                                     0xff,
+                                                     {{{name}}}_length_in_bytes,
+                                                     device.getStream(cuda_stream_id)));
                 {{/isoutput}}
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
-#endif
-
-#ifdef DEBUGGING
-    // Poison outputs
-    CHECK_CUDA_ERROR(cudaMemsetAsync(J_memory, 0x88, J_length, device.getStream(cuda_stream_id)));
 #endif
 
     const std::string symname = "{{{kernel_name}}}_" + std::string(kernel_symbol);
@@ -455,7 +380,6 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname],
                        blocks, 1, 1, threads_x, threads_y, 1,
@@ -475,9 +399,9 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{^isscalar}}
             {{^hasbuffer}}
                 {{#isoutput}}
-                    CHECK_CUDA_ERROR(cudaMemcpyAsync({{{name}}}_host.data(),
+                    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_{{{name}}}_buffer.data(),
                                                      {{{name}}}_memory,
-                                                     {{{name}}}_length,
+                                                     {{{name}}}_length_in_bytes,
                                                      cudaMemcpyDeviceToHost,
                                                      device.getStream(cuda_stream_id)));
                 {{/isoutput}}
@@ -486,52 +410,55 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{/kernel_arguments}}
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    DEBUG("Finished CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
-    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
-                                                      (const std::int32_t*)&*info_host.end());
+    // TODO: Introduce a new "unbuffered" buffer; do this there
+    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*host_info_buffer.begin(),
+                                                      (const std::int32_t*)&*host_info_buffer.end());
     if (error_code != 0)
-        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel returned error code: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size(); ++i)
-        if (info_host[i] != 0)
-            ERROR("cuda{{{kernel_name}}} returned 'info' value {:d} at index {:d} (zero indicates no error)",
-                info_host[i], i);
+    // TODO: Introduce a new "unbuffered" buffer; do this there
+    for (int block = 0; block < info_lengths[info_index_block]; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i =
+                    info_strides[info_index_thread] * thread +
+                    info_strides[info_index_warp] * warp +
+                    info_strides[info_index_block] * block;
+                const std::uint32_t val = host_info_buffer.data()[i];
+                if (val != 0)
+                    ERROR("CUDA kernel {{{kernel_name}}} returned 'info' value {:d} "
+                          "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no error)",
+                          val, thread, warp, block, i);
+            }
+        }
+    }
 
     // Check log codes
-    const std::int32_t log_code = *std::max_element((const std::int32_t*)&*log_host.begin(),
-                                                      (const std::int32_t*)&*log_host.end());
+    const std::uint32_t log_code = *std::max_element((const std::uint32_t*)&*host_log_buffer.begin(),
+                                                     (const std::uint32_t*)&*host_log_buffer.end());
     if (log_code != 0)
-        ERROR("CUDA kernel returned log code cuLaunchKernel: {}", log_code);
+        WARN("CUDA kernel {{{kernel_name}}} returned log code cuLaunchKernel: {}", log_code);
 
-    for (std::size_t i = 0; i < log_host.size(); ++i)
-        if (log_host[i] != 0)
-            ERROR("cuda{{{kernel_name}}} returned 'log' value {:d} at index {:d} (zero indicates success)",
-                  log_host[i], i);
+    // TODO: Introduce a new "unbuffered" buffer; do this there
+    for (std::size_t i = 0; i < host_log_buffer.size(); ++i) {
+        const std::uint32_t val = host_log_buffer.data()[i];
+        if (val != 0)
+            WARN("CUDA kernel {{{kernel_name}}} returned 'log' value {:d} at index {:d} (zero "
+                 "indicates success)",
+                 val, i);
+    }
 #endif
 
-#ifdef DEBUGGING
-    // Check outputs for poison
-    std::vector<std::uint8_t> J_buffer(J_length);
-    CHECK_CUDA_ERROR(cudaMemcpy(J_buffer.data(), J_memory, J_length, cudaMemcpyDeviceToHost));
-
-    const bool J_found_error = std::memchr(J_buffer.data(), 0x88, J_buffer.size());
-    assert(!J_found_error);
-#endif
+    J_buffer.check_for_poison(0x00);
 
     return record_end_event();
 }
 
 void cuda{{{kernel_name}}}::finalize_frame() {
-    const std::ptrdiff_t Tlength = Tmax - Tmin;
-
-    // Advance the input ringbuffer
-    const std::ptrdiff_t T_consumed = num_consumed_elements(Tlength);
-    DEBUG("Advancing input ringbuffer:");
-    DEBUG("    Consumed samples: {:d}", T_consumed);
-    DEBUG("    Consumed bytes:   {:d}", T_consumed * E_T_sample_bytes);
-    input_ringbuf_signal->finish_read(unique_name, instance_num, T_consumed * E_T_sample_bytes);
+    // Advance the input ring buffer
+    E_buffer.finish_read();
 
     cudaCommand::finalize_frame();
 }

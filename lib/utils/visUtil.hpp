@@ -12,31 +12,36 @@
 #define VIS_UTIL_HPP
 
 
-#include "Config.hpp"   // for Config
-#include "DataType.hpp" // for float16_t
-#include "Telescope.hpp"
-#include "buffer.hpp" // for Buffer
+#include "Config.hpp"    // for Config
+#include "DataType.hpp"  // for KOTEKAN_FLOAT16, float16_t
+#include "Telescope.hpp" // for stream_t
+#include "buffer.hpp"    // for Buffer
 
-#include "fmt.hpp"      // for format_context, formatter
+#include "fmt.hpp"      // for appender, format, format_string, formatter, format_context
 #include "gsl-lite.hpp" // for span
 #include "json.hpp"     // for json
 
-#include <algorithm> // for max
-#include <chrono>
-#include <complex>     // for complex, imag, real
-#include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
-#include <cstdlib>     // for size_t, (anonymous), div
+#include <algorithm>     // for max
+#include <array>         // for array
+#include <bits/chrono.h> // for system_clock
+#include <complex>       // for complex, imag, real
+#include <cstdint>       // for uint32_t, int8_t, uint16_t, uint8_t, int64_t, uint64_t, int32_t
+#include <cstdlib>       // for size_t, div
+#ifdef WITH_CUDA
+#include <cuda_fp16.h> // for __half::operator float
+#endif
 #include <deque>       // for deque
 #include <functional>  // for function
 #include <iosfwd>      // for ostream
+#include <iterator>    // for pair
 #include <map>         // for map
-#include <math.h>      // for fmod
+#include <math.h>      // for fmod, cosf, sinf, M_PI
 #include <memory>      // for unique_ptr
-#include <mutex>       // for mutex, lock_guard
-#include <string>      // for string
-#include <sys/time.h>  // for timeval, CLOCK_REALTIME
-#include <sys/types.h> // for __syscall_slong_t, suseconds_t, time_t
-#include <time.h>      // for timespec, clock_gettime
+#include <mutex>       // for recursive_mutex
+#include <string>      // for string, basic_string
+#include <sys/time.h>  // for timeval, gettimeofday, CLOCK_REALTIME
+#include <sys/types.h> // for suseconds_t
+#include <time.h>      // for timespec, clock_gettime, time_t
 #include <tuple>       // for tuple, tie
 #include <type_traits> // for enable_if_t, is_integral, make_unsigned
 #include <utility>     // for pair
@@ -269,6 +274,15 @@ inline double tv_to_double(const timeval& tv) {
  */
 inline double ts_to_double(const timespec& ts) {
     return (ts.tv_sec + 1e-9 * ts.tv_nsec);
+}
+
+/**
+ * @brief Convert timespec type into total nanoseconds as an uint64.
+ * @param  ts Time as timespec.
+ * @return    Time as an uint64.
+ */
+inline uint64_t ts_to_uint64(const timespec& ts) {
+    return 1000000000L * (uint64_t)ts.tv_sec + (uint64_t)ts.tv_nsec;
 }
 
 

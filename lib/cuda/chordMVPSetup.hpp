@@ -1,9 +1,14 @@
 #ifndef KOTEKAN_CHORD_MVP_SETUP_HPP
 #define KOTEKAN_CHORD_MVP_SETUP_HPP
 
-#include "cudaCommand.hpp"
+#include "Config.hpp"              // for Config
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for cudaEvent_t
 
-#include <vector>
+#include <string> // for string
+#include <vector> // for vector
 
 /**
  * @class chordMVPSetup

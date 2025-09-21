@@ -16,13 +16,13 @@ kernel-description:
     sampling-time-μsec: 2.56
     shift-parameter-σ: 4
   compile-parameters:
-    minthreads: 128
+    minthreads: [32, 4]
     blocks_per_sm: 8
   call-parameters:
     threads: [32, 4]
     blocks: [32]
     shmem_bytes: 43136
-  kernel-symbol: "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE"
+  kernel-symbol: "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES4_S5_S5_"
   kernel-arguments:
     - name: "Tmin"
       intent: in

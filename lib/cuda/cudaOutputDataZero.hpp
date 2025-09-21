@@ -7,9 +7,15 @@
 #ifndef CUDA_OUTPUT_DATA_ZERO_H
 #define CUDA_OUTPUT_DATA_ZERO_H
 
-#include "cudaCommand.hpp"
+#include "Config.hpp"              // for Config
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for cudaEvent_t
 
-#include <sys/mman.h>
+#include <stdint.h> // for int32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class cudaOutputDataZero

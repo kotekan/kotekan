@@ -2,21 +2,20 @@
 
 #include "visUtil.hpp" // for rstack_ctype, prod_ctype, input_ctype
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 
-#include <algorithm>  // for copy, sort, transform, max
+#include <algorithm>  // for sort, transform, max
 #include <cstdint>    // for uint32_t, int8_t, int16_t
-#include <functional> // for _Bind_helper<>::type, bind, _1, placeholders
+#include <functional> // for bind, _1
 #include <iterator>   // for back_insert_iterator, begin, end, back_inserter
-#include <math.h>     // for abs
-#include <memory>     // for allocator_traits<>::value_type
 #include <numeric>    // for iota
+#include <ostream>    // for basic_ostream
 #include <stdexcept>  // for invalid_argument
 #include <stdlib.h>   // for abs
 #include <string>     // for operator<<
 #include <tuple>      // for tuple, make_tuple, operator!=, operator<
 #include <utility>    // for pair
-#include <vector>     // for vector, __alloc_traits<>::value_type
+#include <vector>     // for vector
 
 using namespace std::placeholders;
 

@@ -1,19 +1,18 @@
 #include "bufferCopy.hpp"
 
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
 #include "kotekanLogging.hpp" // for INFO, DEBUG2, FATAL_ERROR
-#include "visUtil.hpp"
+#include "visUtil.hpp"        // for frameID, modulo
 
-#include "fmt.hpp" // for format, fmt
-#include "json.hpp"
+#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "json.hpp" // for json, basic_json, iter_impl
 
 #include <algorithm>  // for max
-#include <atomic>     // for atomic_bool
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
+#include <cstring>    // for memcpy
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr
 #include <stdexcept>  // for runtime_error, invalid_argument
 #include <stdint.h>   // for uint8_t
-#include <string.h>   // for memcpy
 
 
 using nlohmann::json;

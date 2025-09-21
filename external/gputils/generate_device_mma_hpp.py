@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+#
+# Reference:
+#   https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-instructions-mma
+#
+# Note: I'm no longer running this as part of the build process (in an automated way).
+#
+# Instead, I'm keeping the output file (include/gputils/device_mma.hpp) in git, and occasionally
+# updating by hand:
+#
+#   ./generate_device_mma_hpp.py > include/gputils/device_mma.hpp     
 
 
 class Argument:
@@ -69,6 +79,11 @@ class Argument:
 
 
 def emit_kernel(cuda_name, ptx_name, *args):
+    # 'ordered_metadata' was introduced in nvcc 12.5 (I think), and we accommodate it with a hack (see below).
+    # FIXME some day, when nvcc 12.4 is ancient history, this hack can be removed.
+    omstr = '::ordered_metadata'
+    omi = ptx_name.find(omstr)
+    
     template_arglist = [ ]
     cuda_arglist = [ ]
     
@@ -88,7 +103,17 @@ def emit_kernel(cuda_name, ptx_name, *args):
     print(f'__device__ __forceinline__')
     print(f'void {cuda_name}({cuda_argstr})')
     print(f'{{')
-    print(f'    asm("{ptx_name} "')
+
+    if omi < 0:
+        print(f'    asm("{ptx_name} "')
+    else:
+        ptx_name2 = ptx_name[:omi] + ptx_name[omi+len(omstr):]
+        print(f'    asm(')
+        print(f'#if CUDART_VERSION >= 12050')
+        print(f'        "{ptx_name} "')
+        print(f'#else')
+        print(f'        "{ptx_name2} "')
+        print(f'#endif')
 
     base = 0
     for i,arg in enumerate(args):
@@ -146,14 +171,17 @@ def emit_dense_f16_mma(m, n, k, s=1, layout=None):
 
 
 def emit_dense_int_mma(sbits, m, n, k):
-    cuda_name = f'mma_s{sbits}_m{m}_n{n}_k{k}'
-    ptx_name = f'mma.sync.aligned.m{m}n{n}k{k}.row.col.satfinite.s32.s{sbits}.s{sbits}.s32'
+    typename = f's{sbits}' if (sbits > 1) else 'b1'
+    satfinite = '.satfinite' if (sbits > 1) else ''
+    suffix = '' if (sbits > 1) else '.and.popc'
+    cuda_name = f'mma_{typename}_m{m}_n{n}_k{k}'
+    ptx_name = f'mma.sync.aligned.m{m}n{n}k{k}.row.col{satfinite}.s32.{typename}.{typename}.s32{suffix}'
     emit_dense_mma(cuda_name, ptx_name, 'int', 32, sbits, m, n, k)
 
 
 def emit_sparse_f16_mma(m, n, k):
     cuda_name = f'mma_sp_f16_m{m}_n{n}_k{k}'
-    ptx_name = f'mma.sp.sync.aligned.m{m}n{n}k{k}.row.col.f16.f16.f16.f16'
+    ptx_name = f'mma.sp::ordered_metadata.sync.aligned.m{m}n{n}k{k}.row.col.f16.f16.f16.f16'
 
     # Register counts
     na = (m*k) // 128
@@ -193,17 +221,24 @@ if __name__ == '__main__':
     print(f'namespace gputils {{')
     print(f'')
 
+    # float16
     emit_dense_f16_mma(16, 8, 8)
     emit_dense_f16_mma(16, 8, 16)
 
+    # int4
     emit_dense_int_mma(4, 8, 8, 32)
     emit_dense_int_mma(4, 16, 8, 32)
     emit_dense_int_mma(4, 16, 8, 64)
 
+    # int8
     emit_dense_int_mma(8, 8, 8, 16)
     emit_dense_int_mma(8, 16, 8, 16)
     emit_dense_int_mma(8, 16, 8, 32)
 
+    # int1
+    emit_dense_int_mma(1, 8, 8, 128)
+
+    # sparse float16
     emit_sparse_f16_mma(16, 8, 16)
     emit_sparse_f16_mma(16, 8, 32)
 

@@ -1,8 +1,16 @@
 #ifndef KOTEKAN_CUDA_RECHUNK_HPP
 #define KOTEKAN_CUDA_RECHUNK_HPP
 
-#include "cudaCommand.hpp"
-#include "cudaDeviceInterface.hpp"
+#include "Config.hpp"              // for Config
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaCommandState, cudaCommand, cudaPipelineState
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for cudaEvent_t
+
+#include <memory>   // for shared_ptr
+#include <stddef.h> // for size_t
+#include <string>   // for string, basic_string
+#include <vector>   // for vector
 
 class cudaRechunkState : public cudaCommandState {
 public:

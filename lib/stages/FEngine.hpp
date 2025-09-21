@@ -5,12 +5,16 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+// Block IWYU from suggesting NVTX3’s private impl header.
+// (Use both forms to be safe.)
+// IWYU pragma: no_include "nvtx3/nvtxDetail/nvtxImplCore.h"
+// IWYU pragma: no_include <nvtx3/nvtxDetail/nvtxImplCore.h>
 
-#include <array>
-
-#ifdef WITH_CUDA
-#include <nvtx3/nvToolsExt.h>
-#endif
+#include <array>              // for array
+#include <cstdint>            // for int64_t
+#include <nvtx3/nvToolsExt.h> // IWYU pragma: keep
+#include <string>             // for string, basic_string
+#include <vector>             // for vector
 
 /**
  * @class FEngine
@@ -145,11 +149,11 @@ class FEngine : public kotekan::Stage {
     const std::int64_t bb_beam_positions_frame_size;
     const std::int64_t A_frame_size;
     const std::int64_t s_frame_size;
-    const std::int64_t J_frame_size;
+    [[maybe_unused]] const std::int64_t J_frame_size;
     const std::array<std::int64_t, Usize> G_frame_sizes;
     const std::array<std::int64_t, Usize> W1_frame_sizes;
     const std::int64_t W2_frame_size;
-    const std::int64_t I1_frame_size;
+    [[maybe_unused]] const std::int64_t I1_frame_size;
 
     Buffer* const dish_positions_buffer;
     // int8 bf_mask[dish][polr]

@@ -1,12 +1,22 @@
 #ifndef CHIME_METADATA
 #define CHIME_METADATA
 
-#include "Telescope.hpp"
-#include "buffer.hpp"
-#include "datasetManager.hpp"
-#include "metadata.hpp"
+#include "Telescope.hpp"      // for stream_t
+#include "buffer.hpp"         // for Buffer
+#include "datasetManager.hpp" // for dset_id_t
+#include "kotekanLogging.hpp" // for WARN_NON_OO
+#include "metadata.hpp"       // for metadataObject, metadataPool
 
-#include <sys/time.h>
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <assert.h>   // for assert
+#include <atomic>     // for __atomic_base, atomic_int32_t
+#include <memory>     // for shared_ptr, static_pointer_cast, __shared_ptr_access, allo...
+#include <stdint.h>   // for uint32_t, int64_t, int32_t, uint16_t, uint64_t
+#include <string>     // for char_traits, operator==, basic_string
+#include <sys/time.h> // for timeval
+#include <time.h>     // for size_t, timespec
+#include <vector>     // for vector
 
 #define MAX_NUM_BEAMS 20
 
@@ -84,6 +94,11 @@ inline std::shared_ptr<chimeMetadata> get_chime_metadata(std::shared_ptr<metadat
     return std::static_pointer_cast<chimeMetadata>(mc);
 }
 
+inline std::shared_ptr<chimeMetadata> get_chime_metadata(Buffer* buf, int frame_id) {
+    std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
+    return get_chime_metadata(mc);
+}
+
 // Helper functions to save lots of pointer work
 
 inline int64_t get_fpga_seq_num(const Buffer* buf, int ID) {
@@ -131,6 +146,10 @@ inline uint32_t get_rfi_num_bad_inputs(const Buffer* buf, int ID) {
 }
 
 inline stream_t get_stream_id_from_metadata(const chimeMetadata* metadata) {
+    return {(uint64_t)metadata->stream_ID};
+}
+
+inline stream_t get_stream_id_from_metadata(std::shared_ptr<chimeMetadata> metadata) {
     return {(uint64_t)metadata->stream_ID};
 }
 

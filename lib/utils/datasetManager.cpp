@@ -1,16 +1,13 @@
 #include "datasetManager.hpp"
 
 #include "Config.hpp"     // for Config
-#include "Hash.hpp"       // for operator<, hash, operator==
-#include "restClient.hpp" // for restClient::restReply, restClient
-#include "restServer.hpp" // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPONSE::...
+#include "Hash.hpp"       // for operator<, hash, Hash, operator==
+#include "restClient.hpp" // for restClient
+#include "restServer.hpp" // for HTTP_RESPONSE, restServer, connectionInstance
 
 #include <algorithm>  // for max
-#include <cstdint>    // for int32_t
-#include <functional> // for function, _Bind_helper<>::type, _Placeholder, bind, _1
-#include <iosfwd>     // for streamsize
+#include <functional> // for bind, function, _1
 #include <mutex>      // for mutex, lock_guard, lock, adopt_lock, unique_lock
-#include <regex>      // for match_results<>::_Base_type
 #include <stdlib.h>   // for exit
 
 using nlohmann::json;
@@ -342,7 +339,6 @@ bool datasetManager::register_dataset_parser(std::string& reply) {
 }
 
 std::string datasetManager::summary() {
-    int id = 0;
     std::string out;
 
     // lock both of them at the same time to prevent deadlocks
@@ -355,7 +351,6 @@ std::string datasetManager::summary() {
             datasetState* dt = _states.at(t.second.state()).get();
 
             out += fmt::format(fmt("{:>30} : {}\n"), dt->type(), t.second.base_dset());
-            id++;
         } catch (std::out_of_range& e) {
             WARN_NON_OO("datasetManager::summary(): This datasetManager instance "
                         "does not know state {}, referenced by dataset {}. ({:s})",

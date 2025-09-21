@@ -16,11 +16,10 @@
 #if defined WITH_CUDA
 // If we use CUDA, use its float16 type
 #include <cuda_fp16.h>
+
 using float16_t = __half;
 #define KOTEKAN_FLOAT16 1
 #else
-// If we don't use CUDA, see whether the compiler supports it
-#include <float.h>
 #if defined __FLT16_MAX__
 using float16_t = _Float16;
 #define KOTEKAN_FLOAT16 1
@@ -140,15 +139,17 @@ struct int4x2_swapped_withoffset_t {
 };
 
 #if KOTEKAN_FLOAT16
+// In C++17, std::memcpy is not constexpr, so these can't be constexpr.
+// In C++20+, prefer std::bit_cast to keep them constexpr-capable.
+#if (__cplusplus >= 202002L) || defined(__cpp_lib_bit_cast)
+#include <bit>
 constexpr inline bool isfinite(const float16_t x) {
-    std::uint16_t bits = 0;
-    std::memcpy(&bits, &x, sizeof bits);
+    const std::uint16_t bits = std::bit_cast<std::uint16_t>(x);
     return (bits & 0b0111110000000000) != 0b0111110000000000;
 }
 
 constexpr inline bool isinf(const float16_t x) {
-    std::uint16_t bits = 0;
-    std::memcpy(&bits, &x, sizeof bits);
+    const std::uint16_t bits = std::bit_cast<std::uint16_t>(x);
     return (bits & 0b0111111111111111) == 0b0111110000000000;
 }
 
@@ -157,10 +158,32 @@ constexpr inline bool isnan(const float16_t x) {
 }
 
 constexpr inline bool signbit(const float16_t x) {
+    const std::uint16_t bits = std::bit_cast<std::uint16_t>(x);
+    return bits >> 15;
+}
+#else
+inline bool isfinite(const float16_t x) {
+    std::uint16_t bits = 0;
+    std::memcpy(&bits, &x, sizeof bits);
+    return (bits & 0b0111110000000000) != 0b0111110000000000;
+}
+
+inline bool isinf(const float16_t x) {
+    std::uint16_t bits = 0;
+    std::memcpy(&bits, &x, sizeof bits);
+    return (bits & 0b0111111111111111) == 0b0111110000000000;
+}
+
+inline bool isnan(const float16_t x) {
+    return !isfinite(x) && !isinf(x);
+}
+
+inline bool signbit(const float16_t x) {
     std::uint16_t bits = 0;
     std::memcpy(&bits, &x, sizeof bits);
     return bits >> 15;
 }
+#endif
 
 inline std::ostream& operator<<(std::ostream& os, const float16_t x) {
     return os << float(x);
@@ -224,7 +247,7 @@ constexpr std::size_t type_value_bits(DataType type) {
         case float64:
             return 64;
         default:
-            return -1;
+            return 0;
     }
 }
 
@@ -263,7 +286,7 @@ constexpr std::size_t type_total_bytes(DataType type) {
         case float64:
             return 8;
         default:
-            return -1;
+            return 0;
     }
 }
 

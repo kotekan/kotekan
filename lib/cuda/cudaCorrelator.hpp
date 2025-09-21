@@ -1,10 +1,19 @@
 #ifndef KOTEKAN_CUDA_CORRELATOR_H
 #define KOTEKAN_CUDA_CORRELATOR_H
 
-#include "cudaCommand.hpp"
-#include "cudaDeviceInterface.hpp"
-#include "n2k/Correlator.hpp"
-#include "ringbuffer.hpp"
+#include "Config.hpp"          // for Config
+#include "bufferContainer.hpp" // for bufferContainer
+#include "driver_types.h"      // for cudaEvent_t
+
+#include <DataType.hpp>            // for int4x2_swapped_withoffset_t
+#include <NDArrayBuffer.hpp>       // for NDArrayBuffer
+#include <NDArrayRingBuffer.hpp>   // for NDArrayRingBuffer
+#include <cstdint>                 // for int32_t, uint32_t
+#include <cudaCommand.hpp>         // for cudaCommand, cudaPipelineState
+#include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
+#include <n2k/Correlator.hpp>      // for Correlator
+#include <string>                  // for string, basic_string
+#include <vector>                  // for vector
 
 /**
  * @class cudaCorrelator
@@ -39,6 +48,11 @@
  * Note: While the output is only supposed to fill the upper triangle
  * of the correlation matrices, this implementation fills a few of the
  * below-the-diagonal elements with non-zero values.
+ *
+ * TODO: -Update docs to note new parameter names,
+ *       -buffer name requirements (for NDArray conventions)
+ *       -input data name in metadata must be "E"
+ *       -input data type must be int4x2_swapped_withoffset_t
  */
 class cudaCorrelator : public cudaCommand {
 public:
@@ -50,41 +64,40 @@ public:
                         const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame() override;
 
-protected:
 private:
     // Common configuration values (which do not change in a run)
+    const std::int32_t _buffer_depth;
+    const std::int32_t _num_times;
     /// Number of elements on the telescope (aka analog inputs)
     // CHIME            = 2048 (1024 antennas x 2 polarizations),
     // CHORD pathfinder =  128 ( 64  dishes   x 2 polarizations)
     // CHORD pathfinder = 1024 (512  dishes   x 2 polarizations)
-    int32_t _num_elements;
+    const std::int32_t _num_elements;
     /// Number of frequencies per data stream sent to each node.
-    int32_t _num_local_freq;
+    const std::int32_t _num_local_freq;
     /// Total time samples in each dataset. Must be a power of 2.
-    int32_t _samples_per_data_set;
+    const std::int32_t _samples_per_data_set;
     // Number of time samples into each of the output correlation
     // triangles.  The number of output correlation triangles is the
     // length of the input frame divided by this value.
     // Must be a multiple of 256.
-    int32_t _sub_integration_ntime;
+    const std::int32_t _sub_integration_ntime;
 
-    /// GPU side memory name for the voltage input
-    std::string _gpu_mem_voltage;
-    /// GPU side memory name for correlator output
-    std::string _gpu_mem_correlation_triangle;
+    /// Name for the voltage input
+    const std::string _voltage_name;
 
-    // Signalling ring buffer for the input (voltage) data
-    RingBuffer* input_ringbuf_signal;
+    /// Name for the correlation output
+    const std::string _n2k_correlation_name;
 
-    // Byte offset in the ring buffer to read from
-    std::ptrdiff_t unmodded_input_cursor;
-    std::ptrdiff_t input_cursor;
+    /// Signaling ring buffer for the input (voltage) data.
+    NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
+    NDArrayBuffer<std::int32_t, 6> n2k_correlation;
 
-    // Cuda kernel wrapper object
+    /// Cuda kernel wrapper object
     n2k::Correlator n2correlator;
 
-    // Placeholder rfi mask
-    uint* rfimask;
+    /// Placeholder rfi mask
+    std::uint32_t* rfimask;
 };
 
 #endif // KOTEKAN_CUDA_CORRELATOR_H

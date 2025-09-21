@@ -1,0 +1,296 @@
+---
+fringestop_01:
+  in_buf: fakevis_buf0
+  kotekan_stage: N2TimeDownsample
+  max_age: 100
+  num_bins_per_rotation: 86400 * rate0
+  out_buf: dumpvis_fs01_buf
+fringestop_02:
+  in_buf: fakevis_buf0
+  kotekan_stage: N2TimeDownsample
+  max_age: 100
+  num_bins_per_rotation: 86400 * rate0 / 2
+  out_buf: dumpvis_fs02_buf
+fringestop_04:
+  in_buf: fakevis_buf0
+  kotekan_stage: N2TimeDownsample
+  max_age: 100
+  num_bins_per_rotation: 86400 * rate0 / 4
+  out_buf: dumpvis_fs04_buf
+fringestop_08:
+  in_buf: fakevis_buf0
+  kotekan_stage: N2TimeDownsample
+  max_age: 100
+  num_bins_per_rotation: 86400 * rate0 / 8
+  out_buf: dumpvis_fs08_buf
+fringestop_16:
+  in_buf: fakevis_buf0
+  kotekan_stage: N2TimeDownsample
+  max_age: 100
+  num_bins_per_rotation: 86400 * rate0 / 16
+  out_buf: dumpvis_fs16_buf
+fringestop_32:
+  in_buf: fakevis_buf0
+  kotekan_stage: N2TimeDownsample
+  max_age: 100
+  num_bins_per_rotation: 86400 * rate0 / 32
+  out_buf: dumpvis_fs32_buf
+
+no_fringestop_32:
+  in_buf: fakevis_buf0
+  kotekan_stage: N2TimeDownsample
+  max_age: 100
+  num_bins_per_rotation: 86400 * rate0 / 32
+  out_buf: dumpvis_nfs32_buf
+  do_fringestop: false
+
+
+    # direct_no_fringestop_0:
+    #   in_buf: fakevis_buf0
+    #   kotekan_stage: N2FringeStop
+    #   out_buf: dumpvis_direct_nfs0_buf
+    #   fringestop_mode: 0
+    #   era_target_deg: 81.0
+    # 
+    # direct_fringestop_0:
+    #   in_buf: fakevis_buf0
+    #   kotekan_stage: N2FringeStop
+    #   out_buf: dumpvis_direct_fs0_buf
+    #   fringestop_mode: 1
+    #   era_target_deg: 81.0
+    # direct_phase_fringestop_0:
+    #   in_buf: fakevis_buf0
+    #   kotekan_stage: N2FringeStop
+    #   out_buf: dumpvis_direct_pfs0_buf
+    #   fringestop_mode: 2
+    #   era_target_deg: 81.0
+
+raw_rate: 1
+rate0: raw_rate
+T_rot_sec: 86400.0 / 1.00273781191135448
+
+N2_pool:
+  int_frames: 64
+  kotekan_metadata_pool: N2Metadata
+  num_metadata_objects: 1000 * buffer_depth
+
+block_size: 2
+buffer_depth: 4
+cpu_affinity: [4, 5, 6, 7]
+
+# dump_fs0:
+#   base_dir: ./data_out
+#   file_ext: dump
+#   file_name: dumpvis_fs0_buf
+#   kotekan_stage: rawFileWrite
+#   in_buf: dumpvis_fs0_buf
+
+dump_fs01:
+  base_dir: ./data_out
+  file_ext: dump
+  file_name: dumpvis_fs01_buf
+  kotekan_stage: rawFileWrite
+  in_buf: dumpvis_fs01_buf
+
+dump_fs02:
+  base_dir: ./data_out
+  file_ext: dump
+  file_name: dumpvis_fs02_buf
+  kotekan_stage: rawFileWrite
+  in_buf: dumpvis_fs02_buf
+
+dump_fs04:
+  base_dir: ./data_out
+  file_ext: dump
+  file_name: dumpvis_fs04_buf
+  kotekan_stage: rawFileWrite
+  in_buf: dumpvis_fs04_buf
+
+dump_fs08:
+  base_dir: ./data_out
+  file_ext: dump
+  file_name: dumpvis_fs08_buf
+  kotekan_stage: rawFileWrite
+  in_buf: dumpvis_fs08_buf
+
+dump_fs16:
+  base_dir: ./data_out
+  file_ext: dump
+  file_name: dumpvis_fs16_buf
+  kotekan_stage: rawFileWrite
+  in_buf: dumpvis_fs16_buf
+
+dump_fs32:
+  base_dir: ./data_out
+  file_ext: dump
+  file_name: dumpvis_fs32_buf
+  kotekan_stage: rawFileWrite
+  in_buf: dumpvis_fs32_buf
+
+dump_nfs32:
+  base_dir: ./data_out
+  file_ext: dump
+  file_name: dumpvis_nfs32_buf
+  kotekan_stage: rawFileWrite
+  in_buf: dumpvis_nfs32_buf
+
+dump_raw:
+  base_dir: ./data_out
+  file_ext: dump
+  file_name: dumpvis_raw_buf
+  kotekan_stage: rawFileWrite
+  in_buf: fakevis_buf0
+
+    # dump_direct_nfs0:
+    #   base_dir: ./data_out
+    #   file_ext: dump
+    #   file_name: dumpvis_direct_nfs0_buf
+    #   kotekan_stage: rawFileWrite
+    #   in_buf: dumpvis_direct_nfs0_buf
+    # 
+    # dump_direct_fs0:
+    #   base_dir: ./data_out
+    #   file_ext: dump
+    #   file_name: dumpvis_direct_fs0_buf
+    #   kotekan_stage: rawFileWrite
+    #   in_buf: dumpvis_direct_fs0_buf
+    # 
+    # dump_direct_pfs0:
+    #   base_dir: ./data_out
+    #   file_ext: dump
+    #   file_name: dumpvis_direct_pfs0_buf
+    #   kotekan_stage: rawFileWrite
+    #   in_buf: dumpvis_direct_pfs0_buf
+
+# dumpvis_fs0_buf:
+#   kotekan_buffer: N2
+#   metadata_pool: N2_pool
+#   num_frames: buffer_depth
+
+dumpvis_fs01_buf:
+  kotekan_buffer: N2
+  metadata_pool: N2_pool
+  num_frames: buffer_depth
+
+dumpvis_fs02_buf:
+  kotekan_buffer: N2
+  metadata_pool: N2_pool
+  num_frames: buffer_depth
+
+dumpvis_fs04_buf:
+  kotekan_buffer: N2
+  metadata_pool: N2_pool
+  num_frames: buffer_depth
+
+dumpvis_fs08_buf:
+  kotekan_buffer: N2
+  metadata_pool: N2_pool
+  num_frames: buffer_depth
+
+dumpvis_fs16_buf:
+  kotekan_buffer: N2
+  metadata_pool: N2_pool
+  num_frames: buffer_depth
+
+dumpvis_fs32_buf:
+  kotekan_buffer: N2
+  metadata_pool: N2_pool
+  num_frames: buffer_depth
+
+dumpvis_nfs32_buf:
+  kotekan_buffer: N2
+  metadata_pool: N2_pool
+  num_frames: buffer_depth
+
+    # dumpvis_direct_nfs0_buf:
+    #   kotekan_buffer: N2
+    #   metadata_pool: N2_pool
+    #   num_frames: buffer_depth
+    # 
+    # dumpvis_direct_fs0_buf:
+    #   kotekan_buffer: N2
+    #   metadata_pool: N2_pool
+    #   num_frames: buffer_depth
+    # 
+    # dumpvis_direct_pfs0_buf:
+    #   kotekan_buffer: N2
+    #   metadata_pool: N2_pool
+    #   num_frames: buffer_depth
+
+giga: 1000000000
+start_time_s: 1417910418
+
+earth_rotation_data:
+  kotekan_update_endpoint: json
+  earth_orientation_parameter_table: [
+    {
+      time_inst_ns: 1417910401000000000,
+      delta_UT1_inst: 0.5,
+      x_pm: 0.1,
+      y_pm: 0.2
+    }, {
+      time_inst_ns: 1418910418000000000,
+      delta_UT1_inst: 0.5,
+      x_pm: 0.1,
+      y_pm: 0.2
+    }]
+
+fakevis0:
+  cadence: T_rot_sec / (86400 * raw_rate)
+  dec: 49.32
+  ra: -37.0
+  freq_ids: [8000]
+  kotekan_stage: FakeVis
+  mode: point_source
+  n_lost_ticks: 0
+  n_rfi_ticks: 0
+  noise_var: 0.1
+  num_frames: 86400 * raw_rate + 1
+  out_buf: fakevis_buf0
+  sleep_after: 1.0
+  start_time: start_time_s
+  stokes_I: 10.0
+  stokes_Q: 0.0
+  stokes_U: 0.0
+  stokes_V: 0.0
+  wait: false
+
+fakevis_buf0:
+  kotekan_buffer: N2
+  metadata_pool: N2_pool
+  num_frames: buffer_depth
+
+gps_time:
+  frame0_nano: start_time_s * giga
+
+log_level: debug
+
+num_data_sets: 1
+num_elements: 14
+num_ev: 4
+num_freq_in_frame: 1
+num_gpu_frames: 64
+num_local_freq: 1
+samples_per_dataset: 32768
+
+telescope:
+  name: CHORDTelescope
+  dish_positions: [
+    [0.0, 0.0, 0.0],
+    [6.3, 0.0, 0.0],
+    [0.0, 8.4, 0.0],
+    [6.3, 8.4, 0.0],
+    [151.0, 0.0, 0.0],
+    [0.0, 204.0, 0.0],
+    [151.0, 204.0, 0.0]]
+  inst_lat_deg: 49.32075144444
+  inst_long_deg: -119.62081125
+  inst_grid_x_axis: [1.0, 0.0, 0.0]
+  inst_grid_y_axis: [0.0, 1.0, 0.0]
+  inst_alt_deg: 90.0
+  inst_dish_alt_axis: [1.0, 0.0, 0.0]
+  inst_dish_vert_axis: [0.0, 0.0, 1.0]
+  require_gps: false
+  updatable_config: /earth_rotation_data
+
+type: config

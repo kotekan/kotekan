@@ -19,7 +19,7 @@ namespace gputils {
 
 // Very boneheaded function which prints an array.
 // Currently one line per array element -- could be improved!
-// Instantiated for T = __half, float, double, (u)int, (u)long, (u)short, (u)char, complex<float>, complex<double>.
+// Instantiated for T = __half, float, double, (u)int, (u)long, (u)short, (u)char, complex<float>, complex<double>, complex<int>.
 
 template<typename T>
 extern void
@@ -28,7 +28,7 @@ print_array(const Array<T> &arr,
 	    std::ostream &os = std::cout);
 
 
-// Instantiated for T = float, double, (u)int, (u)long, (u)short, (u)char, complex<float>, complex<double>.
+// Instantiated for T = float, double, (u)int, (u)long, (u)short, (u)char, complex<float>, complex<double>, complex<int>.
 // For non floating point types, the 'epsabs' and 'epsrel' arguments are ignored.
 //
 // Returns the max difference between arrays. The return value is:

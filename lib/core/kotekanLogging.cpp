@@ -1,13 +1,14 @@
 #include "kotekanLogging.hpp"
 
-#include "errors.h" // for __enable_syslog, __err_msg, __max_log_msg_len
+#include "errors.h" // for __enable_syslog, get_log_level_string, __err_msg, __max_log_msg_len
 
-#include "fmt.hpp" // for basic_string_view, print, vformat, basic_format_context, format_args
+#include "fmt.hpp" // for compile_string_to_view, print, basic_string_view, fmt, format
 
-#include <stdexcept>   // for runtime_error
-#include <stdio.h>     // for stderr
-#include <strings.h>   // for strcasecmp
-#include <type_traits> // for __underlying_type_impl<>::type, underlying_type
+#include <fmt/format.h> // for vformat
+#include <stdexcept>    // for runtime_error
+#include <stdio.h>      // for stderr
+#include <strings.h>    // for strcasecmp
+#include <type_traits>  // for underlying_type
 
 namespace kotekan {
 

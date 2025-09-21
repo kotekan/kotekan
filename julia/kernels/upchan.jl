@@ -13,6 +13,9 @@ const Memory = IndexSpaces.Memory
 # const card = "A30"
 const card = "A40"
 
+chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
+unchimify(x) = chimify(x)
+
 bitsign(b::Bool) = b ? -1 : +1
 bitsign(i::Integer) = bitsign(isodd(i))
 
@@ -1535,7 +1538,7 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     shmem_size = idiv(shmem_bytes, 4)
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm upchan(
+    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm upchan(
         Int32(0),
         Int32(0),
         Int32(0),
@@ -1623,8 +1626,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
 
     !silent && println("Copying data from CPU to GPU...")
     G_cuda = CuArray(G_memory)
-    E_cuda = CuArray(E_memory)
-    Ē_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), idiv(C, 2) * idiv(D, 4) * P * (F̄) * idiv(T, U))
+    E_cuda = CuArray(chimify.(E_memory))
+    Ē_cuda = CUDA.fill(chimify(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), idiv(C, 2) * idiv(D, 4) * P * (F̄) * idiv(T, U))
     info_cuda = CUDA.fill(-1i32, length(info_wanted))
 
     @assert sizeof(G_cuda) < 2^32
@@ -1692,7 +1695,7 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
             sampling-time-μsec: $sampling_time_μsec
             upchannelization-factor: $U
           compile-parameters:
-            minthreads: $(num_threads * num_warps)
+            minthreads: [$num_threads, $num_warps]
             blocks_per_sm: $num_blocks_per_sm
             blocks_per_frequency: $num_blocks_per_frequency
           call-parameters:
@@ -1709,7 +1712,7 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     end
 
     !silent && println("Copying data back from GPU to CPU...")
-    Ē_memory = Array(Ē_cuda)
+    Ē_memory = unchimify.(Array(Ē_cuda))
     info_memory = Array(info_cuda)
     @assert all(info_memory .== 0)
 
@@ -1794,7 +1797,7 @@ function fix_ptx_kernel()
         sampling-time-μsec: $sampling_time_μsec
         upchannelization-factor: $U
       compile-parameters:
-        minthreads: $(num_threads * num_warps)
+        minthreads: [$num_threads, $num_warps]
         blocks_per_sm: $num_blocks_per_sm
         blocks_per_frequency: $num_blocks_per_frequency
       call-parameters:
@@ -1877,32 +1880,32 @@ function fix_ptx_kernel()
             "kernel_symbol" => kernel_symbol,
             "kernel_arguments" => [
                 Dict(
-                    "name" => "Tmin",
-                    "kotekan_name" => "Tmin",
+                    "name" => "T_min",
+                    "kotekan_name" => "T_min",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Tmax",
-                    "kotekan_name" => "Tmax",
+                    "name" => "T_max",
+                    "kotekan_name" => "T_max",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Tbarmin",
-                    "kotekan_name" => "Tbarmin",
+                    "name" => "Tbar_min",
+                    "kotekan_name" => "Tbar_min",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Tbarmax",
-                    "kotekan_name" => "Tbarmax",
+                    "name" => "Tbar_max",
+                    "kotekan_name" => "Tbar_max",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
@@ -1926,17 +1929,18 @@ function fix_ptx_kernel()
                 ),
                 Dict(
                     "name" => "G_U$(U)",
-                    "kotekan_name" => "gpu_mem_gain",
+                    "kotekan_name" => "upchan_U$(U)_gain_name",
                     "type" => "float16",
                     "axes" => [Dict("label" => "Fbar", "length" => F̄)],
                     "isoutput" => false,
                     "hasbuffer" => true,
                     "isscalar" => false,
+                    "do_once" => true,
                 ),
                 Dict(
                     "name" => "E",
-                    "kotekan_name" => "gpu_mem_input_voltage",
-                    "type" => "int4p4chime",
+                    "kotekan_name" => "voltage_name",
+                    "type" => "int4x2_swapped_withoffset",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
@@ -1945,12 +1949,13 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
+                    "hasringbuffer" => true,
                     "isscalar" => false,
                 ),
                 Dict(
                     "name" => "Ebar",
-                    "kotekan_name" => "gpu_mem_output_voltage",
-                    "type" => "int4p4chime",
+                    "kotekan_name" => "upchan_U$(U)_voltage_name",
+                    "type" => "int4x2_swapped_withoffset",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
@@ -1959,6 +1964,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
+                    "hasringbuffer" => true,
                     "isscalar" => false,
                 ),
                 Dict(

@@ -1,21 +1,44 @@
 #include "cudaDeviceInterface.hpp"
 
-#include "math.h"
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaEventCreate, cudaEventRecord, cudaMemcpyAsync, cudaStr...
+#include "kotekanLogging.hpp" // for FATAL_ERROR, INFO, DEBUG2
 
-#include <cuda.h>
-#include <errno.h>
-#include <nvPTXCompiler.h>
-#include <nvrtc.h>
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>       // for max
+#include <assert.h>        // for assert
+#include <cuda.h>          // for cuGetErrorString, cuModuleGetFunction, cuModuleLoadDataEx
+#include <mutex>           // for mutex, lock_guard
+#include <nvPTXCompiler.h> // for NVPTXCOMPILE_SUCCESS, nvPTXCompilerCompile, nvPTXCompilerC...
+#include <nvrtc.h>         // for nvrtcGetErrorString, NVRTC_SUCCESS, nvrtcCompileProgram
+#include <stdexcept>       // for runtime_error
+#include <stdio.h>         // for fclose, fopen, fread, fseek, ftell, rewind, FILE, SEEK_END
+#include <stdlib.h>        // for free, malloc, size_t, NULL
+#include <utility>         // for pair
 
 using kotekan::Config;
 
-std::map<int, std::shared_ptr<cudaDeviceInterface>> cudaDeviceInterface::inst_map;
+std::map<int32_t, std::weak_ptr<cudaDeviceInterface>> cudaDeviceInterface::inst_map;
+
+// Protects access to inst_map
+static std::mutex cuda_inst_map_mutex;
 
 std::shared_ptr<cudaDeviceInterface>
 cudaDeviceInterface::get(int32_t gpu_id, const std::string& name, Config& config) {
-    if (inst_map.count(gpu_id) == 0)
-        inst_map[gpu_id] = std::make_shared<cudaDeviceInterface>(config, name, gpu_id);
-    return inst_map[gpu_id];
+    std::lock_guard<std::mutex> lock(cuda_inst_map_mutex);
+    auto it = inst_map.find(gpu_id);
+    if (it != inst_map.end()) {
+        if (auto existing = it->second.lock())
+            // it->second is a std::weak_ptr. lock() attempts to create a new
+            // shared_ptr that shares ownership with any existing shared owners.
+            // If the weak_ptr has not expired, 'existing' becomes a valid shared_ptr.
+            return existing;
+    }
+    auto dev = std::make_shared<cudaDeviceInterface>(config, name,
+                                                     gpu_id); // creates an owning std::shared_ptr
+    inst_map[gpu_id] = dev; // store weak reference (implicit conversion)
+    return dev;
 }
 
 cudaDeviceInterface::cudaDeviceInterface(Config& config, const std::string& unique_name,
@@ -71,6 +94,7 @@ void cudaDeviceInterface::prepareStreams(uint32_t num_streams) {
         streams.push_back(stream);
     }
 }
+
 void cudaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, size_t len,
                                                  uint32_t cuda_stream_id, cudaEvent_t pre_event,
                                                  cudaEvent_t* copy_start_event,
@@ -89,6 +113,7 @@ void cudaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, size_t le
         CHECK_CUDA_ERROR(cudaEventRecord(*copy_end_event, getStream(cuda_stream_id)));
     }
 }
+
 void cudaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, size_t len,
                                                  uint32_t cuda_stream_id, cudaEvent_t pre_event,
                                                  cudaEvent_t* copy_start_event,

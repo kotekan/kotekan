@@ -4,7 +4,7 @@
 #include <gputils/string_utils.hpp>
 
 #include "../include/n2k/Correlator.hpp"
-#include "../include/n2k/CorrelatorKernel.hpp"
+#include "../include/n2k/internals/CorrelatorKernel.hpp"
 
 using namespace std;
 using namespace gputils;

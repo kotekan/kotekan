@@ -1,26 +1,28 @@
-#include <Config.hpp>
-#include <FEngine.hpp>
-#include <Stage.hpp>
-#include <StageFactory.hpp>
-#include <algorithm>
-#include <cassert>
-#include <chimeMetadata.hpp>
-#include <chordMetadata.hpp>
-#include <cmath>
-#include <complex>
-#include <cstdint>
-#include <cstdio>
-#include <cstring>
-#include <fstream>
-#include <julia.h>
-#include <juliaManager.hpp>
-#include <string>
-#include <vector>
-#include <visUtil.hpp>
+#include "DataType.hpp"       // for float16_t, DataType, KOTEKAN_FLOAT16
+#include "kotekanLogging.hpp" // for DEBUG, FATAL_ERROR, INFO
 
-#ifdef WITH_CUDA
-#include <nvtx3/nvToolsExt.h>
-#endif
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <Config.hpp> // for Config
+#include <FEngine.hpp>
+#include <Stage.hpp>         // for Stage
+#include <StageFactory.hpp>  // for REGISTER_KOTEKAN_STAGE
+#include <algorithm>         // for max
+#include <cassert>           // for assert
+#include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM, CHO...
+#include <cmath>             // for cos, sin, M_PI
+#include <complex>           // for complex
+#include <cstddef>           // for ptrdiff_t, size_t
+#include <cstdint>           // for int64_t, uint8_t, uint64_t, int32_t, int8_t
+#include <cstdio>            // for snprintf, fprintf, stderr
+#include <cstring>           // for strncpy, memset
+#include <fstream>           // for basic_ifstream, basic_istream::seekg, basic_istream::read
+#include <functional>        // for function
+#include <julia.h>           // for jl_box_int64, jl_box_float32, jl_exception_occurred, jl_ty...
+#include <juliaManager.hpp>  // for juliaCall, juliaShutdown, juliaStartup
+#include <memory>            // for shared_ptr, __shared_ptr_access
+#include <string>            // for allocator, basic_string, string
+#include <vector>            // for vector
 
 #if !KOTEKAN_FLOAT16
 #warning "The F-Engine simulator requires float16 support"
@@ -1155,7 +1157,7 @@ void FEngine::main_thread() {
                             dfreq
                             * (frequency_channels.at(freq0 % frequency_channels.size())
                                + ((freq1 + 0.5f) / float(upchannelization_factor) - 0.5f));
-                        const float c = 299792458; // speed of light
+                        const float c = 299792458.0f; // speed of light
                         const float wavelength = c / afreq;
 
                         for (int beamOut_ew = 0; beamOut_ew < frb2_num_beams_ew; ++beamOut_ew) {
@@ -1292,11 +1294,27 @@ void FEngine::main_thread() {
                         args[7] = jl_box_int64(E_frame_index % num_frames + 1);
                         jl_value_t* const res = jl_call(set_E, args, nargs);
                         if (jl_exception_occurred())
-                            fprintf(stderr, "Julia exception:\n%s",
-                                    jl_typeof_str(jl_exception_occurred()));
+                            FATAL_ERROR("Julia exception:\n{:s}",
+                                        jl_typeof_str(jl_exception_occurred()));
                         assert(res);
                         JL_GC_POP();
                     });
+                    for (int t = 0; t < num_times; ++t) {
+                        for (int f = 0; f < num_frequencies; ++f) {
+                            for (int p = 0; p < num_polarizations; ++p) {
+                                for (int d = 0; d < num_dishes; ++d) {
+                                    const int idx =
+                                        d
+                                        + num_dishes
+                                              * (p + num_polarizations * (f + num_frequencies * t));
+                                    const std::uint8_t e = E_frame[idx];
+                                    const std::int8_t ere = ((e >> 0x04) & 0x0f) - 8;
+                                    const std::int8_t eim = ((e >> 0x00) & 0x0f) - 8;
+                                    assert(ere != -8 && eim != -8);
+                                }
+                            }
+                        }
+                    }
                 } else {
                     // std::memset(E_frame, 0xcc,
                     //             num_dishes * num_polarizations * num_frequencies * num_times);

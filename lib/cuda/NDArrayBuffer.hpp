@@ -1,26 +1,30 @@
 #ifndef NDARRAYBUFFER_HPP
 #define NDARRAYBUFFER_HPP
 
-#include <DataType.hpp>
-#include <NDArray.hpp>
-#include <Symbol.hpp>
-#include <algorithm>
-#include <array>
-#include <buffer.hpp>
-#include <cassert>
-#include <chordMetadata.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <cudaCommand.hpp>
-#include <cudaDeviceInterface.hpp>
-#include <kotekanLogging.hpp>
-#include <memory>
-#include <ostream>
-#include <sstream>
-#include <string>
-#include <utility>
-#include <vector>
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaMemsetAsync, cudaMemcpy
+#include "driver_types.h"     // for CUstream_st, cudaMemcpyKind, cudaStream_t
+#include "metadata.hpp"       // for metadataObject
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <DataType.hpp>            // for operator<<
+#include <NDArray.hpp>             // for NDArray
+#include <Symbol.hpp>              // for Symbol, strings_to_symbols, operator==
+#include <algorithm>               // for find_if
+#include <array>                   // for array
+#include <cassert>                 // for assert
+#include <chordMetadata.hpp>       // for chordMetadata, get_chord_metadata
+#include <cstddef>                 // for ptrdiff_t, size_t
+#include <cstdint>                 // for uint8_t
+#include <cstring>                 // for memcmp, memset
+#include <cudaCommand.hpp>         // for cudaCommand
+#include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
+#include <kotekanLogging.hpp>      // for kotekanLogging, FATAL_ERROR
+#include <memory>                  // for shared_ptr, __shared_ptr_access, allocator
+#include <sstream>                 // for basic_ostream, operator<<, ostream, basic_ostringstream
+#include <string>                  // for string, basic_string, char_traits, operator+, operator<<
+#include <vector>                  // for vector
 
 // This affects copying from host to device. A standard buffer is
 // copied the usual way. A `do_once` buffer is copied only once, in
@@ -232,7 +236,8 @@ public:
     void check_for_poison(const std::uint8_t poison_value) {
 #ifdef DEBUGGING
         T poison;
-        std::memset(&poison, poison_value, sizeof poison);
+        // The cast suppresses a bogus -Wclass-memaccess on GCC.
+        std::memset(static_cast<void*>(&poison), poison_value, sizeof poison);
         const auto check = [=](const T x) { return std::memcmp(&x, &poison, sizeof poison) == 0; };
         const std::ptrdiff_t buffer_length = length_in_bytes();
         const void* const buffer_device_ptr = ndarray.data();

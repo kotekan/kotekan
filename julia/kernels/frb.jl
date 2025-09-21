@@ -20,6 +20,8 @@ if CUDA.functional()
     @assert name(device()) == "NVIDIA $card"
 end
 
+chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
+unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 # shift(x::Number, s) = (@assert s ≥ 1; (x + (1 << (s - 1))) >> s)
 # shift(x::Complex, s) = Complex(shift(x.re, s), shift(x.im, s))
@@ -47,6 +49,8 @@ function shrinkmul(x::Integer, y::Symbol, ymax::Integer)
 end
 
 ilog2(i::Integer) = (@assert i == nextpow(2, i); trailing_zeros(i))
+
+Base.isnan(f::Float16x2) = any(isnan, convert(NTuple{2,Float16}, f))
 
 # Setup
 
@@ -1927,7 +1931,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     shmem_size = idiv(shmem_bytes, 4)
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm frb(
+    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm frb(
         Int32(0),
         Int32(0),
         Int32(0),
@@ -2043,7 +2047,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         println("Copying data from CPU to GPU...")
         Smn_cuda = CuArray(Smn_memory)
         W_cuda = CuArray(W_memory)
-        E_cuda = CuArray(E_memory)
+        E_cuda = CuArray(chimify.(E_memory))
         I_cuda = CUDA.fill(Float16x2(NaN, NaN), length(I_wanted))
         info_cuda = CUDA.fill(-1i32, length(info_wanted))
 
@@ -2114,7 +2118,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 number-of-timesamples: $T
                 sampling-time-μsec: $sampling_time_μsec
               compile-parameters:
-                minthreads: $(num_threads * num_warps)
+                minthreads: [$num_threads, $num_warps]
                 blocks_per_sm: $num_blocks_per_sm
               call-parameters:
                 threads: [$num_threads, $num_warps]
@@ -2131,8 +2135,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
         println("Copying data back from GPU to CPU...")
         I_memory = Array(I_cuda)
+        # @show count(isnan, (@view I_memory[1:(M * 2 * N * Fbar_out * Ttildemax)]))
+        # @assert all(!isnan, (@view I_memory[1:(M * 2 * N * Fbar_out * Ttildemax)]))
         info_memory = Array(info_cuda)
-        @assert all(info_memory .== 0)
+        @assert all(==(0), info_memory)
 
         if run_selftest
             println("Checking results...")
@@ -2214,7 +2220,7 @@ function fix_ptx_kernel()
         sampling-time-μsec: $sampling_time_μsec
         upchannelization-factor: $U
       compile-parameters:
-        minthreads: $(num_threads * num_warps)
+        minthreads: [$num_threads, $num_warps]
         blocks_per_sm: $num_blocks_per_sm
       call-parameters:
         threads: [$num_threads, $num_warps]
@@ -2293,6 +2299,7 @@ function fix_ptx_kernel()
                 Dict("type" => "int", "name" => "cuda_beam_layout_N", "value" => "$(2*N)"),
                 Dict("type" => "int", "name" => "cuda_dish_layout_M", "value" => "$M"),
                 Dict("type" => "int", "name" => "cuda_dish_layout_N", "value" => "$N"),
+                Dict("type" => "int", "name" => "cuda_upchannelization_factor", "value" => "$U"),
                 Dict("type" => "int", "name" => "cuda_downsampling_factor", "value" => "$Tds"),
                 Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),
                 Dict("type" => "int", "name" => "cuda_number_of_dishes", "value" => "$D"),
@@ -2310,32 +2317,32 @@ function fix_ptx_kernel()
             "kernel_symbol" => kernel_symbol,
             "kernel_arguments" => [
                 Dict(
-                    "name" => "Tbarmin",
-                    "kotekan_name" => "Tbarmin",
+                    "name" => "Tbar_min",
+                    "kotekan_name" => "Tbar_min",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Tbarmax",
-                    "kotekan_name" => "Tbarmax",
+                    "name" => "Tbar_max",
+                    "kotekan_name" => "Tbar_max",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Ttildemin",
-                    "kotekan_name" => "Ttildemin",
+                    "name" => "Ttilde_min",
+                    "kotekan_name" => "Ttilde_min",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Ttildemax",
-                    "kotekan_name" => "Ttildemax",
+                    "name" => "Ttilde_max",
+                    "kotekan_name" => "Ttilde_max",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
@@ -2375,16 +2382,17 @@ function fix_ptx_kernel()
                 ),
                 Dict(
                     "name" => "S",
-                    "kotekan_name" => "gpu_mem_dishlayout",
+                    "kotekan_name" => "frb_dishlayout_name",
                     "type" => "int16",
                     "axes" => [Dict("label" => "MN", "length" => 2), Dict("label" => "D", "length" => M * N)],
                     "isoutput" => false,
                     "hasbuffer" => false,
                     "isscalar" => false,
+                    "do_once" => true,
                 ),
                 Dict(
                     "name" => "W",
-                    "kotekan_name" => "gpu_mem_phase",
+                    "kotekan_name" => "frb_phase_name",
                     "type" => "float16",
                     "axes" => [
                         Dict("label" => "C", "length" => C),
@@ -2396,11 +2404,12 @@ function fix_ptx_kernel()
                     "isoutput" => false,
                     "hasbuffer" => true,
                     "isscalar" => false,
+                    "do_once" => true,
                 ),
                 Dict(
                     "name" => "Ebar",
-                    "kotekan_name" => "gpu_mem_voltage",
-                    "type" => "int4p4chime",
+                    "kotekan_name" => "voltage_name",
+                    "type" => "int4x2_swapped_withoffset",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
@@ -2409,11 +2418,12 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
+                    "hasringbuffer" => true,
                     "isscalar" => false,
                 ),
                 Dict(
                     "name" => "I",
-                    "kotekan_name" => "gpu_mem_beamgrid",
+                    "kotekan_name" => "frb_beamgrid_name",
                     "type" => "float16",
                     "axes" => [
                         Dict("label" => "beamP", "length" => 2 * M),
@@ -2423,6 +2433,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
+                    "hasringbuffer" => true,
                     "isscalar" => false,
                 ),
                 Dict(

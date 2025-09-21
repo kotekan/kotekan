@@ -7,11 +7,19 @@
 #ifndef CUDA_FRB_BEAMREFORMER_HPP
 #define CUDA_FRB_BEAMREFORMER_HPP
 
-#include "cudaCommand.hpp"
-#include "cudaDeviceInterface.hpp"
-#include "ringbuffer.hpp"
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for float16_t
+#include "bufferContainer.hpp" // for bufferContainer
+#include "driver_types.h"      // for cudaEvent_t
 
-#include <cublas_v2.h>
+#include <cstddef>                 // for size_t, ptrdiff_t
+#include <cublas_v2.h>             // for cublasContext, cublasHandle_t
+#include <cudaCommand.hpp>         // for cudaCommand, cudaPipelineState
+#include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
+#include <ringbuffer.hpp>          // for RingBuffer
+#include <stdint.h>                // for int32_t
+#include <string>                  // for string, basic_string
+#include <vector>                  // for vector
 
 /**
  * @class cudaFRBBeamReformer
@@ -52,10 +60,6 @@ private:
     /// Total samples in each dataset
     int32_t _Td;
 
-    /// CUDA compute streams to use
-    std::vector<int> _cuda_streams;
-    std::vector<cudaEvent_t> sync_events;
-
     // Computed values
     /// Number of input beams
     int32_t num_input_beams;
@@ -74,9 +78,6 @@ private:
     /// GPU side memory name for the beam output
     std::string _gpu_mem_beamout;
 
-    // use batched cublasHgemm call
-    bool _batched;
-
     // cublasHgemmBatched -- pre-computed GPU memory locations.
     // [freq batch = stream] = [per-freq pointers]
     std::vector<float16_t**> _gpu_in_pointers;
@@ -85,10 +86,14 @@ private:
 
     // Signalling ring buffer for the input (raw FRB beams) data
     RingBuffer* input_ringbuf_signal;
+    // TODO NDArrayRingBuffer<kotekan::float16, 4> input;
 
     // Byte count in the ring buffer to read from (may be larger than buffer size)
+    // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
     std::ptrdiff_t input_cursor;
+
     // Byte offset in the ring buffer to read from (modulo buffer size)
+    // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
     std::ptrdiff_t input_position;
 };
 

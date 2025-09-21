@@ -9,16 +9,17 @@
 ---
 log_level: debug
 
-fengine_num_frames: 10
+fengine_num_frames: 25
 fengine_repeat_count: 1
 
 skip_julia: false
 
-base_dir: /localhome/eschnett/data/fengine_init_hirax
+base_dir: data/fengine_init_hirax
 
 {% include "include/defs.j2" %}
 {% include "include/fengine_hirax.j2" %}
 
+{% include "include/rfi_hirax.j2" %}
 {% include "include/n2k_hirax.j2" %}
 {% include "include/bb_hirax.j2" %}
 {% include "include/upchan_hirax.j2" %}

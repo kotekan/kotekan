@@ -93,7 +93,9 @@ def test_clear_flags(tmpdir_factory):
             "dynamic_attributes/flagging",
             {
                 "bad_inputs": flags,
-                "start_time": start_time,
+                # Use a slightly future timestamp to ensure the update applies to frames
+                # after pipeline startup rather than racing the initial config value.
+                "start_time": time.time() + 0.5,
                 "update_id": "test_flag_update",
             },
         ]
@@ -142,6 +144,9 @@ def test_too_many_flags(tmpdir_factory):
 
 
 def test_one_flag(tmpdir_factory):
+    # Ensure the pipeline runs long enough after the REST POST lands
+    global_params["total_frames"] = 60
+    global_params["cadence"] = 0.05
     global_params["num_elements"] = 1
     n = global_params["num_elements"]
     flags_set = False

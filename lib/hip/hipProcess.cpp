@@ -52,7 +52,7 @@ void hipProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
     INFO("Commands executed.");
 }
 
-void hipProcess::register_host_memory(struct Buffer* host_buffer) {
+void hipProcess::register_host_memory(Buffer* host_buffer) {
     // Register the host memory in in_buf with the HIP run time.
     for (int i = 0; i < host_buffer->num_frames; i++) {
         hipHostRegister(host_buffer->frames[i], host_buffer->aligned_frame_size,

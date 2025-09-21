@@ -43,6 +43,16 @@ class time_spec(ctypes.Structure):
         """
         return self.tv + self.tv_nsec / 1e9
 
+    def to_int_ns(self):
+        """
+        Create an int from a timespec
+
+        Returns
+        -------
+        int
+        """
+        return int(self.tv * 1_000_000_000 + self.tv_nsec)
+
 
 class timeval(ctypes.Structure):
     """Struct repr of a timeval type."""

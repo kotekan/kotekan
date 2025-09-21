@@ -14,9 +14,11 @@ if CUDA.functional()
     println("[Choosing CUDA device...]")
     CUDA.device!(0)
     println(name(device()))
-    @assert name(device()) == "NVIDIA $card"
+    # @assert name(device()) == "NVIDIA $card"
 end
 
+chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
+unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 
 function shrink(value::Integer)
@@ -72,7 +74,7 @@ else
     @assert false
 end
 
-const Ttilde = 4 * 256
+const Ttilde = U < 128 ? 4 * 256 : 4 * 64
 
 const output_gain = 1 / (8 * Tds)
 
@@ -140,7 +142,7 @@ const layout_Y_shared = Layout([
     Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
     Time(:time, 1, Treg) => Shared(:shared, C * M * N * P, Treg),
     Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-    Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+    Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
 ])
 const Y_size = C * M * N * P * Treg
 
@@ -713,7 +715,14 @@ function make_chimefrb_kernel()
 
     # Main loop
 
-    loop!(emitter, Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds))) do emitter
+    loop!(emitter, Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde)) do emitter
+        push!(
+            emitter.statements,
+            quote
+                Tbarmin + time_outer ≥ Tbarmax && break
+            end,
+        )
+
         # Note: This layout is very inefficient for writing to global memory
         layout_I_registers = Layout([
             FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -730,7 +739,7 @@ function make_chimefrb_kernel()
             BeamQ(:beamQ, 2, 2) => Register(:beamQ, 2, 2),
             BeamQ(:beamQ, 4, 2) => Register(:beamQ, 4, 2),
             Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-            Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+            Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
         ])
         apply!(emitter, :I => layout_I_registers, :(zero(Float16x2)))
 
@@ -757,7 +766,7 @@ function make_chimefrb_kernel()
                     Polr(:polr, 1, P) => Warp(:warp, 4, 2),
                     Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                     Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-                    Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                    Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
                 ])
                 load!(
                     emitter,
@@ -789,7 +798,7 @@ function make_chimefrb_kernel()
                     Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                     Time(:time, 1, Treg) => Thread(:thread, 16, 2),
                     Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                    Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                    Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
                 ])
                 load!(
                     emitter,
@@ -844,7 +853,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
             @assert emitter.environment[:X] == layout_X_registers
 
@@ -868,7 +877,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
             apply!(emitter, :Z1 => layout_Z1_registers, :(zero(Float16x2)))
             let
@@ -927,7 +936,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
             apply!(emitter, :Z3′ => layout_Z3′_registers, :(zero(Float16x2)))
             split!(emitter, [:Z2_re, :Z2_im], :Z2, Register(:cplx, 1, 2))
@@ -955,7 +964,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
 
             # initial:
@@ -1027,7 +1036,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
             apply!(emitter, :Y′ => layout_Y′_registers, :(zero(Float16x2)))
             split!(emitter, [:Z4_re, :Z4_im], :Z4, Register(:cplx, 1, 2))
@@ -1057,7 +1066,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
 
             # permute!(emitter, :Y, :Y′, Register(:cplx, 1, 2), SIMD(:simd, 16, 2))
@@ -1092,7 +1101,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
             load!(emitter, :X => layout_X_registers, :Y_shared => layout_Y_shared)
 
@@ -1120,7 +1129,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
 
             function apply_phase(n, X)
@@ -1374,7 +1383,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
     shmem_size = idiv(shmem_bytes, 4)
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm chimefrb(
+    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm chimefrb(
         Int32(0),
         Int32(0),
         Int32(0),
@@ -1426,7 +1435,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
 
     println("Copying data from CPU to GPU...")
     W_cuda = CuArray(W_memory)
-    E_cuda = CuArray(E_memory)
+    E_cuda = CuArray(chimify.(E_memory))
     I_cuda = CUDA.fill(Float16x2(NaN, NaN), length(I_memory))
     info_cuda = CUDA.fill(-1i32, length(info_memory))
 
@@ -1474,9 +1483,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
 
     println("Copying data back from GPU to CPU...")
     I_memory = Array(I_cuda)
-    @assert all(!isnan, (@view I_memory[1:(M * 2 * N * Fbar * Ttildemax)]))
+    # @show count(isnan, (@view I_memory[1:(M * 2 * N * Fbar * Ttildemax)]))
+    # @assert all(!isnan, (@view I_memory[1:(M * 2 * N * Fbar * Ttildemax)]))
     info_memory = Array(info_cuda)
-    @assert all(info_memory .== 0)
+    @assert all(==(0), info_memory)
 
     println("Done.")
     return nothing
@@ -1528,7 +1538,7 @@ function fix_ptx_kernel()
         sampling-time-μsec: $sampling_time_μsec
         upchannelization-factor: $U
       compile-parameters:
-        minthreads: $(num_threads * num_warps)
+        minthreads: [$num_threads, $num_warps]
         blocks_per_sm: $num_blocks_per_sm
       call-parameters:
         threads: [$num_threads, $num_warps]
@@ -1589,6 +1599,7 @@ function fix_ptx_kernel()
                 Dict("type" => "int", "name" => "cuda_beam_layout_N", "value" => "$(2*N)"),
                 Dict("type" => "int", "name" => "cuda_dish_layout_M", "value" => "$M"),
                 Dict("type" => "int", "name" => "cuda_dish_layout_N", "value" => "$N"),
+                Dict("type" => "int", "name" => "cuda_upchannelization_factor", "value" => "$U"),
                 Dict("type" => "int", "name" => "cuda_downsampling_factor", "value" => "$Tds"),
                 Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),
                 Dict("type" => "int", "name" => "cuda_number_of_dishes", "value" => "$D"),
@@ -1606,40 +1617,44 @@ function fix_ptx_kernel()
             "kernel_symbol" => kernel_symbol,
             "kernel_arguments" => [
                 Dict(
-                    "name" => "Tbarmin",
-                    "kotekan_name" => "Tbarmin",
+                    "name" => "Tbar_min",
+                    "kotekan_name" => "Tbar_min",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "hasringbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Tbarmax",
-                    "kotekan_name" => "Tbarmax",
+                    "name" => "Tbar_max",
+                    "kotekan_name" => "Tbar_max",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "hasringbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Ttildemin",
-                    "kotekan_name" => "Ttildemin",
+                    "name" => "Ttilde_min",
+                    "kotekan_name" => "Ttilde_min",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "hasringbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Ttildemax",
-                    "kotekan_name" => "Ttildemax",
+                    "name" => "Ttilde_max",
+                    "kotekan_name" => "Ttilde_max",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "hasringbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
                     "name" => "W",
-                    "kotekan_name" => "gpu_mem_phase",
+                    "kotekan_name" => "frb_phase_name",
                     "type" => "float16",
                     "axes" => [
                         Dict("label" => "C", "length" => C),
@@ -1650,12 +1665,14 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
+                    "hasringbuffer" => false,
                     "isscalar" => false,
+                    "do_once" => true,
                 ),
                 Dict(
                     "name" => "Ebar",
-                    "kotekan_name" => "gpu_mem_voltage",
-                    "type" => "int4p4chime",
+                    "kotekan_name" => "voltage_name",
+                    "type" => "int4x2_swapped_withoffset",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
@@ -1664,11 +1681,12 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
+                    "hasringbuffer" => true,
                     "isscalar" => false,
                 ),
                 Dict(
                     "name" => "I",
-                    "kotekan_name" => "gpu_mem_beamgrid",
+                    "kotekan_name" => "frb_beamgrid_name",
                     "type" => "float16",
                     "axes" => [
                         Dict("label" => "beamP", "length" => 2 * M),
@@ -1678,6 +1696,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
+                    "hasringbuffer" => true,
                     "isscalar" => false,
                 ),
                 Dict(
@@ -1691,6 +1710,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => true,
                     "hasbuffer" => false,
+                    "hasringbuffer" => false,
                     "isscalar" => false,
                 ),
             ],

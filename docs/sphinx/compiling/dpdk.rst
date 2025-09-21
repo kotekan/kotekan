@@ -23,7 +23,7 @@ To install DPDK on ubuntu 18.04 simply run:
 
      sudo apt install dpdk dpdk-dev dpdk-igb-uio-dkms
 
-Then include ``-DUSE_OLD_DPDK=ON`` in the cmake options.
+No additional CMake flags are required when using the packaged libdpdk (>= 19.11).
 
 
 Setup
@@ -61,17 +61,10 @@ To build from source
 
 This is not required for Ubuntu systems which package DPDK
 
-Download: `DPDK version 16.11.10 <http://fast.dpdk.org/rel/dpdk-16.11.10.tar.xz>`_
-
-Unpack it in ``/opt/`` and run:
-
-.. code:: bash
-
-    sudo make install T=x86_64-native-linuxapp-gcc
-
-It will give a warning about install path being missing, just ingore it.
-
-When running CMAKE include the following options ``-DUSE_OLD_DPDK=ON -DRTE_SDK=/opt/dpdk-stable-16.11.10/ -DRTE_TARGET=x86_64-native-linuxapp-gcc``
+Download the desired release and follow the upstream ``meson``/``ninja`` build
+instructions. Ensure ``pkg-config --libs libdpdk`` resolves in your build
+environment before configuring kotekan. Legacy ``make install`` builds that
+require ``RTE_SDK``/``RTE_TARGET`` are no longer supported.
 
 Startup scripts source install
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -85,9 +78,9 @@ Add the following to ``/etc/rc.local``, and make sure ``rc.local`` is executable
     echo 1024 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 
     modprobe uio
-    insmod /opt/dpdk-stable-16.11.10/x86_64-native-linuxapp-gcc/kmod/igb_uio.ko
-    PCI_NIC_LIST=`/opt/dpdk-stable-16.11.10/tools/dpdk-devbind.py --status | grep X710 | cut -b 6-12 | tr '\n' ' '`
-    /opt/dpdk-stable-16.11.10/tools/dpdk-devbind.py --bind igb_uio $PCI_NIC_LIST
+    insmod /opt/dpdk/x86_64-native-linuxapp-gcc/kmod/igb_uio.ko
+    PCI_NIC_LIST=`/opt/dpdk/usertools/dpdk-devbind.py --status | grep X710 | cut -b 6-12 | tr '\n' ' '`
+    /opt/dpdk/usertools/dpdk-devbind.py --bind igb_uio $PCI_NIC_LIST
 
 You may need to adjust ``X710`` to ``XL710`` above depending on your NIC.
 

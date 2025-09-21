@@ -3,9 +3,9 @@
 
 #include "Config.hpp"            // for Config
 #include "HFBFrameView.hpp"      // for HFBFrameView
-#include "Hash.hpp"              // for Hash, operator<
+#include "Hash.hpp"              // for operator<
 #include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "SystemInterface.hpp"   // for get_hostname, get_username
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
@@ -15,21 +15,18 @@
 #include "prometheusMetrics.hpp" // for Metrics
 #include "restServer.hpp"        // for HTTP_RESPONSE, connectionInstance, restServer
 #include "version.h"             // for get_git_commit_hash
-#include "visUtil.hpp"           // for ts_to_double, time_ctype
+#include "visUtil.hpp"           // for ts_to_double, freq_ctype, time_ctype
 
-#include <cstdint>      // for uint32_t, uint64_t
-#include <cxxabi.h>     // for __forced_unwind
-#include <exception>    // for exception
-#include <future>       // for async, future
-#include <map>          // for map, map<>::mapped_type
-#include <memory>       // for __shared_ptr_access, shared_ptr
-#include <regex>        // for match_results<>::_Base_type
-#include <stdexcept>    // for out_of_range
-#include <string>       // for string, to_string
-#include <sys/types.h>  // for uint
-#include <system_error> // for system_error
-#include <utility>      // for pair
-#include <vector>       // for vector
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <cstdint>     // for uint32_t, uint64_t
+#include <future>      // for async, future
+#include <map>         // for map
+#include <memory>      // for shared_ptr, __shared_ptr_access
+#include <string>      // for allocator, basic_string, operator<, operator+, string
+#include <sys/types.h> // for uint
+#include <utility>     // for pair
+#include <vector>      // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

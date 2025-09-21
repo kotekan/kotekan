@@ -15,6 +15,9 @@
     # Use the main fmt header file only
     { include: [ "\"fmt/core.h\"", private, "\"fmt.hpp\"", public ] },
     { include: [ "\"fmt/ostream.h\"", private, "\"fmt.hpp\"", public ] },
+    # Some builds of fmt include headers with relative names
+    { include: [ "\"core.h\"", private, "\"fmt.hpp\"", public ] },
+    { include: [ "\"format.h\"", private, "\"fmt.hpp\"", public ] },
 
     # libevent
     { symbol: [ "evhttp_request", public, "<evhttp.h>", public ] },

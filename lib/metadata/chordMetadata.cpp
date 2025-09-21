@@ -1,5 +1,9 @@
 #include "chordMetadata.hpp"
 
+#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
+
+#include <string.h> // for size_t, memset
+
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
 chordMetadata::chordMetadata() :
@@ -19,6 +23,10 @@ chordMetadata::chordMetadata() :
         freq_upchan_factor[f] = -1;
         half_fpga_sample0[f] = -1;
         time_downsampling_fpga[f] = -1;
+        for (int v = 0; v < CHORD_META_MAX_VIS_SAMPLES; ++v) {
+            lost_fpga_samples[f][v] = 0;
+            rfi_flagged_samples[f][v] = 0;
+        }
     }
 }
 

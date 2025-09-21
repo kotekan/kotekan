@@ -2,20 +2,18 @@
 
 #include "Config.hpp"         // for Config
 #include "HFBFrameView.hpp"   // for HFBFrameView
-#include "buffer.hpp"         // for create_buffer
+#include "N2FrameView.hpp"    // for N2FrameView
+#include "buffer.hpp"         // for GenericBuffer, Buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO
-#include "metadata.hpp"       // for metadataPool // IWYU pragma: keep
-#include "ringbuffer.hpp"
-#include "visBuffer.hpp" // for VisFrameView
+#include "metadata.hpp"       // for metadataPool
+#include "ringbuffer.hpp"     // for RingBuffer
+#include "visBuffer.hpp"      // for VisFrameView
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 
 #include <cstdint>   // for int32_t, uint32_t
-#include <exception> // for exception
-#include <regex>     // for match_results<>::_Base_type
 #include <stddef.h>  // for size_t
 #include <stdexcept> // for runtime_error
-#include <vector>    // for vector
 
 using json = nlohmann::json;
 using std::map;
@@ -88,6 +86,8 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         frame_size = config.get<size_t>(location, "frame_size");
     } else if (type_name == "vis") {
         frame_size = VisFrameView::calculate_frame_size(config, location);
+    } else if (type_name == "N2") {
+        frame_size = N2FrameView::calculate_frame_size(config, location);
     } else if (type_name == "hfb") {
         frame_size = HFBFrameView::calculate_frame_size(config, location);
     }

@@ -10,10 +10,17 @@
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
 #define LO_NIBBLE(b) ((b) & 0x0F)
 
-#include "cudaCommand.hpp"
-#include "cudaDeviceInterface.hpp"
-#include "cudaEventContainer.hpp"
-#include "gpuProcess.hpp"
+#include "Config.hpp"              // for Config
+#include "buffer.hpp"              // for Buffer
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "gpuCommand.hpp"          // for gpuCommand
+#include "gpuEventContainer.hpp"   // for gpuEventContainer
+#include "gpuProcess.hpp"          // for gpuProcess
+
+#include <memory> // for shared_ptr
+#include <string> // for string
+#include <vector> // for vector
 
 /**
  * @class cudaProcess
@@ -41,7 +48,7 @@ public:
     gpuEventContainer* create_signal() override;
     void queue_commands(int gpu_frame_counter) override;
 
-    void register_host_memory(struct Buffer* host_buffer) override;
+    void register_host_memory(Buffer* host_buffer) override;
 
     std::shared_ptr<cudaDeviceInterface> device;
 };

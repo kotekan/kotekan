@@ -2,6 +2,8 @@
 
 #include "kotekanLogging.hpp" // for DEBUG2_NON_OO
 
+#include "fmt.hpp" // for compile_string_to_view (via fmt wrapper)  // IWYU pragma: keep
+
 #include <algorithm> // for min, max
 #include <cassert>   // for assert
 

@@ -1,7 +1,15 @@
 #include "airspyInput.hpp"
 
-#include "Config.hpp"
-#include "StageFactory.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "kotekanLogging.hpp" // for ERROR, INFO, DEBUG, FATAL_ERROR
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <stdint.h>   // for uint32_t, uint8_t
+#include <stdlib.h>   // for malloc
+#include <string.h>   // for memcpy
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -119,7 +127,7 @@ struct airspy_device* airspyInput::init_device() {
             ERROR("Unsupported sample rate: {:f} Hz", sample_bw);
             return nullptr;
         }
-        INFO("Selected sample rate: {:d} Hz -> idx {:d}", sample_bw, samplerate_idx)
+        INFO("Selected sample rate: {:d} Hz -> idx {:d}", sample_bw, samplerate_idx);
         result = airspy_set_samplerate(dev, samplerate_idx);
         if (result != AIRSPY_SUCCESS) {
             ERROR("airspy_set_samplerate() failed: {:s} ({:d})",
