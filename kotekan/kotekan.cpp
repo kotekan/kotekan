@@ -39,7 +39,7 @@
 #include <utility>     // for pair
 #include <vector>      // for vector
 #ifdef WITH_HDF5
-    #include "hdf5.h"
+#include "hdf5.h"
 #endif
 
 
@@ -50,9 +50,9 @@ using namespace kotekan;
 // Ensure HDF5 plugin path is available at runtime if we know a default.
 #if defined(WITH_HDF5) && defined(DEFAULT_HDF5_PLUGIN_PATH)
 static inline int ensure_hdf5_plugin() {
-    if(sizeof(DEFAULT_HDF5_PLUGIN_PATH) > 1) {
+    if (sizeof(DEFAULT_HDF5_PLUGIN_PATH) > 1) {
         herr_t err = H5PLprepend(DEFAULT_HDF5_PLUGIN_PATH);
-        if(err < 0)
+        if (err < 0)
             return -1;
     }
     return 0;
@@ -428,7 +428,7 @@ int main(int argc, char** argv) {
     std::signal(SIGTERM, signal_handler);
 
     // Set HDF5_PLUGIN_PATH if a default was detected at configure time.
-    if(ensure_hdf5_plugin()) {
+    if (ensure_hdf5_plugin()) {
         std::cerr << "ERROR: Could not set HDF5 plugin path." << std::endl;
         return FATAL_ERROR;
     }

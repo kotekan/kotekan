@@ -8,7 +8,8 @@ endif()
 
 target_compile_definitions(kotekan PRIVATE mssse3 __STDC_LIMIT_MACROS)
 
-# If HDF5 is enabled and we detected a plugin directory, pass it to the binary so it can set the path programatically at runtime.
+# If HDF5 is enabled and we detected a plugin directory, pass it to the binary so it can set the
+# path programatically at runtime.
 if(HDF5_FOUND
    AND HighFive_FOUND
    AND KOTEKAN_HDF5_PLUGIN_DIR)

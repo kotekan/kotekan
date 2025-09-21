@@ -277,7 +277,8 @@ else()
 endif()
 
 set(_ktk_flag_summary
-    "${_ktk_flag_openssl} ${_ktk_flag_blaze} ${_ktk_flag_hdf5_plugin} ${_ktk_flag_cl} ${_ktk_flag_prefix} ${_ktk_flag_cuda}")
+    "${_ktk_flag_openssl} ${_ktk_flag_blaze} ${_ktk_flag_hdf5_plugin} ${_ktk_flag_cl} ${_ktk_flag_prefix} ${_ktk_flag_cuda}"
+)
 kmsg_status("Flag Overrides: ${_ktk_flag_summary}")
 kmsg_status("Cache Hint: run 'cmake -U<VAR> .' or remove CMakeCache.txt to reset")
 
