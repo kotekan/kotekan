@@ -97,6 +97,9 @@ Common Paths and Overrides
   libraries.
 - ``BLAZE_PATH``: Provide a custom include path for Blaze headers.
 - ``CUDAToolkit_ROOT``: Override the search path for the CUDA toolkit when required.
+- ``HDF5_PLUGIN_DIR``: Set the first path to look for HDF5 plugins (libh5blosc.so, etc). If not set will
+  check the ``HDF5_PLUGIN_PATH`` environment variable, then the active python package, then other common
+  locations.
 
 
 Notes
