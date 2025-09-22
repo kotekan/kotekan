@@ -53,9 +53,9 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
                                           _num_elements / 2},
             std::array<std::string, 4>{"T", "F", "P", "D"}, *this),
     rfi_RFImask(_rfi_RFImask_name, "RFImask",
-                std::array<std::ptrdiff_t, 3>{_buffer_depth * div_noremainder(_num_times, 8 * 64),
-                                              _num_local_freq, 64},
-                std::array<std::string, 3>{"T8hi64", "F", "T8lo64"}, *this),
+                std::array<std::ptrdiff_t, 3>{_buffer_depth * div_noremainder(_num_times, 8 * 128),
+                                              _num_local_freq, 128},
+                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, *this),
     n2k_correlation([&]() {
         // aka "nt_outer" in n2k.hpp
         const int num_subintegrations =
@@ -104,7 +104,7 @@ int cudaCorrelator::wait_on_precondition() {
     DEBUG("Waiting for rfi_RFImask input ringbuffer data for frame {:d}...", gpu_frame_id);
     const int rfi_RFImask_errcode =
         rfi_RFImask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
-            const int rfi_needed_samples = div_noremainder(_samples_per_data_set, 8 * 64);
+            const int rfi_needed_samples = div_noremainder(_samples_per_data_set, 8 * 128);
             if (available_elements < rfi_needed_samples)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else

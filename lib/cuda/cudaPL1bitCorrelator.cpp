@@ -81,9 +81,9 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
                                                    div_noremainder(num_dishes, 8), 64 / 8},
                      std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, *this),
     rfi_RFImask(rfi_RFImask_name, "RFImask",
-                std::array<std::ptrdiff_t, 3>{buffer_depth * div_noremainder(num_times, 8 * 64),
-                                              num_frequencies, 64},
-                std::array<std::string, 3>{"T8hi64", "F", "T8lo64"}, *this),
+                std::array<std::ptrdiff_t, 3>{buffer_depth * div_noremainder(num_times, 8 * 128),
+                                              num_frequencies, 128},
+                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, *this),
     n2k_counts([&]() {
         // aka "nt_outer" in n2k.hpp
         const int num_subintegrations =
@@ -129,7 +129,8 @@ int cudaPL1bitCorrelator::wait_on_precondition() {
     const int rfi_RFImask_errcode =
         rfi_RFImask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
             // We measure the rfi mask in "coarse" time samples
-            const auto rfi_samples_per_data_set = div_noremainder(n2k_samples_per_data_set, 8 * 64);
+            const auto rfi_samples_per_data_set =
+                div_noremainder(n2k_samples_per_data_set, 8 * 128);
             if (available_elements < rfi_samples_per_data_set)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else

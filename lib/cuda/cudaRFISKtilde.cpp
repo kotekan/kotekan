@@ -116,9 +116,9 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
                 std::array<std::ptrdiff_t, 3>{buffer_depth * rfi_num_times, num_frequencies, 3},
                 std::array<std::string, 3>{"Trfi", "F", "SK"}, *this),
     rfi_RFImask(rfi_RFImask_name, "RFImask",
-                std::array<std::ptrdiff_t, 3>{div_noremainder(buffer_depth * num_times, 8 * 64),
-                                              num_frequencies, 64},
-                std::array<std::string, 3>{"T8hi64", "F", "T8lo64"}, *this),
+                std::array<std::ptrdiff_t, 3>{div_noremainder(buffer_depth * num_times, 8 * 128),
+                                              num_frequencies, 128},
+                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, *this),
     // Kernels
     skKernel(n2k::SkKernel::Params{
         config.get<double>(unique_name, "rfi_sk_rfimask_sigmas"),
@@ -167,7 +167,7 @@ int cudaRFISKtilde::wait_on_precondition() {
 
     DEBUG("Waiting for rfi_RFImask output ringbuffer space for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t rfi_RFImask_written =
-        div_noremainder(rfi_S012_read * rfi_downsampling_factor, 8 * 64);
+        div_noremainder(rfi_S012_read * rfi_downsampling_factor, 8 * 128);
     const int rfi_RFImask_errcode = rfi_RFImask.wait_for_writable(rfi_RFImask_written);
     if (rfi_RFImask_errcode < 0)
         return rfi_RFImask_errcode;
@@ -190,8 +190,8 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     // Correct RFImask metadata
     const std::shared_ptr<chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
     for (int freq = 0; freq < rfi_meta->nfreq; ++freq) {
-        rfi_meta->half_fpga_sample0[freq] = 64 * 8;
-        rfi_meta->time_downsampling_fpga[freq] = 64 * 8;
+        rfi_meta->half_fpga_sample0[freq] = 128 * 8;
+        rfi_meta->time_downsampling_fpga[freq] = 128 * 8;
     }
 
     rfi_SKtilde.set_to_poison(0xff);

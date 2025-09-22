@@ -133,19 +133,19 @@ correlate_pl_kernel_S16(int *counts, const ulong *pl_mask, const uint *rfimask, 
     const uint tout = blockIdx.z * blockDim.z + threadIdx.z;
     const uint f = blockIdx.y * blockDim.y + threadIdx.y;
     
-    constexpr uint rfimask_time_split = 512;
-    // The actual layout of rfimask is ((T*Nds)/512, F, 512/32).
+    constexpr uint rfimask_time_split = 1024;
+    // The actual layout of rfimask is ((T*Nds)/1024, F, 1024/32).
     // The kernel below does not know this and assumes (F, (T*Nds)/32).
     // The function `access_rfimask` corrects this.
     const auto access_rfimask = [=](const uint& lval) -> const uint& {
-        auto idx = &lval - rfimask;           // index
-        auto f = idx / rfimask_fstride;       // frequency
-        auto t32 = idx % rfimask_fstride;     // time / 32
-        auto t = t32 * 32;                    // time
-        auto t512hi = t / rfimask_time_split; // coarse time
-        auto t512lo = t % rfimask_time_split; // fine time
-        auto thi = t512hi;                    // first array index
-        auto tlo = t512lo / 32;               // third array index
+        auto idx = &lval - rfimask;            // index
+        auto f = idx / rfimask_fstride;        // frequency
+        auto t32 = idx % rfimask_fstride;      // time / 32
+        auto t = t32 * 32;                     // time
+        auto t1024hi = t / rfimask_time_split; // coarse time
+        auto t1024lo = t % rfimask_time_split; // fine time
+        auto thi = t1024hi;                    // first array index
+        auto tlo = t1024lo / 32;               // third array index
         auto idx2 = tlo + f * (rfimask_time_split / 32) + thi * (rfimask_time_split / 32) * F;
         return rfimask[idx2];
     };
@@ -214,19 +214,19 @@ correlate_pl_kernel_S128(int *counts, const ulong *pl_mask, const uint *rfimask,
     const uint f = blockIdx.y;
     const uint F = gridDim.y;
     
-    constexpr uint rfimask_time_split = 512;
-    // The actual layout of rfimask is ((T*Nds)/512, F, 512/32).
+    constexpr uint rfimask_time_split = 1024;
+    // The actual layout of rfimask is ((T*Nds)/1024, F, 1024/32).
     // The kernel below does not know this and assumes (F, (T*Nds)/32).
     // The function `access_rfimask` corrects this.
     const auto access_rfimask = [=](const uint& lval) -> const uint& {
-        auto idx = &lval - rfimask;           // index
-        auto f = idx / rfimask_fstride;       // frequency
-        auto t32 = idx % rfimask_fstride;     // time / 32
-        auto t = t32 * 32;                    // time
-        auto t512hi = t / rfimask_time_split; // coarse time
-        auto t512lo = t % rfimask_time_split; // fine time
-        auto thi = t512hi;                    // first array index
-        auto tlo = t512lo / 32;               // third array index
+        auto idx = &lval - rfimask;            // index
+        auto f = idx / rfimask_fstride;        // frequency
+        auto t32 = idx % rfimask_fstride;      // time / 32
+        auto t = t32 * 32;                     // time
+        auto t1024hi = t / rfimask_time_split; // coarse time
+        auto t1024lo = t % rfimask_time_split; // fine time
+        auto thi = t1024hi;                    // first array index
+        auto tlo = t1024lo / 32;               // third array index
         auto idx2 = tlo + f * (rfimask_time_split / 32) + thi * (rfimask_time_split / 32) * F;
         return rfimask[idx2];
     };

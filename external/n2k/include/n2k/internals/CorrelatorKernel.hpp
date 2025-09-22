@@ -526,20 +526,20 @@ struct CorrelatorKernel
     {
 	extern __shared__ int shmem[];
 
-        constexpr uint rfimask_time_split = 512;
+        constexpr uint rfimask_time_split = 1024;
         // The actual layout of out_rfimask is ((nt_outer*nt_inner)/128, NF, 128/32).
         // The kernel below does not know this and assumes (NF, (nt_outer*nt_inner)/32).
         // The function `ringbuffer_rfimask` corrects this.
         const uint rfimask_fstride = nt_outer * nt_inner / 32;
         const auto access_rfimask = [=](const uint& lval) -> const uint& {
-            auto idx = &lval - rfimask;           // index
-            auto f = idx / rfimask_fstride;       // frequency
-            auto t32 = idx % rfimask_fstride;     // time / 32
-            auto t = t32 * 32;                    // time
-            auto t512hi = t / rfimask_time_split; // coarse time
-            auto t512lo = t % rfimask_time_split; // fine time
-            auto thi = t512hi;                    // first array index
-            auto tlo = t512lo / 32;               // third array index
+            auto idx = &lval - rfimask;            // index
+            auto f = idx / rfimask_fstride;        // frequency
+            auto t32 = idx % rfimask_fstride;      // time / 32
+            auto t = t32 * 32;                     // time
+            auto t1024hi = t / rfimask_time_split; // coarse time
+            auto t1024lo = t % rfimask_time_split; // fine time
+            auto thi = t1024hi;                    // first array index
+            auto tlo = t1024lo / 32;               // third array index
             auto idx2 = tlo + f * (rfimask_time_split / 32) + thi * (rfimask_time_split / 32) * NF;
             return rfimask[idx2];
         };

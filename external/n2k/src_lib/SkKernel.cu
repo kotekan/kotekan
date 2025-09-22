@@ -97,8 +97,8 @@ __global__ void sk_kernel(
     int sk_feed_averaged_Tsize,          // Number of time samples in sk_feed_averaged array
     int sk_single_feed_Tmin,             // First time sample in sk_single_feed array
     int sk_single_feed_Tsize,            // Number of time samples in sk_single_feed array
-    int rfimask_T512min,                 // First (coarse) time sample in rfimask array
-    int rfimask_T512size)                // Number of (coarse) time samples in rfimask array
+    int rfimask_T1024min,                // First (coarse) time sample in rfimask array
+    int rfimask_T1024size)               // Number of (coarse) time samples in rfimask array
 {
     // TODO: Disentangle all the index optimizations below, then use `&` instead of `%` for the ring buffer access
 
@@ -124,21 +124,21 @@ __global__ void sk_kernel(
                        % out_sk_single_feed_size_in_elems);
     };
 
-    constexpr uint rfimask_time_split = 512;
-    // The actual layout of out_rfimask is ((T*Nds)/512, F, 512/32).
+    constexpr uint rfimask_time_split = 1024;
+    // The actual layout of out_rfimask is ((T*Nds)/1024, F, 1024/32).
     // The kernel below does not know this and assumes (F, (T*Nds)/32).
     // The function `ringbuffer_rfimask` corrects this.
     const uint rfimask_fstride = T * Nds / 32;
     const auto ringbuffer_rfimask = [=](uint& lval) -> uint& {
-        auto idx = &lval - out_rfimask;       // index
-        auto f = idx / rfimask_fstride;       // frequency
-        auto t32 = idx % rfimask_fstride;     // time / 32
-        auto t = t32 * 32;                    // time
-        auto t512hi = t / rfimask_time_split; // coarse time
-        auto t512lo = t % rfimask_time_split; // fine time
-        auto thi = t512hi;                    // first array index
-        auto tlo = t512lo / 32;               // third array index
-        auto thi_rb = (thi + rfimask_T512min) & (rfimask_T512size - 1);
+        auto idx = &lval - out_rfimask;        // index
+        auto f = idx / rfimask_fstride;        // frequency
+        auto t32 = idx % rfimask_fstride;      // time / 32
+        auto t = t32 * 32;                     // time
+        auto t1024hi = t / rfimask_time_split; // coarse time
+        auto t1024lo = t % rfimask_time_split; // fine time
+        auto thi = t1024hi;                    // first array index
+        auto tlo = t1024lo / 32;               // third array index
+        auto thi_rb = (thi + rfimask_T1024min) & (rfimask_T1024size - 1);
         auto idx2 = tlo + f * (rfimask_time_split / 32) + thi_rb * (rfimask_time_split / 32) * F;
         return out_rfimask[idx2];
     };
@@ -534,8 +534,8 @@ void SkKernel::launch(
     long sk_feed_averaged_Tsize,          // Number of time samples in sk_feed_averaged array
     long sk_single_feed_Tmin,             // First time sample in sk_single_feed array
     long sk_single_feed_Tsize,            // Number of time samples in sk_single_feed array
-    long rfimask_T512min,                 // First (coarse) time sample in rfimask array
-    long rfimask_T512size,                // Number of (coarse) time samples in rfimask array
+    long rfimask_T1024min,                // First (coarse) time sample in rfimask array
+    long rfimask_T1024size,               // Number of (coarse) time samples in rfimask array
     cudaStream_t stream,
     bool check_params) const
 {
@@ -603,19 +603,19 @@ void SkKernel::launch(
 	 out_sk_single_feed,
 	 out_rfimask,
 	 in_S012,
-	 (const uint *) in_bf_mask,    // (const uint8_t *) -> (const uint *)
+	 (const uint *) in_bf_mask, // (const uint8_t *) -> (const uint *)
 	 this->bsigma_coeffs.data,
-	 params.sk_rfimask_sigmas,            // double -> float
-	 params.single_feed_min_good_frac,    // double -> float
-	 params.feed_averaged_min_good_frac,  // double -> float
-	 params.mu_min,                       // double -> float
-	 params.mu_max,                       // double -> float
-	 params.Nds,                          // long -> int
-	 T, F, S,                             // long -> int
-	 S012_Tmin, S012_Tsize,               // long -> int
-         sk_feed_averaged_Tmin, sk_feed_averaged_Tsize,  // long -> int
-         sk_single_feed_Tmin, sk_single_feed_Tsize,  // long -> int
-         rfimask_T512min, rfimask_T512size);  // long -> int
+	 params.sk_rfimask_sigmas,           // double -> float
+	 params.single_feed_min_good_frac,   // double -> float
+	 params.feed_averaged_min_good_frac, // double -> float
+	 params.mu_min,                      // double -> float
+	 params.mu_max,                      // double -> float
+	 params.Nds,                         // long -> int
+	 T, F, S,                            // long -> int
+	 S012_Tmin, S012_Tsize,              // long -> int
+         sk_feed_averaged_Tmin, sk_feed_averaged_Tsize, // long -> int
+         sk_single_feed_Tmin, sk_single_feed_Tsize,     // long -> int
+         rfimask_T1024min, rfimask_T1024size);          // long -> int
 
     CUDA_PEEK("sk_kernel");
 }
