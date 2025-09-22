@@ -27,9 +27,16 @@ def in_container() -> bool:
     except OSError:
         return False
 
+def is_podman():
+    try:
+        return os.environ["container"] == "podman"
+    except KeyError:
+        return False
 
 if in_container():
     pytest.skip("Does not work in Github Actions docker run.", allow_module_level=True)
+elif is_podman():
+    pytest.skip("Does not work in podman run.", allow_module_level=True)
 
 default_params = {
     "telescope": "ICETelescope",
