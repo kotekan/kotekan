@@ -69,11 +69,11 @@ if(OPENCL_FOUND
     target_link_libraries(kotekan_libs INTERFACE kotekan_gpu)
 endif()
 
-# DPDK selection is handled in FeatureDPDK.cmake. Only include/link when
-# DPDK was found and the toggle is AUTO or ON.
+# DPDK selection is handled in FeatureDPDK.cmake. Only include/link when DPDK was found and the
+# toggle is AUTO or ON.
 if(DPDK_FOUND AND ("${USE_DPDK}" STREQUAL "AUTO" OR "${USE_DPDK}" STREQUAL "ON"))
     add_subdirectory(dpdk)
-    target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_STATIC_LDFLAGS})
+    target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk)
 endif()
 
 # HDF5 stuff
