@@ -60,7 +60,7 @@ endif()
 
 
 # HDF5 + HighFive + HDF5Plugin
-if(${USE_HDF5} STREQUAL "AUTO" OR "${USE_GDAL}" STREQUAL "ON")
+if(${USE_HDF5} STREQUAL "AUTO" OR "${USE_HDF5}" STREQUAL "ON")
     find_package(HDF5)
     find_package(HighFive)
     # Try to locate the runtime HDF5 plugin directory (e.g., libh5blosc)
@@ -81,7 +81,6 @@ if(${USE_HDF5} STREQUAL "AUTO" OR "${USE_GDAL}" STREQUAL "ON")
             CACHE INTERNAL "Detected HDF5 plugin directory for runtime use")
         kmsg_status("HDF5 plugin dir detected: ${KOTEKAN_HDF5_PLUGIN_DIR} (will set at runtime)")
     else()
-        set(USE_HDF5 OFF)
         set(_missing_hdf5 "")
         if(NOT HDF5_FOUND)
             list(APPEND _missing_hdf5 "HDF5")
@@ -95,7 +94,6 @@ if(${USE_HDF5} STREQUAL "AUTO" OR "${USE_GDAL}" STREQUAL "ON")
             kmsg_warn("HDF5 plugins not found (libh5blosc, etc.). Set HDF5_PLUGIN_PATH if needed.")
         endif()
         
-        set(USE_HDF5 "OFF")
         if(${USE_HDF5} STREQUAL "AUTO")
             set(HDF5_REASON "auto-detected")
             kmsg_warn("HDF5 not fully found (missing: ${_missing_hdf5}); HDF5 stages disabled.")
@@ -103,6 +101,9 @@ if(${USE_HDF5} STREQUAL "AUTO" OR "${USE_GDAL}" STREQUAL "ON")
             set(HDF5_REASON "enabled, not found")
             kmsg_error("HDF5 not fully found (missing: ${_missing_hdf5}) when requested! HDF5 stages disabled.")
         endif()
+        
+        # Set this at the end so the informative "AUTO" message can be sent.
+        set(USE_HDF5 "OFF")
         
     endif()
 else()
