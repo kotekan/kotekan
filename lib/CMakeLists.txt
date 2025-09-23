@@ -73,7 +73,7 @@ endif()
 # toggle is AUTO or ON.
 if(DPDK_FOUND AND ("${USE_DPDK}" STREQUAL "AUTO" OR "${USE_DPDK}" STREQUAL "ON"))
     add_subdirectory(dpdk)
-    target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk)
+    target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
 endif()
 
 # HDF5 stuff
