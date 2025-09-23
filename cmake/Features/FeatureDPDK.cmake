@@ -6,8 +6,8 @@
 #  - WITH_BOOST_TESTS: if ON, force DPDK OFF to avoid linker issues
 
 # Outputs (for summary/consumers):
-#  - USE_DPDK    : normalized to ON or OFF after detection
 #  - DPDK_REASON : short human explanation for the status
+#  - DPDK_FOUND : Whether DPDK was found (by find_package)
 
 include_guard(GLOBAL)
 include(${CMAKE_CURRENT_LIST_DIR}/../Color.cmake)
