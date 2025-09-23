@@ -15,6 +15,5 @@ target_include_directories(kotekan_dpdk SYSTEM PRIVATE ${DPDK_INCLUDE_DIRS})
 # Expose DPDK and NUMA to dependents to avoid duplicate link flag injection.
 target_link_libraries(
     kotekan_dpdk
-    PUBLIC ${DPDK_LIBRARIES} ${NUMA_LIBRARY}
-    PRIVATE libexternal kotekan_libs)
+    PRIVATE ${DPDK_LIBRARIES} ${NUMA_LIBRARY} libexternal kotekan_libs)
 target_include_directories(kotekan_dpdk PUBLIC .)
