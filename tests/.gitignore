@@ -2,3 +2,11 @@
 .pytest_cache/
 __pycache__/
 
+era.out
+frame_meta.out
+frame_seq.out
+py_out.txt
+raw_test_frame_seq.out
+t_search.out
+test_contents.out
+
