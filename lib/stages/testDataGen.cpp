@@ -47,11 +47,11 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     buf->register_producer(unique_name);
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "const_offset" || type == "const8" || type == "const1x8" || type == "const16"
-           || type == "const32" || type == "constf16" || type == "random" || type == "random_signed"
-           || type == "random_signed_offset" || type == "ramp" || type == "tpluse"
-           || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square"
-           || type == "onehot");
+    assert(type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
+           || type == "const16" || type == "const32" || type == "constf16" || type == "random"
+           || type == "random_signed" || type == "random_signed_offset" || type == "ramp"
+           || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
+           || type == "square" || type == "onehot");
     assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
     int type_size = 1; // default
     if (type == "const")
@@ -66,8 +66,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         type_size = 4;
     if (type == "constf16")
         type_size = 2;
-    if (type == "const" || type == "const_offset" || type == "const8" || type == "const1x8" || type == "const16"
-        || type == "const32" || type == "random" || type == "random_signed"
+    if (type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
+        || type == "const16" || type == "const32" || type == "random" || type == "random_signed"
         || type == "random_signed_offset" || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
         _value_array =
@@ -350,8 +350,8 @@ void testDataGen::main_thread() {
         }
 
         if (_value_array.size()
-            && ((type == "const") || (type == "const_offset") || (type == "const8") || (type == "const1x8")
-                || (type == "const16") || (type == "const32")))
+            && ((type == "const") || (type == "const_offset") || (type == "const8")
+                || (type == "const1x8") || (type == "const16") || (type == "const32")))
             // Cycle through "values" array, if given
             value = _value_array[frame_id_abs % _value_array.size()];
         for (uint j = 0; j < n_to_set; ++j) {
