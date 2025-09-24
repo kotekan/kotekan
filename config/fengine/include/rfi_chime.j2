@@ -95,16 +95,16 @@ host_rfi_RFImask_buffer:
     num_frames: buffer_depth
     frame_size: num_frequencies * num_times / 8
     type: uint1x8
-    dimnames: ["T16hi8", "F", "T16lo8"]
-    shape: [num_times / 128, num_frequencies, 8]
+    dimnames: ["T8hi128", "F", "T8lo128"]
+    shape: [num_times / 8 / 128, num_frequencies, 128]
     metadata_pool: main_pool
 host_rfi_RFImask_ringbuffer:
     kotekan_buffer: ring
     num_frames: buffer_depth
     ring_buffer_size: buffer_depth * num_frequencies * num_times / 8
     type: uint1x8
-    dimnames: ["T16hi8", "F", "T16lo8"]
-    shape: [buffer_depth * num_times / 128, num_frequencies, 8]
+    dimnames: ["T8hi128", "F", "T8lo128"]
+    shape: [buffer_depth * num_times / 8 / 128, num_frequencies, 128]
     metadata_pool: main_pool
 
 host_rfi_SKbar_buffer:

@@ -178,8 +178,8 @@ public:
     // Initialized by constructor.
     const CorrelatorParams params;
 
-    // Kernel args are (dst, src, rfimask, ptable, nt_inner).
-    using kernel_t = void (*)(int *, const int8_t *, const uint *, const int *, int);
+    // Kernel args are (dst, src, rfimask, ptable, nt_inner, nt_outer).
+    using kernel_t = void (*)(int *, const int8_t *, const uint *, const int *, int, int);
 
 protected:
     // This small (currently 27 KB) array will persist in GPU memory for the lifetime of the Correlator object.

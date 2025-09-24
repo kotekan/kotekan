@@ -48,6 +48,12 @@ host_voltage_buffer:
     frame_size: samples_per_data_set * num_elements * num_local_freq
     metadata_pool: main_pool
 
+host_rfi_RFImask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_local_freq * samples_per_data_set / 8
+    metadata_pool: main_pool
+
 host_correlation_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -66,16 +72,33 @@ host_voltage_ringbuffer:
     ring_buffer_size: buffer_depth * samples_per_data_set * num_elements * num_local_freq
     metadata_pool: main_pool
 
-gen_data:
+host_rfi_RFImask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_local_freq * samples_per_data_set / 8
+    metadata_pool: main_pool
+
+gen_data_voltage:
     # type: const
     # value: 34 # 1i # 34 # = 2 + 2i
     type: random_signed_offset  # const_offset
     value: 120
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
+    name: "E"
     array_shape: [ 2048, 16, 2, 64 ]
     dim_name: ["T", "F", "P", "D" ]
     num_frames: buffer_depth  # Must be at least what check_data expects
+
+gen_data_rfi_RFImask:
+    type: const1x8
+    value: 255
+    kotekan_stage: testDataGen
+    out_buf: host_rfi_RFImask_buffer
+    samples_per_data_set: 2 # "coarse time" samples
+    name: "RFImask"
+    array_shape: [ 2, 16, 128 ]
+    dim_name: ["T8hi128", "F", "T8lo128"]
+    num_frames: buffer_depth
 
 run_send_voltage:
     gpu_0:
@@ -93,12 +116,29 @@ run_send_voltage:
           signal_buf: host_voltage_ringbuffer_out
           gpu_mem_output: voltage_buffer
 
+run_send_rfi_RFImask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_RFImask_buffer_in: host_rfi_RFImask_buffer
+        out_buffers:
+            host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_local_freq * samples_per_data_set / 8
+          ring_buffer_size: buffer_depth * num_local_freq * samples_per_data_set / 8
+          in_buf: host_rfi_RFImask_buffer_in
+          signal_buf: host_rfi_RFImask_ringbuffer_out
+          gpu_mem_output: rfi_RFImask_buffer
+
 run_n2k:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         out_buffers:
             host_correlation: host_correlation_buffer
         commands:
@@ -108,6 +148,7 @@ run_n2k:
           # gpu_mem_correlation_triangle: correlation_matrix
           n2k_correlation_name: correlation
           voltage_name: voltage
+          rfi_RFImask_name: rfi_RFImask
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: correlation_buffer

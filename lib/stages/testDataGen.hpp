@@ -87,6 +87,7 @@ private:
     uint32_t _first_frame_index;
     uint32_t num_links;
     int _seed;
+    std::string _name;
     std::vector<int> _array_shape;
     std::vector<std::string> _dim_name;
 

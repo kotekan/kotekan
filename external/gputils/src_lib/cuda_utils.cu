@@ -166,9 +166,9 @@ double get_sm_cycles_per_second(int device)
 
 #if defined(__CUDACC_VER_MAJOR__) && (__CUDACC_VER_MAJOR__ >= 13)
     // CUDA 13.0 - clockRate was removed, use cudaDeviceGetAttribute
-    int clockRateKHz;
-    CUDA_CALL(cudaDeviceGetAttribute(&clockRateKHz, cudaDevAttrClockRate, device));
-    return 1.0e3 * double(prop.multiProcessorCount) * double(clockRateKHz);
+    int clockRatekHz;
+    CUDA_CALL(cudaDeviceGetAttribute(&clockRatekHz, cudaDevAttrClockRate, device));
+    return 1.0e3 * double(prop.multiProcessorCount) * double(clockRatekHz);
 #else
     // CUDA 12.x - use the old clockRate field
     // prop.clockRate is in kHz

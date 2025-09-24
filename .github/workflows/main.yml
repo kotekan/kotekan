@@ -22,7 +22,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMG_IWYU: "ghcr.io/kotekan/kotekan/kotekan-iwyu"
   IMG_2404: "ghcr.io/${{ github.repository }}/kotekan-2404"
   PYTEST_TIMEOUT: 120
 
@@ -41,7 +40,7 @@ jobs:
       id: changed-files
 
     - name: Login to GitHub Container Registry
-      if: ${{ !env.ACT }}
+      if: ${{ !env.ACT }} # Don't log in if running locally
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
@@ -51,7 +50,6 @@ jobs:
     # Rebuild (or build) for a push/pr from a local branch (separate workflow for PR merges)
     - name: Check to see if a docker rebuild is needed
       id: docker_img
-      if: ${{ !env.ACT }}
       run: |
         echo "docker_build=" >> $GITHUB_OUTPUT; # Default to no rebuild
 
@@ -98,17 +96,22 @@ jobs:
         echo "GitHub Base Ref: $GITHUB_BASE_REF"
         echo "GitHub Ref Name: $GITHUB_REF_NAME"
         echo "Docker 2404 image: $IMG_2404"
-        echo "Docker IWYU image: $IMG_IWYU"
         echo "Used docker image name: ${{ steps.docker_img.outputs.img_name }}"
         echo "docker_build: ${{ steps.docker_img.outputs.docker_build }}"
         echo "img_name: ${{ steps.docker_img.outputs.img_name }}"
 
-    - name: Build and Push Docker Image
-      if: steps.docker_img.outputs.docker_build
+    - name: Build and Push Docker Image (outside of act)
+      if: ${{ steps.docker_img.outputs.docker_build && !env.ACT }} # Push if not running locally
       run: |
         echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
         docker build --cache-from=${IMG_2404} -t "${{ steps.docker_img.outputs.img_name }}" - < tools/docker/24.04/Dockerfile
         docker push "${{ steps.docker_img.outputs.img_name }}"
+
+    - name: Build Docker Image (locally, in act)
+      if: ${{ steps.docker_img.outputs.docker_build && env.ACT }} # Don't push if running locally
+      run: |
+        echo "Building ${{ steps.docker_img.outputs.img_name }} (local only, no push)"
+        docker build --cache-from=${IMG_2404} -t "${{ steps.docker_img.outputs.img_name }}" - < tools/docker/24.04/Dockerfile
 
     outputs:
       docker_img_name: "${{ steps.docker_img.outputs.img_name }}"
@@ -122,7 +125,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
-      if: ${{ !env.ACT }}
+      if: ${{ !env.ACT }} # Don't log in if running locally
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
@@ -165,6 +168,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
+      if: ${{ !env.ACT }} # Don't log in if running locally
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
@@ -195,7 +199,7 @@ jobs:
             -DUSE_DPDK=OFF \
             -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
             ..
-        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" make -j $(nproc)
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
         df -h
@@ -227,6 +231,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
+      if: ${{ !env.ACT }} # Don't log in if running locally
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
@@ -352,6 +357,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
+      if: ${{ !env.ACT }} # Don't log in if running locally
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
@@ -436,6 +442,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
+      if: ${{ !env.ACT }} # Don't log in if running locally
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
@@ -466,6 +473,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
+      if: ${{ !env.ACT }} # Don't log in if running locally
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}

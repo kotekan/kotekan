@@ -5,7 +5,7 @@ project(kotekan_libs)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake ${KOTEKAN_SOURCE_DIR}/cmake/Modules)
 
 # Julia is a convenient language to implement stages for testing and development
-if(${USE_JULIA})
+if("${USE_JULIA}" STREQUAL "AUTO" OR "${USE_JULIA}" STREQUAL "ON")
     find_package(Julia QUIET)
     if(Julia_FOUND)
         message(STATUS "Julia support enabled")
@@ -42,41 +42,43 @@ endif()
 add_subdirectory(metadata)
 target_link_libraries(kotekan_libs INTERFACE kotekan_metadata)
 
-if(${USE_OPENCL}
-   OR ${USE_CUDA}
-   OR ${USE_HIP})
+if(OPENCL_FOUND
+   OR CUDAToolkit_FOUND
+   OR HIP_FOUND)
     add_subdirectory(gpu)
 endif()
 
-if(${USE_OPENCL})
+if(OPENCL_FOUND)
     add_subdirectory(opencl)
     target_link_libraries(kotekan_libs INTERFACE kotekan_opencl)
 endif()
 
-if(${USE_CUDA})
+if(CUDAToolkit_FOUND)
     add_subdirectory(cuda)
     target_link_libraries(kotekan_libs INTERFACE kotekan_cuda)
 endif()
 
-if(${USE_HIP})
+if(HIP_FOUND)
     add_subdirectory(hip)
     target_link_libraries(kotekan_libs INTERFACE kotekan_hip)
 endif()
 
-if(${USE_OPENCL}
-   OR ${USE_CUDA}
-   OR ${USE_HIP})
+if(OPENCL_FOUND
+   OR CUDAToolkit_FOUND
+   OR HIP_FOUND)
     target_link_libraries(kotekan_libs INTERFACE kotekan_gpu)
 endif()
 
-# DPDK selection and summary handled in FeatureDPDK.cmake. Here we honor the effective decision and
-# wire targets accordingly.
-if(DEFINED DPDK_ENABLED AND DPDK_ENABLED)
+# DPDK selection is handled in FeatureDPDK.cmake. Only include/link when DPDK was found and the
+# toggle is AUTO or ON.
+if(DPDK_FOUND AND ("${USE_DPDK}" STREQUAL "AUTO" OR "${USE_DPDK}" STREQUAL "ON"))
     add_subdirectory(dpdk)
     target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
 endif()
 
 # HDF5 stuff
-if(${USE_HDF5})
+if(HDF5_FOUND
+   AND HighFive_FOUND
+   AND HDF5Plugin_PLUGIN_DIR)
     target_link_libraries(kotekan_libs INTERFACE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
 endif()
