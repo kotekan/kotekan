@@ -85,10 +85,7 @@ void BeamExtract::main_thread() {
 
         out_metadata->ctime = in_metadata->get_gps_time();
         out_metadata->fpga_seq_start = in_metadata->get_fpga_seq_num();
-        out_metadata->nfreq = in_metadata->get_nfreq();
-        for (int i = 0 ; i < out_metadata->nfreq ; i++) {
-            out_metadata->coarse_freq[i] = in_metadata->get_coarse_freq()[i];
-        }
+        out_metadata->coarse_freq = in_metadata->get_coarse_freq();
         // Copy the base dataset ID from the GPU data.
         // @TODO we will likely want to add a unique dataset ID state
         // for each beam for systems that like to track things with the dataset ID
