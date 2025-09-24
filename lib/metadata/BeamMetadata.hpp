@@ -9,6 +9,7 @@
 
 #include <stdint.h> // for uint32_t, int64_t
 #include <time.h>   // for size_t, timespec
+#include <vector>   // for vector
 
 class BeamMetadata : public metadataObject {
 public:
@@ -29,10 +30,8 @@ public:
     int64_t fpga_seq_start;
     /// The GPS time of @c fpga_seq_start.
     timespec ctime;
-    /// Number of frequency indices in frame
-    int nfreq;
     /// Frequency indices in frame
-    int coarse_freq[CHORD_META_MAX_FREQ];
+    std::vector<int> coarse_freq;
     /// ID of the dataset
     dset_id_t dataset_id;
     /// Beam number (e.g. which of the tracking beams is in this stream)
