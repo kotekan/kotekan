@@ -359,22 +359,31 @@ jobs:
     # Initialize and test Julia
     - name: Initialize and test Julia
       run: |
-        # 
+        echo AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
         docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
             env PYTHON= julia --project=@. --eval 'using Pkg; Pkg.update()'
+        echo BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+        docker run --rm --privileged \
+            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
+            -w /code/kotekan/julia \
+            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
+            env PYTHON= julia --project=@. --eval 'using Pkg; Pkg.update()'
+        echo CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
         docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
             julia --project=@. --eval 'using Kotekan'
+        echo DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
         docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
             julia --project=@. --eval 'include("src/FEngine.jl")'
+        echo EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
 
     # Run pipeline tests with timeout
     - name: Run pipeline Kotekan tests
