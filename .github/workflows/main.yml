@@ -298,15 +298,15 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Cache ccache files
-      uses: actions/cache@v4
-      with:
-        path: .ccache
-        key: ccache-direct-2404-${{ github.sha }}
-        restore-keys: |
-          ccache-direct-2404
-          ccache-base-build-2404
-
+#TODO     - name: Cache ccache files
+#TODO       uses: actions/cache@v4
+#TODO       with:
+#TODO         path: .ccache
+#TODO         key: ccache-direct-2404-${{ github.sha }}
+#TODO         restore-keys: |
+#TODO           ccache-direct-2404
+#TODO           ccache-base-build-2404
+#TODO 
 #TODO     - name: Build kotekan
 #TODO       shell: bash
 #TODO       run: |
@@ -356,20 +356,15 @@ jobs:
 #TODO           fi
 #TODO         done
 
-    # Run pipeline tests with timeout
-    - name: Run pipeline Kotekan tests
+    # Initialize and test Julia
+    - name: Initialize and test Julia
       run: |
-        # Initialize and test Julia
+        # 
         docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            julia </dev/null
-        docker run --rm --privileged \
-            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
-            -w /code/kotekan/julia \
-            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            julia --project=@. --eval 'using Pkg; Pkg.update()'
+            export PYTHON= julia --project=@. --eval 'using Pkg; Pkg.update()'
         docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
@@ -380,6 +375,10 @@ jobs:
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
             julia --project=@. --eval 'include("src/FEngine.jl")'
+
+    # Run pipeline tests with timeout
+    - name: Run pipeline Kotekan tests
+      run: |
         TIMEOUT_DURATION="20m"  # Timeout duration per test
         for config_file in config/fengine/init_pathfinder.j2 config/fengine/test_pathfinder.j2; do
           echo "Running test with config: $config_file"
