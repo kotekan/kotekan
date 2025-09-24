@@ -61,9 +61,7 @@ void accumulate::main_thread() {
             uint64_t fpga_seq = get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num();
             get_chord_metadata(out_buf, out_frame_id)->set_fpga_seq_num(fpga_seq);
 
-            const int nfreq = get_chord_metadata(in_buf, in_frame_id)->get_nfreq();
-            const int* coarse_freq = get_chord_metadata(in_buf, in_frame_id)->get_coarse_freq();
-            get_chord_metadata(out_buf, out_frame_id)->set_coarse_freq(nfreq, coarse_freq);
+            get_chord_metadata(out_buf, out_frame_id)->set_coarse_freq(get_chord_metadata(in_buf, in_frame_id)->get_coarse_freq());
 
             // TODO: this is not copying all available metadata
             // TODO: there's a metadata copy() member, or so, use that one.
