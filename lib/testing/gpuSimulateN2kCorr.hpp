@@ -1,5 +1,5 @@
-#ifndef GPU_SIMULATE_N2K_HPP
-#define GPU_SIMULATE_N2K_HPP
+#ifndef GPU_SIMULATE_N2K_CORR_HPP
+#define GPU_SIMULATE_N2K_CORR_HPP
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
@@ -33,11 +33,11 @@
  * The output matrix's upper triangle is filled (the lower triangle is
  * zeroed out).
  */
-class gpuSimulateN2k : public kotekan::Stage {
+class gpuSimulateN2kCorr : public kotekan::Stage {
 public:
-    gpuSimulateN2k(kotekan::Config& config, const std::string& unique_name,
+    gpuSimulateN2kCorr(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
-    ~gpuSimulateN2k();
+    ~gpuSimulateN2kCorr();
     void main_thread() override;
 
 private:

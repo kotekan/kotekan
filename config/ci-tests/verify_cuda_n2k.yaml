@@ -155,7 +155,7 @@ run_n2k:
           out_buf: host_correlation
 
 cpu:
-    kotekan_stage: gpuSimulateN2k
+    kotekan_stage: gpuSimulateN2kCorr
     log_level: debug
     network_in_buf: host_voltage_buffer
     rfimask_in_buf: host_rfi_RFImask_buffer

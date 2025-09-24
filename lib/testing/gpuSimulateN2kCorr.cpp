@@ -1,4 +1,4 @@
-#include "gpuSimulateN2k.hpp"
+#include "gpuSimulateN2kCorr.hpp"
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
@@ -18,11 +18,11 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_STAGE(gpuSimulateN2k);
+REGISTER_KOTEKAN_STAGE(gpuSimulateN2kCorr);
 
-gpuSimulateN2k::gpuSimulateN2k(Config& config, const std::string& unique_name,
+gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&gpuSimulateN2k::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&gpuSimulateN2kCorr::main_thread, this)) {
 
     // Apply config.
     _num_elements = config.get<int32_t>(unique_name, "num_elements"); // = "2*D"
@@ -38,9 +38,9 @@ gpuSimulateN2k::gpuSimulateN2k(Config& config, const std::string& unique_name,
     output_buf->register_producer(unique_name);
 }
 
-gpuSimulateN2k::~gpuSimulateN2k() {}
+gpuSimulateN2kCorr::~gpuSimulateN2kCorr() {}
 
-void gpuSimulateN2k::main_thread() {
+void gpuSimulateN2kCorr::main_thread() {
 
     int input_frame_id = 0;
     int rfimask_frame_id = 0;
