@@ -16,9 +16,11 @@
  * `config/tests/verify_cuda_n2k.yaml`.
  *
  * @par Buffers
- * @buffer network_in_buf The input voltages.  Size per frame: samples_per_data_set * num_element *
+ * @buffer voltage_in_buf The input voltages.  Size per frame: samples_per_data_set * num_element *
  * num_local_freq
- * @buffer_format 4+4-bit complex
+ * @buffer_format 4+4-bit complex offset encoded (Im lo, Re hi)
+ * @buffer rfimask_in_buf The input RFI mask.  Size per frame: num_local_freq * samples_per_data_set / 8
+ * @buffer_format bitmask in uint8_t. Shape is [samples_per_data_set / 1024, num_local_freq, 128]
  * @buffer corr_out_buf  The output correlation matrix.  Size per frame: num_local_freq *
  * (samples_per_data_set / sub_integration_ntime) * num_elements^2 * 2 * sizeof_int32
  * @buffer_format int32 complex
@@ -40,6 +42,7 @@ public:
 
 private:
     Buffer* input_buf;
+    Buffer* rfimask_buf;
     Buffer* output_buf;
 
     // Config options

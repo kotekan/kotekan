@@ -32,6 +32,8 @@ gpuSimulateN2k::gpuSimulateN2k(Config& config, const std::string& unique_name,
 
     input_buf = get_buffer("network_in_buf");
     input_buf->register_consumer(unique_name);
+    rfimask_buf = get_buffer("rfimask_in_buf");
+    rfimask_buf->register_consumer(unique_name);
     output_buf = get_buffer("corr_out_buf");
     output_buf->register_producer(unique_name);
 }
@@ -41,18 +43,22 @@ gpuSimulateN2k::~gpuSimulateN2k() {}
 void gpuSimulateN2k::main_thread() {
 
     int input_frame_id = 0;
+    int rfimask_frame_id = 0;
     int output_frame_id = 0;
 
     while (!stop_thread) {
         char* input = (char*)input_buf->wait_for_full_frame(unique_name, input_frame_id);
         if (input == nullptr)
             break;
+        uint8_t* rfimask = (uint8_t*)rfimask_buf->wait_for_full_frame(unique_name, rfimask_frame_id);
+        if (rfimask == nullptr)
+            break;
         int* output = (int*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
         if (output == nullptr)
             break;
 
-        INFO("Simulating GPU processing for {:s}[{:d}] putting result in {:s}[{:d}]",
-             input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
+        INFO("Simulating GPU processing for {:s}[{:d}] and {:s}[{:d}] putting result in {:s}[{:d}]",
+             input_buf->buffer_name, input_frame_id, rfimask_buf->buffer_name, rfimask_frame_id, output_buf->buffer_name, output_frame_id);
 
         // number of elements = number of dishes * polarizations
         int nt_inner = _sub_integration_ntime;
@@ -82,6 +88,12 @@ void gpuSimulateN2k::main_thread() {
                                     int iy = (t * _num_local_freq + f) * _num_elements
                                              + (16 * jhi + jlo);
 
+                                    int t_rfi_in = t & 0x3FF;
+                                    int t_rfi_out = t >> 10;
+                                    int t_rfi_in_bit = t_rfi_in & 7;
+                                    int t_rfi_in_byte = t_rfi_in >> 3;
+                                    int rfi_idx = t_rfi_in_byte + 128 * (f + _num_local_freq * t_rfi_out);
+
                                     // Decode input with the CHIME convention:
                                     // offset encoded by 8, imaginary part in
                                     // lo 4 bits, real part in high 4 bits.
@@ -89,8 +101,11 @@ void gpuSimulateN2k::main_thread() {
                                     int xr = ((input[ix] & 0xf0) >> 4) - 8;
                                     int yi = (input[iy] & 0x0f) - 8;
                                     int yr = ((input[iy] & 0xf0) >> 4) - 8;
-                                    real += xr * yr + xi * yi;
-                                    imag += xi * yr - yi * xr;
+
+                                    int rfi = (rfimask[rfi_idx] >> t_rfi_in_bit) & 1;
+
+                                    real += rfi * (xr * yr + xi * yi);
+                                    imag += rfi * (xi * yr - yi * xr);
                                 }
 
                                 // clang-format off
@@ -162,6 +177,7 @@ void gpuSimulateN2k::main_thread() {
         }
 
         input_buf->mark_frame_empty(unique_name, input_frame_id);
+        rfimask_buf->mark_frame_empty(unique_name, rfimask_frame_id);
 
         // Pretend some samples were lost
         // chordMetadata* chord_metadata = (chordMetadata*)
@@ -169,10 +185,11 @@ void gpuSimulateN2k::main_thread() {
 
         output_buf->mark_frame_full(unique_name, output_frame_id);
 
-        INFO("Simulating GPU processing done for {:s}[{:d}] result is in {:s}[{:d}]",
-             input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
+        INFO("Simulating GPU processing done for {:s}[{:d}] and {:s}[{:d}] result is in {:s}[{:d}]",
+             input_buf->buffer_name, input_frame_id, rfimask_buf->buffer_name, rfimask_frame_id, output_buf->buffer_name, output_frame_id);
 
         input_frame_id = (input_frame_id + 1) % input_buf->num_frames;
+        rfimask_frame_id = (rfimask_frame_id + 1) % rfimask_buf->num_frames;
         output_frame_id = (output_frame_id + 1) % output_buf->num_frames;
     }
 }

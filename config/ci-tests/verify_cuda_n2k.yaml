@@ -25,9 +25,9 @@ frame_arrival_period: 0.00000256 * samples_per_data_set
 sizeof_int: 4
 
 # For faster CHORD testing, we're using...
-sub_integration_ntime: 1024
-samples_per_data_set: 2048
-num_times: 2048  # New N2K needs this. TODO: document.
+sub_integration_ntime: 2048
+samples_per_data_set: 4096
+num_times: samples_per_data_set
 #sub_integration_ntime: 16384
 #samples_per_data_set: 32768
 num_elements: 128
@@ -85,18 +85,18 @@ gen_data_voltage:
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
     name: "E"
-    array_shape: [ 2048, 16, 2, 64 ]
+    array_shape: [ 4096, 16, 2, 64 ]
     dim_name: ["T", "F", "P", "D" ]
     num_frames: buffer_depth  # Must be at least what check_data expects
 
 gen_data_rfi_RFImask:
-    type: const1x8
+    type: random1x8
     value: 255
     kotekan_stage: testDataGen
     out_buf: host_rfi_RFImask_buffer
-    samples_per_data_set: 2 # "coarse time" samples
+    samples_per_data_set: 4 # "coarse time" samples = samples_per_data_set / 1024
     name: "RFImask"
-    array_shape: [ 2, 16, 128 ]
+    array_shape: [ 4, 16, 128 ]
     dim_name: ["T8hi128", "F", "T8lo128"]
     num_frames: buffer_depth
 
@@ -158,6 +158,7 @@ cpu:
     kotekan_stage: gpuSimulateN2k
     log_level: debug
     network_in_buf: host_voltage_buffer
+    rfimask_in_buf: host_rfi_RFImask_buffer
     corr_out_buf: simulated_correlation_buffer
 
 check_data:
