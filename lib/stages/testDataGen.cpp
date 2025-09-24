@@ -118,6 +118,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     assert(rest_mode == "none" || rest_mode == "start" || rest_mode == "step");
     step_to_frame = 0;
     _first_frame_index = config.get_default<uint32_t>(unique_name, "first_frame_index", 0);
+    _meta_time_downsample_factor = config.get_default<int>(unique_name, "meta_time_downsample_factor", 1);
 
     endpoint = unique_name + "/generate_test_data";
     using namespace std::placeholders;
@@ -211,17 +212,24 @@ void testDataGen::main_thread() {
             for (int d = 0; d < chordmeta->dims; ++d)
                 chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
             chordmeta->set_strides_simple();
+            assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
+            chordmeta->nfreq = _num_freq_in_frame;
+
+            for(int f = 0; f < chordmeta->nfreq; f++) {
+                chordmeta->coarse_freq[f] = f;
+                chordmeta->freq_upchan_factor[f] = 1;
+                chordmeta->half_fpga_sample0[f] = 0;
+                chordmeta->time_downsampling_fpga[f] = _meta_time_downsample_factor;
+            }
+
+            chordmeta->fpga_seq_num = seq_num;
+            chordmeta->sample0_offset = frame_id_abs * samples_per_data_set / _meta_time_downsample_factor;
+            chordmeta->offset_downsampling = 1;
         }
 
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
         uint n_to_set = buf->frame_size / sizeof(uint8_t);
-
-        if (chordmeta) {
-            chordmeta->fpga_seq_num = seq_num;
-            chordmeta->sample0_offset = frame_id_abs * samples_per_data_set;
-            chordmeta->offset_downsampling = 1;
-        }
 
         if (type == "const") {
             n_to_set /= sizeof(int8_t);
@@ -420,8 +428,8 @@ void testDataGen::main_thread() {
             } else if (type == "random1x8") {
                 if (_reuse_random && finished_seeding_constant)
                     break;
-                uint8_t val = rand() & 0xFF;
-                frame[j] = val;
+                uint8_t rand_val = rand() & 0xFF;
+                frame[j] = rand_val;
             } else if (type == "tpluse") {
                 int time_idx = j / num_elements;
                 int elem_idx = j % num_elements;

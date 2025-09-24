@@ -15,6 +15,7 @@ add_library(
     gpuSimulateCudaFRBBeamformer.cpp
     gpuSimulateCudaUpchannelize.cpp
     gpuSimulateN2kCorr.cpp
+    gpuSimulateN2kPLExpand.cpp
     networkOutputSim.cpp
     simVdifData.cpp
     testDataCheck.cpp
