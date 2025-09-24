@@ -132,6 +132,23 @@ correlate_pl_kernel_S16(int *counts, const ulong *pl_mask, const uint *rfimask, 
     constexpr int S = 16;    
     const uint tout = blockIdx.z * blockDim.z + threadIdx.z;
     const uint f = blockIdx.y * blockDim.y + threadIdx.y;
+    
+    constexpr uint rfimask_time_split = 1024;
+    // The actual layout of rfimask is ((T*Nds)/1024, F, 1024/32).
+    // The kernel below does not know this and assumes (F, (T*Nds)/32).
+    // The function `access_rfimask` corrects this.
+    const auto access_rfimask = [=](const uint& lval) -> const uint& {
+        auto idx = &lval - rfimask;            // index
+        auto f = idx / rfimask_fstride;        // frequency
+        auto t32 = idx % rfimask_fstride;      // time / 32
+        auto t = t32 * 32;                     // time
+        auto t1024hi = t / rfimask_time_split; // coarse time
+        auto t1024lo = t % rfimask_time_split; // fine time
+        auto thi = t1024hi;                    // first array index
+        auto tlo = t1024lo / 32;               // third array index
+        auto idx2 = tlo + f * (rfimask_time_split / 32) + thi * (rfimask_time_split / 32) * F;
+        return rfimask[idx2];
+    };
 
     if ((tout >= Tout) || (f >= F))
 	return;   // okay since this kernel never calls __syncthreads()
@@ -153,7 +170,7 @@ correlate_pl_kernel_S16(int *counts, const ulong *pl_mask, const uint *rfimask, 
 
     for (uint n128 = 0; n128 < N128; n128++) {
 	if ((n128 & 7) == 0) {
-	    rfi = *rfimask;
+            rfi = access_rfimask(*rfimask);
 	    rfimask += 32;
 	}
 
@@ -197,6 +214,23 @@ correlate_pl_kernel_S128(int *counts, const ulong *pl_mask, const uint *rfimask,
     const uint f = blockIdx.y;
     const uint F = gridDim.y;
     
+    constexpr uint rfimask_time_split = 1024;
+    // The actual layout of rfimask is ((T*Nds)/1024, F, 1024/32).
+    // The kernel below does not know this and assumes (F, (T*Nds)/32).
+    // The function `access_rfimask` corrects this.
+    const auto access_rfimask = [=](const uint& lval) -> const uint& {
+        auto idx = &lval - rfimask;            // index
+        auto f = idx / rfimask_fstride;        // frequency
+        auto t32 = idx % rfimask_fstride;      // time / 32
+        auto t = t32 * 32;                     // time
+        auto t1024hi = t / rfimask_time_split; // coarse time
+        auto t1024lo = t % rfimask_time_split; // fine time
+        auto thi = t1024hi;                    // first array index
+        auto tlo = t1024lo / 32;               // third array index
+        auto idx2 = tlo + f * (rfimask_time_split / 32) + thi * (rfimask_time_split / 32) * F;
+        return rfimask[idx2];
+    };
+
     // Assumes blockDim = {256,1,1}.
     const int w = threadIdx.x >> 5;    // 0 <= w < 8
     const int wx = (w & 3);            // 0 <= wx < 4
@@ -228,7 +262,7 @@ correlate_pl_kernel_S128(int *counts, const ulong *pl_mask, const uint *rfimask,
     
     for (uint n128 = 0; n128 < N128; n128++) {
 	if ((n128 & 7) == 0) {
-	    rfi = *rfimask;
+            rfi = access_rfimask(*rfimask);
 	    rfimask += 32;
 	}
 
@@ -348,7 +382,7 @@ void launch_pl_1bit_correlator(int *counts, const ulong *pl_mask, const uint *rf
 	
 	correlate_pl_kernel_S128
 	    <<< nblocks, 256, 0, stream >>>
-	    (counts, pl_mask, rfimask, rfimask_fstride, N128);
+            (counts, pl_mask, rfimask, rfimask_fstride, N128);
     }
     else {
 	throw runtime_error("launch_pl_1bit_correlator: Currently, only Sds=16 and Sds=128 are implemented."

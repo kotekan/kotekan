@@ -47,8 +47,35 @@ __device__ inline uint2 double_bits(uint x)
 //   pl_out = uint array of shape (2*M, F, N)
 //   pl_in = uint array of shape (M, (F+3)/4, N)
 
-__global__ void pl_mask_expand_kernel(uint *pl_out, const uint *pl_in, int F, int M, int N)
+__global__ void pl_mask_expand_kernel(uint *pl_out, const uint *pl_in,
+                                      long Tmin_in, long Tsize_in,
+                                      long Tmin_out, long Tsize_out,
+                                      int F, int M, int N)
 {
+    const auto ringbuffer_pl_out = [=](uint& lval) -> uint& {
+      long idx = &lval - pl_out;
+      int subtime = idx & 1;
+      idx /= 2;
+      long EF = idx % ((N / 2) * F);
+      long T = idx / ((N / 2) * F);
+      T = (T + Tmin_out) & (Tsize_out - 1);
+      idx = T * ((N / 2) * F) + EF;
+      idx = 2 * idx + subtime;
+      return *(pl_out + idx);
+    };
+
+    const auto ringbuffer_pl_in = [=](const uint& lval) -> const uint& {
+      long idx = &lval - pl_in;
+      int subtime = idx & 1;
+      idx /= 2;
+      long EF = idx % ((N / 2) * (F / 4));
+      long T = idx / ((N / 2) * (F / 4));
+      T = (T + Tmin_in) & (Tsize_in - 1);
+      idx = T * ((N / 2) * (F / 4)) + EF;
+      idx = 2 * idx + subtime;
+      return *(pl_in + idx);
+    };
+
     const long Fin = (F+3) >> 2;
     
     // Parallelization: x <-> n, y <-> f, z <-> m
@@ -79,16 +106,19 @@ __global__ void pl_mask_expand_kernel(uint *pl_out, const uint *pl_in, int F, in
     pl_out += (4*f*N + nout);            // 64-bit safe
 
     // Read input mask.
-    uint x = *pl_in;
+    uint x = ringbuffer_pl_in(*pl_in);
     uint2 y = double_bits(x);
 	
     // Write (expanded) output mask.
     for (long i = 0; i < nf_out; i++)
-	*((uint2 *) (pl_out + i*N)) = y;
+        *((uint2 *) &ringbuffer_pl_out(*(pl_out + i*N))) = y;
 }
 
 
-void launch_pl_mask_expander(ulong *pl_out, const ulong *pl_in, long Tout, long Fout, long Sds, cudaStream_t stream)
+void launch_pl_mask_expander(ulong *pl_out, const ulong *pl_in,
+                             long Tmin_in, long Tsize_in,
+                             long Tmin_out, long Tsize_out,
+                             long Tout, long Fout, long Sds, cudaStream_t stream)
 {
     if (!pl_out)
 	throw runtime_error("launch_pl_mask_expander: 'pl_out' must be non-NULL");
@@ -115,7 +145,9 @@ void launch_pl_mask_expander(ulong *pl_out, const ulong *pl_in, long Tout, long 
     gputils::assign_kernel_dims(nblocks, nthreads, N, Fout, M);  // x <-> n, y <-> f, z <-> m
 
     pl_mask_expand_kernel <<< nblocks, nthreads, 0, stream >>>
-	((uint *) pl_out, (const uint *) pl_in, Fout, M, N);
+	((uint *) pl_out, (const uint *) pl_in,
+         Tmin_in, Tsize_in, Tmin_out, Tsize_out,
+         Fout, M, N);
 
     CUDA_PEEK("pl_mask_expand_kernel");
 }
@@ -140,7 +172,7 @@ void launch_pl_mask_expander(Array<ulong> &pl_out, const Array<ulong> &pl_in, cu
 	throw runtime_error(ss.str());
     }
 
-    launch_pl_mask_expander(pl_out.data, pl_in.data, Tout, Fout, Sds, stream);
+    launch_pl_mask_expander(pl_out.data, pl_in.data, 0, 1L<<32, 0, 1L<<32, Tout, Fout, Sds, stream);
 }
 
 
