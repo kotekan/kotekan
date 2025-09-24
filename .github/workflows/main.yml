@@ -298,92 +298,82 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-#TODO     - name: Cache ccache files
-#TODO       uses: actions/cache@v4
-#TODO       with:
-#TODO         path: .ccache
-#TODO         key: ccache-direct-2404-${{ github.sha }}
-#TODO         restore-keys: |
-#TODO           ccache-direct-2404
-#TODO           ccache-base-build-2404
-#TODO 
-#TODO     - name: Build kotekan
-#TODO       shell: bash
-#TODO       run: |
-#TODO         OPTS=(--pull=always --privileged --rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-#TODO         docker run "${OPTS[@]}" ccache -s
-#TODO         docker run "${OPTS[@]}" \
-#TODO           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-#TODO             -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
-#TODO             -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
-#TODO             -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON \
-#TODO             -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
-#TODO             -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
-#TODO             -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
-#TODO             -DUSE_DPDK=ON \
-#TODO             -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF \
-#TODO             ..
-#TODO         docker run "${OPTS[@]}" make -j
-#TODO         docker run "${OPTS[@]}" rm -r lib
-#TODO         docker run "${OPTS[@]}" ccache -s
-#TODO         df -h
-#TODO 
-#TODO     # Run tests in the config/ci-tests directory with timeout
-#TODO     - name: Run direct Kotekan tests
-#TODO       run: |
-#TODO         TIMEOUT_DURATION="2m"  # Timeout duration per test
-#TODO         TEST_CONFIG_DIR="config/ci-tests"
-#TODO         for config_file in "$TEST_CONFIG_DIR"/*.yaml; do
-#TODO           echo "Running test with config: $config_file"
-#TODO           
-#TODO           # Run the test with timeout
-#TODO           timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
-#TODO             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
-#TODO             -w /code/kotekan \
-#TODO             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-#TODO             ./build-2404/kotekan/kotekan --bind-address 0:23000 --config "$config_file"
-#TODO 
-#TODO           EXIT_CODE=$?
-#TODO 
-#TODO           if [ $EXIT_CODE -eq 124 ]; then
-#TODO             echo "Test timed out for config: $config_file"
-#TODO             exit 1
-#TODO           elif [ $EXIT_CODE -ne 0 ]; then
-#TODO             echo "Test failed for config: $config_file with exit code $EXIT_CODE"
-#TODO             exit 1
-#TODO           else
-#TODO             echo "Test passed for config: $config_file"
-#TODO           fi
-#TODO         done
+    - name: Cache ccache files
+      uses: actions/cache@v4
+      with:
+        path: .ccache
+        key: ccache-direct-2404-${{ github.sha }}
+        restore-keys: |
+          ccache-direct-2404
+          ccache-base-build-2404
+
+    - name: Build kotekan
+      shell: bash
+      run: |
+        OPTS=(--pull=always --privileged --rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON \
+            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
+            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
+            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
+            -DUSE_DPDK=ON \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF \
+            ..
+        docker run "${OPTS[@]}" make -j
+        docker run "${OPTS[@]}" rm -r lib
+        docker run "${OPTS[@]}" ccache -s
+        df -h
+
+    # Run tests in the config/ci-tests directory with timeout
+    - name: Run direct Kotekan tests
+      run: |
+        TIMEOUT_DURATION="2m"  # Timeout duration per test
+        TEST_CONFIG_DIR="config/ci-tests"
+        for config_file in "$TEST_CONFIG_DIR"/*.yaml; do
+          echo "Running test with config: $config_file"
+          
+          # Run the test with timeout
+          timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
+            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
+            -w /code/kotekan \
+            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
+            ./build-2404/kotekan/kotekan --bind-address 0:23000 --config "$config_file"
+
+          EXIT_CODE=$?
+
+          if [ $EXIT_CODE -eq 124 ]; then
+            echo "Test timed out for config: $config_file"
+            exit 1
+          elif [ $EXIT_CODE -ne 0 ]; then
+            echo "Test failed for config: $config_file with exit code $EXIT_CODE"
+            exit 1
+          else
+            echo "Test passed for config: $config_file"
+          fi
+        done
 
     # Initialize and test Julia
     - name: Initialize and test Julia
       run: |
-        echo AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
         docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
             env JULIA_DEPOT_PATH=/code/kotekan/julia_depot PYTHON= julia --project=@. --eval 'using Pkg; Pkg.update()'
-        echo BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
-        docker run --rm --privileged \
-            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
-            -w /code/kotekan/julia \
-            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            env JULIA_DEPOT_PATH=/code/kotekan/julia_depot PYTHON= julia --project=@. --eval 'using Pkg; Pkg.update()'
-        echo CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
         docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
             env JULIA_DEPOT_PATH=/code/kotekan/julia_depot julia --project=@. --eval 'using Kotekan'
-        echo DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
         docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
             env JULIA_DEPOT_PATH=/code/kotekan/julia_depot julia --project=@. --eval 'include("src/FEngine.jl")'
-        echo EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
 
     # Run pipeline tests with timeout
     - name: Run pipeline Kotekan tests
