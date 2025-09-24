@@ -356,6 +356,34 @@ jobs:
           fi
         done
 
+    # Run pipeline tests with timeout
+    - name: Run pipeline Kotekan tests
+      run: |
+        TIMEOUT_DURATION="20m"  # Timeout duration per test
+        TEST_CONFIG_DIR="config/fengine/test_pathfinder.j2
+        for config_file in "config/fengine/init_pathfinder.j2 config/fengine/test_pathfinder.j2; do
+          echo "Running test with config: $config_file"
+          
+          # Run the test with timeout
+          timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
+            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
+            -w /code/kotekan \
+            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
+            ./build-2404/kotekan/kotekan --bind-address 0:23000 --config "$config_file"
+
+          EXIT_CODE=$?
+
+          if [ $EXIT_CODE -eq 124 ]; then
+            echo "Test timed out for config: $config_file"
+            exit 1
+          elif [ $EXIT_CODE -ne 0 ]; then
+            echo "Test failed for config: $config_file with exit code $EXIT_CODE"
+            exit 1
+          else
+            echo "Test passed for config: $config_file"
+          fi
+        done
+
     - name: Clean up
       run: |
         rm -rf kotekan
