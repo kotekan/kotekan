@@ -364,7 +364,7 @@ jobs:
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            export PYTHON= julia --project=@. --eval 'using Pkg; Pkg.update()'
+            env PYTHON= julia --project=@. --eval 'using Pkg; Pkg.update()'
         docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
