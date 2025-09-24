@@ -32,7 +32,9 @@ const std::string RIGHT_ASCENSION("RIGHT_ASCENSION");  // an array of float of s
 const std::string DECLINATION("DECLINATION");          // an array of float of size MAX_NUM_BEAMS
 const std::string SCALING("SCALING");                  // an array of uint32 of size MAX_NUM_BEAMS
 const std::string FPGA_SEQ_NUM("FPGA_SEQ_NUM");        // an uint64
-const std::string NFREQ("NFREQ");                      // an int
+// frequencies -- integer (0-8192) identifier for FPGA coarse frequencies
+// This is the FPGA frequency channel index, indexed by the local coarse frequency channel.
+// TODO: this should really be a freq_id_t array
 const std::string COARSE_FREQ("COARSE_FREQ");          // an array of int of size CHORD_META_MAX_FREQ
 const std::string DATASET_ID("DATASET_ID");            // a 128bit hash of the system state, of type dset_id_t
 const std::string RFI_NUM_BAD_INPUTS("RFI_NUM_BAD_INPUTS"); // a uint32_t of bad frames count
