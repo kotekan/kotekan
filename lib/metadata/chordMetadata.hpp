@@ -98,17 +98,6 @@ public:
 
     // Per-frequency arrays
 
-    // Number of coarse frequency channels in this frame, or -1. The
-    // actual number of frequencies will be larger after
-    // upchannelization. This field continues to track the original
-    // number of coarse frequency channels.
-    int nfreq;
-
-    // frequencies -- integer (0-8192) identifier for FPGA coarse frequencies
-    // This is the FPGA frequency channel index, indexed by the local coarse frequency channel.
-    // TODO: this should really be a freq_id_t array
-    int coarse_freq[CHORD_META_MAX_FREQ];
-
     // the upchannelization factor that each frequency has gone through (1 for = FPGA)
     // Also indexed by the local coarse frequency channel.
     int freq_upchan_factor[CHORD_META_MAX_FREQ];
@@ -236,20 +225,17 @@ public:
     }
 
     int get_nfreq() const {
-        return this->nfreq;
+        return static_cast<int>(metadata[jsonMetadata::COARSE_FREQ].size());
     }
 
     // TODO: this should really be a freq_id_t array
-    const int* get_coarse_freq() const {
-        return this->coarse_freq;
+    const std::vector<int> get_coarse_freq() const {
+        return metadata[jsonMetadata::COARSE_FREQ].template get<std::vector<int>>();
     }
 
-    void set_coarse_freq(const int nfreq, const int* coarse_freq) {
-        assert(nfreq < CHORD_META_MAX_FREQ);
-        this->nfreq = nfreq;
-        for(int i = 0 ; i < nfreq ; ++i) {
-            this->coarse_freq[i] = *coarse_freq++;
-        }
+    void set_coarse_freq(const std::vector<int>& coarse_freq) {
+        assert(coarse_freq.size() < CHORD_META_MAX_FREQ);
+        metadata[jsonMetadata::COARSE_FREQ] = coarse_freq;
     }
 
     // TODO: remove this, its redundant

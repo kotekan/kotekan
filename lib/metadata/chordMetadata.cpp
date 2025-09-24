@@ -8,7 +8,7 @@ REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
 chordMetadata::chordMetadata() :
     frame_counter(-1), type(kotekan::unknown_type), dims(-1), offset(0), n_one_hot(-1),
-    sample0_offset(-1), offset_downsampling(-1), nfreq(-1), ndishes(-1), n_dish_locations_ew(-1),
+    sample0_offset(-1), offset_downsampling(-1), ndishes(-1), n_dish_locations_ew(-1),
     n_dish_locations_ns(-1), dish_index(nullptr) {
     name[0] = '\0';
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
@@ -19,7 +19,6 @@ chordMetadata::chordMetadata() :
         onehot_index[d] = -1;
     }
     for (int f = 0; f < CHORD_META_MAX_FREQ; ++f) {
-        coarse_freq[f] = -1;
         freq_upchan_factor[f] = -1;
         half_fpga_sample0[f] = -1;
         time_downsampling_fpga[f] = -1;
@@ -120,14 +119,14 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     n_one_hot = fmt->n_one_hot;
     sample0_offset = fmt->sample0_offset;
     offset_downsampling = fmt->offset_downsampling;
-    nfreq = fmt->nfreq;
+    const int nfreq = fmt->nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
     for (int i = 0; i < nfreq; i++) {
-        coarse_freq[i] = fmt->coarse_freq[i];
         freq_upchan_factor[i] = fmt->freq_upchan_factor[i];
         half_fpga_sample0[i] = fmt->half_fpga_sample0[i];
         time_downsampling_fpga[i] = fmt->time_downsampling_fpga[i];
     }
+    this->set_coarse_freq(std::vector<int>(fmt->coarse_freq, fmt->coarse_freq+nfreq));
     return sizeof(chordMetadataFormat);
 }
 
@@ -158,13 +157,13 @@ size_t chordMetadata::serialize(char* bytes) {
     fmt->n_one_hot = n_one_hot;
     fmt->sample0_offset = sample0_offset;
     fmt->offset_downsampling = offset_downsampling;
-    fmt->nfreq = nfreq;
-    assert(nfreq < CHORD_META_MAX_FREQ);
-    for (int i = 0; i < nfreq; i++) {
-        fmt->coarse_freq[i] = coarse_freq[i];
+    fmt->nfreq = this->get_nfreq();
+    assert(fmt->nfreq < CHORD_META_MAX_FREQ);
+    for (int i = 0; i < fmt->nfreq; i++) {
         fmt->freq_upchan_factor[i] = freq_upchan_factor[i];
         fmt->half_fpga_sample0[i] = half_fpga_sample0[i];
         fmt->time_downsampling_fpga[i] = time_downsampling_fpga[i];
     }
+    std::copy_n(this->get_coarse_freq().data(), this->get_nfreq(), fmt->coarse_freq);
     return sizeof(chordMetadataFormat);
 }
