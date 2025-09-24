@@ -29,9 +29,9 @@ size_t BeamMetadata::set_from_bytes(const char* bytes, size_t length) {
     const BeamMetadataFormat* fmt = reinterpret_cast<const BeamMetadataFormat*>(bytes);
     fpga_seq_start = fmt->fpga_seq_start;
     ctime = fmt->ctime;
-    nfreq = fmt->nfreq;
+    coarse_freq.resize(fmt->nfreq);
     // TODO: copy on nfreq?
-    for (int i = 0 ; i < CHORD_META_MAX_FREQ ; i++) {
+    for (int i = 0 ; i < fmt->nfreq ; i++) {
         coarse_freq[i] = fmt->coarse_freq[i];
     }
     dataset_id = fmt->dataset_id;
@@ -47,9 +47,8 @@ size_t BeamMetadata::serialize(char* bytes) {
     BeamMetadataFormat* fmt = reinterpret_cast<BeamMetadataFormat*>(bytes);
     fmt->fpga_seq_start = fpga_seq_start;
     fmt->ctime = ctime;
-    fmt->nfreq = nfreq;
-    // TODO: copy on nfreq?
-    for (int i = 0 ; i < CHORD_META_MAX_FREQ ; i++) {
+    fmt->nfreq = static_cast<int>(coarse_freq.size());
+    for (int i = 0 ; i < static_cast<int>(coarse_freq.size()) ; i++) {
         fmt->coarse_freq[i] = coarse_freq[i];
     }
     fmt->dataset_id = dataset_id;
@@ -69,9 +68,7 @@ nlohmann::json BeamMetadata::to_json() {
 void to_json(nlohmann::json& j, const BeamMetadata& m) {
     j["fpga_seq_start"] = m.fpga_seq_start;
     j["ctime"] = m.ctime;
-    j["nfreq"] = m.nfreq;
-    // TODO: either make coarse_freq a std::vector or make it a std::array
-    j["coarse_freq"] = std::vector<int>(m.coarse_freq, m.coarse_freq + m.nfreq);
+    j["coarse_freq"] = m.coarse_freq;
     j["dataset_id"] = m.dataset_id;
     j["beam_number"] = m.beam_number;
     j["ra"] = m.ra;
@@ -82,9 +79,7 @@ void to_json(nlohmann::json& j, const BeamMetadata& m) {
 void from_json(const nlohmann::json& j, BeamMetadata& m) {
     m.fpga_seq_start = j["fpga_seq_start"];
     m.ctime = j["ctime"];
-    m.nfreq = j["nfreq"];
-    const auto& v = j["coarse_freq"].template get<std::vector<int>>();
-    std::copy(v.begin(), v.end(), m.coarse_freq);
+    m.coarse_freq = j["coarse_freq"].template get<std::vector<int>>();
     m.dataset_id = j["dataset_id"];
     m.beam_number = j["beam_number"];
     m.ra = j["ra"];
