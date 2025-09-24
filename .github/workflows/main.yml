@@ -359,6 +359,22 @@ jobs:
     # Run pipeline tests with timeout
     - name: Run pipeline Kotekan tests
       run: |
+        # Initialize and test Julia
+        docker run --rm --privileged \
+            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
+            -w /code/kotekan/julia \
+            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
+            julia --eval --project=@. 'using Pkg; Pkg.update()'
+        docker run --rm --privileged \
+            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
+            -w /code/kotekan/julia \
+            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
+            julia --eval --project=@. 'using Kotekan'
+        docker run --rm --privileged \
+            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
+            -w /code/kotekan/julia \
+            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
+            julia --eval --project=@. 'include("src/FEngine.jl")'
         TIMEOUT_DURATION="20m"  # Timeout duration per test
         for config_file in config/fengine/init_pathfinder.j2 config/fengine/test_pathfinder.j2; do
           echo "Running test with config: $config_file"
