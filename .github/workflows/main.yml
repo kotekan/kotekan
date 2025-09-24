@@ -361,7 +361,7 @@ jobs:
       run: |
         TIMEOUT_DURATION="20m"  # Timeout duration per test
         TEST_CONFIG_DIR="config/fengine/test_pathfinder.j2
-        for config_file in "config/fengine/init_pathfinder.j2 config/fengine/test_pathfinder.j2; do
+        for config_file in config/fengine/init_pathfinder.j2 config/fengine/test_pathfinder.j2; do
           echo "Running test with config: $config_file"
           
           # Run the test with timeout
