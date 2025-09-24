@@ -23,7 +23,6 @@ on:
 env:
   REGISTRY: ghcr.io
   IMG_2404: "ghcr.io/${{ github.repository }}/kotekan-2404"
-  JULIA_DEPOT_PATH: /code/kotekan/julia_depot
   PYTEST_TIMEOUT: 120
 
 jobs:
@@ -365,25 +364,25 @@ jobs:
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            env PYTHON= julia --project=@. --eval 'using Pkg; Pkg.update()'
+            env JULIA_DEPOT_PATH=/code/kotekan/julia_depot PYTHON= julia --project=@. --eval 'using Pkg; Pkg.update()'
         echo BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
         docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            env PYTHON= julia --project=@. --eval 'using Pkg; Pkg.update()'
+            env JULIA_DEPOT_PATH=/code/kotekan/julia_depot PYTHON= julia --project=@. --eval 'using Pkg; Pkg.update()'
         echo CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
         docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            julia --project=@. --eval 'using Kotekan'
+            env JULIA_DEPOT_PATH=/code/kotekan/julia_depot julia --project=@. --eval 'using Kotekan'
         echo DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
         docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan/julia \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            julia --project=@. --eval 'include("src/FEngine.jl")'
+            env JULIA_DEPOT_PATH=/code/kotekan/julia_depot julia --project=@. --eval 'include("src/FEngine.jl")'
         echo EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
 
     # Run pipeline tests with timeout
@@ -398,7 +397,7 @@ jobs:
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            ./build-2404/kotekan/kotekan --bind-address 0:23000 --config "$config_file"
+            env JULIA_DEPOT_PATH=/code/kotekan/julia_depot JULIA_PROJECT=julia ./build-2404/kotekan/kotekan --bind-address 0:23000 --config "$config_file"
 
           EXIT_CODE=$?
 
