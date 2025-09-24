@@ -17,6 +17,37 @@
 using kotekan::div_noremainder;
 using kotekan::round_down;
 
+/**
+ * @class cudaPLMaskExpander
+ * @brief cudaCommand for expanding the packet loss (PL) mask.
+ *
+ * @author Erik Schnetter
+ *
+ * @par GPU Memory
+ * @gpu_mem Input PL mask
+ *   @gpu_mem_buffer    @c ring
+ *   @gpu_mem_quantity  @c pl_mask
+ *   @gpu_mem_type      @c uint1x8
+ *   @gpu_mem_dim_name  [@c T2hi64][@c F4][@c P][@c D8][@c T2lo64]
+ *   @gpu_mem_shape     [@c buffer_depth * num_times / 2 / 64][@c num_frequencies / 4]
+ *                      [@c num_polarizations][@c num_dishes / 8][@c 64 / 8]
+ *   @gpu_mem_metadata  @c chordMetadata
+ * @gpu_mem Output expanded PL mask
+ *   @gpu_mem_buffer    @c ring
+ *   @gpu_mem_quantity  @c pl_mask
+ *   @gpu_mem_type      @c uint1x8
+ *   @gpu_mem_dim_name  [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
+ *   @gpu_mem_shape     [@c buffer_depth * num_times / 64][@c num_frequencies][@c num_polarizations]
+ *                      [@c num_dishes / 8][@c 64 / 8]
+ *   @gpu_mem_metadata  @c chordMetadata
+ * @conf  buffer_depth           Int.     The number of GPU frames used for pipelining commands.
+ * @conf  num_times              Int.     Number of time samples per frame.
+ * @conf  num_frequenciees       Int.     Number of frequencies handled by this X-Engine node.
+ * @conf  num_polarizations      Int.     Number of polarizations (2)
+ * @conf  num_dishes             Int.     Number of dishes
+ * @conf  pl_mask_name           String.  Base name for the pl_mask buffers.
+ * @conf  pl_expanded_mask_name  String.  Base name for the pl_expanded_mask buffers.
+ */
 class cudaPLMaskExpander : public cudaCommand {
 public:
     cudaPLMaskExpander(kotekan::Config& config, const std::string& unique_name,

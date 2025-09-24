@@ -42,21 +42,23 @@
  *   @gpu_mem_metadata  @c chordMetadata
  * @gpu_mem Output complex correlation values
  *   num_subintegrations := samples_per_data_set / sub_integration_ntime
- *   blocksize := 16
- *   linear_num_blocks := ceil(num_elements, / blocksize)
- *   triangle_num_blocks : = linear_num_blocks * (linear_num_blocks + 1) / 2
+ *   blocksize           := 16
+ *   linear_num_blocks   := ceil(num_elements, / blocksize)
+ *   triangle_num_blocks := linear_num_blocks * (linear_num_blocks + 1) / 2
  *   @gpu_mem_buffer    @c standard
  *   @gpu_mem_quantity  @c n2k_correlation
  *   @gpu_mem_type      @c int32
  *   @gpu_mem_dim_name  [@c Tc][@c F][@c DPhi][@c DPlo1][@c DPlo2][@c C]
- *   @gpu_mem_shape     [@c samples_per_data_set / sub_integration_ntimes][@c triangle_num_blocks][@c blocksize][@c blocksize][@c 2]
+ *   @gpu_mem_shape     [@c samples_per_data_set / sub_integration_ntimes]
+ *                      [@c triangle_num_blocks][@c blocksize][@c blocksize][@c 2]
  *   @gpu_mem_metadata  @c chordMetadata
  * @conf  buffer_depth           Int.     The number of GPU frames used for pipelining commands.
  * @conf  num_times              Int.     Number of time samples per frame.
  * @conf  num_elements           Int.     Number of dish times number of polarizations (2).
  * @conf  num_local_freq         Int.     Number of frequencies handled by this X-Engine node.
  * @conf  samples_per_data_set   Int.     Number of time samples per Kotekan block.
- * @conf  sub_integration_ntime  Int.     Number of time samples that will be summed into the correlation matrix.
+ * @conf  sub_integration_ntime  Int.     Number of time samples that will be summed into the
+ *                                        correlation matrix.
  * @conf  voltage_name           String.  Base name for the voltage buffers.
  * @conf  rfi_RFImask_name       String.  Base name for the RFI mask buffers.
  * @conf  n2k_correlation_name   String.  Base name for the N2 correlation buffers.

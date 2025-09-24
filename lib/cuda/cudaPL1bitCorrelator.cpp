@@ -18,6 +18,47 @@
 using kotekan::div_noremainder;
 using kotekan::round_down;
 
+/**
+ * @class cudaPL1bitCorrelator
+ * @brief cudaCommand for the 1-bit correlator generating the N2 counts.
+ *
+ * @author Erik Schnetter
+ *
+ * @par GPU Memory
+ * @gpu_mem Input expanded PL mask
+ *   @gpu_mem_buffer    @c ring
+ *   @gpu_mem_quantity  @c pl_mask
+ *   @gpu_mem_type      @c uint1x8
+ *   @gpu_mem_dim_name  [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
+ *   @gpu_mem_shape     [@c num_times / 64][@c num_frequencies][@c num_polarizations]
+ *                      [@c num_dishes / 8][@c 64 / 8]
+ *   @gpu_mem_metadata  @c chordMetadata
+ * @gpu_mem Input RFI mask ringbuffer
+ *   @gpu_mem_buffer    @c ring
+ *   @gpu_mem_quantity  @c RFImask
+ *   @gpu_mem_type      @c uint1x8
+ *   @gpu_mem_dim_name  [@c T8hi128][@c F][@c T8lo128]
+ *   @gpu_mem_shape     [@c buffer_depth * num_times / 8 / 128][@c num_local_freq][@c 2][@c 128]
+ *   @gpu_mem_metadata  @c chordMetadata
+ * @gpu_mem Output N2 counts array
+ *   @gpu_mem_buffer    @c standard
+ *   @gpu_mem_quantity  @c n2k_counts
+ *   @gpu_mem_type      @c int32
+ *   @gpu_mem_dim_name  [@c Tc][@c F][@c D8Phi][@c D8Plo1[@c D8Plo2]
+ *   @gpu_mem_shape     [@c num_subintegrations][@c num_frequencies][@c triangle_num_blocks]
+ *                      [@c blocksize][@c blocksize]
+ *   @gpu_mem_metadata  @c chordMetadata
+ * @conf  buffer_depth           Int.     The number of GPU frames used for pipelining commands.
+ * @conf  num_times              Int.     Number of time samples per frame.
+ * @conf  num_frequenciees       Int.     Number of frequencies handled by this X-Engine node.
+ * @conf  num_polarizations      Int.     Number of polarizations (2)
+ * @conf  num_dishes             Int.     Number of dishes
+ * @conf  samples_per_data_set   Int.     Number of time samples per Kotekan block.
+ * @conf  sub_integration_ntime  Int.     Number of time samples that will be summed into the
+ * @conf  pl_expanded_mask_name  String.  Base name for the pl_expanded_mask buffers.
+ * @conf  rfi_RFImask_name       String.  Base name for the RFI mask buffers.
+ * @conf  n2k_counts_name        String.  Base name for the N2 counts buffers.
+ */
 class cudaPL1bitCorrelator : public cudaCommand {
 public:
     cudaPL1bitCorrelator(kotekan::Config& config, const std::string& unique_name,
@@ -37,8 +78,6 @@ private:
     const int num_frequencies;
     const int num_polarizations;
     const int num_dishes;
-    const int rfi_downsampling_factor;
-    const int rfi_num_times;
     const int n2k_samples_per_data_set;
     const int n2k_sub_integration_ntime;
 
@@ -66,8 +105,6 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
-    rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
-    rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
     n2k_samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     n2k_sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
     // Buffer names
