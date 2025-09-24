@@ -17,42 +17,53 @@
 
 /**
  * @class cudaCorrelator
- * @brief cudaCommand for doing an N2 correlation, with Cuda code from Kendrick.
+ * @brief cudaCommand for doing an N2 correlation, with CUDA code from Kendrick.
  *
  * @author Andre Renard (by kindly telling Dustin Lang what to type)
  *
- * An example of this stage being used can be found in
- * `config/tests/verify_cuda_n2k.yaml`.
+ * An example of this stage being used can be found in `config/tests/verify_cuda_n2k.yaml`.
  *
  * A CPU implementation is in `lib/testing/gpuSimulateN2k.hpp`.
  *
  * @par GPU Memory
- * @gpu_mem  gpu_mem_voltage  Input complex voltages of size samples_per_data_set * num_elements *
- * num_local_freq
- *   @gpu_mem_type   staging
- *   @gpu_mem_format Array of @c 4+4-bit complex
- * @gpu_mem  gpu_mem_correlation_triangle  Output complex correlation values of size per frame:
- * (samples_per_data_set / sub_integration_ntimes) * num_freq * num_elements^2 * 2 * sizeof(int32)
- *   @gpu_mem_type   staging
- *   @gpu_mem_format Array of @c int32
- *
- * We assume the input data are stored in a ring buffer, so the signalling buffer must also be
- * specified via the @c in_signal input parameter.
- *
- * @conf   num_elements          Int.  Number of feeds.
- * @conf   num_local_freq        Int.  Number of frequencies.
- * @conf   samples_per_data_set  Int.  Number of time samples per Kotekan block.
- * @conf   sub_integration_ntime Int.  Number of time samples that will be summed into the
- * correlation matrix.
+ * @gpu_mem Input voltage
+ *   @gpu_mem_buffer    @c ring
+ *   @gpu_mem_quantity  @c E
+ *   @gpu_mem_type      @c int4x2_swapped_withoffset
+ *   @gpu_mem_dim_name  [@c T][@c F][@c P][@c D]
+ *   @gpu_mem_shape     [@c buffer_depth * num_times][@c num_local_freq][@c 2][@c num_elements / 2]
+ *   @gpu_mem_metadata  @c chordMetadata
+ * @gpu_mem Input RFI mask ringbuffer
+ *   @gpu_mem_buffer    @c ring
+ *   @gpu_mem_quantity  @c RFImask
+ *   @gpu_mem_type      @c uint1x8
+ *   @gpu_mem_dim_name  [@c T8hi128][@c F][@c T8lo128]
+ *   @gpu_mem_shape     [@c buffer_depth * num_times / 8 / 128][@c num_local_freq][@c 2][@c 128]
+ *   @gpu_mem_metadata  @c chordMetadata
+ * @gpu_mem Output complex correlation values
+ *   num_subintegrations := samples_per_data_set / sub_integration_ntime
+ *   blocksize := 16
+ *   linear_num_blocks := ceil(num_elements, / blocksize)
+ *   triangle_num_blocks : = linear_num_blocks * (linear_num_blocks + 1) / 2
+ *   @gpu_mem_buffer    @c standard
+ *   @gpu_mem_quantity  @c n2k_correlation
+ *   @gpu_mem_type      @c int32
+ *   @gpu_mem_dim_name  [@c Tc][@c F][@c DPhi][@c DPlo1][@c DPlo2][@c C]
+ *   @gpu_mem_shape     [@c samples_per_data_set / sub_integration_ntimes][@c triangle_num_blocks][@c blocksize][@c blocksize][@c 2]
+ *   @gpu_mem_metadata  @c chordMetadata
+ * @conf  buffer_depth           Int.     The number of GPU frames used for pipelining commands.
+ * @conf  num_times              Int.     Number of time samples per frame.
+ * @conf  num_elements           Int.     Number of dish times number of polarizations (2).
+ * @conf  num_local_freq         Int.     Number of frequencies handled by this X-Engine node.
+ * @conf  samples_per_data_set   Int.     Number of time samples per Kotekan block.
+ * @conf  sub_integration_ntime  Int.     Number of time samples that will be summed into the correlation matrix.
+ * @conf  voltage_name           String.  Base name for the voltage buffers.
+ * @conf  rfi_RFImask_name       String.  Base name for the RFI mask buffers.
+ * @conf  n2k_correlation_name   String.  Base name for the N2 correlation buffers.
  *
  * Note: While the output is only supposed to fill the upper triangle
  * of the correlation matrices, this implementation fills a few of the
  * below-the-diagonal elements with non-zero values.
- *
- * TODO: -Update docs to note new parameter names,
- *       -buffer name requirements (for NDArray conventions)
- *       -input data name in metadata must be "E"
- *       -input data type must be int4x2_swapped_withoffset_t
  */
 class cudaCorrelator : public cudaCommand {
 public:
