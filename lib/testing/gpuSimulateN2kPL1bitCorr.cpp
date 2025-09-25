@@ -184,7 +184,7 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         assert(meta_out);
 
         meta_out->set_name("cpusim_n2k_counts");
-        meta_out->type = kotekan::uint64;
+        meta_out->type = kotekan::int32;
         meta_out->dims = 5;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
         meta_out->set_array_dimension(0, n_integrations, "Tc");
