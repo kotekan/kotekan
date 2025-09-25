@@ -162,9 +162,6 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
         meta = std::make_shared<chordMetadata>(*meta);
         assert(meta->offset_downsampling > 0);
         assert(output_cursor * meta->offset_downsampling % meta->sample_bytes() == 0);
-        DEBUG("name: {:s}", meta->name);
-        DEBUG("sample0_offset= {:d}", meta->sample0_offset);
-        DEBUG("output_cursor / sample_bytes = {:d}", output_cursor / meta->sample_bytes());
         meta->sample0_offset -= output_cursor * meta->offset_downsampling / meta->sample_bytes();
         assert(meta->sample0_offset == 0);
         assert(meta->dims > 0);
