@@ -34,8 +34,8 @@ num_elements: num_polarizations * num_dishes
 num_local_freq: 16
 
 counts_blocksize: 8
-num_counts_blocks_lin: (num_elements / 8) / counts_blocksize
-num_counts_blocks: (num_counts_blocks_lin * (num_counts_blocks_lin + 1)) / 2
+counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
+counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
 
 # Pool
 main_pool:
@@ -58,13 +58,13 @@ host_rfi_RFImask_buffer:
 host_counts_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * num_counts_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
     metadata_pool: main_pool
 
 simulated_counts_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * num_counts_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
     metadata_pool: main_pool
 
 # Ringbuffer signalling buffer
