@@ -90,6 +90,7 @@ private:
     std::string _name;
     std::vector<int> _array_shape;
     std::vector<std::string> _dim_name;
+    int _meta_time_downsample_factor;
 
     // kotekan trackers example
     std::shared_ptr<StatTracker> timer;

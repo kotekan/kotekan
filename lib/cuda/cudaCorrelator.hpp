@@ -23,7 +23,7 @@
  *
  * An example of this stage being used can be found in `config/tests/verify_cuda_n2k.yaml`.
  *
- * A CPU implementation is in `lib/testing/gpuSimulateN2k.hpp`.
+ * A CPU implementation is in `lib/testing/gpuSimulateN2kCorr.hpp`.
  *
  * @par GPU Memory
  * @gpu_mem Input voltage
