@@ -102,9 +102,10 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
     // Buffers
     pl_mask(pl_mask_name, "pl_mask",
-            std::array<std::ptrdiff_t, 5>{div_noremainder(buffer_depth * num_times, 128),
-                                          num_frequencies / 4, num_polarizations, num_dishes, 8},
-            std::array<std::string, 5>{"T16hi8", "F4", "P", "D", "T16lo8"}, *this),
+            std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 2 * 64),
+                                          div_noremainder(num_frequencies, 4), num_polarizations,
+                                          div_noremainder(num_dishes, 8), 64 / 8},
+            std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"}, *this),
     voltage(voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{buffer_depth * num_times, num_frequencies,
                                           num_polarizations, num_dishes},
@@ -172,7 +173,7 @@ int cudaRFIS012::wait_on_precondition() {
     if (rfi_S012_errcode < 0)
         return rfi_S012_errcode;
     DEBUG(
-        "Done waiting for rfi_S012 input ringbuffer data for frame {:d}; will write {:d} elements",
+        "Done waiting for rfi_S012 ouput ringbuffer data for frame {:d}; will write {:d} elements",
         gpu_frame_id, rfi_S012_written);
 
     return 0;

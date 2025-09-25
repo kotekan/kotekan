@@ -59,7 +59,7 @@ void Correlator::launch(int *vis_out, const int8_t *e_in, const uint *rfimask, i
     int shmem_nbytes = CorrelatorParams::shmem_nbytes;
     const int *poffsets = this->precomputed_offsets.get();
     
-    kernel <<<nblocks, nthreads, shmem_nbytes, stream >>> (vis_out, e_in, rfimask, poffsets, nt_inner);
+    kernel <<<nblocks, nthreads, shmem_nbytes, stream >>> (vis_out, e_in, rfimask, poffsets, nt_inner, nt_outer);
     CUDA_PEEK("Correlator::launch");
 
     if (sync)
