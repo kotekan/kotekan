@@ -194,7 +194,7 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->nfreq = _num_local_freq;
         assert(meta_out->nfreq <= CHORD_META_MAX_FREQ);
         for(int f = 0; f < _num_local_freq; f++) {
-            meta_out->time_downsampling_fpga[f] = meta_in->time_downsampling_fpga[f] * _sub_integrations_ntime;
+            meta_out->time_downsampling_fpga[f] = meta_in->time_downsampling_fpga[f] * _sub_integration_ntime;
         }
 
         meta_out->fpga_seq_num = meta_in->fpga_seq_num;
