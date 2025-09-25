@@ -474,12 +474,13 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
             ice_stream_id_t tmp_stream_id = port_stream_id;
             // Set the unused flag to store the post shuffle freq bin number.
             tmp_stream_id.unused = i; 
+            tmp_stream_id.crate_id = tmp_stream_id.crate_id % 2;
             meta->coarse_freq[0] = tel.to_freq_id(ice_encode_stream_id(tmp_stream_id));
 
             // The dimensions are time (T) and "element" (E) which is the "correlator ordered"
             // feed and polarization.  Note that off the F-engine polarization is _not_ a defined axis.
             std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
-            std::strncpy(meta->dim_name[2], "E", sizeof meta->dim_name[1]);
+            std::strncpy(meta->dim_name[1], "E", sizeof meta->dim_name[1]);
             meta->dims = 2;
             meta->type = kotekan::int4x2_swapped_withoffset;
             // Somewhat confusingly E in this context is the electric field...
@@ -488,7 +489,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
             meta->dim[1] = sample_size;
 
             // Print out the chordMetadata
-            INFO("chordMetadata: seq: {:d} freq_id: {:d} dim[0]: {:d} dim[1]: {:d}",
+            DEBUG("chordMetadata: seq: {:d} freq_id: {:d} dim[0]: {:d} dim[1]: {:d}",
                   meta->sample0_offset,
                   meta->coarse_freq[0], meta->dim[0], meta->dim[1]);
         }
@@ -531,6 +532,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
         for (int i = 0; i < 4; i++) {
             tmp_stream_id.unused = i;
+            tmp_stream_id.crate_id = tmp_stream_id.crate_id % 2;
             meta->coarse_freq[i] = tel.to_freq_id(ice_encode_stream_id(tmp_stream_id));
         }
 

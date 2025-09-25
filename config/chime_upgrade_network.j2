@@ -2,7 +2,11 @@
 #
 # chime_upgrade_network.yaml
 #
-# Pipeline for testing the CHIME upgrade network logic
+# Pipeline for testing the CHIME upgrade F-engine packet capture and
+# transfer to the GPU.
+#
+# Currently only uses one NUMA domain, but it shouldn't be hard to extend to
+# the second NUMA domain.
 #
 # Author: Andre Renard
 #
@@ -17,9 +21,11 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 num_elements: 2048
-num_local_freq: 1
-samples_per_data_set: 49152
-buffer_depth: 8
+num_freq_host_buf: 1
+num_freq_gpu_buf: 16
+samples_per_frame: 16384
+buffer_depth: 32
+gpu_buffer_depth: 4
 num_gpus: 2
 cpu_affinity: [0, 10, 11, 12, 13, 14, 15, 16, 16, 18, 19]
 
@@ -30,43 +36,58 @@ sizeof_short: 2
 
 use_hugepages: true
 
+# Telescope
+telescope:
+  name: CHIMETelescope
+  require_gps: true
+  query_gps: true # GPS time is provided via coco
+  query_frequency_map: true # Frequency map is provided via coco
+  require_frequency_map: true # Make sure we have the full frequency map
+  allow_default_frequency_map: false # Don't fall back on default map
+
 main_pool:
   kotekan_metadata_pool: chordMetadata
   num_metadata_objects: 30 * buffer_depth
 
-gpu_input_buffers:
-    num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_elements * num_local_freq
-    metadata_pool: main_pool
-    numa_0:
-        numa_node: 0
+host_voltage_buffers:
+  num_frames: buffer_depth
+  frame_size: samples_per_frame * num_elements * num_freq_host_buf
+  metadata_pool: main_pool
+  numa_0:
+    numa_node: 0
 {%- for id in range(16) %}
-        gpu_input_buffer_{{ id }}:
-            kotekan_buffer: standard
+    host_voltage_buffer_{{ id }}:
+      kotekan_buffer: standard
 {%- endfor %}
 
 lost_samples_buffer_0:
   kotekan_buffer: standard
   num_frames: 2 * buffer_depth
-  frame_size: samples_per_data_set
+  frame_size: samples_per_frame
   metadata_pool: main_pool
 
 lost_samples_buffer_1:
   kotekan_buffer: standard
   num_frames: 2 * buffer_depth
-  frame_size: samples_per_data_set
+  frame_size: samples_per_frame
   metadata_pool: main_pool
 
 lost_samples_buffer_2:
   kotekan_buffer: standard
   num_frames: 2 * buffer_depth
-  frame_size: samples_per_data_set
+  frame_size: samples_per_frame
   metadata_pool: main_pool
 
 lost_samples_buffer_3:
   kotekan_buffer: standard
   num_frames: 2 * buffer_depth
-  frame_size: samples_per_data_set
+  frame_size: samples_per_frame
+  metadata_pool: main_pool
+
+gpu_voltage_ringbuffer:
+  log_level: INFO  # DEBUG
+  kotekan_buffer: ring
+  ring_buffer_size: gpu_buffer_depth * samples_per_frame * num_elements * num_freq_gpu_buf
   metadata_pool: main_pool
 
 
@@ -82,7 +103,7 @@ dpdk:
   status_cadence: 60
   # Set to true when using a switch to replicate packets
   using_switch: true
-  alignment: samples_per_data_set * 4
+  alignment: samples_per_frame * 4
   # List of PCIe devices we don't want to attach too
   # Required to exclude the ConnectX 6 Lx output NICs. 
   pcie_block_list:
@@ -110,41 +131,78 @@ dpdk:
       link_group: 0
       link_group_subid: {{ id }}
       out_bufs:
-        - gpu_input_buffer_0
-        - gpu_input_buffer_1
-        - gpu_input_buffer_2
-        - gpu_input_buffer_3
+        - host_voltage_buffer_0
+        - host_voltage_buffer_1
+        - host_voltage_buffer_2
+        - host_voltage_buffer_3
       lost_samples_buf: lost_samples_buffer_0
 
     - dpdk_handler: iceBoardShuffle
       link_group: 1
       link_group_subid: {{ id }}
       out_bufs:
-        - gpu_input_buffer_4
-        - gpu_input_buffer_5
-        - gpu_input_buffer_6
-        - gpu_input_buffer_7
+        - host_voltage_buffer_4
+        - host_voltage_buffer_5
+        - host_voltage_buffer_6
+        - host_voltage_buffer_7
       lost_samples_buf: lost_samples_buffer_1
 
     - dpdk_handler: iceBoardShuffle
       link_group: 2
       link_group_subid: {{ id }}
       out_bufs:
-        - gpu_input_buffer_8
-        - gpu_input_buffer_9
-        - gpu_input_buffer_10
-        - gpu_input_buffer_11
+        - host_voltage_buffer_8
+        - host_voltage_buffer_9
+        - host_voltage_buffer_10
+        - host_voltage_buffer_11
       lost_samples_buf: lost_samples_buffer_2
 
     - dpdk_handler: iceBoardShuffle
       link_group: 3
       link_group_subid: {{ id }}
       out_bufs:
-        - gpu_input_buffer_12
-        - gpu_input_buffer_13
-        - gpu_input_buffer_14
-        - gpu_input_buffer_15
+        - host_voltage_buffer_12
+        - host_voltage_buffer_13
+        - host_voltage_buffer_14
+        - host_voltage_buffer_15
       lost_samples_buf: lost_samples_buffer_3
 {%- endfor %}
 
+# Zero out lost samples recorded at the DPDK stage
+zero_samples:
+  duplicate_ls_buffer: False
+{%- for id in range(16) %}
+  zero_{{ id }}}:
+    kotekan_stage: zeroSamples
+    lost_samples_buf: lost_samples_buffer_{{ id // 4 }}
+    out_buf: host_voltage_buffer_{{ id }}
+{%- endfor %}
 
+
+run_send_voltage:
+  gpu_0:
+    kotekan_stage: cudaProcess
+    gpu_id: 0
+    buffer_depth: gpu_buffer_depth
+    frame_arrival_period: 390625/samples_per_frame
+    in_buffers:
+{%- for id in range(16) %}
+      host_voltage_buffer_{{ id }}: host_voltage_buffer_{{ id }}
+{%- endfor %}
+    out_buffers:
+      gpu_voltage_ringbuffer: gpu_voltage_ringbuffer
+    commands:
+    - name: cudaCopyNtoRingbuffer
+      ring_buffer_size: gpu_buffer_depth * samples_per_frame * num_elements * num_freq_gpu_buf
+      in_bufs: 
+{%- for id in range(16) %}
+        - host_voltage_buffer_{{ id }}
+{%- endfor %}
+      signal_buf: gpu_voltage_ringbuffer
+      gpu_mem_output: blocked_voltage_buffer
+
+
+# Hex dump the host_voltage_buffer_12 (for debugging)
+hex_dump:
+  #kotekan_stage: hexDump 
+  in_buf: host_voltage_buffer_12
