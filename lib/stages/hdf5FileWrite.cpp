@@ -230,23 +230,20 @@ public:
                 if (meta->offset_downsampling >= 0)
                     dataset.createAttribute("offset_downsampling", meta->offset_downsampling);
 
-                if (meta->nfreq >= 0) {
-                    dataset.createAttribute("nfreq", meta->nfreq);
-                    dataset.createAttribute(
-                        "coarse_freq",
-                        std::vector<int>(meta->coarse_freq, meta->coarse_freq + meta->nfreq));
+                if (meta->get_nfreq() >= 0) {
+                    dataset.createAttribute("coarse_freq", meta->get_coarse_freq());
                     dataset.createAttribute(
                         "freq_upchan_factor",
                         std::vector<int>(meta->freq_upchan_factor,
-                                         meta->freq_upchan_factor + meta->nfreq));
+                                         meta->freq_upchan_factor + meta->get_nfreq()));
                     dataset.createAttribute(
                         "half_fpga_sample0",
                         std::vector<std::int64_t>(meta->half_fpga_sample0,
-                                                  meta->half_fpga_sample0 + meta->nfreq));
+                                                  meta->half_fpga_sample0 + meta->get_nfreq()));
                     dataset.createAttribute(
                         "time_downsampling_fpga",
                         std::vector<int>(meta->time_downsampling_fpga,
-                                         meta->time_downsampling_fpga + meta->nfreq));
+                                         meta->time_downsampling_fpga + meta->get_nfreq()));
                 }
 
                 if (meta->ndishes >= 0) {
