@@ -206,7 +206,7 @@ std::string GenericBuffer::get_dot_node_label() {
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                const std::string& _buffer_name, const std::string& _buffer_type, int _numa_node,
                bool _use_hugepages, bool _mlock_frames, const std::vector<int>& cpu_affinity,
-               bool zero_new_frames):
+               bool zero_new_frames) :
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
     _zero_frames(false), frames(num_frames, nullptr), is_full(num_frames, false),
@@ -441,8 +441,8 @@ void Buffer::print_full_status() {
             else
                 status_string[i] = '_';
         }
-        DEBUG("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string), x.last_frame_acquired,
-               x.last_frame_released);
+        DEBUG("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string),
+              x.last_frame_acquired, x.last_frame_released);
     }
 
     DEBUG("---- Consumers ----");
@@ -454,8 +454,8 @@ void Buffer::print_full_status() {
             else
                 status_string[i] = '_';
         }
-        DEBUG("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string), x.last_frame_acquired,
-               x.last_frame_released);
+        DEBUG("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string),
+              x.last_frame_acquired, x.last_frame_released);
     }
 }
 
@@ -601,7 +601,7 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
     // The second condition stops us from using a buffer we've already filled,
     // and forces a wait until that buffer has been marked as empty.
     DEBUG2("wait_for_empty_frame({:s}[{:d}]): waiting...", producer_name, ID);
-    //print_full_status();
+    // print_full_status();
     empty_cond.wait(lock, [&]() { return (!is_full[ID] && !pro->is_done[ID]) || shutdown_signal; });
     DEBUG2("wait_for_empty_frame({:s}[{:d}]): waiting done.", producer_name, ID);
     assert((!is_full[ID] && !pro->is_done[ID]) || shutdown_signal);

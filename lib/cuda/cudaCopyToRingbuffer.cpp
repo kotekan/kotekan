@@ -49,7 +49,8 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
         if (in_buffer->frame_size) {
             uint flags;
             // only register the memory if it isn't already...
-            // TODO This logic doesn't work for host buffers with more then num_gpu_frames frames (which is likely)
+            // TODO This logic doesn't work for host buffers with more then num_gpu_frames frames
+            // (which is likely)
             if (cudaErrorInvalidValue
                 == cudaHostGetFlags(&flags, in_buffer->frames[instance_num])) {
                 CHECK_CUDA_ERROR(

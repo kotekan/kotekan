@@ -230,7 +230,8 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
 
     // Get PCIe block list from config
     // Used to block NICs that DPDK detects, but that shouldn't be used by DPDK
-    std::vector<std::string> pcie_block_list = config.get_default<std::vector<std::string>>(unique_name, "pcie_block_list", {});
+    std::vector<std::string> pcie_block_list =
+        config.get_default<std::vector<std::string>>(unique_name, "pcie_block_list", {});
     for (const auto& pcie : pcie_block_list) {
         str_args.push_back("-b");
         str_args.push_back(pcie);

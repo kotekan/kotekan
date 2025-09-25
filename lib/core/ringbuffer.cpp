@@ -270,19 +270,22 @@ void RingBuffer::print_full_status() {
     DEBUG("{:<40} : {:13.6f} MB", "size", size / 1.0e+6);
     DEBUG("{:<40} : {:13.6f} MB", "last_read_tail", last_read_tail / 1.0e+6);
     DEBUG("{:<40} : {:13.6f} MB", "first_write_head", first_write_head / 1.0e+6);
-    DEBUG("{:<40} : {:13.6f} MB", "available to read", (first_write_head - last_read_tail) / 1.0e+6);
+    DEBUG("{:<40} : {:13.6f} MB", "available to read",
+          (first_write_head - last_read_tail) / 1.0e+6);
     DEBUG("{:<40} : {:13.6f} MB", "free space to write",
-           (size - (first_write_head - last_read_tail)) / 1.0e+6);
+          (size - (first_write_head - last_read_tail)) / 1.0e+6);
     DEBUG("---- Producers ----");
     for (auto& it : producers) {
         const auto& name = it.second.name;
-        DEBUG("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(), write_heads[name] / 1.0e+6,
-               write_next[name] / 1.0e+6, (write_next[name] - write_heads[name]) / 1.0e+6);
+        DEBUG("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),
+              write_heads[name] / 1.0e+6, write_next[name] / 1.0e+6,
+              (write_next[name] - write_heads[name]) / 1.0e+6);
     }
     DEBUG("---- Consumers ----");
     for (auto& it : consumers) {
         const auto& name = it.second.name;
-        DEBUG("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(), read_tails[name] / 1.0e+6,
-               read_heads[name] / 1.0e+6, (read_heads[name] - read_tails[name]) / 1.0e+6);
+        DEBUG("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),
+              read_tails[name] / 1.0e+6, read_heads[name] / 1.0e+6,
+              (read_heads[name] - read_tails[name]) / 1.0e+6);
     }
 }

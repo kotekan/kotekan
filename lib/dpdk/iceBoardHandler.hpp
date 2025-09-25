@@ -167,12 +167,12 @@ protected:
         if (unlikely(fpga_packet_size != cur_mbuf->pkt_len)) {
             // When using a switch we expect to pick up packets since the NIC is basically in
             // promiscuous mode.
-            // TODO: Add a filter for F-engine packets to remove the risk of some equal 
+            // TODO: Add a filter for F-engine packets to remove the risk of some equal
             // sized packet on the network getting misread as an F-engine packet.
-            if (!using_switch) { 
+            if (!using_switch) {
                 // Checks the packet size matches the expected FPGA packet size.
                 ERROR("Got packet with incorrect length: {:d}, expected {:d}", cur_mbuf->pkt_len,
-                    fpga_packet_size);
+                      fpga_packet_size);
 
 
                 rx_packet_len_errors_total += 1;
