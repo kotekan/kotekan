@@ -91,10 +91,21 @@ void gpuSimulateN2kCorr::main_thread() {
                                     int iy = (t * _num_local_freq + f) * _num_elements
                                              + (16 * jhi + jlo);
 
+                                    // Extract the indices for the RFI mask
+                                    // 0x3FF extracts the low 10 bits for the
+                                    // fast (1024 = 2^10) index.
                                     int t_rfi_in = t & 0x3FF;
+                                    // Shift down by 10 bits to get the slow
+                                    // (divided by 1024) index.
                                     int t_rfi_out = t >> 10;
+                                    // The fast index refers to a particular
+                                    // bit in a byte.  The bit index is
+                                    // in the low 3 bits (7 = 0b0111)
                                     int t_rfi_in_bit = t_rfi_in & 7;
+                                    // The byte address is in the remaining bits
                                     int t_rfi_in_byte = t_rfi_in >> 3;
+                                    // Assemble the index into the rfi_mask 
+                                    // array.
                                     int rfi_idx =
                                         t_rfi_in_byte + 128 * (f + _num_local_freq * t_rfi_out);
 
@@ -106,8 +117,11 @@ void gpuSimulateN2kCorr::main_thread() {
                                     int yi = (input[iy] & 0x0f) - 8;
                                     int yr = ((input[iy] & 0xf0) >> 4) - 8;
 
+                                    // get the RFI value. 1 for clean,
+                                    // 0 for dirty.
                                     int rfi = (rfimask[rfi_idx] >> t_rfi_in_bit) & 1;
 
+                                    // accumulate!
                                     real += rfi * (xr * yr + xi * yi);
                                     imag += rfi * (xi * yr - yi * xr);
                                 }
@@ -136,8 +150,18 @@ void gpuSimulateN2kCorr::main_thread() {
 
         // Fetch input metadata
         const std::shared_ptr<const metadataObject> mc_in = input_buf->get_metadata(input_frame_id);
-        const std::shared_ptr<const chordMetadata> meta_in =
-            (mc_in && metadata_is_chord(mc_in)) ? get_chord_metadata(mc_in) : nullptr;
+        if (!mc_in) {
+            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", input_buf->buffer_name,
+                        input_frame_id);
+        }
+        assert(mc_in);
+        if (!metadata_is_chord(mc_in)) {
+            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
+                        input_buf->buffer_name, input_frame_id);
+        }
+        assert(metadata_is_chord(mc_in));
+
+        const std::shared_ptr<const chordMetadata> meta_in = get_chord_metadata(mc_in);
 
         // Create output metadata
         output_buf->allocate_new_metadata_object(output_frame_id);
@@ -169,16 +193,13 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->set_strides_simple();
         meta_out->nfreq = _num_local_freq;
         assert(meta_out->nfreq <= CHORD_META_MAX_FREQ);
-
-        if (meta_in) {
-            meta_out->fpga_seq_num = meta_in->fpga_seq_num;
-            meta_out->sample0_offset = meta_in->sample0_offset;
-            meta_out->offset_downsampling = meta_in->offset_downsampling;
-        } else {
-            meta_out->fpga_seq_num = 0;
-            meta_out->sample0_offset = 0;
-            meta_out->offset_downsampling = 1;
+        for(int f = 0; f < _num_local_freq; f++) {
+            meta_out->time_downsampling_fpga[f] = meta_in->time_downsampling_fpga[f] * _sub_integrations_ntime;
         }
+
+        meta_out->fpga_seq_num = meta_in->fpga_seq_num;
+        meta_out->sample0_offset = meta_in->sample0_offset;
+        meta_out->offset_downsampling = meta_in->offset_downsampling;
 
         input_buf->mark_frame_empty(unique_name, input_frame_id);
         rfimask_buf->mark_frame_empty(unique_name, rfimask_frame_id);
