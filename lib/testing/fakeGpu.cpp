@@ -149,7 +149,7 @@ void FakeGpu::main_thread() {
                 pattern->fill(data, metadata, frame_count, freq + freq_ind);
                 freqs[freq_ind] = freq + freq_ind;
             }
-            metadata->set_coarse_freq(freqs.size(), freqs.data());
+            metadata->set_coarse_freq(freqs);
 
             // Mark full and move onto next frame...
             out_buf->mark_frame_full(unique_name, frame_id++);
