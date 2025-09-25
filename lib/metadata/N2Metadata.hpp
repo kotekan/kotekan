@@ -131,7 +131,7 @@ alloc_N2_from_chord_metadata(Buffer* chord_buf, size_t chord_frame_id, Buffer* N
     N2_meta->num_ev = config.get<int32_t>(unique_name, "num_ev");
     N2_meta->nfreq = config.get<int32_t>(unique_name, "num_local_freq");
 
-    N2_meta->freq_id = chord_meta->coarse_freq[f];
+    N2_meta->freq_id = chord_meta->get_coarse_freq()[f];
     N2_meta->fpga_start_tick = 0;
     N2_meta->frame_start_time_ns = 0;
     N2_meta->frame_length_fpga_ticks = 0;
