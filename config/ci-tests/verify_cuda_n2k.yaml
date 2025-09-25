@@ -94,11 +94,11 @@ gen_data_rfi_RFImask:
     value: 255
     kotekan_stage: testDataGen
     out_buf: host_rfi_RFImask_buffer
-    samples_per_data_set: 4 # "coarse time" samples = samples_per_data_set / 1024
     name: "RFImask"
     array_shape: [ 4, 16, 128 ]
     dim_name: ["T8hi128", "F", "T8lo128"]
     num_frames: buffer_depth
+    meta_time_downsample_factor: 1024
 
 run_send_voltage:
     gpu_0:
