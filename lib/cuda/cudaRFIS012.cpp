@@ -189,8 +189,8 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
 
     rfi_S012.set_metadata(voltage.get_metadata());
     const auto& rfi_S012_meta = rfi_S012.get_metadata();
-    assert(rfi_S012_meta->nfreq >= 0);
-    for (int freq = 0; freq < rfi_S012_meta->nfreq; ++freq) {
+    assert(rfi_S012_meta->get_nfreq() >= 0);
+    for (int freq = 0; freq < rfi_S012_meta->get_nfreq(); ++freq) {
         rfi_S012_meta->freq_upchan_factor[freq] *= rfi_downsampling_factor;
         rfi_S012_meta->time_downsampling_fpga[freq] *= rfi_downsampling_factor;
     }
