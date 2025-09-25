@@ -29,6 +29,7 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _sub_integration_ntime = config.get<int32_t>(unique_name, "sub_integration_ntime");
+    _blocksize = 8;
 
     input_plmask_buf = get_buffer("in_plmask_buf");
     input_plmask_buf->register_consumer(unique_name);
@@ -62,67 +63,71 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
              input_rfimask_buf->buffer_name, input_rfi_frame_id,
              output_buf->buffer_name, output_frame_id);
 
-        // number of elements = number of dishes * polarizations
-        int nt = _samples_per_data_set / 64;
+        // PL:  bool [num_times/64][num_freq][num_el/8][64]
+        // RFI: bool [num_times/1024][num_freq][1024]
+        //
+        // PL:  u64 [num_times/64][num_freq][num_el/8]
+        // RFI: u64 [num_times/1024][num_freq][16]
+
+        int n_integrations = _samples_per_data_set / _sub_integration_ntime;
+        int nt64_inner = _sub_integration_ntime / 64;
         int nf = _num_local_freq;
-        int nf_hi = (_num_local_freq + 3) / 4;
         int ne = _num_elements / 8;
 
-        int fstride_hi = ne;
-        int tstride_hi = ne * nf_hi;
-        
-        int fstride = ne;
-        int tstride = ne * nf;
+        int n_block_lin = ne / _blocksize;
+        int n_blocks = (n_block_lin * (n_block_lin + 1)) / 2;
 
-        INFO("Running stage expanding nt={:d}, nf={:d} 64-bit masks to nt={:d}, nf={:d} with downsampled num_elements = {:d} = {:d} / 8",
-             nt/2, nf_hi, nt, nf, ne, _num_elements);
+        int df_pl = ne;
+        int dt_pl = ne * nf;
+        int df_rfi = 16;
+        int dt_rfi = 16 * nf;
 
+        int diin_c = _blocksize;
+        int db_c = _blocksize * _blocksize;
+        int df_c = n_blocks * _blocksize * _blocksize;
+        int dt_c = nf * n_blocks * _blocksize * _blocksize;
 
-        for(int t = 0; t < nt; t++) {
-            for(int f_hi = 0; f_hi < nf_hi; f_hi++) {
-                for(int e = 0; e < ne; e++) {
+        assert(_num_elements % (8 * _blocksize) == 0);
 
-                    // Get the indices into the downsampled array
-                    int t_hi = t >> 1;
+        INFO("Running PL corr with nt_outer={:d}, nt_inner={:d}, num_freq={:d}, num_downsampled_elements={:d}",
+             n_integrations, _sub_integration_ntime, nf, ne);
 
-                    // Grab the value of the PL mask
-                    uint64_t pl = pl_mask[t_hi * tstride_hi + f_hi * fstride_hi + e];
+        for(int t_out = 0; t_out < n_integrations; t_out++) {
+            for(int f = 0; f < nf; f++) {
+                int block_idx = 0;
+                for(int i_out = 0; i_out < n_block_lin; i_out++) {
+                    for(int j_out = 0; j_out <= i_out; j_out++) {
+                        for(int i_in = 0; i_in < _blocksize; i_in++) {
+                            for(int j_in = 0; j_in < _blocksize; j_in++) {
+                                int i = i_out * _blocksize + i_in;
+                                int j = j_out * _blocksize + j_in;
 
-                    // Each 64 bit value in the unexpanded mask represents 128
-                    // time samples.
-                    // To "expand" the mask we need to double each bit:
-                    // interleave the bits of the 64 bit value to get a 128
-                    // bit value:
-                    //
-                    // [3210] --> [33221100]
+                                int32_t c = 0;
+                                for(int t64_in = 0; t64_in < nt64_inner; t64_in++) {
+                                    int t64 = t_out * nt64_inner + t64_in;
+                                    int t_pl = t64;
+                                    int t_rfi_lo = t64 & 0xF;
+                                    int t_rfi_hi = t64 >> 4;
 
-                    // We'll do this in chunks, if t is odd, we want the higher
-                    // 32 bits to expand into a 64 bit value.  if t is even, we
-                    // want the lower 32 bits.
-                    if(t & 1)
-                        pl >>= 32;
-                    
-                    pl &= 0xFFFFFFFF;
+                                    uint64_t pl_i = pl_mask[t_pl*dt_pl + f*df_pl + i];
+                                    uint64_t pl_j = pl_mask[t_pl*dt_pl + f*df_pl + j];
+                                    uint64_t rfi = rfi_mask[t_rfi_hi*dt_rfi + f*df_rfi + t_rfi_lo];
+                                    uint64_t v = pl_i & pl_j & rfi;
+                                    std::bitset<64> v_bits(v);
+                                    c += v_bits.count();
+                                } // t64_in
 
-                    // Now, run through the bits, grab the values, and put them
-                    // in their places by hand.
-                    //
-                    // This is slow, but obvious.
-                    uint64_t pl_out = 0;
-                    for(uint64_t b = 0; b < 32; b++)
-                    {
-                        uint64_t b_out = b * 2;
-                        uint64_t bit = (pl >> b) & 1;
-                        pl_out |= (bit << b_out) | (bit << (b_out + 1));
-                    }
-                    
-                    for(int f_lo = 0; f_lo < 4; f_lo++) {
-                        int f = f_lo + (f_hi << 2);
-                        counts[t * tstride + f * fstride + e] = pl_out;
-                    }
-                } // e
-            } // f_hi
-        } // t
+                                counts[t_out*dt_c + f*df_c + block_idx*db_c + i_in*diin_c + j_in] = c;
+                            } // j_in
+                        } // i_in
+
+                        block_idx++;
+                    } // j_out
+                } // i_out
+                
+                DEBUG("Done t_outer {:d} of {:d} (freq {:d} of {:d}, nt_inner={:d})...", t_out, n_integrations, f, nf, _sub_integration_ntime);
+            } // f
+        } // t_out
 
 
         // Fetch input metadata
@@ -146,13 +151,15 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
         assert(meta_out);
 
-        meta_out->set_name("cpusim_pl_expand");
+        meta_out->set_name("cpusim_n2_counts");
         meta_out->type = kotekan::uint64;
         meta_out->dims = 3;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
-        meta_out->set_array_dimension(0, nt, "Thi64");
+        meta_out->set_array_dimension(0, n_integrations, "Tc");
         meta_out->set_array_dimension(1, nf, "F");
-        meta_out->set_array_dimension(2, ne, "E8");
+        meta_out->set_array_dimension(2, n_blocks, "Block");
+        meta_out->set_array_dimension(3, _blocksize, "inner_i");
+        meta_out->set_array_dimension(4, _blocksize, "inner_j");
         meta_out->set_strides_simple();
         meta_out->nfreq = _num_local_freq;
         assert(meta_out->nfreq <= CHORD_META_MAX_FREQ);
@@ -164,8 +171,8 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
             for(int f = 0; f < meta_out->nfreq; f++) {
                 meta_out->coarse_freq[f] = meta_in->coarse_freq[f];
                 meta_out->freq_upchan_factor[f] = meta_in->freq_upchan_factor[f];
-                meta_out->half_fpga_sample0[f] = meta_out->half_fpga_sample0[f];
-                meta_out->time_downsampling_fpga[f] = meta_in->time_downsampling_fpga[f] / 2;
+                meta_out->half_fpga_sample0[f] = meta_in->half_fpga_sample0[f];
+                meta_out->time_downsampling_fpga[f] = meta_in->time_downsampling_fpga[f] * _sub_integration_ntime;
             }
         } else {
             meta_out->fpga_seq_num = 0;
@@ -184,7 +191,7 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
 
         output_buf->mark_frame_full(unique_name, output_frame_id);
 
-        INFO("Simulating GPU PL expansion done for {:s}[{:d}] and {:s}[{:d}] result is in {:s}[{:d}]",
+        INFO("Simulating GPU PL correlation done for {:s}[{:d}] and {:s}[{:d}] result is in {:s}[{:d}]",
              input_plmask_buf->buffer_name, input_pl_frame_id,
              input_rfimask_buf->buffer_name, input_rfi_frame_id,
              output_buf->buffer_name, output_frame_id);

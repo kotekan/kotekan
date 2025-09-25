@@ -42,6 +42,7 @@ private:
     int32_t _num_elements;
     int32_t _samples_per_data_set;
     int32_t _sub_integration_ntime;
+    int32_t _blocksize;
 };
 
 #endif
