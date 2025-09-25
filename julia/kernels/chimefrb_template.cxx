@@ -345,9 +345,9 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     assert(Ebar_meta->dish_index);
 
     auto I_meta = I_buffer.get_metadata();
-    assert(I_meta->nfreq >= 0);
-    assert(I_meta->nfreq == Ebar_meta->nfreq);
-    for (int freq = 0; freq < I_meta->nfreq; ++freq) {
+    assert(I_meta->get_nfreq() >= 0);
+    assert(I_meta->get_nfreq() == Ebar_meta->get_nfreq());
+    for (int freq = 0; freq < I_meta->get_nfreq(); ++freq) { 
         I_meta->freq_upchan_factor[freq] *= cuda_downsampling_factor;
         I_meta->time_downsampling_fpga[freq] *= cuda_downsampling_factor;
     }
