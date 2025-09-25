@@ -112,6 +112,7 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
                 // Loop over the blocks
                 int block_idx = 0;
                 for (int i_out = 0; i_out < n_block_lin; i_out++) {
+                    // Only taking the LOWER triangular blocks!  j <= i.
                     for (int j_out = 0; j_out <= i_out; j_out++) {
                         // Loop inside the blocks
                         for (int i_in = 0; i_in < _blocksize; i_in++) {
