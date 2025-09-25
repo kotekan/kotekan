@@ -6,7 +6,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 
 #include <cstdint> // for int32_t
-#include <string>   // for string
+#include <string>  // for string
 
 /**
  * @brief Perform on CPU the equivalent of the CudaCorrelator stage:
@@ -21,7 +21,7 @@
  *      @buffer_format 4+4-bit complex int, encoded with CHIME convention:
  *          offset encoded by +8, imaginary in low bits, real in high. In
  *          kotekan this is a int4x2_swapped_withoffset.
- *      @buffer_shape [samples_per_data_set, num_local_freq, num_elements] or 
+ *      @buffer_shape [samples_per_data_set, num_local_freq, num_elements] or
  *          equivalently [samples_per_data_set, num_local_freq,
  *          num_polarizations, num_dishes]
  *      @buffer_metadata chordMetadata
@@ -41,12 +41,12 @@
  *      represented in the output.
  *      @buffer_format int32+32 complex.  Each 2 int entry has the real part
  *          in the first int and the imaginary part in the second int.
- *      @buffer_shape [num_integrations, num_local_freq, num_blocks, 16, 16, 
+ *      @buffer_shape [num_integrations, num_local_freq, num_blocks, 16, 16,
  *           2].  The final axis is over real/imaginary components. The size
  *           is num_integrations * num_local_freq * num_blocks * 16^2 * 2
  *           int32s.
  *
- * @conf  num_elements         Int.  Number of feeds or (antennas x 
+ * @conf  num_elements         Int.  Number of feeds or (antennas x
  *      polarizations).
  * @conf num_local_freq        Int.  Number of frequencies.
  * @conf samples_per_data_set  Int.  Number of samples per frame.

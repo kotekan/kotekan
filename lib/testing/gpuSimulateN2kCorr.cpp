@@ -101,7 +101,7 @@ void gpuSimulateN2kCorr::main_thread() {
                                     int t_rfi_in_bit = t_rfi_in & 7;
                                     // The byte address is in the remaining bits
                                     int t_rfi_in_byte = t_rfi_in >> 3;
-                                    // Assemble the index into the rfi_mask 
+                                    // Assemble the index into the rfi_mask
                                     // array.
                                     int rfi_idx =
                                         t_rfi_in_byte + 128 * (f + _num_local_freq * t_rfi_out);
@@ -190,8 +190,9 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->set_strides_simple();
         meta_out->nfreq = _num_local_freq;
         assert(meta_out->nfreq <= CHORD_META_MAX_FREQ);
-        for(int f = 0; f < _num_local_freq; f++) {
-            meta_out->time_downsampling_fpga[f] = meta_in->time_downsampling_fpga[f] * _sub_integration_ntime;
+        for (int f = 0; f < _num_local_freq; f++) {
+            meta_out->time_downsampling_fpga[f] =
+                meta_in->time_downsampling_fpga[f] * _sub_integration_ntime;
         }
 
         meta_out->fpga_seq_num = meta_in->fpga_seq_num;

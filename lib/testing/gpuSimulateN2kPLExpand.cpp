@@ -95,8 +95,8 @@ void gpuSimulateN2kPLExpand::main_thread() {
                     if (t & 1)
                         pl >>= 32;
 
-                    pl &= 0xFFFFFFFF;  // Just in case mask out all but the
-                                       // lower 32 bits.
+                    pl &= 0xFFFFFFFF; // Just in case mask out all but the
+                                      // lower 32 bits.
 
                     // Now, run through the bits, grab the values, and put them
                     // in their places by hand.
@@ -105,8 +105,8 @@ void gpuSimulateN2kPLExpand::main_thread() {
                     uint64_t pl_out = 0;
                     // Loop over source bits
                     for (uint64_t b = 0; b < 32; b++) {
-                        uint64_t b_out = b * 2;  // first destination bit
-                        uint64_t bit = (pl >> b) & 1;  // value of source bit
+                        uint64_t b_out = b * 2;       // first destination bit
+                        uint64_t bit = (pl >> b) & 1; // value of source bit
                         // add source bit to dest and dest+1
                         pl_out |= (bit << b_out) | (bit << (b_out + 1));
                     }

@@ -30,7 +30,7 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _sub_integration_ntime = config.get<int32_t>(unique_name, "sub_integration_ntime");
-    
+
     // This is always equal to 8.
     _blocksize = 8;
 
@@ -87,17 +87,17 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         int n_blocks = (n_block_lin * (n_block_lin + 1)) / 2;
 
         // Strides into the (expanded) PL mask (as uint64_t's)
-        int df_pl = ne;         // freq stride
-        int dt_pl = ne * nf;    // slow time stride
-        
+        int df_pl = ne;      // freq stride
+        int dt_pl = ne * nf; // slow time stride
+
         // Strides into the RFI mask (as uint64_t's)
-        int df_rfi = 16;        // freq stride
-        int dt_rfi = 16 * nf;   // slow time stride
+        int df_rfi = 16;      // freq stride
+        int dt_rfi = 16 * nf; // slow time stride
 
         // strides into the count matrix
-        int diin_c = _blocksize;                        // inner block i stride
-        int db_c = _blocksize * _blocksize;             // block stride
-        int df_c = n_blocks * _blocksize * _blocksize;  // freq stride
+        int diin_c = _blocksize;                            // inner block i stride
+        int db_c = _blocksize * _blocksize;                 // block stride
+        int df_c = n_blocks * _blocksize * _blocksize;      // freq stride
         int dt_c = nf * n_blocks * _blocksize * _blocksize; // t_out stride
 
         assert(_num_elements % (8 * _blocksize) == 0);
@@ -151,7 +151,8 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         } // t_out
 
         // Fetch input metadata
-        const std::shared_ptr<const metadataObject> mc_in = input_plmask_buf->get_metadata(input_pl_frame_id);
+        const std::shared_ptr<const metadataObject> mc_in =
+            input_plmask_buf->get_metadata(input_pl_frame_id);
         if (!mc_in) {
             FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", input_plmask_buf->buffer_name,
                         input_pl_frame_id);

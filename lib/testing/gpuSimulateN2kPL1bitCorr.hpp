@@ -5,8 +5,8 @@
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
 
-#include <cstdint>  // for int32_t
-#include <string>   // for string
+#include <cstdint> // for int32_t
+#include <string>  // for string
 
 /**
  * @brief Perform on CPU the equivalent of the CudaCorrelator stage:
@@ -24,8 +24,8 @@
  * GPU reasons, the time axis is split into fast (64 time samples, each 1 bit)
  * and slow (length samples_per_data_set / 64) axes.
  *
- * The RFI mask is applied over all elements (it has no element axis) and its 
- * time axis is also split into fast (1024 time samples) and slow 
+ * The RFI mask is applied over all elements (it has no element axis) and its
+ * time axis is also split into fast (1024 time samples) and slow
  * (samples_per_data_set / 1024) axes.
  *
  * In terms of 1-bit bools their shapes are:
@@ -60,7 +60,7 @@
  *      @buffer_format uint64 bitmask.
  *      @buffer_shape [samples_per_data_set / 1024, num_local_freq, 16]
  *      @buffer_metadata chordMetadata
- * 
+ *
  * @buffer out_buf  The output counts matrix.
  *      @buffer_format int32
  *      @buffer_shape [num_integrations, num_local_freq, num_blocks, 8, 8]

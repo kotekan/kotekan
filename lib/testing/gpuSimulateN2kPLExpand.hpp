@@ -5,8 +5,8 @@
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
 
-#include <cstdint> 
-#include <string>   // for string
+#include <cstdint>
+#include <string> // for string
 
 /**
  * @brief Perform on CPU the equivalent of the CudaCorrelator stage:
