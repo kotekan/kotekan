@@ -11,24 +11,19 @@ type: config
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: DEBUG2
-#num_links: 4
-#freq_array: [4,7,10,16]
-#timesamples_per_packet: 2
 
-#num_data_sets: 1
 num_gpus: 1
 buffer_depth: 4
-num_gpu_frames: 4
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
-frame_arrival_period: 0.00000256 * samples_per_data_set
+frame_arrival_period: 5.12e-6 * samples_per_data_set
 sizeof_int: 4
 
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 2048
 samples_per_data_set: 4096
-#sub_integration_ntime: 16384
-#samples_per_data_set: 32768
+# sub_integration_ntime: 8192  # ~40 ms for chord
+# samples_per_data_set: 8192   # 
 num_times: samples_per_data_set
 num_polarizations: 2
 num_dishes: 64
@@ -41,37 +36,38 @@ counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
 counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
 
 # vis matrix size
-vis_blocks_tr_root: (num_elements + 1) / 16
-num_vis_blocks: vis_blocks_tr_root * (vis_blocks_tr_root + 1) / 2
+vis_blocksize: 16
+vis_num_blocks_lin: num_elements / vis_blocksize
+vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata
-num_metadata_objects: 15 * buffer_depth
+    num_metadata_objects: 15 * buffer_depth
 
 # Buffers
 host_voltage_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_elements * num_local_freq
+    frame_size: samples_per_data_set * num_local_freq * num_elements
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    frame_size: samples_per_data_set * num_local_freq / 8
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: ((samples_per_data_set / 2) * (num_elements / 8) * (num_local_freq / 4)) / 8
+    frame_size: ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
     metadata_pool: main_pool
 
 host_correlation_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * num_vis_blocks * 2 * sizeof_int
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
     metadata_pool: main_pool
 
 host_counts_buffer:
@@ -83,13 +79,13 @@ host_counts_buffer:
 simulated_correlation_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * num_vis_blocks * 2 * sizeof_int
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
     metadata_pool: main_pool
 
 simulated_pl_mask_exp_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set * (num_elements / 8) * (num_local_freq)) / 8
+    frame_size: (samples_per_data_set * (num_local_freq) * (num_elements / 8)) / 8
     metadata_pool: main_pool
 
 simulated_counts_buffer:
@@ -101,28 +97,26 @@ simulated_counts_buffer:
 # Ringbuffer signalling buffer
 host_voltage_ringbuffer:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * samples_per_data_set * num_elements * num_local_freq
+    ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq * num_elements 
     metadata_pool: main_pool
 
 host_rfi_RFImask_ringbuffer:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * num_local_freq * samples_per_data_set / 8
+    ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq / 8
     metadata_pool: main_pool
 
 host_pl_mask_ringbuffer:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * ((samples_per_data_set / 2) * (num_elements / 8) * (num_local_freq / 4)) / 8
+    ring_buffer_size: buffer_depth * ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
     metadata_pool: main_pool
 
 host_pl_mask_exp_ringbuffer:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * (samples_per_data_set * (num_elements / 8) * num_local_freq) / 8
+    ring_buffer_size: buffer_depth * (samples_per_data_set * num_local_freq * (num_elements / 8)) / 8
     metadata_pool: main_pool
 
 gen_data_voltage:
-    # type: const
-    # value: 34 # 1i # 34 # = 2 + 2i
-    type: random_signed_offset  # const_offset
+    type: random_signed_offset
     value: 120
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
@@ -140,12 +134,10 @@ gen_data_rfi_RFImask:
     array_shape: [ 4, 16, 128 ]
     dim_name: ["T8hi128", "F", "T8lo128"]
     num_frames: buffer_depth
-    meta_time_downsample_factor: 1024
+    meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
 
 gen_pl_mask:
-    # type: const
-    # value: 34 # 1i # 34 # = 2 + 2i
-    type: random1x8  # const1x8
+    type: random1x8 
     value: 120
     kotekan_stage: testDataGen
     out_buf: host_pl_mask_buffer
@@ -153,7 +145,7 @@ gen_pl_mask:
     array_shape: [ 32, 4, 2, 8, 8 ]  # = num_times/128, num_freq/4, 2, num_dishes/8, 8
     dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
     num_frames: buffer_depth  # Must be at least what check_data expects
-    meta_time_downsample_factor: 128
+    meta_time_downsample_factor: 128  # The number of time samples represented by each coarse time index.
 
 run_send_voltage:
     gpu_0:
@@ -165,7 +157,7 @@ run_send_voltage:
             host_voltage_ringbuffer_out: host_voltage_ringbuffer
         commands:
         - name: cudaCopyToRingbuffer
-          input_size: samples_per_data_set * num_elements * num_local_freq
+          input_size: samples_per_data_set * num_local_freq * num_elements
           ring_buffer_size: buffer_depth * input_size
           in_buf: host_voltage_buffer_in
           signal_buf: host_voltage_ringbuffer_out
@@ -181,8 +173,8 @@ run_send_rfi_RFImask:
             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
         commands:
         - name: cudaCopyToRingbuffer
-          input_size: num_local_freq * samples_per_data_set / 8
-          ring_buffer_size: buffer_depth * num_local_freq * samples_per_data_set / 8
+          input_size: samples_per_data_set * num_local_freq  / 8
+          ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq / 8
           in_buf: host_rfi_RFImask_buffer_in
           signal_buf: host_rfi_RFImask_ringbuffer_out
           gpu_mem_output: rfi_RFImask_buffer
@@ -197,7 +189,7 @@ run_send_pl_mask:
             host_pl_mask_ringbuffer_out: host_pl_mask_ringbuffer
         commands:
         - name: cudaCopyToRingbuffer
-          input_size: (samples_per_data_set/2) * (num_elements/8) * (num_local_freq/4) / 8
+          input_size: (samples_per_data_set/2) * (num_local_freq/4) * (num_elements/8) / 8
           ring_buffer_size: buffer_depth * input_size
           in_buf: host_pl_mask_buffer_in
           signal_buf: host_pl_mask_ringbuffer_out
@@ -214,9 +206,6 @@ run_n2k_corr:
             host_correlation: host_correlation_buffer
         commands:
         - name: cudaCorrelator
-          # in_signal: host_voltage_ringbuffer_in
-          # gpu_mem_voltage: voltage_buffer
-          # gpu_mem_correlation_triangle: correlation_matrix
           n2k_correlation_name: correlation
           voltage_name: voltage
           rfi_RFImask_name: rfi_RFImask
@@ -235,7 +224,7 @@ run_pl_expand:
             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
         commands:
         - name: cudaPLMaskExpander
-          num_frequencies: num_local_freq  # TODO: rename to num_local_freq
+          num_frequencies: num_local_freq
           pl_mask_name: pl_mask
           pl_expanded_mask_name: pl_mask_exp
 
@@ -250,7 +239,7 @@ run_pl_corr:
             host_counts_buffer: host_counts_buffer
         commands:
         - name: cudaPL1bitCorrelator
-          num_frequencies: num_local_freq  # TODO: rename to num_local_freq
+          num_frequencies: num_local_freq
           pl_expanded_mask_name: pl_mask_exp
           rfi_RFImask_name: rfi_RFImask
           n2k_counts_name: counts
