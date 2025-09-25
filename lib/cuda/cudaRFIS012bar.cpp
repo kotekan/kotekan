@@ -155,8 +155,8 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
 
     rfi_S012bar.set_metadata(rfi_S012.get_metadata());
     const auto& rfi_S012bar_meta = rfi_S012bar.get_metadata();
-    assert(rfi_S012bar_meta->nfreq >= 0);
-    for (int freq = 0; freq < rfi_S012bar_meta->nfreq; ++freq) {
+    assert(rfi_S012bar_meta->get_nfreq() >= 0);
+    for (int freq = 0; freq < rfi_S012bar_meta->get_nfreq(); ++freq) {
         rfi_S012bar_meta->freq_upchan_factor[freq] *= rfi_second_downsampling_factor;
         rfi_S012bar_meta->time_downsampling_fpga[freq] *= rfi_second_downsampling_factor;
     }
