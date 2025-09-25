@@ -233,7 +233,7 @@ void RingBuffer::finish_write(const std::string& name, const int inst, const std
     DEBUG2("finish_write({:s}[{:d}]): "
            "produced bytes: {}",
            name, inst, group_digits(sz));
-    // print_full_status();
+    print_full_status();
     assert(write_heads[name] >= last_read_tail);
     assert(write_heads[name] + sz - last_read_tail <= size);
     const bool old = (write_heads[name] == first_write_head);
@@ -258,26 +258,31 @@ void RingBuffer::finish_write(const std::string& name, const int inst, const std
 }
 
 void RingBuffer::print_full_status() {
+
+    // Don't compute a lot of strings if we aren't going to output the result
+    if (get_log_level() < kotekan::logLevel::DEBUG)
+        return;
+
     std::unique_lock<std::recursive_mutex> lock(mutex);
     static std::recursive_mutex print_mutex;
     std::lock_guard<std::recursive_mutex> print_lock(print_mutex);
-    INFO_F("--------------------- %s ---------------------", buffer_name.c_str());
-    INFO_F("%-40s : %13.6f MB", "size", size / 1.0e+6);
-    INFO_F("%-40s : %13.6f MB", "last_read_tail", last_read_tail / 1.0e+6);
-    INFO_F("%-40s : %13.6f MB", "first_write_head", first_write_head / 1.0e+6);
-    INFO_F("%-40s : %13.6f MB", "available to read", (first_write_head - last_read_tail) / 1.0e+6);
-    INFO_F("%-40s : %13.6f MB", "free space to write",
+    DEBUG("--------------------- %s ---------------------", buffer_name.c_str());
+    DEBUG("{:<40} : {:13.6f} MB", "size", size / 1.0e+6);
+    DEBUG("{:<40} : {:13.6f} MB", "last_read_tail", last_read_tail / 1.0e+6);
+    DEBUG("{:<40} : {:13.6f} MB", "first_write_head", first_write_head / 1.0e+6);
+    DEBUG("{:<40} : {:13.6f} MB", "available to read", (first_write_head - last_read_tail) / 1.0e+6);
+    DEBUG("{:<40} : {:13.6f} MB", "free space to write",
            (size - (first_write_head - last_read_tail)) / 1.0e+6);
-    INFO_F("---- Producers ----");
+    DEBUG("---- Producers ----");
     for (auto& it : producers) {
         const auto& name = it.second.name;
-        INFO_F("%-40s : %13.6f MB ... %.6f MB (%.6f MB)", name.c_str(), write_heads[name] / 1.0e+6,
+        DEBUG("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(), write_heads[name] / 1.0e+6,
                write_next[name] / 1.0e+6, (write_next[name] - write_heads[name]) / 1.0e+6);
     }
-    INFO_F("---- Consumers ----");
+    DEBUG("---- Consumers ----");
     for (auto& it : consumers) {
         const auto& name = it.second.name;
-        INFO_F("%-40s : %13.6f MB ... %.6f MB (%.6f MB)", name.c_str(), read_tails[name] / 1.0e+6,
+        DEBUG("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(), read_tails[name] / 1.0e+6,
                read_heads[name] / 1.0e+6, (read_heads[name] - read_tails[name]) / 1.0e+6);
     }
 }

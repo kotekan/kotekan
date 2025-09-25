@@ -205,13 +205,19 @@ std::string GenericBuffer::get_dot_node_label() {
 
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                const std::string& _buffer_name, const std::string& _buffer_type, int _numa_node,
-               bool _use_hugepages, bool _mlock_frames, bool zero_new_frames) :
+               bool _use_hugepages, bool _mlock_frames, const std::vector<int>& cpu_affinity,
+               bool zero_new_frames):
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
     _zero_frames(false), frames(num_frames, nullptr), is_full(num_frames, false),
     last_arrival_time(0), use_hugepages(_use_hugepages), mlock_frames(_mlock_frames),
     numa_node(_numa_node) {
     assert(num_frames > 0);
+
+    // Get the CPU affinity for the zeroing threads from the config
+    CPU_ZERO(&_cpu_set_zero);
+    for (auto cpu : cpu_affinity)
+        CPU_SET(cpu, &_cpu_set_zero);
 
 #if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
     // Allocate all memory for a buffer on the NUMA domain its frames are located.
@@ -323,7 +329,7 @@ uint8_t* Buffer::wait_for_full_frame(const std::string& consumer_name, const int
     std::unique_lock<std::recursive_mutex> lock(mutex);
     auto& con = consumers.at(consumer_name);
     DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting...", consumer_name, ID);
-    //print_full_status();
+    print_full_status();
     // This wait exits when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as done
     full_cond.wait(lock, [&]() { return (is_full[ID] && !con.is_done[ID]) || shutdown_signal; });
@@ -406,12 +412,16 @@ void Buffer::print_buffer_status() {
 
 void Buffer::print_full_status() {
 
+    // Don't compute a lot of strings if we aren't going to output the result
+    if (get_log_level() < kotekan::logLevel::DEBUG)
+        return;
+
     buffer_lock lock(mutex);
 
     char status_string[num_frames + 1];
     status_string[num_frames] = '\0';
 
-    INFO_F("--------------------- %s ---------------------", buffer_name.c_str());
+    DEBUG("--------------------- {:} ---------------------", buffer_name);
 
     for (int i = 0; i < num_frames; ++i) {
         if (is_full[i])
@@ -420,9 +430,9 @@ void Buffer::print_full_status() {
             status_string[i] = '_';
     }
 
-    INFO_F("%-40s : %s", "Full Frames (X)", status_string);
+    DEBUG("{:<40} : {:}", "Full Frames (X)", std::string(status_string));
 
-    INFO_F("---- Producers ----");
+    DEBUG("---- Producers ----");
     for (auto& xit : producers) {
         auto& x = xit.second;
         for (int i = 0; i < num_frames; ++i) {
@@ -431,11 +441,11 @@ void Buffer::print_full_status() {
             else
                 status_string[i] = '_';
         }
-        INFO_F("%-40s : %s (%d, %d)", x.name.c_str(), status_string, x.last_frame_acquired,
+        DEBUG("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string), x.last_frame_acquired,
                x.last_frame_released);
     }
 
-    INFO_F("---- Consumers ----");
+    DEBUG("---- Consumers ----");
     for (auto& xit : consumers) {
         auto& x = xit.second;
         for (int i = 0; i < num_frames; ++i) {
@@ -444,7 +454,7 @@ void Buffer::print_full_status() {
             else
                 status_string[i] = '_';
         }
-        INFO_F("%-40s : %s (%d, %d)", x.name.c_str(), status_string, x.last_frame_acquired,
+        DEBUG("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string), x.last_frame_acquired,
                x.last_frame_released);
     }
 }
@@ -561,13 +571,9 @@ bool Buffer::private_mark_frame_empty(const int ID) {
         zero_args->ID = ID;
         zero_args->buf = this;
 
-        cpu_set_t cpuset;
-        CPU_ZERO(&cpuset);
-        // TODO: Move this to the config file (when buffers.c updated to C++11)
-        CPU_SET(5, &cpuset);
-
+        // TODO This should be changed to use a thread poll instead of making new threads each time
         CHECK_ERROR_F(pthread_create(&zero_t, nullptr, &private_zero_frames, (void*)zero_args));
-        CHECK_ERROR_F(pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset));
+        CHECK_ERROR_F(pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &_cpu_set_zero));
         CHECK_ERROR_F(pthread_detach(zero_t));
     } else {
         is_full[ID] = 0;
