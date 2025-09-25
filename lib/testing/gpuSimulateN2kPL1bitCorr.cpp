@@ -30,6 +30,8 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _sub_integration_ntime = config.get<int32_t>(unique_name, "sub_integration_ntime");
+    
+    // This is always equal to 8.
     _blocksize = 8;
 
     input_plmask_buf = get_buffer("in_plmask_buf");
@@ -66,8 +68,12 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
              input_plmask_buf->buffer_name, input_pl_frame_id, input_rfimask_buf->buffer_name,
              input_rfi_frame_id, output_buf->buffer_name, output_frame_id);
 
-        // PL:  bool [num_times/64][num_freq][num_el/8][64]
-        // RFI: bool [num_times/1024][num_freq][1024]
+        // num_times = samples_per_data_set
+        // num_freq = num_local_freq
+        // num_el = num_elements
+        //
+        // PL:  bool1 [num_times/64][num_freq][num_el/8][64]
+        // RFI: bool1 [num_times/1024][num_freq][1024]
         //
         // PL:  u64 [num_times/64][num_freq][num_el/8]
         // RFI: u64 [num_times/1024][num_freq][16]
@@ -80,15 +86,19 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         int n_block_lin = ne / _blocksize;
         int n_blocks = (n_block_lin * (n_block_lin + 1)) / 2;
 
-        int df_pl = ne;
-        int dt_pl = ne * nf;
-        int df_rfi = 16;
-        int dt_rfi = 16 * nf;
+        // Strides into the (expanded) PL mask (as uint64_t's)
+        int df_pl = ne;         // freq stride
+        int dt_pl = ne * nf;    // slow time stride
+        
+        // Strides into the RFI mask (as uint64_t's)
+        int df_rfi = 16;        // freq stride
+        int dt_rfi = 16 * nf;   // slow time stride
 
-        int diin_c = _blocksize;
-        int db_c = _blocksize * _blocksize;
-        int df_c = n_blocks * _blocksize * _blocksize;
-        int dt_c = nf * n_blocks * _blocksize * _blocksize;
+        // strides into the count matrix
+        int diin_c = _blocksize;                        // inner block i stride
+        int db_c = _blocksize * _blocksize;             // block stride
+        int df_c = n_blocks * _blocksize * _blocksize;  // freq stride
+        int dt_c = nf * n_blocks * _blocksize * _blocksize; // t_out stride
 
         assert(_num_elements % (8 * _blocksize) == 0);
 
@@ -96,16 +106,20 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
              "num_downsampled_elements={:d}",
              n_integrations, _sub_integration_ntime, nf, ne);
 
+        // Loop over outer (unsummed) time and frequency
         for (int t_out = 0; t_out < n_integrations; t_out++) {
             for (int f = 0; f < nf; f++) {
+                // Loop over the blocks
                 int block_idx = 0;
                 for (int i_out = 0; i_out < n_block_lin; i_out++) {
                     for (int j_out = 0; j_out <= i_out; j_out++) {
+                        // Loop inside the blocks
                         for (int i_in = 0; i_in < _blocksize; i_in++) {
                             for (int j_in = 0; j_in < _blocksize; j_in++) {
                                 int i = i_out * _blocksize + i_in;
                                 int j = j_out * _blocksize + j_in;
 
+                                // Now we can do the sum!
                                 int32_t c = 0;
                                 for (int t64_in = 0; t64_in < nt64_inner; t64_in++) {
                                     int t64 = t_out * nt64_inner + t64_in;
@@ -136,12 +150,20 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
             } // f
         } // t_out
 
-
         // Fetch input metadata
-        const std::shared_ptr<const metadataObject> mc_in =
-            input_plmask_buf->get_metadata(input_pl_frame_id);
-        const std::shared_ptr<const chordMetadata> meta_in =
-            (mc_in && metadata_is_chord(mc_in)) ? get_chord_metadata(mc_in) : nullptr;
+        const std::shared_ptr<const metadataObject> mc_in = input_plmask_buf->get_metadata(input_pl_frame_id);
+        if (!mc_in) {
+            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", input_plmask_buf->buffer_name,
+                        input_pl_frame_id);
+        }
+        assert(mc_in);
+        if (!metadata_is_chord(mc_in)) {
+            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
+                        input_plmask_buf->buffer_name, input_pl_frame_id);
+        }
+        assert(metadata_is_chord(mc_in));
+
+        const std::shared_ptr<const chordMetadata> meta_in = get_chord_metadata(mc_in);
 
         // Create output metadata
         output_buf->allocate_new_metadata_object(output_frame_id);
@@ -159,40 +181,28 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
         assert(meta_out);
 
-        meta_out->set_name("cpusim_n2_counts");
+        meta_out->set_name("cpusim_n2k_counts");
         meta_out->type = kotekan::uint64;
-        meta_out->dims = 3;
+        meta_out->dims = 5;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
         meta_out->set_array_dimension(0, n_integrations, "Tc");
         meta_out->set_array_dimension(1, nf, "F");
-        meta_out->set_array_dimension(2, n_blocks, "Block");
-        meta_out->set_array_dimension(3, _blocksize, "inner_i");
-        meta_out->set_array_dimension(4, _blocksize, "inner_j");
+        meta_out->set_array_dimension(2, n_blocks, "D8Phi");
+        meta_out->set_array_dimension(3, _blocksize, "D8Plo1");
+        meta_out->set_array_dimension(4, _blocksize, "D8Plo2");
         meta_out->set_strides_simple();
         meta_out->nfreq = _num_local_freq;
         assert(meta_out->nfreq <= CHORD_META_MAX_FREQ);
 
-        if (meta_in) {
-            meta_out->fpga_seq_num = meta_in->fpga_seq_num;
-            meta_out->sample0_offset = meta_in->sample0_offset;
-            meta_out->offset_downsampling = meta_in->offset_downsampling;
-            for (int f = 0; f < meta_out->nfreq; f++) {
-                meta_out->coarse_freq[f] = meta_in->coarse_freq[f];
-                meta_out->freq_upchan_factor[f] = meta_in->freq_upchan_factor[f];
-                meta_out->half_fpga_sample0[f] = meta_in->half_fpga_sample0[f];
-                meta_out->time_downsampling_fpga[f] =
-                    meta_in->time_downsampling_fpga[f] * _sub_integration_ntime;
-            }
-        } else {
-            meta_out->fpga_seq_num = 0;
-            meta_out->sample0_offset = 0;
-            meta_out->offset_downsampling = 1;
-            for (int f = 0; f < meta_out->nfreq; f++) {
-                meta_out->coarse_freq[f] = f;
-                meta_out->freq_upchan_factor[f] = 1;
-                meta_out->half_fpga_sample0[f] = 0;
-                meta_out->time_downsampling_fpga[f] = 64;
-            }
+        meta_out->fpga_seq_num = meta_in->fpga_seq_num;
+        meta_out->sample0_offset = meta_in->sample0_offset;
+        meta_out->offset_downsampling = meta_in->offset_downsampling;
+        for (int f = 0; f < meta_out->nfreq; f++) {
+            meta_out->coarse_freq[f] = meta_in->coarse_freq[f];
+            meta_out->freq_upchan_factor[f] = meta_in->freq_upchan_factor[f];
+            meta_out->half_fpga_sample0[f] = meta_in->half_fpga_sample0[f];
+            meta_out->time_downsampling_fpga[f] =
+                meta_in->time_downsampling_fpga[f] * _sub_integration_ntime;
         }
 
         input_plmask_buf->mark_frame_empty(unique_name, input_pl_frame_id);

@@ -7,12 +7,9 @@
 #include "chordMetadata.hpp"   // for chordMetadata
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 
-#include <atomic>     // for atomic_bool
 #include <cstdint>    // for int32_t
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
-#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
