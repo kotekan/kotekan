@@ -21,8 +21,9 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(gpuSimulateN2kPLExpand);
 
 gpuSimulateN2kPLExpand::gpuSimulateN2kPLExpand(Config& config, const std::string& unique_name,
-                               bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&gpuSimulateN2kPLExpand::main_thread, this)) {
+                                               bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container,
+          std::bind(&gpuSimulateN2kPLExpand::main_thread, this)) {
 
     // Apply config.
     _num_elements = config.get<int32_t>(unique_name, "num_elements"); // = "2*D"
@@ -46,7 +47,8 @@ void gpuSimulateN2kPLExpand::main_thread() {
         uint64_t* pl_mask = (uint64_t*)input_buf->wait_for_full_frame(unique_name, input_frame_id);
         if (pl_mask == nullptr)
             break;
-        uint64_t* pl_mask_out = (uint64_t*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
+        uint64_t* pl_mask_out =
+            (uint64_t*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
         if (pl_mask_out == nullptr)
             break;
 
@@ -61,17 +63,18 @@ void gpuSimulateN2kPLExpand::main_thread() {
 
         int fstride_hi = ne;
         int tstride_hi = ne * nf_hi;
-        
+
         int fstride = ne;
         int tstride = ne * nf;
 
-        INFO("Running stage expanding nt={:d}, nf={:d} 64-bit masks to nt={:d}, nf={:d} with downsampled num_elements = {:d} = {:d} / 8",
-             nt/2, nf_hi, nt, nf, ne, _num_elements);
+        INFO("Running stage expanding nt={:d}, nf={:d} 64-bit masks to nt={:d}, nf={:d} with "
+             "downsampled num_elements = {:d} = {:d} / 8",
+             nt / 2, nf_hi, nt, nf, ne, _num_elements);
 
 
-        for(int t = 0; t < nt; t++) {
-            for(int f_hi = 0; f_hi < nf_hi; f_hi++) {
-                for(int e = 0; e < ne; e++) {
+        for (int t = 0; t < nt; t++) {
+            for (int f_hi = 0; f_hi < nf_hi; f_hi++) {
+                for (int e = 0; e < ne; e++) {
 
                     // Get the indices into the downsampled array
                     int t_hi = t >> 1;
@@ -90,9 +93,9 @@ void gpuSimulateN2kPLExpand::main_thread() {
                     // We'll do this in chunks, if t is odd, we want the higher
                     // 32 bits to expand into a 64 bit value.  if t is even, we
                     // want the lower 32 bits.
-                    if(t & 1)
+                    if (t & 1)
                         pl >>= 32;
-                    
+
                     pl &= 0xFFFFFFFF;
 
                     // Now, run through the bits, grab the values, and put them
@@ -100,14 +103,13 @@ void gpuSimulateN2kPLExpand::main_thread() {
                     //
                     // This is slow, but obvious.
                     uint64_t pl_out = 0;
-                    for(uint64_t b = 0; b < 32; b++)
-                    {
+                    for (uint64_t b = 0; b < 32; b++) {
                         uint64_t b_out = b * 2;
                         uint64_t bit = (pl >> b) & 1;
                         pl_out |= (bit << b_out) | (bit << (b_out + 1));
                     }
-                    
-                    for(int f_lo = 0; f_lo < 4; f_lo++) {
+
+                    for (int f_lo = 0; f_lo < 4; f_lo++) {
                         int f = f_lo + (f_hi << 2);
                         pl_mask_out[t * tstride + f * fstride + e] = pl_out;
                     }
@@ -152,7 +154,7 @@ void gpuSimulateN2kPLExpand::main_thread() {
             meta_out->fpga_seq_num = meta_in->fpga_seq_num;
             meta_out->sample0_offset = meta_in->sample0_offset;
             meta_out->offset_downsampling = meta_in->offset_downsampling;
-            for(int f = 0; f < meta_out->nfreq; f++) {
+            for (int f = 0; f < meta_out->nfreq; f++) {
                 meta_out->coarse_freq[f] = meta_in->coarse_freq[f];
                 meta_out->freq_upchan_factor[f] = meta_in->freq_upchan_factor[f];
                 meta_out->half_fpga_sample0[f] = meta_out->half_fpga_sample0[f];
@@ -162,7 +164,7 @@ void gpuSimulateN2kPLExpand::main_thread() {
             meta_out->fpga_seq_num = 0;
             meta_out->sample0_offset = 0;
             meta_out->offset_downsampling = 1;
-            for(int f = 0; f < meta_out->nfreq; f++) {
+            for (int f = 0; f < meta_out->nfreq; f++) {
                 meta_out->coarse_freq[f] = f;
                 meta_out->freq_upchan_factor[f] = 1;
                 meta_out->half_fpga_sample0[f] = 0;

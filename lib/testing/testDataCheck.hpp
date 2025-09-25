@@ -171,7 +171,7 @@ void testDataCheck<A_Type>::main_thread() {
 
         if (num_frames_to_test == frames) {
             if (num_errors == 0) {
-                if(trigger_exit_on_pass) {
+                if (trigger_exit_on_pass) {
                     INFO("Test passed, exiting.");
                     TEST_PASSED();
                 } else {

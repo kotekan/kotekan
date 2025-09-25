@@ -16,10 +16,14 @@
  * `config/tests/verify_cuda_n2k.yaml`.
  *
  * @par Buffers
- * @buffer in_buf The input packet loss mask.  Size per frame: samples_per_data_set / 2 * num_local_freq / 4 * num_element / 8 / 8
- * @buffer_format uint64 bitmask. shape: [samples_per_data_set / 128, num_local_freq / 4, num_elements / 8]
- * @buffer out_buf  The output packet loss mask.  Size per frame: samples_per_dataset * num_local_freq * num_elements/8 / 8
- * @buffer_format uint64 bitmask. shape: [samples_per_data_set / 64, num_local_freq, num_elements / 8]
+ * @buffer in_buf The input packet loss mask.  Size per frame: samples_per_data_set / 2 *
+ * num_local_freq / 4 * num_element / 8 / 8
+ * @buffer_format uint64 bitmask. shape: [samples_per_data_set / 128, num_local_freq / 4,
+ * num_elements / 8]
+ * @buffer out_buf  The output packet loss mask.  Size per frame: samples_per_dataset *
+ * num_local_freq * num_elements/8 / 8
+ * @buffer_format uint64 bitmask. shape: [samples_per_data_set / 64, num_local_freq, num_elements /
+ * 8]
  *
  * @conf  num_elements         Int.  Number of feeds or (antennas x polarizations).
  * @conf num_local_freq        Int.  Number of frequencies.
@@ -28,7 +32,7 @@
 class gpuSimulateN2kPLExpand : public kotekan::Stage {
 public:
     gpuSimulateN2kPLExpand(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& buffer_container);
+                           kotekan::bufferContainer& buffer_container);
     ~gpuSimulateN2kPLExpand();
     void main_thread() override;
 

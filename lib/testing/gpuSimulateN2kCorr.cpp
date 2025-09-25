@@ -21,8 +21,9 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(gpuSimulateN2kCorr);
 
 gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique_name,
-                               bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&gpuSimulateN2kCorr::main_thread, this)) {
+                                       bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container,
+          std::bind(&gpuSimulateN2kCorr::main_thread, this)) {
 
     // Apply config.
     _num_elements = config.get<int32_t>(unique_name, "num_elements"); // = "2*D"
@@ -50,7 +51,8 @@ void gpuSimulateN2kCorr::main_thread() {
         char* input = (char*)input_buf->wait_for_full_frame(unique_name, input_frame_id);
         if (input == nullptr)
             break;
-        uint8_t* rfimask = (uint8_t*)rfimask_buf->wait_for_full_frame(unique_name, rfimask_frame_id);
+        uint8_t* rfimask =
+            (uint8_t*)rfimask_buf->wait_for_full_frame(unique_name, rfimask_frame_id);
         if (rfimask == nullptr)
             break;
         int* output = (int*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
@@ -58,7 +60,8 @@ void gpuSimulateN2kCorr::main_thread() {
             break;
 
         INFO("Simulating GPU processing for {:s}[{:d}] and {:s}[{:d}] putting result in {:s}[{:d}]",
-             input_buf->buffer_name, input_frame_id, rfimask_buf->buffer_name, rfimask_frame_id, output_buf->buffer_name, output_frame_id);
+             input_buf->buffer_name, input_frame_id, rfimask_buf->buffer_name, rfimask_frame_id,
+             output_buf->buffer_name, output_frame_id);
 
         // number of elements = number of dishes * polarizations
         int nt_inner = _sub_integration_ntime;
@@ -92,7 +95,8 @@ void gpuSimulateN2kCorr::main_thread() {
                                     int t_rfi_out = t >> 10;
                                     int t_rfi_in_bit = t_rfi_in & 7;
                                     int t_rfi_in_byte = t_rfi_in >> 3;
-                                    int rfi_idx = t_rfi_in_byte + 128 * (f + _num_local_freq * t_rfi_out);
+                                    int rfi_idx =
+                                        t_rfi_in_byte + 128 * (f + _num_local_freq * t_rfi_out);
 
                                     // Decode input with the CHIME convention:
                                     // offset encoded by 8, imaginary part in
@@ -186,7 +190,8 @@ void gpuSimulateN2kCorr::main_thread() {
         output_buf->mark_frame_full(unique_name, output_frame_id);
 
         INFO("Simulating GPU processing done for {:s}[{:d}] and {:s}[{:d}] result is in {:s}[{:d}]",
-             input_buf->buffer_name, input_frame_id, rfimask_buf->buffer_name, rfimask_frame_id, output_buf->buffer_name, output_frame_id);
+             input_buf->buffer_name, input_frame_id, rfimask_buf->buffer_name, rfimask_frame_id,
+             output_buf->buffer_name, output_frame_id);
 
         input_frame_id = (input_frame_id + 1) % input_buf->num_frames;
         rfimask_frame_id = (rfimask_frame_id + 1) % rfimask_buf->num_frames;

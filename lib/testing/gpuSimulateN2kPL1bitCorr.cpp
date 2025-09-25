@@ -21,8 +21,9 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(gpuSimulateN2kPL1bitCorr);
 
 gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::string& unique_name,
-                               bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&gpuSimulateN2kPL1bitCorr::main_thread, this)) {
+                                                   bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container,
+          std::bind(&gpuSimulateN2kPL1bitCorr::main_thread, this)) {
 
     // Apply config.
     _num_elements = config.get<int32_t>(unique_name, "num_elements"); // = "2*D"
@@ -48,20 +49,22 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
     int output_frame_id = 0;
 
     while (!stop_thread) {
-        uint64_t* pl_mask = (uint64_t*)input_plmask_buf->wait_for_full_frame(unique_name, input_pl_frame_id);
+        uint64_t* pl_mask =
+            (uint64_t*)input_plmask_buf->wait_for_full_frame(unique_name, input_pl_frame_id);
         if (pl_mask == nullptr)
             break;
-        uint64_t* rfi_mask = (uint64_t*)input_rfimask_buf->wait_for_full_frame(unique_name, input_rfi_frame_id);
+        uint64_t* rfi_mask =
+            (uint64_t*)input_rfimask_buf->wait_for_full_frame(unique_name, input_rfi_frame_id);
         if (rfi_mask == nullptr)
             break;
         int32_t* counts = (int32_t*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
         if (counts == nullptr)
             break;
 
-        INFO("Simulating GPU PL Correlator for {:s}[{:d}] and {:s}[{:d}] putting result in {:s}[{:d}]",
-             input_plmask_buf->buffer_name, input_pl_frame_id,
-             input_rfimask_buf->buffer_name, input_rfi_frame_id,
-             output_buf->buffer_name, output_frame_id);
+        INFO("Simulating GPU PL Correlator for {:s}[{:d}] and {:s}[{:d}] putting result in "
+             "{:s}[{:d}]",
+             input_plmask_buf->buffer_name, input_pl_frame_id, input_rfimask_buf->buffer_name,
+             input_rfi_frame_id, output_buf->buffer_name, output_frame_id);
 
         // PL:  bool [num_times/64][num_freq][num_el/8][64]
         // RFI: bool [num_times/1024][num_freq][1024]
@@ -89,49 +92,54 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
 
         assert(_num_elements % (8 * _blocksize) == 0);
 
-        INFO("Running PL corr with nt_outer={:d}, nt_inner={:d}, num_freq={:d}, num_downsampled_elements={:d}",
+        INFO("Running PL corr with nt_outer={:d}, nt_inner={:d}, num_freq={:d}, "
+             "num_downsampled_elements={:d}",
              n_integrations, _sub_integration_ntime, nf, ne);
 
-        for(int t_out = 0; t_out < n_integrations; t_out++) {
-            for(int f = 0; f < nf; f++) {
+        for (int t_out = 0; t_out < n_integrations; t_out++) {
+            for (int f = 0; f < nf; f++) {
                 int block_idx = 0;
-                for(int i_out = 0; i_out < n_block_lin; i_out++) {
-                    for(int j_out = 0; j_out <= i_out; j_out++) {
-                        for(int i_in = 0; i_in < _blocksize; i_in++) {
-                            for(int j_in = 0; j_in < _blocksize; j_in++) {
+                for (int i_out = 0; i_out < n_block_lin; i_out++) {
+                    for (int j_out = 0; j_out <= i_out; j_out++) {
+                        for (int i_in = 0; i_in < _blocksize; i_in++) {
+                            for (int j_in = 0; j_in < _blocksize; j_in++) {
                                 int i = i_out * _blocksize + i_in;
                                 int j = j_out * _blocksize + j_in;
 
                                 int32_t c = 0;
-                                for(int t64_in = 0; t64_in < nt64_inner; t64_in++) {
+                                for (int t64_in = 0; t64_in < nt64_inner; t64_in++) {
                                     int t64 = t_out * nt64_inner + t64_in;
                                     int t_pl = t64;
                                     int t_rfi_lo = t64 & 0xF;
                                     int t_rfi_hi = t64 >> 4;
 
-                                    uint64_t pl_i = pl_mask[t_pl*dt_pl + f*df_pl + i];
-                                    uint64_t pl_j = pl_mask[t_pl*dt_pl + f*df_pl + j];
-                                    uint64_t rfi = rfi_mask[t_rfi_hi*dt_rfi + f*df_rfi + t_rfi_lo];
+                                    uint64_t pl_i = pl_mask[t_pl * dt_pl + f * df_pl + i];
+                                    uint64_t pl_j = pl_mask[t_pl * dt_pl + f * df_pl + j];
+                                    uint64_t rfi =
+                                        rfi_mask[t_rfi_hi * dt_rfi + f * df_rfi + t_rfi_lo];
                                     uint64_t v = pl_i & pl_j & rfi;
                                     std::bitset<64> v_bits(v);
                                     c += v_bits.count();
                                 } // t64_in
 
-                                counts[t_out*dt_c + f*df_c + block_idx*db_c + i_in*diin_c + j_in] = c;
+                                counts[t_out * dt_c + f * df_c + block_idx * db_c + i_in * diin_c
+                                       + j_in] = c;
                             } // j_in
                         } // i_in
 
                         block_idx++;
                     } // j_out
                 } // i_out
-                
-                DEBUG("Done t_outer {:d} of {:d} (freq {:d} of {:d}, nt_inner={:d})...", t_out, n_integrations, f, nf, _sub_integration_ntime);
+
+                DEBUG("Done t_outer {:d} of {:d} (freq {:d} of {:d}, nt_inner={:d})...", t_out,
+                      n_integrations, f, nf, _sub_integration_ntime);
             } // f
         } // t_out
 
 
         // Fetch input metadata
-        const std::shared_ptr<const metadataObject> mc_in = input_plmask_buf->get_metadata(input_pl_frame_id);
+        const std::shared_ptr<const metadataObject> mc_in =
+            input_plmask_buf->get_metadata(input_pl_frame_id);
         const std::shared_ptr<const chordMetadata> meta_in =
             (mc_in && metadata_is_chord(mc_in)) ? get_chord_metadata(mc_in) : nullptr;
 
@@ -168,17 +176,18 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
             meta_out->fpga_seq_num = meta_in->fpga_seq_num;
             meta_out->sample0_offset = meta_in->sample0_offset;
             meta_out->offset_downsampling = meta_in->offset_downsampling;
-            for(int f = 0; f < meta_out->nfreq; f++) {
+            for (int f = 0; f < meta_out->nfreq; f++) {
                 meta_out->coarse_freq[f] = meta_in->coarse_freq[f];
                 meta_out->freq_upchan_factor[f] = meta_in->freq_upchan_factor[f];
                 meta_out->half_fpga_sample0[f] = meta_in->half_fpga_sample0[f];
-                meta_out->time_downsampling_fpga[f] = meta_in->time_downsampling_fpga[f] * _sub_integration_ntime;
+                meta_out->time_downsampling_fpga[f] =
+                    meta_in->time_downsampling_fpga[f] * _sub_integration_ntime;
             }
         } else {
             meta_out->fpga_seq_num = 0;
             meta_out->sample0_offset = 0;
             meta_out->offset_downsampling = 1;
-            for(int f = 0; f < meta_out->nfreq; f++) {
+            for (int f = 0; f < meta_out->nfreq; f++) {
                 meta_out->coarse_freq[f] = f;
                 meta_out->freq_upchan_factor[f] = 1;
                 meta_out->half_fpga_sample0[f] = 0;
@@ -191,10 +200,10 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
 
         output_buf->mark_frame_full(unique_name, output_frame_id);
 
-        INFO("Simulating GPU PL correlation done for {:s}[{:d}] and {:s}[{:d}] result is in {:s}[{:d}]",
-             input_plmask_buf->buffer_name, input_pl_frame_id,
-             input_rfimask_buf->buffer_name, input_rfi_frame_id,
-             output_buf->buffer_name, output_frame_id);
+        INFO("Simulating GPU PL correlation done for {:s}[{:d}] and {:s}[{:d}] result is in "
+             "{:s}[{:d}]",
+             input_plmask_buf->buffer_name, input_pl_frame_id, input_rfimask_buf->buffer_name,
+             input_rfi_frame_id, output_buf->buffer_name, output_frame_id);
 
         input_pl_frame_id = (input_pl_frame_id + 1) % input_plmask_buf->num_frames;
         input_rfi_frame_id = (input_rfi_frame_id + 1) % input_rfimask_buf->num_frames;
