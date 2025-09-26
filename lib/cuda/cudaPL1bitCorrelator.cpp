@@ -261,6 +261,10 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
             device.getStream(cuda_stream_id));
     } else {
         // These cases are not yet implemented in n2k. Pretend that there is no packet loss.
+        ERROR("The 1-bit correlator calculating the n2k counts is not yet implemented for {:d} "
+              "dishes. Pretending there was no packet loss. The n2k counts will be wrong if there "
+              "was packet loss.",
+              num_dishes);
         cudaMemsetInt(n2k_counts_memory, Nds, n2k_counts.get_ndarray().size());
     }
 
