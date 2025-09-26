@@ -540,7 +540,6 @@ void FEngine::main_thread() {
                     dish_positions_metadata->stride[d + 1] * dish_positions_metadata->dim[d + 1];
         dish_positions_metadata->sample0_offset = -1;      // undefined
         dish_positions_metadata->offset_downsampling = -1; // undefined
-        dish_positions_metadata->nfreq = -1;               // undefined
         dish_positions_metadata->ndishes = num_dishes;
         dish_positions_metadata->n_dish_locations_ew = num_dish_locations_ew;
         dish_positions_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -600,7 +599,6 @@ void FEngine::main_thread() {
                     scatter_indices_metadata->stride[d + 1] * scatter_indices_metadata->dim[d + 1];
         scatter_indices_metadata->sample0_offset = -1;      // undefined
         scatter_indices_metadata->offset_downsampling = -1; // undefined
-        scatter_indices_metadata->nfreq = -1;               // undefined
         scatter_indices_metadata->ndishes = num_dishes;
         scatter_indices_metadata->n_dish_locations_ew = num_dish_locations_ew;
         scatter_indices_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -656,7 +654,6 @@ void FEngine::main_thread() {
         // This bf mask is not time-dependent
         bf_mask_metadata->sample0_offset = -1;      // undefined
         bf_mask_metadata->offset_downsampling = -1; // undefined
-        bf_mask_metadata->nfreq = -1;               // undefined
         bf_mask_metadata->ndishes = num_dishes;
         bf_mask_metadata->n_dish_locations_ew = num_dish_locations_ew;
         bf_mask_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -749,7 +746,6 @@ void FEngine::main_thread() {
                                                         * bb_beam_positions_metadata->dim[d + 1];
         bb_beam_positions_metadata->sample0_offset = -1;      // undefined
         bb_beam_positions_metadata->offset_downsampling = -1; // undefined
-        bb_beam_positions_metadata->nfreq = -1;               // undefined
         bb_beam_positions_metadata->ndishes = num_dishes;
         bb_beam_positions_metadata->n_dish_locations_ew = num_dish_locations_ew;
         bb_beam_positions_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -830,14 +826,15 @@ void FEngine::main_thread() {
                 A_metadata->stride[d] = A_metadata->stride[d + 1] * A_metadata->dim[d + 1];
         A_metadata->sample0_offset = -1;      // undefined
         A_metadata->offset_downsampling = -1; // undefined
-        A_metadata->nfreq = num_frequencies;
-        assert(A_metadata->nfreq <= CHORD_META_MAX_FREQ);
+        std::vector<int> coarse_freq(num_frequencies);
+        assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
-            A_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+            coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
             A_metadata->freq_upchan_factor[freq] = 1;
             A_metadata->half_fpga_sample0[freq] = -1;      // undefined
             A_metadata->time_downsampling_fpga[freq] = -1; // undefined
         }
+        A_metadata->set_coarse_freq(coarse_freq);
         A_metadata->ndishes = num_dishes;
         A_metadata->n_dish_locations_ew = num_dish_locations_ew;
         A_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -890,14 +887,15 @@ void FEngine::main_thread() {
                 s_metadata->stride[d] = s_metadata->stride[d + 1] * s_metadata->dim[d + 1];
         s_metadata->sample0_offset = -1;      // undefined
         s_metadata->offset_downsampling = -1; // undefined
-        s_metadata->nfreq = num_frequencies;
-        assert(s_metadata->nfreq <= CHORD_META_MAX_FREQ);
+        std::vector<int> coarse_freq(num_frequencies);
+        assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
-            s_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+            coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
             s_metadata->freq_upchan_factor[freq] = 1;
             s_metadata->half_fpga_sample0[freq] = -1;      // undefined
             s_metadata->time_downsampling_fpga[freq] = -1; // undefined
         }
+        s_metadata->set_coarse_freq(coarse_freq);
         s_metadata->ndishes = num_dishes;
         s_metadata->n_dish_locations_ew = num_dish_locations_ew;
         s_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -957,15 +955,15 @@ void FEngine::main_thread() {
             G_metadata->stride[0] = 1;
             G_metadata->sample0_offset = -1;      // undefined
             G_metadata->offset_downsampling = -1; // undefined
-            G_metadata->nfreq = U * num_local_channels;
-            assert(G_metadata->nfreq <= CHORD_META_MAX_FREQ);
+            std::vector<int> coarse_freq(U * num_local_channels);
+            assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < U * num_local_channels; ++freq) {
-                G_metadata->coarse_freq[freq] =
-                    frequency_channels.at(upchan_min_channels[Ufactor] + freq / U);
+                coarse_freq[freq] = frequency_channels.at(upchan_min_channels[Ufactor] + freq / U);
                 G_metadata->freq_upchan_factor[freq] = U;
                 G_metadata->half_fpga_sample0[freq] = -1;      // undefined
                 G_metadata->time_downsampling_fpga[freq] = -1; // undefined
             }
+            G_metadata->set_coarse_freq(coarse_freq);
             G_metadata->ndishes = num_dishes;
             G_metadata->n_dish_locations_ew = num_dish_locations_ew;
             G_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -1059,14 +1057,15 @@ void FEngine::main_thread() {
                     W1_metadata->stride[d] = W1_metadata->stride[d + 1] * W1_metadata->dim[d + 1];
             W1_metadata->sample0_offset = -1;      // undefined
             W1_metadata->offset_downsampling = -1; // undefined
-            W1_metadata->nfreq = num_local_channels;
-            assert(W1_metadata->nfreq <= CHORD_META_MAX_FREQ);
+            std::vector<int> coarse_freq(num_local_channels);
+            assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
-                W1_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+                coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
                 W1_metadata->freq_upchan_factor[freq] = U;
                 W1_metadata->half_fpga_sample0[freq] = -1;      // undefined
                 W1_metadata->time_downsampling_fpga[freq] = -1; // undefined
             }
+            W1_metadata->set_coarse_freq(coarse_freq);
             W1_metadata->ndishes = num_dishes;
             W1_metadata->n_dish_locations_ew = num_dish_locations_ew;
             W1_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -1229,14 +1228,15 @@ void FEngine::main_thread() {
         // TODO: correct this
         // W2_metadata->nfreq = (upchan_all_max_output_channel - upchan_all_min_output_channel)
         // / 4;
-        W2_metadata->nfreq = CHORD_META_MAX_FREQ;
-        assert(W2_metadata->nfreq <= CHORD_META_MAX_FREQ);
-        for (int freq = 0; freq < W2_metadata->nfreq; ++freq) {
-            W2_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+        std::vector<int> coarse_freq(CHORD_META_MAX_FREQ);
+        assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
+        for (int freq = 0; freq < ptrdiff_t(coarse_freq.size()); ++freq) {
+            coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
             W2_metadata->freq_upchan_factor[freq] = upchannelization_factor;
             W2_metadata->half_fpga_sample0[freq] = -1;      // undefined
             W2_metadata->time_downsampling_fpga[freq] = -1; // undefined
         }
+        W2_metadata->set_coarse_freq(coarse_freq);
         W2_metadata->ndishes = num_dishes;
         W2_metadata->n_dish_locations_ew = num_dish_locations_ew;
         W2_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -1359,14 +1359,15 @@ void FEngine::main_thread() {
                     E_metadata->stride[d] = E_metadata->stride[d + 1] * E_metadata->dim[d + 1];
             E_metadata->sample0_offset = seq_num;
             E_metadata->offset_downsampling = 1;
-            E_metadata->nfreq = num_frequencies;
-            assert(E_metadata->nfreq <= CHORD_META_MAX_FREQ);
+            std::vector<int> coarse_freq(num_frequencies);
+            assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
-                E_metadata->coarse_freq[freq] = frequency_channels.at(freq);
+                coarse_freq[freq] = frequency_channels.at(freq);
                 E_metadata->freq_upchan_factor[freq] = 1;
                 E_metadata->half_fpga_sample0[freq] = 0;
                 E_metadata->time_downsampling_fpga[freq] = 1;
             }
+            E_metadata->set_coarse_freq(coarse_freq);
             E_metadata->ndishes = num_dishes;
             E_metadata->n_dish_locations_ew = num_dish_locations_ew;
             E_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -1448,14 +1449,15 @@ void FEngine::main_thread() {
             // Only the slowest-varying index counts as "time" for the
             // ring buffer mechanics.
             pl_mask_metadata->offset_downsampling = 2 * 64;
-            pl_mask_metadata->nfreq = num_frequencies;
-            assert(pl_mask_metadata->nfreq <= CHORD_META_MAX_FREQ);
+            std::vector<int> coarse_freq(num_frequencies);
+            assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
-                pl_mask_metadata->coarse_freq[freq] = frequency_channels.at(freq);
+                coarse_freq[freq] = frequency_channels.at(freq);
                 pl_mask_metadata->freq_upchan_factor[freq] = 1; // we want 1/4 but we cannot
                 pl_mask_metadata->half_fpga_sample0[freq] = 64;
                 pl_mask_metadata->time_downsampling_fpga[freq] = 2 * 64;
             }
+            pl_mask_metadata->set_coarse_freq(coarse_freq);
             pl_mask_metadata->ndishes = num_dishes;
             pl_mask_metadata->n_dish_locations_ew = num_dish_locations_ew;
             pl_mask_metadata->n_dish_locations_ns = num_dish_locations_ns;
