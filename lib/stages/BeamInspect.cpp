@@ -39,11 +39,10 @@ void BeamInspect::main_thread() {
         BeamMetadata* metadata = (BeamMetadata*)(in_buf->get_metadata(frame_id).get());
 
         std::string frequency_bins = "";
-        // TODO: this is horrible, fix this to not use decltype
-        for (decltype(metadata->nfreq) f = 0; f < metadata->nfreq; ++f) {
+        for (size_t f = 0; f < metadata->coarse_freq.size(); ++f) {
             frequency_bins +=
                 fmt::format("{:d}", metadata->coarse_freq[f]);
-            if (f != metadata->nfreq - 1)
+            if (f != metadata->coarse_freq.size() - 1)
                 frequency_bins += ", ";
         }
 
