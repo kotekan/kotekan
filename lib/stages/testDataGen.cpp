@@ -121,6 +121,9 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _meta_time_downsample_factor =
         config.get_default<int>(unique_name, "meta_time_downsample_factor", 1);
 
+    _manual_freq_ids = config.get_default<std::vector<uint32_t>>(unique_name,
+        "manual_freq_ids", std::vector<uint32_t>());
+
     endpoint = unique_name + "/generate_test_data";
     using namespace std::placeholders;
     restServer::instance().register_post_callback(
@@ -201,6 +204,7 @@ void testDataGen::main_thread() {
         buf->allocate_new_metadata_object(frame_id);
         get_chord_metadata(buf, frame_id)->set_fpga_seq_num(seq_num);
 
+        //TODO: Fix this, cannot change from frame to frame (and should not be "now")
         gettimeofday(&now, nullptr);
         get_chord_metadata(buf, frame_id)->set_first_packet_recv_time(now);
 
@@ -218,11 +222,15 @@ void testDataGen::main_thread() {
         std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
         std::vector<int> time_downsampling_fpga(coarse_freq.size());
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
-            coarse_freq[f] = f;
+            if (_manual_freq_ids.size() > 0)
+                chordmeta->coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
+            else
+                chordmeta->coarse_freq[f] = f;
             freq_upchan_factor[f] = 1;
             half_fpga_sample0[f] = 0;
             time_downsampling_fpga[f] = _meta_time_downsample_factor;
         }
+
         chordmeta->set_coarse_freq(coarse_freq);
         chordmeta->set_freq_upchan_factor(freq_upchan_factor);
         chordmeta->set_half_fpga_sample0(half_fpga_sample0);
