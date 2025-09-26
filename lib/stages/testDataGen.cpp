@@ -210,15 +210,16 @@ void testDataGen::main_thread() {
         for (int d = 0; d < chordmeta->dims; ++d)
             chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
         chordmeta->set_strides_simple();
-        assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
-        chordmeta->nfreq = _num_freq_in_frame;
 
-        for (int f = 0; f < chordmeta->nfreq; f++) {
-            chordmeta->coarse_freq[f] = f;
+        assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
+        std::vector<int> coarse_freq(_num_freq_in_frame);
+        for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
+            coarse_freq[f] = f;
             chordmeta->freq_upchan_factor[f] = 1;
             chordmeta->half_fpga_sample0[f] = 0;
             chordmeta->time_downsampling_fpga[f] = _meta_time_downsample_factor;
         }
+        chordmeta->set_coarse_freq(coarse_freq);
 
         chordmeta->sample0_offset =
             frame_id_abs * samples_per_data_set / _meta_time_downsample_factor;
@@ -330,15 +331,16 @@ void testDataGen::main_thread() {
                     // DEBUG("one-hot: nfreq = {:d}, ntime = {:d}", nfreq, ntime);
                     if (nfreq) {
                         assert(nfreq <= CHORD_META_MAX_FREQ);
-                        chordmeta->nfreq = nfreq;
+                        std::vector<int> coarse_freq(nfreq);
                         for (int i = 0; i < nfreq; i++) {
                             // Arbitrarily number the frequency channels...
-                            chordmeta->coarse_freq[i] = i;
+                            coarse_freq[i] = i;
                             chordmeta->freq_upchan_factor[i] = 1;
                             int64_t fpgacount = frame_id_abs * ntime;
                             chordmeta->half_fpga_sample0[i] = 2 * fpgacount;
                             chordmeta->time_downsampling_fpga[i] = 1;
                         }
+                        chordmeta->set_coarse_freq(coarse_freq);
                     }
 
                     DEBUG("Chord metadata: array shape {:s}", chordmeta->get_dimensions_string());
