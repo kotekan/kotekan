@@ -94,6 +94,7 @@ add_library(
     cudaRFIS012tilde.cpp
     cudaRFISKbar.cpp
     cudaRFISKtilde.cpp
+    cudaMemsetInt.cu
     chordMVPSetup.cpp)
 
 # C++17
