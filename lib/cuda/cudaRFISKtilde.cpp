@@ -190,7 +190,7 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     rfi_RFImask.set_metadata(rfi_S012.get_metadata());
     // Correct RFImask metadata
     const std::shared_ptr<chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
-    for (int freq = 0; freq < rfi_meta->nfreq; ++freq) {
+    for (int freq = 0; freq < rfi_meta->get_nfreq(); ++freq) {
         rfi_meta->half_fpga_sample0[freq] = 128 * 8;
         rfi_meta->time_downsampling_fpga[freq] = 128 * 8;
     }
