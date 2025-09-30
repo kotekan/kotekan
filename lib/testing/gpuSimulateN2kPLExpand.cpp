@@ -161,14 +161,15 @@ void gpuSimulateN2kPLExpand::main_thread() {
         meta_out->set_array_dimension(2, ne, "P");
         meta_out->set_array_dimension(3, ne, "D8");
         meta_out->set_strides_simple();
-        meta_out->nfreq = _num_local_freq;
-        assert(meta_out->nfreq <= CHORD_META_MAX_FREQ);
 
-        meta_out->fpga_seq_num = meta_in->fpga_seq_num;
+        meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->sample0_offset = meta_in->sample0_offset;
         meta_out->offset_downsampling = meta_in->offset_downsampling;
-        for (int f = 0; f < meta_out->nfreq; f++) {
-            meta_out->coarse_freq[f] = meta_in->coarse_freq[f];
+        const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
+        std::vector<int> coarse_freq(coarse_freq_in.cbegin(), coarse_freq_in.cbegin()+_num_local_freq);
+        meta_out->set_coarse_freq(coarse_freq);
+        assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
+        for (int f = 0; f < meta_out->get_nfreq(); f++) {
             meta_out->freq_upchan_factor[f] = meta_in->freq_upchan_factor[f];
             meta_out->half_fpga_sample0[f] = meta_out->half_fpga_sample0[f];
             meta_out->time_downsampling_fpga[f] = meta_in->time_downsampling_fpga[f] / 2;
