@@ -78,6 +78,8 @@ private:
 
     int corr_blocksize;     // ALWAYS 16
     int count_blocksize;    // ALWAYS 8
+    int corr_lin_blocks;
+    int count_lin_blocks;
     int corr_num_blocks;
     int count_num_blocks;
     int num_integrations;

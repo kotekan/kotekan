@@ -84,8 +84,8 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
 
     num_integrations = samples_per_data_set / sub_integration_ntime;
 
-    int corr_lin_blocks = num_elements / corr_blocksize;
-    int count_lin_blocks = (num_elements / 8) / count_blocksize;
+    corr_lin_blocks = num_elements / corr_blocksize;
+    count_lin_blocks = (num_elements / 8) / count_blocksize;
 
     corr_num_blocks = (corr_lin_blocks * (corr_lin_blocks + 1)) / 2;
     count_num_blocks = (count_lin_blocks * (count_lin_blocks + 1)) / 2;
@@ -198,6 +198,46 @@ void testN2kGen::main_thread() {
         // fill metadata
         set_correlation_metadata(corr_meta, seq_num);
         set_counts_metadata(count_meta, seq_num);
+
+        int matsize_corr = 2 * corr_blocksize * corr_blocksize * corr_num_blocks;
+        int matsize_count = count_blocksize * count_blocksize * count_num_blocks;
+        
+        int df_corr = matsize_corr;
+        int dt_corr = matsize_corr * num_local_freq;
+        int df_count = matsize_count;
+        int dt_count = matsize_count * num_local_freq;
+
+        for(int t = 0; t < num_integrations; t++) {
+            for(int f = 0; f < num_local_freq; f++) {
+                // Fill the correlation array
+                int corr_block_idx = 0;
+
+                for(int ihi = 0; ihi < corr_lin_blocks; ihi++) {
+                    // Lower triangular only
+                    for(int jhi = 0; jhi <= ihi; jhi++) {
+                        for(int ilo = 0; ilo < corr_blocksize; ilo++) {
+                            for(int jlo = 0; jlo < corr_blocksize; jlo++) {
+                                int corr_idx = 2 * (jlo + ilo * corr_blocksize + 
+                            }
+                        }
+
+                        corr_block_idx++;
+
+                    }
+                }
+
+                // Fill the count array
+                for(int ihi = 0; ihi < count_lin_blocks; ihi++) {
+                    // Lower triangular only
+                    for(int jhi = 0; jhi <= ihi; jhi++) {
+                        for(int ilo = 0; ilo < count_blocksize; ilo++) {
+                            for(int jlo = 0; jlo < count_blocksize; jlo++) {
+                            }
+                        }
+                    }
+                }
+            } // f
+        } // t
 
         /*
         if (value_array.size() && (type == "const"))
