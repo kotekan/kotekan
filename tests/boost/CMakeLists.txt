@@ -133,3 +133,15 @@ add_custom_target(
     test_timeUtil_script ALL
     DEPENDS ${PROJECT_BINARY_DIR}/timeUtil.py
     COMMENT "Generating timeUtil.py script")
+
+# gdalVisFileData unit test (requires GDAL headers)
+if(GDAL_FOUND)
+    add_executable(test_gdalVisFileData test_gdalVisFileData.cpp)
+    target_link_libraries(test_gdalVisFileData PRIVATE libexternal kotekan_libs kotekan_utils
+                                                      kotekan_core ${GDAL_LIBRARIES})
+    target_include_directories(test_gdalVisFileData PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                          ${GDAL_INCLUDE_DIRS})
+    # Many tests need CUDA include dirs for float16_t via visUtil.hpp
+    target_include_directories(test_gdalVisFileData PUBLIC . ${CUDA_INCLUDE_DIR}
+                                                           ${CUDA_INCLUDE_DIRS})
+endif()
