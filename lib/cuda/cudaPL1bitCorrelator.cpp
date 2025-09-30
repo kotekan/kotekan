@@ -213,7 +213,7 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
     // The ringbuffering here is fishy. We should fix the kernel instead.
 
     // Ensure consistency
-    assert(pl_meta->nfreq == rfi_meta->nfreq);
+    assert(pl_meta->get_nfreq() == rfi_meta->get_nfreq());
     if (!(pl_expanded_mask.get_read_valid().begin() * pl_meta->time_downsampling_fpga[0]
           == rfi_RFImask.get_read_valid().begin() * rfi_meta->time_downsampling_fpga[0])) {
         DEBUG("pl_expanded_mask.get_read_valid().begin()={}",
@@ -224,7 +224,7 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
     }
     assert(pl_expanded_mask.get_read_valid().begin() * pl_meta->time_downsampling_fpga[0]
            == rfi_RFImask.get_read_valid().begin() * rfi_meta->time_downsampling_fpga[0]);
-    for (int freq = 0; freq < pl_meta->nfreq; ++freq)
+    for (int freq = 0; freq < pl_meta->get_nfreq(); ++freq)
         assert(pl_expanded_mask.get_read_valid().begin() * pl_meta->time_downsampling_fpga[freq]
                == rfi_RFImask.get_read_valid().begin() * rfi_meta->time_downsampling_fpga[freq]);
 
