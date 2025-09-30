@@ -149,9 +149,9 @@ void testN2kGen::set_counts_metadata(std::shared_ptr<chordMetadata> meta,
     assert(meta->dims <= CHORD_META_MAX_DIM);
     meta->set_array_dimension(0, num_integrations, "Tc");
     meta->set_array_dimension(1, num_local_freq, "F");
-    meta->set_array_dimension(2, count_num_blocks, "DPhi");
-    meta->set_array_dimension(3, count_blocksize, "DPlo1");
-    meta->set_array_dimension(4, count_blocksize, "DPlo2");
+    meta->set_array_dimension(2, count_num_blocks, "D8Phi");
+    meta->set_array_dimension(3, count_blocksize, "D8Plo1");
+    meta->set_array_dimension(4, count_blocksize, "D8Plo2");
     meta->set_strides_simple();
     
     meta->fpga_seq_num = seq_num;
