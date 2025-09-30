@@ -127,7 +127,7 @@ void testN2kGen::set_correlation_metadata(std::shared_ptr<chordMetadata> meta,
     meta->set_strides_simple();
     
     meta->fpga_seq_num = seq_num;
-    meta->sample0_offset = seq_num / sub_integration_ntime;
+    meta->sample0_offset = seq_num;
     meta->offset_downsampling = 1;
 
     meta->nfreq = num_local_freq;
@@ -155,7 +155,7 @@ void testN2kGen::set_counts_metadata(std::shared_ptr<chordMetadata> meta,
     meta->set_strides_simple();
     
     meta->fpga_seq_num = seq_num;
-    meta->sample0_offset = seq_num / sub_integration_ntime;
+    meta->sample0_offset = seq_num;
     meta->offset_downsampling = 1;
 
     meta->nfreq = num_local_freq;
@@ -199,13 +199,14 @@ void testN2kGen::main_thread() {
         set_correlation_metadata(corr_meta, seq_num);
         set_counts_metadata(count_meta, seq_num);
 
-        int matsize_corr = 2 * corr_blocksize * corr_blocksize * corr_num_blocks;
-        int matsize_count = count_blocksize * count_blocksize * count_num_blocks;
-        
-        int df_corr = matsize_corr;
-        int dt_corr = matsize_corr * num_local_freq;
-        int df_count = matsize_count;
-        int dt_count = matsize_count * num_local_freq;
+        // block, freq, and time strides for access into the 
+        // correlation and counts buffers
+        int db_corr = 2 * corr_blocksize * corr_blocksize;
+        int df_corr = db_corr * corr_num_blocks;
+        int dt_corr = df_corr * num_local_freq;
+        int db_count = count_blocksize * count_blocksize;
+        int df_count = db_count * count_num_blocks;
+        int dt_count = df_count * num_local_freq;
 
         for(int t = 0; t < num_integrations; t++) {
             for(int f = 0; f < num_local_freq; f++) {
@@ -217,23 +218,32 @@ void testN2kGen::main_thread() {
                     for(int jhi = 0; jhi <= ihi; jhi++) {
                         for(int ilo = 0; ilo < corr_blocksize; ilo++) {
                             for(int jlo = 0; jlo < corr_blocksize; jlo++) {
-                                int corr_idx = 2 * (jlo + ilo * corr_blocksize + 
+                                int idx = 2 * (jlo + ilo * corr_blocksize) + corr_block_idx * db_corr + f * df_corr + t * dt_corr;
+
+                                corr[idx + 0] = 0;  // Real
+                                corr[idx + 1] = 0;  // Imag
                             }
                         }
 
                         corr_block_idx++;
-
                     }
                 }
 
                 // Fill the count array
+                int count_block_idx = 0;
+
                 for(int ihi = 0; ihi < count_lin_blocks; ihi++) {
                     // Lower triangular only
                     for(int jhi = 0; jhi <= ihi; jhi++) {
                         for(int ilo = 0; ilo < count_blocksize; ilo++) {
                             for(int jlo = 0; jlo < count_blocksize; jlo++) {
+                                int idx = jlo + ilo * count_blocksize + count_block_idx * db_count + f * df_count + t * dt_count;
+
+                                count[idx] = 0;
                             }
                         }
+
+                        count_block_idx++;
                     }
                 }
             } // f
