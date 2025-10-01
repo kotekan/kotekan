@@ -379,15 +379,22 @@ jobs:
     - name: Run pipeline Kotekan tests
       run: |
         TIMEOUT_DURATION="20m"  # Timeout duration per test
-        for config_file in config/fengine/init_pathfinder.j2 config/fengine/test_pathfinder.j2; do
+        for config_file in config/fengine/test_pathfinder.j2; do
           echo "Running test with config: $config_file"
           
+          # Download test inputs
+          pushd /home/lwlab/kotekan-runner/_work/kotekan/kotekan
+          git clone https://github.com/chord-observatory/kotekan_testing_inputs
+          (cd kotekan_testing_inputs/fengine_init_pathfinder && unxz *.xz)
+          ln -s kotekan_testing_inputs data
+          popd
+
           # Run the test with timeout
           timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
             -w /code/kotekan \
             ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            env JULIA_DEPOT_PATH=/code/kotekan/julia_depot JULIA_NUM_THREADS=32 JULIA_PROJECT=julia ./build-2404/kotekan/kotekan --bind-address 0:23000 --config "$config_file"
+            ./build-2404/kotekan/kotekan --bind-address 0:23000 --config "$config_file"
 
           EXIT_CODE=$?
 
