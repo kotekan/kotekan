@@ -138,7 +138,7 @@ public:
             const double elapsed_time = this_time - start_time;
 
             INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
-                 frame_counter, meta->sample0_offset, elapsed_time);
+                 frame_counter, meta->get_sample0_offset(), elapsed_time);
 
             if (!skip_writing) {
 
@@ -274,13 +274,13 @@ public:
                         group->emplace("freq_upchan_factor", freq_upchan_factor);
                     }
 
-                    if (meta->sample0_offset >= 0)
+                    if (meta->get_sample0_offset() >= 0)
                         group->emplace("sample0_offset",
-                                       std::make_shared<ASDF::int_entry>(meta->sample0_offset));
+                                       std::make_shared<ASDF::int_entry>(meta->get_sample0_offset()));
 
-                    if (meta->offset_downsampling >= 0)
+                    if (meta->get_offset_downsampling() >= 0)
                         group->emplace("offset_downsampling", std::make_shared<ASDF::int_entry>(
-                                                                  meta->offset_downsampling));
+                                                                  meta->get_offset_downsampling()));
 
                     if (meta->get_nfreq() >= 0) {
                         auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
