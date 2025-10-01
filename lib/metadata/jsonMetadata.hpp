@@ -46,6 +46,8 @@ const std::string FIRST_PACKET_RECV_TIME("FIRST_PACKET_RECV_TIME"); // The syste
 const std::string TV_SEC("TV_SEC");                     // the tv_sec memmber of a timeval
 const std::string TV_USEC("TV_USEC");                   // the tv_usec memmber of a timeval
 
+const std::string SAMPLE0_OFFSET("SAMPLE0_OFFSET");     // an int64, used with offset_downsampling
+const std::string OFFSET_DOWNSAMPLING("OFFSET_DOWNSAMPLING"); // an int, used with sample0_offset
 
 struct beamCoord {
     float right_ascension[MAX_NUM_BEAMS];
