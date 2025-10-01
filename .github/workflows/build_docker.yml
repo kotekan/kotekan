@@ -47,7 +47,7 @@ jobs:
           DOCKERFILE="tools/docker/${UYEAR}.04/Dockerfile"
 
           echo "dockerfile=${DOCKERFILE}" >> "$GITHUB_OUTPUT"
-          echo "tags=ghcr.io/${OWNER_LC}/${REPO_LC}-kotekan:${UYEAR}04-${BRANCH_TAG}" >> "$GITHUB_OUTPUT"
+          echo "tags=ghcr.io/${OWNER_LC}/${REPO_LC}-${UYEAR}04:${BRANCH_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Verify Dockerfile exists
         shell: bash
