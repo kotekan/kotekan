@@ -1,4 +1,5 @@
-name: manual-docker-image-build
+name: Manual Docker image build
+run-name: "Build ${{ inputs.uyear }}04 on ${{ inputs.image_branch }}"
 
 on:
   workflow_dispatch:
@@ -16,10 +17,13 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: "manual-docker-image-build-${{ github.ref }}-${{ inputs.image_branch }}-${{ inputs.uyear }}"
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout selected branch
         uses: actions/checkout@v5
@@ -38,23 +42,22 @@ jobs:
         id: meta
         shell: bash
         run: |
+          set -euo pipefail
           OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
-          REPO_LC="$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')"
-          BRANCH_NORM="$(echo "${{ inputs.image_branch }}" | tr '[:upper:]' '[:lower:]' | tr '/ ' '..')"
+          REPO_LC="$(echo "${{ github.repository }}" | cut -d/ -f2 | tr '[:upper:]' '[:lower:]')"
+          BRANCH_TAG="$(echo "${{ inputs.image_branch }}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_.-]+/./g')"
           UYEAR="${{ inputs.uyear }}"
           DOCKERFILE="tools/docker/${UYEAR}.04/Dockerfile"
-          echo "owner=${OWNER_LC}" >> "$GITHUB_OUTPUT"
-          echo "repo=${REPO_LC}"  >> "$GITHUB_OUTPUT"
-          echo "branch_norm=${BRANCH_NORM}" >> "$GITHUB_OUTPUT"
+
           echo "dockerfile=${DOCKERFILE}" >> "$GITHUB_OUTPUT"
-          echo "tags=ghcr.io/${OWNER_LC}/${REPO_LC}-kotekan:${UYEAR}04-${BRANCH_NORM}" >> "$GITHUB_OUTPUT"
+          echo "tags=ghcr.io/${OWNER_LC}/${REPO_LC}-kotekan:${UYEAR}04-${BRANCH_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Verify Dockerfile exists
+        shell: bash
         run: |
           echo "Dockerfile: ${{ steps.meta.outputs.dockerfile }}"
           test -f "${{ steps.meta.outputs.dockerfile }}" || { echo "::error::Missing Dockerfile"; exit 1; }
 
-      # Buildx is set up automatically by the action below; no separate step needed.
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
