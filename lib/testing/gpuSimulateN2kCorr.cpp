@@ -188,12 +188,14 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->set_array_dimension(4, 16, "DPlo2");
         meta_out->set_array_dimension(5, 2, "C");
         meta_out->set_strides_simple();
-        meta_out->nfreq = _num_local_freq;
-        assert(meta_out->nfreq <= CHORD_META_MAX_FREQ);
+        std::vector<int> coarse_freq(_num_local_freq);
         for (int f = 0; f < _num_local_freq; f++) {
+            coarse_freq[f] = f; // TODO: set some actual frequency indices and a stream_id
             meta_out->time_downsampling_fpga[f] =
                 meta_in->time_downsampling_fpga[f] * _sub_integration_ntime;
         }
+        meta_out->set_coarse_freq(coarse_freq);
+        assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->sample0_offset = meta_in->sample0_offset;
