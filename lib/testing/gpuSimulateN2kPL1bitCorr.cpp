@@ -195,8 +195,8 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         meta_out->set_strides_simple();
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->sample0_offset = meta_in->sample0_offset;
-        meta_out->offset_downsampling = meta_in->offset_downsampling;
+        meta_out->set_sample0_offset(meta_in->get_sample0_offset());
+        meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
         const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
         std::vector<int> coarse_freq(coarse_freq_in.cbegin(), coarse_freq_in.cbegin()+_num_local_freq);
         meta_out->set_coarse_freq(coarse_freq);
