@@ -8,8 +8,7 @@ REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
 chordMetadata::chordMetadata() :
     frame_counter(-1), type(kotekan::unknown_type), dims(-1), offset(0), n_one_hot(-1),
-    sample0_offset(-1), offset_downsampling(-1), ndishes(-1), n_dish_locations_ew(-1),
-    n_dish_locations_ns(-1), dish_index(nullptr) {
+    ndishes(-1), n_dish_locations_ew(-1), n_dish_locations_ns(-1), dish_index(nullptr) {
     name[0] = '\0';
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
@@ -117,8 +116,8 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     }
     offset = fmt->offset;
     n_one_hot = fmt->n_one_hot;
-    sample0_offset = fmt->sample0_offset;
-    offset_downsampling = fmt->offset_downsampling;
+    this->set_sample0_offset(fmt->sample0_offset);
+    this->set_offset_downsampling(fmt->offset_downsampling);
     const int nfreq = fmt->nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
     for (int i = 0; i < nfreq; i++) {
@@ -155,8 +154,8 @@ size_t chordMetadata::serialize(char* bytes) {
     }
     fmt->offset = offset;
     fmt->n_one_hot = n_one_hot;
-    fmt->sample0_offset = sample0_offset;
-    fmt->offset_downsampling = offset_downsampling;
+    fmt->sample0_offset = this->get_sample0_offset();
+    fmt->offset_downsampling = this->get_offset_downsampling();
     fmt->nfreq = this->get_nfreq();
     assert(fmt->nfreq < CHORD_META_MAX_FREQ);
     for (int i = 0; i < fmt->nfreq; i++) {
