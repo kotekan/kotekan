@@ -199,7 +199,7 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
 
     // Since we do not use a ring buffer we need to set `meta->sample0_offset`
     // TODO: do this automatically in `NDArrayRingBuffer`
-    out_meta->sample0_offset = rfi_RFImask.get_read_valid().begin();
+    out_meta->set_sample0_offset(rfi_RFImask.get_read_valid().begin());
 
     // The PL mask time_downsampling_factor includes a factor of 64 from
     // the fast time axis which is eaten up by the correlator.
