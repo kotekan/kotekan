@@ -209,6 +209,10 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
 
     // Since we do not use a ring buffer we need to set `meta->sample0_offset`
     // TODO: do this automatically in `NDArrayRingBuffer`
+    
+    // The RFI mask has a fast time index of size 1024, so has an apparent
+    // time downsampling of 1024.  To get the needed outgoing sample0_offset,
+    // we need to undo that, and then apply the correlation downsampling.
     out_meta->set_sample0_offset(div_noremainder(1024 * rfi_RFImask.get_read_valid().begin(), n2k_sub_integration_ntime));
 
     const std::vector<int> in_time_downsampling_fpga = pl_meta->get_time_downsampling_fpga();
