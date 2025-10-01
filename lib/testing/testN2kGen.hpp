@@ -5,7 +5,7 @@
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata
-#include "visUtil.hpp"        // for frameID
+#include "visUtil.hpp"         // for frameID
 
 #include "json.hpp" // for json
 
@@ -76,15 +76,15 @@ private:
     std::vector<uint32_t> freq_ids;
     uint32_t seed;
 
-    int corr_blocksize;     // ALWAYS 16
-    int count_blocksize;    // ALWAYS 8
+    int corr_blocksize;  // ALWAYS 16
+    int count_blocksize; // ALWAYS 8
     int corr_lin_blocks;
     int count_lin_blocks;
     int corr_num_blocks;
     int count_num_blocks;
     int num_integrations;
 
-    const std::shared_ptr<chordMetadata> get_new_metadata(Buffer *buf, frameID frame_id);
+    const std::shared_ptr<chordMetadata> get_new_metadata(Buffer* buf, frameID frame_id);
     void set_correlation_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num);
     void set_counts_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num);
 };

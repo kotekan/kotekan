@@ -121,8 +121,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _meta_time_downsample_factor =
         config.get_default<int>(unique_name, "meta_time_downsample_factor", 1);
 
-    _manual_freq_ids = config.get_default<std::vector<uint32_t>>(unique_name,
-        "manual_freq_ids", std::vector<uint32_t>());
+    _manual_freq_ids = config.get_default<std::vector<uint32_t>>(unique_name, "manual_freq_ids",
+                                                                 std::vector<uint32_t>());
 
     endpoint = unique_name + "/generate_test_data";
     using namespace std::placeholders;
@@ -228,7 +228,7 @@ void testDataGen::main_thread() {
             else
                 coarse_freq[f] = f;
             freq_upchan_factor[f] = 1;
-            half_fpga_sample0[f] = 0;
+            half_fpga_sample0[f] = _meta_time_downsample_factor - 1;
             time_downsampling_fpga[f] = _meta_time_downsample_factor;
         }
 

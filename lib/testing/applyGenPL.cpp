@@ -18,9 +18,8 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(applyGenPL);
 
 applyGenPL::applyGenPL(Config& config, const std::string& unique_name,
-                                       bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container,
-          std::bind(&applyGenPL::main_thread, this)) {
+                       bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&applyGenPL::main_thread, this)) {
 
     // Apply config.
     _num_elements = config.get<int32_t>(unique_name, "num_elements"); // = "2*D"
@@ -47,8 +46,7 @@ void applyGenPL::main_thread() {
         char* input = (char*)input_buf->wait_for_full_frame(unique_name, input_frame_id);
         if (input == nullptr)
             break;
-        uint64_t* plmask =
-            (uint64_t*)plmask_buf->wait_for_full_frame(unique_name, plmask_frame_id);
+        uint64_t* plmask = (uint64_t*)plmask_buf->wait_for_full_frame(unique_name, plmask_frame_id);
         if (plmask == nullptr)
             break;
         int* output = (int*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
@@ -60,9 +58,9 @@ void applyGenPL::main_thread() {
              output_buf->buffer_name, output_frame_id);
 
 
-        int fstride =_num_elements;
+        int fstride = _num_elements;
         int tstride = _num_local_freq * fstride;
-        int fstride_pl =_num_elements / 8;
+        int fstride_pl = _num_elements / 8;
         int tstride_pl = (_num_local_freq / 4) * fstride_pl;
 
         for (int t = 0; t < _samples_per_data_set; t++) {
@@ -74,7 +72,7 @@ void applyGenPL::main_thread() {
                     int pl_t_slow = pl_t >> 6;  // the rest are for the array
                     int pl_f = f >> 2;          // downsample by 4
                     int pl_e = e >> 3;          // downsample by 8
-                      
+
                     int pl_idx = tstride_pl * pl_t_slow + fstride_pl * pl_f + pl_e;
                     int pl = (plmask[pl_idx] >> pl_t_bit) & 0x1;
 
@@ -87,7 +85,7 @@ void applyGenPL::main_thread() {
                 } // e
             } // f
         } // tout
-        
+
         input_buf->pass_metadata(input_frame_id, output_buf, output_frame_id);
 
         input_buf->mark_frame_empty(unique_name, input_frame_id);

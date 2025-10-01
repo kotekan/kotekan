@@ -51,15 +51,20 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     count_type = config.get<std::string>(unique_name, "counts_type");
     assert(corr_type == "const" || corr_type == "random");
     assert(count_type == "const" || count_type == "random");
-    
-    corr_value = config.get_default<std::array<int32_t, 2>>(unique_name, "correlation_value", std::array<int32_t, 2>({1234, 5678}));
-    count_value = config.get_default<int32_t>(unique_name, "counts_value", 4444);
-    
-    corr_value_array = config.get_default<std::vector<std::array<int32_t, 2>>>(unique_name, "correlation_values", std::vector<std::array<int32_t, 2>>());
-    count_value_array = config.get_default<std::vector<int32_t>>(unique_name, "count_values", std::vector<int32_t>());
 
-    corr_min = config.get_default<std::array<int32_t, 2>>(unique_name, "correlation_min", {-524288, -524288});
-    corr_max = config.get_default<std::array<int32_t, 2>>(unique_name, "correlation_max", {524288, 524288});
+    corr_value = config.get_default<std::array<int32_t, 2>>(unique_name, "correlation_value",
+                                                            std::array<int32_t, 2>({1234, 5678}));
+    count_value = config.get_default<int32_t>(unique_name, "counts_value", 4444);
+
+    corr_value_array = config.get_default<std::vector<std::array<int32_t, 2>>>(
+        unique_name, "correlation_values", std::vector<std::array<int32_t, 2>>());
+    count_value_array = config.get_default<std::vector<int32_t>>(unique_name, "count_values",
+                                                                 std::vector<int32_t>());
+
+    corr_min = config.get_default<std::array<int32_t, 2>>(unique_name, "correlation_min",
+                                                          {-524288, -524288});
+    corr_max = config.get_default<std::array<int32_t, 2>>(unique_name, "correlation_max",
+                                                          {524288, 524288});
     count_min = config.get_default<int32_t>(unique_name, "count_min", 0);
     count_max = config.get_default<int32_t>(unique_name, "count_max", 8192);
 
@@ -70,13 +75,14 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     num_local_freq = config.get_default<size_t>(unique_name, "num_local_freq", 1);
     num_elements = config.get_default<size_t>(unique_name, "num_elements", 16);
-    freq_ids = config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids", std::vector<uint32_t>({4096}));
+    freq_ids = config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids",
+                                                         std::vector<uint32_t>({4096}));
     seed = config.get_default<uint32_t>(unique_name, "seed", 0);
 
     // now thing we calculate
-    corr_blocksize = 16;    // ALWAYS 16
-    count_blocksize = 8;    // ALWAYS 8
-    
+    corr_blocksize = 16; // ALWAYS 16
+    count_blocksize = 8; // ALWAYS 8
+
     assert(samples_per_data_set % sub_integration_ntime == 0);
     assert(num_elements % corr_blocksize == 0);
     assert(num_elements % (8 * count_blocksize) == 0);
@@ -91,13 +97,12 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     count_num_blocks = (count_lin_blocks * (count_lin_blocks + 1)) / 2;
 }
 
-const std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer *buf, frameID frame_id) {
+const std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID frame_id) {
     buf->allocate_new_metadata_object(frame_id);
-    
+
     const std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
     if (!mc) {
-        FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata", buf->buffer_name,
-                    frame_id);
+        FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata", buf->buffer_name, frame_id);
     }
     assert(mc);
     if (!metadata_is_chord(mc)) {
@@ -111,8 +116,7 @@ const std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer *buf, f
     return meta;
 }
 
-void testN2kGen::set_correlation_metadata(std::shared_ptr<chordMetadata> meta,
-                                      uint64_t seq_num) {
+void testN2kGen::set_correlation_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num) {
     meta->set_name(corr_name);
     meta->type = kotekan::int32;
     meta->dims = 6;
@@ -148,8 +152,7 @@ void testN2kGen::set_correlation_metadata(std::shared_ptr<chordMetadata> meta,
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
 
-void testN2kGen::set_counts_metadata(std::shared_ptr<chordMetadata> meta,
-                                      uint64_t seq_num) {
+void testN2kGen::set_counts_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num) {
     meta->set_name(count_name);
     meta->type = kotekan::int32;
     meta->dims = 5;
@@ -200,22 +203,23 @@ void testN2kGen::main_thread() {
     while (!stop_thread) {
 
         // grab frames
-        int32_t *corr = (int32_t*)corr_buf->wait_for_empty_frame(unique_name, corr_frame_id);
+        int32_t* corr = (int32_t*)corr_buf->wait_for_empty_frame(unique_name, corr_frame_id);
         if (corr == nullptr)
             break;
-        int32_t *count = (int32_t*)count_buf->wait_for_empty_frame(unique_name, count_frame_id);
+        int32_t* count = (int32_t*)count_buf->wait_for_empty_frame(unique_name, count_frame_id);
         if (count == nullptr)
             break;
 
         // create metadata
         const std::shared_ptr<chordMetadata> corr_meta = get_new_metadata(corr_buf, corr_frame_id);
-        const std::shared_ptr<chordMetadata> count_meta = get_new_metadata(count_buf, count_frame_id);
+        const std::shared_ptr<chordMetadata> count_meta =
+            get_new_metadata(count_buf, count_frame_id);
 
         // fill metadata
         set_correlation_metadata(corr_meta, seq_num);
         set_counts_metadata(count_meta, seq_num);
 
-        // block, freq, and time strides for access into the 
+        // block, freq, and time strides for access into the
         // correlation and counts buffers
         int db_corr = 2 * corr_blocksize * corr_blocksize;
         int df_corr = db_corr * corr_num_blocks;
@@ -224,20 +228,21 @@ void testN2kGen::main_thread() {
         int df_count = db_count * count_num_blocks;
         int dt_count = df_count * num_local_freq;
 
-        for(int t = 0; t < num_integrations; t++) {
-            for(int f = 0; f < num_local_freq; f++) {
+        for (int t = 0; t < num_integrations; t++) {
+            for (int f = 0; f < num_local_freq; f++) {
                 // Fill the correlation array
                 int corr_block_idx = 0;
 
-                for(int ihi = 0; ihi < corr_lin_blocks; ihi++) {
+                for (int ihi = 0; ihi < corr_lin_blocks; ihi++) {
                     // Lower triangular only
-                    for(int jhi = 0; jhi <= ihi; jhi++) {
-                        for(int ilo = 0; ilo < corr_blocksize; ilo++) {
-                            for(int jlo = 0; jlo < corr_blocksize; jlo++) {
-                                int idx = 2 * (jlo + ilo * corr_blocksize) + corr_block_idx * db_corr + f * df_corr + t * dt_corr;
+                    for (int jhi = 0; jhi <= ihi; jhi++) {
+                        for (int ilo = 0; ilo < corr_blocksize; ilo++) {
+                            for (int jlo = 0; jlo < corr_blocksize; jlo++) {
+                                int idx = 2 * (jlo + ilo * corr_blocksize)
+                                          + corr_block_idx * db_corr + f * df_corr + t * dt_corr;
 
-                                corr[idx + 0] = 0;  // Real
-                                corr[idx + 1] = 0;  // Imag
+                                corr[idx + 0] = 0; // Real
+                                corr[idx + 1] = 0; // Imag
                             }
                         }
 
@@ -248,12 +253,13 @@ void testN2kGen::main_thread() {
                 // Fill the count array
                 int count_block_idx = 0;
 
-                for(int ihi = 0; ihi < count_lin_blocks; ihi++) {
+                for (int ihi = 0; ihi < count_lin_blocks; ihi++) {
                     // Lower triangular only
-                    for(int jhi = 0; jhi <= ihi; jhi++) {
-                        for(int ilo = 0; ilo < count_blocksize; ilo++) {
-                            for(int jlo = 0; jlo < count_blocksize; jlo++) {
-                                int idx = jlo + ilo * count_blocksize + count_block_idx * db_count + f * df_count + t * dt_count;
+                    for (int jhi = 0; jhi <= ihi; jhi++) {
+                        for (int ilo = 0; ilo < count_blocksize; ilo++) {
+                            for (int jlo = 0; jlo < count_blocksize; jlo++) {
+                                int idx = jlo + ilo * count_blocksize + count_block_idx * db_count
+                                          + f * df_count + t * dt_count;
 
                                 count[idx] = 0;
                             }
@@ -284,8 +290,10 @@ void testN2kGen::main_thread() {
             }
             */
 
-        DEBUG("Generated a {:s} test correlation data set in {:s}[{:d}]", corr_type, corr_buf->buffer_name, corr_frame_id);
-        DEBUG("Generated a {:s} test counts data set in {:s}[{:d}]", count_type, count_buf->buffer_name, count_frame_id);
+        DEBUG("Generated a {:s} test correlation data set in {:s}[{:d}]", corr_type,
+              corr_buf->buffer_name, corr_frame_id);
+        DEBUG("Generated a {:s} test counts data set in {:s}[{:d}]", count_type,
+              count_buf->buffer_name, count_frame_id);
         DEBUG("Corr sample size is: {:d}", corr_meta->sample_bytes());
         DEBUG("Counts sample size is: {:d}", count_meta->sample_bytes());
 

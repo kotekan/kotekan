@@ -29,9 +29,9 @@
  *      @buffer_format bitmask in uint64_t
  *      @buffer_shape [samples_per_data_set / 128, num_local_freq / 4,
  *          num_elements / 8]. Downsampled by 2 in time, 4 in freq, 8 in
- *          element. 
+ *          element.
  *          The time axis is split into a 128 sample (in 64 bits, downsampled
- *          by 2 in time) fast index and a slow index.  
+ *          by 2 in time) fast index and a slow index.
  *      @buffer_metadata chordMetadata time_downsample_fpga[] = 128
  *
  * @buffer voltage_out_buf The output voltages, zeroed (8'd) by the PL mask.
@@ -52,7 +52,7 @@
 class applyGenPL : public kotekan::Stage {
 public:
     applyGenPL(kotekan::Config& config, const std::string& unique_name,
-                       kotekan::bufferContainer& buffer_container);
+               kotekan::bufferContainer& buffer_container);
     ~applyGenPL();
     void main_thread() override;
 
