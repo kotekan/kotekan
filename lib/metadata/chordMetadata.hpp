@@ -2,9 +2,11 @@
 #define CHORD_METADATA
 
 #include "DataType.hpp"       // for type_to_string, type_total_bytes, DataType
+#include "Telescope.hpp"
 #include "buffer.hpp"         // for Buffer
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
+#include "jsonMetadata.hpp"
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -222,6 +224,22 @@ public:
         this->onehot_index[dim] = i;
         strncpy(this->onehot_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
     }
+
+    // science metadata
+    using beamCoord = jsonMetadata::beamCoord;
+
+    beamCoord get_beam_coord() const {
+        return beamCoord(metadata);
+    }
+
+    // TODO: add set_beam_coord
+
+    int64_t get_fpga_seq_num() const {
+        return metadata[jsonMetadata::FPGA_SEQ_NUM].template get<int64_t>();
+    }
+
+private:
+    jsonMetadata::metadata metadata;
 };
 
 inline bool metadata_is_chord(Buffer* buf, int) {
