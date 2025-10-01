@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstring>
 #include <cudaCommand.hpp>
+#include <cudaMemsetInt.hpp>
 #include <div.hpp>
 #include <memory>
 #include <metadata.hpp>
@@ -17,6 +18,8 @@
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
+
+namespace {} // namespace
 
 /**
  * @class cudaPL1bitCorrelator
@@ -198,8 +201,14 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
     // TODO: do this automatically in `NDArrayRingBuffer`
     out_meta->sample0_offset = rfi_RFImask.get_read_valid().begin();
 
-    // NDArray does not yet support poisoning
-    // n2k_counts.set_to_poison(0xff);
+    // The PL mask time_downsampling_factor includes a factor of 64 from
+    // the fast time axis which is eaten up by the correlator.
+    for (int f = 0; f < out_meta->nfreq; f++) {
+        out_meta->time_downsampling_fpga[f] =
+            n2k_sub_integration_ntime * div_noremainder(pl_meta->time_downsampling_fpga[f], 64);
+    }
+
+    n2k_counts.set_to_poison(0xff);
 
     // The ringbuffering here is fishy. We should fix the kernel instead.
 
@@ -247,16 +256,26 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
     const int Sds = num_dishes / 8 * num_polarizations;
     const int Nds = n2k_sub_integration_ntime;
 
-    n2k::launch_pl_1bit_correlator(n2k_counts_memory, (const ulong*)pl_expanded_mask_memory,
-                                   (const uint*)rfi_RFImask_memory, rfimask_fstride,
-                                   T,   // number of time samples before correlation
-                                   F,   // number of frequency channels
-                                   Sds, // number of stations (after downsampling by 8)
-                                   Nds, // downsampling factor of counts array, relative to baseband
-                                   device.getStream(cuda_stream_id));
+    if (Sds == 16 || Sds == 128) {
+        // These cases are implemented in n2k
+        n2k::launch_pl_1bit_correlator(
+            n2k_counts_memory, (const ulong*)pl_expanded_mask_memory,
+            (const uint*)rfi_RFImask_memory, rfimask_fstride,
+            T,   // number of time samples before correlation
+            F,   // number of frequency channels
+            Sds, // number of stations (after downsampling by 8)
+            Nds, // downsampling factor of counts array, relative to baseband
+            device.getStream(cuda_stream_id));
+    } else {
+        // These cases are not yet implemented in n2k. Pretend that there is no packet loss.
+        ERROR("The 1-bit correlator calculating the n2k counts is not yet implemented for {:d} "
+              "dishes. Pretending there was no packet loss. The n2k counts will be wrong if there "
+              "was packet loss.",
+              num_dishes);
+        cudaMemsetInt(n2k_counts_memory, Nds, n2k_counts.get_ndarray().size());
+    }
 
-    // NDArray does not yet support poisoning
-    // n2k_counts.check_for_poison(0xff);
+    n2k_counts.check_for_poison(0xff);
 
     return record_end_event();
 }

@@ -1,4 +1,4 @@
-#include "gpuSimulateN2k.hpp"
+#include "gpuSimulateN2kCorr.hpp"
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
@@ -7,22 +7,20 @@
 #include "chordMetadata.hpp"   // for chordMetadata
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 
-#include <atomic>     // for atomic_bool
 #include <cstdint>    // for int32_t
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
-#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_STAGE(gpuSimulateN2k);
+REGISTER_KOTEKAN_STAGE(gpuSimulateN2kCorr);
 
-gpuSimulateN2k::gpuSimulateN2k(Config& config, const std::string& unique_name,
-                               bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&gpuSimulateN2k::main_thread, this)) {
+gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique_name,
+                                       bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container,
+          std::bind(&gpuSimulateN2kCorr::main_thread, this)) {
 
     // Apply config.
     _num_elements = config.get<int32_t>(unique_name, "num_elements"); // = "2*D"
@@ -32,27 +30,35 @@ gpuSimulateN2k::gpuSimulateN2k(Config& config, const std::string& unique_name,
 
     input_buf = get_buffer("network_in_buf");
     input_buf->register_consumer(unique_name);
+    rfimask_buf = get_buffer("rfimask_in_buf");
+    rfimask_buf->register_consumer(unique_name);
     output_buf = get_buffer("corr_out_buf");
     output_buf->register_producer(unique_name);
 }
 
-gpuSimulateN2k::~gpuSimulateN2k() {}
+gpuSimulateN2kCorr::~gpuSimulateN2kCorr() {}
 
-void gpuSimulateN2k::main_thread() {
+void gpuSimulateN2kCorr::main_thread() {
 
     int input_frame_id = 0;
+    int rfimask_frame_id = 0;
     int output_frame_id = 0;
 
     while (!stop_thread) {
         char* input = (char*)input_buf->wait_for_full_frame(unique_name, input_frame_id);
         if (input == nullptr)
             break;
+        uint8_t* rfimask =
+            (uint8_t*)rfimask_buf->wait_for_full_frame(unique_name, rfimask_frame_id);
+        if (rfimask == nullptr)
+            break;
         int* output = (int*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
         if (output == nullptr)
             break;
 
-        INFO("Simulating GPU processing for {:s}[{:d}] putting result in {:s}[{:d}]",
-             input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
+        INFO("Simulating GPU processing for {:s}[{:d}] and {:s}[{:d}] putting result in {:s}[{:d}]",
+             input_buf->buffer_name, input_frame_id, rfimask_buf->buffer_name, rfimask_frame_id,
+             output_buf->buffer_name, output_frame_id);
 
         // number of elements = number of dishes * polarizations
         int nt_inner = _sub_integration_ntime;
@@ -82,6 +88,24 @@ void gpuSimulateN2k::main_thread() {
                                     int iy = (t * _num_local_freq + f) * _num_elements
                                              + (16 * jhi + jlo);
 
+                                    // Extract the indices for the RFI mask
+                                    // 0x3FF extracts the low 10 bits for the
+                                    // fast (1024 = 2^10) index.
+                                    int t_rfi_in = t & 0x3FF;
+                                    // Shift down by 10 bits to get the slow
+                                    // (divided by 1024) index.
+                                    int t_rfi_out = t >> 10;
+                                    // The fast index refers to a particular
+                                    // bit in a byte.  The bit index is
+                                    // in the low 3 bits (7 = 0b0111)
+                                    int t_rfi_in_bit = t_rfi_in & 7;
+                                    // The byte address is in the remaining bits
+                                    int t_rfi_in_byte = t_rfi_in >> 3;
+                                    // Assemble the index into the rfi_mask
+                                    // array.
+                                    int rfi_idx =
+                                        t_rfi_in_byte + 128 * (f + _num_local_freq * t_rfi_out);
+
                                     // Decode input with the CHIME convention:
                                     // offset encoded by 8, imaginary part in
                                     // lo 4 bits, real part in high 4 bits.
@@ -89,8 +113,14 @@ void gpuSimulateN2k::main_thread() {
                                     int xr = ((input[ix] & 0xf0) >> 4) - 8;
                                     int yi = (input[iy] & 0x0f) - 8;
                                     int yr = ((input[iy] & 0xf0) >> 4) - 8;
-                                    real += xr * yr + xi * yi;
-                                    imag += xi * yr - yi * xr;
+
+                                    // get the RFI value. 1 for clean,
+                                    // 0 for dirty.
+                                    int rfi = (rfimask[rfi_idx] >> t_rfi_in_bit) & 1;
+
+                                    // accumulate!
+                                    real += rfi * (xr * yr + xi * yi);
+                                    imag += rfi * (xi * yr - yi * xr);
                                 }
 
                                 // clang-format off
@@ -117,8 +147,18 @@ void gpuSimulateN2k::main_thread() {
 
         // Fetch input metadata
         const std::shared_ptr<const metadataObject> mc_in = input_buf->get_metadata(input_frame_id);
-        const std::shared_ptr<const chordMetadata> meta_in =
-            (mc_in && metadata_is_chord(mc_in)) ? get_chord_metadata(mc_in) : nullptr;
+        if (!mc_in) {
+            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", input_buf->buffer_name,
+                        input_frame_id);
+        }
+        assert(mc_in);
+        if (!metadata_is_chord(mc_in)) {
+            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
+                        input_buf->buffer_name, input_frame_id);
+        }
+        assert(metadata_is_chord(mc_in));
+
+        const std::shared_ptr<const chordMetadata> meta_in = get_chord_metadata(mc_in);
 
         // Create output metadata
         output_buf->allocate_new_metadata_object(output_frame_id);
@@ -150,18 +190,17 @@ void gpuSimulateN2k::main_thread() {
         meta_out->set_strides_simple();
         meta_out->nfreq = _num_local_freq;
         assert(meta_out->nfreq <= CHORD_META_MAX_FREQ);
-
-        if (meta_in) {
-            meta_out->fpga_seq_num = meta_in->fpga_seq_num;
-            meta_out->sample0_offset = meta_in->sample0_offset;
-            meta_out->offset_downsampling = meta_in->offset_downsampling;
-        } else {
-            meta_out->fpga_seq_num = 0;
-            meta_out->sample0_offset = 0;
-            meta_out->offset_downsampling = 1;
+        for (int f = 0; f < _num_local_freq; f++) {
+            meta_out->time_downsampling_fpga[f] =
+                meta_in->time_downsampling_fpga[f] * _sub_integration_ntime;
         }
 
+        meta_out->fpga_seq_num = meta_in->fpga_seq_num;
+        meta_out->sample0_offset = meta_in->sample0_offset;
+        meta_out->offset_downsampling = meta_in->offset_downsampling;
+
         input_buf->mark_frame_empty(unique_name, input_frame_id);
+        rfimask_buf->mark_frame_empty(unique_name, rfimask_frame_id);
 
         // Pretend some samples were lost
         // chordMetadata* chord_metadata = (chordMetadata*)
@@ -169,10 +208,12 @@ void gpuSimulateN2k::main_thread() {
 
         output_buf->mark_frame_full(unique_name, output_frame_id);
 
-        INFO("Simulating GPU processing done for {:s}[{:d}] result is in {:s}[{:d}]",
-             input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
+        INFO("Simulating GPU processing done for {:s}[{:d}] and {:s}[{:d}] result is in {:s}[{:d}]",
+             input_buf->buffer_name, input_frame_id, rfimask_buf->buffer_name, rfimask_frame_id,
+             output_buf->buffer_name, output_frame_id);
 
         input_frame_id = (input_frame_id + 1) % input_buf->num_frames;
+        rfimask_frame_id = (rfimask_frame_id + 1) % rfimask_buf->num_frames;
         output_frame_id = (output_frame_id + 1) % output_buf->num_frames;
     }
 }

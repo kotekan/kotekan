@@ -39,6 +39,7 @@ private:
     int num_frames_to_test;
     int max_num_errors_logged;
     double epsilon;
+    bool trigger_exit_on_pass;
 };
 
 template<typename A_Type>
@@ -55,6 +56,7 @@ testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string&
     max_num_errors_logged = config.get_default<int32_t>(unique_name, "max_num_errors_logged", 100);
     epsilon = config.get_default<double>(unique_name, "epsilon",
                                          std::numeric_limits<A_Type>::epsilon() * (A_Type)5.0);
+    trigger_exit_on_pass = config.get_default<bool>(unique_name, "trigger_exit_on_pass", true);
 }
 
 template<typename A_Type>
@@ -169,8 +171,12 @@ void testDataCheck<A_Type>::main_thread() {
 
         if (num_frames_to_test == frames) {
             if (num_errors == 0) {
-                INFO("Test passed, exiting.");
-                TEST_PASSED();
+                if (trigger_exit_on_pass) {
+                    INFO("Test passed, exiting.");
+                    TEST_PASSED();
+                } else {
+                    INFO("Test passed.");
+                }
             }
         } // frames
     }
