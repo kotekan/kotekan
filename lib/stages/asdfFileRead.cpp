@@ -271,10 +271,8 @@ public:
                           frame_counter);
                     const auto sample0_offset =
                         group->at("sample0_offset")->get_maybe_int().value();
-                    meta->sample0_offset = sample0_offset;
-                    assert(meta->sample0_offset >= 0);
-                } else {
-                    meta->sample0_offset = -1;
+                    meta->set_sample0_offset(sample0_offset);
+                    assert(meta->get_sample0_offset() >= 0);
                 }
             }
 
@@ -284,10 +282,8 @@ public:
                           frame_counter);
                     const auto offset_downsampling =
                         group->at("offset_downsampling")->get_maybe_int().value();
-                    meta->offset_downsampling = offset_downsampling;
-                    assert(meta->offset_downsampling > 0);
-                } else {
-                    meta->offset_downsampling = -1;
+                    meta->set_offset_downsampling(offset_downsampling);
+                    assert(meta->get_offset_downsampling() > 0);
                 }
             }
 
