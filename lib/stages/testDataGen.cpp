@@ -202,13 +202,14 @@ void testDataGen::main_thread() {
             break;
 
         buf->allocate_new_metadata_object(frame_id);
-        get_chord_metadata(buf, frame_id)->set_fpga_seq_num(seq_num);
+        std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
+        
+        chordmeta->set_fpga_seq_num(seq_num);
 
         //TODO: Fix this, cannot change from frame to frame (and should not be "now")
         gettimeofday(&now, nullptr);
-        get_chord_metadata(buf, frame_id)->set_first_packet_recv_time(now);
+        chordmeta->set_first_packet_recv_time(now);
 
-        std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
         chordmeta->set_name(_name);
         chordmeta->dims = (int)_array_shape.size();
         for (int d = 0; d < chordmeta->dims; ++d)
@@ -223,9 +224,9 @@ void testDataGen::main_thread() {
         std::vector<int> time_downsampling_fpga(coarse_freq.size());
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             if (_manual_freq_ids.size() > 0)
-                chordmeta->coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
+                coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
             else
-                chordmeta->coarse_freq[f] = f;
+                coarse_freq[f] = f;
             freq_upchan_factor[f] = 1;
             half_fpga_sample0[f] = 0;
             time_downsampling_fpga[f] = _meta_time_downsample_factor;

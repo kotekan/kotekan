@@ -176,7 +176,11 @@ void gpuSimulateN2kCorr::main_thread() {
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
         assert(meta_out);
 
-        meta_out->set_name("cpusim_correlation");
+        // Start out with a copy
+        *meta_out = *meta_in;
+
+        // Assign changes
+        meta_out->set_name("n2k_correlation");
         meta_out->type = kotekan::int32;
         meta_out->dims = 6;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
@@ -188,6 +192,7 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->set_array_dimension(4, 16, "DPlo2");
         meta_out->set_array_dimension(5, 2, "C");
         meta_out->set_strides_simple();
+        
         /* new style array description */
         output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
             output_frame_id,
@@ -197,20 +202,28 @@ void gpuSimulateN2kCorr::main_thread() {
         /* test that things are consistent */
         meta_out->check_frame_desc(output_buf->get_frame_desc(output_frame_id));
 
+        meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
+        meta_out->set_sample0_offset(meta_in->get_sample0_offset() / _sub_integration_ntime);
+        meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
+
         std::vector<int> coarse_freq(_num_local_freq);
         std::vector<int> time_downsampling_fpga(_num_local_freq);
+        std::vector<int64_t> half_fpga_sample0(_num_local_freq);
+        const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
         const std::vector<int> time_downsampling_fpga_in = meta_in->get_time_downsampling_fpga();
+        const std::vector<int64_t> half_fpga_sample0_in = meta_in->get_half_fpga_sample0();
+
         for (int f = 0; f < _num_local_freq; f++) {
-            coarse_freq[f] = f; // TODO: set some actual frequency indices and a stream_id
+            coarse_freq[f] = coarse_freq_in[f];
             time_downsampling_fpga[f] = time_downsampling_fpga_in[f] * _sub_integration_ntime;
+            half_fpga_sample0[f] = half_fpga_sample0_in[f] + time_downsampling_fpga[f]
+                                        - time_downsampling_fpga_in[f];
         }
+
         meta_out->set_coarse_freq(coarse_freq);
         meta_out->set_time_downsampling_fpga(time_downsampling_fpga);
+        meta_out->set_half_fpga_sample0(half_fpga_sample0);
         assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
-
-        meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->set_sample0_offset(meta_in->get_sample0_offset());
-        meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
 
         input_buf->mark_frame_empty(unique_name, input_frame_id);
         rfimask_buf->mark_frame_empty(unique_name, rfimask_frame_id);

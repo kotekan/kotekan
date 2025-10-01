@@ -20,7 +20,7 @@ frame_arrival_period: 5.12e-6 * samples_per_data_set
 sizeof_int: 4
 
 # For faster CHORD testing, we're using...
-sub_integration_ntime: 2048
+sub_integration_ntime: 4096
 samples_per_data_set: 4096
 # sub_integration_ntime: 8192  # ~40 ms for chord
 # samples_per_data_set: 8192   # 
@@ -162,3 +162,4 @@ check_data:
     first_buf: host_counts_buffer
     second_buf: simulated_counts_buffer
     num_frames_to_test: buffer_depth
+    check_metadata: True

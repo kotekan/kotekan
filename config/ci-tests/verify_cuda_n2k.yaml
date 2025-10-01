@@ -273,6 +273,7 @@ check_correlation_data:
     first_buf: host_correlation_buffer
     second_buf: simulated_correlation_buffer
     num_frames_to_test: buffer_depth
+    check_metadata: True
 
 check_counts_data:
     kotekan_stage: testDataCheckInt
@@ -280,3 +281,4 @@ check_counts_data:
     second_buf: simulated_counts_buffer
     num_frames_to_test: buffer_depth
     trigger_exit_on_pass: False
+    check_metadata: True

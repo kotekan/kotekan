@@ -183,7 +183,11 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
         assert(meta_out);
 
-        meta_out->set_name("cpusim_n2k_counts");
+        // Copy to start
+        *meta_out = *meta_in;
+
+        // Update the changes
+        meta_out->set_name("n2k_counts");
         meta_out->type = kotekan::int32;
         meta_out->dims = 5;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
@@ -200,9 +204,29 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         /* test that things are consistent */
         meta_out->check_frame_desc(output_buf->get_frame_desc(output_frame_id));
 
+        //
+        // In GPU:
+        // sample0_offset = cursor_bytes / sample_bytes
+        //
+        // sample_bytes = dtype_bytes * stride[0]
+        // frame_bytes = dtype_bytes * stride[0] * dim[0]
+        //
+        // cursor_bytes = frame_bytes * num_frames_read
+        //
+        // sample0_offset = frame_bytes * num_frames_read / (frame_bytes / dim[0])
+        //     = num_frames_read * dim[0]
+        //
+        //  sample0_offset(out) = sample0_offset(in) * dim[0](out) / dim[0](in)
+        //
+        //     dim[0](out) = num_integrations = samples_per_data_set / sub_integration_ntime
+        //     dim[0](in) = samples_per_data_set / 64
+        //
+        //  sample0_offset(out) = sample0_offset(in) * 64 / sub_integration_ntime
+        
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->set_sample0_offset(meta_in->get_sample0_offset());
+        meta_out->set_sample0_offset((64 * meta_in->get_sample0_offset()) / _sub_integration_ntime);
         meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
+        
         const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
         const std::vector<int> freq_upchan_factor_in = meta_in->get_freq_upchan_factor();
         const std::vector<int64_t> half_fpga_sample0_in = meta_in->get_half_fpga_sample0();
@@ -211,12 +235,14 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         std::vector<int> freq_upchan_factor(coarse_freq.size());
         std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
         std::vector<int> time_downsampling_fpga(coarse_freq.size());
+
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             coarse_freq[f] = coarse_freq_in[f];
             freq_upchan_factor[f] = freq_upchan_factor_in[f];
-            half_fpga_sample0[f] = half_fpga_sample0_in[f];
-            time_downsampling_fpga[f] = time_downsampling_fpga_in[f] * _sub_integration_ntime;
+            time_downsampling_fpga[f] = (time_downsampling_fpga_in[f] / 64) * _sub_integration_ntime;
+            half_fpga_sample0[f] = half_fpga_sample0_in[f] + time_downsampling_fpga[f] - time_downsampling_fpga_in[f];
         }
+
         meta_out->set_coarse_freq(coarse_freq);
         meta_out->set_freq_upchan_factor(freq_upchan_factor);
         meta_out->set_half_fpga_sample0(half_fpga_sample0);
