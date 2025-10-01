@@ -131,7 +131,7 @@ public:
             const double elapsed_time = this_time - start_time;
 
             INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
-                 frame_counter, meta->sample0_offset, elapsed_time);
+                 frame_counter, meta->get_sample0_offset(), elapsed_time);
 
             if (!skip_writing) {
 
@@ -224,11 +224,11 @@ public:
                     dim_names.push_back(meta->get_dimension_name(d));
                 dataset.createAttribute("dim_names", dim_names);
 
-                if (meta->sample0_offset >= 0)
-                    dataset.createAttribute("sample0_offset", meta->sample0_offset);
+                if (meta->get_sample0_offset() >= 0)
+                    dataset.createAttribute("sample0_offset", meta->get_sample0_offset());
 
-                if (meta->offset_downsampling >= 0)
-                    dataset.createAttribute("offset_downsampling", meta->offset_downsampling);
+                if (meta->get_offset_downsampling() >= 0)
+                    dataset.createAttribute("offset_downsampling", meta->get_offset_downsampling());
 
                 if (meta->get_nfreq() >= 0) {
                     dataset.createAttribute("coarse_freq", meta->get_coarse_freq());
