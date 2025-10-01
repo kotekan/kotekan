@@ -198,8 +198,8 @@ void gpuSimulateN2kCorr::main_thread() {
         assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->sample0_offset = meta_in->sample0_offset;
-        meta_out->offset_downsampling = meta_in->offset_downsampling;
+        meta_out->set_sample0_offset(meta_in->get_sample0_offset());
+        meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
 
         input_buf->mark_frame_empty(unique_name, input_frame_id);
         rfimask_buf->mark_frame_empty(unique_name, rfimask_frame_id);
