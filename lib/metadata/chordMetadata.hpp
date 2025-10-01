@@ -79,19 +79,6 @@ public:
     char onehot_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME];
     int onehot_index[CHORD_META_MAX_DIM];
 
-    // All time samples in this buffer (or the whole buffer, if the
-    // buffer does not have a time sample index) have `sample_offset`
-    // added to the buffer's time sample index. (This allows quickly
-    // shifting metadata in time to re-use metadata objects.)
-    //
-    // The actual (possibly fractional) time sample index is calculated as follows:
-    //     T_actual = (sample0_offset + T / offset_downsampling + half_fpga_sample0[F] / 2) /
-    //                time_downsampling_fpga[F]
-    // where `T` is the time sample index (the slowest varying index)
-    // and `F` is the coarse frequency index.
-    int64_t sample0_offset;
-    int offset_downsampling;
-
     size_t sample_bytes() const {
         // The number of bytes per sample is the number of bytes needed to store one array slice.
         return type_total_bytes(type) * stride[0];
@@ -292,6 +279,32 @@ public:
         // RH: this is not actually atomic and has race conditions if the underlying json dict changes
         static_assert(std::is_same<std::int64_t, nlohmann::json::number_integer_t>::value, "Roland's horrible hack fails");
         *reinterpret_cast<std::atomic_int64_t*>(metadata[jsonMetadata::LOST_TIMESAMPLES].template get_ptr<std::int64_t*>()) += lost_samples;
+    }
+
+    // All time samples in this buffer (or the whole buffer, if the
+    // buffer does not have a time sample index) have `sample_offset`
+    // added to the buffer's time sample index. (This allows quickly
+    // shifting metadata in time to re-use metadata objects.)
+    //
+    // The actual (possibly fractional) time sample index is calculated as follows:
+    //     T_actual = (sample0_offset + T / offset_downsampling + half_fpga_sample0[F] / 2) /
+    //                time_downsampling_fpga[F]
+    // where `T` is the time sample index (the slowest varying index)
+    // and `F` is the coarse frequency index.
+    int64_t get_sample0_offset() const {
+        return metadata[jsonMetadata::SAMPLE0_OFFSET].template get<int64_t>();
+    }
+
+    void set_sample0_offset(const int64_t sample0_offset) {
+        metadata[jsonMetadata::SAMPLE0_OFFSET] = sample0_offset;
+    }
+
+    int get_offset_downsampling() const {
+        return metadata[jsonMetadata::OFFSET_DOWNSAMPLING].template get<int>();
+    }
+
+    void set_offset_downsampling(const int offset_downsampling) {
+        metadata[jsonMetadata::OFFSET_DOWNSAMPLING] = offset_downsampling;
     }
 
     // non-science metadata
