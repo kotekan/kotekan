@@ -221,9 +221,9 @@ void testDataGen::main_thread() {
         }
         chordmeta->set_coarse_freq(coarse_freq);
 
-        chordmeta->sample0_offset =
-            frame_id_abs * samples_per_data_set / _meta_time_downsample_factor;
-        chordmeta->offset_downsampling = 1;
+        chordmeta->set_sample0_offset(
+            frame_id_abs * samples_per_data_set / _meta_time_downsample_factor);
+        chordmeta->set_offset_downsampling(1);
 
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
