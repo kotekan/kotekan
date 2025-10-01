@@ -1,5 +1,4 @@
 name: Manual Docker image build
-run-name: "Build ${{ inputs.uyear }}04 on ${{ inputs.image_branch }}"
 
 on:
   workflow_dispatch:
@@ -16,10 +15,6 @@ on:
 permissions:
   contents: read
   packages: write
-
-concurrency:
-  group: "manual-docker-image-build-${{ github.ref }}-${{ inputs.image_branch }}-${{ inputs.uyear }}"
-  cancel-in-progress: false
 
 jobs:
   build:
@@ -43,10 +38,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
-          REPO_LC="$(echo "${{ github.repository }}" | cut -d/ -f2 | tr '[:upper:]' '[:lower:]')"
+          OWNER_LC="$(echo "${GITHUB_REPOSITORY%/*}" | tr '[:upper:]' '[:lower:]')"
+          REPO_LC="$(echo "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')"
+          # normalize branch to lowercase and make it image-tag-safe
           BRANCH_TAG="$(echo "${{ inputs.image_branch }}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_.-]+/./g')"
           UYEAR="${{ inputs.uyear }}"
+          # Change this to "tools/docker/${UYEAR}04/Dockerfile" if you use directory style (2404/)
           DOCKERFILE="tools/docker/${UYEAR}.04/Dockerfile"
 
           echo "dockerfile=${DOCKERFILE}" >> "$GITHUB_OUTPUT"
@@ -56,7 +53,10 @@ jobs:
         shell: bash
         run: |
           echo "Dockerfile: ${{ steps.meta.outputs.dockerfile }}"
-          test -f "${{ steps.meta.outputs.dockerfile }}" || { echo "::error::Missing Dockerfile"; exit 1; }
+          if [ ! -f "${{ steps.meta.outputs.dockerfile }}" ]; then
+            echo "::error::Missing Dockerfile at ${{ steps.meta.outputs.dockerfile }}"
+            exit 1
+          fi
 
       - name: Build and push image
         uses: docker/build-push-action@v6
@@ -68,4 +68,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
 
       - name: Show resulting tag
-        run: echo "Pushed: ${{ steps.meta.outputs.tags }}"
+        shell: bash
+        run: |
+          echo "Pushed: ${{ steps.meta.outputs.tags }}"
