@@ -60,11 +60,6 @@ public:
     char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
     kotekan::DataType type;
 
-    /// Track the number of lost fpga samples in each gpu sub-integration
-    int lost_fpga_samples[CHORD_META_MAX_FREQ][CHORD_META_MAX_VIS_SAMPLES];
-    /// Track the number of rfi-flagged samples in each gpu sub-integration
-    int rfi_flagged_samples[CHORD_META_MAX_FREQ][CHORD_META_MAX_VIS_SAMPLES];
-
     int dims;
     int dim[CHORD_META_MAX_DIM];
     char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // "F", "T", "D", etc
