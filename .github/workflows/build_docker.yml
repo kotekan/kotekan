@@ -1,41 +1,68 @@
 name: manual-docker-image-build
+
 on:
   workflow_dispatch:
     inputs:
       image_branch:
-        description: 'branch'
+        description: "Git branch to build"
         required: true
-        default: 'chord'
+        default: "chord"
       uyear:
-        description: 'ubuntu year (18, 22, or 24)'
+        description: "Ubuntu year (18, 22, or 24)"
         required: true
-        default: '24'
+        default: "24"
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout selected branch
+        uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.inputs.branch }}
+          ref: ${{ inputs.image_branch }}
+          fetch-depth: 0
 
-      - name: Login to GitHub Container Registry # https://github.com/docker/login-action?tab=readme-ov-file#github-container-registry
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Get docker image name
-        id: docker_img
+
+      - name: Compute image tags and Dockerfile path
+        id: meta
+        shell: bash
         run: |
-          IMAGE_NAME="docker.pkg.github.com/${{ github.repository }}/kotekan-${{ github.event.inputs.uyear }}04:$(echo ${{ github.event.inputs.branch }} | tr / .)| tr / .)"
-          echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
-        
-      - name: Build and Push Docker Image
+          OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          REPO_LC="$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')"
+          BRANCH_NORM="$(echo "${{ inputs.image_branch }}" | tr '[:upper:]' '[:lower:]' | tr '/ ' '..')"
+          UYEAR="${{ inputs.uyear }}"
+          DOCKERFILE="tools/docker/${UYEAR}.04/Dockerfile"
+          echo "owner=${OWNER_LC}" >> "$GITHUB_OUTPUT"
+          echo "repo=${REPO_LC}"  >> "$GITHUB_OUTPUT"
+          echo "branch_norm=${BRANCH_NORM}" >> "$GITHUB_OUTPUT"
+          echo "dockerfile=${DOCKERFILE}" >> "$GITHUB_OUTPUT"
+          echo "tags=ghcr.io/${OWNER_LC}/${REPO_LC}-kotekan:${UYEAR}04-${BRANCH_NORM}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Dockerfile exists
         run: |
-          echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
-          docker build -t "${{ steps.docker_img.outputs.img_name }}" - < "tools/docker/${{ github.event.inputs.uyear }}.04/Dockerfile"
-          docker push "${{ steps.docker_img.outputs.img_name }}"
+          echo "Dockerfile: ${{ steps.meta.outputs.dockerfile }}"
+          test -f "${{ steps.meta.outputs.dockerfile }}" || { echo "::error::Missing Dockerfile"; exit 1; }
+
+      # Buildx is set up automatically by the action below; no separate step needed.
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.meta.outputs.dockerfile }}
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+
+      - name: Show resulting tag
+        run: echo "Pushed: ${{ steps.meta.outputs.tags }}"
