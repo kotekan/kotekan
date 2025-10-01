@@ -41,3 +41,5 @@ for U in Us
     Colorbar(fig[1, 2], obj; label="voltage intensity")
     display(fig)
 end
+
+nothing
