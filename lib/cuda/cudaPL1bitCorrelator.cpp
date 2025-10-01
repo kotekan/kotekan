@@ -213,7 +213,7 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
 
     // The PL mask time_downsampling_factor includes a factor of 64 from
     // the fast time axis which is eaten up by the correlator.
-    for (int f = 0; f < out_meta->nfreq; f++) {
+    for (int f = 0; f < out_meta->get_nfreq(); f++) {
         out_meta->time_downsampling_fpga[f] =
             n2k_sub_integration_ntime * div_noremainder(pl_meta->time_downsampling_fpga[f], 64);
     }
