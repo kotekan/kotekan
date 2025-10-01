@@ -150,14 +150,10 @@ public:
                 meta->offset = 0;
 
                 if (dataset.hasAttribute("sample0_offset"))
-                    meta->sample0_offset = dataset.getAttribute("sample0_offset").read<int>();
-                else
-                    meta->sample0_offset = -1;
+                    meta->set_sample0_offset(dataset.getAttribute("sample0_offset").read<int>());
                 if (dataset.hasAttribute("offset_downsampling"))
-                    meta->offset_downsampling =
-                        dataset.getAttribute("offset_downsampling").read<int>();
-                else
-                    meta->offset_downsampling = -1;
+                    meta->set_offset_downsampling(
+                        dataset.getAttribute("offset_downsampling").read<int>());
 
                 if (dataset.hasAttribute("coarse_freq")) {
                     const auto coarse_freq =
