@@ -158,12 +158,14 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
     pl_expanded_mask.set_metadata(pl_mask.get_metadata());
     const auto& pl_expanded_mask_meta = pl_expanded_mask.get_metadata();
     assert(pl_expanded_mask_meta->get_nfreq() >= 0);
+    std::vector<int> time_downsampling_fpga(pl_expanded_mask_meta->get_nfreq());
     for (int freq = 0; freq < pl_expanded_mask_meta->get_nfreq(); ++freq) {
         // We would do this if we could start out with 1/4 but we cannot
         // pl_expanded_mask_meta->freq_upchan_factor[freq] *= 4;
-        pl_expanded_mask_meta->time_downsampling_fpga[freq] =
-            div_noremainder(pl_expanded_mask_meta->time_downsampling_fpga[freq], 2);
+        time_downsampling_fpga[freq] =
+            div_noremainder(time_downsampling_fpga[freq], 2);
     }
+    pl_expanded_mask_meta->set_time_downsampling_fpga(time_downsampling_fpga);
 
     // There is no poison value
     // pl_expanded_mask.set_to_poison(0xff);
