@@ -33,6 +33,9 @@ vis_blocksize: 16
 vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 
+frames_to_generate: 2 * buffer_depth  # must be at least frames_to_test
+frames_to_test: 2 * buffer_depth
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata
@@ -110,7 +113,7 @@ gen_data_voltage:
     name: "E"
     array_shape: [ 4096, 16, 2, 64 ]
     dim_name: ["T", "F", "P", "D" ]
-    num_frames: 2 * buffer_depth  # Must be at least what check_data expects
+    num_frames: frames_to_generate  # Must be at least what check_data expects
 
 gen_data_rfi_RFImask:
     type: random1x8
@@ -120,7 +123,7 @@ gen_data_rfi_RFImask:
     name: "RFImask"
     array_shape: [ 4, 16, 128 ]
     dim_name: ["T8hi128", "F", "T8lo128"]
-    num_frames: 2 * buffer_depth
+    num_frames: frames_to_generate
     meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
 
 gen_pl_mask:
@@ -131,7 +134,7 @@ gen_pl_mask:
     name: "pl_mask"
     array_shape: [ 32, 4, 2, 8, 8 ]  # = num_times/128, num_freq/4, 2, num_dishes/8, 8
     dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
-    num_frames: 2 * buffer_depth  # Must be at least what check_data expects
+    num_frames: frames_to_generate  # Must be at least what check_data expects
     meta_time_downsample_factor: 128  # The number of time samples represented by each coarse time index.
 
 gen_fake_corr_counts:
@@ -140,7 +143,7 @@ gen_fake_corr_counts:
     out_counts_buf: fake_counts_buffer
     correlation_type: "const"
     counts_type: "const"
-    num_frames: 2 * buffer_depth
+    num_frames: frames_to_generate
     freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 run_send_voltage:
@@ -262,38 +265,18 @@ write_fake_counts:
    skip_writing: false
    in_buf: fake_counts_buffer
 
-# this is the slowest writer (because it relies on the slowest data generator)
-# so it triggers the exit.
-write_n2k_correlation:
-   kotekan_stage: hdf5FileWrite
-   base_dir: data
-   file_name: n2k_corr
-   prefix_hostname: false
-   max_frames: 2 * buffer_depth # Will trigger exit after writing this many frames
-   skip_writing: false
-   in_buf: host_correlation_buffer
+check_correlation_data:
+    kotekan_stage: testDataCheckInt
+    first_buf: host_correlation_buffer
+    second_buf: fake_correlation_buffer
+    num_frames_to_test: frames_to_test
+    trigger_exit_on_pass: True
+    check_metadata: True
 
-write_n2k_counts:
-   kotekan_stage: hdf5FileWrite
-   base_dir: data
-   file_name: n2k_counts
-   prefix_hostname: false
-   max_frames: -1  # Will trigger exit after writing this many frames
-   skip_writing: false
-   in_buf: host_counts_buffer
-
-# check_correlation_data:
-#     kotekan_stage: testDataCheckInt
-#     first_buf: host_correlation_buffer
-#     second_buf: fake_correlation_buffer
-#     num_frames_to_test: 2 * buffer_depth
-#     trigger_exit_on_pass: True
-#     check_metadata: True
-# 
-# check_counts_data:
-#     kotekan_stage: testDataCheckInt
-#     first_buf: host_counts_buffer
-#     second_buf: fake_counts_buffer
-#     num_frames_to_test: 2 * buffer_depth
-#     trigger_exit_on_pass: False
-#     check_metadata: True
+check_counts_data:
+    kotekan_stage: testDataCheckInt
+    first_buf: host_counts_buffer
+    second_buf: fake_counts_buffer
+    num_frames_to_test: frames_to_test
+    trigger_exit_on_pass: False
+    check_metadata: True
