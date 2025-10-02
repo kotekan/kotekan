@@ -128,7 +128,7 @@ public:
             const double elapsed_time = this_time - start_time;
 
             INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
-                 frame_counter, meta->sample0_offset, elapsed_time);
+                 frame_counter, meta->get_sample0_offset(), elapsed_time);
 
             if (!skip_writing) {
 
@@ -234,21 +234,23 @@ public:
                     assert(success);
                 }
 
-                if (meta->sample0_offset >= 0) {
+                if (meta->get_sample0_offset() >= 0) {
+                    const auto sample0_offset_value = meta->get_sample0_offset();
                     const auto sample0_offset = group->CreateAttribute(
                         "sample0_offset", std::vector<GUInt64>{},
-                        GDALExtendedDataType::Create(get_gdal_datatype(meta->sample0_offset)));
+                        GDALExtendedDataType::Create(get_gdal_datatype(sample0_offset_value)));
                     const bool success =
-                        sample0_offset->Write(&meta->sample0_offset, sizeof meta->sample0_offset);
+                        sample0_offset->Write(&sample0_offset_value, sizeof sample0_offset_value);
                     assert(success);
                 }
 
-                if (meta->offset_downsampling >= 0) {
+                if (meta->get_offset_downsampling() >= 0) {
+                    const auto offset_downsampling_value = meta->get_offset_downsampling();
                     const auto offset_downsampling = group->CreateAttribute(
                         "offset_downsampling", std::vector<GUInt64>{},
-                        GDALExtendedDataType::Create(get_gdal_datatype(meta->offset_downsampling)));
+                        GDALExtendedDataType::Create(get_gdal_datatype(offset_downsampling_value)));
                     const bool success = offset_downsampling->Write(
-                        &meta->offset_downsampling, sizeof meta->offset_downsampling);
+                        &offset_downsampling_value, sizeof offset_downsampling_value);
                     assert(success);
                 }
 
