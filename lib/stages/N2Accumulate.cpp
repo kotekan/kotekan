@@ -190,7 +190,8 @@ void N2Accumulate::main_thread() {
             // Track (frequency-dependent) lost samples
             for (size_t f = 0; f < _num_freq_in_frame; ++f) {
 
-                int32_t lost_fpga_samples = frame_metadata->lost_fpga_samples[f][vis_samp_n];
+                int32_t lost_fpga_samples = 0; //frame_metadata->lost_fpga_samples[f][vis_samp_n];
+                assert(0 && "use of lost_fpga_samples[f][vis_samp_n] removed while Geoff udpates n2Accumulate");
                 int32_t valid_fpga_samples = _n_fpga_samples_per_vis_sample - lost_fpga_samples;
                 _n_valid_fpga_samples_in_vis[f] += valid_fpga_samples;
 
