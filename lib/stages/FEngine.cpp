@@ -538,8 +538,6 @@ void FEngine::main_thread() {
             else
                 dish_positions_metadata->stride[d] =
                     dish_positions_metadata->stride[d + 1] * dish_positions_metadata->dim[d + 1];
-        dish_positions_metadata->sample0_offset = -1;      // undefined
-        dish_positions_metadata->offset_downsampling = -1; // undefined
         dish_positions_metadata->ndishes = num_dishes;
         dish_positions_metadata->n_dish_locations_ew = num_dish_locations_ew;
         dish_positions_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -597,8 +595,6 @@ void FEngine::main_thread() {
             else
                 scatter_indices_metadata->stride[d] =
                     scatter_indices_metadata->stride[d + 1] * scatter_indices_metadata->dim[d + 1];
-        scatter_indices_metadata->sample0_offset = -1;      // undefined
-        scatter_indices_metadata->offset_downsampling = -1; // undefined
         scatter_indices_metadata->ndishes = num_dishes;
         scatter_indices_metadata->n_dish_locations_ew = num_dish_locations_ew;
         scatter_indices_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -652,8 +648,6 @@ void FEngine::main_thread() {
                 bf_mask_metadata->stride[d] =
                     bf_mask_metadata->stride[d + 1] * bf_mask_metadata->dim[d + 1];
         // This bf mask is not time-dependent
-        bf_mask_metadata->sample0_offset = -1;      // undefined
-        bf_mask_metadata->offset_downsampling = -1; // undefined
         bf_mask_metadata->ndishes = num_dishes;
         bf_mask_metadata->n_dish_locations_ew = num_dish_locations_ew;
         bf_mask_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -744,8 +738,6 @@ void FEngine::main_thread() {
             else
                 bb_beam_positions_metadata->stride[d] = bb_beam_positions_metadata->stride[d + 1]
                                                         * bb_beam_positions_metadata->dim[d + 1];
-        bb_beam_positions_metadata->sample0_offset = -1;      // undefined
-        bb_beam_positions_metadata->offset_downsampling = -1; // undefined
         bb_beam_positions_metadata->ndishes = num_dishes;
         bb_beam_positions_metadata->n_dish_locations_ew = num_dish_locations_ew;
         bb_beam_positions_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -824,8 +816,6 @@ void FEngine::main_thread() {
                 A_metadata->stride[d] = 1;
             else
                 A_metadata->stride[d] = A_metadata->stride[d + 1] * A_metadata->dim[d + 1];
-        A_metadata->sample0_offset = -1;      // undefined
-        A_metadata->offset_downsampling = -1; // undefined
         std::vector<int> coarse_freq(num_frequencies);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -885,8 +875,6 @@ void FEngine::main_thread() {
                 s_metadata->stride[d] = 1;
             else
                 s_metadata->stride[d] = s_metadata->stride[d + 1] * s_metadata->dim[d + 1];
-        s_metadata->sample0_offset = -1;      // undefined
-        s_metadata->offset_downsampling = -1; // undefined
         std::vector<int> coarse_freq(num_frequencies);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -953,8 +941,6 @@ void FEngine::main_thread() {
             // G_metadata->dim[0] = num_local_channels * U;
             G_metadata->dim[0] = upchan_max_num_channelss[Ufactor] * U;
             G_metadata->stride[0] = 1;
-            G_metadata->sample0_offset = -1;      // undefined
-            G_metadata->offset_downsampling = -1; // undefined
             std::vector<int> coarse_freq(U * num_local_channels);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < U * num_local_channels; ++freq) {
@@ -1055,8 +1041,6 @@ void FEngine::main_thread() {
                     W1_metadata->stride[d] = 1;
                 else
                     W1_metadata->stride[d] = W1_metadata->stride[d + 1] * W1_metadata->dim[d + 1];
-            W1_metadata->sample0_offset = -1;      // undefined
-            W1_metadata->offset_downsampling = -1; // undefined
             std::vector<int> coarse_freq(num_local_channels);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -1223,8 +1207,6 @@ void FEngine::main_thread() {
                 W2_metadata->stride[d] = 1;
             else
                 W2_metadata->stride[d] = W2_metadata->stride[d + 1] * W2_metadata->dim[d + 1];
-        W2_metadata->sample0_offset = -1;      // undefined
-        W2_metadata->offset_downsampling = -1; // undefined
         // TODO: correct this
         // W2_metadata->nfreq = (upchan_all_max_output_channel - upchan_all_min_output_channel)
         // / 4;
@@ -1357,8 +1339,8 @@ void FEngine::main_thread() {
                     E_metadata->stride[d] = 1;
                 else
                     E_metadata->stride[d] = E_metadata->stride[d + 1] * E_metadata->dim[d + 1];
-            E_metadata->sample0_offset = seq_num;
-            E_metadata->offset_downsampling = 1;
+            E_metadata->set_sample0_offset(seq_num);
+            E_metadata->set_offset_downsampling(1);
             std::vector<int> coarse_freq(num_frequencies);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -1441,14 +1423,14 @@ void FEngine::main_thread() {
                 else
                     pl_mask_metadata->stride[d] =
                         pl_mask_metadata->stride[d + 1] * pl_mask_metadata->dim[d + 1];
-            pl_mask_metadata->sample0_offset = seq_num;
+            pl_mask_metadata->set_sample0_offset(seq_num);
             // This pl mask:
             // - is downsampled by 2 in time
             // - has a factor of 64 split off the slowest-varying index
             //   (we count this as "downsampling" as well)
             // Only the slowest-varying index counts as "time" for the
             // ring buffer mechanics.
-            pl_mask_metadata->offset_downsampling = 2 * 64;
+            pl_mask_metadata->set_offset_downsampling(2 * 64);
             std::vector<int> coarse_freq(num_frequencies);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
