@@ -129,7 +129,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
 
     // Since we do not use a ring buffer we need to set `meta->sample0_offset`
     // TODO: do this automatically in `NDArrayRingBuffer`
-    out_meta->set_sample0_offset(voltage.get_read_valid().begin());
+    out_meta->set_sample0_offset(voltage.get_read_valid().begin() / _sub_integration_ntime);
     std::vector<int> out_time_downsampling_fpga(out_meta->get_nfreq());
     std::vector<int64_t> out_half_fpga_sample0(out_meta->get_nfreq());
     const std::vector<int64_t> in_half_fpga_sample0 = in_meta->get_half_fpga_sample0();

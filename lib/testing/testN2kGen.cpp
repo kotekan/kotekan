@@ -130,7 +130,7 @@ void testN2kGen::set_correlation_metadata(std::shared_ptr<chordMetadata> meta, u
     meta->set_strides_simple();
     
     meta->set_fpga_seq_num(seq_num);
-    meta->set_sample0_offset(seq_num);
+    meta->set_sample0_offset(seq_num / sub_integration_ntime);
     meta->set_offset_downsampling(1);
 
     std::vector<int> coarse_freq(num_local_freq);
@@ -165,7 +165,7 @@ void testN2kGen::set_counts_metadata(std::shared_ptr<chordMetadata> meta, uint64
     meta->set_strides_simple();
     
     meta->set_fpga_seq_num(seq_num);
-    meta->set_sample0_offset(seq_num);
+    meta->set_sample0_offset(seq_num / sub_integration_ntime);
     meta->set_offset_downsampling(1);
 
     std::vector<int> coarse_freq(num_local_freq);

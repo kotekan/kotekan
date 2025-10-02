@@ -25,13 +25,12 @@
 #include <type_traits> // for is_same, enable_if
 #include <vector>      // for vector
 
-<<<<<<< HEAD
 #define CHECK_META_SCALAR_INT_DIRECT(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2, FRAME_ID2)   \
     do {                                                                            \
-        if((META1)->FIELD != (META2)->FIELD) {                      \
+        if((META1)->FIELD != (META2)->FIELD) {                                      \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:d} {:d}", \
                 (BUF_NAME1), (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2),         \
-                #FIELD, (META1)->FIELD, (META2)->FIELD);            \
+                #FIELD, (META1)->FIELD, (META2)->FIELD);                            \
             (ERR_COUNT)++;                                                          \
         }                                                                           \
     } while (0)
@@ -48,10 +47,10 @@
 
 #define CHECK_META_SCALAR_STREAM_T(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2, FRAME_ID2)   \
     do {                                                                            \
-        if((META1)->get_##FIELD().id != (META2)->get_##FIELD().id) {                      \
+        if((META1)->get_##FIELD().id != (META2)->get_##FIELD().id) {                \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:d} {:d}", \
                 (BUF_NAME1), (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2),         \
-                #FIELD, (META1)->get_##FIELD().id, (META2)->get_##FIELD().id);            \
+                #FIELD, (META1)->get_##FIELD().id, (META2)->get_##FIELD().id);      \
             (ERR_COUNT)++;                                                          \
         }                                                                           \
     } while (0)
@@ -59,7 +58,7 @@
 #define CHECK_META_ARR1_INT(FIELD, LEN, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2, FRAME_ID2)   \
     do {                                                                                            \
         for(int meta_idx = 0; meta_idx < (LEN); meta_idx++) {                                       \
-            if((META1)->get_##FIELD()[meta_idx] != (META2)->get_##FIELD()[meta_idx]) {                \
+            if((META1)->get_##FIELD()[meta_idx] != (META2)->get_##FIELD()[meta_idx]) {              \
                 ERROR("metadata {:s}[{:d}] {:s}[{:d}] != {:s}[{:d}] {:s}[{:d}]; values: {:d} {:d}", \
                     (BUF_NAME1), (FRAME_ID1), #FIELD, meta_idx,                                     \
                     (BUF_NAME2), (FRAME_ID2), #FIELD, meta_idx,                                     \
@@ -72,11 +71,11 @@
 #define CHECK_META_ARR1_INT_DIRECT(FIELD, LEN, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2, FRAME_ID2)   \
     do {                                                                                            \
         for(int meta_idx = 0; meta_idx < (LEN); meta_idx++) {                                       \
-            if((META1)->FIELD[meta_idx] != (META2)->FIELD[meta_idx]) {                \
+            if((META1)->FIELD[meta_idx] != (META2)->FIELD[meta_idx]) {                              \
                 ERROR("metadata {:s}[{:d}] {:s}[{:d}] != {:s}[{:d}] {:s}[{:d}]; values: {:d} {:d}", \
                     (BUF_NAME1), (FRAME_ID1), #FIELD, meta_idx,                                     \
                     (BUF_NAME2), (FRAME_ID2), #FIELD, meta_idx,                                     \
-                    (META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx]);            \
+                    (META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx]);                            \
                 (ERR_COUNT)++;                                                                      \
             }                                                                                       \
         }                                                                                           \
@@ -95,83 +94,14 @@
 #define CHECK_META_ARR1_CSTR_DIRECT(FIELD, ARR_LEN, STR_LEN, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2, FRAME_ID2)   \
     do {                                                                                                \
         for(int meta_idx = 0; meta_idx < (ARR_LEN); meta_idx++) {                                       \
-            if(strncmp((META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx], (STR_LEN))) {  \
+            if(strncmp((META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx], (STR_LEN))) {                \
                 ERROR("metadata {:s}[{:d}] {:s}[{:d}] != {:s}[{:d}] {:s}[{:d}]; values: {:s} {:s}",     \
                     (BUF_NAME1), (FRAME_ID1), #FIELD, meta_idx,                                         \
                     (BUF_NAME2), (FRAME_ID2), #FIELD, meta_idx,                                         \
-                    (META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx]);                \
+                    (META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx]);                                \
                 (ERR_COUNT)++;                                                                          \
             }                                                                                           \
         }                                                                                               \
-=======
-#define CHECK_META_SCALAR_INT(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2,     \
-                              FRAME_ID2)                                                           \
-    do {                                                                                           \
-        if ((META1)->FIELD != (META2)->FIELD) {                                                    \
-            ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:d} {:d}", (BUF_NAME1),   \
-                  (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2), #FIELD, (META1)->FIELD,           \
-                  (META2)->FIELD);                                                                 \
-            (ERR_COUNT)++;                                                                         \
-        }                                                                                          \
-    } while (0)
-
-#define CHECK_META_ARR1_INT(FIELD, LEN, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2,  \
-                            FRAME_ID2)                                                             \
-    do {                                                                                           \
-        for (int meta_idx = 0; meta_idx < (LEN); meta_idx++) {                                     \
-            if ((META1)->FIELD[meta_idx] != (META2)->FIELD[meta_idx]) {                            \
-                ERROR(                                                                             \
-                    "metadata {:s}[{:d}] {:s}[{:d}] != {:s}[{:d}] {:s}[{:d}]; values: {:d} {:d}",  \
-                    (BUF_NAME1), (FRAME_ID1), #FIELD, meta_idx, (BUF_NAME2), (FRAME_ID2), #FIELD,  \
-                    meta_idx, (META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx]);                 \
-                (ERR_COUNT)++;                                                                     \
-            }                                                                                      \
-        }                                                                                          \
-    } while (0)
-
-#define CHECK_META_ARR2_INT(FIELD, LEN1, LEN2, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1,      \
-                            BUF_NAME2, FRAME_ID2)                                                  \
-    do {                                                                                           \
-        for (int meta_idx1 = 0; meta_idx1 < (LEN1); meta_idx1++) {                                 \
-            for (int meta_idx2 = 0; meta_idx2 < (LEN2); meta_idx2++) {                             \
-                if ((META1)->FIELD[meta_idx1][meta_idx2]                                           \
-                    != (META2)->FIELD[meta_idx1][meta_idx2]) {                                     \
-                    ERROR("metadata {:s}[{:d}] {:s}[{:d}][{:d}] != {:s}[{:d}] {:s}[{:d}][{:d}]; "  \
-                          "values: {:d} {:d}",                                                     \
-                          (BUF_NAME1), (FRAME_ID1), #FIELD, meta_idx1, meta_idx2, (BUF_NAME2),     \
-                          (FRAME_ID2), #FIELD, meta_idx1, meta_idx2,                               \
-                          (META1)->FIELD[meta_idx1][meta_idx2],                                    \
-                          (META2)->FIELD[meta_idx1][meta_idx2]);                                   \
-                    (ERR_COUNT)++;                                                                 \
-                }                                                                                  \
-            }                                                                                      \
-        }                                                                                          \
-    } while (0)
-
-#define CHECK_META_SCALAR_CSTR(FIELD, LEN, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1,          \
-                               BUF_NAME2, FRAME_ID2)                                               \
-    do {                                                                                           \
-        if (strncmp((META1)->FIELD, (META2)->FIELD, (LEN))) {                                      \
-            ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:s} {:s}", (BUF_NAME1),   \
-                  (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2), #FIELD, (META1)->FIELD,           \
-                  (META2)->FIELD);                                                                 \
-            (ERR_COUNT)++;                                                                         \
-        }                                                                                          \
-    } while (0)
-
-#define CHECK_META_ARR1_CSTR(FIELD, ARR_LEN, STR_LEN, META1, META2, ERR_COUNT, BUF_NAME1,          \
-                             FRAME_ID1, BUF_NAME2, FRAME_ID2)                                      \
-    do {                                                                                           \
-        for (int meta_idx = 0; meta_idx < (ARR_LEN); meta_idx++) {                                 \
-            if (strncmp((META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx], (STR_LEN))) {          \
-                ERROR(                                                                             \
-                    "metadata {:s}[{:d}] {:s}[{:d}] != {:s}[{:d}] {:s}[{:d}]; values: {:s} {:s}",  \
-                    (BUF_NAME1), (FRAME_ID1), #FIELD, meta_idx, (BUF_NAME2), (FRAME_ID2), #FIELD,  \
-                    meta_idx, (META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx]);                 \
-                (ERR_COUNT)++;                                                                     \
-            }                                                                                      \
-        }                                                                                          \
->>>>>>> c707d81f (lint)
     } while (0)
 
 template<typename A_Type>

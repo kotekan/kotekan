@@ -449,7 +449,7 @@ void testDataGen::main_thread() {
                 frame[j] = temp_output;
             }
         }
-        DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
+        DEBUG("Generated a {:s} test data set in {:s}[{:d}] at seq {:d}", type, buf->buffer_name, frame_id, seq_num);
 
         buf->mark_frame_full(unique_name, frame_id);
 

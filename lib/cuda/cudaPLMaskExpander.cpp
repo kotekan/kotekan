@@ -183,6 +183,9 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
     }
     pl_expanded_mask_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
     pl_expanded_mask_meta->set_half_fpga_sample0(out_half_fpga_sample0);
+    
+    DEBUG("PL seq_num:          {:d}", pl_mask_meta->get_fpga_seq_num());
+    DEBUG("PL expanded seq_num: {:d}", pl_expanded_mask_meta->get_fpga_seq_num());
 
     // There is no poison value
     // pl_expanded_mask.set_to_poison(0xff);
