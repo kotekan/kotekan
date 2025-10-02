@@ -73,26 +73,6 @@ public:
         return type_total_bytes(type) * stride[0];
     }
 
-    // Per-frequency arrays
-
-    // the upchannelization factor that each frequency has gone through (1 for = FPGA)
-    // Also indexed by the local coarse frequency channel.
-    int freq_upchan_factor[CHORD_META_MAX_FREQ];
-
-    // TODO: Store upchannelization index as well
-
-    // Time sampling -- for each coarse frequency channel, 2x the FPGA
-    // sample number of the first sample.  The 2x is there to handle
-    // the upchannelization case, where 2 or more samples may get
-    // averaged, producing a new sample that is effectively halfway in
-    // between them, ie, at a half-FPGAsample time.
-    int64_t half_fpga_sample0[CHORD_META_MAX_FREQ];
-
-    // Time sampling -- for each coarse frequency channel, the factor
-    // by which the time samples have been downsampled relative to
-    // FPGA samples.
-    int time_downsampling_fpga[CHORD_META_MAX_FREQ];
-
     // Dish layout
     int ndishes;                                  // number of dishes
     int n_dish_locations_ew, n_dish_locations_ns; // number of possible dish locations
@@ -274,6 +254,47 @@ public:
 
     void set_offset_downsampling(const int offset_downsampling) {
         metadata[jsonMetadata::OFFSET_DOWNSAMPLING] = offset_downsampling;
+    }
+
+    // Per-frequency arrays
+
+    // the upchannelization factor that each frequency has gone through (1 for = FPGA)
+    // Also indexed by the local coarse frequency channel.
+    void set_freq_upchan_factor(const std::vector<int>& freq_upchan_factor) {
+        assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
+        metadata[jsonMetadata::FREQ_UPCHAN_FACTOR] = freq_upchan_factor;
+    }
+
+    std::vector<int> get_freq_upchan_factor() const {
+        return metadata[jsonMetadata::FREQ_UPCHAN_FACTOR].template get<std::vector<int>>();
+    }
+
+    // TODO: Store upchannelization index as well
+
+    // Time sampling -- for each coarse frequency channel, 2x the FPGA
+    // sample number of the first sample.  The 2x is there to handle
+    // the upchannelization case, where 2 or more samples may get
+    // averaged, producing a new sample that is effectively halfway in
+    // between them, ie, at a half-FPGAsample time.
+    void set_half_fpga_sample0(const std::vector<int64_t>& half_fpga_sample0) {
+        assert(half_fpga_sample0.size() <= CHORD_META_MAX_FREQ);
+        metadata[jsonMetadata::HALF_FPGA_SAMPLE0] = half_fpga_sample0;
+    }
+
+    std::vector<int64_t> get_half_fpga_sample0() const {
+        return metadata[jsonMetadata::HALF_FPGA_SAMPLE0].template get<std::vector<int64_t>>();
+    }
+
+    // Time sampling -- for each coarse frequency channel, the factor
+    // by which the time samples have been downsampled relative to
+    // FPGA samples.
+    void set_time_downsampling_fpga(const std::vector<int>& time_downsampling_fpga) {
+        assert(time_downsampling_fpga.size() <= CHORD_META_MAX_FREQ);
+        metadata[jsonMetadata::TIME_DOWNSAMPLING_FPGA] = time_downsampling_fpga;
+    }
+
+    std::vector<int> get_time_downsampling_fpga() const {
+        return metadata[jsonMetadata::TIME_DOWNSAMPLING_FPGA];
     }
 
     // non-science metadata
