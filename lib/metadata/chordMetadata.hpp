@@ -192,7 +192,7 @@ public:
     }
 
     void set_coarse_freq(const std::vector<int>& coarse_freq) {
-        assert(coarse_freq.size() < CHORD_META_MAX_FREQ);
+        assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
         metadata[jsonMetadata::COARSE_FREQ] = coarse_freq;
     }
 
