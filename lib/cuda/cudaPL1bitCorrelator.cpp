@@ -234,10 +234,7 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
     out_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
     out_meta->set_half_fpga_sample0(out_half_fpga_sample0);
 
-    DEBUG("PL_expanded seq_num: {:d}", pl_meta->get_fpga_seq_num());
-    DEBUG("n2k_counts  seq_num: {:d}", out_meta->get_fpga_seq_num());
-
-    // no poison
+    // There is no poison value
     // n2k_counts.set_to_poison(0xff);
 
     // The ringbuffering here is fishy. We should fix the kernel instead.

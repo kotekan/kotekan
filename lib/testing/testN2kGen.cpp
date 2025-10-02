@@ -199,7 +199,7 @@ void testN2kGen::main_thread() {
     if (seed == 0)
         seed = rd();
     std::mt19937 gen(seed);
-        
+
     int corr_val_idx = 0;
     int count_val_idx = 0;
 
@@ -245,17 +245,23 @@ void testN2kGen::main_thread() {
                                           + corr_block_idx * db_corr + f * df_corr + t * dt_corr;
 
                                 if (corr_type == "const") {
-                                    if(corr_value_array.size() > 0) {
-                                        corr[idx + 0] = corr_value_array[corr_val_idx % corr_value_array.size()][0];
-                                        corr[idx + 1] = corr_value_array[corr_val_idx % corr_value_array.size()][1];
+                                    if (corr_value_array.size() > 0) {
+                                        corr[idx + 0] =
+                                            corr_value_array[corr_val_idx % corr_value_array.size()]
+                                                            [0];
+                                        corr[idx + 1] =
+                                            corr_value_array[corr_val_idx % corr_value_array.size()]
+                                                            [1];
                                         corr_val_idx++;
                                     } else {
                                         corr[idx + 0] = corr_value[0];
                                         corr[idx + 1] = corr_value[1];
                                     }
                                 } else if (corr_type == "random") {
-                                    corr[idx + 0] = corr_min[0] + rand() % (corr_max[0]-corr_min[0]+1);
-                                    corr[idx + 1] = corr_min[1] + rand() % (corr_max[1]-corr_min[1]+1);
+                                    corr[idx + 0] =
+                                        corr_min[0] + rand() % (corr_max[0] - corr_min[0] + 1);
+                                    corr[idx + 1] =
+                                        corr_min[1] + rand() % (corr_max[1] - corr_min[1] + 1);
                                 } else {
                                     corr[idx + 0] = 0; // Real
                                     corr[idx + 1] = 0; // Imag
@@ -279,14 +285,15 @@ void testN2kGen::main_thread() {
                                           + f * df_count + t * dt_count;
 
                                 if (count_type == "const") {
-                                    if(count_value_array.size() > 0) {
-                                        count[idx] = count_value_array[count_val_idx % count_value_array.size()];
+                                    if (count_value_array.size() > 0) {
+                                        count[idx] = count_value_array[count_val_idx
+                                                                       % count_value_array.size()];
                                         count_val_idx++;
                                     } else {
                                         count[idx] = count_value;
                                     }
                                 } else if (count_type == "random") {
-                                    count[idx] = count_min + rand() % (count_max-count_min+1);
+                                    count[idx] = count_min + rand() % (count_max - count_min + 1);
                                 } else {
                                     count[idx] = 0;
                                 }
