@@ -69,11 +69,6 @@ public:
     // The offset counts elements, not bytes
     int64_t offset;
 
-    // One-hot arrays?
-    int n_one_hot;
-    char onehot_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME];
-    int onehot_index[CHORD_META_MAX_DIM];
-
     size_t sample_bytes() const {
         // The number of bytes per sample is the number of bytes needed to store one array slice.
         return type_total_bytes(type) * stride[0];
@@ -129,20 +124,6 @@ public:
         return s.str();
     }
 
-    std::string get_onehot_name(size_t i) const {
-        return std::string(onehot_name[i], strnlen(onehot_name[i], CHORD_META_MAX_DIMNAME));
-    }
-
-    std::string get_onehot_string() const {
-        std::ostringstream s;
-        for (int i = 0; i < this->n_one_hot; i++) {
-            if (i)
-                s << ", ";
-            s << get_onehot_name(i) << "=" << onehot_index[i];
-        }
-        return s.str();
-    }
-
     void set_array_dimension(int dim, int size, const std::string& name) {
         assert(dim < CHORD_META_MAX_DIM);
         this->dim[dim] = size;
@@ -181,12 +162,6 @@ public:
 
     std::string get_name() const {
         return std::string(name, strnlen(name, CHORD_META_MAX_DIMNAME));
-    }
-
-    void set_onehot_dimension(int dim, int i, const std::string& name) {
-        assert(dim < CHORD_META_MAX_DIM);
-        this->onehot_index[dim] = i;
-        strncpy(this->onehot_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
     }
 
     // science metadata
