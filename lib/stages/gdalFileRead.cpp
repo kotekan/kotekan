@@ -205,10 +205,8 @@ public:
                     const auto sample0_offset_shape = sample0_offset->GetDimensionsSize();
                     assert(sample0_offset_shape.empty());
                     // Cannot read int64_t directly yet...
-                    meta->sample0_offset = sample0_offset->ReadAsDouble();
-                    assert(meta->sample0_offset >= 0);
-                } else {
-                    meta->sample0_offset = -1;
+                    meta->set_sample0_offset(sample0_offset->ReadAsDouble());
+                    assert(meta->get_sample0_offset() >= 0);
                 }
             }
 
@@ -217,10 +215,8 @@ public:
                 if (offset_downsampling) {
                     const auto offset_downsampling_shape = offset_downsampling->GetDimensionsSize();
                     assert(offset_downsampling_shape.empty());
-                    meta->offset_downsampling = offset_downsampling->ReadAsInt();
-                    assert(meta->offset_downsampling > 0);
-                } else {
-                    meta->offset_downsampling = -1;
+                    meta->set_offset_downsampling(offset_downsampling->ReadAsInt());
+                    assert(meta->get_offset_downsampling() > 0);
                 }
             }
 
