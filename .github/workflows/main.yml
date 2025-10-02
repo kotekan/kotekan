@@ -364,11 +364,12 @@ jobs:
           echo "Running test with config: $config_file"
           
           # Download test inputs
-          pushd /home/lwlab/kotekan-runner/_work/kotekan/kotekan
-          git clone https://github.com/chord-observatory/kotekan_testing_inputs
-          (cd kotekan_testing_inputs/fengine_init_pathfinder && unxz *.xz)
-          ln -s kotekan_testing_inputs data
-          popd
+          (
+              cd /home/lwlab/kotekan-runner/_work/kotekan/kotekan
+              git clone https://github.com/chord-observatory/kotekan_testing_inputs
+              (cd kotekan_testing_inputs/fengine_init_pathfinder && unxz *.xz)
+              ln -s kotekan_testing_inputs data
+          )
 
           # Run the test with timeout
           timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
