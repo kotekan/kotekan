@@ -49,6 +49,11 @@ const std::string TV_USEC("TV_USEC");                   // the tv_usec memmber o
 const std::string SAMPLE0_OFFSET("SAMPLE0_OFFSET");     // an int64, used with offset_downsampling
 const std::string OFFSET_DOWNSAMPLING("OFFSET_DOWNSAMPLING"); // an int, used with sample0_offset
 
+const std::string HALF_FPGA_SAMPLE0("HALF_FPGA_SAMPLE0");   // an array of int of size CHORD_META_MAX_FREQ
+const std::string TIME_DOWNSAMPLING_FPGA("TIME_DOWNSAMPLING_FPGA"); // an array of int64_t of size CHORD_META_MAX_FREQ
+const std::string FREQ_UPCHAN_FACTOR("FREQ_UPCHAN_FACTOR"); // an array of int of size CHORD_META_MAX_FREQ
+
+
 struct beamCoord {
     float right_ascension[MAX_NUM_BEAMS];
     float declination[MAX_NUM_BEAMS];
