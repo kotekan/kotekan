@@ -38,16 +38,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          OWNER_LC="$(echo "${GITHUB_REPOSITORY%/*}" | tr '[:upper:]' '[:lower:]')"
-          REPO_LC="$(echo "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')"
-          # normalize branch to lowercase and make it image-tag-safe
-          BRANCH_TAG="$(echo "${{ inputs.image_branch }}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_.-]+/./g')"
-          UYEAR="${{ inputs.uyear }}"
-          # Change this to "tools/docker/${UYEAR}04/Dockerfile" if you use directory style (2404/)
-          DOCKERFILE="tools/docker/${UYEAR}.04/Dockerfile"
-
+          # Same base image name style as the CI workflow
+          IMG_2404="ghcr.io/${{ github.repository }}/kotekan-${{ inputs.uyear }}04"
+        
+          # Keep case, just sanitize to image-tag-safe (replace '/' etc. with '.')
+          BRANCH_TAG="$(echo "${{ inputs.image_branch }}" | sed -E 's/[^a-zA-Z0-9_.-]+/./g')"
+        
+          DOCKERFILE="tools/docker/${{ inputs.uyear }}.04/Dockerfile"
+        
           echo "dockerfile=${DOCKERFILE}" >> "$GITHUB_OUTPUT"
-          echo "tags=ghcr.io/${OWNER_LC}/${REPO_LC}-${UYEAR}04:${BRANCH_TAG}" >> "$GITHUB_OUTPUT"
+          echo "img_name=${IMG_2404}:${BRANCH_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Image name: ${IMG_2404}:${BRANCH_TAG}"
 
       - name: Verify Dockerfile exists
         shell: bash
@@ -65,9 +66,9 @@ jobs:
           file: ${{ steps.meta.outputs.dockerfile }}
           push: true
           provenance: false
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ steps.meta.outputs.img_name }}
 
       - name: Show resulting tag
         shell: bash
         run: |
-          echo "Pushed: ${{ steps.meta.outputs.tags }}"
+          echo "Pushed: ${{ steps.meta.outputs.img_name }}"
