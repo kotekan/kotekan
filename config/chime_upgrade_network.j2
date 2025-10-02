@@ -105,7 +105,8 @@ dpdk:
   using_switch: true
   alignment: samples_per_frame * 4
   # List of PCIe devices we don't want to attach too
-  # Required to exclude the ConnectX 6 Lx output NICs. 
+  # Required to exclude the ConnectX 6 Lx output NICs.
+  # Excluded devices are listed by their PCIe address. 
   pcie_block_list:
     - 0d:00.0
     - 0d:00.1
@@ -184,6 +185,7 @@ run_send_voltage:
     kotekan_stage: cudaProcess
     gpu_id: 0
     buffer_depth: gpu_buffer_depth
+    # 390625 is the number of F-engine time samples per second. e.g. 1/2.56us. 
     frame_arrival_period: 390625/samples_per_frame
     in_buffers:
 {%- for id in range(16) %}
@@ -200,9 +202,3 @@ run_send_voltage:
 {%- endfor %}
       signal_buf: gpu_voltage_ringbuffer
       gpu_mem_output: blocked_voltage_buffer
-
-
-# Hex dump the host_voltage_buffer_12 (for debugging)
-hex_dump:
-  #kotekan_stage: hexDump 
-  in_buf: host_voltage_buffer_12

@@ -44,7 +44,7 @@
  *
  * @conf  fpga_dataset          String. The dataset ID for the data being received from
  *                              the F-engine.
- * @conf  link_group            Int.  The link group this handler is a member of.
+ * @conf  link_group            Unsigned int.  The link group this handler is a member of.
  * @conf  link_group_subid      Int.  The position of this handler within the link group.
  *
  * @todo Some parts of the port_data endpoint could be refactored into the base classes
@@ -393,7 +393,7 @@ inline bool iceBoardShuffle::check_stream_id() {
                       all_stream_ids[link_group][j].slot_id, all_stream_ids[link_group][j].link_id,
                       port);
             }
-            FATAL_ERROR("One of the link_ids or slot_ids don't match! There is a cabling problem.");
+            FATAL_ERROR("At least one of the link_ids or slot_ids don't match! There is a cabling problem.");
             return false;
         }
 
@@ -540,6 +540,8 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
         std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
         meta->dim[0] = lost_samples_buf->frame_size; // One byte per time sample
+        meta->dims = 1;
+        std::strncpy(meta->name, "lost_samples", sizeof meta->name);
     }
 
     return true;

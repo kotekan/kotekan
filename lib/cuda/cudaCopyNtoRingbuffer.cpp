@@ -35,17 +35,6 @@ cudaCopyNtoRingbuffer::cudaCopyNtoRingbuffer(Config& config, const std::string& 
         total_input_size += buf->frame_size;
         if (instance_num == 0) {
             buf->register_consumer(unique_name);
-            // Make sure all the host frames are registered with CUDA
-            // TODO, check if this will always happen at the framework level.
-            if (buf->frame_size) {
-                for (int i = 0; i < buf->num_frames; ++i) {
-                    uint8_t* frame = buf->frames[i];
-                    uint flags;
-                    if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, frame)) {
-                        CHECK_CUDA_ERROR(cudaHostRegister(frame, buf->frame_size, 0));
-                    }
-                }
-            }
         }
     }
 
@@ -53,7 +42,7 @@ cudaCopyNtoRingbuffer::cudaCopyNtoRingbuffer(Config& config, const std::string& 
 
     signal_buffer = dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "signal_buf")));
-    assert(signal_buffer);
+    assert(signal_buffer && "Buffer given by signal_buf is null or not a RingBuffer");
     if (instance_num == 0)
         signal_buffer->register_producer(unique_name);
 
@@ -62,9 +51,9 @@ cudaCopyNtoRingbuffer::cudaCopyNtoRingbuffer(Config& config, const std::string& 
 }
 
 cudaCopyNtoRingbuffer::~cudaCopyNtoRingbuffer() {
-    for (size_t i = 0; i < in_buffers.size(); ++i) {
-        Buffer* buf = in_buffers[i];
-        if (buf && buf->frame_size) {
+    for (auto buf : in_buffers) {
+        assert(buf);
+        if (buf->frame_size) {
             uint flags;
             if (cudaSuccess == cudaHostGetFlags(&flags, buf->frames[instance_num])) {
                 CHECK_CUDA_ERROR(cudaHostUnregister(buf->frames[instance_num]));
@@ -75,8 +64,8 @@ cudaCopyNtoRingbuffer::~cudaCopyNtoRingbuffer() {
 
 int cudaCopyNtoRingbuffer::wait_on_precondition() {
     // Wait for all input buffers to have data
-    for (size_t i = 0; i < in_buffers.size(); ++i) {
-        Buffer* buf = in_buffers[i];
+    for (auto buf : in_buffers) {
+        assert(buf);
         DEBUG("Waiting for input data frame {} from buffer {}", gpu_frame_id, buf->buffer_name);
         uint8_t* frame = buf->wait_for_full_frame(unique_name, gpu_frame_id % buf->num_frames);
         if (!frame)
@@ -97,9 +86,8 @@ int cudaCopyNtoRingbuffer::wait_on_precondition() {
     return 0;
 }
 
-cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& pipestate,
+cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& /*pipestate*/,
                                            const std::vector<cudaEvent_t>& pre_events) {
-    (void)pipestate;
     pre_execute();
 
     void* rb_memory = device.get_gpu_memory(_gpu_mem_output, signal_buffer->size);
@@ -111,11 +99,10 @@ cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& pipestate,
 
     // Merge all input buffers into the ringbuffer sequentially
     size_t offset = 0;
-    std::vector<std::shared_ptr<chordMetadata>> metas;
-    for (size_t i = 0; i < in_buffers.size(); ++i) {
-        Buffer* buf = in_buffers[i];
+    for (auto buf : in_buffers) {
+        assert(buf);
         int buf_index = gpu_frame_id % buf->num_frames;
-        void* host_memory_frame = (void*)buf->frames[buf_index];
+        void* host_memory_frame = static_cast<void*>(buf->frames[buf_index]);
         size_t sz = buf->frame_size;
 
         // Copy to ringbuffer, handle wrapping if needed
@@ -137,6 +124,8 @@ cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& pipestate,
     }
 
     // We only need to set the metadata on the ring buffer once.
+    // TODO we should do a metadata validation for every input buffer to double check
+    // we are not mixing incompatible frames.
     if (first_time && instance_num == 0) {
         // Allocate a new metadata object on the signal buffer
         signal_buffer->allocate_new_metadata_object(0);
@@ -147,12 +136,14 @@ cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& pipestate,
 
         // Merge metadata from all input buffers
         // NB This is highly specific to CHIME.
-        for (uint i = 0; i < in_buffers.size(); ++i) {
+        for (size_t i = 0; i < in_buffers.size(); ++i) {
             auto meta_in = std::dynamic_pointer_cast<chordMetadata>(
                 in_buffers[i]->get_metadata(gpu_frame_id % in_buffers[i]->num_frames));
             if (!meta_in)
                 throw std::runtime_error(
                     "cudaCopyNtoRingbuffer: input buffer has no chordMetadata");
+            // Pull most of the metadata from the first input buffer. 
+            // TODO: Check metadata matches on all subsequent buffers.
             if (i == 0) {
                 // Set the shape of the array
                 meta_ring->dims = 4;
@@ -170,7 +161,9 @@ cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& pipestate,
                 // the actualy time.  It does not follow the usual T_actual pattern.
                 meta_ring->sample0_offset = meta_in->sample0_offset;
             }
+            // Set the frequency for each of the input buffers
             meta_ring->coarse_freq[i] = meta_in->coarse_freq[0];
+            // Check that the sample0 matches for all input buffers
             assert(meta_ring->sample0_offset == meta_in->sample0_offset);
         }
         // Debug log the merged metadata with the data set above
@@ -187,8 +180,8 @@ cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& pipestate,
 void cudaCopyNtoRingbuffer::finalize_frame() {
     DEBUG("finalize_frame() for frame {}, releasing metadata on GPU output buffer {}", gpu_frame_id,
           _gpu_mem_output);
-    for (size_t i = 0; i < in_buffers.size(); ++i) {
-        Buffer* buf = in_buffers[i];
+    for (auto buf : in_buffers) {
+        assert(buf);
         buf->mark_frame_empty(unique_name, gpu_frame_id % buf->num_frames);
     }
     signal_buffer->finish_write(unique_name, instance_num, total_input_size);

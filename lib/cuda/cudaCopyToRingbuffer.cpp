@@ -45,18 +45,6 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
               bufname, _gpu_mem_output, _input_size, _ring_buffer_size);
         if (instance_num == 0)
             in_buffer->register_consumer(unique_name);
-
-        if (in_buffer->frame_size) {
-            uint flags;
-            // only register the memory if it isn't already...
-            // TODO This logic doesn't work for host buffers with more then num_gpu_frames frames
-            // (which is likely)
-            if (cudaErrorInvalidValue
-                == cudaHostGetFlags(&flags, in_buffer->frames[instance_num])) {
-                CHECK_CUDA_ERROR(
-                    cudaHostRegister(in_buffer->frames[instance_num], in_buffer->frame_size, 0));
-            }
-        }
     } else {
         in_buffer = nullptr;
         gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
@@ -64,8 +52,7 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
               "chunk size {:d}, ring buffer size {:d}",
               _gpu_mem_input, _gpu_mem_output, _input_size, _ring_buffer_size);
     }
-    //_input_columns_field = config.get_default<std::string>(unique_name, "input_columns_field",
-    //"");
+
     signal_buffer = dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "signal_buf")));
     assert(signal_buffer);
