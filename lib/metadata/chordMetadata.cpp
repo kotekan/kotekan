@@ -15,11 +15,6 @@ chordMetadata::chordMetadata() :
         dim_name[d][0] = '\0';
         stride[d] = -1;
     }
-    for (int f = 0; f < CHORD_META_MAX_FREQ; ++f) {
-        freq_upchan_factor[f] = -1;
-        half_fpga_sample0[f] = -1;
-        time_downsampling_fpga[f] = -1;
-    }
 }
 
 struct chordMetadataFormat {
@@ -106,11 +101,9 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     this->set_offset_downsampling(fmt->offset_downsampling);
     const int nfreq = fmt->nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
-    for (int i = 0; i < nfreq; i++) {
-        freq_upchan_factor[i] = fmt->freq_upchan_factor[i];
-        half_fpga_sample0[i] = fmt->half_fpga_sample0[i];
-        time_downsampling_fpga[i] = fmt->time_downsampling_fpga[i];
-    }
+    this->set_freq_upchan_factor(std::vector<int>(fmt->freq_upchan_factor, fmt->freq_upchan_factor+nfreq));
+    this->set_half_fpga_sample0(std::vector<int64_t>(fmt->half_fpga_sample0, fmt->half_fpga_sample0+nfreq));
+    this->set_time_downsampling_fpga(std::vector<int>(fmt->time_downsampling_fpga, fmt->time_downsampling_fpga+nfreq));
     this->set_coarse_freq(std::vector<int>(fmt->coarse_freq, fmt->coarse_freq+nfreq));
     return sizeof(chordMetadataFormat);
 }
@@ -141,11 +134,9 @@ size_t chordMetadata::serialize(char* bytes) {
     fmt->offset_downsampling = this->get_offset_downsampling();
     fmt->nfreq = this->get_nfreq();
     assert(fmt->nfreq < CHORD_META_MAX_FREQ);
-    for (int i = 0; i < fmt->nfreq; i++) {
-        fmt->freq_upchan_factor[i] = freq_upchan_factor[i];
-        fmt->half_fpga_sample0[i] = half_fpga_sample0[i];
-        fmt->time_downsampling_fpga[i] = time_downsampling_fpga[i];
-    }
+    std::copy_n(this->get_freq_upchan_factor().data(), this->get_nfreq(), fmt->freq_upchan_factor);
+    std::copy_n(this->get_half_fpga_sample0().data(), this->get_nfreq(), fmt->half_fpga_sample0);
+    std::copy_n(this->get_time_downsampling_fpga().data(), this->get_nfreq(), fmt->time_downsampling_fpga);
     std::copy_n(this->get_coarse_freq().data(), this->get_nfreq(), fmt->coarse_freq);
     return sizeof(chordMetadataFormat);
 }
