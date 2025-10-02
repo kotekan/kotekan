@@ -207,13 +207,15 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
     const std::shared_ptr<const chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
     const std::shared_ptr<chordMetadata> out_meta = n2k_counts.get_metadata();
 
-    // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+    // The input ringbuffers do not contain time-dependent data,
+    // so we must reconstruct it here. (fpga_seq_num and sample0_offset)
     // TODO: do this automatically in `NDArrayRingBuffer`
     
     // The RFI mask has a fast time index of size 1024, so has an apparent
-    // time downsampling of 1024.  To get the needed outgoing sample0_offset,
-    // we need to undo that, and then apply the correlation downsampling.
-    out_meta->set_sample0_offset(div_noremainder(1024 * rfi_RFImask.get_read_valid().begin(), n2k_sub_integration_ntime));
+    // time downsampling of 1024. To get the needed outgoing fpga_seq_num,
+    // we need to undo that.
+    out_meta->set_fpga_seq_num(1024 * rfi_RFImask.get_read_valid().begin());
+    out_meta->set_sample0_offset(div_noremainder(out_meta->get_fpga_seq_num(), n2k_sub_integration_ntime));
 
     const std::vector<int> in_time_downsampling_fpga = pl_meta->get_time_downsampling_fpga();
     const std::vector<int64_t> in_half_fpga_sample0 = pl_meta->get_half_fpga_sample0();
