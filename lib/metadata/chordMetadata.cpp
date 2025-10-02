@@ -7,15 +7,13 @@
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
 chordMetadata::chordMetadata() :
-    frame_counter(-1), type(kotekan::unknown_type), dims(-1), offset(0), n_one_hot(-1),
+    frame_counter(-1), type(kotekan::unknown_type), dims(-1), offset(0),
     ndishes(-1), n_dish_locations_ew(-1), n_dish_locations_ns(-1), dish_index(nullptr) {
     name[0] = '\0';
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
         dim_name[d][0] = '\0';
         stride[d] = -1;
-        onehot_name[d][0] = '\0';
-        onehot_index[d] = -1;
     }
     for (int f = 0; f < CHORD_META_MAX_FREQ; ++f) {
         freq_upchan_factor[f] = -1;
@@ -40,11 +38,6 @@ struct chordMetadataFormat {
     char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // "F", "Tbar", "D", etc
     int64_t stride[CHORD_META_MAX_DIM];
     int64_t offset;
-
-    // One-hot arrays?
-    int32_t n_one_hot;
-    char onehot_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME];
-    int32_t onehot_index[CHORD_META_MAX_DIM];
 
     // All time samples in this buffer (or the whole buffer, if the
     // buffer does not have a time sample index) have `sample_offset`
@@ -105,13 +98,10 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
         dim[i] = fmt->dim[i];
         for (int j = 0; j < CHORD_META_MAX_DIMNAME; j++) {
             dim_name[i][j] = fmt->dim_name[i][j];
-            onehot_name[i][j] = fmt->onehot_name[i][j];
         }
         stride[i] = fmt->stride[i];
-        onehot_index[i] = fmt->onehot_index[i];
     }
     offset = fmt->offset;
-    n_one_hot = fmt->n_one_hot;
     this->set_sample0_offset(fmt->sample0_offset);
     this->set_offset_downsampling(fmt->offset_downsampling);
     const int nfreq = fmt->nfreq;
@@ -143,13 +133,10 @@ size_t chordMetadata::serialize(char* bytes) {
         fmt->dim[i] = dim[i];
         for (int j = 0; j < CHORD_META_MAX_DIMNAME; j++) {
             fmt->dim_name[i][j] = dim_name[i][j];
-            fmt->onehot_name[i][j] = onehot_name[i][j];
         }
         fmt->stride[i] = stride[i];
-        fmt->onehot_index[i] = onehot_index[i];
     }
     fmt->offset = offset;
-    fmt->n_one_hot = n_one_hot;
     fmt->sample0_offset = this->get_sample0_offset();
     fmt->offset_downsampling = this->get_offset_downsampling();
     fmt->nfreq = this->get_nfreq();
