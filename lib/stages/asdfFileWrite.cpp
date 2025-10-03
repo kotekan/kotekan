@@ -268,9 +268,10 @@ public:
                         group->emplace("coarse_freq", coarse_freq);
 
                         auto freq_upchan_factor = std::make_shared<ASDF::sequence>();
+                        const std::vector<int> I_freq_upchan_factor = meta->get_freq_upchan_factor();
                         for (int freq = 0; freq < meta->get_nfreq(); ++freq)
                             freq_upchan_factor->push_back(
-                                std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
+                                std::make_shared<ASDF::int_entry>(I_freq_upchan_factor[freq]));
                         group->emplace("freq_upchan_factor", freq_upchan_factor);
                     }
 
@@ -284,15 +285,17 @@ public:
 
                     if (meta->get_nfreq() >= 0) {
                         auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
+                        const std::vector<int64_t> I_half_fpga_sample0 = meta->get_half_fpga_sample0();
                         for (int freq = 0; freq < meta->get_nfreq(); ++freq)
                             half_fpga_sample0->push_back(
-                                std::make_shared<ASDF::int_entry>(meta->half_fpga_sample0[freq]));
+                                std::make_shared<ASDF::int_entry>(I_half_fpga_sample0[freq]));
                         group->emplace("half_fpga_sample0", half_fpga_sample0);
 
                         auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
+                        const std::vector<int> I_time_downsampling_fpga = meta->get_time_downsampling_fpga();
                         for (int freq = 0; freq < meta->get_nfreq(); ++freq)
                             time_downsampling_fpga->push_back(std::make_shared<ASDF::int_entry>(
-                                meta->time_downsampling_fpga[freq]));
+                                I_time_downsampling_fpga[freq]));
                         group->emplace("time_downsampling_fpga", time_downsampling_fpga);
                     }
 
