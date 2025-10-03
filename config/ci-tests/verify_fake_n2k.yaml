@@ -255,24 +255,6 @@ run_pl_corr:
           gpu_mem: counts_buffer
           out_buf: host_counts_buffer
 
-write_fake_correlation:
-  kotekan_stage: hdf5FileWrite
-  base_dir: fake_data
-  file_name: n2k_corr
-  prefix_hostname: false
-  max_frames: -1  # buffer_depth
-  skip_writing: false
-  in_buf: fake_correlation_buffer
-
-write_fake_counts:
-   kotekan_stage: hdf5FileWrite
-   base_dir: fake_data
-   file_name: n2k_counts
-   prefix_hostname: false
-   max_frames: -1  # buffer_depth # Will trigger exit after writing this many frames
-   skip_writing: false
-   in_buf: fake_counts_buffer
-
 check_correlation_data:
     kotekan_stage: testDataCheckInt
     first_buf: host_correlation_buffer
