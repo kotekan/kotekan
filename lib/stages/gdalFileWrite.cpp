@@ -228,9 +228,9 @@ public:
                 if (meta->get_nfreq() >= 0) {
                     const auto freq_upchan_factor = group->CreateAttribute(
                         "freq_upchan_factor", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
-                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->freq_upchan_factor)));
+                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->get_freq_upchan_factor().data())));
                     const bool success = freq_upchan_factor->Write(
-                        meta->freq_upchan_factor, meta->get_nfreq() * sizeof *meta->freq_upchan_factor);
+                        meta->get_freq_upchan_factor().data(), meta->get_nfreq() * sizeof *meta->get_freq_upchan_factor().data());
                     assert(success);
                 }
 
@@ -257,9 +257,9 @@ public:
                 if (meta->get_nfreq() >= 0) {
                     const auto half_fpga_sample0 = group->CreateAttribute(
                         "half_fpga_sample0", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
-                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->half_fpga_sample0)));
+                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->get_half_fpga_sample0().data())));
                     const bool success = half_fpga_sample0->Write(
-                        meta->half_fpga_sample0, meta->get_nfreq() * sizeof *meta->half_fpga_sample0);
+                        meta->get_half_fpga_sample0().data(), meta->get_nfreq() * sizeof *meta->get_half_fpga_sample0().data());
                     assert(success);
                 }
 
@@ -267,10 +267,10 @@ public:
                     const auto time_downsampling_fpga = group->CreateAttribute(
                         "time_downsampling_fpga", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
                         GDALExtendedDataType::Create(
-                            get_gdal_datatype(*meta->time_downsampling_fpga)));
+                            get_gdal_datatype(*meta->get_time_downsampling_fpga().data())));
                     const bool success = time_downsampling_fpga->Write(
-                        meta->time_downsampling_fpga,
-                        meta->get_nfreq() * sizeof *meta->time_downsampling_fpga);
+                        meta->get_time_downsampling_fpga().data(),
+                        meta->get_nfreq() * sizeof *meta->get_time_downsampling_fpga().data());
                     assert(success);
                 }
 
