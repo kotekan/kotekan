@@ -7,8 +7,6 @@
 #include "hdf5Files.hpp"       // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
 #include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, WARN, INFO
 #include "metadata.hpp"        // for metadataObject
-#include "N2Metadata.hpp"
-#include "N2FrameView.hpp"
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -235,7 +233,7 @@ public:
         const std::vector<size_t> emethod_dims({1});
         const std::vector<size_t> erms_dims({1});
         const std::vector<size_t> gain_dims({frame.num_elements, 2});
-        
+
         // Create dataspaces
         const DataSpace vis_space(vis_dims);
         const DataSpace weight_space(weight_dims);
@@ -269,7 +267,7 @@ public:
         auto emethod_dset = file.createDataSet("emethod", emethod_space, int_type, emethod_props);
         auto erms_dset = file.createDataSet("erms", erms_space, float_type, erms_props);
         auto gain_dset = file.createDataSet("gain", gain_space, float_type, gain_props);
-        
+
         vis_dset.write_raw(frame.vis.data(), float_type);
         weight_dset.write_raw(frame.weight.data(), float_type);
         flags_dset.write_raw(frame.flags.data(), float_type);

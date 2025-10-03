@@ -61,14 +61,14 @@ public:
 
 private:
     // Buffers to read/write
-    Buffer* in_buf;  /// Buffer containing input frames
-    Buffer* in_counts_buf;  /// Buffer containing input frames
-    Buffer* out_buf; /// Output for the main vis dataset only
-    
+    Buffer* in_buf;        /// Buffer containing input frames
+    Buffer* in_counts_buf; /// Buffer containing input frames
+    Buffer* out_buf;       /// Output for the main vis dataset only
+
     // Parameters saved from the config files
     int64_t _num_freq_per_n2k_frame;
     int64_t _num_frames_to_accumulate;
-    
+
     int64_t _n_fpga_samples_per_n2k_frame;
     int64_t _n_fpga_samples_per_n2k_correlation;
     int64_t _n_integrations_per_n2k_frame;
@@ -77,13 +77,13 @@ private:
     // size_t _n_vis_samples_per_in_frame;
 
     // Frame and vis sample durations in nanoseconds
-    //uint64_t _in_frame_duration_nsec;
-    //uint64_t _in_frame_vis_duration_nsec;
+    // uint64_t _in_frame_duration_nsec;
+    // uint64_t _in_frame_vis_duration_nsec;
 
-    const int64_t _n2k_correlation_blocksize = 16;  // THIS IS ALWAYS 16
-    const int64_t _n2k_counts_blocksize = 8;        // THIS IS ALWAYS 8
-    
-    int64_t _num_elements;          // Number of telescope elements
+    const int64_t _n2k_correlation_blocksize = 16; // THIS IS ALWAYS 16
+    const int64_t _n2k_counts_blocksize = 8;       // THIS IS ALWAYS 8
+
+    int64_t _num_elements; // Number of telescope elements
 
     int64_t _n2k_correlation_lin_blocks;
     int64_t _n2k_correlation_num_blocks;
@@ -91,9 +91,9 @@ private:
     int64_t _n2k_counts_lin_blocks;
     int64_t _n2k_counts_num_blocks;
     int64_t _n2k_counts_num_products;
-    int64_t _N2_num_products;       ///< Number of products produced by the N2 correlator
-    //size_t _num_N2_products_freqs; ///< Number of N2 products x frequencies
-    //size_t _num_accum_products;    ///< Number of visibility products in accumulate output
+    int64_t _N2_num_products; ///< Number of products produced by the N2 correlator
+    // size_t _num_N2_products_freqs; ///< Number of N2 products x frequencies
+    // size_t _num_accum_products;    ///< Number of visibility products in accumulate output
 
     // The below vectors are initialized in the constructor after _num_vis_products
     // and _num_freq_in_frame are known.

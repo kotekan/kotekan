@@ -40,7 +40,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
 
-    //auto& tel = Telescope::instance();
+    // auto& tel = Telescope::instance();
 
     // Fetch configuration
 
@@ -55,14 +55,14 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     assert(_num_frames_to_accumulate % 2 == 0);
 
     // sampling information
-    _n_fpga_samples_per_n2k_frame = config.get<int64_t>(
-        unique_name, "samples_per_data_set");
+    _n_fpga_samples_per_n2k_frame = config.get<int64_t>(unique_name, "samples_per_data_set");
     _n_fpga_samples_per_n2k_correlation = config.get<int64_t>(unique_name, "sub_integration_ntime");
     assert(_n_fpga_samples_per_n2k_frame > 0);
     assert(_n_fpga_samples_per_n2k_correlation > 0);
     assert(_n_fpga_samples_per_n2k_frame % _n_fpga_samples_per_n2k_correlation == 0);
-    
-    _n_integrations_per_n2k_frame = _n_fpga_samples_per_n2k_frame / _n_fpga_samples_per_n2k_correlation;
+
+    _n_integrations_per_n2k_frame =
+        _n_fpga_samples_per_n2k_frame / _n_fpga_samples_per_n2k_correlation;
 
     //_n_vis_samples_per_N2_output_frame =
     //    _n_fpga_samples_per_N2_frame / _n_fpga_samples_N2_integrates_for;
@@ -74,7 +74,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     //_in_frame_vis_duration_nsec = _in_frame_duration_nsec / _n_integrations_per_n2k_frame;
 
     // Number of products sent by the GPU
-    
+
     // Number of elements (polarization x dish) in the array.
     _num_elements = config.get<int64_t>(unique_name, "num_elements");
     assert(_num_elements > 0);
@@ -84,31 +84,37 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     // sizes for blocked input correlation matrix
     _n2k_correlation_lin_blocks = _num_elements / _n2k_correlation_blocksize;
-    _n2k_correlation_num_blocks = (_n2k_correlation_lin_blocks * (_n2k_correlation_lin_blocks + 1)) / 2;
+    _n2k_correlation_num_blocks =
+        (_n2k_correlation_lin_blocks * (_n2k_correlation_lin_blocks + 1)) / 2;
     // Total number of correlation values per time & frequency,
     // because of blocking this will include some redundant values.
-    _n2k_correlation_num_products = _n2k_correlation_num_blocks * _n2k_correlation_blocksize * _n2k_correlation_blocksize;
-   
+    _n2k_correlation_num_products =
+        _n2k_correlation_num_blocks * _n2k_correlation_blocksize * _n2k_correlation_blocksize;
+
     // sizes for blocked input counts matrix
     _n2k_counts_lin_blocks = _num_elements / _n2k_counts_blocksize;
     _n2k_counts_num_blocks = (_n2k_counts_lin_blocks * (_n2k_counts_lin_blocks + 1)) / 2;
     // Total number of counts values per time & frequency,
     // because of blocking this will include some redundant values.
-    _n2k_counts_num_products = _n2k_counts_num_blocks * _n2k_counts_blocksize * _n2k_counts_blocksize;
+    _n2k_counts_num_products =
+        _n2k_counts_num_blocks * _n2k_counts_blocksize * _n2k_counts_blocksize;
 
-    // Total number of visibilities per time & frequency in output. 
+    // Total number of visibilities per time & frequency in output.
     _N2_num_products = (_num_elements * (_num_elements + 1)) / 2;
 
-    // _n2k_correlation_num_products * _num_freq_per_n2k_frame = _num_N2_products * _num_freq_per_n2k_frame;
-    // Number of products to accumulate
-    // _num_accum_products = N2::get_num_prod(_num_elements);
+    // _n2k_correlation_num_products * _num_freq_per_n2k_frame = _num_N2_products *
+    // _num_freq_per_n2k_frame; Number of products to accumulate _num_accum_products =
+    // N2::get_num_prod(_num_elements);
 
-    // Initializing these here using the computed _n2k_correlation_num_products * _num_freq_per_n2k_frame (accumulate the full,
-    // blocked matrix x frequencies from the GPU)
-    _vis = std::vector<int32_t>(2 * _num_freq_per_n2k_frame * _n2k_correlation_num_products, 0); // vis with complex as 2 ints
-    _vis_even = std::vector<int32_t>(2 * _num_freq_per_n2k_frame * _n2k_correlation_num_products, 0); // store even vis matrix for
-    
-    _weights = std::vector<int32_t>(_num_freq_per_n2k_frame * _n2k_correlation_num_products, 0); // real-valued weights
+    // Initializing these here using the computed _n2k_correlation_num_products *
+    // _num_freq_per_n2k_frame (accumulate the full, blocked matrix x frequencies from the GPU)
+    _vis = std::vector<int32_t>(2 * _num_freq_per_n2k_frame * _n2k_correlation_num_products,
+                                0); // vis with complex as 2 ints
+    _vis_even = std::vector<int32_t>(2 * _num_freq_per_n2k_frame * _n2k_correlation_num_products,
+                                     0); // store even vis matrix for
+
+    _weights = std::vector<int32_t>(_num_freq_per_n2k_frame * _n2k_correlation_num_products,
+                                    0); // real-valued weights
     // number of fpga samples, per frequency, in frame
     _n_valid_fpga_samples_in_vis = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
     _n_valid_fpga_samples_in_vis_even = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
@@ -116,7 +122,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
-    
+
     in_counts_buf = get_buffer("in_counts_buf");
     in_counts_buf->register_consumer(unique_name);
 
@@ -145,7 +151,7 @@ void N2Accumulate::main_thread() {
     // Start time of an output frame (initialize to now)
     timespec output_ts;
     timespec_get(&output_ts, TIME_UTC);
-    //uint64_t t_output = N2::ts_to_uint64(output_ts);
+    // uint64_t t_output = N2::ts_to_uint64(output_ts);
 
     int64_t vis_samples_in_out_frame = 0;
 
@@ -157,13 +163,15 @@ void N2Accumulate::main_thread() {
         if (in_frame == nullptr)
             break;
         int32_t* input = (int32_t*)in_frame;
-        
+
         // Fetch a new frame and get its sequence id
-        DEBUG("Waiting for new input counts frame {:s}[{:d}].", in_counts_buf->buffer_name, in_counts_frame_id);
-        uint8_t* in_counts_frame = in_counts_buf->wait_for_full_frame(unique_name, in_counts_frame_id);
+        DEBUG("Waiting for new input counts frame {:s}[{:d}].", in_counts_buf->buffer_name,
+              in_counts_frame_id);
+        uint8_t* in_counts_frame =
+            in_counts_buf->wait_for_full_frame(unique_name, in_counts_frame_id);
         if (in_counts_frame == nullptr)
             break;
-        //int32_t* n2k_counts = (int32_t*)in_counts_frame;
+        // int32_t* n2k_counts = (int32_t*)in_counts_frame;
 
         std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
         size_t in_frame_num = frame_metadata->get_fpga_seq_num() / _n_fpga_samples_per_n2k_frame;
@@ -189,7 +197,7 @@ void N2Accumulate::main_thread() {
         for (int64_t vis_samp_n = 0; vis_samp_n < _n_integrations_per_n2k_frame; ++vis_samp_n) {
 
             // Start and end times of the visibility matrix sample
-            //uint64_t t_vis_s = t_frame_s + vis_samp_n * _in_frame_vis_duration_nsec;
+            // uint64_t t_vis_s = t_frame_s + vis_samp_n * _in_frame_vis_duration_nsec;
             // uint64_t t_vis_e = t_vis_s + _in_frame_vis_duration_nsec;
 
             // "absolute" vis sample number
@@ -203,7 +211,7 @@ void N2Accumulate::main_thread() {
 
             // Finalize accumulation if the visibility elements are past the output time...
             //  end on an odd frame too so we accumulate weights.
-            //if (t_vis_s > t_output && vis_sample_num_abs % 2 == 1) {
+            // if (t_vis_s > t_output && vis_sample_num_abs % 2 == 1) {
             if (vis_samples_in_out_frame >= _num_frames_to_accumulate) {
 
                 INFO("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
@@ -211,12 +219,14 @@ void N2Accumulate::main_thread() {
                 samples_in_out_frame.set(vis_samples_in_out_frame);
                 output_and_reset(in_frame_id, out_frame_id);
 
-                //t_output += 1000000000L; // TODO: Make this a config parameter. Is there a library for LST?
+                // t_output += 1000000000L; // TODO: Make this a config parameter. Is there a
+                // library for LST?
                 vis_samples_in_out_frame = 0;
             }
 
             // Actual accumulation over
-            for (int64_t d = 0; d < 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame; ++d) {
+            for (int64_t d = 0; d < 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame;
+                 ++d) {
                 _vis[d] += input[d];
             } // d
 
@@ -225,9 +235,12 @@ void N2Accumulate::main_thread() {
             // Potential optimization: copying vis_even is only really
             // necessary if we've started accumulating a new frame
             if (vis_sample_num_abs % 2 == 0) {
-                std::copy(input, input + 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame, _vis_even.begin());
+                std::copy(input,
+                          input + 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame,
+                          _vis_even.begin());
             } else {
-                for (int64_t d = 0; d < _n2k_correlation_num_products * _num_freq_per_n2k_frame; ++d) {
+                for (int64_t d = 0; d < _n2k_correlation_num_products * _num_freq_per_n2k_frame;
+                     ++d) {
                     int32_t dr = _vis[2 * d + 0] - _vis_even[2 * d + 0];
                     int32_t di = _vis[2 * d + 1] - _vis_even[2 * d + 1];
                     _weights[d] += (dr * dr + di * di);
@@ -298,16 +311,20 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
                     _num_elements); // index in the output vis matrix (upper triangular format)
 
                 // Populate the visibility matrix
-                //N2::cfloat v = {(float)_vis[f * 2 * _num_N2_products + 2 * d_N2 + 0],
-                //                -(float)_vis[f * 2 * _num_N2_products + 2 * d_N2 + 1]}; // conjugate
-                N2::cfloat v = {(float)_vis[f * 2 * _n2k_correlation_num_products + 2 * d_N2 + 0],
-                                -(float)_vis[f * 2 * _n2k_correlation_num_products + 2 * d_N2 + 1]}; // conjugate
+                // N2::cfloat v = {(float)_vis[f * 2 * _num_N2_products + 2 * d_N2 + 0],
+                //                -(float)_vis[f * 2 * _num_N2_products + 2 * d_N2 + 1]}; //
+                //                conjugate
+                N2::cfloat v = {
+                    (float)_vis[f * 2 * _n2k_correlation_num_products + 2 * d_N2 + 0],
+                    -(float)
+                        _vis[f * 2 * _n2k_correlation_num_products + 2 * d_N2 + 1]}; // conjugate
                 out_vis.vis[d_accum] = ins * v;
 
                 // de-bias and populate the weights matrix (with the inverse variance)
                 _weights[f * _n2k_correlation_num_products + d_N2] -=
                     std::norm(v) * _n_valid_sample_diff_sq_sum[f] / ns / ns;
-                out_vis.weight[d_accum] = ns * ns / _weights[f * _n2k_correlation_num_products + d_accum];
+                out_vis.weight[d_accum] =
+                    ns * ns / _weights[f * _n2k_correlation_num_products + d_accum];
             }
         }
 
