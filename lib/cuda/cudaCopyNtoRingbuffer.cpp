@@ -174,6 +174,34 @@ cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& /*pipestate*/,
         first_time = false;
     }
 
+    // Check that metadata currently in the ring matches what we get from the frames
+    for (size_t i = 0; i < in_buffers.size(); ++i) {
+        auto meta_in = std::dynamic_pointer_cast<chordMetadata>(
+            in_buffers[i]->get_metadata(gpu_frame_id % in_buffers[i]->num_frames));
+        if (!meta_in)
+            throw std::runtime_error("cudaCopyNtoRingbuffer: input buffer has no chordMetadata");
+        auto meta_ring = std::dynamic_pointer_cast<chordMetadata>(signal_buffer->metadata[0]);
+        assert(meta_ring); // By construction above, this should always exist.
+        // Check that the frequencies match
+        if (meta_ring->coarse_freq[i] != meta_in->coarse_freq[0]) {
+            ERROR("cudaCopyNtoRingbuffer: Mismatch in frequency for input buffer {}: "
+                  "metadata has {}, frame has {}",
+                  in_buffers[i]->buffer_name, meta_ring->coarse_freq[i], meta_in->coarse_freq[0]);
+            throw std::runtime_error("cudaCopyNtoRingbuffer: metadata frequency mismatch");
+        }
+        // Check that the sample0_offset + the output_cursor matches the input frame sample0_offset
+        // This ensures that the time in the ring buffer metadata matches the data we just copied
+        if (meta_ring->sample0_offset
+                + (int64_t)output_cursor / (meta_ring->dim[1] * meta_ring->dim[3])
+            != meta_in->sample0_offset) {
+            ERROR("cudaCopyNtoRingbuffer: Mismatch in sample0_offset for input buffer {}: "
+                  "metadata has {}, frame has {} (output_cursor {})",
+                  in_buffers[i]->buffer_name, meta_ring->sample0_offset, meta_in->sample0_offset,
+                  output_cursor);
+            throw std::runtime_error("cudaCopyNtoRingbuffer: metadata time code mismatch");
+        }
+    }
+
     return record_end_event();
 }
 
