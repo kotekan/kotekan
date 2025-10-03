@@ -259,9 +259,11 @@ public:
                     assert(freq_upchan_factor);
                     assert(std::ptrdiff_t(freq_upchan_factor->size()) == meta->get_nfreq());
                     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+                    std::vector<int> O_freq_upchan_factor(meta->get_nfreq());
                     for (int n = 0; n < meta->get_nfreq(); ++n)
-                        meta->freq_upchan_factor[n] =
+                        O_freq_upchan_factor[n] =
                             freq_upchan_factor->at(n)->get_maybe_int().value();
+                    meta->set_freq_upchan_factor(O_freq_upchan_factor);
                 }
             }
 
@@ -297,9 +299,11 @@ public:
                     assert(half_fpga_sample0);
                     assert(std::ptrdiff_t(half_fpga_sample0->size()) == meta->get_nfreq());
                     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+                    std::vector<int64_t> O_half_fpga_sample0(meta->get_nfreq());
                     for (int n = 0; n < meta->get_nfreq(); ++n)
-                        meta->half_fpga_sample0[n] =
+                        O_half_fpga_sample0[n] =
                             half_fpga_sample0->at(n)->get_maybe_int().value();
+                    meta->set_half_fpga_sample0(O_half_fpga_sample0);
                 }
             }
 
@@ -313,9 +317,11 @@ public:
                     assert(time_downsampling_fpga);
                     assert(std::ptrdiff_t(time_downsampling_fpga->size()) == meta->get_nfreq());
                     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+                    std::vector<int> O_time_downsampling_fpga(meta->get_nfreq());
                     for (int n = 0; n < meta->get_nfreq(); ++n)
-                        meta->time_downsampling_fpga[n] =
+                        O_time_downsampling_fpga[n] =
                             time_downsampling_fpga->at(n)->get_maybe_int().value();
+                    meta->set_time_downsampling_fpga(O_time_downsampling_fpga);
                 }
             }
 
