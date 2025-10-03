@@ -213,13 +213,19 @@ void testDataGen::main_thread() {
 
         assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
         std::vector<int> coarse_freq(_num_freq_in_frame);
+        std::vector<int> freq_upchan_factor(coarse_freq.size());
+        std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
+        std::vector<int> time_downsampling_fpga(coarse_freq.size());
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             coarse_freq[f] = f;
-            chordmeta->freq_upchan_factor[f] = 1;
-            chordmeta->half_fpga_sample0[f] = 0;
-            chordmeta->time_downsampling_fpga[f] = _meta_time_downsample_factor;
+            freq_upchan_factor[f] = 1;
+            half_fpga_sample0[f] = 0;
+            time_downsampling_fpga[f] = _meta_time_downsample_factor;
         }
         chordmeta->set_coarse_freq(coarse_freq);
+        chordmeta->set_freq_upchan_factor(freq_upchan_factor);
+        chordmeta->set_half_fpga_sample0(half_fpga_sample0);
+        chordmeta->set_time_downsampling_fpga(time_downsampling_fpga);
 
         chordmeta->set_sample0_offset(
             frame_id_abs * samples_per_data_set / _meta_time_downsample_factor);
