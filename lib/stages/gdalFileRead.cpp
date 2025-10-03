@@ -194,8 +194,7 @@ public:
                     assert(std::ptrdiff_t(freq_upchan_factor_shape.at(0)) == meta->get_nfreq());
                     const auto freq_upchan_factor_data = freq_upchan_factor->ReadAsIntArray();
                     assert(std::ptrdiff_t(freq_upchan_factor_data.size()) == meta->get_nfreq());
-                    std::copy(freq_upchan_factor_data.begin(), freq_upchan_factor_data.end(),
-                              meta->freq_upchan_factor);
+                    meta->set_freq_upchan_factor(freq_upchan_factor_data);
                 }
             }
 
@@ -230,8 +229,11 @@ public:
                     // Cannot read int64_t directly yet...
                     const auto half_fpga_sample0_data = half_fpga_sample0->ReadAsDoubleArray();
                     assert(std::ptrdiff_t(half_fpga_sample0_data.size()) == meta->get_nfreq());
-                    std::copy(half_fpga_sample0_data.begin(), half_fpga_sample0_data.end(),
-                              meta->half_fpga_sample0);
+                    std::vector<int64_t> half_fpga_sample0_int64_data(half_fpga_sample0_data.size());
+                    for (size_t i =0; i < half_fpga_sample0_data.size(); ++i) {
+                        half_fpga_sample0_int64_data[i] = half_fpga_sample0_data[i];
+                    }
+                    meta->set_half_fpga_sample0(half_fpga_sample0_int64_data);
                 }
             }
 
@@ -245,8 +247,7 @@ public:
                     const auto time_downsampling_fpga_data =
                         time_downsampling_fpga->ReadAsIntArray();
                     assert(std::ptrdiff_t(time_downsampling_fpga_data.size()) == meta->get_nfreq());
-                    std::copy(time_downsampling_fpga_data.begin(),
-                              time_downsampling_fpga_data.end(), meta->time_downsampling_fpga);
+                    meta->set_time_downsampling_fpga(time_downsampling_fpga_data);
                 }
             }
 
