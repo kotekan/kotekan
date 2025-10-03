@@ -107,6 +107,18 @@ inline std::shared_ptr<N2Metadata> get_N2_metadata(const std::shared_ptr<metadat
     return std::static_pointer_cast<N2Metadata>(mc);
 }
 
+inline std::shared_ptr<const N2Metadata> get_N2_metadata(const std::shared_ptr<const metadataObject> mc) {
+    if (!mc)
+        return std::shared_ptr<const N2Metadata>();
+    if (!metadata_is_N2(mc)) {
+        std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+        WARN_NON_OO("Expected metadata to be type \"N2Metadata\", got \"{:s}\".", pool->type_name);
+        return std::shared_ptr<const N2Metadata>();
+    }
+
+    return std::static_pointer_cast<const N2Metadata>(mc);
+}
+
 inline std::shared_ptr<N2Metadata> get_N2_metadata(Buffer* buf, int frame_id) {
     if (!buf || frame_id < 0 || frame_id >= (int)buf->metadata.size())
         return std::shared_ptr<N2Metadata>();
