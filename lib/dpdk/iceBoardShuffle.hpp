@@ -393,7 +393,8 @@ inline bool iceBoardShuffle::check_stream_id() {
                       all_stream_ids[link_group][j].slot_id, all_stream_ids[link_group][j].link_id,
                       port);
             }
-            FATAL_ERROR("At least one of the link_ids or slot_ids don't match! There is a cabling problem.");
+            FATAL_ERROR("At least one of the link_ids or slot_ids don't match! There is a cabling "
+                        "problem.");
             return false;
         }
 

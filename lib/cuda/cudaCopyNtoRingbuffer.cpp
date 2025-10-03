@@ -142,7 +142,7 @@ cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& /*pipestate*/,
             if (!meta_in)
                 throw std::runtime_error(
                     "cudaCopyNtoRingbuffer: input buffer has no chordMetadata");
-            // Pull most of the metadata from the first input buffer. 
+            // Pull most of the metadata from the first input buffer.
             // TODO: Check metadata matches on all subsequent buffers.
             if (i == 0) {
                 // Set the shape of the array
