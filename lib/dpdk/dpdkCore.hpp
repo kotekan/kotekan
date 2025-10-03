@@ -136,7 +136,7 @@ protected:
  *                                             @c rte_eth_rx_burst
  * @conf   rx_ring_size     Int. Default 512   The size of the Receive ring
  * @conf   tx_ring_size     Int. Default 512   The size of the Transmit ring
- * @conf   max_rx_pkt_len   Int. Default 5000  The max packet size.
+ * @conf   max_rx_pkt_len   Int. Default 9000  The max packet size.
  * @conf   jumbo_frame      Bool. Default true Enable support for Jumbo frames
  * @conf   num_mem_channels Int. Default 4     The number of system memory channels
  * @conf   init_mem_alloc   Int.  Default 256  The initial memory allocation in MB
