@@ -7,7 +7,7 @@
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
 chordMetadata::chordMetadata() :
-    frame_counter(-1), type(kotekan::unknown_type), dims(-1), offset(0),
+    type(kotekan::unknown_type), dims(-1), offset(0),
     ndishes(-1), n_dish_locations_ew(-1), n_dish_locations_ns(-1), dish_index(nullptr) {
     name[0] = '\0';
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
@@ -79,7 +79,7 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
 
     const chordMetadataFormat* fmt = reinterpret_cast<const chordMetadataFormat*>(bytes);
 
-    frame_counter = fmt->frame_counter;
+    this->set_frame_counter(fmt->frame_counter);
     for (int i = 0; i < CHORD_META_MAX_DIMNAME; i++) {
         name[i] = fmt->name[i];
     }
@@ -116,7 +116,7 @@ size_t chordMetadata::serialize(char* bytes) {
     fmt->max_dimname = CHORD_META_MAX_DIMNAME;
     fmt->max_freq = CHORD_META_MAX_FREQ;
 
-    fmt->frame_counter = frame_counter;
+    fmt->frame_counter = this->get_frame_counter();
     for (int i = 0; i < CHORD_META_MAX_DIMNAME; i++) {
         fmt->name[i] = name[i];
     }
