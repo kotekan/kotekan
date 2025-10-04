@@ -54,8 +54,6 @@ public:
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
 
-    int frame_counter;
-
     // TODO: Replace by NDArray
     char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
     kotekan::DataType type;
@@ -159,6 +157,14 @@ public:
 
     void set_fpga_seq_num(const int64_t fpga_seq_num) {
         metadata[jsonMetadata::FPGA_SEQ_NUM] = fpga_seq_num;
+    }
+
+    int get_frame_counter() const {
+        return metadata[jsonMetadata::FRAME_COUNTER].template get<int>();
+    }
+
+    void set_frame_counter(const int frame_counter) {
+        metadata[jsonMetadata::FRAME_COUNTER] = frame_counter;
     }
 
     int get_nfreq() const {
