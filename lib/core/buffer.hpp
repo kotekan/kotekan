@@ -352,11 +352,13 @@ public:
      * @param numa_node The NUMA domain to mbind the memory into
      * @param use_hugepages Allocate 2MB huge pages for the frames
      * @param mlock_frames Lock the frame pages with mlock
-     * @param zero_new_frames
+     * @param cpu_affinity The CPU affinity for the zeroing threads
+     * @param zero_new_frames Manually zero the frames when they are allocated
      */
     Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
            const std::string& buffer_name, const std::string& buffer_type, int numa_node,
-           bool use_hugepages, bool mlock_frames, bool zero_new_frames);
+           bool use_hugepages, bool mlock_frames, const std::vector<int>& cpu_affinity,
+           bool zero_new_frames);
     ~Buffer() override;
 
     /**
@@ -550,6 +552,9 @@ public:
 
     /// Flag set to indicate if the frames should be zeroed between uses
     bool _zero_frames;
+
+    /// The CPU affinity of the zeroing threads
+    cpu_set_t _cpu_set_zero;
 
     /// The array of frames (the actual data we are carrying)
     std::vector<uint8_t*> frames;
