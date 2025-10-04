@@ -520,7 +520,7 @@ void FEngine::main_thread() {
         // Set metadata
         std::shared_ptr<chordMetadata> const dish_positions_metadata =
             get_chord_metadata(dish_positions_buffer, dish_positions_frame_id);
-        dish_positions_metadata->frame_counter = 0;
+        dish_positions_metadata->set_frame_counter(0);
         std::strncpy(dish_positions_metadata->name, "dish_positions",
                      sizeof dish_positions_metadata->name);
         dish_positions_metadata->type = kotekan::float32;
@@ -577,7 +577,7 @@ void FEngine::main_thread() {
         // Set metadata
         std::shared_ptr<chordMetadata> const scatter_indices_metadata =
             get_chord_metadata(scatter_indices_buffer, scatter_indices_frame_id);
-        scatter_indices_metadata->frame_counter = 0;
+        scatter_indices_metadata->set_frame_counter(0);
         std::strncpy(scatter_indices_metadata->name, "scatter_indices",
                      sizeof scatter_indices_metadata->name);
         scatter_indices_metadata->type = kotekan::int32;
@@ -632,7 +632,7 @@ void FEngine::main_thread() {
         // Set metadata
         std::shared_ptr<chordMetadata> const bf_mask_metadata =
             get_chord_metadata(bf_mask_buffer, bf_mask_frame_id);
-        bf_mask_metadata->frame_counter = 0;
+        bf_mask_metadata->set_frame_counter(0);
         std::strncpy(bf_mask_metadata->name, "bf_mask", sizeof bf_mask_metadata->name);
         bf_mask_metadata->type = kotekan::int8;
         bf_mask_metadata->dims = 2;
@@ -720,7 +720,7 @@ void FEngine::main_thread() {
         // Set metadata
         std::shared_ptr<chordMetadata> const bb_beam_positions_metadata =
             get_chord_metadata(bb_beam_positions_buffer, bb_beam_positions_frame_id);
-        bb_beam_positions_metadata->frame_counter = 0;
+        bb_beam_positions_metadata->set_frame_counter(0);
         std::strncpy(bb_beam_positions_metadata->name, "bb_beam_positions",
                      sizeof bb_beam_positions_metadata->name);
         bb_beam_positions_metadata->type = kotekan::float32;
@@ -796,7 +796,7 @@ void FEngine::main_thread() {
 
         // Set metadata
         std::shared_ptr<chordMetadata> const A_metadata = get_chord_metadata(A_buffer, A_frame_id);
-        A_metadata->frame_counter = 0; /*A_frame_index;*/
+        A_metadata->set_frame_counter(0); /*A_frame_index;*/
         std::strncpy(A_metadata->name, "A", sizeof A_metadata->name);
         A_metadata->type = kotekan::int8;
         A_metadata->dims = 5;
@@ -860,7 +860,7 @@ void FEngine::main_thread() {
 
         // Set metadata
         std::shared_ptr<chordMetadata> const s_metadata = get_chord_metadata(s_buffer, s_frame_id);
-        s_metadata->frame_counter = s_frame_index;
+        s_metadata->set_frame_counter(s_frame_index);
         std::strncpy(s_metadata->name, "s", sizeof s_metadata->name);
         s_metadata->type = kotekan::int32;
         s_metadata->dims = 3;
@@ -933,7 +933,7 @@ void FEngine::main_thread() {
             // Set metadata
             std::shared_ptr<chordMetadata> const G_metadata =
                 get_chord_metadata(G_buffers[Ufactor], G_frame_id);
-            G_metadata->frame_counter = G_frame_index;
+            G_metadata->set_frame_counter(G_frame_index);
             std::snprintf(G_metadata->name, sizeof G_metadata->name, "G_U%d", U);
             G_metadata->type = kotekan::float16;
             G_metadata->dims = 1;
@@ -1024,7 +1024,7 @@ void FEngine::main_thread() {
             // Set metadata
             std::shared_ptr<chordMetadata> const W1_metadata =
                 get_chord_metadata(W1_buffers[Ufactor], W1_frame_id);
-            W1_metadata->frame_counter = W1_frame_index;
+            W1_metadata->set_frame_counter(W1_frame_index);
             std::strncpy(W1_metadata->name, "W", sizeof W1_metadata->name);
             W1_metadata->type = kotekan::float16;
             W1_metadata->dims = 5;
@@ -1193,7 +1193,7 @@ void FEngine::main_thread() {
         // Set metadata
         std::shared_ptr<chordMetadata> const W2_metadata =
             get_chord_metadata(W2_buffer, W2_frame_id);
-        W2_metadata->frame_counter = W2_frame_index;
+        W2_metadata->set_frame_counter(W2_frame_index);
         std::strncpy(W2_metadata->name, "W2", sizeof W2_metadata->name);
         W2_metadata->type = kotekan::float16;
         W2_metadata->dims = 4;
@@ -1326,7 +1326,7 @@ void FEngine::main_thread() {
             // Set metadata
             std::shared_ptr<chordMetadata> const E_metadata =
                 get_chord_metadata(E_buffer, E_frame_id);
-            E_metadata->frame_counter = E_frame_index;
+            E_metadata->set_frame_counter(E_frame_index);
             std::strncpy(E_metadata->name, "E", sizeof E_metadata->name);
             E_metadata->type = kotekan::int4x2_swapped_withoffset;
             E_metadata->dims = 4;
@@ -1414,7 +1414,7 @@ void FEngine::main_thread() {
             // Set metadata
             std::shared_ptr<chordMetadata> const pl_mask_metadata =
                 get_chord_metadata(pl_mask_buffer, pl_mask_frame_id);
-            pl_mask_metadata->frame_counter = E_frame_index;
+            pl_mask_metadata->set_frame_counter(E_frame_index);
             std::strncpy(pl_mask_metadata->name, "pl_mask", sizeof pl_mask_metadata->name);
             pl_mask_metadata->type = kotekan::uint1x8;
             pl_mask_metadata->dims = 5;
