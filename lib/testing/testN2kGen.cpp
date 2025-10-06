@@ -68,6 +68,7 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     count_min = config.get_default<int32_t>(unique_name, "count_min", 0);
     count_max = config.get_default<int32_t>(unique_name, "count_max", 8192);
 
+    mul_correlation_by_counts = config.get_default<bool>(unique_name, "mul_correlation_by_counts", false);
 
     samples_per_data_set = config.get_default<size_t>(unique_name, "samples_per_data_set", 8192);
     sub_integration_ntime = config.get_default<size_t>(unique_name, "sub_integration_ntime", 8192);
@@ -187,6 +188,38 @@ void testN2kGen::set_counts_metadata(std::shared_ptr<chordMetadata> meta, uint64
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
 
+void testN2kGen::get_blocked_indices(int i, int j, int blocksize,
+                int &ihi, int &jhi, int &ilo, int &jlo, int &block_idx) {
+
+    ihi = i / blocksize;
+    jhi = j / blocksize;
+    ilo = i % blocksize;
+    jlo = j % blocksize;
+    
+    // Only reference lower triangular blocks (jhi <= ihi), so swap if jhi > ihi
+    if( jhi > ihi) {
+        int temp = ihi;
+        ihi = jhi;
+        jhi = temp;
+
+        temp = ilo;
+        ilo = jlo;
+        jlo = temp;
+    }
+
+    // Block idx:
+    //       j
+    //       0  1  2  3  4
+    //     ---------------
+    // i 0|  0
+    //   1|  1  2
+    //   2|  3  4  5
+    //   3|  6  7  8  9
+    //   4| 10 11 12 13 14
+    //
+    // block_idx is index of row start (j=0) + col_idx (j)
+    block_idx = (ihi * (ihi + 1)) / 2 + jhi;
+}
 
 void testN2kGen::main_thread() {
 
@@ -233,12 +266,51 @@ void testN2kGen::main_thread() {
 
         for (int t = 0; t < num_integrations; t++) {
             for (int f = 0; f < num_local_freq; f++) {
+
+                // Fill the count array
+                int count_block_idx = 0;
+
+                for (int ihi = 0; ihi < count_lin_blocks; ihi++) {
+                    // Lower triangular only
+                    for (int jhi = 0; jhi <= ihi; jhi++) {
+
+                        assert(count_block_idx == (ihi*(ihi+1))/2 + jhi);
+
+                        for (int ilo = 0; ilo < count_blocksize; ilo++) {
+                            for (int jlo = 0; jlo < count_blocksize; jlo++) {
+                                int idx = jlo + ilo * count_blocksize + count_block_idx * db_count
+                                          + f * df_count + t * dt_count;
+
+                                if (count_type == "const") {
+                                    if (count_value_array.size() > 0) {
+                                        count[idx] = count_value_array[count_val_idx
+                                                                       % count_value_array.size()];
+                                        count_val_idx++;
+                                    } else {
+                                        count[idx] = count_value;
+                                    }
+                                } else if (count_type == "random") {
+                                    count[idx] = count_min + rand() % (count_max - count_min + 1);
+                                } else {
+                                    count[idx] = 0;
+                                }
+                            } // count jlo
+                        } // count ilo
+
+                        count_block_idx++;
+                    } // count jhi
+                } // count ihi
+
+
                 // Fill the correlation array
                 int corr_block_idx = 0;
 
                 for (int ihi = 0; ihi < corr_lin_blocks; ihi++) {
                     // Lower triangular only
                     for (int jhi = 0; jhi <= ihi; jhi++) {
+                        
+                        assert(corr_block_idx == (ihi*(ihi+1))/2 + jhi);
+                        
                         for (int ilo = 0; ilo < corr_blocksize; ilo++) {
                             for (int jlo = 0; jlo < corr_blocksize; jlo++) {
                                 int idx = 2 * (jlo + ilo * corr_blocksize)
@@ -266,64 +338,26 @@ void testN2kGen::main_thread() {
                                     corr[idx + 0] = 0; // Real
                                     corr[idx + 1] = 0; // Imag
                                 }
-                            }
-                        }
+
+                                if (mul_correlation_by_counts) {
+                                    int cihi, cjhi, cilo, cjlo, cb_idx;
+                                    int ci = (ihi * corr_blocksize + ilo) / 8;
+                                    int cj = (jhi * corr_blocksize + jlo) / 8;
+                                    get_blocked_indices(ci, cj, count_blocksize, cihi, cjhi, cilo, cjlo, cb_idx);
+
+                                    int count_idx = cjlo + cilo * count_blocksize + cb_idx * db_count + f * df_count + t * dt_count;
+
+                                    corr[idx + 0] *= count[count_idx];
+                                    corr[idx + 1] *= count[count_idx];
+                                }
+                            } // corr jlo
+                        } // corr ilo
 
                         corr_block_idx++;
-                    }
-                }
-
-                // Fill the count array
-                int count_block_idx = 0;
-
-                for (int ihi = 0; ihi < count_lin_blocks; ihi++) {
-                    // Lower triangular only
-                    for (int jhi = 0; jhi <= ihi; jhi++) {
-                        for (int ilo = 0; ilo < count_blocksize; ilo++) {
-                            for (int jlo = 0; jlo < count_blocksize; jlo++) {
-                                int idx = jlo + ilo * count_blocksize + count_block_idx * db_count
-                                          + f * df_count + t * dt_count;
-
-                                if (count_type == "const") {
-                                    if (count_value_array.size() > 0) {
-                                        count[idx] = count_value_array[count_val_idx
-                                                                       % count_value_array.size()];
-                                        count_val_idx++;
-                                    } else {
-                                        count[idx] = count_value;
-                                    }
-                                } else if (count_type == "random") {
-                                    count[idx] = count_min + rand() % (count_max - count_min + 1);
-                                } else {
-                                    count[idx] = 0;
-                                }
-                            }
-                        }
-
-                        count_block_idx++;
-                    }
-                }
+                    } // corr jhi
+                } // corr ihi
             } // f
         } // t
-
-        /*
-        if (value_array.size() && (type == "const"))
-            // Cycle through "values" array, if given
-            value = value_array[frame_id % value_array.size()];
-
-        for (uint f = 0; f < num_local_freq; f++)
-            for (uint t = 0; t < nt_output; t++) {
-                size_t idx = f * nt_output + t;
-                if (type == "const")
-                    frame[idx] = value;
-                else if (type == "all_true")
-                    frame[idx] = 0xFFFF'FFFF;
-                else if (type == "all_false")
-                    frame[idx] = 0;
-                else if (type == "random")
-                    frame[idx] = gen();
-            }
-            */
 
         DEBUG("Generated a {:s} test correlation data set in {:s}[{:d}]", corr_type,
               corr_buf->buffer_name, corr_frame_id);

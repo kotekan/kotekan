@@ -68,6 +68,7 @@ private:
     int32_t count_max;
     std::array<int32_t, 2> corr_min;
     std::array<int32_t, 2> corr_max;
+    bool mul_correlation_by_counts;
     int32_t samples_per_data_set;
     int32_t sub_integration_ntime;
     int32_t num_frames;
@@ -87,6 +88,7 @@ private:
     const std::shared_ptr<chordMetadata> get_new_metadata(Buffer* buf, frameID frame_id);
     void set_correlation_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num);
     void set_counts_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num);
+    void get_blocked_indices(int i, int j, int blocksize, int &ihi, int &jhi, int &ilo, int &jlo0, int &block_idx);
 };
 
 #endif

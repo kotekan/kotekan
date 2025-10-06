@@ -50,12 +50,6 @@ n2_frame_size: n2_vis_size + n2_weight_size + n2_flags_size + n2_eval_size +
 frames_to_generate: 8 * buffer_depth  # must be at least n2_frames_to_write * num_frames_to_accumulate
 n2_frames_to_write: 2 * buffer_depth
 
-# test values
-E_re: 3
-E_im: -5
-corr_re: (E_re * E_re + E_im * E_im) * sub_integration_ntime
-corr_im: 0
-
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata
@@ -88,9 +82,12 @@ gen_fake_corr_counts:
     out_buf: fake_correlation_buffer
     out_counts_buf: fake_counts_buffer
     correlation_type: "const"
-    counts_type: "const"
-    correlation_value: [ 69632, 0 ]
+    counts_type: "random"
+    correlation_value: [ 1, -1 ]
     counts_value: sub_integration_ntime
+    counts_min: 0
+    counts_max: sub_integration_ntime
+    mul_correlation_by_counts: True
     num_frames: frames_to_generate
     freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
