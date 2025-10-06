@@ -49,7 +49,7 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
 
     corr_type = config.get<std::string>(unique_name, "correlation_type");
     count_type = config.get<std::string>(unique_name, "counts_type");
-    assert(corr_type == "const" || corr_type == "random");
+    assert(corr_type == "const" || corr_type == "random" || corr_type == "f_times_ee");
     assert(count_type == "const" || count_type == "random");
 
     corr_value = config.get_default<std::array<int32_t, 2>>(unique_name, "correlation_value",
@@ -334,6 +334,11 @@ void testN2kGen::main_thread() {
                                         corr_min[0] + rand() % (corr_max[0] - corr_min[0] + 1);
                                     corr[idx + 1] =
                                         corr_min[1] + rand() % (corr_max[1] - corr_min[1] + 1);
+                                } else if (corr_type == "f_times_ee") {
+                                    int i = ilo + corr_blocksize * ihi;
+                                    int j = jlo + corr_blocksize * jhi;
+                                    corr[idx + 0] = f * i;
+                                    corr[idx + 1] = f * j;
                                 } else {
                                     corr[idx + 0] = 0; // Real
                                     corr[idx + 1] = 0; // Imag
