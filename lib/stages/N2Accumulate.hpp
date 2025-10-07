@@ -106,6 +106,8 @@ private:
     std::vector<int32_t> _n_valid_fpga_samples_in_vis;
     std::vector<int32_t> _n_valid_fpga_samples_in_vis_even;
     std::vector<int32_t> _n_valid_sample_diff_sq_sum;
+    int64_t _vis_samples_in_out_frame;
+    int64_t _accum_fpga_start_tick;
 
     // Reference to the prometheus metric that we will use for counting skipped
     // frames

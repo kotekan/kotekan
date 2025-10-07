@@ -317,8 +317,8 @@ public:
             if (dims[d] == 0)
                 dims_nonzero = false;
         }
-        if (dims_nonzero) {
 
+        if (dims_nonzero) {
             // Enable chunking
             if (!chunk_dims.empty()) {
                 // Choose chunk size
