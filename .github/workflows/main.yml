@@ -375,6 +375,7 @@ jobs:
               pwd
               ls -l
               ls -l data || true
+              ls -l data/. || true
           )
           timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
