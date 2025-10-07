@@ -369,7 +369,19 @@ jobs:
               git clone https://github.com/chord-observatory/kotekan_testing_inputs
               (cd kotekan_testing_inputs/fengine_init_pathfinder && unxz *.xz)
               ln -s kotekan_testing_inputs data
+              pwd
+              ls -l
           )
+          timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
+            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
+            -w /code/kotekan \
+            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
+            pwd
+          timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
+            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
+            -w /code/kotekan \
+            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
+            ls -l
 
           # Run the test with timeout
           timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
