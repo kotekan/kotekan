@@ -40,8 +40,7 @@ void BeamInspect::main_thread() {
 
         std::string frequency_bins = "";
         for (size_t f = 0; f < metadata->coarse_freq.size(); ++f) {
-            frequency_bins +=
-                fmt::format("{:d}", metadata->coarse_freq[f]);
+            frequency_bins += fmt::format("{:d}", metadata->coarse_freq[f]);
             if (f != metadata->coarse_freq.size() - 1)
                 frequency_bins += ", ";
         }

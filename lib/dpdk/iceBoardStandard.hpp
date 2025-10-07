@@ -8,7 +8,6 @@
 #define ICE_BOARD_STANDARD_HPP
 
 #include "Config.hpp"
-#include "chordMetadata.hpp"
 #include "ICETelescope.hpp"
 #include "Telescope.hpp"
 #include "buffer.hpp"
@@ -220,8 +219,8 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
 // refactor some of this code.
 inline bool iceBoardStandard::handle_lost_samples(int64_t lost_samples) {
 
-    int64_t lost_sample_location =
-        last_seq + samples_per_packet - get_chord_metadata(out_buf, out_frame_id)->get_fpga_seq_num();
+    int64_t lost_sample_location = last_seq + samples_per_packet
+                                   - get_chord_metadata(out_buf, out_frame_id)->get_fpga_seq_num();
     uint64_t temp_seq = last_seq + samples_per_packet;
 
     // TODO this could be made more efficient by breaking it down into blocks of memsets.
@@ -247,7 +246,8 @@ inline bool iceBoardStandard::copy_packet(struct rte_mbuf* mbuf) {
 
     // Note this assumes that frame_size is divisable by samples_per_packet,
     // or the assert below will fail.
-    int64_t sample_location = cur_seq - get_chord_metadata(out_buf, out_frame_id)->get_fpga_seq_num();
+    int64_t sample_location =
+        cur_seq - get_chord_metadata(out_buf, out_frame_id)->get_fpga_seq_num();
     assert((size_t)(sample_location * sample_size) <= out_buf->frame_size);
 
     // Check if we are at the end of the current frame

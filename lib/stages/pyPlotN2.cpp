@@ -101,11 +101,10 @@ void pyPlotN2::make_plot(void) {
 
         usleep(10000);
 
-        json header = {
-            {"data_length", num_blocks * block_size},
-            {"type", "CORR_MATRIX"},
-            {"num_elements", num_elements},
-            {"block_dim", {block_dim, block_dim, 2}}};
+        json header = {{"data_length", num_blocks * block_size},
+                       {"type", "CORR_MATRIX"},
+                       {"num_elements", num_elements},
+                       {"block_dim", {block_dim, block_dim, 2}}};
         std::string s = header.dump() + "\n";
         fwrite(s.c_str(), 1, s.length(), python_script);
         for (uint32_t i = 0; i < num_blocks; i++) {

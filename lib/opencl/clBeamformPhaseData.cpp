@@ -75,7 +75,8 @@ cl_event clBeamformPhaseData::execute(cl_event pre_event) {
                 local_beamform_time = start_beamform_time; // Current time.
             }
         } else {
-            local_beamform_time = get_chord_metadata(network_buf, gpu_frame_id)->get_first_packet_recv_time().tv_sec;
+            local_beamform_time =
+                get_chord_metadata(network_buf, gpu_frame_id)->get_first_packet_recv_time().tv_sec;
         }
 
         get_delays(phases[bankID], local_beamform_time);

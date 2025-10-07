@@ -229,8 +229,9 @@ public:
                     // Cannot read int64_t directly yet...
                     const auto half_fpga_sample0_data = half_fpga_sample0->ReadAsDoubleArray();
                     assert(std::ptrdiff_t(half_fpga_sample0_data.size()) == meta->get_nfreq());
-                    std::vector<int64_t> half_fpga_sample0_int64_data(half_fpga_sample0_data.size());
-                    for (size_t i =0; i < half_fpga_sample0_data.size(); ++i) {
+                    std::vector<int64_t> half_fpga_sample0_int64_data(
+                        half_fpga_sample0_data.size());
+                    for (size_t i = 0; i < half_fpga_sample0_data.size(); ++i) {
                         half_fpga_sample0_int64_data[i] = half_fpga_sample0_data[i];
                     }
                     meta->set_half_fpga_sample0(half_fpga_sample0_int64_data);

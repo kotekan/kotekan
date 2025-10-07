@@ -31,7 +31,7 @@ size_t BeamMetadata::set_from_bytes(const char* bytes, size_t length) {
     ctime = fmt->ctime;
     coarse_freq.resize(fmt->nfreq);
     // TODO: copy on nfreq?
-    for (int i = 0 ; i < fmt->nfreq ; i++) {
+    for (int i = 0; i < fmt->nfreq; i++) {
         coarse_freq[i] = fmt->coarse_freq[i];
     }
     dataset_id = fmt->dataset_id;
@@ -48,7 +48,7 @@ size_t BeamMetadata::serialize(char* bytes) {
     fmt->fpga_seq_start = fpga_seq_start;
     fmt->ctime = ctime;
     fmt->nfreq = static_cast<int>(coarse_freq.size());
-    for (int i = 0 ; i < static_cast<int>(coarse_freq.size()) ; i++) {
+    for (int i = 0; i < static_cast<int>(coarse_freq.size()); i++) {
         fmt->coarse_freq[i] = coarse_freq[i];
     }
     fmt->dataset_id = dataset_id;

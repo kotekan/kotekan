@@ -5,8 +5,8 @@
 #include "buffer.hpp"          // for wait_for_empty_frame, mark_frame_full, register_producer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"  // for INFO, CHECK_MEM
-#include "vdif_functions.h"    // for VDIFHeader
+#include "kotekanLogging.hpp" // for INFO, CHECK_MEM
+#include "vdif_functions.h"   // for VDIFHeader
 
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for int32_t

@@ -1,9 +1,9 @@
 #include "BeamExtract.hpp"
 
-#include "BeamMetadata.hpp"   // for BeamMetadata
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"      // for stream_t
-#include "buffer.hpp"         // for Buffer
+#include "BeamMetadata.hpp" // for BeamMetadata
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"    // for stream_t
+#include "buffer.hpp"       // for Buffer
 #include "chordMetadata.hpp"
 #include "datasetManager.hpp" // for dset_id_t
 #include "kotekanLogging.hpp" // for DEBUG2

@@ -7,9 +7,9 @@
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "buffer.hpp"             // for Buffer
 #include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"     // for INFO, DEBUG, WARN
-#include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
-#include "visUtil.hpp"            // for input_ctype, frameID, ts_to_double, modulo, parse_reor...
+#include "kotekanLogging.hpp"    // for INFO, DEBUG, WARN
+#include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily, Metrics
+#include "visUtil.hpp"           // for input_ctype, frameID, ts_to_double, modulo, parse_reor...
 
 #include "fmt.hpp" // for compile_string_to_view, join
 
@@ -114,7 +114,8 @@ void basebandReadout::main_thread() {
             int in_buf_frame = frame_id % in_buf->num_frames;
             for (uint32_t stream_freq_idx = 0; stream_freq_idx < _num_freq_per_stream;
                  ++stream_freq_idx) {
-                uint32_t freq_id = get_chord_metadata(in_buf, in_buf_frame)->get_coarse_freq()[stream_freq_idx];
+                uint32_t freq_id =
+                    get_chord_metadata(in_buf, in_buf_frame)->get_coarse_freq()[stream_freq_idx];
                 freq_ids[stream_freq_idx] = freq_id;
 
                 DEBUG("Initialize baseband metrics for freq_id: {:d}/{:d}", freq_id,
@@ -394,7 +395,8 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
 
     timeval tmp, delta;
     delta.tv_sec = 0;
-    delta.tv_usec = (data.trigger_start_fpga - first_meta->get_fpga_seq_num()) * fpga_period_s * 1e6;
+    delta.tv_usec =
+        (data.trigger_start_fpga - first_meta->get_fpga_seq_num()) * fpga_period_s * 1e6;
     timeval first_packet_recv_time = first_meta->get_first_packet_recv_time();
     timeradd(&first_packet_recv_time, &delta, &tmp);
     timespec packet_time0 = {tmp.tv_sec, tmp.tv_usec * 1000};

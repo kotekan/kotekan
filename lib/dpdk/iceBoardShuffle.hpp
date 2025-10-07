@@ -445,7 +445,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
         get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_first_packet_recv_time(now);
         get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_fpga_seq_num(new_seq);
-        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_gps_time(gps_time);        
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_gps_time(gps_time);
         get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_sample0_offset(new_seq);
         get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_dataset_id(fpga_dataset);
 
@@ -515,7 +515,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     meta->dim[0] = lost_samples_buf->frame_size; // One byte per time sample
     meta->dims = 1;
     std::strncpy(meta->name, "lost_samples", sizeof meta->name);
-    
+
 
     return true;
 }
@@ -526,7 +526,9 @@ inline bool iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
     int64_t lost_sample_location;
 
     if (out_bufs[0]->metadata_pool->type_name == "chordMetadata") {
-        lost_sample_location = last_seq + samples_per_packet - get_chord_metadata(out_bufs[0], out_buf_frame_ids[0])->get_sample0_offset();
+        lost_sample_location =
+            last_seq + samples_per_packet
+            - get_chord_metadata(out_bufs[0], out_buf_frame_ids[0])->get_sample0_offset();
     } else {
         FATAL_ERROR("Unsupported metadata type: {:s}", out_bufs[0]->metadata_pool->type_name);
         return false;
@@ -578,7 +580,8 @@ inline void iceBoardShuffle::copy_packet_shuffle(struct rte_mbuf* mbuf) {
     int64_t sample_location;
 
     if (out_bufs[0]->metadata_pool->type_name == "chordMetadata") {
-        sample_location = cur_seq - get_chord_metadata(out_bufs[0], out_buf_frame_ids[0])->get_sample0_offset();
+        sample_location =
+            cur_seq - get_chord_metadata(out_bufs[0], out_buf_frame_ids[0])->get_sample0_offset();
     } else {
         FATAL_ERROR("Unsupported metadata type: {:s}", out_bufs[0]->metadata_pool->type_name);
         return;

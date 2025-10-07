@@ -1,10 +1,10 @@
 #include "frbPostProcess.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"
 #include "kotekanLogging.hpp"    // for DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter
@@ -161,10 +161,12 @@ void frbPostProcess::main_thread() {
         int64_t start_fpga_count = frb_header.fpga_count;
         while (!stop_thread) {
             // Find out the amount by which inputs are out of sync
-            int64_t max_fpga_count = get_chord_metadata(in_buf[0], in_buffer_ID[0])->get_fpga_seq_num();
+            int64_t max_fpga_count =
+                get_chord_metadata(in_buf[0], in_buffer_ID[0])->get_fpga_seq_num();
             for (int i = 1; i < _num_gpus; i++) {
                 max_fpga_count =
-                    std::max(max_fpga_count, get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
+                    std::max(max_fpga_count,
+                             get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
             }
 
             // On startup, we just go with whatever is the smallest input fpga_seq_num.
@@ -172,8 +174,9 @@ void frbPostProcess::main_thread() {
             if (startup) {
                 start_fpga_count = max_fpga_count;
                 for (int i = 1; i < _num_gpus; i++) {
-                    start_fpga_count =
-                        std::min(start_fpga_count, get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
+                    start_fpga_count = std::min(
+                        start_fpga_count,
+                        get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
                 }
                 startup = false;
             }
@@ -195,19 +198,23 @@ void frbPostProcess::main_thread() {
             // try to catch up the GPU inputs
             bool fpga_seq_in_sync = true;
             for (int i = 0; i < _num_gpus; ++i) {
-                while (max_fpga_count > get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
-                    INFO("Advance {} from {}", i, get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
+                while (max_fpga_count
+                       > get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
+                    INFO("Advance {} from {}", i,
+                         get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
                     in_buf[i]->mark_frame_empty(unique_name, in_buffer_ID[i]);
                     in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
                     in_frame[i] = in_buf[i]->wait_for_full_frame(unique_name, in_buffer_ID[i]);
                     if (in_frame[i] == nullptr)
                         return;
                 }
-                if (max_fpga_count != get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
+                if (max_fpga_count
+                    != get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
                     fpga_seq_in_sync = false;
                 }
                 // TODO: check if [0] is really correct
-                frb_header_coarse_freq_ids[i] = get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_coarse_freq()[0];
+                frb_header_coarse_freq_ids[i] =
+                    get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_coarse_freq()[0];
             }
 
             if (fpga_seq_in_sync) {
