@@ -1,6 +1,6 @@
 # -*-yaml-*-
 
-# CHORD pathfinder baseband beamformer setup
+# CHORD smallfinder baseband beamformer setup
 
 ################################################################################
 
@@ -68,7 +68,7 @@ run_bb:
           in_buf: host_bb_shift_buffer
           gpu_mem: bb_shift_buffer
         - name: cudaSyncInput
-        - name: cudaBasebandBeamformer_pathfinder
+        - name: cudaBasebandBeamformer_smallfinder
           voltage_name: voltage
           bb_phase_name: bb_phase
           bb_shift_name: bb_shift

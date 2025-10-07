@@ -11,7 +11,7 @@ cd "$scriptdir/.."
 card='A40'
 # card='GeForce_RTX_4090'
 # card='L40S'
-setups='chime chord hirax pathfinder'
+setups='chime chord hirax pathfinder smallfinder'
 
 mkdir -p output-${card}
 
@@ -45,7 +45,7 @@ done
 
 # Format generated C++ code
 for setup in ${setups}; do
-    clang-format-14 -i output-${card}/bb_${setup}.cxx &
+    clang-format-18 -i output-${card}/bb_${setup}.cxx &
 done
 
 # Format generated Julia code
