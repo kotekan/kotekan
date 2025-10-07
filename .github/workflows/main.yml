@@ -390,8 +390,7 @@ jobs:
             -DWITH_TESTS=OFF -DWITH_BOOST_TESTS=OFF \
             -DCOMPILE_DOCS=ON \
             ..
-        docker run "${OPTS[@]}" make doc
-        docker run "${OPTS[@]}" make sphinx
+        docker run "${OPTS[@]}" make docs
 
   # Linting
   lint:
