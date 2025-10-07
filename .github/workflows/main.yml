@@ -367,14 +367,14 @@ jobs:
           (
               pwd
               ls -l
-              ls -l data
+              ls -l data || true
               # cd /home/lwlab/kotekan-runner/_work/kotekan/kotekan
               git clone https://github.com/chord-observatory/kotekan_testing_inputs
               (cd kotekan_testing_inputs/fengine_init_pathfinder && unxz *.xz)
               ln -s kotekan_testing_inputs data
               pwd
               ls -l
-              ls -l data
+              ls -l data || true
           )
           timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
             --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
