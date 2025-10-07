@@ -50,7 +50,7 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     corr_type = config.get<std::string>(unique_name, "correlation_type");
     count_type = config.get<std::string>(unique_name, "counts_type");
     assert(corr_type == "const" || corr_type == "random" || corr_type == "f_times_ee");
-    assert(count_type == "const" || count_type == "random");
+    assert(count_type == "const" || count_type == "random" || count_type == "random_scalar");
 
     corr_value = config.get_default<std::array<int32_t, 2>>(unique_name, "correlation_value",
                                                             std::array<int32_t, 2>({1234, 5678}));
@@ -270,6 +270,11 @@ void testN2kGen::main_thread() {
                 // Fill the count array
                 int count_block_idx = 0;
 
+                int32_t count_scalar_val = -1;
+
+                if(count_type == "random_scalar")
+                    count_scalar_val = count_min + rand() % (count_max - count_min + 1);
+
                 for (int ihi = 0; ihi < count_lin_blocks; ihi++) {
                     // Lower triangular only
                     for (int jhi = 0; jhi <= ihi; jhi++) {
@@ -291,6 +296,8 @@ void testN2kGen::main_thread() {
                                     }
                                 } else if (count_type == "random") {
                                     count[idx] = count_min + rand() % (count_max - count_min + 1);
+                                } else if (count_type == "random_scalar") {
+                                    count[idx] = count_scalar_val;
                                 } else {
                                     count[idx] = 0;
                                 }

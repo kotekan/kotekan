@@ -69,6 +69,8 @@ private:
     int64_t _num_freq_per_n2k_frame;
     int64_t _num_frames_to_accumulate;
 
+    bool _packet_loss_is_scalar;
+
     int64_t _n_fpga_samples_per_n2k_frame;
     int64_t _n_fpga_samples_per_n2k_correlation;
     int64_t _n_integrations_per_n2k_frame;

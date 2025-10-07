@@ -54,6 +54,11 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     assert(_num_frames_to_accumulate > 0);
     assert(_num_frames_to_accumulate % 2 == 0);
 
+    _packet_loss_is_scalar = config.get<bool>(unique_name, "packet_loss_is_scalar");
+    if(!_packet_loss_is_scalar)
+        FATAL_ERROR("N2Accumulate configured to use packet loss matrix, which is not implemented.");
+    assert(_packet_loss_is_scalar);
+
     // sampling information
     _n_fpga_samples_per_n2k_frame = config.get<int64_t>(unique_name, "samples_per_data_set");
     _n_fpga_samples_per_n2k_correlation = config.get<int64_t>(unique_name, "sub_integration_ntime");
@@ -159,19 +164,17 @@ void N2Accumulate::main_thread() {
 
         // Fetch a new frame and get its sequence id
         DEBUG("Waiting for new input frame {:s}[{:d}].", in_buf->buffer_name, in_frame_id);
-        uint8_t* in_frame = in_buf->wait_for_full_frame(unique_name, in_frame_id);
-        if (in_frame == nullptr)
+        int32_t *corr = (int32_t *)in_buf->wait_for_full_frame(unique_name, in_frame_id);
+        if (corr == nullptr)
             break;
-        int32_t* input = (int32_t*)in_frame;
 
         // Fetch a new frame and get its sequence id
         DEBUG("Waiting for new input counts frame {:s}[{:d}].", in_counts_buf->buffer_name,
               in_counts_frame_id);
-        uint8_t* in_counts_frame =
-            in_counts_buf->wait_for_full_frame(unique_name, in_counts_frame_id);
-        if (in_counts_frame == nullptr)
+        int32_t *counts =
+            (int32_t *) in_counts_buf->wait_for_full_frame(unique_name, in_counts_frame_id);
+        if (counts == nullptr)
             break;
-        // int32_t* n2k_counts = (int32_t*)in_counts_frame;
 
         std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
         size_t in_frame_num = frame_metadata->get_fpga_seq_num() / _n_fpga_samples_per_n2k_frame;
@@ -227,7 +230,7 @@ void N2Accumulate::main_thread() {
             // Actual accumulation over
             for (int64_t d = 0; d < 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame;
                  ++d) {
-                _vis[d] += input[d];
+                _vis[d] += corr[d];
             } // d
 
             // If we're working on an even sample, store it for differencing
@@ -235,8 +238,8 @@ void N2Accumulate::main_thread() {
             // Potential optimization: copying vis_even is only really
             // necessary if we've started accumulating a new frame
             if (vis_sample_num_abs % 2 == 0) {
-                std::copy(input,
-                          input + 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame,
+                std::copy(corr,
+                          corr + 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame,
                           _vis_even.begin());
             } else {
                 for (int64_t d = 0; d < _n2k_correlation_num_products * _num_freq_per_n2k_frame;
