@@ -443,8 +443,11 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
         // Add metadata to the output buffer
 
-        // TODO: We may also need to store the gps_time in the metadata for the baseband system.
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_first_packet_recv_time(now);
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_fpga_seq_num(new_seq);
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_gps_time(gps_time);        
         get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_sample0_offset(new_seq);
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_dataset_id(fpga_dataset);
 
         ice_stream_id_t tmp_stream_id = port_stream_id;
         // Set the unused flag to store the post shuffle freq bin number.
@@ -484,6 +487,12 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     // Add metadata to the lost samples buffer
     lost_samples_buf->allocate_new_metadata_object(lost_samples_frame_id);
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_sample0_offset(new_seq);
+    // TODO: are these required for the lost_samples buffer? or is having them
+    // in the corresponding data buffer sufficient?
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_fpga_seq_num(new_seq);
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_first_packet_recv_time(now);
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_gps_time(gps_time);
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_dataset_id(fpga_dataset);
 
     // Set the frequency bins
     // Note that there are 4 frequencies assoicated with this packet loss buffer
