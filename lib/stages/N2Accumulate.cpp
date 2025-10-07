@@ -387,34 +387,6 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
             } // jhi
         } // ihi
 
-        /*
-            for (int64_t j = i; j < _num_elements; ++j) {
-                int64_t d_N2 =
-                    i * (_num_elements)
-                    + j; // index in the input N2/GPU matrix (blocked lower triangular format)
-                int64_t d_accum = N2::cmap(
-                    i, j,
-                    _num_elements); // index in the output vis matrix (upper triangular format)
-
-                // Populate the visibility matrix
-                // N2::cfloat v = {(float)_vis[f * 2 * _num_N2_products + 2 * d_N2 + 0],
-                //                -(float)_vis[f * 2 * _num_N2_products + 2 * d_N2 + 1]}; //
-                //                conjugate
-                N2::cfloat v = {
-                    (float)_vis[f * 2 * _n2k_correlation_num_products + 2 * d_N2 + 0],
-                    -(float)
-                        _vis[f * 2 * _n2k_correlation_num_products + 2 * d_N2 + 1]}; // conjugate
-                out_vis.vis[d_accum] = ins * v;
-
-                // de-bias and populate the weights matrix (with the inverse variance)
-                _weights[f * _n2k_correlation_num_products + d_N2] -=
-                    std::norm(v) * _n_valid_sample_diff_sq_sum[f] / ns / ns;
-                out_vis.weight[d_accum] =
-                    ns * ns / _weights[f * _n2k_correlation_num_products + d_accum];
-            }
-        }
-        */
-
         out_buf->mark_frame_full(unique_name, out_frame_id++);
     }
 
