@@ -1,10 +1,10 @@
 #include "HFBAccumulate.hpp"
 
-#include "HFBFrameView.hpp"   // for HFBFrameView
-#include "Hash.hpp"           // for operator!=, Hash
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"      // for Telescope
-#include "buffer.hpp"         // for Buffer
+#include "HFBFrameView.hpp" // for HFBFrameView
+#include "Hash.hpp"         // for operator!=, Hash
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"    // for Telescope
+#include "buffer.hpp"       // for Buffer
 #include "chordMetadata.hpp"
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for beamState, freqState, metadataState, subfreqState
@@ -91,7 +91,8 @@ void HFBAccumulate::init_first_frame(float* input_data, const uint32_t in_frame_
         fpga_seq_num_end - (_num_frames_to_integrate - 1) * _samples_per_data_set;
     memcpy(out_hfb.data(), input_data, _num_frb_total_beams * _factor_upchan * sizeof(float));
 
-    total_lost_timesamples += get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() - fpga_seq_num_start;
+    total_lost_timesamples +=
+        get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() - fpga_seq_num_start;
     // Get the first FPGA sequence no. to check for missing frames
     fpga_seq_num = get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num();
     frame++;
@@ -103,7 +104,8 @@ void HFBAccumulate::init_first_frame(float* input_data, const uint32_t in_frame_
 void HFBAccumulate::integrate_frame(float* input_data, const uint32_t in_frame_id) {
     frame++;
     fpga_seq_num += _samples_per_data_set;
-    total_lost_timesamples += get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() - fpga_seq_num;
+    total_lost_timesamples +=
+        get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() - fpga_seq_num;
     fpga_seq_num = get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num();
 
     // Integrates data from the input buffer to the output buffer.
@@ -174,7 +176,7 @@ void HFBAccumulate::main_thread() {
 
         float* input = (float*)in_frame_ptr;
         uint64_t frame_count =
-          (get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() / _samples_per_data_set);
+            (get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() / _samples_per_data_set);
 
         // Try and synchronize up the frames. Even though they arrive at
         // different rates, this should eventually sync them up.
@@ -267,8 +269,8 @@ void HFBAccumulate::main_thread() {
         }
 
         // When all frames have been integrated output the result
-        if (get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() >=
-            fpga_seq_num_end_old + _samples_per_data_set) {
+        if (get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num()
+            >= fpga_seq_num_end_old + _samples_per_data_set) {
 
             DEBUG("fpga_seq_num_end_old: {:d}, fpga_seq_start: {:d}", fpga_seq_num_end_old,
                   fpga_seq_num);

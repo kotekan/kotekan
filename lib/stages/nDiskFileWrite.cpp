@@ -5,8 +5,8 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"  // for ERROR, INFO
-#include "util.h"              // for cp, make_raw_dirs
+#include "kotekanLogging.hpp" // for ERROR, INFO
+#include "util.h"             // for cp, make_raw_dirs
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 

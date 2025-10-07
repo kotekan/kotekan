@@ -6,12 +6,12 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"
-#include "datasetManager.hpp"  // for datasetManager, dset_id_t, state_id_t
-#include "datasetState.hpp"    // for freqState, inputState, metadataState, prodState
-#include "kotekanLogging.hpp"  // for INFO
-#include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for VisFrameView
-#include "visUtil.hpp"         // for input_ctype, prod_ctype, freq_ctype, copy_vis_triangle
+#include "datasetManager.hpp" // for datasetManager, dset_id_t, state_id_t
+#include "datasetState.hpp"   // for freqState, inputState, metadataState, prodState
+#include "kotekanLogging.hpp" // for INFO
+#include "version.h"          // for get_git_commit_hash
+#include "visBuffer.hpp"      // for VisFrameView
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype, copy_vis_triangle
 
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
@@ -141,8 +141,7 @@ void visTransform::main_thread() {
 
             // TODO: multifrequency support
             // Copy over the metadata
-            output_frame.fill_metadata(get_chord_metadata(buf, frame_id).get(),
-                                       0);
+            output_frame.fill_metadata(get_chord_metadata(buf, frame_id).get(), 0);
 
             // Copy the visibility data into a proper triangle and write into
             // the file

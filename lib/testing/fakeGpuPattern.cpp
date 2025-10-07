@@ -1,8 +1,8 @@
 #include "fakeGpuPattern.hpp"
 
-#include "Config.hpp"        // for Config
+#include "Config.hpp" // for Config
 #include "chordMetadata.hpp"
-#include "visUtil.hpp"       // for prod_index
+#include "visUtil.hpp" // for prod_index
 
 #include "gsl-lite.hpp" // for span, span<>::iterator
 

@@ -2,10 +2,11 @@
 #define BEAMMETADATA_HPP
 
 #include "Telescope.hpp"      // for stream_t
-#include "datasetManager.hpp" // for dset_id_t
-#include "json.hpp"           // for json
-#include "metadata.hpp"       // for metadataObject
 #include "chordMetadata.hpp"  // for CHORD_META_MAX_FREQ
+#include "datasetManager.hpp" // for dset_id_t
+#include "metadata.hpp"       // for metadataObject
+
+#include "json.hpp" // for json
 
 #include <stdint.h> // for uint32_t, int64_t
 #include <time.h>   // for size_t, timespec

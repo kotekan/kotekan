@@ -8,11 +8,11 @@
 #define ICE_BOARD_VDIF
 
 #include "Config.hpp"
-#include "chordMetadata.hpp"
 #include "ICETelescope.hpp"
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
+#include "chordMetadata.hpp"
 #include "iceBoardHandler.hpp"
 #include "packet_copy.h"
 #include "restServer.hpp"
@@ -247,7 +247,8 @@ inline void iceBoardVDIF::handle_lost_samples(int64_t lost_samples) {
     const int64_t frame_size = vdif_packet_len * num_elements;
 
     int64_t lost_sample_location =
-        last_seq + samples_per_packet - get_chord_metadata(out_buf, out_buf_frame_id)->get_fpga_seq_num();
+        last_seq + samples_per_packet
+        - get_chord_metadata(out_buf, out_buf_frame_id)->get_fpga_seq_num();
     uint64_t temp_seq = last_seq + samples_per_packet;
 
     // TODO this could be made more efficient by breaking it down into blocks of memsets.
@@ -270,7 +271,8 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
 
     const int64_t frame_size = vdif_packet_len * num_elements;
 
-    int64_t vdif_frame_location = cur_seq - get_chord_metadata(out_buf, out_buf_frame_id)->get_fpga_seq_num();
+    int64_t vdif_frame_location =
+        cur_seq - get_chord_metadata(out_buf, out_buf_frame_id)->get_fpga_seq_num();
 
     if (unlikely((size_t)(vdif_frame_location * frame_size) == out_buf->frame_size)) {
         advance_vdif_frame(cur_seq);

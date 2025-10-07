@@ -1,7 +1,7 @@
 #include "compressLostSamples.hpp"
 
-#include "StageFactory.hpp"  // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"        // for Buffer
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"       // for Buffer
 #include "chordMetadata.hpp"
 
 #include <functional>  // for bind, function

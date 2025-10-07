@@ -1,9 +1,9 @@
 #include "fakeGpu.hpp"
 
-#include "Config.hpp"         // for Config
-#include "Stage.hpp"          // for Stage
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"         // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "Config.hpp"       // for Config
+#include "Stage.hpp"        // for Stage
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"       // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "chordMetadata.hpp"
 #include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "factory.hpp"        // for FACTORY
@@ -128,13 +128,13 @@ void FakeGpu::main_thread() {
             DEBUG("Simulating GPU buffer in {}[{}]", out_buf->buffer_name, frame_id);
 
             out_buf->allocate_new_metadata_object(frame_id);
-            stream_t stream_id = {.id=static_cast<decltype(stream_id.id)>(freq)};
+            stream_t stream_id = {.id = static_cast<decltype(stream_id.id)>(freq)};
             get_chord_metadata(out_buf, frame_id)->set_stream_id(stream_id);
             get_chord_metadata(out_buf, frame_id)->set_fpga_seq_num(fpga_seq);
 
             // Set the two times
             TIMESPEC_TO_TIMEVAL(&tv, &ts);
-            get_chord_metadata(out_buf, frame_id)->set_first_packet_recv_time( tv);
+            get_chord_metadata(out_buf, frame_id)->set_first_packet_recv_time(tv);
             get_chord_metadata(out_buf, frame_id)->set_gps_time(ts);
             get_chord_metadata(out_buf, frame_id)->set_dataset_id(dataset_id);
 

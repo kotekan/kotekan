@@ -2,9 +2,9 @@
 
 #include "Config.hpp"         // for Config
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
-#include "chordMetadata.hpp"  // for get_chord_metadata
 #include "Telescope.hpp"      // for Telescope, FREQ_ID_NOT_SET
 #include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for get_chord_metadata
 #include "configUpdater.hpp"  // for configUpdater
 #include "kotekanLogging.hpp" // for WARN, INFO, DEBUG
 #include "restServer.hpp"     // for HTTP_RESPONSE, connectionInstance, restServer
