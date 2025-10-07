@@ -365,7 +365,7 @@ jobs:
           
           # Download test inputs
           (
-              cd /home/lwlab/kotekan-runner/_work/kotekan/kotekan
+              # cd /home/lwlab/kotekan-runner/_work/kotekan/kotekan
               git clone https://github.com/chord-observatory/kotekan_testing_inputs
               (cd kotekan_testing_inputs/fengine_init_pathfinder && unxz *.xz)
               ln -s kotekan_testing_inputs data
