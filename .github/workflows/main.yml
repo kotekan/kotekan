@@ -198,7 +198,7 @@ jobs:
             name: "Run Linter"
             cmake_defs: ""
             post_build: |
-              ./tools/lint.sh
+              ./tools/lint.sh -d "$(realpath .)"
 
     steps:
       - name: Checkout repository
@@ -226,31 +226,6 @@ jobs:
           free -h
           echo "==========="
           lscpu
-
-      - name: Debug environment
-        run: |
-          echo "=== User info ==="
-          whoami
-          id
-          
-          echo "=== Julia executable info ==="
-          which julia
-          ls -la $(which julia)
-          file $(which julia)
-          
-          echo "=== Try running Julia ==="
-          julia --version
-          echo "Exit code: $?"
-          
-          echo "=== Julia library detection ==="
-          julia --startup-file=no -E 'using Libdl; println(Libdl.dlpath("libjulia"))' 2>&1
-          echo "Exit code: $?"
-          
-          echo "=== Check JULIA_DEPOT_PATH ==="
-          echo "JULIA_DEPOT_PATH: ${JULIA_DEPOT_PATH:-not set}"
-          
-          echo "=== Check for library path issues ==="
-          julia -e 'println(Sys.BINDIR)' 2>&1
 
       - name: Configure & Build kotekan
         if: matrix.cmake_defs
@@ -308,6 +283,41 @@ jobs:
               # Run Kotekan directly in the built tree inside the container
               timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/send_recv_asdfwrite.yaml
 
+          - id: verify_cuda_n2k_plexp
+            name: "verify_cuda_n2k_plexp test"
+            cmake_defs: *runner_build_default_opts
+            post_build: |
+              # Run Kotekan directly in the built tree inside the container
+              timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/verify_cuda_n2k_plexp.yaml
+
+          - id: verify_cuda_n2k_pl1bitcorr
+            name: "verify_cuda_n2k_pl1bitcorr test"
+            cmake_defs: *runner_build_default_opts
+            post_build: |
+              # Run Kotekan directly in the built tree inside the container
+              timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/verify_cuda_n2k_pl1bitcorr.yaml
+
+          - id: verify_cuda_n2k_corr
+            name: "verify_cuda_n2k_corr test"
+            cmake_defs: *runner_build_default_opts
+            post_build: |
+              # Run Kotekan directly in the built tree inside the container
+              timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/verify_cuda_n2k_corr.yaml
+
+          - id: verify_cuda_n2k
+            name: "verify_cuda_n2k test"
+            cmake_defs: *runner_build_default_opts
+            post_build: |
+              # Run Kotekan directly in the built tree inside the container
+              timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/verify_cuda_n2k.yaml
+
+          - id: test_n2k_writeHDF5
+            name: "test_n2k_writeHDF5 test"
+            cmake_defs: *runner_build_default_opts
+            post_build: |
+              # Run Kotekan directly in the built tree inside the container
+              timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/test_n2k_writeHDF5.yaml
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -336,31 +346,6 @@ jobs:
           lscpu
           echo "==========="
           nvidia-smi
-
-      - name: Debug environment
-        run: |
-          echo "=== User info ==="
-          whoami
-          id
-          
-          echo "=== Julia executable info ==="
-          which julia
-          ls -la $(which julia)
-          file $(which julia)
-          
-          echo "=== Try running Julia ==="
-          julia --version
-          echo "Exit code: $?"
-          
-          echo "=== Julia library detection ==="
-          julia --startup-file=no -E 'using Libdl; println(Libdl.dlpath("libjulia"))' 2>&1
-          echo "Exit code: $?"
-          
-          echo "=== Check JULIA_DEPOT_PATH ==="
-          echo "JULIA_DEPOT_PATH: ${JULIA_DEPOT_PATH:-not set}"
-          
-          echo "=== Check for library path issues ==="
-          julia -e 'println(Sys.BINDIR)' 2>&1
 
       - name: Configure & Build kotekan
         if: matrix.cmake_defs
