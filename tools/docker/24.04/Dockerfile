@@ -199,7 +199,7 @@ RUN mkdir src && \
 RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.2-linux-x86_64.tar.gz && \
     tar -xzf julia-1.11.2-linux-x86_64.tar.gz -C /opt && \
     ln -s /opt/julia-1.11.2/bin/julia /usr/local/bin/julia && \
-    rm julia-1.12.0-linux-x86_64.tar.gz
+    rm julia-1.11.2-linux-x86_64.tar.gz
 
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR=1
