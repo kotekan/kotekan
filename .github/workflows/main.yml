@@ -1,24 +1,13 @@
-# NOTE:
-# When we build kotekan on the Github VM we need to take into account a few
-# limitations: first we can't lock very much memory so we need to disable
-# mlock the buffers. Second, the VMs run across a range of CPU
-# architectures (from Haswell to Skylake-AVX512 as of 2020/03). Because our
-# use of ccache shares compiled objects we must target our build for the
-# lowest architecture available or we will occasionally crash with SIGILL
-# when a newer instruction is called than is available.  
-
 name: kotekan-ci-tests
 on:
   pull_request:
     branches:
     - chord
     - develop
-    - master
   push:
     branches:
     - chord
     - develop
-    - master
 
 env:
   REGISTRY: ghcr.io
@@ -369,6 +358,8 @@ jobs:
           df -h
           echo "==========="
           free -h
+          echo "==========="
+          lscpu
 
       - name: Try kotekan tasks
         run: |
@@ -389,7 +380,8 @@ jobs:
           ccache -s
 
 
-  test-selfhosted-container:
+  selfhosted-kotekan-tests:
+    name: "Self-Hosted Kotekan Tests"
     runs-on: self-hosted
     needs: build-docker-2404
     container:
@@ -397,10 +389,37 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      options: --privileged --gpus all
     defaults:
       run:
         shell: bash
     
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: direct-base
+            name: "Build "
+            cmake_defs: &runner_build_default_opts >-
+              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+            post_build: "" # Proto-entry for use later
+
+          - id: direct-send_recv_asdfwrite
+            name: "send_recv_asdfwrite test"
+            cmake_defs: *runner_build_default_opts
+            post_build: |
+              # Run Kotekan directly in the built tree inside the container
+              timeout 2m docker run --rm --privileged \
+                --mount type=bind,src="${WORKSPACE}",target=/code/kotekan \
+                -w /code/kotekan \
+                ${{ needs.build-docker-2404.outputs.docker_img_name }} ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/send_recv_asdfwrite.yaml
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -425,21 +444,24 @@ jobs:
           df -h
           echo "==========="
           free -h
+          echo "==========="
+          lscpu
+          echo "==========="
+          nvidia-smi
 
-      - name: Try kotekan tasks
+      - name: Configure & Build kotekan
         run: |
           set -euo pipefail
           mkdir build-2404 && cd build-2404
           ccache -s
-          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
-            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
-            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON \
-            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
-            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
-            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF \
-            -DUSE_DPDK=OFF \
-            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
-            ..
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
           make -j $(nproc)
           ccache -s
+
+      - name: Post-build commands (optional)
+        if: ${{ matrix.post_build != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Run any commands specified ...
+          ${{ matrix.post_build }}
