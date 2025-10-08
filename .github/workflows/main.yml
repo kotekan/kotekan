@@ -189,14 +189,14 @@ jobs:
             post_build: ""   # Any clang-specific tests to run?
 
           - id: docs
-            name: "build docs"
+            name: "Build Documentation"
             cmake_defs: >-
               -DCOMPILE_DOCS=ON
             post_build: |
               cd build-2404 && make docs
 
-          - id: docs
-            name: "build docs"
+          - id: lint
+            name: "Run Linter"
             cmake_defs: ""
             post_build: |
               ./tools/lint.sh
@@ -232,14 +232,15 @@ jobs:
         if: matrix.cmake_defs
         run: |
           set -euo pipefail
+          juliaup update # helps avoid build errors...
           mkdir build-2404 && cd build-2404
           ccache -s
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
           make -j $(nproc)
           ccache -s
 
-      - name: Post-build commands (optional)
-        if: ${{ matrix.post_build != '' }}
+      - name: Post-build commands
+        if: matrix.post_build
         shell: bash
         run: |
           set -euo pipefail
@@ -324,8 +325,8 @@ jobs:
           make -j $(nproc)
           ccache -s
 
-      - name: Post-build commands (optional)
-        if: ${{ matrix.post_build != '' }}
+      - name: Post-build commands
+        if: matrix.post_build
         shell: bash
         run: |
           set -euo pipefail
