@@ -256,7 +256,6 @@ jobs:
         if: matrix.cmake_defs
         run: |
           set -euo pipefail
-          juliaup update # helps avoid build errors...
           mkdir build-2404 && cd build-2404
           ccache -s
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
