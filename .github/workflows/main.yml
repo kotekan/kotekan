@@ -354,8 +354,86 @@ jobs:
           restore-keys: |
             ccache-test-2404
 
-      - name: Run commands in repo
+      - name: Print working environment details
         run: |
+          echo "==========="
           pwd
+          echo "==========="
           ls -la
+          echo "==========="
           env
+          echo "==========="
+          df -h
+          echo "==========="
+          free -h
+
+      - name: Try kotekan tasks
+        run: |
+          set -euo pipefail
+          mkdir build-2404 && cd build-2404
+          ccache -s
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON \
+            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
+            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
+            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
+            -DUSE_DPDK=OFF \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
+            ..
+          make -j $(nproc)
+          ccache -s
+
+
+  test-in-container:
+    runs-on: self-hosted
+    needs: build-docker-2404
+    container:
+      image: ${{ needs.build-docker-2404.outputs.docker_img_name }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-test-2404-${{ github.sha }}
+          restore-keys: |
+            ccache-test-2404
+
+      - name: Print working environment details
+        run: |
+          echo "==========="
+          pwd
+          echo "==========="
+          ls -la
+          echo "==========="
+          env
+          echo "==========="
+          df -h
+          echo "==========="
+          free -h
+
+      - name: Try kotekan tasks
+        run: |
+          set -euo pipefail
+          mkdir build-2404 && cd build-2404
+          ccache -s
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON \
+            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
+            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
+            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
+            -DUSE_DPDK=OFF \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
+            ..
+          make -j $(nproc)
+          ccache -s
