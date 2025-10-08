@@ -178,9 +178,9 @@ jobs:
   build-matrix-2404:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    container:
-      image: ${{ matrix.container_image || null }}
-      options: ${{ matrix.container_options || '' }}
+    # container:
+    #   image: ${{ matrix.container_image || null }}
+    #   options: ${{ matrix.container_options || '' }}
     needs: build-docker-2404
 
     strategy:
