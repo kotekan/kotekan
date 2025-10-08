@@ -107,7 +107,7 @@ jobs:
 
 
   github-kotekan-tests:
-    name: "Github-Hosted Tests"
+    name: "Github"
     runs-on: ubuntu-latest
     needs: build-docker-2404
     container:
@@ -123,7 +123,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-
           - id: base
             name: "Base build (no extras)"
             cmake_defs: &base_build_cmake_opts >-
@@ -228,6 +227,31 @@ jobs:
           echo "==========="
           lscpu
 
+      - name: Debug environment
+        run: |
+          echo "=== User info ==="
+          whoami
+          id
+          
+          echo "=== Julia executable info ==="
+          which julia
+          ls -la $(which julia)
+          file $(which julia)
+          
+          echo "=== Try running Julia ==="
+          julia --version
+          echo "Exit code: $?"
+          
+          echo "=== Julia library detection ==="
+          julia --startup-file=no -E 'using Libdl; println(Libdl.dlpath("libjulia"))' 2>&1
+          echo "Exit code: $?"
+          
+          echo "=== Check JULIA_DEPOT_PATH ==="
+          echo "JULIA_DEPOT_PATH: ${JULIA_DEPOT_PATH:-not set}"
+          
+          echo "=== Check for library path issues ==="
+          julia -e 'println(Sys.BINDIR)' 2>&1
+
       - name: Configure & Build kotekan
         if: matrix.cmake_defs
         run: |
@@ -248,9 +272,8 @@ jobs:
           ${{ matrix.post_build }}
 
 
-
   selfhosted-kotekan-tests:
-    name: "Self-Hosted Tests"
+    name: "Self-Hosted"
     runs-on: self-hosted
     needs: build-docker-2404
     container:
@@ -267,8 +290,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: direct-base
-            name: "Build "
+          - id: base
+            name: "Build kotekan"
             cmake_defs: &runner_build_default_opts >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
@@ -279,7 +302,7 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: "" # Proto-entry for use later
 
-          - id: direct-send_recv_asdfwrite
+          - id: send_recv_asdfwrite
             name: "send_recv_asdfwrite test"
             cmake_defs: *runner_build_default_opts
             post_build: |
@@ -314,6 +337,31 @@ jobs:
           lscpu
           echo "==========="
           nvidia-smi
+
+      - name: Debug environment
+        run: |
+          echo "=== User info ==="
+          whoami
+          id
+          
+          echo "=== Julia executable info ==="
+          which julia
+          ls -la $(which julia)
+          file $(which julia)
+          
+          echo "=== Try running Julia ==="
+          julia --version
+          echo "Exit code: $?"
+          
+          echo "=== Julia library detection ==="
+          julia --startup-file=no -E 'using Libdl; println(Libdl.dlpath("libjulia"))' 2>&1
+          echo "Exit code: $?"
+          
+          echo "=== Check JULIA_DEPOT_PATH ==="
+          echo "JULIA_DEPOT_PATH: ${JULIA_DEPOT_PATH:-not set}"
+          
+          echo "=== Check for library path issues ==="
+          julia -e 'println(Sys.BINDIR)' 2>&1
 
       - name: Configure & Build kotekan
         if: matrix.cmake_defs
