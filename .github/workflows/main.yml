@@ -178,9 +178,9 @@ jobs:
   build-matrix-2404:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    # container:
-    #   image: ${{ matrix.container_image || null }}
-    #   options: ${{ matrix.container_options || '' }}
+    container:
+      image: ${{ matrix.container_image || null }}
+      options: ${{ matrix.container_options || '' }}
     needs: build-docker-2404
 
     strategy:
@@ -308,8 +308,6 @@ jobs:
         key: ccache-${{ matrix.id }}-2404-${{ github.sha }}
         restore-keys: |
           ccache-${{ matrix.id }}-2404
-          ccache-base-build-2404
-          ccache-full-build-2404
 
     - name: Configure & Build
       shell: bash
@@ -333,3 +331,31 @@ jobs:
         set -euo pipefail
         # The block below comes from matrix.post_build
         ${{ matrix.post_build }}
+
+
+  test-in-container:
+    runs-on: ubuntu-latest
+    needs: build-docker-2404
+    container:
+      image: ${{ needs.build-docker-2404.outputs.docker_img_name }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-test-2404-${{ github.sha }}
+          restore-keys: |
+            ccache-test-2404
+
+      - name: Run commands in repo
+        run: |
+          pwd
+          ls -la
+          env
