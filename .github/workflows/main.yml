@@ -389,7 +389,7 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      options: --privileged --gpus all
+      options: --privileged
     defaults:
       run:
         shell: bash
