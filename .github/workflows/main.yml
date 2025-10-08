@@ -12,13 +12,10 @@ on:
 env:
   REGISTRY: ghcr.io
   IMG_2404: "ghcr.io/${{ github.repository }}/kotekan-2404"
-  PYTEST_TIMEOUT: 120
 
 jobs:
 
-  # 2404 Tests
-
-  # Ubuntu 24.04 docker image build and push
+  # Kotekan docker image build and push
   build-docker-2404:
     runs-on: ubuntu-latest
     permissions: write-all
@@ -109,68 +106,18 @@ jobs:
       docker_img_name: "${{ steps.docker_img.outputs.img_name }}"
 
 
-  # Linting
-  lint:
+  github-kotekan-tests:
+    name: "Github-Hosted Tests"
     runs-on: ubuntu-latest
     needs: build-docker-2404
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Login to GitHub Container Registry
-      if: ${{ !env.ACT }} # Don't log in if running locally
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Run lint.sh
-      shell: bash
-      run: |
-        set -e
-        docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan  # Build kotekan documentation
-
-  # Test documentation compile
-  build-docs:
-    runs-on: ubuntu-latest
-    needs: build-docker-2404
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Login to GitHub Container Registry
-      if: ${{ !env.ACT }} # Don't log in if running locally
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Build kotekan docs
-      run: |
-        IMG=${{ needs.build-docker-2404.outputs.docker_img_name }}
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-docs/ ${IMG})
-        docker run "${OPTS[@]}" \
-          cmake -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
-            -DCMAKE_LINK_WHAT_YOU_USE=OFF -DCCACHE=OFF \
-            -DUSE_OMP=OFF -DUSE_NUMA=ON -DNO_MEMLOCK=OFF \
-            -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF \
-            -DUSE_ASDF=OFF -DUSE_HDF5=OFF -DUSE_GDAL=OFF \
-            -DUSE_AIRSPY=OFF -DUSE_LAPACK_BLAZE=OFF -DUSE_FFTW=OFF -DUSE_JULIA=OFF \
-            -DUSE_DPDK=OFF \
-            -DWITH_TESTS=OFF -DWITH_BOOST_TESTS=OFF \
-            -DCOMPILE_DOCS=ON \
-            ..
-        docker run "${OPTS[@]}" make docs
-
-  build-matrix-2404:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
     container:
-      image: ${{ matrix.container_image || null }}
-      options: ${{ matrix.container_options || '' }}
-    needs: build-docker-2404
+      image: ${{ needs.build-docker-2404.outputs.docker_img_name }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
 
     strategy:
       fail-fast: false
@@ -179,9 +126,6 @@ jobs:
 
           - id: base
             name: "Base build (no extras)"
-            runner: ubuntu-latest
-            container_image: ""
-            container_options: ""
             cmake_defs: &base_build_cmake_opts >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
@@ -193,10 +137,7 @@ jobs:
             post_build: ""   # nothing to run
 
           - id: full
-            name: "Full build + unit tests"
-            runner: ubuntu-latest
-            container_image: ""
-            container_options: ""
+            name: "Full build + pytests tests"
             cmake_defs: &full_build_cmake_opts >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
@@ -207,18 +148,23 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: |
               # Run pytest tests
-              OPTS=(--rm --mount type=bind,src="${WORKSPACE}",target=/code/kotekan -w /code/kotekan/tests/)
-              docker run "${OPTS[@]}" "${IMG}" pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
-              docker run "${OPTS[@]}" "${IMG}" pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
-              # Run Boost tests
-              OPTS=(--rm --mount type=bind,src="${WORKSPACE}",target=/code/kotekan -w /code/kotekan/build-2404/tests/)
-              docker run "${OPTS[@]}" "${IMG}" /code/kotekan/tests/boost/run_boost_tests.sh -v -t "${PYTEST_TIMEOUT}" /code/kotekan/build-2404/tests/boost
+              PYTEST_TIMEOUT=120
+              cd tests
+              pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
 
-          - id: opencl
-            name: "OpenCL build"
+          - id: boost
+            name: "Full build + boost tests"
             runner: ubuntu-latest
             container_image: ""
             container_options: ""
+            cmake_defs: *full_build_cmake_opts
+            post_build: |
+              TEST_TIMEOUT=30
+              ./tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" build-2404/tests/boost
+
+          - id: opencl
+            name: "OpenCL build"
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
@@ -231,9 +177,6 @@ jobs:
 
           - id: clang
             name: "clang build"
-            runner: self-hosted
-            container_image: summerwind/actions-runner:ubuntu-22.04
-            container_options: --user root
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
@@ -245,95 +188,19 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: ""   # Any clang-specific tests to run?
 
-          - id: direct-base
-            name: "Direct-run config tests"
-            runner: self-hosted
-            container_image: summerwind/actions-runner:ubuntu-22.04
-            container_options: --user root
-            cmake_defs: &runner_build_default_opts >-
-              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
-              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
-              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
-              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
-              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
-              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
-              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
-            post_build: "" # Proto-entry for use later
-
-          - id: direct-send_recv_asdfwrite
-            name: "Direct-run send_recv_asdfwrite test"
-            runner: self-hosted
-            container_image: summerwind/actions-runner:ubuntu-22.04
-            container_options: --user root
-            cmake_defs: *runner_build_default_opts
+          - id: docs
+            name: "build docs"
+            cmake_defs: >-
+              -DCOMPILE_DOCS=ON
             post_build: |
-              set -euo pipefail
-              # Run Kotekan directly in the built tree inside the container
-              timeout 2m docker run --rm --privileged \
-                --mount type=bind,src="${WORKSPACE}",target=/code/kotekan \
-                -w /code/kotekan \
-                ${{ needs.build-docker-2404.outputs.docker_img_name }} ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/send_recv_asdfwrite.yaml
+              cd build-2404 && make docs
 
-    env:
-      REGISTRY: ghcr.io
-      PYTEST_TIMEOUT: ${{ vars.PYTEST_TIMEOUT || '600' }}
-      WORKSPACE: ${{ github.workspace }}
+          - id: docs
+            name: "build docs"
+            cmake_defs: ""
+            post_build: |
+              ./tools/lint.sh
 
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Login to GHCR
-      if: ${{ !env.ACT }}
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Cache ccache
-      uses: actions/cache@v4
-      with:
-        path: .ccache
-        key: ccache-${{ matrix.id }}-2404-${{ github.sha }}
-        restore-keys: |
-          ccache-${{ matrix.id }}-2404
-
-    - name: Configure & Build
-      shell: bash
-      run: |
-        set -euo pipefail
-        IMG="${{ needs.build-docker-2404.outputs.docker_img_name }}"
-        OPTS=(--rm --mount type=bind,src="${WORKSPACE}",target=/code/kotekan -w /code/kotekan/build-2404/)
-
-        docker run "${OPTS[@]}" "${IMG}" ccache -s
-        docker run "${OPTS[@]}" "${IMG}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
-        docker run "${OPTS[@]}" "${IMG}" bash -lc 'make -j $(nproc)'
-        docker run "${OPTS[@]}" "${IMG}" ccache -s
-        df -h
-
-    - name: Post-build commands (optional)
-      if: ${{ matrix.post_build != '' }}
-      shell: bash
-      env:
-        IMG: ${{ needs.build-docker-2404.outputs.docker_img_name }}
-      run: |
-        set -euo pipefail
-        # The block below comes from matrix.post_build
-        ${{ matrix.post_build }}
-
-
-  test-github-container:
-    runs-on: ubuntu-latest
-    needs: build-docker-2404
-    container:
-      image: ${{ needs.build-docker-2404.outputs.docker_img_name }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    defaults:
-      run:
-        shell: bash
-    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -361,27 +228,28 @@ jobs:
           echo "==========="
           lscpu
 
-      - name: Try kotekan tasks
+      - name: Configure & Build kotekan
+        if: matrix.cmake_defs
         run: |
           set -euo pipefail
           mkdir build-2404 && cd build-2404
           ccache -s
-          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
-            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
-            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON \
-            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
-            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
-            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF \
-            -DUSE_DPDK=OFF \
-            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
-            ..
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
           make -j $(nproc)
           ccache -s
 
+      - name: Post-build commands (optional)
+        if: ${{ matrix.post_build != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Run any commands specified ...
+          ${{ matrix.post_build }}
+
+
 
   selfhosted-kotekan-tests:
-    name: "Self-Hosted Kotekan Tests"
+    name: "Self-Hosted Tests"
     runs-on: self-hosted
     needs: build-docker-2404
     container:
@@ -447,6 +315,7 @@ jobs:
           nvidia-smi
 
       - name: Configure & Build kotekan
+        if: matrix.cmake_defs
         run: |
           set -euo pipefail
           mkdir build-2404 && cd build-2404
