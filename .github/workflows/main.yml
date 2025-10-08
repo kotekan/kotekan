@@ -415,10 +415,7 @@ jobs:
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
-              timeout 2m docker run --rm --privileged \
-                --mount type=bind,src="${WORKSPACE}",target=/code/kotekan \
-                -w /code/kotekan \
-                ${{ needs.build-docker-2404.outputs.docker_img_name }} ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/send_recv_asdfwrite.yaml
+              timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/send_recv_asdfwrite.yaml
 
     steps:
       - name: Checkout repository
