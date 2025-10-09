@@ -522,9 +522,27 @@ struct CorrelatorKernel
     
     
     static __device__ void
-    kernel_body(int *dst, const int8_t *src, const uint *rfimask, const int *ptable, int nt_inner)
+    kernel_body(int *dst, const int8_t *src, const uint *rfimask, const int *ptable, int nt_inner, int nt_outer)
     {
 	extern __shared__ int shmem[];
+
+        constexpr uint rfimask_time_split = 1024;
+        // The actual layout of out_rfimask is ((nt_outer*nt_inner)/128, NF, 128/32).
+        // The kernel below does not know this and assumes (NF, (nt_outer*nt_inner)/32).
+        // The function `ringbuffer_rfimask` corrects this.
+        const uint rfimask_fstride = nt_outer * nt_inner / 32;
+        const auto access_rfimask = [=](const uint& lval) -> const uint& {
+            auto idx = &lval - rfimask;            // index
+            auto f = idx / rfimask_fstride;        // frequency
+            auto t32 = idx % rfimask_fstride;      // time / 32
+            auto t = t32 * 32;                     // time
+            auto t1024hi = t / rfimask_time_split; // coarse time
+            auto t1024lo = t % rfimask_time_split; // fine time
+            auto thi = t1024hi;                    // first array index
+            auto tlo = t1024lo / 32;               // third array index
+            auto idx2 = tlo + f * (rfimask_time_split / 32) + thi * (rfimask_time_split / 32) * NF;
+            return rfimask[idx2];
+        };
 
 	// Initialize pointers.
 	
@@ -546,7 +564,7 @@ struct CorrelatorKernel
 		
 	// Initialize correlator state.
 
-	uint rm = *rfimask;
+	uint rm = access_rfimask(*rfimask);
 	rfimask += 32;
 	
 	int V[8][2][2][4];
@@ -570,7 +588,7 @@ struct CorrelatorKernel
 	    __syncthreads();
 
 	    if ((t & 0x300) == 0) {
-		rm = *rfimask;
+                rm = access_rfimask(*rfimask);
 		rfimask += 32;
 	    }
 	    
@@ -610,9 +628,9 @@ struct CorrelatorKernel
 
 template<int NS, int NF>
 __global__ void __launch_bounds__(CorrelatorParams::threads_per_block, 1)
-n2k_kernel(int *dst, const int8_t *src, const uint *rfimask, const int *ptable, int ntime)
+n2k_kernel(int *dst, const int8_t *src, const uint *rfimask, const int *ptable, int ntime, int nt_outer)
 {    
-    CorrelatorKernel<NS,NF>::kernel_body(dst, src, rfimask, ptable, ntime);
+    CorrelatorKernel<NS,NF>::kernel_body(dst, src, rfimask, ptable, ntime, nt_outer);
 }
 
 

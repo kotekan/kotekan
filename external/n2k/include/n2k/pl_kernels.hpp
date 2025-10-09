@@ -42,8 +42,12 @@ namespace n2k {
 
 // Version 1: bare-pointer interface.
 extern void launch_pl_mask_expander(
-    ulong *pl_out,           // shape (Tout/128, (Fout+3)/4, Sds)
-    const ulong *pl_in,      // shape (Tout/64, F, Sds)
+    ulong *pl_out,           // shape (Tout/64, F, Sds)
+    const ulong *pl_in,      // shape (Tout/128, (Fout+3)/4, Sds)
+    long Tmin_in,            // input ring buffer: first time samples
+    long Tsize_in,           // input ring buffer: ring buffer size
+    long Tmin_out,           // outut ring buffer: first time samples
+    long Tsize_out,          // outut ring buffer: ring buffer size
     long Tout,               // number of time samples (no downsampling factor)
     long Fout,               // number of freq channels (no downsampling factor)
     long Sds,                // number of downsampled stations (after downsampling by 8)
@@ -52,8 +56,8 @@ extern void launch_pl_mask_expander(
 
 // Version 2: gputils::Array<> interface.
 extern void launch_pl_mask_expander(
-    gputils::Array<ulong> &pl_out,        // shape (Tout/128, (Fout+3)/4, Sds)
-    const gputils::Array<ulong> &pl_in,   // shape (Tout/64, F, Sds)
+    gputils::Array<ulong> &pl_out,        // shape (Tout/64, F, Sds)
+    const gputils::Array<ulong> &pl_in,   // shape (Tout/128, (Fout+3)/4, Sds)
     cudaStream_t stream = 0);
 
 

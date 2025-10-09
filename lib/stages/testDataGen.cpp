@@ -47,18 +47,18 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     buf->register_producer(unique_name);
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "const_offset" || type == "const8" || type == "const16"
-           || type == "const32" || type == "constf16" || type == "random" || type == "random_signed"
-           || type == "random_signed_offset" || type == "ramp" || type == "tpluse"
-           || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square"
-           || type == "onehot");
+    assert(type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
+           || type == "const16" || type == "const32" || type == "constf16" || type == "random"
+           || type == "random_signed" || type == "random_signed_offset" || type == "ramp"
+           || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
+           || type == "square" || type == "onehot");
     assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
     int type_size = 1; // default
     if (type == "const")
         type_size = 1;
     if (type == "const_offset")
         type_size = 1;
-    if (type == "const8")
+    if (type == "const8" || type == "const1x8")
         type_size = 1;
     if (type == "const16")
         type_size = 2;
@@ -66,8 +66,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         type_size = 4;
     if (type == "constf16")
         type_size = 2;
-    if (type == "const" || type == "const_offset" || type == "const8" || type == "const16"
-        || type == "const32" || type == "random" || type == "random_signed"
+    if (type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
+        || type == "const16" || type == "const32" || type == "random" || type == "random_signed"
         || type == "random_signed_offset" || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
         _value_array =
@@ -80,6 +80,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _reuse_random = config.get_default<bool>(unique_name, "reuse_random", false);
     _seed = config.get_default<int>(unique_name, "seed", 0);
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
+    _name = config.get_default<std::string>(unique_name, "name", "E");
     _array_shape =
         config.get_default<std::vector<int>>(unique_name, "array_shape", std::vector<int>());
     if (_array_shape.size()) {
@@ -205,7 +206,7 @@ void testDataGen::main_thread() {
         std::shared_ptr<chordMetadata> chordmeta;
         if (metadata_is_chord(buf, frame_id)) {
             chordmeta = get_chord_metadata(buf, frame_id);
-            chordmeta->set_name("E");
+            chordmeta->set_name(_name);
             chordmeta->dims = (int)_array_shape.size();
             for (int d = 0; d < chordmeta->dims; ++d)
                 chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
@@ -237,6 +238,11 @@ void testDataGen::main_thread() {
             frame8 = (int8_t*)frame;
             if (chordmeta)
                 chordmeta->type = kotekan::int8;
+        } else if (type == "const1x8") {
+            n_to_set /= sizeof(int8_t);
+            frame8 = (int8_t*)frame;
+            if (chordmeta)
+                chordmeta->type = kotekan::uint1x8;
         } else if (type == "const16") {
             n_to_set /= sizeof(int16_t);
             frame16 = (int16_t*)frame;
@@ -345,7 +351,7 @@ void testDataGen::main_thread() {
 
         if (_value_array.size()
             && ((type == "const") || (type == "const_offset") || (type == "const8")
-                || (type == "const16") || (type == "const32")))
+                || (type == "const1x8") || (type == "const16") || (type == "const32")))
             // Cycle through "values" array, if given
             value = _value_array[frame_id_abs % _value_array.size()];
         for (uint j = 0; j < n_to_set; ++j) {
@@ -357,7 +363,7 @@ void testDataGen::main_thread() {
                 if (finished_seeding_constant)
                     break;
                 frame[j] = value;
-            } else if (type == "const8") {
+            } else if (type == "const8" || type == "const1x8") {
                 if (finished_seeding_constant)
                     break;
                 frame8[j] = value;

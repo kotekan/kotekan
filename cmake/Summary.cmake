@@ -1,7 +1,7 @@
 # Final feature summary table.
 #
 # Developer note: when adding new configure options or feature toggles, update the flag lists below
-# so the summary remains complete.
+# so the summary remains complete. This file should just be informative, not affect the build.
 
 include_guard(GLOBAL)
 include(${CMAKE_CURRENT_LIST_DIR}/Color.cmake)
@@ -88,152 +88,156 @@ function(kfeature_kv name value)
     kmsg_status("${name}: ${value}")
 endfunction()
 
-# GPU
-kfeature_header("GPU Features")
-# Alphabetical: CUDA, HIP, OpenCL
-kfeature_row("CUDA" "${CUDA_ENABLED}" "${CUDA_REASON}" OFF USE_CUDA)
-kfeature_row("HIP" "${HIP_ENABLED}" "${HIP_REASON}" OFF USE_HIP)
-kfeature_row("OpenCL" "${OPENCL_ENABLED}" "${OPENCL_REASON}" OFF USE_OPENCL)
+# Check availability of various features Then later on, print it.
 
-# IO
-kfeature_header("I/O Formats")
 set(_asdf_present OFF)
-if(NOT ASDF_ENABLED)
+if("${USE_ASDF}" STREQUAL "OFF")
     find_package(asdf-cxx QUIET)
     set(_asdf_present ${ASDF_CXX_FOUND})
 endif()
-kfeature_row("ASDF" "${ASDF_ENABLED}" "${ASDF_REASON}" "${_asdf_present}" USE_ASDF)
 
 set(_gdal_present OFF)
-if(NOT GDAL_ENABLED)
+if("${USE_GDAL}" STREQUAL "OFF")
     find_package(GDAL QUIET)
     set(_gdal_present ${GDAL_FOUND})
 endif()
-kfeature_row("GDAL" "${GDAL_ENABLED}" "${GDAL_REASON}" "${_gdal_present}" USE_GDAL)
 
 set(_hdf5_present OFF)
-if(NOT HDF5_ENABLED)
+if("${USE_HDF5}" STREQUAL "OFF")
     find_package(HDF5 QUIET)
     find_package(HighFive QUIET)
     if(HDF5_FOUND AND HighFive_FOUND)
         set(_hdf5_present ON)
     endif()
 endif()
-kfeature_row("HDF5" "${HDF5_ENABLED}" "${HDF5_REASON}" "${_hdf5_present}" USE_HDF5)
 
-# Math
-kfeature_header("Math")
 set(_fftw_present OFF)
-if(NOT FFTW_ENABLED)
+if("${USE_FFTW}" STREQUAL "OFF")
     find_package(FFTW QUIET)
     set(_fftw_present ${FFTW_FOUND})
 endif()
-kfeature_row("FFTW" "${FFTW_ENABLED}" "${FFTW_REASON}" "${_fftw_present}" USE_FFTW)
 
 set(_lapack_blaze_present OFF)
-if(NOT LAPACK_BLAZE_ENABLED)
+if("${USE_LAPACK_BLAZE}" STREQUAL "OFF")
     find_package(LAPACKE QUIET)
     find_package(Blaze QUIET)
     if(LAPACKE_FOUND AND BLAZE_FOUND)
         set(_lapack_blaze_present ON)
     endif()
 endif()
-kfeature_row("LAPACK/Blaze" "${LAPACK_BLAZE_ENABLED}" "${LAPACK_BLAZE_REASON}"
-             "${_lapack_blaze_present}" USE_LAPACK_BLAZE)
 
-# Other
-kfeature_header("Other")
-# Alphabetical: Airspy, DPDK, Julia, NUMA, OpenMP, OpenSSL
-set(AIRSPY_ENABLED ${USE_AIRSPY})
 if(DEFINED KOTEKAN_AIRSPY_REASON)
     set(AIRSPY_REASON "${KOTEKAN_AIRSPY_REASON}")
 else()
-    if(${USE_AIRSPY})
+    if("${USE_AIRSPY}" STREQUAL "ON")
         set(AIRSPY_REASON "enabled")
     else()
         set(AIRSPY_REASON "disabled")
     endif()
 endif()
-kfeature_row("Airspy" "${AIRSPY_ENABLED}" "${AIRSPY_REASON}" OFF USE_AIRSPY)
-if(DEFINED DPDK_ENABLED)
-    # Note: When WITH_BOOST_TESTS=ON, DPDK is disabled to avoid linker issues
-    kfeature_row("DPDK" "${DPDK_ENABLED}" "${DPDK_REASON}" OFF)
-endif()
-kfeature_row("Julia" "${JULIA_ENABLED}" "${JULIA_REASON}" OFF USE_JULIA)
-if(DEFINED NUMA_ENABLED)
-    # Optional: can be toggled with -DUSE_NUMA=ON|OFF
-    kfeature_row("NUMA" "${NUMA_ENABLED}" "${NUMA_REASON}" OFF USE_NUMA)
-endif()
-set(OMP_ENABLED ${USE_OMP})
+
+# Checks done; now print availability of various features
+
+# GPU
+kfeature_header("GPU Features")
+# Alphabetical: CUDA, HIP, OpenCL
+kfeature_row("CUDA" "${USE_CUDA}" "${CUDA_REASON}" OFF USE_CUDA)
+kfeature_row("HIP" "${USE_HIP}" "${HIP_REASON}" OFF USE_HIP)
+kfeature_row("OpenCL" "${USE_OPENCL}" "${OPENCL_REASON}" OFF USE_OPENCL)
+
+# IO
+kfeature_header("I/O Formats")
+kfeature_row("ASDF" "${USE_ASDF}" "${ASDF_REASON}" "${_asdf_present}" USE_ASDF)
+kfeature_row("GDAL" "${USE_GDAL}" "${GDAL_REASON}" "${_gdal_present}" USE_GDAL)
+kfeature_row("HDF5" "${USE_HDF5}" "${HDF5_REASON}" "${_hdf5_present}" USE_HDF5)
+
+# Math
+kfeature_header("Math")
+kfeature_row("FFTW" "${USE_FFTW}" "${FFTW_REASON}" "${_fftw_present}" USE_FFTW)
+kfeature_row("LAPACK/Blaze" "${USE_LAPACK_BLAZE}" "${LAPACK_BLAZE_REASON}"
+             "${_lapack_blaze_present}" USE_LAPACK_BLAZE)
+
+# Other
+kfeature_header("Other")
+# Alphabetical: Airspy, DPDK, Julia, NUMA, OpenMP, OpenSSL
+kfeature_row("Airspy" "${USE_AIRSPY}" "${AIRSPY_REASON}" "${USE_AIRSPY}" USE_AIRSPY)
+# Note: When WITH_BOOST_TESTS=ON, DPDK is disabled to avoid linker issues
+kfeature_row("DPDK" "${USE_DPDK}" "${DPDK_REASON}" "${USE_DPDK}" USE_DPDK)
+kfeature_row("Julia" "${USE_JULIA}" "${JULIA_REASON}" "${USE_JULIA}" USE_JULIA)
+
+# Build meta
+kfeature_header("Build")
+
+# Build Type aligned so value starts where ON/OFF would
+set(_bt_name "Build Type:")
+kpad_right(_bt_name "${_bt_name}" ${_kfeature_name_col_width})
+kmsg_status("${_bt_name} ${CMAKE_BUILD_TYPE} (-DCMAKE_BUILD_TYPE=Debug|Release|Test)")
+
 if(DEFINED KOTEKAN_USE_OMP_REASON)
     set(OMP_REASON "${KOTEKAN_USE_OMP_REASON}")
 else()
-    if(${USE_OMP})
+    if("${USE_OMP}" STREQUAL "ON")
         set(OMP_REASON "enabled")
     else()
         set(OMP_REASON "disabled")
     endif()
 endif()
-kfeature_row("OpenMP" "${OMP_ENABLED}" "${OMP_REASON}" OFF USE_OMP)
-if(DEFINED OPENSSL_ENABLED)
-    # Optional: can be toggled with -DUSE_OPENSSL=ON|OFF
-    if(OPENSSL_ENABLED)
-        kfeature_row("OpenSSL" "${OPENSSL_ENABLED}" "${OPENSSL_REASON}" OFF USE_OPENSSL)
-    else()
-        # Hint: use -DOPENSSL_ROOT_DIR=<path> for non-standard installs
-        set(_ossl_reason
-            "${OPENSSL_REASON}; use -DOPENSSL_ROOT_DIR=<path> for non-standard installs")
-        kfeature_row("OpenSSL" "${OPENSSL_ENABLED}" "${_ossl_reason}" OFF USE_OPENSSL)
-    endif()
+
+if("${USE_OPENSSL}" STREQUAL "ON")
+    set(_ossl_reason "${OPENSSL_REASON}")
+else()
+    # Hint: use -DOPENSSL_ROOT_DIR=<path> for non-standard installs
+    set(_ossl_reason "${OPENSSL_REASON}; use -DOPENSSL_ROOT_DIR=<path> for non-standard installs")
 endif()
 
-# Build meta
-kfeature_header("Build")
-# Build Type aligned so value starts where ON/OFF would
-set(_bt_name "Build Type:")
-kpad_right(_bt_name "${_bt_name}" ${_kfeature_name_col_width})
-kmsg_status("${_bt_name} ${CMAKE_BUILD_TYPE} (-DCMAKE_BUILD_TYPE=Debug|Release|Test)")
-set(DOCS_ENABLED ${COMPILE_DOCS})
-if(${COMPILE_DOCS})
+kfeature_row("NUMA" "${USE_NUMA}" "${NUMA_REASON}" OFF USE_NUMA)
+kfeature_row("OpenMP" "${USE_OMP}" "${OMP_REASON}" OFF USE_OMP)
+kfeature_row("OpenSSL" "${USE_OPENSSL}" "${_ossl_reason}" OFF USE_OPENSSL)
+
+if("${COMPILE_DOCS}" STREQUAL "ON")
     set(DOCS_REASON "enabled")
 else()
     set(DOCS_REASON "disabled")
 endif()
-kfeature_row("Docs" "${DOCS_ENABLED}" "${DOCS_REASON}" OFF COMPILE_DOCS)
-set(TESTS_ENABLED ${WITH_TESTS})
-if(${WITH_TESTS})
+kfeature_row("Docs" "${COMPILE_DOCS}" "${DOCS_REASON}" OFF COMPILE_DOCS)
+
+if("${WITH_TESTS}" STREQUAL "ON")
     set(TESTS_REASON "enabled: builds and links lib/testing")
 else()
     set(TESTS_REASON "disabled")
 endif()
-kfeature_row("C++ Tests (lib)" "${TESTS_ENABLED}" "${TESTS_REASON}" OFF WITH_TESTS)
-set(BOOSTTEST_ENABLED ${WITH_BOOST_TESTS})
-if(${WITH_BOOST_TESTS})
+kfeature_row("C++ Tests (lib)" "${WITH_TESTS}" "${TESTS_REASON}" OFF WITH_TESTS)
+
+if("${WITH_BOOST_TESTS}" STREQUAL "ON")
     set(BOOSTTEST_REASON "enabled: builds tests/boost and disables DPDK")
 else()
     set(BOOSTTEST_REASON "disabled")
 endif()
-kfeature_row("Boost Tests" "${BOOSTTEST_ENABLED}" "${BOOSTTEST_REASON}" OFF WITH_BOOST_TESTS)
-set(NOMEMLOCK_ENABLED ${NO_MEMLOCK})
-if(${NO_MEMLOCK})
+kfeature_row("Boost Tests" "${WITH_BOOST_TESTS}" "${BOOSTTEST_REASON}" OFF WITH_BOOST_TESTS)
+
+if("${NO_MEMLOCK}" STREQUAL "ON")
     set(NOMEMLOCK_REASON "enabled")
 else()
     set(NOMEMLOCK_REASON "disabled")
 endif()
-kfeature_row("No Memlock" "${NOMEMLOCK_ENABLED}" "${NOMEMLOCK_REASON}" OFF NO_MEMLOCK)
-kfeature_row("ccache" "${CCACHE_ENABLED}" "${CCACHE_REASON}" OFF CCACHE)
+kfeature_row("No Memlock" "${NO_MEMLOCK}" "${NOMEMLOCK_REASON}" OFF NO_MEMLOCK)
+
+kfeature_row("ccache" "${CCACHE}" "${CCACHE_REASON}" OFF CCACHE)
+
 set(WERROR_REASON "disabled")
-if(${WERROR_ENABLED})
+if("${WERROR}" STREQUAL "ON")
     set(WERROR_REASON "enabled")
 endif()
-kfeature_row("Warnings-as-errors" "${WERROR_ENABLED}" "${WERROR_REASON}" OFF WERROR)
+kfeature_row("Warnings-as-errors" "${WERROR}" "${WERROR_REASON}" OFF WERROR)
+
 set(IWYU_REASON "disabled")
-if(${IWYU_ENABLED})
+if("${IWYU}" STREQUAL "ON")
     set(IWYU_REASON "enabled")
 endif()
-kfeature_row("include-what-you-use" "${IWYU_ENABLED}" "${IWYU_REASON}" OFF IWYU)
+kfeature_row("include-what-you-use" "${IWYU}" "${IWYU_REASON}" OFF IWYU)
 
 # Flag overrides requested by users; show compact key=value list.
+
 set(_ktk_flag_openssl "")
 if(DEFINED OPENSSL_ROOT_DIR AND NOT "${OPENSSL_ROOT_DIR}" STREQUAL "")
     set(_ktk_flag_openssl "OPENSSL_ROOT_DIR='${OPENSSL_ROOT_DIR}'")
@@ -245,6 +249,12 @@ if(DEFINED BLAZE_PATH AND NOT "${BLAZE_PATH}" STREQUAL "")
     set(_ktk_flag_blaze "BLAZE_PATH='${BLAZE_PATH}'")
 else()
     set(_ktk_flag_blaze "BLAZE_PATH=")
+endif()
+
+if(DEFINED HDF5Plugin_PLUGIN_DIR AND NOT "${HDF5Plugin_PLUGIN_DIR}" STREQUAL "")
+    set(_ktk_flag_hdf5_plugin "HDF5_PLUGIN_DIR='${HDF5Plugin_PLUGIN_DIR}'")
+else()
+    set(_ktk_flag_hdf5_plugin "HDF5_PLUGIN_DIR=")
 endif()
 
 if(DEFINED KOTEKAN_CL_TARGET_OPENCL_VERSION AND NOT "${KOTEKAN_CL_TARGET_OPENCL_VERSION}" STREQUAL
@@ -267,7 +277,8 @@ else()
 endif()
 
 set(_ktk_flag_summary
-    "${_ktk_flag_openssl} ${_ktk_flag_blaze} ${_ktk_flag_cl} ${_ktk_flag_prefix} ${_ktk_flag_cuda}")
+    "${_ktk_flag_openssl} ${_ktk_flag_blaze} ${_ktk_flag_hdf5_plugin} ${_ktk_flag_cl} ${_ktk_flag_prefix} ${_ktk_flag_cuda}"
+)
 kmsg_status("Flag Overrides: ${_ktk_flag_summary}")
 kmsg_status("Cache Hint: run 'cmake -U<VAR> .' or remove CMakeCache.txt to reset")
 
@@ -283,7 +294,7 @@ if(NOT _cxx_vers)
 endif()
 kfeature_kv("C" "${CMAKE_C_COMPILER_ID} ${_c_vers} (${CMAKE_C_COMPILER})")
 kfeature_kv("C++" "${CMAKE_CXX_COMPILER_ID} ${_cxx_vers} (${CMAKE_CXX_COMPILER})")
-if(CUDA_ENABLED)
+if(NOT ${USE_CUDA} STREQUAL "OFF")
     set(_cuda_vers ${CMAKE_CUDA_COMPILER_VERSION})
     if(NOT _cuda_vers)
         set(_cuda_vers "unknown")

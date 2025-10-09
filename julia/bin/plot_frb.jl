@@ -15,7 +15,7 @@ function cat_dimarrays(A::DimArray{T,D}, Bs::DimArray{T,D}...) where {T,D}
     return R
 end
 
-function freq_time_norm(A, p=2)
+function E_freq_time_norm(A, p=2)
     scale = p == Inf ? 1 : inv(length(@view A[:, :, begin, begin]))^inv(p)
     return [scale * norm((@view A[:, :, freq, time]), p) for freq in 1:size(A, 3), time in 1:size(A, 4)]
 end
@@ -40,7 +40,7 @@ E = let
     cat_dimarrays(Es...)
 end;
 
-Enorm2 = freq_time_norm(E, 2);
+Enorm2 = E_freq_time_norm(E, 2);
 Enorm2small = Enorm2 |> A -> reshape(A, (size(A, 1), 32, :)) |> A -> maximum(A; dims=2) |> A -> reshape(A, (size(A, 1), size(A, 3)));
 let
     fig = Figure(; size=(640, 480))
@@ -61,6 +61,7 @@ end;
 
 
 # TODO: check upchannelized voltage, frb 1 beams
+
 
 
 iters = 0:0;

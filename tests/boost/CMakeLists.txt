@@ -96,7 +96,9 @@ target_include_directories(test_dataset_manager_rest PUBLIC . ${CUDA_INCLUDE_DIR
                                                             ${CUDA_INCLUDE_DIRS})
 
 # list test source files that need HDF5 here:
-if(${USE_HDF5})
+if(HDF5_FOUND
+   AND HighFive_FOUND
+   AND HDF5Plugin_PLUGIN_DIR)
     add_executable(test_transpose test_transpose.cpp)
     target_link_libraries(test_transpose PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
     # test_transpose needs fmt and VisTranspose

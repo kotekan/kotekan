@@ -87,6 +87,8 @@ add_library(
     cudaUpchannelizer_pathfinder_U16.cpp
     cudaUpchannelizer_pathfinder_U32.cpp
     cudaUpchannelizer_pathfinder_U64.cpp
+    cudaPLMaskExpander.cpp
+    cudaPL1bitCorrelator.cpp
     cudaRFIS012.cpp
     cudaRFIS012bar.cpp
     cudaRFIS012tilde.cpp
