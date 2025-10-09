@@ -1,6 +1,7 @@
 #include "Config.hpp"              // for Config
 #include "NDArray.hpp"             // for NDArray
 #include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "driver_types.h"          // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
 #include "gpuCommand.hpp"          // for gpuCommandType
@@ -19,7 +20,7 @@
 #include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include <div.hpp>               // for div_noremainder, round_down
 #include <functional>            // for function
-#include <memory>                // for allocator, shared_ptr
+#include <memory>                // for allocator, shared_ptr, __shared_ptr_access
 #include <string>                // for basic_string, string
 #include <sys/types.h>           // for uint, ulong
 #include <vector>                // for vector

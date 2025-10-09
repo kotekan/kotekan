@@ -1,0 +1,90 @@
+# -*-yaml-*-
+
+# CHORD smallfinder n2k setup
+
+################################################################################
+
+# Correlator setup
+n2k_sub_integration_ntime: 8192
+# n2k_samples_per_data_set = max(num_times, n2k_sub_integration_ntime)
+n2k_samples_per_data_set: 8192
+
+################################################################################
+
+# Buffers
+
+n2k_num_subintegrations: n2k_samples_per_data_set / n2k_sub_integration_ntime
+
+n2k_correlation_blocksize: 16
+n2k_correlation_num_elements: num_dishes * num_polarizations
+n2k_correlation_linear_num_blocks: (n2k_correlation_num_elements + 1) / n2k_correlation_blocksize
+n2k_correlation_triangle_num_blocks: n2k_correlation_linear_num_blocks * (n2k_correlation_linear_num_blocks + 1) / 2
+n2k_correlation_triangle_size: n2k_correlation_blocksize * n2k_correlation_blocksize * n2k_correlation_triangle_num_blocks
+
+n2k_counts_blocksize: 8
+n2k_counts_num_elements: num_dishes / 8 * num_polarizations
+n2k_counts_linear_num_blocks: (n2k_counts_num_elements + 1) / n2k_counts_blocksize
+n2k_counts_triangle_num_blocks: n2k_counts_linear_num_blocks * (n2k_counts_linear_num_blocks + 1) / 2
+n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_counts_triangle_num_blocks
+
+host_n2k_correlation_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_int32 * num_components * n2k_correlation_triangle_size * num_frequencies * n2k_num_subintegrations
+    metadata_pool: main_pool
+
+host_n2k_counts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_int32 * n2k_counts_triangle_size * num_frequencies * n2k_num_subintegrations
+    metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+run_n2k_correlation:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+        out_buffers:
+            host_n2k_correlation_buffer: host_n2k_correlation_buffer
+        commands:
+        - name: cudaCorrelator
+          num_elements: num_dishes * num_polarizations
+          num_local_freq: num_frequencies
+          samples_per_data_set: n2k_samples_per_data_set
+          sub_integration_ntime: n2k_sub_integration_ntime
+          voltage_name: voltage
+          rfi_RFImask_name: rfi_RFImask
+          n2k_correlation_name: n2k_correlation
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: n2k_correlation_buffer
+          out_buf: host_n2k_correlation_buffer
+
+run_n2k_counts:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+        out_buffers:
+            host_n2k_counts_buffer: host_n2k_counts_buffer
+        commands:
+        - name: cudaPL1bitCorrelator
+          num_elements: num_dishes * num_polarizations
+          num_local_freq: num_frequencies
+          samples_per_data_set: n2k_samples_per_data_set
+          sub_integration_ntime: n2k_sub_integration_ntime
+          pl_expanded_mask_name: pl_expanded_mask
+          rfi_RFImask_name: rfi_RFImask
+          n2k_counts_name: n2k_counts
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: n2k_counts_buffer
+          out_buf: host_n2k_counts_buffer
