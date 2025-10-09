@@ -13,7 +13,7 @@
 
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
-#include "chimeMetadata.hpp"  // for chimeMetadata
+#include "chordMetadata.hpp"
 #include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "pulsarTiming.hpp"   // for Polyco
@@ -71,7 +71,7 @@ public:
      * @param  frame_num  Index of frame since start.
      * @param  freq_id    Global frequency ID.
      **/
-    virtual void fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
+    virtual void fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata, const int frame_num,
                       freq_id_t freq_id) = 0;
 
 protected:
@@ -95,7 +95,7 @@ public:
     BlockGpuPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa fakeGpuPattern::fill
-    void fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
+    void fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata, const int frame_num,
               freq_id_t freq_id) override;
 };
 
@@ -113,7 +113,7 @@ public:
     LostSamplesGpuPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa fakeGpuPattern::fill
-    void fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
+    void fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata, const int frame_num,
               freq_id_t freq_id) override;
 };
 
@@ -143,7 +143,7 @@ public:
     LostWeightsGpuPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa fakeGpuPattern::fill
-    void fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
+    void fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata, const int frame_num,
               freq_id_t freq_id) override;
 
 private:
@@ -166,7 +166,7 @@ public:
     AccumulateGpuPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa fakeGpuPattern::fill
-    void fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
+    void fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata, const int frame_num,
               freq_id_t freq_id) override;
 };
 
@@ -182,7 +182,7 @@ public:
     GaussianGpuPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa fakeGpuPattern::fill
-    void fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
+    void fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata, const int frame_num,
               freq_id_t freq_id) override;
 
 private:
@@ -214,7 +214,7 @@ public:
     PulsarGpuPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa fakeGpuPattern::fill
-    void fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
+    void fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata, const int frame_num,
               freq_id_t freq_id) override;
 
 private:
@@ -237,7 +237,7 @@ public:
     MultiFreqGpuPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa fakeGpuPattern::fill
-    void fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
+    void fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata, const int frame_num,
               freq_id_t freq_id) override;
 };
 #endif // FAKE_GPU_PATTERN

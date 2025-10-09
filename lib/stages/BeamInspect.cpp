@@ -37,13 +37,11 @@ void BeamInspect::main_thread() {
             break;
 
         BeamMetadata* metadata = (BeamMetadata*)(in_buf->get_metadata(frame_id).get());
-        const uint32_t num_freq_per_stream = Telescope::instance().num_freq_per_stream();
 
         std::string frequency_bins = "";
-        for (uint32_t f = 0; f < num_freq_per_stream; ++f) {
-            frequency_bins +=
-                fmt::format("{:d}", Telescope::instance().to_freq_id(metadata->stream_id, f));
-            if (f != num_freq_per_stream - 1)
+        for (size_t f = 0; f < metadata->coarse_freq.size(); ++f) {
+            frequency_bins += fmt::format("{:d}", metadata->coarse_freq[f]);
+            if (f != metadata->coarse_freq.size() - 1)
                 frequency_bins += ", ";
         }
 

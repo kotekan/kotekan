@@ -150,44 +150,30 @@ public:
                 meta->offset = 0;
 
                 if (dataset.hasAttribute("sample0_offset"))
-                    meta->sample0_offset = dataset.getAttribute("sample0_offset").read<int>();
-                else
-                    meta->sample0_offset = -1;
+                    meta->set_sample0_offset(dataset.getAttribute("sample0_offset").read<int>());
                 if (dataset.hasAttribute("offset_downsampling"))
-                    meta->offset_downsampling =
-                        dataset.getAttribute("offset_downsampling").read<int>();
-                else
-                    meta->offset_downsampling = -1;
+                    meta->set_offset_downsampling(
+                        dataset.getAttribute("offset_downsampling").read<int>());
 
-                if (dataset.hasAttribute("nfreq")) {
-                    meta->nfreq = dataset.getAttribute("nfreq").read<int>();
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-
+                if (dataset.hasAttribute("coarse_freq")) {
                     const auto coarse_freq =
                         dataset.getAttribute("coarse_freq").read<std::vector<int>>();
-                    assert(std::ptrdiff_t(coarse_freq.size()) == meta->nfreq);
-                    std::copy(coarse_freq.begin(), coarse_freq.end(), meta->coarse_freq);
+                    meta->set_coarse_freq(coarse_freq);
 
                     const auto freq_upchan_factor =
                         dataset.getAttribute("freq_upchan_factor").read<std::vector<int>>();
-                    assert(std::ptrdiff_t(freq_upchan_factor.size()) == meta->nfreq);
-                    std::copy(freq_upchan_factor.begin(), freq_upchan_factor.end(),
-                              meta->freq_upchan_factor);
+                    assert(std::ptrdiff_t(freq_upchan_factor.size()) == meta->get_nfreq());
+                    meta->set_freq_upchan_factor(freq_upchan_factor);
 
                     const auto half_fpga_sample0 =
                         dataset.getAttribute("half_fpga_sample0").read<std::vector<std::int64_t>>();
-                    assert(std::ptrdiff_t(half_fpga_sample0.size()) == meta->nfreq);
-                    std::copy(half_fpga_sample0.begin(), half_fpga_sample0.end(),
-                              meta->half_fpga_sample0);
+                    assert(std::ptrdiff_t(half_fpga_sample0.size()) == meta->get_nfreq());
+                    meta->set_half_fpga_sample0(half_fpga_sample0);
 
                     const auto time_downsampling_fpga =
                         dataset.getAttribute("time_downsampling_fpga").read<std::vector<int>>();
-                    assert(std::ptrdiff_t(time_downsampling_fpga.size()) == meta->nfreq);
-                    std::copy(time_downsampling_fpga.begin(), time_downsampling_fpga.end(),
-                              meta->time_downsampling_fpga);
-
-                } else {
-                    meta->nfreq = -1;
+                    assert(std::ptrdiff_t(time_downsampling_fpga.size()) == meta->get_nfreq());
+                    meta->set_time_downsampling_fpga(time_downsampling_fpga);
                 }
 
 

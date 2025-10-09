@@ -6,7 +6,6 @@
 #include "Telescope.hpp"       // for Telescope, stream_t
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "chordMetadata.hpp"   // for chordMetadata, chordDataType, get_chord_metadata, metadat...
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, ERROR
 #include "kotekanTrackers.hpp" // for KotekanTrackers
@@ -200,35 +199,37 @@ void testDataGen::main_thread() {
             break;
 
         buf->allocate_new_metadata_object(frame_id);
-        set_fpga_seq_num(buf, frame_id, seq_num);
-        set_stream_id(buf, frame_id, stream_id);
+        get_chord_metadata(buf, frame_id)->set_fpga_seq_num(seq_num);
 
         gettimeofday(&now, nullptr);
-        set_first_packet_recv_time(buf, frame_id, now);
+        get_chord_metadata(buf, frame_id)->set_first_packet_recv_time(now);
 
-        std::shared_ptr<chordMetadata> chordmeta;
-        if (metadata_is_chord(buf, frame_id)) {
-            chordmeta = get_chord_metadata(buf, frame_id);
-            chordmeta->set_name(_name);
-            chordmeta->dims = (int)_array_shape.size();
-            for (int d = 0; d < chordmeta->dims; ++d)
-                chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
-            chordmeta->set_strides_simple();
-            assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
-            chordmeta->nfreq = _num_freq_in_frame;
+        std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
+        chordmeta->set_name(_name);
+        chordmeta->dims = (int)_array_shape.size();
+        for (int d = 0; d < chordmeta->dims; ++d)
+            chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
+        chordmeta->set_strides_simple();
 
-            for (int f = 0; f < chordmeta->nfreq; f++) {
-                chordmeta->coarse_freq[f] = f;
-                chordmeta->freq_upchan_factor[f] = 1;
-                chordmeta->half_fpga_sample0[f] = 0;
-                chordmeta->time_downsampling_fpga[f] = _meta_time_downsample_factor;
-            }
-
-            chordmeta->fpga_seq_num = seq_num;
-            chordmeta->sample0_offset =
-                frame_id_abs * samples_per_data_set / _meta_time_downsample_factor;
-            chordmeta->offset_downsampling = 1;
+        assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
+        std::vector<int> coarse_freq(_num_freq_in_frame);
+        std::vector<int> freq_upchan_factor(coarse_freq.size());
+        std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
+        std::vector<int> time_downsampling_fpga(coarse_freq.size());
+        for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
+            coarse_freq[f] = f;
+            freq_upchan_factor[f] = 1;
+            half_fpga_sample0[f] = 0;
+            time_downsampling_fpga[f] = _meta_time_downsample_factor;
         }
+        chordmeta->set_coarse_freq(coarse_freq);
+        chordmeta->set_freq_upchan_factor(freq_upchan_factor);
+        chordmeta->set_half_fpga_sample0(half_fpga_sample0);
+        chordmeta->set_time_downsampling_fpga(time_downsampling_fpga);
+
+        chordmeta->set_sample0_offset(frame_id_abs * samples_per_data_set
+                                      / _meta_time_downsample_factor);
+        chordmeta->set_offset_downsampling(1);
 
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
@@ -309,47 +310,6 @@ void testDataGen::main_thread() {
                     set_onehot_frame_counter(buf, frame_id, frame_id_abs);
                     INFO("Set {:s}[{:d}] frame counter {:d}", buf->buffer_name, frame_id,
                          frame_id_abs);
-                } else if (chordmeta) {
-                    DEBUG("CHORD metadata; setting array sizes and one-hot indices");
-                    int nfreq = 0;
-                    int ntime = 0;
-                    for (size_t i = 0; i < _array_shape.size(); i++) {
-                        int n = _array_shape[i];
-                        std::string name = "";
-                        if (_dim_name.size() && _dim_name[i].size())
-                            name = _dim_name[i];
-
-                        chordmeta->set_array_dimension(i, n, name);
-                        chordmeta->set_onehot_dimension(i, indices[i], name);
-                        // INFO("Chord metadata: set one-hot index {:c} = {:d} (of {:d})", name,
-                        // indices[i], n);
-                        //  HACK -- look for dimension named "F", assume that's = nfreq
-                        if (name == "F")
-                            nfreq = n;
-                        // HACK -- look for dimension named "T", assume that's a fine time sample
-                        if (name == "T")
-                            ntime = n;
-                    }
-                    chordmeta->dims = (int)_array_shape.size();
-                    chordmeta->n_one_hot = chordmeta->dims;
-                    chordmeta->type = kotekan::int4x2;
-                    // DEBUG("one-hot: nfreq = {:d}, ntime = {:d}", nfreq, ntime);
-                    if (nfreq) {
-                        assert(nfreq <= CHORD_META_MAX_FREQ);
-                        chordmeta->nfreq = nfreq;
-                        for (int i = 0; i < nfreq; i++) {
-                            // Arbitrarily number the frequency channels...
-                            chordmeta->coarse_freq[i] = i;
-                            chordmeta->freq_upchan_factor[i] = 1;
-                            int64_t fpgacount = frame_id_abs * ntime;
-                            chordmeta->half_fpga_sample0[i] = 2 * fpgacount;
-                            chordmeta->time_downsampling_fpga[i] = 1;
-                        }
-                    }
-
-                    DEBUG("Chord metadata: array shape {:s}", chordmeta->get_dimensions_string());
-                    DEBUG("Chord metadata: one-hot: {:s}", chordmeta->get_onehot_string());
-
                 } else {
                     ERROR("Metadata type is not one-hot, not recording one-hot indices anywhere!");
                 }
