@@ -49,11 +49,6 @@ exit_abnormal() {
 }
 
 echo "lint.sh: So you don't have to push kotekan twice."
-echo "Using:"
-echo "   KOTEKAN_DIR=$KOTEKAN_DIR"
-echo "   ENABLE_IWYU=$ENABLE_IWYU"
-echo "   N_JOBS=$N_JOBS"
-echo "   EXIT_ON_FAILURE=$EXIT_ON_FAILURE"
 
 # parse command line arguments
 while getopts ":d:i:j:e:" options; do
@@ -90,6 +85,14 @@ while getopts ":d:i:j:e:" options; do
       ;;
   esac
 done
+
+echo "Using:"
+echo "   KOTEKAN_DIR=$KOTEKAN_DIR"
+echo "   ENABLE_IWYU=$ENABLE_IWYU"
+echo "   N_JOBS=$N_JOBS"
+echo "   EXIT_ON_FAILURE=$EXIT_ON_FAILURE"
+cd $KOTEKAN_DIR
+echo "Working in $KOTEKAN_DIR".
 
 if ! [ $EXIT_ON_FAILURE = "OFF" ]; then
     # exit when any command fails
