@@ -257,9 +257,9 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-    options: >-
-      --privileged
-      --mount type=bind,source=/data,target=/data
+      options: >-
+        --privileged
+        --mount type=bind,source=/data,target=/data
     defaults:
       run:
         shell: bash
