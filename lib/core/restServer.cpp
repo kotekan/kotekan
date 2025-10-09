@@ -81,7 +81,7 @@ bool restServer::canBindToAddress(const std::string& address, const u_short port
     // Use getaddrinfo to resolve the address (works for both IPs and hostnames)
     struct addrinfo hints, *result = nullptr;
     std::memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;     // Allow both IPv4 and IPv6
+    hints.ai_family = AF_UNSPEC;     // Allows IPv4
     hints.ai_socktype = SOCK_STREAM; // TCP socket
     hints.ai_flags = AI_PASSIVE;     // For binding
 

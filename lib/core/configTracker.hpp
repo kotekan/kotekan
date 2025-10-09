@@ -230,7 +230,7 @@ public:
      */
     bool hasConfig(std::string host, uint16_t port) const {
         std::lock_guard<std::mutex> lock(_lock);
-        return _configs.count({host, port});
+        return _configs.count({host, port}) > 0;
     }
 
     /**
@@ -238,7 +238,7 @@ public:
      */
     bool hasConfig(std::string hash) const {
         std::lock_guard<std::mutex> lock(_lock);
-        return _config_hashes.count(hash);
+        return _config_hashes.count(hash) > 0;
     }
 
     /**
@@ -420,6 +420,9 @@ public:
             std::string host_port_str = upstream_host + ":" + std::to_string(upstream_port);
             if (config_response_json.contains(host_port_str)) {
                 ConfigInfo info = ConfigInfo(config_response_json[host_port_str]);
+                // check that the new hash matches expectations.
+                if(_jsonHash(info.config) != hash || info.json_hash != hash)
+                    ERROR_NON_OO("ConfigTracker: Returned hash or config is inconsistent with hash {}!", hash);
                 _insertConfig(upstream_host, upstream_port, info);
             } else {
                 // If the config was not found, log a non-fatal error.

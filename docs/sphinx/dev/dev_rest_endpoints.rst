@@ -113,14 +113,13 @@ The REST server binds on a specific address and port when started:
 
 Valid address forms:
 
-- IPv4 literals: e.g., ``127.0.0.1``, ``0.0.0.0``
-- IPv6 literals: e.g., ``::1``, ``2001:db8::1`` (bare address, no brackets)
-- Hostnames containing only letters, digits, dots, hyphens, and underscores:
-  e.g., ``localhost``, ``example-host``, ``sub.domain``
+- IPv4 literals only, e.g., ``127.0.0.1``, ``0.0.0.0``
 
 Not accepted by ``isValidAddress()``:
 
 - Addresses including ports: ``127.0.0.1:8080``, ``example.com:12048``
+- IPv6 literals: e.g., ``::1``, ``2001:db8::1`` (bare address, no brackets)
+- Hostnames, e.g. ``localhost``, ``example-host``, ``sub.domain``
 - URIs with schemes: ``http://example.com``
 - Bracketed IPv6 forms: ``[::1]``
 
