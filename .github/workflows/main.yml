@@ -147,8 +147,9 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: |
               # Run pytest tests
+              PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=120
-              cd tests
+              cd $GITHUB_WORKSPACE/tests
               pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
               pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
 
@@ -192,7 +193,7 @@ jobs:
             cmake_defs: >-
               -DCOMPILE_DOCS=ON
             post_build: |
-              cd build-2404 && make docs
+              cd $GITHUB_WORKSPACE/build-2404 && make docs
 
           - id: lint
             name: "Run Linter"
@@ -231,7 +232,7 @@ jobs:
         if: matrix.cmake_defs
         run: |
           set -euo pipefail
-          mkdir build-2404 && cd build-2404
+          mkdir $GITHUB_WORKSPACE/build-2404 && cd $GITHUB_WORKSPACE/build-2404
           ccache -s
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
           make -j $(nproc)
@@ -351,7 +352,7 @@ jobs:
         if: matrix.cmake_defs
         run: |
           set -euo pipefail
-          mkdir build-2404 && cd build-2404
+          mkdir $GITHUB_WORKSPACE/build-2404 && cd $GITHUB_WORKSPACE/build-2404
           ccache -s
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
           make -j $(nproc)
