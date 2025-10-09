@@ -6,7 +6,7 @@ Overview
 ``ConfigTracker`` is a singleton service that records the *startup-time* configuration
 JSONs of all Kotekan instances participating in a pipeline. Each unique
 ``(host, port)`` pair has exactly one configuration entry, keyed by a canonical
-hash of the JSON (with any ``updatable_config`` pruned).
+hash of the JSON (with any blocks containing ``kotekan_update_endpoint`` pruned).
 
 The tracker exposes two REST endpoints:
 

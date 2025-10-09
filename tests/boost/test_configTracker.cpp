@@ -84,16 +84,16 @@ BOOST_AUTO_TEST_CASE(add_same_two_jsons) {
                {"key5", {{"subkey3", "subvalue3"}, {"subkey4", "subvalue4"}}},
                {"key6", "value6"}};
 
-    // Another identical json with updatable config
+    // Another identical json with kotekan_update_endpoint
     json j2 = {{"key4", "value4"},
                {"key5", {{"subkey3", "subvalue3"}, {"subkey4", "subvalue4"}}},
                {"key6", "value6"},
-               {"updatable_config", {{"key7", "value7"}, {"key8", "value8"}}}};
+               {"block", {{"kotekan_update_endpoint", "value7"}, {"key8", "value8"}}}};
 
     tracker.insertRawConfig("127.0.0.1", 8080, j1, "1.0.0", "main", "abcdef1234567890",
                             "CMAKE_BUILD_TYPE=Release");
 
-    // same port, same config (updatable_config should be ignored!), so no conflict expected
+    // same port, same config (block with kotekan_update_endpoint should be ignored!), so no conflict expected
     tracker.insertRawConfig("127.0.0.1", 8080, j2, "1.0.0", "main", "abcdef1234567890",
                             "CMAKE_BUILD_TYPE=Release");
 

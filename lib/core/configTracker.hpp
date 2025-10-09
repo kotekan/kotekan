@@ -92,7 +92,7 @@ private:
      * configuration JSON object.
      */
     struct ConfigInfo {
-        nlohmann::json config; /// Configuration data json (minus updatable_config)
+        nlohmann::json config; /// Configuration data json (minus blocks with kotekan_update_endpoint)
         std::string json_hash; /// Stored md5 hash of the ConfigInfo::config
 
         /// Kotekan version information (should match lib/version details.)
@@ -189,7 +189,7 @@ public:
     /**
      * @brief Insert raw (unfiltered) JSON configuration into the tracker.
      * Creates a ConfigInfo object from the parameters.
-     * This function will strip "updatable_config" fields.
+     * This function will strip blocks with an kotekan_update_endpoint.
      *
      * @param host The host where the kotekan instance with the configuration is running.
      * @param port The port where the kotekan instance with the configuration is running.
@@ -204,14 +204,9 @@ public:
                          const std::string& kotekan_build_branch,
                          const std::string& kotekan_git_commit_hash,
                          const std::string& kotekan_cmake_options) {
-        // Strip updatable config fields before hashing
-        nlohmann::json filtered_json;
-        for (auto& [key, value] : config_json.items()) {
-            if (key != "updatable_config") {
-                filtered_json[key] = value;
-            }
-        }
 
+        // Strip blocks with an kotekan_update_endpoint before hashing
+        nlohmann::json filtered_json = _strip_update_endpoints(config_json);
         std::string json_hash = _jsonHash(filtered_json);
 
         ConfigInfo info =
@@ -536,9 +531,9 @@ private:
      *
      * This function generates a hash for a given configuration JSON object.
      * In the context of the configTracker, the JSON object must have any
-     * "updatable_config" fields stripped before hashing. (This function only
-     * checks for that, and errors, expecting a caller to supply
-     * consistent information.)
+     * blocks containing a "kotekan_update_endpoint" stripped before hashing.
+     * (This function only checks for that, and errors, expecting a caller to
+     * supply a compliant config json.)
      *
      * @param filtered_json The configuration JSON object to hash.
      * @returns The canonical hash as a string.
@@ -549,11 +544,11 @@ private:
         // nlohmann::json::dump() uses an alpha-ordered map for objects, so the
         // config gets serialized in a consistent order.
 
-        // In order for this to hash configs correctly, this assumes the updatable_config
-        // field is removed, and versioning information has been added.
-        if (filtered_json.contains("updatable_config")) {
+        // In order for this to hash configs correctly, this assumes any kotekan_update_endpoints
+        // are removed, and versioning information has been added.
+        if (_has_kotekan_update_endpoint(filtered_json)) {
             FATAL_ERROR_NON_OO(
-                "ConfigTracker: _jsonHash called with updatable_config field present.");
+                "ConfigTracker: _jsonHash called with kotekan_update_endpoint present.");
         }
 
         // Stick to a string dump for now
@@ -583,7 +578,7 @@ private:
     /**
      * @brief Insert configuration information into the tracker.
      * Fatal kotekan error if a config with the same host and port already exists, are invalid, or
-     * the config includes an "updatable_config" field.
+     * the config includes a kotekan_update_endpoint.
      *
      * @param host The (ipv4) host where the kotekan instance with the configuration is running.
      * @param port The port where the kotekan instance with the configuration is running.
@@ -591,10 +586,10 @@ private:
      */
     void _insertConfig(std::string host, uint16_t port, ConfigInfo config_info) {
 
-        // Make sure the config_info doesn't have an "updatable_config" field in its config
-        if (config_info.config.contains("updatable_config")) {
+        // Make sure the config_info doesn't have a "kotekan_update_endpoint" in its config
+        if (_has_kotekan_update_endpoint(config_info.config)) {
             FATAL_ERROR_NON_OO(
-                "ConfigTracker: _insertConfig called with updatable_config field present.");
+                "ConfigTracker: _insertConfig called with kotekan_update_endpoint present.");
         }
 
         // normalize localhost to 127.0.0.1
@@ -692,6 +687,39 @@ private:
             _tracker_hash = md5_ss.str();
             DEBUG_NON_OO("ConfigTracker: Combined hash set to: {}", _tracker_hash);
         }
+    }
+
+    nlohmann::json _strip_update_endpoints(const nlohmann::json& j) const {
+        if (j.is_object()) {
+            if (j.contains("kotekan_update_endpoint")) return nullptr;
+
+            nlohmann::json result = nlohmann::json::object();
+            for (auto& [k, v] : j.items()) {
+                if (auto sub = _strip_update_endpoints(v); !sub.is_null())
+                    result[k] = sub;
+            }
+            return result;
+        }
+        if (j.is_array()) {
+            nlohmann::json result = nlohmann::json::array();
+            for (auto& v : j)
+                if (auto sub = _strip_update_endpoints(v); !sub.is_null())
+                    result.push_back(sub);
+            return result;
+        }
+        return j;
+    }
+
+    bool _has_kotekan_update_endpoint(const nlohmann::json& j) const {
+        if (j.is_object()) {
+            if (j.contains("kotekan_update_endpoint")) return true;
+            for (auto& [k, v] : j.items())
+                if (_has_kotekan_update_endpoint(v)) return true;
+        } else if (j.is_array()) {
+            for (auto& v : j)
+                if (_has_kotekan_update_endpoint(v)) return true;
+        }
+        return false;
     }
 
 }; // class ConfigTracker
