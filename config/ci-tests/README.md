@@ -1,4 +1,29 @@
+# Kotekan CI YAML Tests
 
-Configs in this directory should run as part of the CI.
+Runs Kotekan tests against multiple YAML configuration files with configurable timeouts.
 
-In order to be included in a CI run, an entry (possibly including different compile flags) should be made in .github/workflows/main.yml.
+## Usage
+
+```bash
+./run_tests.sh <kotekan_binary> <timeout_duration> <test_config_dir>
+```
+
+**Example:**
+```bash
+./run_tests.sh ./build-2404/kotekan/kotekan 2m config/ci-tests
+```
+
+## Output Exampe
+
+```
+======================================
+Test Summary
+======================================
+Total tests: 10
+Passed: 8
+Failed: 1
+Timed out: 1
+
+Failed tests:
+  - config/ci-tests/test_broken.yaml (exit code: 1)
+```

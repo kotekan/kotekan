@@ -282,53 +282,12 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: "" # Proto-entry for use later
 
-          - id: send_recv_asdfwrite
-            name: "send_recv_asdfwrite test"
-            ccache_key: selfhosted-kotekan-default
-            cmake_defs: *runner_build_default_opts
+          - id: ci_yaml_tests
+            name: "run yamls in config/ci-tests"
+            ccache_key: selfhosted-kotekan-default # Re-use ccache key from above
+            cmake_defs: *runner_build_default_opts # Re-use build opts from above
             post_build: |
-              # Run Kotekan directly in the built tree inside the container
-              timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/send_recv_asdfwrite.yaml
-
-          - id: verify_cuda_n2k_plexp
-            name: "verify_cuda_n2k_plexp test"
-            ccache_key: selfhosted-kotekan-default
-            cmake_defs: *runner_build_default_opts
-            post_build: |
-              # Run Kotekan directly in the built tree inside the container
-              timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/verify_cuda_n2k_plexp.yaml
-
-          - id: verify_cuda_n2k_pl1bitcorr
-            name: "verify_cuda_n2k_pl1bitcorr test"
-            ccache_key: selfhosted-kotekan-default
-            cmake_defs: *runner_build_default_opts
-            post_build: |
-              # Run Kotekan directly in the built tree inside the container
-              timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/verify_cuda_n2k_pl1bitcorr.yaml
-
-          - id: verify_cuda_n2k_corr
-            name: "verify_cuda_n2k_corr test"
-            ccache_key: selfhosted-kotekan-default
-            cmake_defs: *runner_build_default_opts
-            post_build: |
-              # Run Kotekan directly in the built tree inside the container
-              timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/verify_cuda_n2k_corr.yaml
-
-          - id: verify_cuda_n2k
-            name: "verify_cuda_n2k test"
-            ccache_key: selfhosted-kotekan-default
-            cmake_defs: *runner_build_default_opts
-            post_build: |
-              # Run Kotekan directly in the built tree inside the container
-              timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/verify_cuda_n2k.yaml
-
-          - id: test_n2k_writeHDF5
-            name: "test_n2k_writeHDF5 test"
-            ccache_key: selfhosted-kotekan-default
-            cmake_defs: *runner_build_default_opts
-            post_build: |
-              # Run Kotekan directly in the built tree inside the container
-              timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/test_n2k_writeHDF5.yaml
+              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests
 
           - id: data_test
             name: "/data dir test"
