@@ -9,4 +9,4 @@ add_subdirectory(sphinx)
 
 # Aggregate documentation targets
 add_custom_target(docs DEPENDS sphinx doxygen)
-add_custom_target(doc  DEPENDS docs)
+add_custom_target(doc DEPENDS docs)

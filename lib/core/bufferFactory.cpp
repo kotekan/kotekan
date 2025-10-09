@@ -14,6 +14,7 @@
 #include <cstdint>   // for int32_t, uint32_t
 #include <stddef.h>  // for size_t
 #include <stdexcept> // for runtime_error
+#include <vector>    // for vector
 
 using json = nlohmann::json;
 using std::map;

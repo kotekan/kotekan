@@ -39,7 +39,7 @@
 #include <utility>     // for pair
 #include <vector>      // for vector
 #ifdef WITH_HDF5
-#include "hdf5.h"
+#include "hdf5.h" // IWYU pragma: keep, export
 #endif
 
 

@@ -9,13 +9,14 @@
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <cassert>    // for assert
+#include <cstddef>    // for size_t, ptrdiff_t
 #include <cstdint>    // for int64_t, uint16_t
-#include <memory>     // for shared_ptr, __shared_ptr_access, static_pointer_cast, weak...
+#include <memory>     // for shared_ptr, allocator, __shared_ptr_access, static_pointer...
 #include <sstream>    // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
-#include <string.h>   // for size_t, strncpy, strnlen
-#include <string>     // for char_traits, basic_string, string, allocator, operator==
+#include <string.h>   // for strncpy, strnlen, size_t
+#include <string>     // for char_traits, basic_string, string, operator==, operator<<
 #include <sys/time.h> // for timeval
-#include <time.h>     // for timespec
+#include <time.h>     // for size_t, timespec
 #include <vector>     // for vector
 
 // One of the warning-silencing pragmas below only applied for gcc >= 8
