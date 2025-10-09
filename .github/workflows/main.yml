@@ -199,7 +199,8 @@ jobs:
             name: "Run Linter"
             cmake_defs: ""
             post_build: |
-              bash $GITHUB_WORKSPACE/tools/lint.sh -d $GITHUB_WORKSPACE
+              cd $GITHUB_WORKSPACE
+              bash ./tools/lint.sh
 
     steps:
       - name: Checkout repository

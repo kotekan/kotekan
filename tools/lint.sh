@@ -49,6 +49,11 @@ exit_abnormal() {
 }
 
 echo "lint.sh: So you don't have to push kotekan twice."
+echo "Using:"
+echo "   KOTEKAN_DIR=$KOTEKAN_DIR"
+echo "   ENABLE_IWYU=$ENABLE_IWYU"
+echo "   N_JOBS=$N_JOBS"
+echo "   EXIT_ON_FAILURE=$EXIT_ON_FAILURE"
 
 # parse command line arguments
 while getopts ":d:i:j:e:" options; do
