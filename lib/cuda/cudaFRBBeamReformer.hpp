@@ -7,7 +7,7 @@
 #ifndef CUDA_FRB_BEAMREFORMER_HPP
 #define CUDA_FRB_BEAMREFORMER_HPP
 
-#include <Config.hpp>>             // for Config
+#include <Config.hpp>              // for Config
 #include <DataType.hpp>            // for float16_t
 #include <bufferContainer.hpp>     // for bufferContainer
 #include <cstddef>                 // for size_t, ptrdiff_t
