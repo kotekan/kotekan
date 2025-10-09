@@ -17,6 +17,7 @@
 #include <cstddef>    // for size_t, ptrdiff_t
 #include <cstdint>    // for int64_t, uint16_t
 #include <memory>     // for shared_ptr, allocator, __shared_ptr_access, static_pointer...
+#include <mutex>      // for mutex, lock_guard
 #include <sstream>    // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
 #include <string.h>   // for strncpy, strnlen, size_t
 #include <string>     // for char_traits, basic_string, string, operator==, operator<<
@@ -54,6 +55,10 @@ public:
     /// Serializes this metadata object into the given byte array,
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
+
+    /// controls write access to lost_timesamples only, assuming that a 32bit
+    /// read is already atomic
+    std::mutex lock;
 
     // TODO: Replace by NDArray
     char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
@@ -231,10 +236,8 @@ public:
     }
 
     void atomic_add_lost_timesamples(const int32_t lost_samples) {
-        // RH: this is almost certainly not admissible code, but also almost certain, "works".
-        // RH: this is not actually atomic and has race conditions if the underlying json dict changes
-        static_assert(std::is_same<std::int64_t, nlohmann::json::number_integer_t>::value, "Roland's horrible hack fails");
-        *reinterpret_cast<std::atomic_int64_t*>(metadata[jsonMetadata::LOST_TIMESAMPLES].template get_ptr<std::int64_t*>()) += lost_samples;
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::LOST_TIMESAMPLES] = metadata[jsonMetadata::LOST_TIMESAMPLES].template get<int32_t>() + lost_samples;
     }
 
     // All time samples in this buffer (or the whole buffer, if the
