@@ -271,6 +271,7 @@ jobs:
         include:
           - id: base
             name: "Build kotekan"
+            ccache_key: selfhosted-kotekan-default
             cmake_defs: &runner_build_default_opts >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
@@ -283,6 +284,7 @@ jobs:
 
           - id: send_recv_asdfwrite
             name: "send_recv_asdfwrite test"
+            ccache_key: selfhosted-kotekan-default
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
@@ -290,6 +292,7 @@ jobs:
 
           - id: verify_cuda_n2k_plexp
             name: "verify_cuda_n2k_plexp test"
+            ccache_key: selfhosted-kotekan-default
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
@@ -297,6 +300,7 @@ jobs:
 
           - id: verify_cuda_n2k_pl1bitcorr
             name: "verify_cuda_n2k_pl1bitcorr test"
+            ccache_key: selfhosted-kotekan-default
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
@@ -304,6 +308,7 @@ jobs:
 
           - id: verify_cuda_n2k_corr
             name: "verify_cuda_n2k_corr test"
+            ccache_key: selfhosted-kotekan-default
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
@@ -311,6 +316,7 @@ jobs:
 
           - id: verify_cuda_n2k
             name: "verify_cuda_n2k test"
+            ccache_key: selfhosted-kotekan-default
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
@@ -318,6 +324,7 @@ jobs:
 
           - id: test_n2k_writeHDF5
             name: "test_n2k_writeHDF5 test"
+            ccache_key: selfhosted-kotekan-default
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
@@ -331,9 +338,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .ccache
-          key: ccache-test-2404-${{ github.sha }}
+          key: ccache-${{ matrix.ccache_key }}-${{ github.sha }}
           restore-keys: |
-            ccache-test-2404
+            ccache-${{ matrix.ccache_key }}-
 
       - name: Print working environment details
         run: |
