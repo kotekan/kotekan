@@ -89,7 +89,7 @@ elseif setup ≡ :hirax
     const Wd = 2
     const Wp = 1
 
-elseif setup ≡ :pathfinder
+elseif setup ≡ :pathfinder || setup ≡ :smallfinder
 
     # CHORD pathfinder
     const B = 16

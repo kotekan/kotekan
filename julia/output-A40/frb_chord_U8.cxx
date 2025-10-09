@@ -20,6 +20,7 @@
 #include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
+#include <memory>
 #include <ringbuffer.hpp>
 #include <stdexcept>
 #include <string>
