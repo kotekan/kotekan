@@ -1,12 +1,24 @@
 // Copyright (c) 2025 Kotekan Project
 #include "cudaCopyNtoRingbuffer.hpp"
 
-#include "chordMetadata.hpp"
-#include "cudaUtils.hpp"
+#include "DataType.hpp"       // for DataType
+#include "chordMetadata.hpp"  // for chordMetadata
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaHostUnregister
+#include "gpuCommand.hpp"     // for gpuCommandType
+#include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
 
-#include <cassert>
-#include <stdexcept>
-#include <vector>
+#include "fmt.hpp" // for compile_string_to_view, join
+
+#include <algorithm>   // for max
+#include <cassert>     // for assert
+#include <memory>      // for shared_ptr, __shared_ptr_access, allocator, dynamic_pointe...
+#include <optional>    // for optional
+#include <stdexcept>   // for runtime_error
+#include <stdint.h>    // for int64_t, uint8_t
+#include <sys/types.h> // for size_t, uint
+#include <tuple>       // for tuple, make_tuple
+#include <vector>      // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
