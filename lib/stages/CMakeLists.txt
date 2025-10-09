@@ -1,7 +1,7 @@
 project(kotekan_libs)
 
-# cmake-lint: disable=C0301
-set(HDF5_CONDITION $<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>)
+set(HDF5_CONDITION
+    $<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>)
 
 add_library(
     kotekan_stages
