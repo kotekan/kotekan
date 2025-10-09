@@ -24,9 +24,15 @@ add_library(
     $<$<BOOL:${GDAL_FOUND}>:gdalFileWrite.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalVisWrite.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFiles.cpp>
-    $<$<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5FileRead.cpp>
-    $<$<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5FileWrite.cpp>
-    $<$<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5Files.cpp>
+    $<$<AND:$<BOOL:${HDF5_FOUND}>,
+    $<BOOL:${HighFive_FOUND}>,
+    $<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5FileRead.cpp>
+    $<$<AND:$<BOOL:${HDF5_FOUND}>,
+    $<BOOL:${HighFive_FOUND}>,
+    $<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5FileWrite.cpp>
+    $<$<AND:$<BOOL:${HDF5_FOUND}>,
+    $<BOOL:${HighFive_FOUND}>,
+    $<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5Files.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
     streamSingleDishVDIF.cpp
