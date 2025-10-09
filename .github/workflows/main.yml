@@ -360,7 +360,7 @@ jobs:
     - name: Run pipeline Kotekan tests
       run: |
         TIMEOUT_DURATION="20m"  # Timeout duration per test
-        for config_file in config/fengine/test_pathfinder.j2; do
+        for config_file in config/fengine/test_smallfinder.j2; do
           echo "Running test with config: $config_file"
           
           # Download test inputs
@@ -368,9 +368,7 @@ jobs:
               pwd
               ls -l
               ls -l data || true
-              # cd /home/lwlab/kotekan-runner/_work/kotekan/kotekan
-              git clone https://github.com/chord-observatory/kotekan_testing_inputs
-              (cd kotekan_testing_inputs/fengine_init_pathfinder && unxz *.xz)
+              git clone --depth 1 https://github.com/chord-observatory/kotekan_testing_inputs
               ln -s kotekan_testing_inputs data
               pwd
               ls -l
