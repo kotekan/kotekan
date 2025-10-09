@@ -92,7 +92,8 @@ private:
      * configuration JSON object.
      */
     struct ConfigInfo {
-        nlohmann::json config; /// Configuration data json (minus blocks with kotekan_update_endpoint)
+        nlohmann::json
+            config; /// Configuration data json (minus blocks with kotekan_update_endpoint)
         std::string json_hash; /// Stored md5 hash of the ConfigInfo::config
 
         /// Kotekan version information (should match lib/version details.)
@@ -691,7 +692,8 @@ private:
 
     nlohmann::json _strip_update_endpoints(const nlohmann::json& j) const {
         if (j.is_object()) {
-            if (j.contains("kotekan_update_endpoint")) return nullptr;
+            if (j.contains("kotekan_update_endpoint"))
+                return nullptr;
 
             nlohmann::json result = nlohmann::json::object();
             for (auto& [k, v] : j.items()) {
@@ -712,12 +714,15 @@ private:
 
     bool _has_kotekan_update_endpoint(const nlohmann::json& j) const {
         if (j.is_object()) {
-            if (j.contains("kotekan_update_endpoint")) return true;
+            if (j.contains("kotekan_update_endpoint"))
+                return true;
             for (auto& [k, v] : j.items())
-                if (_has_kotekan_update_endpoint(v)) return true;
+                if (_has_kotekan_update_endpoint(v))
+                    return true;
         } else if (j.is_array()) {
             for (auto& v : j)
-                if (_has_kotekan_update_endpoint(v)) return true;
+                if (_has_kotekan_update_endpoint(v))
+                    return true;
         }
         return false;
     }

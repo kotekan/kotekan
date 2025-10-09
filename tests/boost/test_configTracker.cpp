@@ -93,7 +93,8 @@ BOOST_AUTO_TEST_CASE(add_same_two_jsons) {
     tracker.insertRawConfig("127.0.0.1", 8080, j1, "1.0.0", "main", "abcdef1234567890",
                             "CMAKE_BUILD_TYPE=Release");
 
-    // same port, same config (block with kotekan_update_endpoint should be ignored!), so no conflict expected
+    // same port, same config (block with kotekan_update_endpoint should be ignored!), so no
+    // conflict expected
     tracker.insertRawConfig("127.0.0.1", 8080, j2, "1.0.0", "main", "abcdef1234567890",
                             "CMAKE_BUILD_TYPE=Release");
 
