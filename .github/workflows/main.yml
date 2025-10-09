@@ -330,6 +330,15 @@ jobs:
               # Run Kotekan directly in the built tree inside the container
               timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/test_n2k_writeHDF5.yaml
 
+          - id: data_test
+            name: "/data dir test"
+            cmake_defs: ""
+            post_build: |
+              # Try something with /data.
+              touch /data/tmp
+              ls /data
+              rm /data/tmp
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
