@@ -281,42 +281,42 @@ jobs:
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
-              timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/send_recv_asdfwrite.yaml
+              timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/send_recv_asdfwrite.yaml
 
           - id: verify_cuda_n2k_plexp
             name: "verify_cuda_n2k_plexp test"
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
-              timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/verify_cuda_n2k_plexp.yaml
+              timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/verify_cuda_n2k_plexp.yaml
 
           - id: verify_cuda_n2k_pl1bitcorr
             name: "verify_cuda_n2k_pl1bitcorr test"
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
-              timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/verify_cuda_n2k_pl1bitcorr.yaml
+              timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/verify_cuda_n2k_pl1bitcorr.yaml
 
           - id: verify_cuda_n2k_corr
             name: "verify_cuda_n2k_corr test"
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
-              timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/verify_cuda_n2k_corr.yaml
+              timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/verify_cuda_n2k_corr.yaml
 
           - id: verify_cuda_n2k
             name: "verify_cuda_n2k test"
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
-              timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/verify_cuda_n2k.yaml
+              timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/verify_cuda_n2k.yaml
 
           - id: test_n2k_writeHDF5
             name: "test_n2k_writeHDF5 test"
             cmake_defs: *runner_build_default_opts
             post_build: |
               # Run Kotekan directly in the built tree inside the container
-              timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config ./config/ci-tests/test_n2k_writeHDF5.yaml
+              timeout 2m ./build-2404/kotekan/kotekan --config ./config/ci-tests/test_n2k_writeHDF5.yaml
 
     steps:
       - name: Checkout repository
