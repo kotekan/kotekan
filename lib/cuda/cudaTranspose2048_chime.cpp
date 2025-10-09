@@ -6,36 +6,24 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
-#include "Config.hpp"         // for Config
-#include "NDArray.hpp"        // for NDArray
-#include "cuda.h"             // for cuFuncSetAttribute, cuGetErrorString, cuLaunchKernel
-#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR, CHECK_CU_ERROR
-#include "cuda_runtime_api.h" // for cudaHostRegister, cudaMemcpyAsync, cudaMemsetAsync
-#include "driver_types.h"     // for CUstream_st, cudaEvent_t, CUevent_st, cudaError, cuda...
-#include "gpuCommand.hpp"     // for gpuCommandType
-#include "kotekanLogging.hpp" // for ERROR
-
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <DataType.hpp>            // for DataType, int4x2_swapped_withoffset_t, type_total_bytes
-#include <NDArrayBuffer.hpp>       // for NDArrayBuffer, buffer_type_t
-#include <NDArrayRingBuffer.hpp>   // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include <algorithm>               // for max_element, min
-#include <array>                   // for array
-#include <bufferContainer.hpp>     // for bufferContainer
-#include <cassert>                 // for assert
-#include <chordMetadata.hpp>       // for chordMetadata
-#include <cstddef>                 // for ptrdiff_t, size_t, NULL
-#include <cstdint>                 // for int32_t, int64_t, uint32_t
-#include <cudaCommand.hpp>         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
-#include <div.hpp>                 // for mod, round_down, div, div_noremainder
-#include <functional>              // for function
-#include <limits>                  // for numeric_limits
-#include <map>                     // for map
-#include <memory>                  // for shared_ptr, __shared_ptr_access
-#include <string>                  // for basic_string, allocator, operator==, string, operator+
-#include <vector>                  // for vector
+#include <DataType.hpp>
+#include <NDArrayBuffer.hpp>
+#include <NDArrayRingBuffer.hpp>
+#include <algorithm>
+#include <array>
+#include <bufferContainer.hpp>
+#include <cassert>
+#include <chordMetadata.hpp>
+#include <cstring>
+#include <cudaCommand.hpp>
+#include <cudaDeviceInterface.hpp>
+#include <div.hpp>
+#include <fmt.hpp>
+#include <limits>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 using kotekan::bufferContainer;
 using kotekan::Config;

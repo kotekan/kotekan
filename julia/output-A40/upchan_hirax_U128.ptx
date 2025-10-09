@@ -16,18 +16,18 @@
 .extern .func julia_AssertionError_33913
 ()
 ;
-.func gpu_report_exception
+.func gpu_signal_exception
 (
-	.param .align 8 .b8 gpu_report_exception_param_0[16],
-	.param .b64 gpu_report_exception_param_1
+	.param .align 8 .b8 gpu_signal_exception_param_0[16]
 )
 .noreturn
 {
 	trap;
 }
-.func gpu_signal_exception
+.func gpu_report_exception
 (
-	.param .align 8 .b8 gpu_signal_exception_param_0[16]
+	.param .align 8 .b8 gpu_report_exception_param_0[16],
+	.param .b64 gpu_report_exception_param_1
 )
 .noreturn
 {
@@ -78,10 +78,10 @@ $L__BB0_4:                              // %L27
 	ld.param.u64 	%rd1, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_10];
 	mov.u32 	%r16, %tid.y;
 	shl.b32 	%r17, %r16, 5;
-	mov.u32 	%r1, %tid.x;
 	mov.u32 	%r18, %ctaid.x;
 	shl.b32 	%r19, %r18, 9;
-	or.b32  	%r20, %r17, %r19;
+	mov.u32 	%r1, %tid.x;
+	or.b32  	%r20, %r19, %r17;
 	or.b32  	%r21, %r20, %r1;
 	mul.wide.u32 	%rd8, %r21, 4;
 	add.s64 	%rd2, %rd1, %rd8;
@@ -117,7 +117,7 @@ $L__BB0_7:                              // %L142
 	mov.pred 	%p14, 0;
 	xor.pred  	%p15, %p13, %p14;
 	@%p15 bra 	$L__BB0_10;
-$L__BB0_9:                              // %L227
+$L__BB0_9:                              // %L228
 	mov.u32 	%r308, 2;
 	st.global.u32 	[%rd2], %r308;
 	mov.u64 	%rd13, exception2777;
@@ -360,7 +360,7 @@ $L__BB0_12:                             // %pass231
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_11:                             // %L326
+$L__BB0_11:                             // %L327
 	mov.u32 	%r27, 3;
 	st.global.u32 	[%rd2], %r27;
 	mov.u64 	%rd9, exception2777;
