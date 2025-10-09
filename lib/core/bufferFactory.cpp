@@ -98,11 +98,13 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         bool use_hugepages = config.get_default<bool>(location, "use_hugepages", false);
         bool mlock_frames = config.get_default<bool>(location, "mlock_frames", true);
         bool zero_new_frames = config.get_default<bool>(location, "zero_new_frames", true);
+        const std::vector<int> cpu_affinity =
+            config.get_default<std::vector<int>>(location, "cpu_affinity", {});
         INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
                     "metadata pool {:s} on numa_node {:d}",
                     type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
         buf = new Buffer(num_frames, frame_size, pool, name, type_name, numa_node, use_hugepages,
-                         mlock_frames, zero_new_frames);
+                         mlock_frames, cpu_affinity, zero_new_frames);
 
     } else if (type_name == "ring") {
         size_t ringbuf_size = config.get<size_t>(location, "ring_buffer_size");

@@ -30,6 +30,7 @@ add_library(
     cudaBasebandBeamformer_chord.cpp
     cudaBasebandBeamformer_hirax.cpp
     cudaBasebandBeamformer_pathfinder.cpp
+    cudaBasebandBeamformer_smallfinder.cpp
     cudaCHIMEFRBBeamformer_chime_U16.cpp
     cudaCHIMEFRBBeamformer_chime_U128.cpp
     cudaFRBBeamformer_chord_U1.cpp
@@ -55,12 +56,20 @@ add_library(
     cudaFRBBeamformer_pathfinder_U16.cpp
     cudaFRBBeamformer_pathfinder_U32.cpp
     cudaFRBBeamformer_pathfinder_U64.cpp
+    cudaFRBBeamformer_smallfinder_U1.cpp
+    cudaFRBBeamformer_smallfinder_U2.cpp
+    cudaFRBBeamformer_smallfinder_U4.cpp
+    cudaFRBBeamformer_smallfinder_U8.cpp
+    cudaFRBBeamformer_smallfinder_U16.cpp
+    cudaFRBBeamformer_smallfinder_U32.cpp
+    cudaFRBBeamformer_smallfinder_U64.cpp
     cudaFRBBeamReformer.cpp
     cudaQuantizeKernel.cu
     cudaQuantize.cpp
     cudaRechunk.cpp
     cudaCopyFromRingbuffer.cpp
     cudaCopyToRingbuffer.cpp
+    cudaCopyNtoRingbuffer.cpp
     cudaTranspose2048_chime.cpp
     cudaUpchannelizer_chime_U2.cpp
     cudaUpchannelizer_chime_U4.cpp
@@ -87,6 +96,12 @@ add_library(
     cudaUpchannelizer_pathfinder_U16.cpp
     cudaUpchannelizer_pathfinder_U32.cpp
     cudaUpchannelizer_pathfinder_U64.cpp
+    cudaUpchannelizer_smallfinder_U2.cpp
+    cudaUpchannelizer_smallfinder_U4.cpp
+    cudaUpchannelizer_smallfinder_U8.cpp
+    cudaUpchannelizer_smallfinder_U16.cpp
+    cudaUpchannelizer_smallfinder_U32.cpp
+    cudaUpchannelizer_smallfinder_U64.cpp
     cudaPLMaskExpander.cpp
     cudaPL1bitCorrelator.cpp
     cudaRFIS012.cpp

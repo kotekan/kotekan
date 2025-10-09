@@ -1,0 +1,32 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# Initialize a CHORD smallfinder test
+#
+################################################################################
+
+---
+log_level: debug
+
+fengine_num_frames: 25
+fengine_repeat_count: 1
+
+skip_julia: false
+
+base_dir: data/fengine_init_smallfinder
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_smallfinder.j2" %}
+
+{% include "include/rfi_smallfinder.j2" %}
+{% include "include/n2k_smallfinder.j2" %}
+{% include "include/bb_smallfinder.j2" %}
+{% include "include/upchan_smallfinder.j2" %}
+{% include "include/frb_smallfinder.j2" %}
+
+{% include "include/sources_smallfinder.j2" %}
+{% include "include/fengine_init.j2" %}
+
+{% include "include/output_init_smallfinder.j2" %}
+...

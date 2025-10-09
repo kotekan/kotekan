@@ -81,7 +81,7 @@ protected:
      *
      * Should be called by every handler.
      *
-     * @param mbuf The packet to check for allignment
+     * @param mbuf The packet to check for alignment
      * @return True if the packet is within 100 of the alignment edge,
      *         False otherwise.
      */
@@ -93,7 +93,9 @@ protected:
         // We allow for the fact we might miss the first packet by upto 100 FPGA frames,
         // if this happens then the missing frames at the start of the buffer frame are filled
         // in as lost packets.
-        if ((seq % alignment) <= 100) {
+        // TODO This seems to happen more on the new CHIME hardware with extra links, this needs
+        // some optimization, likely requires moving buffer handling out of the critial packet loop.
+        if ((seq % alignment) <= 1000) {
 
             last_seq = seq - seq % alignment;
             cur_seq = seq;
@@ -152,7 +154,6 @@ protected:
      * @return True if the packet doesn't have errors and false otherwise.
      */
     inline bool check_packet(struct rte_mbuf* cur_mbuf) {
-#ifndef OLD_DPDK
         if (unlikely((cur_mbuf->ol_flags & RTE_MBUF_F_RX_IP_CKSUM_MASK)
                      == RTE_MBUF_F_RX_IP_CKSUM_BAD)
             || unlikely((cur_mbuf->ol_flags & RTE_MBUF_F_RX_L4_CKSUM_MASK)
@@ -162,23 +163,21 @@ protected:
             rx_errors_total += 1;
             return false;
         }
-#else
-        if (unlikely((cur_mbuf->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1)) {
-            WARN("dpdk: Got bad packet checksum on port {:d}", port);
-            rx_ip_cksum_errors_total += 1;
-            rx_errors_total += 1;
-            return false;
-        }
-#endif
+
         if (unlikely(fpga_packet_size != cur_mbuf->pkt_len)) {
+            // When using a switch we expect to pick up packets since the NIC is basically in
+            // promiscuous mode.
+            // TODO: Add a filter for F-engine packets to remove the risk of some equal
+            // sized packet on the network getting misread as an F-engine packet.
+            if (!using_switch) {
+                // Checks the packet size matches the expected FPGA packet size.
+                ERROR("Got packet with incorrect length: {:d}, expected {:d}", cur_mbuf->pkt_len,
+                      fpga_packet_size);
 
-            // Checks the packet size matches the expected FPGA packet size.
-            ERROR("Got packet with incorrect length: {:d}, expected {:d}", cur_mbuf->pkt_len,
-                  fpga_packet_size);
 
-
-            rx_packet_len_errors_total += 1;
-            rx_errors_total += 1;
+                rx_packet_len_errors_total += 1;
+                rx_errors_total += 1;
+            }
             return false;
         }
 
@@ -342,6 +341,9 @@ protected:
     /// The number of frequences in the output stream
     int32_t num_local_freq;
 
+    /// True if the NIC is connected to a switch, false if directly to the F-engine
+    bool using_switch;
+
     /// Prometheus metrics
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_packets_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_samples_total_metric;
@@ -394,6 +396,7 @@ inline iceBoardHandler::iceBoardHandler(kotekan::Config& config, const std::stri
 
     num_local_freq = config.get_default<int32_t>(unique_name, "num_local_freq", 1);
     alignment = config.get<uint64_t>(unique_name, "alignment");
+    using_switch = config.get_default<bool>(unique_name, "using_switch", false);
 
     check_cross_handler_alignment(std::numeric_limits<uint64_t>::max());
 
