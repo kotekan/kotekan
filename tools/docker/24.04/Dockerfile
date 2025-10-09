@@ -195,11 +195,11 @@ RUN mkdir src && \
     true) && \
     rm -rf src
 
-# Install Julia 1.11.2 directly (no juliaup for no automatic update checks)
-RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.2-linux-x86_64.tar.gz && \
-    tar -xzf julia-1.11.2-linux-x86_64.tar.gz -C /opt && \
-    ln -s /opt/julia-1.11.2/bin/julia /usr/local/bin/julia && \
-    rm julia-1.11.2-linux-x86_64.tar.gz
+# Install Julia 1.11.7 directly (no juliaup for no automatic update checks)
+RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.7-linux-x86_64.tar.gz && \
+    tar -xzf julia-1.11.7-linux-x86_64.tar.gz -C /opt && \
+    ln -s /opt/julia-1.11.7/bin/julia /usr/local/bin/julia && \
+    rm julia-1.11.7-linux-x86_64.tar.gz
 
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR=1
