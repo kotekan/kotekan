@@ -188,17 +188,104 @@ function read_hdf5(filename::AbstractString)
         dimsizes = Base.setindex(dimsizes, 2 * dimsizes[1], 1)
     end
     if dimnames[begin] == "C"
+        @assert size(data, 1) == 2
         @info "mapping to Complex..."
         data = reinterpret(reshape, Complex{eltype(data)}, data)
         dims = dims[(begin + 1):end]
         dimnames = dimnames[(begin + 1):end]
         dimsizes = dimsizes[(begin + 1):end]
     end
+    dims = length(dimnames)
+
+    # TODO: Look at `nfreq` to see which frequency channels are valid; ignore the others
+    # TODO: Do not even store the others
 
     # Apply DimArray; do this last, it doesn't survive `mappedarray`
-    data = DimArray(data, ntuple(d -> Dim{Symbol(dimnames[d])}(1:dimsizes[d]), length(dimnames)))
+    sample0_offset =  get(attrs(dataset), "sample0_offset", nothing)::Union{Integer,Nothing}
+    dimoffsets = [dimnames[d] ∈ ["T", "Tbar"] ? (sample0_offset::Integer) : 0 for d in 1:dims]
+    dimsteps = [1 for d in 1:dims] # TODO
+    dimranges = [dimoffsets[d] .+ (0:dimsteps[d]:(dimsizes[d] - 1)) for d in 1:dims]
+    dimspecs = [Dim{Symbol(dimnames[d])}(dimranges[d]) for d in 1:dims]
+    data = DimArray(data, Tuple(dimspecs); name=name)
 
     return data::AbstractArray
+end
+
+export rms
+function rms(A::AbstractDimArray; dims)
+    n = prod(size(A, d) for d in dims)
+    R = dropdims(mapreduce(abs2 ∘ float, +, A; dims=dims); dims=dims)
+    R .= sqrt.(R ./ n)
+    return R::AbstractDimArray
+end
+
+export norm2
+function norm2(A::AbstractDimArray; dims)
+    R = dropdims(mapreduce(abs2 ∘ float, +, A; dims=dims); dims=dims)
+    R .= sqrt.(R)
+    return R::AbstractDimArray
+end
+
+export norminf
+function norminf(A::AbstractDimArray; dims)
+    R = dropdims(mapreduce(abs2 ∘ float, max, A; dims=dims); dims=dims)
+    R .= sqrt.(R)
+    return R::AbstractDimArray
+end
+
+align_with_steps(r::AbstractRange, val) = fld(val - first(r), step(r)) * step(r) + first(r)
+
+export bin_max
+function bin_max(A::AbstractDimArray; dims_lengths::AbstractVector{<:Pair{<:Union{Symbol,DimensionalData.Dimension},<:Integer}})
+    groupings = [
+        let
+            dim, len = dim_len
+            @assert hasdim(A, dim)
+            @assert len >= 1
+
+            idims = dims(A, dim)
+            imin = first(idims)
+            imax = last(idims)
+            istep = cld(step(idims) * length(idims), len)
+            irange = imin:istep:imax
+
+            grouping = dim => Bins(i -> align_with_steps(irange, i), irange)
+
+            grouping
+        end for dim_len in dims_lengths
+    ]
+
+    R = maximum.(groupby(A, groupings...))
+
+    return R::AbstractDimArray
+end
+
+export bin_rms
+function bin_rms(A::AbstractDimArray; dims_lengths::AbstractVector{<:Pair{<:Union{Symbol,DimensionalData.Dimension},<:Integer}})
+    bin_factor = 1
+    groupings = [
+        let
+            dim, len = dim_len
+            @assert hasdim(A, dim)
+            @assert len >= 1
+
+            idims = dims(A, dim)
+            imin = first(idims)
+            imax = last(idims)
+            istep = cld(step(idims) * length(idims), len)
+            irange = imin:istep:imax
+
+            bin_factor *= istep
+            grouping = dim => Bins(i -> align_with_steps(irange, i), irange)
+
+            grouping
+        end for dim_len in dims_lengths
+    ]
+
+    rms(xs) = sqrt(sum(x->x^2, xs) / length(xs))
+    R = rms.(groupby(A, groupings...))
+
+    return R::AbstractDimArray
 end
 
 end

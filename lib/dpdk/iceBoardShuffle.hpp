@@ -13,6 +13,7 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "chimeMetadata.hpp"
+#include "chordMetadata.hpp"
 #include "iceBoardHandler.hpp"
 #include "kotekanLogging.hpp"
 #include "packet_copy.h"
@@ -43,6 +44,8 @@
  *
  * @conf  fpga_dataset          String. The dataset ID for the data being received from
  *                              the F-engine.
+ * @conf  link_group            Unsigned int.  The link group this handler is a member of.
+ * @conf  link_group_subid      Int.  The position of this handler within the link group.
  *
  * @todo Some parts of the port_data endpoint could be refactored into the base classes
  *
@@ -143,10 +146,19 @@ protected:
     /// Frame IDs
     int out_buf_frame_ids[shuffle_size] = {0};
 
+    /// The maximum number of link groups.
+    static const uint32_t link_group_max = 8;
+
     /// The stream_ids for all iceBoardShuffle objects.
-    /// This might be an issue in the case of multiple indepdent
-    /// shuffle operations. In that case this will need to be factored out.
-    static ice_stream_id_t all_stream_ids[shuffle_size];
+    /// There are 4 stream_ids per link group.
+    inline static ice_stream_id_t all_stream_ids[link_group_max][shuffle_size];
+
+    /// The link group this handler is a member of, must be less than link_group_max
+    uint32_t link_group;
+
+    /// The position of this handler within the link group,
+    /// must be less than shuffle_size.
+    uint32_t link_group_subid;
 
     // ** FPGA Second stage error counters **
 
@@ -236,7 +248,20 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
 
     DEBUG("iceBoardHandler: {:s}", unique_name);
 
-    all_stream_ids[port] = {255, 255, 255, 255};
+    link_group = config.get<uint32_t>(unique_name, "link_group");
+    link_group_subid = config.get<uint32_t>(unique_name, "link_group_subid");
+
+    if (link_group >= link_group_max) {
+        throw std::runtime_error(fmt::format("link_group {} is too large.  Maximum is {}",
+                                             link_group, link_group_max - 1));
+    }
+
+    if (link_group_subid >= shuffle_size) {
+        throw std::runtime_error(fmt::format("link_group_subid {} is too large.  Maximum is {}",
+                                             link_group_subid, shuffle_size - 1));
+    }
+
+    all_stream_ids[link_group][link_group_subid] = {255, 255, 255, 255};
 
     // Read config
     fpga_dataset = config.get_default<dset_id_t>("/fpga_dataset", "id", dset_id_t::null);
@@ -341,11 +366,11 @@ inline int iceBoardShuffle::handle_packet(struct rte_mbuf* mbuf) {
 
 inline bool iceBoardShuffle::check_stream_id() {
 
-    // Lock this to only one thread at a time.
-    static std::mutex alignment_mutex;
-    std::lock_guard<std::mutex> alignment_lock(alignment_mutex);
+    // Lock this to only one thread per groups at a time.
+    static std::mutex alignment_mutex[link_group_max];
+    std::lock_guard<std::mutex> alignment_lock(alignment_mutex[link_group]);
 
-    all_stream_ids[port] = port_stream_id;
+    all_stream_ids[link_group][link_group_subid] = port_stream_id;
 
     uint8_t crate_id = port_stream_id.crate_id;
     uint8_t slot_id = port_stream_id.slot_id;
@@ -354,24 +379,34 @@ inline bool iceBoardShuffle::check_stream_id() {
 
     for (uint32_t i = 0; i < shuffle_size; ++i) {
         // No need to check the current port, or if the link hasn't been initialized
-        if (i == port || all_stream_ids[i].crate_id == 255)
+        if (i == link_group_subid || all_stream_ids[link_group][i].crate_id == 255)
             continue;
 
         // Check that all the slots and links are the same.
-        if (all_stream_ids[i].slot_id != slot_id || all_stream_ids[i].link_id != link_id) {
-            FATAL_ERROR("One of the link_ids or slot_ids don't match! There is a cabling problem.");
+        if (all_stream_ids[link_group][i].slot_id != slot_id
+            || all_stream_ids[link_group][i].link_id != link_id) {
+            /// Print out all the stream IDs for this group.
+            for (uint32_t j = 0; j < shuffle_size; ++j) {
+                ERROR("link_group {:d} subid {:d} stream_id: crate {:d} slot {:d} link {:d} "
+                      "dpdk_port {:d}",
+                      link_group, j, all_stream_ids[link_group][j].crate_id,
+                      all_stream_ids[link_group][j].slot_id, all_stream_ids[link_group][j].link_id,
+                      port);
+            }
+            FATAL_ERROR("At least one of the link_ids or slot_ids don't match! There is a cabling "
+                        "problem.");
             return false;
         }
 
         // Check that we don't have the same crate ID as another link
         // This should be impossible unless there is an FPGA problem
-        if (all_stream_ids[i].crate_id == crate_id) {
+        if (all_stream_ids[link_group][i].crate_id == crate_id) {
             FATAL_ERROR("Two of the crate_ids are the same! There is a cabling problem.");
             return false;
         }
 
         // Check that all the crates are from the same group (all even/odd)
-        if (even != ((all_stream_ids[i].crate_id % 2) == 0)) {
+        if (even != ((all_stream_ids[link_group][i].crate_id % 2) == 0)) {
             FATAL_ERROR("The crate IDs are not all even or all odd. There is a cabling problem.");
             return false;
         }
@@ -407,22 +442,58 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
         out_bufs[i]->allocate_new_metadata_object(out_buf_frame_ids[i]);
 
-        set_first_packet_recv_time(out_bufs[i], out_buf_frame_ids[i], now);
-        set_gps_time(out_bufs[i], out_buf_frame_ids[i], gps_time);
+        // Add metadata to the output buffer
 
-        // We take the stream ID only from the first pair of crates,
-        // to avoid overwriting it on different ports.
-        // This makes the stream ID unique for down stream stages.
-        if (port_stream_id.crate_id / 2 == 0) {
+        // If the metadata type is chimeMetadata set the CHIME fields
+        // TODO we can likely remove this, but keeping it here for reference
+        if (out_bufs[i]->metadata_pool->type_name == "chimeMetadata") {
+
+            set_first_packet_recv_time(out_bufs[i], out_buf_frame_ids[i], now);
+            set_gps_time(out_bufs[i], out_buf_frame_ids[i], gps_time);
+
+            // We take the stream ID only from the first pair of crates,
+            // to avoid overwriting it on different ports.
+            // This makes the stream ID unique for down stream stages.
+            if (port_stream_id.crate_id / 2 == 0) {
+                ice_stream_id_t tmp_stream_id = port_stream_id;
+                // Set the unused flag to store the post shuffle freq bin number.
+                tmp_stream_id.unused = i;
+                ice_set_stream_id_t(out_bufs[i], out_buf_frame_ids[i], tmp_stream_id);
+            }
+
+            set_fpga_seq_num(out_bufs[i], out_buf_frame_ids[i], new_seq);
+
+            set_dataset_id(out_bufs[i], out_buf_frame_ids[i], fpga_dataset);
+        } else if (out_bufs[i]->metadata_pool->type_name == "chordMetadata") {
+            // If the metadata type is chordMetadata set the CHORD fields
+            auto meta = get_chord_metadata(out_bufs[i], out_buf_frame_ids[i]);
+
+            // TODO: We may also need to store the gps_time in the metadata for the baseband system.
+            meta->sample0_offset = new_seq;
+            meta->nfreq = 1;
+
             ice_stream_id_t tmp_stream_id = port_stream_id;
             // Set the unused flag to store the post shuffle freq bin number.
             tmp_stream_id.unused = i;
-            ice_set_stream_id_t(out_bufs[i], out_buf_frame_ids[i], tmp_stream_id);
+            tmp_stream_id.crate_id = tmp_stream_id.crate_id % 2;
+            meta->coarse_freq[0] = tel.to_freq_id(ice_encode_stream_id(tmp_stream_id));
+
+            // The dimensions are time (T) and "element" (E) which is the "correlator ordered"
+            // feed and polarization.  Note that off the F-engine polarization is _not_ a defined
+            // axis.
+            std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
+            std::strncpy(meta->dim_name[1], "E", sizeof meta->dim_name[1]);
+            meta->dims = 2;
+            meta->type = kotekan::int4x2_swapped_withoffset;
+            // Somewhat confusingly E in this context is the electric field...
+            std::strncpy(meta->name, "E", sizeof meta->name);
+            meta->dim[0] = out_bufs[i]->frame_size / sample_size;
+            meta->dim[1] = sample_size;
+
+            // Print out the chordMetadata
+            DEBUG("chordMetadata: seq: {:d} freq_id: {:d} dim[0]: {:d} dim[1]: {:d}",
+                  meta->sample0_offset, meta->coarse_freq[0], meta->dim[0], meta->dim[1]);
         }
-
-        set_fpga_seq_num(out_bufs[i], out_buf_frame_ids[i], new_seq);
-
-        set_dataset_id(out_bufs[i], out_buf_frame_ids[i], fpga_dataset);
     }
 
     if (!first_time) {
@@ -433,18 +504,45 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     if (lost_samples_frame == nullptr)
         return false;
 
+    // Add metadata to the lost samples buffer
     lost_samples_buf->allocate_new_metadata_object(lost_samples_frame_id);
-    set_fpga_seq_num(lost_samples_buf, lost_samples_frame_id, new_seq);
-    set_first_packet_recv_time(lost_samples_buf, lost_samples_frame_id, now);
-    set_gps_time(lost_samples_buf, lost_samples_frame_id, gps_time);
-    set_dataset_id(lost_samples_buf, lost_samples_frame_id, fpga_dataset);
+    if (lost_samples_buf->metadata_pool->type_name == "chimeMetadata") {
+        // If the metadata type is chimeMetadata set the CHIME fields
+        // TODO we can likely remove this, but keeping it here for reference
+        set_first_packet_recv_time(lost_samples_buf, lost_samples_frame_id, now);
+        set_gps_time(lost_samples_buf, lost_samples_frame_id, gps_time);
+        set_fpga_seq_num(lost_samples_buf, lost_samples_frame_id, new_seq);
+        set_dataset_id(lost_samples_buf, lost_samples_frame_id, fpga_dataset);
 
-    // The lost samples buffer is the same for all 4 frequencies,
-    // so the stream ID actually covers all 4 possible `unused` freq values.
-    if (port_stream_id.crate_id / 2 == 0) {
+        // The lost samples buffer is the same for all 4 frequencies,
+        // so the stream ID actually covers all 4 possible `unused` freq values.
+        if (port_stream_id.crate_id / 2 == 0) {
+            ice_stream_id_t tmp_stream_id = port_stream_id;
+            tmp_stream_id.unused = 0;
+            ice_set_stream_id_t(lost_samples_buf, lost_samples_frame_id, tmp_stream_id);
+        }
+    } else if (lost_samples_buf->metadata_pool->type_name == "chordMetadata") {
+        // If the metadata type is chordMetadata set the CHORD fields
+        auto meta = get_chord_metadata(lost_samples_buf, lost_samples_frame_id);
+        meta->sample0_offset = new_seq;
+
+        // Set the frequency bins
+        // Note that there are 4 frequencies assoicated with this packet loss buffer
+        // because of the final stage shuffle, but that dimension is collapsed.
         ice_stream_id_t tmp_stream_id = port_stream_id;
-        tmp_stream_id.unused = 0;
-        ice_set_stream_id_t(lost_samples_buf, lost_samples_frame_id, tmp_stream_id);
+
+        for (int i = 0; i < 4; i++) {
+            tmp_stream_id.unused = i;
+            tmp_stream_id.crate_id = tmp_stream_id.crate_id % 2;
+            meta->coarse_freq[i] = tel.to_freq_id(ice_encode_stream_id(tmp_stream_id));
+        }
+
+        meta->type = kotekan::uint8;
+
+        std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
+        meta->dim[0] = lost_samples_buf->frame_size; // One byte per time sample
+        meta->dims = 1;
+        std::strncpy(meta->name, "lost_samples", sizeof meta->name);
     }
 
     return true;
@@ -453,8 +551,19 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 inline bool iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
 
     // By design all the seq numbers for all frames should be the same here.
-    int64_t lost_sample_location =
-        last_seq + samples_per_packet - get_fpga_seq_num(out_bufs[0], out_buf_frame_ids[0]);
+    int64_t lost_sample_location;
+
+    if (out_bufs[0]->metadata_pool->type_name == "chimeMetadata") {
+        lost_sample_location =
+            last_seq + samples_per_packet - get_fpga_seq_num(out_bufs[0], out_buf_frame_ids[0]);
+    } else if (out_bufs[0]->metadata_pool->type_name == "chordMetadata") {
+        auto meta = get_chord_metadata(out_bufs[0], out_buf_frame_ids[0]);
+        lost_sample_location = last_seq + samples_per_packet - meta->sample0_offset;
+    } else {
+        FATAL_ERROR("Unsupported metadata type: {:s}", out_bufs[0]->metadata_pool->type_name);
+        return false;
+    }
+
     uint64_t temp_seq = last_seq + samples_per_packet;
 
     // TODO this could be made more efficient by breaking it down into blocks of memsets.
@@ -500,7 +609,16 @@ inline void iceBoardShuffle::copy_packet_shuffle(struct rte_mbuf* mbuf) {
     // frames, but that should be proven carefully...
     int64_t sample_location;
 
-    sample_location = cur_seq - get_fpga_seq_num(out_bufs[0], out_buf_frame_ids[0]);
+    if (out_bufs[0]->metadata_pool->type_name == "chimeMetadata") {
+        sample_location = cur_seq - get_fpga_seq_num(out_bufs[0], out_buf_frame_ids[0]);
+    } else if (out_bufs[0]->metadata_pool->type_name == "chordMetadata") {
+        auto meta = get_chord_metadata(out_bufs[0], out_buf_frame_ids[0]);
+        sample_location = cur_seq - meta->sample0_offset;
+    } else {
+        FATAL_ERROR("Unsupported metadata type: {:s}", out_bufs[0]->metadata_pool->type_name);
+        return;
+    }
+
     assert((size_t)(sample_location * sample_size) <= out_bufs[0]->frame_size);
     assert(sample_location >= 0);
     assert(get_mbuf_seq_num(mbuf) == cur_seq);
