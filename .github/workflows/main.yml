@@ -161,7 +161,7 @@ jobs:
             cmake_defs: *full_build_cmake_opts
             post_build: |
               TEST_TIMEOUT=30
-              ./tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" build-2404/tests/boost
+              bash $GITHUB_WORKSPACE/tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" $GITHUB_WORKSPACE/build-2404/tests/boost
 
           - id: opencl
             name: "OpenCL build"
@@ -199,7 +199,7 @@ jobs:
             name: "Run Linter"
             cmake_defs: ""
             post_build: |
-              ./tools/lint.sh -d "$(realpath .)"
+              bash $GITHUB_WORKSPACE/tools/lint.sh -d $GITHUB_WORKSPACE
 
     steps:
       - name: Checkout repository
