@@ -119,164 +119,164 @@ jobs:
     outputs:
       docker_img_name: "${{ steps.docker_img.outputs.img_name }}"
 
-#TODO   # Build basic versions of kotekan.
-#TODO   build-base-2404:
-#TODO     runs-on: ubuntu-latest
-#TODO     needs: build-docker-2404
-#TODO 
-#TODO     steps:
-#TODO     - name: Checkout repository
-#TODO       uses: actions/checkout@v4
-#TODO 
-#TODO     - name: Login to GitHub Container Registry
-#TODO       if: ${{ !env.ACT }} # Don't log in if running locally
-#TODO       uses: docker/login-action@v3
-#TODO       with:
-#TODO         registry: ${{ env.REGISTRY }}
-#TODO         username: ${{ github.actor }}
-#TODO         password: ${{ secrets.GITHUB_TOKEN }}
-#TODO 
-#TODO     - name: Cache ccache files
-#TODO       uses: actions/cache@v4
-#TODO       with:
-#TODO         path: .ccache
-#TODO         key: ccache-base-build-2404-${{ github.sha }}
-#TODO         restore-keys: |
-#TODO           ccache-base-build-2404
-#TODO           ccache-full-build-2404
-#TODO 
-#TODO     - name: Build kotekan
-#TODO       run: |
-#TODO         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-#TODO         docker run "${OPTS[@]}" ccache -s
-#TODO         docker run "${OPTS[@]}" \
-#TODO           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-#TODO             -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
-#TODO             -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
-#TODO             -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=OFF \
-#TODO             -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF \
-#TODO             -DUSE_ASDF=OFF -DUSE_HDF5=OFF -DUSE_GDAL=OFF \
-#TODO             -DUSE_AIRSPY=OFF -DUSE_LAPACK_BLAZE=OFF -DUSE_FFTW=OFF -DUSE_JULIA=OFF \
-#TODO             -DUSE_DPDK=OFF \
-#TODO             -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF \
-#TODO             ..
-#TODO         docker run "${OPTS[@]}" make -j
-#TODO         docker run "${OPTS[@]}" ccache -s
-#TODO 
-#TODO   # Build a full version of kotekan and run the unit tests
-#TODO   build-full-tests-2404:
-#TODO     runs-on: ubuntu-latest
-#TODO     needs: build-docker-2404
-#TODO 
-#TODO     steps:
-#TODO     - uses: actions/checkout@v4
-#TODO 
-#TODO     - name: Login to GitHub Container Registry
-#TODO       if: ${{ !env.ACT }} # Don't log in if running locally
-#TODO       uses: docker/login-action@v3
-#TODO       with:
-#TODO         registry: ${{ env.REGISTRY }}
-#TODO         username: ${{ github.actor }}
-#TODO         password: ${{ secrets.GITHUB_TOKEN }}
-#TODO 
-#TODO     - name: Cache ccache files
-#TODO       uses: actions/cache@v4
-#TODO       with:
-#TODO         path: .ccache
-#TODO         key: ccache-full-build-2404-${{ github.sha }}
-#TODO         restore-keys: |
-#TODO           ccache-full-build-2404
-#TODO           ccache-base-build-2404
-#TODO 
-#TODO     - name: Build kotekan
-#TODO       run: |
-#TODO         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-#TODO         docker run "${OPTS[@]}" ccache -s
-#TODO         docker run "${OPTS[@]}" \
-#TODO           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-#TODO             -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
-#TODO             -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
-#TODO             -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON \
-#TODO             -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=OFF \
-#TODO             -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
-#TODO             -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
-#TODO             -DUSE_DPDK=OFF \
-#TODO             -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
-#TODO             ..
-#TODO         docker run "${OPTS[@]}" make -j $(nproc)
-#TODO         docker run "${OPTS[@]}" rm -r lib
-#TODO         docker run "${OPTS[@]}" ccache -s
-#TODO         df -h
-#TODO 
-#TODO     - name: Run parallel python tests
-#TODO       run: |
-#TODO         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-#TODO         docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
-#TODO 
-#TODO     - name: Run serial python tests
-#TODO       run: |
-#TODO         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-#TODO         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial
-#TODO 
-#TODO     - name: Run boost tests
-#TODO       run: |
-#TODO         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-#TODO         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
-#TODO 
-#TODO   # Build an OpenCL version of kotekan and run the unit tests
-#TODO   build-opencl-2404:
-#TODO     runs-on: self-hosted
-#TODO     container: 
-#TODO       image: summerwind/actions-runner:ubuntu-22.04
-#TODO       options: --user root
-#TODO     needs: build-docker-2404
-#TODO 
-#TODO     steps:
-#TODO     - uses: actions/checkout@v4
-#TODO 
-#TODO     - name: Login to GitHub Container Registry
-#TODO       if: ${{ !env.ACT }} # Don't log in if running locally
-#TODO       uses: docker/login-action@v3
-#TODO       with:
-#TODO         registry: ${{ env.REGISTRY }}
-#TODO         username: ${{ github.actor }}
-#TODO         password: ${{ secrets.GITHUB_TOKEN }}
-#TODO 
-#TODO     - name: Cache ccache files
-#TODO       uses: actions/cache@v4
-#TODO       with:
-#TODO         path: .ccache
-#TODO         key: ccache-opencl-2404-${{ github.sha }}
-#TODO         restore-keys: |
-#TODO           ccache-opencl-2404
-#TODO           ccache-base-build-2404
-#TODO 
-#TODO     - name: Build kotekan
-#TODO       shell: bash
-#TODO       run: |
-#TODO         OPTS=(--pull=always --rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-#TODO         docker run "${OPTS[@]}" ccache -s
-#TODO         docker run "${OPTS[@]}" \
-#TODO           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-#TODO             -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
-#TODO             -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
-#TODO             -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON \
-#TODO             -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
-#TODO             -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
-#TODO             -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
-#TODO             -DUSE_DPDK=ON \
-#TODO             -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF \
-#TODO             ..
-#TODO         docker run "${OPTS[@]}" make -j 8
-#TODO         docker run "${OPTS[@]}" rm -r lib
-#TODO         docker run "${OPTS[@]}" ccache -s
-#TODO         df -h
-#TODO 
-#TODO     # TODO: Anything OpenCL-specific to run?
-#TODO 
-#TODO     - name: Clean up
-#TODO       run: |
-#TODO         rm -rf kotekan
+  # Build basic versions of kotekan.
+  build-base-2404:
+    runs-on: ubuntu-latest
+    needs: build-docker-2404
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      if: ${{ !env.ACT }} # Don't log in if running locally
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Cache ccache files
+      uses: actions/cache@v4
+      with:
+        path: .ccache
+        key: ccache-base-build-2404-${{ github.sha }}
+        restore-keys: |
+          ccache-base-build-2404
+          ccache-full-build-2404
+
+    - name: Build kotekan
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=OFF \
+            -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF \
+            -DUSE_ASDF=OFF -DUSE_HDF5=OFF -DUSE_GDAL=OFF \
+            -DUSE_AIRSPY=OFF -DUSE_LAPACK_BLAZE=OFF -DUSE_FFTW=OFF -DUSE_JULIA=OFF \
+            -DUSE_DPDK=OFF \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF \
+            ..
+        docker run "${OPTS[@]}" make -j
+        docker run "${OPTS[@]}" ccache -s
+
+  # Build a full version of kotekan and run the unit tests
+  build-full-tests-2404:
+    runs-on: ubuntu-latest
+    needs: build-docker-2404
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      if: ${{ !env.ACT }} # Don't log in if running locally
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Cache ccache files
+      uses: actions/cache@v4
+      with:
+        path: .ccache
+        key: ccache-full-build-2404-${{ github.sha }}
+        restore-keys: |
+          ccache-full-build-2404
+          ccache-base-build-2404
+
+    - name: Build kotekan
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON \
+            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=OFF \
+            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
+            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
+            -DUSE_DPDK=OFF \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
+            ..
+        docker run "${OPTS[@]}" make -j $(nproc)
+        docker run "${OPTS[@]}" rm -r lib
+        docker run "${OPTS[@]}" ccache -s
+        df -h
+
+    - name: Run parallel python tests
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
+
+    - name: Run serial python tests
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial
+
+    - name: Run boost tests
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/tests/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
+
+  # Build an OpenCL version of kotekan and run the unit tests
+  build-opencl-2404:
+    runs-on: self-hosted
+    container: 
+      image: summerwind/actions-runner:ubuntu-22.04
+      options: --user root
+    needs: build-docker-2404
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      if: ${{ !env.ACT }} # Don't log in if running locally
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Cache ccache files
+      uses: actions/cache@v4
+      with:
+        path: .ccache
+        key: ccache-opencl-2404-${{ github.sha }}
+        restore-keys: |
+          ccache-opencl-2404
+          ccache-base-build-2404
+
+    - name: Build kotekan
+      shell: bash
+      run: |
+        OPTS=(--pull=always --rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON \
+            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
+            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
+            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
+            -DUSE_DPDK=ON \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF \
+            ..
+        docker run "${OPTS[@]}" make -j 8
+        docker run "${OPTS[@]}" rm -r lib
+        docker run "${OPTS[@]}" ccache -s
+        df -h
+
+    # TODO: Anything OpenCL-specific to run?
+
+    - name: Clean up
+      run: |
+        rm -rf kotekan
 
 
   # Build a version of kotekan and run some direct tests
@@ -328,33 +328,33 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         df -h
 
-    #TODO # Run tests in the config/ci-tests directory with timeout
-    #TODO - name: Run direct Kotekan tests
-    #TODO   run: |
-    #TODO     TIMEOUT_DURATION="2m"  # Timeout duration per test
-    #TODO     TEST_CONFIG_DIR="config/ci-tests"
-    #TODO     for config_file in "$TEST_CONFIG_DIR"/*.yaml; do
-    #TODO       echo "Running test with config: $config_file"
-    #TODO       
-    #TODO       # Run the test with timeout
-    #TODO       timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
-    #TODO         --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
-    #TODO         -w /code/kotekan \
-    #TODO         ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-    #TODO         ./build-2404/kotekan/kotekan --bind-address 0:23000 --config "$config_file"
-    #TODO 
-    #TODO       EXIT_CODE=$?
-    #TODO 
-    #TODO       if [ $EXIT_CODE -eq 124 ]; then
-    #TODO         echo "Test timed out for config: $config_file"
-    #TODO         exit 1
-    #TODO       elif [ $EXIT_CODE -ne 0 ]; then
-    #TODO         echo "Test failed for config: $config_file with exit code $EXIT_CODE"
-    #TODO         exit 1
-    #TODO       else
-    #TODO         echo "Test passed for config: $config_file"
-    #TODO       fi
-    #TODO     done
+    # Run tests in the config/ci-tests directory with timeout
+    - name: Run direct Kotekan tests
+      run: |
+        TIMEOUT_DURATION="2m"  # Timeout duration per test
+        TEST_CONFIG_DIR="config/ci-tests"
+        for config_file in "$TEST_CONFIG_DIR"/*.yaml; do
+          echo "Running test with config: $config_file"
+          
+          # Run the test with timeout
+          timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
+            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
+            -w /code/kotekan \
+            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
+            ./build-2404/kotekan/kotekan --bind-address 0:23000 --config "$config_file"
+    
+          EXIT_CODE=$?
+    
+          if [ $EXIT_CODE -eq 124 ]; then
+            echo "Test timed out for config: $config_file"
+            exit 1
+          elif [ $EXIT_CODE -ne 0 ]; then
+            echo "Test failed for config: $config_file with exit code $EXIT_CODE"
+            exit 1
+          else
+            echo "Test passed for config: $config_file"
+          fi
+        done
 
     # Run pipeline tests with timeout
     - name: Run pipeline Kotekan tests
@@ -364,29 +364,8 @@ jobs:
           echo "Running test with config: $config_file"
           
           # Download test inputs
-          (
-              pwd
-              ls -l
-              ls -l data || true
-              git clone --depth 1 https://github.com/chord-observatory/kotekan_testing_inputs
-              ln -s kotekan_testing_inputs data
-              pwd
-              ls -l
-              ls -l data || true
-              ls -l data/. || true
-              ls -l data/fengine_init_smallfinder || true
-              ls -l data/fengine_init_smallfinder/. || true
-          )
-          timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
-            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
-            -w /code/kotekan \
-            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            pwd
-          timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
-            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
-            -w /code/kotekan \
-            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            ls -l
+          git clone --depth 1 https://github.com/chord-observatory/kotekan_testing_inputs
+          ln -s kotekan_testing_inputs data
 
           # Run the test with timeout
           timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
@@ -412,104 +391,104 @@ jobs:
       run: |
         rm -rf kotekan
 
-#TODO   # Build kotekan documentation
-#TODO   build-docs:
-#TODO     runs-on: ubuntu-latest
-#TODO     needs: build-docker-2404
-#TODO 
-#TODO     steps:
-#TODO     - uses: actions/checkout@v4
-#TODO 
-#TODO     - name: Login to GitHub Container Registry
-#TODO       if: ${{ !env.ACT }} # Don't log in if running locally
-#TODO       uses: docker/login-action@v3
-#TODO       with:
-#TODO         registry: ${{ env.REGISTRY }}
-#TODO         username: ${{ github.actor }}
-#TODO         password: ${{ secrets.GITHUB_TOKEN }}
-#TODO 
-#TODO     - name: Build kotekan docs
-#TODO       run: |
-#TODO         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-docs/ "${{ needs.build-docker-2404.outputs.docker_img_name }}")
-#TODO         docker run "${OPTS[@]}" \
-#TODO           cmake -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
-#TODO             -DCMAKE_LINK_WHAT_YOU_USE=OFF -DCCACHE=OFF \
-#TODO             -DUSE_OMP=OFF -DUSE_NUMA=ON -DNO_MEMLOCK=OFF \
-#TODO             -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF \
-#TODO             -DUSE_ASDF=OFF -DUSE_HDF5=OFF -DUSE_GDAL=OFF \
-#TODO             -DUSE_AIRSPY=OFF -DUSE_LAPACK_BLAZE=OFF -DUSE_FFTW=OFF -DUSE_JULIA=OFF \
-#TODO             -DUSE_DPDK=OFF \
-#TODO             -DWITH_TESTS=OFF -DWITH_BOOST_TESTS=OFF \
-#TODO             -DCOMPILE_DOCS=ON \
-#TODO             ..
-#TODO         docker run "${OPTS[@]}" make doc
-#TODO         docker run "${OPTS[@]}" make sphinx
-#TODO 
-#TODO   # Linting
-#TODO   lint:
-#TODO     runs-on: ubuntu-latest
-#TODO     needs: build-docker-2404
-#TODO 
-#TODO     steps:
-#TODO     - uses: actions/checkout@v4
-#TODO 
-#TODO     - name: Login to GitHub Container Registry
-#TODO       if: ${{ !env.ACT }} # Don't log in if running locally
-#TODO       uses: docker/login-action@v3
-#TODO       with:
-#TODO         registry: ${{ env.REGISTRY }}
-#TODO         username: ${{ github.actor }}
-#TODO         password: ${{ secrets.GITHUB_TOKEN }}
-#TODO 
-#TODO     - name: Run lint.sh
-#TODO       shell: bash
-#TODO       run: |
-#TODO         set -e
-#TODO         docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan
-#TODO 
-#TODO   # Build a clang version of kotekan
-#TODO   # Note that this build isn't working at the moment, so for now only run it upon request.
-#TODO   build-clang-2404:
-#TODO     runs-on: ubuntu-latest
-#TODO     needs: build-docker-2404
-#TODO 
-#TODO     steps:
-#TODO     - name: Checkout repository
-#TODO       uses: actions/checkout@v4
-#TODO 
-#TODO     - name: Login to GitHub Container Registry
-#TODO       if: ${{ !env.ACT }} # Don't log in if running locally
-#TODO       uses: docker/login-action@v3
-#TODO       with:
-#TODO         registry: ${{ env.REGISTRY }}
-#TODO         username: ${{ github.actor }}
-#TODO         password: ${{ secrets.GITHUB_TOKEN }}
-#TODO 
-#TODO     - name: Cache ccache files
-#TODO       uses: actions/cache@v4
-#TODO       with:
-#TODO         path: .ccache
-#TODO         key: ccache-clang-build-2404-${{ github.sha }}
-#TODO         restore-keys: |
-#TODO           ccache-clang-build-2404
-#TODO 
-#TODO     - name: Build kotekan
-#TODO       env:
-#TODO         CC: clang
-#TODO         CXX: clang++
-#TODO       run: |
-#TODO         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ -e CC -e CXX ${{ needs.build-docker-2404.outputs.docker_img_name }})
-#TODO         docker run "${OPTS[@]}" ccache -s
-#TODO         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-#TODO           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-#TODO             -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
-#TODO             -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
-#TODO             -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON \
-#TODO             -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
-#TODO             -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
-#TODO             -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
-#TODO             -DUSE_DPDK=OFF \
-#TODO             -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
-#TODO             ..
-#TODO         docker run "${OPTS[@]}" make -j $(nproc)
-#TODO         docker run "${OPTS[@]}" ccache -s
+  # Build kotekan documentation
+  build-docs:
+    runs-on: ubuntu-latest
+    needs: build-docker-2404
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      if: ${{ !env.ACT }} # Don't log in if running locally
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build kotekan docs
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-docs/ "${{ needs.build-docker-2404.outputs.docker_img_name }}")
+        docker run "${OPTS[@]}" \
+          cmake -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=OFF -DCCACHE=OFF \
+            -DUSE_OMP=OFF -DUSE_NUMA=ON -DNO_MEMLOCK=OFF \
+            -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF \
+            -DUSE_ASDF=OFF -DUSE_HDF5=OFF -DUSE_GDAL=OFF \
+            -DUSE_AIRSPY=OFF -DUSE_LAPACK_BLAZE=OFF -DUSE_FFTW=OFF -DUSE_JULIA=OFF \
+            -DUSE_DPDK=OFF \
+            -DWITH_TESTS=OFF -DWITH_BOOST_TESTS=OFF \
+            -DCOMPILE_DOCS=ON \
+            ..
+        docker run "${OPTS[@]}" make doc
+        docker run "${OPTS[@]}" make sphinx
+
+  # Linting
+  lint:
+    runs-on: ubuntu-latest
+    needs: build-docker-2404
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      if: ${{ !env.ACT }} # Don't log in if running locally
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Run lint.sh
+      shell: bash
+      run: |
+        set -e
+        docker run --rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }} /code/kotekan/tools/lint.sh -d /code/kotekan
+
+  # Build a clang version of kotekan
+  # Note that this build isn't working at the moment, so for now only run it upon request.
+  build-clang-2404:
+    runs-on: ubuntu-latest
+    needs: build-docker-2404
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      if: ${{ !env.ACT }} # Don't log in if running locally
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Cache ccache files
+      uses: actions/cache@v4
+      with:
+        path: .ccache
+        key: ccache-clang-build-2404-${{ github.sha }}
+        restore-keys: |
+          ccache-clang-build-2404
+
+    - name: Build kotekan
+      env:
+        CC: clang
+        CXX: clang++
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ -e CC -e CXX ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_BUILD_TYPE=Test -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON \
+            -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON \
+            -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON \
+            -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON \
+            -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON \
+            -DUSE_DPDK=OFF \
+            -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON \
+            ..
+        docker run "${OPTS[@]}" make -j $(nproc)
+        docker run "${OPTS[@]}" ccache -s
