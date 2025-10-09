@@ -1,5 +1,8 @@
 project(kotekan_libs)
 
+# cmake-lint: disable=C0301
+set(HDF5_CONDITION $<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>)
+
 add_library(
     kotekan_stages
     beamformingPostProcess.cpp
@@ -24,15 +27,9 @@ add_library(
     $<$<BOOL:${GDAL_FOUND}>:gdalFileWrite.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalVisWrite.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFiles.cpp>
-    $<$<AND:$<BOOL:${HDF5_FOUND}>,
-    $<BOOL:${HighFive_FOUND}>,
-    $<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5FileRead.cpp>
-    $<$<AND:$<BOOL:${HDF5_FOUND}>,
-    $<BOOL:${HighFive_FOUND}>,
-    $<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5FileWrite.cpp>
-    $<$<AND:$<BOOL:${HDF5_FOUND}>,
-    $<BOOL:${HighFive_FOUND}>,
-    $<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5Files.cpp>
+    $<${HDF5_CONDITION}:hdf5FileRead.cpp>
+    $<${HDF5_CONDITION}:hdf5FileWrite.cpp>
+    $<${HDF5_CONDITION}:hdf5Files.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
     streamSingleDishVDIF.cpp
