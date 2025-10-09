@@ -421,8 +421,10 @@ public:
             if (config_response_json.contains(host_port_str)) {
                 ConfigInfo info = ConfigInfo(config_response_json[host_port_str]);
                 // check that the new hash matches expectations.
-                if(_jsonHash(info.config) != hash || info.json_hash != hash)
-                    ERROR_NON_OO("ConfigTracker: Returned hash or config is inconsistent with hash {}!", hash);
+                if (_jsonHash(info.config) != hash || info.json_hash != hash)
+                    ERROR_NON_OO(
+                        "ConfigTracker: Returned hash or config is inconsistent with hash {}!",
+                        hash);
                 _insertConfig(upstream_host, upstream_port, info);
             } else {
                 // If the config was not found, log a non-fatal error.
