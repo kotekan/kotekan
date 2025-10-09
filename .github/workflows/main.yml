@@ -200,6 +200,7 @@ jobs:
             cmake_defs: ""
             post_build: |
               cd $GITHUB_WORKSPACE
+              git config --global --add safe.directory $GITHUB_WORKSPACE
               bash ./tools/lint.sh
 
     steps:
