@@ -168,8 +168,7 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
     pl_expanded_mask.set_metadata(pl_mask.get_metadata());
     const auto& pl_expanded_mask_meta = pl_expanded_mask.get_metadata();
     assert(pl_expanded_mask_meta->get_nfreq() >= 0);
-    std::vector<int> time_downsampling_fpga =
-        pl_mask.get_metadata()->get_time_downsampling_fpga();
+    std::vector<int> time_downsampling_fpga = pl_mask.get_metadata()->get_time_downsampling_fpga();
     for (int freq = 0; freq < pl_expanded_mask_meta->get_nfreq(); ++freq) {
         // We would do this if we could start out with 1/4 but we cannot
         // pl_expanded_mask_meta->freq_upchan_factor[freq] *= 4;

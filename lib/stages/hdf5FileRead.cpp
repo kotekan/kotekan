@@ -174,7 +174,6 @@ public:
                         dataset.getAttribute("time_downsampling_fpga").read<std::vector<int>>();
                     assert(std::ptrdiff_t(time_downsampling_fpga.size()) == meta->get_nfreq());
                     meta->set_time_downsampling_fpga(time_downsampling_fpga);
-
                 }
 
 

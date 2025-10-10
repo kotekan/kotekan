@@ -234,7 +234,8 @@ public:
                     dataset.createAttribute("coarse_freq", meta->get_coarse_freq());
                     dataset.createAttribute("freq_upchan_factor", meta->get_freq_upchan_factor());
                     dataset.createAttribute("half_fpga_sample0", meta->get_half_fpga_sample0());
-                    dataset.createAttribute("time_downsampling_fpga", meta->get_time_downsampling_fpga());
+                    dataset.createAttribute("time_downsampling_fpga",
+                                            meta->get_time_downsampling_fpga());
                 }
 
                 if (meta->ndishes >= 0) {

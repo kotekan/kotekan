@@ -6,8 +6,8 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"  // for DEBUG, INFO
-#include "visUtil.hpp"         // for frameID, modulo, current_time, ts_to_double
+#include "kotekanLogging.hpp" // for DEBUG, INFO
+#include "visUtil.hpp"        // for frameID, modulo, current_time, ts_to_double
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
 
@@ -82,15 +82,18 @@ void DPDKShuffleSimulate::main_thread() {
         for (uint32_t i = 0; i < shuffle_size; ++i) {
             voltage_data_buf[i]->allocate_new_metadata_object(voltage_data_frame_id[i]);
 
-            get_chord_metadata(voltage_data_buf[i], voltage_data_frame_id[i])->set_fpga_seq_num(fpga_seq);
-            get_chord_metadata(voltage_data_buf[i], voltage_data_frame_id[i])->set_first_packet_recv_time(now);
+            get_chord_metadata(voltage_data_buf[i], voltage_data_frame_id[i])
+                ->set_fpga_seq_num(fpga_seq);
+            get_chord_metadata(voltage_data_buf[i], voltage_data_frame_id[i])
+                ->set_first_packet_recv_time(now);
         }
         fpga_seq += _num_samples_per_dataset;
 
         // Set metadata for lost samples buf
         lost_samples_buf->allocate_new_metadata_object(lost_samples_frame_id);
         get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_fpga_seq_num(fpga_seq);
-        get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_first_packet_recv_time(now);
+        get_chord_metadata(lost_samples_buf, lost_samples_frame_id)
+            ->set_first_packet_recv_time(now);
 
         // TODO Set the default values for the frames to something.
 

@@ -5,7 +5,7 @@
 #include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"  // for INFO
+#include "kotekanLogging.hpp" // for INFO
 
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool

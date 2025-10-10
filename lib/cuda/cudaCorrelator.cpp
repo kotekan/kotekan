@@ -146,7 +146,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     // Ensure consistency:
     assert(in_meta->get_nfreq() == rfi_meta->get_nfreq());
     // set above already
-    //const std::vector<int> in_time_downsampling_fpga = in_meta->get_time_downsampling_fpga();
+    // const std::vector<int> in_time_downsampling_fpga = in_meta->get_time_downsampling_fpga();
     const std::vector<int> rfi_time_downsampling_fpga = rfi_meta->get_time_downsampling_fpga();
     for (int freq = 0; freq < in_meta->get_nfreq(); ++freq)
         assert(voltage.get_read_valid().begin() * in_time_downsampling_fpga[freq]

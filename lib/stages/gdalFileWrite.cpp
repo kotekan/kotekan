@@ -219,18 +219,22 @@ public:
                 if (meta->get_nfreq() >= 0) {
                     const auto coarse_freq = group->CreateAttribute(
                         "coarse_freq", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
-                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->get_coarse_freq().data())));
+                        GDALExtendedDataType::Create(
+                            get_gdal_datatype(*meta->get_coarse_freq().data())));
                     const bool success = coarse_freq->Write(
-                        meta->get_coarse_freq().data(), meta->get_nfreq() * sizeof *meta->get_coarse_freq().data());
+                        meta->get_coarse_freq().data(),
+                        meta->get_nfreq() * sizeof *meta->get_coarse_freq().data());
                     assert(success);
                 }
 
                 if (meta->get_nfreq() >= 0) {
                     const auto freq_upchan_factor = group->CreateAttribute(
                         "freq_upchan_factor", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
-                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->get_freq_upchan_factor().data())));
+                        GDALExtendedDataType::Create(
+                            get_gdal_datatype(*meta->get_freq_upchan_factor().data())));
                     const bool success = freq_upchan_factor->Write(
-                        meta->get_freq_upchan_factor().data(), meta->get_nfreq() * sizeof *meta->get_freq_upchan_factor().data());
+                        meta->get_freq_upchan_factor().data(),
+                        meta->get_nfreq() * sizeof *meta->get_freq_upchan_factor().data());
                     assert(success);
                 }
 
@@ -257,9 +261,11 @@ public:
                 if (meta->get_nfreq() >= 0) {
                     const auto half_fpga_sample0 = group->CreateAttribute(
                         "half_fpga_sample0", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
-                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->get_half_fpga_sample0().data())));
+                        GDALExtendedDataType::Create(
+                            get_gdal_datatype(*meta->get_half_fpga_sample0().data())));
                     const bool success = half_fpga_sample0->Write(
-                        meta->get_half_fpga_sample0().data(), meta->get_nfreq() * sizeof *meta->get_half_fpga_sample0().data());
+                        meta->get_half_fpga_sample0().data(),
+                        meta->get_nfreq() * sizeof *meta->get_half_fpga_sample0().data());
                     assert(success);
                 }
 

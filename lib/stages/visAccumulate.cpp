@@ -1,11 +1,11 @@
 #include "visAccumulate.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for operator!=, Hash
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator!=, Hash
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
@@ -302,7 +302,8 @@ void visAccumulate::main_thread() {
         }
 
         int32_t* input = (int32_t*)in_frame;
-        uint64_t frame_count = (get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() / samples_per_data_set);
+        uint64_t frame_count =
+            (get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() / samples_per_data_set);
 
         // Start and end times of this frame
         timespec t_s;
@@ -377,7 +378,8 @@ void visAccumulate::main_thread() {
             // TODO: for the multifrequency support this probably needs to become frequency
             // dependent
             int32_t lost_in_frame = get_chord_metadata(in_buf, in_frame_id)->get_lost_timesamples();
-            int32_t rfi_in_frame = get_chord_metadata(in_buf, in_frame_id)->get_rfi_flagged_samples();
+            int32_t rfi_in_frame =
+                get_chord_metadata(in_buf, in_frame_id)->get_rfi_flagged_samples();
 
             // Assert that we haven't got an issue calculating the lost data
             // This did happen when the RFI system was messing up.

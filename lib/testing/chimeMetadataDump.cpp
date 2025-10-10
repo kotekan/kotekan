@@ -6,7 +6,7 @@
 #include "buffer.hpp"          // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp" //
 #include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"  // for INFO
+#include "kotekanLogging.hpp" // for INFO
 
 #include <atomic>     // for atomic_bool
 #include <functional> // for _Bind_helper<>::type, bind, function
@@ -60,9 +60,9 @@ void chimeMetadataDump::main_thread() {
              "freq ID: {:d}), lost samples: {:d} freq_bin: {:d}, "
              "freq: {:f} MHz , time stamp: {:d}.{:06d} ({:s}.{:06d}), "
              "GPS time: {:d}.{:06d} ({:s}.{:09d})",
-             in_buf->buffer_name, frame_id, fpga_seq, lost_samples, freq_id,
-             tel.to_freq(freq_id), time_v.tv_sec, time_v.tv_usec, time_buf,
-             time_v.tv_usec, time_s.tv_sec, time_s.tv_nsec, gps_time_buf, time_s.tv_nsec);
+             in_buf->buffer_name, frame_id, fpga_seq, lost_samples, freq_id, tel.to_freq(freq_id),
+             time_v.tv_sec, time_v.tv_usec, time_buf, time_v.tv_usec, time_s.tv_sec, time_s.tv_nsec,
+             gps_time_buf, time_s.tv_nsec);
 
         in_buf->mark_frame_empty(unique_name, frame_id);
         frame_id = (frame_id + 1) % in_buf->num_frames;

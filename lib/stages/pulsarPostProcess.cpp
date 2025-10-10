@@ -192,11 +192,14 @@ void pulsarPostProcess::main_thread() {
         // Initialize data for header info, namely position and frequency labels.
         for (uint32_t i = 0; i < _num_gpus; ++i) {
             beam_coord[i] = get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_beam_coord();
-            thread_ids[i] = get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_coarse_freq()[0]; // TODO: handle multiple frequencies per buffer
+            thread_ids[i] =
+                get_chord_metadata(in_buf[i], in_buffer_ID[i])
+                    ->get_coarse_freq()[0]; // TODO: handle multiple frequencies per buffer
         }
 
         // Define station_id as a node identifer in terms of F-engine slot/crate/link data.
-#if 0 // station id is strange since more than one F-engine would have contributed anyway, so for now, just make up something
+#if 0 // station id is strange since more than one F-engine would have contributed anyway, so for
+      // now, just make up something
         ice_stream_id_t stream_id = ice_extract_stream_id_t(get_chord_metadata(in_buf[0], in_buffer_ID[0])->get_stream_id());
         psr_header.station_id =
             (uint16_t)(stream_id.crate_id * 16 + stream_id.slot_id + stream_id.link_id * 32);
@@ -354,18 +357,21 @@ std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
         // largest fpga_seq_no, in which case we have to repeat the process.)
         int64_t max_fpga_count = get_chord_metadata(in_buf[0], in_buffer_ID[0])->get_fpga_seq_num();
         for (unsigned i = 1; i < _num_gpus; i++) {
-            max_fpga_count = std::max(max_fpga_count, get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
+            max_fpga_count = std::max(
+                max_fpga_count, get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
         }
         bool fpga_seq_in_sync = true;
         for (unsigned i = 0; i < _num_gpus; ++i) {
-            while (max_fpga_count > get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
+            while (max_fpga_count
+                   > get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
                 in_buf[i]->mark_frame_empty(unique_name, in_buffer_ID[i]);
                 in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
                 in_frame[i] = in_buf[i]->wait_for_full_frame(unique_name, in_buffer_ID[i]);
                 if (in_frame[i] == nullptr)
                     return std::nullopt;
             }
-            if (max_fpga_count != get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
+            if (max_fpga_count
+                != get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
                 fpga_seq_in_sync = false;
             }
         }
