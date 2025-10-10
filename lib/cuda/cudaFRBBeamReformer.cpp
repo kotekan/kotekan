@@ -1,9 +1,10 @@
 #include "cudaFRBBeamReformer.hpp"
 
 #include "buffer.hpp"              // for GenericBuffer
-#include "cublas_v2.h"             // for cublasGetStatusString, CUBLAS_STATUS_SUCCESS, cublasH...
+#include "cublas_v2.h"             // for cublasCreate, cublasDestroy, cublasSetStream
 #include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for CUevent_st, cudaEvent_t, CUstream_st
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG, ERROR
 #include "metadata.hpp"            // for metadataObject

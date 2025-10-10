@@ -20,6 +20,7 @@
 #include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>

@@ -8,7 +8,7 @@ set -euxo pipefail
 scriptdir=$(dirname "$0")
 cd "$scriptdir/.."
 
-setups='chord hirax pathfinder'
+setups='chord hirax pathfinder smallfinder'
 
 mkdir -p output-A40
 
@@ -42,7 +42,7 @@ done
 
 # Format generated C++ code
 for setup in ${setups}; do
-    clang-format-14 -i output-A40/xpose_${setup}.cxx &
+    clang-format-18 -i output-A40/xpose_${setup}.cxx &
 done
 
 # Format generated Julia code

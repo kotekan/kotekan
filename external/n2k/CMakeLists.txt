@@ -26,6 +26,7 @@ set(KERNELFILES
     kernel_128_8.cu
     kernel_128_16.cu
     kernel_128_32.cu
+    kernel_128_48.cu
     kernel_128_64.cu
     kernel_128_128.cu
     kernel_128_256.cu
