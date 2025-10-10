@@ -1,7 +1,6 @@
 #include "ringbuffer.hpp"
 
-#include "errors.h"           // for INFO_F
-#include "kotekanLogging.hpp" // for DEBUG2, DEBUG_NON_OO
+#include "kotekanLogging.hpp" // for DEBUG2, DEBUG, logLevel, DEBUG_NON_OO
 
 #include "fmt.hpp" // for compile_string_to_view, group_digits, format, format_string
 

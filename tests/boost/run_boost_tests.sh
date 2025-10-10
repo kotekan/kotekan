@@ -1,4 +1,7 @@
 #!/bin/bash
+# Runs all executables named 'test_*' in a given directory (i.e. boost tests in the context of CI).
+# Prints a pass/fail summary and exits non-zero if any test fails.
+# Usage: $0 [-t timeout_seconds] [-v] <directory>
 
 # Default timeout
 TIMEOUT=60

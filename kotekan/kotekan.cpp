@@ -1,7 +1,7 @@
 #include "Config.hpp"             // for Config
 #include "StageFactory.hpp"       // for StageFactoryRegistry, StageMaker
 #include "basebandApiManager.hpp" // for basebandApiManager
-#include "errors.h"               // for get_error_message, __enable_syslog, get_exit_code, Ret...
+#include "errors.h"               // for ReturnCode, get_error_message, __enable_syslog, exit_k...
 #include "kotekanLogging.hpp"     // for logLevel, INFO_NON_OO, ERROR_NON_OO, FATAL_ERROR_NON_OO
 #include "kotekanMode.hpp"        // for kotekanMode
 #include "kotekanTrackers.hpp"    // for KotekanTrackers
@@ -39,7 +39,9 @@
 #include <utility>     // for pair
 #include <vector>      // for vector
 #ifdef WITH_HDF5
-#include "hdf5.h"
+#include "hdf5.h" // IWYU pragma: keep, export
+// IWYU pragma: no_include <H5PLpublic.h>
+// IWYU pragma: no_include <H5public.h>
 #endif
 
 

@@ -9,18 +9,20 @@
 #include <DataType.hpp>
 #include <NDArrayBuffer.hpp>
 #include <NDArrayRingBuffer.hpp>
-#include <algorithm>
-#include <array>
 #include <bufferContainer.hpp>
-#include <cassert>
 #include <chordMetadata.hpp>
-#include <cstring>
 #include <cudaCommand.hpp>
 #include <cudaDeviceInterface.hpp>
 #include <div.hpp>
-#include <fmt.hpp>
-#include <limits>
 #include <ringbuffer.hpp>
+
+#include <fmt.hpp>
+
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>

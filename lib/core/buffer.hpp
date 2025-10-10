@@ -17,6 +17,7 @@
 #include <map>                // for map
 #include <memory>             // for shared_ptr
 #include <mutex>              // for recursive_mutex
+#include <sched.h>            // for cpu_set_t
 #include <stdint.h>           // for uint8_t
 #include <string>             // for string, basic_string
 #include <time.h>             // for size_t
