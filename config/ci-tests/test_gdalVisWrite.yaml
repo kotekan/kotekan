@@ -4,6 +4,7 @@ log_level: info
 
 num_elements: 16
 num_ev: 4
+cpu_affinity: []
 
 # Minimal CHORD telescope configuration (used by FakeN2 for timestamps/metadata)
 telescope:
@@ -28,7 +29,18 @@ earth_rotation_data:
       delta_UT1_inst: 0.0,
       x_pm: 0.0,
       y_pm: 0.0
-    }]
+    },
+    {
+      time_inst_ns: 1578010001000000300,
+      delta_UT1_inst: 0.0,
+      x_pm: 0.0,
+      y_pm: 0.0
+    }
+  ]
+
+# Set telescope time0 to align with EOP table to avoid early-time EOP warnings
+gps_time:
+  frame0_nano: 1578010000000000300
 
 # Metadata pool for N2 frames
 N2_pool:
@@ -39,17 +51,15 @@ N2_pool:
 fakevis_buf:
   kotekan_buffer: N2
   metadata_pool: N2_pool
-  num_frames: 16
+  num_frames: 128
 
 # Produce 5 time steps, 32 frequencies, 16 elements
 fake_n2:
   kotekan_stage: FakeN2
   out_buf: fakevis_buf
   num_elements: 16
-  num_ev: 2
-  # Either provide explicit freq_ids or num_total_freq
   num_total_freq: 32
-  cadence: 0.1
+  cadence: 0.2
   num_frames: 5
   wait: false
   mode: default
@@ -65,6 +75,5 @@ gdal_vis_write:
   # Chunking: ensure positive chunk sizes
   blocksize_f: 1
   blocksize_t: 5
-  file_nt: 5
+  num_file_t: 6
   flush_timeout_seconds: 60
-

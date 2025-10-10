@@ -2,19 +2,11 @@
 #define UTIL_H
 
 #include <stdint.h> // for int64_t, int32_t
+#include <sys/stat.h> // for mode_t
 
 #define EVER                                                                                       \
     ;                                                                                              \
     ;
-
-#ifndef MAC_OSX
-#define MIN(a, b)                                                                                  \
-    ({                                                                                             \
-        __typeof__(a) _a = (a);                                                                    \
-        __typeof__(b) _b = (b);                                                                    \
-        _a < _b ? _a : _b;                                                                         \
-    })
-#endif
 
 #ifdef __cplusplus
 #include <string>
@@ -47,6 +39,10 @@ int cp(const char* to, const char* from);
 int64_t mod(int64_t a, int64_t b);
 double e_time(void);
 void hex_dump(const int rows, void* addr, int len);
+
+// Recursively create directories (mkdir -p behavior). Returns 0 on success
+// (including when the directory already exists), and -1 on failure with errno set.
+int mkdir_p(const char* path, mode_t mode);
 
 //! A complex integer datatype.
 typedef struct {

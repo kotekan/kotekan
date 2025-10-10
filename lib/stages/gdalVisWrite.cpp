@@ -29,11 +29,14 @@
 #include <utility>
 #include <vector>
 #include <visUtil.hpp>
+#include "util.h"              // for mkdir_p
 #include "Telescope.hpp"         // for Telescope
 
 using namespace gdal;
 
 REGISTER_KOTEKAN_STAGE(gdalVisWrite);
+
+// Use mkdir_p from util.h for recursive directory creation
 
 gdalVisWrite::gdalVisWrite(kotekan::Config& config, const std::string& unique_name,
                            kotekan::bufferContainer& buffer_container)
@@ -266,6 +269,7 @@ void gdalVisWrite::main_thread() {
     const double start_time = current_time();
     N2::frameID in_frame_id(buffer);
     int frame_counter = 0;
+    bool warned_short_window = false;
 
     // datasets (files) for writing
     std::map<std::string, DatasetState> datasets;
@@ -277,22 +281,16 @@ void gdalVisWrite::main_thread() {
     if (!driver)
         FATAL_ERROR("GDAL driver not available: {:s}", driver_name);
 
-    // Create base_dir and partial dir if necessary
+    // Create base_dir and partial dir if necessary (recursively)
     {
-        int ierr = mkdir(base_dir.c_str(), 0777);
-        if (ierr) {
-            if (errno != EEXIST && errno != EISDIR) {
-                const char* const msg = strerror(errno);
-                FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(), msg);
-            }
+        if (mkdir_p(base_dir.c_str(), 0777) != 0) {
+            const char* const msg = strerror(errno);
+            FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(), msg);
         }
         std::string partial_dir = base_dir + "/.partial";
-        ierr = mkdir(partial_dir.c_str(), 0777);
-        if (ierr) {
-            if (errno != EEXIST && errno != EISDIR) {
-                const char* const msg = strerror(errno);
-                FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", partial_dir.c_str(), msg);
-            }
+        if (mkdir_p(partial_dir.c_str(), 0777) != 0) {
+            const char* const msg = strerror(errno);
+            FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", partial_dir.c_str(), msg);
         }
     }
 
@@ -453,11 +451,23 @@ void gdalVisWrite::main_thread() {
             {
                 auto& tel = Telescope::instance();
                 const std::uint64_t tick_len_ns = tel.seq_length_nsec();
-                state.frame_len_ns = meta->frame_length_fpga_ticks * tick_len_ns;
+            state.frame_len_ns = meta->frame_length_fpga_ticks * tick_len_ns;
             }
             state.partial_path = partial_path;
             datasets.emplace(final_path, std::move(state));
             state_ptr = &datasets.find(final_path)->second;
+
+            // Warn if the file time span is less than one second, as filenames are
+            // only second-resolution and will collide across windows.
+            if (!warned_short_window) {
+                const std::uint64_t file_len_ns = state_ptr->frame_len_ns * num_file_t;
+                if (state_ptr->frame_len_ns > 0 && file_len_ns < 1'000'000'000ULL) {
+                    WARN("File window too short: num_file_t * frame_len = {} * {} ns = {} ns < 1s. "
+                         "This may cause filename collisions. Consider increasing num_file_t or cadence.",
+                         num_file_t, state_ptr->frame_len_ns, file_len_ns);
+                    warned_short_window = true;
+                }
+            }
         }
 
         if (!state_ptr || !state_ptr->ds) {

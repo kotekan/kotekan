@@ -39,7 +39,7 @@ protected:
     const size_t num_prod;     // number of products
     const size_t num_ev;       // number of eigenvectors/values
     const size_t num_freq;     // number of frequencies
-    const size_t num_file_t;      // frames per file (time dimension)
+    const size_t num_file_t;   // frames per file (time dimension)
 
     // Datasets to be stored until ready to write
     // f = freq, p = prod, e = eigen, i = input, t = time

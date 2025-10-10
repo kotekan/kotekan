@@ -7,6 +7,7 @@
 #include <sys/stat.h> // for mkdir
 #include <sys/time.h> // for gettimeofday, timeval
 #include <unistd.h>   // for close, read, write, ssize_t
+#include <string.h>   // for strlen, strdup
 
 double e_time(void) {
     struct timeval now;
@@ -183,4 +184,69 @@ void hex_dump(const int rows, void* addr, int len) {
         printf(" %02x", char_buf[i]);
     }
     printf("\n");
+}
+
+// Recursively create directories along the given path.
+// Similar to `mkdir -p`. Returns 0 on success (including if the path already exists)
+// and -1 on failure with errno set.
+int mkdir_p(const char* path, mode_t mode) {
+    if (path == NULL || *path == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    // If already exists and is directory, success
+    struct stat st;
+    if (stat(path, &st) == 0) {
+        if (S_ISDIR(st.st_mode))
+            return 0;
+        errno = ENOTDIR;
+        return -1;
+    }
+
+    // Work on a mutable copy
+    char* tmp = strdup(path);
+    if (tmp == NULL)
+        return -1;
+
+    size_t len = strlen(tmp);
+    // Remove trailing slashes (but keep root "/")
+    while (len > 1 && tmp[len - 1] == '/') {
+        tmp[--len] = '\0';
+    }
+
+    // Iterate components and create as needed
+    for (char* p = tmp + 1; *p; ++p) {
+        if (*p == '/') {
+            *p = '\0';
+            if (tmp[0] != '\0') {
+                if (stat(tmp, &st) != 0) {
+                    if (mkdir(tmp, mode) != 0 && errno != EEXIST) {
+                        *p = '/';
+                        int saved = errno;
+                        free(tmp);
+                        errno = saved;
+                        return -1;
+                    }
+                } else if (!S_ISDIR(st.st_mode)) {
+                    *p = '/';
+                    free(tmp);
+                    errno = ENOTDIR;
+                    return -1;
+                }
+            }
+            *p = '/';
+        }
+    }
+
+    // Create final path
+    if (mkdir(tmp, mode) != 0 && errno != EEXIST) {
+        int saved = errno;
+        free(tmp);
+        errno = saved;
+        return -1;
+    }
+
+    free(tmp);
+    return 0;
 }
