@@ -17,6 +17,7 @@
 #include <cassert>    // for assert
 #include <cstdint>    // for int64_t, uint16_t
 #include <memory>     // for shared_ptr, __shared_ptr_access, static_pointer_cast, weak...
+#include <mutex>      // for mutex, lock_guard
 #include <sstream>    // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
 #include <string.h>   // for size_t, strncpy, strnlen
 #include <string>     // for char_traits, basic_string, string, allocator, operator==
@@ -54,6 +55,27 @@ public:
     /// Serializes this metadata object into the given byte array,
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
+
+    /// controls write access to lost_timesamples only, assuming that a 32bit
+    /// read is already atomic
+    /// BUG: this does not protect the actual json class so is really just a
+    /// placebo
+    class almost_copyable_mutex : public std::mutex {
+    // NDArray copies chordMetadata.
+    // Allow this only if currently not locked
+    public:
+      almost_copyable_mutex() : std::mutex() {}
+      almost_copyable_mutex(const almost_copyable_mutex& /*other*/) : std::mutex() {
+        // cannot lock a const mutex
+        //std::lock_guard lock_other(other);
+      }
+      almost_copyable_mutex operator=(const almost_copyable_mutex& /*other*/) {
+        // cannot lock a const mutex
+        //std::lock_guard lock_other(other);
+        std::lock_guard lock_this(*this);
+        return *this;
+      }
+    } lock;
 
     // TODO: Replace by NDArray
     char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
@@ -231,14 +253,9 @@ public:
     }
 
     void atomic_add_lost_timesamples(const int32_t lost_samples) {
-        // RH: this is almost certainly not admissible code, but also almost certain, "works".
-        // RH: this is not actually atomic and has race conditions if the underlying json dict
-        // changes
-        static_assert(std::is_same<std::int64_t, nlohmann::json::number_integer_t>::value,
-                      "Roland's horrible hack fails");
-        *reinterpret_cast<std::atomic_int64_t*>(
-            metadata[jsonMetadata::LOST_TIMESAMPLES].template get_ptr<std::int64_t*>()) +=
-            lost_samples;
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::LOST_TIMESAMPLES] =
+            metadata[jsonMetadata::LOST_TIMESAMPLES].template get<int32_t>() + lost_samples;
     }
 
     // All time samples in this buffer (or the whole buffer, if the
