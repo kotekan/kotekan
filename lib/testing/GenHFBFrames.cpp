@@ -1,8 +1,8 @@
 #include "GenHFBFrames.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"         // for allocate_new_metadata_object, mark_frame_full, register_pr...
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"       // for allocate_new_metadata_object, mark_frame_full, register_pr...
 #include "chordMetadata.hpp"
 #include "datasetManager.hpp" // for dset_id_t
 #include "kotekanLogging.hpp" // for DEBUG, INFO

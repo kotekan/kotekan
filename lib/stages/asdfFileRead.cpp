@@ -301,8 +301,7 @@ public:
                     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
                     std::vector<int64_t> O_half_fpga_sample0(meta->get_nfreq());
                     for (int n = 0; n < meta->get_nfreq(); ++n)
-                        O_half_fpga_sample0[n] =
-                            half_fpga_sample0->at(n)->get_maybe_int().value();
+                        O_half_fpga_sample0[n] = half_fpga_sample0->at(n)->get_maybe_int().value();
                     meta->set_half_fpga_sample0(O_half_fpga_sample0);
                 }
             }

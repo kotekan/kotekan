@@ -1,11 +1,11 @@
 #include "networkOutputSim.hpp"
 
-#include "Config.hpp" // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"          // for mark_frame_full, register_producer, wait_for_empty_frame
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"  // for ERROR
+#include "kotekanLogging.hpp" // for ERROR
 
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for int32_t
@@ -61,8 +61,8 @@ void generate_const_data_set(unsigned char real, unsigned char imag, int num_tim
     }
 }
 
-void generate_complex_sine_data_set(int num_time_steps, int num_freq,
-                                    int num_elem, unsigned char* out_data) {
+void generate_complex_sine_data_set(int num_time_steps, int num_freq, int num_elem,
+                                    unsigned char* out_data) {
 
     int idx = 0;
     int imag = 0;
@@ -134,8 +134,8 @@ void networkOutputSim::main_thread() {
                                          frame);
         } else if (pattern == SIM_SINE) {
             // INFO("Generating data with a complex sine in frequency.");
-            generate_complex_sine_data_set(_samples_per_data_set,
-                                           _num_local_freq, _num_elem, frame);
+            generate_complex_sine_data_set(_samples_per_data_set, _num_local_freq, _num_elem,
+                                           frame);
         } else {
             ERROR("Invalid Pattern");
             exit(-1);

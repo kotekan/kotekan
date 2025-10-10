@@ -1,11 +1,12 @@
 #ifndef CHORD_METADATA
 #define CHORD_METADATA
 
-#include "DataType.hpp"       // for type_to_string, type_total_bytes, DataType
+#include "DataType.hpp" // for type_to_string, type_total_bytes, DataType
 #include "Telescope.hpp"
 #include "buffer.hpp"         // for Buffer
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
+
 #include "jsonMetadata.hpp"
 // TODO: CHIME and CHORD differ whether they use the datasetManager
 #include "dataset.hpp"
@@ -61,20 +62,20 @@ public:
     /// BUG: this does not protect the actual json class so is really just a
     /// placebo
     class almost_copyable_mutex : public std::mutex {
-    // NDArray copies chordMetadata.
-    // Allow this only if currently not locked
+        // NDArray copies chordMetadata.
+        // Allow this only if currently not locked
     public:
-      almost_copyable_mutex() : std::mutex() {}
-      almost_copyable_mutex(const almost_copyable_mutex& /*other*/) : std::mutex() {
-        // cannot lock a const mutex
-        //std::lock_guard lock_other(other);
-      }
-      almost_copyable_mutex operator=(const almost_copyable_mutex& /*other*/) {
-        // cannot lock a const mutex
-        //std::lock_guard lock_other(other);
-        std::lock_guard lock_this(*this);
-        return *this;
-      }
+        almost_copyable_mutex() : std::mutex() {}
+        almost_copyable_mutex(const almost_copyable_mutex& /*other*/) : std::mutex() {
+            // cannot lock a const mutex
+            // std::lock_guard lock_other(other);
+        }
+        almost_copyable_mutex operator=(const almost_copyable_mutex& /*other*/) {
+            // cannot lock a const mutex
+            // std::lock_guard lock_other(other);
+            std::lock_guard lock_this(*this);
+            return *this;
+        }
     } lock;
 
     // TODO: Replace by NDArray
@@ -238,7 +239,7 @@ public:
         return metadata[jsonMetadata::RFI_FLAGGED_SAMPLES].template get<int32_t>();
     }
 
-    void set_rfi_flagged_samples(const int32_t flagged_samples)  {
+    void set_rfi_flagged_samples(const int32_t flagged_samples) {
         // very much non-atomic, due to json dict entry creation
         metadata[jsonMetadata::RFI_FLAGGED_SAMPLES] = flagged_samples;
     }
@@ -254,7 +255,8 @@ public:
 
     void atomic_add_lost_timesamples(const int32_t lost_samples) {
         std::lock_guard<std::mutex> lock(this->lock);
-        metadata[jsonMetadata::LOST_TIMESAMPLES] = metadata[jsonMetadata::LOST_TIMESAMPLES].template get<int32_t>() + lost_samples;
+        metadata[jsonMetadata::LOST_TIMESAMPLES] =
+            metadata[jsonMetadata::LOST_TIMESAMPLES].template get<int32_t>() + lost_samples;
     }
 
     // All time samples in this buffer (or the whole buffer, if the
@@ -326,13 +328,13 @@ public:
 
     // non-science metadata
 
-   timeval get_first_packet_recv_time() const {
+    timeval get_first_packet_recv_time() const {
         return metadata[jsonMetadata::FIRST_PACKET_RECV_TIME].template get<timeval>();
-   }
+    }
 
-   void set_first_packet_recv_time(const timeval time_v) {
+    void set_first_packet_recv_time(const timeval time_v) {
         metadata[jsonMetadata::FIRST_PACKET_RECV_TIME] = time_v;
-   }
+    }
 
     // links to other data
 

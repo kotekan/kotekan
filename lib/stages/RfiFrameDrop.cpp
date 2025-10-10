@@ -1,11 +1,11 @@
 #include "RfiFrameDrop.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for Hash, operator!=
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for Hash, operator!=
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
@@ -134,7 +134,8 @@ void RfiFrameDrop::main_thread() {
         lock.lock();
 
         // Check if we need to register a new dataset
-        dset_id_t dset_id_in_new = get_chord_metadata(_buf_in_vis, frame_id_in_vis)->get_dataset_id();
+        dset_id_t dset_id_in_new =
+            get_chord_metadata(_buf_in_vis, frame_id_in_vis)->get_dataset_id();
         if (dset_id_in_new != dset_id_in || state_id != last_state_id) {
             dset_id_out = dm.add_dataset(state_id, dset_id_in_new);
             dset_id_in = dset_id_in_new;

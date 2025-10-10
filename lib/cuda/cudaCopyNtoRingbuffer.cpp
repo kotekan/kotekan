@@ -209,8 +209,8 @@ cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& /*pipestate*/,
             != meta_in->get_sample0_offset()) {
             ERROR("cudaCopyNtoRingbuffer: Mismatch in sample0_offset for input buffer {}: "
                   "metadata has {}, frame has {} (output_cursor {})",
-                  in_buffers[i]->buffer_name, meta_ring->get_sample0_offset(), meta_in->get_sample0_offset(),
-                  output_cursor);
+                  in_buffers[i]->buffer_name, meta_ring->get_sample0_offset(),
+                  meta_in->get_sample0_offset(), output_cursor);
             throw std::runtime_error("cudaCopyNtoRingbuffer: metadata time code mismatch");
         }
     }

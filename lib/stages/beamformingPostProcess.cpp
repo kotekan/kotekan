@@ -7,7 +7,7 @@
 #include "buffer.hpp"           // for Buffer
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "chordMetadata.hpp"
-#include "vdif_functions.h"     // for VDIFHeader
+#include "vdif_functions.h" // for VDIFHeader
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
@@ -140,15 +140,18 @@ void beamformingPostProcess::main_thread() {
                 goto end_loop;
 
             if (i == 0) {
-                first_seq_number =
-                    static_cast<uint32_t>(get_chord_metadata(in_buf[_link_map[0]], in_buffer_ID[0])->get_fpga_seq_num());
+                first_seq_number = static_cast<uint32_t>(
+                    get_chord_metadata(in_buf[_link_map[0]], in_buffer_ID[0])->get_fpga_seq_num());
             } else {
                 assert(first_seq_number
-                       == static_cast<uint32_t>(get_chord_metadata(in_buf[gpu_id], in_buffer_ID[gpu_id])->get_fpga_seq_num()));
+                       == static_cast<uint32_t>(
+                           get_chord_metadata(in_buf[gpu_id], in_buffer_ID[gpu_id])
+                               ->get_fpga_seq_num()));
             }
 
             // TODO: check that frequency is actually usable as unique thread ID
-            thread_ids[i] = get_chord_metadata(in_buf[gpu_id], in_buffer_ID[gpu_id])->get_coarse_freq()[0];
+            thread_ids[i] =
+                get_chord_metadata(in_buf[gpu_id], in_buffer_ID[gpu_id])->get_coarse_freq()[0];
 
             in_buffer_ID[gpu_id] = (in_buffer_ID[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
         }
@@ -161,7 +164,8 @@ void beamformingPostProcess::main_thread() {
             // testing sync code
             startup = 0;
             current_input_location = 0;
-            struct timeval time = get_chord_metadata(in_buf[_link_map[0]], 0)->get_first_packet_recv_time();
+            struct timeval time =
+                get_chord_metadata(in_buf[_link_map[0]], 0)->get_first_packet_recv_time();
             second = (int)(round((double)time.tv_sec / 20.0) * 20.0) - 946728000;
             // Fill the first output buffer headers
             fpga_seq_num = first_seq_number;
