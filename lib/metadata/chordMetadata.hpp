@@ -58,7 +58,24 @@ public:
 
     /// controls write access to lost_timesamples only, assuming that a 32bit
     /// read is already atomic
-    std::mutex lock;
+    /// BUG: this does not protect the actual json class so is really just a
+    /// placebo
+    class almost_copyable_mutex : public std::mutex {
+    // NDArray copies chordMetadata.
+    // Allow this only if currently not locked
+    public:
+      almost_copyable_mutex() : std::mutex() {}
+      almost_copyable_mutex(const almost_copyable_mutex& /*other*/) : std::mutex() {
+        // cannot lock a const mutex
+        //std::lock_guard lock_other(other);
+      }
+      almost_copyable_mutex operator=(const almost_copyable_mutex& /*other*/) {
+        // cannot lock a const mutex
+        //std::lock_guard lock_other(other);
+        std::lock_guard lock_this(*this);
+        return *this;
+      }
+    } lock;
 
     // TODO: Replace by NDArray
     char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
