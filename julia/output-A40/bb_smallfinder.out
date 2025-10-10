@@ -1,3 +1,15 @@
+Precompiling CUDA...
+   4017.5 ms  ✓ CUDA_Runtime_jll
+   3673.4 ms  ✓ CUDA_Compiler_jll
+  41382.1 ms  ✓ CUDA
+   7459.8 ms  ✓ Atomix → AtomixCUDAExt
+  4 dependencies successfully precompiled in 59 seconds. 101 already precompiled.
+Precompiling CUDASIMDTypes...
+   5765.2 ms  ✓ CUDASIMDTypes
+  1 dependency successfully precompiled in 7 seconds. 105 already precompiled.
+Precompiling IndexSpaces...
+   6064.2 ms  ✓ IndexSpaces
+  1 dependency successfully precompiled in 7 seconds. 106 already precompiled.
 [Choosing CUDA device...]
 NVIDIA A40
 [Creating bb kernel...]

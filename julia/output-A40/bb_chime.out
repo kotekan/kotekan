@@ -1,3 +1,13 @@
+Precompiling CUDA...
+    CUDA_Runtime_jll Being precompiled by another process (pid: 2051141, pidfile: /home/rhaas/.julia/compiled/v1.11/CUDA_Runtime_jll/Hs50y_aQtLQ.ji.pidfile)
+  40582.2 ms  ✓ CUDA_Runtime_jll
+    CUDA Being precompiled by another process (pid: 2051141, pidfile: /home/rhaas/.julia/compiled/v1.11/CUDA/oWw5k_aQtLQ.ji.pidfile)
+  18231.7 ms  ✓ CUDA
+  2 dependencies successfully precompiled in 62 seconds. 103 already precompiled.
+Precompiling CUDASIMDTypes...
+    CUDASIMDTypes Being precompiled by another process (pid: 2051141, pidfile: /home/rhaas/.julia/compiled/v1.11/CUDASIMDTypes/ZMfhI_aQtLQ.ji.pidfile)
+  12368.1 ms  ✓ CUDASIMDTypes
+  1 dependency successfully precompiled in 14 seconds. 105 already precompiled.
 [Choosing CUDA device...]
 NVIDIA A40
 [Creating bb kernel...]
