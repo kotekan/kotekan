@@ -195,10 +195,11 @@ RUN mkdir src && \
     true) && \
     rm -rf src
 
-# Install Julia
-RUN curl -fsSL https://install.julialang.org | sh -s -- -y
-ENV PATH="$PATH:/root/.juliaup/bin"
-RUN juliaup add 1.11 && juliaup default 1.11
+# Install Julia 1.11.7 directly (no juliaup for no automatic update checks)
+RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.7-linux-x86_64.tar.gz && \
+    tar -xzf julia-1.11.7-linux-x86_64.tar.gz -C /opt && \
+    ln -s /opt/julia-1.11.7/bin/julia /usr/local/bin/julia && \
+    rm julia-1.11.7-linux-x86_64.tar.gz
 
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR=1

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
 # kotekan documentation build configuration file, created by
@@ -30,7 +31,7 @@ if read_the_docs_build:
     subprocess.call('pwd', shell=True)
     subprocess.call('ls', shell=True)
     subprocess.call('mkdir -p ../../build-docs &&\
-        cd ../../build-docs && pwd && cmake -DCOMPILE_DOCS=ON .. && make doc',
+        cd ../../build-docs && pwd && cmake -DCOMPILE_DOCS=ON .. && make doxygen',
         shell=True)
     html_extra_path = ['../../build-docs/docs/doxygen/build']
 else:
@@ -60,11 +61,11 @@ extensions = [
 
 # this is to make plantuml extension find stuff
 
-if not read_the_docs_build :
+if not read_the_docs_build:
     # Paths (@...@) will be modified by cmake
     plantuml = 'java -jar @PLANTUML_DIR@/plantuml.jar'
     breathe_projects = { "kotekan": "@BINARY_BUILD_DIR@/../doxygen/build/xml/" }
-else :
+else:
     breathe_projects = { "kotekan": "../../build-docs/docs/doxygen/build/xml/" }
 
 breathe_default_project = "kotekan"
@@ -164,8 +165,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'kotekan.tex', u'kotekan Documentation',
-     u'Kotekan team', 'manual'),
+    (master_doc, 'kotekan.tex', u'kotekan Documentation', u'Kotekan team', 'manual'),
 ]
 
 
@@ -174,8 +174,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'kotekan', u'kotekan Documentation',
-     [author], 1)
+    (master_doc, 'kotekan', u'kotekan Documentation', [author], 1)
 ]
 
 
@@ -185,8 +184,6 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'kotekan', u'kotekan Documentation',
-     author, 'kotekan', 'One line description of project.',
-     'Miscellaneous'),
+    (master_doc, 'kotekan', u'kotekan Documentation', author, 'kotekan', 'One line description of project.', 'Miscellaneous'),
 ]
 
