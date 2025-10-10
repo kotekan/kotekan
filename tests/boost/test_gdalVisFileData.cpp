@@ -63,7 +63,7 @@ BOOST_AUTO_TEST_CASE(test_add_frame_single_slot) {
     const size_t num_prod = N2::get_num_prod(num_input);
     const size_t num_ev = 2;
     const size_t num_freq = 3;
-    const size_t file_nt = 2;
+    const size_t num_file_t = 2;
 
     // Build a buffer that can host one N2 frame
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
@@ -110,7 +110,7 @@ BOOST_AUTO_TEST_CASE(test_add_frame_single_slot) {
     }
 
     // Buffer a file block and add the single (f,t) slot
-    TestGdalVisFileData blk(file_nt, num_freq, num_input, num_prod, num_ev);
+    TestGdalVisFileData blk(num_file_t, num_freq, num_input, num_prod, num_ev);
     const size_t f = meta->freq_id;
     const size_t t = 1; // arbitrary slot in-file
     blk.add_frame(fv, meta, t);
@@ -161,7 +161,7 @@ BOOST_AUTO_TEST_CASE(test_add_frame_single_slot) {
 // Helper to create a minimal GDAL Zarr dataset with dimensions/arrays
 static GDALDataset* create_test_gdal_vis_dataset(const std::string& path, size_t num_freq,
                                                  size_t num_prod, size_t num_ev, size_t num_input,
-                                                 size_t file_nt) {
+                                                 size_t num_file_t) {
     GDALAllRegister();
     auto dm = GetGDALDriverManager();
     auto drv = dm->GetDriverByName("Zarr");
@@ -180,7 +180,7 @@ static GDALDataset* create_test_gdal_vis_dataset(const std::string& path, size_t
     // Dimensions
     auto dim_freq = root->CreateDimension("freqs", "", "", num_freq);
     auto dim_prod_ = root->CreateDimension("products", "", "", num_prod);
-    auto dim_frames = root->CreateDimension("frames", "", "", file_nt);
+    auto dim_frames = root->CreateDimension("frames", "", "", num_file_t);
     auto dim_inputs = root->CreateDimension("inputs", "", "", num_input);
     auto dim_ev_ = root->CreateDimension("ev", "", "", num_ev);
 
@@ -243,7 +243,7 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
     const size_t num_prod = N2::get_num_prod(num_input);
     const size_t num_ev = 2;
     const size_t num_freq = 3;
-    const size_t file_nt = 2;
+    const size_t num_file_t = 2;
 
     // Build a buffer for one N2 frame
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
@@ -284,7 +284,7 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
         fv.flags[i] = float(300 + i);
     }
 
-    TestGdalVisFileData blk(file_nt, num_freq, num_input, num_prod, num_ev);
+    TestGdalVisFileData blk(num_file_t, num_freq, num_input, num_prod, num_ev);
     const size_t f = meta->freq_id;
     const size_t t = 1;
     blk.add_frame(fv, meta, t);
@@ -294,7 +294,7 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
     // Clean up any previous run
     VSIUnlinkTree(path.c_str());
     GDALDataset* ds = create_test_gdal_vis_dataset(path, num_freq, num_prod, num_ev, num_input,
-                                                   file_nt);
+                                                   num_file_t);
     BOOST_REQUIRE(ds != nullptr);
 
     // Write block to dataset
@@ -321,9 +321,9 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
         auto war = root->OpenMDArray("weights_array");
         BOOST_REQUIRE(arr && war);
         std::vector<GUInt64> start{(GUInt64)f, 0, 0};
-        std::vector<size_t> count{1, num_prod, file_nt};
-        std::vector<N2::cfloat> vis_out(num_prod * file_nt);
-        std::vector<float> w_out(num_prod * file_nt);
+        std::vector<size_t> count{1, num_prod, num_file_t};
+        std::vector<N2::cfloat> vis_out(num_prod * num_file_t);
+        std::vector<float> w_out(num_prod * num_file_t);
         bool ok = arr->Read(start.data(), count.data(), nullptr, nullptr, c32Type,
                             reinterpret_cast<void*>(vis_out.data()), nullptr, 0);
         BOOST_REQUIRE(ok);
@@ -332,13 +332,13 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
         BOOST_REQUIRE(ok);
         // Check t slice
         for (size_t p = 0; p < num_prod; ++p) {
-            const size_t idx = file_nt * p + t; // matches Write layout
+            const size_t idx = num_file_t * p + t; // matches Write layout
             BOOST_CHECK(vis_out[idx]
                         == N2::cfloat(10.0f * p + 1.0f, 10.0f * p + 2.0f));
             BOOST_CHECK_CLOSE_FRACTION(w_out[idx], float(1000 + p), 1e-6f);
             // Other t=0 should be default zero
-            BOOST_CHECK(vis_out[file_nt * p + (1 - t)] == N2::cfloat(0.0f, 0.0f));
-            BOOST_CHECK_CLOSE_FRACTION(w_out[file_nt * p + (1 - t)], 0.0f, 1e-6f);
+            BOOST_CHECK(vis_out[num_file_t * p + (1 - t)] == N2::cfloat(0.0f, 0.0f));
+            BOOST_CHECK_CLOSE_FRACTION(w_out[num_file_t * p + (1 - t)], 0.0f, 1e-6f);
         }
     }
 
@@ -347,32 +347,32 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
         auto arr = root->OpenMDArray("eval_array");
         BOOST_REQUIRE(arr);
         std::vector<GUInt64> start{(GUInt64)f, 0, 0};
-        std::vector<size_t> count{1, num_ev, file_nt};
-        std::vector<float> eval_out(num_ev * file_nt);
+        std::vector<size_t> count{1, num_ev, num_file_t};
+        std::vector<float> eval_out(num_ev * num_file_t);
         bool ok = arr->Read(start.data(), count.data(), nullptr, nullptr, f32Type,
                             reinterpret_cast<void*>(eval_out.data()), nullptr, 0);
         BOOST_REQUIRE(ok);
         for (size_t e = 0; e < num_ev; ++e) {
-            BOOST_CHECK_CLOSE_FRACTION(eval_out[file_nt * e + t], float(60 + e), 1e-6f);
-            BOOST_CHECK_CLOSE_FRACTION(eval_out[file_nt * e + (1 - t)], 0.0f, 1e-6f);
+            BOOST_CHECK_CLOSE_FRACTION(eval_out[num_file_t * e + t], float(60 + e), 1e-6f);
+            BOOST_CHECK_CLOSE_FRACTION(eval_out[num_file_t * e + (1 - t)], 0.0f, 1e-6f);
         }
     }
     {
         auto arr = root->OpenMDArray("evec_array");
         BOOST_REQUIRE(arr);
         std::vector<GUInt64> start{(GUInt64)f, 0, 0, 0};
-        std::vector<size_t> count{1, num_ev, num_input, file_nt};
-        std::vector<N2::cfloat> evec_out(num_ev * num_input * file_nt);
+        std::vector<size_t> count{1, num_ev, num_input, num_file_t};
+        std::vector<N2::cfloat> evec_out(num_ev * num_input * num_file_t);
         bool ok = arr->Read(start.data(), count.data(), nullptr, nullptr, c32Type,
                             reinterpret_cast<void*>(evec_out.data()), nullptr, 0);
         BOOST_REQUIRE(ok);
         for (size_t e = 0; e < num_ev; ++e) {
             for (size_t i = 0; i < num_input; ++i) {
-                const size_t idx = file_nt * (num_input * e + i) + t;
+                const size_t idx = num_file_t * (num_input * e + i) + t;
                 BOOST_CHECK(evec_out[idx]
                             == N2::cfloat(100.0f * e + float(i) + 0.5f,
                                           -(100.0f * e + float(i) + 1.5f)));
-                const size_t idx0 = file_nt * (num_input * e + i) + (1 - t);
+                const size_t idx0 = num_file_t * (num_input * e + i) + (1 - t);
                 BOOST_CHECK(evec_out[idx0] == N2::cfloat(0.0f, 0.0f));
             }
         }
@@ -383,8 +383,8 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
         auto arr = root->OpenMDArray("erms_array");
         BOOST_REQUIRE(arr);
         std::vector<GUInt64> start{(GUInt64)f, 0};
-        std::vector<size_t> count{1, file_nt};
-        std::vector<float> erms_out(file_nt);
+        std::vector<size_t> count{1, num_file_t};
+        std::vector<float> erms_out(num_file_t);
         bool ok = arr->Read(start.data(), count.data(), nullptr, nullptr, f32Type,
                             reinterpret_cast<void*>(erms_out.data()), nullptr, 0);
         BOOST_REQUIRE(ok);
@@ -396,9 +396,9 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
         auto arrf = root->OpenMDArray("flags_array");
         BOOST_REQUIRE(arr && arrf);
         std::vector<GUInt64> start{(GUInt64)f, 0, 0};
-        std::vector<size_t> count{1, num_input, file_nt};
-        std::vector<N2::cfloat> gain_out(num_input * file_nt);
-        std::vector<float> flags_out(num_input * file_nt);
+        std::vector<size_t> count{1, num_input, num_file_t};
+        std::vector<N2::cfloat> gain_out(num_input * num_file_t);
+        std::vector<float> flags_out(num_input * num_file_t);
         bool ok = arr->Read(start.data(), count.data(), nullptr, nullptr, c32Type,
                             reinterpret_cast<void*>(gain_out.data()), nullptr, 0);
         BOOST_REQUIRE(ok);
@@ -406,11 +406,11 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
                         reinterpret_cast<void*>(flags_out.data()), nullptr, 0);
         BOOST_REQUIRE(ok);
         for (size_t i = 0; i < num_input; ++i) {
-            BOOST_CHECK(gain_out[file_nt * i + t] == N2::cfloat(200.0f + float(i),
+            BOOST_CHECK(gain_out[num_file_t * i + t] == N2::cfloat(200.0f + float(i),
                                                                -200.0f - float(i)));
-            BOOST_CHECK(gain_out[file_nt * i + (1 - t)] == N2::cfloat(0.0f, 0.0f));
-            BOOST_CHECK_CLOSE_FRACTION(flags_out[file_nt * i + t], float(300 + i), 1e-6f);
-            BOOST_CHECK_CLOSE_FRACTION(flags_out[file_nt * i + (1 - t)], 0.0f, 1e-6f);
+            BOOST_CHECK(gain_out[num_file_t * i + (1 - t)] == N2::cfloat(0.0f, 0.0f));
+            BOOST_CHECK_CLOSE_FRACTION(flags_out[num_file_t * i + t], float(300 + i), 1e-6f);
+            BOOST_CHECK_CLOSE_FRACTION(flags_out[num_file_t * i + (1 - t)], 0.0f, 1e-6f);
         }
     }
 
@@ -422,9 +422,9 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
         auto nrfi = root->OpenMDArray("n_rfi_fpga_ticks");
         BOOST_REQUIRE(arr && arr2 && nval && nrfi);
         std::vector<GUInt64> start{(GUInt64)f, 0};
-        std::vector<size_t> count{1, file_nt};
-        std::vector<float> fl_out(file_nt), fr_out(file_nt);
-        std::vector<uint64_t> nv_out(file_nt), nr_out(file_nt);
+        std::vector<size_t> count{1, num_file_t};
+        std::vector<float> fl_out(num_file_t), fr_out(num_file_t);
+        std::vector<uint64_t> nv_out(num_file_t), nr_out(num_file_t);
         bool ok = arr->Read(start.data(), count.data(), nullptr, nullptr, f32Type,
                             reinterpret_cast<void*>(fl_out.data()), nullptr, 0);
         BOOST_REQUIRE(ok);
@@ -450,14 +450,14 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
     // per-time arrays
     {
         std::vector<GUInt64> start{0};
-        std::vector<size_t> count{file_nt};
+        std::vector<size_t> count{num_file_t};
         auto a0 = root->OpenMDArray("fpga_start_tick");
         auto a1 = root->OpenMDArray("frame_start_time_ns");
         auto a2 = root->OpenMDArray("frame_length_fpga_ticks");
         auto a3 = root->OpenMDArray("era_deg");
         BOOST_REQUIRE(a0 && a1 && a2 && a3);
-        std::vector<uint64_t> s0(file_nt), s1(file_nt), s2(file_nt);
-        std::vector<double> s3(file_nt);
+        std::vector<uint64_t> s0(num_file_t), s1(num_file_t), s2(num_file_t);
+        std::vector<double> s3(num_file_t);
         bool ok = a0->Read(start.data(), count.data(), nullptr, nullptr, u64Type,
                            reinterpret_cast<void*>(s0.data()), nullptr, 0);
         BOOST_REQUIRE(ok);

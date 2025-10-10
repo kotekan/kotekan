@@ -144,4 +144,12 @@ if(GDAL_FOUND)
     # Many tests need CUDA include dirs for float16_t via visUtil.hpp
     target_include_directories(test_gdalVisFileData PUBLIC . ${CUDA_INCLUDE_DIR}
                                                            ${CUDA_INCLUDE_DIRS})
+
+    # End-to-end writer test for gdalVisWrite
+    add_executable(test_gdalVisWrite test_gdalVisWrite.cpp)
+    target_link_libraries(test_gdalVisWrite PRIVATE libexternal kotekan_stages kotekan_libs
+                                                    kotekan_utils kotekan_core ${GDAL_LIBRARIES})
+    target_include_directories(test_gdalVisWrite PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                        ${GDAL_INCLUDE_DIRS})
+    target_include_directories(test_gdalVisWrite PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 endif()
