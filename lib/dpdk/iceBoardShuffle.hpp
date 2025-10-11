@@ -457,6 +457,9 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         coarse_freq[0] = tel.to_freq_id(ice_encode_stream_id(tmp_stream_id));
         get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_coarse_freq(coarse_freq);
 
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_lost_timesamples(0);
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_rfi_flagged_samples(0);
+
         auto meta = get_chord_metadata(out_bufs[i], out_buf_frame_ids[i]);
 
         // The dimensions are time (T) and "element" (E) which is the "correlator ordered"
