@@ -4,23 +4,21 @@
 #ifndef KOTEKAN_STAGES_GDAL_VIS_WRITE_HPP
 #define KOTEKAN_STAGES_GDAL_VIS_WRITE_HPP
 
-#include "gdalFiles.hpp"
-
 #include "Config.hpp"
 #include "Stage.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
+#include "gdalFiles.hpp"
 
 #include <N2FrameView.hpp>
 #include <N2Metadata.hpp>
 #include <N2Util.hpp>
-#include <visUtil.hpp>
-
 #include <cassert>
 #include <gdal.h>
 #include <gdal_priv.h>
 #include <memory>
 #include <vector>
+#include <visUtil.hpp>
 
 /**
  * @class gdalVisFileData
@@ -35,26 +33,26 @@
 class gdalVisFileData {
 protected:
     // Structural information: all frames that get added should agree with these
-    const size_t num_input;    // number of inputs / elements
-    const size_t num_prod;     // number of products
-    const size_t num_ev;       // number of eigenvectors/values
-    const size_t num_freq;     // number of frequencies
-    const size_t num_file_t;   // frames per file (time dimension)
+    const size_t num_input;  // number of inputs / elements
+    const size_t num_prod;   // number of products
+    const size_t num_ev;     // number of eigenvectors/values
+    const size_t num_freq;   // number of frequencies
+    const size_t num_file_t; // frames per file (time dimension)
 
     // Datasets to be stored until ready to write
     // f = freq, p = prod, e = eigen, i = input, t = time
-    std::vector<N2::cfloat> vis;       // (f, p, t)
-    std::vector<float> vis_weight;     // (f, p, t)
-    std::vector<float> eval;           // (f, e, t)
-    std::vector<N2::cfloat> evec;      // (f, e, i, t)
-    std::vector<float> erms;           // (f, t)
-    std::vector<N2::cfloat> gain;      // (f, i, t)
-    std::vector<float> frac_lost;      // (f, t)
-    std::vector<float> frac_rfi;       // (f, t)
-    std::vector<float> flags;          // (f, i, t)
+    std::vector<N2::cfloat> vis;   // (f, p, t)
+    std::vector<float> vis_weight; // (f, p, t)
+    std::vector<float> eval;       // (f, e, t)
+    std::vector<N2::cfloat> evec;  // (f, e, i, t)
+    std::vector<float> erms;       // (f, t)
+    std::vector<N2::cfloat> gain;  // (f, i, t)
+    std::vector<float> frac_lost;  // (f, t)
+    std::vector<float> frac_rfi;   // (f, t)
+    std::vector<float> flags;      // (f, i, t)
 
     /// Earth rotation angle at corresponding times (t)
-    std::vector<double> era_deg;       // (t)
+    std::vector<double> era_deg; // (t)
 
     // Additional metadata
     std::vector<uint64_t> fpga_start_tick;         // (t)
@@ -69,10 +67,10 @@ protected:
 
 public:
     gdalVisFileData(const uint64_t num_file_t_, const uint64_t num_freq_, const uint64_t num_input_,
-                    const uint64_t num_prod_, const uint64_t num_ev_)
-        : num_input(num_input_), num_prod(num_prod_), num_ev(num_ev_), num_freq(num_freq_),
-          num_file_t(num_file_t_), seen_count(0) {
-            
+                    const uint64_t num_prod_, const uint64_t num_ev_) :
+        num_input(num_input_), num_prod(num_prod_), num_ev(num_ev_), num_freq(num_freq_),
+        num_file_t(num_file_t_), seen_count(0) {
+
         // resize arrays to hold data across (freq, time) blocks
         vis.assign(num_prod * num_freq * num_file_t, N2::cfloat{0.0f, 0.0f});
         vis_weight.assign(num_prod * num_freq * num_file_t, 0.0f);
@@ -108,9 +106,13 @@ public:
     inline size_t idx_fit(size_t f, size_t i, size_t t) const {
         return num_file_t * (num_input * f + i) + t; // (f, i, t)
     }
-    inline size_t idx_ft(size_t f, size_t t) const { return num_file_t * f + t; } // (f, t)
+    inline size_t idx_ft(size_t f, size_t t) const {
+        return num_file_t * f + t;
+    } // (f, t)
 
-    inline size_t idx_seen(size_t f, size_t t) const { return num_file_t * f + t; }
+    inline size_t idx_seen(size_t f, size_t t) const {
+        return num_file_t * f + t;
+    }
 
     /**
      * @brief Add a frame of data at the computed time index.
@@ -119,7 +121,8 @@ public:
      * @param t_index Time index within this file block (0..num_file_t-1).
      */
     void add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metadata>& meta, size_t t_index) {
-        const size_t f_index = meta->freq_id; // TODO: sync with telescope object. For now assume 0..nfreq-1 indexing
+        const size_t f_index =
+            meta->freq_id; // TODO: sync with telescope object. For now assume 0..nfreq-1 indexing
         assert(f_index < num_freq);
         assert(t_index < num_file_t);
 
@@ -174,7 +177,9 @@ public:
         }
     }
 
-    bool full() const { return seen_count == num_freq * num_file_t; }
+    bool full() const {
+        return seen_count == num_freq * num_file_t;
+    }
 
     /**
      * @brief Flush the entire buffered block to an open GDAL dataset.
@@ -212,9 +217,9 @@ public:
             // vis/weights: (f, :, :)
             std::vector<GUInt64> start_v = {f, 0, 0};
             std::vector<size_t> count_v = {1, num_prod, num_file_t};
-            bool ok = vis_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, c32Type,
-                                       reinterpret_cast<const void*>(&vis[idx_fpt(f, 0, 0)]), nullptr,
-                                       0);
+            bool ok =
+                vis_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, c32Type,
+                                 reinterpret_cast<const void*>(&vis[idx_fpt(f, 0, 0)]), nullptr, 0);
             assert(ok);
             ok = weights_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, f32Type,
                                       reinterpret_cast<const void*>(&vis_weight[idx_fpt(f, 0, 0)]),
@@ -254,8 +259,8 @@ public:
 
             // flags: (f, :, :)
             ok = flags_array->Write(start_g.data(), count_g.data(), nullptr, nullptr, f32Type,
-                                    reinterpret_cast<const void*>(&flags[idx_fit(f, 0, 0)]), nullptr,
-                                    0);
+                                    reinterpret_cast<const void*>(&flags[idx_fit(f, 0, 0)]),
+                                    nullptr, 0);
             assert(ok);
 
             // frac_* and counts: (f, :)
@@ -264,12 +269,12 @@ public:
                                         nullptr, 0);
             assert(ok);
             ok = frac_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
-                                       reinterpret_cast<const void*>(&frac_rfi[idx_ft(f, 0)]), nullptr,
-                                       0);
+                                       reinterpret_cast<const void*>(&frac_rfi[idx_ft(f, 0)]),
+                                       nullptr, 0);
             assert(ok);
-            ok = n_valid_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
-                                      reinterpret_cast<const void*>(&n_valid_fpga_ticks[idx_ft(f, 0)]),
-                                      nullptr, 0);
+            ok = n_valid_array->Write(
+                start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
+                reinterpret_cast<const void*>(&n_valid_fpga_ticks[idx_ft(f, 0)]), nullptr, 0);
             assert(ok);
             ok = n_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
                                     reinterpret_cast<const void*>(&n_rfi_fpga_ticks[idx_ft(f, 0)]),
@@ -281,23 +286,17 @@ public:
         {
             std::vector<GUInt64> start = {0};
             std::vector<size_t> count = {num_file_t};
-            bool ok = fpga_start_tick_array->Write(start.data(), count.data(), nullptr, nullptr,
-                                                   u64Type,
-                                                   reinterpret_cast<const void*>(
-                                                       fpga_start_tick.data()),
-                                                   nullptr, 0);
+            bool ok = fpga_start_tick_array->Write(
+                start.data(), count.data(), nullptr, nullptr, u64Type,
+                reinterpret_cast<const void*>(fpga_start_tick.data()), nullptr, 0);
             assert(ok);
-            ok = frame_start_time_ns_array->Write(start.data(), count.data(), nullptr, nullptr,
-                                                  u64Type,
-                                                  reinterpret_cast<const void*>(
-                                                      frame_start_time_ns.data()),
-                                                  nullptr, 0);
+            ok = frame_start_time_ns_array->Write(
+                start.data(), count.data(), nullptr, nullptr, u64Type,
+                reinterpret_cast<const void*>(frame_start_time_ns.data()), nullptr, 0);
             assert(ok);
-            ok = frame_length_fpga_ticks_array->Write(start.data(), count.data(), nullptr, nullptr,
-                                                      u64Type,
-                                                      reinterpret_cast<const void*>(
-                                                          frame_length_fpga_ticks.data()),
-                                                      nullptr, 0);
+            ok = frame_length_fpga_ticks_array->Write(
+                start.data(), count.data(), nullptr, nullptr, u64Type,
+                reinterpret_cast<const void*>(frame_length_fpga_ticks.data()), nullptr, 0);
             assert(ok);
             ok = era_deg_array->Write(start.data(), count.data(), nullptr, nullptr, f64Type,
                                       reinterpret_cast<const void*>(era_deg.data()), nullptr, 0);
@@ -308,7 +307,8 @@ public:
 
 /**
  * @class gdalVisWrite
- * @brief Buffered-transpose writer: buffers sequential time frames and writes full GDAL Zarr blocks.
+ * @brief Buffered-transpose writer: buffers sequential time frames and writes full GDAL Zarr
+ *blocks.
  *
  * Frames arrive sequentially in time. The stage buffers a complete (nfreq × num_file_t) block
  * per output file in memory (via gdalVisFileData), and when the block is complete, writes
@@ -323,7 +323,8 @@ public:
  * @conf base_dir           String. Directory to write into
  * @conf file_name          String. Base filename to write
  * @conf prefix_hostname    Bool. Prefix files with hostname (default: true)
- * @conf zip_compression    UInt. 0 disables ZIP; >0 enables ZIP STORAGE with given DEFLATE level (default: 0)
+ * @conf zip_compression    UInt. 0 disables ZIP; >0 enables ZIP STORAGE with given DEFLATE level
+ *(default: 0)
  * @conf blocksize_f        UInt. Array chunk size along freq (0 = driver default)
  * @conf blocksize_p        UInt. Array chunk size along product (unused currently; 0 = default)
  * @conf blocksize_t        UInt. Array chunk size along time (default: 1)
@@ -361,11 +362,21 @@ private:
     Buffer* const buffer;
 
 private:
+    // override telescope seq length in ns for testing or custom configs.
+    const std::uint64_t tick_len_ns_override = 0;
+    inline std::uint64_t _get_tick_len_ns() const {
+        if (tick_len_ns_override > 0)
+            return tick_len_ns_override;
+        return Telescope::instance().seq_length_nsec();
+    }
+
     std::uint64_t _get_frame_nt_in_file(const std::shared_ptr<const N2Metadata> meta);
     std::uint64_t _get_file_start_time_ns(const std::shared_ptr<const N2Metadata> meta);
     std::string _get_gdal_vis_filename(std::shared_ptr<const N2Metadata> meta);
     void _initialize_gdal_vis_file(GDALDataset* dataset, std::shared_ptr<const N2Metadata> meta);
-    std::string _get_partial_dir() const { return (base_dir + "/.partial"); }
+    std::string _get_partial_dir() const {
+        return (base_dir + "/.partial");
+    }
     static std::string _basename(const std::string& path) {
         auto pos = path.find_last_of('/');
         if (pos == std::string::npos)
@@ -382,6 +393,11 @@ private:
         std::uint64_t file_start_time_ns = 0;
         std::uint64_t frame_len_ns = 0;
         std::string partial_path; // on-disk working location
+        // Expected geometry (captured from the first frame for this dataset)
+        std::uint32_t expect_nfreq = 0;
+        std::uint32_t expect_num_elements = 0;
+        std::uint32_t expect_num_prod = 0;
+        std::uint32_t expect_num_ev = 0;
     };
 };
 

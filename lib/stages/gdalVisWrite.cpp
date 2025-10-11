@@ -1,16 +1,20 @@
-#include "gdalFiles.hpp"
 #include "gdalVisWrite.hpp"
 
+#include "Telescope.hpp" // for Telescope
+#include "gdalFiles.hpp"
+#include "util.h" // for mkdir_p
+
+#include <N2FrameView.hpp>
+#include <N2Metadata.hpp>
 #include <Stage.hpp>
 #include <StageFactory.hpp>
 #include <cassert>
 #include <chordMetadata.hpp>
-#include <N2Metadata.hpp>
-#include <N2FrameView.hpp>
 #include <complex>
+#include <cpl_vsi.h>
 #include <cstdint>
-#include <errno.h>
 #include <cstring>
+#include <errno.h>
 #include <errors.h>
 #include <fstream>
 #include <gdal.h>
@@ -20,7 +24,6 @@
 #include <memory>
 #include <optional>
 #include <prometheusMetrics.hpp>
-#include <cpl_vsi.h>
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
@@ -29,8 +32,6 @@
 #include <utility>
 #include <vector>
 #include <visUtil.hpp>
-#include "util.h"              // for mkdir_p
-#include "Telescope.hpp"         // for Telescope
 
 using namespace gdal;
 
@@ -39,31 +40,34 @@ REGISTER_KOTEKAN_STAGE(gdalVisWrite);
 // Use mkdir_p from util.h for recursive directory creation
 
 gdalVisWrite::gdalVisWrite(kotekan::Config& config, const std::string& unique_name,
-                           kotekan::bufferContainer& buffer_container)
-    : Stage(config, unique_name, buffer_container, [](const kotekan::Stage& stage) {
-          return const_cast<kotekan::Stage&>(stage).main_thread();
-      }),
-      base_dir(config.get<std::string>(unique_name, "base_dir")),
-      file_name(config.get<std::string>(unique_name, "file_name")),
-      prefix_hostname(config.get_default<bool>(unique_name, "prefix_hostname", true)),
-      zip_compression(config.get_default<std::uint64_t>(unique_name, "zip_compression", 0)),
-      blocksize_f(config.get_default<std::uint64_t>(unique_name, "blocksize_f", 0)),
-      blocksize_p(config.get_default<std::uint64_t>(unique_name, "blocksize_p", 0)),
-      blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", 1)),
-      flush_timeout_seconds(
-          config.get_default<std::uint64_t>(unique_name, "flush_timeout_seconds", 600)),
-      max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
-      num_file_t(config.get_default<std::uint32_t>(unique_name, "num_file_t", 2)),
-      buffer(get_buffer("in_buf")) {
+                           kotekan::bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container,
+          [](const kotekan::Stage& stage) {
+              return const_cast<kotekan::Stage&>(stage).main_thread();
+          }),
+    base_dir(config.get<std::string>(unique_name, "base_dir")),
+    file_name(config.get<std::string>(unique_name, "file_name")),
+    prefix_hostname(config.get_default<bool>(unique_name, "prefix_hostname", true)),
+    zip_compression(config.get_default<std::uint64_t>(unique_name, "zip_compression", 0)),
+    blocksize_f(config.get_default<std::uint64_t>(unique_name, "blocksize_f", 0)),
+    blocksize_p(config.get_default<std::uint64_t>(unique_name, "blocksize_p", 0)),
+    blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", 1)),
+    flush_timeout_seconds(
+        config.get_default<std::uint64_t>(unique_name, "flush_timeout_seconds", 600)),
+    max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
+    num_file_t(config.get_default<std::uint32_t>(unique_name, "num_file_t", 2)),
+    buffer(get_buffer("in_buf")) {
     GDALAllRegister();
+    // override for telescope sequence length (testing)
+    const_cast<std::uint64_t&>(tick_len_ns_override) =
+        config.get_default<std::uint64_t>(unique_name, "seq_length_nsec_override", 0);
     buffer->register_consumer(unique_name);
 }
 
 gdalVisWrite::~gdalVisWrite() {}
 
 std::uint64_t gdalVisWrite::_get_frame_nt_in_file(const std::shared_ptr<const N2Metadata> meta) {
-    auto& tel = Telescope::instance();
-    const std::uint64_t tick_len_ns = tel.seq_length_nsec();
+    const std::uint64_t tick_len_ns = _get_tick_len_ns();
     const std::uint64_t frame_len_ticks = meta->frame_length_fpga_ticks;
     if (frame_len_ticks == 0 || tick_len_ns == 0) {
         // Avoid division by zero for malformed/empty metadata; default to first slot.
@@ -75,10 +79,8 @@ std::uint64_t gdalVisWrite::_get_frame_nt_in_file(const std::shared_ptr<const N2
     return frame_nt_in_file;
 }
 
-std::uint64_t gdalVisWrite::_get_file_start_time_ns(
-    const std::shared_ptr<const N2Metadata> meta) {
-    auto& tel = Telescope::instance();
-    const std::uint64_t tick_len_ns = tel.seq_length_nsec();
+std::uint64_t gdalVisWrite::_get_file_start_time_ns(const std::shared_ptr<const N2Metadata> meta) {
+    const std::uint64_t tick_len_ns = _get_tick_len_ns();
     const std::uint64_t frame_len_ticks = meta->frame_length_fpga_ticks;
     if (frame_len_ticks == 0 || tick_len_ns == 0) {
         // Fallback: use the frame start time directly as the file start when unknown.
@@ -104,8 +106,11 @@ std::string gdalVisWrite::_get_gdal_vis_filename(std::shared_ptr<const N2Metadat
     }
     const std::uint64_t file_start_time_ns = _get_file_start_time_ns(meta);
     std::time_t time_t_format = file_start_time_ns / 1'000'000'000; // seconds
-    buf << file_name << "." << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S")
-        << ".zarr";
+    const std::uint64_t ns_part = file_start_time_ns % 1'000'000'000ULL; // sub-second
+    buf << file_name << "." << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S");
+    // Include nanosecond suffix to avoid collisions for sub-second windows
+    buf << "_" << std::setw(9) << std::setfill('0') << ns_part;
+    buf << ".zarr";
     if (zip_compression > 0)
         buf << ".zip";
     return buf.str();
@@ -151,16 +156,15 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
     }
 
     // Dimensions
-    std::shared_ptr<GDALDimension> dim_freq = root_group->CreateDimension("freqs", "", "",
-                                                                          meta->nfreq);
-    std::shared_ptr<GDALDimension> dim_prod = root_group->CreateDimension("products", "", "",
-                                                                          meta->num_prod);
-    std::shared_ptr<GDALDimension> dim_frames = root_group->CreateDimension("frames", "", "",
-                                                                            num_file_t);
-    std::shared_ptr<GDALDimension> dim_inputs = root_group->CreateDimension("inputs", "", "",
-                                                                            meta->num_elements);
-    std::shared_ptr<GDALDimension> dim_ev =
-        root_group->CreateDimension("ev", "", "", meta->num_ev);
+    std::shared_ptr<GDALDimension> dim_freq =
+        root_group->CreateDimension("freqs", "", "", meta->nfreq);
+    std::shared_ptr<GDALDimension> dim_prod =
+        root_group->CreateDimension("products", "", "", meta->num_prod);
+    std::shared_ptr<GDALDimension> dim_frames =
+        root_group->CreateDimension("frames", "", "", num_file_t);
+    std::shared_ptr<GDALDimension> dim_inputs =
+        root_group->CreateDimension("inputs", "", "", meta->num_elements);
+    std::shared_ptr<GDALDimension> dim_ev = root_group->CreateDimension("ev", "", "", meta->num_ev);
 
     // Array creation options (vis/weights only for now).
     // Ensure positive chunk sizes always.
@@ -178,62 +182,54 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
     // vis and weights: (freqs, products, frames)
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_prod, dim_frames};
-        auto vis_array = root_group->CreateMDArray("vis_array", dims,
-                                                  GDALExtendedDataType::Create(GDT_CFloat32),
-                                                  array_options_c.data());
+        auto vis_array = root_group->CreateMDArray(
+            "vis_array", dims, GDALExtendedDataType::Create(GDT_CFloat32), array_options_c.data());
         assert(vis_array && vis_array->GetDimensionCount() == 3);
         auto weights_array = root_group->CreateMDArray("weights_array", dims,
-                                                      GDALExtendedDataType::Create(GDT_Float32),
-                                                      array_options_c.data());
+                                                       GDALExtendedDataType::Create(GDT_Float32),
+                                                       array_options_c.data());
         assert(weights_array && weights_array->GetDimensionCount() == 3);
     }
 
     // eval: (freqs, ev, frames)
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_ev, dim_frames};
-        auto eval_array = root_group->CreateMDArray("eval_array", dims,
-                                                   GDALExtendedDataType::Create(GDT_Float32),
-                                                   nullptr);
+        auto eval_array = root_group->CreateMDArray(
+            "eval_array", dims, GDALExtendedDataType::Create(GDT_Float32), nullptr);
         (void)eval_array;
     }
     // evec: (freqs, ev, inputs, frames)
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_ev, dim_inputs, dim_frames};
-        auto evec_array = root_group->CreateMDArray("evec_array", dims,
-                                                   GDALExtendedDataType::Create(GDT_CFloat32),
-                                                   nullptr);
+        auto evec_array = root_group->CreateMDArray(
+            "evec_array", dims, GDALExtendedDataType::Create(GDT_CFloat32), nullptr);
         (void)evec_array;
     }
     // erms: (freqs, frames)
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_frames};
-        auto erms_array = root_group->CreateMDArray("erms_array", dims,
-                                                   GDALExtendedDataType::Create(GDT_Float32),
-                                                   nullptr);
+        auto erms_array = root_group->CreateMDArray(
+            "erms_array", dims, GDALExtendedDataType::Create(GDT_Float32), nullptr);
         (void)erms_array;
     }
     // gain + flags: (freqs, inputs, frames)
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_inputs, dim_frames};
-        auto gain_array = root_group->CreateMDArray("gain_array", dims,
-                                                   GDALExtendedDataType::Create(GDT_CFloat32),
-                                                   nullptr);
+        auto gain_array = root_group->CreateMDArray(
+            "gain_array", dims, GDALExtendedDataType::Create(GDT_CFloat32), nullptr);
         (void)gain_array;
-        auto flags_array = root_group->CreateMDArray("flags_array", dims,
-                                                    GDALExtendedDataType::Create(GDT_Float32),
-                                                    nullptr);
+        auto flags_array = root_group->CreateMDArray(
+            "flags_array", dims, GDALExtendedDataType::Create(GDT_Float32), nullptr);
         (void)flags_array;
     }
     // frac_*: (freqs, frames)
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_frames};
-        auto fl_array = root_group->CreateMDArray("frac_lost_array", dims,
-                                                 GDALExtendedDataType::Create(GDT_Float32),
-                                                 nullptr);
+        auto fl_array = root_group->CreateMDArray(
+            "frac_lost_array", dims, GDALExtendedDataType::Create(GDT_Float32), nullptr);
         (void)fl_array;
-        auto fr_array = root_group->CreateMDArray("frac_rfi_array", dims,
-                                                 GDALExtendedDataType::Create(GDT_Float32),
-                                                 nullptr);
+        auto fr_array = root_group->CreateMDArray(
+            "frac_rfi_array", dims, GDALExtendedDataType::Create(GDT_Float32), nullptr);
         (void)fr_array;
     }
     // per-time metadata arrays: (frames)
@@ -245,8 +241,8 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
                                         GDALExtendedDataType::Create(GDT_UInt64), nullptr);
         (void)root_group->CreateMDArray("frame_length_fpga_ticks", dims,
                                         GDALExtendedDataType::Create(GDT_UInt64), nullptr);
-        (void)root_group->CreateMDArray("era_deg", dims,
-                                        GDALExtendedDataType::Create(GDT_Float64), nullptr);
+        (void)root_group->CreateMDArray("era_deg", dims, GDALExtendedDataType::Create(GDT_Float64),
+                                        nullptr);
     }
     // per-(freq,time) metadata arrays: (freqs, frames)
     {
@@ -262,9 +258,8 @@ void gdalVisWrite::main_thread() {
     auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_gdalviswrite_write_time_seconds", unique_name);
     double avg_write_time = 0.0;
-    auto& n_datasets_metric =
-        kotekan::prometheus::Metrics::instance().add_gauge(
-            "kotekan_gdalviswrite_n_datasets", unique_name);
+    auto& n_datasets_metric = kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_gdalviswrite_n_datasets", unique_name);
 
     const double start_time = current_time();
     N2::frameID in_frame_id(buffer);
@@ -385,8 +380,8 @@ void gdalVisWrite::main_thread() {
                 options = CSLSetNameValue(options, "FORMAT", "ZARR_V2");
                 if (zip_compression > 0) {
                     options = CSLSetNameValue(options, "COMPRESS", "DEFLATE");
-                    options = CSLSetNameValue(options, "LEVEL",
-                                              std::to_string(zip_compression).c_str());
+                    options =
+                        CSLSetNameValue(options, "LEVEL", std::to_string(zip_compression).c_str());
                     options = CSLSetNameValue(options, "STORAGE", "ZIP");
                 }
                 dataset = driver->CreateMultiDimensional(partial_path.c_str(), nullptr,
@@ -449,9 +444,8 @@ void gdalVisWrite::main_thread() {
             state.file_start_time_ns = _get_file_start_time_ns(meta);
             // Compute frame_len_ns for shape tracking
             {
-                auto& tel = Telescope::instance();
-                const std::uint64_t tick_len_ns = tel.seq_length_nsec();
-            state.frame_len_ns = meta->frame_length_fpga_ticks * tick_len_ns;
+                const std::uint64_t tick_len_ns = _get_tick_len_ns();
+                state.frame_len_ns = meta->frame_length_fpga_ticks * tick_len_ns;
             }
             state.partial_path = partial_path;
             datasets.emplace(final_path, std::move(state));
@@ -463,7 +457,8 @@ void gdalVisWrite::main_thread() {
                 const std::uint64_t file_len_ns = state_ptr->frame_len_ns * num_file_t;
                 if (state_ptr->frame_len_ns > 0 && file_len_ns < 1'000'000'000ULL) {
                     WARN("File window too short: num_file_t * frame_len = {} * {} ns = {} ns < 1s. "
-                         "This may cause filename collisions. Consider increasing num_file_t or cadence.",
+                         "This may cause filename collisions. Consider increasing num_file_t or "
+                         "cadence.",
                          num_file_t, state_ptr->frame_len_ns, file_len_ns);
                     warned_short_window = true;
                 }
@@ -475,16 +470,57 @@ void gdalVisWrite::main_thread() {
             return;
         }
 
-        // Allocate buffer if needed
+        // Allocate buffer if needed and capture expected geometry
         if (!state_ptr->buf) {
             state_ptr->buf = std::make_unique<gdalVisFileData>(
                 num_file_t, meta->nfreq, meta->num_elements, meta->num_prod, meta->num_ev);
+            state_ptr->expect_nfreq = meta->nfreq;
+            state_ptr->expect_num_elements = meta->num_elements;
+            state_ptr->expect_num_prod = meta->num_prod;
+            state_ptr->expect_num_ev = meta->num_ev;
+        } else {
+            // Validate geometry consistency for this dataset
+            if (meta->nfreq != state_ptr->expect_nfreq || meta->num_elements != state_ptr->expect_num_elements
+                || meta->num_prod != state_ptr->expect_num_prod || meta->num_ev != state_ptr->expect_num_ev) {
+                ERROR("Dropping frame due to geometry mismatch within dataset: nfreq {} vs {}, "
+                      "num_elements {} vs {}, num_prod {} vs {}, num_ev {} vs {}",
+                      meta->nfreq, state_ptr->expect_nfreq, meta->num_elements,
+                      state_ptr->expect_num_elements, meta->num_prod, state_ptr->expect_num_prod,
+                      meta->num_ev, state_ptr->expect_num_ev);
+                // Mark frame as done and skip further processing
+                buffer->mark_frame_empty(unique_name, in_frame_id);
+                in_frame_id++;
+                // Continue to process potential timeouts for other datasets
+                const double now_s = current_time();
+                for (auto it2 = datasets.begin(); it2 != datasets.end();) {
+                    auto& state = it2->second;
+                    if (now_s - state.last_update_wall_s >= double(flush_timeout_seconds)) {
+                        if (state.ds && state.buf)
+                            state.buf->write_all_to_dataset(state.ds);
+                        if (state.ds) {
+                            GDALClose(state.ds);
+                            state.ds = nullptr;
+                        }
+                        int r = std::rename(state.partial_path.c_str(), it2->first.c_str());
+                        if (r != 0) {
+                            const char* msg = strerror(errno);
+                            ERROR("Failed to rename partial dataset to final (timeout): {} -> {}: {}",
+                                  state.partial_path, it2->first, msg);
+                        }
+                        it2 = datasets.erase(it2);
+                        continue;
+                    }
+                    ++it2;
+                }
+                continue;
+            }
         }
 
         // Basic validation: consistent time geometry for this dataset
         const std::uint64_t this_file_start_ns = _get_file_start_time_ns(meta);
-        if (state_ptr->file_start_time_ns != 0 && state_ptr->file_start_time_ns != this_file_start_ns) {
-            FATAL_ERROR("File start mismatch within dataset context: {} vs {}", 
+        if (state_ptr->file_start_time_ns != 0
+            && state_ptr->file_start_time_ns != this_file_start_ns) {
+            FATAL_ERROR("File start mismatch within dataset context: {} vs {}",
                         state_ptr->file_start_time_ns, this_file_start_ns);
         }
         state_ptr->file_start_time_ns = this_file_start_ns;
@@ -518,8 +554,8 @@ void gdalVisWrite::main_thread() {
         if (elapsed_writing_frame <= 0.0)
             elapsed_writing_frame = currt - frame_recv_time;
         write_time_metric.set(elapsed_writing_frame);
-        avg_write_time = (avg_write_time * frame_counter + elapsed_writing_frame)
-                         / double(frame_counter + 1);
+        avg_write_time =
+            (avg_write_time * frame_counter + elapsed_writing_frame) / double(frame_counter + 1);
         n_datasets_metric.set(datasets.size());
 
         // Mark frame as done

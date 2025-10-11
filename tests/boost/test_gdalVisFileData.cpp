@@ -2,20 +2,20 @@
 
 #define BOOST_TEST_MODULE "test_gdal_vis_file_data"
 
+#include "N2FrameView.hpp"  // for N2FrameView
+#include "N2Metadata.hpp"   // for N2Metadata, get_N2_metadata
+#include "N2Util.hpp"       // for N2::cfloat, get_num_prod
+#include "buffer.hpp"       // for Buffer
+#include "gdalVisWrite.hpp" // for gdalVisFileData
+#include "metadata.hpp"     // for metadataPool
 #include "test_utils.hpp"
 
-#include "gdalVisWrite.hpp"   // for gdalVisFileData
-#include "N2FrameView.hpp"     // for N2FrameView
-#include "N2Util.hpp"          // for N2::cfloat, get_num_prod
-#include "N2Metadata.hpp"      // for N2Metadata, get_N2_metadata
-#include "buffer.hpp"          // for Buffer
-#include "metadata.hpp"        // for metadataPool
-
 #include <boost/test/included/unit_test.hpp>
+#include <cpl_vsi.h>
+#include <cpl_conv.h>
+#include <cstdio>
 #include <gdal.h>
 #include <gdal_priv.h>
-#include <cpl_vsi.h>
-#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -30,36 +30,70 @@ public:
     using gdalVisFileData::idx_ft;
 
     // Accessors for internal storage (copy out values)
-    N2::cfloat get_vis(size_t f, size_t p, size_t t) const { return vis[idx_fpt(f, p, t)]; }
-    float get_weight(size_t f, size_t p, size_t t) const { return vis_weight[idx_fpt(f, p, t)]; }
-    float get_eval(size_t f, size_t e, size_t t) const { return eval[idx_fet(f, e, t)]; }
+    N2::cfloat get_vis(size_t f, size_t p, size_t t) const {
+        return vis[idx_fpt(f, p, t)];
+    }
+    float get_weight(size_t f, size_t p, size_t t) const {
+        return vis_weight[idx_fpt(f, p, t)];
+    }
+    float get_eval(size_t f, size_t e, size_t t) const {
+        return eval[idx_fet(f, e, t)];
+    }
     N2::cfloat get_evec(size_t f, size_t e, size_t i, size_t t) const {
         return evec[idx_feit(f, e, i, t)];
     }
-    float get_erms(size_t f, size_t t) const { return erms[idx_ft(f, t)]; }
-    N2::cfloat get_gain(size_t f, size_t i, size_t t) const { return gain[idx_fit(f, i, t)]; }
-    float get_flags(size_t f, size_t i, size_t t) const { return flags[idx_fit(f, i, t)]; }
-    float get_frac_lost(size_t f, size_t t) const { return frac_lost[idx_ft(f, t)]; }
-    float get_frac_rfi(size_t f, size_t t) const { return frac_rfi[idx_ft(f, t)]; }
-    uint64_t get_n_valid(size_t f, size_t t) const { return n_valid_fpga_ticks[idx_ft(f, t)]; }
-    uint64_t get_n_rfi(size_t f, size_t t) const { return n_rfi_fpga_ticks[idx_ft(f, t)]; }
+    float get_erms(size_t f, size_t t) const {
+        return erms[idx_ft(f, t)];
+    }
+    N2::cfloat get_gain(size_t f, size_t i, size_t t) const {
+        return gain[idx_fit(f, i, t)];
+    }
+    float get_flags(size_t f, size_t i, size_t t) const {
+        return flags[idx_fit(f, i, t)];
+    }
+    float get_frac_lost(size_t f, size_t t) const {
+        return frac_lost[idx_ft(f, t)];
+    }
+    float get_frac_rfi(size_t f, size_t t) const {
+        return frac_rfi[idx_ft(f, t)];
+    }
+    uint64_t get_n_valid(size_t f, size_t t) const {
+        return n_valid_fpga_ticks[idx_ft(f, t)];
+    }
+    uint64_t get_n_rfi(size_t f, size_t t) const {
+        return n_rfi_fpga_ticks[idx_ft(f, t)];
+    }
 
     // Per-time arrays
-    uint64_t get_fpga_start_tick(size_t t) const { return fpga_start_tick[t]; }
-    uint64_t get_frame_start_time_ns(size_t t) const { return frame_start_time_ns[t]; }
-    uint64_t get_frame_length_fpga_ticks(size_t t) const { return frame_length_fpga_ticks[t]; }
-    double get_era_deg(size_t t) const { return era_deg[t]; }
+    uint64_t get_fpga_start_tick(size_t t) const {
+        return fpga_start_tick[t];
+    }
+    uint64_t get_frame_start_time_ns(size_t t) const {
+        return frame_start_time_ns[t];
+    }
+    uint64_t get_frame_length_fpga_ticks(size_t t) const {
+        return frame_length_fpga_ticks[t];
+    }
+    double get_era_deg(size_t t) const {
+        return era_deg[t];
+    }
 
     // Seen tracking
-    size_t get_seen_count() const { return seen_count; }
-    uint8_t get_seen(size_t f, size_t t) const { return seen[idx_ft(f, t)]; }
+    size_t get_seen_count() const {
+        return seen_count;
+    }
+    uint8_t get_seen(size_t f, size_t t) const {
+        return seen[idx_ft(f, t)];
+    }
 };
 
 BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 
 BOOST_AUTO_TEST_CASE(test_add_frame_single_slot) {
+    // Force-link N2Metadata registration by constructing once.
+    N2Metadata force_link_marker;
     // Small synthetic dimensions
-    const size_t num_input = 3;                 // elements
+    const size_t num_input = 3; // elements
     const size_t num_prod = N2::get_num_prod(num_input);
     const size_t num_ev = 2;
     const size_t num_freq = 3;
@@ -69,7 +103,7 @@ BOOST_AUTO_TEST_CASE(test_add_frame_single_slot) {
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(1, sizeof(N2Metadata), "test_pool", "N2Metadata");
     Buffer buf(1, frame_size, pool, "n2buf", "vis", /*numa*/ 1, /*huge*/ false,
-               /*mlock*/ false, /*zero_new_frames*/ true);
+               /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
 
     // Allocate metadata and fill in structural + timing fields
     buf.allocate_new_metadata_object(0);
@@ -99,8 +133,8 @@ BOOST_AUTO_TEST_CASE(test_add_frame_single_slot) {
     for (size_t e = 0; e < num_ev; ++e) {
         fv.eval[e] = float(60 + e);
         for (size_t i = 0; i < num_input; ++i) {
-            fv.evec[num_input * e + i] = N2::cfloat(100.0f * e + float(i) + 0.5f,
-                                                    -(100.0f * e + float(i) + 1.5f));
+            fv.evec[num_input * e + i] =
+                N2::cfloat(100.0f * e + float(i) + 0.5f, -(100.0f * e + float(i) + 1.5f));
         }
     }
     fv.erms = 3.14f;
@@ -169,8 +203,8 @@ static GDALDataset* create_test_gdal_vis_dataset(const std::string& path, size_t
 
     char** opts = nullptr;
     opts = CSLSetNameValue(opts, "FORMAT", "ZARR_V2");
-    GDALDataset* ds = drv->CreateMultiDimensional(path.c_str(), nullptr,
-                                                  const_cast<const char**>(opts));
+    GDALDataset* ds =
+        drv->CreateMultiDimensional(path.c_str(), nullptr, const_cast<const char**>(opts));
     CSLDestroy(opts);
     BOOST_REQUIRE(ds != nullptr);
 
@@ -189,8 +223,8 @@ static GDALDataset* create_test_gdal_vis_dataset(const std::string& path, size_t
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_prod_, dim_frames};
         (void)root->CreateMDArray("vis_array", dims, GDALExtendedDataType::Create(GDT_CFloat32),
                                   nullptr);
-        (void)root->CreateMDArray("weights_array", dims,
-                                  GDALExtendedDataType::Create(GDT_Float32), nullptr);
+        (void)root->CreateMDArray("weights_array", dims, GDALExtendedDataType::Create(GDT_Float32),
+                                  nullptr);
     }
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_ev_, dim_frames};
@@ -208,8 +242,8 @@ static GDALDataset* create_test_gdal_vis_dataset(const std::string& path, size_t
                                   nullptr);
         (void)root->CreateMDArray("frac_lost_array", dims,
                                   GDALExtendedDataType::Create(GDT_Float32), nullptr);
-        (void)root->CreateMDArray("frac_rfi_array", dims,
-                                  GDALExtendedDataType::Create(GDT_Float32), nullptr);
+        (void)root->CreateMDArray("frac_rfi_array", dims, GDALExtendedDataType::Create(GDT_Float32),
+                                  nullptr);
         (void)root->CreateMDArray("n_valid_fpga_ticks", dims,
                                   GDALExtendedDataType::Create(GDT_UInt64), nullptr);
         (void)root->CreateMDArray("n_rfi_fpga_ticks", dims,
@@ -224,8 +258,8 @@ static GDALDataset* create_test_gdal_vis_dataset(const std::string& path, size_t
     }
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_frames};
-        (void)root->CreateMDArray("fpga_start_tick", dims,
-                                  GDALExtendedDataType::Create(GDT_UInt64), nullptr);
+        (void)root->CreateMDArray("fpga_start_tick", dims, GDALExtendedDataType::Create(GDT_UInt64),
+                                  nullptr);
         (void)root->CreateMDArray("frame_start_time_ns", dims,
                                   GDALExtendedDataType::Create(GDT_UInt64), nullptr);
         (void)root->CreateMDArray("frame_length_fpga_ticks", dims,
@@ -238,6 +272,8 @@ static GDALDataset* create_test_gdal_vis_dataset(const std::string& path, size_t
 }
 
 BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
+    // Force-link N2Metadata registration by constructing once.
+    N2Metadata force_link_marker2;
     // Dimensions
     const size_t num_input = 3;
     const size_t num_prod = N2::get_num_prod(num_input);
@@ -249,7 +285,7 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(1, sizeof(N2Metadata), "test_pool2", "N2Metadata");
     Buffer buf(1, frame_size, pool, "n2buf2", "vis", /*numa*/ 1, /*huge*/ false,
-               /*mlock*/ false, /*zero_new_frames*/ true);
+               /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
     buf.allocate_new_metadata_object(0);
     auto meta = get_N2_metadata(&buf, 0);
     BOOST_REQUIRE(meta);
@@ -275,8 +311,8 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
     for (size_t e = 0; e < num_ev; ++e) {
         fv.eval[e] = float(60 + e);
         for (size_t i = 0; i < num_input; ++i)
-            fv.evec[num_input * e + i] = N2::cfloat(100.0f * e + float(i) + 0.5f,
-                                                    -(100.0f * e + float(i) + 1.5f));
+            fv.evec[num_input * e + i] =
+                N2::cfloat(100.0f * e + float(i) + 0.5f, -(100.0f * e + float(i) + 1.5f));
     }
     fv.erms = 3.14f;
     for (size_t i = 0; i < num_input; ++i) {
@@ -292,9 +328,9 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
     // Create dataset
     const std::string path = "test_gdal_vis_io.zarr";
     // Clean up any previous run
-    VSIUnlinkTree(path.c_str());
-    GDALDataset* ds = create_test_gdal_vis_dataset(path, num_freq, num_prod, num_ev, num_input,
-                                                   num_file_t);
+    CPLUnlinkTree(path.c_str());
+    GDALDataset* ds =
+        create_test_gdal_vis_dataset(path, num_freq, num_prod, num_ev, num_input, num_file_t);
     BOOST_REQUIRE(ds != nullptr);
 
     // Write block to dataset
@@ -333,8 +369,7 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
         // Check t slice
         for (size_t p = 0; p < num_prod; ++p) {
             const size_t idx = num_file_t * p + t; // matches Write layout
-            BOOST_CHECK(vis_out[idx]
-                        == N2::cfloat(10.0f * p + 1.0f, 10.0f * p + 2.0f));
+            BOOST_CHECK(vis_out[idx] == N2::cfloat(10.0f * p + 1.0f, 10.0f * p + 2.0f));
             BOOST_CHECK_CLOSE_FRACTION(w_out[idx], float(1000 + p), 1e-6f);
             // Other t=0 should be default zero
             BOOST_CHECK(vis_out[num_file_t * p + (1 - t)] == N2::cfloat(0.0f, 0.0f));
@@ -369,9 +404,9 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
         for (size_t e = 0; e < num_ev; ++e) {
             for (size_t i = 0; i < num_input; ++i) {
                 const size_t idx = num_file_t * (num_input * e + i) + t;
-                BOOST_CHECK(evec_out[idx]
-                            == N2::cfloat(100.0f * e + float(i) + 0.5f,
-                                          -(100.0f * e + float(i) + 1.5f)));
+                BOOST_CHECK(
+                    evec_out[idx]
+                    == N2::cfloat(100.0f * e + float(i) + 0.5f, -(100.0f * e + float(i) + 1.5f)));
                 const size_t idx0 = num_file_t * (num_input * e + i) + (1 - t);
                 BOOST_CHECK(evec_out[idx0] == N2::cfloat(0.0f, 0.0f));
             }
@@ -406,8 +441,8 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
                         reinterpret_cast<void*>(flags_out.data()), nullptr, 0);
         BOOST_REQUIRE(ok);
         for (size_t i = 0; i < num_input; ++i) {
-            BOOST_CHECK(gain_out[num_file_t * i + t] == N2::cfloat(200.0f + float(i),
-                                                               -200.0f - float(i)));
+            BOOST_CHECK(gain_out[num_file_t * i + t]
+                        == N2::cfloat(200.0f + float(i), -200.0f - float(i)));
             BOOST_CHECK(gain_out[num_file_t * i + (1 - t)] == N2::cfloat(0.0f, 0.0f));
             BOOST_CHECK_CLOSE_FRACTION(flags_out[num_file_t * i + t], float(300 + i), 1e-6f);
             BOOST_CHECK_CLOSE_FRACTION(flags_out[num_file_t * i + (1 - t)], 0.0f, 1e-6f);
@@ -484,5 +519,5 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
     GDALClose(ds_r);
 
     // Cleanup output on best-effort basis
-    VSIUnlinkTree(path.c_str());
+    CPLUnlinkTree(path.c_str());
 }
