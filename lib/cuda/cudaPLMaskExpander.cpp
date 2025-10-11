@@ -165,15 +165,14 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
 
     pl_mask.check_metadata();
 
-    // Propagate metadata and correct time_downsampling for the expanded mask.
     pl_expanded_mask.set_metadata(pl_mask.get_metadata());
     const auto& pl_expanded_mask_meta = pl_expanded_mask.get_metadata();
-    const auto& pl_mask_meta = pl_mask.get_metadata();
     assert(pl_expanded_mask_meta->get_nfreq() >= 0);
-    auto time_downsampling_fpga = pl_mask_meta->get_time_downsampling_fpga();
-    assert(time_downsampling_fpga.size() == static_cast<size_t>(pl_expanded_mask_meta->get_nfreq()));
+    std::vector<int> time_downsampling_fpga =
+        pl_mask.get_metadata()->get_time_downsampling_fpga();
     for (int freq = 0; freq < pl_expanded_mask_meta->get_nfreq(); ++freq) {
-        // The expanded PL mask doubles the time resolution compared to the input PL mask.
+        // We would do this if we could start out with 1/4 but we cannot
+        // pl_expanded_mask_meta->freq_upchan_factor[freq] *= 4;
         time_downsampling_fpga[freq] = div_noremainder(time_downsampling_fpga[freq], 2);
     }
     pl_expanded_mask_meta->set_time_downsampling_fpga(time_downsampling_fpga);
