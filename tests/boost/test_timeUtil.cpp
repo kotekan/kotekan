@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <inttypes.h>
 #include <sys/wait.h>
+#include <unistd.h>
 #include <time.h>
 #include <vector>
 
@@ -87,7 +88,11 @@ void TimeData::setup() {
         f_exists(script),
         fmt::format("critical script {:s}/timeUtil.py was not found", TEST_SCRIPT_DIR));
 
-    std::string cmd = fmt::format("python3 {:s} isot", script);
+    // Prefer system kotekan_env python if available; else fallback to python3
+    std::string py_interpreter = "/opt/kotekan_env/bin/python";
+    if (access(py_interpreter.c_str(), X_OK) != 0)
+        py_interpreter = "python3";
+    std::string cmd = fmt::format("{:s} {:s} isot", py_interpreter, script);
     for (const std::string& tstr : tstrs)
         cmd += fmt::format(" {:s}", tstr);
     cmd += fmt::format(" > {:s}", filename);
