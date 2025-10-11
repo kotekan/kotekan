@@ -230,6 +230,7 @@ void testDataGen::main_thread() {
         chordmeta->set_sample0_offset(
             frame_id_abs * samples_per_data_set / _meta_time_downsample_factor);
         chordmeta->set_offset_downsampling(1);
+        chordmeta->set_frame_counter(frame_id_abs);
 
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
