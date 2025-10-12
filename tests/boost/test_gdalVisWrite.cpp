@@ -74,12 +74,14 @@ static void rm_tree_if_exists(const std::string& path) {
 }
 
 // Helper to create config
+// Build a writer config using window-based collection and optional grace/seq override
 static kotekan::Config make_base_config(const std::string& unique_name, const std::string& in_buf,
                                         const std::string& base_dir, const std::string& file_name,
                                         bool prefix_hostname, uint64_t zip_compression,
-                                        uint32_t file_nt, uint64_t blocksize_f = 0,
+                                        uint64_t window_seconds, uint64_t blocksize_f = 0,
                                         uint64_t blocksize_t = 1,
-                                        uint64_t flush_timeout_seconds = 600) {
+                                        uint64_t late_frame_grace_seconds = 60,
+                                        uint64_t seq_length_nsec_override = 0) {
     using json = nlohmann::json;
 
     json j;
@@ -95,11 +97,12 @@ static kotekan::Config make_base_config(const std::string& unique_name, const st
     s["blocksize_f"] = blocksize_f;
     s["blocksize_p"] = 0; // unused currently
     s["blocksize_t"] = blocksize_t;
-    s["file_nt"] = file_nt;
+    s["window_seconds"] = window_seconds;
     s["join_timeout"] = 10; // seconds
-    s["flush_timeout_seconds"] = flush_timeout_seconds;
-    // override fpga sequence length so the Telescope singleton is not needed
-    s["seq_length_nsec_override"] = 1'000'000ULL; // 1 ms per sequence
+    s["late_frame_grace_seconds"] = late_frame_grace_seconds;
+    // optionally override fpga sequence length so the Telescope singleton is not needed
+    if (seq_length_nsec_override > 0)
+        s["seq_length_nsec_override"] = seq_length_nsec_override;
     // Assign to both forms
     j[unique_name] = s;
     if (!unique_name.empty() && unique_name.front() == '/')
@@ -398,10 +401,16 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     const size_t num_input = 3;
     const size_t num_ev = 2;
     const size_t nfreq = 3;
+    // Use 100-second frames and 200-second windows to get file_nt=2
+    const uint64_t dt_ns = 1'000'000'000ULL;
+    const uint64_t frame_len_ticks = 100; // ensure fractions compute as 80/100
     const size_t file_nt = 2;
+    const uint64_t window_seconds = 200;
 
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name,
-                                 /*prefix_hostname*/ false, /*zip*/ 0, file_nt);
+                                 /*prefix_hostname*/ false, /*zip*/ 0, window_seconds,
+                                 /*blocksize_f*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
+                                 /*seq_override*/ dt_ns);
 
     // Buffer + container
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
@@ -416,11 +425,9 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     gdalVisWrite stage(conf, unique_name, bc);
     stage.start();
 
-    // Time logic
-    const uint64_t dt_ns = 1'000'000ULL;
-    const uint64_t frame_len_ticks = 100; // ensure fractions compute correctly (80/100)
+    // Time logic: ensure base_time aligned to window start
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
-    const uint64_t base_time_ns = 1'000'000'000ULL; // 1970-01-01 00:00:01
+    const uint64_t base_time_ns = 10'000'000'000ULL; // falls within window [0,200)s
 
     // Send frames out of time order to exercise t-indexing
     N2::frameID fid(&buf);
@@ -492,9 +499,12 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     const size_t num_ev = 2;
     const size_t nfreq = 3;
     const size_t file_nt = 2;
+    const uint64_t window_seconds = 200;
 
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name,
-                                 /*prefix_hostname*/ false, /*zip*/ 0, file_nt);
+                                 /*prefix_hostname*/ false, /*zip*/ 0, window_seconds,
+                                 /*blocksize_f*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
+                                 /*seq_override*/ 1'000'000'000ULL);
 
     // Buffer + container
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
@@ -508,7 +518,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     gdalVisWrite stage(conf, unique_name, bc);
     stage.start();
 
-    const uint64_t frame_len_ticks = 100;
+    const uint64_t frame_len_ticks = 1;
     const uint64_t base_time_ns = 2'000'000'000ULL; // +2 seconds
 
     // Only produce t=0 for all freqs, leave t=1 missing to force partial flush on exit
@@ -594,8 +604,10 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const size_t num_ev = 2;
     const size_t nfreq = 3;
     const size_t file_nt = 2;
-
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0, file_nt);
+    const uint64_t window_seconds = 200;
+    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
+                                 window_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 /*seq_override*/ 1'000'000'000ULL);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_roll", "N2Metadata");
@@ -607,11 +619,11 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     gdalVisWrite stage(conf, unique_name, bc);
     stage.start();
 
-    const uint64_t dt_ns = 1'000'000ULL;
+    const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 100;
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
-    const uint64_t file_len_ns = frame_len_ns * file_nt;
-    const uint64_t baseA = 3'000'000'000ULL;
+    const uint64_t file_len_ns = window_seconds * 1'000'000'000ULL;
+    const uint64_t baseA = 12'000'000'000ULL; // align to even multiple of 2s windows
     const uint64_t baseB = baseA + file_len_ns;
 
     N2::frameID fid(&buf);
@@ -680,9 +692,10 @@ BOOST_AUTO_TEST_CASE(test_writer_zip_and_prefix) {
     const size_t num_ev = 2;
     const size_t nfreq = 2; // keep it small
     const size_t file_nt = 2;
-
+    const uint64_t window_seconds = 200;
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, /*prefix*/ true,
-                                 /*zip*/ 1, file_nt, /*blocksize_f*/ 1, /*blocksize_t*/ 2);
+                                 /*zip*/ 1, window_seconds, /*blocksize_f*/ 1, /*blocksize_t*/ 2,
+                                 /*grace*/ 60, /*seq_override*/ 1'000'000'000ULL);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_zip", "N2Metadata");
@@ -694,10 +707,10 @@ BOOST_AUTO_TEST_CASE(test_writer_zip_and_prefix) {
     gdalVisWrite stage(conf, unique_name, bc);
     stage.start();
 
-    const uint64_t dt_ns = 1'000'000ULL;
-    const uint64_t frame_len_ticks = 100;
+    const uint64_t dt_ns = 1'000'000'000ULL;
+    const uint64_t frame_len_ticks = 100; // 100s frames
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
-    const uint64_t base_time_ns = 4'000'000'000ULL;
+    const uint64_t base_time_ns = 4'000'000'000ULL; // inside [0,200)s
 
     N2::frameID fid(&buf);
     for (size_t t = 0; t < file_nt; ++t)
@@ -741,29 +754,33 @@ BOOST_AUTO_TEST_CASE(test_writer_zip_and_prefix) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 5: Sub-second windows produce unique names (no collisions)
-BOOST_AUTO_TEST_CASE(test_writer_subsecond_unique_names) {
+// Test 5: Adjacent windows produce distinct dataset names
+BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     GDALAllRegister();
     auto dm = GetGDALDriverManager();
     auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
     if (!drv) {
         BOOST_TEST_MESSAGE(
-            "Zarr GDAL driver not available; skipping test_writer_subsecond_unique_names");
+            "Zarr GDAL driver not available; skipping test_writer_distinct_window_names");
         return;
     }
 
-    const std::string unique_name = "/gdal_vis_writer_subsec";
-    const std::string in_buf_name = "n2buf_subsec";
-    const std::string base_dir = "test_gdalVisWrite_subsec";
+    const std::string unique_name = "/gdal_vis_writer_names";
+    const std::string in_buf_name = "n2buf_names";
+    const std::string base_dir = "test_gdalVisWrite_names";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
     const size_t num_input = 3;
     const size_t num_ev = 2;
     const size_t nfreq = 3;
-    const size_t file_nt = 1; // ensure file window == one frame
-
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0, file_nt);
+    const uint64_t dt_ns = 1'000'000'000ULL;
+    const uint64_t frame_len_ticks = 1;
+    const uint64_t window_seconds = 1; // one second window => one frame per file
+    const size_t file_nt = 1;
+    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
+                                 window_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 /*seq_override*/ dt_ns);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_subsec", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
@@ -774,11 +791,9 @@ BOOST_AUTO_TEST_CASE(test_writer_subsecond_unique_names) {
     gdalVisWrite stage(conf, unique_name, bc);
     stage.start();
 
-    const uint64_t dt_ns = 1'000'000ULL;
-    const uint64_t frame_len_ticks = 1;
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
-    const uint64_t baseA = 5'000'000'000ULL;
-    const uint64_t baseB = baseA + frame_len_ns; // next window, very likely same second
+    const uint64_t baseA = 6'000'000'000ULL;
+    const uint64_t baseB = baseA + frame_len_ns; // next window
 
     N2::frameID fid(&buf);
     // Window A
@@ -803,19 +818,14 @@ BOOST_AUTO_TEST_CASE(test_writer_subsecond_unique_names) {
     buf.send_shutdown_signal();
     stage.join();
 
-    // Prefer to assert both datasets exist; if only one exists, skip with message
+    // Both datasets should exist and have different names
     const std::string d1 = compute_dataset_name(base_dir, file_name, false, baseA, false);
     const std::string d2 = compute_dataset_name(base_dir, file_name, false, baseB, false);
     bool h1 = path_exists(d1);
     bool h2 = path_exists(d2);
-    if (!(h1 && h2)) {
-        BOOST_TEST_MESSAGE(std::string("Sub-second unique-name check: expected both ") + d1
-                           + " and " + d2 + ", but found " + (h1 ? d1 : std::string("<missing>"))
-                           + ", " + (h2 ? d2 : std::string("<missing>"))
-                           + ". Skipping strict assertion in this environment.");
-    } else {
+    BOOST_CHECK(h1 && h2);
+    if (h1 && h2)
         BOOST_CHECK(d1 != d2);
-    }
     if (h1)
         rm_tree_if_exists(d1);
     if (h2)
@@ -823,7 +833,7 @@ BOOST_AUTO_TEST_CASE(test_writer_subsecond_unique_names) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 6: Timeout-based finalize of partial dataset
+// Test 6: Grace-based finalize of partial dataset (late_frame_grace_seconds=0)
 BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     GDALAllRegister();
     auto dm = GetGDALDriverManager();
@@ -844,9 +854,10 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const size_t num_ev = 2;
     const size_t nfreq = 3;
     const size_t file_nt = 2;
-
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0, file_nt,
-                                 0 /*bs_f*/, 1 /*bs_t*/, 0 /*flush_timeout_seconds*/);
+    const uint64_t window_seconds = 2;
+    auto conf =
+        make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0, window_seconds,
+                         0 /*bs_f*/, 1 /*bs_t*/, 0 /*late_frame_grace_seconds*/, 1'000'000'000ULL);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(3, sizeof(N2Metadata), "pool_timeout", "N2Metadata");
@@ -858,7 +869,7 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     gdalVisWrite stage(conf, unique_name, bc);
     stage.start();
 
-    const uint64_t dt_ns = 1'000'000ULL;
+    const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 1;
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
     const uint64_t baseA = 6'000'000'000ULL;
@@ -910,6 +921,11 @@ BOOST_AUTO_TEST_CASE(test_writer_frame_length_zero_fallback) {
         return;
     }
 
+    // Strict invariant: frame_length_fpga_ticks must be > 0 and constant.
+    // The writer now aborts on zero-length frames; skip this legacy fallback test.
+    BOOST_TEST_MESSAGE("Skipping frame_length==0 fallback test under strict invariants.");
+    return;
+
     const std::string unique_name = "/gdal_vis_writer_len0";
     const std::string in_buf_name = "n2buf_len0";
     const std::string base_dir = "test_gdalVisWrite_len0";
@@ -920,8 +936,10 @@ BOOST_AUTO_TEST_CASE(test_writer_frame_length_zero_fallback) {
     const size_t num_ev = 2;
     const size_t nfreq = 2;
     const size_t file_nt = 2;
-
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0, file_nt);
+    const uint64_t window_seconds = 2;
+    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
+                                 window_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(1, sizeof(N2Metadata), "pool_len0", "N2Metadata");
     Buffer buf(1, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
@@ -1004,8 +1022,10 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const size_t num_ev = 2;
     const size_t nfreq = 2;
     const size_t file_nt = 1;
-
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0, file_nt);
+    const uint64_t window_seconds = 1;
+    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
+                                 window_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_drop", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
@@ -1016,11 +1036,11 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     gdalVisWrite stage(conf, unique_name, bc);
     stage.start();
 
-    const uint64_t dt_ns = 1'000'000ULL;
+    const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t base_time_ns = 8'000'000'000ULL;
     const uint64_t frame_len_ticks = 1;
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
-    const uint64_t file_start_time_ns = base_time_ns - (base_time_ns % frame_len_ns);
+    const uint64_t file_start_time_ns = base_time_ns; // aligned to 1-second window
 
     // Pre-create a final dataset path to force drop
     const std::string ds_final =
@@ -1091,7 +1111,10 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     const size_t nfreq = 3;
     const size_t file_nt = 2;
 
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0, file_nt);
+    const uint64_t window_seconds = file_nt; // with 1s frames, file_nt==window_seconds
+    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
+                                 window_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(4, sizeof(N2Metadata), "pool_geom", "N2Metadata");
     Buffer buf(4, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
@@ -1102,7 +1125,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     gdalVisWrite stage(conf, unique_name, bc);
     stage.start();
 
-    const uint64_t dt_ns = 1'000'000ULL;
+    const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 1;
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
     const uint64_t base_time_ns = 9'000'000'000ULL;

@@ -22,11 +22,11 @@
 
 /**
  * @class gdalVisFileData
- * @brief Buffer a full file block worth of arrays in memory, then flush to disk
+ * @brief Buffer a full file worth of arrays in memory, then flush to disk
  * all at once.
  *
- * A file data block contains `num_file_t` time frames across `num_freq` freqs.
- * This class holds all relevant arrays in a form closer to a target on-disk layout,
+ * A file contains `num_file_t` time frames across `num_freq` freqs.
+ * This class holds all relevant arrays in the target on-disk layout,
  * to facilitate large contiguous writes, rather than writing as individual frames
  * arrive.
  *
@@ -35,15 +35,23 @@
  * stage parameters, but it may be beneficial to have them match.)
  */
 class gdalVisFileData {
-protected:
-    // (Expected) structural information: all frames that get added should agree with these
-    const size_t num_input; // number of inputs / elements
-    const size_t num_prod;  // number of products
-    const size_t num_ev;    // number of eigenvectors/values
-    // Fixed size of this class
-    const size_t num_freq;   // number of frequencies
-    const size_t num_file_t; // frames per file (time dimension)
+public:
+    // Structural information and fixed sizes
+    const size_t num_input;   // number of inputs / elements
+    const size_t num_prod;    // number of products
+    const size_t num_ev;      // number of eigenvectors/values
+    const size_t num_freq;    // number of frequencies
+    const size_t num_file_t;  // frames ("time" dimension)
 
+    // Per-file bookkeeping owned by this object
+    GDALDataset* ds = nullptr;              // non-owning dataset handle
+    const std::string partial_path;         // working on-disk location
+    const double open_wall_s;               // time opened
+    double last_update_wall_s = 0.0;        // last frame receipt
+    const uint64_t file_start_time_ns;      // aligned file start time
+    const uint64_t frame_len_ns;            // frame length in ns
+
+protected:
     // Datasets to be stored until ready to write
     // f = freq, p = prod, e = eigen, i = input, t = time
     std::vector<N2::cfloat> vis;   // (f, p, t)
@@ -62,9 +70,10 @@ protected:
     // Additional metadata
     std::vector<uint64_t> fpga_start_tick;         // (t)
     std::vector<uint64_t> frame_start_time_ns;     // (t)
-    std::vector<uint64_t> frame_length_fpga_ticks; // (t)
     std::vector<uint64_t> n_valid_fpga_ticks;      // (f, t)
     std::vector<uint64_t> n_rfi_fpga_ticks;        // (f, t)
+    // Should be constant across all frames
+    uint64_t              frame_length_fpga_ticks; // const
 
     // Tracking what (f, t) pairs have been added
     std::vector<uint8_t> added_ft; // size = num_freq * num_file_t
@@ -72,9 +81,14 @@ protected:
 
 public:
     gdalVisFileData(const uint64_t num_file_t_, const uint64_t num_freq_, const uint64_t num_input_,
-                    const uint64_t num_prod_, const uint64_t num_ev_) :
-        num_input(num_input_), num_prod(num_prod_), num_ev(num_ev_), num_freq(num_freq_),
-        num_file_t(num_file_t_), added_count(0) {
+                    const uint64_t num_prod_, const uint64_t num_ev_, const uint64_t frame_len_ns_,
+                    const uint64_t frame_length_fpga_ticks_,
+                    const uint64_t file_start_time_ns_, std::string partial_path_,
+                    const double open_wall_s_)
+        : num_input(num_input_), num_prod(num_prod_), num_ev(num_ev_), num_freq(num_freq_),
+          num_file_t(num_file_t_), partial_path(std::move(partial_path_)), open_wall_s(open_wall_s_),
+          last_update_wall_s(open_wall_s_), file_start_time_ns(file_start_time_ns_),
+          frame_len_ns(frame_len_ns_), frame_length_fpga_ticks(frame_length_fpga_ticks_) {
 
         // resize arrays to hold data across (freq, time) blocks
         vis.assign(num_prod * num_freq * num_file_t, N2::cfloat{0.0f, 0.0f});
@@ -90,12 +104,28 @@ public:
         // Additional metadata
         fpga_start_tick.assign(num_file_t, 0);
         frame_start_time_ns.assign(num_file_t, 0);
-        frame_length_fpga_ticks.assign(num_file_t, 0);
         era_deg.assign(num_file_t, 0.0);
         n_valid_fpga_ticks.assign(num_freq * num_file_t, 0);
         n_rfi_fpga_ticks.assign(num_freq * num_file_t, 0);
 
         added_ft.assign(num_freq * num_file_t, 0);
+    }
+
+    // Flush buffered data to the associated dataset handle if available.
+    // Returns true if a write occurred.
+    bool flush() {
+        if (!ds)
+            return false;
+        write_all_to_dataset(ds);
+        return true;
+    }
+
+    // Close the associated dataset handle if open.
+    void close() {
+        if (ds) {
+            GDALClose(ds);
+            ds = nullptr;
+        }
     }
 
 public:
@@ -140,7 +170,7 @@ public:
         assert(meta->num_elements == num_input);
         assert(meta->num_prod == num_prod);
         assert(meta->num_ev == num_ev);
-        assert(meta->num_elements == num_input);
+        // meta->num_elements already asserted above
 
         // Check per-time metadata consistency and assignment
         if (fpga_start_tick[t_index] != 0)
@@ -149,9 +179,9 @@ public:
         if (frame_start_time_ns[t_index] != 0)
             assert(frame_start_time_ns[t_index] == meta->frame_start_time_ns);
         frame_start_time_ns[t_index] = meta->frame_start_time_ns;
-        if (frame_length_fpga_ticks[t_index] != 0)
-            assert(frame_length_fpga_ticks[t_index] == meta->frame_length_fpga_ticks);
-        frame_length_fpga_ticks[t_index] = meta->frame_length_fpga_ticks;
+        if (frame_length_fpga_ticks != 0)
+            assert(frame_length_fpga_ticks == meta->frame_length_fpga_ticks);
+        frame_length_fpga_ticks = meta->frame_length_fpga_ticks;
         if (era_deg[t_index] == 0)
             era_deg[t_index] = fv.eop.ERA_deg; // No consistency check for ERA (float comparison)
 
@@ -185,7 +215,7 @@ public:
         size_t si = idx_ft(f_index, t_index);
         if (!added_ft[si]) {
             added_ft[si] = 1;
-            ++added_count = 0; // number of frames added
+            ++added_count; // number of frames added
         }
     }
 
@@ -216,8 +246,8 @@ public:
         auto frac_rfi_array = root_group->OpenMDArray("frac_rfi_array");
         auto fpga_start_tick_array = root_group->OpenMDArray("fpga_start_tick");
         auto frame_start_time_ns_array = root_group->OpenMDArray("frame_start_time_ns");
-        auto frame_length_fpga_ticks_array = root_group->OpenMDArray("frame_length_fpga_ticks");
         auto era_deg_array = root_group->OpenMDArray("era_deg");
+        auto frame_length_fpga_ticks_array = root_group->OpenMDArray("frame_length_fpga_ticks");
         auto n_valid_array = root_group->OpenMDArray("n_valid_fpga_ticks");
         auto n_rfi_array = root_group->OpenMDArray("n_rfi_fpga_ticks");
 
@@ -226,73 +256,69 @@ public:
         const auto f64Type = GDALExtendedDataType::Create(GDT_Float64);
         const auto u64Type = GDALExtendedDataType::Create(GDT_UInt64);
 
-        // Per-frequency slabs for arrays with freq dimension
-        for (GUInt64 f = 0; f < num_freq; ++f) {
-            // vis/weights: (f, :, :)
-            std::vector<GUInt64> start_v = {f, 0, 0};
-            std::vector<size_t> count_v = {1, num_prod, num_file_t};
-            bool ok =
-                vis_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, c32Type,
-                                 reinterpret_cast<const void*>(&vis[idx_fpt(f, 0, 0)]), nullptr, 0);
+        // Write full arrays in one call (contiguous layout matches on-disk order)
+        {
+            // vis/weights: (freqs, products, frames)
+            std::vector<GUInt64> start_v = {0, 0, 0};
+            std::vector<size_t> count_v = {num_freq, num_prod, num_file_t};
+            bool ok = vis_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, c32Type,
+                                       reinterpret_cast<const void*>(vis.data()), nullptr, 0);
             assert(ok);
             ok = weights_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, f32Type,
-                                      reinterpret_cast<const void*>(&vis_weight[idx_fpt(f, 0, 0)]),
-                                      nullptr, 0);
+                                      reinterpret_cast<const void*>(vis_weight.data()), nullptr, 0);
+            assert(ok);
+        }
+
+        {
+            // eval: (freqs, ev, frames)
+            std::vector<GUInt64> start_e = {0, 0, 0};
+            std::vector<size_t> count_e = {num_freq, num_ev, num_file_t};
+            bool ok = eval_array->Write(start_e.data(), count_e.data(), nullptr, nullptr, f32Type,
+                                        reinterpret_cast<const void*>(eval.data()), nullptr, 0);
+            assert(ok);
+        }
+
+        {
+            // evec: (freqs, ev, inputs, frames)
+            std::vector<GUInt64> start_ev = {0, 0, 0, 0};
+            std::vector<size_t> count_ev = {num_freq, num_ev, num_input, num_file_t};
+            bool ok = evec_array->Write(start_ev.data(), count_ev.data(), nullptr, nullptr, c32Type,
+                                        reinterpret_cast<const void*>(evec.data()), nullptr, 0);
+            assert(ok);
+        }
+
+        {
+            // erms: (freqs, frames)
+            std::vector<GUInt64> start_et = {0, 0};
+            std::vector<size_t> count_et = {num_freq, num_file_t};
+            bool ok = erms_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
+                                        reinterpret_cast<const void*>(erms.data()), nullptr, 0);
             assert(ok);
 
-            // eval: (f, :, :)
-            std::vector<GUInt64> start_e = {f, 0, 0};
-            std::vector<size_t> count_e = {1, num_ev, num_file_t};
-            ok = eval_array->Write(start_e.data(), count_e.data(), nullptr, nullptr, f32Type,
-                                   reinterpret_cast<const void*>(&eval[idx_fet(f, 0, 0)]), nullptr,
-                                   0);
-            assert(ok);
-
-            // evec: (f, :, :, :)
-            std::vector<GUInt64> start_ev = {f, 0, 0, 0};
-            std::vector<size_t> count_ev = {1, num_ev, num_input, num_file_t};
-            ok = evec_array->Write(start_ev.data(), count_ev.data(), nullptr, nullptr, c32Type,
-                                   reinterpret_cast<const void*>(&evec[idx_feit(f, 0, 0, 0)]),
-                                   nullptr, 0);
-            assert(ok);
-
-            // erms: (f, :)
-            std::vector<GUInt64> start_et = {f, 0};
-            std::vector<size_t> count_et = {1, num_file_t};
-            ok = erms_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
-                                   reinterpret_cast<const void*>(&erms[idx_ft(f, 0)]), nullptr, 0);
-            assert(ok);
-
-            // gain: (f, :, :)
-            std::vector<GUInt64> start_g = {f, 0, 0};
-            std::vector<size_t> count_g = {1, num_input, num_file_t};
+            // gain/flags: (freqs, inputs, frames)
+            std::vector<GUInt64> start_g = {0, 0, 0};
+            std::vector<size_t> count_g = {num_freq, num_input, num_file_t};
             ok = gain_array->Write(start_g.data(), count_g.data(), nullptr, nullptr, c32Type,
-                                   reinterpret_cast<const void*>(&gain[idx_fit(f, 0, 0)]), nullptr,
-                                   0);
+                                   reinterpret_cast<const void*>(gain.data()), nullptr, 0);
             assert(ok);
-
-            // flags: (f, :, :)
             ok = flags_array->Write(start_g.data(), count_g.data(), nullptr, nullptr, f32Type,
-                                    reinterpret_cast<const void*>(&flags[idx_fit(f, 0, 0)]),
-                                    nullptr, 0);
+                                    reinterpret_cast<const void*>(flags.data()), nullptr, 0);
             assert(ok);
 
-            // frac_* and counts: (f, :)
+            // frac_* and counts: (freqs, frames)
             ok = frac_lost_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
-                                        reinterpret_cast<const void*>(&frac_lost[idx_ft(f, 0)]),
-                                        nullptr, 0);
+                                        reinterpret_cast<const void*>(frac_lost.data()), nullptr, 0);
             assert(ok);
             ok = frac_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
-                                       reinterpret_cast<const void*>(&frac_rfi[idx_ft(f, 0)]),
-                                       nullptr, 0);
+                                       reinterpret_cast<const void*>(frac_rfi.data()), nullptr, 0);
             assert(ok);
-            ok = n_valid_array->Write(
-                start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
-                reinterpret_cast<const void*>(&n_valid_fpga_ticks[idx_ft(f, 0)]), nullptr, 0);
+            ok = n_valid_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
+                                      reinterpret_cast<const void*>(n_valid_fpga_ticks.data()),
+                                      nullptr, 0);
             assert(ok);
             ok = n_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
-                                    reinterpret_cast<const void*>(&n_rfi_fpga_ticks[idx_ft(f, 0)]),
-                                    nullptr, 0);
+                                    reinterpret_cast<const void*>(n_rfi_fpga_ticks.data()), nullptr,
+                                    0);
             assert(ok);
         }
 
@@ -308,10 +334,14 @@ public:
                 start.data(), count.data(), nullptr, nullptr, u64Type,
                 reinterpret_cast<const void*>(frame_start_time_ns.data()), nullptr, 0);
             assert(ok);
-            ok = frame_length_fpga_ticks_array->Write(
-                start.data(), count.data(), nullptr, nullptr, u64Type,
-                reinterpret_cast<const void*>(frame_length_fpga_ticks.data()), nullptr, 0);
-            assert(ok);
+            // frame_length_fpga_ticks is constant for the file; write a repeated vector
+            {
+                std::vector<uint64_t> flft(num_file_t, frame_length_fpga_ticks);
+                ok = frame_length_fpga_ticks_array->Write(
+                    start.data(), count.data(), nullptr, nullptr, u64Type,
+                    reinterpret_cast<const void*>(flft.data()), nullptr, 0);
+                assert(ok);
+            }
             ok = era_deg_array->Write(start.data(), count.data(), nullptr, nullptr, f64Type,
                                       reinterpret_cast<const void*>(era_deg.data()), nullptr, 0);
             assert(ok);
@@ -323,9 +353,12 @@ public:
  * @class gdalVisWrite
  * @brief Buffered-transpose writer: buffers sequential time frames and writes GDAL Zarr files.
  *
- * Frames arrive sequentially in time. The stage buffers a complete (num_freq * num_file_t) block
- * per output file in memory (via gdalVisFileData), and when the block is complete, writes
- * all arrays to disk in large contiguous slabs.
+ * This stage groups frames into UTC-midnight-aligned windows of length 
+ * `window_seconds`, buffers a complete (num_freq * file_nt) block per output file in
+ * memory (via gdalVisFileData), and when the block is full, writes all arrays to
+ * disk in large contiguous slabs. If the block is not full, it is nevertheless finalized
+ * after `late_frame_grace_seconds` of inactivity once frames for later windows begin to
+ * arrive.
  *
  * @par Buffers
  * @buffer in_buf  Input visibility buffer
@@ -341,8 +374,10 @@ public:
  * @conf blocksize_f        UInt. Array chunk size along freq (0 = driver default)
  * @conf blocksize_p        UInt. Array chunk size along product (unused currently; 0 = default)
  * @conf blocksize_t        UInt. Array chunk size along time (default: 1)
- * @conf num_file_t            UInt. Frames per file in time dimension (default: 2)
- * @conf max_frames         Int.  Stop after this many frames (-1 = unlimited)
+ *
+ * @conf window_seconds            UInt. Window length in seconds; must divide 86400
+ * @conf late_frame_grace_seconds  UInt. Grace period in seconds for late frames (default: 60)
+ * @conf max_frames                Int.  Stop writing after this many frames (-1 = unlimited)
  *
  * @par Metrics
  * @metric kotekan_gdalviswrite_write_time_seconds  Duration to write the last flush
@@ -367,26 +402,26 @@ private:
     const std::uint64_t blocksize_f;
     const std::uint64_t blocksize_p;
     const std::uint64_t blocksize_t;
-    const std::uint64_t flush_timeout_seconds;
+    const std::uint64_t window_seconds;
+    const std::uint64_t late_frame_grace_seconds;
 
     const int max_frames;
-    const std::uint32_t num_file_t;
 
     Buffer* const buffer;
 
 private:
-    // override telescope seq length in ns for testing or custom configs.
-    const std::uint64_t tick_len_ns_override = 0;
+    // Allow override telescope seq length for testing
+    const std::uint64_t tick_len_ns_override;
     inline std::uint64_t _get_tick_len_ns() const {
         if (tick_len_ns_override > 0)
             return tick_len_ns_override;
         return Telescope::instance().seq_length_nsec();
     }
 
-    std::uint64_t _get_frame_nt_in_file(const std::shared_ptr<const N2Metadata> meta);
     std::uint64_t _get_file_start_time_ns(const std::shared_ptr<const N2Metadata> meta);
     std::string _get_gdal_vis_filename(std::shared_ptr<const N2Metadata> meta);
-    void _initialize_gdal_vis_file(GDALDataset* dataset, std::shared_ptr<const N2Metadata> meta);
+    void _initialize_gdal_vis_file(GDALDataset* dataset, std::shared_ptr<const N2Metadata> meta,
+                                   std::uint64_t file_nt);
     std::string _get_partial_dir() const {
         return (base_dir + "/.partial");
     }
@@ -397,21 +432,6 @@ private:
         return path.substr(pos + 1);
     }
 
-    struct DatasetState {
-        GDALDataset* ds = nullptr;
-        std::unique_ptr<gdalVisFileData> buf;
-        // Tracking
-        double open_wall_s = 0.0;
-        double last_update_wall_s = 0.0;
-        std::uint64_t file_start_time_ns = 0;
-        std::uint64_t frame_len_ns = 0;
-        std::string partial_path; // on-disk working location
-        // Expected geometry (captured from the first frame for this dataset)
-        std::uint32_t expect_num_freq = 0;
-        std::uint32_t expect_num_elements = 0;
-        std::uint32_t expect_num_prod = 0;
-        std::uint32_t expect_num_ev = 0;
-    };
 };
 
 #endif // KOTEKAN_STAGES_GDAL_VIS_WRITE_HPP

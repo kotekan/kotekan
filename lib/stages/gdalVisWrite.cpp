@@ -37,8 +37,6 @@ using namespace gdal;
 
 REGISTER_KOTEKAN_STAGE(gdalVisWrite);
 
-// Use mkdir_p from util.h for recursive directory creation
-
 gdalVisWrite::gdalVisWrite(kotekan::Config& config, const std::string& unique_name,
                            kotekan::bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
@@ -52,45 +50,36 @@ gdalVisWrite::gdalVisWrite(kotekan::Config& config, const std::string& unique_na
     blocksize_f(config.get_default<std::uint64_t>(unique_name, "blocksize_f", 0)),
     blocksize_p(config.get_default<std::uint64_t>(unique_name, "blocksize_p", 0)),
     blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", 1)),
-    flush_timeout_seconds(
-        config.get_default<std::uint64_t>(unique_name, "flush_timeout_seconds", 600)),
+    window_seconds(config.get_default<std::uint64_t>(unique_name, "window_seconds", 600)),
+    late_frame_grace_seconds(
+        config.get_default<std::uint64_t>(unique_name, "late_frame_grace_seconds", 60)),
     max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
-    num_file_t(config.get_default<std::uint32_t>(unique_name, "num_file_t", 2)),
-    buffer(get_buffer("in_buf")) {
+    buffer(get_buffer("in_buf")), tick_len_ns_override(config.get_default<std::uint64_t>(
+                                      unique_name, "seq_length_nsec_override", 0)) {
     GDALAllRegister();
-    // override for telescope sequence length (testing)
-    const_cast<std::uint64_t&>(tick_len_ns_override) =
-        config.get_default<std::uint64_t>(unique_name, "seq_length_nsec_override", 0);
     buffer->register_consumer(unique_name);
+
+    // Validate window configuration
+    if (window_seconds == 0) {
+        FATAL_ERROR("window_seconds must be > 0 for gdalVisWrite");
+    }
+    const std::uint64_t day_seconds = 86400ULL;
+    if ((day_seconds % window_seconds) != 0) {
+        FATAL_ERROR("window_seconds={} must evenly divide 86400.", window_seconds);
+    }
 }
 
 gdalVisWrite::~gdalVisWrite() {}
 
-std::uint64_t gdalVisWrite::_get_frame_nt_in_file(const std::shared_ptr<const N2Metadata> meta) {
-    const std::uint64_t tick_len_ns = _get_tick_len_ns();
-    const std::uint64_t frame_len_ticks = meta->frame_length_fpga_ticks;
-    if (frame_len_ticks == 0 || tick_len_ns == 0) {
-        // Avoid division by zero for malformed/empty metadata; default to first slot.
-        return 0;
-    }
-    const std::uint64_t frame_len_ns = frame_len_ticks * tick_len_ns;
-    const std::uint64_t file_len_ns = frame_len_ns * num_file_t;
-    const std::uint64_t frame_nt_in_file = (meta->frame_start_time_ns % file_len_ns) / frame_len_ns;
-    return frame_nt_in_file;
-}
 
 std::uint64_t gdalVisWrite::_get_file_start_time_ns(const std::shared_ptr<const N2Metadata> meta) {
-    const std::uint64_t tick_len_ns = _get_tick_len_ns();
-    const std::uint64_t frame_len_ticks = meta->frame_length_fpga_ticks;
-    if (frame_len_ticks == 0 || tick_len_ns == 0) {
-        // Fallback: use the frame start time directly as the file start when unknown.
-        return meta->frame_start_time_ns;
-    }
-    const std::uint64_t frame_len_ns = frame_len_ticks * tick_len_ns;
-    const std::uint64_t file_len_ns = frame_len_ns * num_file_t;
-    const std::uint64_t file_start_time_ns =
-        meta->frame_start_time_ns - (meta->frame_start_time_ns % file_len_ns);
-    return file_start_time_ns;
+    // Align to UTC midnight and configured window length.
+    const std::uint64_t W_ns = window_seconds * 1'000'000'000ULL;
+    const std::uint64_t day_ns = 86'400ULL * 1'000'000'000ULL;
+    const std::uint64_t day_start = (meta->frame_start_time_ns / day_ns) * day_ns;
+    const std::uint64_t offset_in_day = meta->frame_start_time_ns - day_start;
+    const std::uint64_t win_index = offset_in_day / W_ns; // 0-based
+    return day_start + win_index * W_ns;
 }
 
 std::string gdalVisWrite::_get_gdal_vis_filename(std::shared_ptr<const N2Metadata> meta) {
@@ -117,7 +106,8 @@ std::string gdalVisWrite::_get_gdal_vis_filename(std::shared_ptr<const N2Metadat
 }
 
 void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
-                                             std::shared_ptr<const N2Metadata> meta) {
+                                             std::shared_ptr<const N2Metadata> meta,
+                                             std::uint64_t file_nt) {
     assert(dataset && "Invalid dataset found during file initialization.");
     assert(meta && "Invalid metadata during file initialization.");
 
@@ -153,6 +143,12 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
             GDALExtendedDataType::Create(get_gdal_datatype(meta->nfreq)));
         success = num_freq->Write(&meta->nfreq, sizeof meta->nfreq);
         assert(success);
+
+        const auto frame_length_fpga_ticks = root_group->CreateAttribute(
+            "frame_length_fpga_ticks", std::vector<GUInt64>{},
+            GDALExtendedDataType::Create(get_gdal_datatype(meta->frame_length_fpga_ticks)));
+        success = frame_length_fpga_ticks->Write(&meta->frame_length_fpga_ticks, sizeof meta->frame_length_fpga_ticks);
+        assert(success);
     }
 
     // Dimensions
@@ -161,7 +157,7 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
     std::shared_ptr<GDALDimension> dim_prod =
         root_group->CreateDimension("products", "", "", meta->num_prod);
     std::shared_ptr<GDALDimension> dim_frames =
-        root_group->CreateDimension("frames", "", "", num_file_t);
+        root_group->CreateDimension("frames", "", "", file_nt);
     std::shared_ptr<GDALDimension> dim_inputs =
         root_group->CreateDimension("inputs", "", "", meta->num_elements);
     std::shared_ptr<GDALDimension> dim_ev = root_group->CreateDimension("ev", "", "", meta->num_ev);
@@ -172,7 +168,7 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
     {
         const GUInt64 bs_f = (blocksize_f > 0) ? blocksize_f : 1;
         const GUInt64 bs_p = (blocksize_p > 0) ? blocksize_p : meta->num_prod;
-        const GUInt64 bs_t = (blocksize_t > 0) ? blocksize_t : num_file_t;
+        const GUInt64 bs_t = (blocksize_t > 0) ? blocksize_t : file_nt;
         std::ostringstream bbuf;
         bbuf << "BLOCKSIZE=" << bs_f << "," << bs_p << "," << bs_t;
         array_options.push_back(bbuf.str());
@@ -239,8 +235,6 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
                                         GDALExtendedDataType::Create(GDT_UInt64), nullptr);
         (void)root_group->CreateMDArray("frame_start_time_ns", dims,
                                         GDALExtendedDataType::Create(GDT_UInt64), nullptr);
-        (void)root_group->CreateMDArray("frame_length_fpga_ticks", dims,
-                                        GDALExtendedDataType::Create(GDT_UInt64), nullptr);
         (void)root_group->CreateMDArray("era_deg", dims, GDALExtendedDataType::Create(GDT_Float64),
                                         nullptr);
     }
@@ -267,7 +261,7 @@ void gdalVisWrite::main_thread() {
     bool warned_short_window = false;
 
     // datasets (files) for writing
-    std::map<std::string, DatasetState> datasets;
+    std::map<std::string, std::unique_ptr<gdalVisFileData>> datasets;
 
     // Choose file format (driver)
     const auto driver_manager = GetGDALDriverManager();
@@ -289,20 +283,7 @@ void gdalVisWrite::main_thread() {
         }
     }
 
-    auto flush_dataset = [&](const std::string& path, DatasetState& state) {
-        (void)path;
-        if (!state.ds || !state.buf)
-            return;
-        state.buf->write_all_to_dataset(state.ds);
-    };
-
-    auto close_dataset = [&](DatasetState& state) {
-        if (state.ds) {
-            GDALClose(state.ds);
-            state.ds = nullptr;
-        }
-        state.buf.reset();
-    };
+    // Per-file flush/close handled by gdalVisFileData methods
 
     while (!stop_thread) {
         // Wait for the next frame
@@ -326,10 +307,10 @@ void gdalVisWrite::main_thread() {
         const std::string partial_path = _get_partial_dir() + "/" + file_name_only;
 
         // Ensure dataset exists/open
-        DatasetState* state_ptr = nullptr;
+        gdalVisFileData* obj_ptr = nullptr;
         auto it = datasets.find(final_path);
         if (it != datasets.end()) {
-            state_ptr = &it->second;
+            obj_ptr = it->second.get();
         } else {
             // If final file already exists, drop/ignore this frame (late arrival)
             struct stat filecheck_buffer {};
@@ -339,24 +320,24 @@ void gdalVisWrite::main_thread() {
                 // Mark frame as done and continue
                 buffer->mark_frame_empty(unique_name, in_frame_id);
                 in_frame_id++;
-                // Before continuing, check for timeouts on other datasets
+                // Before continuing, check for grace-based finalizations on other datasets
                 const double now_s = current_time();
                 for (auto it2 = datasets.begin(); it2 != datasets.end();) {
-                    auto& state = it2->second;
-                    if (now_s - state.last_update_wall_s >= double(flush_timeout_seconds)) {
-                        // Timeout finalize: flush and rename
-                        if (state.ds && state.buf)
-                            state.buf->write_all_to_dataset(state.ds);
-                        if (state.ds) {
-                            GDALClose(state.ds);
-                            state.ds = nullptr;
+                    auto& obj = *it2->second;
+                    if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
+                        // Grace finalize: flush and rename
+                        if (obj.ds)
+                            obj.write_all_to_dataset(obj.ds);
+                        if (obj.ds) {
+                            GDALClose(obj.ds);
+                            obj.ds = nullptr;
                         }
                         // Attempt rename from partial to final
-                        int r = std::rename(state.partial_path.c_str(), it2->first.c_str());
+                        int r = std::rename(obj.partial_path.c_str(), it2->first.c_str());
                         if (r != 0) {
                             const char* msg = strerror(errno);
                             ERROR("Failed to rename partial dataset to final: {} -> {}: {}",
-                                  state.partial_path, it2->first, msg);
+                                  obj.partial_path, it2->first, msg);
                         }
                         it2 = datasets.erase(it2);
                         continue;
@@ -368,6 +349,7 @@ void gdalVisWrite::main_thread() {
 
             // Open existing partial or create new under .partial
             GDALDataset* dataset = nullptr;
+            GUInt64 file_nt = 0;
             if (stat(partial_path.c_str(), &filecheck_buffer) == 0) {
                 DEBUG("Opening existing partial file: {:s}", partial_path);
                 char** open_options = nullptr;
@@ -391,7 +373,19 @@ void gdalVisWrite::main_thread() {
                     FATAL_ERROR("Could not initialize GDAL file {:s}", partial_path);
                 DEBUG("New partial dataset created: {:s}", partial_path);
 
-                _initialize_gdal_vis_file(dataset, meta);
+                // Compute per-window frames dimension
+                const std::uint64_t tick_len_ns = _get_tick_len_ns();
+                if (meta->frame_length_fpga_ticks == 0 || tick_len_ns == 0)
+                    FATAL_ERROR("Invalid frame_length_fpga_ticks or tick length.");
+                const std::uint64_t frame_len_ns = meta->frame_length_fpga_ticks * tick_len_ns;
+                const std::uint64_t W_ns = window_seconds * 1'000'000'000ULL;
+                if ((W_ns % frame_len_ns) != 0) {
+                    FATAL_ERROR("Configured window_seconds incompatible with frame cadence: W={} "
+                                "ns, frame_len={} ns",
+                                W_ns, frame_len_ns);
+                }
+                file_nt = W_ns / frame_len_ns;
+                _initialize_gdal_vis_file(dataset, meta, file_nt);
             }
 
             // Validate arrays and dimensions
@@ -419,135 +413,136 @@ void gdalVisWrite::main_thread() {
                         ++i;
                     }
                 };
-                chk("vis_array", 3, {meta->nfreq, meta->num_prod, num_file_t});
-                chk("weights_array", 3, {meta->nfreq, meta->num_prod, num_file_t});
-                chk("eval_array", 3, {meta->nfreq, meta->num_ev, num_file_t});
-                chk("evec_array", 4, {meta->nfreq, meta->num_ev, meta->num_elements, num_file_t});
-                chk("erms_array", 2, {meta->nfreq, num_file_t});
-                chk("gain_array", 3, {meta->nfreq, meta->num_elements, num_file_t});
-                chk("flags_array", 3, {meta->nfreq, meta->num_elements, num_file_t});
-                chk("frac_lost_array", 2, {meta->nfreq, num_file_t});
-                chk("frac_rfi_array", 2, {meta->nfreq, num_file_t});
-                chk("fpga_start_tick", 1, {num_file_t});
-                chk("frame_start_time_ns", 1, {num_file_t});
-                chk("frame_length_fpga_ticks", 1, {num_file_t});
-                chk("era_deg", 1, {num_file_t});
-                chk("n_valid_fpga_ticks", 2, {meta->nfreq, num_file_t});
-                chk("n_rfi_fpga_ticks", 2, {meta->nfreq, num_file_t});
+                // Determine frames dimension from one array if opening existing partial
+                auto rootTmp = dataset->GetRootGroup();
+                auto frames_arr = rootTmp->OpenMDArray("fpga_start_tick");
+                if (!frames_arr)
+                    FATAL_ERROR("Missing fpga_start_tick in dataset {}", partial_path);
+                auto dims_f = frames_arr->GetDimensions();
+                if (dims_f.size() != 1)
+                    FATAL_ERROR("fpga_start_tick dim mismatch in dataset {}", partial_path);
+                file_nt = dims_f[0]->GetSize();
+
+                chk("vis_array", 3, {meta->nfreq, meta->num_prod, file_nt});
+                chk("weights_array", 3, {meta->nfreq, meta->num_prod, file_nt});
+                chk("eval_array", 3, {meta->nfreq, meta->num_ev, file_nt});
+                chk("evec_array", 4, {meta->nfreq, meta->num_ev, meta->num_elements, file_nt});
+                chk("erms_array", 2, {meta->nfreq, file_nt});
+                chk("gain_array", 3, {meta->nfreq, meta->num_elements, file_nt});
+                chk("flags_array", 3, {meta->nfreq, meta->num_elements, file_nt});
+                chk("frac_lost_array", 2, {meta->nfreq, file_nt});
+                chk("frac_rfi_array", 2, {meta->nfreq, file_nt});
+                chk("fpga_start_tick", 1, {file_nt});
+                chk("frame_start_time_ns", 1, {file_nt});
+                chk("frame_length_fpga_ticks", 1, {file_nt});
+                chk("era_deg", 1, {file_nt});
+                chk("n_valid_fpga_ticks", 2, {meta->nfreq, file_nt});
+                chk("n_rfi_fpga_ticks", 2, {meta->nfreq, file_nt});
             }
 
-            // Store state
-            DatasetState state;
-            state.ds = dataset;
-            state.open_wall_s = frame_recv_time;
-            state.last_update_wall_s = frame_recv_time;
-            state.file_start_time_ns = _get_file_start_time_ns(meta);
-            // Compute frame_len_ns for shape tracking
-            {
-                const std::uint64_t tick_len_ns = _get_tick_len_ns();
-                state.frame_len_ns = meta->frame_length_fpga_ticks * tick_len_ns;
-            }
-            state.partial_path = partial_path;
-            datasets.emplace(final_path, std::move(state));
-            state_ptr = &datasets.find(final_path)->second;
+            // Create per-file buffer/state object
+            const std::uint64_t tick_len_ns = _get_tick_len_ns();
+            if (meta->frame_length_fpga_ticks == 0 || tick_len_ns == 0)
+                FATAL_ERROR("Invalid frame_length_fpga_ticks or tick length.");
+            const std::uint64_t frame_len_ns2 = meta->frame_length_fpga_ticks * tick_len_ns;
+            const std::uint64_t file_start_ns = _get_file_start_time_ns(meta);
+            auto obj = std::make_unique<gdalVisFileData>(
+                file_nt, meta->nfreq, meta->num_elements, meta->num_prod, meta->num_ev,
+                frame_len_ns2, meta->frame_length_fpga_ticks, file_start_ns, partial_path,
+                frame_recv_time);
+            obj->ds = dataset;
+            datasets.emplace(final_path, std::move(obj));
+            obj_ptr = datasets.find(final_path)->second.get();
 
-            // Warn if the file time span is less than one second, as filenames are
-            // only second-resolution and will collide across windows.
-            if (!warned_short_window) {
-                const std::uint64_t file_len_ns = state_ptr->frame_len_ns * num_file_t;
-                if (state_ptr->frame_len_ns > 0 && file_len_ns < 1'000'000'000ULL) {
-                    WARN("File window too short: num_file_t * frame_len = {} * {} ns = {} ns < 1s. "
-                         "This may cause filename collisions. Consider increasing num_file_t or "
-                         "cadence.",
-                         num_file_t, state_ptr->frame_len_ns, file_len_ns);
+            // Warn if the file time span is less than one second.
+            if (!warned_short_window && obj_ptr) {
+                const std::uint64_t file_len_ns = obj_ptr->num_file_t * obj_ptr->frame_len_ns;
+                if (obj_ptr->frame_len_ns > 0 && file_len_ns < 1'000'000'000ULL) {
+                    WARN(
+                        "File window is < 1s ({} * {} ns = {} ns). Ensure downstream tools "
+                        "handle sub-second windows; consider increasing window_seconds or cadence.",
+                        (unsigned long long)(obj_ptr->num_file_t), obj_ptr->frame_len_ns,
+                        file_len_ns);
                     warned_short_window = true;
                 }
             }
         }
 
-        if (!state_ptr || !state_ptr->ds) {
+        if (!obj_ptr || !obj_ptr->ds) {
             FATAL_ERROR("Dataset is null. Failed to open dataset.");
             return;
         }
-
-        // Allocate buffer if needed and capture expected geometry
-        if (!state_ptr->buf) {
-            state_ptr->buf = std::make_unique<gdalVisFileData>(
-                num_file_t, meta->nfreq, meta->num_elements, meta->num_prod, meta->num_ev);
-            state_ptr->expect_nfreq = meta->nfreq;
-            state_ptr->expect_num_elements = meta->num_elements;
-            state_ptr->expect_num_prod = meta->num_prod;
-            state_ptr->expect_num_ev = meta->num_ev;
-        } else {
-            // Validate geometry consistency for this dataset
-            if (meta->nfreq != state_ptr->expect_nfreq
-                || meta->num_elements != state_ptr->expect_num_elements
-                || meta->num_prod != state_ptr->expect_num_prod
-                || meta->num_ev != state_ptr->expect_num_ev) {
-                ERROR("Dropping frame due to geometry mismatch within dataset: nfreq {} vs {}, "
-                      "num_elements {} vs {}, num_prod {} vs {}, num_ev {} vs {}",
-                      meta->nfreq, state_ptr->expect_nfreq, meta->num_elements,
-                      state_ptr->expect_num_elements, meta->num_prod, state_ptr->expect_num_prod,
-                      meta->num_ev, state_ptr->expect_num_ev);
-                // Mark frame as done and skip further processing
-                buffer->mark_frame_empty(unique_name, in_frame_id);
-                in_frame_id++;
-                // Continue to process potential timeouts for other datasets
-                const double now_s = current_time();
-                for (auto it2 = datasets.begin(); it2 != datasets.end();) {
-                    auto& state = it2->second;
-                    if (now_s - state.last_update_wall_s >= double(flush_timeout_seconds)) {
-                        if (state.ds && state.buf)
-                            state.buf->write_all_to_dataset(state.ds);
-                        if (state.ds) {
-                            GDALClose(state.ds);
-                            state.ds = nullptr;
-                        }
-                        int r = std::rename(state.partial_path.c_str(), it2->first.c_str());
-                        if (r != 0) {
-                            const char* msg = strerror(errno);
-                            ERROR(
-                                "Failed to rename partial dataset to final (timeout): {} -> {}: {}",
-                                state.partial_path, it2->first, msg);
-                        }
-                        it2 = datasets.erase(it2);
-                        continue;
+        // Validate geometry consistency for this dataset
+        if (meta->nfreq != obj_ptr->num_freq || meta->num_elements != obj_ptr->num_input
+            || meta->num_prod != obj_ptr->num_prod || meta->num_ev != obj_ptr->num_ev) {
+            ERROR("Dropping frame due to geometry mismatch within dataset: nfreq {} vs {}, "
+                  "num_elements {} vs {}, num_prod {} vs {}, num_ev {} vs {}",
+                  meta->nfreq, obj_ptr->num_freq, meta->num_elements, obj_ptr->num_input,
+                  meta->num_prod, obj_ptr->num_prod, meta->num_ev, obj_ptr->num_ev);
+            // Mark frame as done and skip further processing
+            buffer->mark_frame_empty(unique_name, in_frame_id);
+            in_frame_id++;
+            // Continue to process potential grace finalizations for other datasets
+            const double now_s = current_time();
+            for (auto it2 = datasets.begin(); it2 != datasets.end();) {
+                auto& obj = *it2->second;
+                if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
+                    if (obj.ds)
+                        obj.write_all_to_dataset(obj.ds);
+                    if (obj.ds) {
+                        GDALClose(obj.ds);
+                        obj.ds = nullptr;
                     }
-                    ++it2;
+                    int r = std::rename(obj.partial_path.c_str(), it2->first.c_str());
+                    if (r != 0) {
+                        const char* msg = strerror(errno);
+                        ERROR("Failed to rename partial dataset to final (grace): {} -> {}: {}",
+                              obj.partial_path, it2->first, msg);
+                    }
+                    it2 = datasets.erase(it2);
+                    continue;
                 }
-                continue;
+                ++it2;
             }
+            continue;
         }
 
         // Basic validation: consistent time geometry for this dataset
         const std::uint64_t this_file_start_ns = _get_file_start_time_ns(meta);
-        if (state_ptr->file_start_time_ns != 0
-            && state_ptr->file_start_time_ns != this_file_start_ns) {
+        if (obj_ptr->file_start_time_ns != 0 && obj_ptr->file_start_time_ns != this_file_start_ns) {
             FATAL_ERROR("File start mismatch within dataset context: {} vs {}",
-                        state_ptr->file_start_time_ns, this_file_start_ns);
+                        obj_ptr->file_start_time_ns, this_file_start_ns);
         }
-        state_ptr->file_start_time_ns = this_file_start_ns;
 
-        // Add frame into buffer
-        const std::uint64_t t_in_file = _get_frame_nt_in_file(meta);
-        state_ptr->buf->add_frame(fv, meta, t_in_file);
-        state_ptr->last_update_wall_s = frame_recv_time;
+        // Enforce frame length invariants and compute t-index
+        const std::uint64_t tick_len_ns2 = _get_tick_len_ns();
+        if (meta->frame_length_fpga_ticks == 0 || tick_len_ns2 == 0)
+            FATAL_ERROR("Invalid frame_length_fpga_ticks or tick length.");
+        const std::uint64_t frame_len_ns = meta->frame_length_fpga_ticks * tick_len_ns2;
+        if (frame_len_ns != obj_ptr->frame_len_ns) {
+            FATAL_ERROR("frame_length_fpga_ticks changed within a window: {} vs {}", frame_len_ns,
+                        obj_ptr->frame_len_ns);
+        }
+        const std::uint64_t t_in_file =
+            (meta->frame_start_time_ns - obj_ptr->file_start_time_ns) / frame_len_ns;
+        obj_ptr->add_frame(fv, meta, t_in_file);
+        obj_ptr->last_update_wall_s = frame_recv_time;
 
         // If buffer full, flush
         double elapsed_writing_frame = 0.0;
-        if (state_ptr->buf->full()) {
+        if (obj_ptr->full()) {
             const double t0 = current_time();
-            flush_dataset(final_path, *state_ptr);
+            obj_ptr->flush();
             const double t1 = current_time();
             elapsed_writing_frame = t1 - t0;
             // Close dataset after flush
-            close_dataset(*state_ptr);
+            obj_ptr->close();
             // Finalize: rename partial to final
-            int r = std::rename(state_ptr->partial_path.c_str(), final_path.c_str());
+            int r = std::rename(obj_ptr->partial_path.c_str(), final_path.c_str());
             if (r != 0) {
                 const char* msg = strerror(errno);
                 ERROR("Failed to rename partial dataset to final: {} -> {}: {}",
-                      state_ptr->partial_path, final_path, msg);
+                      obj_ptr->partial_path, final_path, msg);
             }
             datasets.erase(final_path);
         }
@@ -573,23 +568,23 @@ void gdalVisWrite::main_thread() {
         frame_counter++;
         in_frame_id++;
 
-        // After handling this frame, scan for timeouts
+        // After handling this frame, scan for grace-based finalizations
         const double now_s = current_time();
         for (auto it2 = datasets.begin(); it2 != datasets.end();) {
-            auto& state = it2->second;
-            if (now_s - state.last_update_wall_s >= double(flush_timeout_seconds)) {
-                // Inactivity finalize
-                if (state.ds && state.buf)
-                    state.buf->write_all_to_dataset(state.ds);
-                if (state.ds) {
-                    GDALClose(state.ds);
-                    state.ds = nullptr;
+            auto& obj = *it2->second;
+            if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
+                // Grace finalize
+                if (obj.ds)
+                    obj.write_all_to_dataset(obj.ds);
+                if (obj.ds) {
+                    GDALClose(obj.ds);
+                    obj.ds = nullptr;
                 }
-                int r = std::rename(state.partial_path.c_str(), it2->first.c_str());
+                int r = std::rename(obj.partial_path.c_str(), it2->first.c_str());
                 if (r != 0) {
                     const char* msg = strerror(errno);
-                    ERROR("Failed to rename partial dataset to final (timeout): {} -> {}: {}",
-                          state.partial_path, it2->first, msg);
+                    ERROR("Failed to rename partial dataset to final (grace): {} -> {}: {}",
+                          obj.partial_path, it2->first, msg);
                 }
                 it2 = datasets.erase(it2);
                 continue;
@@ -599,18 +594,20 @@ void gdalVisWrite::main_thread() {
     } // while !stop_thread
 
     // Flush any partially-filled datasets on exit
-    for (auto& [path, state] : datasets) {
-        if (state.ds && state.buf) {
-            flush_dataset(path, state);
+    for (auto& kv : datasets) {
+        const std::string& path = kv.first;
+        auto& obj = *kv.second;
+        if (obj.ds) {
+            obj.flush();
         }
-        if (state.ds)
-            GDALClose(state.ds);
+        if (obj.ds)
+            GDALClose(obj.ds);
         // Finalize rename
-        int r = std::rename(state.partial_path.c_str(), path.c_str());
+        int r = std::rename(obj.partial_path.c_str(), path.c_str());
         if (r != 0) {
             const char* msg = strerror(errno);
             ERROR("Failed to rename partial dataset to final on exit: {} -> {}: {}",
-                  state.partial_path, path, msg);
+                  obj.partial_path, path, msg);
         }
     }
     datasets.clear();

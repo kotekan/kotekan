@@ -71,19 +71,17 @@ public:
     uint64_t get_frame_start_time_ns(size_t t) const {
         return frame_start_time_ns[t];
     }
-    uint64_t get_frame_length_fpga_ticks(size_t t) const {
-        return frame_length_fpga_ticks[t];
-    }
+    uint64_t get_frame_length_fpga_ticks(size_t) const { return frame_length_fpga_ticks; }
     double get_era_deg(size_t t) const {
         return era_deg[t];
     }
 
-    // Seen tracking
-    size_t get_seen_count() const {
-        return seen_count;
+    // Added tracking (per (f,t))
+    size_t get_added_count() const {
+        return added_count;
     }
-    uint8_t get_seen(size_t f, size_t t) const {
-        return seen[idx_ft(f, t)];
+    uint8_t get_added(size_t f, size_t t) const {
+        return added_ft[idx_ft(f, t)];
     }
 };
 
@@ -144,7 +142,9 @@ BOOST_AUTO_TEST_CASE(test_add_frame_single_slot) {
     }
 
     // Buffer a file block and add the single (f,t) slot
-    TestGdalVisFileData blk(num_file_t, num_freq, num_input, num_prod, num_ev);
+    TestGdalVisFileData blk(num_file_t, num_freq, num_input, num_prod, num_ev,
+                            /*frame_len_ns*/ 100, /*file_start_time_ns*/ 0,
+                            /*partial_path*/ std::string{}, /*open_wall_s*/ 0.0);
     const size_t f = meta->freq_id;
     const size_t t = 1; // arbitrary slot in-file
     blk.add_frame(fv, meta, t);
@@ -185,11 +185,11 @@ BOOST_AUTO_TEST_CASE(test_add_frame_single_slot) {
     BOOST_CHECK_EQUAL(blk.get_frame_length_fpga_ticks(t), uint64_t(100));
     BOOST_CHECK_CLOSE_FRACTION(blk.get_era_deg(t), 12.34, 1e-12);
 
-    // Seen tracking
-    BOOST_CHECK_EQUAL(blk.get_seen_count(), size_t(1));
-    BOOST_CHECK_EQUAL(blk.get_seen(f, t), uint8_t(1));
-    BOOST_CHECK_EQUAL(blk.get_seen(f, 0), uint8_t(0));
-    BOOST_CHECK_EQUAL(blk.get_seen((f + 1) % num_freq, t), uint8_t(0));
+    // Added tracking
+    BOOST_CHECK_EQUAL(blk.get_added_count(), size_t(1));
+    BOOST_CHECK_EQUAL(blk.get_added(f, t), uint8_t(1));
+    BOOST_CHECK_EQUAL(blk.get_added(f, 0), uint8_t(0));
+    BOOST_CHECK_EQUAL(blk.get_added((f + 1) % num_freq, t), uint8_t(0));
 }
 
 // Helper to create a minimal GDAL Zarr dataset with dimensions/arrays
@@ -509,10 +509,11 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
         BOOST_CHECK_EQUAL(s1[t], uint64_t(222));
         BOOST_CHECK_EQUAL(s2[t], uint64_t(100));
         BOOST_CHECK_CLOSE_FRACTION(s3[t], 12.34, 1e-12);
-        // Other time index should remain default 0
+        // For frame_length_fpga_ticks we write the constant across all time indices
+        // Other per-time arrays remain default at other indices.
         BOOST_CHECK_EQUAL(s0[(1 - t)], uint64_t(0));
         BOOST_CHECK_EQUAL(s1[(1 - t)], uint64_t(0));
-        BOOST_CHECK_EQUAL(s2[(1 - t)], uint64_t(0));
+        BOOST_CHECK_EQUAL(s2[(1 - t)], uint64_t(100));
         BOOST_CHECK_CLOSE_FRACTION(s3[(1 - t)], 0.0, 1e-12);
     }
 
