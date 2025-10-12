@@ -122,8 +122,8 @@ public:
      * @param t_index Time index within this file block (0..num_file_t-1).
      */
     void add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metadata>& meta, size_t t_index) {
-        const size_t f_index =
-            meta->freq_id; // TODO: sync with telescope object. For now assume 0..nfreq-1 indexing
+        const size_t f_index = meta->freq_id; // TODO: sync with telescope object. For now assume
+                                              // 0..num_freq-1 indexing
         assert(f_index < num_freq);
         assert(t_index < num_file_t);
 
@@ -321,10 +321,9 @@ public:
 
 /**
  * @class gdalVisWrite
- * @brief Buffered-transpose writer: buffers sequential time frames and writes full GDAL Zarr
- *blocks.
+ * @brief Buffered-transpose writer: buffers sequential time frames and writes GDAL Zarr files.
  *
- * Frames arrive sequentially in time. The stage buffers a complete (nfreq × num_file_t) block
+ * Frames arrive sequentially in time. The stage buffers a complete (num_freq * num_file_t) block
  * per output file in memory (via gdalVisFileData), and when the block is complete, writes
  * all arrays to disk in large contiguous slabs.
  *
@@ -408,7 +407,7 @@ private:
         std::uint64_t frame_len_ns = 0;
         std::string partial_path; // on-disk working location
         // Expected geometry (captured from the first frame for this dataset)
-        std::uint32_t expect_nfreq = 0;
+        std::uint32_t expect_num_freq = 0;
         std::uint32_t expect_num_elements = 0;
         std::uint32_t expect_num_prod = 0;
         std::uint32_t expect_num_ev = 0;
