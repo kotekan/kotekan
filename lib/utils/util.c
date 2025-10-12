@@ -4,10 +4,10 @@
 #include <fcntl.h>    // for open, O_CREAT, O_EXCL, O_RDONLY, O_WRONLY
 #include <stdio.h>    // for printf, perror, snprintf, NULL
 #include <stdlib.h>   // for exit
+#include <string.h>   // for strlen, strdup
 #include <sys/stat.h> // for mkdir
 #include <sys/time.h> // for gettimeofday, timeval
 #include <unistd.h>   // for close, read, write, ssize_t
-#include <string.h>   // for strlen, strdup
 
 double e_time(void) {
     struct timeval now;

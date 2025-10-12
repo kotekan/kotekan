@@ -22,20 +22,25 @@
 
 /**
  * @class gdalVisFileData
- * @brief Buffer a full file block worth of arrays in memory, then flush once.
+ * @brief Buffer a full file block worth of arrays in memory, then flush to disk
+ * all at once.
  *
- * A file block contains `num_file_t` time frames across all `num_freq` freqs.
- * This class holds all relevant arrays in the target on-disk layout to enable
- * large contiguous writes (per-frequency slab) rather than per-frame writes.
- * (This is not the same as the actual frequency BLOCKSIZE when written to file,
- * which is configurable via the stage parameters.)
+ * A file data block contains `num_file_t` time frames across `num_freq` freqs.
+ * This class holds all relevant arrays in a form closer to a target on-disk layout,
+ * to facilitate large contiguous writes, rather than writing as individual frames
+ * arrive.
+ *
+ * (Note that num_freq and num_file_t are not necessarily the same as the actual
+ * frequency or time BLOCKSIZEs when written to file, which is configurable via the
+ * stage parameters, but it may be beneficial to have them match.)
  */
 class gdalVisFileData {
 protected:
-    // Structural information: all frames that get added should agree with these
-    const size_t num_input;  // number of inputs / elements
-    const size_t num_prod;   // number of products
-    const size_t num_ev;     // number of eigenvectors/values
+    // (Expected) structural information: all frames that get added should agree with these
+    const size_t num_input; // number of inputs / elements
+    const size_t num_prod;  // number of products
+    const size_t num_ev;    // number of eigenvectors/values
+    // Fixed size of this class
     const size_t num_freq;   // number of frequencies
     const size_t num_file_t; // frames per file (time dimension)
 
@@ -61,15 +66,15 @@ protected:
     std::vector<uint64_t> n_valid_fpga_ticks;      // (f, t)
     std::vector<uint64_t> n_rfi_fpga_ticks;        // (f, t)
 
-    // Tracking what (f, t) pairs have been seen
-    std::vector<uint8_t> seen; // size = num_freq * num_file_t
-    size_t seen_count;
+    // Tracking what (f, t) pairs have been added
+    std::vector<uint8_t> added_ft; // size = num_freq * num_file_t
+    size_t added_count = 0;        // number of (f, t) frames added
 
 public:
     gdalVisFileData(const uint64_t num_file_t_, const uint64_t num_freq_, const uint64_t num_input_,
                     const uint64_t num_prod_, const uint64_t num_ev_) :
         num_input(num_input_), num_prod(num_prod_), num_ev(num_ev_), num_freq(num_freq_),
-        num_file_t(num_file_t_), seen_count(0) {
+        num_file_t(num_file_t_), added_count(0) {
 
         // resize arrays to hold data across (freq, time) blocks
         vis.assign(num_prod * num_freq * num_file_t, N2::cfloat{0.0f, 0.0f});
@@ -90,7 +95,7 @@ public:
         n_valid_fpga_ticks.assign(num_freq * num_file_t, 0);
         n_rfi_fpga_ticks.assign(num_freq * num_file_t, 0);
 
-        seen.assign(num_freq * num_file_t, 0);
+        added_ft.assign(num_freq * num_file_t, 0);
     }
 
 public:
@@ -110,10 +115,6 @@ public:
         return num_file_t * f + t;
     } // (f, t)
 
-    inline size_t idx_seen(size_t f, size_t t) const {
-        return num_file_t * f + t;
-    }
-
     /**
      * @brief Add a frame of data at the computed time index.
      * @param fv      Frame view containing data.
@@ -126,6 +127,21 @@ public:
         assert(f_index < num_freq);
         assert(t_index < num_file_t);
 
+        // Check structural and metadata properties of incoming frame
+        assert(meta->frame_length_fpga_ticks > 0);
+        assert(meta->n_valid_fpga_ticks <= meta->frame_length_fpga_ticks);
+        assert(meta->n_rfi_fpga_ticks <= meta->frame_length_fpga_ticks);
+        assert(fv.vis.size() == N2::get_num_prod(meta->num_elements));
+        assert(fv.weight.size() == N2::get_num_prod(meta->num_elements));
+        assert(fv.eval.size() == meta->num_ev);
+        assert(fv.evec.size() == meta->num_ev * meta->num_elements);
+        assert(fv.gain.size() == meta->num_elements);
+        assert(fv.flags.size() == meta->num_elements);
+        assert(meta->num_elements == num_input);
+        assert(meta->num_prod == num_prod);
+        assert(meta->num_ev == num_ev);
+        assert(meta->num_elements == num_input);
+
         // Check per-time metadata consistency and assignment
         if (fpga_start_tick[t_index] != 0)
             assert(fpga_start_tick[t_index] == meta->fpga_start_tick);
@@ -136,7 +152,8 @@ public:
         if (frame_length_fpga_ticks[t_index] != 0)
             assert(frame_length_fpga_ticks[t_index] == meta->frame_length_fpga_ticks);
         frame_length_fpga_ticks[t_index] = meta->frame_length_fpga_ticks;
-        era_deg[t_index] = fv.eop.ERA_deg; // No consistency check for ERA (float comparison)
+        if (era_deg[t_index] == 0)
+            era_deg[t_index] = fv.eop.ERA_deg; // No consistency check for ERA (float comparison)
 
         // Store vis + weight
         for (size_t p = 0; p < num_prod; ++p) {
@@ -160,30 +177,27 @@ public:
         // Derived fractions and counts
         n_valid_fpga_ticks[idx_ft(f_index, t_index)] = meta->n_valid_fpga_ticks;
         n_rfi_fpga_ticks[idx_ft(f_index, t_index)] = meta->n_rfi_fpga_ticks;
-        if (meta->frame_length_fpga_ticks == 0) {
-            frac_lost[idx_ft(f_index, t_index)] = 1.0f;
-            frac_rfi[idx_ft(f_index, t_index)] = 0.0f;
-        } else {
-            frac_lost[idx_ft(f_index, t_index)] =
-                1.0f - float(meta->n_valid_fpga_ticks) / float(meta->frame_length_fpga_ticks);
-            frac_rfi[idx_ft(f_index, t_index)] =
-                float(meta->n_rfi_fpga_ticks) / float(meta->frame_length_fpga_ticks);
-        }
+        frac_lost[idx_ft(f_index, t_index)] =
+            1.0f - float(meta->n_valid_fpga_ticks) / float(meta->frame_length_fpga_ticks);
+        frac_rfi[idx_ft(f_index, t_index)] =
+            float(meta->n_rfi_fpga_ticks) / float(meta->frame_length_fpga_ticks);
 
-        size_t si = idx_seen(f_index, t_index);
-        if (!seen[si]) {
-            seen[si] = 1;
-            ++seen_count;
+        size_t si = idx_ft(f_index, t_index);
+        if (!added_ft[si]) {
+            added_ft[si] = 1;
+            ++added_count = 0; // number of frames added
         }
     }
 
     bool full() const {
-        return seen_count == num_freq * num_file_t;
+        return added_count == num_freq * num_file_t;
     }
 
     /**
      * @brief Flush the entire buffered block to an open GDAL dataset.
      * The dataset is expected to already contain all arrays created by the stage.
+     * @param dataset The GDAL dataset to write to.
+     * @note This does NOT close or delete the dataset, just writes to it.
      */
     void write_all_to_dataset(GDALDataset* dataset) const {
         assert(dataset);

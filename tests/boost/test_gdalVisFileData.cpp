@@ -11,8 +11,8 @@
 #include "test_utils.hpp"
 
 #include <boost/test/included/unit_test.hpp>
-#include <cpl_vsi.h>
 #include <cpl_conv.h>
+#include <cpl_vsi.h>
 #include <cstdio>
 #include <gdal.h>
 #include <gdal_priv.h>

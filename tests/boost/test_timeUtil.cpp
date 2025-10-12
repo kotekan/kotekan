@@ -8,8 +8,8 @@
 #include <filesystem>
 #include <inttypes.h>
 #include <sys/wait.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 #include <vector>
 
 #define ERA_TOL 2e-12 // <~ 0.5 nanoseconds of rotation

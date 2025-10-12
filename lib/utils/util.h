@@ -1,7 +1,7 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include <stdint.h> // for int64_t, int32_t
+#include <stdint.h>   // for int64_t, int32_t
 #include <sys/stat.h> // for mode_t
 
 #define EVER                                                                                       \

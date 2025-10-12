@@ -15,8 +15,8 @@
 #include <algorithm>
 #include <boost/test/included/unit_test.hpp>
 #include <chrono>
-#include <cpl_vsi.h>
 #include <cpl_conv.h>
+#include <cpl_vsi.h>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -383,7 +383,8 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     auto dm = GetGDALDriverManager();
     auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
     if (!drv) {
-        BOOST_TEST_MESSAGE("Zarr GDAL driver not available; skipping test_writer_full_block_transpose");
+        BOOST_TEST_MESSAGE(
+            "Zarr GDAL driver not available; skipping test_writer_full_block_transpose");
         return;
     }
 
@@ -475,7 +476,8 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     auto dm = GetGDALDriverManager();
     auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
     if (!drv) {
-        BOOST_TEST_MESSAGE("Zarr GDAL driver not available; skipping test_writer_partial_flush_on_exit");
+        BOOST_TEST_MESSAGE(
+            "Zarr GDAL driver not available; skipping test_writer_partial_flush_on_exit");
         return;
     }
 
@@ -577,7 +579,8 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     auto dm = GetGDALDriverManager();
     auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
     if (!drv) {
-        BOOST_TEST_MESSAGE("Zarr GDAL driver not available; skipping test_writer_multi_file_rollover");
+        BOOST_TEST_MESSAGE(
+            "Zarr GDAL driver not available; skipping test_writer_multi_file_rollover");
         return;
     }
 
@@ -744,7 +747,8 @@ BOOST_AUTO_TEST_CASE(test_writer_subsecond_unique_names) {
     auto dm = GetGDALDriverManager();
     auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
     if (!drv) {
-        BOOST_TEST_MESSAGE("Zarr GDAL driver not available; skipping test_writer_subsecond_unique_names");
+        BOOST_TEST_MESSAGE(
+            "Zarr GDAL driver not available; skipping test_writer_subsecond_unique_names");
         return;
     }
 
@@ -901,7 +905,8 @@ BOOST_AUTO_TEST_CASE(test_writer_frame_length_zero_fallback) {
     auto dm = GetGDALDriverManager();
     auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
     if (!drv) {
-        BOOST_TEST_MESSAGE("Zarr GDAL driver not available; skipping test_writer_frame_length_zero_fallback");
+        BOOST_TEST_MESSAGE(
+            "Zarr GDAL driver not available; skipping test_writer_frame_length_zero_fallback");
         return;
     }
 
@@ -984,7 +989,8 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     auto dm = GetGDALDriverManager();
     auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
     if (!drv) {
-        BOOST_TEST_MESSAGE("Zarr GDAL driver not available; skipping test_writer_drop_if_final_exists");
+        BOOST_TEST_MESSAGE(
+            "Zarr GDAL driver not available; skipping test_writer_drop_if_final_exists");
         return;
     }
 
@@ -1069,7 +1075,8 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     auto dm = GetGDALDriverManager();
     auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
     if (!drv) {
-        BOOST_TEST_MESSAGE("Zarr GDAL driver not available; skipping test_writer_geometry_mismatch_dropped");
+        BOOST_TEST_MESSAGE(
+            "Zarr GDAL driver not available; skipping test_writer_geometry_mismatch_dropped");
         return;
     }
 

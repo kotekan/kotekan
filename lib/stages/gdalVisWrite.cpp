@@ -105,7 +105,7 @@ std::string gdalVisWrite::_get_gdal_vis_filename(std::shared_ptr<const N2Metadat
         buf << hostname << "_";
     }
     const std::uint64_t file_start_time_ns = _get_file_start_time_ns(meta);
-    std::time_t time_t_format = file_start_time_ns / 1'000'000'000; // seconds
+    std::time_t time_t_format = file_start_time_ns / 1'000'000'000;      // seconds
     const std::uint64_t ns_part = file_start_time_ns % 1'000'000'000ULL; // sub-second
     buf << file_name << "." << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S");
     // Include nanosecond suffix to avoid collisions for sub-second windows
@@ -480,8 +480,10 @@ void gdalVisWrite::main_thread() {
             state_ptr->expect_num_ev = meta->num_ev;
         } else {
             // Validate geometry consistency for this dataset
-            if (meta->nfreq != state_ptr->expect_nfreq || meta->num_elements != state_ptr->expect_num_elements
-                || meta->num_prod != state_ptr->expect_num_prod || meta->num_ev != state_ptr->expect_num_ev) {
+            if (meta->nfreq != state_ptr->expect_nfreq
+                || meta->num_elements != state_ptr->expect_num_elements
+                || meta->num_prod != state_ptr->expect_num_prod
+                || meta->num_ev != state_ptr->expect_num_ev) {
                 ERROR("Dropping frame due to geometry mismatch within dataset: nfreq {} vs {}, "
                       "num_elements {} vs {}, num_prod {} vs {}, num_ev {} vs {}",
                       meta->nfreq, state_ptr->expect_nfreq, meta->num_elements,
@@ -504,8 +506,9 @@ void gdalVisWrite::main_thread() {
                         int r = std::rename(state.partial_path.c_str(), it2->first.c_str());
                         if (r != 0) {
                             const char* msg = strerror(errno);
-                            ERROR("Failed to rename partial dataset to final (timeout): {} -> {}: {}",
-                                  state.partial_path, it2->first, msg);
+                            ERROR(
+                                "Failed to rename partial dataset to final (timeout): {} -> {}: {}",
+                                state.partial_path, it2->first, msg);
                         }
                         it2 = datasets.erase(it2);
                         continue;
