@@ -180,7 +180,7 @@ public:
                                                     const struct EOP& eop) const;
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the
-     *          phase center), in Dish coordinates (x is altitude axis,
+     *          phase center), in Dish coordinates (x is altitude axis (~East),
      *          y is ~North, z is altitude = 90deg (~up).
      **/
     std::array<double, 3> get_pointing_vec_in_dish_coords() const;
