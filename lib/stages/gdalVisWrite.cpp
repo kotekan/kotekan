@@ -147,7 +147,8 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
         const auto frame_length_fpga_ticks = root_group->CreateAttribute(
             "frame_length_fpga_ticks", std::vector<GUInt64>{},
             GDALExtendedDataType::Create(get_gdal_datatype(meta->frame_length_fpga_ticks)));
-        success = frame_length_fpga_ticks->Write(&meta->frame_length_fpga_ticks, sizeof meta->frame_length_fpga_ticks);
+        success = frame_length_fpga_ticks->Write(&meta->frame_length_fpga_ticks,
+                                                 sizeof meta->frame_length_fpga_ticks);
         assert(success);
     }
 
@@ -234,6 +235,8 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
         (void)root_group->CreateMDArray("fpga_start_tick", dims,
                                         GDALExtendedDataType::Create(GDT_UInt64), nullptr);
         (void)root_group->CreateMDArray("frame_start_time_ns", dims,
+                                        GDALExtendedDataType::Create(GDT_UInt64), nullptr);
+        (void)root_group->CreateMDArray("frame_length_fpga_ticks", dims,
                                         GDALExtendedDataType::Create(GDT_UInt64), nullptr);
         (void)root_group->CreateMDArray("era_deg", dims, GDALExtendedDataType::Create(GDT_Float64),
                                         nullptr);
@@ -326,11 +329,11 @@ void gdalVisWrite::main_thread() {
                     auto& obj = *it2->second;
                     if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
                         // Grace finalize: flush and rename
-                        if (obj.ds)
-                            obj.write_all_to_dataset(obj.ds);
-                        if (obj.ds) {
-                            GDALClose(obj.ds);
-                            obj.ds = nullptr;
+                        if (obj.gdal_dataset)
+                            obj.flush();
+                        if (obj.gdal_dataset) {
+                            GDALClose(obj.gdal_dataset);
+                            obj.gdal_dataset = nullptr;
                         }
                         // Attempt rename from partial to final
                         int r = std::rename(obj.partial_path.c_str(), it2->first.c_str());
@@ -379,12 +382,14 @@ void gdalVisWrite::main_thread() {
                     FATAL_ERROR("Invalid frame_length_fpga_ticks or tick length.");
                 const std::uint64_t frame_len_ns = meta->frame_length_fpga_ticks * tick_len_ns;
                 const std::uint64_t W_ns = window_seconds * 1'000'000'000ULL;
+                // Allow non-integer multiples by rounding up the number of frame slots,
+                // so that all frames with start < window_end fit within 0..file_nt-1.
                 if ((W_ns % frame_len_ns) != 0) {
-                    FATAL_ERROR("Configured window_seconds incompatible with frame cadence: W={} "
-                                "ns, frame_len={} ns",
-                                W_ns, frame_len_ns);
+                    WARN("Configured window_seconds incompatible with frame cadence: W={} ns, "
+                         "frame_len={} ns; using file_nt=ceil(W/frame_len).",
+                         W_ns, frame_len_ns);
                 }
-                file_nt = W_ns / frame_len_ns;
+                file_nt = (W_ns + frame_len_ns - 1) / frame_len_ns;
                 _initialize_gdal_vis_file(dataset, meta, file_nt);
             }
 
@@ -450,7 +455,7 @@ void gdalVisWrite::main_thread() {
                 file_nt, meta->nfreq, meta->num_elements, meta->num_prod, meta->num_ev,
                 frame_len_ns2, meta->frame_length_fpga_ticks, file_start_ns, partial_path,
                 frame_recv_time);
-            obj->ds = dataset;
+            obj->gdal_dataset = dataset;
             datasets.emplace(final_path, std::move(obj));
             obj_ptr = datasets.find(final_path)->second.get();
 
@@ -468,7 +473,7 @@ void gdalVisWrite::main_thread() {
             }
         }
 
-        if (!obj_ptr || !obj_ptr->ds) {
+        if (!obj_ptr || !obj_ptr->gdal_dataset) {
             FATAL_ERROR("Dataset is null. Failed to open dataset.");
             return;
         }
@@ -487,11 +492,11 @@ void gdalVisWrite::main_thread() {
             for (auto it2 = datasets.begin(); it2 != datasets.end();) {
                 auto& obj = *it2->second;
                 if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
-                    if (obj.ds)
-                        obj.write_all_to_dataset(obj.ds);
-                    if (obj.ds) {
-                        GDALClose(obj.ds);
-                        obj.ds = nullptr;
+                    if (obj.gdal_dataset)
+                        obj.flush();
+                    if (obj.gdal_dataset) {
+                        GDALClose(obj.gdal_dataset);
+                        obj.gdal_dataset = nullptr;
                     }
                     int r = std::rename(obj.partial_path.c_str(), it2->first.c_str());
                     if (r != 0) {
@@ -574,11 +579,11 @@ void gdalVisWrite::main_thread() {
             auto& obj = *it2->second;
             if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
                 // Grace finalize
-                if (obj.ds)
-                    obj.write_all_to_dataset(obj.ds);
-                if (obj.ds) {
-                    GDALClose(obj.ds);
-                    obj.ds = nullptr;
+                if (obj.gdal_dataset)
+                    obj.flush();
+                if (obj.gdal_dataset) {
+                    GDALClose(obj.gdal_dataset);
+                    obj.gdal_dataset = nullptr;
                 }
                 int r = std::rename(obj.partial_path.c_str(), it2->first.c_str());
                 if (r != 0) {
@@ -597,11 +602,11 @@ void gdalVisWrite::main_thread() {
     for (auto& kv : datasets) {
         const std::string& path = kv.first;
         auto& obj = *kv.second;
-        if (obj.ds) {
+        if (obj.gdal_dataset) {
             obj.flush();
         }
-        if (obj.ds)
-            GDALClose(obj.ds);
+        if (obj.gdal_dataset)
+            GDALClose(obj.gdal_dataset);
         // Finalize rename
         int r = std::rename(obj.partial_path.c_str(), path.c_str());
         if (r != 0) {

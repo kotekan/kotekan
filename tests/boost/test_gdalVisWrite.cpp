@@ -777,7 +777,6 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 1;
     const uint64_t window_seconds = 1; // one second window => one frame per file
-    const size_t file_nt = 1;
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
                                  window_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ dt_ns);
@@ -1021,7 +1020,6 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const size_t num_input = 3;
     const size_t num_ev = 2;
     const size_t nfreq = 2;
-    const size_t file_nt = 1;
     const uint64_t window_seconds = 1;
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
                                  window_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
@@ -1073,14 +1071,16 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     buf.send_shutdown_signal();
     stage.join();
 
-    // Expect exactly one new dataset besides the pre-existing marker
+    // Expect exactly one new dataset in addition to the pre-existing marker
     auto entries = list_dir_entries(base_dir);
     size_t datasets = 0;
     for (auto& e : entries) {
         if (e.find(".zarr") != std::string::npos)
             datasets++;
     }
-    BOOST_REQUIRE_MESSAGE(datasets == 1, "Expected 1 dataset written, found " << datasets);
+    BOOST_REQUIRE_MESSAGE(datasets == 2,
+                          "Expected 2 dataset entries (pre-existing + new), found "
+                              << datasets);
 
     // Cleanup
     for (auto& e : entries) {

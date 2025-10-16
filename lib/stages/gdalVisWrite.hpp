@@ -37,19 +37,19 @@
 class gdalVisFileData {
 public:
     // Structural information and fixed sizes
-    const size_t num_input;   // number of inputs / elements
-    const size_t num_prod;    // number of products
-    const size_t num_ev;      // number of eigenvectors/values
-    const size_t num_freq;    // number of frequencies
-    const size_t num_file_t;  // frames ("time" dimension)
+    const size_t num_input;  // number of inputs / elements
+    const size_t num_prod;   // number of products
+    const size_t num_ev;     // number of eigenvectors/values
+    const size_t num_freq;   // number of frequencies
+    const size_t num_file_t; // frames ("time" dimension)
 
     // Per-file bookkeeping owned by this object
-    GDALDataset* ds = nullptr;              // non-owning dataset handle
-    const std::string partial_path;         // working on-disk location
-    const double open_wall_s;               // time opened
-    double last_update_wall_s = 0.0;        // last frame receipt
-    const uint64_t file_start_time_ns;      // aligned file start time
-    const uint64_t frame_len_ns;            // frame length in ns
+    GDALDataset* gdal_dataset = nullptr; // non-owning GDAL dataset handle
+    const std::string partial_path;    // working on-disk location
+    const double open_wall_s;          // time opened
+    double last_update_wall_s = 0.0;   // last frame receipt
+    const uint64_t file_start_time_ns; // aligned file start time
+    const uint64_t frame_len_ns;       // frame length in ns
 
 protected:
     // Datasets to be stored until ready to write
@@ -68,12 +68,12 @@ protected:
     std::vector<double> era_deg; // (t)
 
     // Additional metadata
-    std::vector<uint64_t> fpga_start_tick;         // (t)
-    std::vector<uint64_t> frame_start_time_ns;     // (t)
-    std::vector<uint64_t> n_valid_fpga_ticks;      // (f, t)
-    std::vector<uint64_t> n_rfi_fpga_ticks;        // (f, t)
-    // Should be constant across all frames
-    uint64_t              frame_length_fpga_ticks; // const
+    std::vector<uint64_t> fpga_start_tick;     // (t)
+    std::vector<uint64_t> frame_start_time_ns; // (t)
+    std::vector<uint64_t> n_valid_fpga_ticks;  // (f, t)
+    std::vector<uint64_t> n_rfi_fpga_ticks;    // (f, t)
+    // Should be constant across all frames (set on first add_frame)
+    uint64_t frame_length_fpga_ticks;
 
     // Tracking what (f, t) pairs have been added
     std::vector<uint8_t> added_ft; // size = num_freq * num_file_t
@@ -82,13 +82,12 @@ protected:
 public:
     gdalVisFileData(const uint64_t num_file_t_, const uint64_t num_freq_, const uint64_t num_input_,
                     const uint64_t num_prod_, const uint64_t num_ev_, const uint64_t frame_len_ns_,
-                    const uint64_t frame_length_fpga_ticks_,
-                    const uint64_t file_start_time_ns_, std::string partial_path_,
-                    const double open_wall_s_)
-        : num_input(num_input_), num_prod(num_prod_), num_ev(num_ev_), num_freq(num_freq_),
-          num_file_t(num_file_t_), partial_path(std::move(partial_path_)), open_wall_s(open_wall_s_),
-          last_update_wall_s(open_wall_s_), file_start_time_ns(file_start_time_ns_),
-          frame_len_ns(frame_len_ns_), frame_length_fpga_ticks(frame_length_fpga_ticks_) {
+                    const uint64_t frame_length_fpga_ticks_, const uint64_t file_start_time_ns_,
+                    std::string partial_path_, const double open_wall_s_) :
+        num_input(num_input_), num_prod(num_prod_), num_ev(num_ev_), num_freq(num_freq_),
+        num_file_t(num_file_t_), partial_path(std::move(partial_path_)), open_wall_s(open_wall_s_),
+        last_update_wall_s(open_wall_s_), file_start_time_ns(file_start_time_ns_),
+        frame_len_ns(frame_len_ns_), frame_length_fpga_ticks(frame_length_fpga_ticks_) {
 
         // resize arrays to hold data across (freq, time) blocks
         vis.assign(num_prod * num_freq * num_file_t, N2::cfloat{0.0f, 0.0f});
@@ -111,24 +110,145 @@ public:
         added_ft.assign(num_freq * num_file_t, 0);
     }
 
-    // Flush buffered data to the associated dataset handle if available.
-    // Returns true if a write occurred.
+    /// Flush buffered data to the associated dataset handle, always writing the
+    /// entire time range [0 .. num_file_t-1] regardless of which frames were
+    /// populated. Returns true if a write occurred.
     bool flush() {
-        if (!ds)
+        if (!gdal_dataset)
             return false;
-        write_all_to_dataset(ds);
+
+        // Inline previous _write_arrays() logic here
+        const size_t nt = num_file_t;
+        assert(gdal_dataset);
+        const auto root_group = gdal_dataset->GetRootGroup();
+        assert(root_group);
+
+        auto vis_array = root_group->OpenMDArray("vis_array");
+        auto weights_array = root_group->OpenMDArray("weights_array");
+        auto eval_array = root_group->OpenMDArray("eval_array");
+        auto evec_array = root_group->OpenMDArray("evec_array");
+        auto erms_array = root_group->OpenMDArray("erms_array");
+        auto gain_array = root_group->OpenMDArray("gain_array");
+        auto flags_array = root_group->OpenMDArray("flags_array");
+        auto frac_lost_array = root_group->OpenMDArray("frac_lost_array");
+        auto frac_rfi_array = root_group->OpenMDArray("frac_rfi_array");
+        auto fpga_start_tick_array = root_group->OpenMDArray("fpga_start_tick");
+        auto frame_start_time_ns_array = root_group->OpenMDArray("frame_start_time_ns");
+        auto era_deg_array = root_group->OpenMDArray("era_deg");
+        auto frame_length_fpga_ticks_array = root_group->OpenMDArray("frame_length_fpga_ticks");
+        auto n_valid_array = root_group->OpenMDArray("n_valid_fpga_ticks");
+        auto n_rfi_array = root_group->OpenMDArray("n_rfi_fpga_ticks");
+
+        const auto c32Type = GDALExtendedDataType::Create(GDT_CFloat32);
+        const auto f32Type = GDALExtendedDataType::Create(GDT_Float32);
+        const auto f64Type = GDALExtendedDataType::Create(GDT_Float64);
+        const auto u64Type = GDALExtendedDataType::Create(GDT_UInt64);
+
+        // vis/weights: (freqs, products, nt)
+        {
+            std::vector<GUInt64> start_v = {0, 0, 0};
+            std::vector<size_t> count_v = {num_freq, num_prod, nt};
+            bool ok = vis_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, c32Type,
+                                       reinterpret_cast<const void*>(vis.data()), nullptr, 0);
+            assert(ok);
+            ok = weights_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, f32Type,
+                                      reinterpret_cast<const void*>(vis_weight.data()), nullptr, 0);
+            assert(ok);
+        }
+
+        // eval: (freqs, ev, nt)
+        {
+            std::vector<GUInt64> start_e = {0, 0, 0};
+            std::vector<size_t> count_e = {num_freq, num_ev, nt};
+            bool ok = eval_array->Write(start_e.data(), count_e.data(), nullptr, nullptr, f32Type,
+                                        reinterpret_cast<const void*>(eval.data()), nullptr, 0);
+            assert(ok);
+        }
+
+        // evec: (freqs, ev, inputs, nt)
+        {
+            std::vector<GUInt64> start_ev = {0, 0, 0, 0};
+            std::vector<size_t> count_ev = {num_freq, num_ev, num_input, nt};
+            bool ok = evec_array->Write(start_ev.data(), count_ev.data(), nullptr, nullptr, c32Type,
+                                        reinterpret_cast<const void*>(evec.data()), nullptr, 0);
+            assert(ok);
+        }
+
+        // erms: (freqs, nt); gain/flags: (freqs, inputs, nt); frac_* and counts: (freqs, nt)
+        {
+            std::vector<GUInt64> start_et = {0, 0};
+            std::vector<size_t> count_et = {num_freq, nt};
+            bool ok = erms_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
+                                        reinterpret_cast<const void*>(erms.data()), nullptr, 0);
+            assert(ok);
+
+            std::vector<GUInt64> start_g = {0, 0, 0};
+            std::vector<size_t> count_g = {num_freq, num_input, nt};
+            ok = gain_array->Write(start_g.data(), count_g.data(), nullptr, nullptr, c32Type,
+                                   reinterpret_cast<const void*>(gain.data()), nullptr, 0);
+            assert(ok);
+            ok = flags_array->Write(start_g.data(), count_g.data(), nullptr, nullptr, f32Type,
+                                    reinterpret_cast<const void*>(flags.data()), nullptr, 0);
+            assert(ok);
+
+            ok = frac_lost_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
+                                        reinterpret_cast<const void*>(frac_lost.data()), nullptr, 0);
+            assert(ok);
+            ok = frac_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
+                                       reinterpret_cast<const void*>(frac_rfi.data()), nullptr, 0);
+            assert(ok);
+            ok = n_valid_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
+                                      reinterpret_cast<const void*>(n_valid_fpga_ticks.data()), nullptr,
+                                      0);
+            assert(ok);
+            ok = n_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
+                                    reinterpret_cast<const void*>(n_rfi_fpga_ticks.data()), nullptr,
+                                    0);
+            assert(ok);
+        }
+
+        // per-time arrays: (:)
+        {
+            std::vector<GUInt64> start = {0};
+            std::vector<size_t> count = {nt};
+            bool ok = fpga_start_tick_array->Write(
+                start.data(), count.data(), nullptr, nullptr, u64Type,
+                reinterpret_cast<const void*>(fpga_start_tick.data()), nullptr, 0);
+            assert(ok);
+            ok = frame_start_time_ns_array->Write(
+                start.data(), count.data(), nullptr, nullptr, u64Type,
+                reinterpret_cast<const void*>(frame_start_time_ns.data()), nullptr, 0);
+            assert(ok);
+            // Write frame_length_fpga_ticks across full file dimension (constant per file)
+            std::vector<GUInt64> start_full = {0};
+            std::vector<size_t> count_full = {num_file_t};
+            std::vector<uint64_t> flft(num_file_t, frame_length_fpga_ticks);
+            ok = frame_length_fpga_ticks_array->Write(
+                start_full.data(), count_full.data(), nullptr, nullptr, u64Type,
+                reinterpret_cast<const void*>(flft.data()), nullptr, 0);
+            assert(ok);
+            ok = era_deg_array->Write(start.data(), count.data(), nullptr, nullptr, f64Type,
+                                      reinterpret_cast<const void*>(era_deg.data()), nullptr, 0);
+            assert(ok);
+        }
+
         return true;
     }
 
-    // Close the associated dataset handle if open.
+    /// Close the associated dataset handle if open.
     void close() {
-        if (ds) {
-            GDALClose(ds);
-            ds = nullptr;
+        if (gdal_dataset) {
+            GDALClose(gdal_dataset);
+            gdal_dataset = nullptr;
         }
     }
 
-public:
+    /// Check if all (f, t) pairs have been added
+    bool full() const {
+        return added_count == num_freq * num_file_t;
+    }
+
+    // Accessors for internal storage (index calculation)
     inline size_t idx_fpt(size_t f, size_t p, size_t t) const {
         return num_file_t * (num_prod * f + p) + t; // (f, p, t)
     }
@@ -142,8 +262,8 @@ public:
         return num_file_t * (num_input * f + i) + t; // (f, i, t)
     }
     inline size_t idx_ft(size_t f, size_t t) const {
-        return num_file_t * f + t;
-    } // (f, t)
+        return num_file_t * f + t; // (f, t)
+    }
 
     /**
      * @brief Add a frame of data at the computed time index.
@@ -159,8 +279,6 @@ public:
 
         // Check structural and metadata properties of incoming frame
         assert(meta->frame_length_fpga_ticks > 0);
-        assert(meta->n_valid_fpga_ticks <= meta->frame_length_fpga_ticks);
-        assert(meta->n_rfi_fpga_ticks <= meta->frame_length_fpga_ticks);
         assert(fv.vis.size() == N2::get_num_prod(meta->num_elements));
         assert(fv.weight.size() == N2::get_num_prod(meta->num_elements));
         assert(fv.eval.size() == meta->num_ev);
@@ -181,7 +299,9 @@ public:
         frame_start_time_ns[t_index] = meta->frame_start_time_ns;
         if (frame_length_fpga_ticks != 0)
             assert(frame_length_fpga_ticks == meta->frame_length_fpga_ticks);
-        frame_length_fpga_ticks = meta->frame_length_fpga_ticks;
+        // Initialize constant per-file frame length from first frame
+        if (frame_length_fpga_ticks == 0)
+            frame_length_fpga_ticks = meta->frame_length_fpga_ticks;
         if (era_deg[t_index] == 0)
             era_deg[t_index] = fv.eop.ERA_deg; // No consistency check for ERA (float comparison)
 
@@ -204,147 +324,21 @@ public:
             flags[idx_fit(f_index, i, t_index)] = fv.flags[i];
         }
 
-        // Derived fractions and counts
-        n_valid_fpga_ticks[idx_ft(f_index, t_index)] = meta->n_valid_fpga_ticks;
-        n_rfi_fpga_ticks[idx_ft(f_index, t_index)] = meta->n_rfi_fpga_ticks;
+        // Derived fractions and counts (sanitize tick counts to avoid out-of-range values)
+        const uint64_t frame_len_ticks = meta->frame_length_fpga_ticks;
+        const uint64_t n_valid = std::min(meta->n_valid_fpga_ticks, frame_len_ticks);
+        const uint64_t n_rfi = std::min(meta->n_rfi_fpga_ticks, frame_len_ticks);
+        n_valid_fpga_ticks[idx_ft(f_index, t_index)] = n_valid;
+        n_rfi_fpga_ticks[idx_ft(f_index, t_index)] = n_rfi;
         frac_lost[idx_ft(f_index, t_index)] =
-            1.0f - float(meta->n_valid_fpga_ticks) / float(meta->frame_length_fpga_ticks);
+            (frame_len_ticks > 0) ? (1.0f - float(n_valid) / float(frame_len_ticks)) : 0.0f;
         frac_rfi[idx_ft(f_index, t_index)] =
-            float(meta->n_rfi_fpga_ticks) / float(meta->frame_length_fpga_ticks);
+            (frame_len_ticks > 0) ? (float(n_rfi) / float(frame_len_ticks)) : 0.0f;
 
         size_t si = idx_ft(f_index, t_index);
         if (!added_ft[si]) {
             added_ft[si] = 1;
             ++added_count; // number of frames added
-        }
-    }
-
-    bool full() const {
-        return added_count == num_freq * num_file_t;
-    }
-
-    /**
-     * @brief Flush the entire buffered block to an open GDAL dataset.
-     * The dataset is expected to already contain all arrays created by the stage.
-     * @param dataset The GDAL dataset to write to.
-     * @note This does NOT close or delete the dataset, just writes to it.
-     */
-    void write_all_to_dataset(GDALDataset* dataset) const {
-        assert(dataset);
-        const auto root_group = dataset->GetRootGroup();
-        assert(root_group);
-
-        // Open arrays
-        auto vis_array = root_group->OpenMDArray("vis_array");
-        auto weights_array = root_group->OpenMDArray("weights_array");
-        auto eval_array = root_group->OpenMDArray("eval_array");
-        auto evec_array = root_group->OpenMDArray("evec_array");
-        auto erms_array = root_group->OpenMDArray("erms_array");
-        auto gain_array = root_group->OpenMDArray("gain_array");
-        auto flags_array = root_group->OpenMDArray("flags_array");
-        auto frac_lost_array = root_group->OpenMDArray("frac_lost_array");
-        auto frac_rfi_array = root_group->OpenMDArray("frac_rfi_array");
-        auto fpga_start_tick_array = root_group->OpenMDArray("fpga_start_tick");
-        auto frame_start_time_ns_array = root_group->OpenMDArray("frame_start_time_ns");
-        auto era_deg_array = root_group->OpenMDArray("era_deg");
-        auto frame_length_fpga_ticks_array = root_group->OpenMDArray("frame_length_fpga_ticks");
-        auto n_valid_array = root_group->OpenMDArray("n_valid_fpga_ticks");
-        auto n_rfi_array = root_group->OpenMDArray("n_rfi_fpga_ticks");
-
-        const auto c32Type = GDALExtendedDataType::Create(GDT_CFloat32);
-        const auto f32Type = GDALExtendedDataType::Create(GDT_Float32);
-        const auto f64Type = GDALExtendedDataType::Create(GDT_Float64);
-        const auto u64Type = GDALExtendedDataType::Create(GDT_UInt64);
-
-        // Write full arrays in one call (contiguous layout matches on-disk order)
-        {
-            // vis/weights: (freqs, products, frames)
-            std::vector<GUInt64> start_v = {0, 0, 0};
-            std::vector<size_t> count_v = {num_freq, num_prod, num_file_t};
-            bool ok = vis_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, c32Type,
-                                       reinterpret_cast<const void*>(vis.data()), nullptr, 0);
-            assert(ok);
-            ok = weights_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, f32Type,
-                                      reinterpret_cast<const void*>(vis_weight.data()), nullptr, 0);
-            assert(ok);
-        }
-
-        {
-            // eval: (freqs, ev, frames)
-            std::vector<GUInt64> start_e = {0, 0, 0};
-            std::vector<size_t> count_e = {num_freq, num_ev, num_file_t};
-            bool ok = eval_array->Write(start_e.data(), count_e.data(), nullptr, nullptr, f32Type,
-                                        reinterpret_cast<const void*>(eval.data()), nullptr, 0);
-            assert(ok);
-        }
-
-        {
-            // evec: (freqs, ev, inputs, frames)
-            std::vector<GUInt64> start_ev = {0, 0, 0, 0};
-            std::vector<size_t> count_ev = {num_freq, num_ev, num_input, num_file_t};
-            bool ok = evec_array->Write(start_ev.data(), count_ev.data(), nullptr, nullptr, c32Type,
-                                        reinterpret_cast<const void*>(evec.data()), nullptr, 0);
-            assert(ok);
-        }
-
-        {
-            // erms: (freqs, frames)
-            std::vector<GUInt64> start_et = {0, 0};
-            std::vector<size_t> count_et = {num_freq, num_file_t};
-            bool ok = erms_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
-                                        reinterpret_cast<const void*>(erms.data()), nullptr, 0);
-            assert(ok);
-
-            // gain/flags: (freqs, inputs, frames)
-            std::vector<GUInt64> start_g = {0, 0, 0};
-            std::vector<size_t> count_g = {num_freq, num_input, num_file_t};
-            ok = gain_array->Write(start_g.data(), count_g.data(), nullptr, nullptr, c32Type,
-                                   reinterpret_cast<const void*>(gain.data()), nullptr, 0);
-            assert(ok);
-            ok = flags_array->Write(start_g.data(), count_g.data(), nullptr, nullptr, f32Type,
-                                    reinterpret_cast<const void*>(flags.data()), nullptr, 0);
-            assert(ok);
-
-            // frac_* and counts: (freqs, frames)
-            ok = frac_lost_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
-                                        reinterpret_cast<const void*>(frac_lost.data()), nullptr, 0);
-            assert(ok);
-            ok = frac_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
-                                       reinterpret_cast<const void*>(frac_rfi.data()), nullptr, 0);
-            assert(ok);
-            ok = n_valid_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
-                                      reinterpret_cast<const void*>(n_valid_fpga_ticks.data()),
-                                      nullptr, 0);
-            assert(ok);
-            ok = n_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
-                                    reinterpret_cast<const void*>(n_rfi_fpga_ticks.data()), nullptr,
-                                    0);
-            assert(ok);
-        }
-
-        // per-time arrays: (:)
-        {
-            std::vector<GUInt64> start = {0};
-            std::vector<size_t> count = {num_file_t};
-            bool ok = fpga_start_tick_array->Write(
-                start.data(), count.data(), nullptr, nullptr, u64Type,
-                reinterpret_cast<const void*>(fpga_start_tick.data()), nullptr, 0);
-            assert(ok);
-            ok = frame_start_time_ns_array->Write(
-                start.data(), count.data(), nullptr, nullptr, u64Type,
-                reinterpret_cast<const void*>(frame_start_time_ns.data()), nullptr, 0);
-            assert(ok);
-            // frame_length_fpga_ticks is constant for the file; write a repeated vector
-            {
-                std::vector<uint64_t> flft(num_file_t, frame_length_fpga_ticks);
-                ok = frame_length_fpga_ticks_array->Write(
-                    start.data(), count.data(), nullptr, nullptr, u64Type,
-                    reinterpret_cast<const void*>(flft.data()), nullptr, 0);
-                assert(ok);
-            }
-            ok = era_deg_array->Write(start.data(), count.data(), nullptr, nullptr, f64Type,
-                                      reinterpret_cast<const void*>(era_deg.data()), nullptr, 0);
-            assert(ok);
         }
     }
 };
@@ -353,12 +347,13 @@ public:
  * @class gdalVisWrite
  * @brief Buffered-transpose writer: buffers sequential time frames and writes GDAL Zarr files.
  *
- * This stage groups frames into UTC-midnight-aligned windows of length 
+ * This stage groups frames into UTC-midnight-aligned windows of length
  * `window_seconds`, buffers a complete (num_freq * file_nt) block per output file in
  * memory (via gdalVisFileData), and when the block is full, writes all arrays to
  * disk in large contiguous slabs. If the block is not full, it is nevertheless finalized
  * after `late_frame_grace_seconds` of inactivity once frames for later windows begin to
- * arrive.
+ * arrive. Flushes always write the full time range for the window; any missing frames
+ * remain default/zero-valued in the output arrays.
  *
  * @par Buffers
  * @buffer in_buf  Input visibility buffer
@@ -431,7 +426,6 @@ private:
             return path;
         return path.substr(pos + 1);
     }
-
 };
 
 #endif // KOTEKAN_STAGES_GDAL_VIS_WRITE_HPP
