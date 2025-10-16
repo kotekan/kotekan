@@ -275,7 +275,7 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root_update, CompareCTypes) {
 
     // Force the dM to register everything again.
     restClient::restReply reply = restClient::instance().make_request_blocking(
-        "/dataset-manager/force-update", {}, "127.0.0.1", kotekan::restServer::instance().port);
+        "/dataset-manager/force-update", {}, "127.0.0.1", kotekan::restServer::instance().port());
     BOOST_CHECK(reply.first == true);
     BOOST_CHECK(reply.second == "");
 

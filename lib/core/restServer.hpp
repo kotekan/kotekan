@@ -140,6 +140,34 @@ public:
     static restServer& instance();
 
     /**
+     * @brief Validate a bind address.
+     *
+     * Accepts the following forms:
+     *  - IPv4 literals (e.g., "127.0.0.1", "0.0.0.0").
+     *  - localhost (only works for self-connections).
+     *
+     * This is a syntactic check. For hostnames, it does not resolve DNS; use
+     * @ref canBindToAddress to check actual bindability.
+     *
+     * @param address Address string to validate (no port or scheme).
+     * @return true if syntactically valid; false otherwise.
+     */
+    bool isValidAddress(const std::string& address) const;
+
+    /**
+     * @brief Checks if the given IP address and port can be bound to.
+     *
+     * This function checks if the given IP address and port can be bound to
+     * by attempting to create a socket and bind it. It does not actually
+     * start a server, but checks if the address is available.
+     *
+     * @param ip The IP address to check.
+     * @param port The port to check.
+     * @return true if the address can be bound, false otherwise.
+     */
+    bool canBindToAddress(const std::string& ip, const u_short port) const;
+
+    /**
      * @brief Start the rest server, should only be called once by the framework
      *
      * @param bind_address The address to bind too.  Default: 0.0.0.0
@@ -232,8 +260,15 @@ public:
      */
     void remove_all_aliases();
 
-    /// The port to use
-    const u_short& port;
+    // Getter for the port to use
+    inline u_short port() const {
+        return _port;
+    }
+
+    // Getter for the bind address to use
+    inline std::string bind_address() const {
+        return _bind_address;
+    }
 
 private:
     /// Private constuctor
@@ -332,7 +367,7 @@ private:
     struct evhttp* ev_server = nullptr;
 
     /// Bind address
-    std::string bind_address;
+    std::string _bind_address;
 
     /// The port to use
     u_short _port;

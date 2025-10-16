@@ -21,8 +21,7 @@ jobs:
     permissions: write-all
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
     - name: Check for file changes
       uses: tj-actions/changed-files@v44
