@@ -231,8 +231,11 @@ void CHORDTelescope::send_time0_ns(connectionInstance& conn) {
 }
 
 timespec CHORDTelescope::to_time(uint64_t seq) const {
-    auto time_ns = time0_ns + seq * dt_ns;
-    return nanosec_i64_to_timespec(time_ns);
+    return nanosec_i64_to_timespec(to_time_ns(seq));
+}
+
+int64_t CHORDTelescope::to_time_ns(uint64_t seq) const {
+    return time0_ns + seq * dt_ns;
 }
 
 uint64_t CHORDTelescope::to_seq(timespec time) const {

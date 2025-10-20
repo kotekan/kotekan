@@ -50,6 +50,49 @@ n2_frame_size: n2_vis_size + n2_weight_size + n2_flags_size + n2_eval_size +
 frames_to_generate: 8 * buffer_depth  # must be at least n2_frames_to_write * num_frames_to_accumulate
 n2_frames_to_write: 2 * buffer_depth
 
+GIGA: 1000000000
+start_time_s: 1760000000
+
+telescope:
+  name: CHORDTelescope
+  inst_lat_deg: 50.0
+  inst_long_deg: -120.0
+  inst_alt_deg: 90.0
+  inst_grid_x_axis: [1.0, 0.0, 0.0]
+  inst_grid_y_axis: [0.0, 1.0, 0.0]
+  inst_dish_alt_axis: [1.0, 0.0, 0.0]
+  inst_dish_vert_axis: [0.0, 0.0, 1.0]
+  dish_positions: [
+    [0.0, 0.0, 0.0],
+    [6.3, 0.0, 0.0],
+    [0.0, 8.4, 0.0],
+    [6.3, 8.4, 0.0],
+    [151.0, 0.0, 0.0],
+    [0.0, 204.0, 0.0],
+    [151.0, 204.0, 0.0]]
+  require_gps: False
+  updatable_config: /earth_rotation_data
+
+gps_time:
+  frame0_nano: start_time_s * GIGA
+
+earth_rotation_data:
+  kotekan_update_endpoint: json
+  earth_orientation_parameter_table: [
+    {
+      time_inst_ns: 1750000000000000000,
+      delta_UT1_inst: 0.5,
+      x_pm: 0.1,
+      y_pm: 0.2
+    }, {
+      time_inst_ns: 1770000000000000000,
+      delta_UT1_inst: -0.5,
+      x_pm: 0.3,
+      y_pm: 0.4
+    }]
+
+  
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata

@@ -93,6 +93,12 @@ public:
     timespec to_time(uint64_t seq) const override;
     uint64_t to_seq(timespec time) const override;
     uint64_t seq_length_nsec() const override;
+    
+    /**
+     * @brief   Return the time corresponding to the given fpga sequence number as an int64_t.
+     *          Uses the epoch of time0_ns.
+     */
+    int64_t to_time_ns(uint64_t seq) const;
 
     /**
      * @brief   Return the longitude of the instrument.

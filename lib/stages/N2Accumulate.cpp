@@ -1,5 +1,6 @@
 #include "N2Accumulate.hpp"
 
+#include "CHORDTelescope.hpp"    // for CHORDTelescope
 #include "Config.hpp"            // for Config
 #include "N2FrameView.hpp"       // for N2FrameView
 #include "N2Metadata.hpp"        // for alloc_N2_from_chord_metadata, N2Metadata
@@ -37,6 +38,7 @@ REGISTER_KOTEKAN_STAGE(N2Accumulate);
 N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&N2Accumulate::main_thread, this)),
+    _tel(Telescope::instance().cast<CHORDTelescope>()),
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
 
@@ -140,6 +142,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     // TODO...
     // Make sure output buffer has enough frames (>= # frequencies) and are sized correctly
     // Add other assert()s/checks back
+
 }
 
 void N2Accumulate::main_thread() {
@@ -318,15 +321,14 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
         meta->freq_id = chord_frame_metadata->get_coarse_freq()[f];
         meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
 
+        meta->frame_start_time_ns = _tel.to_time_ns(meta->fpga_start_tick);
+        meta->freq_Hz = _tel.to_freq(meta->freq_id);
+        meta->eop = _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
+        // TODO: compute this from the RFI mask.
+        meta->n_rfi_fpga_ticks = 0;
+
         DEBUG("Creating N2FrameView for freq f[{:d}] = {:d}", f, chord_frame_metadata->get_coarse_freq()[f]);
         N2FrameView out_vis(out_buf, out_frame_id);
-
-        //TODO:
-        //meta->frame_start_time_ns = ...
-        //meta->n_rfi_fpga_ticks = ...
-        //meta->freq_Hz = ...
-        //meta->eop = eop_null
-
 
         // Sample numbers for normalizing weights
         DEBUG("Computing normalization.");
