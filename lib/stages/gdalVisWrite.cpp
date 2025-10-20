@@ -76,9 +76,11 @@ std::uint64_t gdalVisWrite::_get_file_start_time_ns(const std::shared_ptr<const 
     // Align to UTC midnight and configured window length.
     const std::uint64_t W_ns = window_seconds * 1'000'000'000ULL;
     const std::uint64_t day_ns = 86'400ULL * 1'000'000'000ULL;
-    const std::uint64_t day_start = (meta->frame_start_time_ns / day_ns) * day_ns;
-    const std::uint64_t offset_in_day = meta->frame_start_time_ns - day_start;
-    const std::uint64_t win_index = offset_in_day / W_ns; // 0-based
+    const std::uint64_t day_start =
+        (meta->frame_start_time_ns / day_ns) * day_ns; // round down to previous midnight
+    const std::uint64_t offset_in_day =
+        meta->frame_start_time_ns - day_start;            // ns since previous midnight
+    const std::uint64_t win_index = offset_in_day / W_ns; // 0-based window index
     return day_start + win_index * W_ns;
 }
 
@@ -152,7 +154,7 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
         assert(success);
     }
 
-    // Dimensions
+    // GDAL Dimensions
     std::shared_ptr<GDALDimension> dim_freq =
         root_group->CreateDimension("freqs", "", "", meta->nfreq);
     std::shared_ptr<GDALDimension> dim_prod =
@@ -519,7 +521,7 @@ void gdalVisWrite::main_thread() {
                         obj_ptr->file_start_time_ns, this_file_start_ns);
         }
 
-        // Enforce frame length invariants and compute t-index
+        // Enforce frame lengths and compute t-index
         const std::uint64_t tick_len_ns2 = _get_tick_len_ns();
         if (meta->frame_length_fpga_ticks == 0 || tick_len_ns2 == 0)
             FATAL_ERROR("Invalid frame_length_fpga_ticks or tick length.");

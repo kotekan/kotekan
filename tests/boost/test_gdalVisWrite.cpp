@@ -1079,8 +1079,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
             datasets++;
     }
     BOOST_REQUIRE_MESSAGE(datasets == 2,
-                          "Expected 2 dataset entries (pre-existing + new), found "
-                              << datasets);
+                          "Expected 2 dataset entries (pre-existing + new), found " << datasets);
 
     // Cleanup
     for (auto& e : entries) {

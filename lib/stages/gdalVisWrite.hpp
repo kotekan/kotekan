@@ -45,11 +45,11 @@ public:
 
     // Per-file bookkeeping owned by this object
     GDALDataset* gdal_dataset = nullptr; // non-owning GDAL dataset handle
-    const std::string partial_path;    // working on-disk location
-    const double open_wall_s;          // time opened
-    double last_update_wall_s = 0.0;   // last frame receipt
-    const uint64_t file_start_time_ns; // aligned file start time
-    const uint64_t frame_len_ns;       // frame length in ns
+    const std::string partial_path;      // working on-disk location
+    const double open_wall_s;            // time opened
+    double last_update_wall_s = 0.0;     // last frame receipt
+    const uint64_t file_start_time_ns;   // aligned file start time
+    const uint64_t frame_len_ns;         // frame length in ns
 
 protected:
     // Datasets to be stored until ready to write
@@ -191,15 +191,16 @@ public:
                                     reinterpret_cast<const void*>(flags.data()), nullptr, 0);
             assert(ok);
 
-            ok = frac_lost_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
-                                        reinterpret_cast<const void*>(frac_lost.data()), nullptr, 0);
+            ok =
+                frac_lost_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
+                                       reinterpret_cast<const void*>(frac_lost.data()), nullptr, 0);
             assert(ok);
             ok = frac_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
                                        reinterpret_cast<const void*>(frac_rfi.data()), nullptr, 0);
             assert(ok);
             ok = n_valid_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
-                                      reinterpret_cast<const void*>(n_valid_fpga_ticks.data()), nullptr,
-                                      0);
+                                      reinterpret_cast<const void*>(n_valid_fpga_ticks.data()),
+                                      nullptr, 0);
             assert(ok);
             ok = n_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
                                     reinterpret_cast<const void*>(n_rfi_fpga_ticks.data()), nullptr,
