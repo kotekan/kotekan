@@ -159,7 +159,7 @@ constexpr T sinc(const T x) {
 
 // array indexing
 
-constexpr int Eidx(__attribute__((unused)) int c, int d, int f, int p, int t) {
+constexpr int Eidx([[maybe_unused]] int c, int d, int f, int p, int t) {
     assert(c >= 0 && c < C);
     assert(d >= 0 && d < D);
     assert(f >= 0 && f < F);
@@ -168,7 +168,7 @@ constexpr int Eidx(__attribute__((unused)) int c, int d, int f, int p, int t) {
     return d + D * f + D * F * p + D * F * P * t;
 }
 
-constexpr int Ebaridx(__attribute__((unused)) int c, int d, int fbar, int p, int tbar) {
+constexpr int Ebaridx([[maybe_unused]] int c, int d, int fbar, int p, int tbar) {
     assert(c >= 0 && c < C);
     assert(d >= 0 && d < D);
     assert(fbar >= 0 && fbar < F * U);

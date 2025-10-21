@@ -17,7 +17,7 @@ using fmt::group_digits;
 
 // This prints out a Python literal used for making plots in post-processing, for debugging
 // and illustration purposes.
-__attribute__((unused)) static void print_py_status(const RingBuffer* const rb) {
+[[maybe_unused]] static void print_py_status(const RingBuffer* const rb) {
     std::ostringstream write_heads("{");
     for (const auto& [key, value] : rb->write_heads)
         write_heads << "\"" << key << "\": " << value << ", ";
@@ -72,8 +72,7 @@ void RingBuffer::register_consumer(const std::string& name) {
 }
 
 std::optional<std::ptrdiff_t> RingBuffer::wait_without_claiming(const std::string& name,
-                                                                __attribute__((unused))
-                                                                const int inst,
+                                                                [[maybe_unused]] const int inst,
                                                                 const std::ptrdiff_t sz) {
     // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
@@ -99,8 +98,7 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_without_claiming(const std::strin
 }
 
 std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::string& name,
-                                                                  __attribute__((unused))
-                                                                  const int inst,
+                                                                  [[maybe_unused]] const int inst,
                                                                   const std::ptrdiff_t sz) {
     assert(sz > 0);
     // Wait until we can advance the read_head for this consumer
@@ -126,7 +124,7 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::str
 
 std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>
 RingBuffer::wait_and_claim_all_readable(const std::string& name,
-                                        __attribute__((unused)) const int inst) {
+                                        [[maybe_unused]] const int inst) {
     // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
     const std::ptrdiff_t read_head = read_heads[name];
@@ -152,7 +150,7 @@ RingBuffer::wait_and_claim_all_readable(const std::string& name,
 }
 
 std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>
-RingBuffer::peek_readable(const std::string& name, __attribute__((unused)) const int inst) {
+RingBuffer::peek_readable(const std::string& name, [[maybe_unused]] const int inst) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     if (shutdown_signal) {
         return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>();
@@ -165,7 +163,7 @@ RingBuffer::peek_readable(const std::string& name, __attribute__((unused)) const
     return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>(std::make_pair(read_head, sz));
 }
 
-void RingBuffer::finish_read(const std::string& name, __attribute__((unused)) const int inst,
+void RingBuffer::finish_read(const std::string& name, [[maybe_unused]] const int inst,
                              const std::ptrdiff_t sz) {
     DEBUG2("finish_read({:s}[{:d}]): "
            "consumed bytes: {}",
@@ -191,7 +189,7 @@ void RingBuffer::finish_read(const std::string& name, __attribute__((unused)) co
 }
 
 std::optional<std::ptrdiff_t> RingBuffer::wait_for_writable(const std::string& name,
-                                                            __attribute__((unused)) const int inst,
+                                                            [[maybe_unused]] const int inst,
                                                             const std::ptrdiff_t sz) {
     assert(sz > 0);
     std::unique_lock<std::recursive_mutex> lock(mutex);
@@ -217,7 +215,7 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_for_writable(const std::string& n
 }
 
 std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>
-RingBuffer::get_writable(const std::string& name, __attribute__((unused)) const int inst) {
+RingBuffer::get_writable(const std::string& name, [[maybe_unused]] const int inst) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     if (shutdown_signal) {
         return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>();
@@ -231,7 +229,7 @@ RingBuffer::get_writable(const std::string& name, __attribute__((unused)) const 
         std::make_pair(write_next[name], n));
 }
 
-void RingBuffer::finish_write(const std::string& name, __attribute__((unused)) const int inst,
+void RingBuffer::finish_write(const std::string& name, [[maybe_unused]] const int inst,
                               const std::ptrdiff_t sz) {
     assert(sz > 0);
     std::unique_lock<std::recursive_mutex> lock(mutex);

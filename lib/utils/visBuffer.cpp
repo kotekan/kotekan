@@ -44,7 +44,7 @@ size_t VisMetadata::get_serialized_size() {
     return sizeof(VisMetadataFormat);
 }
 
-size_t VisMetadata::set_from_bytes(const char* bytes, __attribute__((unused)) size_t length) {
+size_t VisMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t length) {
     size_t sz = get_serialized_size();
     assert(length >= sz);
     const VisMetadataFormat* fmt = reinterpret_cast<const VisMetadataFormat*>(bytes);

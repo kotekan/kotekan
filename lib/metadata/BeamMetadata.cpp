@@ -23,7 +23,7 @@ size_t BeamMetadata::get_serialized_size() {
     return sizeof(BeamMetadataFormat);
 }
 
-size_t BeamMetadata::set_from_bytes(const char* bytes, __attribute__((unused)) size_t length) {
+size_t BeamMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t length) {
     size_t sz = get_serialized_size();
     assert(length >= sz);
     const BeamMetadataFormat* fmt = reinterpret_cast<const BeamMetadataFormat*>(bytes);

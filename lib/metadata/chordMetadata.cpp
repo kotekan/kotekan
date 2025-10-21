@@ -73,7 +73,7 @@ size_t chordMetadata::get_serialized_size() {
     return sizeof(chordMetadataFormat);
 }
 
-size_t chordMetadata::set_from_bytes(const char* bytes, __attribute__((unused)) size_t length) {
+size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t length) {
     (void)length;
     assert(length >= get_serialized_size());
     assert(length >= sizeof(chordMetadataFormat));

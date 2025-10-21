@@ -18,7 +18,7 @@ size_t N2Metadata::get_serialized_size() {
     return sizeof(N2MetadataFormat);
 }
 
-size_t N2Metadata::set_from_bytes(const char* bytes, __attribute__((unused)) size_t length) {
+size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t length) {
     assert(length >= get_serialized_size());
     assert(length >= sizeof(N2MetadataFormat));
 

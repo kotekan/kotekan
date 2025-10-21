@@ -131,7 +131,7 @@ private:
             FATAL_ERROR("Failed to get root group during file initialization.");
         }
 
-        bool success __attribute__((unused));
+        [[maybe_unused]] bool success;
 
         // Write metadata (attributes)
         const auto num_elements = root_group->CreateAttribute(
