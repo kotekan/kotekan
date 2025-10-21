@@ -229,6 +229,8 @@ public:
             cuda_command.get_device().getStream(cuda_command.get_cuda_stream_id());
         CHECK_CUDA_ERROR(
             cudaMemsetAsync(buffer_device_ptr, poison_value, buffer_length, cuda_stream));
+#else
+        (void) poison_value;
 #endif
     }
 
@@ -249,6 +251,8 @@ public:
             std::find_if(local_data.begin(), local_data.end(), check) != local_data.end();
         if (found_error)
             FATAL_ERROR("NDArray buffer {:s} contains poison", buffer_name);
+#else
+        (void) poison_value;
 #endif
     }
 

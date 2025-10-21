@@ -22,7 +22,7 @@ size_t HFBMetadata::get_serialized_size() {
     return sizeof(HFBMetadataFormat);
 }
 
-size_t HFBMetadata::set_from_bytes(const char* bytes, size_t length) {
+size_t HFBMetadata::set_from_bytes(const char* bytes, __attribute__((unused)) size_t length) {
     size_t sz = get_serialized_size();
     assert(length >= sz);
     const HFBMetadataFormat* fmt = reinterpret_cast<const HFBMetadataFormat*>(bytes);

@@ -152,9 +152,14 @@ public:
         // NUL-terminated, which we know.
 #pragma GCC diagnostic push
 #if GCC_VERSION > 80000
+#pragma GCC diagnostic ignored "-Warray-bounds"
 #pragma GCC diagnostic ignored "-Wstringop-truncation"
 #endif
-        strncpy(this->name, name.c_str(), CHORD_META_MAX_DIMNAME);
+        //strncpy(&(this->name[0]), name.c_str(), CHORD_META_MAX_DIMNAME);
+        int len = name.length() < CHORD_META_MAX_DIMNAME ? name.length() : CHORD_META_MAX_DIMNAME;
+
+        for(int i = 0; i < len; i++)
+            this->name[i] = name[i];
 #pragma GCC diagnostic pop
     }
 

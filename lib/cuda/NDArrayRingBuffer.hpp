@@ -499,6 +499,10 @@ public:
                                   T_stride * sizeof(T), poison_value,
                                   F_length * F_stride * sizeof(T), T_length, stream));
         } // for chunk
+#else
+        (void) poison_value;
+        (void) F_min;
+        (void) F_max;
 #endif
     }
 
@@ -605,6 +609,10 @@ public:
         if (found_error)
             FATAL_ERROR("NDArray ring buffer {:s} contains poison", buffer_name);
         assert(!found_error);
+#else
+        (void) poison_value;
+        (void) F_min;
+        (void) F_max;
 #endif
     }
 

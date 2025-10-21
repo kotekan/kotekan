@@ -44,7 +44,7 @@ HighFive::DataType chord2hdf5(const kotekan::DataType type) {
         case kotekan::float64:
             return HighFive::AtomicType<double>();
         default:
-            assert(0);
+            throw std::runtime_error("chord2hdf5 given bad DataType: " + type_to_string(type));
     }
 }
 
