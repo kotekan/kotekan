@@ -180,7 +180,7 @@ RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig
 RUN mkdir src && \
     ( \
         cd src && \
-        git clone --recurse-submodules --single-branch --branch v.3.2.0 https://github.com/highfive-devs/highfive && \
+        git clone --recurse-submodules --single-branch --branch v3.2.0 https://github.com/highfive-devs/highfive && \
         cd highfive && \
         cmake -B cmake-build \
             -DCMAKE_BUILD_TYPE=Release \
