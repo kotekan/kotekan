@@ -22,10 +22,10 @@ for setup in ${setups}; do
     rm -f output-${card}/bb_${setup}.ptx
     rm -f output-${card}/bb_${setup}.sass
     rm -f output-${card}/bb_${setup}.yaml
-    rm -f ../lib/cuda/cudaBasebandBeamformer_${setup}.cpp
-    rm -f ../lib/cuda/kernels/BasebandBeamformer_${setup}.jl
-    rm -f ../lib/cuda/kernels/BasebandBeamformer_${setup}.ptx
-    rm -f ../lib/cuda/kernels/BasebandBeamformer_${setup}.yaml
+    rm -f ../lib/cuda/generated/cudaBasebandBeamformer_${setup}.cpp
+    rm -f ../lib/cuda/generated/BasebandBeamformer_${setup}.jl
+    rm -f ../lib/cuda/generated/BasebandBeamformer_${setup}.ptx
+    rm -f ../lib/cuda/generated/BasebandBeamformer_${setup}.yaml
 done
 
 # Generate kernel
@@ -54,8 +54,8 @@ wait
 
 # Copy kernels into Kotekan
 for setup in ${setups}; do
-    cp output-${card}/bb_${setup}.cxx ../lib/cuda/cudaBasebandBeamformer_${setup}.cpp
-    cp output-${card}/bb_${setup}.jl ../lib/cuda/kernels/BasebandBeamformer_${setup}.jl
-    cp output-${card}/bb_${setup}.ptx ../lib/cuda/kernels/BasebandBeamformer_${setup}.ptx
-    cp output-${card}/bb_${setup}.yaml ../lib/cuda/kernels/BasebandBeamformer_${setup}.yaml
+    cp output-${card}/bb_${setup}.cxx ../lib/cuda/generated/cudaBasebandBeamformer_${setup}.cpp
+    cp output-${card}/bb_${setup}.jl ../lib/cuda/generated/BasebandBeamformer_${setup}.jl
+    cp output-${card}/bb_${setup}.ptx ../lib/cuda/generated/BasebandBeamformer_${setup}.ptx
+    cp output-${card}/bb_${setup}.yaml ../lib/cuda/generated/BasebandBeamformer_${setup}.yaml
 done

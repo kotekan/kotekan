@@ -24,10 +24,10 @@ for setup in $setups; do
     rm -f output-A40/frb_$setup.ptx
     rm -f output-A40/frb_$setup.sass
     rm -f output-A40/frb_$setup.yaml
-    rm -f ../lib/cuda/cudaFRBBeamformer_$setup.cpp
-    rm -f ../lib/cuda/kernels/FRBBeamformer_$setup.jl
-    rm -f ../lib/cuda/kernels/FRBBeamformer_$setup.ptx
-    rm -f ../lib/cuda/kernels/FRBBeamformer_$setup.yaml
+    rm -f ../lib/cuda/generated/cudaFRBBeamformer_$setup.cpp
+    rm -f ../lib/cuda/generated/FRBBeamformer_$setup.jl
+    rm -f ../lib/cuda/generated/FRBBeamformer_$setup.ptx
+    rm -f ../lib/cuda/generated/FRBBeamformer_$setup.yaml
 done
 
 # Generate kernel
@@ -61,8 +61,8 @@ wait
 
 # Copy kernels into Kotekan
 for setup in $setups; do
-    cp output-A40/frb_$setup.cxx ../lib/cuda/cudaFRBBeamformer_$setup.cpp
-    cp output-A40/frb_$setup.jl ../lib/cuda/kernels/FRBBeamformer_$setup.jl
-    cp output-A40/frb_$setup.ptx ../lib/cuda/kernels/FRBBeamformer_$setup.ptx
-    cp output-A40/frb_$setup.yaml ../lib/cuda/kernels/FRBBeamformer_$setup.yaml
+    cp output-A40/frb_$setup.cxx ../lib/cuda/generated/cudaFRBBeamformer_$setup.cpp
+    cp output-A40/frb_$setup.jl ../lib/cuda/generated/FRBBeamformer_$setup.jl
+    cp output-A40/frb_$setup.ptx ../lib/cuda/generated/FRBBeamformer_$setup.ptx
+    cp output-A40/frb_$setup.yaml ../lib/cuda/generated/FRBBeamformer_$setup.yaml
 done
