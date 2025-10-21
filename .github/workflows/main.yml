@@ -205,7 +205,6 @@ jobs:
               pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
               pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
 
-
           - id: clang
             name: "clang build"
             cmake_defs: >-
@@ -222,7 +221,7 @@ jobs:
           - id: release_clang
             name: "Release build with clang"
             ccache_key: kotekan-release-clang
-            cmake_defs: &build_release_clang >-
+            cmake_defs: &build_release_clang_opts >-
               -DCMAKE_BUILD_TYPE=Release
               -DCMAKE_C_COMPILER=clang
               -DCMAKE_CXX_COMPILER=clang++
@@ -372,7 +371,7 @@ jobs:
               -DWITH_BOOST_TESTS=OFF
             post_build: ""
           
-          - id: ci_release_gcc_yaml_tests
+          - id: release_gcc_yaml_tests
             name: "Build release kotekan"
             ccache_key: selfhosted-kotekan-release-gcc  # re-using key from build
             cmake_defs: *runner_build_release_gcc_opts      # re-using build opts from build
