@@ -522,6 +522,8 @@ void FEngine::main_thread() {
         std::shared_ptr<chordMetadata> const dish_positions_metadata =
             get_chord_metadata(dish_positions_buffer, dish_positions_frame_id);
         dish_positions_metadata->set_frame_counter(0);
+
+        /* old style array description */
         std::strncpy(dish_positions_metadata->name, "dish_positions",
                      sizeof dish_positions_metadata->name);
         dish_positions_metadata->type = kotekan::float32;
@@ -539,6 +541,13 @@ void FEngine::main_thread() {
             else
                 dish_positions_metadata->stride[d] =
                     dish_positions_metadata->stride[d + 1] * dish_positions_metadata->dim[d + 1];
+        /* new style array description */
+        dish_positions_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::float32>::type, 2>(
+            dish_positions_frame_id, {num_dishes, 2}, {"D", "EW/NS"});
+        /* test that things are consistent */
+        dish_positions_metadata->check_frame_desc(
+            dish_positions_buffer->get_frame_desc(dish_positions_frame_id));
+
         dish_positions_metadata->ndishes = num_dishes;
         dish_positions_metadata->n_dish_locations_ew = num_dish_locations_ew;
         dish_positions_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -598,6 +607,13 @@ void FEngine::main_thread() {
             else
                 scatter_indices_metadata->stride[d] =
                     scatter_indices_metadata->stride[d + 1] * scatter_indices_metadata->dim[d + 1];
+        /* new style array description */
+        scatter_indices_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 2>(
+            scatter_indices_frame_id, {num_polarizations, num_dishes}, {"P", "D"});
+        /* test that things are consistent */
+        scatter_indices_metadata->check_frame_desc(
+            scatter_indices_buffer->get_frame_desc(scatter_indices_frame_id));
+
         scatter_indices_metadata->ndishes = num_dishes;
         scatter_indices_metadata->n_dish_locations_ew = num_dish_locations_ew;
         scatter_indices_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -651,6 +667,12 @@ void FEngine::main_thread() {
             else
                 bf_mask_metadata->stride[d] =
                     bf_mask_metadata->stride[d + 1] * bf_mask_metadata->dim[d + 1];
+        /* new style array description */
+        bf_mask_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::int8>::type, 2>(
+            bf_mask_frame_id, {num_polarizations, num_dishes}, {"P", "D"});
+        /* test that things are consistent */
+        bf_mask_metadata->check_frame_desc(bf_mask_buffer->get_frame_desc(bf_mask_frame_id));
+
         // This bf mask is not time-dependent
         bf_mask_metadata->ndishes = num_dishes;
         bf_mask_metadata->n_dish_locations_ew = num_dish_locations_ew;
@@ -745,6 +767,14 @@ void FEngine::main_thread() {
             else
                 bb_beam_positions_metadata->stride[d] = bb_beam_positions_metadata->stride[d + 1]
                                                         * bb_beam_positions_metadata->dim[d + 1];
+        /* new style array description */
+        bb_beam_positions_buffer
+            ->allocate_new_frame_desc<kotekan::GetType<kotekan::float32>::type, 2>(
+                bb_beam_positions_frame_id, {bb_num_beams, 2}, {"B", "EW/NS"});
+        /* test that things are consistent */
+        bb_beam_positions_metadata->check_frame_desc(
+            bb_beam_positions_buffer->get_frame_desc(bb_beam_positions_frame_id));
+
         bb_beam_positions_metadata->ndishes = num_dishes;
         bb_beam_positions_metadata->n_dish_locations_ew = num_dish_locations_ew;
         bb_beam_positions_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -825,6 +855,14 @@ void FEngine::main_thread() {
                 A_metadata->stride[d] = 1;
             else
                 A_metadata->stride[d] = A_metadata->stride[d + 1] * A_metadata->dim[d + 1];
+        /* new style array description */
+        A_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::int8>::type, 5>(
+            A_frame_id,
+            {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
+            {"F", "P", "B", "D", "C"});
+        /* test that things are consistent */
+        A_metadata->check_frame_desc(A_buffer->get_frame_desc(A_frame_id));
+
         std::vector<int> coarse_freq(num_frequencies);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
         std::vector<int> freq_upchan_factor(num_frequencies);
@@ -887,6 +925,12 @@ void FEngine::main_thread() {
                 s_metadata->stride[d] = 1;
             else
                 s_metadata->stride[d] = s_metadata->stride[d + 1] * s_metadata->dim[d + 1];
+        /* new style array description */
+        s_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 3>(
+            s_frame_id, {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"});
+        /* test that things are consistent */
+        s_metadata->check_frame_desc(s_buffer->get_frame_desc(s_frame_id));
+
         std::vector<int> coarse_freq(num_frequencies);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
         std::vector<int> freq_upchan_factor(num_frequencies);
@@ -956,6 +1000,13 @@ void FEngine::main_thread() {
             // G_metadata->dim[0] = num_local_channels * U;
             G_metadata->dim[0] = upchan_max_num_channelss.at(Ufactor) * U;
             G_metadata->stride[0] = 1;
+            /* new style array description */
+            G_buffers[Ufactor]
+                ->allocate_new_frame_desc<kotekan::GetType<kotekan::float16>::type, 1>(
+                    G_frame_id, {upchan_max_num_channelss[Ufactor] * U}, {"Fbar"});
+            /* test that things are consistent */
+            G_metadata->check_frame_desc(G_buffers[Ufactor]->get_frame_desc(G_frame_id));
+
             std::vector<int> coarse_freq(U * num_local_channels);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             std::vector<int> freq_upchan_factor(U * num_local_channels);
@@ -1063,6 +1114,16 @@ void FEngine::main_thread() {
                     W1_metadata->stride[d] = 1;
                 else
                     W1_metadata->stride[d] = W1_metadata->stride[d + 1] * W1_metadata->dim[d + 1];
+            /* new style array description */
+            W1_buffers[Ufactor]
+                ->allocate_new_frame_desc<kotekan::GetType<kotekan::float16>::type, 5>(
+                    W1_frame_id,
+                    {upchan_max_num_channelss[Ufactor] * U, num_polarizations,
+                     num_dish_locations_ew, num_dish_locations_ns, num_components},
+                    {"F", "P", "dishN", "dishM", "C"});
+            /* test that things are consistent */
+            W1_metadata->check_frame_desc(W1_buffers[Ufactor]->get_frame_desc(W1_frame_id));
+
             std::vector<int> coarse_freq(U * num_local_channels);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             std::vector<int> freq_upchan_factor(U * num_local_channels);
@@ -1234,6 +1295,16 @@ void FEngine::main_thread() {
                 W2_metadata->stride[d] = 1;
             else
                 W2_metadata->stride[d] = W2_metadata->stride[d + 1] * W2_metadata->dim[d + 1];
+        /* new style array description */
+        W2_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::float16>::type, 4>(
+            W2_frame_id,
+            {upchan_all_max_output_channel - upchan_all_min_output_channel,
+             frb2_num_beams_ns * frb2_num_beams_ew, 2 * num_dish_locations_ew,
+             2 * num_dish_locations_ns},
+            {"Fbar", "R", "beamQ", "beamP"});
+        /* test that things are consistent */
+        W2_metadata->check_frame_desc(W2_buffer->get_frame_desc(W2_frame_id));
+
         // TODO: correct this
         // W2_metadata->nfreq = (upchan_all_max_output_channel - upchan_all_min_output_channel)
         // / 4;
@@ -1367,6 +1438,14 @@ void FEngine::main_thread() {
                     E_metadata->stride[d] = 1;
                 else
                     E_metadata->stride[d] = E_metadata->stride[d + 1] * E_metadata->dim[d + 1];
+            /* new style array description */
+            E_buffer->allocate_new_frame_desc<
+                kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 4>(
+                E_frame_id, {num_times, num_frequencies, num_polarizations, num_dishes},
+                {"T", "F", "P", "D"});
+            /* test that things are consistent */
+            E_metadata->check_frame_desc(E_buffer->get_frame_desc(E_frame_id));
+
             E_metadata->set_sample0_offset(seq_num);
             E_metadata->set_offset_downsampling(1);
             std::vector<int> coarse_freq(num_frequencies);
@@ -1459,6 +1538,15 @@ void FEngine::main_thread() {
                 else
                     pl_mask_metadata->stride[d] =
                         pl_mask_metadata->stride[d + 1] * pl_mask_metadata->dim[d + 1];
+            /* new style array description */
+            pl_mask_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::uint1x8>::type, 5>(
+                pl_mask_frame_id,
+                {num_times / 2 / 64, num_frequencies / 4, num_polarizations, num_dishes / 8,
+                 64 / 8},
+                {"T2hi64", "F4", "P", "D8", "T2lo64"});
+            /* test that things are consistent */
+            pl_mask_metadata->check_frame_desc(pl_mask_buffer->get_frame_desc(pl_mask_frame_id));
+
             pl_mask_metadata->set_sample0_offset(seq_num);
             // This pl mask:
             // - is downsampled by 2 in time
