@@ -242,10 +242,10 @@ public:
 
     // TODO: remove this, it's not setting anything anymore (and assumes that
     // fpga_seq_num is set)
-    void set_gps_time(const timespec gps_time) {
+    void set_gps_time([[maybe_unused]] const timespec gps_time) {
         // this must not request the lock
         const Telescope& tel = Telescope::instance();
-        const timespec my_gps_time = tel.to_time(this->get_fpga_seq_num());
+        [[maybe_unused]] const timespec my_gps_time = tel.to_time(this->get_fpga_seq_num());
         assert(gps_time.tv_sec == my_gps_time.tv_sec);
         assert(gps_time.tv_nsec == my_gps_time.tv_nsec);
     }
