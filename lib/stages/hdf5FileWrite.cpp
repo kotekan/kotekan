@@ -163,7 +163,7 @@ public:
                 // Choose dataspace
                 const DataSpace space(meta->dim, meta->dim + meta->dims);
                 {
-                    std::ptrdiff_t npoints = 1;
+                    [[maybe_unused]] std::ptrdiff_t npoints = 1;
                     for (int d = meta->dims - 1; d >= 0; --d) {
                         assert(meta->stride[d] == npoints);
                         npoints *= meta->dim[d];
