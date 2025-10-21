@@ -465,6 +465,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         // The dimensions are time (T) and "element" (E) which is the "correlator ordered"
         // feed and polarization.  Note that off the F-engine polarization is _not_ a defined
         // axis.
+        /* old style array description */
         std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
         std::strncpy(meta->dim_name[1], "E", sizeof meta->dim_name[1]);
         meta->dims = 2;
@@ -473,6 +474,14 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         std::strncpy(meta->name, "E", sizeof meta->name);
         meta->dim[0] = out_bufs[i]->frame_size / sample_size;
         meta->dim[1] = sample_size;
+        /* new style array description */
+        out_bufs[i]
+            ->allocate_new_frame_desc<kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type,
+                                      2>(
+                out_buf_frame_ids[i],
+                {ptrdiff_t(out_bufs[i]->frame_size) / sample_size, sample_size}, {"T", "E"});
+        /* test that things are consistent */
+        meta->check_frame_desc(out_bufs[i]->get_frame_desc(out_buf_frame_ids[i]));
 
         // Print out the chordMetadata
         DEBUG("chordMetadata: seq: {:d} freq_id: {:d} dim[0]: {:d} dim[1]: {:d}",
