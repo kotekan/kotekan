@@ -25,7 +25,6 @@ private:
     int num_links_in_group;
     int link_id;
     int pattern;
-    stream_t stream_id;
 
     // Config variables.
     int32_t _samples_per_data_set;

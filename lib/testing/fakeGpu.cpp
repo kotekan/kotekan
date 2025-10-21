@@ -1,10 +1,10 @@
 #include "fakeGpu.hpp"
 
-#include "Config.hpp"         // for Config
-#include "Stage.hpp"          // for Stage
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"         // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "chimeMetadata.hpp"  // for set_first_packet_recv_time, set_fpga_seq_num, set_gps...
+#include "Config.hpp"       // for Config
+#include "Stage.hpp"        // for Stage
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.hpp"       // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "chordMetadata.hpp"
 #include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "factory.hpp"        // for FACTORY
 #include "fakeGpuPattern.hpp" // for FakeGpuPattern, _factory_aliasFakeGpuPattern
@@ -91,7 +91,7 @@ void FakeGpu::main_thread() {
     const auto nprod_gpu = gpu_N2_size(num_elements, block_size);
 
     // Set the start time
-    clock_gettime(CLOCK_REALTIME, &ts);
+    ts = tel.to_time(fpga_seq);
 
     // Calculate the increment in time between samples
     if (pre_accumulate) {
@@ -128,22 +128,28 @@ void FakeGpu::main_thread() {
             DEBUG("Simulating GPU buffer in {}[{}]", out_buf->buffer_name, frame_id);
 
             out_buf->allocate_new_metadata_object(frame_id);
-            set_fpga_seq_num(out_buf, frame_id, fpga_seq);
-            set_stream_id(out_buf, frame_id, {(uint64_t)freq});
+            stream_t stream_id = {.id = static_cast<decltype(stream_id.id)>(freq)};
+            get_chord_metadata(out_buf, frame_id)->set_stream_id(stream_id);
+            get_chord_metadata(out_buf, frame_id)->set_fpga_seq_num(fpga_seq);
 
             // Set the two times
             TIMESPEC_TO_TIMEVAL(&tv, &ts);
-            set_first_packet_recv_time(out_buf, frame_id, tv);
-            set_gps_time(out_buf, frame_id, ts);
-            set_dataset_id(out_buf, frame_id, dataset_id);
+            get_chord_metadata(out_buf, frame_id)->set_first_packet_recv_time(tv);
+            get_chord_metadata(out_buf, frame_id)->set_gps_time(ts);
+            get_chord_metadata(out_buf, frame_id)->set_dataset_id(dataset_id);
 
             // Fill the buffer with the specified mode
-            chimeMetadata* metadata = (chimeMetadata*)out_buf->metadata[frame_id].get();
+            auto metadata = get_chord_metadata(out_buf, frame_id).get();
+            // have to set frequencies here since the patterns don't have all
+            // information
+            std::vector<int> freqs(num_freq_in_frame);
             for (int freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
                 gsl_lite::span<int32_t> data(output + 2 * freq_ind * nprod_gpu,
                                              output + 2 * (freq_ind + 1) * nprod_gpu);
                 pattern->fill(data, metadata, frame_count, freq + freq_ind);
+                freqs[freq_ind] = freq + freq_ind;
             }
+            metadata->set_coarse_freq(freqs);
 
             // Mark full and move onto next frame...
             out_buf->mark_frame_full(unique_name, frame_id++);
@@ -204,12 +210,15 @@ uint8_t FakeTelescope::nyquist_zone() const {
     return 2;
 }
 
-timespec FakeTelescope::to_time(uint64_t /*seq*/) const {
-    return {0, 0};
+timespec FakeTelescope::to_time(uint64_t seq) const {
+    uint64_t ns = seq_length_nsec() * seq;
+    return {time_t(ns / 1000000000ULL), time_t(ns % 1000000000ULL)};
 }
 
-uint64_t FakeTelescope::to_seq(timespec /*time*/) const {
-    return 0;
+uint64_t FakeTelescope::to_seq(timespec time) const {
+    uint64_t ns = time.tv_sec * time_t(1000000000ULL) + time.tv_nsec;
+    assert(ns % seq_length_nsec() == 0);
+    return ns / seq_length_nsec();
 }
 
 uint64_t FakeTelescope::seq_length_nsec() const {

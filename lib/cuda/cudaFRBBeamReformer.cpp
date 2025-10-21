@@ -229,7 +229,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
 
         // Since we do not use a ring buffer we need to set `meta->sample0_offset`
         assert(input_cursor % in_meta->sample_bytes() == 0);
-        out_meta->sample0_offset = div_noremainder(input_cursor, in_meta->sample_bytes());
+        out_meta->set_sample0_offset(div_noremainder(input_cursor, in_meta->sample_bytes()));
     }
 
     return record_end_event();
