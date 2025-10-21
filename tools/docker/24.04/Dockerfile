@@ -145,9 +145,9 @@ RUN mkdir src && \
 # Install Blosc2 (a prerequisite for ASDF)
 RUN mkdir src && \
     (cd src && \
-    wget https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.14.4.tar.gz && \
-    tar xzf v2.14.4.tar.gz && \
-    cd c-blosc2-2.14.4 && \
+    wget https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.21.3.tar.gz && \
+    tar xzf v2.21.3.tar.gz && \
+    cd c-blosc2-2.21.3 && \
     cmake -B cmake-build \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr/local \
@@ -180,7 +180,7 @@ RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig
 RUN mkdir src && \
     ( \
         cd src && \
-        git clone --recurse-submodules --single-branch --branch v.3.1.1 https://github.com/highfive-devs/highfive && \
+        git clone --recurse-submodules --single-branch --branch v3.2.0 https://github.com/highfive-devs/highfive && \
         cd highfive && \
         cmake -B cmake-build \
             -DCMAKE_BUILD_TYPE=Release \
