@@ -152,6 +152,9 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
         success = frame_length_fpga_ticks->Write(&meta->frame_length_fpga_ticks,
                                                  sizeof meta->frame_length_fpga_ticks);
         assert(success);
+
+        // TODO: add config data, etc that *don't vary with time* as attributes.
+        // Need to add time-varying data/metadata/data derivatives in arrays.
     }
 
     // GDAL Dimensions
@@ -260,12 +263,12 @@ void gdalVisWrite::main_thread() {
     auto& n_datasets_metric = kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_gdalviswrite_n_datasets", unique_name);
 
-    const double start_time = current_time();
-    N2::frameID in_frame_id(buffer);
-    int frame_counter = 0;
-    bool warned_short_window = false;
+    const double start_time = current_time(); // for logging elapsed time
+    N2::frameID in_frame_id(buffer);          // Input frame ID tracker
+    int frame_counter = 0;                    // Count of frames written
+    bool warned_short_window = false;         // Warn only once for short windows
 
-    // datasets (files) for writing
+    // datasets (files) for writing (multiple may be open simultaneously)
     std::map<std::string, std::unique_ptr<gdalVisFileData>> datasets;
 
     // Choose file format (driver)
@@ -313,9 +316,10 @@ void gdalVisWrite::main_thread() {
 
         // Ensure dataset exists/open
         gdalVisFileData* obj_ptr = nullptr;
-        auto it = datasets.find(final_path);
-        if (it != datasets.end()) {
-            obj_ptr = it->second.get();
+        auto ds = datasets.find(final_path);
+        if (ds != datasets.end()) {
+            // Dataset already open
+            obj_ptr = ds->second.get();
         } else {
             // If final file already exists, drop/ignore this frame (late arrival)
             struct stat filecheck_buffer {};
@@ -327,8 +331,8 @@ void gdalVisWrite::main_thread() {
                 in_frame_id++;
                 // Before continuing, check for grace-based finalizations on other datasets
                 const double now_s = current_time();
-                for (auto it2 = datasets.begin(); it2 != datasets.end();) {
-                    auto& obj = *it2->second;
+                for (auto ds_it = datasets.begin(); ds_it != datasets.end(); ++ds_it) {
+                    auto& obj = *ds_it->second;
                     if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
                         // Grace finalize: flush and rename
                         if (obj.gdal_dataset)
@@ -338,16 +342,15 @@ void gdalVisWrite::main_thread() {
                             obj.gdal_dataset = nullptr;
                         }
                         // Attempt rename from partial to final
-                        int r = std::rename(obj.partial_path.c_str(), it2->first.c_str());
+                        int r = std::rename(obj.partial_path.c_str(), ds_it->first.c_str());
                         if (r != 0) {
                             const char* msg = strerror(errno);
                             ERROR("Failed to rename partial dataset to final: {} -> {}: {}",
-                                  obj.partial_path, it2->first, msg);
+                                  obj.partial_path, ds_it->first, msg);
                         }
-                        it2 = datasets.erase(it2);
+                        ds_it = datasets.erase(ds_it);
                         continue;
                     }
-                    ++it2;
                 }
                 continue;
             }
@@ -461,7 +464,7 @@ void gdalVisWrite::main_thread() {
             datasets.emplace(final_path, std::move(obj));
             obj_ptr = datasets.find(final_path)->second.get();
 
-            // Warn if the file time span is less than one second.
+            // Warn (once) if the file time span is less than one second.
             if (!warned_short_window && obj_ptr) {
                 const std::uint64_t file_len_ns = obj_ptr->num_file_t * obj_ptr->frame_len_ns;
                 if (obj_ptr->frame_len_ns > 0 && file_len_ns < 1'000'000'000ULL) {
@@ -479,6 +482,7 @@ void gdalVisWrite::main_thread() {
             FATAL_ERROR("Dataset is null. Failed to open dataset.");
             return;
         }
+
         // Validate geometry consistency for this dataset
         if (meta->nfreq != obj_ptr->num_freq || meta->num_elements != obj_ptr->num_input
             || meta->num_prod != obj_ptr->num_prod || meta->num_ev != obj_ptr->num_ev) {
@@ -490,9 +494,10 @@ void gdalVisWrite::main_thread() {
             buffer->mark_frame_empty(unique_name, in_frame_id);
             in_frame_id++;
             // Continue to process potential grace finalizations for other datasets
+            // TODO: merge with code above/below to avoid duplication
             const double now_s = current_time();
-            for (auto it2 = datasets.begin(); it2 != datasets.end();) {
-                auto& obj = *it2->second;
+            for (auto ds_it = datasets.begin(); ds_it != datasets.end(); ++ds_it) {
+                auto& obj = *ds_it->second;
                 if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
                     if (obj.gdal_dataset)
                         obj.flush();
@@ -500,16 +505,15 @@ void gdalVisWrite::main_thread() {
                         GDALClose(obj.gdal_dataset);
                         obj.gdal_dataset = nullptr;
                     }
-                    int r = std::rename(obj.partial_path.c_str(), it2->first.c_str());
+                    int r = std::rename(obj.partial_path.c_str(), ds_it->first.c_str());
                     if (r != 0) {
                         const char* msg = strerror(errno);
                         ERROR("Failed to rename partial dataset to final (grace): {} -> {}: {}",
-                              obj.partial_path, it2->first, msg);
+                              obj.partial_path, ds_it->first, msg);
                     }
-                    it2 = datasets.erase(it2);
+                    ds_it = datasets.erase(ds_it);
                     continue;
                 }
-                ++it2;
             }
             continue;
         }

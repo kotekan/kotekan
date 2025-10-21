@@ -250,18 +250,23 @@ public:
     }
 
     // Accessors for internal storage (index calculation)
+    /// Get the index for a (f, p, t) triplet
     inline size_t idx_fpt(size_t f, size_t p, size_t t) const {
         return num_file_t * (num_prod * f + p) + t; // (f, p, t)
     }
+    /// Get the index for a (f, e, t) triplet
     inline size_t idx_fet(size_t f, size_t e, size_t t) const {
         return num_file_t * (num_ev * f + e) + t; // (f, e, t)
     }
+    /// Get the index for a (f, e, i, t) quadruplet
     inline size_t idx_feit(size_t f, size_t e, size_t i, size_t t) const {
         return num_file_t * (num_input * (num_ev * f + e) + i) + t; // (f, e, i, t)
     }
+    /// Get the index for a (f, i, t) triplet
     inline size_t idx_fit(size_t f, size_t i, size_t t) const {
         return num_file_t * (num_input * f + i) + t; // (f, i, t)
     }
+    /// Get the index for a (f, t) pair
     inline size_t idx_ft(size_t f, size_t t) const {
         return num_file_t * f + t; // (f, t)
     }
@@ -390,18 +395,20 @@ public:
 
 private:
     // Config (initialized from Config in constructor)
-    const std::string base_dir;
-    const std::string file_name;
-    const bool prefix_hostname;
+    const std::string base_dir;  /// Base directory to write files into
+    const std::string file_name; /// Base filename to write
+    const bool prefix_hostname;  /// Prefix files with hostname (default: true)
 
-    const std::uint64_t zip_compression;
-    const std::uint64_t blocksize_f;
-    const std::uint64_t blocksize_p;
-    const std::uint64_t blocksize_t;
-    const std::uint64_t window_seconds;
-    const std::uint64_t late_frame_grace_seconds;
+    const std::uint64_t zip_compression; /// ZIP compression level (0 = disabled)
+    const std::uint64_t blocksize_f;     /// Array chunk size along frequency
+    const std::uint64_t
+        blocksize_p; /// Array chunk size along product (0 = default = full num products)
+    const std::uint64_t blocksize_t;    /// Array chunk size along time (default: 1)
+    const std::uint64_t window_seconds; /// Window length in seconds; must divide 86400
+    const std::uint64_t
+        late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
 
-    const int max_frames;
+    const int max_frames; /// Stop writing after this many frames (-1 = unlimited)
 
     Buffer* const buffer;
 
@@ -414,13 +421,53 @@ private:
         return Telescope::instance().seq_length_nsec();
     }
 
+    /**
+     * @brief Compute the aligned file start time for the given metadata.
+     * @param meta  N2Metadata for the file
+     * @return      Aligned file start time in nanoseconds since epoch
+     * This method computes the UTC-midnight-aligned start time for the
+     * output file based on the configured window size. File times are
+     * aligned to multiples of `window_seconds` since UTC midnight.
+     */
     std::uint64_t _get_file_start_time_ns(const std::shared_ptr<const N2Metadata> meta);
+
+    /**
+     * @brief Get the GDAL Zarr filename for the given metadata.
+     * @param meta  N2Metadata for the file
+     * @return      Full path to the GDAL Zarr file to write
+     * This method computes the output filename based on the configured
+     * base directory, file name, and whether to prefix with hostname.
+     */
     std::string _get_gdal_vis_filename(std::shared_ptr<const N2Metadata> meta);
+
+    /**
+     * @brief Initialize a GDALDataset for the given file and metadata.
+     * @param dataset   GDALDataset pointer to initialize
+     * @param meta      N2Metadata for the file
+     * @param file_nt   Number of time frames in the file
+     *
+     * This method sets up the GDALDataset with the appropriate arrays,
+     * dimensions, chunking, and compression based on the configuration
+     * parameters.
+     */
     void _initialize_gdal_vis_file(GDALDataset* dataset, std::shared_ptr<const N2Metadata> meta,
                                    std::uint64_t file_nt);
+
+    /**
+     * @brief Get the partial directory path for temporary files.
+     * @return  Path to the partial directory within the base directory
+     * This method constructs the path to the ".partial" subdirectory
+     * within the configured base directory.
+     */
     std::string _get_partial_dir() const {
         return (base_dir + "/.partial");
     }
+
+    /**
+     * @brief Extract the basename from a given path.
+     * @param path  Full file path
+     * @return      Basename of the file
+     */
     static std::string _basename(const std::string& path) {
         auto pos = path.find_last_of('/');
         if (pos == std::string::npos)
