@@ -3,7 +3,6 @@
 
 #include "Telescope.hpp"
 #include "buffer.hpp"
-#include "chimeMetadata.hpp"
 #include "datasetManager.hpp"
 #include "metadata.hpp"
 
@@ -13,7 +12,6 @@
 #pragma pack()
 
 struct oneHotMetadata {
-    chimeMetadata chime;
     int frame_counter;
     // TODO -- make this a static array because metadata objects get c-copied around.
     std::vector<int> hotIndices;
