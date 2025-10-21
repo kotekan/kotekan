@@ -123,8 +123,7 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::str
 }
 
 std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>
-RingBuffer::wait_and_claim_all_readable(const std::string& name,
-                                        [[maybe_unused]] const int inst) {
+RingBuffer::wait_and_claim_all_readable(const std::string& name, [[maybe_unused]] const int inst) {
     // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
     const std::ptrdiff_t read_head = read_heads[name];
