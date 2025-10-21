@@ -72,7 +72,8 @@ void RingBuffer::register_consumer(const std::string& name) {
 }
 
 std::optional<std::ptrdiff_t> RingBuffer::wait_without_claiming(const std::string& name,
-                                                                __attribute__((unused)) const int inst,
+                                                                __attribute__((unused))
+                                                                const int inst,
                                                                 const std::ptrdiff_t sz) {
     // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
@@ -98,7 +99,8 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_without_claiming(const std::strin
 }
 
 std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::string& name,
-                                                                  __attribute__((unused)) const int inst,
+                                                                  __attribute__((unused))
+                                                                  const int inst,
                                                                   const std::ptrdiff_t sz) {
     assert(sz > 0);
     // Wait until we can advance the read_head for this consumer
@@ -123,7 +125,8 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::str
 }
 
 std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>
-RingBuffer::wait_and_claim_all_readable(const std::string& name, __attribute__((unused)) const int inst) {
+RingBuffer::wait_and_claim_all_readable(const std::string& name,
+                                        __attribute__((unused)) const int inst) {
     // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
     const std::ptrdiff_t read_head = read_heads[name];
@@ -162,7 +165,8 @@ RingBuffer::peek_readable(const std::string& name, __attribute__((unused)) const
     return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>(std::make_pair(read_head, sz));
 }
 
-void RingBuffer::finish_read(const std::string& name, __attribute__((unused)) const int inst, const std::ptrdiff_t sz) {
+void RingBuffer::finish_read(const std::string& name, __attribute__((unused)) const int inst,
+                             const std::ptrdiff_t sz) {
     DEBUG2("finish_read({:s}[{:d}]): "
            "consumed bytes: {}",
            name, inst, group_digits(sz));
@@ -186,7 +190,8 @@ void RingBuffer::finish_read(const std::string& name, __attribute__((unused)) co
     empty_cond.notify_all();
 }
 
-std::optional<std::ptrdiff_t> RingBuffer::wait_for_writable(const std::string& name, __attribute__((unused)) const int inst,
+std::optional<std::ptrdiff_t> RingBuffer::wait_for_writable(const std::string& name,
+                                                            __attribute__((unused)) const int inst,
                                                             const std::ptrdiff_t sz) {
     assert(sz > 0);
     std::unique_lock<std::recursive_mutex> lock(mutex);
@@ -226,7 +231,8 @@ RingBuffer::get_writable(const std::string& name, __attribute__((unused)) const 
         std::make_pair(write_next[name], n));
 }
 
-void RingBuffer::finish_write(const std::string& name, __attribute__((unused)) const int inst, const std::ptrdiff_t sz) {
+void RingBuffer::finish_write(const std::string& name, __attribute__((unused)) const int inst,
+                              const std::ptrdiff_t sz) {
     assert(sz > 0);
     std::unique_lock<std::recursive_mutex> lock(mutex);
     DEBUG2("finish_write({:s}[{:d}]): "

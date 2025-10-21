@@ -230,7 +230,7 @@ public:
         CHECK_CUDA_ERROR(
             cudaMemsetAsync(buffer_device_ptr, poison_value, buffer_length, cuda_stream));
 #else
-        (void) poison_value;
+        (void)poison_value;
 #endif
     }
 
@@ -252,7 +252,7 @@ public:
         if (found_error)
             FATAL_ERROR("NDArray buffer {:s} contains poison", buffer_name);
 #else
-        (void) poison_value;
+        (void)poison_value;
 #endif
     }
 
