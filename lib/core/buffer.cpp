@@ -209,9 +209,9 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                bool zero_new_frames) :
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
-    _zero_frames(false), frames(num_frames, nullptr), is_full(num_frames, false),
-    last_arrival_time(0), use_hugepages(_use_hugepages), mlock_frames(_mlock_frames),
-    numa_node(_numa_node) {
+    _zero_frames(false), frames(num_frames, nullptr), frames_desc(num_frames, nullptr),
+    is_full(num_frames, false), last_arrival_time(0), use_hugepages(_use_hugepages),
+    mlock_frames(_mlock_frames), numa_node(_numa_node) {
     assert(num_frames > 0);
 
     // Get the CPU affinity for the zeroing threads from the config
