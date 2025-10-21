@@ -6,7 +6,7 @@
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
 #include <algorithm>               // for max
-#include <arpa/inet.h>             // for ntohs
+#include <arpa/inet.h>             // for ntohs, inet_pton, sockaddr_in6, sockaddr_in
 #include <assert.h>                // for assert
 #include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_iovec
 #include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
@@ -24,6 +24,7 @@
 #include <string>                  // for basic_string, string, allocator, operator!=, operator<
 #include <sys/socket.h>            // for getsockname, socklen_t
 #include <sys/time.h>              // for timeval
+#include <unistd.h>                // for close
 #include <utility>                 // for pair
 #include <vector>                  // for vector
 #ifdef MAC_OSX
@@ -42,8 +43,10 @@ restServer& restServer::instance() {
     return server_instance;
 }
 
-restServer::restServer() : port(_port), main_thread() {
+restServer::restServer() : main_thread() {
     stop_thread = false;
+    _bind_address = "";
+    _port = 0;
 }
 
 restServer::~restServer() {
@@ -56,9 +59,91 @@ restServer::~restServer() {
     }
 }
 
+// Validation function that accepts both IPs and 'localhost'
+bool restServer::isValidAddress(const std::string& address) const {
+    // First check if it's a valid IPv4 address
+    struct sockaddr_in sa4;
+    if (inet_pton(AF_INET, address.c_str(), &(sa4.sin_addr)) == 1) {
+        return true;
+    }
+
+    // For hostnames, we will only allow localhost for the rest server.
+    if (address == "localhost") {
+        return true;
+    }
+
+    return false;
+}
+
+bool restServer::canBindToAddress(const std::string& address, const u_short port) const {
+    DEBUG_NON_OO("restServer: Checking if we can bind to address {:s}:{:d}", address, port);
+
+    // Use getaddrinfo to resolve the address (works for both IPs and hostnames)
+    struct addrinfo hints, *result = nullptr;
+    std::memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;     // Allows IPv4
+    hints.ai_socktype = SOCK_STREAM; // TCP socket
+    hints.ai_flags = AI_PASSIVE;     // For binding
+
+    std::string port_str = std::to_string(port);
+    int status = getaddrinfo(address.c_str(), port_str.c_str(), &hints, &result);
+
+    if (status != 0) {
+        DEBUG_NON_OO("restServer: getaddrinfo failed for {:s}: {:s}", address,
+                     gai_strerror(status));
+        return false;
+    }
+
+    bool can_bind = false;
+
+    // Try to bind to each resolved address
+    for (struct addrinfo* rp = result; rp != nullptr; rp = rp->ai_next) {
+        int sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (sock < 0) {
+            continue;
+        }
+
+        // Enable SO_REUSEADDR to avoid TIME_WAIT issues
+        int opt = 1;
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+        // For IPv6, we might want to set IPV6_V6ONLY
+        if (rp->ai_family == AF_INET6) {
+            int v6only = 1;
+            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
+        }
+
+        if (bind(sock, rp->ai_addr, rp->ai_addrlen) == 0) {
+            can_bind = true;
+            shutdown(sock, SHUT_RDWR);
+            close(sock);
+            break; // Successfully bound to at least one address
+        }
+
+        close(sock);
+    }
+
+    freeaddrinfo(result);
+
+    DEBUG_NON_OO("restServer: Can bind to address {:s}:{:d} = {:s}", address, port,
+                 can_bind ? "true" : "false");
+    return can_bind;
+}
+
 void restServer::start(const std::string& bind_address, u_short port) {
 
-    this->bind_address = bind_address;
+    // Check if bind_address and port are valid.
+    if (!isValidAddress(bind_address)) {
+        ERROR_NON_OO("Invalid bind address: {:s}", bind_address);
+    }
+
+    // Check if we can bind to the address and port.
+    // This does not start the server, but checks if the address is available.
+    if (!canBindToAddress(bind_address, port)) {
+        ERROR_NON_OO("Cannot bind to address: {:s}:{:d}", bind_address, port);
+    }
+
+    this->_bind_address = bind_address;
     this->_port = port;
 
     main_thread = std::thread(&restServer::http_server_thread, this);
@@ -82,7 +167,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
 
     {
         // TODO This function should be locked against changes to the callback
-        // maps form other threads.  However there are a number of callbacks (start, stop, etc)
+        // maps from other threads.  However there are a number of callbacks (start, stop, etc)
         // which add or remove callbacks from the maps. So a more fine-grained
         // locking system is needed here.
         // std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
@@ -389,9 +474,9 @@ void restServer::http_server_thread() {
 
     // Bind to the IP and port
     struct evhttp_bound_socket* ev_sock =
-        evhttp_bind_socket_with_handle(ev_server, bind_address.c_str(), _port);
+        evhttp_bind_socket_with_handle(ev_server, _bind_address.c_str(), _port);
     if (ev_sock == nullptr) {
-        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", bind_address, _port);
+        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", _bind_address, _port);
         exit(1);
     }
 
@@ -401,13 +486,14 @@ void restServer::http_server_thread() {
         struct sockaddr_in sin;
         socklen_t len = sizeof(sin);
         if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
-            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", bind_address, _port);
+            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", _bind_address,
+                         _port);
             exit(1);
         }
         _port = ntohs(sin.sin_port);
     }
     // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
-    INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", bind_address, _port);
+    INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", _bind_address, _port);
 
     // Create a timer to check for the exit condition
     struct event* timer_event;

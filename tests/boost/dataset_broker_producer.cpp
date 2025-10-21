@@ -83,7 +83,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
 
     // Force the dM to update while it knows of nothing yet.
     restClient::restReply reply = restClient::instance().make_request_blocking(
-        "/dataset-manager/force-update", {}, "127.0.0.1", kotekan::restServer::instance().port);
+        "/dataset-manager/force-update", {}, "127.0.0.1", kotekan::restServer::instance().port());
     BOOST_CHECK(reply.first == true);
     BOOST_CHECK(reply.second == "");
 

@@ -22,6 +22,21 @@ To build just the base framework:
 	cmake <options> ..
 	make
 
+Building documentation
+----------------------
+
+To build both the API (Doxygen) and user docs (Sphinx):
+
+    mkdir -p build-docs
+    cd build-docs
+    cmake -DCOMPILE_DOCS=ON ..
+    make docs
+
+Individual doc targets are also available:
+
+- `make doxygen` – generate API reference only
+- `make sphinx` – build Sphinx HTML only
+
 Cmake build options (defaults shown in parentheses; most feature toggles accept `AUTO`, `ON`, or `OFF`, with `AUTO` probing for dependencies and falling back gracefully):
 
 * `-DCMAKE_BUILD_TYPE=<Debug|Release|Test>` (`Test`) - Choose the configuration preset. `Debug` adds symbols, `Release` optimises, `Test` keeps asserts/logging without debug symbols.
