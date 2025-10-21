@@ -297,7 +297,9 @@ jobs:
               ls -l
               git clone --depth 1 https://github.com/chord-observatory/kotekan_testing_inputs
               ln -s kotekan_testing_inputs data
-              $GITHUB_WORKSPACE/build-2404/kotekan/kotekan --bind-address 0:23000 --config config/fengine/test_smallfinder.j2
+              # ln -s /data data
+              $GITHUB_WORKSPACE/build-2404/kotekan/kotekan --bind-address 0:23000 --config config/fengine/test_smallfinder.j2 2>&1 | tee test_smallfinder.out
+              grep -q CLEAN_EXIT test_smallfinder.out
 
     steps:
       - name: Checkout repository
