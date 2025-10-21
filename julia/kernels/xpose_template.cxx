@@ -159,7 +159,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx(kernel_file_name, {kernel_symbol}, opts);
+        device.build_ptx("lib/cuda/generated/{{{kernel_name}}}.ptx", {kernel_symbol}, opts, "{{{kernel_name}}}_");
     }
 }
 

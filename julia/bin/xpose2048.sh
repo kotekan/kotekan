@@ -22,10 +22,10 @@ for setup in ${setups}; do
     rm -f output-${card}/xpose2048_${setup}.ptx
     rm -f output-${card}/xpose2048_${setup}.sass
     rm -f output-${card}/xpose2048_${setup}.yaml
-    rm -f ../lib/cuda/cudaTranspose2048_${setup}.cpp
-    rm -f ../lib/cuda/kernels/Transpose2048_${setup}.jl
-    rm -f ../lib/cuda/kernels/Transpose2048_${setup}.ptx
-    rm -f ../lib/cuda/kernels/Transpose2048_${setup}.yaml
+    rm -f ../lib/cuda/generated/cudaTranspose2048_${setup}.cpp
+    rm -f ../lib/cuda/generated/Transpose2048_${setup}.jl
+    rm -f ../lib/cuda/generated/Transpose2048_${setup}.ptx
+    rm -f ../lib/cuda/generated/Transpose2048_${setup}.yaml
 done
 
 # Generate kernel
@@ -54,8 +54,8 @@ wait
 
 # Copy kernels into Kotekan
 for setup in ${setups}; do
-    cp output-${card}/xpose2048_${setup}.cxx ../lib/cuda/cudaTranspose2048_${setup}.cpp
-    cp output-${card}/xpose2048_${setup}.jl ../lib/cuda/kernels/Transpose2048_${setup}.jl
-    cp output-${card}/xpose2048_${setup}.ptx ../lib/cuda/kernels/Transpose2048_${setup}.ptx
-    cp output-${card}/xpose2048_${setup}.yaml ../lib/cuda/kernels/Transpose2048_${setup}.yaml
+    cp output-${card}/xpose2048_${setup}.cxx ../lib/cuda/generated/cudaTranspose2048_${setup}.cpp
+    cp output-${card}/xpose2048_${setup}.jl ../lib/cuda/generated/Transpose2048_${setup}.jl
+    cp output-${card}/xpose2048_${setup}.ptx ../lib/cuda/generated/Transpose2048_${setup}.ptx
+    cp output-${card}/xpose2048_${setup}.yaml ../lib/cuda/generated/Transpose2048_${setup}.yaml
 done

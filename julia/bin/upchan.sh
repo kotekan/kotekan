@@ -25,10 +25,10 @@ for setup in ${setups}; do
     rm -f output-A40/upchan_${setup}.ptx
     rm -f output-A40/upchan_${setup}.sass
     rm -f output-A40/upchan_${setup}.yaml
-    rm -f ../lib/cuda/cudaUpchannelizer_${setup}.cpp
-    rm -f ../lib/cuda/kernels/Upchannelizer_${setup}.jl
-    rm -f ../lib/cuda/kernels/Upchannelizer_${setup}.ptx
-    rm -f ../lib/cuda/kernels/Upchannelizer_${setup}.yaml
+    rm -f ../lib/cuda/generated/cudaUpchannelizer_${setup}.cpp
+    rm -f ../lib/cuda/generated/Upchannelizer_${setup}.jl
+    rm -f ../lib/cuda/generated/Upchannelizer_${setup}.ptx
+    rm -f ../lib/cuda/generated/Upchannelizer_${setup}.yaml
 done
 
 # Generate kernels
@@ -57,8 +57,8 @@ wait
 
 # Copy kernels into Kotekan
 for setup in ${setups}; do
-    cp output-A40/upchan_${setup}.cxx ../lib/cuda/cudaUpchannelizer_${setup}.cpp
-    cp output-A40/upchan_${setup}.jl ../lib/cuda/kernels/Upchannelizer_${setup}.jl
-    cp output-A40/upchan_${setup}.ptx ../lib/cuda/kernels/Upchannelizer_${setup}.ptx
-    cp output-A40/upchan_${setup}.yaml ../lib/cuda/kernels/Upchannelizer_${setup}.yaml
+    cp output-A40/upchan_${setup}.cxx ../lib/cuda/generated/cudaUpchannelizer_${setup}.cpp
+    cp output-A40/upchan_${setup}.jl ../lib/cuda/generated/Upchannelizer_${setup}.jl
+    cp output-A40/upchan_${setup}.ptx ../lib/cuda/generated/Upchannelizer_${setup}.ptx
+    cp output-A40/upchan_${setup}.yaml ../lib/cuda/generated/Upchannelizer_${setup}.yaml
 done
