@@ -246,6 +246,11 @@ public:
     }
 
     // TODO: remove this, it's redundant
+    bool has_gps_time() const {
+        return has_fpga_seq_num();
+    }
+
+    // TODO: remove this, it's redundant
     struct timespec get_gps_time() const {
         // this must not request the lock
         const Telescope& tel = Telescope::instance();
