@@ -194,9 +194,9 @@ inline std::ostream& operator<<(std::ostream& os, const float16_t x) {
 
 // This enum lets us talk about the various datatypes we're using.
 enum DataType {
-    unknown_type,
-    uint1x8, // 8 bools (packed into a type)
-    uint4x2, // 2 unsigned 4-bit integers (packed into a byte)
+    unknown_type, // keep this as first entry for GenericNDArray::create
+    uint1x8,      // 8 bools (packed into a type)
+    uint4x2,      // 2 unsigned 4-bit integers (packed into a byte)
     uint8,
     uint16,
     uint32,
@@ -210,6 +210,7 @@ enum DataType {
     float16,
     float32,
     float64,
+    end_type, // keep the as the last entry for GenericNDArray::create
 };
 
 // Number of bits (not bytes!) in a type. For packed types, say how
