@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Kotekan Project
-#include "cudaCopyNtoRingbuffer.hpp"
+#include "cudaCopyNToRingbuffer.hpp"
 
 #include "DataType.hpp"       // for DataType
 #include "chordMetadata.hpp"  // for chordMetadata
@@ -23,26 +23,26 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-REGISTER_CUDA_COMMAND(cudaCopyNtoRingbuffer);
+REGISTER_CUDA_COMMAND(cudaCopyNToRingbuffer);
 
-cudaCopyNtoRingbuffer::cudaCopyNtoRingbuffer(Config& config, const std::string& unique_name,
+cudaCopyNToRingbuffer::cudaCopyNToRingbuffer(Config& config, const std::string& unique_name,
                                              bufferContainer& host_buffers,
                                              cudaDeviceInterface& device, int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
-                "cudaCopyNtoRingbuffer", ""),
+                "cudaCopyNToRingbuffer", ""),
     output_cursor(0) {
     // Get the list of input buffer names (comma-separated)
     std::vector<std::string> in_buf_names =
         config.get<std::vector<std::string>>(unique_name, "in_bufs");
     if (in_buf_names.empty())
-        throw std::runtime_error("cudaCopyNtoRingbuffer: in_bufs must be set and non-empty");
+        throw std::runtime_error("cudaCopyNToRingbuffer: in_bufs must be set and non-empty");
 
     total_input_size = 0;
     first_time = true;
     for (const auto& bufname : in_buf_names) {
         Buffer* buf = host_buffers.get_buffer(bufname);
         if (!buf)
-            throw std::runtime_error("cudaCopyNtoRingbuffer: could not find buffer " + bufname);
+            throw std::runtime_error("cudaCopyNToRingbuffer: could not find buffer " + bufname);
         in_buffers.push_back(buf);
         total_input_size += buf->frame_size;
         if (instance_num == 0) {
@@ -62,7 +62,7 @@ cudaCopyNtoRingbuffer::cudaCopyNtoRingbuffer(Config& config, const std::string& 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, false, false, true));
 }
 
-cudaCopyNtoRingbuffer::~cudaCopyNtoRingbuffer() {
+cudaCopyNToRingbuffer::~cudaCopyNToRingbuffer() {
     for (auto buf : in_buffers) {
         assert(buf);
         if (buf->frame_size) {
@@ -74,7 +74,7 @@ cudaCopyNtoRingbuffer::~cudaCopyNtoRingbuffer() {
     }
 }
 
-int cudaCopyNtoRingbuffer::wait_on_precondition() {
+int cudaCopyNToRingbuffer::wait_on_precondition() {
     // Wait for all input buffers to have data
     for (auto buf : in_buffers) {
         assert(buf);
@@ -98,7 +98,7 @@ int cudaCopyNtoRingbuffer::wait_on_precondition() {
     return 0;
 }
 
-cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& /*pipestate*/,
+cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
                                            const std::vector<cudaEvent_t>& pre_events) {
     pre_execute();
 
@@ -144,7 +144,7 @@ cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& /*pipestate*/,
         auto meta_ring = std::dynamic_pointer_cast<chordMetadata>(signal_buffer->metadata[0]);
         if (!meta_ring)
             throw std::runtime_error(
-                "cudaCopyNtoRingbuffer: could not get chordMetadata from signal buffer");
+                "cudaCopyNToRingbuffer: could not get chordMetadata from signal buffer");
 
         // Merge metadata from all input buffers
         // NB This is highly specific to CHIME.
@@ -154,15 +154,16 @@ cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& /*pipestate*/,
                 in_buffers[i]->get_metadata(gpu_frame_id % in_buffers[i]->num_frames));
             if (!meta_in)
                 throw std::runtime_error(
-                    "cudaCopyNtoRingbuffer: input buffer has no chordMetadata");
+                    "cudaCopyNToRingbuffer: input buffer has no chordMetadata");
             // Pull most of the metadata from the first input buffer.
             // TODO: Check metadata matches on all subsequent buffers.
             if (i == 0) {
                 // Set the shape of the array
                 meta_ring->dims = 4;
-                meta_ring->set_array_dimension(0, _gpu_buffer_depth, "T_frame");
+                meta_ring->set_array_dimension(0, _gpu_buffer_depth, "Thi16384");
                 meta_ring->set_array_dimension(1, in_buffers.size(), "F");
-                meta_ring->set_array_dimension(2, meta_in->dim[0], "T_sample");
+                assert(meta_in->dim[0] == 16384);
+                meta_ring->set_array_dimension(2, meta_in->dim[0], "Tlo16384");
                 meta_ring->set_array_dimension(3, meta_in->dim[1], "E");
 
                 // Set the data type
@@ -181,7 +182,7 @@ cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& /*pipestate*/,
         }
         meta_ring->set_coarse_freq(coarse_freq);
         // Debug log the merged metadata with the data set above
-        INFO("cudaCopyNtoRingbuffer: Merged metadata frequency list: {}",
+        INFO("cudaCopyNToRingbuffer: Merged metadata frequency list: {}",
              fmt::join(meta_ring->get_coarse_freq(), ", "));
         first_time = false;
     }
@@ -194,31 +195,31 @@ cudaEvent_t cudaCopyNtoRingbuffer::execute(cudaPipelineState& /*pipestate*/,
         auto meta_in = std::dynamic_pointer_cast<chordMetadata>(
             in_buffers[i]->get_metadata(gpu_frame_id % in_buffers[i]->num_frames));
         if (!meta_in)
-            throw std::runtime_error("cudaCopyNtoRingbuffer: input buffer has no chordMetadata");
+            throw std::runtime_error("cudaCopyNToRingbuffer: input buffer has no chordMetadata");
         // Check that the frequencies match
         if (coarse_freq[i] != meta_in->get_coarse_freq()[0]) {
-            ERROR("cudaCopyNtoRingbuffer: Mismatch in frequency for input buffer {}: "
+            ERROR("cudaCopyNToRingbuffer: Mismatch in frequency for input buffer {}: "
                   "metadata has {}, frame has {}",
                   in_buffers[i]->buffer_name, coarse_freq[i], meta_in->get_coarse_freq()[0]);
-            throw std::runtime_error("cudaCopyNtoRingbuffer: metadata frequency mismatch");
+            throw std::runtime_error("cudaCopyNToRingbuffer: metadata frequency mismatch");
         }
         // Check that the sample0_offset + the output_cursor matches the input frame sample0_offset
         // This ensures that the time in the ring buffer metadata matches the data we just copied
         if (meta_ring->get_sample0_offset()
                 + (int64_t)output_cursor / (meta_ring->dim[1] * meta_ring->dim[3])
             != meta_in->get_sample0_offset()) {
-            ERROR("cudaCopyNtoRingbuffer: Mismatch in sample0_offset for input buffer {}: "
+            ERROR("cudaCopyNToRingbuffer: Mismatch in sample0_offset for input buffer {}: "
                   "metadata has {}, frame has {} (output_cursor {})",
                   in_buffers[i]->buffer_name, meta_ring->get_sample0_offset(),
                   meta_in->get_sample0_offset(), output_cursor);
-            throw std::runtime_error("cudaCopyNtoRingbuffer: metadata time code mismatch");
+            throw std::runtime_error("cudaCopyNToRingbuffer: metadata time code mismatch");
         }
     }
 
     return record_end_event();
 }
 
-void cudaCopyNtoRingbuffer::finalize_frame() {
+void cudaCopyNToRingbuffer::finalize_frame() {
     DEBUG("finalize_frame() for frame {}, releasing metadata on GPU output buffer {}", gpu_frame_id,
           _gpu_mem_output);
     for (auto buf : in_buffers) {
