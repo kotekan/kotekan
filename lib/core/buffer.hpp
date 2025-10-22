@@ -535,6 +535,22 @@ public:
     }
 
     /**
+     * @brief Allocates a new frame description object holding a D dimensional
+     *        array of type T
+     * @param[in] frame_id The frame ID of the frame to describe
+     * @param[in] value_type the kotekan type enomerator of the values stored
+     * @param[in] rank dimensionality of the data array
+     * @param[in] extents Array extentds in the D dimensions
+     * @param[in] dimnames Array axis labels in the D dimensions
+     */
+    void allocate_new_frame_desc(int frame_id, kotekan::DataType value_type, size_t rank,
+                                 const std::vector<std::ptrdiff_t>& extents,
+                                 const std::vector<kotekan::Symbol>& dimnames) {
+        frames_desc.at(frame_id) =
+            kotekan::GenericNDArray::create(value_type, rank, extents, dimnames, nullptr);
+    }
+
+    /**
      * @brief provides access to the array description
      * @param[in] frame_id The frame ID of the frame to describe
      * @return The NDArray data structure describing the array
