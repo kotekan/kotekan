@@ -187,6 +187,7 @@ void N2Accumulate::main_thread() {
             break;
 
         std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
+        DEBUG("Frame has json metadata: {:s}", frame_metadata->get_string_repr_of_json());
         size_t in_frame_num = frame_metadata->get_fpga_seq_num() / _n_fpga_samples_per_n2k_frame;
 
         // Start and end times of this frame

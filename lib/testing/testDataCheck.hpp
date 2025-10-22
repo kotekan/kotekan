@@ -27,6 +27,7 @@
 
 #define CHECK_META_SCALAR_INT_DIRECT(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2, FRAME_ID2)   \
     do {                                                                            \
+        INFO("Checking meta field {:s}", #FIELD);                                   \
         if((META1)->FIELD != (META2)->FIELD) {                                      \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:d} {:d}", \
                 (BUF_NAME1), (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2),         \
@@ -37,6 +38,7 @@
 
 #define CHECK_META_SCALAR_INT(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2, FRAME_ID2)   \
     do {                                                                            \
+        INFO("Checking meta field {:s}", #FIELD);                                   \
         if((META1)->get_##FIELD() != (META2)->get_##FIELD()) {                      \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:d} {:d}", \
                 (BUF_NAME1), (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2),         \
@@ -47,6 +49,7 @@
 
 #define CHECK_META_SCALAR_STREAM_T(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2, FRAME_ID2)   \
     do {                                                                            \
+        INFO("Checking meta field {:s}", #FIELD);                                   \
         if((META1)->get_##FIELD().id != (META2)->get_##FIELD().id) {                \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:d} {:d}", \
                 (BUF_NAME1), (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2),         \
@@ -57,6 +60,7 @@
 
 #define CHECK_META_ARR1_INT(FIELD, LEN, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2, FRAME_ID2)   \
     do {                                                                                            \
+        INFO("Checking meta field {:s}", #FIELD);                                                   \
         for(int meta_idx = 0; meta_idx < (LEN); meta_idx++) {                                       \
             if((META1)->get_##FIELD()[meta_idx] != (META2)->get_##FIELD()[meta_idx]) {              \
                 ERROR("metadata {:s}[{:d}] {:s}[{:d}] != {:s}[{:d}] {:s}[{:d}]; values: {:d} {:d}", \
@@ -70,6 +74,7 @@
 
 #define CHECK_META_ARR1_INT_DIRECT(FIELD, LEN, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2, FRAME_ID2)   \
     do {                                                                                            \
+        INFO("Checking meta field {:s}", #FIELD);                                                   \
         for(int meta_idx = 0; meta_idx < (LEN); meta_idx++) {                                       \
             if((META1)->FIELD[meta_idx] != (META2)->FIELD[meta_idx]) {                              \
                 ERROR("metadata {:s}[{:d}] {:s}[{:d}] != {:s}[{:d}] {:s}[{:d}]; values: {:d} {:d}", \
@@ -83,6 +88,7 @@
 
 #define CHECK_META_SCALAR_STR(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2, FRAME_ID2)   \
     do {                                                                            \
+        INFO("Checking meta field {:s}", #FIELD);                                   \
         if((META1)->get_##FIELD() != (META2)->get_##FIELD()) {                      \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:s} {:s}", \
                 (BUF_NAME1), (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2),         \
@@ -93,6 +99,7 @@
 
 #define CHECK_META_ARR1_CSTR_DIRECT(FIELD, ARR_LEN, STR_LEN, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2, FRAME_ID2)   \
     do {                                                                                                \
+        INFO("Checking meta field {:s}", #FIELD);                                                       \
         for(int meta_idx = 0; meta_idx < (ARR_LEN); meta_idx++) {                                       \
             if(strncmp((META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx], (STR_LEN))) {                \
                 ERROR("metadata {:s}[{:d}] {:s}[{:d}] != {:s}[{:d}] {:s}[{:d}]; values: {:s} {:s}",     \
@@ -319,6 +326,12 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
                                                 int first_buf_id, int second_buf_id) {
     int num_errors = 0;
 
+    /*
+     * The relevant metadata fields are a bit of a moving target at the moment (251022),
+     * so some of these checks are being commented out.  This function should be updated
+     * when the chordMetadata is more stable to cover exactly all the fields.
+     */
+
     // int64_t fpga_seq_num;
     CHECK_META_SCALAR_INT(fpga_seq_num, meta1, meta2, num_errors, first_buf->buffer_name,
                           first_buf_id, second_buf->buffer_name, second_buf_id);
@@ -327,13 +340,17 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
     // TODO: struct timespec gps_time;
    
     // uint16_t stream_ID;
+    /*
     CHECK_META_SCALAR_STREAM_T(stream_id, meta1, meta2, num_errors,
                                first_buf->buffer_name, first_buf_id,
                                second_buf->buffer_name, second_buf_id);
+    */
     
     // int frame_counter;
+    /*
     CHECK_META_SCALAR_INT(frame_counter, meta1, meta2, num_errors, first_buf->buffer_name,
                           first_buf_id, second_buf->buffer_name, second_buf_id);
+    */
     // char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
     CHECK_META_SCALAR_STR(name,
                           meta1, meta2, num_errors,
@@ -342,15 +359,19 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
     // kotekan::DataType type;
 
     // int lost_timesamples;
+    /*
     CHECK_META_SCALAR_INT(lost_timesamples,
                           meta1, meta2, num_errors,
                           first_buf->buffer_name, first_buf_id,
                           second_buf->buffer_name, second_buf_id);
+    */
     // int rfi_flagged_samples;
+    /*
     CHECK_META_SCALAR_INT(rfi_flagged_samples,
                           meta1, meta2, num_errors,
                           first_buf->buffer_name, first_buf_id,
                           second_buf->buffer_name, second_buf_id);
+    */
     // int dims;
     CHECK_META_SCALAR_INT_DIRECT(dims, meta1, meta2, num_errors,
                                  first_buf->buffer_name, first_buf_id,

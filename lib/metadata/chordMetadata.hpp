@@ -484,6 +484,11 @@ public:
         return metadata.at(jsonMetadata::DATASET_ID).template get<dset_id_t>();
     }
 
+    std::string get_string_repr_of_json() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.dump();
+    }
+
 private:
     jsonMetadata::metadata metadata;
 };
