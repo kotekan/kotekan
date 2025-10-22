@@ -166,6 +166,11 @@ public:
     using beamCoord = jsonMetadata::beamCoord;
 
     /// The coordinates of the tracking beam (if applicable)
+    bool has_beam_coord() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::BEAM_COORD);
+    }
+
     beamCoord get_beam_coord() const {
         std::lock_guard<std::mutex> lock(this->lock);
         return metadata[jsonMetadata::BEAM_COORD].template get<beamCoord>();
@@ -254,6 +259,11 @@ public:
         metadata[jsonMetadata::RFI_NUM_BAD_INPUTS] = rfi_num_bad_inputs;
     }
 
+    bool has_rfi_num_bad_inputs() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::RFI_NUM_BAD_INPUTS);
+    }
+
     uint32_t get_rfi_num_bad_inputs() const {
         std::lock_guard<std::mutex> lock(this->lock);
         return metadata[jsonMetadata::RFI_NUM_BAD_INPUTS].template get<uint32_t>();
@@ -269,6 +279,11 @@ public:
         metadata[jsonMetadata::RFI_FLAGGED_SAMPLES] = flagged_samples;
     }
 
+    bool has_rfi_flagged_samples() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::RFI_FLAGGED_SAMPLES);
+    }
+
     int32_t get_rfi_flagged_samples() const {
         std::lock_guard<std::mutex> lock(this->lock);
         return metadata[jsonMetadata::RFI_FLAGGED_SAMPLES].template get<int32_t>();
@@ -277,6 +292,11 @@ public:
     void set_lost_timesamples(int32_t lost_timesamples) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::LOST_TIMESAMPLES] = lost_timesamples;
+    }
+
+    bool has_lost_timesamples() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::LOST_TIMESAMPLES);
     }
 
     int32_t get_lost_timesamples() const {
@@ -399,6 +419,11 @@ public:
         metadata[jsonMetadata::FIRST_PACKET_RECV_TIME] = time_v;
     }
 
+    bool has_first_packet_recv_time() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::FIRST_PACKET_RECV_TIME);
+    }
+
     timeval get_first_packet_recv_time() const {
         std::lock_guard<std::mutex> lock(this->lock);
         return metadata[jsonMetadata::FIRST_PACKET_RECV_TIME].template get<timeval>();
@@ -411,6 +436,11 @@ public:
         metadata[jsonMetadata::STREAM_ID] = stream_id.id;
     }
 
+    bool has_stream_id() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::STREAM_ID);
+    }
+
     stream_t get_stream_id() const {
         std::lock_guard<std::mutex> lock(this->lock);
         return stream_t{.id = metadata[jsonMetadata::STREAM_ID].template get<uint64_t>()};
@@ -420,6 +450,11 @@ public:
     void set_dataset_id(const dset_id_t dset_id) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::DATASET_ID] = dset_id;
+    }
+
+    bool has_dataset_id() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::DATASET_ID);
     }
 
     dset_id_t get_dataset_id() const {
