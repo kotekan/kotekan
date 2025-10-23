@@ -74,18 +74,11 @@ public:
 
     /// controls access to this object
     mutable class almost_copyable_mutex : public std::mutex {
-        // NDArray copies chordMetadata.
-        // Allow this only if currently not locked
+        // chordMetadata::deepCopy copies chordMetadata and locks it, so this must not itself lock
     public:
         almost_copyable_mutex() : std::mutex() {}
-        almost_copyable_mutex(const almost_copyable_mutex& /*other*/) : std::mutex() {
-            // cannot lock a const mutex
-            // std::lock_guard lock_other(other);
-        }
+        almost_copyable_mutex(const almost_copyable_mutex& /*other*/) : std::mutex() {}
         almost_copyable_mutex operator=(const almost_copyable_mutex& /*other*/) {
-            // cannot lock a const mutex
-            // std::lock_guard lock_other(other);
-            std::lock_guard lock_this(*this);
             return *this;
         }
     } lock;
@@ -491,6 +484,10 @@ public:
 
 private:
     jsonMetadata::metadata metadata;
+
+    // these are not thread safe
+    chordMetadata& operator=(const chordMetadata&) = default;
+    chordMetadata(const chordMetadata&) = default;
 };
 
 inline bool metadata_is_chord(Buffer* buf, int) {
