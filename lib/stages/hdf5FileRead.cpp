@@ -155,27 +155,18 @@ public:
                     meta->set_offset_downsampling(
                         dataset.getAttribute("offset_downsampling").read<int>());
 
-                if (dataset.hasAttribute("coarse_freq")) {
-                    const auto coarse_freq =
-                        dataset.getAttribute("coarse_freq").read<std::vector<int>>();
-                    meta->set_coarse_freq(coarse_freq);
-
-                    const auto freq_upchan_factor =
-                        dataset.getAttribute("freq_upchan_factor").read<std::vector<int>>();
-                    assert(std::ptrdiff_t(freq_upchan_factor.size()) == meta->get_nfreq());
-                    meta->set_freq_upchan_factor(freq_upchan_factor);
-
-                    const auto half_fpga_sample0 =
-                        dataset.getAttribute("half_fpga_sample0").read<std::vector<std::int64_t>>();
-                    assert(std::ptrdiff_t(half_fpga_sample0.size()) == meta->get_nfreq());
-                    meta->set_half_fpga_sample0(half_fpga_sample0);
-
-                    const auto time_downsampling_fpga =
-                        dataset.getAttribute("time_downsampling_fpga").read<std::vector<int>>();
-                    assert(std::ptrdiff_t(time_downsampling_fpga.size()) == meta->get_nfreq());
-                    meta->set_time_downsampling_fpga(time_downsampling_fpga);
-                }
-
+                if (dataset.hasAttribute("coarse_freq"))
+                    meta->set_coarse_freq(
+                        dataset.getAttribute("coarse_freq").read<std::vector<int>>());
+                if (dataset.hasAttribute("freq_upchan_factor"))
+                    meta->set_freq_upchan_factor(
+                        dataset.getAttribute("freq_upchan_factor").read<std::vector<int>>());
+                if (dataset.hasAttribute("half_fpga_sample0"))
+                    meta->set_half_fpga_sample0(dataset.getAttribute("half_fpga_sample0")
+                                                    .read<std::vector<std::int64_t>>());
+                if (dataset.hasAttribute("time_downsampling_fpga"))
+                    meta->set_time_downsampling_fpga(
+                        dataset.getAttribute("time_downsampling_fpga").read<std::vector<int>>());
 
                 if (dataset.hasAttribute("ndishes")) {
                     meta->ndishes = dataset.getAttribute("ndishes").read<int>();
