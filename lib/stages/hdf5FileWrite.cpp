@@ -71,8 +71,8 @@ class hdf5FileWrite : public kotekan::Stage {
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     const bool prefix_host_rank = config.get_default<bool>(unique_name, "prefix_host_rank", false);
-    const bool host_pool_rank = config.get_default<int>(unique_name, "frequency_pool_rank", 0);
-    const bool host_pool_size = config.get_default<int>(unique_name, "frequency_pool_size", 1);
+    const int host_pool_rank = config.get_default<int>(unique_name, "frequency_pool_rank", 0);
+    const int host_pool_size = config.get_default<int>(unique_name, "frequency_pool_size", 1);
 
     const int max_frames = config.get_default<int>(unique_name, "max_frames", -1);
     const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
