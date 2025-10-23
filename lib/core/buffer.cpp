@@ -137,7 +137,7 @@ void GenericBuffer::private_copy_metadata(int dest_frame_id, GenericBuffer* src,
         WARN("Metadata sizes don't match, cannot copy metadata!!");
         return;
     }
-    *to_metadata_container = *from_metadata_container;
+    to_metadata_container->deepCopy(from_metadata_container);
 }
 
 void GenericBuffer::allocate_new_metadata_object(int ID) {
