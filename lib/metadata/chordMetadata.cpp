@@ -48,6 +48,13 @@ void chordMetadata::set_from_frame_desc(
 void chordMetadata::deepCopy(std::shared_ptr<metadataObject> other) {
     auto chord_other = std::dynamic_pointer_cast<chordMetadata>(other);
     assert(chord_other);
+
+    if (this == chord_other.get())
+        return;
+
+    // order locks so that there is no race condition if two chordMetadata a and
+    // b are deepCopy'ed into each other a the same time
+    std::scoped_lock<std::mutex, std::mutex> lock(this->lock, chord_other->lock);
     *this = *chord_other;
 }
 
