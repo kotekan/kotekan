@@ -158,6 +158,9 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
             // Pull most of the metadata from the first input buffer.
             // TODO: Check metadata matches on all subsequent buffers.
             if (i == 0) {
+                // Set the quantity
+                meta_ring->set_name("E");
+
                 // Set the shape of the array
                 meta_ring->dims = 4;
                 meta_ring->set_array_dimension(0, _gpu_buffer_depth, "Thi16384");
