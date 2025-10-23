@@ -175,7 +175,7 @@ public:
 
     beamCoord get_beam_coord() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::BEAM_COORD].template get<beamCoord>();
+        return metadata.at(jsonMetadata::BEAM_COORD).template get<beamCoord>();
     }
 
     // TODO: add set_beam_coord
@@ -192,7 +192,7 @@ public:
 
     int64_t get_fpga_seq_num() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::FPGA_SEQ_NUM].template get<int64_t>();
+        return metadata.at(jsonMetadata::FPGA_SEQ_NUM).template get<int64_t>();
     }
 
     void set_frame_counter(const int frame_counter) {
@@ -207,7 +207,7 @@ public:
 
     int get_frame_counter() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::FRAME_COUNTER].template get<int>();
+        return metadata.at(jsonMetadata::FRAME_COUNTER).template get<int>();
     }
 
     bool has_nfreq() const {
@@ -217,7 +217,7 @@ public:
 
     int get_nfreq() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return static_cast<int>(metadata[jsonMetadata::COARSE_FREQ].size());
+        return static_cast<int>(metadata.at(jsonMetadata::COARSE_FREQ).size());
     }
 
     // TODO: this should really be a freq_id_t array
@@ -234,7 +234,7 @@ public:
 
     std::vector<int> get_coarse_freq() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::COARSE_FREQ].template get<std::vector<int>>();
+        return metadata.at(jsonMetadata::COARSE_FREQ).template get<std::vector<int>>();
     }
 
     // TODO: remove this, it's not setting anything anymore (and assumes that
@@ -273,7 +273,7 @@ public:
 
     uint32_t get_rfi_num_bad_inputs() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::RFI_NUM_BAD_INPUTS].template get<uint32_t>();
+        return metadata.at(jsonMetadata::RFI_NUM_BAD_INPUTS).template get<uint32_t>();
     }
 
     /// The number of FPGA frames flagged as containing RFI.
@@ -293,7 +293,7 @@ public:
 
     int32_t get_rfi_flagged_samples() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::RFI_FLAGGED_SAMPLES].template get<int32_t>();
+        return metadata.at(jsonMetadata::RFI_FLAGGED_SAMPLES).template get<int32_t>();
     }
 
     void set_lost_timesamples(int32_t lost_timesamples) {
@@ -308,13 +308,13 @@ public:
 
     int32_t get_lost_timesamples() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::LOST_TIMESAMPLES].template get<int32_t>();
+        return metadata.at(jsonMetadata::LOST_TIMESAMPLES).template get<int32_t>();
     }
 
     void atomic_add_lost_timesamples(const int32_t lost_samples) {
         std::lock_guard<std::mutex> lock(this->lock);
-        metadata[jsonMetadata::LOST_TIMESAMPLES] =
-            metadata[jsonMetadata::LOST_TIMESAMPLES].template get<int32_t>() + lost_samples;
+        metadata.at(jsonMetadata::LOST_TIMESAMPLES) =
+            metadata.at(jsonMetadata::LOST_TIMESAMPLES).template get<int32_t>() + lost_samples;
     }
 
     // All time samples in this buffer (or the whole buffer, if the
@@ -339,7 +339,7 @@ public:
 
     int64_t get_sample0_offset() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::SAMPLE0_OFFSET].template get<int64_t>();
+        return metadata.at(jsonMetadata::SAMPLE0_OFFSET).template get<int64_t>();
     }
 
     void set_offset_downsampling(const int offset_downsampling) {
@@ -354,7 +354,7 @@ public:
 
     int get_offset_downsampling() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::OFFSET_DOWNSAMPLING].template get<int>();
+        return metadata.at(jsonMetadata::OFFSET_DOWNSAMPLING).template get<int>();
     }
 
     // Per-frequency arrays
@@ -374,7 +374,7 @@ public:
 
     std::vector<int> get_freq_upchan_factor() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::FREQ_UPCHAN_FACTOR].template get<std::vector<int>>();
+        return metadata.at(jsonMetadata::FREQ_UPCHAN_FACTOR).template get<std::vector<int>>();
     }
 
     // TODO: Store upchannelization index as well
@@ -397,7 +397,7 @@ public:
 
     std::vector<int64_t> get_half_fpga_sample0() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::HALF_FPGA_SAMPLE0].template get<std::vector<int64_t>>();
+        return metadata.at(jsonMetadata::HALF_FPGA_SAMPLE0).template get<std::vector<int64_t>>();
     }
 
     // Time sampling -- for each coarse frequency channel, the factor
@@ -416,7 +416,7 @@ public:
 
     std::vector<int> get_time_downsampling_fpga() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::TIME_DOWNSAMPLING_FPGA];
+        return metadata.at(jsonMetadata::TIME_DOWNSAMPLING_FPGA);
     }
 
     // non-science metadata
@@ -433,7 +433,7 @@ public:
 
     timeval get_first_packet_recv_time() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::FIRST_PACKET_RECV_TIME].template get<timeval>();
+        return metadata.at(jsonMetadata::FIRST_PACKET_RECV_TIME).template get<timeval>();
     }
 
     // links to other data
@@ -450,7 +450,7 @@ public:
 
     stream_t get_stream_id() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return stream_t{.id = metadata[jsonMetadata::STREAM_ID].template get<uint64_t>()};
+        return stream_t{.id = metadata.at(jsonMetadata::STREAM_ID).template get<uint64_t>()};
     }
 
     /// ID of the dataset
@@ -466,7 +466,7 @@ public:
 
     dset_id_t get_dataset_id() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::DATASET_ID].template get<dset_id_t>();
+        return metadata.at(jsonMetadata::DATASET_ID).template get<dset_id_t>();
     }
 
 private:
@@ -522,7 +522,7 @@ get_chord_metadata(const std::shared_ptr<const metadataObject>& mc) {
 inline std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id) {
     if (!buf || frame_id < 0 || frame_id >= (int)buf->metadata.size())
         return std::shared_ptr<chordMetadata>();
-    std::shared_ptr<metadataObject> meta = buf->metadata[frame_id];
+    std::shared_ptr<metadataObject> meta = buf->metadata.at(frame_id);
     return get_chord_metadata(meta);
 }
 

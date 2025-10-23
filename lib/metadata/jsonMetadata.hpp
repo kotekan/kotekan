@@ -79,7 +79,7 @@ struct beamCoord {
 
 static inline void from_json(const nlohmann::json& j, beamCoord& c) {
     {
-        const auto& ra(j[RIGHT_ASCENSION]);
+        const auto& ra(j.at(RIGHT_ASCENSION));
         if (ra.size() > MAX_NUM_BEAMS)
             throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
         size_t i = 0;
@@ -94,7 +94,7 @@ static inline void from_json(const nlohmann::json& j, beamCoord& c) {
     }
 
     {
-        const auto& dec(j[DECLINATION]);
+        const auto& dec(j.at(DECLINATION));
         if (dec.size() > MAX_NUM_BEAMS)
             throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
         size_t i = 0;
@@ -109,7 +109,7 @@ static inline void from_json(const nlohmann::json& j, beamCoord& c) {
     }
 
     {
-        const auto& scale(j[SCALING]);
+        const auto& scale(j.at(SCALING));
         if (scale.size() > MAX_NUM_BEAMS)
             throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
         size_t i = 0;
@@ -134,8 +134,8 @@ static inline void to_json(nlohmann::json& j, const timeval& tv) {
 
 static inline void from_json(const nlohmann::json& j, timeval& tv) {
     using namespace jsonMetadata;
-    tv.tv_sec = j[TV_SEC].template get<std::int64_t>();
-    tv.tv_usec = j[TV_USEC].template get<std::int64_t>();
+    tv.tv_sec = j.at(TV_SEC).template get<std::int64_t>();
+    tv.tv_usec = j.at(TV_USEC).template get<std::int64_t>();
 }
 
 #endif
