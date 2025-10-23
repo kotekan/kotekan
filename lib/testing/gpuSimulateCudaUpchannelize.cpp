@@ -160,6 +160,7 @@ constexpr T sinc(const T x) {
 // array indexing
 
 constexpr int Eidx([[maybe_unused]] int c, int d, int f, int p, int t) {
+    // The "c" parameter is only used in the assert, is it needed at all?
     assert(c >= 0 && c < C);
     assert(d >= 0 && d < D);
     assert(f >= 0 && f < F);
@@ -169,6 +170,7 @@ constexpr int Eidx([[maybe_unused]] int c, int d, int f, int p, int t) {
 }
 
 constexpr int Ebaridx([[maybe_unused]] int c, int d, int fbar, int p, int tbar) {
+    // The "c" parameter is only used in the assert, is it needed at all?
     assert(c >= 0 && c < C);
     assert(d >= 0 && d < D);
     assert(fbar >= 0 && fbar < F * U);

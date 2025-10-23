@@ -148,19 +148,16 @@ public:
     }
 
     void set_name(const std::string& name) {
-        // GCC helpfully tries to warn us that the destination string may end up not
-        // NUL-terminated, which we know.
-#pragma GCC diagnostic push
-#if GCC_VERSION > 80000
-#pragma GCC diagnostic ignored "-Warray-bounds"
-#pragma GCC diagnostic ignored "-Wstringop-truncation"
-#endif
-        // strncpy(&(this->name[0]), name.c_str(), CHORD_META_MAX_DIMNAME);
+        // Manually copying in a for loop to avoid possibly buggy GCC warning
+        // about array bounds and stringop-truncation.
+        
         int len = name.length() < CHORD_META_MAX_DIMNAME ? name.length() : CHORD_META_MAX_DIMNAME;
 
         for (int i = 0; i < len; i++)
             this->name[i] = name[i];
-#pragma GCC diagnostic pop
+        // Fill the remaining space with 0s
+        for (int i = len; i < CHORD_META_MAX_DIMNAME; i++)
+            this->name[i] = '\0';
     }
 
     std::string get_name() const {
