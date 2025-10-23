@@ -407,9 +407,6 @@ public:
                     FATAL_ERROR("Buffer \"{:s}\" frame {:d} does not have metadata",
                                 buffer->buffer_name, frame_id);
                 assert(mc);
-                if (!(metadata_is_chord(mc) || metadata_is_N2(mc)))
-                    FATAL_ERROR("Metadata of buffer \"{:s}\" frame {:d} is not of type CHORD or N2",
-                                buffer->buffer_name, frame_id);
 
                 // Call one of the writers, depending if metadata is chord or N2
                 if (metadata_is_chord(mc)) {
@@ -420,6 +417,9 @@ public:
                     assert(metadata_is_N2(mc));
                     N2FrameView frame(buffer, frame_id);
                     write_n2(full_path, frame);
+                } else {
+                    FATAL_ERROR("Metadata of buffer \"{:s}\" frame {:d} is not of type CHORD or N2",
+                                buffer->buffer_name, frame_id);
                 }
             } // if !skip_writing
 
