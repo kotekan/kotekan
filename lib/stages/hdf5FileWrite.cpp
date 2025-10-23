@@ -130,11 +130,14 @@ public:
             const double this_time = current_time();
             const double elapsed_time = this_time - start_time;
 
-            INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
-                 frame_counter, meta->get_sample0_offset(), elapsed_time);
+            if (meta->has_sample0_offset())
+                INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
+                     frame_counter, meta->get_sample0_offset(), elapsed_time);
+            else
+                INFO("Received buffer {} frame {} (duration {} sec)", unique_name, frame_counter,
+                     elapsed_time);
 
             if (!skip_writing) {
-
                 // Define file name
                 std::ostringstream buf;
                 buf << base_dir << "/";
@@ -224,19 +227,24 @@ public:
                     dim_names.push_back(meta->get_dimension_name(d));
                 dataset.createAttribute("dim_names", dim_names);
 
-                if (meta->get_sample0_offset() >= 0)
+                if (meta->has_sample0_offset())
                     dataset.createAttribute("sample0_offset", meta->get_sample0_offset());
 
-                if (meta->get_offset_downsampling() >= 0)
+                if (meta->has_offset_downsampling())
                     dataset.createAttribute("offset_downsampling", meta->get_offset_downsampling());
 
-                if (meta->get_nfreq() >= 0) {
+                if (meta->has_coarse_freq())
                     dataset.createAttribute("coarse_freq", meta->get_coarse_freq());
+
+                if (meta->has_freq_upchan_factor())
                     dataset.createAttribute("freq_upchan_factor", meta->get_freq_upchan_factor());
+
+                if (meta->has_half_fpga_sample0())
                     dataset.createAttribute("half_fpga_sample0", meta->get_half_fpga_sample0());
+
+                if (meta->has_time_downsampling_fpga())
                     dataset.createAttribute("time_downsampling_fpga",
                                             meta->get_time_downsampling_fpga());
-                }
 
                 if (meta->ndishes >= 0) {
                     dataset.createAttribute("ndishes", meta->ndishes);
