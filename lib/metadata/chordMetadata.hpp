@@ -150,7 +150,7 @@ public:
     void set_name(const std::string& name) {
         // Manually copying in a for loop to avoid possibly buggy GCC warning
         // about array bounds and stringop-truncation.
-        
+
         int len = name.length() < CHORD_META_MAX_DIMNAME ? name.length() : CHORD_META_MAX_DIMNAME;
 
         for (int i = 0; i < len; i++)
