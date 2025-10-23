@@ -53,6 +53,9 @@ public:
     /// Helper function to set CHORD metadata during conversion to NDArray
     void set_from_frame_desc(const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc);
 
+    /// copy object
+    void deepCopy(std::shared_ptr<metadataObject> other) override;
+
     /// Returns the size of objects of this type when serialized into bytes.
     size_t get_serialized_size() override;
 
@@ -63,6 +66,11 @@ public:
     /// Serializes this metadata object into the given byte array,
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
+
+    /// serialize to json
+    nlohmann::json to_json() override {
+        return metadata;
+    }
 
     /// controls access to this object
     mutable class almost_copyable_mutex : public std::mutex {
