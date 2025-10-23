@@ -187,10 +187,12 @@ void N2Accumulate::main_thread() {
             break;
 
         std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
+        /*
         DEBUG("Frame has json metadata: {:s}", frame_metadata->get_string_repr_of_json());
         DEBUG("Frame has seq_num: {}", frame_metadata->has_fpga_seq_num());
         if(frame_metadata->has_fpga_seq_num())
             DEBUG("Frame seq_num is: {:d}", frame_metadata->get_fpga_seq_num());
+        */
         int64_t in_frame_num = frame_metadata->get_fpga_seq_num() / _n_fpga_samples_per_n2k_frame;
 
         // Start and end times of this frame
@@ -201,10 +203,13 @@ void N2Accumulate::main_thread() {
             t_frame_s = N2::ts_to_uint64(frame_metadata->get_gps_time());
         } else {
             // If GPS time is not set, fall back to system time.
+            /*
             timespec ts;
             timeval tv = frame_metadata->get_first_packet_recv_time();
             TIMEVAL_TO_TIMESPEC(&tv, &ts);
             t_frame_s = N2::ts_to_uint64(ts);
+            */
+            t_frame_s = 0;  //TODO: move this logic to telescope
         }
         // uint64_t t_frame_e = t_frame_s + _in_frame_duration_nsec;
         comp_time_seconds_metric.set(t_frame_s / 1e9);
