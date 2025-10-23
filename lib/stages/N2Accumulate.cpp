@@ -136,6 +136,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     in_counts_buf = get_buffer("in_counts_buf");
     in_counts_buf->register_consumer(unique_name);
 
+    in_rfimask_buf = get_buffer("in_rfimask_buf");
+    in_rfimask_buf->register_consumer(unique_name);
+
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
@@ -154,6 +157,7 @@ void N2Accumulate::main_thread() {
 
     N2::frameID in_frame_id(in_buf);
     N2::frameID in_counts_frame_id(in_counts_buf);
+    N2::frameID in_rfimask_frame_id(in_rfimask_buf);
     N2::frameID out_frame_id(out_buf);
 
     INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]", in_buf->buffer_name,
@@ -184,6 +188,14 @@ void N2Accumulate::main_thread() {
         int32_t *counts =
             (int32_t *) in_counts_buf->wait_for_full_frame(unique_name, in_counts_frame_id);
         if (counts == nullptr)
+            break;
+
+        // Fetch a new rfimask frame and get its sequence id
+        DEBUG("Waiting for new input counts frame {:s}[{:d}].", in_rfimask_buf->buffer_name,
+              in_rfimask_frame_id);
+        int32_t *rfimask =
+            (int32_t *) in_rfimask_buf->wait_for_full_frame(unique_name, in_rfimask_frame_id);
+        if (rfimask == nullptr)
             break;
 
         std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
@@ -297,6 +309,7 @@ void N2Accumulate::main_thread() {
         // Advance to the next frame
         in_buf->mark_frame_empty(unique_name, in_frame_id++);
         in_counts_buf->mark_frame_empty(unique_name, in_counts_frame_id++);
+        in_rfimask_buf->mark_frame_empty(unique_name, in_rfimask_frame_id++);
     }
 }
 

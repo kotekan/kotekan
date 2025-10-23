@@ -56,18 +56,25 @@ public:
 private:
     Buffer* corr_buf;
     Buffer* count_buf;
+    Buffer* rfi_buf;
     std::string corr_name;
     std::string corr_type;
     std::string count_name;
     std::string count_type;
+    std::string rfi_name;
+    std::string rfi_type;
     std::array<int32_t, 2> corr_value;
-    int32_t count_value;
     std::vector<std::array<int32_t, 2>> corr_value_array;
+    std::array<int32_t, 2> corr_min;
+    std::array<int32_t, 2> corr_max;
+    int32_t count_value;
     std::vector<int32_t> count_value_array;
     int32_t count_min;
     int32_t count_max;
-    std::array<int32_t, 2> corr_min;
-    std::array<int32_t, 2> corr_max;
+    int32_t rfi_value;
+    std::vector<int32_t> rfi_value_array;
+    int32_t rfi_min;
+    int32_t rfi_max;
     bool mul_correlation_by_counts;
     int32_t samples_per_data_set;
     int32_t sub_integration_ntime;
@@ -88,6 +95,7 @@ private:
     const std::shared_ptr<chordMetadata> get_new_metadata(Buffer* buf, frameID frame_id);
     void set_correlation_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num);
     void set_counts_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num);
+    void set_rfimask_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num);
     void get_blocked_indices(int i, int j, int blocksize, int &ihi, int &jhi, int &ilo, int &jlo0, int &block_idx);
 };
 

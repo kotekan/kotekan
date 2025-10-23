@@ -62,9 +62,10 @@ public:
 
 private:
     // Buffers to read/write
-    Buffer* in_buf;        /// Buffer containing input frames
-    Buffer* in_counts_buf; /// Buffer containing input frames
-    Buffer* out_buf;       /// Output for the main vis dataset only
+    Buffer* in_buf;         /// Buffer containing input correlations
+    Buffer* in_counts_buf;  /// Buffer containing input counts
+    Buffer* in_rfimask_buf; /// Buffer containing input rfimask
+    Buffer* out_buf;        /// Output for the main vis dataset only
 
     // Parameters saved from the config files
     int64_t _num_freq_per_n2k_frame;

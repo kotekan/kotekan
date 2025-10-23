@@ -43,6 +43,8 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     corr_buf->register_producer(unique_name);
     count_buf = get_buffer("out_counts_buf");
     count_buf->register_producer(unique_name);
+    rfi_buf = get_buffer("out_rfimask_buf");
+    rfi_buf->register_producer(unique_name);
 
     corr_name = config.get_default<std::string>(unique_name, "correlation_name", "n2k_correlation");
     count_name = config.get_default<std::string>(unique_name, "counts_name", "n2k_counts");
@@ -187,6 +189,9 @@ void testN2kGen::set_counts_metadata(std::shared_ptr<chordMetadata> meta, uint64
     meta->set_half_fpga_sample0(half_fpga_sample0);
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
+    
+void testN2kGen::set_rfimask_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num) {
+}
 
 void testN2kGen::get_blocked_indices(int i, int j, int blocksize,
                 int &ihi, int &jhi, int &ilo, int &jlo, int &block_idx) {
@@ -225,6 +230,7 @@ void testN2kGen::main_thread() {
 
     frameID corr_frame_id(corr_buf);
     frameID count_frame_id(count_buf);
+    frameID rfi_frame_id(rfi_buf);
     int num_frames_generated = 0;
     uint64_t seq_num = 0;
 
@@ -235,6 +241,7 @@ void testN2kGen::main_thread() {
 
     int corr_val_idx = 0;
     int count_val_idx = 0;
+    int rfi_val_idx = 0;
 
     while (!stop_thread) {
 
@@ -245,15 +252,21 @@ void testN2kGen::main_thread() {
         int32_t* count = (int32_t*)count_buf->wait_for_empty_frame(unique_name, count_frame_id);
         if (count == nullptr)
             break;
+        int32_t* rfi = (int32_t*)rfi_buf->wait_for_empty_frame(unique_name, rfi_frame_id);
+        if (rfi == nullptr)
+            break;
 
         // create metadata
         const std::shared_ptr<chordMetadata> corr_meta = get_new_metadata(corr_buf, corr_frame_id);
         const std::shared_ptr<chordMetadata> count_meta =
             get_new_metadata(count_buf, count_frame_id);
+        const std::shared_ptr<chordMetadata> rfi_meta =
+            get_new_metadata(rfi_buf, rfi_frame_id);
 
         // fill metadata
         set_correlation_metadata(corr_meta, seq_num);
         set_counts_metadata(count_meta, seq_num);
+        set_rfimask_metadata(rfi_meta, seq_num);
 
         // block, freq, and time strides for access into the
         // correlation and counts buffers
@@ -380,6 +393,7 @@ void testN2kGen::main_thread() {
 
         corr_buf->mark_frame_full(unique_name, corr_frame_id++);
         count_buf->mark_frame_full(unique_name, count_frame_id++);
+        rfi_buf->mark_frame_full(unique_name, rfi_frame_id++);
 
         num_frames_generated++;
         seq_num += samples_per_data_set;
