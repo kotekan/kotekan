@@ -190,8 +190,7 @@ public:
             dataset.createAttribute("half_fpga_sample0", meta->get_half_fpga_sample0());
 
         if (meta->has_time_downsampling_fpga())
-            dataset.createAttribute("time_downsampling_fpga",
-                                    meta->get_time_downsampling_fpga());
+            dataset.createAttribute("time_downsampling_fpga", meta->get_time_downsampling_fpga());
 
         if (meta->ndishes >= 0) {
             dataset.createAttribute("ndishes", meta->ndishes);
@@ -313,10 +312,10 @@ public:
         bool dims_nonzero = true;
         for (size_t d = 0; d < dims.size(); d++) {
             chunk_dims.push_back((hsize_t)dims[d]);
-            if(dims[d] == 0)
+            if (dims[d] == 0)
                 dims_nonzero = false;
         }
-        if(dims_nonzero) {
+        if (dims_nonzero) {
 
             // Enable chunking
             if (!chunk_dims.empty()) {
