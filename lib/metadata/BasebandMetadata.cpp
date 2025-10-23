@@ -23,6 +23,12 @@ struct BasebandMetadataFormat {
     int32_t reserved;
 };
 
+void BasebandMetadata::deepCopy(std::shared_ptr<metadataObject> other) {
+    auto bb_other = std::dynamic_pointer_cast<BasebandMetadata>(other);
+    assert(bb_other);
+    *this = *bb_other;
+}
+
 size_t BasebandMetadata::get_serialized_size() {
     return sizeof(BasebandMetadataFormat);
 }
@@ -62,4 +68,40 @@ size_t BasebandMetadata::serialize(char* bytes) {
     fmt->fpga0_ns = fpga0_ns;
     fmt->num_elements = num_elements;
     return sz;
+}
+
+nlohmann::json BasebandMetadata::to_json() {
+    nlohmann::json rtn = {};
+    ::to_json(rtn, *this);
+    return rtn;
+}
+
+void to_json(nlohmann::json& j, const BasebandMetadata& m) {
+    j["event_id"] = m.event_id;
+    j["freq_id"] = m.freq_id;
+    j["event_start_fpga"] = m.event_start_fpga;
+    j["event_end_fpga"] = m.event_end_fpga;
+    j["time0_fpga"] = m.time0_fpga;
+    j["time0_ctime"] = m.time0_ctime;
+    j["time0_ctime_offset"] = m.time0_ctime_offset;
+    j["first_packet_recv_time"] = m.first_packet_recv_time;
+    j["frame_fpga_seq"] = m.frame_fpga_seq;
+    j["valid_to"] = m.valid_to;
+    j["fpga0_ns"] = m.fpga0_ns;
+    j["num_elements"] = m.num_elements;
+}
+
+void from_json(const nlohmann::json& j, BasebandMetadata& m) {
+    m.event_id = j["event_id"];
+    m.freq_id = j["freq_id"];
+    m.event_start_fpga = j["event_start_fpga"];
+    m.event_end_fpga = j["event_end_fpga"];
+    m.time0_fpga = j["time0_fpga"];
+    m.time0_ctime = j["time0_ctime"];
+    m.time0_ctime_offset = j["time0_ctime_offset"];
+    m.first_packet_recv_time = j["first_packet_recv_time"];
+    m.frame_fpga_seq = j["frame_fpga_seq"];
+    m.valid_to = j["valid_to"];
+    m.fpga0_ns = j["fpga0_ns"];
+    m.num_elements = j["num_elements"];
 }

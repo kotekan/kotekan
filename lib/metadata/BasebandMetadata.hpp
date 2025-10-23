@@ -8,6 +8,9 @@
 
 class BasebandMetadata : public metadataObject {
 public:
+    /// deep copy operator
+    void deepCopy(std::shared_ptr<metadataObject> other) override;
+
     /// Returns the size of objects of this type when serialized into bytes.
     size_t get_serialized_size() override;
 
@@ -18,6 +21,8 @@ public:
     /// Serializes this metadata object into the given byte array,
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
+
+    nlohmann::json to_json() override;
 
     /// event and frequency ID
     uint64_t event_id;
@@ -54,5 +59,8 @@ public:
     /// Future expansion+padding
     int32_t reserved;
 };
+
+void to_json(nlohmann::json& j, const BasebandMetadata& m);
+void from_json(const nlohmann::json& j, BasebandMetadata& m);
 
 #endif // BASEBAND_METADATA_HPP
