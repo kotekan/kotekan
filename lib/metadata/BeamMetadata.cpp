@@ -19,6 +19,12 @@ struct BeamMetadataFormat {
     uint32_t scaling;
 };
 
+void BeamMetadata::deepCopy(std::shared_ptr<metadataObject> other) {
+    auto beam_other = std::dynamic_pointer_cast<BeamMetadata>(other);
+    assert(beam_other);
+    *this = *beam_other;
+}
+
 size_t BeamMetadata::get_serialized_size() {
     return sizeof(BeamMetadataFormat);
 }
