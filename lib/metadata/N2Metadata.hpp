@@ -73,7 +73,12 @@ public:
     /// Serializes this metadata object into the given byte array,
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
+
+    nlohmann::json to_json() override;
 };
+
+void to_json(nlohmann::json& j, const N2Metadata& m);
+void from_json(const nlohmann::json& j, N2Metadata& m);
 
 inline bool metadata_is_N2(Buffer* buf, int) {
     return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "N2Metadata");
