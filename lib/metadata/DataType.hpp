@@ -31,11 +31,11 @@ using float16_t = _Float16;
 
 namespace kotekan {
 
-#ifdef DEBUGGING
+// #ifdef DEBUGGING
 #define KOTEKAN_ASSERT(cond) assert(cond)
-#else
-#define KOTEKAN_ASSERT(cond) 0
-#endif
+// #else
+// #define KOTEKAN_ASSERT(cond) 0
+// #endif
 
 // 8 bools (packed into a type)
 struct uint1x8_t {

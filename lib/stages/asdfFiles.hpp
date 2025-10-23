@@ -47,7 +47,8 @@ inline ASDF::scalar_type_id_t chord2asdf(const kotekan::DataType type) {
         case kotekan::float64:
             return ASDF::id_float64;
         default:
-            assert(0);
+            throw std::runtime_error(
+                fmt::format("chord2asdf given unknown DataType value: {:d}", (int64_t)type));
     }
 }
 

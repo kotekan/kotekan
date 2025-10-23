@@ -452,8 +452,9 @@ public:
     // Poison
 
     // Poison an NDArray ring buffer
-    void set_to_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
-                       const std::ptrdiff_t F_max) {
+    void set_to_poison([[maybe_unused]] const std::uint8_t poison_value,
+                       [[maybe_unused]] const std::ptrdiff_t F_min,
+                       [[maybe_unused]] const std::ptrdiff_t F_max) {
 #ifdef DEBUGGING
         assert(get_write_valid().size() > 0);
 
@@ -507,8 +508,9 @@ public:
     }
 
     // Check an NDArray ring buffer for poison
-    void check_for_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
-                          const std::ptrdiff_t F_max) {
+    void check_for_poison([[maybe_unused]] const std::uint8_t poison_value,
+                          [[maybe_unused]] const std::ptrdiff_t F_min,
+                          [[maybe_unused]] const std::ptrdiff_t F_max) {
 #ifdef DEBUGGING
         assert(get_write_valid().size() > 0);
 

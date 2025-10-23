@@ -418,7 +418,7 @@ void Buffer::print_full_status() {
 
     buffer_lock lock(mutex);
 
-    char status_string[num_frames + 1];
+    [[maybe_unused]] char status_string[num_frames + 1];
     status_string[num_frames] = '\0';
 
     DEBUG("--------------------- {:} ---------------------", buffer_name);

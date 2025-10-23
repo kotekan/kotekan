@@ -148,14 +148,16 @@ public:
     }
 
     void set_name(const std::string& name) {
-        // GCC helpfully tries to warn us that the destination string may end up not
-        // NUL-terminated, which we know.
-#pragma GCC diagnostic push
-#if GCC_VERSION > 80000
-#pragma GCC diagnostic ignored "-Wstringop-truncation"
-#endif
-        strncpy(this->name, name.c_str(), CHORD_META_MAX_DIMNAME);
-#pragma GCC diagnostic pop
+        // Manually copying in a for loop to avoid possibly buggy GCC warning
+        // about array bounds and stringop-truncation.
+
+        int len = name.length() < CHORD_META_MAX_DIMNAME ? name.length() : CHORD_META_MAX_DIMNAME;
+
+        for (int i = 0; i < len; i++)
+            this->name[i] = name[i];
+        // Fill the remaining space with 0s
+        for (int i = len; i < CHORD_META_MAX_DIMNAME; i++)
+            this->name[i] = '\0';
     }
 
     std::string get_name() const {
@@ -237,10 +239,10 @@ public:
 
     // TODO: remove this, it's not setting anything anymore (and assumes that
     // fpga_seq_num is set)
-    void set_gps_time(const timespec gps_time) {
+    void set_gps_time([[maybe_unused]] const timespec gps_time) {
         // this must not request the lock
         const Telescope& tel = Telescope::instance();
-        const timespec my_gps_time = tel.to_time(this->get_fpga_seq_num());
+        [[maybe_unused]] const timespec my_gps_time = tel.to_time(this->get_fpga_seq_num());
         assert(gps_time.tv_sec == my_gps_time.tv_sec);
         assert(gps_time.tv_nsec == my_gps_time.tv_nsec);
     }
