@@ -45,6 +45,11 @@ void chordMetadata::set_from_frame_desc(
     }
 }
 
+void chordMetadata::deepCopy(std::shared_ptr<metadataObject> other) {
+    auto chord_other = std::dynamic_pointer_cast<chordMetadata>(other);
+    assert(chord_other);
+    *this = *chord_other;
+}
 
 struct chordMetadataFormat {
     int32_t max_dim;
