@@ -166,6 +166,11 @@ public:
     using beamCoord = jsonMetadata::beamCoord;
 
     /// The coordinates of the tracking beam (if applicable)
+    bool has_beam_coord() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::BEAM_COORD);
+    }
+
     beamCoord get_beam_coord() const {
         std::lock_guard<std::mutex> lock(this->lock);
         return metadata[jsonMetadata::BEAM_COORD].template get<beamCoord>();
@@ -173,14 +178,29 @@ public:
 
     // TODO: add set_beam_coord
 
+    void set_fpga_seq_num(const int64_t fpga_seq_num) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::FPGA_SEQ_NUM] = fpga_seq_num;
+    }
+
+    bool has_fpga_seq_num() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::FPGA_SEQ_NUM);
+    }
+
     int64_t get_fpga_seq_num() const {
         std::lock_guard<std::mutex> lock(this->lock);
         return metadata[jsonMetadata::FPGA_SEQ_NUM].template get<int64_t>();
     }
 
-    void set_fpga_seq_num(const int64_t fpga_seq_num) {
+    void set_frame_counter(const int frame_counter) {
         std::lock_guard<std::mutex> lock(this->lock);
-        metadata[jsonMetadata::FPGA_SEQ_NUM] = fpga_seq_num;
+        metadata[jsonMetadata::FRAME_COUNTER] = frame_counter;
+    }
+
+    bool has_frame_counter() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::FRAME_COUNTER);
     }
 
     int get_frame_counter() const {
@@ -188,9 +208,9 @@ public:
         return metadata[jsonMetadata::FRAME_COUNTER].template get<int>();
     }
 
-    void set_frame_counter(const int frame_counter) {
+    bool has_nfreq() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        metadata[jsonMetadata::FRAME_COUNTER] = frame_counter;
+        return metadata.contains(jsonMetadata::COARSE_FREQ);
     }
 
     int get_nfreq() const {
@@ -199,22 +219,20 @@ public:
     }
 
     // TODO: this should really be a freq_id_t array
-    const std::vector<int> get_coarse_freq() const {
-        std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::COARSE_FREQ].template get<std::vector<int>>();
-    }
-
     void set_coarse_freq(const std::vector<int>& coarse_freq) {
         std::lock_guard<std::mutex> lock(this->lock);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
         metadata[jsonMetadata::COARSE_FREQ] = coarse_freq;
     }
 
-    // TODO: remove this, its redundant
-    struct timespec get_gps_time() const {
-        // this must not request the lock
-        const Telescope& tel = Telescope::instance();
-        return tel.to_time(this->get_fpga_seq_num());
+    bool has_coarse_freq() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::COARSE_FREQ);
+    }
+
+    std::vector<int> get_coarse_freq() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata[jsonMetadata::COARSE_FREQ].template get<std::vector<int>>();
     }
 
     // TODO: remove this, it's not setting anything anymore (and assumes that
@@ -227,16 +245,33 @@ public:
         assert(gps_time.tv_nsec == my_gps_time.tv_nsec);
     }
 
-    /// The number of bad inputs in the RFI systems bad input list.
-    /// This value is mostly needed for renormalization of the SK values.
-    uint32_t get_rfi_num_bad_inputs() const {
-        std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::RFI_NUM_BAD_INPUTS].template get<uint32_t>();
+    // TODO: remove this, it's redundant
+    bool has_gps_time() const {
+        return has_fpga_seq_num();
     }
 
+    // TODO: remove this, it's redundant
+    struct timespec get_gps_time() const {
+        // this must not request the lock
+        const Telescope& tel = Telescope::instance();
+        return tel.to_time(this->get_fpga_seq_num());
+    }
+
+    /// The number of bad inputs in the RFI systems bad input list.
+    /// This value is mostly needed for renormalization of the SK values.
     void set_rfi_num_bad_inputs(const uint32_t rfi_num_bad_inputs) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::RFI_NUM_BAD_INPUTS] = rfi_num_bad_inputs;
+    }
+
+    bool has_rfi_num_bad_inputs() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::RFI_NUM_BAD_INPUTS);
+    }
+
+    uint32_t get_rfi_num_bad_inputs() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata[jsonMetadata::RFI_NUM_BAD_INPUTS].template get<uint32_t>();
     }
 
     /// The number of FPGA frames flagged as containing RFI.
@@ -244,24 +279,34 @@ public:
     /// missing samples as samples with RFI.  For renormalization this value
     /// should NOT be used, use @c lost_timesamples instead.
     /// This value will be filled even if RFI zeroing is disabled.
-    int32_t get_rfi_flagged_samples() const {
-        std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::RFI_FLAGGED_SAMPLES].template get<int32_t>();
-    }
-
     void set_rfi_flagged_samples(const int32_t flagged_samples) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::RFI_FLAGGED_SAMPLES] = flagged_samples;
     }
 
-    int32_t get_lost_timesamples() const {
+    bool has_rfi_flagged_samples() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::LOST_TIMESAMPLES].template get<int32_t>();
+        return metadata.contains(jsonMetadata::RFI_FLAGGED_SAMPLES);
+    }
+
+    int32_t get_rfi_flagged_samples() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata[jsonMetadata::RFI_FLAGGED_SAMPLES].template get<int32_t>();
     }
 
     void set_lost_timesamples(int32_t lost_timesamples) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::LOST_TIMESAMPLES] = lost_timesamples;
+    }
+
+    bool has_lost_timesamples() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::LOST_TIMESAMPLES);
+    }
+
+    int32_t get_lost_timesamples() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata[jsonMetadata::LOST_TIMESAMPLES].template get<int32_t>();
     }
 
     void atomic_add_lost_timesamples(const int32_t lost_samples) {
@@ -280,24 +325,34 @@ public:
     //                time_downsampling_fpga[F]
     // where `T` is the time sample index (the slowest varying index)
     // and `F` is the coarse frequency index.
-    int64_t get_sample0_offset() const {
-        std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::SAMPLE0_OFFSET].template get<int64_t>();
-    }
-
     void set_sample0_offset(const int64_t sample0_offset) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::SAMPLE0_OFFSET] = sample0_offset;
     }
 
-    int get_offset_downsampling() const {
+    bool has_sample0_offset() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::OFFSET_DOWNSAMPLING].template get<int>();
+        return metadata.contains(jsonMetadata::SAMPLE0_OFFSET);
+    }
+
+    int64_t get_sample0_offset() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata[jsonMetadata::SAMPLE0_OFFSET].template get<int64_t>();
     }
 
     void set_offset_downsampling(const int offset_downsampling) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::OFFSET_DOWNSAMPLING] = offset_downsampling;
+    }
+
+    bool has_offset_downsampling() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::OFFSET_DOWNSAMPLING);
+    }
+
+    int get_offset_downsampling() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata[jsonMetadata::OFFSET_DOWNSAMPLING].template get<int>();
     }
 
     // Per-frequency arrays
@@ -308,6 +363,11 @@ public:
         std::lock_guard<std::mutex> lock(this->lock);
         assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
         metadata[jsonMetadata::FREQ_UPCHAN_FACTOR] = freq_upchan_factor;
+    }
+
+    bool has_freq_upchan_factor() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::FREQ_UPCHAN_FACTOR);
     }
 
     std::vector<int> get_freq_upchan_factor() const {
@@ -328,6 +388,11 @@ public:
         metadata[jsonMetadata::HALF_FPGA_SAMPLE0] = half_fpga_sample0;
     }
 
+    bool has_half_fpga_sample0() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::HALF_FPGA_SAMPLE0);
+    }
+
     std::vector<int64_t> get_half_fpga_sample0() const {
         std::lock_guard<std::mutex> lock(this->lock);
         return metadata[jsonMetadata::HALF_FPGA_SAMPLE0].template get<std::vector<int64_t>>();
@@ -342,6 +407,11 @@ public:
         metadata[jsonMetadata::TIME_DOWNSAMPLING_FPGA] = time_downsampling_fpga;
     }
 
+    bool has_time_downsampling_fpga() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::TIME_DOWNSAMPLING_FPGA);
+    }
+
     std::vector<int> get_time_downsampling_fpga() const {
         std::lock_guard<std::mutex> lock(this->lock);
         return metadata[jsonMetadata::TIME_DOWNSAMPLING_FPGA];
@@ -349,37 +419,52 @@ public:
 
     // non-science metadata
 
-    timeval get_first_packet_recv_time() const {
-        std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::FIRST_PACKET_RECV_TIME].template get<timeval>();
-    }
-
     void set_first_packet_recv_time(const timeval time_v) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::FIRST_PACKET_RECV_TIME] = time_v;
     }
 
-    // links to other data
-
-    stream_t get_stream_id() const {
+    bool has_first_packet_recv_time() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return stream_t{.id = metadata[jsonMetadata::STREAM_ID].template get<uint64_t>()};
+        return metadata.contains(jsonMetadata::FIRST_PACKET_RECV_TIME);
     }
+
+    timeval get_first_packet_recv_time() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata[jsonMetadata::FIRST_PACKET_RECV_TIME].template get<timeval>();
+    }
+
+    // links to other data
 
     void set_stream_id(const stream_t stream_id) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::STREAM_ID] = stream_id.id;
     }
 
-    /// ID of the dataset
-    dset_id_t get_dataset_id() const {
+    bool has_stream_id() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata[jsonMetadata::DATASET_ID].template get<dset_id_t>();
+        return metadata.contains(jsonMetadata::STREAM_ID);
     }
 
+    stream_t get_stream_id() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return stream_t{.id = metadata[jsonMetadata::STREAM_ID].template get<uint64_t>()};
+    }
+
+    /// ID of the dataset
     void set_dataset_id(const dset_id_t dset_id) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::DATASET_ID] = dset_id;
+    }
+
+    bool has_dataset_id() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::DATASET_ID);
+    }
+
+    dset_id_t get_dataset_id() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata[jsonMetadata::DATASET_ID].template get<dset_id_t>();
     }
 
 private:
