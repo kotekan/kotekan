@@ -39,6 +39,9 @@ class hdf5FileRead : public kotekan::Stage {
     const std::string input_dir = config.get<std::string>(unique_name, "input_dir");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
+    const bool prefix_host_rank = config.get_default<bool>(unique_name, "prefix_host_rank", false);
+    const int host_pool_rank = config.get_default<int>(unique_name, "frequency_pool_rank", 0);
+    const int host_pool_size = config.get_default<int>(unique_name, "frequency_pool_size", 1);
     const bool do_once = config.get_default<bool>(unique_name, "do_once", false);
 
     Buffer* const buffer;
@@ -84,6 +87,9 @@ public:
                 char hostname[256];
                 gethostname(hostname, sizeof hostname);
                 buf << hostname << "_";
+            }
+            if (prefix_host_rank) {
+                buf << "x" << std::setw(4) << std::setfill('0') << host_pool_rank << "_";
             }
             buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_index << ".h5";
             const std::string full_path = buf.str();
