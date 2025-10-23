@@ -217,33 +217,6 @@ jobs:
               -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: ""   # Any clang-specific tests to run?
-          
-          - id: release_clang
-            name: "Release build with clang"
-            ccache_key: kotekan-release-clang
-            cmake_defs: &build_release_clang_opts >-
-              -DCMAKE_BUILD_TYPE=Release
-              -DCMAKE_C_COMPILER=clang
-              -DCMAKE_CXX_COMPILER=clang++
-              -DWERROR=ON
-              -DCCACHE=ON
-              -DUSE_OMP=ON
-              -DUSE_NUMA=ON
-              -DNO_MEMLOCK=ON
-              -DUSE_CUDA=ON
-              -DUSE_HIP=OFF
-              -DUSE_OPENCL=ON
-              -DUSE_ASDF=ON
-              -DUSE_HDF5=ON
-              -DUSE_GDAL=ON
-              -DUSE_AIRSPY=ON
-              -DUSE_LAPACK_BLAZE=ON
-              -DUSE_FFTW=ON
-              -DUSE_JULIA=ON
-              -DUSE_DPDK=ON
-              -DWITH_TESTS=ON
-              -DWITH_BOOST_TESTS=OFF
-            post_build: ""  # clang tests?
 
           - id: docs
             name: "Build Documentation"
@@ -377,6 +350,33 @@ jobs:
             cmake_defs: *runner_build_release_gcc_opts      # re-using build opts from build
             post_build: |
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests
+          
+          - id: release_clang
+            name: "Release build with clang"
+            ccache_key: seflhosted-kotekan-release-clang
+            cmake_defs: &runner_build_release_clang_opts >-
+              -DCMAKE_BUILD_TYPE=Release
+              -DCMAKE_C_COMPILER=clang
+              -DCMAKE_CXX_COMPILER=clang++
+              -DWERROR=ON
+              -DCCACHE=ON
+              -DUSE_OMP=ON
+              -DUSE_NUMA=ON
+              -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON
+              -DUSE_HIP=OFF
+              -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON
+              -DUSE_HDF5=ON
+              -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON
+              -DUSE_LAPACK_BLAZE=ON
+              -DUSE_FFTW=ON
+              -DUSE_JULIA=ON
+              -DUSE_DPDK=ON
+              -DWITH_TESTS=ON
+              -DWITH_BOOST_TESTS=OFF
+            post_build: ""  # clang tests?
 
           - id: data_test
             name: "/data dir test"
