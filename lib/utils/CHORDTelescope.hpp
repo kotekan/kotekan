@@ -29,6 +29,9 @@ struct EOP {
     double yp_as;          // Polar Motion y', in arcseconds.
 };
 
+void to_json(nlohmann::json& j, const EOP& m);
+void from_json(const nlohmann::json& j, EOP& m);
+
 // A null (all 0) struct EOP;
 const static struct EOP eop_null = {
     .t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0.0, .ERA_deg = 0.0, .xp_as = 0.0, .yp_as = 0.0};
