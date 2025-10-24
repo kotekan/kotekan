@@ -15,6 +15,7 @@ sizeof_int: 4
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 2048
 samples_per_data_set: 4096
+rfi_downsampling_factor: 256
 # sub_integration_ntime: 8192  # ~40 ms for chord
 # samples_per_data_set: 8192   # 
 num_times: samples_per_data_set
@@ -96,11 +97,11 @@ earth_rotation_data:
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata
-    num_metadata_objects: 10 * buffer_depth
+    num_metadata_objects: 3 * buffer_depth
 
 n2_pool:
     kotekan_metadata_pool: N2Metadata
-    num_metadata_objects: 10 * buffer_depth
+    num_metadata_objects: 16 * buffer_depth
 
 fake_correlation_buffer:
     kotekan_buffer: standard
@@ -126,11 +127,22 @@ n2_buffer:
     frame_size: n2_frame_size
     metadata_pool: n2_pool
 
-gen_fake_corr_counts_rfi:
+gen_fake_rfi_RFImask:
+    type: random1x8
+    value: 255
+    kotekan_stage: testDataGen
+    out_buf: fake_rfimask_buffer
+    name: "RFImask"
+    array_shape: [ 4, 16, 128 ]  # [samples_per_data_set / 1024, num_local_freq, 128]
+    dim_name: ["T8hi128", "F", "T8lo128"]
+    num_frames: frames_to_generate
+    meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
+
+gen_fake_corr_counts:
     kotekan_stage: testN2kGen
     out_buf: fake_correlation_buffer
     out_counts_buf: fake_counts_buffer
-    out_rfimask_buf: fake_rfimask_buffer
+    in_rfimask_buf: fake_rfimask_buffer
     correlation_type: "f_times_ee"
     counts_type: "random_scalar"
     correlation_value: [ 1, -1 ]

@@ -98,6 +98,7 @@ private:
     int64_t _N2_num_products; ///< Number of products produced by the N2 correlator
     // size_t _num_N2_products_freqs; ///< Number of N2 products x frequencies
     // size_t _num_accum_products;    ///< Number of visibility products in accumulate output
+    int64_t _rfi_downsampling_factor;
 
     // The below vectors are initialized in the constructor after _num_vis_products
     // and _num_freq_in_frame are known.
@@ -108,6 +109,7 @@ private:
     std::vector<int32_t> _n_valid_fpga_samples_in_vis;
     std::vector<int32_t> _n_valid_fpga_samples_in_vis_even;
     std::vector<int32_t> _n_valid_sample_diff_sq_sum;
+    std::vector<int32_t> _n_rfi_samples_in_vis;
     int64_t _vis_samples_in_out_frame;
     int64_t _accum_fpga_start_tick;
 

@@ -381,8 +381,8 @@ class FakeGPUBuffer(InputBuffer):
         self.global_block = {"telescope": {"name": "fake"}}
 
 
-class FakeN2Buffer(InputBuffer):
-    """Create an input N2 format buffer and fill it using `fakeGPUBuffer`.
+class FakeN2KBuffers(InputBuffer):
+    """Create N2K-output format buffers and fill using `testN2kGen` and `testDataGen`.
 
     Parameters
     ----------
@@ -393,36 +393,85 @@ class FakeN2Buffer(InputBuffer):
 
     _buf_ind = 0
 
-    def __init__(self, **kwargs):
+    def __init__(self, samples_per_data_set, num_local_freq, n2k_kwargs, rfi_kwargs):
 
-        self.name = "fakegpu_buf%i" % self._buf_ind
-        stage_name = "fakegpu%i" % self._buf_ind
+        self.name = "faken2k_corr_buf%i" % self._buf_ind
+        self.counts_name = "faken2k_counts_buf%i" % self._buf_ind
+        self.rfi_name = "faken2k_rfi_buf%i" % self._buf_ind
+
+        n2k_stage_name = "faken2k_gen_%i" % self._buf_ind
+        rfi_stage_name = "faken2k_gen_rfi_%i" % self._buf_ind
+        
         self.__class__._buf_ind += 1
 
         self.buffer_block = {
             self.name: {
                 "kotekan_buffer": "standard",
-                "metadata_pool": "main_pool",
+                "metadata_pool": "chord_pool",
                 "num_frames": "buffer_depth",
-                "sizeof_int": 4,
+                "sizeof_float": 4,
+                "vis_blocksize": 16,
+                "vis_num_blocks_lin": "num_elements / vis_blocksize",
+                "vis_num_blocks": "(vis_num_blocks_lin * (vis_num_blocks_lin + 1)) / 2",
                 "frame_size": (
-                    "sizeof_int * num_freq_in_frame * ((num_elements *"
-                    " num_elements) + (num_elements * block_size))"
+                    "(samples_per_data_set / sub_integration_ntime) * num_local_freq"
+                    " * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_float"
                 ),
+            },
+            self.counts_name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "chord_pool",
+                "num_frames": "buffer_depth",
+                "sizeof_float": 4,
+                "count_blocksize": 8,
+                "count_num_blocks_lin": "(num_elements / 8) / count_blocksize",
+                "count_num_blocks": "(count_num_blocks_lin * (count_num_blocks_lin + 1)) / 2",
+                "frame_size": (
+                    "(samples_per_data_set / sub_integration_ntime) * num_local_freq"
+                    " * count_num_blocks * count_blocksize * count_blocksize * 2 * sizeof_float"
+                ),
+            },
+            self.rfi_name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "chord_pool",
+                "num_frames": "buffer_depth",
+                "frame_size": "(samples_per_data_set * num_local_freq) / 8"
             }
         }
 
-        stage_config = {
-            "kotekan_stage": "FakeGpu",
+        n2k_gen_config = {
+            "kotekan_stage": "testN2kGen",
             "out_buf": self.name,
-            "freq": 0,
-            "pre_accumulate": True,
-            "wait": False,
+            "out_counts_buf": self.counts_name,
+            "in_rfimask_buf": self.rfi_name,
+            "correlation_type": "const",
+            "correlation_value": [ 1, -2 ],
+            "counts_type":  "const",
+            "counts_value": "sub_integration_ntime",
+            "mul_correlation_by_counts": True,
         }
-        stage_config.update(kwargs)
+        rfi_gen_config = {
+            "kotekan_stage": "testDataGen",
+            "out_buf": self.rfi_name,
+            "type": "const1x8",
+            "value": 255,
+            "name": "RFImask",
+            "array_shape": [samples_per_data_set / 1024, num_local_freq, 128],
+            "dim_name": ["T8hi128", "F", "T8lo128"],
+            "meta_time_downsample_factor": 1024,
+        }
 
-        self.stage_block = {stage_name: stage_config}
-        self.global_block = {"telescope": {"name": "fake"}}
+        n2k_gen_config.update(n2k_kwargs)
+        rfi_gen_config.update(rfi_kwargs)
+
+        self.stage_block = {n2k_stage_name: n2k_gen_config,
+                            rfi_stage_name: rfi_gen_config}
+        self.global_block = {
+            "chord_pool": {
+                "kotekan_metadata_pool": "chordMetadata",
+                "num_metadata_objects": "3 * buffer_depth"
+            }
+        }
 
 
 class FakeVisBuffer(InputBuffer):
@@ -461,7 +510,7 @@ class FakeVisBuffer(InputBuffer):
         self.stage_block = {stage_name: stage_config}
 
 
-class FakeN2VisBuffer(InputBuffer):
+class FakeN2Buffer(InputBuffer):
     """Create an input visBuffer format buffer and fill it using `FakeVis`.
 
     Parameters
@@ -706,7 +755,7 @@ class DumpN2Buffer(OutputBuffer):
 
     name = None
 
-    def __init__(self, output_dir):
+    def __init__(self, output_dir, exit_after_n_files=0):
 
         self.name = "dumpn2_buf%i" % self._buf_ind
         stage_name = "dump%i" % self._buf_ind
@@ -728,6 +777,7 @@ class DumpN2Buffer(OutputBuffer):
             "file_name": self.name,
             "file_ext": "dump",
             "base_dir": output_dir,
+            "exit_after_n_files": exit_after_n_files,
         }
 
         self.stage_block = {stage_name: stage_config}
