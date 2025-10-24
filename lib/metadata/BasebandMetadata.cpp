@@ -23,8 +23,8 @@ struct BasebandMetadataFormat {
     int32_t reserved;
 };
 
-void BasebandMetadata::deepCopy(std::shared_ptr<metadataObject> other) {
-    auto bb_other = std::dynamic_pointer_cast<BasebandMetadata>(other);
+void BasebandMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
+    auto bb_other = std::dynamic_pointer_cast<const BasebandMetadata>(other);
     assert(bb_other);
     *this = *bb_other;
 }
