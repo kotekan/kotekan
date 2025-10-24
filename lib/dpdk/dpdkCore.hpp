@@ -187,6 +187,8 @@ private:
      */
     void create_handlers(kotekan::bufferContainer& buffer_container);
 
+    void create_workers(kotekan::bufferContainer& buffer_container);
+
     /// The pool of DPDK mbufs, one per numa node
     std::vector<struct rte_mempool*> mbuf_pools;
 
@@ -211,14 +213,8 @@ private:
     /// The size of the Transmit ring
     uint32_t tx_ring_size;
 
-    /// Just a list of ports with the length stored with it.
-    struct portList {
-        uint32_t* ports;
-        uint32_t num_ports;
-    };
-
-    /// One of these port list structs exists per lcore
-    struct portList* lcore_port_list;
+    /// Map of ports to lcores (DPDK threads)
+    std::vector<std::vector<uint32_t>> lcore_port_list;
 
     /// Number of memory channels
     uint32_t num_mem_channels;
@@ -228,6 +224,15 @@ private:
 
     /// One of these exists per system port
     dpdkRXhandler** handlers;
+
+    /// Worker rings for passing packets between lcores
+    std::vector<rte_ring*> worker_rings;
+
+    /// Worker handlers for processing packets on worker rings
+    std::vector<dpdkRXhandler*> workers;
+
+    /// Active workers (exit when all have stopped)
+    std::atomic<int32_t> active_workers;
 };
 
 

@@ -45,7 +45,7 @@ file(GLOB CUFILES "src_lib/*.cu")
 message(STATUS "CUFILES: ${CUFILES}")
 
 # Add library targets
-add_library(gputils ${HFILES} ${CUFILES})
+add_library(gputils STATIC ${HFILES} ${CUFILES})
 
 # Set architecture flags
 set_target_properties(gputils PROPERTIES CUDA_ARCHITECTURES "86;89")

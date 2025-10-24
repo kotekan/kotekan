@@ -41,6 +41,7 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     _num_frames_per_file = config.get_default<uint32_t>(unique_name, "num_frames_per_file", 1);
     _prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     _exit_after_n_files = config.get_default<uint32_t>(unique_name, "exit_after_n_files", 0);
+    _include_metadata = config.get_default<bool>(unique_name, "include_metadata", true);
 }
 
 rawFileWrite::~rawFileWrite() {}
@@ -94,22 +95,24 @@ void rawFileWrite::main_thread() {
 
         // Write the meta data to disk
         uint32_t metadata_size = 0;
-        std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
-        if (mc)
-            metadata_size = mc->get_serialized_size();
-        // Write metadata size to disk, if there is no metadata in the frame, then
-        // just save 0 to the first word.
-        if (write(fd, (void*)&metadata_size, sizeof(metadata_size))
-            != (int32_t)sizeof(metadata_size)) {
-            ERROR("Failed to write metadata_size to disk for file {:s}", full_path);
-            exit(-1);
-        }
-        if (mc) {
-            char metabuf[metadata_size];
-            mc->serialize(metabuf);
-            if (write(fd, metabuf, metadata_size) != (int32_t)metadata_size) {
-                ERROR("Failed to write metadata to disk for file {:s}", full_path);
+        if (_include_metadata) {
+            std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
+            if (mc)
+                metadata_size = mc->get_serialized_size();
+            // Write metadata size to disk, if there is no metadata in the frame, then
+            // just save 0 to the first word.
+            if (write(fd, (void*)&metadata_size, sizeof(metadata_size))
+                != (int32_t)sizeof(metadata_size)) {
+                ERROR("Failed to write metadata_size to disk for file {:s}", full_path);
                 exit(-1);
+            }
+            if (mc) {
+                char metabuf[metadata_size];
+                mc->serialize(metabuf);
+                if (write(fd, metabuf, metadata_size) != (int32_t)metadata_size) {
+                    ERROR("Failed to write metadata to disk for file {:s}", full_path);
+                    exit(-1);
+                }
             }
         }
 

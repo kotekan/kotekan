@@ -30,6 +30,8 @@
 #include "iceBoardShuffle.hpp"  // for iceBoardShuffle
 #include "iceBoardStandard.hpp" // for iceBoardStandard
 #include "iceBoardVDIF.hpp"     // for iceBoardVDIF
+#include "crsDistributor.hpp"   // for crsDistributor
+#include "crsCaptureWorker.hpp" // for crsCaptureWorker
 
 #include "fmt.hpp"  // for compile_string_to_view, format, fmt, format_string
 #include "json.hpp" // for basic_json, iter_impl, json
@@ -86,27 +88,39 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     const uint32_t max_data_size = 2048;
     const uint32_t mbuf_size = max_data_size + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM;
 
-    // Convert the lcore to port map into a simple c style struct
-    // This is basically done to remove overhead in the critial packet processing loop.
-    // TODO check there are no ports assigned twice
-    lcore_port_list = (struct portList*)malloc(num_lcores * sizeof(struct portList));
-    CHECK_MEM(lcore_port_list);
     int lcore_id = 0;
-    num_ports = 0;
     json lcore_port_map = config.get_value(unique_name, "lcore_port_map");
     for (vector<int> ports : lcore_port_map) {
-        lcore_port_list[lcore_id].ports = (uint32_t*)malloc(ports.size() * sizeof(uint32_t));
-        CHECK_MEM(lcore_port_list[lcore_id].ports);
-        int port_id = 0;
+        lcore_port_list.push_back(vector<uint32_t>());
         for (uint32_t port : ports) {
-            lcore_port_list[lcore_id].ports[port_id++] = port;
+            lcore_port_list[lcore_id].push_back(port);
         }
-        lcore_port_list[lcore_id].num_ports = ports.size();
-        num_ports += ports.size();
         lcore_id++;
     }
 
+    // Allocate worker rings
+    json worker_ring_map = config.get_value(unique_name, "worker_ring_map");
+    for (const auto& ring : worker_ring_map) {
+        string ring_name = ring["name"];
+        uint32_t num_slots = ring["num_slots"];
+        int socket_id = ring["socket_id"];
+
+        DEBUG("Creating worker ring '{:s}' with {:d} slots on socket {:d}", ring_name,
+              num_slots, socket_id);
+
+        // TODO Possibly make the flags configurable?
+        // We are assuming single producer single consumer for now.
+        struct rte_ring* r = rte_ring_create(ring_name.c_str(), num_slots,
+                                                socket_id, RING_F_SP_ENQ | RING_F_SC_DEQ);
+        if (r == nullptr) {
+            throw std::runtime_error("Cannot create worker ring: "
+                                     + std::string(rte_strerror(rte_errno)));
+        }
+        worker_rings.push_back(r);
+    }
+
     create_handlers(buffer_container);
+    create_workers(buffer_container);
 
     if (num_ports > num_system_ports) {
         throw std::runtime_error(
@@ -132,8 +146,8 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
                     "lcore_id '" + to_string(lcore_id)
                     + "' failed to map to numa node, is this a valid CPU core id?");
             }
-            if (numa_node_of_cpu(lcore_id) == node_id) {
-                num_ports_on_node += lcore_port_list[j].num_ports;
+            if (numa_node_of_cpu(lcore_id) == node_id && j < lcore_port_list.size()) {
+                num_ports_on_node += lcore_port_list.at(j).size();
             }
         }
         DEBUG("Number of ports on numa node {:d}: {:d}", node_id, num_ports_on_node);
@@ -195,6 +209,10 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
         } else if (handler_name == "captureHandler") {
             handlers[port] =
                 new captureHandler(config, handler_unique_name, buffer_container, port);
+        } else if (handler_name == "crsDistributor") {
+            handlers[port] =
+                new crsDistributor(config, handler_unique_name, buffer_container, port,
+                                   worker_rings);
         } else if (handler_name == "none") {
             handlers[port] = nullptr;
         } else {
@@ -204,6 +222,35 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
 
         port++;
     }
+}
+
+void dpdkCore::create_workers(bufferContainer& buffer_container) {
+    // Create the workers
+    // Does not use the factory model because this is header only. 
+    vector<json> workers_block = config.get<std::vector<json>>(unique_name, "workers");
+    workers.resize(workers_block.size());
+    uint32_t worker_id = 0;
+    for (json& worker : workers_block) {
+
+        string worker_name = worker["dpdk_handler"];
+        string worker_unique_name = fmt::format(fmt("{:s}/workers/{:d}"), unique_name, worker_id);
+
+        if (worker_name == "crsCaptureWorker") {
+            workers[worker_id] =
+                new crsCaptureWorker(config, worker_unique_name, buffer_container, worker_id,
+                                     worker_rings);
+        } else if (worker_name == "none") {
+            workers[worker_id] = nullptr;
+        } else {
+            throw std::runtime_error(
+                fmt::format(fmt("The dpdk worker type '{:s}' does not exist."), worker_name));
+        }
+
+        INFO("Created DPDK worker '{:s}' with ID {:d}", worker_name, worker_id);
+
+        worker_id++;
+    }
+    active_workers = worker_id;
 }
 
 void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
@@ -259,6 +306,10 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
     // Initialize the Environment Abstraction Layer (EAL).
     // Currently closing DPDKs EAL isn't offically supported,
     // so we only do it once.
+    INFO("Initializing DPDK EAL with arguments:");
+    for (const auto& arg : str_args) {
+        INFO("  {:s}", arg);
+    }
     if (!__eal_initalized) {
         int ret = rte_eal_init(argc2, argv2_vec.data());
         if (ret < 0)
@@ -379,13 +430,42 @@ int dpdkCore::lcore_rx(void* args) {
         throw std::runtime_error("lcore mapping error");
     }
 
+    // If we have no map for this lcore, it must be a worker lcore.
+    if (lcore >= core->lcore_port_list.size()) {
+        uint32_t worker_id = lcore - core->lcore_port_list.size();
+        INFO_NON_OO("Starting worker: worker_id {:d}, lcore {:d}", worker_id, lcore);
+        while (!core->stop_thread) {
+            uint16_t num_rx =
+                rte_ring_dequeue_burst(core->worker_rings.at(worker_id), (void**)mbufs, core->burst_size, NULL);
+
+            if (num_rx == 0)
+                continue;
+
+            for (uint16_t j = 0; j < num_rx; ++j) {
+                if (unlikely(core->workers.at(worker_id)->handle_packet(mbufs[j]) != 0)) {
+                    rte_pktmbuf_free(mbufs[j]);
+                    goto exit_loop;
+                }
+                //INFO_NON_OO("Worker {:d} processed a packet, freeing the buffer", worker_id);
+                rte_pktmbuf_free(mbufs[j]);
+            }
+            //rte_pktmbuf_free_bulk(mbufs, num_rx);
+        }
+        exit_loop:
+
+        INFO_NON_OO("Exiting worker: worker_id {:d}, lcore {:d}", worker_id, lcore);
+        core->active_workers--;
+        if (core->active_workers == 0) {
+            core->stop_thread = true;
+        }
+        return 0;
+    }
+
     // The list of ports this thread processes
-    struct dpdkCore::portList port_list = core->lcore_port_list[lcore];
-    const uint32_t num_local_ports = port_list.num_ports;
-    const uint32_t* ports = port_list.ports;
+    const std::vector<uint32_t>& ports = core->lcore_port_list.at(lcore);
     const uint32_t burst_size = core->burst_size;
 
-    for (uint32_t i = 0; i < num_local_ports; ++i) {
+    for (uint32_t i = 0; i < ports.size(); ++i) {
         uint32_t port = ports[i];
         if (core->handlers[port] == nullptr) {
             WARN_NON_OO("No valid handler provided for port {:d}", port);
@@ -396,13 +476,14 @@ int dpdkCore::lcore_rx(void* args) {
     // TODO Figure out why this sleep is need.  It seems like the when starting the E810
     // ports, there is a delay between when they are started in DPDK and when they become
     // ready.  There might be a function to check their readness state we could query?
-    sleep(40);
+    sleep(10);
     while (!core->stop_thread) {
-        for (uint32_t i = 0; i < num_local_ports; ++i) {
+        for (uint32_t i = 0; i < ports.size(); ++i) {
             uint32_t port = ports[i];
 
+            //INFO_NON_OO("Polling port {:d} for packets", port);
             const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
-
+            //INFO_NON_OO("Port {:d} received {:d} packets", port, num_rx);
             for (uint16_t j = 0; j < num_rx; ++j) {
 
                 // Process the packet with the required handler
@@ -412,7 +493,8 @@ int dpdkCore::lcore_rx(void* args) {
                     goto exit_lcore;
                 }
 
-                rte_pktmbuf_free(mbufs[j]);
+                // TODO, free the mbuf in the handler. 
+                //rte_pktmbuf_free(mbufs[j]);
             }
         }
     }
