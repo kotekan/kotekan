@@ -61,7 +61,7 @@ public:
     N2Metadata();
 
     // ASSUMES the "other" is my type!
-    void deepCopy(std::shared_ptr<metadataObject> other) override;
+    void deepCopy(std::shared_ptr<const metadataObject> other) override;
 
     /// Returns the size of objects of this type when serialized into bytes.
     size_t get_serialized_size() override;

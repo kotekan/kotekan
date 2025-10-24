@@ -9,8 +9,8 @@ N2Metadata::N2Metadata() : N2MetadataFormat{0, 0, 0, 0, 0, 0.0, eop_null, 0, 0, 
     ;
 }
 
-void N2Metadata::deepCopy(std::shared_ptr<metadataObject> other) {
-    std::shared_ptr<N2Metadata> o = std::dynamic_pointer_cast<N2Metadata>(other);
+void N2Metadata::deepCopy(std::shared_ptr<const metadataObject> other) {
+    std::shared_ptr<const N2Metadata> o = std::dynamic_pointer_cast<const N2Metadata>(other);
     *this = *o;
 }
 
