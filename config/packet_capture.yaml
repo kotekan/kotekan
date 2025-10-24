@@ -1,9 +1,11 @@
 ##########################################
 #
-# crs_packet_capture.yaml
+# packet_capture.yaml
 #
-# Configuration for capturing packets from the CRS board.
-# Set the buffer depth to match the size of the capture
+# Config for viewing the contents of packets on a system with 4 links (a CHIME node)
+#
+# This config will print the contents of a few packets to screen as a hex dump,
+# and return a binary dump of packets on demand via a REST call.
 #
 # Author: Andre Renard
 #
@@ -17,10 +19,8 @@ type: config
 log_level: debug
 
 buffer_depth: 8
-packets_per_frame: 32768
-packet_size: 6208
-num_crs_boards: 1
-capture_n_frames: buffer_depth  # Total number of frames to capture, 0 = unlimited
+samples_per_data_set: 32768
+packet_size: 4928
 
 # Pool
 main_pool:
@@ -29,70 +29,63 @@ main_pool:
 
 # Buffers
 network_input_buffers:
-    log_level: info
     num_frames: buffer_depth
-    frame_size: packets_per_frame * packet_size
+    frame_size: samples_per_data_set * packet_size
     metadata_pool: main_pool
-    use_hugepages: true
     network_input_buffer_0:
         kotekan_buffer: standard
     network_input_buffer_1:
+        kotekan_buffer: standard
+    network_input_buffer_2:
+        kotekan_buffer: standard
+    network_input_buffer_3:
         kotekan_buffer: standard
 
 cpu_affinity: [2,3,8,9]
 dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [5,6,7] # [5,6,7]
-    main_lcore_cpu: 4
-    num_mbufs: 8192
-    mbuf_cache_size: 256
-    burst_size: 32
-    # List of PCIe addresses to block from DPDK use
-    pcie_block_list:
-        - "0000:37:00.0"
-        - "0000:37:00.1"
-        - "0000:b5:00.0"
-        - "0000:b5:00.1"
-    worker_ring_map:
-        - name: worker_ring_0
-          num_slots: 128
-          socket_id: 0
-        - name: worker_ring_1
-          num_slots: 128
-          socket_id: 0
+    lcore_cpu_map: [0,1,6,7]
+    main_lcore_cpu: 2
     # Format is index = lcore, value = array of port IDs
     # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
     # and lcore 1 to service ports 2 and 3.
     lcore_port_map:
         - [0]
-    # One handler must be given per port
+        - [1]
+        - [2]
+        - [3]
+    # One handler must be given per port.
     handlers:
-        - dpdk_handler: crsDistributor
-          worker_rings: [0,1]
-    # Exactly One worker must be given per worker ring
-    workers:
-        - dpdk_handler: crsCaptureWorker
-          worker_ring: 0
+        - dpdk_handler: captureHandler
           out_buf: network_input_buffer_0
-        - dpdk_handler: crsCaptureWorker
-          worker_ring: 1
+        - dpdk_handler: captureHandler
           out_buf: network_input_buffer_1
+        - dpdk_handler: captureHandler
+          out_buf: network_input_buffer_2
+        - dpdk_handler: captureHandler
+          out_buf: network_input_buffer_3
 
+hexDump:
+    kotekan_stage: hexDump
+    # Change this buffer to print packets on different ports
+    buf: network_input_buffer_0
+    len: 4928
 
-raw_file_writers:
-    ### UPDATE THIS PATH FOR EACH RUN ###
-    base_dir: /data/crs_capture
-    frames_per_file: 1
-    prefix_hostname: false
-    include_metadata: false
-    #exit_after_n_files: capture_n_frames
-    file_ext: raw
-    writer_0:
-        file_name: crs_0
-        kotekan_stage: rawFileWrite
+inspect_block:
+    # 0 means dump the full frame on callback, otherwise dump the first `len` bytes 
+    len: 0
+    inspect_0:
+        kotekan_stage: restInspectFrame
         in_buf: network_input_buffer_0
-    writer_1:
-        file_name: crs_1
-        kotekan_stage: rawFileWrite
+    inspect_1:
+        kotekan_stage: restInspectFrame
         in_buf: network_input_buffer_1
+        len: 0
+    inspect_2:
+        kotekan_stage: restInspectFrame
+        in_buf: network_input_buffer_2
+        len: 0
+    inspect_3:
+        kotekan_stage: restInspectFrame
+        in_buf: network_input_buffer_3
