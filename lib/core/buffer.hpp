@@ -551,11 +551,11 @@ public:
     }
 
     /**
-     * @brief provides access to the array description
+     * @brief provides read access to the array description
      * @param[in] frame_id The frame ID of the frame to describe
      * @return The NDArray data structure describing the array
      */
-    std::shared_ptr<kotekan::GenericNDArray>& get_frame_desc(int frame_id) {
+    std::shared_ptr<const kotekan::GenericNDArray> get_frame_desc(int frame_id) {
         // TODO: use a get/set pair instead?
         return frames_desc.at(frame_id);
     }
