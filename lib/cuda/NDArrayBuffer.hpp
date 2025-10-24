@@ -208,7 +208,7 @@ public:
             cuda_command.get_device().create_gpu_memory_array_metadata(
                 buffer_name_device, get_instance_num(), other_metadata->parent_pool);
         const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
-        *metadata = *other_metadata;
+        metadata->deepCopy(other_metadata);
         metadata->set_name(ndarray.quantity_name());
         metadata->type = ndarray.value_datatype;
         metadata->dims = ndarray.rank;
