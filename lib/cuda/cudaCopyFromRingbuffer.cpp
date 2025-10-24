@@ -120,7 +120,9 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
     auto meta = std::dynamic_pointer_cast<chordMetadata>(signal_buffer->get_metadata(0));
     assert(meta);
     // Copy metadata (because we modify it)
-    meta = std::make_shared<chordMetadata>(*meta);
+    auto tmp = std::make_shared<chordMetadata>();
+    tmp->deepCopy(meta);
+    meta = tmp;
     assert(meta->get_sample0_offset() == 0);
     assert(input_cursor % meta->sample_bytes() == 0);
     meta->set_sample0_offset(meta->get_sample0_offset() + input_cursor / meta->sample_bytes());
