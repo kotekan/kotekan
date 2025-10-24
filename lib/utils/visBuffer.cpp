@@ -22,8 +22,8 @@
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
 
-void VisMetadata::deepCopy(std::shared_ptr<metadataObject> other) {
-    std::shared_ptr<VisMetadata> o = std::dynamic_pointer_cast<VisMetadata>(other);
+void VisMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
+    std::shared_ptr<const VisMetadata> o = std::dynamic_pointer_cast<const VisMetadata>(other);
     *this = *o;
 }
 
