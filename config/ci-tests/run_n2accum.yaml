@@ -114,16 +114,23 @@ fake_counts_buffer:
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
     metadata_pool: main_pool
 
+fake_rfimask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set * num_local_freq) / 8
+    metadata_pool: main_pool
+
 n2_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth * num_local_freq
     frame_size: n2_frame_size
     metadata_pool: n2_pool
 
-gen_fake_corr_counts:
+gen_fake_corr_counts_rfi:
     kotekan_stage: testN2kGen
     out_buf: fake_correlation_buffer
     out_counts_buf: fake_counts_buffer
+    out_rfimask_buf: fake_rfimask_buffer
     correlation_type: "f_times_ee"
     counts_type: "random_scalar"
     correlation_value: [ 1, -1 ]
@@ -138,6 +145,7 @@ vis_accumulate:
     kotekan_stage: N2Accumulate
     in_buf: fake_correlation_buffer
     in_counts_buf: fake_counts_buffer
+    in_rfimask_buf: fake_rfimask_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
@@ -159,6 +167,15 @@ write_fake_counts:
    max_frames: -1  # buffer_depth # Will trigger exit after writing this many frames
    skip_writing: false
    in_buf: fake_counts_buffer
+
+write_fake_rfimask:
+   kotekan_stage: hdf5FileWrite
+   base_dir: fake_data
+   file_name: n2k_rfimask
+   prefix_hostname: false
+   max_frames: -1  # buffer_depth # Will trigger exit after writing this many frames
+   skip_writing: false
+   in_buf: fake_rfimask_buffer
 
 write_N2:
    kotekan_stage: hdf5FileWrite

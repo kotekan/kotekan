@@ -191,6 +191,36 @@ void testN2kGen::set_counts_metadata(std::shared_ptr<chordMetadata> meta, uint64
 }
     
 void testN2kGen::set_rfimask_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num) {
+    meta->set_name(rfi_name);
+    meta->type = kotekan::uint1x8;
+    meta->dims = 3;
+    assert(meta->dims <= CHORD_META_MAX_DIM);
+    meta->set_array_dimension(0, samples_per_data_set / (8 * 128), "T8hi128");
+    meta->set_array_dimension(1, num_local_freq, "F");
+    meta->set_array_dimension(2, 128, "T8lo128");
+    meta->set_strides_simple();
+    
+    meta->set_fpga_seq_num(seq_num);
+    meta->set_sample0_offset(seq_num / 1024);
+    meta->set_offset_downsampling(1);
+
+    std::vector<int> coarse_freq(num_local_freq);
+    std::vector<int> freq_upchan_factor(num_local_freq);
+    std::vector<int> time_downsampling_fpga(num_local_freq);
+    std::vector<int64_t> half_fpga_sample0(num_local_freq);
+
+    for (int f = 0; f < num_local_freq; f++) {
+        coarse_freq[f] = freq_ids[f % freq_ids.size()];
+        freq_upchan_factor[f] = 1;
+        time_downsampling_fpga[f] = 1024;
+        half_fpga_sample0[f] = 1024 - 1;
+    }
+
+    meta->set_coarse_freq(coarse_freq);
+    meta->set_freq_upchan_factor(freq_upchan_factor);
+    meta->set_time_downsampling_fpga(time_downsampling_fpga);
+    meta->set_half_fpga_sample0(half_fpga_sample0);
+    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
 
 void testN2kGen::get_blocked_indices(int i, int j, int blocksize,
@@ -241,7 +271,7 @@ void testN2kGen::main_thread() {
 
     int corr_val_idx = 0;
     int count_val_idx = 0;
-    int rfi_val_idx = 0;
+    //int rfi_val_idx = 0;
 
     while (!stop_thread) {
 
