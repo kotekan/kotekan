@@ -259,14 +259,16 @@ public:
 
                     // Describe metadata
 
-                    if (meta->get_nfreq() >= 0) {
+                    if (meta->has_coarse_freq()) {
                         auto coarse_freq = std::make_shared<ASDF::sequence>();
                         const std::vector<int> I_coarse_freq = meta->get_coarse_freq();
                         for (int freq = 0; freq < meta->get_nfreq(); ++freq)
                             coarse_freq->push_back(
                                 std::make_shared<ASDF::int_entry>(I_coarse_freq[freq]));
                         group->emplace("coarse_freq", coarse_freq);
+                    }
 
+                    if (meta->has_freq_upchan_factor()) {
                         auto freq_upchan_factor = std::make_shared<ASDF::sequence>();
                         const std::vector<int> I_freq_upchan_factor =
                             meta->get_freq_upchan_factor();
@@ -276,15 +278,15 @@ public:
                         group->emplace("freq_upchan_factor", freq_upchan_factor);
                     }
 
-                    if (meta->get_sample0_offset() >= 0)
+                    if (meta->has_sample0_offset())
                         group->emplace("sample0_offset", std::make_shared<ASDF::int_entry>(
                                                              meta->get_sample0_offset()));
 
-                    if (meta->get_offset_downsampling() >= 0)
+                    if (meta->has_offset_downsampling())
                         group->emplace("offset_downsampling", std::make_shared<ASDF::int_entry>(
                                                                   meta->get_offset_downsampling()));
 
-                    if (meta->get_nfreq() >= 0) {
+                    if (meta->has_half_fpga_sample0()) {
                         auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
                         const std::vector<int64_t> I_half_fpga_sample0 =
                             meta->get_half_fpga_sample0();
@@ -292,7 +294,9 @@ public:
                             half_fpga_sample0->push_back(
                                 std::make_shared<ASDF::int_entry>(I_half_fpga_sample0[freq]));
                         group->emplace("half_fpga_sample0", half_fpga_sample0);
+                    }
 
+                    if (meta->has_time_downsampling_fpga()) {
                         auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
                         const std::vector<int> I_time_downsampling_fpga =
                             meta->get_time_downsampling_fpga();
