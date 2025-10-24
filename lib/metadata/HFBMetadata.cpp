@@ -18,8 +18,8 @@ struct HFBMetadataFormat {
     dset_id_t dataset_id;
 };
 
-void HFBMetadata::deepCopy(std::shared_ptr<metadataObject> other) {
-    auto hfb_other = std::dynamic_pointer_cast<HFBMetadata>(other);
+void HFBMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
+    auto hfb_other = std::dynamic_pointer_cast<const HFBMetadata>(other);
     assert(hfb_other);
     *this = *hfb_other;
 }
