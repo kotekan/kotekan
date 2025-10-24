@@ -19,8 +19,8 @@ struct BeamMetadataFormat {
     uint32_t scaling;
 };
 
-void BeamMetadata::deepCopy(std::shared_ptr<metadataObject> other) {
-    auto beam_other = std::dynamic_pointer_cast<BeamMetadata>(other);
+void BeamMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
+    auto beam_other = std::dynamic_pointer_cast<const BeamMetadata>(other);
     assert(beam_other);
     *this = *beam_other;
 }
