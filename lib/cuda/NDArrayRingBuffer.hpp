@@ -432,7 +432,7 @@ public:
         // const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
         ringbuffer->allocate_new_metadata_object(0);
         const std::shared_ptr<chordMetadata> metadata = get_metadata();
-        *metadata = *other_metadata;
+        metadata->deepCopy(other_metadata);
         metadata->set_name(ndarray.quantity_name());
         metadata->type = ndarray.value_datatype;
         metadata->dims = ndarray.rank;
