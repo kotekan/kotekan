@@ -41,7 +41,7 @@ public:
     metadataObject();
     virtual ~metadataObject() {}
 
-    virtual void deepCopy(std::shared_ptr<metadataObject> other) = 0;
+    virtual void deepCopy(std::shared_ptr<const metadataObject> other) = 0;
 
     /// Reference to metadataPool that this object belongs to.
     std::weak_ptr<metadataPool> parent_pool;
