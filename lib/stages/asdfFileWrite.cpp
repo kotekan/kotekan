@@ -133,6 +133,9 @@ public:
 
             assert(metadata_is_chord(mc) || metadata_is_N2(mc));
             const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
+            const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
+                buffer->get_frame_desc(frame_id);
+            assert(frame_desc);
 
             const double this_time = current_time();
             const double elapsed_time = this_time - start_time;
@@ -148,29 +151,27 @@ public:
                 // Create ASDF ndarray
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-                const ASDF::scalar_type_id_t type = chord2asdf(meta->type);
-                const std::size_t typesize = type_total_bytes(meta->type);
+                const ASDF::scalar_type_id_t type = chord2asdf(frame_desc->get_value_datatype());
+                const std::size_t typesize = type_total_bytes(frame_desc->get_value_datatype());
 #pragma GCC diagnostic pop
 
-                const int ndims = meta->dims;
-                std::vector<std::int64_t> dims(ndims);
-                for (int d = 0; d < ndims; ++d)
-                    dims.at(d) = meta->dim[d];
-                std::int64_t size = 1;
-                for (int d = 0; d < ndims; ++d)
-                    size *= dims.at(d);
+                const ssize_t ndims = ssize_t(frame_desc->get_rank());
+                const auto extents = frame_desc->get_extents();
+                std::vector<std::int64_t> dims(extents.begin(), extents.end());
+                std::ptrdiff_t size = frame_desc->get_size();
 
                 // "simple" strides have a layout that does not require copying the array
                 bool strides_are_simple;
                 {
                     strides_are_simple = true;
-                    std::int64_t str = 1;
-                    for (int d = ndims - 1; d >= 0; --d) {
-                        if (str != meta->stride[d])
+                    std::ptrdiff_t str = 1;
+                    for (ssize_t d = ndims - 1; d >= 0; --d) {
+                        if (str != frame_desc->get_extent(d))
                             ERROR("buffer {} d {} dim {} stride (found) {} str (expected) {}",
-                                  unique_name, d, meta->dim[d], meta->stride[d], str);
-                        strides_are_simple &= str == meta->stride[d];
-                        str *= meta->dim[d];
+                                  unique_name, d, frame_desc->get_extent(d),
+                                  frame_desc->get_stride(d), str);
+                        strides_are_simple &= str == frame_desc->get_stride(d);
+                        str *= frame_desc->get_extent(d);
                     }
                     strides_are_simple &= str == size;
                 }
@@ -184,30 +185,37 @@ public:
                 } else {
                     // We need to copy the frame
                     frame_copy.resize(size * typesize);
-                    if (!(meta->stride[meta->dims - 1] == 1))
+                    if (!(frame_desc->get_stride(frame_desc->get_rank() - 1) == 1)) {
+                        const auto extents = frame_desc->get_extents(); // cannot be formatted
                         ERROR("name={} type={} dims={} laststride={}", meta->name,
-                              type_to_string(meta->type), meta->dims, meta->stride[meta->dims - 1]);
-                    if (!(meta->stride[meta->dims - 1] == 1) && meta->dims == 4)
+                              type_to_string(frame_desc->get_value_datatype()),
+                              fmt::join(extents, ", "),
+                              frame_desc->get_stride(frame_desc->get_rank() - 1));
+                    }
+                    if (!(frame_desc->get_stride(frame_desc->get_rank() - 1) == 1)
+                        && frame_desc->get_rank() == 4)
                         for (int d = 0; d < 4; ++d)
-                            ERROR("dim[{}]={} stride[{}]={}", d, meta->dim[d], d, meta->stride[d]);
-                    assert(meta->stride[meta->dims - 1] == 1);
+                            ERROR("dim[{}]={} stride[{}]={}", d, frame_desc->get_extent(d), d,
+                                  frame_desc->get_stride(d));
+                    assert(frame_desc->get_stride(frame_desc->get_rank() - 1) == 1);
                     const std::uint8_t* __restrict__ const input_ptr = frame;
                     std::uint8_t* __restrict__ const output_ptr = frame_copy.data();
-                    const std::ptrdiff_t lastdim = meta->dim[meta->dims - 1];
-                    assert(meta->dims < 20);
+                    const std::ptrdiff_t lastdim =
+                        frame_desc->get_extent(frame_desc->get_rank() - 1);
+                    assert(frame_desc->get_rank() < 20);
                     std::ptrdiff_t output_stride[20];
-                    for (int d = meta->dims - 1; d >= 0; --d)
-                        if (d == meta->dims - 1)
+                    for (ssize_t d = ssize_t(frame_desc->get_rank()) - 1; d >= 0; --d)
+                        if (d == ssize_t(frame_desc->get_rank()) - 1)
                             output_stride[d] = 1;
                         else
-                            output_stride[d] = output_stride[d + 1] * meta->dim[d + 1];
-                    assert(meta->dims <= 4);
-                    switch (meta->dims) {
+                            output_stride[d] = output_stride[d + 1] * frame_desc->get_extent(d + 1);
+                    assert(frame_desc->get_rank() <= 4);
+                    switch (frame_desc->get_rank()) {
                         case 3:
-                            for (int j = 0; j < meta->dim[0]; ++j) {
-                                for (int k = 0; k < meta->dim[1]; ++k) {
-                                    std::ptrdiff_t input_offset =
-                                        j * meta->stride[0] + k * meta->stride[1];
+                            for (std::ptrdiff_t j = 0; j < frame_desc->get_extent(0); ++j) {
+                                for (std::ptrdiff_t k = 0; k < frame_desc->get_extent(1); ++k) {
+                                    std::ptrdiff_t input_offset = j * frame_desc->get_stride(0)
+                                                                  + k * frame_desc->get_stride(1);
                                     std::ptrdiff_t output_offset =
                                         j * output_stride[0] + k * output_stride[1];
                                     std::memcpy(output_ptr + typesize * output_offset,
@@ -217,12 +225,13 @@ public:
                             }
                             break;
                         case 4:
-                            for (int j = 0; j < meta->dim[0]; ++j) {
-                                for (int k = 0; k < meta->dim[1]; ++k) {
-                                    for (int l = 0; l < meta->dim[2]; ++l) {
-                                        std::ptrdiff_t input_offset = j * meta->stride[0]
-                                                                      + k * meta->stride[1]
-                                                                      + l * meta->stride[2];
+                            for (std::ptrdiff_t j = 0; j < frame_desc->get_extent(0); ++j) {
+                                for (std::ptrdiff_t k = 0; k < frame_desc->get_extent(1); ++k) {
+                                    for (std::ptrdiff_t l = 0; l < frame_desc->get_extent(2); ++l) {
+                                        std::ptrdiff_t input_offset =
+                                            j * frame_desc->get_stride(0)
+                                            + k * frame_desc->get_stride(1)
+                                            + l * frame_desc->get_stride(2);
                                         std::ptrdiff_t output_offset = j * output_stride[0]
                                                                        + k * output_stride[1]
                                                                        + l * output_stride[2];
@@ -234,7 +243,7 @@ public:
                             }
                             break;
                         default:
-                            FATAL_ERROR("meta->dims={}", meta->dims);
+                            FATAL_ERROR("frame_desc->get_rank()={}", frame_desc->get_rank());
                             assert(0);
                             break;
                     }
@@ -320,7 +329,7 @@ public:
                     group->emplace("type", type_attribute);
 
                     auto dim_names = std::make_shared<ASDF::sequence>();
-                    for (int d = 0; d < ndims; ++d)
+                    for (ssize_t d = 0; d < ndims; ++d)
                         dim_names->push_back(
                             std::make_shared<ASDF::string_entry>(meta->get_dimension_name(d)));
                     group->emplace("dim_names", dim_names);
