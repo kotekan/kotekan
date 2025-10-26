@@ -193,6 +193,12 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         meta_out->set_array_dimension(3, _blocksize, "D8Plo1");
         meta_out->set_array_dimension(4, _blocksize, "D8Plo2");
         meta_out->set_strides_simple();
+        /* new style array description */
+        output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 5>(
+            output_frame_id, {n_integrations, nf, n_blocks, _blocksize, _blocksize},
+            {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+        /* test that things are consistent */
+        meta_out->check_frame_desc(output_buf->get_frame_desc(output_frame_id));
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->set_sample0_offset(meta_in->get_sample0_offset());
