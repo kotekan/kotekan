@@ -161,6 +161,11 @@ void gpuSimulateN2kPLExpand::main_thread() {
         meta_out->set_array_dimension(2, ne, "P");
         meta_out->set_array_dimension(3, ne, "D8");
         meta_out->set_strides_simple();
+        /* new style array description */
+        output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::uint64>::type, 4>(
+            output_frame_id, {nt, nf, ne, ne}, {"Thi64", "F", "P", "D8"});
+        /* test that things are consistent */
+        meta_out->check_frame_desc(output_buf->get_frame_desc(output_frame_id));
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->set_sample0_offset(meta_in->get_sample0_offset());
