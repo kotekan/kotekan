@@ -51,10 +51,10 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     assert(_num_freq_per_n2k_frame > 0);
 
     // accumulation setup
-    _num_frames_to_accumulate = config.get<int64_t>(unique_name, "num_frames_to_accumulate");
+    _num_n2k_samples_to_accumulate = config.get<int64_t>(unique_name, "num_n2k_samples_to_accumulate");
 
-    assert(_num_frames_to_accumulate > 0);
-    assert(_num_frames_to_accumulate % 2 == 0);
+    assert(_num_n2k_samples_to_accumulate > 0);
+    assert(_num_n2k_samples_to_accumulate % 2 == 0);
 
     _packet_loss_is_scalar = config.get<bool>(unique_name, "packet_loss_is_scalar");
     if(!_packet_loss_is_scalar)
@@ -122,12 +122,12 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _vis_even = std::vector<int32_t>(2 * _num_freq_per_n2k_frame * _n2k_correlation_num_products,
                                      0); // store even vis matrix for
 
-    _weights = std::vector<int32_t>(_num_freq_per_n2k_frame * _n2k_correlation_num_products,
-                                    0); // real-valued weights
+    _weights = std::vector<float>(_num_freq_per_n2k_frame * _n2k_correlation_num_products,
+                                    0.0f); // real-valued weights
     // number of fpga samples, per frequency, in frame
     _n_valid_fpga_samples_in_vis = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
     _n_valid_fpga_samples_in_vis_even = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
-    _n_valid_sample_diff_sq_sum = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
+    _n_valid_sample_diff_sq_sum = std::vector<float>(_num_freq_per_n2k_frame, 0);
     _n_rfi_samples_in_vis = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
 
     _vis_samples_in_out_frame = 0;
@@ -172,7 +172,7 @@ void N2Accumulate::main_thread() {
     // uint64_t t_output = N2::ts_to_uint64(output_ts);
 
 
-    int64_t corr_stride_t = _n2k_correlation_num_products * _num_freq_per_n2k_frame;
+    int64_t corr_stride_t = 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame;
     int64_t counts_stride_f = _n2k_counts_num_products;
     int64_t counts_stride_t = _n2k_counts_num_products * _num_freq_per_n2k_frame;
 
@@ -246,7 +246,7 @@ void N2Accumulate::main_thread() {
             // Finalize accumulation if the visibility elements are past the output time...
             //  end on an odd frame too so we accumulate weights.
             // if (t_vis_s > t_output && vis_sample_num_abs % 2 == 1) {
-            if (_vis_samples_in_out_frame >= _num_frames_to_accumulate) {
+            if (_vis_samples_in_out_frame >= _num_n2k_samples_to_accumulate) {
 
                 INFO("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
                      _vis_samples_in_out_frame);
@@ -259,10 +259,12 @@ void N2Accumulate::main_thread() {
                 _accum_fpga_start_tick = frame_metadata->get_fpga_seq_num() + vis_samp_n * _n_fpga_samples_per_n2k_correlation;
             }
 
+            int64_t corr_offset = vis_samp_n * corr_stride_t;
+
             // Actual accumulation over
             for (int64_t d = 0; d < 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame;
                  ++d) {
-                _vis[d] += corr[d + 2 * vis_samp_n * corr_stride_t];
+                _vis[d] += corr[d + corr_offset];
             } // d
 
             // If we're working on an even sample, store it for differencing
@@ -276,9 +278,9 @@ void N2Accumulate::main_thread() {
             } else {
                 for (int64_t d = 0; d < _n2k_correlation_num_products * _num_freq_per_n2k_frame;
                      ++d) {
-                    int32_t dr = _vis[2 * d + 0] - _vis_even[2 * d + 0];
-                    int32_t di = _vis[2 * d + 1] - _vis_even[2 * d + 1];
-                    _weights[d] += (dr * dr + di * di);
+                    float dr = corr[corr_offset + 2 * d + 0] - _vis_even[2 * d + 0];
+                    float di = corr[corr_offset + 2 * d + 1] - _vis_even[2 * d + 1];
+                    _weights[d] += dr * dr + di * di;
                 } // d
             } // if even/odd
 
@@ -340,7 +342,7 @@ void N2Accumulate::main_thread() {
 
                     int64_t idx = thi * rfi_stride_thi + f * rfi_stride_f + tlo;
 
-                    _n_rfi_samples_in_vis[f] += (rfimask[idx] & 0x1) * _rfi_downsampling_factor;
+                    _n_rfi_samples_in_vis[f] += (1 - (rfimask[idx] & 0x1)) * _rfi_downsampling_factor;
                 }
 
             } // f
@@ -443,9 +445,11 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
                         N2::cfloat v = {(float)_vis[2*idx], -(float)_vis[2*idx+1]}; // conjugate
                         out_vis.vis[n2_idx] = ins * v;
 
-                        if(ns > 0)
-                            _weights[idx] -= std::norm(v) * _n_valid_sample_diff_sq_sum[f] / ns / ns;
-                        out_vis.weight[n2_idx] = (_weights[idx] != 0) ? ns * ns / _weights[idx] : 0;
+                        if(ns > 0) {
+                            _weights[idx] -= std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
+                        }
+
+                        out_vis.weight[n2_idx] = (ns > 0) ? ns * (ns / _weights[idx]) : 0;
                     } // jlo
                 } // ilo
 
@@ -453,13 +457,17 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
             } // jhi
         } // ihi
 
+        out_vis.erms = -1;
+        std::fill(out_vis.flags.begin(), out_vis.flags.end(), 0);
+        std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
+
         out_buf->mark_frame_full(unique_name, out_frame_id++);
     }
 
     DEBUG("Wrapping up accumulation buffer output copy.");
 
     std::fill(_vis.begin(), _vis.end(), 0);
-    std::fill(_weights.begin(), _weights.end(), 0);
+    std::fill(_weights.begin(), _weights.end(), 0.0f);
     std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);
     std::fill(_n_valid_sample_diff_sq_sum.begin(), _n_valid_sample_diff_sq_sum.end(), 0);
     std::fill(_n_rfi_samples_in_vis.begin(), _n_rfi_samples_in_vis.end(), 0);

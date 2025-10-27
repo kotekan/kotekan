@@ -422,13 +422,13 @@ class FakeN2KBuffers(InputBuffer):
                 "kotekan_buffer": "standard",
                 "metadata_pool": "chord_pool",
                 "num_frames": "buffer_depth",
-                "sizeof_float": 4,
+                "sizeof_int": 4,
                 "count_blocksize": 8,
                 "count_num_blocks_lin": "(num_elements / 8) / count_blocksize",
                 "count_num_blocks": "(count_num_blocks_lin * (count_num_blocks_lin + 1)) / 2",
                 "frame_size": (
                     "(samples_per_data_set / sub_integration_ntime) * num_local_freq"
-                    " * count_num_blocks * count_blocksize * count_blocksize * 2 * sizeof_float"
+                    " * count_num_blocks * count_blocksize * count_blocksize * sizeof_int"
                 ),
             },
             self.rfi_name: {

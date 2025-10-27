@@ -69,7 +69,7 @@ private:
 
     // Parameters saved from the config files
     int64_t _num_freq_per_n2k_frame;
-    int64_t _num_frames_to_accumulate;
+    int64_t _num_n2k_samples_to_accumulate;
 
     bool _packet_loss_is_scalar;
 
@@ -104,11 +104,11 @@ private:
     // and _num_freq_in_frame are known.
     std::vector<int32_t> _vis;
     std::vector<int32_t> _vis_even;
-    std::vector<int32_t> _weights;
+    std::vector<float> _weights;
     // number of fpga samples, per frequency, in frame
     std::vector<int32_t> _n_valid_fpga_samples_in_vis;
     std::vector<int32_t> _n_valid_fpga_samples_in_vis_even;
-    std::vector<int32_t> _n_valid_sample_diff_sq_sum;
+    std::vector<float> _n_valid_sample_diff_sq_sum;
     std::vector<int32_t> _n_rfi_samples_in_vis;
     int64_t _vis_samples_in_out_frame;
     int64_t _accum_fpga_start_tick;

@@ -51,8 +51,8 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
 
     corr_type = config.get<std::string>(unique_name, "correlation_type");
     count_type = config.get<std::string>(unique_name, "counts_type");
-    assert(corr_type == "const" || corr_type == "random" || corr_type == "f_times_ee");
-    assert(count_type == "const" || count_type == "random" || count_type == "random_scalar");
+    assert(corr_type == "const" || corr_type == "random" || corr_type == "f_times_ee" || corr_type == "f_times_ee_plus_t");
+    assert(count_type == "const" || count_type == "random" || count_type == "random_scalar" || count_type == "const_scalar");
 
     corr_value = config.get_default<std::array<int32_t, 2>>(unique_name, "correlation_value",
                                                             std::array<int32_t, 2>({1234, 5678}));
@@ -60,7 +60,7 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
 
     corr_value_array = config.get_default<std::vector<std::array<int32_t, 2>>>(
         unique_name, "correlation_values", std::vector<std::array<int32_t, 2>>());
-    count_value_array = config.get_default<std::vector<int32_t>>(unique_name, "count_values",
+    count_value_array = config.get_default<std::vector<int32_t>>(unique_name, "counts_values",
                                                                  std::vector<int32_t>());
 
     corr_min = config.get_default<std::array<int32_t, 2>>(unique_name, "correlation_min",
@@ -238,7 +238,6 @@ void testN2kGen::main_thread() {
 
     int corr_val_idx = 0;
     int count_val_idx = 0;
-    //int rfi_val_idx = 0;
 
     while (!stop_thread) {
 
@@ -274,6 +273,8 @@ void testN2kGen::main_thread() {
         int dt_count = df_count * num_local_freq;
 
         for (int t = 0; t < num_integrations; t++) {
+            int t_glob = num_frames_generated * num_integrations + t;
+            
             for (int f = 0; f < num_local_freq; f++) {
 
                 // Fill the count array
@@ -283,6 +284,13 @@ void testN2kGen::main_thread() {
 
                 if(count_type == "random_scalar")
                     count_scalar_val = count_min + rand() % (count_max - count_min + 1);
+                if(count_type == "const_scalar") {
+                    if(count_value_array.size() > 0) {
+                        count_scalar_val = count_value_array[count_val_idx % count_value_array.size()];
+                        count_val_idx++;
+                    } else
+                        count_scalar_val = count_value;
+                }
 
                 for (int ihi = 0; ihi < count_lin_blocks; ihi++) {
                     // Lower triangular only
@@ -305,6 +313,8 @@ void testN2kGen::main_thread() {
                                     }
                                 } else if (count_type == "random") {
                                     count[idx] = count_min + rand() % (count_max - count_min + 1);
+                                } else if (count_type == "const_scalar") {
+                                    count[idx] = count_scalar_val;
                                 } else if (count_type == "random_scalar") {
                                     count[idx] = count_scalar_val;
                                 } else {
@@ -355,6 +365,11 @@ void testN2kGen::main_thread() {
                                     int j = jlo + corr_blocksize * jhi;
                                     corr[idx + 0] = f * i;
                                     corr[idx + 1] = f * j;
+                                } else if (corr_type == "f_times_ee_plus_t") {
+                                    int i = ilo + corr_blocksize * ihi;
+                                    int j = jlo + corr_blocksize * jhi;
+                                    corr[idx + 0] = f * i + t_glob;
+                                    corr[idx + 1] = f * j + t_glob;
                                 } else {
                                     corr[idx + 0] = 0; // Real
                                     corr[idx + 1] = 0; // Imag

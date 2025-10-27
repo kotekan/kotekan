@@ -25,7 +25,7 @@ num_elements: num_polarizations * num_dishes
 num_local_freq: 16
 num_ev: 4
 
-num_frames_to_accumulate: 4
+num_n2k_samples_to_accumulate: 4
 
 #counts matrix size
 counts_blocksize: 8
@@ -48,7 +48,7 @@ n2_gain_size: 2 * sizeof_float * num_elements
 n2_frame_size: n2_vis_size + n2_weight_size + n2_flags_size + n2_eval_size + 
   n2_evec_size + n2_emethod_size + n2_erms_size + n2_gain_size
 
-frames_to_generate: 8 * buffer_depth  # must be at least n2_frames_to_write * num_frames_to_accumulate
+frames_to_generate: 8 * buffer_depth  # must be at least n2_frames_to_write * num_n2k_samples_to_accumulate
 n2_frames_to_write: 2 * buffer_depth
 
 GIGA: 1000000000

@@ -144,6 +144,7 @@ void rawFileWrite::main_thread() {
         // which can contain a "final" signal.
         if (_exit_after_n_files != 0 && file_num >= _exit_after_n_files) {
             exit_kotekan(ReturnCode::CLEAN_EXIT);
+            break;
         }
 
         frame_id = (frame_id + 1) % buf->num_frames;
