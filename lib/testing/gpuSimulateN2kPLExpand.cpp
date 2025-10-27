@@ -184,12 +184,13 @@ void gpuSimulateN2kPLExpand::main_thread() {
         std::vector<int> freq_upchan_factor(coarse_freq.size());
         std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
         std::vector<int> time_downsampling_fpga(coarse_freq.size());
-        
+
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             coarse_freq[f] = coarse_freq_in[f];
             freq_upchan_factor[f] = freq_upchan_factor_in[f];
             time_downsampling_fpga[f] = time_downsampling_fpga_in[f] / 2;
-            half_fpga_sample0[f] = half_fpga_sample0_in[f] + time_downsampling_fpga[f] - time_downsampling_fpga_in[f];
+            half_fpga_sample0[f] =
+                half_fpga_sample0_in[f] + time_downsampling_fpga[f] - time_downsampling_fpga_in[f];
         }
 
         meta_out->set_coarse_freq(coarse_freq);

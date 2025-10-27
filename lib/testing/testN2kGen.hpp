@@ -95,7 +95,8 @@ private:
     const std::shared_ptr<chordMetadata> get_new_metadata(Buffer* buf, frameID frame_id);
     void set_correlation_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num);
     void set_counts_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num);
-    void get_blocked_indices(int i, int j, int blocksize, int &ihi, int &jhi, int &ilo, int &jlo0, int &block_idx);
+    void get_blocked_indices(int i, int j, int blocksize, int& ihi, int& jhi, int& ilo, int& jlo0,
+                             int& block_idx);
 };
 
 #endif

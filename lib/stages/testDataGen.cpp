@@ -203,10 +203,10 @@ void testDataGen::main_thread() {
 
         buf->allocate_new_metadata_object(frame_id);
         std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
-        
+
         chordmeta->set_fpga_seq_num(seq_num);
 
-        //TODO: Fix this, cannot change from frame to frame (and should not be "now")
+        // TODO: Fix this, cannot change from frame to frame (and should not be "now")
         gettimeofday(&now, nullptr);
         chordmeta->set_first_packet_recv_time(now);
 

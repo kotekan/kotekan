@@ -401,7 +401,7 @@ class FakeN2KBuffers(InputBuffer):
 
         n2k_stage_name = "faken2k_gen_%i" % self._buf_ind
         rfi_stage_name = "faken2k_gen_rfi_%i" % self._buf_ind
-        
+
         self.__class__._buf_ind += 1
 
         self.buffer_block = {
@@ -435,8 +435,8 @@ class FakeN2KBuffers(InputBuffer):
                 "kotekan_buffer": "standard",
                 "metadata_pool": "chord_pool",
                 "num_frames": "buffer_depth",
-                "frame_size": "(samples_per_data_set * num_local_freq) / 8"
-            }
+                "frame_size": "(samples_per_data_set * num_local_freq) / 8",
+            },
         }
 
         n2k_gen_config = {
@@ -445,8 +445,8 @@ class FakeN2KBuffers(InputBuffer):
             "out_counts_buf": self.counts_name,
             "in_rfimask_buf": self.rfi_name,
             "correlation_type": "const",
-            "correlation_value": [ 1, -2 ],
-            "counts_type":  "const",
+            "correlation_value": [1, -2],
+            "counts_type": "const",
             "counts_value": "sub_integration_ntime",
             "mul_correlation_by_counts": True,
         }
@@ -464,12 +464,14 @@ class FakeN2KBuffers(InputBuffer):
         n2k_gen_config.update(n2k_kwargs)
         rfi_gen_config.update(rfi_kwargs)
 
-        self.stage_block = {n2k_stage_name: n2k_gen_config,
-                            rfi_stage_name: rfi_gen_config}
+        self.stage_block = {
+            n2k_stage_name: n2k_gen_config,
+            rfi_stage_name: rfi_gen_config,
+        }
         self.global_block = {
             "chord_pool": {
                 "kotekan_metadata_pool": "chordMetadata",
-                "num_metadata_objects": "3 * buffer_depth"
+                "num_metadata_objects": "3 * buffer_depth",
             }
         }
 

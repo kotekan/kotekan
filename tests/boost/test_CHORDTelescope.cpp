@@ -2,10 +2,10 @@
 
 #include "CHORDTelescope.hpp"
 #include "Config.hpp"
-#include "configUpdater.hpp"
 #include "Telescope.hpp"
-#include "restServer.hpp"
+#include "configUpdater.hpp"
 #include "errors.h" // _global_log_level
+#include "restServer.hpp"
 
 #include "fmt.hpp"
 #include "json.hpp"
@@ -19,8 +19,8 @@
 
 using kotekan::Config;
 using json = nlohmann::json;
-using kotekan::restServer;
 using kotekan::configUpdater;
+using kotekan::restServer;
 
 const std::string default_config_str = "{\
 \"type\": \"config\",\
@@ -65,7 +65,7 @@ const std::string default_config_str = "{\
     }\
 }";
 
-const CHORDTelescope& get_telescope(json &json_config) {
+const CHORDTelescope& get_telescope(json& json_config) {
     Config conf;
     conf.update_config(json_config);
     configUpdater& config_updater = configUpdater::instance();
@@ -84,7 +84,7 @@ BOOST_AUTO_TEST_CASE(_instrument_position) {
     json json_config = json::parse(default_config_str);
     json_config["telescope"]["inst_lat_deg"] = lat;
     json_config["telescope"]["inst_long_deg"] = lon;
-   
+
     const CHORDTelescope& tel = get_telescope(json_config);
 
     BOOST_CHECK_EQUAL(tel.get_inst_long_deg(), lon);
@@ -98,7 +98,7 @@ BOOST_AUTO_TEST_CASE(_instrument_orientation) {
 
     json json_config = json::parse(default_config_str);
     json_config["telescope"]["inst_alt_deg"] = alt;
-   
+
     const CHORDTelescope& tel = get_telescope(json_config);
 
     BOOST_CHECK_EQUAL(tel.get_inst_alt_deg(), alt);

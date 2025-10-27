@@ -210,17 +210,18 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
     // The input ringbuffers do not contain time-dependent data,
     // so we must reconstruct it here. (fpga_seq_num and sample0_offset)
     // TODO: do this automatically in `NDArrayRingBuffer`
-    
+
     // The RFI mask has a fast time index of size 1024, so has an apparent
     // time downsampling of 1024. To get the needed outgoing fpga_seq_num,
     // we need to undo that.
     out_meta->set_fpga_seq_num(1024 * rfi_RFImask.get_read_valid().begin());
-    out_meta->set_sample0_offset(div_noremainder(out_meta->get_fpga_seq_num(), n2k_sub_integration_ntime));
+    out_meta->set_sample0_offset(
+        div_noremainder(out_meta->get_fpga_seq_num(), n2k_sub_integration_ntime));
 
     const std::vector<int> in_time_downsampling_fpga = pl_meta->get_time_downsampling_fpga();
     const std::vector<int64_t> in_half_fpga_sample0 = pl_meta->get_half_fpga_sample0();
     assert(in_time_downsampling_fpga.size() == static_cast<size_t>(out_meta->get_nfreq()));
-    
+
     std::vector<int> out_time_downsampling_fpga(out_meta->get_nfreq());
     std::vector<int64_t> out_half_fpga_sample0(out_meta->get_nfreq());
 
@@ -229,7 +230,8 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
     for (int f = 0; f < out_meta->get_nfreq(); f++) {
         out_time_downsampling_fpga[f] =
             n2k_sub_integration_ntime * div_noremainder(in_time_downsampling_fpga[f], 64);
-        out_half_fpga_sample0[f] = in_half_fpga_sample0[f] + out_time_downsampling_fpga[f] - in_time_downsampling_fpga[f];
+        out_half_fpga_sample0[f] =
+            in_half_fpga_sample0[f] + out_time_downsampling_fpga[f] - in_time_downsampling_fpga[f];
     }
     out_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
     out_meta->set_half_fpga_sample0(out_half_fpga_sample0);

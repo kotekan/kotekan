@@ -51,8 +51,10 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
 
     corr_type = config.get<std::string>(unique_name, "correlation_type");
     count_type = config.get<std::string>(unique_name, "counts_type");
-    assert(corr_type == "const" || corr_type == "random" || corr_type == "f_times_ee" || corr_type == "f_times_ee_plus_t");
-    assert(count_type == "const" || count_type == "random" || count_type == "random_scalar" || count_type == "const_scalar");
+    assert(corr_type == "const" || corr_type == "random" || corr_type == "f_times_ee"
+           || corr_type == "f_times_ee_plus_t");
+    assert(count_type == "const" || count_type == "random" || count_type == "random_scalar"
+           || count_type == "const_scalar");
 
     corr_value = config.get_default<std::array<int32_t, 2>>(unique_name, "correlation_value",
                                                             std::array<int32_t, 2>({1234, 5678}));
@@ -70,7 +72,8 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     count_min = config.get_default<int32_t>(unique_name, "count_min", 0);
     count_max = config.get_default<int32_t>(unique_name, "count_max", 8192);
 
-    mul_correlation_by_counts = config.get_default<bool>(unique_name, "mul_correlation_by_counts", false);
+    mul_correlation_by_counts =
+        config.get_default<bool>(unique_name, "mul_correlation_by_counts", false);
 
     samples_per_data_set = config.get_default<size_t>(unique_name, "samples_per_data_set", 8192);
     sub_integration_ntime = config.get_default<size_t>(unique_name, "sub_integration_ntime", 8192);
@@ -131,7 +134,7 @@ void testN2kGen::set_correlation_metadata(std::shared_ptr<chordMetadata> meta, u
     meta->set_array_dimension(4, corr_blocksize, "DPlo2");
     meta->set_array_dimension(5, 2, "C");
     meta->set_strides_simple();
-    
+
     meta->set_fpga_seq_num(seq_num);
     meta->set_sample0_offset(seq_num / sub_integration_ntime);
     meta->set_offset_downsampling(1);
@@ -166,7 +169,7 @@ void testN2kGen::set_counts_metadata(std::shared_ptr<chordMetadata> meta, uint64
     meta->set_array_dimension(3, count_blocksize, "D8Plo1");
     meta->set_array_dimension(4, count_blocksize, "D8Plo2");
     meta->set_strides_simple();
-    
+
     meta->set_fpga_seq_num(seq_num);
     meta->set_sample0_offset(seq_num / sub_integration_ntime);
     meta->set_offset_downsampling(1);
@@ -190,16 +193,16 @@ void testN2kGen::set_counts_metadata(std::shared_ptr<chordMetadata> meta, uint64
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
 
-void testN2kGen::get_blocked_indices(int i, int j, int blocksize,
-                int &ihi, int &jhi, int &ilo, int &jlo, int &block_idx) {
+void testN2kGen::get_blocked_indices(int i, int j, int blocksize, int& ihi, int& jhi, int& ilo,
+                                     int& jlo, int& block_idx) {
 
     ihi = i / blocksize;
     jhi = j / blocksize;
     ilo = i % blocksize;
     jlo = j % blocksize;
-    
+
     // Only reference lower triangular blocks (jhi <= ihi), so swap if jhi > ihi
-    if( jhi > ihi) {
+    if (jhi > ihi) {
         int temp = ihi;
         ihi = jhi;
         jhi = temp;
@@ -256,8 +259,7 @@ void testN2kGen::main_thread() {
         const std::shared_ptr<chordMetadata> corr_meta = get_new_metadata(corr_buf, corr_frame_id);
         const std::shared_ptr<chordMetadata> count_meta =
             get_new_metadata(count_buf, count_frame_id);
-        const std::shared_ptr<chordMetadata> rfi_meta =
-            get_new_metadata(rfi_buf, rfi_frame_id);
+        const std::shared_ptr<chordMetadata> rfi_meta = get_new_metadata(rfi_buf, rfi_frame_id);
 
         // fill metadata
         set_correlation_metadata(corr_meta, seq_num);
@@ -274,7 +276,7 @@ void testN2kGen::main_thread() {
 
         for (int t = 0; t < num_integrations; t++) {
             int t_glob = num_frames_generated * num_integrations + t;
-            
+
             for (int f = 0; f < num_local_freq; f++) {
 
                 // Fill the count array
@@ -282,11 +284,12 @@ void testN2kGen::main_thread() {
 
                 int32_t count_scalar_val = -1;
 
-                if(count_type == "random_scalar")
+                if (count_type == "random_scalar")
                     count_scalar_val = count_min + rand() % (count_max - count_min + 1);
-                if(count_type == "const_scalar") {
-                    if(count_value_array.size() > 0) {
-                        count_scalar_val = count_value_array[count_val_idx % count_value_array.size()];
+                if (count_type == "const_scalar") {
+                    if (count_value_array.size() > 0) {
+                        count_scalar_val =
+                            count_value_array[count_val_idx % count_value_array.size()];
                         count_val_idx++;
                     } else
                         count_scalar_val = count_value;
@@ -296,7 +299,7 @@ void testN2kGen::main_thread() {
                     // Lower triangular only
                     for (int jhi = 0; jhi <= ihi; jhi++) {
 
-                        assert(count_block_idx == (ihi*(ihi+1))/2 + jhi);
+                        assert(count_block_idx == (ihi * (ihi + 1)) / 2 + jhi);
 
                         for (int ilo = 0; ilo < count_blocksize; ilo++) {
                             for (int jlo = 0; jlo < count_blocksize; jlo++) {
@@ -334,9 +337,9 @@ void testN2kGen::main_thread() {
                 for (int ihi = 0; ihi < corr_lin_blocks; ihi++) {
                     // Lower triangular only
                     for (int jhi = 0; jhi <= ihi; jhi++) {
-                        
-                        assert(corr_block_idx == (ihi*(ihi+1))/2 + jhi);
-                        
+
+                        assert(corr_block_idx == (ihi * (ihi + 1)) / 2 + jhi);
+
                         for (int ilo = 0; ilo < corr_blocksize; ilo++) {
                             for (int jlo = 0; jlo < corr_blocksize; jlo++) {
                                 int idx = 2 * (jlo + ilo * corr_blocksize)
@@ -379,9 +382,12 @@ void testN2kGen::main_thread() {
                                     int cihi, cjhi, cilo, cjlo, cb_idx;
                                     int ci = (ihi * corr_blocksize + ilo) / 8;
                                     int cj = (jhi * corr_blocksize + jlo) / 8;
-                                    get_blocked_indices(ci, cj, count_blocksize, cihi, cjhi, cilo, cjlo, cb_idx);
+                                    get_blocked_indices(ci, cj, count_blocksize, cihi, cjhi, cilo,
+                                                        cjlo, cb_idx);
 
-                                    int count_idx = cjlo + cilo * count_blocksize + cb_idx * db_count + f * df_count + t * dt_count;
+                                    int count_idx = cjlo + cilo * count_blocksize
+                                                    + cb_idx * db_count + f * df_count
+                                                    + t * dt_count;
 
                                     corr[idx + 0] *= count[count_idx];
                                     corr[idx + 1] *= count[count_idx];

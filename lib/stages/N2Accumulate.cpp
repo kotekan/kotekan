@@ -51,13 +51,14 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     assert(_num_freq_per_n2k_frame > 0);
 
     // accumulation setup
-    _num_n2k_samples_to_accumulate = config.get<int64_t>(unique_name, "num_n2k_samples_to_accumulate");
+    _num_n2k_samples_to_accumulate =
+        config.get<int64_t>(unique_name, "num_n2k_samples_to_accumulate");
 
     assert(_num_n2k_samples_to_accumulate > 0);
     assert(_num_n2k_samples_to_accumulate % 2 == 0);
 
     _packet_loss_is_scalar = config.get<bool>(unique_name, "packet_loss_is_scalar");
-    if(!_packet_loss_is_scalar)
+    if (!_packet_loss_is_scalar)
         FATAL_ERROR("N2Accumulate configured to use packet loss matrix, which is not implemented.");
     assert(_packet_loss_is_scalar);
 
@@ -123,7 +124,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                                      0); // store even vis matrix for
 
     _weights = std::vector<float>(_num_freq_per_n2k_frame * _n2k_correlation_num_products,
-                                    0.0f); // real-valued weights
+                                  0.0f); // real-valued weights
     // number of fpga samples, per frequency, in frame
     _n_valid_fpga_samples_in_vis = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
     _n_valid_fpga_samples_in_vis_even = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
@@ -148,7 +149,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     // TODO...
     // Make sure output buffer has enough frames (>= # frequencies) and are sized correctly
     // Add other assert()s/checks back
-
 }
 
 void N2Accumulate::main_thread() {
@@ -176,7 +176,7 @@ void N2Accumulate::main_thread() {
     int64_t counts_stride_f = _n2k_counts_num_products;
     int64_t counts_stride_t = _n2k_counts_num_products * _num_freq_per_n2k_frame;
 
-    int64_t rfi_stride_f = 128;  // = rfimask_fast_time_len / bits_per_entry = 1024 / 8;
+    int64_t rfi_stride_f = 128; // = rfimask_fast_time_len / bits_per_entry = 1024 / 8;
     int64_t rfi_stride_thi = rfi_stride_f * _num_freq_per_n2k_frame;
 
 
@@ -184,23 +184,23 @@ void N2Accumulate::main_thread() {
 
         // Fetch a new frame and get its sequence id
         DEBUG("Waiting for new input frame {:s}[{:d}].", in_buf->buffer_name, in_frame_id);
-        int32_t *corr = (int32_t *)in_buf->wait_for_full_frame(unique_name, in_frame_id);
+        int32_t* corr = (int32_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (corr == nullptr)
             break;
 
         // Fetch a new counts frame and get its sequence id
         DEBUG("Waiting for new input counts frame {:s}[{:d}].", in_counts_buf->buffer_name,
               in_counts_frame_id);
-        int32_t *counts =
-            (int32_t *) in_counts_buf->wait_for_full_frame(unique_name, in_counts_frame_id);
+        int32_t* counts =
+            (int32_t*)in_counts_buf->wait_for_full_frame(unique_name, in_counts_frame_id);
         if (counts == nullptr)
             break;
 
         // Fetch a new rfimask frame and get its sequence id
         DEBUG("Waiting for new input counts frame {:s}[{:d}].", in_rfimask_buf->buffer_name,
               in_rfimask_frame_id);
-        uint8_t *rfimask =
-            (uint8_t *) in_rfimask_buf->wait_for_full_frame(unique_name, in_rfimask_frame_id);
+        uint8_t* rfimask =
+            (uint8_t*)in_rfimask_buf->wait_for_full_frame(unique_name, in_rfimask_frame_id);
         if (rfimask == nullptr)
             break;
 
@@ -221,7 +221,7 @@ void N2Accumulate::main_thread() {
             TIMEVAL_TO_TIMESPEC(&tv, &ts);
             t_frame_s = N2::ts_to_uint64(ts);
             */
-            t_frame_s = 0;  //TODO: move this logic to telescope
+            t_frame_s = 0; // TODO: move this logic to telescope
         }
         // uint64_t t_frame_e = t_frame_s + _in_frame_duration_nsec;
         comp_time_seconds_metric.set(t_frame_s / 1e9);
@@ -256,7 +256,8 @@ void N2Accumulate::main_thread() {
                 // t_output += 1000000000L; // TODO: Make this a config parameter. Is there a
                 // library for LST?
                 _vis_samples_in_out_frame = 0;
-                _accum_fpga_start_tick = frame_metadata->get_fpga_seq_num() + vis_samp_n * _n_fpga_samples_per_n2k_correlation;
+                _accum_fpga_start_tick = frame_metadata->get_fpga_seq_num()
+                                         + vis_samp_n * _n_fpga_samples_per_n2k_correlation;
             }
 
             int64_t corr_offset = vis_samp_n * corr_stride_t;
@@ -272,8 +273,7 @@ void N2Accumulate::main_thread() {
             // Potential optimization: copying vis_even is only really
             // necessary if we've started accumulating a new frame
             if (vis_sample_num_abs % 2 == 0) {
-                std::copy(corr,
-                          corr + 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame,
+                std::copy(corr, corr + 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame,
                           _vis_even.begin());
             } else {
                 for (int64_t d = 0; d < _n2k_correlation_num_products * _num_freq_per_n2k_frame;
@@ -312,12 +312,12 @@ void N2Accumulate::main_thread() {
             //      rfimask[Thi/1024, F, Tlo]
             //
             // In particular:
-            // 
+            //
             //      int1 rfimask[n_fpga_samples_per_n2k_frame / 1024, _num_freq_per_n2k_frame, 1024]
             //      int8 rfimask[n_fpga_samples_per_n2k_frame / 1024, _num_freq_per_n2k_frame, 128]
             //
             // Raw time sample index at start of vis sample (n2k integration):
-            //  
+            //
             //      t = vis_samp_n * n_fpga_samples_per_n2k_correlation
             //
             // For an int8 rfimask, for a raw index t:
@@ -334,15 +334,16 @@ void N2Accumulate::main_thread() {
             // tbit will always be 0.
             for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
                 for (int64_t t = vis_samp_n * _n_fpga_samples_per_n2k_correlation;
-                        t < (vis_samp_n + 1) * _n_fpga_samples_per_n2k_correlation;
-                        t += _rfi_downsampling_factor) {
-                    
-                    int64_t thi = ((uint64_t) t) / 1024;
-                    int64_t tlo = (((uint64_t) t) % 1024) / 8;
+                     t < (vis_samp_n + 1) * _n_fpga_samples_per_n2k_correlation;
+                     t += _rfi_downsampling_factor) {
+
+                    int64_t thi = ((uint64_t)t) / 1024;
+                    int64_t tlo = (((uint64_t)t) % 1024) / 8;
 
                     int64_t idx = thi * rfi_stride_thi + f * rfi_stride_f + tlo;
 
-                    _n_rfi_samples_in_vis[f] += (1 - (rfimask[idx] & 0x1)) * _rfi_downsampling_factor;
+                    _n_rfi_samples_in_vis[f] +=
+                        (1 - (rfimask[idx] & 0x1)) * _rfi_downsampling_factor;
                 }
 
             } // f
@@ -380,7 +381,8 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
         std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, out_frame_id);
 
         meta->fpga_start_tick = _accum_fpga_start_tick;
-        meta->frame_length_fpga_ticks = _vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation;
+        meta->frame_length_fpga_ticks =
+            _vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation;
         meta->num_elements = _num_elements;
         meta->num_prod = _N2_num_products;
         meta->num_ev = 0;
@@ -390,16 +392,18 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
 
         meta->frame_start_time_ns = _tel.to_time_ns(meta->fpga_start_tick);
         meta->freq_Hz = _tel.to_freq(meta->freq_id);
-        meta->eop = _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
+        meta->eop = _tel.get_EOP_at_time(
+            _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
         meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];
 
-        DEBUG("Creating N2FrameView for freq f[{:d}] = {:d}", f, chord_frame_metadata->get_coarse_freq()[f]);
+        DEBUG("Creating N2FrameView for freq f[{:d}] = {:d}", f,
+              chord_frame_metadata->get_coarse_freq()[f]);
         N2FrameView out_vis(out_buf, out_frame_id);
 
         // Sample numbers for normalizing weights
         DEBUG("Computing normalization.");
         int64_t ns = _n_valid_fpga_samples_in_vis[f]; // ns = "number of samples"
-        float ins = (ns != 0) ? (1.0f / ((float) ns)) : 0.0f;
+        float ins = (ns != 0) ? (1.0f / ((float)ns)) : 0.0f;
 
         // Copy data into buffer.
         // This requires changing from the GPU's blocked format to the triangular format N2Buffer
@@ -410,23 +414,24 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
         for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
             // Lower triangular blocks
             for (int64_t jhi = 0; jhi <= ihi; jhi++) {
-                for(int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
-                    for(int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
+                for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
+                    for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
                         // 2D indices into the N2K matrix.
                         int64_t i = ilo + _n2k_correlation_blocksize * ihi;
                         int64_t j = jlo + _n2k_correlation_blocksize * jhi;
 
-                        // Only procede if we're in the *true* lower-triangular section of the matrix
-                        if(j > i)
+                        // Only procede if we're in the *true* lower-triangular section of the
+                        // matrix
+                        if (j > i)
                             continue;
 
                         // index into the intermediate N2K-shaped array
-                        int64_t idx = jlo + ilo * stride_ilo + block_idx * stride_block
-                                           + f * stride_f;
+                        int64_t idx =
+                            jlo + ilo * stride_ilo + block_idx * stride_block + f * stride_f;
 
-                        // Get the index into the n2 view.  N2 is an *upper* triangular unblocked form,
-                        // so we use the global matrix indices to the lower-triangular N2K form, and
-                        // compute the triangular index with their transpose.
+                        // Get the index into the n2 view.  N2 is an *upper* triangular unblocked
+                        // form, so we use the global matrix indices to the lower-triangular N2K
+                        // form, and compute the triangular index with their transpose.
                         //
                         //  N2K:                    N2:
                         //       j                        j
@@ -438,15 +443,17 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
                         //    3| 6  7  8  9            3|          9
                         //
                         // vis_N2(i, j) = vis_n2k(j, i)*
-                        
+
                         int64_t n2_idx = N2::cmap(j, i, _num_elements);
-                        
+
                         // Populate the visibility matrix
-                        N2::cfloat v = {(float)_vis[2*idx], -(float)_vis[2*idx+1]}; // conjugate
+                        N2::cfloat v = {(float)_vis[2 * idx],
+                                        -(float)_vis[2 * idx + 1]}; // conjugate
                         out_vis.vis[n2_idx] = ins * v;
 
-                        if(ns > 0) {
-                            _weights[idx] -= std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
+                        if (ns > 0) {
+                            _weights[idx] -=
+                                std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
                         }
 
                         out_vis.weight[n2_idx] = (ns > 0) ? ns * (ns / _weights[idx]) : 0;

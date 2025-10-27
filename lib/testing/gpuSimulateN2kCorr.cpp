@@ -216,8 +216,8 @@ void gpuSimulateN2kCorr::main_thread() {
         for (int f = 0; f < _num_local_freq; f++) {
             coarse_freq[f] = coarse_freq_in[f];
             time_downsampling_fpga[f] = time_downsampling_fpga_in[f] * _sub_integration_ntime;
-            half_fpga_sample0[f] = half_fpga_sample0_in[f] + time_downsampling_fpga[f]
-                                        - time_downsampling_fpga_in[f];
+            half_fpga_sample0[f] =
+                half_fpga_sample0_in[f] + time_downsampling_fpga[f] - time_downsampling_fpga_in[f];
         }
 
         meta_out->set_coarse_freq(coarse_freq);

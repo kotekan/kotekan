@@ -139,12 +139,13 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     std::vector<int64_t> out_half_fpga_sample0(out_meta->get_nfreq());
     const std::vector<int64_t> in_half_fpga_sample0 = in_meta->get_half_fpga_sample0();
     const std::vector<int> in_time_downsampling_fpga = in_meta->get_time_downsampling_fpga();
-    
+
     for (int freq = 0; freq < out_meta->get_nfreq(); ++freq) {
         out_time_downsampling_fpga[freq] = _sub_integration_ntime * in_time_downsampling_fpga[freq];
-        out_half_fpga_sample0[freq] = in_half_fpga_sample0[freq] + out_time_downsampling_fpga[freq] - in_time_downsampling_fpga[freq];
+        out_half_fpga_sample0[freq] = in_half_fpga_sample0[freq] + out_time_downsampling_fpga[freq]
+                                      - in_time_downsampling_fpga[freq];
     }
-    
+
     out_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
     out_meta->set_half_fpga_sample0(out_half_fpga_sample0);
 
