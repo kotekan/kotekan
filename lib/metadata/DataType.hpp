@@ -402,13 +402,13 @@ constexpr DataType float_from_element_bits(std::size_t bits) {
 // Find a complex unsigned int with that many bits
 constexpr DataType cuint_from_element_bits(std::size_t bits) {
     switch (bits) {
-        case 8:
-            return cuint8;
         case 16:
-            return cuint16;
+            return cuint8;
         case 32:
-            return cuint32;
+            return cuint16;
         case 64:
+            return cuint32;
+        case 128:
             return cuint64;
         default:
             return unknown_type;
@@ -418,13 +418,13 @@ constexpr DataType cuint_from_element_bits(std::size_t bits) {
 // Find a complex signed int with that many bits
 constexpr DataType cint_from_element_bits(std::size_t bits) {
     switch (bits) {
-        case 8:
-            return cint8;
         case 16:
-            return cint16;
+            return cint8;
         case 32:
-            return cint32;
+            return cint16;
         case 64:
+            return cint32;
+        case 128:
             return cint64;
         default:
             return unknown_type;
@@ -434,11 +434,11 @@ constexpr DataType cint_from_element_bits(std::size_t bits) {
 // Find a complex floating-point type with that many bits
 constexpr DataType cfloat_from_element_bits(std::size_t bits) {
     switch (bits) {
-        case 16:
-            return cfloat16;
         case 32:
-            return cfloat32;
+            return cfloat16;
         case 64:
+            return cfloat32;
+        case 128:
             return cfloat64;
         default:
             return unknown_type;
