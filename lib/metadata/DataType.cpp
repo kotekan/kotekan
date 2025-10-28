@@ -225,4 +225,12 @@ std::ostream& operator<<(std::ostream& os, DataType type) {
     return os << type_to_string(type);
 }
 
+void to_json(nlohmann::json& j, const DataType& d) {
+    j = type_to_string(d);
+}
+
+void from_json(const nlohmann::json& j, DataType& d) {
+    d = string_to_type(j.get<std::string>());
+}
+
 } // namespace kotekan
