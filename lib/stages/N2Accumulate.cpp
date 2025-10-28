@@ -47,7 +47,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     // number of frequencies in frame
     _num_freq_per_n2k_frame = config.get<int64_t>(unique_name, "num_freq_per_n2k_frame");
     assert(_num_freq_per_n2k_frame > 0);
-    if(_num_freq_per_n2k_frame <= 0) {
+    if (_num_freq_per_n2k_frame <= 0) {
         FATAL_ERROR("num_freq_per_n2k_frame is not positive: {:d}", _num_freq_per_n2k_frame);
         std::abort();
     }
@@ -56,9 +56,10 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _num_n2k_samples_to_accumulate =
         config.get<int64_t>(unique_name, "num_n2k_samples_to_accumulate");
 
-    if(_num_n2k_samples_to_accumulate <= 0 || _num_n2k_samples_to_accumulate % 2 != 0) {
-        FATAL_ERROR("N2Accumulate configured to use non-positive or odd num_n2k_samples_to_accumulate: {:d}",
-                _num_n2k_samples_to_accumulate);
+    if (_num_n2k_samples_to_accumulate <= 0 || _num_n2k_samples_to_accumulate % 2 != 0) {
+        FATAL_ERROR("N2Accumulate configured to use non-positive or odd "
+                    "num_n2k_samples_to_accumulate: {:d}",
+                    _num_n2k_samples_to_accumulate);
         std::abort();
     }
 
@@ -70,18 +71,19 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     // sampling information
     _n_fpga_samples_per_n2k_frame = config.get<int64_t>(unique_name, "samples_per_data_set");
     _n_fpga_samples_per_n2k_correlation = config.get<int64_t>(unique_name, "sub_integration_ntime");
-    
-    if(!(_n_fpga_samples_per_n2k_frame > 0)) {
+
+    if (!(_n_fpga_samples_per_n2k_frame > 0)) {
         FATAL_ERROR("samples_per_data_set is not positve: {:d}", _n_fpga_samples_per_n2k_frame);
         std::abort();
     }
-    if(!(_n_fpga_samples_per_n2k_correlation > 0)) {
-        FATAL_ERROR("sub_integration_ntime is not positve: {:d}", _n_fpga_samples_per_n2k_correlation);
+    if (!(_n_fpga_samples_per_n2k_correlation > 0)) {
+        FATAL_ERROR("sub_integration_ntime is not positve: {:d}",
+                    _n_fpga_samples_per_n2k_correlation);
         std::abort();
     }
-    if(!(_n_fpga_samples_per_n2k_frame % _n_fpga_samples_per_n2k_correlation == 0)) {
+    if (!(_n_fpga_samples_per_n2k_frame % _n_fpga_samples_per_n2k_correlation == 0)) {
         FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d})",
-                _n_fpga_samples_per_n2k_frame, _n_fpga_samples_per_n2k_correlation);
+                    _n_fpga_samples_per_n2k_frame, _n_fpga_samples_per_n2k_correlation);
         std::abort();
     }
 
@@ -93,19 +95,19 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     // Number of elements (polarization x dish) in the array.
     _num_elements = config.get<int64_t>(unique_name, "num_elements");
-    if(!(_num_elements > 0)) {
+    if (!(_num_elements > 0)) {
         FATAL_ERROR("num_elements is not positive: {:d}", _num_elements);
         std::abort();
     }
     // Check num_elements is consistent with the count & correlation blocksizes.
-    if(!(_num_elements % _n2k_correlation_blocksize == 0)) {
+    if (!(_num_elements % _n2k_correlation_blocksize == 0)) {
         FATAL_ERROR("num_elements ({:d}) is not a multiple of the correlation block size ({:d})",
-                _num_elements, _n2k_correlation_blocksize);
+                    _num_elements, _n2k_correlation_blocksize);
         std::abort();
     }
-    if(!(_num_elements % (8 * _n2k_counts_blocksize) == 0)) {
+    if (!(_num_elements % (8 * _n2k_counts_blocksize) == 0)) {
         FATAL_ERROR("num_elements ({:d}) / 8 is not a multiple of the counts block size ({:d})",
-                _num_elements, _n2k_counts_blocksize);
+                    _num_elements, _n2k_counts_blocksize);
         std::abort();
     }
 
@@ -130,14 +132,13 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _N2_num_products = (_num_elements * (_num_elements + 1)) / 2;
 
     _rfi_downsampling_factor = config.get<int64_t>(unique_name, "rfi_downsampling_factor");
-    if(!(_rfi_downsampling_factor > 0)) {
-        FATAL_ERROR("rfi_downsampling_factor is not positive: {:d}",
-                _rfi_downsampling_factor);
+    if (!(_rfi_downsampling_factor > 0)) {
+        FATAL_ERROR("rfi_downsampling_factor is not positive: {:d}", _rfi_downsampling_factor);
         std::abort();
     }
-    if(!(_rfi_downsampling_factor % 8 == 0)) {
+    if (!(_rfi_downsampling_factor % 8 == 0)) {
         FATAL_ERROR("rfi_downsampling_factor is not a multiple of 8: {:d}",
-                _rfi_downsampling_factor);
+                    _rfi_downsampling_factor);
         std::abort();
     }
 
@@ -172,33 +173,36 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     out_buf->register_producer(unique_name);
 
     // Check buffer frame sizes
-    size_t in_corr_frame_size =  2 * sizeof(int32_t) * _n2k_correlation_num_products * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
-    size_t in_counts_frame_size =  sizeof(int32_t) * _n2k_counts_num_products * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
+    size_t in_corr_frame_size = 2 * sizeof(int32_t) * _n2k_correlation_num_products
+                                * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
+    size_t in_counts_frame_size = sizeof(int32_t) * _n2k_counts_num_products
+                                  * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
     size_t in_rfimask_frame_size = _num_freq_per_n2k_frame * _n_fpga_samples_per_n2k_frame / 8;
     size_t out_n2_frame_size = N2FrameView::calculate_frame_size(_num_elements, 0);
 
-    if(in_buf->frame_size != in_corr_frame_size) {
+    if (in_buf->frame_size != in_corr_frame_size) {
         FATAL_ERROR("N2Accumulate in_buf ({:s}) has frame size {:d}. Expected {:d}.",
-                in_buf->buffer_name, in_buf->frame_size, in_corr_frame_size);
+                    in_buf->buffer_name, in_buf->frame_size, in_corr_frame_size);
         std::abort();
     }
-    if(in_counts_buf->frame_size != in_counts_frame_size) {
+    if (in_counts_buf->frame_size != in_counts_frame_size) {
         FATAL_ERROR("N2Accumulate in_counts_buf ({:s}) has frame size {:d}. Expected {:d}.",
-                in_counts_buf->buffer_name, in_counts_buf->frame_size, in_counts_frame_size);
+                    in_counts_buf->buffer_name, in_counts_buf->frame_size, in_counts_frame_size);
         std::abort();
     }
-    if(in_rfimask_buf->frame_size != in_rfimask_frame_size) {
+    if (in_rfimask_buf->frame_size != in_rfimask_frame_size) {
         FATAL_ERROR("N2Accumulate in_rfimask_buf ({:s}) has frame size {:d}. Expected {:d}.",
-                in_rfimask_buf->buffer_name, in_rfimask_buf->frame_size, in_rfimask_frame_size);
+                    in_rfimask_buf->buffer_name, in_rfimask_buf->frame_size, in_rfimask_frame_size);
         std::abort();
     }
-    if(out_buf->frame_size != out_n2_frame_size) {
+    if (out_buf->frame_size != out_n2_frame_size) {
         FATAL_ERROR("N2Accumulate out_buf ({:s}) has frame size {:d}. Expected {:d}.",
-                out_buf->buffer_name, out_buf->frame_size, out_n2_frame_size);
+                    out_buf->buffer_name, out_buf->frame_size, out_n2_frame_size);
         std::abort();
     }
 
-    // TODO... Should we ensure output buffer has enough frames (>= # frequencies) to take the output without filling completely?
+    // TODO... Should we ensure output buffer has enough frames (>= # frequencies) to take the
+    // output without filling completely?
 }
 
 void N2Accumulate::main_thread() {
@@ -327,10 +331,11 @@ void N2Accumulate::main_thread() {
             // Potential optimization: copying vis_even is only really
             // necessary if we've started accumulating a new frame
             if (vis_sample_num_abs % 2 == 0) {
-                std::copy(corr + corr_offset_t, corr + corr_offset_t + corr_stride_t, _vis_even.begin());
+                std::copy(corr + corr_offset_t, corr + corr_offset_t + corr_stride_t,
+                          _vis_even.begin());
             } else {
-                for (uint64_t d = 0; d < (uint64_t)(_n2k_correlation_num_products * _num_freq_per_n2k_frame);
-                     ++d) {
+                for (uint64_t d = 0;
+                     d < (uint64_t)(_n2k_correlation_num_products * _num_freq_per_n2k_frame); ++d) {
                     float dr = corr[corr_offset_t + 2 * d + 0] - _vis_even[2 * d + 0];
                     float di = corr[corr_offset_t + 2 * d + 1] - _vis_even[2 * d + 1];
                     _weights[d] += dr * dr + di * di;

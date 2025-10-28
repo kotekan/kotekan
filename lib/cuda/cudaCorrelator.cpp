@@ -56,8 +56,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
                 std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, *this),
     n2k_correlation([&]() {
         // aka "nt_outer" in n2k.hpp
-        const int num_subintegrations =
-            div_noremainder(_num_times, _sub_integration_ntime);
+        const int num_subintegrations = div_noremainder(_num_times, _sub_integration_ntime);
         const int blocksize = 16;
         const int linear_num_blocks = (_num_elements + 1) / blocksize;
         const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
@@ -92,8 +91,7 @@ int cudaCorrelator::wait_on_precondition() {
             if (available_elements < _num_times)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else
-                return read_descriptor_t{.claimed = _num_times,
-                                         .read = _num_times};
+                return read_descriptor_t{.claimed = _num_times, .read = _num_times};
         });
     if (voltage_errcode < 0)
         return voltage_errcode;
@@ -147,7 +145,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
 
     out_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
     out_meta->set_half_fpga_sample0(out_half_fpga_sample0);
-    
+
     // Set poison for debug checks.
     n2k_correlation.set_to_poison(0x80);
 
@@ -185,9 +183,9 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     n2correlator.launch(n2k_correlation.get_ndarray().data(), (const int8_t*)input_memory,
                         (const uint32_t*)rfi_RFImask_memory, num_subintegrations,
                         _sub_integration_ntime, device.getStream(cuda_stream_id), true);
-    
+
     CHECK_CUDA_ERROR(cudaGetLastError());
-    
+
     // Check if poison value made it through
     n2k_correlation.check_for_poison(0x80);
 

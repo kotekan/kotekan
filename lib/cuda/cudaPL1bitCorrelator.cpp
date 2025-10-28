@@ -133,8 +133,7 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
                 std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, *this),
     n2k_counts([&]() {
         // aka "nt_outer" in n2k.hpp
-        const int num_subintegrations =
-            div_noremainder(num_times, n2k_sub_integration_ntime);
+        const int num_subintegrations = div_noremainder(num_times, n2k_sub_integration_ntime);
         const int blocksize = 8;
         const int linear_num_blocks = (num_polarizations * num_dishes / 8 + 1) / blocksize;
         const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
@@ -165,8 +164,7 @@ int cudaPL1bitCorrelator::wait_on_precondition() {
             if (available_elements < pl_num_times)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else
-                return read_descriptor_t{.claimed = pl_num_times,
-                                         .read = pl_num_times};
+                return read_descriptor_t{.claimed = pl_num_times, .read = pl_num_times};
         });
     if (pl_expanded_mask_errcode < 0)
         return pl_expanded_mask_errcode;
@@ -176,13 +174,11 @@ int cudaPL1bitCorrelator::wait_on_precondition() {
     const int rfi_RFImask_errcode =
         rfi_RFImask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
             // We measure the rfi mask in "coarse" time samples
-            const auto rfi_num_times =
-                div_noremainder(num_times, 8 * 128);
+            const auto rfi_num_times = div_noremainder(num_times, 8 * 128);
             if (available_elements < rfi_num_times)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else
-                return read_descriptor_t{.claimed = rfi_num_times,
-                                         .read = rfi_num_times};
+                return read_descriptor_t{.claimed = rfi_num_times, .read = rfi_num_times};
         });
     if (rfi_RFImask_errcode < 0)
         return rfi_RFImask_errcode;
