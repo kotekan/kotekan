@@ -13,6 +13,9 @@ run_fengine:
     # skip_julia: false
     dish_positions_buffer: host_dish_positions_buffer
     E_buffer: host_voltage_buffer
+    {%- for id in range(16) %}  # num_frequencies = 16 for CHIME
+    E_buffer_{{ id }}: host_voltage_buffer_{{ id }}
+    {%- endfor %}
     pl_mask_buffer: host_pl_mask_buffer
     bf_mask_buffer: host_bf_mask_buffer
     scatter_indices_buffer: host_scatter_indices_buffer
