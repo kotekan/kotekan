@@ -1,17 +1,24 @@
 #ifndef CHORD_METADATA
 #define CHORD_METADATA
 
-#include "DataType.hpp"       // for type_to_string, type_total_bytes, DataType
+#include "DataType.hpp" // for type_to_string, type_total_bytes, DataType
+#include "Telescope.hpp"
 #include "buffer.hpp"         // for Buffer
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
 
+#include "jsonMetadata.hpp"
+// TODO: CHIME and CHORD differ whether they use the datasetManager
+#include "dataset.hpp"
+
 #include "fmt.hpp" // for compile_string_to_view
 
+#include <atomic>
 #include <cassert>    // for assert
 #include <cstddef>    // for size_t, ptrdiff_t
 #include <cstdint>    // for int64_t, uint16_t
 #include <memory>     // for shared_ptr, allocator, __shared_ptr_access, static_pointer...
+#include <mutex>      // for mutex, lock_guard
 #include <sstream>    // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
 #include <string.h>   // for strncpy, strnlen, size_t
 #include <string>     // for char_traits, basic_string, string, operator==, operator<<
@@ -50,27 +57,27 @@ public:
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
 
-    /// The ICEBoard sequence number
-    int64_t fpga_seq_num;
-    /// The system time when the first packet in the frame was captured
-    struct timeval first_packet_recv_time;
-    /// The GPS time of @c fpga_seq_num.
-    struct timespec gps_time;
-    /// The stream ID from the ICEBoard
-    /// Note in the case of CHIME-2048 the normally unused section
-    /// Encodes the port-shuffle frequency information
-    uint16_t stream_ID;
-
-    int frame_counter;
+    /// controls access to this object
+    mutable class almost_copyable_mutex : public std::mutex {
+        // NDArray copies chordMetadata.
+        // Allow this only if currently not locked
+    public:
+        almost_copyable_mutex() : std::mutex() {}
+        almost_copyable_mutex(const almost_copyable_mutex& /*other*/) : std::mutex() {
+            // cannot lock a const mutex
+            // std::lock_guard lock_other(other);
+        }
+        almost_copyable_mutex operator=(const almost_copyable_mutex& /*other*/) {
+            // cannot lock a const mutex
+            // std::lock_guard lock_other(other);
+            std::lock_guard lock_this(*this);
+            return *this;
+        }
+    } lock;
 
     // TODO: Replace by NDArray
     char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
     kotekan::DataType type;
-
-    /// Track the number of lost fpga samples in each gpu sub-integration
-    int lost_fpga_samples[CHORD_META_MAX_FREQ][CHORD_META_MAX_VIS_SAMPLES];
-    /// Track the number of rfi-flagged samples in each gpu sub-integration
-    int rfi_flagged_samples[CHORD_META_MAX_FREQ][CHORD_META_MAX_VIS_SAMPLES];
 
     int dims;
     int dim[CHORD_META_MAX_DIM];
@@ -80,58 +87,10 @@ public:
     // The offset counts elements, not bytes
     int64_t offset;
 
-    // One-hot arrays?
-    int n_one_hot;
-    char onehot_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME];
-    int onehot_index[CHORD_META_MAX_DIM];
-
-    // All time samples in this buffer (or the whole buffer, if the
-    // buffer does not have a time sample index) have `sample_offset`
-    // added to the buffer's time sample index. (This allows quickly
-    // shifting metadata in time to re-use metadata objects.)
-    //
-    // The actual (possibly fractional) time sample index is calculated as follows:
-    //     T_actual = (sample0_offset + T / offset_downsampling + half_fpga_sample0[F] / 2) /
-    //                time_downsampling_fpga[F]
-    // where `T` is the time sample index (the slowest varying index)
-    // and `F` is the coarse frequency index.
-    int64_t sample0_offset;
-    int offset_downsampling;
-
     size_t sample_bytes() const {
         // The number of bytes per sample is the number of bytes needed to store one array slice.
         return type_total_bytes(type) * stride[0];
     }
-
-    // Per-frequency arrays
-
-    // Number of coarse frequency channels in this frame, or -1. The
-    // actual number of frequencies will be larger after
-    // upchannelization. This field continues to track the original
-    // number of coarse frequency channels.
-    int nfreq;
-
-    // frequencies -- integer (0-8192) identifier for FPGA coarse frequencies
-    // This is the FPGA frequency channel index, indexed by the local coarse frequency channel.
-    int coarse_freq[CHORD_META_MAX_FREQ];
-
-    // the upchannelization factor that each frequency has gone through (1 for = FPGA)
-    // Also indexed by the local coarse frequency channel.
-    int freq_upchan_factor[CHORD_META_MAX_FREQ];
-
-    // TODO: Store upchannelization index as well
-
-    // Time sampling -- for each coarse frequency channel, 2x the FPGA
-    // sample number of the first sample.  The 2x is there to handle
-    // the upchannelization case, where 2 or more samples may get
-    // averaged, producing a new sample that is effectively halfway in
-    // between them, ie, at a half-FPGAsample time.
-    int64_t half_fpga_sample0[CHORD_META_MAX_FREQ];
-
-    // Time sampling -- for each coarse frequency channel, the factor
-    // by which the time samples have been downsampled relative to
-    // FPGA samples.
-    int time_downsampling_fpga[CHORD_META_MAX_FREQ];
 
     // Dish layout
     int ndishes;                                  // number of dishes
@@ -163,20 +122,6 @@ public:
         return s.str();
     }
 
-    std::string get_onehot_name(size_t i) const {
-        return std::string(onehot_name[i], strnlen(onehot_name[i], CHORD_META_MAX_DIMNAME));
-    }
-
-    std::string get_onehot_string() const {
-        std::ostringstream s;
-        for (int i = 0; i < this->n_one_hot; i++) {
-            if (i)
-                s << ", ";
-            s << get_onehot_name(i) << "=" << onehot_index[i];
-        }
-        return s.str();
-    }
-
     void set_array_dimension(int dim, int size, const std::string& name) {
         assert(dim < CHORD_META_MAX_DIM);
         this->dim[dim] = size;
@@ -203,25 +148,329 @@ public:
     }
 
     void set_name(const std::string& name) {
-        // GCC helpfully tries to warn us that the destination string may end up not
-        // NUL-terminated, which we know.
-#pragma GCC diagnostic push
-#if GCC_VERSION > 80000
-#pragma GCC diagnostic ignored "-Wstringop-truncation"
-#endif
-        strncpy(this->name, name.c_str(), CHORD_META_MAX_DIMNAME);
-#pragma GCC diagnostic pop
+        // Manually copying in a for loop to avoid possibly buggy GCC warning
+        // about array bounds and stringop-truncation.
+
+        int len = name.length() < CHORD_META_MAX_DIMNAME ? name.length() : CHORD_META_MAX_DIMNAME;
+
+        for (int i = 0; i < len; i++)
+            this->name[i] = name[i];
+        // Fill the remaining space with 0s
+        for (int i = len; i < CHORD_META_MAX_DIMNAME; i++)
+            this->name[i] = '\0';
     }
 
     std::string get_name() const {
         return std::string(name, strnlen(name, CHORD_META_MAX_DIMNAME));
     }
 
-    void set_onehot_dimension(int dim, int i, const std::string& name) {
-        assert(dim < CHORD_META_MAX_DIM);
-        this->onehot_index[dim] = i;
-        strncpy(this->onehot_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
+    // science metadata
+    using beamCoord = jsonMetadata::beamCoord;
+
+    /// The coordinates of the tracking beam (if applicable)
+    bool has_beam_coord() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::BEAM_COORD);
     }
+
+    beamCoord get_beam_coord() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::BEAM_COORD).template get<beamCoord>();
+    }
+
+    // TODO: add set_beam_coord
+
+    void set_fpga_seq_num(const int64_t fpga_seq_num) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::FPGA_SEQ_NUM] = fpga_seq_num;
+    }
+
+    bool has_fpga_seq_num() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::FPGA_SEQ_NUM);
+    }
+
+    int64_t get_fpga_seq_num() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::FPGA_SEQ_NUM).template get<int64_t>();
+    }
+
+    void set_frame_counter(const int frame_counter) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::FRAME_COUNTER] = frame_counter;
+    }
+
+    bool has_frame_counter() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::FRAME_COUNTER);
+    }
+
+    int get_frame_counter() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::FRAME_COUNTER).template get<int>();
+    }
+
+    bool has_nfreq() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::COARSE_FREQ);
+    }
+
+    int get_nfreq() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return static_cast<int>(metadata.at(jsonMetadata::COARSE_FREQ).size());
+    }
+
+    // TODO: this should really be a freq_id_t array
+    void set_coarse_freq(const std::vector<int>& coarse_freq) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
+        metadata[jsonMetadata::COARSE_FREQ] = coarse_freq;
+    }
+
+    bool has_coarse_freq() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::COARSE_FREQ);
+    }
+
+    std::vector<int> get_coarse_freq() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::COARSE_FREQ).template get<std::vector<int>>();
+    }
+
+    // TODO: remove this, it's not setting anything anymore (and assumes that
+    // fpga_seq_num is set)
+    void set_gps_time([[maybe_unused]] const timespec gps_time) {
+        // this must not request the lock
+        const Telescope& tel = Telescope::instance();
+        [[maybe_unused]] const timespec my_gps_time = tel.to_time(this->get_fpga_seq_num());
+        assert(gps_time.tv_sec == my_gps_time.tv_sec);
+        assert(gps_time.tv_nsec == my_gps_time.tv_nsec);
+    }
+
+    // TODO: remove this, it's redundant
+    bool has_gps_time() const {
+        return has_fpga_seq_num();
+    }
+
+    // TODO: remove this, it's redundant
+    struct timespec get_gps_time() const {
+        // this must not request the lock
+        const Telescope& tel = Telescope::instance();
+        return tel.to_time(this->get_fpga_seq_num());
+    }
+
+    /// The number of bad inputs in the RFI systems bad input list.
+    /// This value is mostly needed for renormalization of the SK values.
+    void set_rfi_num_bad_inputs(const uint32_t rfi_num_bad_inputs) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::RFI_NUM_BAD_INPUTS] = rfi_num_bad_inputs;
+    }
+
+    bool has_rfi_num_bad_inputs() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::RFI_NUM_BAD_INPUTS);
+    }
+
+    uint32_t get_rfi_num_bad_inputs() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::RFI_NUM_BAD_INPUTS).template get<uint32_t>();
+    }
+
+    /// The number of FPGA frames flagged as containing RFI.
+    /// NOTE: This value might contain overlap with lost samples, so it can count
+    /// missing samples as samples with RFI.  For renormalization this value
+    /// should NOT be used, use @c lost_timesamples instead.
+    /// This value will be filled even if RFI zeroing is disabled.
+    void set_rfi_flagged_samples(const int32_t flagged_samples) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::RFI_FLAGGED_SAMPLES] = flagged_samples;
+    }
+
+    bool has_rfi_flagged_samples() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::RFI_FLAGGED_SAMPLES);
+    }
+
+    int32_t get_rfi_flagged_samples() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::RFI_FLAGGED_SAMPLES).template get<int32_t>();
+    }
+
+    void set_lost_timesamples(int32_t lost_timesamples) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::LOST_TIMESAMPLES] = lost_timesamples;
+    }
+
+    bool has_lost_timesamples() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::LOST_TIMESAMPLES);
+    }
+
+    int32_t get_lost_timesamples() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::LOST_TIMESAMPLES).template get<int32_t>();
+    }
+
+    void atomic_add_lost_timesamples(const int32_t lost_samples) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata.at(jsonMetadata::LOST_TIMESAMPLES) =
+            metadata.at(jsonMetadata::LOST_TIMESAMPLES).template get<int32_t>() + lost_samples;
+    }
+
+    // All time samples in this buffer (or the whole buffer, if the
+    // buffer does not have a time sample index) have `sample_offset`
+    // added to the buffer's time sample index. (This allows quickly
+    // shifting metadata in time to re-use metadata objects.)
+    //
+    // The actual (possibly fractional) time sample index is calculated as follows:
+    //     T_actual = (sample0_offset + T / offset_downsampling + half_fpga_sample0[F] / 2) /
+    //                time_downsampling_fpga[F]
+    // where `T` is the time sample index (the slowest varying index)
+    // and `F` is the coarse frequency index.
+    void set_sample0_offset(const int64_t sample0_offset) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::SAMPLE0_OFFSET] = sample0_offset;
+    }
+
+    bool has_sample0_offset() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::SAMPLE0_OFFSET);
+    }
+
+    int64_t get_sample0_offset() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::SAMPLE0_OFFSET).template get<int64_t>();
+    }
+
+    void set_offset_downsampling(const int offset_downsampling) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::OFFSET_DOWNSAMPLING] = offset_downsampling;
+    }
+
+    bool has_offset_downsampling() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::OFFSET_DOWNSAMPLING);
+    }
+
+    int get_offset_downsampling() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::OFFSET_DOWNSAMPLING).template get<int>();
+    }
+
+    // Per-frequency arrays
+
+    // the upchannelization factor that each frequency has gone through (1 for = FPGA)
+    // Also indexed by the local coarse frequency channel.
+    void set_freq_upchan_factor(const std::vector<int>& freq_upchan_factor) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
+        metadata[jsonMetadata::FREQ_UPCHAN_FACTOR] = freq_upchan_factor;
+    }
+
+    bool has_freq_upchan_factor() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::FREQ_UPCHAN_FACTOR);
+    }
+
+    std::vector<int> get_freq_upchan_factor() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::FREQ_UPCHAN_FACTOR).template get<std::vector<int>>();
+    }
+
+    // TODO: Store upchannelization index as well
+
+    // Time sampling -- for each coarse frequency channel, 2x the FPGA
+    // sample number of the first sample.  The 2x is there to handle
+    // the upchannelization case, where 2 or more samples may get
+    // averaged, producing a new sample that is effectively halfway in
+    // between them, ie, at a half-FPGAsample time.
+    void set_half_fpga_sample0(const std::vector<int64_t>& half_fpga_sample0) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        assert(half_fpga_sample0.size() <= CHORD_META_MAX_FREQ);
+        metadata[jsonMetadata::HALF_FPGA_SAMPLE0] = half_fpga_sample0;
+    }
+
+    bool has_half_fpga_sample0() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::HALF_FPGA_SAMPLE0);
+    }
+
+    std::vector<int64_t> get_half_fpga_sample0() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::HALF_FPGA_SAMPLE0).template get<std::vector<int64_t>>();
+    }
+
+    // Time sampling -- for each coarse frequency channel, the factor
+    // by which the time samples have been downsampled relative to
+    // FPGA samples.
+    void set_time_downsampling_fpga(const std::vector<int>& time_downsampling_fpga) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        assert(time_downsampling_fpga.size() <= CHORD_META_MAX_FREQ);
+        metadata[jsonMetadata::TIME_DOWNSAMPLING_FPGA] = time_downsampling_fpga;
+    }
+
+    bool has_time_downsampling_fpga() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::TIME_DOWNSAMPLING_FPGA);
+    }
+
+    std::vector<int> get_time_downsampling_fpga() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::TIME_DOWNSAMPLING_FPGA);
+    }
+
+    // non-science metadata
+
+    void set_first_packet_recv_time(const timeval time_v) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::FIRST_PACKET_RECV_TIME] = time_v;
+    }
+
+    bool has_first_packet_recv_time() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::FIRST_PACKET_RECV_TIME);
+    }
+
+    timeval get_first_packet_recv_time() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::FIRST_PACKET_RECV_TIME).template get<timeval>();
+    }
+
+    // links to other data
+
+    void set_stream_id(const stream_t stream_id) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::STREAM_ID] = stream_id.id;
+    }
+
+    bool has_stream_id() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::STREAM_ID);
+    }
+
+    stream_t get_stream_id() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return stream_t{.id = metadata.at(jsonMetadata::STREAM_ID).template get<uint64_t>()};
+    }
+
+    /// ID of the dataset
+    void set_dataset_id(const dset_id_t dset_id) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::DATASET_ID] = dset_id;
+    }
+
+    bool has_dataset_id() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::DATASET_ID);
+    }
+
+    dset_id_t get_dataset_id() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::DATASET_ID).template get<dset_id_t>();
+    }
+
+private:
+    jsonMetadata::metadata metadata;
 };
 
 inline bool metadata_is_chord(Buffer* buf, int) {
@@ -273,7 +522,7 @@ get_chord_metadata(const std::shared_ptr<const metadataObject>& mc) {
 inline std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id) {
     if (!buf || frame_id < 0 || frame_id >= (int)buf->metadata.size())
         return std::shared_ptr<chordMetadata>();
-    std::shared_ptr<metadataObject> meta = buf->metadata[frame_id];
+    std::shared_ptr<metadataObject> meta = buf->metadata.at(frame_id);
     return get_chord_metadata(meta);
 }
 

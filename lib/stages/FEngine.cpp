@@ -183,34 +183,34 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     J_frame_size(num_times * num_polarizations * num_frequencies * bb_num_beams),
     G_frame_sizes{
         0,
-        std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss[U2] * upchan_factor(U2),
-        std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss[U4] * upchan_factor(U4),
-        std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss[U8] * upchan_factor(U8),
-        std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss[U16] * upchan_factor(U16),
-        std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss[U32] * upchan_factor(U32),
-        std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss[U64] * upchan_factor(U64),
+        std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss.at(U2) * upchan_factor(U2),
+        std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss.at(U4) * upchan_factor(U4),
+        std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss.at(U8) * upchan_factor(U8),
+        std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss.at(U16) * upchan_factor(U16),
+        std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss.at(U32) * upchan_factor(U32),
+        std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss.at(U64) * upchan_factor(U64),
     },
     W1_frame_sizes{
         std::int64_t(sizeof(float16_t)) * num_components * num_dish_locations_ew
-            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss[U1]
+            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss.at(U1)
             * upchan_factor(U1),
         std::int64_t(sizeof(float16_t)) * num_components * num_dish_locations_ew
-            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss[U2]
+            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss.at(U2)
             * upchan_factor(U2),
         std::int64_t(sizeof(float16_t)) * num_components * num_dish_locations_ew
-            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss[U4]
+            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss.at(U4)
             * upchan_factor(U4),
         std::int64_t(sizeof(float16_t)) * num_components * num_dish_locations_ew
-            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss[U8]
+            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss.at(U8)
             * upchan_factor(U8),
         std::int64_t(sizeof(float16_t)) * num_components * num_dish_locations_ew
-            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss[U16]
+            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss.at(U16)
             * upchan_factor(U16),
         std::int64_t(sizeof(float16_t)) * num_components * num_dish_locations_ew
-            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss[U32]
+            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss.at(U32)
             * upchan_factor(U32),
         std::int64_t(sizeof(float16_t)) * num_components * num_dish_locations_ew
-            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss[U64]
+            * num_dish_locations_ns * num_polarizations * upchan_max_num_channelss.at(U64)
             * upchan_factor(U64),
     },
     W2_frame_size(sizeof(float16_t) * (frb1_num_beams_P * frb1_num_beams_Q)
@@ -263,6 +263,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
                 dish_locations.at(2 * dish + 0) = loc_ew;
                 dish_locations.at(2 * dish + 1) = loc_ns;
             }
+            assert(loc >= 0 && loc < num_dish_locations);
             dish_indices_ptr[loc] = dish;
         }
     }
@@ -520,7 +521,7 @@ void FEngine::main_thread() {
         // Set metadata
         std::shared_ptr<chordMetadata> const dish_positions_metadata =
             get_chord_metadata(dish_positions_buffer, dish_positions_frame_id);
-        dish_positions_metadata->frame_counter = 0;
+        dish_positions_metadata->set_frame_counter(0);
         std::strncpy(dish_positions_metadata->name, "dish_positions",
                      sizeof dish_positions_metadata->name);
         dish_positions_metadata->type = kotekan::float32;
@@ -538,9 +539,6 @@ void FEngine::main_thread() {
             else
                 dish_positions_metadata->stride[d] =
                     dish_positions_metadata->stride[d + 1] * dish_positions_metadata->dim[d + 1];
-        dish_positions_metadata->sample0_offset = -1;      // undefined
-        dish_positions_metadata->offset_downsampling = -1; // undefined
-        dish_positions_metadata->nfreq = -1;               // undefined
         dish_positions_metadata->ndishes = num_dishes;
         dish_positions_metadata->n_dish_locations_ew = num_dish_locations_ew;
         dish_positions_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -572,6 +570,8 @@ void FEngine::main_thread() {
         for (int polr = 0; polr < num_polarizations; ++polr) {
             for (int dish = 0; dish < num_dishes; ++dish) {
                 const int n = dish + num_dishes * polr;
+                assert(n >= 0
+                       && std::size_t(n) < scatter_indices_buffer->frame_size / sizeof(int32_t));
                 ((int32_t*)scatter_indices_frame)[n] = scatter_indices.at(n);
             }
         }
@@ -580,7 +580,7 @@ void FEngine::main_thread() {
         // Set metadata
         std::shared_ptr<chordMetadata> const scatter_indices_metadata =
             get_chord_metadata(scatter_indices_buffer, scatter_indices_frame_id);
-        scatter_indices_metadata->frame_counter = 0;
+        scatter_indices_metadata->set_frame_counter(0);
         std::strncpy(scatter_indices_metadata->name, "scatter_indices",
                      sizeof scatter_indices_metadata->name);
         scatter_indices_metadata->type = kotekan::int32;
@@ -598,9 +598,6 @@ void FEngine::main_thread() {
             else
                 scatter_indices_metadata->stride[d] =
                     scatter_indices_metadata->stride[d + 1] * scatter_indices_metadata->dim[d + 1];
-        scatter_indices_metadata->sample0_offset = -1;      // undefined
-        scatter_indices_metadata->offset_downsampling = -1; // undefined
-        scatter_indices_metadata->nfreq = -1;               // undefined
         scatter_indices_metadata->ndishes = num_dishes;
         scatter_indices_metadata->n_dish_locations_ew = num_dish_locations_ew;
         scatter_indices_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -630,6 +627,7 @@ void FEngine::main_thread() {
         profile_range_push("bf_mask_frame::fill");
         using std::max;
         if (bf_mask_frame_index < max(bf_mask_buffer->num_frames, num_frames)) {
+            assert(bf_mask_buffer->frame_size == std::size_t(num_dishes * num_polarizations));
             std::memset(bf_mask_frame, 0x01, num_dishes * num_polarizations);
         }
         profile_range_pop();
@@ -638,7 +636,7 @@ void FEngine::main_thread() {
         // Set metadata
         std::shared_ptr<chordMetadata> const bf_mask_metadata =
             get_chord_metadata(bf_mask_buffer, bf_mask_frame_id);
-        bf_mask_metadata->frame_counter = 0;
+        bf_mask_metadata->set_frame_counter(0);
         std::strncpy(bf_mask_metadata->name, "bf_mask", sizeof bf_mask_metadata->name);
         bf_mask_metadata->type = kotekan::int8;
         bf_mask_metadata->dims = 2;
@@ -654,9 +652,6 @@ void FEngine::main_thread() {
                 bf_mask_metadata->stride[d] =
                     bf_mask_metadata->stride[d + 1] * bf_mask_metadata->dim[d + 1];
         // This bf mask is not time-dependent
-        bf_mask_metadata->sample0_offset = -1;      // undefined
-        bf_mask_metadata->offset_downsampling = -1; // undefined
-        bf_mask_metadata->nfreq = -1;               // undefined
         bf_mask_metadata->ndishes = num_dishes;
         bf_mask_metadata->n_dish_locations_ew = num_dish_locations_ew;
         bf_mask_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -719,6 +714,9 @@ void FEngine::main_thread() {
                     const int n = 2 * beam;
                     const float x_ew = bb_beam_separation_ew * (i_ew - i_ew0);
                     const float x_ns = bb_beam_separation_ns * (i_ns - i_ns0);
+                    assert(n >= 0
+                           && std::size_t(n)
+                                  < bb_beam_positions_buffer->frame_size / sizeof(float));
                     ((float*)bb_beam_positions_frame)[n + 0] = x_ew;
                     ((float*)bb_beam_positions_frame)[n + 1] = x_ns;
                 }
@@ -729,7 +727,7 @@ void FEngine::main_thread() {
         // Set metadata
         std::shared_ptr<chordMetadata> const bb_beam_positions_metadata =
             get_chord_metadata(bb_beam_positions_buffer, bb_beam_positions_frame_id);
-        bb_beam_positions_metadata->frame_counter = 0;
+        bb_beam_positions_metadata->set_frame_counter(0);
         std::strncpy(bb_beam_positions_metadata->name, "bb_beam_positions",
                      sizeof bb_beam_positions_metadata->name);
         bb_beam_positions_metadata->type = kotekan::float32;
@@ -747,9 +745,6 @@ void FEngine::main_thread() {
             else
                 bb_beam_positions_metadata->stride[d] = bb_beam_positions_metadata->stride[d + 1]
                                                         * bb_beam_positions_metadata->dim[d + 1];
-        bb_beam_positions_metadata->sample0_offset = -1;      // undefined
-        bb_beam_positions_metadata->offset_downsampling = -1; // undefined
-        bb_beam_positions_metadata->nfreq = -1;               // undefined
         bb_beam_positions_metadata->ndishes = num_dishes;
         bb_beam_positions_metadata->n_dish_locations_ew = num_dish_locations_ew;
         bb_beam_positions_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -801,14 +796,16 @@ void FEngine::main_thread() {
         } else {
             for (int n = 0; n < num_components * num_dishes * bb_num_beams * num_polarizations
                                     * num_frequencies;
-                 ++n)
+                 ++n) {
+                assert(n >= 0 && std::size_t(n) < A_buffer->frame_size);
                 ((int8_t*)A_frame)[n] = 4;
+            }
         }
         DEBUG("[{:d}] Done filling A buffer.", A_frame_index);
 
         // Set metadata
         std::shared_ptr<chordMetadata> const A_metadata = get_chord_metadata(A_buffer, A_frame_id);
-        A_metadata->frame_counter = 0; /*A_frame_index;*/
+        A_metadata->set_frame_counter(0); /*A_frame_index;*/
         std::strncpy(A_metadata->name, "A", sizeof A_metadata->name);
         A_metadata->type = kotekan::int8;
         A_metadata->dims = 5;
@@ -828,16 +825,16 @@ void FEngine::main_thread() {
                 A_metadata->stride[d] = 1;
             else
                 A_metadata->stride[d] = A_metadata->stride[d + 1] * A_metadata->dim[d + 1];
-        A_metadata->sample0_offset = -1;      // undefined
-        A_metadata->offset_downsampling = -1; // undefined
-        A_metadata->nfreq = num_frequencies;
-        assert(A_metadata->nfreq <= CHORD_META_MAX_FREQ);
+        std::vector<int> coarse_freq(num_frequencies);
+        assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
+        std::vector<int> freq_upchan_factor(num_frequencies);
+        assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
-            A_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
-            A_metadata->freq_upchan_factor[freq] = 1;
-            A_metadata->half_fpga_sample0[freq] = -1;      // undefined
-            A_metadata->time_downsampling_fpga[freq] = -1; // undefined
+            coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
+            freq_upchan_factor.at(freq) = 1;
         }
+        A_metadata->set_coarse_freq(coarse_freq);
+        A_metadata->set_freq_upchan_factor(freq_upchan_factor);
         A_metadata->ndishes = num_dishes;
         A_metadata->n_dish_locations_ew = num_dish_locations_ew;
         A_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -866,13 +863,15 @@ void FEngine::main_thread() {
         // using std::log2, std::lrint, std::sqrt;
         // const int scale = lrint(log2(sqrt(num_dishes))) + 7;
         const int scale = bb_scale;
-        for (int n = 0; n < bb_num_beams * num_polarizations * num_frequencies; ++n)
+        for (int n = 0; n < bb_num_beams * num_polarizations * num_frequencies; ++n) {
+            assert(n >= 0 && std::size_t(n) < s_buffer->frame_size / sizeof(int32_t));
             ((int32_t*)s_frame)[n] = scale;
+        }
         DEBUG("[{:d}] Done filling s buffer.", s_frame_index);
 
         // Set metadata
         std::shared_ptr<chordMetadata> const s_metadata = get_chord_metadata(s_buffer, s_frame_id);
-        s_metadata->frame_counter = s_frame_index;
+        s_metadata->set_frame_counter(s_frame_index);
         std::strncpy(s_metadata->name, "s", sizeof s_metadata->name);
         s_metadata->type = kotekan::int32;
         s_metadata->dims = 3;
@@ -888,16 +887,16 @@ void FEngine::main_thread() {
                 s_metadata->stride[d] = 1;
             else
                 s_metadata->stride[d] = s_metadata->stride[d + 1] * s_metadata->dim[d + 1];
-        s_metadata->sample0_offset = -1;      // undefined
-        s_metadata->offset_downsampling = -1; // undefined
-        s_metadata->nfreq = num_frequencies;
-        assert(s_metadata->nfreq <= CHORD_META_MAX_FREQ);
+        std::vector<int> coarse_freq(num_frequencies);
+        assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
+        std::vector<int> freq_upchan_factor(num_frequencies);
+        assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
-            s_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
-            s_metadata->freq_upchan_factor[freq] = 1;
-            s_metadata->half_fpga_sample0[freq] = -1;      // undefined
-            s_metadata->time_downsampling_fpga[freq] = -1; // undefined
+            coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
+            freq_upchan_factor.at(freq) = 1;
         }
+        s_metadata->set_coarse_freq(coarse_freq);
+        s_metadata->set_freq_upchan_factor(freq_upchan_factor);
         s_metadata->ndishes = num_dishes;
         s_metadata->n_dish_locations_ew = num_dish_locations_ew;
         s_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -914,65 +913,67 @@ void FEngine::main_thread() {
         // Skip U = 1
         if (U == 1)
             continue;
-        for (int G_frame_index = 0; G_frame_index < G_buffers[Ufactor]->num_frames;
-             ++G_frame_index) {
-            const int G_frame_id = G_frame_index % G_buffers[Ufactor]->num_frames;
+        Buffer* const G_buffer = G_buffers.at(Ufactor);
+        for (int G_frame_index = 0; G_frame_index < G_buffer->num_frames; ++G_frame_index) {
+            const int G_frame_id = G_frame_index % G_buffer->num_frames;
 
             // Wait for buffer
-            std::uint8_t* const G_frame =
-                G_buffers[Ufactor]->wait_for_empty_frame(unique_name, G_frame_id);
+            std::uint8_t* const G_frame = G_buffer->wait_for_empty_frame(unique_name, G_frame_id);
             if (!G_frame)
                 return;
             // We can't have zero-length buffers
             using std::max;
-            const std::ptrdiff_t wanted_frame_size = max(std::int64_t(1), G_frame_sizes[Ufactor]);
-            if (std::ptrdiff_t(G_buffers[Ufactor]->frame_size) != wanted_frame_size)
+            const std::ptrdiff_t wanted_frame_size =
+                max(std::int64_t(1), G_frame_sizes.at(Ufactor));
+            if (std::ptrdiff_t(G_buffer->frame_size) != wanted_frame_size)
                 FATAL_ERROR("G_buffers[U{:d}]->frame_size={:d} G_frame_sizes[U{:d}]={:d}", U,
-                            G_buffers[Ufactor]->frame_size, U, G_frame_sizes[Ufactor]);
-            assert(std::ptrdiff_t(G_buffers[Ufactor]->frame_size) == wanted_frame_size);
-            G_buffers[Ufactor]->allocate_new_metadata_object(G_frame_id);
+                            G_buffer->frame_size, U, G_frame_sizes.at(Ufactor));
+            assert(std::ptrdiff_t(G_buffer->frame_size) == wanted_frame_size);
+            G_buffer->allocate_new_metadata_object(G_frame_id);
 
             DEBUG("[{:d}] Filling G_U{:d} buffer...", G_frame_index, U);
             const int num_local_channels =
-                upchan_max_channels[Ufactor] - upchan_min_channels[Ufactor];
-            for (int n = 0; n < upchan_max_num_channelss[Ufactor] * U; ++n)
+                upchan_max_channels.at(Ufactor) - upchan_min_channels.at(Ufactor);
+            for (int n = 0; n < upchan_max_num_channelss.at(Ufactor) * U; ++n) {
+                assert(n >= 0 && std::size_t(n) < G_buffer->frame_size / sizeof(float16_t));
                 if (n < num_local_channels * U)
-                    ((float16_t*)G_frame)[n] = (float16_t)upchan_gainss[Ufactor].at(n % U);
+                    ((float16_t*)G_frame)[n] = (float16_t)upchan_gainss.at(Ufactor).at(n % U);
                 else
                     ((float16_t*)G_frame)[n] = (float16_t)(0.0 / 0.0); // unused
+            }
             DEBUG("[{:d}] Done filling G_U{:d} buffer.", G_frame_index, U);
 
             // Set metadata
             std::shared_ptr<chordMetadata> const G_metadata =
-                get_chord_metadata(G_buffers[Ufactor], G_frame_id);
-            G_metadata->frame_counter = G_frame_index;
-            std::snprintf(G_metadata->name, sizeof G_metadata->name, "G_U%d", U);
+                get_chord_metadata(G_buffer, G_frame_id);
+            G_metadata->set_frame_counter(G_frame_index);
+            std::strncpy(G_metadata->name, "G", sizeof G_metadata->name);
             G_metadata->type = kotekan::float16;
             G_metadata->dims = 1;
             assert(G_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(G_metadata->dim_name[0], "Fbar", sizeof G_metadata->dim_name[0]);
             // TODO: Set the correct length (and update all kernels which read this)
             // G_metadata->dim[0] = num_local_channels * U;
-            G_metadata->dim[0] = upchan_max_num_channelss[Ufactor] * U;
+            G_metadata->dim[0] = upchan_max_num_channelss.at(Ufactor) * U;
             G_metadata->stride[0] = 1;
-            G_metadata->sample0_offset = -1;      // undefined
-            G_metadata->offset_downsampling = -1; // undefined
-            G_metadata->nfreq = U * num_local_channels;
-            assert(G_metadata->nfreq <= CHORD_META_MAX_FREQ);
+            std::vector<int> coarse_freq(U * num_local_channels);
+            assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
+            std::vector<int> freq_upchan_factor(U * num_local_channels);
+            assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < U * num_local_channels; ++freq) {
-                G_metadata->coarse_freq[freq] =
-                    frequency_channels.at(upchan_min_channels[Ufactor] + freq / U);
-                G_metadata->freq_upchan_factor[freq] = U;
-                G_metadata->half_fpga_sample0[freq] = -1;      // undefined
-                G_metadata->time_downsampling_fpga[freq] = -1; // undefined
+                coarse_freq.at(freq) =
+                    frequency_channels.at(upchan_min_channels.at(Ufactor) + freq / U);
+                freq_upchan_factor.at(freq) = U;
             }
+            G_metadata->set_coarse_freq(coarse_freq);
+            G_metadata->set_freq_upchan_factor(freq_upchan_factor);
             G_metadata->ndishes = num_dishes;
             G_metadata->n_dish_locations_ew = num_dish_locations_ew;
             G_metadata->n_dish_locations_ns = num_dish_locations_ns;
             G_metadata->dish_index = dish_indices_ptr;
 
             // Mark buffer as full
-            G_buffers[Ufactor]->mark_frame_full(unique_name, G_frame_id);
+            G_buffer->mark_frame_full(unique_name, G_frame_id);
         }
     }
 
@@ -980,27 +981,28 @@ void FEngine::main_thread() {
     for (int Uindex = 0; Uindex < Usize; ++Uindex) {
         const upchan_factor_t Ufactor = upchan_factor_t(Uindex);
         const int U = upchan_factor(Ufactor);
-        for (int W1_frame_index = 0; W1_frame_index < W1_buffers[Ufactor]->num_frames;
-             ++W1_frame_index) {
-            const int W1_frame_id = W1_frame_index % W1_buffers[Ufactor]->num_frames;
+        Buffer* const W1_buffer = W1_buffers.at(Ufactor);
+        for (int W1_frame_index = 0; W1_frame_index < W1_buffer->num_frames; ++W1_frame_index) {
+            const int W1_frame_id = W1_frame_index % W1_buffer->num_frames;
 
             // Wait for buffer
             std::uint8_t* const W1_frame =
-                W1_buffers[Ufactor]->wait_for_empty_frame(unique_name, W1_frame_id);
+                W1_buffer->wait_for_empty_frame(unique_name, W1_frame_id);
             if (!W1_frame)
                 return;
             // We can't have zero-length buffers
             using std::max;
-            const std::ptrdiff_t wanted_frame_size = max(std::int64_t(1), W1_frame_sizes[Ufactor]);
-            if (std::ptrdiff_t(W1_buffers[Ufactor]->frame_size) != wanted_frame_size)
+            const std::ptrdiff_t wanted_frame_size =
+                max(std::int64_t(1), W1_frame_sizes.at(Ufactor));
+            if (std::ptrdiff_t(W1_buffer->frame_size) != wanted_frame_size)
                 FATAL_ERROR("W1_buffers[U{:d}]->frame_size={:d} W1_frame_sizes[U{:d}]={:d}", U,
-                            W1_buffers[Ufactor]->frame_size, U, W1_frame_sizes[Ufactor]);
-            assert(std::ptrdiff_t(W1_buffers[Ufactor]->frame_size) == wanted_frame_size);
-            W1_buffers[Ufactor]->allocate_new_metadata_object(W1_frame_id);
+                            W1_buffer->frame_size, U, W1_frame_sizes.at(Ufactor));
+            assert(std::ptrdiff_t(W1_buffer->frame_size) == wanted_frame_size);
+            W1_buffer->allocate_new_metadata_object(W1_frame_id);
 
             DEBUG("[{:d}] Filling W1 buffer for U={:d}...", W1_frame_index, U);
             const int num_local_channels =
-                upchan_max_channels[Ufactor] - upchan_min_channels[Ufactor];
+                upchan_max_channels.at(Ufactor) - upchan_min_channels.at(Ufactor);
             // Disable this because the F-Engine simulator doesn't upchannelize yet
             if (false && !skip_julia) {
                 kotekan::juliaCall([&]() {
@@ -1013,7 +1015,7 @@ void FEngine::main_thread() {
                     jl_value_t** args;
                     JL_GC_PUSHARGS(args, nargs);
                     args[0] = jl_box_uint8pointer(W1_frame);
-                    args[1] = jl_box_int64(W1_frame_sizes[Ufactor]);
+                    args[1] = jl_box_int64(W1_frame_sizes.at(Ufactor));
                     args[2] = jl_box_int64(num_dish_locations_ns); // Note ns/ew is reversed!
                     args[3] = jl_box_int64(num_dish_locations_ew);
                     args[4] = jl_box_int64(num_polarizations);
@@ -1029,15 +1031,19 @@ void FEngine::main_thread() {
             } else {
                 for (int n = 0; n < num_dish_locations_ns * num_dish_locations_ew
                                         * num_polarizations * num_local_channels * U;
-                     ++n)
+                     ++n) {
+                    assert(n >= 0
+                           && std::size_t(n)
+                                  < W1_buffer->frame_size / sizeof(std::complex<float16_t>));
                     ((std::complex<float16_t>*)W1_frame)[n] = (float16_t)frb1_input_scale;
+                }
             }
             DEBUG("[{:d}] Done filling W1 buffer for U={:d}.", W1_frame_index, U);
 
             // Set metadata
             std::shared_ptr<chordMetadata> const W1_metadata =
-                get_chord_metadata(W1_buffers[Ufactor], W1_frame_id);
-            W1_metadata->frame_counter = W1_frame_index;
+                get_chord_metadata(W1_buffer, W1_frame_id);
+            W1_metadata->set_frame_counter(W1_frame_index);
             std::strncpy(W1_metadata->name, "W", sizeof W1_metadata->name);
             W1_metadata->type = kotekan::float16;
             W1_metadata->dims = 5;
@@ -1047,7 +1053,7 @@ void FEngine::main_thread() {
             std::strncpy(W1_metadata->dim_name[2], "dishN", sizeof W1_metadata->dim_name[2]);
             std::strncpy(W1_metadata->dim_name[3], "dishM", sizeof W1_metadata->dim_name[3]);
             std::strncpy(W1_metadata->dim_name[4], "C", sizeof W1_metadata->dim_name[4]);
-            W1_metadata->dim[0] = upchan_max_num_channelss[Ufactor] * U;
+            W1_metadata->dim[0] = upchan_max_num_channelss.at(Ufactor) * U;
             W1_metadata->dim[1] = num_polarizations;
             W1_metadata->dim[2] = num_dish_locations_ew;
             W1_metadata->dim[3] = num_dish_locations_ns;
@@ -1057,23 +1063,24 @@ void FEngine::main_thread() {
                     W1_metadata->stride[d] = 1;
                 else
                     W1_metadata->stride[d] = W1_metadata->stride[d + 1] * W1_metadata->dim[d + 1];
-            W1_metadata->sample0_offset = -1;      // undefined
-            W1_metadata->offset_downsampling = -1; // undefined
-            W1_metadata->nfreq = num_local_channels;
-            assert(W1_metadata->nfreq <= CHORD_META_MAX_FREQ);
-            for (int freq = 0; freq < num_frequencies; ++freq) {
-                W1_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
-                W1_metadata->freq_upchan_factor[freq] = U;
-                W1_metadata->half_fpga_sample0[freq] = -1;      // undefined
-                W1_metadata->time_downsampling_fpga[freq] = -1; // undefined
+            std::vector<int> coarse_freq(U * num_local_channels);
+            assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
+            std::vector<int> freq_upchan_factor(U * num_local_channels);
+            assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
+            for (int freq = 0; freq < U * num_local_channels; ++freq) {
+                coarse_freq.at(freq) =
+                    frequency_channels.at(upchan_min_channels.at(Ufactor) + freq / U);
+                freq_upchan_factor.at(freq) = U;
             }
+            W1_metadata->set_coarse_freq(coarse_freq);
+            W1_metadata->set_freq_upchan_factor(freq_upchan_factor);
             W1_metadata->ndishes = num_dishes;
             W1_metadata->n_dish_locations_ew = num_dish_locations_ew;
             W1_metadata->n_dish_locations_ns = num_dish_locations_ns;
             W1_metadata->dish_index = dish_indices_ptr;
 
             // Mark buffer as full
-            W1_buffers[Ufactor]->mark_frame_full(unique_name, W1_frame_id);
+            W1_buffer->mark_frame_full(unique_name, W1_frame_id);
         }
     }
 
@@ -1192,6 +1199,9 @@ void FEngine::main_thread() {
                                                                  + beamOut_ew * beamOut_ew_stride
                                                                  + freq * freq_stride;
 
+                                        assert(n >= 0
+                                               && std::size_t(n)
+                                                      < W2_buffer->frame_size / sizeof(float16_t));
                                         W2[n] = (float16_t)(Up[beamIn_ew] * Uq[beamIn_ns]);
                                     }
                                 }
@@ -1206,7 +1216,7 @@ void FEngine::main_thread() {
         // Set metadata
         std::shared_ptr<chordMetadata> const W2_metadata =
             get_chord_metadata(W2_buffer, W2_frame_id);
-        W2_metadata->frame_counter = W2_frame_index;
+        W2_metadata->set_frame_counter(W2_frame_index);
         std::strncpy(W2_metadata->name, "W2", sizeof W2_metadata->name);
         W2_metadata->type = kotekan::float16;
         W2_metadata->dims = 4;
@@ -1224,19 +1234,19 @@ void FEngine::main_thread() {
                 W2_metadata->stride[d] = 1;
             else
                 W2_metadata->stride[d] = W2_metadata->stride[d + 1] * W2_metadata->dim[d + 1];
-        W2_metadata->sample0_offset = -1;      // undefined
-        W2_metadata->offset_downsampling = -1; // undefined
         // TODO: correct this
         // W2_metadata->nfreq = (upchan_all_max_output_channel - upchan_all_min_output_channel)
         // / 4;
-        W2_metadata->nfreq = CHORD_META_MAX_FREQ;
-        assert(W2_metadata->nfreq <= CHORD_META_MAX_FREQ);
-        for (int freq = 0; freq < W2_metadata->nfreq; ++freq) {
-            W2_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
-            W2_metadata->freq_upchan_factor[freq] = upchannelization_factor;
-            W2_metadata->half_fpga_sample0[freq] = -1;      // undefined
-            W2_metadata->time_downsampling_fpga[freq] = -1; // undefined
+        std::vector<int> coarse_freq(CHORD_META_MAX_FREQ);
+        assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
+        std::vector<int> freq_upchan_factor(CHORD_META_MAX_FREQ);
+        assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
+        for (int freq = 0; freq < ptrdiff_t(coarse_freq.size()); ++freq) {
+            coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
+            freq_upchan_factor.at(freq) = upchannelization_factor;
         }
+        W2_metadata->set_coarse_freq(coarse_freq);
+        W2_metadata->set_freq_upchan_factor(freq_upchan_factor);
         W2_metadata->ndishes = num_dishes;
         W2_metadata->n_dish_locations_ew = num_dish_locations_ew;
         W2_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -1339,7 +1349,7 @@ void FEngine::main_thread() {
             // Set metadata
             std::shared_ptr<chordMetadata> const E_metadata =
                 get_chord_metadata(E_buffer, E_frame_id);
-            E_metadata->frame_counter = E_frame_index;
+            E_metadata->set_frame_counter(E_frame_index);
             std::strncpy(E_metadata->name, "E", sizeof E_metadata->name);
             E_metadata->type = kotekan::int4x2_swapped_withoffset;
             E_metadata->dims = 4;
@@ -1357,16 +1367,26 @@ void FEngine::main_thread() {
                     E_metadata->stride[d] = 1;
                 else
                     E_metadata->stride[d] = E_metadata->stride[d + 1] * E_metadata->dim[d + 1];
-            E_metadata->sample0_offset = seq_num;
-            E_metadata->offset_downsampling = 1;
-            E_metadata->nfreq = num_frequencies;
-            assert(E_metadata->nfreq <= CHORD_META_MAX_FREQ);
+            E_metadata->set_sample0_offset(seq_num);
+            E_metadata->set_offset_downsampling(1);
+            std::vector<int> coarse_freq(num_frequencies);
+            assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
+            std::vector<int> freq_upchan_factor(num_frequencies);
+            assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
+            std::vector<int64_t> half_fpga_sample0(num_frequencies);
+            assert(half_fpga_sample0.size() <= CHORD_META_MAX_FREQ);
+            std::vector<int> time_downsampling_fpga(num_frequencies);
+            assert(time_downsampling_fpga.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
-                E_metadata->coarse_freq[freq] = frequency_channels.at(freq);
-                E_metadata->freq_upchan_factor[freq] = 1;
-                E_metadata->half_fpga_sample0[freq] = 0;
-                E_metadata->time_downsampling_fpga[freq] = 1;
+                coarse_freq.at(freq) = frequency_channels.at(freq);
+                freq_upchan_factor.at(freq) = 1;
+                half_fpga_sample0.at(freq) = 0;
+                time_downsampling_fpga.at(freq) = 1;
             }
+            E_metadata->set_coarse_freq(coarse_freq);
+            E_metadata->set_freq_upchan_factor(freq_upchan_factor);
+            E_metadata->set_half_fpga_sample0(half_fpga_sample0);
+            E_metadata->set_time_downsampling_fpga(time_downsampling_fpga);
             E_metadata->ndishes = num_dishes;
             E_metadata->n_dish_locations_ew = num_dish_locations_ew;
             E_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -1403,12 +1423,11 @@ void FEngine::main_thread() {
             using std::max;
             if (E_frame_index < max(pl_mask_buffer->num_frames, num_frames)) {
                 // 64/8 instead of 64 because we count uint1x8, not uint1
-                assert((64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4)
-                           * (num_times / 2 / 64)
-                       == pl_mask_frame_size);
-                std::memset(pl_mask_frame, 0xff,
-                            (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4)
-                                * (num_times / 2 / 64));
+                const std::ptrdiff_t n = (64 / 8) * (num_dishes / 8) * num_polarizations
+                                         * (num_frequencies / 4) * (num_times / 2 / 64);
+                assert(n == pl_mask_frame_size);
+                assert(std::size_t(n) == pl_mask_buffer->frame_size);
+                std::memset(pl_mask_frame, 0xff, n);
                 // TODO: Make some packet loss happen
             }
             profile_range_pop();
@@ -1417,7 +1436,7 @@ void FEngine::main_thread() {
             // Set metadata
             std::shared_ptr<chordMetadata> const pl_mask_metadata =
                 get_chord_metadata(pl_mask_buffer, pl_mask_frame_id);
-            pl_mask_metadata->frame_counter = E_frame_index;
+            pl_mask_metadata->set_frame_counter(E_frame_index);
             std::strncpy(pl_mask_metadata->name, "pl_mask", sizeof pl_mask_metadata->name);
             pl_mask_metadata->type = kotekan::uint1x8;
             pl_mask_metadata->dims = 5;
@@ -1440,22 +1459,32 @@ void FEngine::main_thread() {
                 else
                     pl_mask_metadata->stride[d] =
                         pl_mask_metadata->stride[d + 1] * pl_mask_metadata->dim[d + 1];
-            pl_mask_metadata->sample0_offset = seq_num;
+            pl_mask_metadata->set_sample0_offset(seq_num);
             // This pl mask:
             // - is downsampled by 2 in time
             // - has a factor of 64 split off the slowest-varying index
             //   (we count this as "downsampling" as well)
             // Only the slowest-varying index counts as "time" for the
             // ring buffer mechanics.
-            pl_mask_metadata->offset_downsampling = 2 * 64;
-            pl_mask_metadata->nfreq = num_frequencies;
-            assert(pl_mask_metadata->nfreq <= CHORD_META_MAX_FREQ);
+            pl_mask_metadata->set_offset_downsampling(2 * 64);
+            std::vector<int> coarse_freq(num_frequencies);
+            assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
+            std::vector<int> freq_upchan_factor(num_frequencies);
+            assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
+            std::vector<int64_t> half_fpga_sample0(num_frequencies);
+            assert(half_fpga_sample0.size() <= CHORD_META_MAX_FREQ);
+            std::vector<int> time_downsampling_fpga(num_frequencies);
+            assert(time_downsampling_fpga.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
-                pl_mask_metadata->coarse_freq[freq] = frequency_channels.at(freq);
-                pl_mask_metadata->freq_upchan_factor[freq] = 1; // we want 1/4 but we cannot
-                pl_mask_metadata->half_fpga_sample0[freq] = 64;
-                pl_mask_metadata->time_downsampling_fpga[freq] = 2 * 64;
+                coarse_freq.at(freq) = frequency_channels.at(freq);
+                freq_upchan_factor.at(freq) = 1; // we want 1/4 but we cannot
+                half_fpga_sample0.at(freq) = 64;
+                time_downsampling_fpga.at(freq) = 2 * 64;
             }
+            pl_mask_metadata->set_coarse_freq(coarse_freq);
+            pl_mask_metadata->set_freq_upchan_factor(freq_upchan_factor);
+            pl_mask_metadata->set_half_fpga_sample0(half_fpga_sample0);
+            pl_mask_metadata->set_time_downsampling_fpga(time_downsampling_fpga);
             pl_mask_metadata->ndishes = num_dishes;
             pl_mask_metadata->n_dish_locations_ew = num_dish_locations_ew;
             pl_mask_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -1539,10 +1568,10 @@ void FEngine::main_thread() {
             J_metadata->nfreq = num_frequencies;
             assert(J_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
-                J_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
-                J_metadata->freq_upchan_factor[freq] = 1;
-                J_metadata->half_fpga_sample0[freq] = 0;
-                J_metadata->time_downsampling_fpga[freq] = 1;
+                J_metadata->coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
+                J_metadata->freq_upchan_factor.at(freq) = 1;
+                J_metadata->half_fpga_sample0.at(freq) = 0;
+                J_metadata->time_downsampling_fpga.at(freq) = 1;
             }
             J_metadata->ndishes = num_dishes;
             J_metadata->n_dish_locations_ew = num_dish_locations_ew;
@@ -1627,10 +1656,10 @@ void FEngine::main_thread() {
             I1_metadata->nfreq = num_frequencies;
             assert(I1_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
-                I1_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
-                I1_metadata->freq_upchan_factor[freq] = U;
-                I1_metadata->half_fpga_sample0[freq] = 2 * Tds - 1;
-                I1_metadata->time_downsampling_fpga[freq] = U * Tds;
+                I1_metadata->coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
+                I1_metadata->freq_upchan_factor.at(freq) = U;
+                I1_metadata->half_fpga_sample0.at(freq) = 2 * Tds - 1;
+                I1_metadata->time_downsampling_fpga.at(freq) = U * Tds;
             }
             I1_metadata->ndishes = num_dishes;
             I1_metadata->n_dish_locations_ew = num_dish_locations_ew;

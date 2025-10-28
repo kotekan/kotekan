@@ -5,9 +5,10 @@
 #include "buffer.hpp"            // for Buffer, buffer_free, buffer_malloc
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "bufferSend.hpp"        // for bufferFrameHeader
-#include "metadata.hpp"          // for metadataObject, metadataPool
+#include "configTracker.hpp"     // for configTracker
+#include "metadata.hpp"          // for metadataPool
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
-#include "restServer.hpp"        // for connectionInstance
+#include "restServer.hpp"        // for PORT_REST_SERVER
 #include "util.h"                // for string_tail
 #include "visUtil.hpp"           // for current_time
 
@@ -38,6 +39,7 @@ using std::vector;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::ConfigTracker;
 using kotekan::connectionInstance;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
@@ -47,6 +49,7 @@ REGISTER_KOTEKAN_STAGE(bufferRecv);
 bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
+    use_config_tracker(config.get_default<bool>(unique_name, "use_config_tracker", true)),
     dropped_frame_counter(
         Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)),
     transfer_time_seconds(Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
@@ -56,6 +59,25 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     connection_timeout = config.get_default<int>(unique_name, "connection_timeout", 60);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
+
+    // Optional per-connection upstream REST port overrides for a given host (list of "host:port"
+    // strings)
+    if (config.exists(unique_name, "upstream_rest_endpoints")) {
+        auto entries = config.get<std::vector<std::string>>(unique_name, "upstream_rest_endpoints");
+        for (const auto& ep : entries) {
+            auto parts = regex_split(ep, ":");
+            if (parts.size() != 2) {
+                FATAL_ERROR("Invalid upstream_rest_endpoints entry: {:s} (expected host:port)", ep);
+            }
+            uint16_t port = 0;
+            int p = std::stoi(parts[1]);
+            if (p < 0 || p > 65535) {
+                FATAL_ERROR("Invalid port in upstream_rest_endpoints entry: {:s}", ep);
+            }
+            port = static_cast<uint16_t>(p);
+            upstream_rest_port_overrides[parts[0]] = port;
+        }
+    }
 
     buf = get_buffer("buf");
     buf->register_producer(unique_name);
@@ -158,8 +180,18 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     INFO("New connection from client: {:s}:{:d}", ip_str, port);
 
     // New connection instance
-    connInstance* instance = new connInstance(accept_args->unique_name, accept_args->buf,
-                                              accept_args->buffer_recv, ip_str, port, read_timeout);
+    // Resolve per-connection upstream REST port (override by client IP if configured)
+    uint16_t conn_upstream_rest_port = PORT_REST_SERVER;
+    auto it_override = upstream_rest_port_overrides.find(std::string(ip_str));
+    if (it_override != upstream_rest_port_overrides.end()) {
+        conn_upstream_rest_port = it_override->second;
+        DEBUG("Using per-connection upstream REST port {} for client {}", conn_upstream_rest_port,
+              ip_str);
+    }
+
+    connInstance* instance =
+        new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
+                         ip_str, port, read_timeout, use_config_tracker, conn_upstream_rest_port);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -324,17 +356,19 @@ std::string bufferRecv::dot_string(const std::string& prefix) const {
 }
 
 connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
-                           const std::string& client_ip, int port, struct timeval read_timeout) :
+                           const std::string& client_ip, int port, struct timeval read_timeout,
+                           bool use_config_tracker, uint16_t upstream_rest_port) :
     producer_name(producer_name), buf(buf), buffer_recv(buffer_recv), client_ip(client_ip),
-    port(port), read_timeout(read_timeout) {
+    port(port), read_timeout(read_timeout), use_config_tracker(use_config_tracker),
+    upstream_rest_port(upstream_rest_port) {
 
     frame_space = buffer_malloc(buf->aligned_frame_size, buf->numa_node, buf->use_hugepages,
                                 buf->mlock_frames, false);
     CHECK_MEM(frame_space);
 
     auto meta = buf->metadata_pool->request_metadata_object();
-    metadata_size = meta->get_serialized_size();
-    metadata_space = (uint8_t*)malloc(metadata_size);
+    expected_metadata_size = meta->get_serialized_size();
+    metadata_space = (uint8_t*)malloc(expected_metadata_size);
     CHECK_MEM(metadata_space);
 }
 
@@ -386,6 +420,9 @@ void connInstance::internal_read_callback() {
     }
 
     ssize_t n = 0;
+    uint32_t metadata_size = 0;
+    uint32_t frame_size = 0;
+    bool config_tracker_update = false;
 
     DEBUG2("Read Callback");
     while (!buffer_recv->get_worker_stop_thread()) {
@@ -393,64 +430,96 @@ void connInstance::internal_read_callback() {
             case connState::header:
                 start_time = current_time();
 
-                n = read(fd, (void*)(((int8_t*)&buf_frame_header) + bytes_read),
-                         sizeof(struct bufferFrameHeader) - bytes_read);
-                if (n <= 0) {
-                    handle_error("reading header", errno, n);
+                if (use_config_tracker) {
+                    DEBUG2("Using config tracker header");
+                    bufferFrameHeader buf_frame_header;
+
+                    n = read(fd, (void*)(((int8_t*)&buf_frame_header) + bytes_read),
+                             sizeof(bufferFrameHeader) - bytes_read);
+                    if (n <= 0) {
+                        handle_error("reading header", errno, n);
+                        return;
+                    }
+                    bytes_read += n;
+                    DEBUG2("Header read bytes: {:d}, bytes_read {:d}, expected: {:d}", n,
+                           bytes_read, sizeof(bufferFrameHeader));
+                    assert(bytes_read == sizeof(bufferFrameHeader));
+
+                    metadata_size = buf_frame_header.metadata_size;
+                    frame_size = buf_frame_header.frame_size;
+                    // header field is uint32_t on the wire; convert to bool
+                    config_tracker_update = (buf_frame_header.config_tracker_update != 0);
+                } else {
+                    DEBUG2("Using no config tracker header");
+                    bufferFrameHeaderNoConfigTracker buf_frame_header;
+
+                    n = read(fd, (void*)(((int8_t*)&buf_frame_header) + bytes_read),
+                             sizeof(bufferFrameHeaderNoConfigTracker) - bytes_read);
+                    if (n <= 0) {
+                        handle_error("reading header", errno, n);
+                        return;
+                    }
+                    bytes_read += n;
+                    DEBUG2("Header read bytes: {:d}, bytes_read {:d}, expected: {:d}", n,
+                           bytes_read, sizeof(bufferFrameHeaderNoConfigTracker));
+                    assert(bytes_read == sizeof(bufferFrameHeaderNoConfigTracker));
+
+                    metadata_size = buf_frame_header.metadata_size;
+                    frame_size = buf_frame_header.frame_size;
+                }
+
+                state = connState::metadata;
+                bytes_read = 0;
+
+                DEBUG2("Got header: metadata_size: {:d}, frame_size: {:d}, "
+                       "config_tracker_update: {:d}",
+                       metadata_size, frame_size, config_tracker_update);
+
+
+                if ((unsigned int)buf->frame_size != frame_size) {
+                    ERROR("Frame size does not match between server: {:d} and client: {:d}",
+                          buf->frame_size, frame_size);
+                    decrement_ref_count();
+                    close_instance();
                     return;
                 }
-                DEBUG2("Header read bytes: {:d}", n);
-                bytes_read += n;
-                if (bytes_read >= sizeof(struct bufferFrameHeader)) {
-                    assert(bytes_read == sizeof(struct bufferFrameHeader));
-                    state = connState::metadata;
-                    bytes_read = 0;
-
-                    DEBUG2("Got header: metadata_size: {:d}, frame_size: {:d}",
-                           buf_frame_header.metadata_size, buf_frame_header.frame_size);
-
-                    if ((unsigned int)buf->frame_size != buf_frame_header.frame_size) {
-                        ERROR("Frame size does not match between server: {:d} and client: {:d}",
-                              buf->frame_size, buf_frame_header.frame_size);
-                        decrement_ref_count();
-                        close_instance();
-                        return;
-                    }
-                    if (metadata_size != buf_frame_header.metadata_size) {
-                        ERROR("Metadata size does not match between server and client!");
-                        decrement_ref_count();
-                        close_instance();
-                        return;
-                    }
+                if (metadata_size != expected_metadata_size) {
+                    ERROR("Metadata size does not match between server and client!");
+                    decrement_ref_count();
+                    close_instance();
+                    return;
+                }
+                if (config_tracker_update) {
+                    DEBUG("Config tracker data update requested, updating config tracker data.");
+                    // Need to fetch configs from the sender's REST server
+                    ConfigTracker::instance().getUpstreamConfigs(client_ip, upstream_rest_port);
                 }
 
                 break;
             case connState::metadata:
-                n = read(fd, (void*)(metadata_space + bytes_read),
-                         buf_frame_header.metadata_size - bytes_read);
+                n = read(fd, (void*)(metadata_space + bytes_read), metadata_size - bytes_read);
                 if (n <= 0) {
                     handle_error("reading header", errno, n);
                     return;
                 }
                 DEBUG2("Metadata read bytes: {:d}", n);
                 bytes_read += n;
-                if (bytes_read >= buf_frame_header.metadata_size) {
-                    assert(bytes_read == buf_frame_header.metadata_size);
+                if (bytes_read >= metadata_size) {
+                    assert(bytes_read == metadata_size);
                     state = connState::frame;
                     bytes_read = 0;
                 }
                 break;
             case connState::frame:
-                n = read(fd, (void*)(frame_space + bytes_read),
-                         buf_frame_header.frame_size - bytes_read);
+                n = read(fd, (void*)(frame_space + bytes_read), frame_size - bytes_read);
                 if (n <= 0) {
                     handle_error("reading header", errno, n);
                     return;
                 }
                 bytes_read += n;
                 DEBUG2("Frame read bytes: {:d}, total read: {:d}", n, bytes_read);
-                if (bytes_read >= buf_frame_header.frame_size) {
-                    assert(bytes_read == buf_frame_header.frame_size);
+                if (bytes_read >= frame_size) {
+                    assert(bytes_read == frame_size);
                     state = connState::finished;
                     bytes_read = 0;
                 }

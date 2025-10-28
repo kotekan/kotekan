@@ -43,7 +43,7 @@ gen_data:
 buffer_send:
   server_ip: 127.0.0.1
   reconnect_time: 1
-  log_level: warn
+  log_level: debug
   send:
     kotekan_stage: bufferSend
     buf: send_buffer

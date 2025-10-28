@@ -4,6 +4,7 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"      // for Telescope, FREQ_ID_NOT_SET
 #include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for get_chord_metadata
 #include "configUpdater.hpp"  // for configUpdater
 #include "kotekanLogging.hpp" // for WARN, INFO, DEBUG
 #include "restServer.hpp"     // for HTTP_RESPONSE, connectionInstance, restServer
@@ -269,7 +270,8 @@ void ReadGain::main_thread() {
         return;
 
     auto& tel = Telescope::instance();
-    freq_idx = tel.to_freq_id(metadata_buf, metadata_buffer_id);
+    // TODO: handle multiple frequencies
+    freq_idx = get_chord_metadata(metadata_buf, metadata_buffer_id)->get_coarse_freq()[0];
     freq_MHz = tel.to_freq(freq_idx);
     metadata_buffer_precondition_id =
         (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;

@@ -80,6 +80,7 @@ add_library(
     DataQuality.cpp
     BeamExtract.cpp
     BeamInspect.cpp
+    configTrackerWriter.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp

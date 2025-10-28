@@ -193,19 +193,29 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         meta_out->set_array_dimension(3, _blocksize, "D8Plo1");
         meta_out->set_array_dimension(4, _blocksize, "D8Plo2");
         meta_out->set_strides_simple();
-        meta_out->nfreq = _num_local_freq;
-        assert(meta_out->nfreq <= CHORD_META_MAX_FREQ);
 
-        meta_out->fpga_seq_num = meta_in->fpga_seq_num;
-        meta_out->sample0_offset = meta_in->sample0_offset;
-        meta_out->offset_downsampling = meta_in->offset_downsampling;
-        for (int f = 0; f < meta_out->nfreq; f++) {
-            meta_out->coarse_freq[f] = meta_in->coarse_freq[f];
-            meta_out->freq_upchan_factor[f] = meta_in->freq_upchan_factor[f];
-            meta_out->half_fpga_sample0[f] = meta_in->half_fpga_sample0[f];
-            meta_out->time_downsampling_fpga[f] =
-                meta_in->time_downsampling_fpga[f] * _sub_integration_ntime;
+        meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
+        meta_out->set_sample0_offset(meta_in->get_sample0_offset());
+        meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
+        const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
+        const std::vector<int> freq_upchan_factor_in = meta_in->get_freq_upchan_factor();
+        const std::vector<int64_t> half_fpga_sample0_in = meta_in->get_half_fpga_sample0();
+        const std::vector<int> time_downsampling_fpga_in = meta_in->get_time_downsampling_fpga();
+        std::vector<int> coarse_freq(_num_local_freq);
+        std::vector<int> freq_upchan_factor(coarse_freq.size());
+        std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
+        std::vector<int> time_downsampling_fpga(coarse_freq.size());
+        for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
+            coarse_freq[f] = coarse_freq_in[f];
+            freq_upchan_factor[f] = freq_upchan_factor_in[f];
+            half_fpga_sample0[f] = half_fpga_sample0_in[f];
+            time_downsampling_fpga[f] = time_downsampling_fpga_in[f] * _sub_integration_ntime;
         }
+        meta_out->set_coarse_freq(coarse_freq);
+        meta_out->set_freq_upchan_factor(freq_upchan_factor);
+        meta_out->set_half_fpga_sample0(half_fpga_sample0);
+        meta_out->set_time_downsampling_fpga(time_downsampling_fpga);
+        assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
 
         input_plmask_buf->mark_frame_empty(unique_name, input_pl_frame_id);
         input_rfimask_buf->mark_frame_empty(unique_name, input_rfi_frame_id);

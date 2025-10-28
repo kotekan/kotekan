@@ -129,21 +129,28 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
 
     // Since we do not use a ring buffer we need to set `meta->sample0_offset`
     // TODO: do this automatically in `NDArrayRingBuffer`
-    out_meta->sample0_offset = voltage.get_read_valid().begin();
-    for (int freq = 0; freq < out_meta->nfreq; ++freq) {
-        out_meta->time_downsampling_fpga[freq] =
-            _sub_integration_ntime * in_meta->time_downsampling_fpga[freq];
-        out_meta->half_fpga_sample0[freq] =
-            in_meta->half_fpga_sample0[freq] + out_meta->time_downsampling_fpga[freq];
+    out_meta->set_sample0_offset(voltage.get_read_valid().begin());
+    std::vector<int> out_time_downsampling_fpga(out_meta->get_nfreq());
+    std::vector<int64_t> out_half_fpga_sample0(out_meta->get_nfreq());
+    const std::vector<int64_t> in_half_fpga_sample0 = in_meta->get_half_fpga_sample0();
+    const std::vector<int> in_time_downsampling_fpga = in_meta->get_time_downsampling_fpga();
+    for (int freq = 0; freq < out_meta->get_nfreq(); ++freq) {
+        out_time_downsampling_fpga[freq] = _sub_integration_ntime * in_time_downsampling_fpga[freq];
+        out_half_fpga_sample0[freq] = in_half_fpga_sample0[freq] + out_time_downsampling_fpga[freq];
     }
+    out_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
+    out_meta->set_half_fpga_sample0(out_half_fpga_sample0);
 
     // The ringbuffering here is fishy. We should fix the kernel instead.
 
     // Ensure consistency:
-    assert(in_meta->nfreq == rfi_meta->nfreq);
-    for (int freq = 0; freq < in_meta->nfreq; ++freq)
-        assert(voltage.get_read_valid().begin() * in_meta->time_downsampling_fpga[freq]
-               == rfi_RFImask.get_read_valid().begin() * rfi_meta->time_downsampling_fpga[freq]);
+    assert(in_meta->get_nfreq() == rfi_meta->get_nfreq());
+    // set above already
+    // const std::vector<int> in_time_downsampling_fpga = in_meta->get_time_downsampling_fpga();
+    const std::vector<int> rfi_time_downsampling_fpga = rfi_meta->get_time_downsampling_fpga();
+    for (int freq = 0; freq < in_meta->get_nfreq(); ++freq)
+        assert(voltage.get_read_valid().begin() * in_time_downsampling_fpga[freq]
+               == rfi_RFImask.get_read_valid().begin() * rfi_time_downsampling_fpga[freq]);
 
     const std::ptrdiff_t time_offset =
         voltage.get_read_valid().begin() % voltage.get_ndarray().extent(0);

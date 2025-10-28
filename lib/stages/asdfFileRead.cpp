@@ -236,34 +236,34 @@ public:
                           frame_counter);
                     const auto coarse_freq = group->at("coarse_freq")->get_maybe_sequence();
                     assert(coarse_freq);
-                    meta->nfreq = coarse_freq->size();
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-                    assert(meta->nfreq >= 0);
-                    assert(std::ptrdiff_t(coarse_freq->size()) == meta->nfreq);
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-                    for (int n = 0; n < meta->nfreq; ++n)
-                        meta->coarse_freq[n] = coarse_freq->at(n)->get_maybe_int().value();
-                } else {
-                    meta->nfreq = -1;
-                    assert(meta->nfreq < 0);
+                    const int nfreq = coarse_freq->size();
+                    assert(nfreq <= CHORD_META_MAX_FREQ);
+                    assert(nfreq >= 0);
+                    assert(std::ptrdiff_t(coarse_freq->size()) == nfreq);
+                    assert(nfreq <= CHORD_META_MAX_FREQ);
+                    std::vector<int> O_coarse_freq(nfreq);
+                    for (int n = 0; n < nfreq; ++n) {
+                        O_coarse_freq[n] = coarse_freq->at(n)->get_maybe_int().value();
+                    }
+                    meta->set_coarse_freq(O_coarse_freq);
                 }
             }
 
             {
                 if (group->count("freq_upchan_factor")) {
-                    assert(meta->nfreq >= 0);
+                    assert(meta->get_nfreq() >= 0);
                     DEBUG("[{:s}/{:d}] group0->at(\"freq_upchan_factor\")", buffer->buffer_name,
                           frame_counter);
                     const auto freq_upchan_factor =
                         group->at("freq_upchan_factor")->get_maybe_sequence();
                     assert(freq_upchan_factor);
-                    assert(std::ptrdiff_t(freq_upchan_factor->size()) == meta->nfreq);
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-                    for (int n = 0; n < meta->nfreq; ++n)
-                        meta->freq_upchan_factor[n] =
+                    assert(std::ptrdiff_t(freq_upchan_factor->size()) == meta->get_nfreq());
+                    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+                    std::vector<int> O_freq_upchan_factor(meta->get_nfreq());
+                    for (int n = 0; n < meta->get_nfreq(); ++n)
+                        O_freq_upchan_factor[n] =
                             freq_upchan_factor->at(n)->get_maybe_int().value();
-                } else {
-                    assert(meta->nfreq < 0);
+                    meta->set_freq_upchan_factor(O_freq_upchan_factor);
                 }
             }
 
@@ -273,10 +273,8 @@ public:
                           frame_counter);
                     const auto sample0_offset =
                         group->at("sample0_offset")->get_maybe_int().value();
-                    meta->sample0_offset = sample0_offset;
-                    assert(meta->sample0_offset >= 0);
-                } else {
-                    meta->sample0_offset = -1;
+                    meta->set_sample0_offset(sample0_offset);
+                    assert(meta->get_sample0_offset() >= 0);
                 }
             }
 
@@ -286,46 +284,43 @@ public:
                           frame_counter);
                     const auto offset_downsampling =
                         group->at("offset_downsampling")->get_maybe_int().value();
-                    meta->offset_downsampling = offset_downsampling;
-                    assert(meta->offset_downsampling > 0);
-                } else {
-                    meta->offset_downsampling = -1;
+                    meta->set_offset_downsampling(offset_downsampling);
+                    assert(meta->get_offset_downsampling() > 0);
                 }
             }
 
             {
                 if (group->count("half_fpga_sample0")) {
-                    assert(meta->nfreq >= 0);
+                    assert(meta->get_nfreq() >= 0);
                     DEBUG("[{:s}/{:d}] group0->at(\"half_fpga_sample0\")", buffer->buffer_name,
                           frame_counter);
                     const auto half_fpga_sample0 =
                         group->at("half_fpga_sample0")->get_maybe_sequence();
                     assert(half_fpga_sample0);
-                    assert(std::ptrdiff_t(half_fpga_sample0->size()) == meta->nfreq);
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-                    for (int n = 0; n < meta->nfreq; ++n)
-                        meta->half_fpga_sample0[n] =
-                            half_fpga_sample0->at(n)->get_maybe_int().value();
-                } else {
-                    assert(meta->nfreq < 0);
+                    assert(std::ptrdiff_t(half_fpga_sample0->size()) == meta->get_nfreq());
+                    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+                    std::vector<int64_t> O_half_fpga_sample0(meta->get_nfreq());
+                    for (int n = 0; n < meta->get_nfreq(); ++n)
+                        O_half_fpga_sample0[n] = half_fpga_sample0->at(n)->get_maybe_int().value();
+                    meta->set_half_fpga_sample0(O_half_fpga_sample0);
                 }
             }
 
             {
                 if (group->count("time_downsampling_fpga")) {
-                    assert(meta->nfreq >= 0);
+                    assert(meta->get_nfreq() >= 0);
                     DEBUG("[{:s}/{:d}] group0->at(\"time_downsampling_fpga\")", buffer->buffer_name,
                           frame_counter);
                     const auto time_downsampling_fpga =
                         group->at("time_downsampling_fpga")->get_maybe_sequence();
                     assert(time_downsampling_fpga);
-                    assert(std::ptrdiff_t(time_downsampling_fpga->size()) == meta->nfreq);
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-                    for (int n = 0; n < meta->nfreq; ++n)
-                        meta->time_downsampling_fpga[n] =
+                    assert(std::ptrdiff_t(time_downsampling_fpga->size()) == meta->get_nfreq());
+                    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+                    std::vector<int> O_time_downsampling_fpga(meta->get_nfreq());
+                    for (int n = 0; n < meta->get_nfreq(); ++n)
+                        O_time_downsampling_fpga[n] =
                             time_downsampling_fpga->at(n)->get_maybe_int().value();
-                } else {
-                    assert(meta->nfreq < 0);
+                    meta->set_time_downsampling_fpga(O_time_downsampling_fpga);
                 }
             }
 

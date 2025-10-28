@@ -220,7 +220,7 @@ public:
     // Poison
 
     // Poison an NDArray buffer
-    void set_to_poison(const std::uint8_t poison_value) {
+    void set_to_poison([[maybe_unused]] const std::uint8_t poison_value) {
 #ifdef DEBUGGING
         const std::ptrdiff_t buffer_length = length_in_bytes();
         void* const buffer_device_ptr = ndarray.data();
@@ -233,7 +233,7 @@ public:
     }
 
     // Check an NDArray buffer for poison
-    void check_for_poison(const std::uint8_t poison_value) {
+    void check_for_poison([[maybe_unused]] const std::uint8_t poison_value) {
 #ifdef DEBUGGING
         T poison;
         // The cast suppresses a bogus -Wclass-memaccess on GCC.

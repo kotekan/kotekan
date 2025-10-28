@@ -3,8 +3,9 @@
 #include "FrameView.hpp" // for bind_span, bind_scalar, FrameView
 #include "Telescope.hpp" // for freq_id_t
 #include "buffer.hpp"    // for Buffer
-#include "factory.hpp"   // for REGISTER_TYPE_WITH_FACTORY
-#include "metadata.hpp"  // for metadataObject, _factory_aliasmetadataObject
+#include "chordMetadata.hpp"
+#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
+#include "metadata.hpp" // for metadataObject, _factory_aliasmetadataObject
 
 #include "fmt.hpp" // for format, compile_string_to_view, fmt, format_string
 
@@ -43,7 +44,7 @@ size_t VisMetadata::get_serialized_size() {
     return sizeof(VisMetadataFormat);
 }
 
-size_t VisMetadata::set_from_bytes(const char* bytes, size_t length) {
+size_t VisMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t length) {
     size_t sz = get_serialized_size();
     assert(length >= sz);
     const VisMetadataFormat* fmt = reinterpret_cast<const VisMetadataFormat*>(bytes);

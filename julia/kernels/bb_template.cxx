@@ -252,7 +252,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "{{{kernel_name}}}_");
+        device.build_ptx("lib/cuda/generated/{{{kernel_name}}}.ptx", {kernel_symbol}, opts, "{{{kernel_name}}}_");
     }
 }
 
@@ -339,8 +339,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         const std::shared_ptr<chordMetadata> J_meta = J_buffer.get_metadata();
     
         // Since we do not use a ring buffer we need to set `meta->sample0_offset`
-        J_meta->sample0_offset = T_min;
-        assert(J_meta->offset_downsampling == 1);
+        J_meta->set_sample0_offset(T_min);
+        assert(J_meta->get_offset_downsampling() == 1);
     }
 
     // Copy inputs to device memory

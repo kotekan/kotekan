@@ -2,6 +2,8 @@
 
 #include "DataType.hpp" // for DataType, float16_t
 
+#include "fmt.hpp" // for format
+
 #include <cassert> // for assert
 #include <cstdint> // for uint8_t, int16_t, int32_t, int64_t, int8_t, uint16_t, uint32_t
 
@@ -44,7 +46,8 @@ HighFive::DataType chord2hdf5(const kotekan::DataType type) {
         case kotekan::float64:
             return HighFive::AtomicType<double>();
         default:
-            assert(0);
+            throw std::runtime_error(
+                fmt::format("chord2hdf5 given unknown DataType value: {;d} ", (int64_t)type));
     }
 }
 
