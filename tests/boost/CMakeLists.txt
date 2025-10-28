@@ -110,10 +110,13 @@ if(HDF5_FOUND
 endif()
 
 add_executable(test_DataType test_DataType.cpp)
-target_link_libraries(test_DataType kotekan_metadata)
+target_link_libraries(test_DataType kotekan_metadata libexternal)
 
 add_executable(test_Metadata test_Metadata.cpp)
 target_link_libraries(test_Metadata kotekan_metadata)
+
+add_executable(test_metadataObject test_metadataObject.cpp)
+target_link_libraries(test_metadataObject kotekan_metadata kotekan_utils libexternal)
 
 add_executable(test_NDArray test_NDArray.cpp)
 target_link_libraries(test_NDArray libexternal kotekan_metadata)
