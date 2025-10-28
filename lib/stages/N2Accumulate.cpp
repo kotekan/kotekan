@@ -42,20 +42,25 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
 
-    // auto& tel = Telescope::instance();
-
     // Fetch configuration
 
     // number of frequencies in frame
     _num_freq_per_n2k_frame = config.get<int64_t>(unique_name, "num_freq_per_n2k_frame");
     assert(_num_freq_per_n2k_frame > 0);
+    if(_num_freq_per_n2k_frame <= 0) {
+        FATAL_ERROR("num_freq_per_n2k_frame is not positive: {:d}", _num_freq_per_n2k_frame);
+        std::abort();
+    }
 
     // accumulation setup
     _num_n2k_samples_to_accumulate =
         config.get<int64_t>(unique_name, "num_n2k_samples_to_accumulate");
 
-    assert(_num_n2k_samples_to_accumulate > 0);
-    assert(_num_n2k_samples_to_accumulate % 2 == 0);
+    if(_num_n2k_samples_to_accumulate <= 0 || _num_n2k_samples_to_accumulate % 2 != 0) {
+        FATAL_ERROR("N2Accumulate configured to use non-positive or odd num_n2k_samples_to_accumulate: {:d}",
+                _num_n2k_samples_to_accumulate);
+        std::abort();
+    }
 
     _packet_loss_is_scalar = config.get<bool>(unique_name, "packet_loss_is_scalar");
     if (!_packet_loss_is_scalar)
@@ -65,30 +70,44 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     // sampling information
     _n_fpga_samples_per_n2k_frame = config.get<int64_t>(unique_name, "samples_per_data_set");
     _n_fpga_samples_per_n2k_correlation = config.get<int64_t>(unique_name, "sub_integration_ntime");
-    assert(_n_fpga_samples_per_n2k_frame > 0);
-    assert(_n_fpga_samples_per_n2k_correlation > 0);
-    assert(_n_fpga_samples_per_n2k_frame % _n_fpga_samples_per_n2k_correlation == 0);
+    
+    if(!(_n_fpga_samples_per_n2k_frame > 0)) {
+        FATAL_ERROR("samples_per_data_set is not positve: {:d}", _n_fpga_samples_per_n2k_frame);
+        std::abort();
+    }
+    if(!(_n_fpga_samples_per_n2k_correlation > 0)) {
+        FATAL_ERROR("sub_integration_ntime is not positve: {:d}", _n_fpga_samples_per_n2k_correlation);
+        std::abort();
+    }
+    if(!(_n_fpga_samples_per_n2k_frame % _n_fpga_samples_per_n2k_correlation == 0)) {
+        FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d})",
+                _n_fpga_samples_per_n2k_frame, _n_fpga_samples_per_n2k_correlation);
+        std::abort();
+    }
 
     _n_integrations_per_n2k_frame =
         _n_fpga_samples_per_n2k_frame / _n_fpga_samples_per_n2k_correlation;
 
-    //_n_vis_samples_per_N2_output_frame =
-    //    _n_fpga_samples_per_N2_frame / _n_fpga_samples_N2_integrates_for;
-
-    //_n_integrations_per_n2k_frame = _n_vis_samples_per_N2_output_frame;
-    //_n_fpga_samples_per_vis_sample = _n_fpga_samples_N2_integrates_for;
-    //_in_frame_duration_nsec =
-    //    (uint64_t)_n_fpga_samples_per_N2_frame * (uint64_t)tel.seq_length_nsec();
-    //_in_frame_vis_duration_nsec = _in_frame_duration_nsec / _n_integrations_per_n2k_frame;
 
     // Number of products sent by the GPU
 
     // Number of elements (polarization x dish) in the array.
     _num_elements = config.get<int64_t>(unique_name, "num_elements");
-    assert(_num_elements > 0);
-    // Check its consistent with the count & correlation blocksizes.
-    assert(_num_elements % _n2k_correlation_blocksize == 0);
-    assert(_num_elements % (8 * _n2k_counts_blocksize) == 0); // counts is downsampled by 8
+    if(!(_num_elements > 0)) {
+        FATAL_ERROR("num_elements is not positive: {:d}", _num_elements);
+        std::abort();
+    }
+    // Check num_elements is consistent with the count & correlation blocksizes.
+    if(!(_num_elements % _n2k_correlation_blocksize == 0)) {
+        FATAL_ERROR("num_elements ({:d}) is not a multiple of the correlation block size ({:d})",
+                _num_elements, _n2k_correlation_blocksize);
+        std::abort();
+    }
+    if(!(_num_elements % (8 * _n2k_counts_blocksize) == 0)) {
+        FATAL_ERROR("num_elements ({:d}) / 8 is not a multiple of the counts block size ({:d})",
+                _num_elements, _n2k_counts_blocksize);
+        std::abort();
+    }
 
     // sizes for blocked input correlation matrix
     _n2k_correlation_lin_blocks = _num_elements / _n2k_correlation_blocksize;
@@ -111,17 +130,23 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _N2_num_products = (_num_elements * (_num_elements + 1)) / 2;
 
     _rfi_downsampling_factor = config.get<int64_t>(unique_name, "rfi_downsampling_factor");
-
-    // _n2k_correlation_num_products * _num_freq_per_n2k_frame = _num_N2_products *
-    // _num_freq_per_n2k_frame; Number of products to accumulate _num_accum_products =
-    // N2::get_num_prod(_num_elements);
+    if(!(_rfi_downsampling_factor > 0)) {
+        FATAL_ERROR("rfi_downsampling_factor is not positive: {:d}",
+                _rfi_downsampling_factor);
+        std::abort();
+    }
+    if(!(_rfi_downsampling_factor % 8 == 0)) {
+        FATAL_ERROR("rfi_downsampling_factor is not a multiple of 8: {:d}",
+                _rfi_downsampling_factor);
+        std::abort();
+    }
 
     // Initializing these here using the computed _n2k_correlation_num_products *
     // _num_freq_per_n2k_frame (accumulate the full, blocked matrix x frequencies from the GPU)
     _vis = std::vector<int32_t>(2 * _num_freq_per_n2k_frame * _n2k_correlation_num_products,
                                 0); // vis with complex as 2 ints
     _vis_even = std::vector<int32_t>(2 * _num_freq_per_n2k_frame * _n2k_correlation_num_products,
-                                     0); // store even vis matrix for
+                                     0); // store even vis matrix for weights calculation
 
     _weights = std::vector<float>(_num_freq_per_n2k_frame * _n2k_correlation_num_products,
                                   0.0f); // real-valued weights
@@ -146,9 +171,34 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    // TODO...
-    // Make sure output buffer has enough frames (>= # frequencies) and are sized correctly
-    // Add other assert()s/checks back
+    // Check buffer frame sizes
+    size_t in_corr_frame_size =  2 * sizeof(int32_t) * _n2k_correlation_num_products * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
+    size_t in_counts_frame_size =  sizeof(int32_t) * _n2k_counts_num_products * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
+    size_t in_rfimask_frame_size = _num_freq_per_n2k_frame * _n_fpga_samples_per_n2k_frame / 8;
+    size_t out_n2_frame_size = N2FrameView::calculate_frame_size(_num_elements, 0);
+
+    if(in_buf->frame_size != in_corr_frame_size) {
+        FATAL_ERROR("N2Accumulate in_buf ({:s}) has frame size {:d}. Expected {:d}.",
+                in_buf->buffer_name, in_buf->frame_size, in_corr_frame_size);
+        std::abort();
+    }
+    if(in_counts_buf->frame_size != in_counts_frame_size) {
+        FATAL_ERROR("N2Accumulate in_counts_buf ({:s}) has frame size {:d}. Expected {:d}.",
+                in_counts_buf->buffer_name, in_counts_buf->frame_size, in_counts_frame_size);
+        std::abort();
+    }
+    if(in_rfimask_buf->frame_size != in_rfimask_frame_size) {
+        FATAL_ERROR("N2Accumulate in_rfimask_buf ({:s}) has frame size {:d}. Expected {:d}.",
+                in_rfimask_buf->buffer_name, in_rfimask_buf->frame_size, in_rfimask_frame_size);
+        std::abort();
+    }
+    if(out_buf->frame_size != out_n2_frame_size) {
+        FATAL_ERROR("N2Accumulate out_buf ({:s}) has frame size {:d}. Expected {:d}.",
+                out_buf->buffer_name, out_buf->frame_size, out_n2_frame_size);
+        std::abort();
+    }
+
+    // TODO... Should we ensure output buffer has enough frames (>= # frequencies) to take the output without filling completely?
 }
 
 void N2Accumulate::main_thread() {
@@ -172,12 +222,12 @@ void N2Accumulate::main_thread() {
     // uint64_t t_output = N2::ts_to_uint64(output_ts);
 
 
-    int64_t corr_stride_t = 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame;
-    int64_t counts_stride_f = _n2k_counts_num_products;
-    int64_t counts_stride_t = _n2k_counts_num_products * _num_freq_per_n2k_frame;
+    uint64_t corr_stride_t = 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame;
+    uint64_t counts_stride_f = _n2k_counts_num_products;
+    uint64_t counts_stride_t = _n2k_counts_num_products * _num_freq_per_n2k_frame;
 
-    int64_t rfi_stride_f = 128; // = rfimask_fast_time_len / bits_per_entry = 1024 / 8;
-    int64_t rfi_stride_thi = rfi_stride_f * _num_freq_per_n2k_frame;
+    uint64_t rfi_stride_f = 128; // = rfimask_fast_time_len / bits_per_entry = 1024 / 8;
+    uint64_t rfi_stride_thi = rfi_stride_f * _num_freq_per_n2k_frame;
 
 
     while (!stop_thread) {
@@ -260,12 +310,16 @@ void N2Accumulate::main_thread() {
                                          + vis_samp_n * _n_fpga_samples_per_n2k_correlation;
             }
 
-            int64_t corr_offset = vis_samp_n * corr_stride_t;
+            uint64_t corr_offset_t = vis_samp_n * corr_stride_t;
 
-            // Actual accumulation over
-            for (int64_t d = 0; d < 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame;
-                 ++d) {
-                _vis[d] += corr[d + corr_offset];
+            // Double checking the accumulation arrays are the right shape
+            assert(_vis.size() == corr_stride_t);
+            assert(_vis_even.size() == corr_stride_t);
+            assert(_weights.size() == corr_stride_t / 2);
+
+            // The actual accumulation of visibility.
+            for (uint64_t d = 0; d < corr_stride_t; ++d) {
+                _vis[d] += corr[d + corr_offset_t];
             } // d
 
             // If we're working on an even sample, store it for differencing
@@ -273,13 +327,12 @@ void N2Accumulate::main_thread() {
             // Potential optimization: copying vis_even is only really
             // necessary if we've started accumulating a new frame
             if (vis_sample_num_abs % 2 == 0) {
-                std::copy(corr, corr + 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame,
-                          _vis_even.begin());
+                std::copy(corr + corr_offset_t, corr + corr_offset_t + corr_stride_t, _vis_even.begin());
             } else {
-                for (int64_t d = 0; d < _n2k_correlation_num_products * _num_freq_per_n2k_frame;
+                for (uint64_t d = 0; d < (uint64_t)(_n2k_correlation_num_products * _num_freq_per_n2k_frame);
                      ++d) {
-                    float dr = corr[corr_offset + 2 * d + 0] - _vis_even[2 * d + 0];
-                    float di = corr[corr_offset + 2 * d + 1] - _vis_even[2 * d + 1];
+                    float dr = corr[corr_offset_t + 2 * d + 0] - _vis_even[2 * d + 0];
+                    float di = corr[corr_offset_t + 2 * d + 1] - _vis_even[2 * d + 1];
                     _weights[d] += dr * dr + di * di;
                 } // d
             } // if even/odd
@@ -337,6 +390,9 @@ void N2Accumulate::main_thread() {
                      t < (vis_samp_n + 1) * _n_fpga_samples_per_n2k_correlation;
                      t += _rfi_downsampling_factor) {
 
+                    // Casting to a uint64_t here is a micro-optimization,
+                    // the assembly is slighty simpler if the compliler knows
+                    // the numerator is non-negative.
                     int64_t thi = ((uint64_t)t) / 1024;
                     int64_t tlo = (((uint64_t)t) % 1024) / 8;
 
@@ -420,7 +476,7 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
                         int64_t i = ilo + _n2k_correlation_blocksize * ihi;
                         int64_t j = jlo + _n2k_correlation_blocksize * jhi;
 
-                        // Only procede if we're in the *true* lower-triangular section of the
+                        // Only proceed if we're in the *true* lower-triangular section of the
                         // matrix
                         if (j > i)
                             continue;

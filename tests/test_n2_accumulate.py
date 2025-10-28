@@ -25,7 +25,7 @@ global_params = {
     "num_elements": 64,
     "num_ev": 0,
     "samples_per_data_set": 16384,
-    "sub_integration_ntime": 8192,
+    "sub_integration_ntime": 4096,
     "rfi_downsampling_factor": 256,
     "num_local_freq": nfreq,
     "total_frames": 32,

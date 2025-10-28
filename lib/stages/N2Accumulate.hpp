@@ -84,8 +84,8 @@ private:
     // uint64_t _in_frame_duration_nsec;
     // uint64_t _in_frame_vis_duration_nsec;
 
-    const int64_t _n2k_correlation_blocksize = 16; // THIS IS ALWAYS 16
-    const int64_t _n2k_counts_blocksize = 8;       // THIS IS ALWAYS 8
+    static constexpr int64_t _n2k_correlation_blocksize = 16; // THIS IS ALWAYS 16
+    static constexpr int64_t _n2k_counts_blocksize = 8;       // THIS IS ALWAYS 8
 
     int64_t _num_elements; // Number of telescope elements
 

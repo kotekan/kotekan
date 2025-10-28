@@ -108,7 +108,7 @@ inline std::shared_ptr<N2Metadata> get_N2_metadata(const std::shared_ptr<metadat
 }
 
 inline std::shared_ptr<const N2Metadata>
-get_N2_metadata(const std::shared_ptr<const metadataObject> mc) {
+get_N2_metadata(const std::shared_ptr<const metadataObject>& mc) {
     if (!mc)
         return std::shared_ptr<const N2Metadata>();
     if (!metadata_is_N2(mc)) {
