@@ -73,37 +73,39 @@ nlohmann::json N2Metadata::to_json() {
 }
 
 void to_json(nlohmann::json& j, const N2Metadata& m) {
-    j["fpga_start_tick"] = m.fpga_start_tick;
-    j["frame_start_time_ns"] = m.frame_start_time_ns;
-    j["frame_length_fpga_ticks"] = m.frame_length_fpga_ticks;
+    assert(j.empty());
 
-    j["n_valid_fpga_ticks"] = m.n_valid_fpga_ticks;
-    j["n_rfi_fpga_ticks"] = m.n_rfi_fpga_ticks;
+    j.emplace("fpga_start_tick", m.fpga_start_tick);
+    j.emplace("frame_start_time_ns", m.frame_start_time_ns);
+    j.emplace("frame_length_fpga_ticks", m.frame_length_fpga_ticks);
 
-    j["freq_id"] = m.freq_id; // this is an int in chordMetadata, maybe change later
-    j["freq_Hz"] = m.freq_Hz;
-    j["eop"] = m.eop;
+    j.emplace("n_valid_fpga_ticks", m.n_valid_fpga_ticks);
+    j.emplace("n_rfi_fpga_ticks", m.n_rfi_fpga_ticks);
 
-    j["num_elements"] = m.num_elements;
-    j["num_prod"] = m.num_prod;
-    j["num_ev"] = m.num_ev;
-    j["nfreq"] = m.nfreq;
+    j.emplace("freq_id", m.freq_id); // this is an int in chordMetadata, maybe change later
+    j.emplace("freq_Hz", m.freq_Hz);
+    j.emplace("eop", m.eop);
+
+    j.emplace("num_elements", m.num_elements);
+    j.emplace("num_prod", m.num_prod);
+    j.emplace("num_ev", m.num_ev);
+    j.emplace("nfreq", m.nfreq);
 }
 
 void from_json(const nlohmann::json& j, N2Metadata& m) {
-    m.fpga_start_tick = j["fpga_start_tick"];
-    m.frame_start_time_ns = j["frame_start_time_ns"];
-    m.frame_length_fpga_ticks = j["frame_length_fpga_ticks"];
+    m.fpga_start_tick = j.at("fpga_start_tick");
+    m.frame_start_time_ns = j.at("frame_start_time_ns");
+    m.frame_length_fpga_ticks = j.at("frame_length_fpga_ticks");
 
-    m.n_valid_fpga_ticks = j["n_valid_fpga_ticks"];
-    m.n_rfi_fpga_ticks = j["n_rfi_fpga_ticks"];
+    m.n_valid_fpga_ticks = j.at("n_valid_fpga_ticks");
+    m.n_rfi_fpga_ticks = j.at("n_rfi_fpga_ticks");
 
-    m.freq_id = j["freq_id"]; // this is an int in chordMetadata, maybe change later
-    m.freq_Hz = j["freq_Hz"];
-    m.eop = j["eop"];
+    m.freq_id = j.at("freq_id"); // this is an int in chordMetadata, maybe change later
+    m.freq_Hz = j.at("freq_Hz");
+    m.eop = j.at("eop");
 
-    m.num_elements = j["num_elements"];
-    m.num_prod = j["num_prod"];
-    m.num_ev = j["num_ev"];
-    m.nfreq = j["nfreq"];
+    m.num_elements = j.at("num_elements");
+    m.num_prod = j.at("num_prod");
+    m.num_ev = j.at("num_ev");
+    m.nfreq = j.at("nfreq");
 }
