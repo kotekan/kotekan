@@ -147,6 +147,9 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
 
     out_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
     out_meta->set_half_fpga_sample0(out_half_fpga_sample0);
+    
+    // Set poison for debug checks.
+    n2k_correlation.set_to_poison(0x80);
 
     // The ringbuffering here is fishy. We should fix the kernel instead.
 
@@ -182,8 +185,11 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     n2correlator.launch(n2k_correlation.get_ndarray().data(), (const int8_t*)input_memory,
                         (const uint32_t*)rfi_RFImask_memory, num_subintegrations,
                         _sub_integration_ntime, device.getStream(cuda_stream_id), true);
-
+    
     CHECK_CUDA_ERROR(cudaGetLastError());
+    
+    // Check if poison value made it through
+    n2k_correlation.check_for_poison(0x80);
 
     return record_end_event();
 }
