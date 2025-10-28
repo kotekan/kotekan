@@ -1,6 +1,8 @@
 #ifndef DATATYPE_HPP
 #define DATATYPE_HPP
 
+#include "json.hpp"
+
 #include <cassert>
 #include <complex>
 #include <cstdint>
@@ -847,6 +849,10 @@ DataType string_to_type(const std::string& type_name);
 
 // Output a type
 std::ostream& operator<<(std::ostream& os, DataType type);
+
+// conversion from / to json
+void to_json(nlohmann::json& j, const DataType& d);
+void from_json(const nlohmann::json& j, DataType& d);
 
 } // namespace kotekan
 
