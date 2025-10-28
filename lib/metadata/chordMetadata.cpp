@@ -150,6 +150,8 @@ size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t 
     this->set_time_downsampling_fpga(
         std::vector<int>(fmt->time_downsampling_fpga, fmt->time_downsampling_fpga + nfreq));
     this->set_coarse_freq(std::vector<int>(fmt->coarse_freq, fmt->coarse_freq + nfreq));
+
+    // TODO: this misses dish_positions etc
     return sizeof(chordMetadataFormat);
 }
 
@@ -184,5 +186,99 @@ size_t chordMetadata::serialize(char* bytes) {
     std::copy_n(this->get_time_downsampling_fpga().data(), this->get_nfreq(),
                 fmt->time_downsampling_fpga);
     std::copy_n(this->get_coarse_freq().data(), this->get_nfreq(), fmt->coarse_freq);
+
+    // TODO: this misses dish_positions etc
     return sizeof(chordMetadataFormat);
+}
+
+nlohmann::json chordMetadata::to_json() {
+    nlohmann::json rtn = {};
+    ::to_json(rtn, *this);
+    return rtn;
+}
+
+void to_json(nlohmann::json& j, const chordMetadata& m) {
+    assert(j.empty());
+
+    j = m.metadata;
+
+    j.emplace("max_dim", CHORD_META_MAX_DIM);
+    j.emplace("max_dimname", CHORD_META_MAX_DIMNAME);
+    j.emplace("max_freq", CHORD_META_MAX_FREQ);
+
+    j.emplace("name", std::string(m.name, strnlen(m.name, sizeof(m.name))));
+    j.emplace("type", m.type);
+    j.emplace("dims", m.dims);
+    j.emplace("dim", std::vector<int>(m.dim, m.dim + m.dims));
+    std::vector<std::string> dimnames;
+    for (int i = 0; i < m.dims; i++)
+        dimnames.push_back(
+            std::string(m.dim_name[i], strnlen(m.dim_name[i], sizeof(m.dim_name[i]))));
+    j.emplace("dim_name", dimnames);
+    j.emplace("stride", std::vector<int64_t>(m.stride, m.stride + m.dims));
+    j.emplace("offset", m.offset);
+    // TODO: this misses dish_positions etc
+}
+
+void from_json(const nlohmann::json& j, chordMetadata& m) {
+    // TODO once everything is stored in json, can just copy in the json given
+    assert(m.metadata.empty());
+
+    if (j.contains(jsonMetadata::BEAM_COORD))
+        m.metadata.emplace(jsonMetadata::BEAM_COORD, j.at(jsonMetadata::BEAM_COORD));
+    if (j.contains(jsonMetadata::FPGA_SEQ_NUM))
+        m.metadata.emplace(jsonMetadata::FPGA_SEQ_NUM, j.at(jsonMetadata::FPGA_SEQ_NUM));
+    if (j.contains(jsonMetadata::COARSE_FREQ))
+        m.metadata.emplace(jsonMetadata::COARSE_FREQ, j.at(jsonMetadata::COARSE_FREQ));
+    if (j.contains(jsonMetadata::DATASET_ID))
+        m.metadata.emplace(jsonMetadata::DATASET_ID, j.at(jsonMetadata::DATASET_ID));
+    if (j.contains(jsonMetadata::RFI_NUM_BAD_INPUTS))
+        m.metadata.emplace(jsonMetadata::RFI_NUM_BAD_INPUTS,
+                           j.at(jsonMetadata::RFI_NUM_BAD_INPUTS));
+    if (j.contains(jsonMetadata::RFI_FLAGGED_SAMPLES))
+        m.metadata.emplace(jsonMetadata::RFI_FLAGGED_SAMPLES,
+                           j.at(jsonMetadata::RFI_FLAGGED_SAMPLES));
+    if (j.contains(jsonMetadata::LOST_TIMESAMPLES))
+        m.metadata.emplace(jsonMetadata::LOST_TIMESAMPLES, j.at(jsonMetadata::LOST_TIMESAMPLES));
+    if (j.contains(jsonMetadata::STREAM_ID))
+        m.metadata.emplace(jsonMetadata::STREAM_ID, j.at(jsonMetadata::STREAM_ID));
+    if (j.contains(jsonMetadata::FRAME_COUNTER))
+        m.metadata.emplace(jsonMetadata::FRAME_COUNTER, j.at(jsonMetadata::FRAME_COUNTER));
+
+    if (j.contains(jsonMetadata::FIRST_PACKET_RECV_TIME))
+        m.metadata.emplace(jsonMetadata::FIRST_PACKET_RECV_TIME,
+                           j.at(jsonMetadata::FIRST_PACKET_RECV_TIME));
+
+    if (j.contains(jsonMetadata::SAMPLE0_OFFSET))
+        m.metadata.emplace(jsonMetadata::SAMPLE0_OFFSET, j.at(jsonMetadata::SAMPLE0_OFFSET));
+    if (j.contains(jsonMetadata::OFFSET_DOWNSAMPLING))
+        m.metadata.emplace(jsonMetadata::OFFSET_DOWNSAMPLING,
+                           j.at(jsonMetadata::OFFSET_DOWNSAMPLING));
+
+    if (j.contains(jsonMetadata::HALF_FPGA_SAMPLE0))
+        m.metadata.emplace(jsonMetadata::HALF_FPGA_SAMPLE0, j.at(jsonMetadata::HALF_FPGA_SAMPLE0));
+    if (j.contains(jsonMetadata::TIME_DOWNSAMPLING_FPGA))
+        m.metadata.emplace(jsonMetadata::TIME_DOWNSAMPLING_FPGA,
+                           j.at(jsonMetadata::TIME_DOWNSAMPLING_FPGA));
+    if (j.contains(jsonMetadata::FREQ_UPCHAN_FACTOR))
+        m.metadata.emplace(jsonMetadata::FREQ_UPCHAN_FACTOR,
+                           j.at(jsonMetadata::FREQ_UPCHAN_FACTOR));
+
+    assert(j.at("max_dim") == CHORD_META_MAX_DIM);
+    assert(j.at("max_dimname") == CHORD_META_MAX_DIMNAME);
+    assert(j.at("max_freq") == CHORD_META_MAX_FREQ);
+
+    strncpy(m.name, j.at("name").template get<std::string>().c_str(), sizeof(m.name));
+    m.type = j.at("type").template get<kotekan::DataType>();
+    m.dims = j.at("dims").template get<int>();
+    std::vector<int> extents = j.at("dim").template get<std::vector<int>>();
+    std::copy(extents.begin(), extents.end(), m.dim);
+    std::vector<std::string> dimnames = j.at("dim_name").template get<std::vector<std::string>>();
+    for (int i = 0; i < m.dims; i++)
+        strncpy(m.dim_name[i], dimnames.at(i).c_str(), sizeof(m.dim_name[i]));
+    std::vector<int64_t> strides = j.at("stride").template get<std::vector<int64_t>>();
+    for (int i = 0; i < m.dims; i++)
+        m.stride[i] = strides.at(i);
+    m.offset = j.at("offset");
+    // TODO: this misses dish_positions etc
 }

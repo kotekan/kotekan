@@ -68,9 +68,7 @@ public:
     size_t serialize(char* bytes) override;
 
     /// serialize to json
-    nlohmann::json to_json() override {
-        return metadata;
-    }
+    nlohmann::json to_json() override;
 
     /// controls access to this object
     mutable class almost_copyable_mutex : public std::mutex {
@@ -488,7 +486,13 @@ private:
     // these are not thread safe
     chordMetadata& operator=(const chordMetadata&) = default;
     chordMetadata(const chordMetadata&) = default;
+
+    friend void to_json(nlohmann::json& j, const chordMetadata& m);
+    friend void from_json(const nlohmann::json& j, chordMetadata& m);
 };
+
+void to_json(nlohmann::json& j, const chordMetadata& m);
+void from_json(const nlohmann::json& j, chordMetadata& m);
 
 inline bool metadata_is_chord(Buffer* buf, int) {
     return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "chordMetadata");
