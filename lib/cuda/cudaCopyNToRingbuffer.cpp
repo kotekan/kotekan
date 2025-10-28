@@ -139,51 +139,56 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
     // TODO we should do a metadata validation for every input buffer to double check
     // we are not mixing incompatible frames.
     if (first_time && instance_num == 0) {
-        // Allocate a new metadata object on the signal buffer
-        signal_buffer->allocate_new_metadata_object(0);
-        auto meta_ring = std::dynamic_pointer_cast<chordMetadata>(signal_buffer->metadata[0]);
-        if (!meta_ring)
-            throw std::runtime_error(
-                "cudaCopyNToRingbuffer: could not get chordMetadata from signal buffer");
+        // Get the first input metadata
+        const auto meta_in0 = std::dynamic_pointer_cast<chordMetadata>(
+            in_buffers.at(0)->get_metadata(gpu_frame_id % in_buffers.at(0)->num_frames));
+        if (!meta_in0)
+            throw std::runtime_error("cudaCopyNToRingbuffer: input buffer has no chordMetadata");
+
+        // Copy metadata (because we modify it)
+        auto meta_ring = std::make_shared<chordMetadata>(*meta_in0);
+
+        // Pull most of the metadata from the first input buffer.
+        // TODO: Check metadata matches on all subsequent buffers.
+
+        // Set the quantity
+        meta_ring->set_name("E");
+
+        // Set the shape of the array
+        meta_ring->dims = 4;
+        meta_ring->set_array_dimension(0, _gpu_buffer_depth, "Thi16384");
+        meta_ring->set_array_dimension(1, in_buffers.size(), "F");
+        assert(meta_in0->dim[0] == 16384);
+        meta_ring->set_array_dimension(2, meta_in0->dim[0], "Tlo16384");
+        meta_ring->set_array_dimension(3, meta_in0->dim[1], "E");
+        meta_ring->set_strides_simple();
+
+        // Set the data type
+        meta_ring->type = kotekan::int4x2_swapped_withoffset;
+
+        // Set the FPGA seq number of the first sample
+        // NB that interpretation of time is a little confused with the array layout
+        // above.  So the transpose kernel will need specal attention to calculating
+        // the actualy time.  It does not follow the usual T_actual pattern.
+        meta_ring->set_sample0_offset(meta_in0->get_sample0_offset());
 
         // Merge metadata from all input buffers
         // NB This is highly specific to CHIME.
         std::vector<int> coarse_freq(in_buffers.size());
         for (size_t i = 0; i < in_buffers.size(); ++i) {
             auto meta_in = std::dynamic_pointer_cast<chordMetadata>(
-                in_buffers[i]->get_metadata(gpu_frame_id % in_buffers[i]->num_frames));
+                in_buffers.at(i)->get_metadata(gpu_frame_id % in_buffers.at(i)->num_frames));
             if (!meta_in)
                 throw std::runtime_error(
                     "cudaCopyNToRingbuffer: input buffer has no chordMetadata");
-            // Pull most of the metadata from the first input buffer.
-            // TODO: Check metadata matches on all subsequent buffers.
-            if (i == 0) {
-                // Set the quantity
-                meta_ring->set_name("E");
-
-                // Set the shape of the array
-                meta_ring->dims = 4;
-                meta_ring->set_array_dimension(0, _gpu_buffer_depth, "Thi16384");
-                meta_ring->set_array_dimension(1, in_buffers.size(), "F");
-                assert(meta_in->dim[0] == 16384);
-                meta_ring->set_array_dimension(2, meta_in->dim[0], "Tlo16384");
-                meta_ring->set_array_dimension(3, meta_in->dim[1], "E");
-
-                // Set the data type
-                meta_ring->type = kotekan::int4x2_swapped_withoffset;
-
-                // Set the FPGA seq number of the first sample
-                // NB that interpretation of time is a little confused with the array layout
-                // above.  So the transpose kernel will need specal attention to calculating
-                // the actualy time.  It does not follow the usual T_actual pattern.
-                meta_ring->set_sample0_offset(meta_in->get_sample0_offset());
-            }
             // Set the frequency for each of the input buffers
-            coarse_freq[i] = meta_in->get_coarse_freq()[0];
+            coarse_freq.at(i) = meta_in->get_coarse_freq()[0];
             // Check that the sample0 matches for all input buffers
             assert(meta_ring->get_sample0_offset() == meta_in->get_sample0_offset());
         }
         meta_ring->set_coarse_freq(coarse_freq);
+        signal_buffer->set_metadata(0, meta_ring);
+
         // Debug log the merged metadata with the data set above
         INFO("cudaCopyNToRingbuffer: Merged metadata frequency list: {}",
              fmt::join(meta_ring->get_coarse_freq(), ", "));
@@ -196,14 +201,15 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
     const std::vector<int> coarse_freq = meta_ring->get_coarse_freq();
     for (size_t i = 0; i < in_buffers.size(); ++i) {
         auto meta_in = std::dynamic_pointer_cast<chordMetadata>(
-            in_buffers[i]->get_metadata(gpu_frame_id % in_buffers[i]->num_frames));
+            in_buffers.at(i)->get_metadata(gpu_frame_id % in_buffers.at(i)->num_frames));
         if (!meta_in)
             throw std::runtime_error("cudaCopyNToRingbuffer: input buffer has no chordMetadata");
         // Check that the frequencies match
-        if (coarse_freq[i] != meta_in->get_coarse_freq()[0]) {
+        if (coarse_freq.at(i) != meta_in->get_coarse_freq().at(0)) {
             ERROR("cudaCopyNToRingbuffer: Mismatch in frequency for input buffer {}: "
                   "metadata has {}, frame has {}",
-                  in_buffers[i]->buffer_name, coarse_freq[i], meta_in->get_coarse_freq()[0]);
+                  in_buffers.at(i)->buffer_name, coarse_freq.at(i),
+                  meta_in->get_coarse_freq().at(0));
             throw std::runtime_error("cudaCopyNToRingbuffer: metadata frequency mismatch");
         }
         // Check that the sample0_offset + the output_cursor matches the input frame sample0_offset
@@ -213,7 +219,7 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
             != meta_in->get_sample0_offset()) {
             ERROR("cudaCopyNToRingbuffer: Mismatch in sample0_offset for input buffer {}: "
                   "metadata has {}, frame has {} (output_cursor {})",
-                  in_buffers[i]->buffer_name, meta_ring->get_sample0_offset(),
+                  in_buffers.at(i)->buffer_name, meta_ring->get_sample0_offset(),
                   meta_in->get_sample0_offset(), output_cursor);
             throw std::runtime_error("cudaCopyNToRingbuffer: metadata time code mismatch");
         }
