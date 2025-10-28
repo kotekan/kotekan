@@ -39,6 +39,7 @@
  * @conf num_taps           Int    how many taps in the F-engine's polyphase filter bank?
  * @conf num_frequencies    Int    how many frequencies are produced by the F-engine?
  * @conf num_times          Int    how many time samples per chunk?
+ * @conf receive_chime      Bool   input buffer layout (CHIME or CHORD)
  * @conf bb_num_dishes_M    Int    Baseband beamformer: input dish grid size
  * @conf bb_num_dishes_N    Int    Baseband beamformer: input dish grid size
  * @conf bb_num_beams_P    Int    Baseband beamformer: output beam grid size
@@ -104,7 +105,7 @@ class FEngine : public kotekan::Stage {
     // Dish reordering
     const std::vector<int> scatter_indices;
 
-    // Input buffers
+    // Input buffer layout (CHIME or CHORD)
     const bool receive_chime;
 
     // Baseband beamformer setup
