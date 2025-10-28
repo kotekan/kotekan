@@ -32,9 +32,9 @@ kernel-description:
     - name: "Ein"
       intent: in
       type: Int4
-      indices: [C, D, P, F, T]
-      shape: [2, 1024, 2, 16, 65536]
-      strides: [1, 2, 2048, 4096, 65536]
+      indices: [C, E, Tlo16384, F, Thi16384]
+      shape: [2, 2048, 16384, F, T ÷ 16384]
+      strides: [1, 2, 4096, 67108864, 1073741824]
     - name: "E"
       intent: out
       type: Int4
