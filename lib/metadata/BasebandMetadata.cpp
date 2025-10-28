@@ -77,31 +77,33 @@ nlohmann::json BasebandMetadata::to_json() {
 }
 
 void to_json(nlohmann::json& j, const BasebandMetadata& m) {
-    j["event_id"] = m.event_id;
-    j["freq_id"] = m.freq_id;
-    j["event_start_fpga"] = m.event_start_fpga;
-    j["event_end_fpga"] = m.event_end_fpga;
-    j["time0_fpga"] = m.time0_fpga;
-    j["time0_ctime"] = m.time0_ctime;
-    j["time0_ctime_offset"] = m.time0_ctime_offset;
-    j["first_packet_recv_time"] = m.first_packet_recv_time;
-    j["frame_fpga_seq"] = m.frame_fpga_seq;
-    j["valid_to"] = m.valid_to;
-    j["fpga0_ns"] = m.fpga0_ns;
-    j["num_elements"] = m.num_elements;
+    assert(j.empty());
+
+    j.emplace("event_id", m.event_id);
+    j.emplace("freq_id", m.freq_id);
+    j.emplace("event_start_fpga", m.event_start_fpga);
+    j.emplace("event_end_fpga", m.event_end_fpga);
+    j.emplace("time0_fpga", m.time0_fpga);
+    j.emplace("time0_ctime", m.time0_ctime);
+    j.emplace("time0_ctime_offset", m.time0_ctime_offset);
+    j.emplace("first_packet_recv_time", m.first_packet_recv_time);
+    j.emplace("frame_fpga_seq", m.frame_fpga_seq);
+    j.emplace("valid_to", m.valid_to);
+    j.emplace("fpga0_ns", m.fpga0_ns);
+    j.emplace("num_elements", m.num_elements);
 }
 
 void from_json(const nlohmann::json& j, BasebandMetadata& m) {
-    m.event_id = j["event_id"];
-    m.freq_id = j["freq_id"];
-    m.event_start_fpga = j["event_start_fpga"];
-    m.event_end_fpga = j["event_end_fpga"];
-    m.time0_fpga = j["time0_fpga"];
-    m.time0_ctime = j["time0_ctime"];
-    m.time0_ctime_offset = j["time0_ctime_offset"];
-    m.first_packet_recv_time = j["first_packet_recv_time"];
-    m.frame_fpga_seq = j["frame_fpga_seq"];
-    m.valid_to = j["valid_to"];
-    m.fpga0_ns = j["fpga0_ns"];
-    m.num_elements = j["num_elements"];
+    m.event_id = j.at("event_id");
+    m.freq_id = j.at("freq_id");
+    m.event_start_fpga = j.at("event_start_fpga");
+    m.event_end_fpga = j.at("event_end_fpga");
+    m.time0_fpga = j.at("time0_fpga");
+    m.time0_ctime = j.at("time0_ctime");
+    m.time0_ctime_offset = j.at("time0_ctime_offset");
+    m.first_packet_recv_time = j.at("first_packet_recv_time");
+    m.frame_fpga_seq = j.at("frame_fpga_seq");
+    m.valid_to = j.at("valid_to");
+    m.fpga0_ns = j.at("fpga0_ns");
+    m.num_elements = j.at("num_elements");
 }
