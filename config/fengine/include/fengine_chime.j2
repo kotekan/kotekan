@@ -107,6 +107,9 @@ adc_frequency: 1.6e+9           # [Hz]
 num_taps: 4
 num_samples_per_frame: 4096
 
+frequency_pool_rank: 0
+frequency_pool_size: 64
+
 num_frequencies: 16       # 2048 frequencies / 64 gpus * 50% coverage
 # The frequency channels we keep.
 #     A channel's frequency is   freq = channel * adc_frequency / num_samples_per_frame
