@@ -8,6 +8,7 @@
 #ifndef KOTEKAN_BUFFER_HPP
 #define KOTEKAN_BUFFER_HPP
 
+#include "NDArray.hpp"
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "metadata.hpp"       // for metadataObject, metadataPool
 
@@ -520,6 +521,46 @@ public:
     void safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_id);
 
     /**
+     * @brief Allocates a new frame description object holding a D dimensional
+     *        array of type T
+     * @param[in] frame_id The frame ID of the frame to describe
+     * @param[in] extents Array extentds in the D dimensions
+     * @param[in] dimnames Array axis labels in the D dimensions
+     */
+    template<typename T, std::size_t D>
+    void allocate_new_frame_desc(int frame_id, const std::array<std::ptrdiff_t, D>& extents,
+                                 const std::array<kotekan::Symbol, D>& dimnames) {
+        frames_desc.at(frame_id) =
+            std::make_shared<kotekan::NDArray<T, D>>(extents, dimnames, nullptr);
+    }
+
+    /**
+     * @brief Allocates a new frame description object holding a D dimensional
+     *        array of type T
+     * @param[in] frame_id The frame ID of the frame to describe
+     * @param[in] value_type the kotekan type enomerator of the values stored
+     * @param[in] rank dimensionality of the data array
+     * @param[in] extents Array extentds in the D dimensions
+     * @param[in] dimnames Array axis labels in the D dimensions
+     */
+    void allocate_new_frame_desc(int frame_id, kotekan::DataType value_type, size_t rank,
+                                 const std::vector<std::ptrdiff_t>& extents,
+                                 const std::vector<kotekan::Symbol>& dimnames) {
+        frames_desc.at(frame_id) =
+            kotekan::GenericNDArray::create(value_type, rank, extents, dimnames, nullptr);
+    }
+
+    /**
+     * @brief provides read access to the array description
+     * @param[in] frame_id The frame ID of the frame to describe
+     * @return The NDArray data structure describing the array
+     */
+    std::shared_ptr<const kotekan::GenericNDArray> get_frame_desc(int frame_id) {
+        // TODO: use a get/set pair instead?
+        return frames_desc.at(frame_id);
+    }
+
+    /**
      * @brief Returns the last time a frame was marked as full
      * @param buf The buffer to get the last arrival time for.
      * @return A double (with units: seconds) containing the unix time of the last frame arrival
@@ -559,6 +600,9 @@ public:
 
     /// The array of frames (the actual data we are carrying)
     std::vector<uint8_t*> frames;
+
+    /// An array of metdata describing the shape of the data stored in frames
+    std::vector<std::shared_ptr<kotekan::GenericNDArray>> frames_desc;
 
     /**
      * @brief Flag variables to say which frames are full

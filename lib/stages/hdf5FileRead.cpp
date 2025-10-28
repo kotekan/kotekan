@@ -195,6 +195,21 @@ public:
                     meta->dish_index = nullptr;
                 }
 
+                {
+                    /* new style array description */
+                    const kotekan::DataType value_type =
+                        kotekan::string_to_type(dataset.getAttribute("type").read<std::string>());
+                    assert(value_type != kotekan::unknown_type);
+
+                    std::vector<ptrdiff_t> dimensions(dims.begin(), dims.end());
+                    std::vector<kotekan::Symbol> dimnames(dim_names.begin(), dim_names.end());
+
+                    buffer->allocate_new_frame_desc(frame_id, value_type, dimensions.size(),
+                                                    dimensions, dimnames);
+                    /* test that things are consistent */
+                    meta->check_frame_desc(buffer->get_frame_desc(frame_id));
+                }
+
                 // Read buffer
                 DEBUG("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
                 dataset.read_raw(frame, type);

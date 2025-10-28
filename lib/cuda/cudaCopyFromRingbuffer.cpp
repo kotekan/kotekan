@@ -148,8 +148,16 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
             device.async_copy_gpu_to_host((char*)host_output_frame + ncopy, rb_memory, nwrap,
                                           cuda_stream_id, nullptr, nullptr, nullptr);
 
-        if (meta)
-            out_buffer->set_metadata(out_id, meta);
+        out_buffer->set_metadata(out_id, meta);
+        /* new style array description */
+        std::vector<std::ptrdiff_t> extents(meta->dim, meta->dim + meta->dims);
+        std::vector<kotekan::Symbol> dimnames;
+        for (int d = 0; d < meta->dims; ++d)
+            dimnames.push_back(std::string(meta->dim_name[d],
+                                           strnlen(meta->dim_name[d], sizeof(meta->dim_name[d]))));
+        out_buffer->allocate_new_frame_desc(out_id, meta->type, meta->dims, extents, dimnames);
+        /* test that things are consistent */
+        meta->check_frame_desc(out_buffer->get_frame_desc(out_id));
 
     } else {
         int out_id = gpu_frame_id % _gpu_buffer_depth;
@@ -164,8 +172,7 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
                                              cudaMemcpyDeviceToDevice,
                                              device.getStream(cuda_stream_id)));
 
-        if (meta)
-            device.claim_gpu_memory_array_metadata(_gpu_mem_output, out_id, meta);
+        device.claim_gpu_memory_array_metadata(_gpu_mem_output, out_id, meta);
     }
     return record_end_event();
 }

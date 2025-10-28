@@ -188,6 +188,15 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->set_array_dimension(4, 16, "DPlo2");
         meta_out->set_array_dimension(5, 2, "C");
         meta_out->set_strides_simple();
+        /* new style array description */
+        output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
+            output_frame_id,
+            {nt_outer, _num_local_freq, (_num_elements / 16) * (_num_elements / 16 + 1) / 2, 16, 16,
+             2},
+            {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
+        /* test that things are consistent */
+        meta_out->check_frame_desc(output_buf->get_frame_desc(output_frame_id));
+
         std::vector<int> coarse_freq(_num_local_freq);
         std::vector<int> time_downsampling_fpga(_num_local_freq);
         const std::vector<int> time_downsampling_fpga_in = meta_in->get_time_downsampling_fpga();

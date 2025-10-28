@@ -210,6 +210,7 @@ void testDataGen::main_thread() {
         for (int d = 0; d < chordmeta->dims; ++d)
             chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
         chordmeta->set_strides_simple();
+        // frame_desc is set only after "type" has been decoded below
 
         assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
         std::vector<int> coarse_freq(_num_freq_in_frame);
@@ -283,6 +284,15 @@ void testDataGen::main_thread() {
             if (chordmeta)
                 chordmeta->type = kotekan::uint1x8;
         }
+
+        // this needs the decoded type
+        /* new style array description */
+        std::vector<ptrdiff_t> extents(_array_shape.begin(), _array_shape.end());
+        std::vector<kotekan::Symbol> dimnames(_dim_name.begin(), _dim_name.end());
+        buf->allocate_new_frame_desc(frame_id, chordmeta->type, _array_shape.size(), extents,
+                                     dimnames);
+        /* test that things are consistent */
+        chordmeta->check_frame_desc(buf->get_frame_desc(frame_id));
 
         if (type == "onehot") {
             int val = value;

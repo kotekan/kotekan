@@ -9,6 +9,7 @@
 #include <functional>       // for function
 #include <initializer_list> // for initializer_list
 #include <iostream>         // for ostream
+#include <memory>           // for shared_ptr
 #include <utility>          // for pair
 #include <vector>           // for vector
 
@@ -79,6 +80,11 @@ make_arrays_from_pairs(std::initializer_list<std::pair<T, U>> values) {
 // on array elements.
 class GenericNDArray {
 public:
+    // create an NDArray based on run-time type information
+    static std::shared_ptr<GenericNDArray> create(const DataType value_datatype, const size_t rank,
+                                                  const std::vector<std::ptrdiff_t>& extents,
+                                                  const std::vector<Symbol>& dimnames, void* data);
+    static const size_t max_rank = 10;
     virtual ~GenericNDArray() {}
     // The value (element) type
     virtual DataType get_value_datatype() const = 0;
@@ -152,26 +158,13 @@ public:
     NDArray& operator=(NDArray&&) = default;
 
     // Construct from extents and dimension names
+    NDArray(const std::vector<std::ptrdiff_t>& extents, const std::vector<Symbol>& dimnames,
+            T* data) {
+        init(extents, dimnames, data);
+    }
     NDArray(const std::array<std::ptrdiff_t, D>& extents, const std::array<Symbol, D>& dimnames,
             T* data) {
-        for (std::size_t d = 0; d < D; ++d)
-            m_extents[d] = extents[d];
-        for (std::size_t d = 0; d < D; ++d)
-            assert(m_extents[d] >= 0);
-
-        for (std::size_t d = 0; d < D; ++d)
-            m_dimnames[d] = dimnames[d];
-        for (std::size_t d = 0; d < D; ++d)
-            for (std::size_t d1 = 0; d1 < d; ++d1)
-                assert(m_dimnames[d] != m_dimnames[d1]);
-
-        m_size = 1;
-        for (std::size_t d = D; d > 0; --d) {
-            m_strides[d - 1] = m_size;
-            m_size *= m_extents[d - 1];
-        }
-
-        m_data = data;
+        init(extents, dimnames, data);
     }
     NDArray(const std::array<std::ptrdiff_t, D>& extents, const std::array<Symbol, D>& dimnames) :
         NDArray(extents, dimnames, nullptr) {
@@ -379,6 +372,29 @@ public:
     }
     std::ptrdiff_t get_stride(std::size_t d) const override {
         return stride(d);
+    }
+
+private:
+    template<typename ExtentsArray, typename NamesArray>
+    void init(const ExtentsArray& extents, const NamesArray& dimnames, T* data) {
+        for (std::size_t d = 0; d < D; ++d)
+            m_extents.at(d) = extents.at(d);
+        for (std::size_t d = 0; d < D; ++d)
+            assert(m_extents.at(d) >= 0);
+
+        for (std::size_t d = 0; d < D; ++d)
+            m_dimnames.at(d) = dimnames.at(d);
+        for (std::size_t d = 0; d < D; ++d)
+            for (std::size_t d1 = 0; d1 < d; ++d1)
+                assert(m_dimnames.at(d) != m_dimnames.at(d1));
+
+        m_size = 1;
+        for (std::size_t d = D; d > 0; --d) {
+            m_strides.at(d - 1) = m_size;
+            m_size *= m_extents.at(d - 1);
+        }
+
+        m_data = data;
     }
 };
 

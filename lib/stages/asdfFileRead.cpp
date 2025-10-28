@@ -203,6 +203,32 @@ public:
                     assert(meta->stride[d] == npoints);
                     npoints *= meta->dim[d];
                 }
+
+                {
+                    /* new style array description */
+                    DEBUG("[{:s}/{:d}] group0->at(\"type\")", buffer->buffer_name, frame_counter);
+                    const std::string type = group->at("type")->get_maybe_string().value();
+                    const kotekan::DataType value_type = kotekan::string_to_type(type);
+                    DEBUG("[{:s}/{:d}] value_type={}", buffer->buffer_name, frame_counter,
+                          type_to_string(value_type));
+                    assert(value_type != kotekan::unknown_type);
+
+                    DEBUG("[{:s}/{:d}] group0->at(\"dim_names\")", buffer->buffer_name,
+                          frame_counter);
+                    const auto dim_names = group->at("dim_names")->get_maybe_sequence();
+                    assert(dim_names);
+                    std::vector<kotekan::Symbol> dimnames;
+                    for (size_t d = 0; d < dimensions.size(); ++d) {
+                        const std::string dim_name = dim_names->at(d)->get_maybe_string().value();
+                        dimnames.push_back(dim_name);
+                    }
+                    buffer->allocate_new_frame_desc(frame_id, value_type, dimensions.size(),
+                                                    dimensions, dimnames);
+                    /* test that things are consistent */
+                    meta->check_frame_desc(buffer->get_frame_desc(frame_id));
+                }
+
+
                 const std::ptrdiff_t data_size = npoints * datatype_size;
                 DEBUG("[{:s}/{:d}] data_size={} datatype->type_size={} meta->stride[0]={} "
                       "meta->dim[0]={} buffer->frame_size={}",
