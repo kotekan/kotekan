@@ -28,40 +28,37 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _sub_integration_ntime = config.get<int>(unique_name, "sub_integration_ntime");
 
-    //Check parameter compatibility
-    if(_num_elements <= 0) {
-        FATAL_ERROR("num_elements ({:d}) is not positive.",
-                _num_elements);
+    // Check parameter compatibility
+    if (_num_elements <= 0) {
+        FATAL_ERROR("num_elements ({:d}) is not positive.", _num_elements);
         std::abort();
     }
-    if(_num_local_freq <= 0) {
-        FATAL_ERROR("num_local_freq ({:d}) is not positive.",
-                _num_local_freq);
+    if (_num_local_freq <= 0) {
+        FATAL_ERROR("num_local_freq ({:d}) is not positive.", _num_local_freq);
         std::abort();
     }
-    if(_samples_per_data_set <= 0) {
-        FATAL_ERROR("samples_per_data_set ({:d}) is not positive.",
-                _samples_per_data_set);
+    if (_samples_per_data_set <= 0) {
+        FATAL_ERROR("samples_per_data_set ({:d}) is not positive.", _samples_per_data_set);
         std::abort();
     }
-    if(_sub_integration_ntime <= 0) {
-        FATAL_ERROR("sub_integration_ntime ({:d}) is not positive.",
-                _sub_integration_ntime);
+    if (_sub_integration_ntime <= 0) {
+        FATAL_ERROR("sub_integration_ntime ({:d}) is not positive.", _sub_integration_ntime);
         std::abort();
     }
-    if(_samples_per_data_set % _sub_integration_ntime != 0) {
-        FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d}).",
-                _samples_per_data_set, _sub_integration_ntime);
+    if (_samples_per_data_set % _sub_integration_ntime != 0) {
+        FATAL_ERROR(
+            "samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d}).",
+            _samples_per_data_set, _sub_integration_ntime);
         std::abort();
     }
-    if(_samples_per_data_set % 1024 != 0) {
+    if (_samples_per_data_set % 1024 != 0) {
         FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of 1024.",
-                _samples_per_data_set);
+                    _samples_per_data_set);
         std::abort();
     }
-    if(_num_elements % _corr_blocksize != 0) {
+    if (_num_elements % _corr_blocksize != 0) {
         FATAL_ERROR("num_elements ({:d}) is not a multiple of _corr_blocksize ({:d}).",
-                _num_elements, _corr_blocksize);
+                    _num_elements, _corr_blocksize);
         std::abort();
     }
 
@@ -73,28 +70,30 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
     output_buf->register_producer(unique_name);
 
     // Check buffer frame sizes
-    size_t input_voltage_frame_size = sizeof(char) * _num_elements * _num_local_freq * _samples_per_data_set;
+    size_t input_voltage_frame_size =
+        sizeof(char) * _num_elements * _num_local_freq * _samples_per_data_set;
     size_t rfimask_frame_size = _num_local_freq * _samples_per_data_set / 8;
 
     size_t num_blocks_lin = _num_elements / _corr_blocksize;
     size_t num_blocks = (num_blocks_lin * (num_blocks_lin + 1)) / 2;
     size_t num_correlations = _samples_per_data_set / _sub_integration_ntime;
 
-    size_t corr_frame_size = 2 * sizeof(int) * _corr_blocksize * _corr_blocksize * num_blocks * _num_local_freq * num_correlations;
+    size_t corr_frame_size = 2 * sizeof(int) * _corr_blocksize * _corr_blocksize * num_blocks
+                             * _num_local_freq * num_correlations;
 
-    if(input_buf->frame_size != input_voltage_frame_size) {
+    if (input_buf->frame_size != input_voltage_frame_size) {
         FATAL_ERROR("network_in_buf ({:s}) has frame size {:d}, expected {:d}",
-                input_buf->buffer_name, input_buf->frame_size, input_voltage_frame_size);
+                    input_buf->buffer_name, input_buf->frame_size, input_voltage_frame_size);
         std::abort();
     }
-    if(rfimask_buf->frame_size != rfimask_frame_size) {
+    if (rfimask_buf->frame_size != rfimask_frame_size) {
         FATAL_ERROR("rfimask_in_buf ({:s}) has frame size {:d}, expected {:d}",
-                rfimask_buf->buffer_name, rfimask_buf->frame_size, rfimask_frame_size);
+                    rfimask_buf->buffer_name, rfimask_buf->frame_size, rfimask_frame_size);
         std::abort();
     }
-    if(output_buf->frame_size != corr_frame_size) {
+    if (output_buf->frame_size != corr_frame_size) {
         FATAL_ERROR("corr_out_buf ({:s}) has frame size {:d}, expected {:d}",
-                output_buf->buffer_name, output_buf->frame_size, corr_frame_size);
+                    output_buf->buffer_name, output_buf->frame_size, corr_frame_size);
         std::abort();
     }
 }
@@ -243,9 +242,9 @@ void gpuSimulateN2kCorr::main_thread() {
         assert(meta_out);
 
         // Check input metadata describes expected size.
-        if(meta_in->get_nfreq() != _num_local_freq) {
+        if (meta_in->get_nfreq() != _num_local_freq) {
             FATAL_ERROR("Buffer {:s} metadata has nfreq {:d}, expected num_local_freq ({:d}).",
-                    input_buf->buffer_name, meta_in->get_nfreq(), _num_local_freq);
+                        input_buf->buffer_name, meta_in->get_nfreq(), _num_local_freq);
         }
         assert(meta_in->get_nfreq() == _num_local_freq);
 
