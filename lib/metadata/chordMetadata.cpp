@@ -17,6 +17,37 @@ chordMetadata::chordMetadata() :
     }
 }
 
+bool chordMetadata::operator==(const chordMetadata& other) const {
+    if (this == &other)
+        return true;
+
+    std::scoped_lock<std::mutex, std::mutex> lock(this->lock, other.lock);
+
+    if (0 != strncmp(name, other.name, CHORD_META_MAX_DIMNAME))
+        return false;
+
+    if (type != other.type)
+        return false;
+
+    if (dims != other.dims)
+        return false;
+
+    for (int d = 0; d < dims; ++d)
+        if (dim[d] != other.dim[d])
+            return false;
+    for (int d = 0; d < dims; ++d)
+        if (0 != strncmp(dim_name[d], other.dim_name[d], CHORD_META_MAX_DIMNAME))
+            return false;
+    for (int d = 0; d < dims; ++d)
+        if (stride[d] != other.stride[d])
+            return false;
+    if (offset != other.offset)
+        return false;
+
+    // TODO: this misses dish_positions etc
+    return metadata == other.metadata;
+}
+
 /// Helper function to compare data during conversion to NDArray
 void chordMetadata::check_frame_desc(
     const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) const {
