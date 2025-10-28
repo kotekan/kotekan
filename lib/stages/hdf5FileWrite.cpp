@@ -107,7 +107,7 @@ public:
      * @param frame_desc shared pointer to the NDarray description for this frame.
      */
     void write_chord(const std::string& full_path, const std::uint8_t* const frame,
-                     const std::shared_ptr<const chordMetadata> meta,
+                     const std::shared_ptr<const chordMetadata>& meta,
                      const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) {
 
         // Create HDF5 file
