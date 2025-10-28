@@ -193,6 +193,9 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
 
     n2k::launch_s012_time_downsample_kernel(Sout, Sin, T, M, Nds, Trfi_min, Trfi_size, Trfibar_min,
                                             Trfibar_size, stream);
+#ifdef DEBUGGING
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+#endif
 
     // There is no poison value
     // rfi_S012bar.check_for_poison(0xff);

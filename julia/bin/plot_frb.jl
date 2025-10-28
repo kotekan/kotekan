@@ -26,7 +26,7 @@ function I_freq_time_norm(A, p=2)
 end
 
 prefix = "/home/eschnett/src/kotekan/data/fengine_frb_pathfinder";
-host = "cx66";
+host = "x0000";
 
 
 

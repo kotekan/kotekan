@@ -1824,7 +1824,7 @@ function fix_ptx_kernel()
         - name: "Fmax"
           intent: in
           type: Int32
-        - name: "G_U$U"
+        - name: "G"
           intent: in
           type: Float16
           indices: [F̄]
@@ -1928,7 +1928,7 @@ function fix_ptx_kernel()
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "G_U$(U)",
+                    "name" => "G",
                     "kotekan_name" => "upchan_U$(U)_gain_name",
                     "type" => "float16",
                     "axes" => [Dict("label" => "Fbar", "length" => F̄)],

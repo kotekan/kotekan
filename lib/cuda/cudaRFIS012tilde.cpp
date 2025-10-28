@@ -170,6 +170,9 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
         (ulong*)rfi_S012tilde_memory, (const ulong*)rfi_S012_memory, (const uint8_t*)bf_mask_memory,
         Trfi, Trfimin, Trfisize, num_frequencies, num_dishes * num_polarizations,
         device.getStream(cuda_stream_id));
+#ifdef DEBUGGING
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+#endif
 
     // There is no poison value
     // rfi_S012tilde.check_for_poison(0xff);

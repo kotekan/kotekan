@@ -413,7 +413,7 @@ void Buffer::print_buffer_status() {
 void Buffer::print_full_status() {
 
     // Don't compute a lot of strings if we aren't going to output the result
-    if (get_log_level() < kotekan::logLevel::DEBUG)
+    if (get_log_level() < kotekan::logLevel::DEBUG2)
         return;
 
     buffer_lock lock(mutex);
@@ -421,7 +421,7 @@ void Buffer::print_full_status() {
     [[maybe_unused]] char status_string[num_frames + 1];
     status_string[num_frames] = '\0';
 
-    DEBUG("--------------------- {:} ---------------------", buffer_name);
+    DEBUG2("--------------------- {:} ---------------------", buffer_name);
 
     for (int i = 0; i < num_frames; ++i) {
         if (is_full[i])
@@ -430,9 +430,9 @@ void Buffer::print_full_status() {
             status_string[i] = '_';
     }
 
-    DEBUG("{:<40} : {:}", "Full Frames (X)", std::string(status_string));
+    DEBUG2("{:<40} : {:}", "Full Frames (X)", std::string(status_string));
 
-    DEBUG("---- Producers ----");
+    DEBUG2("---- Producers ----");
     for (auto& xit : producers) {
         auto& x = xit.second;
         for (int i = 0; i < num_frames; ++i) {
@@ -441,11 +441,11 @@ void Buffer::print_full_status() {
             else
                 status_string[i] = '_';
         }
-        DEBUG("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string),
-              x.last_frame_acquired, x.last_frame_released);
+        DEBUG2("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string),
+               x.last_frame_acquired, x.last_frame_released);
     }
 
-    DEBUG("---- Consumers ----");
+    DEBUG2("---- Consumers ----");
     for (auto& xit : consumers) {
         auto& x = xit.second;
         for (int i = 0; i < num_frames; ++i) {
@@ -454,8 +454,8 @@ void Buffer::print_full_status() {
             else
                 status_string[i] = '_';
         }
-        DEBUG("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string),
-              x.last_frame_acquired, x.last_frame_released);
+        DEBUG2("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string),
+               x.last_frame_acquired, x.last_frame_released);
     }
 }
 

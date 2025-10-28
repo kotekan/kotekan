@@ -230,6 +230,9 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
                     F, S, S012_Tmin, S012_Tsize, sk_feed_averaged_Tmin, sk_feed_averaged_Tsize,
                     sk_single_feed_Tmin, sk_single_feed_Tsize, rfimask_T512min, rfimask_T512size,
                     stream);
+#ifdef DEBUGGING
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+#endif
 
     rfi_SKtilde.check_for_poison(0xff);
     // There is no poison value

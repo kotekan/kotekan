@@ -7,7 +7,7 @@ using SixelTerm
 
 # Definitions
 path = "/home/eschnett/src/kotekan/data/fengine_test_pathfinder"
-host = "cx66"
+host = "x0000"
 quantity(U::Integer) = "upchan_U$(U)_voltage"
 filename(quantity::AbstractString, iter::Integer) = "$(path)/$(host)_$(quantity).$(@sprintf "%08d" iter).h5"
 

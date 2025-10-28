@@ -220,10 +220,16 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     n2k::launch_s0_kernel((ulong*)rfi_S012_memory, (const ulong*)pl_mask_memory, T, Tmin, Tsize,
                           num_frequencies, num_dishes * num_polarizations, rfi_downsampling_factor,
                           F_stride, device.getStream(cuda_stream_id));
+#ifdef DEBUGGING
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+#endif
     n2k::launch_s12_kernel((ulong*)(rfi_S012_memory + S_stride), (const uint8_t*)voltage_memory, T,
                            Tmin, Tsize, num_frequencies, num_dishes * num_polarizations,
                            rfi_downsampling_factor, F_stride, offset_encoded,
                            device.getStream(cuda_stream_id));
+#ifdef DEBUGGING
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+#endif
 
     // There is no poison value
     // rfi_S012.check_for_poison(0xff);

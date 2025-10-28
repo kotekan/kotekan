@@ -412,12 +412,17 @@ public:
     void check_metadata() const {
         const std::shared_ptr<const chordMetadata> metadata = get_metadata();
         if (!(metadata->get_name() == quantity))
-            ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}", buffer_name, quantity,
-                  metadata->get_name());
+            ERROR("buffer name: {:s}, metadata name: {:s}, quantity: {:s}", buffer_name,
+                  metadata->get_name(), quantity);
         assert(metadata->get_name() == quantity);
         assert(metadata->type == ndarray.value_datatype);
         assert(metadata->dims == ndarray.rank);
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
+            if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
+                ERROR("buffer name: {:s}, dimension: {:d}, metadata dimension name: {:s}, ndarray "
+                      "dimname: {:s}",
+                      buffer_name, d, metadata->get_dimension_name(d),
+                      std::string(ndarray.dimname(d)));
             assert(metadata->get_dimension_name(d) == ndarray.dimname(d));
             // The ring buffer direction is special
             if (d > 0)

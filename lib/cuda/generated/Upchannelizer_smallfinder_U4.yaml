@@ -43,7 +43,7 @@ kernel-description:
     - name: "Fmax"
       intent: in
       type: Int32
-    - name: "G_U4"
+    - name: "G"
       intent: in
       type: Float16
       indices: [F̄]

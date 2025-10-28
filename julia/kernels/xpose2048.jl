@@ -57,6 +57,8 @@ const Time = Index{Physics,TimeTag} # time
 # Setup
 
 @assert D * P == 2048
+@assert T % 16384 == 0
+
 const T1 = 32
 
 const Tblocks = 8
@@ -135,6 +137,14 @@ end
 #     dish6/thread2 <-> dish1/reg4
 
 ################################################################################
+
+const layout_Ein_memory = let
+    physics_indices = Index{Physics}[
+        IntValue(:intvalue, 1, 4), Cplx(:cplx, 1, C), Dish(:dish, 1, D), Polr(:polr, 1, P), Time(:time, 1, 16384), Freq(:freq, 1, F), Time(:time, 16384, T ÷ 16384)
+    ]
+    machine_indices = Index{Machine}[SIMD(:simd, 1, 32), Memory(:memory, 1, 2^55)]
+    match_indices(physics_indices, machine_indices)
+end
 
 const layout_E_memory = let
     physics_indices = Index{Physics}[
@@ -218,13 +228,20 @@ function make_xpose2048_kernel()
     apply!(emitter, :info => layout_info_registers, 1i32)
     store!(emitter, :info_memory => layout_info_memory, :info)
 
+    if!(emitter, :(!(Tinmin % 16384i32 == 0i32 && Tinmax == Tinmin + 16384i32 && Tmin == Tinmin && Tmax == Tinmax))) do emitter
+        apply!(emitter, :info => layout_info_registers, 2i32)
+        store!(emitter, :info_memory => layout_info_memory, :info)
+        trap!(emitter)
+        return nothing
+    end
+
     load!(emitter, :scatter_indices => layout_scatter_indices_registers, :scatter_indices_memory => layout_scatter_indices_memory)
 
     loop!(emitter, Time(:time, T1, Tloop) => Loop(:time_loop, T1, Tloop)) do emitter
         load!(
             emitter,
             :E0 => layout_E_registers,
-            :Ein_memory => layout_E_memory;
+            :Ein_memory => layout_Ein_memory;
             align=16,
             postprocess=addr -> :(
                 let
@@ -478,9 +495,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
             - name: "Ein"
               intent: in
               type: Int4
-              indices: [C, D, P, F, T]
-              shape: [$C, $D, $P, $F, $T]
-              strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F)]
+              indices: [C, E, Tlo16384, F, Thi16384]
+              shape: [$C, $(D*P), 16384, F, T ÷ 16384]
+              strides: [1, $C, $(C*D*P), $(C*D*P*16384), $(C*D*P*16384*F)]
             - name: "E"
               intent: out
               type: Int4
@@ -514,7 +531,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     Dict("type" => "int", "name" => "cuda_number_of_frequencies", "value" => "$F"),
                     Dict("type" => "int", "name" => "cuda_number_of_polarizations", "value" => "$P"),
                     Dict("type" => "int", "name" => "cuda_max_number_of_timesamples", "value" => "$T"),
-                    Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$T1"),
+                    Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "16384"),
                 ],
                 "minthreads" => num_threads * num_warps,
                 "num_blocks_per_sm" => num_blocks_per_sm,
@@ -565,10 +582,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                         "kotekan_name" => "input_voltage_name",
                         "type" => "int4x2_swapped_withoffset",
                         "axes" => [
-                            Dict("label" => "D", "length" => D),
-                            Dict("label" => "P", "length" => P),
+                            Dict("label" => "E", "length" => D * P),
+                            Dict("label" => "Tlo16384", "length" => 16384),
                             Dict("label" => "F", "length" => F),
-                            Dict("label" => "T", "length" => T),
+                            Dict("label" => "Thi16384", "length" => T ÷ 16384),
                         ],
                         "isoutput" => false,
                         "hasbuffer" => true,
