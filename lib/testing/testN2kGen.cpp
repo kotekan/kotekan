@@ -99,7 +99,7 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     count_num_blocks = (count_lin_blocks * (count_lin_blocks + 1)) / 2;
 }
 
-const std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID frame_id) {
+std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID frame_id) {
     buf->allocate_new_metadata_object(frame_id);
 
     const std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
@@ -118,7 +118,7 @@ const std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, f
     return meta;
 }
 
-void testN2kGen::set_correlation_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num) {
+void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num) {
     meta->set_name(corr_name);
     meta->type = kotekan::int32;
     meta->dims = 6;
@@ -154,7 +154,7 @@ void testN2kGen::set_correlation_metadata(std::shared_ptr<chordMetadata> meta, u
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
 
-void testN2kGen::set_counts_metadata(std::shared_ptr<chordMetadata> meta, uint64_t seq_num) {
+void testN2kGen::set_counts_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num) {
     meta->set_name(count_name);
     meta->type = kotekan::int32;
     meta->dims = 5;
@@ -199,13 +199,8 @@ void testN2kGen::get_blocked_indices(int i, int j, int blocksize, int& ihi, int&
 
     // Only reference lower triangular blocks (jhi <= ihi), so swap if jhi > ihi
     if (jhi > ihi) {
-        int temp = ihi;
-        ihi = jhi;
-        jhi = temp;
-
-        temp = ilo;
-        ilo = jlo;
-        jlo = temp;
+        std::swap(ihi, jhi);
+        std::swap(ilo, jlo);
     }
 
     // Block idx:
@@ -255,7 +250,6 @@ void testN2kGen::main_thread() {
         const std::shared_ptr<chordMetadata> corr_meta = get_new_metadata(corr_buf, corr_frame_id);
         const std::shared_ptr<chordMetadata> count_meta =
             get_new_metadata(count_buf, count_frame_id);
-        const std::shared_ptr<chordMetadata> rfi_meta = get_new_metadata(rfi_buf, rfi_frame_id);
 
         // fill metadata
         set_correlation_metadata(corr_meta, seq_num);
