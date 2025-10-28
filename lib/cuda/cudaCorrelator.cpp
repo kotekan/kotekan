@@ -42,7 +42,6 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     _num_times(config.get<int>(unique_name, "num_times")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
     _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
-    _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     _sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
     _voltage_name(config.get<std::string>(unique_name, "voltage_name")),
     _rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
@@ -58,7 +57,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     n2k_correlation([&]() {
         // aka "nt_outer" in n2k.hpp
         const int num_subintegrations =
-            div_noremainder(_samples_per_data_set, _sub_integration_ntime);
+            div_noremainder(_num_times, _sub_integration_ntime);
         const int blocksize = 16;
         const int linear_num_blocks = (_num_elements + 1) / blocksize;
         const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
@@ -69,7 +68,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
                                               n2k_dimnames, *this);
     }()),
     n2correlator(_num_elements, _num_local_freq) {
-    if (_samples_per_data_set % _sub_integration_ntime)
+    if (_num_times % _sub_integration_ntime)
         throw std::runtime_error(
             "The sub_integration_ntime parameter must evenly divide samples_per_data_set");
 
@@ -90,11 +89,11 @@ int cudaCorrelator::wait_on_precondition() {
     DEBUG("Waiting for voltage input ringbuffer data for frame {:d}...", gpu_frame_id);
     const int voltage_errcode =
         voltage.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
-            if (available_elements < _samples_per_data_set)
+            if (available_elements < _num_times)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else
-                return read_descriptor_t{.claimed = _samples_per_data_set,
-                                         .read = _samples_per_data_set};
+                return read_descriptor_t{.claimed = _num_times,
+                                         .read = _num_times};
         });
     if (voltage_errcode < 0)
         return voltage_errcode;
@@ -103,7 +102,7 @@ int cudaCorrelator::wait_on_precondition() {
     DEBUG("Waiting for rfi_RFImask input ringbuffer data for frame {:d}...", gpu_frame_id);
     const int rfi_RFImask_errcode =
         rfi_RFImask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
-            const int rfi_needed_samples = div_noremainder(_samples_per_data_set, 8 * 128);
+            const int rfi_needed_samples = div_noremainder(_num_times, 8 * 128);
             if (available_elements < rfi_needed_samples)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else
@@ -176,7 +175,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
         &rfi_RFImask.get_ndarray()(rfi_time_offset, 0, 0);
 
     // aka "nt_outer" in n2k.hpp
-    const int num_subintegrations = div_noremainder(_samples_per_data_set, _sub_integration_ntime);
+    const int num_subintegrations = div_noremainder(_num_times, _sub_integration_ntime);
 
     record_start_event();
 

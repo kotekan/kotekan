@@ -66,7 +66,6 @@ namespace {} // namespace
  * @conf  num_frequenciees       Int.     Number of frequencies handled by this X-Engine node.
  * @conf  num_polarizations      Int.     Number of polarizations (2)
  * @conf  num_dishes             Int.     Number of dishes
- * @conf  samples_per_data_set   Int.     Number of time samples per Kotekan block.
  * @conf  sub_integration_ntime  Int.     Number of time samples that will be summed into the
  * @conf  pl_expanded_mask_name  String.  Base name for the pl_expanded_mask buffers.
  * @conf  rfi_RFImask_name       String.  Base name for the RFI mask buffers.
@@ -91,7 +90,6 @@ private:
     const int num_frequencies;
     const int num_polarizations;
     const int num_dishes;
-    const int n2k_samples_per_data_set;
     const int n2k_sub_integration_ntime;
 
     // Kotekan buffer names
@@ -118,7 +116,6 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
-    n2k_samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     n2k_sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
     // Buffer names
     pl_expanded_mask_name(config.get<std::string>(unique_name, "pl_expanded_mask_name")),
@@ -137,7 +134,7 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
     n2k_counts([&]() {
         // aka "nt_outer" in n2k.hpp
         const int num_subintegrations =
-            div_noremainder(n2k_samples_per_data_set, n2k_sub_integration_ntime);
+            div_noremainder(num_times, n2k_sub_integration_ntime);
         const int blocksize = 8;
         const int linear_num_blocks = (num_polarizations * num_dishes / 8 + 1) / blocksize;
         const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
@@ -164,12 +161,12 @@ int cudaPL1bitCorrelator::wait_on_precondition() {
     const int pl_expanded_mask_errcode =
         pl_expanded_mask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
             // We measure the expanded pl mask in "coarse" time samples
-            const auto pl_samples_per_data_set = div_noremainder(n2k_samples_per_data_set, 64);
-            if (available_elements < pl_samples_per_data_set)
+            const auto pl_num_times = div_noremainder(num_times, 64);
+            if (available_elements < pl_num_times)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else
-                return read_descriptor_t{.claimed = pl_samples_per_data_set,
-                                         .read = pl_samples_per_data_set};
+                return read_descriptor_t{.claimed = pl_num_times,
+                                         .read = pl_num_times};
         });
     if (pl_expanded_mask_errcode < 0)
         return pl_expanded_mask_errcode;
@@ -179,13 +176,13 @@ int cudaPL1bitCorrelator::wait_on_precondition() {
     const int rfi_RFImask_errcode =
         rfi_RFImask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
             // We measure the rfi mask in "coarse" time samples
-            const auto rfi_samples_per_data_set =
-                div_noremainder(n2k_samples_per_data_set, 8 * 128);
-            if (available_elements < rfi_samples_per_data_set)
+            const auto rfi_num_times =
+                div_noremainder(num_times, 8 * 128);
+            if (available_elements < rfi_num_times)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else
-                return read_descriptor_t{.claimed = rfi_samples_per_data_set,
-                                         .read = rfi_samples_per_data_set};
+                return read_descriptor_t{.claimed = rfi_num_times,
+                                         .read = rfi_num_times};
         });
     if (rfi_RFImask_errcode < 0)
         return rfi_RFImask_errcode;
@@ -281,8 +278,8 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
 
     // This is a "fake" stride, it just needs to be large enough to linearize array indices without
     // overlapping
-    const int rfimask_fstride = n2k_samples_per_data_set;
-    const int T = n2k_samples_per_data_set;
+    const int rfimask_fstride = num_times;
+    const int T = num_times;
     const int F = num_frequencies;
     const int Sds = num_dishes / 8 * num_polarizations;
     const int Nds = n2k_sub_integration_ntime;
