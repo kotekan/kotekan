@@ -118,7 +118,8 @@ std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID
     return meta;
 }
 
-void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num) {
+void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& meta,
+                                          uint64_t seq_num) {
     meta->set_name(corr_name);
     meta->type = kotekan::int32;
     meta->dims = 6;

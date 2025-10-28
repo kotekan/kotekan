@@ -264,7 +264,7 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->set_array_dimension(4, 16, "DPlo2");
         meta_out->set_array_dimension(5, 2, "C");
         meta_out->set_strides_simple();
-        
+
         /* new style array description */
         output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
             output_frame_id,
