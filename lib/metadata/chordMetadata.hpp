@@ -46,6 +46,7 @@ const int CHORD_META_MAX_VIS_SAMPLES = 64;
 class chordMetadata : public metadataObject {
 public:
     chordMetadata();
+    bool operator==(const chordMetadata& other) const;
 
     /// Helper function to compare data during conversion to NDArray
     void check_frame_desc(const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) const;
