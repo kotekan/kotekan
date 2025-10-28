@@ -146,7 +146,8 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
             throw std::runtime_error("cudaCopyNToRingbuffer: input buffer has no chordMetadata");
 
         // Copy metadata (because we modify it)
-        auto meta_ring = std::make_shared<chordMetadata>(*meta_in0);
+        auto meta_ring = std::make_shared<chordMetadata>();
+        meta_ring->deepCopy(meta_in0);
 
         // Pull most of the metadata from the first input buffer.
         // TODO: Check metadata matches on all subsequent buffers.
