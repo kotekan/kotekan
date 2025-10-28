@@ -61,8 +61,6 @@ private:
     std::string corr_type;
     std::string count_name;
     std::string count_type;
-    std::string rfi_name;
-    std::string rfi_type;
     std::array<int32_t, 2> corr_value;
     std::vector<std::array<int32_t, 2>> corr_value_array;
     std::array<int32_t, 2> corr_min;
@@ -71,10 +69,6 @@ private:
     std::vector<int32_t> count_value_array;
     int32_t count_min;
     int32_t count_max;
-    int32_t rfi_value;
-    std::vector<int32_t> rfi_value_array;
-    int32_t rfi_min;
-    int32_t rfi_max;
     bool mul_correlation_by_counts;
     int32_t samples_per_data_set;
     int32_t sub_integration_ntime;
