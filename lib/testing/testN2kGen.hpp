@@ -78,8 +78,8 @@ private:
     std::vector<uint32_t> freq_ids;
     uint32_t seed;
 
-    int corr_blocksize;  // ALWAYS 16
-    int count_blocksize; // ALWAYS 8
+    static constexpr int corr_blocksize = 16;  // ALWAYS 16
+    static constexpr int count_blocksize = 8;  // ALWAYS 8
     int corr_lin_blocks;
     int count_lin_blocks;
     int corr_num_blocks;

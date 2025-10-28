@@ -85,10 +85,6 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
                                                          std::vector<uint32_t>({4096}));
     seed = config.get_default<uint32_t>(unique_name, "seed", 0);
 
-    // now thing we calculate
-    corr_blocksize = 16; // ALWAYS 16
-    count_blocksize = 8; // ALWAYS 8
-
     assert(samples_per_data_set % sub_integration_ntime == 0);
     assert(num_elements % corr_blocksize == 0);
     assert(num_elements % (8 * count_blocksize) == 0);
