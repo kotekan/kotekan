@@ -345,7 +345,14 @@ void from_json(const nlohmann::json& j, chordMetadata& m) {
     assert(j.at("max_dimname") == CHORD_META_MAX_DIMNAME);
     assert(j.at("max_freq") == CHORD_META_MAX_FREQ);
 
+    // GCC helpfully tries to warn us that the destination string may end up not
+    // NUL-terminated, which we know.
+#pragma GCC diagnostic push
+#if GCC_VERSION > 80000
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+#endif
     strncpy(m.name, j.at("name").template get<std::string>().c_str(), sizeof(m.name));
+#pragma GCC diagnostic pop
     m.type = j.at("type").template get<kotekan::DataType>();
     m.dims = j.at("dims").template get<int>();
     std::vector<int> extents = j.at("dim").template get<std::vector<int>>();
