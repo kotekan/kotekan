@@ -185,7 +185,10 @@ public:
         return metadata.at(jsonMetadata::BEAM_COORD).template get<beamCoord>();
     }
 
-    // TODO: add set_beam_coord
+    void set_beam_coord(const beamCoord& beam_coord) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::BEAM_COORD] = beam_coord;
+    }
 
     void set_fpga_seq_num(const int64_t fpga_seq_num) {
         std::lock_guard<std::mutex> lock(this->lock);
