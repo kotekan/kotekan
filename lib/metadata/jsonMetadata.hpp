@@ -4,6 +4,7 @@
 
 #include "json.hpp"
 
+#include <cassert>
 #include <cstdint>
 #include <ctime>
 #include <string>
@@ -121,6 +122,24 @@ static inline void from_json(const nlohmann::json& j, beamCoord& c) {
             c.scaling[i] = 0;
         }
 #endif
+    }
+}
+
+static inline void to_json(nlohmann::json& j, const beamCoord& c) {
+    assert(j.empty());
+    {
+        std::vector<float> ra(c.right_ascension, c.right_ascension + MAX_NUM_BEAMS);
+        j.emplace(RIGHT_ASCENSION, ra);
+    }
+
+    {
+        std::vector<float> dec(c.declination, c.declination + MAX_NUM_BEAMS);
+        j.emplace(DECLINATION, dec);
+    }
+
+    {
+        std::vector<uint32_t> scale(c.scaling, c.scaling + MAX_NUM_BEAMS);
+        j.emplace(SCALING, scale);
     }
 }
 
