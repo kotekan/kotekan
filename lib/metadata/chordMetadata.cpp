@@ -170,8 +170,10 @@ size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t 
 
     const chordMetadataFormat* fmt = reinterpret_cast<const chordMetadataFormat*>(bytes);
 
-    this->set_frame_counter(fmt->frame_counter);
-    this->set_fpga_seq_num(fmt->fpga_seq_num);
+    if (fmt->frame_counter != -1)
+        this->set_frame_counter(fmt->frame_counter);
+    if (fmt->fpga_seq_num != -1)
+        this->set_fpga_seq_num(fmt->fpga_seq_num);
     for (int i = 0; i < CHORD_META_MAX_DIMNAME; i++) {
         name[i] = fmt->name[i];
     }
@@ -189,29 +191,42 @@ size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t 
         stride[i] = fmt->stride[i];
     }
     offset = fmt->offset;
-    this->set_sample0_offset(fmt->sample0_offset);
-    this->set_offset_downsampling(fmt->offset_downsampling);
+    if (fmt->sample0_offset != -1)
+        this->set_sample0_offset(fmt->sample0_offset);
+    if (fmt->offset_downsampling != -1)
+        this->set_offset_downsampling(fmt->offset_downsampling);
     const int nfreq = fmt->nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
-    this->set_freq_upchan_factor(
-        std::vector<int>(fmt->freq_upchan_factor, fmt->freq_upchan_factor + nfreq));
-    this->set_half_fpga_sample0(
-        std::vector<int64_t>(fmt->half_fpga_sample0, fmt->half_fpga_sample0 + nfreq));
-    this->set_time_downsampling_fpga(
-        std::vector<int>(fmt->time_downsampling_fpga, fmt->time_downsampling_fpga + nfreq));
-    this->set_coarse_freq(std::vector<int>(fmt->coarse_freq, fmt->coarse_freq + nfreq));
+    if (fmt->freq_upchan_factor[0] != 0) // 0 should be an invalid value
+        this->set_freq_upchan_factor(
+            std::vector<int>(fmt->freq_upchan_factor, fmt->freq_upchan_factor + nfreq));
+    if (fmt->half_fpga_sample0[0] != 0) // 0 should be an invalid value
+        this->set_half_fpga_sample0(
+            std::vector<int64_t>(fmt->half_fpga_sample0, fmt->half_fpga_sample0 + nfreq));
+    if (fmt->time_downsampling_fpga[0] != 0) // 0 should be an invalid value
+        this->set_time_downsampling_fpga(
+            std::vector<int>(fmt->time_downsampling_fpga, fmt->time_downsampling_fpga + nfreq));
+    if (fmt->coarse_freq[0] != -1) // -1 is an invalid frequency index
+        this->set_coarse_freq(std::vector<int>(fmt->coarse_freq, fmt->coarse_freq + nfreq));
 
-    this->set_rfi_num_bad_inputs(fmt->rfi_num_bad_inputs);
-    this->set_rfi_flagged_samples(fmt->rfi_flagged_samples);
-    this->set_lost_timesamples(fmt->lost_timesamples);
+    if (fmt->rfi_num_bad_inputs != uint32_t(-1))
+        this->set_rfi_num_bad_inputs(fmt->rfi_num_bad_inputs);
+    if (fmt->rfi_flagged_samples != -1)
+        this->set_rfi_flagged_samples(fmt->rfi_flagged_samples);
+    if (fmt->lost_timesamples != -1)
+        this->set_lost_timesamples(fmt->lost_timesamples);
 
-    this->set_stream_id(fmt->stream_id);
-    this->set_dataset_id(
-        dset_id_t::from_string(std::string(fmt->dataset_id, sizeof(fmt->dataset_id))));
+    if (fmt->stream_id.id != uint64_t(-1))
+        this->set_stream_id(fmt->stream_id);
+    if (fmt->dataset_id[0] != '\0')
+        this->set_dataset_id(
+            dset_id_t::from_string(std::string(fmt->dataset_id, sizeof(fmt->dataset_id))));
 
-    this->set_beam_coord(fmt->beam_coord);
+    if (fmt->beam_coord.scaling[0] != 0)
+        this->set_beam_coord(fmt->beam_coord);
 
-    this->set_first_packet_recv_time(fmt->first_packet_recv_time);
+    if (fmt->first_packet_recv_time.tv_sec != 0) // sometime in 1970
+        this->set_first_packet_recv_time(fmt->first_packet_recv_time);
 
     // TODO: this misses dish_positions etc
     return sizeof(chordMetadataFormat);
@@ -225,8 +240,14 @@ size_t chordMetadata::serialize(char* bytes) {
     fmt->max_dimname = CHORD_META_MAX_DIMNAME;
     fmt->max_freq = CHORD_META_MAX_FREQ;
 
-    fmt->frame_counter = this->get_frame_counter();
-    fmt->fpga_seq_num = this->get_fpga_seq_num();
+    if (this->has_frame_counter())
+        fmt->frame_counter = this->get_frame_counter();
+    else
+        fmt->frame_counter = -1;
+    if (this->get_fpga_seq_num())
+        fmt->fpga_seq_num = this->get_fpga_seq_num();
+    else
+        fmt->fpga_seq_num = -1;
     for (int i = 0; i < CHORD_META_MAX_DIMNAME; i++) {
         fmt->name[i] = name[i];
     }
@@ -240,29 +261,63 @@ size_t chordMetadata::serialize(char* bytes) {
         fmt->stride[i] = stride[i];
     }
     fmt->offset = offset;
-    fmt->sample0_offset = this->get_sample0_offset();
-    fmt->offset_downsampling = this->get_offset_downsampling();
+    if (this->has_sample0_offset())
+        fmt->sample0_offset = this->get_sample0_offset();
+    else
+        fmt->sample0_offset = -1;
+    if (this->has_offset_downsampling())
+        fmt->offset_downsampling = this->get_offset_downsampling();
+    else
+        fmt->offset_downsampling = -1;
     fmt->nfreq = this->get_nfreq();
     assert(fmt->nfreq < CHORD_META_MAX_FREQ);
-    std::copy_n(this->get_freq_upchan_factor().data(), this->get_nfreq(), fmt->freq_upchan_factor);
-    std::copy_n(this->get_half_fpga_sample0().data(), this->get_nfreq(), fmt->half_fpga_sample0);
-    std::copy_n(this->get_time_downsampling_fpga().data(), this->get_nfreq(),
-                fmt->time_downsampling_fpga);
-    std::copy_n(this->get_coarse_freq().data(), this->get_nfreq(), fmt->coarse_freq);
+    if (this->has_freq_upchan_factor())
+        std::copy_n(this->get_freq_upchan_factor().data(), this->get_nfreq(),
+                    fmt->freq_upchan_factor);
+    if (this->has_half_fpga_sample0())
+        std::copy_n(this->get_half_fpga_sample0().data(), this->get_nfreq(),
+                    fmt->half_fpga_sample0);
+    if (this->has_time_downsampling_fpga())
+        std::copy_n(this->get_time_downsampling_fpga().data(), this->get_nfreq(),
+                    fmt->time_downsampling_fpga);
+    if (this->has_coarse_freq())
+        std::copy_n(this->get_coarse_freq().data(), this->get_nfreq(), fmt->coarse_freq);
+    else
+        std::memset(fmt->coarse_freq, -1,
+                    this->get_nfreq()
+                        * sizeof(fmt->coarse_freq[0])); // set bytes not ints but is ok for now
 
-    fmt->rfi_num_bad_inputs = this->get_rfi_num_bad_inputs();
-    fmt->rfi_flagged_samples = this->get_rfi_flagged_samples();
-    fmt->lost_timesamples = this->get_lost_timesamples();
+    if (this->has_rfi_num_bad_inputs())
+        fmt->rfi_num_bad_inputs = this->get_rfi_num_bad_inputs();
+    else
+        fmt->rfi_num_bad_inputs = uint32_t(-1);
+    if (this->has_rfi_flagged_samples())
+        fmt->rfi_flagged_samples = this->get_rfi_flagged_samples();
+    else
+        fmt->rfi_flagged_samples = -1;
+    if (this->has_lost_timesamples())
+        fmt->lost_timesamples = this->get_lost_timesamples();
+    else
+        fmt->lost_timesamples = -1;
 
-    fmt->stream_id = this->get_stream_id();
-    const std::string dataset_id_str = this->get_dataset_id().to_string();
-    assert(dataset_id_str.size() == sizeof(fmt->dataset_id)
-           && "Sized of strigified hash is not 32");
-    std::copy_n(dataset_id_str.data(), sizeof(fmt->dataset_id), fmt->dataset_id);
+    if (this->has_stream_id())
+        fmt->stream_id = this->get_stream_id();
+    else
+        fmt->stream_id = stream_t{uint64_t(-1)};
+    if (this->has_dataset_id()) {
+        const std::string dataset_id_str = this->get_dataset_id().to_string();
+        assert(dataset_id_str.size() == sizeof(fmt->dataset_id)
+               && "Sized of strigified hash is not 32");
+        std::copy_n(dataset_id_str.data(), sizeof(fmt->dataset_id), fmt->dataset_id);
+    }
 
-    fmt->beam_coord = this->get_beam_coord();
+    if (this->has_beam_coord())
+        fmt->beam_coord = this->get_beam_coord();
 
-    fmt->first_packet_recv_time = this->get_first_packet_recv_time();
+    if (this->has_first_packet_recv_time())
+        fmt->first_packet_recv_time = this->get_first_packet_recv_time();
+    else
+        fmt->first_packet_recv_time = timeval{0, 0}; // unix epoch, 1970
 
     // TODO: this misses dish_positions etc
     return sizeof(chordMetadataFormat);
