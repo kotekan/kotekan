@@ -22,48 +22,48 @@ using json = nlohmann::json;
 using kotekan::configUpdater;
 using kotekan::restServer;
 
-const std::string default_config_str = "{\
-\"type\": \"config\",\
-\"log_level\": \"debug\",\
-\"telescope\": {\
-    \"name\": \"CHORDTelescope\",\
-    \"inst_long_deg\":  -119.621,\
-    \"inst_lat_deg\":   49.321,\
-    \"inst_alt_deg\":   100.0,\
-    \"inst_grid_x_axis\":   [1.0, 0.0, 0.0],\
-    \"inst_grid_y_axis\":   [0.0, 1.0, 0.0],\
-    \"inst_dish_alt_axis\": [1.0, 0.0, 0.0],\
-    \"inst_dish_vert_axis\":    [0.0, 0.0, 1.0],\
-    \"dish_positions\": [\
-        [0.0, 0.0, 0.0],\
-        [1.0, 0.0, 0.0],\
-        [0.0, 1.0, 0.0],\
-        [1.0, 1.0, 0.0],\
-        [100.0, 0.0, 0.0],\
-        [0.0, 100.0, 0.0],\
-        [100.0, 100.0, 0.0]],\
-    \"require_gps\":        false,\
-    \"updatable_config\":   \"/earth_rotation_data\"\
-    },\
-\"gps_time\": {\
-    \"frame0_nano\": 1761926400000000000\
-    },\
-\"earth_rotation_data\": {\
-    \"kotekan_update_endpoint\": \"json\",\
-    \"earth_orientation_parameter_table\": [\
-        {\
-            \"time_inst_ns\": 1761883200000000000,\
-            \"delta_UT1_inst\": 0.0,\
-            \"x_pm\": 0.0,\
-            \"y_pm\": 0.0\
-        }, {\
-            \"time_inst_ns\": 1761969600000000000,\
-            \"delta_UT1_inst\": 0.0,\
-            \"x_pm\": 0.0,\
-            \"y_pm\": 0.0\
-        }]\
-    }\
-}";
+const std::string default_config_str = R"config_str({
+"type": "config",
+"log_level": "debug",
+"telescope": {
+    "name": "CHORDTelescope",
+    "inst_long_deg":  -119.621,
+    "inst_lat_deg":   49.321,
+    "inst_alt_deg":   100.0,
+    "inst_grid_x_axis":   [1.0, 0.0, 0.0],
+    "inst_grid_y_axis":   [0.0, 1.0, 0.0],
+    "inst_dish_alt_axis": [1.0, 0.0, 0.0],
+    "inst_dish_vert_axis":    [0.0, 0.0, 1.0],
+    "dish_positions": [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [100.0, 0.0, 0.0],
+        [0.0, 100.0, 0.0],
+        [100.0, 100.0, 0.0]],
+    "require_gps":        false,
+    "updatable_config":   "/earth_rotation_data"
+    },
+"gps_time": {
+    "frame0_nano": 1761926400000000000
+    },
+"earth_rotation_data": {
+    "kotekan_update_endpoint": "json",
+    "earth_orientation_parameter_table": [
+        {
+            "time_inst_ns": 1761883200000000000,
+            "delta_UT1_inst": 0.0,
+            "x_pm": 0.0,
+            "y_pm": 0.0
+        }, {
+            "time_inst_ns": 1761969600000000000,
+            "delta_UT1_inst": 0.0,
+            "x_pm": 0.0,
+            "y_pm": 0.0
+        }]
+    }
+})config_str";
 
 const CHORDTelescope& get_telescope(json& json_config) {
     Config conf;
