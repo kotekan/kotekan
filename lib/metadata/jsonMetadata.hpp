@@ -65,17 +65,6 @@ struct beamCoord {
     float right_ascension[MAX_NUM_BEAMS];
     float declination[MAX_NUM_BEAMS];
     uint32_t scaling[MAX_NUM_BEAMS];
-
-    beamCoord() {
-#ifdef DEBUG
-        for (auto& ra : right_ascension)
-            ra = std::nanf("");
-        for (auto& dec : declination)
-            dec = std::nanf("");
-        for (auto& scale : scaling)
-            scale = 0;
-#endif
-    }
 };
 
 static inline void from_json(const nlohmann::json& j, beamCoord& c) {
