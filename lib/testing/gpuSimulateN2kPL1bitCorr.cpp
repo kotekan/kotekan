@@ -183,7 +183,7 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
         assert(meta_out);
 
-        meta_out->set_name("cpusim_n2k_counts");
+        meta_out->set_name("n2k_counts");
         meta_out->type = kotekan::int32;
         meta_out->dims = 5;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
@@ -195,7 +195,7 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         meta_out->set_strides_simple();
         /* new style array description */
         output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 5>(
-            output_frame_id, {n_integrations, nf, n_blocks, _blocksize, _blocksize},
+            output_frame_id, "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
             {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
         /* test that things are consistent */
         meta_out->check_frame_desc(output_buf->get_frame_desc(output_frame_id));

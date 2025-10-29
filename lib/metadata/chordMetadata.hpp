@@ -48,18 +48,10 @@ public:
     chordMetadata();
 
     /// Helper function to compare data during conversion to NDArray
-    void check_frame_desc(const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) const {
-        (void)frame_desc;
-        assert(this->type == frame_desc->get_value_datatype());
-        assert(size_t(this->dims) == frame_desc->get_rank());
-        for (int d = this->dims - 1; d >= 0; --d) {
-            assert(strncmp(this->dim_name[d], frame_desc->get_dimname(d).get_c_string(),
-                           sizeof this->dim_name[d])
-                   == 0);
-            assert(this->dim[d] == frame_desc->get_extent(d));
-            assert(this->stride[d] == frame_desc->get_stride(d));
-        }
-    }
+    void check_frame_desc(const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) const;
+
+    /// Helper function to set CHORD metadata during conversion to NDArray
+    void set_from_frame_desc(const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc);
 
     /// Returns the size of objects of this type when serialized into bytes.
     size_t get_serialized_size() override;

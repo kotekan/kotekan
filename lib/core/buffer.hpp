@@ -528,10 +528,11 @@ public:
      * @param[in] dimnames Array axis labels in the D dimensions
      */
     template<typename T, std::size_t D>
-    void allocate_new_frame_desc(int frame_id, const std::array<std::ptrdiff_t, D>& extents,
+    void allocate_new_frame_desc(int frame_id, kotekan::Symbol quantity_name,
+                                 const std::array<std::ptrdiff_t, D>& extents,
                                  const std::array<kotekan::Symbol, D>& dimnames) {
         frames_desc.at(frame_id) =
-            std::make_shared<kotekan::NDArray<T, D>>(extents, dimnames, nullptr);
+            std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
     }
 
     /**
@@ -543,11 +544,12 @@ public:
      * @param[in] extents Array extentds in the D dimensions
      * @param[in] dimnames Array axis labels in the D dimensions
      */
-    void allocate_new_frame_desc(int frame_id, kotekan::DataType value_type, size_t rank,
+    void allocate_new_frame_desc(int frame_id, kotekan::DataType value_type,
+                                 kotekan::Symbol quantity_name,
                                  const std::vector<std::ptrdiff_t>& extents,
                                  const std::vector<kotekan::Symbol>& dimnames) {
         frames_desc.at(frame_id) =
-            kotekan::GenericNDArray::create(value_type, rank, extents, dimnames, nullptr);
+            kotekan::GenericNDArray::create(value_type, quantity_name, extents, dimnames, nullptr);
     }
 
     /**

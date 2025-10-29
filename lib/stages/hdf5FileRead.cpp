@@ -200,12 +200,13 @@ public:
                     const kotekan::DataType value_type =
                         kotekan::string_to_type(dataset.getAttribute("type").read<std::string>());
                     assert(value_type != kotekan::unknown_type);
+                    const std::string name = dataset.getAttribute("name").read<std::string>();
 
                     std::vector<ptrdiff_t> dimensions(dims.begin(), dims.end());
                     std::vector<kotekan::Symbol> dimnames(dim_names.begin(), dim_names.end());
 
-                    buffer->allocate_new_frame_desc(frame_id, value_type, dimensions.size(),
-                                                    dimensions, dimnames);
+                    buffer->allocate_new_frame_desc(frame_id, value_type, name, dimensions,
+                                                    dimnames);
                     /* test that things are consistent */
                     meta->check_frame_desc(buffer->get_frame_desc(frame_id));
                 }

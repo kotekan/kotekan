@@ -29,6 +29,7 @@ std::string format_vector(const std::vector<T>& vec) {
 
 void GenericNDArray::output_metadata(std::ostream& os) const {
     os << "NDArray:\n"
+       << "    quantity name:   " << get_quantity_name() << "\n"
        << "    value datatype:  " << get_value_datatype() << "\n"
        << "    value type size: " << get_value_type_size() << "\n"
        << "    rank:            " << get_rank() << "\n"
@@ -44,8 +45,9 @@ void GenericNDArray::output_metadata(std::ostream& os) const {
 // rank and type. This resolves the runtime values into compile time constants.
 template<DataType my_datatype, size_t my_rank>
 static inline std::shared_ptr<GenericNDArray>
-make_NDArray(const DataType datatype, const size_t rank, const std::vector<std::ptrdiff_t>& extents,
-             const std::vector<Symbol>& dimnames, void* data) {
+make_NDArray(const DataType datatype, const Symbol quantity_name,
+             const std::vector<std::ptrdiff_t>& extents, const std::vector<Symbol>& dimnames,
+             void* data) {
     // recurse until datatype matches
     if constexpr (my_datatype == unknown_type) {
         assert(my_datatype != unknown_type);
@@ -55,26 +57,28 @@ make_NDArray(const DataType datatype, const size_t rank, const std::vector<std::
         if constexpr (my_rank == 0) {
             assert(my_rank != 0);
             return nullptr;
-        } else if (rank == my_rank) {
+        } else if (int(extents.size()) == my_rank) {
             // both match
             return std::shared_ptr<GenericNDArray>(new NDArray<GetType_t<my_datatype>, my_rank>(
-                extents, dimnames, static_cast<GetType_t<my_datatype>*>(data)));
+                quantity_name, extents, dimnames, static_cast<GetType_t<my_datatype>*>(data)));
         } else {
-            return make_NDArray<my_datatype, my_rank - 1>(datatype, rank, extents, dimnames, data);
+            return make_NDArray<my_datatype, my_rank - 1>(datatype, quantity_name, extents,
+                                                          dimnames, data);
         }
     } else {
-        return make_NDArray<DataType(my_datatype - 1), my_rank>(datatype, rank, extents, dimnames,
-                                                                data);
+        return make_NDArray<DataType(my_datatype - 1), my_rank>(datatype, quantity_name, extents,
+                                                                dimnames, data);
     }
 }
 
 std::shared_ptr<GenericNDArray> GenericNDArray::create(const DataType value_datatype,
-                                                       const size_t rank,
+                                                       const Symbol quantity_name,
                                                        const std::vector<std::ptrdiff_t>& extents,
                                                        const std::vector<Symbol>& dimnames,
                                                        void* data) {
-    return make_NDArray<DataType(end_type - 1), max_rank>(value_datatype, rank, extents, dimnames,
-                                                          data);
+    assert(extents.size() == dimnames.size());
+    return make_NDArray<DataType(end_type - 1), max_rank>(value_datatype, quantity_name, extents,
+                                                          dimnames, data);
 }
 
 } // namespace kotekan

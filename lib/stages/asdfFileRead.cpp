@@ -212,6 +212,8 @@ public:
                     DEBUG("[{:s}/{:d}] value_type={}", buffer->buffer_name, frame_counter,
                           type_to_string(value_type));
                     assert(value_type != kotekan::unknown_type);
+                    const std::string name = group->at("name")->get_maybe_string().value();
+                    DEBUG("[{:s}/{:d}] meta->name={}", buffer->buffer_name, frame_counter, name);
 
                     DEBUG("[{:s}/{:d}] group0->at(\"dim_names\")", buffer->buffer_name,
                           frame_counter);
@@ -222,8 +224,8 @@ public:
                         const std::string dim_name = dim_names->at(d)->get_maybe_string().value();
                         dimnames.push_back(dim_name);
                     }
-                    buffer->allocate_new_frame_desc(frame_id, value_type, dimensions.size(),
-                                                    dimensions, dimnames);
+                    buffer->allocate_new_frame_desc(frame_id, value_type, name, dimensions,
+                                                    dimnames);
                     /* test that things are consistent */
                     meta->check_frame_desc(buffer->get_frame_desc(frame_id));
                 }

@@ -1,14 +1,16 @@
 #ifndef SYMBOL_HPP
 #define SYMBOL_HPP
 
-#include <array>         // for array
-#include <cstring>       // for size_t
+#include <array>   // for array
+#include <cstring> // for size_t
+#include <fmt/format.h>
 #include <functional>    // for equal_to, less
 #include <iostream>      // for ostream
 #include <mutex>         // for mutex
 #include <string>        // for string, basic_string
 #include <string_view>   // for string_view, hash
 #include <unordered_set> // for unordered_set
+
 
 namespace kotekan {
 
@@ -127,5 +129,16 @@ struct hash<kotekan::Symbol> {
     }
 };
 } // namespace std
+
+namespace fmt {
+// Formatter
+template<>
+struct formatter<kotekan::Symbol> : fmt::formatter<std::string> {
+    template<typename FormatContext>
+    auto format(const kotekan::Symbol& sym, FormatContext& ctx) {
+        return formatter<std::string>::format(sym.get_string(), ctx);
+    }
+};
+} // namespace fmt
 
 #endif // #ifndef SYMBOL_HPP

@@ -561,7 +561,7 @@ void FEngine::main_thread() {
                     dish_positions_metadata->stride[d + 1] * dish_positions_metadata->dim[d + 1];
         /* new style array description */
         dish_positions_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::float32>::type, 2>(
-            dish_positions_frame_id, {num_dishes, 2}, {"D", "EW/NS"});
+            dish_positions_frame_id, "dish_positions", {num_dishes, 2}, {"D", "EW/NS"});
         /* test that things are consistent */
         dish_positions_metadata->check_frame_desc(
             dish_positions_buffer->get_frame_desc(dish_positions_frame_id));
@@ -627,7 +627,8 @@ void FEngine::main_thread() {
                     scatter_indices_metadata->stride[d + 1] * scatter_indices_metadata->dim[d + 1];
         /* new style array description */
         scatter_indices_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 2>(
-            scatter_indices_frame_id, {num_polarizations, num_dishes}, {"P", "D"});
+            scatter_indices_frame_id, "scatter_indices", {num_polarizations, num_dishes},
+            {"P", "D"});
         /* test that things are consistent */
         scatter_indices_metadata->check_frame_desc(
             scatter_indices_buffer->get_frame_desc(scatter_indices_frame_id));
@@ -687,7 +688,7 @@ void FEngine::main_thread() {
                     bf_mask_metadata->stride[d + 1] * bf_mask_metadata->dim[d + 1];
         /* new style array description */
         bf_mask_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::int8>::type, 2>(
-            bf_mask_frame_id, {num_polarizations, num_dishes}, {"P", "D"});
+            bf_mask_frame_id, "bf_mask", {num_polarizations, num_dishes}, {"P", "D"});
         /* test that things are consistent */
         bf_mask_metadata->check_frame_desc(bf_mask_buffer->get_frame_desc(bf_mask_frame_id));
 
@@ -788,7 +789,7 @@ void FEngine::main_thread() {
         /* new style array description */
         bb_beam_positions_buffer
             ->allocate_new_frame_desc<kotekan::GetType<kotekan::float32>::type, 2>(
-                bb_beam_positions_frame_id, {bb_num_beams, 2}, {"B", "EW/NS"});
+                bb_beam_positions_frame_id, "bb_beam_positions", {bb_num_beams, 2}, {"B", "EW/NS"});
         /* test that things are consistent */
         bb_beam_positions_metadata->check_frame_desc(
             bb_beam_positions_buffer->get_frame_desc(bb_beam_positions_frame_id));
@@ -875,7 +876,7 @@ void FEngine::main_thread() {
                 A_metadata->stride[d] = A_metadata->stride[d + 1] * A_metadata->dim[d + 1];
         /* new style array description */
         A_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::int8>::type, 5>(
-            A_frame_id,
+            A_frame_id, "A",
             {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
             {"F", "P", "B", "D", "C"});
         /* test that things are consistent */
@@ -945,7 +946,7 @@ void FEngine::main_thread() {
                 s_metadata->stride[d] = s_metadata->stride[d + 1] * s_metadata->dim[d + 1];
         /* new style array description */
         s_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 3>(
-            s_frame_id, {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"});
+            s_frame_id, "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"});
         /* test that things are consistent */
         s_metadata->check_frame_desc(s_buffer->get_frame_desc(s_frame_id));
 
@@ -1021,7 +1022,7 @@ void FEngine::main_thread() {
             /* new style array description */
             G_buffers[Ufactor]
                 ->allocate_new_frame_desc<kotekan::GetType<kotekan::float16>::type, 1>(
-                    G_frame_id, {upchan_max_num_channelss[Ufactor] * U}, {"Fbar"});
+                    G_frame_id, "G", {upchan_max_num_channelss[Ufactor] * U}, {"Fbar"});
             /* test that things are consistent */
             G_metadata->check_frame_desc(G_buffers[Ufactor]->get_frame_desc(G_frame_id));
 
@@ -1135,7 +1136,7 @@ void FEngine::main_thread() {
             /* new style array description */
             W1_buffers[Ufactor]
                 ->allocate_new_frame_desc<kotekan::GetType<kotekan::float16>::type, 5>(
-                    W1_frame_id,
+                    W1_frame_id, "W",
                     {upchan_max_num_channelss[Ufactor] * U, num_polarizations,
                      num_dish_locations_ew, num_dish_locations_ns, num_components},
                     {"F", "P", "dishN", "dishM", "C"});
@@ -1315,7 +1316,7 @@ void FEngine::main_thread() {
                 W2_metadata->stride[d] = W2_metadata->stride[d + 1] * W2_metadata->dim[d + 1];
         /* new style array description */
         W2_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::float16>::type, 4>(
-            W2_frame_id,
+            W2_frame_id, "W2",
             {upchan_all_max_output_channel - upchan_all_min_output_channel,
              frb2_num_beams_ns * frb2_num_beams_ew, 2 * num_dish_locations_ew,
              2 * num_dish_locations_ns},
@@ -1534,7 +1535,7 @@ void FEngine::main_thread() {
             /* new style array description */
             E_buffer->allocate_new_frame_desc<
                 kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 4>(
-                E_frame_id, {num_times, num_frequencies, num_polarizations, num_dishes},
+                E_frame_id, "E", {num_times, num_frequencies, num_polarizations, num_dishes},
                 {"T", "F", "P", "D"});
             /* test that things are consistent */
             E_metadata->check_frame_desc(E_buffer->get_frame_desc(E_frame_id));
@@ -1633,7 +1634,7 @@ void FEngine::main_thread() {
                         pl_mask_metadata->stride[d + 1] * pl_mask_metadata->dim[d + 1];
             /* new style array description */
             pl_mask_buffer->allocate_new_frame_desc<kotekan::GetType<kotekan::uint1x8>::type, 5>(
-                pl_mask_frame_id,
+                pl_mask_frame_id, "pl_mask",
                 {num_times / 2 / 64, num_frequencies / 4, num_polarizations, num_dishes / 8,
                  64 / 8},
                 {"T2hi64", "F4", "P", "D8", "T2lo64"});

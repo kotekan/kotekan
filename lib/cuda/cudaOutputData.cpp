@@ -136,7 +136,7 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
                                         strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
                     }
 
-                    output_buffer->allocate_new_frame_desc(out_id, chord->type, dimensions.size(),
+                    output_buffer->allocate_new_frame_desc(out_id, chord->type, chord->get_name(),
                                                            dimensions, dimnames);
                     /* test that things are consistent */
                     chord->check_frame_desc(output_buffer->get_frame_desc(out_id));

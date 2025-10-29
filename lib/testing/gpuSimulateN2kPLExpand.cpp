@@ -152,7 +152,7 @@ void gpuSimulateN2kPLExpand::main_thread() {
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
         assert(meta_out);
 
-        meta_out->set_name("cpusim_pl_mask");
+        meta_out->set_name("pl_mask");
         meta_out->type = kotekan::uint64;
         meta_out->dims = 4;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
@@ -163,7 +163,7 @@ void gpuSimulateN2kPLExpand::main_thread() {
         meta_out->set_strides_simple();
         /* new style array description */
         output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::uint64>::type, 4>(
-            output_frame_id, {nt, nf, ne, ne}, {"Thi64", "F", "P", "D8"});
+            output_frame_id, "pl_mask", {nt, nf, ne, ne}, {"Thi64", "F", "P", "D8"});
         /* test that things are consistent */
         meta_out->check_frame_desc(output_buf->get_frame_desc(output_frame_id));
 

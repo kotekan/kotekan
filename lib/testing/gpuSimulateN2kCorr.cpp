@@ -176,7 +176,7 @@ void gpuSimulateN2kCorr::main_thread() {
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
         assert(meta_out);
 
-        meta_out->set_name("cpusim_correlation");
+        meta_out->set_name("correlation");
         meta_out->type = kotekan::int32;
         meta_out->dims = 6;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
@@ -190,7 +190,7 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->set_strides_simple();
         /* new style array description */
         output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
-            output_frame_id,
+            output_frame_id, "correlation",
             {nt_outer, _num_local_freq, (_num_elements / 16) * (_num_elements / 16 + 1) / 2, 16, 16,
              2},
             {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
