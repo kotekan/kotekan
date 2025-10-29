@@ -507,10 +507,10 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
 
                         int64_t n2_idx = N2::cmap(j, i, _num_elements);
 
-                        // Populate the visibility matrix
-                        N2::cfloat v = {(float)_vis[2 * idx],
-                                        -(float)_vis[2 * idx + 1]}; // conjugate
-                        out_vis.vis[n2_idx] = ins * v;
+                        // Populate the visibility matrix, remember the upper-tri element
+                        // is the conjugate of the lower-tri element.
+                        N2::cfloat v{(float)_vis[2 * idx], (float)_vis[2 * idx + 1]};
+                        out_vis.vis[n2_idx] = ins * std::conj(v);
 
                         if (ns > 0) {
                             _weights[idx] -=
