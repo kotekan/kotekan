@@ -25,7 +25,7 @@ applyGenPL::applyGenPL(Config& config, const std::string& unique_name,
     _num_elements = config.get<int32_t>(unique_name, "num_elements"); // = "2*D"
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
-    
+
     // Check parameter compatibility
     if (_num_elements <= 0) {
         FATAL_ERROR("num_elements ({:d}) is not positive.", _num_elements);
@@ -40,18 +40,15 @@ applyGenPL::applyGenPL(Config& config, const std::string& unique_name,
         std::abort();
     }
     if (_samples_per_data_set % 2 != 0) {
-        FATAL_ERROR("samples_per_data_set ({:d}) is not even.",
-                    _samples_per_data_set);
+        FATAL_ERROR("samples_per_data_set ({:d}) is not even.", _samples_per_data_set);
         std::abort();
     }
     if (_num_local_freq % 4 != 0) {
-        FATAL_ERROR("num_local_freq ({:d}) is not a multiple of 4.",
-                    _num_local_freq);
+        FATAL_ERROR("num_local_freq ({:d}) is not a multiple of 4.", _num_local_freq);
         std::abort();
     }
     if (_num_elements % 8 != 0) {
-        FATAL_ERROR("num_elements ({:d}) is not a multiple of 8.",
-                    _num_elements);
+        FATAL_ERROR("num_elements ({:d}) is not a multiple of 8.", _num_elements);
         std::abort();
     }
 
@@ -62,22 +59,24 @@ applyGenPL::applyGenPL(Config& config, const std::string& unique_name,
     output_buf = get_buffer("voltage_out_buf");
     output_buf->register_producer(unique_name);
 
-    size_t voltage_frame_size = _samples_per_data_set * _num_local_freq * _num_elements * sizeof(char);
-    size_t pl_frame_size = (_samples_per_data_set / 2) * (_num_local_freq / 4) * (_num_elements / 8) / 8;
+    size_t voltage_frame_size =
+        _samples_per_data_set * _num_local_freq * _num_elements * sizeof(char);
+    size_t pl_frame_size =
+        (_samples_per_data_set / 2) * (_num_local_freq / 4) * (_num_elements / 8) / 8;
 
-    if(input_buf->frame_size != voltage_frame_size) {
+    if (input_buf->frame_size != voltage_frame_size) {
         FATAL_ERROR("applyGenPL voltage_in_buf ({:s}) has frame size {:d}, expected {:d}.",
-                input_buf->buffer_name, input_buf->frame_size, voltage_frame_size);
+                    input_buf->buffer_name, input_buf->frame_size, voltage_frame_size);
         std::abort();
     }
-    if(plmask_buf->frame_size != pl_frame_size) {
+    if (plmask_buf->frame_size != pl_frame_size) {
         FATAL_ERROR("applyGenPL plmask_in_buf ({:s}) has frame size {:d}, expected {:d}.",
-                plmask_buf->buffer_name, plmask_buf->frame_size, voltage_frame_size);
+                    plmask_buf->buffer_name, plmask_buf->frame_size, voltage_frame_size);
         std::abort();
     }
-    if(output_buf->frame_size != voltage_frame_size) {
+    if (output_buf->frame_size != voltage_frame_size) {
         FATAL_ERROR("applyGenPL voltage_out_buf ({:s}) has frame size {:d}, expected {:d}.",
-                output_buf->buffer_name, output_buf->frame_size, voltage_frame_size);
+                    output_buf->buffer_name, output_buf->frame_size, voltage_frame_size);
         std::abort();
     }
 }
@@ -118,8 +117,8 @@ void applyGenPL::main_thread() {
                     int pl_t_bit = pl_t & 0x3F; // last 6 bits to index into a
                                                 // uint64_t
                     int pl_t_slow = pl_t >> 6;  // the rest are for the array
-                    int pl_f = f / 4;          // downsample freq by 4
-                    int pl_e = e / 8;          // downsample element by 8
+                    int pl_f = f / 4;           // downsample freq by 4
+                    int pl_e = e / 8;           // downsample element by 8
 
                     int pl_idx = tstride_pl * pl_t_slow + fstride_pl * pl_f + pl_e;
                     int pl = (plmask[pl_idx] >> pl_t_bit) & 0x1;

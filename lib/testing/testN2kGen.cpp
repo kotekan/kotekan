@@ -111,13 +111,12 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
         std::abort();
     }
     if (samples_per_data_set % 1024 != 0) {
-        FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of 1024.",
-                    samples_per_data_set);
+        FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of 1024.", samples_per_data_set);
         std::abort();
     }
     if (num_elements % corr_blocksize != 0) {
-        FATAL_ERROR("num_elements ({:d}) is not a multiple of corr_blocksize ({:d}).",
-                    num_elements, corr_blocksize);
+        FATAL_ERROR("num_elements ({:d}) is not a multiple of corr_blocksize ({:d}).", num_elements,
+                    corr_blocksize);
         std::abort();
     }
     if (num_elements % (8 * count_blocksize) != 0) {
@@ -139,23 +138,25 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     count_num_blocks = (count_lin_blocks * (count_lin_blocks + 1)) / 2;
 
     // Check frame sizes
-    size_t corr_frame_size = 2 * sizeof(int32_t) * corr_blocksize * corr_blocksize * corr_num_blocks * num_local_freq * num_integrations;
-    size_t count_frame_size = sizeof(int32_t) * count_blocksize * count_blocksize * count_num_blocks * num_local_freq * num_integrations;
+    size_t corr_frame_size = 2 * sizeof(int32_t) * corr_blocksize * corr_blocksize * corr_num_blocks
+                             * num_local_freq * num_integrations;
+    size_t count_frame_size = sizeof(int32_t) * count_blocksize * count_blocksize * count_num_blocks
+                              * num_local_freq * num_integrations;
     size_t rfi_frame_size = num_local_freq * samples_per_data_set / 8;
 
     if (corr_buf->frame_size != corr_frame_size) {
-        FATAL_ERROR("out_buf ({:s}) has frame size {:d}, expected {:d}.",
-                corr_buf->buffer_name, corr_buf->frame_size, corr_frame_size);
+        FATAL_ERROR("out_buf ({:s}) has frame size {:d}, expected {:d}.", corr_buf->buffer_name,
+                    corr_buf->frame_size, corr_frame_size);
         std::abort();
     }
     if (count_buf->frame_size != count_frame_size) {
         FATAL_ERROR("out_count_buf ({:s}) has frame size {:d}, expected {:d}.",
-                count_buf->buffer_name, count_buf->frame_size, count_frame_size);
+                    count_buf->buffer_name, count_buf->frame_size, count_frame_size);
         std::abort();
     }
     if (rfi_buf->frame_size != rfi_frame_size) {
-        FATAL_ERROR("out_buf ({:s}) has frame size {:d}, expected {:d}.",
-                rfi_buf->buffer_name, rfi_buf->frame_size, rfi_frame_size);
+        FATAL_ERROR("out_buf ({:s}) has frame size {:d}, expected {:d}.", rfi_buf->buffer_name,
+                    rfi_buf->frame_size, rfi_frame_size);
         std::abort();
     }
 }

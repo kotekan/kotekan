@@ -16,8 +16,8 @@
 #include <vector>     // for vector
 
 using kotekan::bufferContainer;
-using kotekan::div_noremainder;
 using kotekan::Config;
+using kotekan::div_noremainder;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(gpuSimulateN2kPL1bitCorr);
@@ -32,7 +32,7 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _sub_integration_ntime = config.get<int32_t>(unique_name, "sub_integration_ntime");
-    
+
     // Check parameter compatibility
     if (_num_elements <= 0) {
         FATAL_ERROR("num_elements ({:d}) is not positive.", _num_elements);
@@ -63,8 +63,8 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
         std::abort();
     }
     if (_num_elements % _blocksize != 0) {
-        FATAL_ERROR("num_elements ({:d}) is not a multiple of _blocksize ({:d}).",
-                    _num_elements, _blocksize);
+        FATAL_ERROR("num_elements ({:d}) is not a multiple of _blocksize ({:d}).", _num_elements,
+                    _blocksize);
         std::abort();
     }
 
@@ -218,9 +218,9 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         assert(meta_out);
 
         // Checking incoming metadata describes data as expected.
-        if(meta_in->get_nfreq() != nf)
+        if (meta_in->get_nfreq() != nf)
             FATAL_ERROR("in_plmask_buf ({:s}) has nfreq {:d}, expected {:d}",
-                    input_plmask_buf->buffer_name, meta_in->get_nfreq(), nf);
+                        input_plmask_buf->buffer_name, meta_in->get_nfreq(), nf);
 
         // Copy to start
         *meta_out = *meta_in;
@@ -263,7 +263,8 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         //  sample0_offset(out) = sample0_offset(in) * 64 / sub_integration_ntime
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->set_sample0_offset(div_noremainder(64 * meta_in->get_sample0_offset(), _sub_integration_ntime));
+        meta_out->set_sample0_offset(
+            div_noremainder(64 * meta_in->get_sample0_offset(), _sub_integration_ntime));
         meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
 
         const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
