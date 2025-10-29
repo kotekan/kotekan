@@ -3,6 +3,7 @@
 #include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
 
 #include <string.h> // for size_t, memset
+#include <type_traits>
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
@@ -95,6 +96,7 @@ struct chordMetadataFormat {
     int32_t max_freq;
 
     int32_t frame_counter;
+    int64_t fpga_seq_num;
 
     char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
     // chordDataType type;
@@ -139,6 +141,22 @@ struct chordMetadataFormat {
     // by which the time samples have been downsampled relative to
     // FPGA samples.
     int32_t time_downsampling_fpga[CHORD_META_MAX_FREQ];
+
+    uint32_t rfi_num_bad_inputs;
+    int32_t rfi_flagged_samples;
+    int32_t lost_timesamples;
+
+    chordMetadata::beamCoord beam_coord;
+    static_assert(std::is_pod_v<chordMetadata::beamCoord> == true,
+                  "beamCoord containes C++ only data");
+
+    stream_t stream_id;
+    static_assert(std::is_pod_v<stream_t> == true, "stream_t containes C++ only data");
+
+    // cannot use dset_id_t here since Hash is not a pod (has a constructor)
+    char dataset_id[32];
+
+    timeval first_packet_recv_time;
 };
 
 size_t chordMetadata::get_serialized_size() {
@@ -153,6 +171,7 @@ size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t 
     const chordMetadataFormat* fmt = reinterpret_cast<const chordMetadataFormat*>(bytes);
 
     this->set_frame_counter(fmt->frame_counter);
+    this->set_fpga_seq_num(fmt->fpga_seq_num);
     for (int i = 0; i < CHORD_META_MAX_DIMNAME; i++) {
         name[i] = fmt->name[i];
     }
@@ -182,6 +201,18 @@ size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t 
         std::vector<int>(fmt->time_downsampling_fpga, fmt->time_downsampling_fpga + nfreq));
     this->set_coarse_freq(std::vector<int>(fmt->coarse_freq, fmt->coarse_freq + nfreq));
 
+    this->set_rfi_num_bad_inputs(fmt->rfi_num_bad_inputs);
+    this->set_rfi_flagged_samples(fmt->rfi_flagged_samples);
+    this->set_lost_timesamples(fmt->lost_timesamples);
+
+    this->set_stream_id(fmt->stream_id);
+    this->set_dataset_id(
+        dset_id_t::from_string(std::string(fmt->dataset_id, sizeof(fmt->dataset_id))));
+
+    this->set_beam_coord(fmt->beam_coord);
+
+    this->set_first_packet_recv_time(fmt->first_packet_recv_time);
+
     // TODO: this misses dish_positions etc
     return sizeof(chordMetadataFormat);
 }
@@ -195,6 +226,7 @@ size_t chordMetadata::serialize(char* bytes) {
     fmt->max_freq = CHORD_META_MAX_FREQ;
 
     fmt->frame_counter = this->get_frame_counter();
+    fmt->fpga_seq_num = this->get_fpga_seq_num();
     for (int i = 0; i < CHORD_META_MAX_DIMNAME; i++) {
         fmt->name[i] = name[i];
     }
@@ -217,6 +249,20 @@ size_t chordMetadata::serialize(char* bytes) {
     std::copy_n(this->get_time_downsampling_fpga().data(), this->get_nfreq(),
                 fmt->time_downsampling_fpga);
     std::copy_n(this->get_coarse_freq().data(), this->get_nfreq(), fmt->coarse_freq);
+
+    fmt->rfi_num_bad_inputs = this->get_rfi_num_bad_inputs();
+    fmt->rfi_flagged_samples = this->get_rfi_flagged_samples();
+    fmt->lost_timesamples = this->get_lost_timesamples();
+
+    fmt->stream_id = this->get_stream_id();
+    const std::string dataset_id_str = this->get_dataset_id().to_string();
+    assert(dataset_id_str.size() == sizeof(fmt->dataset_id)
+           && "Sized of strigified hash is not 32");
+    std::copy_n(dataset_id_str.data(), sizeof(fmt->dataset_id), fmt->dataset_id);
+
+    fmt->beam_coord = this->get_beam_coord();
+
+    fmt->first_packet_recv_time = this->get_first_packet_recv_time();
 
     // TODO: this misses dish_positions etc
     return sizeof(chordMetadataFormat);
