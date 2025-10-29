@@ -168,9 +168,7 @@ void gpuSimulateN2kPLExpand::main_thread() {
         meta_out->set_strides_simple();
         /* new style array description */
         output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::uint1x8>::type, 5>(
-            output_frame_id,
-            {nt, nf, 2, ne / 2, 8},
-            {"Thi64", "F", "P", "D8", "Tlo64"});
+            output_frame_id, {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"});
         /* test that things are consistent */
         meta_out->check_frame_desc(output_buf->get_frame_desc(output_frame_id));
 
