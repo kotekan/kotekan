@@ -46,6 +46,7 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     rfi_buf = get_buffer("in_rfimask_buf");
     rfi_buf->register_consumer(unique_name);
 
+    // Get generation parameters
     corr_name = config.get_default<std::string>(unique_name, "correlation_name", "n2k_correlation");
     count_name = config.get_default<std::string>(unique_name, "counts_name", "n2k_counts");
 
@@ -75,6 +76,7 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     mul_correlation_by_counts =
         config.get_default<bool>(unique_name, "mul_correlation_by_counts", false);
 
+    // Get array size parameters
     samples_per_data_set = config.get_default<size_t>(unique_name, "samples_per_data_set", 8192);
     sub_integration_ntime = config.get_default<size_t>(unique_name, "sub_integration_ntime", 8192);
 
@@ -85,10 +87,48 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
                                                          std::vector<uint32_t>({4096}));
     seed = config.get_default<uint32_t>(unique_name, "seed", 0);
 
-    assert(samples_per_data_set % sub_integration_ntime == 0);
-    assert(num_elements % corr_blocksize == 0);
-    assert(num_elements % (8 * count_blocksize) == 0);
-    assert(freq_ids.size() > 0);
+    // Check parameter compatibility
+    if (num_elements <= 0) {
+        FATAL_ERROR("num_elements ({:d}) is not positive.", num_elements);
+        std::abort();
+    }
+    if (num_local_freq <= 0) {
+        FATAL_ERROR("num_local_freq ({:d}) is not positive.", num_local_freq);
+        std::abort();
+    }
+    if (samples_per_data_set <= 0) {
+        FATAL_ERROR("samples_per_data_set ({:d}) is not positive.", samples_per_data_set);
+        std::abort();
+    }
+    if (sub_integration_ntime <= 0) {
+        FATAL_ERROR("sub_integration_ntime ({:d}) is not positive.", sub_integration_ntime);
+        std::abort();
+    }
+    if (samples_per_data_set % sub_integration_ntime != 0) {
+        FATAL_ERROR(
+            "samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d}).",
+            samples_per_data_set, sub_integration_ntime);
+        std::abort();
+    }
+    if (samples_per_data_set % 1024 != 0) {
+        FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of 1024.",
+                    samples_per_data_set);
+        std::abort();
+    }
+    if (num_elements % corr_blocksize != 0) {
+        FATAL_ERROR("num_elements ({:d}) is not a multiple of corr_blocksize ({:d}).",
+                    num_elements, corr_blocksize);
+        std::abort();
+    }
+    if (num_elements % (8 * count_blocksize) != 0) {
+        FATAL_ERROR("num_elements ({:d}) / 8 is not a multiple of count_blocksize ({:d}).",
+                    num_elements, count_blocksize);
+        std::abort();
+    }
+    if (freq_ids.empty()) {
+        FATAL_ERROR("freq_ids must have at least one element.");
+        std::abort();
+    }
 
     num_integrations = samples_per_data_set / sub_integration_ntime;
 
@@ -97,6 +137,27 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
 
     corr_num_blocks = (corr_lin_blocks * (corr_lin_blocks + 1)) / 2;
     count_num_blocks = (count_lin_blocks * (count_lin_blocks + 1)) / 2;
+
+    // Check frame sizes
+    size_t corr_frame_size = 2 * sizeof(int32_t) * corr_blocksize * corr_blocksize * corr_num_blocks * num_local_freq * num_integrations;
+    size_t count_frame_size = sizeof(int32_t) * count_blocksize * count_blocksize * count_num_blocks * num_local_freq * num_integrations;
+    size_t rfi_frame_size = num_local_freq * samples_per_data_set / 8;
+
+    if (corr_buf->frame_size != corr_frame_size) {
+        FATAL_ERROR("out_buf ({:s}) has frame size {:d}, expected {:d}.",
+                corr_buf->buffer_name, corr_buf->frame_size, corr_frame_size);
+        std::abort();
+    }
+    if (count_buf->frame_size != count_frame_size) {
+        FATAL_ERROR("out_count_buf ({:s}) has frame size {:d}, expected {:d}.",
+                count_buf->buffer_name, count_buf->frame_size, count_frame_size);
+        std::abort();
+    }
+    if (rfi_buf->frame_size != rfi_frame_size) {
+        FATAL_ERROR("out_buf ({:s}) has frame size {:d}, expected {:d}.",
+                rfi_buf->buffer_name, rfi_buf->frame_size, rfi_frame_size);
+        std::abort();
+    }
 }
 
 std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID frame_id) {

@@ -5,6 +5,7 @@
 #include "buffer.hpp"          // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata
+#include "div.hpp"             // for div_noremainder
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 
 #include <atomic>     // for atomic_bool
@@ -15,6 +16,7 @@
 #include <vector>     // for vector
 
 using kotekan::bufferContainer;
+using kotekan::div_noremainder;
 using kotekan::Config;
 using kotekan::Stage;
 
@@ -30,9 +32,41 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _sub_integration_ntime = config.get<int32_t>(unique_name, "sub_integration_ntime");
-
-    // This is always equal to 8.
-    _blocksize = 8;
+    
+    // Check parameter compatibility
+    if (_num_elements <= 0) {
+        FATAL_ERROR("num_elements ({:d}) is not positive.", _num_elements);
+        std::abort();
+    }
+    if (_num_local_freq <= 0) {
+        FATAL_ERROR("num_local_freq ({:d}) is not positive.", _num_local_freq);
+        std::abort();
+    }
+    if (_samples_per_data_set <= 0) {
+        FATAL_ERROR("samples_per_data_set ({:d}) is not positive.", _samples_per_data_set);
+        std::abort();
+    }
+    if (_sub_integration_ntime <= 0) {
+        FATAL_ERROR("sub_integration_ntime ({:d}) is not positive.", _sub_integration_ntime);
+        std::abort();
+    }
+    if (_samples_per_data_set % _sub_integration_ntime != 0) {
+        FATAL_ERROR(
+            "samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d}).",
+            _samples_per_data_set, _sub_integration_ntime);
+        std::abort();
+    }
+    if (_samples_per_data_set % 1024 != 0) {
+        // Also covers the multiple of 64 required by PL mask.
+        FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of 1024.",
+                    _samples_per_data_set);
+        std::abort();
+    }
+    if (_num_elements % _blocksize != 0) {
+        FATAL_ERROR("num_elements ({:d}) is not a multiple of _blocksize ({:d}).",
+                    _num_elements, _blocksize);
+        std::abort();
+    }
 
     input_plmask_buf = get_buffer("in_plmask_buf");
     input_plmask_buf->register_consumer(unique_name);
@@ -183,6 +217,11 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
         assert(meta_out);
 
+        // Checking incoming metadata describes data as expected.
+        if(meta_in->get_nfreq() != nf)
+            FATAL_ERROR("in_plmask_buf ({:s}) has nfreq {:d}, expected {:d}",
+                    input_plmask_buf->buffer_name, meta_in->get_nfreq(), nf);
+
         // Copy to start
         *meta_out = *meta_in;
 
@@ -224,7 +263,7 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         //  sample0_offset(out) = sample0_offset(in) * 64 / sub_integration_ntime
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->set_sample0_offset((64 * meta_in->get_sample0_offset()) / _sub_integration_ntime);
+        meta_out->set_sample0_offset(div_noremainder(64 * meta_in->get_sample0_offset(), _sub_integration_ntime));
         meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
 
         const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
@@ -240,7 +279,7 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
             coarse_freq[f] = coarse_freq_in[f];
             freq_upchan_factor[f] = freq_upchan_factor_in[f];
             time_downsampling_fpga[f] =
-                (time_downsampling_fpga_in[f] / 64) * _sub_integration_ntime;
+                div_noremainder(time_downsampling_fpga_in[f], 64) * _sub_integration_ntime;
             half_fpga_sample0[f] =
                 half_fpga_sample0_in[f] + time_downsampling_fpga[f] - time_downsampling_fpga_in[f];
         }
