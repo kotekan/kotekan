@@ -7,7 +7,7 @@ from ch_util import ephemeris, tools
 import chimedb.core
 
 
-print("feed positions:")
+print("feed_positions:")
 
 # Get the latest correlator inputs from the Layout DB.
 chime_inputs = ch_util.tools.get_correlator_inputs(datetime.datetime.now(), correlator="chime")

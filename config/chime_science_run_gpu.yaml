@@ -4064,7 +4064,7 @@ input_reorder:
 
 # WARNING: For safety, ensure the gains of any inputs that should not be used for
 # beamforming are set to zero in the binary, re-ordered gain conversion pipeline.
-feed positions:
+feed_positions:
   [[-33.04813181029521018672, -38.82107710831004254715],  # CHIMEAntenna(id=0, crate=0, slot=8, sma=12, corr_order=128, delay=0, input_sn='FCC000812', corr='FCC')
    [-33.04775410717910943958, -38.51627734233186117763],  # CHIMEAntenna(id=1, crate=0, slot=8, sma=13, corr_order=129, delay=0, input_sn='FCC000813', corr='FCC')
    [-33.04737640406300869245, -38.21147757635367980811],  # CHIMEAntenna(id=2, crate=0, slot=8, sma=14, corr_order=130, delay=0, input_sn='FCC000814', corr='FCC')
