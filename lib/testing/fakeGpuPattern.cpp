@@ -210,7 +210,7 @@ void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metada
     DEBUG2("GPS time %ds%dns", metadata->get_gps_time().tv_sec, metadata->get_gps_time().tv_nsec);
 
     // Figure out if we are in a pulse
-    double toa = _polyco.next_toa(metadata->get_gps_time(), tel.to_freq(freq_id));
+    double toa = _polyco.next_toa(metadata->get_gps_time(), tel.to_freq_MHz(freq_id));
     double last_toa = toa - 1. / _rot_freq;
     DEBUG2("TOA: %f, last TOA: %f", toa, last_toa);
 

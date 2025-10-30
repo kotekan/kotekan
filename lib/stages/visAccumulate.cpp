@@ -113,7 +113,7 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     std::vector<std::pair<uint32_t, freq_ctype>> freqs;
     std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(freqs),
                    [&tel](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
-                       return {id, {tel.to_freq(id), tel.freq_width(id)}};
+                       return {id, {tel.to_freq_MHz(id), tel.freq_width_MHz(id)}};
                    });
 
     // The input specification from the config
@@ -394,7 +394,7 @@ void visAccumulate::main_thread() {
             // doesn't really work if there are multiple frequencies in the same buffer..
             for (internalState& dset : enabled_gated_datasets) {
 
-                float freq_in_MHz = tel.to_freq(dset.frames[0].freq_id);
+                float freq_in_MHz = tel.to_freq_MHz(dset.frames[0].freq_id);
                 float w = dset.calculate_weight(t_s, t_e, freq_in_MHz);
 
                 // Don't bother to accumulate if weight is zero

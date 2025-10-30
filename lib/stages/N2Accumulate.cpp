@@ -453,7 +453,7 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
         meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
 
         meta->frame_start_time_ns = _tel.to_time_ns(meta->fpga_start_tick);
-        meta->freq_Hz = _tel.to_freq(meta->freq_id);
+        meta->freq_Hz = 1.0e6 * _tel.to_freq_MHz(meta->freq_id);
         meta->eop = _tel.get_EOP_at_time(
             _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
         meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];

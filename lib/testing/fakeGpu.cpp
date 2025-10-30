@@ -184,12 +184,12 @@ freq_id_t FakeTelescope::to_freq_id(stream_t stream_id, uint32_t ind) const {
     return stream_id.id + ind;
 }
 
-double FakeTelescope::to_freq(freq_id_t freq_id) const {
+double FakeTelescope::to_freq_MHz(freq_id_t freq_id) const {
     // Use CHIME frequencies
     return 800.0 - 400.0 / 1024 * freq_id;
 }
 
-double FakeTelescope::freq_width(freq_id_t /*freq_id*/) const {
+double FakeTelescope::freq_width_MHz(freq_id_t /*freq_id*/) const {
     // Use CHIME frequencies
     return 400.0 / 1024;
 }

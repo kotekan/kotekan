@@ -676,8 +676,8 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
 }
 
 // TODO: This is a stub to satisfy inheritance and must be updated.
-double CHORDTelescope::to_freq(freq_id_t freq_id) const {
-    return freq_id * (GIGA / (double)dt_ns);
+double CHORDTelescope::to_freq_MHz(freq_id_t freq_id) const {
+    return freq_id * (1e3 / (double)dt_ns);
 }
 
 uint32_t CHORDTelescope::num_freq_per_stream() const {
@@ -691,7 +691,7 @@ uint32_t CHORDTelescope::num_freq() const {
 }
 
 // TODO: This is a stub to satisfy inheritance and must be updated.
-double CHORDTelescope::freq_width(freq_id_t) const {
+double CHORDTelescope::freq_width_MHz(freq_id_t) const {
     return 0;
 }
 

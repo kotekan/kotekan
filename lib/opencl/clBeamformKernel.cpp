@@ -141,7 +141,7 @@ cl_mem clBeamformKernel::get_freq_map(int frame_index) {
         float freq[num_local_freq];
 
         for (int j = 0; j < num_local_freq; ++j) {
-            freq[j] = tel.to_freq(static_cast<freq_id_t>(coarse_freq[j])) / 1000.0;
+            freq[j] = tel.to_freq_MHz(static_cast<freq_id_t>(coarse_freq[j])) / 1000.0;
         }
 
         device_freq_map[encoded_stream_id.id] =
