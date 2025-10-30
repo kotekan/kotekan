@@ -165,3 +165,4 @@ check_data:
     first_buf: host_correlation_buffer
     second_buf: simulated_correlation_buffer
     num_frames_to_test: buffer_depth
+    check_metadata: True

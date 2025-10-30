@@ -310,14 +310,15 @@ public:
         RawPropertyList<PropertyType::DATASET_CREATE> props;
 
         std::vector<hsize_t> chunk_dims;
+
         bool dims_nonzero = true;
         for (size_t d = 0; d < dims.size(); d++) {
             chunk_dims.push_back((hsize_t)dims[d]);
             if (dims[d] == 0)
                 dims_nonzero = false;
         }
-        if (dims_nonzero) {
 
+        if (dims_nonzero) {
             // Enable chunking
             if (!chunk_dims.empty()) {
                 // Choose chunk size

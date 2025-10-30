@@ -231,8 +231,11 @@ void CHORDTelescope::send_time0_ns(connectionInstance& conn) {
 }
 
 timespec CHORDTelescope::to_time(uint64_t seq) const {
-    auto time_ns = time0_ns + seq * dt_ns;
-    return nanosec_i64_to_timespec(time_ns);
+    return nanosec_i64_to_timespec(to_time_ns(seq));
+}
+
+int64_t CHORDTelescope::to_time_ns(uint64_t seq) const {
+    return time0_ns + seq * dt_ns;
 }
 
 uint64_t CHORDTelescope::to_seq(timespec time) const {
@@ -667,7 +670,7 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
 
 // TODO: This is a stub to satisfy inheritance and must be updated.
 double CHORDTelescope::to_freq(freq_id_t freq_id) const {
-    return freq_id * (GIGA / dt_ns);
+    return freq_id * (GIGA / (double)dt_ns);
 }
 
 uint32_t CHORDTelescope::num_freq_per_stream() const {
