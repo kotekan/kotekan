@@ -95,6 +95,12 @@ public:
     uint64_t seq_length_nsec() const override;
 
     /**
+     * @brief   Return the time corresponding to the given fpga sequence number as an int64_t.
+     *          Uses the epoch of time0_ns.
+     */
+    int64_t to_time_ns(uint64_t seq) const;
+
+    /**
      * @brief   Return the longitude of the instrument.
      **/
     double get_inst_long_deg() const;
@@ -180,7 +186,7 @@ public:
                                                     const struct EOP& eop) const;
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the
-     *          phase center), in Dish coordinates (x is altitude axis,
+     *          phase center), in Dish coordinates (x is altitude axis (~East),
      *          y is ~North, z is altitude = 90deg (~up).
      **/
     std::array<double, 3> get_pointing_vec_in_dish_coords() const;

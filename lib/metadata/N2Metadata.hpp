@@ -107,41 +107,24 @@ inline std::shared_ptr<N2Metadata> get_N2_metadata(const std::shared_ptr<metadat
     return std::static_pointer_cast<N2Metadata>(mc);
 }
 
+inline std::shared_ptr<const N2Metadata>
+get_N2_metadata(const std::shared_ptr<const metadataObject>& mc) {
+    if (!mc)
+        return std::shared_ptr<const N2Metadata>();
+    if (!metadata_is_N2(mc)) {
+        std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+        WARN_NON_OO("Expected metadata to be type \"N2Metadata\", got \"{:s}\".", pool->type_name);
+        return std::shared_ptr<const N2Metadata>();
+    }
+
+    return std::static_pointer_cast<const N2Metadata>(mc);
+}
+
 inline std::shared_ptr<N2Metadata> get_N2_metadata(Buffer* buf, int frame_id) {
     if (!buf || frame_id < 0 || frame_id >= (int)buf->metadata.size())
         return std::shared_ptr<N2Metadata>();
     std::shared_ptr<metadataObject> meta = buf->metadata[frame_id];
     return get_N2_metadata(meta);
-}
-
-inline std::shared_ptr<N2Metadata>
-alloc_N2_from_chord_metadata(Buffer* chord_buf, size_t chord_frame_id, Buffer* N2_buf,
-                             N2::frameID N2_frame_id, Config& config,
-                             const std::string& unique_name, int f) {
-
-    assert(f >= 0 && f < CHORD_META_MAX_FREQ);
-
-    N2_buf->allocate_new_metadata_object(N2_frame_id);
-
-    std::shared_ptr<chordMetadata> chord_meta = get_chord_metadata(chord_buf, chord_frame_id);
-    std::shared_ptr<N2Metadata> N2_meta = get_N2_metadata(N2_buf, N2_frame_id);
-
-    N2_meta->num_elements = config.get<int32_t>(unique_name, "num_elements");
-    N2_meta->num_prod = N2::get_num_prod(N2_meta->num_elements);
-    N2_meta->num_ev = config.get<int32_t>(unique_name, "num_ev");
-    N2_meta->nfreq = config.get<int32_t>(unique_name, "num_local_freq");
-
-    N2_meta->freq_id = chord_meta->get_coarse_freq()[f];
-    N2_meta->fpga_start_tick = 0;
-    N2_meta->frame_start_time_ns = 0;
-    N2_meta->frame_length_fpga_ticks = 0;
-    N2_meta->n_valid_fpga_ticks = 0;
-    N2_meta->n_rfi_fpga_ticks = 0;
-
-    N2_meta->freq_Hz = 0.0;
-    N2_meta->eop = eop_null;
-
-    return N2_meta;
 }
 
 #endif

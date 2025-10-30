@@ -62,7 +62,7 @@ def run_eigenvis(tdir_factory, params=None):
 
     tmpdir = tdir_factory.mktemp("eigenvis")
 
-    fakevis_buffer = runner.FakeN2VisBuffer(
+    fakevis_buffer = runner.FakeN2Buffer(
         freq_ids=params["freq"], num_frames=params["total_frames"], mode=params["mode"]
     )
 

@@ -1,10 +1,3 @@
-##########################################
-#
-# verify_cuda_n2k.yaml
-#
-# Config to test Kendrick's cuda N2 tensor-core kernel.
-#
-##########################################
 ---
 type: config
 # Logging level can be one of:
@@ -14,7 +7,7 @@ log_level: DEBUG2
 
 num_gpus: 1
 buffer_depth: 4
-cpu_affinity: [2,3,4,5,8,9,10,11]
+cpu_affinity: [2]  # [2,3,4,5,8,9,10,11]
 sizeof_float: 4
 frame_arrival_period: 5.12e-6 * samples_per_data_set
 sizeof_int: 4
@@ -40,10 +33,19 @@ vis_blocksize: 16
 vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 
+frames_to_generate: 2 * buffer_depth  # must be at least frames_to_test
+frames_to_test: 2 * buffer_depth
+
+# test values
+E_re: 3
+E_im: -5
+corr_re: (E_re * E_re + E_im * E_im) * sub_integration_ntime
+corr_im: 0
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata
-    num_metadata_objects: 15 * buffer_depth
+    num_metadata_objects: 100 * buffer_depth
 
 # Buffers
 host_voltage_buffer:
@@ -76,19 +78,13 @@ host_counts_buffer:
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
     metadata_pool: main_pool
 
-simulated_correlation_buffer:
+fake_correlation_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
     metadata_pool: main_pool
 
-simulated_pl_mask_exp_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: (samples_per_data_set * (num_local_freq) * (num_elements / 8)) / 8
-    metadata_pool: main_pool
-
-simulated_counts_buffer:
+fake_counts_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
@@ -116,36 +112,48 @@ host_pl_mask_exp_ringbuffer:
     metadata_pool: main_pool
 
 gen_data_voltage:
-    type: random_signed_offset
-    value: 120
+    type: const_offset # random_signed_offset
+    value: E_im + 8 + 16 * (E_re + 8)  # 136 = 8+8i = 0 + 0i
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
     name: "E"
     array_shape: [ 4096, 16, 2, 64 ]
     dim_name: ["T", "F", "P", "D" ]
-    num_frames: 2*buffer_depth  # Must be at least what check_data expects
+    num_frames: frames_to_generate  # Must be at least what check_data expects
 
 gen_data_rfi_RFImask:
-    type: random1x8
+    type: const1x8
     value: 255
     kotekan_stage: testDataGen
     out_buf: host_rfi_RFImask_buffer
     name: "RFImask"
     array_shape: [ 4, 16, 128 ]
     dim_name: ["T8hi128", "F", "T8lo128"]
-    num_frames: 2*buffer_depth
+    num_frames: frames_to_generate
     meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
 
 gen_pl_mask:
-    type: random1x8 
-    value: 120
+    type: const1x8  # random1x8 
+    value: 255
     kotekan_stage: testDataGen
     out_buf: host_pl_mask_buffer
     name: "pl_mask"
     array_shape: [ 32, 4, 2, 8, 8 ]  # = num_times/128, num_freq/4, 2, num_dishes/8, 8
     dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
-    num_frames: 2*buffer_depth  # Must be at least what check_data expects
+    num_frames: frames_to_generate  # Must be at least what check_data expects
     meta_time_downsample_factor: 128  # The number of time samples represented by each coarse time index.
+
+gen_fake_corr_counts:
+    kotekan_stage: testN2kGen
+    in_rfimask_buf: host_rfi_RFImask_buffer
+    out_buf: fake_correlation_buffer
+    out_counts_buf: fake_counts_buffer
+    correlation_type: "const"
+    counts_type: "const"
+    correlation_value: [ 69632, 0 ]
+    counts_value: sub_integration_ntime
+    num_frames: frames_to_generate
+    freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 run_send_voltage:
     gpu_0:
@@ -248,37 +256,18 @@ run_pl_corr:
           gpu_mem: counts_buffer
           out_buf: host_counts_buffer
 
-cpu_corr:
-    kotekan_stage: gpuSimulateN2kCorr
-    log_level: debug
-    network_in_buf: host_voltage_buffer
-    rfimask_in_buf: host_rfi_RFImask_buffer
-    corr_out_buf: simulated_correlation_buffer
-
-cpu_pl_exp:
-    kotekan_stage: gpuSimulateN2kPLExpand
-    log_level: debug
-    in_buf: host_pl_mask_buffer
-    out_buf: simulated_pl_mask_exp_buffer
-
-cpu_pl_corr:
-    kotekan_stage: gpuSimulateN2kPL1bitCorr
-    log_level: debug
-    in_plmask_buf: simulated_pl_mask_exp_buffer
-    in_rfimask_buf: host_rfi_RFImask_buffer
-    out_buf: simulated_counts_buffer
-
 check_correlation_data:
     kotekan_stage: testDataCheckInt
     first_buf: host_correlation_buffer
-    second_buf: simulated_correlation_buffer
-    num_frames_to_test: 2*buffer_depth
+    second_buf: fake_correlation_buffer
+    num_frames_to_test: frames_to_test
+    trigger_exit_on_pass: True
     check_metadata: True
 
 check_counts_data:
     kotekan_stage: testDataCheckInt
     first_buf: host_counts_buffer
-    second_buf: simulated_counts_buffer
-    num_frames_to_test: 2*buffer_depth
+    second_buf: fake_counts_buffer
+    num_frames_to_test: frames_to_test
     trigger_exit_on_pass: False
     check_metadata: True

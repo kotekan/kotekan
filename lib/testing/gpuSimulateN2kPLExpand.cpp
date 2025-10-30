@@ -152,24 +152,30 @@ void gpuSimulateN2kPLExpand::main_thread() {
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
         assert(meta_out);
 
+        // Start with a copy
+        *meta_out = *meta_in;
+
+        // Update changes
         meta_out->set_name("pl_mask");
-        meta_out->type = kotekan::uint64;
-        meta_out->dims = 4;
+        meta_out->type = kotekan::uint1x8;
+        meta_out->dims = 5;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
         meta_out->set_array_dimension(0, nt, "Thi64");
         meta_out->set_array_dimension(1, nf, "F");
-        meta_out->set_array_dimension(2, ne, "P");
-        meta_out->set_array_dimension(3, ne, "D8");
+        meta_out->set_array_dimension(2, 2, "P");
+        meta_out->set_array_dimension(3, ne / 2, "D8");
+        meta_out->set_array_dimension(4, 8, "Tlo64");
         meta_out->set_strides_simple();
         /* new style array description */
-        output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::uint64>::type, 4>(
-            output_frame_id, "pl_mask", {nt, nf, ne, ne}, {"Thi64", "F", "P", "D8"});
+        output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::uint1x8>::type, 5>(
+            output_frame_id, "pl_mask", {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"});
         /* test that things are consistent */
         meta_out->check_frame_desc(output_buf->get_frame_desc(output_frame_id));
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->set_sample0_offset(meta_in->get_sample0_offset());
+        meta_out->set_sample0_offset(2 * meta_in->get_sample0_offset());
         meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
+
         const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
         const std::vector<int> freq_upchan_factor_in = meta_in->get_freq_upchan_factor();
         const std::vector<int64_t> half_fpga_sample0_in = meta_in->get_half_fpga_sample0();
@@ -178,12 +184,15 @@ void gpuSimulateN2kPLExpand::main_thread() {
         std::vector<int> freq_upchan_factor(coarse_freq.size());
         std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
         std::vector<int> time_downsampling_fpga(coarse_freq.size());
+
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             coarse_freq[f] = coarse_freq_in[f];
             freq_upchan_factor[f] = freq_upchan_factor_in[f];
-            half_fpga_sample0[f] = half_fpga_sample0_in[f];
             time_downsampling_fpga[f] = time_downsampling_fpga_in[f] / 2;
+            half_fpga_sample0[f] =
+                half_fpga_sample0_in[f] + time_downsampling_fpga[f] - time_downsampling_fpga_in[f];
         }
+
         meta_out->set_coarse_freq(coarse_freq);
         meta_out->set_freq_upchan_factor(freq_upchan_factor);
         meta_out->set_half_fpga_sample0(half_fpga_sample0);
@@ -191,7 +200,6 @@ void gpuSimulateN2kPLExpand::main_thread() {
         assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
 
         input_buf->mark_frame_empty(unique_name, input_frame_id);
-
         output_buf->mark_frame_full(unique_name, output_frame_id);
 
         INFO("Simulating GPU PL expansion done for {:s}[{:d}] result is in {:s}[{:d}]",
