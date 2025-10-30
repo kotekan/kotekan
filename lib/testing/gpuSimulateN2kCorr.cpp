@@ -249,7 +249,7 @@ void gpuSimulateN2kCorr::main_thread() {
         assert(meta_in->get_nfreq() == _num_local_freq);
 
         // Start out with a copy
-        *meta_out = *meta_in;
+        meta_out->deepCopy(meta_in);
 
         // Assign changes
         meta_out->set_name("n2k_correlation");
