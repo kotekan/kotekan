@@ -298,8 +298,7 @@ void testDataGen::main_thread() {
         /* new style array description */
         std::vector<ptrdiff_t> extents(_array_shape.begin(), _array_shape.end());
         std::vector<kotekan::Symbol> dimnames(_dim_name.begin(), _dim_name.end());
-        buf->allocate_new_frame_desc(frame_id, chordmeta->type, _array_shape.size(), extents,
-                                     dimnames);
+        buf->allocate_new_frame_desc(frame_id, chordmeta->type, _name, extents, dimnames);
         /* test that things are consistent */
         chordmeta->check_frame_desc(buf->get_frame_desc(frame_id));
 

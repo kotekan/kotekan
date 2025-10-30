@@ -478,7 +478,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         out_bufs[i]
             ->allocate_new_frame_desc<kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type,
                                       2>(
-                out_buf_frame_ids[i],
+                out_buf_frame_ids[i], "E",
                 {ptrdiff_t(out_bufs[i]->frame_size) / sample_size, sample_size}, {"T", "E"});
         /* test that things are consistent */
         meta->check_frame_desc(out_bufs[i]->get_frame_desc(out_buf_frame_ids[i]));

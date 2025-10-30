@@ -116,10 +116,10 @@ add_executable(test_Metadata test_Metadata.cpp)
 target_link_libraries(test_Metadata kotekan_metadata)
 
 add_executable(test_NDArray test_NDArray.cpp)
-target_link_libraries(test_NDArray kotekan_metadata)
+target_link_libraries(test_NDArray libexternal kotekan_metadata)
 
 add_executable(test_Symbol test_Symbol.cpp)
-target_link_libraries(test_Symbol kotekan_metadata)
+target_link_libraries(test_Symbol libexternal kotekan_metadata)
 
 add_executable(test_timeUtil test_timeUtil.cpp)
 target_link_libraries(test_timeUtil PRIVATE kotekan_utils)

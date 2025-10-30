@@ -17,6 +17,35 @@ chordMetadata::chordMetadata() :
     }
 }
 
+/// Helper function to compare data during conversion to NDArray
+void chordMetadata::check_frame_desc(
+    const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) const {
+    (void)frame_desc;
+    assert(this->type == frame_desc->get_value_datatype());
+    assert(size_t(this->dims) == frame_desc->get_rank());
+    for (int d = this->dims - 1; d >= 0; --d) {
+        assert(strncmp(this->dim_name[d], frame_desc->get_dimname(d).get_c_string(),
+                       sizeof this->dim_name[d])
+               == 0);
+        assert(this->dim[d] == frame_desc->get_extent(d));
+        assert(this->stride[d] == frame_desc->get_stride(d));
+    }
+}
+
+/// Helper function to set CHORD metadata during conversion to NDArray
+void chordMetadata::set_from_frame_desc(
+    const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) {
+    this->type = frame_desc->get_value_datatype();
+    this->dims = frame_desc->get_rank();
+    for (int d = this->dims - 1; d >= 0; --d) {
+        strncpy(this->dim_name[d], frame_desc->get_dimname(d).get_c_string(),
+                sizeof this->dim_name[d]);
+        this->dim[d] = frame_desc->get_extent(d);
+        this->stride[d] = frame_desc->get_stride(d);
+    }
+}
+
+
 struct chordMetadataFormat {
     int32_t max_dim;
     int32_t max_dimname;

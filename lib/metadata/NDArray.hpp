@@ -81,7 +81,8 @@ make_arrays_from_pairs(std::initializer_list<std::pair<T, U>> values) {
 class GenericNDArray {
 public:
     // create an NDArray based on run-time type information
-    static std::shared_ptr<GenericNDArray> create(const DataType value_datatype, const size_t rank,
+    static std::shared_ptr<GenericNDArray> create(const DataType value_datatype,
+                                                  const Symbol quantity_name,
                                                   const std::vector<std::ptrdiff_t>& extents,
                                                   const std::vector<Symbol>& dimnames, void* data);
     static const size_t max_rank = 10;
@@ -90,6 +91,8 @@ public:
     virtual DataType get_value_datatype() const = 0;
     // The number of bytes for each value (element)
     virtual std::size_t get_value_type_size() const = 0;
+    // The stored quantity_name
+    virtual Symbol get_quantity_name() const = 0;
     // The rank (number of dimensions)
     virtual std::size_t get_rank() const = 0;
     // Pointer to the array data
@@ -134,6 +137,9 @@ private:
     // Has a target if we own the data and need to deallocate them
     std::function<void()> m_cleanup;
 
+    // Quantity_Name
+    Symbol m_quantity_name;
+
     // Extents (shape)
     std::array<std::ptrdiff_t, D> m_extents;
     // Size (number of elements)
@@ -158,37 +164,43 @@ public:
     NDArray& operator=(NDArray&&) = default;
 
     // Construct from extents and dimension names
-    NDArray(const std::vector<std::ptrdiff_t>& extents, const std::vector<Symbol>& dimnames,
-            T* data) {
-        init(extents, dimnames, data);
+    NDArray(const Symbol quantity_name, const std::vector<std::ptrdiff_t>& extents,
+            const std::vector<Symbol>& dimnames, T* data) {
+        init(quantity_name, extents, dimnames, data);
     }
-    NDArray(const std::array<std::ptrdiff_t, D>& extents, const std::array<Symbol, D>& dimnames,
-            T* data) {
-        init(extents, dimnames, data);
+    NDArray(const Symbol quantity_name, const std::array<std::ptrdiff_t, D>& extents,
+            const std::array<Symbol, D>& dimnames, T* data) {
+        init(quantity_name, extents, dimnames, data);
     }
-    NDArray(const std::array<std::ptrdiff_t, D>& extents, const std::array<Symbol, D>& dimnames) :
-        NDArray(extents, dimnames, nullptr) {
+    NDArray(const Symbol quantity_name, const std::array<std::ptrdiff_t, D>& extents,
+            const std::array<Symbol, D>& dimnames) :
+        NDArray(quantity_name, extents, dimnames, nullptr) {
         // We allocate the array without initializing its elements
         m_data = new T[m_size];
         m_cleanup = [&]() { delete[] m_data; };
     }
 
     template<typename I = std::ptrdiff_t>
-    NDArray(const std::array<I, D>& extents, const std::array<Symbol, D>& dimnames, T* data) :
-        NDArray(std::array<std::ptrdiff_t, D>(extents), dimnames, data) {}
+    NDArray(const Symbol quantity_name, const std::array<I, D>& extents,
+            const std::array<Symbol, D>& dimnames, T* data) :
+        NDArray(quantity_name, std::array<std::ptrdiff_t, D>(extents), dimnames, data) {}
     template<typename I = std::ptrdiff_t>
-    NDArray(const std::array<I, D>& extents, const std::array<Symbol, D>& dimnames) :
-        NDArray(convert_array<std::ptrdiff_t, D>(extents), dimnames) {}
+    NDArray(const Symbol quantity_name, const std::array<I, D>& extents,
+            const std::array<Symbol, D>& dimnames) :
+        NDArray(quantity_name, convert_array<std::ptrdiff_t, D>(extents), dimnames) {}
 
     template<typename I = std::ptrdiff_t>
-    NDArray(std::initializer_list<I> extents, std::initializer_list<Symbol> dimnames) :
-        NDArray(make_array<D>(extents), make_array<D>(dimnames)) {}
+    NDArray(const Symbol quantity_name, std::initializer_list<I> extents,
+            std::initializer_list<Symbol> dimnames) :
+        NDArray(quantity_name, make_array<D>(extents), make_array<D>(dimnames)) {}
     template<typename I = std::ptrdiff_t>
-    NDArray(const std::pair<std::array<Symbol, D>, std::array<I, D>>& dimnames_extents) :
-        NDArray(dimnames_extents.second, dimnames_extents.first) {}
+    NDArray(const Symbol quantity_name,
+            const std::pair<std::array<Symbol, D>, std::array<I, D>>& dimnames_extents) :
+        NDArray(quantity_name, dimnames_extents.second, dimnames_extents.first) {}
     template<typename I = std::ptrdiff_t>
-    NDArray(std::initializer_list<std::pair<Symbol, I>> dimnames_extents) :
-        NDArray(make_arrays_from_pairs<D>(dimnames_extents)) {}
+    NDArray(const Symbol quantity_name,
+            std::initializer_list<std::pair<Symbol, I>> dimnames_extents) :
+        NDArray(quantity_name, make_arrays_from_pairs<D>(dimnames_extents)) {}
 
     virtual ~NDArray() {
         if (m_cleanup)
@@ -207,6 +219,11 @@ public:
     }
     T* data() {
         return m_data;
+    }
+
+    // The (physical) quantity_name
+    Symbol quantity_name() const {
+        return m_quantity_name;
     }
 
     // The array extents (array shape)
@@ -325,6 +342,10 @@ public:
 
     // For GenericNDArray
 
+    Symbol get_quantity_name() const override {
+        return quantity_name();
+    }
+
     DataType get_value_datatype() const override {
         return value_datatype;
     }
@@ -376,7 +397,10 @@ public:
 
 private:
     template<typename ExtentsArray, typename NamesArray>
-    void init(const ExtentsArray& extents, const NamesArray& dimnames, T* data) {
+    void init(const Symbol quantity_name, const ExtentsArray& extents, const NamesArray& dimnames,
+              T* data) {
+        m_quantity_name = quantity_name;
+
         for (std::size_t d = 0; d < D; ++d)
             m_extents.at(d) = extents.at(d);
         for (std::size_t d = 0; d < D; ++d)

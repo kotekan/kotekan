@@ -267,7 +267,7 @@ void gpuSimulateN2kCorr::main_thread() {
 
         /* new style array description */
         output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
-            output_frame_id,
+            output_frame_id, "correlation",
             {nt_outer, _num_local_freq, (_num_elements / 16) * (_num_elements / 16 + 1) / 2, 16, 16,
              2},
             {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});

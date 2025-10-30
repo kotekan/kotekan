@@ -182,14 +182,14 @@ std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID
 
 void testN2kGen::allocate_correlation_frame_desc(Buffer* buf, frameID frame_id) {
     buf->allocate_new_frame_desc(
-        frame_id, kotekan::int32, 6,
+        frame_id, kotekan::int32, "n2k_correlation",
         {num_integrations, num_local_freq, corr_num_blocks, corr_blocksize, corr_blocksize, 2},
         {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
 }
 
 void testN2kGen::allocate_counts_frame_desc(Buffer* buf, frameID frame_id) {
     buf->allocate_new_frame_desc(
-        frame_id, kotekan::int32, 5,
+        frame_id, kotekan::int32, "n2k_counts",
         {num_integrations, num_local_freq, count_num_blocks, count_blocksize, count_blocksize},
         {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
 }
