@@ -223,7 +223,7 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
                         input_plmask_buf->buffer_name, meta_in->get_nfreq(), nf);
 
         // Copy to start
-        *meta_out = *meta_in;
+        meta_out->deepCopy(meta_in);
 
         // Update the changes
         meta_out->set_name("n2k_counts");
