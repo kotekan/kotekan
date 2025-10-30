@@ -153,7 +153,7 @@ void gpuSimulateN2kPLExpand::main_thread() {
         assert(meta_out);
 
         // Start with a copy
-        *meta_out = *meta_in;
+        meta_out->deepCopy(meta_in);
 
         // Update changes
         meta_out->set_name("pl_mask");
