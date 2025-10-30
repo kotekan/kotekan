@@ -52,6 +52,10 @@ add_library(
     bufferDelay.cpp
     BufferSplit.cpp
     InputSubset.cpp
+    BeamformingPhaseUpdate.cpp
+    FloatPhaseUpdate.cpp
+    TCPhaseUpdate.cpp
+    OldPhaseUpdate.cpp
     $<$<BOOL:${Julia_FOUND}>:FEngine.cpp>
     # RFI Pipeline Processes
     rfiVDIF.cpp
