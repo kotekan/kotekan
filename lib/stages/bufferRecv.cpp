@@ -5,6 +5,7 @@
 #include "buffer.hpp"            // for Buffer, buffer_free, buffer_malloc
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "bufferSend.hpp"        // for bufferFrameHeader
+#include "chordMetadata.hpp"     // for chordMetadata
 #include "configTracker.hpp"     // for configTracker
 #include "metadata.hpp"          // for metadataPool
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
@@ -555,6 +556,24 @@ void connInstance::internal_read_callback() {
                 std::shared_ptr<metadataObject> metadata = buf->get_metadata(frame_id);
                 if (metadata)
                     metadata->set_from_bytes((char*)metadata_space, metadata_size);
+
+                // TODO: actuall transfer the NDArray information
+                auto chord = std::dynamic_pointer_cast<chordMetadata>(metadata);
+                if (chord) {
+                    /* new style array description */
+                    std::vector<ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
+                    std::vector<kotekan::Symbol> dimnames(chord->dims);
+                    for (size_t d = 0; d < dimnames.size(); ++d) {
+                        dimnames.at(d) =
+                            std::string(chord->dim_name[d],
+                                        strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
+                    }
+
+                    buf->allocate_new_frame_desc(frame_id, chord->type, chord->get_name(),
+                                                 dimensions, dimnames);
+                    /* test that things are consistent */
+                    chord->check_frame_desc(buf->get_frame_desc(frame_id));
+                }
 
                 buf->mark_frame_full(producer_name, frame_id);
 

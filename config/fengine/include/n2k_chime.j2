@@ -48,7 +48,7 @@ run_n2k_correlation:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         out_buffers:
             host_n2k_correlation_buffer: host_n2k_correlation_buffer
@@ -58,7 +58,7 @@ run_n2k_correlation:
           num_local_freq: num_frequencies
           samples_per_data_set: n2k_samples_per_data_set
           sub_integration_ntime: n2k_sub_integration_ntime
-          voltage_name: voltage
+          voltage_name: xposed_voltage
           rfi_RFImask_name: rfi_RFImask
           n2k_correlation_name: n2k_correlation
         - name: cudaSyncOutput

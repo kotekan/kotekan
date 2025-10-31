@@ -16,7 +16,7 @@ end
 
 # Definitions
 path = "/home/eschnett/src/kotekan/data/fengine_test_pathfinder"
-host = "cx66"
+host = "x0000"
 quantity() = "bb_beams"
 filename(quantity::AbstractString, iter::Integer) = "$(path)/$(host)_$(quantity).$(@sprintf "%08d" iter).h5"
 

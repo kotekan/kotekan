@@ -110,16 +110,19 @@ if(HDF5_FOUND
 endif()
 
 add_executable(test_DataType test_DataType.cpp)
-target_link_libraries(test_DataType kotekan_metadata)
+target_link_libraries(test_DataType kotekan_metadata libexternal)
 
 add_executable(test_Metadata test_Metadata.cpp)
 target_link_libraries(test_Metadata kotekan_metadata)
 
+add_executable(test_metadataObject test_metadataObject.cpp)
+target_link_libraries(test_metadataObject kotekan_metadata kotekan_utils libexternal)
+
 add_executable(test_NDArray test_NDArray.cpp)
-target_link_libraries(test_NDArray kotekan_metadata)
+target_link_libraries(test_NDArray libexternal kotekan_metadata)
 
 add_executable(test_Symbol test_Symbol.cpp)
-target_link_libraries(test_Symbol kotekan_metadata)
+target_link_libraries(test_Symbol libexternal kotekan_metadata)
 
 add_executable(test_timeUtil test_timeUtil.cpp)
 target_link_libraries(test_timeUtil PRIVATE kotekan_utils)
@@ -155,3 +158,6 @@ if(GDAL_FOUND)
                                                          ${GDAL_INCLUDE_DIRS})
     target_include_directories(test_gdalVisWrite PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 endif()
+
+add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)
+target_link_libraries(test_CHORDTelescope kotekan_utils)

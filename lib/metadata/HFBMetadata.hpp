@@ -15,6 +15,9 @@
 
 class HFBMetadata : public metadataObject {
 public:
+    /// deep copy operator
+    void deepCopy(std::shared_ptr<const metadataObject> other) override;
+
     /// Returns the size of objects of this type when serialized into bytes.
     size_t get_serialized_size() override;
 

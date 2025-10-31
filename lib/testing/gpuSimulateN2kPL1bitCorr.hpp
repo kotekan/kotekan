@@ -84,7 +84,7 @@ private:
     Buffer* input_rfimask_buf;
     Buffer* output_buf;
 
-    int32_t _blocksize; // Always equal to 8.
+    static constexpr int32_t _blocksize = 8; // Always equal to 8.
 
     // Config options
     int32_t _num_local_freq;

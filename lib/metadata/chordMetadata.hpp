@@ -2,6 +2,7 @@
 #define CHORD_METADATA
 
 #include "DataType.hpp" // for type_to_string, type_total_bytes, DataType
+#include "NDArray.hpp"
 #include "Telescope.hpp"
 #include "buffer.hpp"         // for Buffer
 #include "kotekanLogging.hpp" // for WARN_NON_OO
@@ -45,6 +46,16 @@ const int CHORD_META_MAX_VIS_SAMPLES = 64;
 class chordMetadata : public metadataObject {
 public:
     chordMetadata();
+    bool operator==(const chordMetadata& other) const;
+
+    /// Helper function to compare data during conversion to NDArray
+    void check_frame_desc(const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) const;
+
+    /// Helper function to set CHORD metadata during conversion to NDArray
+    void set_from_frame_desc(const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc);
+
+    /// copy object
+    void deepCopy(std::shared_ptr<const metadataObject> other) override;
 
     /// Returns the size of objects of this type when serialized into bytes.
     size_t get_serialized_size() override;
@@ -57,20 +68,16 @@ public:
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
 
+    /// serialize to json
+    nlohmann::json to_json() override;
+
     /// controls access to this object
     mutable class almost_copyable_mutex : public std::mutex {
-        // NDArray copies chordMetadata.
-        // Allow this only if currently not locked
+        // chordMetadata::deepCopy copies chordMetadata and locks it, so this must not itself lock
     public:
         almost_copyable_mutex() : std::mutex() {}
-        almost_copyable_mutex(const almost_copyable_mutex& /*other*/) : std::mutex() {
-            // cannot lock a const mutex
-            // std::lock_guard lock_other(other);
-        }
+        almost_copyable_mutex(const almost_copyable_mutex& /*other*/) : std::mutex() {}
         almost_copyable_mutex operator=(const almost_copyable_mutex& /*other*/) {
-            // cannot lock a const mutex
-            // std::lock_guard lock_other(other);
-            std::lock_guard lock_this(*this);
             return *this;
         }
     } lock;
@@ -178,7 +185,10 @@ public:
         return metadata.at(jsonMetadata::BEAM_COORD).template get<beamCoord>();
     }
 
-    // TODO: add set_beam_coord
+    void set_beam_coord(const beamCoord& beam_coord) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::BEAM_COORD] = beam_coord;
+    }
 
     void set_fpga_seq_num(const int64_t fpga_seq_num) {
         std::lock_guard<std::mutex> lock(this->lock);
@@ -469,9 +479,24 @@ public:
         return metadata.at(jsonMetadata::DATASET_ID).template get<dset_id_t>();
     }
 
+    std::string get_string_repr_of_json() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.dump();
+    }
+
 private:
     jsonMetadata::metadata metadata;
+
+    // these are not thread safe
+    chordMetadata& operator=(const chordMetadata&) = default;
+    chordMetadata(const chordMetadata&) = default;
+
+    friend void to_json(nlohmann::json& j, const chordMetadata& m);
+    friend void from_json(const nlohmann::json& j, chordMetadata& m);
 };
+
+void to_json(nlohmann::json& j, const chordMetadata& m);
+void from_json(const nlohmann::json& j, chordMetadata& m);
 
 inline bool metadata_is_chord(Buffer* buf, int) {
     return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "chordMetadata");

@@ -121,6 +121,9 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _meta_time_downsample_factor =
         config.get_default<int>(unique_name, "meta_time_downsample_factor", 1);
 
+    _manual_freq_ids = config.get_default<std::vector<uint32_t>>(unique_name, "manual_freq_ids",
+                                                                 std::vector<uint32_t>());
+
     endpoint = unique_name + "/generate_test_data";
     using namespace std::placeholders;
     restServer::instance().register_post_callback(
@@ -199,17 +202,20 @@ void testDataGen::main_thread() {
             break;
 
         buf->allocate_new_metadata_object(frame_id);
-        get_chord_metadata(buf, frame_id)->set_fpga_seq_num(seq_num);
-
-        gettimeofday(&now, nullptr);
-        get_chord_metadata(buf, frame_id)->set_first_packet_recv_time(now);
-
         std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
+
+        chordmeta->set_fpga_seq_num(seq_num);
+
+        // TODO: Fix this, cannot change from frame to frame (and should not be "now")
+        gettimeofday(&now, nullptr);
+        chordmeta->set_first_packet_recv_time(now);
+
         chordmeta->set_name(_name);
         chordmeta->dims = (int)_array_shape.size();
         for (int d = 0; d < chordmeta->dims; ++d)
             chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
         chordmeta->set_strides_simple();
+        // frame_desc is set only after "type" has been decoded below
 
         assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
         std::vector<int> coarse_freq(_num_freq_in_frame);
@@ -217,11 +223,15 @@ void testDataGen::main_thread() {
         std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
         std::vector<int> time_downsampling_fpga(coarse_freq.size());
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
-            coarse_freq[f] = f;
+            if (_manual_freq_ids.size() > 0)
+                coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
+            else
+                coarse_freq[f] = f;
             freq_upchan_factor[f] = 1;
-            half_fpga_sample0[f] = 0;
+            half_fpga_sample0[f] = _meta_time_downsample_factor - 1;
             time_downsampling_fpga[f] = _meta_time_downsample_factor;
         }
+
         chordmeta->set_coarse_freq(coarse_freq);
         chordmeta->set_freq_upchan_factor(freq_upchan_factor);
         chordmeta->set_half_fpga_sample0(half_fpga_sample0);
@@ -283,6 +293,14 @@ void testDataGen::main_thread() {
             if (chordmeta)
                 chordmeta->type = kotekan::uint1x8;
         }
+
+        // this needs the decoded type
+        /* new style array description */
+        std::vector<ptrdiff_t> extents(_array_shape.begin(), _array_shape.end());
+        std::vector<kotekan::Symbol> dimnames(_dim_name.begin(), _dim_name.end());
+        buf->allocate_new_frame_desc(frame_id, chordmeta->type, _name, extents, dimnames);
+        /* test that things are consistent */
+        chordmeta->check_frame_desc(buf->get_frame_desc(frame_id));
 
         if (type == "onehot") {
             int val = value;
@@ -430,7 +448,8 @@ void testDataGen::main_thread() {
                 frame[j] = temp_output;
             }
         }
-        DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
+        DEBUG("Generated a {:s} test data set in {:s}[{:d}] at seq {:d}", type, buf->buffer_name,
+              frame_id, seq_num);
 
         buf->mark_frame_full(unique_name, frame_id);
 

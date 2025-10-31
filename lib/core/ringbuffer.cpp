@@ -262,32 +262,32 @@ void RingBuffer::finish_write(const std::string& name, [[maybe_unused]] const in
 void RingBuffer::print_full_status() {
 
     // Don't compute a lot of strings if we aren't going to output the result
-    if (get_log_level() < kotekan::logLevel::DEBUG)
+    if (get_log_level() < kotekan::logLevel::DEBUG2)
         return;
 
     std::unique_lock<std::recursive_mutex> lock(mutex);
     static std::recursive_mutex print_mutex;
     std::lock_guard<std::recursive_mutex> print_lock(print_mutex);
-    DEBUG("--------------------- %s ---------------------", buffer_name.c_str());
-    DEBUG("{:<40} : {:13.6f} MB", "size", size / 1.0e+6);
-    DEBUG("{:<40} : {:13.6f} MB", "last_read_tail", last_read_tail / 1.0e+6);
-    DEBUG("{:<40} : {:13.6f} MB", "first_write_head", first_write_head / 1.0e+6);
-    DEBUG("{:<40} : {:13.6f} MB", "available to read",
-          (first_write_head - last_read_tail) / 1.0e+6);
-    DEBUG("{:<40} : {:13.6f} MB", "free space to write",
-          (size - (first_write_head - last_read_tail)) / 1.0e+6);
-    DEBUG("---- Producers ----");
+    DEBUG2("--------------------- %s ---------------------", buffer_name.c_str());
+    DEBUG2("{:<40} : {:13.6f} MB", "size", size / 1.0e+6);
+    DEBUG2("{:<40} : {:13.6f} MB", "last_read_tail", last_read_tail / 1.0e+6);
+    DEBUG2("{:<40} : {:13.6f} MB", "first_write_head", first_write_head / 1.0e+6);
+    DEBUG2("{:<40} : {:13.6f} MB", "available to read",
+           (first_write_head - last_read_tail) / 1.0e+6);
+    DEBUG2("{:<40} : {:13.6f} MB", "free space to write",
+           (size - (first_write_head - last_read_tail)) / 1.0e+6);
+    DEBUG2("---- Producers ----");
     for (auto& it : producers) {
         const auto& name = it.second.name;
-        DEBUG("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),
-              write_heads[name] / 1.0e+6, write_next[name] / 1.0e+6,
-              (write_next[name] - write_heads[name]) / 1.0e+6);
+        DEBUG2("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),
+               write_heads[name] / 1.0e+6, write_next[name] / 1.0e+6,
+               (write_next[name] - write_heads[name]) / 1.0e+6);
     }
-    DEBUG("---- Consumers ----");
+    DEBUG2("---- Consumers ----");
     for (auto& it : consumers) {
         const auto& name = it.second.name;
-        DEBUG("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),
-              read_tails[name] / 1.0e+6, read_heads[name] / 1.0e+6,
-              (read_heads[name] - read_tails[name]) / 1.0e+6);
+        DEBUG2("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),
+               read_tails[name] / 1.0e+6, read_heads[name] / 1.0e+6,
+               (read_heads[name] - read_tails[name]) / 1.0e+6);
     }
 }

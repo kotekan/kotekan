@@ -102,7 +102,7 @@ private:
         "IS_Li1ELi1EE";
 
     // Kernel arguments:
-    enum class args { T_min, T_max, Tbar_min, Tbar_max, Fmin, Fmax, G_U16, E, Ebar, info, count };
+    enum class args { T_min, T_max, Tbar_min, Tbar_max, Fmin, Fmax, G, E, Ebar, info, count };
 
     // How many frequencies we will process
     const int Fmin, Fmax;
@@ -131,33 +131,32 @@ private:
     static constexpr const char* Fmax_quantity = "Fmax";
     static constexpr kotekan::DataType Fmax_type = kotekan::int32;
     //
-    // G_U16: upchan_U16_gain_name
-    static constexpr const char* G_U16_quantity = "G_U16";
-    static constexpr kotekan::DataType G_U16_type = kotekan::float16;
-    enum G_U16_indices {
-        G_U16_index_Fbar,
-        G_U16_rank,
+    // G: upchan_U16_gain_name
+    static constexpr const char* G_quantity = "G";
+    static constexpr kotekan::DataType G_type = kotekan::float16;
+    enum G_indices {
+        G_index_Fbar,
+        G_rank,
     };
-    static constexpr std::array<const char*, G_U16_rank> G_U16_labels = {
+    static constexpr std::array<const char*, G_rank> G_labels = {
         "Fbar",
     };
-    static constexpr std::array<std::ptrdiff_t, G_U16_rank> G_U16_lengths = {
+    static constexpr std::array<std::ptrdiff_t, G_rank> G_lengths = {
         128,
     };
-    static constexpr auto G_U16_calc_stride = [](int dim) {
+    static constexpr auto G_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
-            str *= G_U16_lengths[d];
+            str *= G_lengths[d];
         return str;
     };
-    static constexpr std::array<std::ptrdiff_t, G_U16_rank + 1> G_U16_strides = {
-        G_U16_calc_stride(G_U16_index_Fbar),
-        G_U16_calc_stride(G_U16_rank),
+    static constexpr std::array<std::ptrdiff_t, G_rank + 1> G_strides = {
+        G_calc_stride(G_index_Fbar),
+        G_calc_stride(G_rank),
     };
-    static constexpr std::ptrdiff_t G_U16_length = G_U16_strides[G_U16_rank];
-    static constexpr std::ptrdiff_t G_U16_length_in_bytes =
-        type_total_bytes(G_U16_type) * G_U16_length;
-    static_assert(G_U16_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t G_length = G_strides[G_rank];
+    static constexpr std::ptrdiff_t G_length_in_bytes = type_total_bytes(G_type) * G_length;
+    static_assert(G_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: voltage_name
     static constexpr const char* E_quantity = "E";
@@ -271,13 +270,13 @@ private:
     //
 
     // Kotekan buffer names
-    const std::string G_U16_name;
+    const std::string G_name;
     const std::string E_name;
     const std::string Ebar_name;
     const std::string info_name;
 
     // Buffers
-    NDArrayBuffer<kotekan::GetType_t<G_U16_type>, G_U16_rank> G_U16_buffer;
+    NDArrayBuffer<kotekan::GetType_t<G_type>, G_rank> G_buffer;
     NDArrayRingBuffer<kotekan::GetType_t<E_type>, E_rank> E_buffer;
     NDArrayRingBuffer<kotekan::GetType_t<Ebar_type>, Ebar_rank> Ebar_buffer;
     NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
@@ -298,13 +297,13 @@ cudaUpchannelizer_smallfinder_U16::cudaUpchannelizer_smallfinder_U16(Config& con
                 "Upchannelizer_smallfinder_U16", "Upchannelizer_smallfinder_U16.ptx"),
     Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")),
 
-    G_U16_name(config.get<std::string>(unique_name, "upchan_U16_gain_name")),
+    G_name(config.get<std::string>(unique_name, "upchan_U16_gain_name")),
     E_name(config.get<std::string>(unique_name, "voltage_name")),
     Ebar_name(config.get<std::string>(unique_name, "upchan_U16_voltage_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
-    G_U16_buffer(G_U16_name, G_U16_quantity, reverse(G_U16_lengths), reverse(G_U16_labels), *this,
-                 buffer_type_t::do_once),
+    G_buffer(G_name, G_quantity, reverse(G_lengths), reverse(G_labels), *this,
+             buffer_type_t::do_once),
     E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), *this),
     Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels), *this),
     info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
@@ -319,7 +318,7 @@ cudaUpchannelizer_smallfinder_U16::cudaUpchannelizer_smallfinder_U16(Config& con
         assert(ierr == cudaSuccess);
     }
 
-    G_U16_buffer.register_consumer();
+    G_buffer.register_consumer();
     E_buffer.register_consumer();
     Ebar_buffer.register_producer();
     register_gpu_buffer_user(
@@ -396,12 +395,12 @@ cudaUpchannelizer_smallfinder_U16::execute(cudaPipelineState& /*pipestate*/,
     pre_execute();
     record_start_event();
 
-    void* const G_U16_memory = G_U16_buffer.get_ndarray().data();
+    void* const G_memory = G_buffer.get_ndarray().data();
     void* const E_memory = E_buffer.get_ndarray().data();
     void* const Ebar_memory = Ebar_buffer.get_ndarray().data();
     void* const info_memory = info_buffer.get_ndarray().data();
 
-    G_U16_buffer.check_metadata();
+    G_buffer.check_metadata();
     E_buffer.check_metadata();
     Ebar_buffer.set_metadata(E_buffer.get_metadata());
 
@@ -414,13 +413,13 @@ cudaUpchannelizer_smallfinder_U16::execute(cudaPipelineState& /*pipestate*/,
     std::int32_t Tbar_max_arg;
     std::int32_t Fmin_arg;
     std::int32_t Fmax_arg;
-    array_desc G_U16_arg(G_U16_memory, G_U16_length_in_bytes);
+    array_desc G_arg(G_memory, G_length_in_bytes);
     array_desc E_arg(E_memory, E_length_in_bytes);
     array_desc Ebar_arg(Ebar_memory, Ebar_length_in_bytes);
     array_desc info_arg(info_memory, info_length_in_bytes);
     void* args[] = {
         &exc_arg,  &T_min_arg, &T_max_arg, &Tbar_min_arg, &Tbar_max_arg, &Fmin_arg,
-        &Fmax_arg, &G_U16_arg, &E_arg,     &Ebar_arg,     &info_arg,
+        &Fmax_arg, &G_arg,     &E_arg,     &Ebar_arg,     &info_arg,
     };
 
     // Set E_memory to beginning of input ring buffer

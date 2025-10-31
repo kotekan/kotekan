@@ -70,7 +70,6 @@ class NDArrayBuffer : public kotekan::kotekanLogging {
 
     cudaCommand& cuda_command;
 
-    const std::string quantity;
     kotekan::NDArray<T, D> ndarray;
 
 private:
@@ -92,7 +91,7 @@ private:
     }
 
 public:
-    NDArrayBuffer(const std::string& buffer_name, const std::string& quantity,
+    NDArrayBuffer(const std::string& buffer_name, const std::string& quantity_name,
                   const std::array<std::ptrdiff_t, D>& extents,
                   const std::array<kotekan::Symbol, D>& dimnames, cudaCommand& cuda_command,
                   const buffer_type_t buffer_type = buffer_type_t::standard) :
@@ -104,25 +103,24 @@ public:
         // Buffer
         cuda_command(cuda_command),
         // NDArray
-        quantity(quantity), // e.g. "J"
-        ndarray(extents, dimnames, get_buffer_pointer(extents))
+        ndarray(quantity_name, extents, dimnames, get_buffer_pointer(extents))
     //
     {
         set_log_level(cuda_command.get_log_level());
     }
 
-    NDArrayBuffer(const std::string& buffer_name, const std::string& quantity,
+    NDArrayBuffer(const std::string& buffer_name, const std::string& quantity_name,
                   const std::array<std::ptrdiff_t, D>& extents,
                   const std::array<std::string, D>& dimnames, cudaCommand& cuda_command,
                   const buffer_type_t buffer_type = buffer_type_t::standard) :
-        NDArrayBuffer(buffer_name, quantity, extents, kotekan::strings_to_symbols(dimnames),
+        NDArrayBuffer(buffer_name, quantity_name, extents, kotekan::strings_to_symbols(dimnames),
                       cuda_command, buffer_type) {}
 
-    NDArrayBuffer(const std::string& buffer_name, const std::string& quantity,
+    NDArrayBuffer(const std::string& buffer_name, const std::string& quantity_name,
                   const std::array<std::ptrdiff_t, D>& extents,
                   const std::array<const char*, D>& dimnames, cudaCommand& cuda_command,
                   const buffer_type_t buffer_type = buffer_type_t::standard) :
-        NDArrayBuffer(buffer_name, quantity, extents, kotekan::strings_to_symbols(dimnames),
+        NDArrayBuffer(buffer_name, quantity_name, extents, kotekan::strings_to_symbols(dimnames),
                       cuda_command, buffer_type) {}
 
     virtual ~NDArrayBuffer() {}
@@ -153,10 +151,6 @@ public:
     }
 
     // NDArray:
-
-    std::string get_quantity() const {
-        return quantity;
-    }
 
     const kotekan::NDArray<T, D>& get_ndarray() const {
         return ndarray;
@@ -190,10 +184,18 @@ public:
 
     void check_metadata() const {
         const std::shared_ptr<const chordMetadata> metadata = get_metadata();
-        assert(metadata->get_name() == quantity);
+        if (!(metadata->get_name() == ndarray.quantity_name()))
+            ERROR("buffer name: {:s}, metadata name: {:s}, quantity_name: {:s}", buffer_name,
+                  metadata->get_name(), ndarray.quantity_name());
+        assert(metadata->get_name() == ndarray.quantity_name());
         assert(metadata->type == ndarray.value_datatype);
         assert(metadata->dims == ndarray.rank);
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
+            if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
+                ERROR("buffer name: {:s}, dimension: {:d}, metadata dimension name: {:s}, ndarray "
+                      "dimname: {:s}",
+                      buffer_name, d, metadata->get_dimension_name(d),
+                      std::string(ndarray.dimname(d)));
             assert(metadata->get_dimension_name(d) == ndarray.dimname(d));
             assert(metadata->dim[d] == int(ndarray.extent(d)));
             assert(metadata->stride[d] == ndarray.stride(d));
@@ -206,8 +208,8 @@ public:
             cuda_command.get_device().create_gpu_memory_array_metadata(
                 buffer_name_device, get_instance_num(), other_metadata->parent_pool);
         const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
-        *metadata = *other_metadata;
-        metadata->set_name(quantity);
+        metadata->deepCopy(other_metadata);
+        metadata->set_name(ndarray.quantity_name());
         metadata->type = ndarray.value_datatype;
         metadata->dims = ndarray.rank;
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
@@ -256,7 +258,7 @@ public:
 
     std::ostream& output(std::ostream& os) const {
         return os << "NDArrayBuffer<" << ndarray.value_datatype << "," << ndarray.rank << ">("
-                  << buffer_name << "," << quantity << ")";
+                  << buffer_name << "," << ndarray.quantity_name() << ")";
     }
 
     friend std::ostream& operator<<(std::ostream& os, const NDArrayBuffer& b) {

@@ -28,12 +28,74 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _sub_integration_ntime = config.get<int>(unique_name, "sub_integration_ntime");
 
+    // Check parameter compatibility
+    if (_num_elements <= 0) {
+        FATAL_ERROR("num_elements ({:d}) is not positive.", _num_elements);
+        std::abort();
+    }
+    if (_num_local_freq <= 0) {
+        FATAL_ERROR("num_local_freq ({:d}) is not positive.", _num_local_freq);
+        std::abort();
+    }
+    if (_samples_per_data_set <= 0) {
+        FATAL_ERROR("samples_per_data_set ({:d}) is not positive.", _samples_per_data_set);
+        std::abort();
+    }
+    if (_sub_integration_ntime <= 0) {
+        FATAL_ERROR("sub_integration_ntime ({:d}) is not positive.", _sub_integration_ntime);
+        std::abort();
+    }
+    if (_samples_per_data_set % _sub_integration_ntime != 0) {
+        FATAL_ERROR(
+            "samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d}).",
+            _samples_per_data_set, _sub_integration_ntime);
+        std::abort();
+    }
+    if (_samples_per_data_set % 1024 != 0) {
+        FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of 1024.",
+                    _samples_per_data_set);
+        std::abort();
+    }
+    if (_num_elements % _corr_blocksize != 0) {
+        FATAL_ERROR("num_elements ({:d}) is not a multiple of _corr_blocksize ({:d}).",
+                    _num_elements, _corr_blocksize);
+        std::abort();
+    }
+
     input_buf = get_buffer("network_in_buf");
     input_buf->register_consumer(unique_name);
     rfimask_buf = get_buffer("rfimask_in_buf");
     rfimask_buf->register_consumer(unique_name);
     output_buf = get_buffer("corr_out_buf");
     output_buf->register_producer(unique_name);
+
+    // Check buffer frame sizes
+    size_t input_voltage_frame_size =
+        sizeof(char) * _num_elements * _num_local_freq * _samples_per_data_set;
+    size_t rfimask_frame_size = _num_local_freq * _samples_per_data_set / 8;
+
+    size_t num_blocks_lin = _num_elements / _corr_blocksize;
+    size_t num_blocks = (num_blocks_lin * (num_blocks_lin + 1)) / 2;
+    size_t num_correlations = _samples_per_data_set / _sub_integration_ntime;
+
+    size_t corr_frame_size = 2 * sizeof(int) * _corr_blocksize * _corr_blocksize * num_blocks
+                             * _num_local_freq * num_correlations;
+
+    if (input_buf->frame_size != input_voltage_frame_size) {
+        FATAL_ERROR("network_in_buf ({:s}) has frame size {:d}, expected {:d}",
+                    input_buf->buffer_name, input_buf->frame_size, input_voltage_frame_size);
+        std::abort();
+    }
+    if (rfimask_buf->frame_size != rfimask_frame_size) {
+        FATAL_ERROR("rfimask_in_buf ({:s}) has frame size {:d}, expected {:d}",
+                    rfimask_buf->buffer_name, rfimask_buf->frame_size, rfimask_frame_size);
+        std::abort();
+    }
+    if (output_buf->frame_size != corr_frame_size) {
+        FATAL_ERROR("corr_out_buf ({:s}) has frame size {:d}, expected {:d}",
+                    output_buf->buffer_name, output_buf->frame_size, corr_frame_size);
+        std::abort();
+    }
 }
 
 gpuSimulateN2kCorr::~gpuSimulateN2kCorr() {}
@@ -64,7 +126,10 @@ void gpuSimulateN2kCorr::main_thread() {
         int nt_inner = _sub_integration_ntime;
         int nt_outer = _samples_per_data_set / nt_inner;
 
-        int fstride = 128 * _num_elements / 16 * (_num_elements / 16 + 1);
+        int num_blocks_lin = _num_elements / _corr_blocksize;
+        int num_blocks = (num_blocks_lin * (num_blocks_lin + 1)) / 2;
+
+        int fstride = _corr_blocksize * _corr_blocksize * num_blocks;
         int tstride = _num_local_freq * fstride;
 
         INFO("Running stage with nt_outer={:d}, nt_inner={:d}, _num_local_freq={:d}, "
@@ -74,19 +139,19 @@ void gpuSimulateN2kCorr::main_thread() {
         for (int tout = 0; tout < nt_outer; ++tout) {
             for (int f = 0; f < _num_local_freq; ++f) {
                 // loop through blocks
-                for (int jhi = 0; jhi < _num_elements / 16; jhi++) {
-                    for (int ihi = jhi; ihi < _num_elements / 16; ihi++) {
-                        for (int jlo = 0; jlo < 16; jlo++) {
-                            for (int ilo = 0; ilo < 16; ilo++) {
+                for (int jhi = 0; jhi < _num_elements / _corr_blocksize; jhi++) {
+                    for (int ihi = jhi; ihi < _num_elements / _corr_blocksize; ihi++) {
+                        for (int jlo = 0; jlo < _corr_blocksize; jlo++) {
+                            for (int ilo = 0; ilo < _corr_blocksize; ilo++) {
                                 int real = 0;
                                 int imag = 0;
 
                                 for (int tin = 0; tin < nt_inner; ++tin) {
                                     int t = tout * nt_inner + tin;
                                     int ix = (t * _num_local_freq + f) * _num_elements
-                                             + (16 * ihi + ilo);
+                                             + (_corr_blocksize * ihi + ilo);
                                     int iy = (t * _num_local_freq + f) * _num_elements
-                                             + (16 * jhi + jlo);
+                                             + (_corr_blocksize * jhi + jlo);
 
                                     // Extract the indices for the RFI mask
                                     // 0x3FF extracts the low 10 bits for the
@@ -125,7 +190,7 @@ void gpuSimulateN2kCorr::main_thread() {
 
                                 // clang-format off
                                 int o = 2*( tout * tstride + f * fstride + 256*(ihi*(ihi+1)/2 + jhi)
-                                        + 16*ilo + jlo );
+                                        + _corr_blocksize*ilo + jlo );
                                 output[o + 0] = +real;
                                 output[o + 1] = +imag;
                                 // clang-format on
@@ -176,7 +241,18 @@ void gpuSimulateN2kCorr::main_thread() {
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
         assert(meta_out);
 
-        meta_out->set_name("cpusim_correlation");
+        // Check input metadata describes expected size.
+        if (meta_in->get_nfreq() != _num_local_freq) {
+            FATAL_ERROR("Buffer {:s} metadata has nfreq {:d}, expected num_local_freq ({:d}).",
+                        input_buf->buffer_name, meta_in->get_nfreq(), _num_local_freq);
+        }
+        assert(meta_in->get_nfreq() == _num_local_freq);
+
+        // Start out with a copy
+        meta_out->deepCopy(meta_in);
+
+        // Assign changes
+        meta_out->set_name("n2k_correlation");
         meta_out->type = kotekan::int32;
         meta_out->dims = 6;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
@@ -188,20 +264,38 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->set_array_dimension(4, 16, "DPlo2");
         meta_out->set_array_dimension(5, 2, "C");
         meta_out->set_strides_simple();
-        std::vector<int> coarse_freq(_num_local_freq);
-        std::vector<int> time_downsampling_fpga(_num_local_freq);
-        const std::vector<int> time_downsampling_fpga_in = meta_in->get_time_downsampling_fpga();
-        for (int f = 0; f < _num_local_freq; f++) {
-            coarse_freq[f] = f; // TODO: set some actual frequency indices and a stream_id
-            time_downsampling_fpga[f] = time_downsampling_fpga_in[f] * _sub_integration_ntime;
-        }
-        meta_out->set_coarse_freq(coarse_freq);
-        meta_out->set_time_downsampling_fpga(time_downsampling_fpga);
-        assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
+
+        /* new style array description */
+        output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
+            output_frame_id, "correlation",
+            {nt_outer, _num_local_freq, (_num_elements / 16) * (_num_elements / 16 + 1) / 2, 16, 16,
+             2},
+            {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
+        /* test that things are consistent */
+        meta_out->check_frame_desc(output_buf->get_frame_desc(output_frame_id));
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->set_sample0_offset(meta_in->get_sample0_offset());
+        meta_out->set_sample0_offset(meta_in->get_sample0_offset() / _sub_integration_ntime);
         meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
+
+        std::vector<int> coarse_freq(_num_local_freq);
+        std::vector<int> time_downsampling_fpga(_num_local_freq);
+        std::vector<int64_t> half_fpga_sample0(_num_local_freq);
+        const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
+        const std::vector<int> time_downsampling_fpga_in = meta_in->get_time_downsampling_fpga();
+        const std::vector<int64_t> half_fpga_sample0_in = meta_in->get_half_fpga_sample0();
+
+        for (int f = 0; f < _num_local_freq; f++) {
+            coarse_freq[f] = coarse_freq_in[f];
+            time_downsampling_fpga[f] = time_downsampling_fpga_in[f] * _sub_integration_ntime;
+            half_fpga_sample0[f] =
+                half_fpga_sample0_in[f] + time_downsampling_fpga[f] - time_downsampling_fpga_in[f];
+        }
+
+        meta_out->set_coarse_freq(coarse_freq);
+        meta_out->set_time_downsampling_fpga(time_downsampling_fpga);
+        meta_out->set_half_fpga_sample0(half_fpga_sample0);
+        assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
 
         input_buf->mark_frame_empty(unique_name, input_frame_id);
         rfimask_buf->mark_frame_empty(unique_name, rfimask_frame_id);

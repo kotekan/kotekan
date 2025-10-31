@@ -104,33 +104,32 @@ public:
      * @param full_path The full path, including file name, for the file.
      * @param frame uint8_t pointer to the frame data
      * @param meta shared pointer to the chordMetadata object for this frame.
+     * @param frame_desc shared pointer to the NDarray description for this frame.
      */
     void write_chord(const std::string& full_path, const std::uint8_t* const frame,
-                     const std::shared_ptr<const chordMetadata> meta) {
+                     const std::shared_ptr<const chordMetadata>& meta,
+                     const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) {
 
         // Create HDF5 file
         File file(full_path, File::Truncate);
 
         // Choose dataspace
-        const DataSpace space(meta->dim, meta->dim + meta->dims);
+        const auto extents = frame_desc->get_extents();
+        const DataSpace space(extents.begin(), extents.end());
         {
-            [[maybe_unused]] std::ptrdiff_t npoints = 1;
-            for (int d = meta->dims - 1; d >= 0; --d) {
-                assert(meta->stride[d] == npoints);
-                npoints *= meta->dim[d];
-            }
+            [[maybe_unused]] std::ptrdiff_t npoints = frame_desc->get_size();
             assert(std::ptrdiff_t(space.getElementCount()) == npoints);
             assert(meta->offset == 0);
         }
-        assert(std::ptrdiff_t(space.getNumberDimensions()) == meta->dims);
+        assert(space.getNumberDimensions() == frame_desc->get_rank());
 
         // Choose datatype
-        const DataType type = chord2hdf5(meta->type);
+        const DataType type = chord2hdf5(frame_desc->get_value_datatype());
 
         RawPropertyList<PropertyType::DATASET_CREATE> props;
 
         // Enable chunking
-        std::vector<hsize_t> chunk_dims(meta->dim, meta->dim + meta->dims);
+        std::vector<hsize_t> chunk_dims(extents.begin(), extents.end());
         if (!chunk_dims.empty()) {
             // Choose chunk size
             std::size_t npoints_lo = 1;
@@ -168,10 +167,9 @@ public:
 
         dataset.createAttribute("chord_metadata_version", chord_metadata_version);
         dataset.createAttribute("name", meta->get_name());
-        dataset.createAttribute("type", type_to_string(meta->type));
-        std::vector<std::string> dim_names;
-        for (int d = 0; d < meta->dims; ++d)
-            dim_names.push_back(meta->get_dimension_name(d));
+        dataset.createAttribute("type", kotekan::type_to_string(frame_desc->get_value_datatype()));
+        const auto dimnames = frame_desc->get_dimnames();
+        std::vector<std::string> dim_names(dimnames.begin(), dimnames.end());
         dataset.createAttribute("dim_names", dim_names);
 
         if (meta->has_fpga_seq_num())
@@ -312,14 +310,15 @@ public:
         RawPropertyList<PropertyType::DATASET_CREATE> props;
 
         std::vector<hsize_t> chunk_dims;
+
         bool dims_nonzero = true;
         for (size_t d = 0; d < dims.size(); d++) {
             chunk_dims.push_back((hsize_t)dims[d]);
             if (dims[d] == 0)
                 dims_nonzero = false;
         }
-        if (dims_nonzero) {
 
+        if (dims_nonzero) {
             // Enable chunking
             if (!chunk_dims.empty()) {
                 // Choose chunk size
@@ -417,7 +416,10 @@ public:
                 if (metadata_is_chord(mc)) {
                     assert(metadata_is_chord(mc));
                     const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
-                    write_chord(full_path, frame, meta);
+                    const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
+                        buffer->get_frame_desc(frame_id);
+                    assert(frame_desc);
+                    write_chord(full_path, frame, meta, frame_desc);
                 } else if (metadata_is_N2(mc)) {
                     assert(metadata_is_N2(mc));
                     N2FrameView frame(buffer, frame_id);

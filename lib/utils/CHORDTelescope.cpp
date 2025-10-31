@@ -231,8 +231,11 @@ void CHORDTelescope::send_time0_ns(connectionInstance& conn) {
 }
 
 timespec CHORDTelescope::to_time(uint64_t seq) const {
-    auto time_ns = time0_ns + seq * dt_ns;
-    return nanosec_i64_to_timespec(time_ns);
+    return nanosec_i64_to_timespec(to_time_ns(seq));
+}
+
+int64_t CHORDTelescope::to_time_ns(uint64_t seq) const {
+    return time0_ns + seq * dt_ns;
 }
 
 uint64_t CHORDTelescope::to_seq(timespec time) const {
@@ -667,7 +670,7 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
 
 // TODO: This is a stub to satisfy inheritance and must be updated.
 double CHORDTelescope::to_freq(freq_id_t freq_id) const {
-    return freq_id * (GIGA / dt_ns);
+    return freq_id * (GIGA / (double)dt_ns);
 }
 
 uint32_t CHORDTelescope::num_freq_per_stream() const {
@@ -711,4 +714,24 @@ bool EOP_comp_time(const struct EOP& eop1, const struct EOP& eop2) {
 
 bool EOP_comp_ut1(const struct EOP& eop1, const struct EOP& eop2) {
     return eop1.t_ut1 < eop2.t_ut1;
+}
+
+void to_json(nlohmann::json& j, const EOP& m) {
+    assert(j.empty());
+
+    j.emplace("t_inst", m.t_inst);                 // Instrument time, nanoseconds, UNIX epoch.
+    j.emplace("t_ut1", m.t_ut1);                   // UT1 time, nanoseconds, J2000(UT1) epoch.
+    j.emplace("delta_UT1_inst", m.delta_UT1_inst); // Diff between UT1 and Instrument time, seconds
+    j.emplace("ERA_deg", m.ERA_deg);               // Earth Rotation Angle, degrees
+    j.emplace("xp_as", m.xp_as);                   // Polar Motion x', in arcseconds.
+    j.emplace("yp_as", m.yp_as);                   // Polar Motion y', in arcseconds.
+}
+
+void from_json(const nlohmann::json& j, EOP& m) {
+    m.t_inst = j.at("t_inst");                 // Instrument time, nanoseconds, UNIX epoch.
+    m.t_ut1 = j.at("t_ut1");                   // UT1 time, nanoseconds, J2000(UT1) epoch.
+    m.delta_UT1_inst = j.at("delta_UT1_inst"); // Diff between UT1 and Instrument time, seconds
+    m.ERA_deg = j.at("ERA_deg");               // Earth Rotation Angle, degrees
+    m.xp_as = j.at("xp_as");                   // Polar Motion x', in arcseconds.
+    m.yp_as = j.at("yp_as");                   // Polar Motion y', in arcseconds.
 }

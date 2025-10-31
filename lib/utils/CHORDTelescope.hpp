@@ -29,6 +29,9 @@ struct EOP {
     double yp_as;          // Polar Motion y', in arcseconds.
 };
 
+void to_json(nlohmann::json& j, const EOP& m);
+void from_json(const nlohmann::json& j, EOP& m);
+
 // A null (all 0) struct EOP;
 const static struct EOP eop_null = {
     .t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0.0, .ERA_deg = 0.0, .xp_as = 0.0, .yp_as = 0.0};
@@ -93,6 +96,12 @@ public:
     timespec to_time(uint64_t seq) const override;
     uint64_t to_seq(timespec time) const override;
     uint64_t seq_length_nsec() const override;
+
+    /**
+     * @brief   Return the time corresponding to the given fpga sequence number as an int64_t.
+     *          Uses the epoch of time0_ns.
+     */
+    int64_t to_time_ns(uint64_t seq) const;
 
     /**
      * @brief   Return the longitude of the instrument.
@@ -180,7 +189,7 @@ public:
                                                     const struct EOP& eop) const;
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the
-     *          phase center), in Dish coordinates (x is altitude axis,
+     *          phase center), in Dish coordinates (x is altitude axis (~East),
      *          y is ~North, z is altitude = 90deg (~up).
      **/
     std::array<double, 3> get_pointing_vec_in_dish_coords() const;
