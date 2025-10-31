@@ -8,6 +8,7 @@ add_library(
     fullPacketDump.cpp
     pulsarPostProcess.cpp
     ReadGain.cpp
+    OldReadGain.cpp
     nDiskFileWrite.cpp
     nDiskFileRead.cpp
     networkPowerStream.cpp
