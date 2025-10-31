@@ -396,6 +396,8 @@ protected:
     bool gps_enabled = false;
     uint64_t time0_ns = 0;
     uint64_t dt_ns;
+    uint8_t ny_zone;
+    uint64_t nfreq_total;
 
     // Earth Orientation Parameters
     mutable std::mutex _eop_lock;

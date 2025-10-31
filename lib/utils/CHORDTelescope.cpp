@@ -50,7 +50,9 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
 
     double sampling_rate = config.get_default<double>(path, "sampling_rate_Hz", 3.2e9);
     uint64_t fft_length = config.get_default<uint64_t>(path, "fft_length", 16384);
+    ny_zone = config.get_default<uint8_t>(path, "nyquist_zone");
     dt_ns = (GIGA * fft_length) / sampling_rate;
+    nfreq_total = fft_length / 2;
 
     _inst_long_deg = config.get<double>(path, "inst_long_deg");
     _inst_lat_deg = config.get<double>(path, "inst_lat_deg");
@@ -670,33 +672,41 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
     return eop;
 }
 
-// TODO: This is a stub to satisfy inheritance and must be updated.
-freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
-    return 0;
-}
-
-// TODO: This is a stub to satisfy inheritance and must be updated.
+// Get the frequency in MHz corresponding to the given freq_id.
 double CHORDTelescope::to_freq_MHz(freq_id_t freq_id) const {
     return freq_id * (1e3 / (double)dt_ns);
 }
 
-uint32_t CHORDTelescope::num_freq_per_stream() const {
-    // TODO: This is a stub to satisfy inheritance and must be updated.
-    return 0;
-}
-
-// TODO: This is a stub to satisfy inheritance and must be updated.
-uint32_t CHORDTelescope::num_freq() const {
-    return 0;
-}
-
-// TODO: This is a stub to satisfy inheritance and must be updated.
+// TODO: This is a stub to satisfy in
 double CHORDTelescope::freq_width_MHz(freq_id_t) const {
     return 0;
 }
 
-// TODO: This is a stub to satisfy inheritance and must be updated.
+// Return the configured Nyquist Zone
 uint8_t CHORDTelescope::nyquist_zone() const {
+    return ny_zone;
+}
+
+// Return the total number of frequency channels
+uint32_t CHORDTelescope::num_freq() const {
+    return nfreq_total;
+}
+
+// Stream logic has been moved to the packet capture code in dpdk
+// This stub remains to satisfy inheritance and will likely be removed
+// in the future, it will abort if called.
+freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
+    FATAL_ERROR("CHORDTelesope does not support to_freq_id(stream_t)");
+    std::abort();
+    return 0;
+}
+
+// Stream logic has been moved to the packet capture code in dpdk
+// This stub remains to satisfy inheritance and will likely be removed
+// in the future, it will abort if called.
+uint32_t CHORDTelescope::num_freq_per_stream() const {
+    FATAL_ERROR("CHORDTelesope does not support num_freq_per_stream()");
+    std::abort();
     return 0;
 }
 
