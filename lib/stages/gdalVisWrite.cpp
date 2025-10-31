@@ -4,6 +4,8 @@
 #include "gdalFiles.hpp"
 #include "util.h" // for mkdir_p
 
+#include "json.hpp"
+
 #include <N2FrameView.hpp>
 #include <N2Metadata.hpp>
 #include <Stage.hpp>
@@ -11,6 +13,7 @@
 #include <cassert>
 #include <chordMetadata.hpp>
 #include <complex>
+#include <configTracker.hpp>
 #include <cpl_vsi.h>
 #include <cstdint>
 #include <cstring>
@@ -126,35 +129,49 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
             "num_elements", std::vector<GUInt64>{},
             GDALExtendedDataType::Create(get_gdal_datatype(meta->num_elements)));
         success = num_elements->Write(&meta->num_elements, sizeof meta->num_elements);
-        assert(success);
+        if (!success)
+            ERROR("Failed to write num_elements attribute to dataset {}",
+                  dataset->GetDescription());
 
         const auto num_prod = root_group->CreateAttribute(
             "num_prod", std::vector<GUInt64>{},
             GDALExtendedDataType::Create(get_gdal_datatype(meta->num_prod)));
         success = num_prod->Write(&meta->num_prod, sizeof meta->num_prod);
-        assert(success);
+        if (!success)
+            ERROR("Failed to write num_prod attribute to dataset {}", dataset->GetDescription());
 
         const auto num_ev = root_group->CreateAttribute(
             "num_ev", std::vector<GUInt64>{},
             GDALExtendedDataType::Create(get_gdal_datatype(meta->num_ev)));
         success = num_ev->Write(&meta->num_ev, sizeof meta->num_ev);
-        assert(success);
+        if (!success)
+            ERROR("Failed to write num_ev attribute to dataset {}", dataset->GetDescription());
 
         const auto num_freq = root_group->CreateAttribute(
             "num_freq", std::vector<GUInt64>{},
             GDALExtendedDataType::Create(get_gdal_datatype(meta->nfreq)));
         success = num_freq->Write(&meta->nfreq, sizeof meta->nfreq);
-        assert(success);
+        if (!success)
+            ERROR("Failed to write num_freq attribute to dataset {}", dataset->GetDescription());
 
         const auto frame_length_fpga_ticks = root_group->CreateAttribute(
             "frame_length_fpga_ticks", std::vector<GUInt64>{},
             GDALExtendedDataType::Create(get_gdal_datatype(meta->frame_length_fpga_ticks)));
         success = frame_length_fpga_ticks->Write(&meta->frame_length_fpga_ticks,
                                                  sizeof meta->frame_length_fpga_ticks);
-        assert(success);
+        if (!success)
+            ERROR("Failed to write frame_length_fpga_ticks attribute to dataset {}",
+                  dataset->GetDescription());
 
-        // TODO: add config data, etc that *don't vary with time* as attributes.
-        // Need to add time-varying data/metadata/data derivatives in arrays.
+        // Add configTracker JSON as attribute
+        const auto config_attr = root_group->CreateAttribute(
+            "config_json", std::vector<GUInt64>{}, GDALExtendedDataType::Create(GDT_Byte));
+        const nlohmann::json config_json = kotekan::ConfigTracker::instance().getAllConfigsAsJson();
+        success = config_attr->Write(config_json.dump().data(), config_json.dump().size());
+        if (!success)
+            ERROR("Failed to write config_json attribute to dataset {}", dataset->GetDescription());
+
+        // TODO: add any other data that *doesn't vary with time* as an attribute
     }
 
     // GDAL Dimensions
@@ -180,6 +197,8 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
         array_options.push_back(bbuf.str());
     }
     const auto array_options_c = convert_to_cstring_list(array_options);
+
+    // TODO: add any additional time-varying data/metadata/data-derivatives in arrays.
 
     // vis and weights: (freqs, products, frames)
     {
