@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief read in new gain file for FRB/Tracking beamformer when available
- *  - ReadGain : public kotekan::Stage
+ *  - OldReadGain : public kotekan::Stage
  */
 
 #ifndef READ_GAIN
@@ -28,7 +28,7 @@ using std::queue;
 using std::vector;
 
 /**
- * @class ReadGain
+ * @class OldReadGain
  * @brief read in new gain files for FRB/Tracking beamformer when available
  *
  * @par Buffers
@@ -62,14 +62,14 @@ using std::vector;
  * @author Cherry Ng
  *
  */
-class ReadGain : public kotekan::Stage {
+class OldReadGain : public kotekan::Stage {
 public:
     /// Constructor.
-    ReadGain(kotekan::Config& config_, const std::string& unique_name,
-             kotekan::bufferContainer& buffer_container);
+    OldReadGain(kotekan::Config& config_, const std::string& unique_name,
+                kotekan::bufferContainer& buffer_container);
 
     /// Destructor.
-    ~ReadGain();
+    ~OldReadGain();
 
     void main_thread() override;
 

@@ -1,4 +1,4 @@
-#include "ReadGain.hpp"
+#include "OldReadGain.hpp"
 
 #include "Config.hpp"         // for Config
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
@@ -34,7 +34,7 @@ using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
-REGISTER_KOTEKAN_STAGE(ReadGain);
+REGISTER_KOTEKAN_STAGE(OldReadGain);
 
 // clang-format off
 
@@ -47,9 +47,9 @@ REGISTER_KOTEKAN_STAGE(ReadGain);
 //
 // clang-format on
 
-ReadGain::ReadGain(Config& config, const std::string& unique_name,
-                   bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&ReadGain::main_thread, this)),
+OldReadGain::OldReadGain(Config& config, const std::string& unique_name,
+                         bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&OldReadGain::main_thread, this)),
     gains_last_update_success_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_gains_last_update_success", unique_name, {"type"})),
     gains_last_update_timestamp_metric(kotekan::prometheus::Metrics::instance().add_gauge(
@@ -84,7 +84,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     // Initial values will be set by the call back functions below on startup
     tracking_beam_gains = (float*)malloc(gain_tracking_buf->frame_size);
     if (tracking_beam_gains == nullptr) {
-        throw std::runtime_error("Could not allocate memory in ReadGain for tracking gains");
+        throw std::runtime_error("Could not allocate memory in OldReadGain for tracking gains");
     }
 
     using namespace std::placeholders;
@@ -94,7 +94,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
         config.get_default<std::string>(unique_name, "updatable_config/gain_frb", "");
     if (gainfrb.length() > 0)
         configUpdater::instance().subscribe(
-            gainfrb, std::bind(&ReadGain::update_gains_frb_callback, this, _1));
+            gainfrb, std::bind(&OldReadGain::update_gains_frb_callback, this, _1));
 
     // Listen for gain updates Tracking Beamformer
     using namespace std::placeholders;
@@ -108,12 +108,12 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     }
 }
 
-ReadGain::~ReadGain() {
+OldReadGain::~OldReadGain() {
     if (tracking_beam_gains != nullptr)
         free(tracking_beam_gains);
 }
 
-bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
+bool OldReadGain::update_gains_frb_callback(nlohmann::json& json) {
     if (update_gains_frb) {
         WARN("[FRB] cannot handle two back-to-back gain updates, rejecting the latter");
         return true;
@@ -133,7 +133,7 @@ bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
     return true;
 }
 
-bool ReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_t beam_id) {
+bool OldReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_t beam_id) {
     {
         std::lock_guard<std::mutex> lock(mux);
         try {
@@ -152,7 +152,7 @@ bool ReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_
     return true;
 }
 
-void ReadGain::read_gain_frb() {
+void OldReadGain::read_gain_frb() {
     float* out_frame_frb =
         (float*)wait_for_empty_frame(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
     if (out_frame_frb == nullptr) {
@@ -200,7 +200,7 @@ void ReadGain::read_gain_frb() {
     gain_frb_buf_id = (gain_frb_buf_id + 1) % gain_frb_buf->num_frames;
 }
 
-void ReadGain::read_gain_tracking() {
+void OldReadGain::read_gain_tracking() {
     float* out_frame_tracking =
         (float*)wait_for_empty_frame(gain_tracking_buf, unique_name.c_str(), gain_tracking_buf_id);
     if (out_frame_tracking == nullptr) {
@@ -265,7 +265,7 @@ void ReadGain::read_gain_tracking() {
     gain_tracking_buf_id = (gain_tracking_buf_id + 1) % gain_tracking_buf->num_frames;
 }
 
-void ReadGain::main_thread() {
+void OldReadGain::main_thread() {
 
     uint8_t* frame =
         wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
