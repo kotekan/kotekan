@@ -150,10 +150,12 @@ public:
             std::vector<size_t> count_v = {num_freq, num_prod, nt};
             bool ok = vis_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, c32Type,
                                        reinterpret_cast<const void*>(vis.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write vis_array to dataset {}", partial_path);
             ok = weights_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, f32Type,
                                       reinterpret_cast<const void*>(vis_weight.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write weights_array to dataset {}", partial_path);
         }
 
         // eval: (freqs, ev, nt)
@@ -162,7 +164,8 @@ public:
             std::vector<size_t> count_e = {num_freq, num_ev, nt};
             bool ok = eval_array->Write(start_e.data(), count_e.data(), nullptr, nullptr, f32Type,
                                         reinterpret_cast<const void*>(eval.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write eval_array to dataset {}", partial_path);
         }
 
         // evec: (freqs, ev, inputs, nt)
@@ -171,7 +174,8 @@ public:
             std::vector<size_t> count_ev = {num_freq, num_ev, num_input, nt};
             bool ok = evec_array->Write(start_ev.data(), count_ev.data(), nullptr, nullptr, c32Type,
                                         reinterpret_cast<const void*>(evec.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write evec_array to dataset {}", partial_path);
         }
 
         // erms: (freqs, nt); gain/flags: (freqs, inputs, nt); frac_* and counts: (freqs, nt)
@@ -180,32 +184,39 @@ public:
             std::vector<size_t> count_et = {num_freq, nt};
             bool ok = erms_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
                                         reinterpret_cast<const void*>(erms.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write erms_array to dataset {}", partial_path);
 
             std::vector<GUInt64> start_g = {0, 0, 0};
             std::vector<size_t> count_g = {num_freq, num_input, nt};
             ok = gain_array->Write(start_g.data(), count_g.data(), nullptr, nullptr, c32Type,
                                    reinterpret_cast<const void*>(gain.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write gain_array to dataset {}", partial_path);
             ok = flags_array->Write(start_g.data(), count_g.data(), nullptr, nullptr, f32Type,
                                     reinterpret_cast<const void*>(flags.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write flags_array to dataset {}", partial_path);
 
             ok =
                 frac_lost_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
                                        reinterpret_cast<const void*>(frac_lost.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write frac_lost_array to dataset {}", partial_path);
             ok = frac_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
                                        reinterpret_cast<const void*>(frac_rfi.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write frac_rfi_array to dataset {}", partial_path);
             ok = n_valid_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
                                       reinterpret_cast<const void*>(n_valid_fpga_ticks.data()),
                                       nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write n_valid_array to dataset {}", partial_path);
             ok = n_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
                                     reinterpret_cast<const void*>(n_rfi_fpga_ticks.data()), nullptr,
                                     0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write n_rfi_array to dataset {}", partial_path);
         }
 
         // per-time arrays: (:)
@@ -215,11 +226,13 @@ public:
             bool ok = fpga_start_tick_array->Write(
                 start.data(), count.data(), nullptr, nullptr, u64Type,
                 reinterpret_cast<const void*>(fpga_start_tick.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write fpga_start_tick_array to dataset {}", partial_path);
             ok = frame_start_time_ns_array->Write(
                 start.data(), count.data(), nullptr, nullptr, u64Type,
                 reinterpret_cast<const void*>(frame_start_time_ns.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write frame_start_time_ns_array to dataset {}", partial_path);
             // Write frame_length_fpga_ticks across full file dimension (constant per file)
             std::vector<GUInt64> start_full = {0};
             std::vector<size_t> count_full = {num_file_t};
@@ -227,10 +240,12 @@ public:
             ok = frame_length_fpga_ticks_array->Write(
                 start_full.data(), count_full.data(), nullptr, nullptr, u64Type,
                 reinterpret_cast<const void*>(flft.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write frame_length_fpga_ticks_array to dataset {}", partial_path);
             ok = era_deg_array->Write(start.data(), count.data(), nullptr, nullptr, f64Type,
                                       reinterpret_cast<const void*>(era_deg.data()), nullptr, 0);
-            assert(ok);
+            if(!ok)
+                ERROR("Failed to write era_deg_array to dataset {}", partial_path);
         }
 
         return true;
