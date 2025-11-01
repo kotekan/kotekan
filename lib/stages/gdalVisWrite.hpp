@@ -384,11 +384,11 @@ public:
  * @brief Buffered-transpose writer: buffers sequential time frames and writes GDAL Zarr files.
  *
  * This stage groups frames into UTC-midnight-aligned windows of length
- * `window_seconds`, buffers a complete (num_freq * file_nt) block per output file in
+ * `file_seconds`, buffers a complete (num_freq * file_nt) block per output file in
  * memory (via gdalVisFileData), and when the block is full, writes all arrays to
  * disk in large contiguous slabs. If the block is not full, it is nevertheless finalized
- * after `late_frame_grace_seconds` of inactivity once frames for later windows begin to
- * arrive. Flushes always write the full time range for the window; any missing frames
+ * after `late_frame_grace_seconds` of inactivity once frames for later file windows begin to
+ * arrive. Flushes always write the full time range for the file; any missing frames
  * remain default/zero-valued in the output arrays.
  *
  * @par Buffers
@@ -406,7 +406,7 @@ public:
  * @conf blocksize_p        UInt. Array chunk size along product (unused currently; 0 = default)
  * @conf blocksize_t        UInt. Array chunk size along time (default: 1)
  *
- * @conf window_seconds            UInt. Window length in seconds; must divide 86400
+ * @conf file_seconds              UInt. File length in seconds; must divide 86400
  * @conf late_frame_grace_seconds  UInt. Grace period in seconds for late frames (default: 60)
  * @conf max_frames                Int.  Stop writing after this many frames (-1 = unlimited)
  *
@@ -433,8 +433,8 @@ private:
     const std::uint64_t blocksize_f;     /// Array chunk size along frequency
     const std::uint64_t
         blocksize_p; /// Array chunk size along product (0 = default = full num products)
-    const std::uint64_t blocksize_t;    /// Array chunk size along time (default: 1)
-    const std::uint64_t window_seconds; /// Window length in seconds; must divide 86400
+    const std::uint64_t blocksize_t;  /// Array chunk size along time (default: 1)
+    const std::uint64_t file_seconds; /// File length in seconds; must divide 86400
     const std::uint64_t
         late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
 
@@ -456,8 +456,8 @@ private:
      * @param meta  N2Metadata for the file
      * @return      Aligned file start time in nanoseconds since epoch
      * This method computes the UTC-midnight-aligned start time for the
-     * output file based on the configured window size. File times are
-     * aligned to multiples of `window_seconds` since UTC midnight.
+     * output file based on the configured file size. File times are
+     * aligned to multiples of `file_seconds` since UTC midnight.
      */
     std::uint64_t _get_file_start_time_ns(const std::shared_ptr<const N2Metadata> meta);
 

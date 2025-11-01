@@ -19,6 +19,14 @@
 #include <string>
 #include <vector>
 
+// Helper: remove a path only if it exists to avoid noisy CPL errors
+static void rm_tree_if_exists(const std::string& path) {
+    VSIStatBufL st;
+    if (VSIStatExL(path.c_str(), &st, VSI_STAT_EXISTS_FLAG) == 0) {
+        CPLUnlinkTree(path.c_str());
+    }
+}
+
 // Helper subclass to expose protected members for inspection in tests.
 class TestGdalVisFileData : public gdalVisFileData {
 public:
@@ -334,7 +342,7 @@ BOOST_AUTO_TEST_CASE(test_write_and_read_dataset) {
     // Create dataset
     const std::string path = "test_gdal_vis_io.zarr";
     // Clean up any previous run
-    CPLUnlinkTree(path.c_str());
+    rm_tree_if_exists(path);
     GDALDataset* ds =
         create_test_gdal_vis_dataset(path, num_freq, num_prod, num_ev, num_input, num_file_t);
     BOOST_REQUIRE(ds != nullptr);
@@ -591,7 +599,7 @@ BOOST_AUTO_TEST_CASE(test_write_no_time_compaction) {
     // Create dataset
     const std::string path = "test_gdal_vis_no_compact.zarr";
     // Clean up any previous run
-    CPLUnlinkTree(path.c_str());
+    rm_tree_if_exists(path);
     GDALDataset* ds =
         create_test_gdal_vis_dataset(path, num_freq, num_prod, num_ev, num_input, num_file_t);
     BOOST_REQUIRE(ds != nullptr);

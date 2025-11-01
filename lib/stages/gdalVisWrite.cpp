@@ -53,7 +53,7 @@ gdalVisWrite::gdalVisWrite(kotekan::Config& config, const std::string& unique_na
     blocksize_f(config.get_default<std::uint64_t>(unique_name, "blocksize_f", 0)),
     blocksize_p(config.get_default<std::uint64_t>(unique_name, "blocksize_p", 0)),
     blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", 1)),
-    window_seconds(config.get_default<std::uint64_t>(unique_name, "window_seconds", 600)),
+    file_seconds(config.get_default<std::uint64_t>(unique_name, "file_seconds", 600)),
     late_frame_grace_seconds(
         config.get_default<std::uint64_t>(unique_name, "late_frame_grace_seconds", 60)),
     max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
@@ -62,13 +62,13 @@ gdalVisWrite::gdalVisWrite(kotekan::Config& config, const std::string& unique_na
     GDALAllRegister();
     buffer->register_consumer(unique_name);
 
-    // Validate window configuration
-    if (window_seconds == 0) {
-        FATAL_ERROR("window_seconds must be > 0 for gdalVisWrite");
+    // Validate file window configuration
+    if (file_seconds == 0) {
+        FATAL_ERROR("file_seconds must be > 0 for gdalVisWrite");
     }
     const std::uint64_t day_seconds = 86400ULL;
-    if ((day_seconds % window_seconds) != 0) {
-        FATAL_ERROR("window_seconds={} must evenly divide 86400.", window_seconds);
+    if ((day_seconds % file_seconds) != 0) {
+        FATAL_ERROR("file_seconds={} must evenly divide 86400.", file_seconds);
     }
 }
 
@@ -76,15 +76,15 @@ gdalVisWrite::~gdalVisWrite() {}
 
 
 std::uint64_t gdalVisWrite::_get_file_start_time_ns(const std::shared_ptr<const N2Metadata> meta) {
-    // Align to UTC midnight and configured window length.
-    const std::uint64_t W_ns = window_seconds * 1'000'000'000ULL;
+    // Align to UTC midnight and configured file window length.
+    const std::uint64_t W_ns = file_seconds * 1'000'000'000ULL;
     const std::uint64_t day_ns = 86'400ULL * 1'000'000'000ULL;
     const std::uint64_t day_start =
         (meta->frame_start_time_ns / day_ns) * day_ns; // round down to previous midnight
     const std::uint64_t offset_in_day =
-        meta->frame_start_time_ns - day_start;            // ns since previous midnight
-    const std::uint64_t win_index = offset_in_day / W_ns; // 0-based window index
-    return day_start + win_index * W_ns;
+        meta->frame_start_time_ns - day_start;                 // ns since previous midnight
+    const std::uint64_t file_win_index = offset_in_day / W_ns; // 0-based file window index
+    return day_start + file_win_index * W_ns;
 }
 
 std::string gdalVisWrite::_get_gdal_vis_filename(std::shared_ptr<const N2Metadata> meta) {
@@ -102,7 +102,7 @@ std::string gdalVisWrite::_get_gdal_vis_filename(std::shared_ptr<const N2Metadat
     std::time_t time_t_format = file_start_time_ns / 1'000'000'000;      // seconds
     const std::uint64_t ns_part = file_start_time_ns % 1'000'000'000ULL; // sub-second
     buf << file_name << "." << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S");
-    // Include nanosecond suffix to avoid collisions for sub-second windows
+    // Include nanosecond suffix to avoid collisions for sub-second file windows
     buf << "_" << std::setw(9) << std::setfill('0') << ns_part;
     buf << ".zarr";
     if (zip_compression > 0)
@@ -164,10 +164,12 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
                   dataset->GetDescription());
 
         // Add configTracker JSON as attribute
-        const auto config_attr = root_group->CreateAttribute(
-            "config_json", std::vector<GUInt64>{}, GDALExtendedDataType::Create(GDT_Byte));
         const nlohmann::json config_json = kotekan::ConfigTracker::instance().getAllConfigsAsJson();
-        success = config_attr->Write(config_json.dump().data(), config_json.dump().size());
+        const std::string cfg_dump = config_json.dump();
+        const auto config_attr = root_group->CreateAttribute(
+            "config_json", std::vector<GUInt64>{static_cast<GUInt64>(cfg_dump.size())},
+            GDALExtendedDataType::Create(GDT_Byte));
+        success = config_attr->Write(cfg_dump.data(), cfg_dump.size());
         if (!success)
             ERROR("Failed to write config_json attribute to dataset {}", dataset->GetDescription());
 
@@ -285,7 +287,7 @@ void gdalVisWrite::main_thread() {
     const double start_time = current_time(); // for logging elapsed time
     N2::frameID in_frame_id(buffer);          // Input frame ID tracker
     int frame_counter = 0;                    // Count of frames written
-    bool warned_short_window = false;         // Warn only once for short windows
+    bool warned_short_file_window = false;    // Warn only once for short file windows
 
     // datasets (files) for writing (multiple may be open simultaneously)
     std::map<std::string, std::unique_ptr<gdalVisFileData>> datasets;
@@ -343,8 +345,9 @@ void gdalVisWrite::main_thread() {
             // If final file already exists, drop/ignore this frame (late arrival)
             struct stat filecheck_buffer {};
             if (stat(final_path.c_str(), &filecheck_buffer) == 0) {
-                WARN("Finalized file exists for this frame's window, dropping late frame: {:s}",
-                     final_path);
+                WARN(
+                    "Finalized file exists for this frame's file window, dropping late frame: {:s}",
+                    final_path);
                 // Mark frame as done and continue
                 buffer->mark_frame_empty(unique_name, in_frame_id);
                 in_frame_id++;
@@ -400,16 +403,16 @@ void gdalVisWrite::main_thread() {
                     FATAL_ERROR("Could not initialize GDAL file {:s}", partial_path);
                 DEBUG("New partial dataset created: {:s}", partial_path);
 
-                // Compute per-window frames dimension
+                // Compute per-file-window frames dimension
                 const std::uint64_t tick_len_ns = _get_tick_len_ns();
                 if (meta->frame_length_fpga_ticks == 0 || tick_len_ns == 0)
                     FATAL_ERROR("Invalid frame_length_fpga_ticks or tick length.");
                 const std::uint64_t frame_len_ns = meta->frame_length_fpga_ticks * tick_len_ns;
-                const std::uint64_t W_ns = window_seconds * 1'000'000'000ULL;
+                const std::uint64_t W_ns = file_seconds * 1'000'000'000ULL;
                 // Allow non-integer multiples by rounding up the number of frame slots,
                 // so that all frames with start < window_end fit within 0..file_nt-1.
                 if ((W_ns % frame_len_ns) != 0) {
-                    WARN("Configured window_seconds incompatible with frame cadence: W={} ns, "
+                    WARN("Configured file_seconds incompatible with frame cadence: W={} ns, "
                          "frame_len={} ns; using file_nt=ceil(W/frame_len).",
                          W_ns, frame_len_ns);
                 }
@@ -484,15 +487,15 @@ void gdalVisWrite::main_thread() {
             obj_ptr = datasets.find(final_path)->second.get();
 
             // Warn (once) if the file time span is less than one second.
-            if (!warned_short_window && obj_ptr) {
+            if (!warned_short_file_window && obj_ptr) {
                 const std::uint64_t file_len_ns = obj_ptr->num_file_t * obj_ptr->frame_len_ns;
                 if (obj_ptr->frame_len_ns > 0 && file_len_ns < 1'000'000'000ULL) {
-                    WARN(
-                        "File window is < 1s ({} * {} ns = {} ns). Ensure downstream tools "
-                        "handle sub-second windows; consider increasing window_seconds or cadence.",
-                        (unsigned long long)(obj_ptr->num_file_t), obj_ptr->frame_len_ns,
-                        file_len_ns);
-                    warned_short_window = true;
+                    WARN("File window is < 1s ({} * {} ns = {} ns). Ensure downstream tools "
+                         "handle sub-second file windows; consider increasing file_seconds or "
+                         "cadence.",
+                         (unsigned long long)(obj_ptr->num_file_t), obj_ptr->frame_len_ns,
+                         file_len_ns);
+                    warned_short_file_window = true;
                 }
             }
         }
@@ -550,8 +553,8 @@ void gdalVisWrite::main_thread() {
             FATAL_ERROR("Invalid frame_length_fpga_ticks or tick length.");
         const std::uint64_t frame_len_ns = meta->frame_length_fpga_ticks * tick_len_ns2;
         if (frame_len_ns != obj_ptr->frame_len_ns) {
-            FATAL_ERROR("frame_length_fpga_ticks changed within a window: {} vs {}", frame_len_ns,
-                        obj_ptr->frame_len_ns);
+            FATAL_ERROR("frame_length_fpga_ticks changed within a file window: {} vs {}",
+                        frame_len_ns, obj_ptr->frame_len_ns);
         }
         const std::uint64_t t_in_file =
             (meta->frame_start_time_ns - obj_ptr->file_start_time_ns) / frame_len_ns;

@@ -38,6 +38,7 @@ using std::string;
 // Force registration of N2Metadata in metadata factory by referencing the type
 static N2Metadata _force_n2meta_registration;
 
+// Helper function to list items in a directory
 static std::vector<std::string> list_dir_entries(const std::string& path) {
     std::vector<std::string> out;
     DIR* dir = opendir(path.c_str());
@@ -53,6 +54,7 @@ static std::vector<std::string> list_dir_entries(const std::string& path) {
     return out;
 }
 
+// Join two paths with '/' if needed
 static std::string join_path(const std::string& a, const std::string& b) {
     if (a.empty())
         return b;
@@ -61,24 +63,26 @@ static std::string join_path(const std::string& a, const std::string& b) {
     return a + "/" + b;
 }
 
+// Check if path exists
 static bool path_exists(const std::string& path) {
     struct stat st;
     return (::stat(path.c_str(), &st) == 0);
 }
 
+// Remove (recursively) directory if it exists
 static void rm_tree_if_exists(const std::string& path) {
     if (!path_exists(path))
         return;
-    // Use GDAL CPL to remove trees/files; ignore errors from unlink itself.
+    // Use GDAL CPL to remove; ignore errors from unlink itself.
     CPLUnlinkTree(path.c_str());
 }
 
-// Helper to create config
-// Build a writer config using window-based collection and optional grace/seq override
+// Helper to create a config just for testing
+// Build a writer config using file-window-based collection and optional grace/seq override
 static kotekan::Config make_base_config(const std::string& unique_name, const std::string& in_buf,
                                         const std::string& base_dir, const std::string& file_name,
                                         bool prefix_hostname, uint64_t zip_compression,
-                                        uint64_t window_seconds, uint64_t blocksize_f = 0,
+                                        uint64_t file_seconds, uint64_t blocksize_f = 0,
                                         uint64_t blocksize_t = 1,
                                         uint64_t late_frame_grace_seconds = 60,
                                         uint64_t seq_length_nsec_override = 0) {
@@ -97,8 +101,8 @@ static kotekan::Config make_base_config(const std::string& unique_name, const st
     s["blocksize_f"] = blocksize_f;
     s["blocksize_p"] = 0; // unused currently
     s["blocksize_t"] = blocksize_t;
-    s["window_seconds"] = window_seconds;
-    s["join_timeout"] = 10; // seconds
+    s["file_seconds"] = file_seconds; // length of each file in seconds (must divide 86400, >0)
+    s["join_timeout"] = 5;            // faster failure for tests
     s["late_frame_grace_seconds"] = late_frame_grace_seconds;
     // optionally override fpga sequence length so the Telescope singleton is not needed
     if (seq_length_nsec_override > 0)
@@ -113,8 +117,6 @@ static kotekan::Config make_base_config(const std::string& unique_name, const st
 
     return conf;
 }
-
-// No initialization needed now that writer uses seq_length_nsec_override.
 
 // Build dataset filename to simulate pre-existing final files (mirrors stage logic)
 static std::string compute_dataset_name(const std::string& base_dir, const std::string& file_name,
@@ -383,13 +385,6 @@ BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 // Test 1: Full-block flush with transpose validation
 BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     GDALAllRegister();
-    auto dm = GetGDALDriverManager();
-    auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
-    if (!drv) {
-        BOOST_TEST_MESSAGE(
-            "Zarr GDAL driver not available; skipping test_writer_full_block_transpose");
-        return;
-    }
 
     const std::string unique_name = "/gdal_vis_writer";
     const std::string in_buf_name = "n2buf";
@@ -401,14 +396,14 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     const size_t num_input = 3;
     const size_t num_ev = 2;
     const size_t nfreq = 3;
-    // Use 100-second frames and 200-second windows to get file_nt=2
+    // Use 100-second frames and 200-second file windows to get file_nt=2
     const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 100; // ensure fractions compute as 80/100
     const size_t file_nt = 2;
-    const uint64_t window_seconds = 200;
+    const uint64_t file_seconds = 200;
 
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name,
-                                 /*prefix_hostname*/ false, /*zip*/ 0, window_seconds,
+                                 /*prefix_hostname*/ false, /*zip*/ 0, file_seconds,
                                  /*blocksize_f*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ dt_ns);
 
@@ -425,9 +420,9 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     gdalVisWrite stage(conf, unique_name, bc);
     stage.start();
 
-    // Time logic: ensure base_time aligned to window start
+    // Time logic: ensure base_time aligned to file window start
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
-    const uint64_t base_time_ns = 10'000'000'000ULL; // falls within window [0,200)s
+    const uint64_t base_time_ns = 10'000'000'000ULL; // falls within file window [0,200)s
 
     // Send frames out of time order to exercise t-indexing
     N2::frameID fid(&buf);
@@ -480,13 +475,6 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
 // Test 2: Partial flush triggered on exit (incomplete time block)
 BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     GDALAllRegister();
-    auto dm = GetGDALDriverManager();
-    auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
-    if (!drv) {
-        BOOST_TEST_MESSAGE(
-            "Zarr GDAL driver not available; skipping test_writer_partial_flush_on_exit");
-        return;
-    }
 
     const std::string unique_name = "/gdal_vis_writer_partial";
     const std::string in_buf_name = "n2buf_partial";
@@ -499,10 +487,11 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     const size_t num_ev = 2;
     const size_t nfreq = 3;
     const size_t file_nt = 2;
-    const uint64_t window_seconds = 200;
+    // Use a 2-second file window so file_nt=2 with 1s frames
+    const uint64_t file_seconds = 2;
 
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name,
-                                 /*prefix_hostname*/ false, /*zip*/ 0, window_seconds,
+                                 /*prefix_hostname*/ false, /*zip*/ 0, file_seconds,
                                  /*blocksize_f*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
 
@@ -586,13 +575,6 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
 // Test 3: Multi-file rollover when time crosses a file window
 BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     GDALAllRegister();
-    auto dm = GetGDALDriverManager();
-    auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
-    if (!drv) {
-        BOOST_TEST_MESSAGE(
-            "Zarr GDAL driver not available; skipping test_writer_multi_file_rollover");
-        return;
-    }
 
     const std::string unique_name = "/gdal_vis_writer_rollover";
     const std::string in_buf_name = "n2buf_rollover";
@@ -604,9 +586,9 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const size_t num_ev = 2;
     const size_t nfreq = 3;
     const size_t file_nt = 2;
-    const uint64_t window_seconds = 200;
+    const uint64_t file_seconds = 200;
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 window_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
@@ -622,12 +604,12 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 100;
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
-    const uint64_t file_len_ns = window_seconds * 1'000'000'000ULL;
-    const uint64_t baseA = 12'000'000'000ULL; // align to even multiple of 2s windows
+    const uint64_t file_len_ns = file_seconds * 1'000'000'000ULL;
+    const uint64_t baseA = 12'000'000'000ULL; // align to even multiple of 2s file windows
     const uint64_t baseB = baseA + file_len_ns;
 
     N2::frameID fid(&buf);
-    // Window A (t=0..1)
+    // File window A (t=0..1)
     for (size_t t = 0; t < file_nt; ++t)
         for (size_t f = 0; f < nfreq; ++f) {
             uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
@@ -637,7 +619,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
             buf.mark_frame_full("test-producer", fid);
             fid++;
         }
-    // Window B (t=0..1)
+    // File window B (t=0..1)
     for (size_t t = 0; t < file_nt; ++t)
         for (size_t f = 0; f < nfreq; ++f) {
             uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
@@ -675,12 +657,6 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
 // Test 4: ZIP storage and hostname prefix in filename
 BOOST_AUTO_TEST_CASE(test_writer_zip_and_prefix) {
     GDALAllRegister();
-    auto dm = GetGDALDriverManager();
-    auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
-    if (!drv) {
-        BOOST_TEST_MESSAGE("Zarr GDAL driver not available; skipping test_writer_zip_and_prefix");
-        return;
-    }
 
     const std::string unique_name = "/gdal_vis_writer_zip";
     const std::string in_buf_name = "n2buf_zip";
@@ -692,9 +668,9 @@ BOOST_AUTO_TEST_CASE(test_writer_zip_and_prefix) {
     const size_t num_ev = 2;
     const size_t nfreq = 2; // keep it small
     const size_t file_nt = 2;
-    const uint64_t window_seconds = 200;
+    const uint64_t file_seconds = 200;
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, /*prefix*/ true,
-                                 /*zip*/ 1, window_seconds, /*blocksize_f*/ 1, /*blocksize_t*/ 2,
+                                 /*zip*/ 1, file_seconds, /*blocksize_f*/ 1, /*blocksize_t*/ 2,
                                  /*grace*/ 60, /*seq_override*/ 1'000'000'000ULL);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
@@ -754,16 +730,9 @@ BOOST_AUTO_TEST_CASE(test_writer_zip_and_prefix) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 5: Adjacent windows produce distinct dataset names
+// Test 5: Adjacent file windows produce distinct dataset names
 BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     GDALAllRegister();
-    auto dm = GetGDALDriverManager();
-    auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
-    if (!drv) {
-        BOOST_TEST_MESSAGE(
-            "Zarr GDAL driver not available; skipping test_writer_distinct_window_names");
-        return;
-    }
 
     const std::string unique_name = "/gdal_vis_writer_names";
     const std::string in_buf_name = "n2buf_names";
@@ -776,9 +745,9 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     const size_t nfreq = 3;
     const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 1;
-    const uint64_t window_seconds = 1; // one second window => one frame per file
+    const uint64_t file_seconds = 1; // one second file window => one frame per file
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 window_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ dt_ns);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_subsec", "N2Metadata");
@@ -792,10 +761,10 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
 
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
     const uint64_t baseA = 6'000'000'000ULL;
-    const uint64_t baseB = baseA + frame_len_ns; // next window
+    const uint64_t baseB = baseA + frame_len_ns; // next file window
 
     N2::frameID fid(&buf);
-    // Window A
+    // File window A
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
@@ -803,7 +772,7 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
-    // Window B
+    // File window B
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
@@ -835,13 +804,6 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
 // Test 6: Grace-based finalize of partial dataset (late_frame_grace_seconds=0)
 BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     GDALAllRegister();
-    auto dm = GetGDALDriverManager();
-    auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
-    if (!drv) {
-        BOOST_TEST_MESSAGE(
-            "Zarr GDAL driver not available; skipping test_writer_timeout_finalize_zero_threshold");
-        return;
-    }
 
     const std::string unique_name = "/gdal_vis_writer_timeout";
     const std::string in_buf_name = "n2buf_timeout";
@@ -872,10 +834,10 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const uint64_t frame_len_ticks = 1;
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
     const uint64_t baseA = 6'000'000'000ULL;
-    const uint64_t baseB = baseA + frame_len_ns * file_nt; // next window
+    const uint64_t baseB = baseA + frame_len_ns * file_nt; // next file window
 
     N2::frameID fid(&buf);
-    // Produce only t=0 for window A (all freqs)
+    // Produce only t=0 for file window A (all freqs)
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
@@ -883,7 +845,7 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
-    // Produce t=0 for window B to trigger timeout scan and finalize A
+    // Produce t=0 for file window B to trigger timeout scan and finalize A
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
@@ -912,13 +874,6 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
 // Test 7: frame_length_fpga_ticks==0 fallback paths (no crash and fractions default)
 BOOST_AUTO_TEST_CASE(test_writer_frame_length_zero_fallback) {
     GDALAllRegister();
-    auto dm = GetGDALDriverManager();
-    auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
-    if (!drv) {
-        BOOST_TEST_MESSAGE(
-            "Zarr GDAL driver not available; skipping test_writer_frame_length_zero_fallback");
-        return;
-    }
 
     // Strict invariant: frame_length_fpga_ticks must be > 0 and constant.
     // The writer now aborts on zero-length frames; skip this legacy fallback test.
@@ -935,9 +890,9 @@ BOOST_AUTO_TEST_CASE(test_writer_frame_length_zero_fallback) {
     const size_t num_ev = 2;
     const size_t nfreq = 2;
     const size_t file_nt = 2;
-    const uint64_t window_seconds = 2;
+    const uint64_t file_seconds = 2;
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 window_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(1, sizeof(N2Metadata), "pool_len0", "N2Metadata");
@@ -1003,13 +958,6 @@ BOOST_AUTO_TEST_CASE(test_writer_frame_length_zero_fallback) {
 // Test 8: Late-frame drop when final already exists
 BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     GDALAllRegister();
-    auto dm = GetGDALDriverManager();
-    auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
-    if (!drv) {
-        BOOST_TEST_MESSAGE(
-            "Zarr GDAL driver not available; skipping test_writer_drop_if_final_exists");
-        return;
-    }
 
     const std::string unique_name = "/gdal_vis_writer_drop";
     const std::string in_buf_name = "n2buf_drop";
@@ -1020,9 +968,9 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const size_t num_input = 3;
     const size_t num_ev = 2;
     const size_t nfreq = 2;
-    const uint64_t window_seconds = 1;
+    const uint64_t file_seconds = 1;
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 window_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_drop", "N2Metadata");
@@ -1038,7 +986,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const uint64_t base_time_ns = 8'000'000'000ULL;
     const uint64_t frame_len_ticks = 1;
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
-    const uint64_t file_start_time_ns = base_time_ns; // aligned to 1-second window
+    const uint64_t file_start_time_ns = base_time_ns; // aligned to 1-second file window
 
     // Pre-create a final dataset path to force drop
     const std::string ds_final =
@@ -1048,7 +996,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     ::mkdir(ds_final.c_str(), 0777);
 
     N2::frameID fid(&buf);
-    // Attempt to produce window A (should be dropped)
+    // Attempt to produce file window A (should be dropped)
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
@@ -1056,7 +1004,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
-    // Produce next window (should write)
+    // Produce next file window (should write)
     const uint64_t next_time = base_time_ns + frame_len_ns;
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
@@ -1091,13 +1039,6 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
 // Test 9: Geometry mismatch within dataset (nfreq) is dropped without crash
 BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     GDALAllRegister();
-    auto dm = GetGDALDriverManager();
-    auto drv = dm ? dm->GetDriverByName("Zarr") : nullptr;
-    if (!drv) {
-        BOOST_TEST_MESSAGE(
-            "Zarr GDAL driver not available; skipping test_writer_geometry_mismatch_dropped");
-        return;
-    }
 
     const std::string unique_name = "/gdal_vis_writer_geom";
     const std::string in_buf_name = "n2buf_geom";
@@ -1110,9 +1051,9 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     const size_t nfreq = 3;
     const size_t file_nt = 2;
 
-    const uint64_t window_seconds = file_nt; // with 1s frames, file_nt==window_seconds
+    const uint64_t file_seconds = file_nt; // with 1s frames, file_nt==file_seconds
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 window_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(4, sizeof(N2Metadata), "pool_geom", "N2Metadata");
@@ -1138,7 +1079,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
-    // Send one mismatching frame for same window with nfreq+1 (should be dropped)
+    // Send one mismatching frame for same file window with nfreq+1 (should be dropped)
     {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
