@@ -75,5 +75,5 @@ gdal_vis_write:
   # Chunking: ensure positive chunk sizes
   blocksize_f: 1
   blocksize_t: 5
-  num_file_t: 6
-  flush_timeout_seconds: 60
+  file_seconds: 6
+  late_frame_grace_seconds: 10

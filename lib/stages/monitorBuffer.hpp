@@ -30,10 +30,12 @@
  *  @buffer_format Any
  *  @buffer_metadata Any
  *
- * @conf timeout       Int, default 60. Time to wait in seconds for new frame
- *                     before exiting.   Must be > 1
- * @conf fill_threshold  Float, default 2.0 (disabled)  The ratio of full to total frames,
- *                       which if exceeded with trigger an exit.
+ * @conf timeout            Int, default 60. Time to wait in seconds for new frame
+ *                          before exiting.   Must be > 1
+ * @conf fill_threshold     Float, default 2.0 (disabled)  The ratio of full to total frames,
+ *                          which if exceeded with trigger an exit.
+ * @conf graceful_shutdown  Bool, default false. If true, instead of fatal error on timeout,
+ *                          send shutdown signals to all stages and wait for them to exit.
  */
 class monitorBuffer : public kotekan::Stage {
 public:
@@ -57,6 +59,12 @@ private:
     /// The maximum fraction of full buffers before the system exits
     /// If set above 1 then this check is disabled
     float fill_threshold;
+
+    /// Perform a graceful shutdown instead of fatal error on timeout
+    bool graceful_shutdown;
+
+    /// Whether to wait for data from the first frame before starting monitoring
+    bool wait_for_first_frame;
 };
 
 #endif

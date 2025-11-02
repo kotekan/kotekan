@@ -26,22 +26,54 @@ STAGE_CONSTRUCTOR(monitorBuffer) {
     // Timeout is in seconds
     timeout = config.get_default<int>(unique_name, "timeout", 60);
     fill_threshold = config.get_default<float>(unique_name, "fill_threshold", 2.0);
+    graceful_shutdown = config.get_default<bool>(unique_name, "graceful_shutdown", false);
+    wait_for_first_frame = config.get_default<bool>(unique_name, "wait_for_first_frame", true);
+
+    if (timeout <= 1)
+        FATAL_ERROR("monitorBuffer timeout must be > 1 second, got {:d}", timeout);
+    if(fill_threshold <= 0.0)
+        FATAL_ERROR("monitorBuffer fill_threshold must be > 0.0, got {:f}", fill_threshold);
+    if(graceful_shutdown)
+        INFO("monitorBuffer configured to perform graceful shutdown on timeout.");
 }
 
 monitorBuffer::~monitorBuffer() {}
 
 void monitorBuffer::main_thread() {
 
+    double monitor_start_time = e_time();
+
     while (!stop_thread) {
         sleep(1);
         double cur_time = e_time();
         for (Buffer* buf : buffers) {
+            
             double last_arrival = buf->get_last_arrival_time();
+            // If we are not waiting for data, set last_arrival to start time
+            if (!wait_for_first_frame && last_arrival == 0) {
+                last_arrival = monitor_start_time;
+                INFO("monitorBuffer checking buffer {:s}: last arrival time is monitor start time {:f}, current time {:f}",
+                    buf->buffer_name, last_arrival, cur_time);
+            } else {
+                INFO("monitorBuffer checking buffer {:s}: last arrival time {:f}, current time {:f}",
+                    buf->buffer_name, last_arrival, cur_time);
+            }
+            
             if ((cur_time - last_arrival) > timeout && last_arrival > 1) {
                 for (auto& buf : buffer_container.get_buffer_map()) {
                     buf.second->print_full_status();
                 }
                 usleep(50000);
+                if(graceful_shutdown) {
+                    INFO("The buffer {:s} hasn't received a frame for {:f} seconds.\nPerforming "
+                         "graceful shutdown of kotekan because of system timeout.",
+                         buf->buffer_name, (cur_time - last_arrival));
+                    if(!wait_for_first_frame && last_arrival == monitor_start_time) {
+                        WARN("No frames were ever received on buffer {:s}.", buf->buffer_name);
+                    }
+                    exit_kotekan(CLEAN_EXIT);
+                    goto end_loop;
+                }
                 FATAL_ERROR("The buffer {:s} hasn't received a frame for {:f} seconds.\nClosing "
                             "kotekan because of system timeout.",
                             buf->buffer_name, (cur_time - last_arrival));

@@ -95,7 +95,7 @@ public:
      * @brief Common-core buffer class.
      *
      * @param buffer_name Unique name for this buffer based on location in config file
-     * @param buffer_type Type name, eg "standard", "vis", "hfb", "ring"
+     * @param buffer_type Type name, eg "standard", "hfb", "vis", "N2", "ring"
      * @param num_frames The buffer depth (for subclasses that have that concept)
      * @param metadata_pool The name of the metadata pool to associate with the buffer
      */
@@ -350,7 +350,7 @@ public:
      * @param len - length in bytes of each frame
      * @param metadata_pool The name of the metadata pool to associate with the buffer
      * @param buffer_name: unique name for this buffer, from the config file declaration
-     * @param buffer_type: "standard", "vis", "hfb"
+     * @param buffer_type: "standard", "vis", "hfb", "N2", "ring"
      * @param numa_node The NUMA domain to mbind the memory into
      * @param use_hugepages Allocate 2MB huge pages for the frames
      * @param mlock_frames Lock the frame pages with mlock
