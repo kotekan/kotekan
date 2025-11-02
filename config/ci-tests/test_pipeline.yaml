@@ -11,7 +11,7 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: DEBUG2
+log_level: INFO
 
 
 freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
@@ -19,7 +19,7 @@ freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 num_gpus: 1
 buffer_depth: 4
 num_gpu_frames: 4
-cpu_affinity: []
+cpu_affinity: [0,1]
 frame_arrival_period: 5.12e-6 * samples_per_data_set
 sizeof_gpu_int: 4 # bytes
 
@@ -318,23 +318,25 @@ n2_accumulate:
 # Write out the visibilities using GDAL Zarr
 
 gdal_vis_write:
-  kotekan_stage: gdalVisWrite
-  in_buf: n2_buffer
-  base_dir: ./data_out/gdal_vis
-  file_name: pipeline_test
-  prefix_hostname: false
-  zip_compression: 0
-  # Chunking: ensure positive chunk sizes
-  blocksize_f: 1
-  blocksize_t: 2
-  file_seconds: 1
-  late_frame_grace_seconds: 2
+    log_level: DEBUG
+    kotekan_stage: gdalVisWrite
+    in_buf: n2_buffer
+    base_dir: ./data_out/gdal_vis
+    file_name: pipeline_test
+    prefix_hostname: false
+    zip_compression: 0
+    # Chunking: ensure positive chunk sizes
+    blocksize_f: 1
+    blocksize_t: 2
+    file_seconds: 1
+    late_frame_grace_seconds: 2
 
 # Monitor N2 buffer for activity
 
 buffer_monitor:
+    log_level: DEBUG
     kotekan_stage: monitorBuffer
-    timeout: 5.0 # If no activity in this buffer for this many seconds, trigger shutdown
+    timeout: 60.0 # If no activity in this buffer for this many seconds, trigger shutdown
     bufs:
       - n2_buffer
     graceful_shutdown: true

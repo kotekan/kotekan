@@ -52,10 +52,10 @@ void monitorBuffer::main_thread() {
             // If we are not waiting for data, set last_arrival to start time
             if (!wait_for_first_frame && last_arrival == 0) {
                 last_arrival = monitor_start_time;
-                INFO("monitorBuffer checking buffer {:s}: last arrival time is monitor start time {:f}, current time {:f}",
+                DEBUG("monitorBuffer checking buffer {:s}: last arrival time is monitor start time {:f}, current time {:f}",
                     buf->buffer_name, last_arrival, cur_time);
             } else {
-                INFO("monitorBuffer checking buffer {:s}: last arrival time {:f}, current time {:f}",
+                DEBUG("monitorBuffer checking buffer {:s}: last arrival time {:f}, current time {:f}",
                     buf->buffer_name, last_arrival, cur_time);
             }
             
