@@ -38,11 +38,7 @@ dev = [
     "sphinx==6.2",
     "sphinx-rtd-theme==2.0",
     "sphinxcontrib-plantuml==0.25",
-    #"kotekan"
 ]
-
-[tool.uv.sources]
-#kotekan = { path = "./python", package = false}
 
 [tool.pytest.ini_options]
 pythonpath = ["./python"]

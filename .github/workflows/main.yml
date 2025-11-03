@@ -95,6 +95,24 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: |
+<<<<<<< HEAD
+=======
+              # Run pytest tests
+              # PYTHONPATH=$GITHUB_WORKSPACE/python
+              PYTEST_TIMEOUT=120
+              cd $GITHUB_WORKSPACE/tests
+              uv run -- pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              uv run -- pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
+
+          - id: boost
+            name: "Full build + boost tests"
+            ccache_key: kotekan-full-boost
+            runner: ubuntu-latest
+            container_image: ""
+            container_options: ""
+            cmake_defs: *full_build_cmake_opts
+            post_build: |
+>>>>>>> bacf569d (pytest works in CI with uv.  Removing bug-finding tests.)
               TEST_TIMEOUT=30
               bash $GITHUB_WORKSPACE/tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" $GITHUB_WORKSPACE/build-2404/tests/boost
 
@@ -261,171 +279,3 @@ jobs:
               ls /data
               rm /data/tmp
             runs_on: self-hosted
-
-
-  github-uv-env-tests:
-    name: "Github"
-    runs-on: ubuntu-latest
-    needs: build-docker-2404
-    container:
-      image: ${{ needs.build-docker-2404.outputs.docker_img_name }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    defaults:
-      run:
-        shell: bash
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-
-          - id: uv-run-env
-            name: "uv-run env file"
-            post_build: |
-              # Run pytest tests
-              # PYTHONPATH=$GITHUB_WORKSPACE/python
-              cd $GITHUB_WORKSPACE/tests/uv_test
-              echo "PYTHONPATH=${GITHUB_WORKSPACE}/python" > gh_test.env
-              cat gh_test.env
-              echo $PYTHONPATH
-              uv run --env-file gh_test.env -- hello.py
-
-          - id: uv-run-env2
-            name: "uv-run env2"
-            post_build: |
-              # Run pytest tests
-              # PYTHONPATH=$GITHUB_WORKSPACE/python
-              cd $GITHUB_WORKSPACE/tests/uv_test
-              echo "PYTHONPATH=${GITHUB_WORKSPACE}/python:$PYTHONPATH" > gh_test.env
-              cat gh_test.env
-              echo $PYTHONPATH
-              uv run --env-file gh_test.env -- hello.py
-
-          - id: uv-run-env-env
-            name: "uv-run env env"
-            post_build: |
-              # Run pytest tests
-              # PYTHONPATH=$GITHUB_WORKSPACE/python
-              cd $GITHUB_WORKSPACE/tests/uv_test
-              echo "PYTHONPATH=${GITHUB_WORKSPACE}/python" > gh_test.env
-              cat gh_test.env
-              echo $PYTHONPATH
-              export UV_ENV_FILE=gh_test.env
-              echo $UV_ENV_FILE
-              uv run -- hello.py
-
-          - id: uv-run
-            name: "uv-run"
-            post_build: |
-              # Run pytest tests
-              cd $GITHUB_WORKSPACE/tests/uv_test
-              echo $PYTHONPATH
-              uv run -- hello.py
-
-          - id: uv-run-pytest
-            name: "uv-run"
-            post_build: |
-              # Run pytest tests
-              cd $GITHUB_WORKSPACE/tests/uv_test
-              echo $PYTHONPATH
-              uv run -- pytest test_hello.py
-
-          - id: uv-run-export
-            name: "uv-run system env export"
-            post_build: |
-              # Run pytest tests
-              cd $GITHUB_WORKSPACE/tests/uv_test
-              export PYTHONPATH=$GITHUB_WORKSPACE/python
-              echo $PYTHONPATH
-              uv run -- hello.py
-
-          - id: uv-run-prefix
-            name: "uv-run prefix env"
-            post_build: |
-              # Run pytest tests
-              cd $GITHUB_WORKSPACE/tests/uv_test
-              echo $PYTHONPATH
-              PYTHONPATH=${GITHUB_WORKSPACE}/python uv run -- hello.py
-
-          - id: vanilla
-            name: "python"
-            post_build: |
-              # Run pytest tests
-              # PYTHONPATH=$GITHUB_WORKSPACE/python
-              cd $GITHUB_WORKSPACE/tests/uv_test
-              echo $PYTHONPATH
-              python3 hello.py
-
-          - id: vanilla-env
-            name: "python env"
-            post_build: |
-              # Run pytest tests
-              cd $GITHUB_WORKSPACE/tests/uv_test
-              PYTHONPATH=$GITHUB_WORKSPACE/python
-              echo $PYTHONPATH
-              python3 hello.py
-
-          - id: vanilla-env-export
-            name: "python env export"
-            post_build: |
-              # Run pytest tests
-              cd $GITHUB_WORKSPACE/tests/uv_test
-              export PYTHONPATH=$GITHUB_WORKSPACE/python
-              echo $PYTHONPATH
-              python3 hello.py
-
-          - id: vanilla-prefix
-            name: "python env"
-            post_build: |
-              # Run pytest tests
-              cd $GITHUB_WORKSPACE/tests/uv_test
-              echo $PYTHONPATH
-              PYTHONPATH="${GITHUB_WORKSPACE}/python:$PYTHONPATH" python3 hello.py
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: .ccache
-          key: ccache-test-2404-${{ github.sha }}
-          restore-keys: |
-            ccache-test-2404
-
-      - name: Print working environment details
-        run: |
-          echo "==========="
-          pwd
-          echo "==========="
-          ls -la
-          echo "==========="
-          env
-          echo "==========="
-          df -h
-          echo "==========="
-          free -h
-          echo "==========="
-          lscpu
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          version: "0.9.7"
-
-      - name: Setup uv Python
-        run: uv python install
-
-      - name: Setup uv Python environment
-        run: uv sync --locked --all-extras --dev
-
-      - name: Post-build commands
-        if: matrix.post_build
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Run any commands specified ...
-          ${{ matrix.post_build }}
