@@ -199,7 +199,7 @@ jobs:
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/build-2404
               mkdir bugfix_dump2
-              kotekan/kotekan -c ../config/tests/bugfix_eigenvis.yaml
+              kotekan/kotekan -c $GITHUB_WORKSPACE/config/tests/bugtest_eigenvis.yaml
 
           # Test gcc build with docs
           - id: local-docs
