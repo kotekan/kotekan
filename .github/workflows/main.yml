@@ -97,6 +97,24 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: |
+<<<<<<< HEAD
+=======
+              # Run pytest tests
+              # PYTHONPATH=$GITHUB_WORKSPACE/python
+              PYTEST_TIMEOUT=120
+              cd $GITHUB_WORKSPACE/tests
+              uv run --env-file env_test -- pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              uv run --enf-file env_test -- pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
+
+          - id: boost
+            name: "Full build + boost tests"
+            ccache_key: kotekan-full-boost
+            runner: ubuntu-latest
+            container_image: ""
+            container_options: ""
+            cmake_defs: *full_build_cmake_opts
+            post_build: |
+>>>>>>> 7327d273 (Use uv in Github CI)
               TEST_TIMEOUT=30
               bash $GITHUB_WORKSPACE/tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" $GITHUB_WORKSPACE/build-2404/tests/boost
 
@@ -173,7 +191,6 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/cpu_batch
-            runs_on: self-hosted
 
           # Test gcc build with docs
           - id: local-docs

@@ -90,6 +90,15 @@ jobs:
             exit 1
           fi
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Setup uv Python
+        run: uv python install
+
+      - name: Setup uv Python environment
+        run: uv sync --locked --all-extras --dev
+
       - name: Configure & Build kotekan
         if: inputs.cmake_defs
         run: |
