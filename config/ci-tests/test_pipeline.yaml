@@ -132,6 +132,16 @@ n2_buffer:
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
+n2_recv_buffer:
+    kotekan_buffer: N2
+    num_frames: buffer_depth * num_local_freq
+    metadata_pool: n2_pool
+
+n2_eigen_buffer:
+    kotekan_buffer: N2
+    num_frames: buffer_depth * num_local_freq
+    metadata_pool: n2_pool
+
 # Ringbuffer signalling buffer
 host_voltage_ringbuffer:
     kotekan_buffer: ring
@@ -315,12 +325,49 @@ n2_accumulate:
     packet_loss_is_scalar: True
     num_n2k_samples_to_accumulate: 96
 
+# Local send/recv mostly for testing
+
+buffer_send:
+  server_ip: 127.0.0.1
+  reconnect_time: 1
+  log_level: debug
+  send:
+    kotekan_stage: bufferSend
+    buf: n2_buffer
+    server_port: 11024
+
+buffer_recv:
+  log_level: debug
+  recv:
+    kotekan_stage: bufferRecv
+    buf: n2_recv_buffer
+    listen_port: 11024
+    num_threads: 1
+
+# Add eigen calculation
+
+eigencalc:
+  kotekan_stage: EigenVisIter
+  cpu_affinity: [4]
+  log_level: debug
+
+  in_buf: n2_recv_buffer
+  out_buf: n2_eigen_buffer
+
+  # Convergence config
+  tol_eval: 0.001
+  tol_evec: 0.01
+  max_iterations: 10
+  num_ev_conv: 2
+  krylov: 2
+  subspace: 1
+
 # Write out the visibilities using GDAL Zarr
 
 gdal_vis_write:
     log_level: DEBUG
     kotekan_stage: gdalVisWrite
-    in_buf: n2_buffer
+    in_buf: n2_eigen_buffer
     base_dir: ./data_out/gdal_vis
     file_name: pipeline_test
     prefix_hostname: false
@@ -338,6 +385,6 @@ buffer_monitor:
     kotekan_stage: monitorBuffer
     timeout: 60.0 # If no activity in this buffer for this many seconds, trigger shutdown
     bufs:
-      - n2_buffer
+      - n2_eigen_buffer
     graceful_shutdown: true
     wait_for_first_frame: true

@@ -277,6 +277,31 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
     }
 }
 
+void gdalVisWrite::_grace_finalize_datasets(std::map<std::string, std::unique_ptr<gdalVisFileData>>& datasets) {
+    const double now_s = current_time();
+    for (auto ds_it = datasets.begin(); ds_it != datasets.end(); ++ds_it) {
+        auto& obj = *ds_it->second;
+        if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
+            // Grace finalize: flush and rename
+            if (obj.gdal_dataset)
+                obj.flush();
+            if (obj.gdal_dataset) {
+                GDALClose(obj.gdal_dataset);
+                obj.gdal_dataset = nullptr;
+            }
+            // Attempt rename from partial to final
+            int r = std::rename(obj.partial_path.c_str(), ds_it->first.c_str());
+            if (r != 0) {
+                const char* msg = strerror(errno);
+                ERROR("Failed to rename partial dataset to final: {} -> {}: {}",
+                        obj.partial_path, ds_it->first, msg);
+            }
+            ds_it = datasets.erase(ds_it);
+            continue; // to next dataset
+        }
+    }
+}
+
 void gdalVisWrite::main_thread() {
     auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_gdalviswrite_write_time_seconds", unique_name);
@@ -352,28 +377,7 @@ void gdalVisWrite::main_thread() {
                 buffer->mark_frame_empty(unique_name, in_frame_id);
                 in_frame_id++;
                 // Before continuing, check for grace-based finalizations on other datasets
-                const double now_s = current_time();
-                for (auto ds_it = datasets.begin(); ds_it != datasets.end(); ++ds_it) {
-                    auto& obj = *ds_it->second;
-                    if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
-                        // Grace finalize: flush and rename
-                        if (obj.gdal_dataset)
-                            obj.flush();
-                        if (obj.gdal_dataset) {
-                            GDALClose(obj.gdal_dataset);
-                            obj.gdal_dataset = nullptr;
-                        }
-                        // Attempt rename from partial to final
-                        int r = std::rename(obj.partial_path.c_str(), ds_it->first.c_str());
-                        if (r != 0) {
-                            const char* msg = strerror(errno);
-                            ERROR("Failed to rename partial dataset to final: {} -> {}: {}",
-                                  obj.partial_path, ds_it->first, msg);
-                        }
-                        ds_it = datasets.erase(ds_it);
-                        continue;
-                    }
-                }
+                _grace_finalize_datasets(datasets);
                 continue;
             }
 
@@ -516,27 +520,7 @@ void gdalVisWrite::main_thread() {
             buffer->mark_frame_empty(unique_name, in_frame_id);
             in_frame_id++;
             // Continue to process potential grace finalizations for other datasets
-            // TODO: merge with code above/below to avoid duplication
-            const double now_s = current_time();
-            for (auto ds_it = datasets.begin(); ds_it != datasets.end(); ++ds_it) {
-                auto& obj = *ds_it->second;
-                if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
-                    if (obj.gdal_dataset)
-                        obj.flush();
-                    if (obj.gdal_dataset) {
-                        GDALClose(obj.gdal_dataset);
-                        obj.gdal_dataset = nullptr;
-                    }
-                    int r = std::rename(obj.partial_path.c_str(), ds_it->first.c_str());
-                    if (r != 0) {
-                        const char* msg = strerror(errno);
-                        ERROR("Failed to rename partial dataset to final (grace): {} -> {}: {}",
-                              obj.partial_path, ds_it->first, msg);
-                    }
-                    ds_it = datasets.erase(ds_it);
-                    continue;
-                }
-            }
+            _grace_finalize_datasets(datasets);
             continue;
         }
 
@@ -602,28 +586,8 @@ void gdalVisWrite::main_thread() {
         in_frame_id++;
 
         // After handling this frame, scan for grace-based finalizations
-        const double now_s = current_time();
-        for (auto it2 = datasets.begin(); it2 != datasets.end();) {
-            auto& obj = *it2->second;
-            if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
-                // Grace finalize
-                if (obj.gdal_dataset)
-                    obj.flush();
-                if (obj.gdal_dataset) {
-                    GDALClose(obj.gdal_dataset);
-                    obj.gdal_dataset = nullptr;
-                }
-                int r = std::rename(obj.partial_path.c_str(), it2->first.c_str());
-                if (r != 0) {
-                    const char* msg = strerror(errno);
-                    ERROR("Failed to rename partial dataset to final (grace): {} -> {}: {}",
-                          obj.partial_path, it2->first, msg);
-                }
-                it2 = datasets.erase(it2);
-                continue;
-            }
-            ++it2;
-        }
+        _grace_finalize_datasets(datasets);
+        
     } // while !stop_thread
 
     // Flush any partially-filled datasets on exit

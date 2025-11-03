@@ -442,7 +442,6 @@ private:
 
     Buffer* const buffer;
 
-private:
     // Allow override telescope seq length for testing
     const std::uint64_t tick_len_ns_override;
     inline std::uint64_t _get_tick_len_ns() const {
@@ -482,6 +481,13 @@ private:
      */
     void _initialize_gdal_vis_file(GDALDataset* dataset, std::shared_ptr<const N2Metadata> meta,
                                    std::uint64_t file_nt);
+
+    /**
+     * @brief Finalize datasets that have been inactive for too long.
+     * @param datasets  Map of datasets to finalize
+     * @param late_frame_grace_seconds  Grace period in seconds for late frames
+     */
+    void _grace_finalize_datasets(std::map<std::string, std::unique_ptr<gdalVisFileData>>& datasets);
 
     /**
      * @brief Get the partial directory path for temporary files.
