@@ -290,8 +290,6 @@ jobs:
               echo "PYTHONPATH=${GITHUB_WORKSPACE}/python" > gh_test.env
               cat gh_test.env
               echo $PYTHONPATH
-              echo $UV_NO_ENV_FILE
-              echo $UV_ENV_FILE
               uv run --env-file gh_test.env -- hello.py
 
           - id: uv-run-env2
@@ -303,8 +301,6 @@ jobs:
               echo "PYTHONPATH=${GITHUB_WORKSPACE}/python:$PYTHONPATH" > gh_test.env
               cat gh_test.env
               echo $PYTHONPATH
-              echo $UV_NO_ENV_FILE
-              echo $UV_ENV_FILE
               uv run --env-file gh_test.env -- hello.py
 
           - id: uv-run-env-env
@@ -316,9 +312,7 @@ jobs:
               echo "PYTHONPATH=${GITHUB_WORKSPACE}/python" > gh_test.env
               cat gh_test.env
               echo $PYTHONPATH
-              echo $UV_NO_ENV_FILE
               export UV_ENV_FILE=gh_test.env
-              echo $UV_NO_ENV_FILE
               echo $UV_ENV_FILE
               uv run -- hello.py
 
