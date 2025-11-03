@@ -316,7 +316,7 @@ jobs:
               echo $UV_ENV_FILE
               uv run -- hello.py
 
-          - id: uv-runt
+          - id: uv-run
             name: "uv-run"
             post_build: |
               # Run pytest tests
@@ -324,7 +324,7 @@ jobs:
               echo $PYTHONPATH
               uv run -- hello.py
 
-          - id: uv-run export
+          - id: uv-run-export
             name: "uv-run system env export"
             post_build: |
               # Run pytest tests
