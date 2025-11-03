@@ -95,24 +95,6 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: |
-<<<<<<< HEAD
-=======
-              # Run pytest tests
-              # PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=120
-              cd $GITHUB_WORKSPACE/tests
-              uv run -- pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
-              uv run -- pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
-
-          - id: boost
-            name: "Full build + boost tests"
-            ccache_key: kotekan-full-boost
-            runner: ubuntu-latest
-            container_image: ""
-            container_options: ""
-            cmake_defs: *full_build_cmake_opts
-            post_build: |
->>>>>>> bacf569d (pytest works in CI with uv.  Removing bug-finding tests.)
               TEST_TIMEOUT=30
               bash $GITHUB_WORKSPACE/tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" $GITHUB_WORKSPACE/build-2404/tests/boost
 
@@ -187,6 +169,37 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/cpu_batch
+          
+          - id: bugfix_release_pytest_gcc
+            name: "Release build + pytest"
+            ccache_key: bugfix-kotekan-release-gcc
+            cmake_defs: &bugfix-build_release_gcc_opts >-
+              -DCMAKE_BUILD_TYPE=Release
+              -DWERROR=ON
+              -DCCACHE=ON
+              -DUSE_OMP=ON
+              -DUSE_NUMA=ON
+              -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON
+              -DUSE_HIP=OFF
+              -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON
+              -DUSE_HDF5=ON
+              -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON
+              -DUSE_LAPACK_BLAZE=ON
+              -DUSE_FFTW=ON
+              -DUSE_JULIA=ON
+              -DUSE_DPDK=ON
+              -DWITH_TESTS=ON
+              -DWITH_BOOST_TESTS=OFF
+            post_build: |
+              # Run pytest tests
+              # PYTHONPATH=$GITHUB_WORKSPACE/python
+              PYTEST_TIMEOUT=120
+              cd $GITHUB_WORKSPACE/build-2404
+              mkdir bugfix_dump2
+              kotekan/kotekan -c ../config/tests/bugfix_eigenvis.yaml
 
           # Test gcc build with docs
           - id: local-docs

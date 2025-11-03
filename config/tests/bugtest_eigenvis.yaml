@@ -1,0 +1,101 @@
+N2_pool:
+  int_frames: 64
+  kotekan_metadata_pool: N2Metadata
+  num_metadata_objects: 30 * buffer_depth
+block_size: 2
+buffer_depth: 5
+cadence: 10.0
+cpu_affinity: []
+dataset_manager:
+  use_dataset_broker: false
+dump2:
+  base_dir: bugfix_dump2
+  exit_after_n_files: 0
+  file_ext: dump
+  file_name: dumpn2_buf2
+  in_buf: dumpn2_buf2
+  kotekan_stage: rawFileWrite
+dumpn2_buf2:
+  kotekan_buffer: N2
+  metadata_pool: N2_pool
+  num_frames: buffer_depth
+earth_rotation_data:
+  earth_orientation_parameter_table:
+  - delta_UT1_inst: 0.0
+    time_inst_ns: 0
+    x_pm: 0.0
+    y_pm: 0.0
+  - delta_UT1_inst: 0.0
+    time_inst_ns: 3000000000000000000
+    x_pm: 0.0
+    y_pm: 0.0
+  kotekan_update_endpoint: json
+eigenVis_test:
+  in_buf: fakevis_buf1
+  kotekan_stage: eigenVis
+  out_buf: dumpn2_buf2
+fakevis1:
+  freq_ids:
+  - 0
+  kotekan_stage: FakeN2
+  mode: phase_ij
+  num_frames: 16
+  out_buf: fakevis_buf1
+  wait: false
+fakevis_buf1:
+  kotekan_buffer: N2
+  metadata_pool: N2_pool
+  num_frames: buffer_depth
+freq:
+- 0
+gps_time:
+  frame0_nano: 0
+log_level: debug
+main_pool:
+  kotekan_metadata_pool: chordMetadata
+  num_metadata_objects: 30 * buffer_depth
+mode: phase_ij
+num_data_sets: 1
+num_diagonals_filled: 0
+num_elements: 200
+num_ev: 4
+num_freq_in_frame: 1
+num_gpu_frames: 64
+num_local_freq: 1
+samples_per_data_set: 32768
+telescope:
+  dish_positions:
+  - - 0.0
+    - 0.0
+    - 0.0
+  - - 1.0
+    - 0.0
+    - 0.0
+  inst_alt_deg: 90.0
+  inst_dish_alt_axis:
+  - 1
+  - 0
+  - 0
+  inst_dish_vert_axis:
+  - 0
+  - 0
+  - 1
+  inst_grid_x_axis:
+  - 1
+  - 0
+  - 0
+  inst_grid_y_axis:
+  - 0
+  - 1
+  - 0
+  inst_lat_deg: 49.32075144444
+  inst_long_deg: -119.62081125
+  name: CHORDTelescope
+  require_gps: false
+  updatable_config: /earth_rotation_data
+total_frames: 16
+type: config
+vis_pool:
+  int_frames: 64
+  kotekan_metadata_pool: VisMetadata
+  num_metadata_objects: 30 * buffer_depth
