@@ -43,3 +43,6 @@ dev = [
 
 [tool.uv.sources]
 #kotekan = { path = "./python", package = false}
+
+[tool.pytest.ini_options]
+pythonpath = ["./python"]
