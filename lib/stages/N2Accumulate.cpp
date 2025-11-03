@@ -39,7 +39,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&N2Accumulate::main_thread, this)),
     _num_freq_per_n2k_frame(config.get<int64_t>(unique_name, "num_freq_per_n2k_frame")),
-    _num_n2k_samples_to_accumulate(config.get<int64_t>(unique_name, "num_n2k_samples_to_accumulate")),
+    _num_n2k_samples_to_accumulate(
+        config.get<int64_t>(unique_name, "num_n2k_samples_to_accumulate")),
     _packet_loss_is_scalar(config.get<bool>(unique_name, "packet_loss_is_scalar")),
     _n_fpga_samples_per_n2k_frame(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _n_fpga_samples_per_n2k_correlation(config.get<int64_t>(unique_name, "sub_integration_ntime")),
@@ -58,12 +59,14 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
         // accumulation setup
         if (_num_n2k_samples_to_accumulate <= 0 || _num_n2k_samples_to_accumulate % 2 != 0)
-            FATAL_ERROR("N2Accumulate configured to use non-positive or odd (should be positive even!) "
-                        "num_n2k_samples_to_accumulate: {:d}",
-                        _num_n2k_samples_to_accumulate);
+            FATAL_ERROR(
+                "N2Accumulate configured to use non-positive or odd (should be positive even!) "
+                "num_n2k_samples_to_accumulate: {:d}",
+                _num_n2k_samples_to_accumulate);
 
         if (!_packet_loss_is_scalar)
-            FATAL_ERROR("N2Accumulate configured to use packet loss matrix, which is not implemented.");
+            FATAL_ERROR(
+                "N2Accumulate configured to use packet loss matrix, which is not implemented.");
 
         // sampling information
         if (!(_n_fpga_samples_per_n2k_frame > 0))
@@ -72,8 +75,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
             FATAL_ERROR("sub_integration_ntime is not positve: {:d}",
                         _n_fpga_samples_per_n2k_correlation);
         if (!(_n_fpga_samples_per_n2k_frame % _n_fpga_samples_per_n2k_correlation == 0))
-            FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d})",
-                        _n_fpga_samples_per_n2k_frame, _n_fpga_samples_per_n2k_correlation);
+            FATAL_ERROR(
+                "samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d})",
+                _n_fpga_samples_per_n2k_frame, _n_fpga_samples_per_n2k_correlation);
 
         // Number of elements (polarization x dish) in the array.
         if (_num_elements <= 0)
@@ -81,9 +85,10 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
         // Check num_elements is consistent with the count & correlation blocksizes.
         if (!(_num_elements % _n2k_correlation_blocksize == 0))
-            FATAL_ERROR("num_elements ({:d}) is not a multiple of the correlation block size ({:d})",
-                        _num_elements, _n2k_correlation_blocksize);
-        
+            FATAL_ERROR(
+                "num_elements ({:d}) is not a multiple of the correlation block size ({:d})",
+                _num_elements, _n2k_correlation_blocksize);
+
         if (!(_num_elements % (8 * _n2k_counts_blocksize) == 0))
             FATAL_ERROR("num_elements ({:d}) / 8 is not a multiple of the counts block size ({:d})",
                         _num_elements, _n2k_counts_blocksize);
@@ -133,7 +138,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                                      0); // store even vis matrix for weights calculation
     _weights = std::vector<float>(_num_freq_per_n2k_frame * _n2k_correlation_num_products,
                                   0.0f); // real-valued weights
-    
+
     // number of fpga samples, per frequency, in frame
     _n_valid_fpga_samples_in_vis = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
     _n_valid_fpga_samples_in_vis_even = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
@@ -174,8 +179,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     // Ensure outgoing buffer is of type N2
     if (out_buf->buffer_type != "N2")
-        FATAL_ERROR("N2Accumulate out_buf ({:s}) is not of type N2.",
-                    out_buf->buffer_name);
+        FATAL_ERROR("N2Accumulate out_buf ({:s}) is not of type N2.", out_buf->buffer_name);
 
     // TODO... Should we ensure output buffer has enough frames (>= # frequencies) to take the
     // output without filling completely?
@@ -426,7 +430,7 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
         meta->nfreq = _num_freq_per_n2k_frame;
         meta->freq_id = chord_frame_metadata->get_coarse_freq()[f];
         meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
-        
+
         meta->frame_start_time_ns = _tel.to_time_ns(meta->fpga_start_tick);
         meta->freq_Hz = _tel.to_freq(meta->freq_id);
         meta->eop = _tel.get_EOP_at_time(

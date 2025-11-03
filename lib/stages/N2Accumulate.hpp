@@ -90,13 +90,14 @@ private:
     /// The size of the blocks in the matrices are fixed.
 
     static constexpr int64_t _n2k_correlation_blocksize = 16; // THIS IS ALWAYS 16
-    int64_t _n2k_correlation_lin_blocks; ///< Number blocks in the blocked correlation matrix from n2k
-    int64_t _n2k_correlation_num_blocks; ///< Total number of blocks in n2k's correlation matrix
+    int64_t
+        _n2k_correlation_lin_blocks; ///< Number blocks in the blocked correlation matrix from n2k
+    int64_t _n2k_correlation_num_blocks;   ///< Total number of blocks in n2k's correlation matrix
     int64_t _n2k_correlation_num_products; ///< Total number of products in n2k's correlation matrix
 
-    static constexpr int64_t _n2k_counts_blocksize = 8;       // THIS IS ALWAYS 8
-    int64_t _n2k_counts_lin_blocks; ///< Linear number of blocks in the counts matrix
-    int64_t _n2k_counts_num_blocks; ///< Total number of blocks in the counts matrix
+    static constexpr int64_t _n2k_counts_blocksize = 8; // THIS IS ALWAYS 8
+    int64_t _n2k_counts_lin_blocks;   ///< Linear number of blocks in the counts matrix
+    int64_t _n2k_counts_num_blocks;   ///< Total number of blocks in the counts matrix
     int64_t _n2k_counts_num_products; ///< Total number of products in n2k's counts matrix
 
 

@@ -487,7 +487,8 @@ private:
      * @param datasets  Map of datasets to finalize
      * @param late_frame_grace_seconds  Grace period in seconds for late frames
      */
-    void _grace_finalize_datasets(std::map<std::string, std::unique_ptr<gdalVisFileData>>& datasets);
+    void
+    _grace_finalize_datasets(std::map<std::string, std::unique_ptr<gdalVisFileData>>& datasets);
 
     /**
      * @brief Get the partial directory path for temporary files.

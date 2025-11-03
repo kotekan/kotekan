@@ -277,7 +277,8 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
     }
 }
 
-void gdalVisWrite::_grace_finalize_datasets(std::map<std::string, std::unique_ptr<gdalVisFileData>>& datasets) {
+void gdalVisWrite::_grace_finalize_datasets(
+    std::map<std::string, std::unique_ptr<gdalVisFileData>>& datasets) {
     const double now_s = current_time();
     for (auto ds_it = datasets.begin(); ds_it != datasets.end(); ++ds_it) {
         auto& obj = *ds_it->second;
@@ -293,8 +294,8 @@ void gdalVisWrite::_grace_finalize_datasets(std::map<std::string, std::unique_pt
             int r = std::rename(obj.partial_path.c_str(), ds_it->first.c_str());
             if (r != 0) {
                 const char* msg = strerror(errno);
-                ERROR("Failed to rename partial dataset to final: {} -> {}: {}",
-                        obj.partial_path, ds_it->first, msg);
+                ERROR("Failed to rename partial dataset to final: {} -> {}: {}", obj.partial_path,
+                      ds_it->first, msg);
             }
             ds_it = datasets.erase(ds_it);
             continue; // to next dataset
@@ -587,7 +588,7 @@ void gdalVisWrite::main_thread() {
 
         // After handling this frame, scan for grace-based finalizations
         _grace_finalize_datasets(datasets);
-        
+
     } // while !stop_thread
 
     // Flush any partially-filled datasets on exit
