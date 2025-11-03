@@ -308,6 +308,7 @@ jobs:
             post_build: |
               # Run pytest tests
               # PYTHONPATH=$GITHUB_WORKSPACE/python
+              cd $GITHUB_WORKSPACE/tests/uv_test
               echo $PYTHONPATH
               python3 hello.py
 
@@ -315,6 +316,7 @@ jobs:
             name: "python env"
             post_build: |
               # Run pytest tests
+              cd $GITHUB_WORKSPACE/tests/uv_test
               PYTHONPATH=$GITHUB_WORKSPACE/python
               echo $PYTHONPATH
               python3 hello.py
@@ -323,6 +325,7 @@ jobs:
             name: "python env export"
             post_build: |
               # Run pytest tests
+              cd $GITHUB_WORKSPACE/tests/uv_test
               export PYTHONPATH=$GITHUB_WORKSPACE/python
               echo $PYTHONPATH
               python3 hello.py
@@ -331,6 +334,7 @@ jobs:
             name: "python env"
             post_build: |
               # Run pytest tests
+              cd $GITHUB_WORKSPACE/tests/uv_test
               echo $PYTHONPATH
               PYTHONPATH="${GITHUB_WORKSPACE}/python:$PYTHONPATH" python3 hello.py
 
