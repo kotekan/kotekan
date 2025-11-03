@@ -4,6 +4,7 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"      // for Telescope
 #include "errors.h"           // for exit_kotekan, ReturnCode
+#include "json.hpp"           // for json
 #include "kotekanLogging.hpp" // for INFO
 #include "timeUtil.hpp"       // for get_ERA_from_UT1, get_UT1_from_ERA, get_time_from_UT1
 
@@ -22,6 +23,7 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using json = nlohmann::json;
 
 #define GIGA 1'000'000'000L
 
@@ -165,6 +167,11 @@ void TestCHORDTelescope::main_thread() {
             std::array<double, 3> pos = tel.get_dish_position(i);
             INFO("            Dish Pos:    {0:d} - ({1:f}, {2:f}, {3:f})", i, pos[0], pos[1],
                  pos[2]);
+        }
+
+        for(i = 0; i < n_dish; i++) {
+            json j = tel.get_dish_at_idx(i);
+            INFO("            Dish Info: {:s}", j.dump());
         }
 
         // break;

@@ -50,7 +50,7 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
 
     double sampling_rate = config.get_default<double>(path, "sampling_rate_Hz", 3.2e9);
     uint64_t fft_length = config.get_default<uint64_t>(path, "fft_length", 16384);
-    ny_zone = config.get_default<uint8_t>(path, "nyquist_zone");
+    ny_zone = config.get_default<uint8_t>(path, "nyquist_zone", 1);
     dt_ns = (GIGA * fft_length) / sampling_rate;
     nfreq_total = fft_length / 2;
 
@@ -103,6 +103,7 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     }
 
     _dish_positions = config.get<std::vector<std::array<double, 3>>>(path, "dish_positions");
+    _dish_info_table = config.get_default<std::vector<dishInfo>>(path, "dish_inputs", std::vector<dishInfo>());
 
     double cos_lon = cos(deg2rad * _inst_long_deg);
     double sin_lon = sin(deg2rad * _inst_long_deg);
@@ -672,6 +673,10 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
     return eop;
 }
 
+const struct dishInfo& CHORDTelescope::get_dish_at_idx(int64_t idx) const {
+    return _dish_info_table[idx];
+}
+
 // Get the frequency in MHz corresponding to the given freq_id.
 double CHORDTelescope::to_freq_MHz(freq_id_t freq_id) const {
     return freq_id * (1e3 / (double)dt_ns);
@@ -751,4 +756,23 @@ void from_json(const nlohmann::json& j, EOP& m) {
     m.ERA_deg = j.at("ERA_deg");               // Earth Rotation Angle, degrees
     m.xp_as = j.at("xp_as");                   // Polar Motion x', in arcseconds.
     m.yp_as = j.at("yp_as");                   // Polar Motion y', in arcseconds.
+}
+
+void to_json(nlohmann::json& j, const dishInfo& d) {
+    j = {};
+    j.emplace("dish_idx", d.idx);
+    j.emplace("ew_idx", d.ew_idx);
+    j.emplace("ns_idx", d.ns_idx);
+    j.emplace("grid_disp_m", d.grid_disp_m);
+    j.emplace("type", d.type);
+    j.emplace("label", d.label);
+}
+
+void from_json(const nlohmann::json& j, dishInfo& d) {
+    d.idx = j.at("dish_idx");
+    d.ns_idx = j.at("ew_idx");
+    d.ew_idx = j.at("ns_idx");
+    d.grid_disp_m = j.at("grid_disp_m");
+    d.type = j.at("type");
+    d.label = j.at("label");
 }

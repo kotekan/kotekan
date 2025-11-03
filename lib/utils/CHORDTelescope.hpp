@@ -37,6 +37,20 @@ const static struct EOP eop_null = {
     .t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0.0, .ERA_deg = 0.0, .xp_as = 0.0, .yp_as = 0.0};
 
 
+struct dishInfo {
+    int64_t idx;
+    int64_t ew_idx;
+    int64_t ns_idx;
+    std::array<float, 3> grid_disp_m;
+    int64_t type;
+    std::string label;
+};
+
+void to_json(nlohmann::json& j, const dishInfo& d);
+void from_json(const nlohmann::json& j, dishInfo& d);
+
+
+
 /**
  * @brief Implementation for a CHORD-like telescope.
  *
@@ -177,6 +191,8 @@ public:
      * @param   ts  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
      **/
     struct EOP get_EOP_at_UT1(int64_t ut1) const;
+
+    const struct dishInfo& get_dish_at_idx(int64_t idx) const;
 
     /**
      * @brief   Return an observing vector (normalized vec3) in telescope
@@ -402,6 +418,9 @@ protected:
     // Earth Orientation Parameters
     mutable std::mutex _eop_lock;
     std::vector<struct EOP> _eop_table;
+
+    // Dish Properties
+    std::vector<struct dishInfo> _dish_info_table;
 };
 
 /*
