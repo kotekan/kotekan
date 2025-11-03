@@ -246,9 +246,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .ccache
-          key: ccache-test-2404-${{ github.sha }}
+          key: ccache-${{ matrix.ccache_key }}-${{ github.sha }}
           restore-keys: |
-            ccache-test-2404
+            ccache-${{ matrix.ccache_key }}-
 
       - name: Print working environment details
         run: |
