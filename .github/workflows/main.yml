@@ -287,21 +287,52 @@ jobs:
               # Run pytest tests
               # PYTHONPATH=$GITHUB_WORKSPACE/python
               cd $GITHUB_WORKSPACE/tests/uv_test
-              echo "PYTHONPATH=${GITHUB_WORKSPACE}/python:$PYTHONPATH" > gh_env_test
+              echo "PYTHONPATH=${GITHUB_WORKSPACE}/python" > gh_test.env
               cat gh_env_test
               echo $PYTHONPATH
-              uv run --env-file gh_env_test -- hello.py
+              echo $UV_NO_ENV_FILE
+              uv run --env-file gh_test.env -- hello.py
 
-          - id: uv-run-env-export
-            name: "uv-run env export file"
+          - id: uv-run-env2
+            name: "uv-run env2"
             post_build: |
               # Run pytest tests
               # PYTHONPATH=$GITHUB_WORKSPACE/python
               cd $GITHUB_WORKSPACE/tests/uv_test
-              echo "export PYTHONPATH=${GITHUB_WORKSPACE}/python:$PYTHONPATH" > gh_env_test
+              echo "PYTHONPATH=${GITHUB_WORKSPACE}/python:$PYTHONPATH" > gh_test.env
               cat gh_env_test
               echo $PYTHONPATH
-              uv run --env-file gh_env_test -- hello.py
+              echo $UV_NO_ENV_FILE
+              uv run --env-file gh_test.env -- hello.py
+
+          - id: uv-run-env-env
+            name: "uv-run env env"
+            post_build: |
+              # Run pytest tests
+              # PYTHONPATH=$GITHUB_WORKSPACE/python
+              cd $GITHUB_WORKSPACE/tests/uv_test
+              echo "PYTHONPATH=${GITHUB_WORKSPACE}/python" > gh_test.env
+              cat gh_env_test
+              echo $PYTHONPATH
+              export UV_ENV_FILE=gh_test.env
+              uv run -- hello.py
+
+          - id: uv-run
+            name: "uv-run system env"
+            post_build: |
+              # Run pytest tests
+              cd $GITHUB_WORKSPACE/tests/uv_test
+              export PYTHONPATH=$GITHUB_WORKSPACE/python
+              echo $PYTHONPATH
+              uv run -- hello.py
+
+          - id: uv-run-prefix
+            name: "uv-run prefix env"
+            post_build: |
+              # Run pytest tests
+              cd $GITHUB_WORKSPACE/tests/uv_test
+              echo $PYTHONPATH
+              PYTHONPATH=${GITHUB_WORKSPACE}/python uv run -- hello.py
 
           - id: vanilla
             name: "python"
