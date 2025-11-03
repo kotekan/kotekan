@@ -1,0 +1,2 @@
+# Adds the kotekan runner scripts to the python path
+PYTHONPATH=../python:$PYTHONPATH

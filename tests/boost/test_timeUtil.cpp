@@ -87,7 +87,7 @@ void TimeData::setup() {
         f_exists(script),
         fmt::format("critical script {:s}/timeUtil.py was not found", TEST_SCRIPT_DIR));
 
-    std::string cmd = fmt::format("python3 {:s} isot", script);
+    std::string cmd = fmt::format("uv run {:s} isot", script);
     for (const std::string& tstr : tstrs)
         cmd += fmt::format(" {:s}", tstr);
     cmd += fmt::format(" > {:s}", filename);
