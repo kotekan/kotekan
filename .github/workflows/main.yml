@@ -63,10 +63,9 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=60
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
+              uv run pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
 
           # Test gcc build + parallel pytests
           - id: test_gcc_parallel_pytests
@@ -80,10 +79,9 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=60
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              uv run pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
 
           # Test gcc build + boost tests
           - id: test_gcc_boost
@@ -97,24 +95,6 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: |
-<<<<<<< HEAD
-=======
-              # Run pytest tests
-              # PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=120
-              cd $GITHUB_WORKSPACE/tests
-              uv run --env-file env_test -- pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
-              uv run --enf-file env_test -- pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
-
-          - id: boost
-            name: "Full build + boost tests"
-            ccache_key: kotekan-full-boost
-            runner: ubuntu-latest
-            container_image: ""
-            container_options: ""
-            cmake_defs: *full_build_cmake_opts
-            post_build: |
->>>>>>> 7327d273 (Use uv in Github CI)
               TEST_TIMEOUT=30
               bash $GITHUB_WORKSPACE/tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" $GITHUB_WORKSPACE/build-2404/tests/boost
 
@@ -130,10 +110,9 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=60
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
+              uv run pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
 
           # Release gcc build + parallel pytests
           - id: release_gcc_parallel_pytests
@@ -147,10 +126,9 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=60
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              uv run pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
 
           # Test clang build
           - id: clang
