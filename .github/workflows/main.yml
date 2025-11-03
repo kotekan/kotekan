@@ -324,6 +324,14 @@ jobs:
               echo $PYTHONPATH
               uv run -- hello.py
 
+          - id: uv-run-pytest
+            name: "uv-run"
+            post_build: |
+              # Run pytest tests
+              cd $GITHUB_WORKSPACE/tests/uv_test
+              echo $PYTHONPATH
+              uv run -- pytest test_hello.py
+
           - id: uv-run-export
             name: "uv-run system env export"
             post_build: |
