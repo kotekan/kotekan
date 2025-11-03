@@ -117,6 +117,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPRESS: true
+      CCACHE_TEMPDIR: /tmp/.ccache
 
     strategy:
       fail-fast: false
@@ -294,7 +299,12 @@ jobs:
     defaults:
       run:
         shell: bash
-    
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPRESS: true
+      CCACHE_TEMPDIR: /tmp/.ccache
+
     strategy:
       fail-fast: false
       matrix:
@@ -353,7 +363,7 @@ jobs:
           
           - id: release_clang
             name: "Release build with clang"
-            ccache_key: seflhosted-kotekan-release-clang
+            ccache_key: selfhosted-kotekan-release-clang
             cmake_defs: &runner_build_release_clang_opts >-
               -DCMAKE_BUILD_TYPE=Release
               -DCMAKE_C_COMPILER=clang
