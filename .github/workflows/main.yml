@@ -261,3 +261,121 @@ jobs:
               ls /data
               rm /data/tmp
             runs_on: self-hosted
+
+
+  github-uv-env-tests:
+    name: "Github"
+    runs-on: ubuntu-latest
+    needs: build-docker-2404
+    container:
+      image: ${{ needs.build-docker-2404.outputs.docker_img_name }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+
+          - id: uv-run-env
+            name: "uv-run env file"
+            post_build: |
+              # Run pytest tests
+              # PYTHONPATH=$GITHUB_WORKSPACE/python
+              cd $GITHUB_WORKSPACE/tests/uv_test
+              echo "PYTHONPATH=${GITHUB_WORKSPACE}/python:$PYTHONPATH" > gh_env_test
+              cat gh_env_test
+              echo $PYTHONPATH
+              uv run --env-file gh_env_test -- hello.py
+
+          - id: uv-run-env-export
+            name: "uv-run env export file"
+            post_build: |
+              # Run pytest tests
+              # PYTHONPATH=$GITHUB_WORKSPACE/python
+              cd $GITHUB_WORKSPACE/tests/uv_test
+              echo "export PYTHONPATH=${GITHUB_WORKSPACE}/python:$PYTHONPATH" > gh_env_test
+              cat gh_env_test
+              echo $PYTHONPATH
+              uv run --env-file gh_env_test -- hello.py
+
+          - id: vanilla
+            name: "python"
+            post_build: |
+              # Run pytest tests
+              # PYTHONPATH=$GITHUB_WORKSPACE/python
+              echo $PYTHONPATH
+              python3 hello.py
+
+          - id: vanilla-env
+            name: "python env"
+            post_build: |
+              # Run pytest tests
+              PYTHONPATH=$GITHUB_WORKSPACE/python
+              echo $PYTHONPATH
+              python3 hello.py
+
+          - id: vanilla-env-export
+            name: "python env export"
+            post_build: |
+              # Run pytest tests
+              export PYTHONPATH=$GITHUB_WORKSPACE/python
+              echo $PYTHONPATH
+              python3 hello.py
+
+          - id: vanilla-prefix
+            name: "python env"
+            post_build: |
+              # Run pytest tests
+              echo $PYTHONPATH
+              PYTHONPATH="${GITHUB_WORKSPACE}/python:$PYTHONPATH" python3 hello.py
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-test-2404-${{ github.sha }}
+          restore-keys: |
+            ccache-test-2404
+
+      - name: Print working environment details
+        run: |
+          echo "==========="
+          pwd
+          echo "==========="
+          ls -la
+          echo "==========="
+          env
+          echo "==========="
+          df -h
+          echo "==========="
+          free -h
+          echo "==========="
+          lscpu
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.7"
+
+      - name: Setup uv Python
+        run: uv python install
+
+      - name: Setup uv Python environment
+        run: uv sync --locked --all-extras --dev
+
+      - name: Post-build commands
+        if: matrix.post_build
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Run any commands specified ...
+          ${{ matrix.post_build }}
