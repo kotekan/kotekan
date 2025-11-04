@@ -8,7 +8,8 @@ Compiled docs are available at https://kotekan.readthedocs.io/en/latest/.
 
 # Build Instructions
 
-[![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yml/badge.svg)](https://github.com/kotekan/kotekan/actions/workflows/main.yml)
+`develop` branch [![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yml/badge.svg)](https://github.com/kotekan/kotekan/actions/workflows/main.yml)
+`chord` branch [![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yml/badge.svg?branch=chord)](https://github.com/kotekan/kotekan/actions/workflows/main.yml)
 
 Detailed instructions at http://lwlab.dunlap.utoronto.ca/kotekan/compiling/general.html.
 
