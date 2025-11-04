@@ -2,6 +2,7 @@ project(kotekan_core)
 
 add_library(
     kotekan_core
+    backtrace.cpp
     basebandReadoutManager.cpp
     basebandApiManager.cpp
     buffer.cpp
