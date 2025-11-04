@@ -14,13 +14,7 @@ dependencies:
   - breathe=4.35.0
   - sphinxcontrib-plantuml=0.25
   # Feature libraries
-  - pkg-config
   - gdal
   - hdf5
   - highfive
   - hdf5plugin
-  - fftw
-  - liblapacke
-  - openblas
-  - graphviz
-  - julia
