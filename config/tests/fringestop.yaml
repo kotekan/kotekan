@@ -267,6 +267,7 @@ log_level: debug
 
 num_data_sets: 1
 num_elements: 14
+num_dishes: 7
 num_ev: 4
 num_freq_in_frame: 1
 num_gpu_frames: 64
@@ -275,22 +276,26 @@ samples_per_dataset: 32768
 
 telescope:
   name: CHORDTelescope
-  dish_positions: [
-    [0.0, 0.0, 0.0],
-    [6.3, 0.0, 0.0],
-    [0.0, 8.4, 0.0],
-    [6.3, 8.4, 0.0],
-    [151.0, 0.0, 0.0],
-    [0.0, 204.0, 0.0],
-    [151.0, 204.0, 0.0]]
   inst_lat_deg: 49.32075144444
   inst_long_deg: -119.62081125
   inst_grid_x_axis: [1.0, 0.0, 0.0]
   inst_grid_y_axis: [0.0, 1.0, 0.0]
-  inst_alt_deg: 90.0
-  inst_dish_alt_axis: [1.0, 0.0, 0.0]
+  inst_coelev_deg: 0.0
+  inst_dish_elev_axis: [1.0, 0.0, 0.0]
   inst_dish_vert_axis: [0.0, 0.0, 1.0]
   require_gps: false
   updatable_config: /earth_rotation_data
+
+dish_separation_ew_m: 6.3
+dish_separation_ns_m: 8.5
+dish_inputs: [
+  {dish_idx: 0, ew_idx: 0,  ns_idx: 0,  pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "A01"},
+  {dish_idx: 1, ew_idx: 1,  ns_idx: 0,  pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "A02"},
+  {dish_idx: 2, ew_idx: 0,  ns_idx: 1,  pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "B01"},
+  {dish_idx: 3, ew_idx: 1,  ns_idx: 1,  pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "B02"},
+  {dish_idx: 4, ew_idx: 24, ns_idx: 0,  pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "A25"},
+  {dish_idx: 5, ew_idx: 0,  ns_idx: 24, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "Y01"},
+  {dish_idx: 6, ew_idx: 24, ns_idx: 24, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "Y25"}
+]
 
 type: config
