@@ -21,7 +21,7 @@ rfi_vals = [255, 0, 255, 255]
 
 global_params = {
     "fft_length": 16384,
-    "sampling_rate_Hz": 3.2e9,
+    "sampling_rate_MHz": 3.2e3,
     "num_elements": 64,
     "num_dishes": 32,
     "dish_separation_ew_m": 6.3,
@@ -291,16 +291,16 @@ def test_metadata(accumulate_data):
         )
         assert frame.metadata.freq_id == freq_ids[f_idx]
         assert (
-            frame.metadata.freq_Hz
+            frame.metadata.freq_MHz
             == freq_ids[f_idx]
-            * global_params["sampling_rate_Hz"]
+            * global_params["sampling_rate_MHz"]
             / global_params["fft_length"]
         )
 
 
 def test_time(accumulate_data):
 
-    dt_ns = GIGA * global_params["fft_length"] / global_params["sampling_rate_Hz"]
+    dt_ns = GIGA * global_params["fft_length"] / (1.0e6 * global_params["sampling_rate_MHz"])
 
     for idx, frame in enumerate(accumulate_data):
 
@@ -321,7 +321,7 @@ def test_time(accumulate_data):
 
 def test_EOP(accumulate_data):
 
-    dt_ns = GIGA * global_params["fft_length"] / global_params["sampling_rate_Hz"]
+    dt_ns = GIGA * global_params["fft_length"] / (1.0e6 * global_params["sampling_rate_MHz"])
     t0_ns = global_params["gps_time"]["frame0_nano"]
 
     eopA = global_params["earth_rotation_data"]["earth_orientation_parameter_table"][0]

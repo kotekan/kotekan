@@ -48,10 +48,10 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
         throw std::runtime_error("The system requires a GPS time, but none was found.");
     }
 
-    double sampling_rate = config.get_default<double>(path, "sampling_rate_Hz", 3.2e9);
+    double sampling_rate_MHz = config.get_default<double>(path, "sampling_rate_MHz", 3.2e3);
     uint64_t fft_length = config.get_default<uint64_t>(path, "fft_length", 16384);
     ny_zone = config.get_default<uint8_t>(path, "nyquist_zone", 1);
-    dt_ns = (GIGA * fft_length) / sampling_rate;
+    dt_ns = (GIGA * fft_length) / (1.0e6 * sampling_rate_MHz);
     nfreq_total = fft_length / 2;
 
     _inst_long_deg = config.get<double>(path, "inst_long_deg");
@@ -476,7 +476,7 @@ std::array<double, 3> CHORDTelescope::vec_itrs_to_cirs(const std::array<double, 
     return v_cirs;
 }
 
-void CHORDTelescope::fringestop_phases_1d(double freq_Hz, const struct EOP& eop,
+void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const struct EOP& eop,
                                           const struct EOP& eop0,
                                           std::vector<std::complex<double>>& phases) const {
 
@@ -498,7 +498,7 @@ void CHORDTelescope::fringestop_phases_1d(double freq_Hz, const struct EOP& eop,
     // phase center (n_tel0) at ERA0.
 
     // wavenumber for this frequency
-    double k = 2 * M_PI * freq_Hz / C;
+    double k = 2 * M_PI * 1e6 * freq_MHz / C;
 
     for (uint64_t i = 0; i < _dish_positions.size(); i++) {
         double phase = -k

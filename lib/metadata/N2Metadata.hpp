@@ -35,7 +35,7 @@ struct N2MetadataFormat {
     /// ID of the frequency bin
     uint32_t freq_id; // this is an int in chordMetadata, maybe change later
     /// Physical frequency in Hz
-    double freq_Hz;
+    double freq_MHz;
 
     /// Earth Orientation Paramters
     struct EOP eop;

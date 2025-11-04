@@ -32,7 +32,7 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
     n_rfi_fpga_ticks = fmt->n_rfi_fpga_ticks;
 
     freq_id = fmt->freq_id; // this is an int in chordMetadata, maybe change later
-    freq_Hz = fmt->freq_Hz;
+    freq_MHz = fmt->freq_MHz;
     eop = fmt->eop;
 
     num_elements = fmt->num_elements;
@@ -55,7 +55,7 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->n_rfi_fpga_ticks = n_rfi_fpga_ticks;
 
     fmt->freq_id = freq_id; // this is an int in chordMetadata, maybe change later
-    fmt->freq_Hz = freq_Hz;
+    fmt->freq_MHz = freq_MHz;
     fmt->eop = eop;
 
     fmt->num_elements = num_elements;
@@ -83,7 +83,7 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
     j.emplace("n_rfi_fpga_ticks", m.n_rfi_fpga_ticks);
 
     j.emplace("freq_id", m.freq_id); // this is an int in chordMetadata, maybe change later
-    j.emplace("freq_Hz", m.freq_Hz);
+    j.emplace("freq_MHz", m.freq_MHz);
     j.emplace("eop", m.eop);
 
     j.emplace("num_elements", m.num_elements);
@@ -101,7 +101,7 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.n_rfi_fpga_ticks = j.at("n_rfi_fpga_ticks");
 
     m.freq_id = j.at("freq_id"); // this is an int in chordMetadata, maybe change later
-    m.freq_Hz = j.at("freq_Hz");
+    m.freq_MHz = j.at("freq_MHz");
     m.eop = j.at("eop");
 
     m.num_elements = j.at("num_elements");

@@ -573,10 +573,10 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
 
     std::array<double, 3> n = tel.get_sky_vec_in_tel_coords(ra, dec, eop);
 
-    double f = 1e6 * tel.to_freq_MHz(frame.freq_id);
-    double lambda = C / f;
+    double f = tel.to_freq_MHz(frame.freq_id);
+    double lambda = C / (1e6 * f);
 
-    frame._metadata->freq_Hz = f;
+    frame._metadata->freq_MHz = f;
     frame._metadata->eop = eop;
 
     /*

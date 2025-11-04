@@ -78,7 +78,7 @@ public:
     /// ID of the frequency bin
     const uint32_t& freq_id;
     /// Physical frequency of bin
-    const double& freq_Hz;
+    const double& freq_MHz;
 
     /// Earth Orientation Paramters
     struct EOP& eop;

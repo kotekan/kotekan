@@ -76,8 +76,8 @@ const static struct dishInfo dish_null = {.idx = -1,
  * @conf    inst_lat_deg        double. Instrument latitude in degrees.
  * @conf    inst_coelev_deg     double. Instrument pointing co-elevation, in
  *                                      degrees from zenith. Positive is North.
- * @conf    sampling_rate_Hz    double. ADC Sampling Rate (~3.2 GHz)
- * @conf    sampling_rate_Hz    double. F-engine FFT length (~16384)
+ * @conf    sampling_rate_MHz   double. ADC Sampling Rate (~3.2 GHz)
+ * @conf    fft_lenth           double. F-engine FFT length (~16384)
  * @conf    inst_grid_x_axis    [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish-dish
  *                                      E/W separation.  Must be:
@@ -308,7 +308,7 @@ public:
     /**
      * @brief   Compute the fringestopping phases for each dish.
      *
-     * @param   freq_Hz Frequency to compute phases for.
+     * @param   freq_MHz Frequency to compute phases for.
      * @param   eop     Current EOP.
      * @param   eop0    EOP of phase reference time. if eop=eop0 all phases are
      *                  1.0
@@ -316,7 +316,7 @@ public:
      *                  least num_dishes. The phases will be written to the
      *                  first num_dishes elements of this vector.
      **/
-    void fringestop_phases_1d(double freq_Hz, const struct EOP& eop, const struct EOP& eop0,
+    void fringestop_phases_1d(double freq_MHz, const struct EOP& eop, const struct EOP& eop0,
                               std::vector<std::complex<double>>& phases) const;
 
     // Implementations of the required frequency mapping functions

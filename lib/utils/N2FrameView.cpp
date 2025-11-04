@@ -24,7 +24,7 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     n_valid_fpga_ticks(_metadata->n_valid_fpga_ticks),
     n_rfi_fpga_ticks(_metadata->n_rfi_fpga_ticks),
 
-    freq_id(_metadata->freq_id), freq_Hz(_metadata->freq_Hz),
+    freq_id(_metadata->freq_id), freq_MHz(_metadata->freq_MHz),
 
     eop(_metadata->eop),
 
