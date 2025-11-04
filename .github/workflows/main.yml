@@ -170,34 +170,54 @@ jobs:
             post_build: |
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/cpu_batch
           
-          - id: bugfix_release_pytest_gcc
-            name: "Release build + pytest"
-            ccache_key: bugfix-kotekan-release-gcc
+          - id: bugfix3_release_pytest_gcc
+            name: "Release + kotekan n2"
+            ccache_key: bugfix3-kotekan-release-gcc
             cmake_defs: *build_release_gcc_opts
             post_build: |
               # Run pytest tests
               cd $GITHUB_WORKSPACE/build-2404
-              mkdir bugfix_dump2
-              kotekan/kotekan -b localhost:0 -c $GITHUB_WORKSPACE/config/tests/bugtest_eigenvis.yaml
+              kotekan/kotekan -c $GITHUB_WORKSPACE/config/ci-tests/run_n2accum.yaml
           
-          - id: bugfix2_release_pytest_gcc
-            name: "Release build + pytest"
-            ccache_key: bugfix2-kotekan-release-gcc
+          - id: bugfix4_release_pytest_gcc
+            name: "Release + kotekan -b n2"
+            ccache_key: bugfix4-kotekan-release-gcc
             cmake_defs: *build_release_gcc_opts
             post_build: |
               # Run pytest tests
               cd $GITHUB_WORKSPACE/build-2404
               kotekan/kotekan -b localhost:0 -c $GITHUB_WORKSPACE/config/ci-tests/run_n2accum.yaml
           
-          - id: bugfix3_release_pytest_gcc
-            name: "Release build + pytest"
-            ccache_key: bugfix3-kotekan-release-gcc
+          - id: bugfix5_release_pytest_gcc
+            name: "Release + uv run pytest"
+            ccache_key: bugfix5-kotekan-release-gcc
             cmake_defs: *build_release_gcc_opts
             post_build: |
               # Run pytest tests
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
-              uv run -- pytest -v -s -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" test_eigenvis.py
+              uv run -- pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" test_eigenvis.py
+          
+          - id: bugfix6_release_pytest_gcc
+            name: "Release + system pytest"
+            ccache_key: bugfix6-kotekan-release-gcc
+            cmake_defs: *build_release_gcc_opts
+            post_build: |
+              # Run pytest tests
+              PYTEST_TIMEOUT=120
+              cd $GITHUB_WORKSPACE/tests
+              pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" test_eigenvis.py
+          
+          - id: bugfix7_release_pytest_gcc
+            name: "Release + system pytest + export path"
+            ccache_key: bugfix7-kotekan-release-gcc
+            cmake_defs: *build_release_gcc_opts
+            post_build: |
+              # Run pytest tests
+              PYTEST_TIMEOUT=120
+              cd $GITHUB_WORKSPACE/tests
+              export PYTHONPATH=$GITHUB_WORKSPACE/python:$PYTHONPATH
+              pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" test_eigenvis.py
 
           # Test gcc build with docs
           - id: local-docs
