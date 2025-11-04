@@ -173,7 +173,7 @@ jobs:
           - id: bugfix_release_pytest_gcc
             name: "Release build + pytest"
             ccache_key: bugfix-kotekan-release-gcc
-            cmake_defs: *bugfix-build_release_gcc_opts
+            cmake_defs: *build_release_gcc_opts
             post_build: |
               # Run pytest tests
               cd $GITHUB_WORKSPACE/build-2404
