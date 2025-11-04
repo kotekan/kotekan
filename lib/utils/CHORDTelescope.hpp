@@ -51,10 +51,13 @@ void to_json(nlohmann::json& j, const dishInfo& d);
 void from_json(const nlohmann::json& j, dishInfo& d);
 
 // A null (all 0) struct EOP;
-const static struct dishInfo dish_null = {
-    .idx = -1, .ew_idx = 0, .ns_idx = 0, .pos_disp_m = {0.0, 0.0, 0.0},
-    .coelev_disp_deg = 0.0, .type=-1, .label="NULL"};
-
+const static struct dishInfo dish_null = {.idx = -1,
+                                          .ew_idx = 0,
+                                          .ns_idx = 0,
+                                          .pos_disp_m = {0.0, 0.0, 0.0},
+                                          .coelev_disp_deg = 0.0,
+                                          .type = -1,
+                                          .label = "NULL"};
 
 
 /**

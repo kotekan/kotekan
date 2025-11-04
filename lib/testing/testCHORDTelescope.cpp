@@ -169,7 +169,7 @@ void TestCHORDTelescope::main_thread() {
                  pos[2]);
         }
 
-        for(i = 0; i < n_dish; i++) {
+        for (i = 0; i < n_dish; i++) {
             json j = tel.get_dish_at_idx(i);
             INFO("            Dish Info: {:s}", j.dump());
         }

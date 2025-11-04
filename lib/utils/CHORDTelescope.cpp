@@ -730,10 +730,10 @@ struct EOP CHORDTelescope::build_EOP_from_update(int64_t time_ns, double delta_u
     return eop;
 }
 void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::string& path) {
-  
+
     // Get the number of dishes, make sure its positive.
     _num_dishes = config.get<int32_t>(path, "num_dishes");
-    if(_num_dishes <= 0) {
+    if (_num_dishes <= 0) {
         FATAL_ERROR("CHORDTelescope: num_dishes must be > 0, got: {:d}", _num_dishes);
         std::abort();
     }
@@ -744,17 +744,18 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
     _dish_separation_ns_m = config.get_default<double>(path, "dish_separation_ns_m", 8.5);
 
     // Load the dish_inputs table into temporary storage
-    std::vector<dishInfo> cfg_tab = config.get_default<std::vector<dishInfo>>(path, "dish_inputs", std::vector<dishInfo>());
+    std::vector<dishInfo> cfg_tab =
+        config.get_default<std::vector<dishInfo>>(path, "dish_inputs", std::vector<dishInfo>());
 
     // Make real dish table full of NULL dishes.
     _dish_info_table = std::vector<dishInfo>(_num_dishes, dish_null);
 
     // Set indices for NULL dishes.
-    for(int i = 0; i < _num_dishes; i++)
+    for (int i = 0; i < _num_dishes; i++)
         _dish_info_table[i].idx = i;
 
     // Load the dishes from the config into the table. Make sure dish indices are consistent.
-    for(const dishInfo &dish : cfg_tab) {
+    for (const dishInfo& dish : cfg_tab) {
         int idx = dish.idx;
         if (idx < 0) {
             FATAL_ERROR("dish {:s} has dish_idx {:d}, which mush be >= 0", dish.label, dish.idx);
@@ -762,13 +763,15 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
         }
         assert(idx >= 0);
         if (idx >= _num_dishes) {
-            FATAL_ERROR("dish {:s} has dish_idx {:d}, which mush be < num_dishes ({:d})", dish.label, dish.idx, _num_dishes);
+            FATAL_ERROR("dish {:s} has dish_idx {:d}, which mush be < num_dishes ({:d})",
+                        dish.label, dish.idx, _num_dishes);
             std::abort();
         }
         assert(idx < _num_dishes);
 
         if (_dish_info_table[idx].type != dish_null.type) {
-            FATAL_ERROR("dish {:s} has dish_idx {:d}, which is duplicated in `dish_inputs`", dish.label, dish.idx);
+            FATAL_ERROR("dish {:s} has dish_idx {:d}, which is duplicated in `dish_inputs`",
+                        dish.label, dish.idx);
         }
 
         _dish_info_table[dish.idx] = dish;
@@ -778,11 +781,10 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
     _dish_positions = std::vector<std::array<double, 3>>();
 
     // Calculate and fill the dish positions table.
-    for(const dishInfo &d : _dish_info_table) {
-        _dish_positions.push_back({
-                _dish_separation_ew_m * d.ew_idx + d.pos_disp_m[0],
-                _dish_separation_ns_m * d.ns_idx + d.pos_disp_m[1],
-                d.pos_disp_m[2]});
+    for (const dishInfo& d : _dish_info_table) {
+        _dish_positions.push_back({_dish_separation_ew_m * d.ew_idx + d.pos_disp_m[0],
+                                   _dish_separation_ns_m * d.ns_idx + d.pos_disp_m[1],
+                                   d.pos_disp_m[2]});
     }
 }
 
