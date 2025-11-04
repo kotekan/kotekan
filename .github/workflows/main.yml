@@ -197,7 +197,7 @@ jobs:
               # Run pytest tests
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
-              uv run -- pytest -v -s -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x test_eigenvis.py
+              uv run -- pytest -v -s -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" test_eigenvis.py
 
           # Test gcc build with docs
           - id: local-docs
