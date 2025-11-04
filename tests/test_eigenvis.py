@@ -46,12 +46,12 @@ default_params = {
         "inst_lat_deg": 49.32075144444,
         "inst_grid_x_axis": [1, 0, 0],
         "inst_grid_y_axis": [0, 1, 0],
-        "inst_dish_alt_axis": [1, 0, 0],
+        "inst_dish_elev_axis": [1, 0, 0],
         "inst_dish_vert_axis": [0, 0, 1],
-        "inst_alt_deg": 90.0,
-        "dish_positions": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+        "inst_coelev_deg": 0.0,
         "updatable_config": "/earth_rotation_data",
     },
+    "num_dishes": 100,
     "gps_time": {"frame0_nano": 0},
 }
 

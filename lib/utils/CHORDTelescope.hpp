@@ -41,14 +41,19 @@ struct dishInfo {
     int64_t idx;
     int64_t ew_idx;
     int64_t ns_idx;
-    std::array<float, 3> pos_disp_m;
-    float coelev_disp_deg;
+    std::array<double, 3> pos_disp_m;
+    double coelev_disp_deg;
     int64_t type;
     std::string label;
 };
 
 void to_json(nlohmann::json& j, const dishInfo& d);
 void from_json(const nlohmann::json& j, dishInfo& d);
+
+// A null (all 0) struct EOP;
+const static struct dishInfo dish_null = {
+    .idx = -1, .ew_idx = 0, .ns_idx = 0, .pos_disp_m = {0.0, 0.0, 0.0},
+    .coelev_disp_deg = 0.0, .type=-1, .label="NULL"};
 
 
 
@@ -369,6 +374,14 @@ protected:
     struct EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
                                      double yp_as) const;
 
+    /**
+     * @brief   Load information about dish inputs from the config.
+     *
+     * @param   config  The config.
+     * @param   path    This telescope's path in the config.
+     **/
+    void set_dish_info(const kotekan::Config& config, const std::string& path);
+
     // The telescope's name in the config
     std::string _unique_name;
 
@@ -402,6 +415,14 @@ protected:
     // Matrix to transform vectors from ITRS geocentric coordinates (ECEF) to
     // local topocentric coordinates
     double _R_itrs_to_topo[3][3];
+
+    // Total number of dishes in the telescope, each provides 2 polarizations,
+    // so num_elements = 2 * num_dishes.
+    int32_t _num_dishes;
+
+    // Dish-dish grid spacing in the E/W (x) and N/S (y) directions in meters.
+    double _dish_separation_ew_m;
+    double _dish_separation_ns_m;
 
     // Dish positions in dish coordinate system.
     std::vector<std::array<double, 3>> _dish_positions;

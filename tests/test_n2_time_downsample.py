@@ -53,6 +53,7 @@ downsamp_params = {
 
 global_params = {
     "num_elements": 4,
+    "num_dishes": 2,
     "num_ev": 4,
     "earth_rotation_data": {
         "kotekan_update_endpoint": "json",
@@ -78,10 +79,9 @@ global_params = {
         "inst_lat_deg": 49.32075144444,
         "inst_grid_x_axis": [1, 0, 0],
         "inst_grid_y_axis": [0, 1, 0],
-        "inst_dish_alt_axis": [1, 0, 0],
+        "inst_dish_elev_axis": [1, 0, 0],
         "inst_dish_vert_axis": [0, 0, 1],
-        "inst_alt_deg": 90.0,
-        "dish_positions": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+        "inst_coelev_deg": 0.0,
         "updatable_config": "/earth_rotation_data",
     },
     "gps_time": {"frame0_nano": t_start_inst_ns},
