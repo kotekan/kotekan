@@ -179,6 +179,15 @@ jobs:
               cd $GITHUB_WORKSPACE/build-2404
               mkdir bugfix_dump2
               kotekan/kotekan -b localhost:0 -c $GITHUB_WORKSPACE/config/tests/bugtest_eigenvis.yaml
+          
+          - id: bugfix2_release_pytest_gcc
+            name: "Release build + pytest"
+            ccache_key: bugfix2-kotekan-release-gcc
+            cmake_defs: *build_release_gcc_opts
+            post_build: |
+              # Run pytest tests
+              cd $GITHUB_WORKSPACE/build-2404
+              kotekan/kotekan -b localhost:0 -c $GITHUB_WORKSPACE/config/ci-tests/run_n2accum.yaml
 
           # Test gcc build with docs
           - id: local-docs
