@@ -195,9 +195,9 @@ jobs:
             cmake_defs: *build_release_gcc_opts
             post_build: |
               # Run pytest tests
-              PYTEST_TIMEOUT=240
+              PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
-              uv run -- pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x test_eigenvis.yaml
+              uv run -- pytest -v -s -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x test_eigenvis.py
 
           # Test gcc build with docs
           - id: local-docs
