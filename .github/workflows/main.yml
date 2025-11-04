@@ -188,6 +188,16 @@ jobs:
               # Run pytest tests
               cd $GITHUB_WORKSPACE/build-2404
               kotekan/kotekan -b localhost:0 -c $GITHUB_WORKSPACE/config/ci-tests/run_n2accum.yaml
+          
+          - id: bugfix3_release_pytest_gcc
+            name: "Release build + pytest"
+            ccache_key: bugfix3-kotekan-release-gcc
+            cmake_defs: *build_release_gcc_opts
+            post_build: |
+              # Run pytest tests
+              PYTEST_TIMEOUT=240
+              cd $GITHUB_WORKSPACE/tests
+              uv run -- pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x test_eigenvis.yaml
 
           # Test gcc build with docs
           - id: local-docs
