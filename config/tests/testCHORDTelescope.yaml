@@ -45,8 +45,8 @@ telescope:
   inst_lat_deg: 49.3207514444444444
   inst_grid_x_axis: [1.0, 0.0, 0.0]
   inst_grid_y_axis: [0.0, 1.0, 0.0]
-  inst_alt_deg: 90.0
-  inst_dish_alt_axis: [1.0, 0.0, 0.0]
+  inst_coelev_deg: 0.0
+  inst_dish_elev_axis: [1.0, 0.0, 0.0]
   inst_dish_vert_axis: [0.0, 0.0, 1.0]
   dish_positions: [[0.0, 1.0, 2.0],
                    [0.0, 2.0, 2.0],
@@ -65,16 +65,16 @@ dish_separation_ew: 6.3
 dish_separation_ns: 8.5
 
 dish_inputs: [
-  {dish_idx: 0, ew_idx: 0, ns_idx: 0, grid_disp_m: [0.0, 0.0, 0.0], type: 0, label: "CHORD-A01"},
-  {dish_idx: 1, ew_idx: 1, ns_idx: 0, grid_disp_m: [0.0, 0.0, 0.0], type: 0, label: "CHORD-A02"},
-  {dish_idx: 4, ew_idx: 0, ns_idx: 1, grid_disp_m: [0.0, 0.0, 0.0], type: 0, label: "CHORD-B01"},
-  {dish_idx: 5, ew_idx: 1, ns_idx: 1, grid_disp_m: [0.0, 0.0, 0.0], type: 0, label: "CHORD-B02"},
-  {dish_idx: 2, ew_idx: 7, ns_idx: 0, grid_disp_m: [0.0, 0.0, 0.0], type: 0, label: "CHORD-A08"},
-  {dish_idx: 6, ew_idx: 0, ns_idx: 7, grid_disp_m: [0.0, 0.0, 0.0], type: 0, label: "CHORD-H01"},
-  {dish_idx: 7, ew_idx: 7, ns_idx: 7, grid_disp_m: [0.0, 0.0, 0.0], type: 0, label: "CHORD-H08"},
-  {dish_idx: 3, ew_idx: 15, ns_idx: 0, grid_disp_m: [0.0, 0.0, 0.0], type: 0, label: "CHORD-A16"},
-  {dish_idx: 8, ew_idx: 0, ns_idx: 15, grid_disp_m: [0.0, 0.0, 0.0], type: 0, label: "CHORD-P01"},
-  {dish_idx: 9, ew_idx: 15, ns_idx: 15, grid_disp_m: [0.0, 0.0, 0.0], type: 0, label: "CHORD-P16"}
+  {dish_idx: 0, ew_idx: 0, ns_idx: 0, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-A01"},
+  {dish_idx: 1, ew_idx: 1, ns_idx: 0, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-A02"},
+  {dish_idx: 4, ew_idx: 0, ns_idx: 1, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-B01"},
+  {dish_idx: 5, ew_idx: 1, ns_idx: 1, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-B02"},
+  {dish_idx: 2, ew_idx: 7, ns_idx: 0, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-A08"},
+  {dish_idx: 6, ew_idx: 0, ns_idx: 7, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-H01"},
+  {dish_idx: 7, ew_idx: 7, ns_idx: 7, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-H08"},
+  {dish_idx: 3, ew_idx: 15, ns_idx: 0, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-A16"},
+  {dish_idx: 8, ew_idx: 0, ns_idx: 15, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-P01"},
+  {dish_idx: 9, ew_idx: 15, ns_idx: 15, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-P16"}
 ]
 
 

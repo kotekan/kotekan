@@ -94,12 +94,12 @@ BOOST_AUTO_TEST_CASE(_instrument_position) {
 BOOST_AUTO_TEST_CASE(_instrument_orientation) {
     BOOST_TEST_MESSAGE(fmt::format("Testing telescope orientation."));
 
-    double alt = 160;
+    double coelev = -70;
 
     json json_config = json::parse(default_config_str);
-    json_config["telescope"]["inst_alt_deg"] = alt;
+    json_config["telescope"]["inst_coelev_deg"] = coelev;
 
     const CHORDTelescope& tel = get_telescope(json_config);
 
-    BOOST_CHECK_EQUAL(tel.get_inst_alt_deg(), alt);
+    BOOST_CHECK_EQUAL(tel.get_inst_coelev_deg(), coelev);
 }

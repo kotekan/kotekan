@@ -41,7 +41,8 @@ struct dishInfo {
     int64_t idx;
     int64_t ew_idx;
     int64_t ns_idx;
-    std::array<float, 3> grid_disp_m;
+    std::array<float, 3> pos_disp_m;
+    float coelev_disp_deg;
     int64_t type;
     std::string label;
 };
@@ -65,9 +66,8 @@ void from_json(const nlohmann::json& j, dishInfo& d);
  * @conf    gps_endpoint        string. The enpoint with the GPS time.
  * @conf    inst_long_deg       double. Instrument longitude in degrees.
  * @conf    inst_lat_deg        double. Instrument latitude in degrees.
- * @conf    inst_alt_deg        double. Instrument pointing altitude, in
- *                                      degrees from the northern horizon
- *                                      (az=0).
+ * @conf    inst_coelev_deg     double. Instrument pointing co-elevation, in
+ *                                      degrees from zenith. Positive is North.
  * @conf    sampling_rate_Hz    double. ADC Sampling Rate (~3.2 GHz)
  * @conf    sampling_rate_Hz    double. F-engine FFT length (~16384)
  * @conf    inst_grid_x_axis    [double, 3].    The basis vector, measured in
@@ -78,15 +78,15 @@ void from_json(const nlohmann::json& j, dishInfo& d);
  *                                      the topocentric frame, of the dish-dish
  *                                      N/S separation.  Must be:
  *                                      normalized, orthogonal to the x-axis.
- * @conf    inst_dish_alt_axis  [double, 3].    The basis vector, measured in
+ * @conf    inst_dish_elev_axis [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish
- *                                      altitude axis. East-pointing. Must be:
+ *                                      elevation axis. East-pointing. Must be:
  *                                      normalized, orthogonal to the vert-axis.
  * @conf    inst_dish_vert_axis [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish
- *                                      vertical direction. Up-pointing, 90 deg
- *                                      altitude. Must be:
- *                                      normalized, orthogonal to the alt-axis.
+ *                                      vertical direction. Up-pointing, 0 deg
+ *                                      co-elevation. Must be:
+ *                                      normalized, orthogonal to the elev-axis.
  * @conf    dish_positions      [[double, 3], N]    List of 3D dish positions,
  *                                      measured in the "Telescope" frame,
  *                                      where the x-axis is dish E/W sep,
@@ -128,10 +128,10 @@ public:
     double get_inst_lat_deg() const;
 
     /**
-     * @brief   Return the altitude angle of the instrument. 90.0 is up,
-     *          0.0 is North.
+     * @brief   Return the co-elevation angle of the instrument. 0.0 is up,
+     *          90.0 is North.
      **/
-    double get_inst_alt_deg() const;
+    double get_inst_coelev_deg() const;
 
     /**
      * @brief   Return a component of the Topo -> Telescope frame rotation
@@ -205,8 +205,8 @@ public:
                                                     const struct EOP& eop) const;
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the
-     *          phase center), in Dish coordinates (x is altitude axis (~East),
-     *          y is ~North, z is altitude = 90deg (~up).
+     *          phase center), in Dish coordinates (x is elevation axis (~East),
+     *          y is ~North, z is co-elevation = 0 deg (~up).
      **/
     std::array<double, 3> get_pointing_vec_in_dish_coords() const;
 
@@ -393,10 +393,10 @@ protected:
     double _R_topo_to_tel[3][3];
 
     // Dish pointing angle.  Measured in degrees from vertical.
-    double _inst_alt_deg;
+    double _inst_coelev_deg;
 
     // Matrix to transform from local topocentric coordinates to the
-    // dish (ie. z is dish zenith, x is altitude axis) coordinate system.
+    // dish (ie. z is dish zenith, x is elevation axis) coordinate system.
     double _R_topo_to_dish[3][3];
 
     // Matrix to transform vectors from ITRS geocentric coordinates (ECEF) to

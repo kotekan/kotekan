@@ -56,13 +56,13 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
 
     _inst_long_deg = config.get<double>(path, "inst_long_deg");
     _inst_lat_deg = config.get<double>(path, "inst_lat_deg");
-    _inst_alt_deg = config.get<double>(path, "inst_alt_deg");
+    _inst_coelev_deg = config.get<double>(path, "inst_coelev_deg");
 
-    INFO("Telescope configured with longitude: {:f} deg", _inst_long_deg);
-    INFO("Telescope configured with latitude:  {:f} deg", _inst_lat_deg);
-    INFO("Telescope configured with altitude: {:f} deg", _inst_alt_deg);
+    INFO("Telescope configured with longitude:    {:f} deg", _inst_long_deg);
+    INFO("Telescope configured with latitude:     {:f} deg", _inst_lat_deg);
+    INFO("Telescope configured with co-elevation: {:f} deg", _inst_coelev_deg);
     INFO("Telescope targetting approximate declination: {:f} deg",
-         _inst_lat_deg + 90 - _inst_alt_deg);
+         _inst_lat_deg + 90 - _inst_coelev_deg);
 
     if (gps_enabled)
         INFO("Telescope configured with GPS time0: {:d} ns", time0_ns);
@@ -87,7 +87,7 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     }
 
     // Read in the Dish Coord axes. Must be normalized and orthogonal.
-    std::array<double, 3> dish_x = config.get<std::array<double, 3>>(path, "inst_dish_alt_axis");
+    std::array<double, 3> dish_x = config.get<std::array<double, 3>>(path, "inst_dish_elev_axis");
     std::array<double, 3> dish_z = config.get<std::array<double, 3>>(path, "inst_dish_vert_axis");
     // Compute the Y axis as Z x X
     std::array<double, 3> dish_y = {dish_z[1] * dish_x[2] - dish_z[2] * dish_x[1],
@@ -268,8 +268,8 @@ double CHORDTelescope::get_inst_lat_deg() const {
     return _inst_lat_deg;
 }
 
-double CHORDTelescope::get_inst_alt_deg() const {
-    return _inst_alt_deg;
+double CHORDTelescope::get_inst_coelev_deg() const {
+    return _inst_coelev_deg;
 }
 
 std::array<double, 3> CHORDTelescope::get_sky_vec_in_tel_coords(double ra, double dec,
@@ -295,14 +295,14 @@ std::array<double, 3> CHORDTelescope::get_sky_vec_in_tel_coords(double ra, doubl
 
 std::array<double, 3> CHORDTelescope::get_pointing_vec_in_dish_coords() const {
 
-    // Dish coordinates are fixed with z "up" (altitude 90 degrees) and x
-    // along the altitude axis of the dish mount.  In this frame the pointing
-    // vector is just given by the curren altitude.
+    // Dish coordinates are fixed with z "up" (co-elevation 0 degrees) and x
+    // along the elevation axis of the dish mount.  In this frame the pointing
+    // vector is just given by the current elevation.
 
-    double alt = deg2rad * _inst_alt_deg;
+    double coelev = deg2rad * _inst_coelev_deg;
 
-    // alt=0 ==> North (y), alt=90 => Up (z), alt=180 -> South (-y)
-    std::array<double, 3> n_point = {0.0, cos(alt), sin(alt)};
+    // coelev=90 ==> North (y), coelev=0 => Up (z), coelev=-90 -> South (-y)
+    std::array<double, 3> n_point = {0.0, sin(coelev), cos(coelev)};
 
     return n_point;
 }
@@ -763,7 +763,8 @@ void to_json(nlohmann::json& j, const dishInfo& d) {
     j.emplace("dish_idx", d.idx);
     j.emplace("ew_idx", d.ew_idx);
     j.emplace("ns_idx", d.ns_idx);
-    j.emplace("grid_disp_m", d.grid_disp_m);
+    j.emplace("pos_disp_m", d.pos_disp_m);
+    j.emplace("coelev_disp_deg", d.coelev_disp_deg);
     j.emplace("type", d.type);
     j.emplace("label", d.label);
 }
@@ -772,7 +773,8 @@ void from_json(const nlohmann::json& j, dishInfo& d) {
     d.idx = j.at("dish_idx");
     d.ns_idx = j.at("ew_idx");
     d.ew_idx = j.at("ns_idx");
-    d.grid_disp_m = j.at("grid_disp_m");
+    d.pos_disp_m = j.at("pos_disp_m");
+    d.coelev_disp_deg = j.at("coelev_disp_deg");
     d.type = j.at("type");
     d.label = j.at("label");
 }
