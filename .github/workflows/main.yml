@@ -129,6 +129,7 @@ jobs:
         include:
           - id: base
             name: "Base build (no extras)"
+            ccache_key: kotekan-base
             cmake_defs: &base_build_cmake_opts >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
@@ -141,6 +142,7 @@ jobs:
 
           - id: full
             name: "Full build + pytests tests"
+            ccache_key: kotekan-full-pytest
             cmake_defs: &full_build_cmake_opts >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
@@ -159,6 +161,7 @@ jobs:
 
           - id: boost
             name: "Full build + boost tests"
+            ccache_key: kotekan-full-boost
             runner: ubuntu-latest
             container_image: ""
             container_options: ""
@@ -169,6 +172,7 @@ jobs:
 
           - id: opencl
             name: "OpenCL build"
+            ccache_key: kotekan-opencl
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
@@ -212,6 +216,7 @@ jobs:
 
           - id: clang
             name: "clang build"
+            ccache_key: kotekan-clang
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
@@ -225,6 +230,7 @@ jobs:
 
           - id: docs
             name: "Build Documentation"
+            ccache_key: kotekan-docs
             cmake_defs: >-
               -DCOMPILE_DOCS=ON
             post_build: |
@@ -246,9 +252,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .ccache
-          key: ccache-test-2404-${{ github.sha }}
+          key: ccache-${{ matrix.ccache_key }}-${{ github.sha }}
           restore-keys: |
-            ccache-test-2404
+            ccache-${{ matrix.ccache_key }}-
 
       - name: Print working environment details
         run: |

@@ -9,9 +9,9 @@ conda:
 
 # Set the OS, Python version and other tools you might need
 build:
-  os: "ubuntu-22.04"
+  os: "ubuntu-24.04"
   tools:
-    python: "miniconda3-4.7"
+    python: "miniconda-latest"
   jobs:
      pre_create_environment:
        - conda update --yes --quiet --name=base --channel=defaults conda
