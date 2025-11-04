@@ -1,5 +1,6 @@
 #include "Config.hpp"             // for Config
 #include "StageFactory.hpp"       // for StageFactoryRegistry, StageMaker
+#include "backtrace.hpp"          // for request_backtraces
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "errors.h"               // for ReturnCode, get_error_message, __enable_syslog, exit_k...
 #include "kotekanLogging.hpp"     // for logLevel, INFO_NON_OO, ERROR_NON_OO, FATAL_ERROR_NON_OO
@@ -428,6 +429,7 @@ int main(int argc, char** argv) {
 
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
+    request_backtraces();
 
     // Set HDF5_PLUGIN_PATH if a default was detected at configure time.
     if (ensure_hdf5_plugin()) {
