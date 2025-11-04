@@ -300,7 +300,11 @@ def test_metadata(accumulate_data):
 
 def test_time(accumulate_data):
 
-    dt_ns = GIGA * global_params["fft_length"] / (1.0e6 * global_params["sampling_rate_MHz"])
+    dt_ns = (
+        GIGA
+        * global_params["fft_length"]
+        / (1.0e6 * global_params["sampling_rate_MHz"])
+    )
 
     for idx, frame in enumerate(accumulate_data):
 
@@ -321,7 +325,11 @@ def test_time(accumulate_data):
 
 def test_EOP(accumulate_data):
 
-    dt_ns = GIGA * global_params["fft_length"] / (1.0e6 * global_params["sampling_rate_MHz"])
+    dt_ns = (
+        GIGA
+        * global_params["fft_length"]
+        / (1.0e6 * global_params["sampling_rate_MHz"])
+    )
     t0_ns = global_params["gps_time"]["frame0_nano"]
 
     eopA = global_params["earth_rotation_data"]["earth_orientation_parameter_table"][0]

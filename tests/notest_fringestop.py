@@ -91,7 +91,8 @@ global_params = {
             "coelev_disp_deg": 0.0,
             "type": 0,
             "label": "A01",
-        }],
+        },
+    ],
     "gps_time": {"frame0_nano": t0_nanosec},
 }
 
