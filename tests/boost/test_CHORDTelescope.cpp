@@ -134,6 +134,10 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
     json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
     const CHORDTelescope& tel = get_telescope(json_config);
 
+    // Check the number of dishes is correct
+    BOOST_CHECK_EQUAL(tel.get_num_dishes(), 8);
+
+    // Check dish info is correct for all dishes
     check_dishes(tel.get_dish_at_idx(0), d0);
     check_dishes(tel.get_dish_at_idx(1), d1);
     check_dishes(tel.get_dish_at_idx(2), d2);
@@ -143,6 +147,7 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
     check_dishes(tel.get_dish_at_idx(6), d6);
     check_dishes(tel.get_dish_at_idx(7), d7);
 
+    // Check dish positions.
     // With weirder input these might fail floating point equality
     check_equal_vec3d(tel.get_dish_position(0), std::array<double, 3>({0.0, 0.0, 0.0}));
     check_equal_vec3d(tel.get_dish_position(1), std::array<double, 3>({0.0, 2.0, 0.0}));

@@ -19,6 +19,13 @@
 
 /**
  * @brief   Simple struct for containing Earth Orientation Parameter (EOP) data
+ *
+ * @param   t_inst          int64_t Instrument time, nanoseconds, UNIX epoch.
+ * @param   t_ut1           int64_t UT1 time, nanoseconds, J2000(UT1) epoch.
+ * @param   delta_UT1_inst  double  Difference between UT1 and Instrument time, seconds.
+ * @param   ERA_deg         double  Earth Rotation Angle, degrees.
+ * @param   xp_as           double  Polar Motion x', arcseconds.
+ * @param   yp_as           double  Polar Motion y', arcseconds.
  */
 struct EOP {
     int64_t t_inst;        // Instrument time, nanoseconds, UNIX epoch.
@@ -37,6 +44,22 @@ const static struct EOP eop_null = {
     .t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0.0, .ERA_deg = 0.0, .xp_as = 0.0, .yp_as = 0.0};
 
 
+/**
+ * @brief   Simple struct with needed dish info.
+ *
+ * @param   idx             int64_t Index of this dish (row or column), x polarization, in the 
+ *                                  standard visibility matrix. The y polarization channel will
+ *                                  be at index + num_dishes.
+ * @param   ew_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases east
+ * @param   ns_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases north
+ * @param   pos_disp_m      std::array<double, 3>   Position displacement from grid location, meters,
+ *                                                  Telescope coordinates: X = dish E/W separation, Y = dish
+ *                                                  N/S separation.  actual_pos = grid_pos + disp
+ * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
+ *                                  actual_coelev = target_coelev + disp.
+ * @param   type            int64_t Type of dish input.  -1 = NULL, 0 = CHORD Dish.
+ * @param   label           std::string Label for dish. Future: key for layout DB?
+ */
 struct dishInfo {
     int64_t idx;
     int64_t ew_idx;
@@ -64,6 +87,31 @@ inline dishInfo make_dishInfo(int64_t idx, int64_t ew_idx, int64_t ns_idx, const
 
 void to_json(nlohmann::json& j, const dishInfo& d);
 void from_json(const nlohmann::json& j, dishInfo& d);
+
+/**
+ * @brief   Struct containing "input" data fields for file writers. Fields are ordered by their appearance
+ *          in the standard visibility matrix, ie, the "dish_idx" field in "dish_input" in the config.
+ *
+ * @param   ew_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases east
+ * @param   ns_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases north
+ * @param   pos_disp_m      std::array<double, 3>   Position displacement from grid location, meters,
+ *                                                  Telescope coordinates: X = dish E/W separation, Y = dish
+ *                                                  N/S separation.  actual_pos = grid_pos + disp
+ * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
+ *                                  actual_coelev = target_coelev + disp.
+ * @param   type            int64_t Type of dish input.  -1 = NULL, 0 = CHORD Dish.
+ * @param   label           std::string Label for dish. Future: key for layout DB?
+ */
+struct dishInputFields {
+    std::vector<int64_t> ew_idx;
+    std::vector<int64_t> ns_idx;
+    std::vector<std::array<double, 3>> pos_disp_m;
+    std::vector<double> coelev_disp_deg;
+    std::vector<int64_t> type;
+    std::vector<std::string> label;
+}
+
+
 
 // A null (all 0) struct EOP;
 const static struct dishInfo dish_null = {.idx = -1,
@@ -333,6 +381,8 @@ public:
      **/
     void fringestop_phases_1d(double freq_MHz, const struct EOP& eop, const struct EOP& eop0,
                               std::vector<std::complex<double>>& phases) const;
+
+    void get_dish_input(
 
     // Implementations of the required frequency mapping functions
     // TODO: Implement these.
