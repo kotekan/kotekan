@@ -418,6 +418,8 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
         config.dump_config();
     update_log_levels(config);
 
+    request_backtraces(config.get_default<std::vector<std::string>>("/", "trap_signals", {}));
+
     kotekan_mode = new kotekanMode(config);
 
     kotekan_mode->initalize_stages();
@@ -429,7 +431,6 @@ int main(int argc, char** argv) {
 
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
-    request_backtraces();
 
     // Set HDF5_PLUGIN_PATH if a default was detected at configure time.
     if (ensure_hdf5_plugin()) {

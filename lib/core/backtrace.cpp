@@ -13,6 +13,8 @@
 
 #include "backtrace.hpp"
 
+#include "fmt.hpp"
+
 #include <cstring>
 #include <cxxabi.h>
 #include <dlfcn.h>
@@ -22,8 +24,10 @@
 #include <ostream>
 #include <signal.h>
 #include <sstream>
+#include <string>
 #include <sys/types.h>
 #include <unistd.h>
+#include <vector>
 
 using namespace std;
 
@@ -117,13 +121,36 @@ struct signal_handler_t {
 template<int signum_>
 sighandler_t signal_handler_t<signum_>::old_handler = (sighandler_t)SIG_DFL;
 
-void request_backtraces() {
-    static signal_handler_t<SIGQUIT> quit_signal;
-    static signal_handler_t<SIGILL> ill_signal;
-    static signal_handler_t<SIGABRT> abrt_signal;
-    static signal_handler_t<SIGFPE> fpe_signal;
-    static signal_handler_t<SIGBUS> bus_signal;
-    static signal_handler_t<SIGSEGV> segv_signal;
+void request_backtraces(std::vector<std::string> signals) {
+    if (auto it = std::find(signals.begin(), signals.end(), "SIGQUIT"); it != signals.end()) {
+        static signal_handler_t<SIGQUIT> quit_signal;
+        signals.erase(it);
+    }
+    if (auto it = std::find(signals.begin(), signals.end(), "SIGILL"); it != signals.end()) {
+        static signal_handler_t<SIGILL> ill_signal;
+        signals.erase(it);
+    }
+    if (auto it = std::find(signals.begin(), signals.end(), "SIGABRT"); it != signals.end()) {
+        static signal_handler_t<SIGABRT> abrt_signal;
+        signals.erase(it);
+    }
+    if (auto it = std::find(signals.begin(), signals.end(), "SIGFPE"); it != signals.end()) {
+        static signal_handler_t<SIGFPE> fpe_signal;
+        signals.erase(it);
+    }
+    if (auto it = std::find(signals.begin(), signals.end(), "SIGBUS"); it != signals.end()) {
+        static signal_handler_t<SIGBUS> bus_signal;
+        signals.erase(it);
+    }
+    if (auto it = std::find(signals.begin(), signals.end(), "SIGSEGV"); it != signals.end()) {
+        static signal_handler_t<SIGSEGV> segv_signal;
+        signals.erase(it);
+    }
+
+    if (!signals.empty()) {
+        throw std::runtime_error(
+            fmt::format("backtrace: unknown signal names: {}", fmt::join(signals, ", ")));
+    }
 }
 
 } // namespace kotekan
