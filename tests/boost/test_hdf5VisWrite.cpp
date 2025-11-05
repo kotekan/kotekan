@@ -332,7 +332,6 @@ BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 
 // Test 1: Full-block flush with transpose validation
 BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
-    
 
     std::string format, suffix;
     select_format_and_suffix(format, suffix);
@@ -351,12 +350,12 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     // Use 100-second frames and 200-second file windows to get file_nt=2
     const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 100; // ensure fractions compute as 80/100
-    const size_t file_nt = 2;
     const uint64_t file_seconds = 200;
+    const size_t expected_file_nt = 2;
 
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name,
                                  /*prefix_hostname*/ false, /*zip*/ 0, file_seconds, format,
-                                 /*blocksize_f*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
+                                 /*blocksize_f (0=all)*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ dt_ns);
 
     // Buffer + container
@@ -416,7 +415,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
 
     {
         File f(ds_path, File::ReadOnly);
-        validate_dataset_content(f, num_input, num_ev, nfreq, file_nt);
+        validate_dataset_content(f, num_input, num_ev, nfreq, expected_file_nt);
     }
 
     // Cleanup
@@ -447,7 +446,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
 
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name,
                                  /*prefix_hostname*/ false, /*zip*/ 0, file_seconds, format,
-                                 /*blocksize_f*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
+                                 /*blocksize_f (0=all)*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
 
     // Buffer + container
@@ -534,7 +533,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const size_t file_nt = 2;
     const uint64_t file_seconds = 200;
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, format, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, format, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
@@ -618,7 +617,7 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     const uint64_t frame_len_ticks = 1;
     const uint64_t file_seconds = 1; // one second file window => one frame per file
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, format, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, format, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ dt_ns);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_subsec", "N2Metadata");
@@ -765,7 +764,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const size_t nfreq = 2;
     const uint64_t file_seconds = 1;
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, format, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, format, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_drop", "N2Metadata");
@@ -851,7 +850,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
 
     const uint64_t file_seconds = file_nt; // with 1s frames, file_nt==file_seconds
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, format, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, format, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(4, sizeof(N2Metadata), "pool_geom", "N2Metadata");

@@ -1,4 +1,4 @@
-// Boost test for visFileData add_frame() logic (HDF5 backend, no GDAL).
+// Boost test for visFileData add_frame() logic.
 
 #define BOOST_TEST_MODULE "test_vis_file_data"
 

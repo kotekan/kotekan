@@ -190,7 +190,7 @@ static void _initialize_h5(HighFive::File& file, const std::shared_ptr<const N2M
 void hdf5VisWrite::_grace_finalize_datasets(
     std::map<std::string, std::unique_ptr<visFileData>>& datasets) {
     const double now_s = current_time();
-    for (auto ds_it = datasets.begin(); ds_it != datasets.end(); ++ds_it) {
+    for (auto ds_it = datasets.begin(); ds_it != datasets.end();) {
         auto& obj = *ds_it->second;
         if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
             // Grace finalize: flush and rename
@@ -203,8 +203,10 @@ void hdf5VisWrite::_grace_finalize_datasets(
                 ERROR("Failed to rename partial dataset to final: {} -> {}: {}", obj.partial_path,
                       ds_it->first, msg);
             }
+            // Erase returns iterator to the next element; do not increment again
             ds_it = datasets.erase(ds_it);
-            continue; // to next dataset
+        } else {
+            ++ds_it;
         }
     }
 }
