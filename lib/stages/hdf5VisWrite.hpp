@@ -1,27 +1,26 @@
-// NOTE: This header provides the gdalVisFileData buffering helper and the
-//       declaration for the gdalVisWrite stage. The stage methods are
-//       implemented and registered in gdalVisWrite.cpp.
-#ifndef KOTEKAN_STAGES_GDAL_VIS_WRITE_HPP
-#define KOTEKAN_STAGES_GDAL_VIS_WRITE_HPP
+// NOTE: This header provides the visFileData buffering helper and the
+//       declaration for the hdf5VisWrite stage. The stage methods are
+//       implemented and registered in hdf5VisWrite.cpp.
+#ifndef KOTEKAN_STAGES_HDF5_VIS_WRITE_HPP
+#define KOTEKAN_STAGES_HDF5_VIS_WRITE_HPP
 
 #include "Config.hpp"
 #include "Stage.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
-#include "gdalFiles.hpp"
+#include "hdf5Files.hpp"
 
 #include <N2FrameView.hpp>
 #include <N2Metadata.hpp>
 #include <N2Util.hpp>
 #include <cassert>
-#include <gdal.h>
-#include <gdal_priv.h>
+#include <highfive/H5File.hpp>
 #include <memory>
 #include <vector>
 #include <visUtil.hpp>
 
 /**
- * @class gdalVisFileData
+ * @class visFileData
  * @brief Buffer a full file worth of arrays in memory, then flush to disk
  * all at once.
  *
@@ -34,7 +33,7 @@
  * frequency or time BLOCKSIZEs when written to file, which is configurable via the
  * stage parameters, but it may be beneficial to have them match.)
  */
-class gdalVisFileData {
+class visFileData {
 public:
     // Structural information and fixed sizes
     const size_t num_input;  // number of inputs / elements
@@ -44,7 +43,7 @@ public:
     const size_t num_file_t; // frames ("time" dimension)
 
     // Per-file bookkeeping owned by this object
-    GDALDataset* gdal_dataset = nullptr; // non-owning GDAL dataset handle
+    std::unique_ptr<HighFive::File> h5_file; // owning HDF5 file handle
     const std::string partial_path;      // working on-disk location
     const double open_wall_s;            // time opened
     double last_update_wall_s = 0.0;     // last frame receipt
@@ -80,7 +79,7 @@ protected:
     size_t added_count = 0;        // number of (f, t) frames added
 
 public:
-    gdalVisFileData(const uint64_t num_file_t_, const uint64_t num_freq_, const uint64_t num_input_,
+    visFileData(const uint64_t num_file_t_, const uint64_t num_freq_, const uint64_t num_input_,
                     const uint64_t num_prod_, const uint64_t num_ev_, const uint64_t frame_len_ns_,
                     const uint64_t frame_length_fpga_ticks_, const uint64_t file_start_time_ns_,
                     std::string partial_path_, const double open_wall_s_) :
@@ -113,172 +112,10 @@ public:
     /// Flush buffered data to the associated dataset, always writing the
     /// entire time range [0 .. num_file_t-1] regardless of which frames were
     /// populated. Returns true if a write occurred.
-    bool flush() {
-        if (!gdal_dataset)
-            return false;
-
-        // Inline previous _write_arrays() logic here
-        const size_t nt = num_file_t;
-        assert(gdal_dataset);
-        const auto root_group = gdal_dataset->GetRootGroup();
-        assert(root_group);
-
-        auto vis_array = root_group->OpenMDArray("vis_array");
-        auto weights_array = root_group->OpenMDArray("weights_array");
-        auto eval_array = root_group->OpenMDArray("eval_array");
-        auto evec_array = root_group->OpenMDArray("evec_array");
-        auto erms_array = root_group->OpenMDArray("erms_array");
-        auto gain_array = root_group->OpenMDArray("gain_array");
-        auto flags_array = root_group->OpenMDArray("flags_array");
-        auto frac_lost_array = root_group->OpenMDArray("frac_lost_array");
-        auto frac_rfi_array = root_group->OpenMDArray("frac_rfi_array");
-        auto fpga_start_tick_array = root_group->OpenMDArray("fpga_start_tick");
-        auto frame_start_time_ns_array = root_group->OpenMDArray("frame_start_time_ns");
-        auto era_deg_array = root_group->OpenMDArray("era_deg");
-        auto frame_length_fpga_ticks_array = root_group->OpenMDArray("frame_length_fpga_ticks");
-        auto n_valid_array = root_group->OpenMDArray("n_valid_fpga_ticks");
-        auto n_rfi_array = root_group->OpenMDArray("n_rfi_fpga_ticks");
-
-        const auto c32Type = GDALExtendedDataType::Create(GDT_CFloat32);
-        const auto f32Type = GDALExtendedDataType::Create(GDT_Float32);
-        const auto f64Type = GDALExtendedDataType::Create(GDT_Float64);
-        const auto u64Type = GDALExtendedDataType::Create(GDT_UInt64);
-
-        // vis/weights: (freqs, products, nt)
-        {
-            std::vector<GUInt64> start_v = {0, 0, 0};
-            std::vector<size_t> count_v = {num_freq, num_prod, nt};
-            bool ok = vis_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, c32Type,
-                                       reinterpret_cast<const void*>(vis.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write vis_array to dataset {}",
-                             gdal_dataset->GetDescription());
-            ok = weights_array->Write(start_v.data(), count_v.data(), nullptr, nullptr, f32Type,
-                                      reinterpret_cast<const void*>(vis_weight.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write weights_array to dataset {}",
-                             gdal_dataset->GetDescription());
-        }
-
-        // eval: (freqs, ev, nt)
-        {
-            std::vector<GUInt64> start_e = {0, 0, 0};
-            std::vector<size_t> count_e = {num_freq, num_ev, nt};
-            bool ok = eval_array->Write(start_e.data(), count_e.data(), nullptr, nullptr, f32Type,
-                                        reinterpret_cast<const void*>(eval.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write eval_array to dataset {}",
-                             gdal_dataset->GetDescription());
-        }
-
-        // evec: (freqs, ev, inputs, nt)
-        {
-            std::vector<GUInt64> start_ev = {0, 0, 0, 0};
-            std::vector<size_t> count_ev = {num_freq, num_ev, num_input, nt};
-            bool ok = evec_array->Write(start_ev.data(), count_ev.data(), nullptr, nullptr, c32Type,
-                                        reinterpret_cast<const void*>(evec.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write evec_array to dataset {}",
-                             gdal_dataset->GetDescription());
-        }
-
-        // erms: (freqs, nt); gain/flags: (freqs, inputs, nt); frac_* and counts: (freqs, nt)
-        {
-            std::vector<GUInt64> start_et = {0, 0};
-            std::vector<size_t> count_et = {num_freq, nt};
-            bool ok = erms_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
-                                        reinterpret_cast<const void*>(erms.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write erms_array to dataset {}",
-                             gdal_dataset->GetDescription());
-
-            std::vector<GUInt64> start_g = {0, 0, 0};
-            std::vector<size_t> count_g = {num_freq, num_input, nt};
-            ok = gain_array->Write(start_g.data(), count_g.data(), nullptr, nullptr, c32Type,
-                                   reinterpret_cast<const void*>(gain.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write gain_array to dataset {}",
-                             gdal_dataset->GetDescription());
-
-            ok = flags_array->Write(start_g.data(), count_g.data(), nullptr, nullptr, f32Type,
-                                    reinterpret_cast<const void*>(flags.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write flags_array to dataset {}",
-                             gdal_dataset->GetDescription());
-
-            ok =
-                frac_lost_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
-                                       reinterpret_cast<const void*>(frac_lost.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write frac_lost_array to dataset {}",
-                             gdal_dataset->GetDescription());
-
-            ok = frac_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
-                                       reinterpret_cast<const void*>(frac_rfi.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write frac_rfi_array to dataset {}",
-                             gdal_dataset->GetDescription());
-
-            ok = n_valid_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
-                                      reinterpret_cast<const void*>(n_valid_fpga_ticks.data()),
-                                      nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write n_valid_array to dataset {}",
-                             gdal_dataset->GetDescription());
-
-            ok = n_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
-                                    reinterpret_cast<const void*>(n_rfi_fpga_ticks.data()), nullptr,
-                                    0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write n_rfi_array to dataset {}",
-                             gdal_dataset->GetDescription());
-        }
-
-        // per-time arrays: (:)
-        {
-            std::vector<GUInt64> start = {0};
-            std::vector<size_t> count = {nt};
-            bool ok = fpga_start_tick_array->Write(
-                start.data(), count.data(), nullptr, nullptr, u64Type,
-                reinterpret_cast<const void*>(fpga_start_tick.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write fpga_start_tick_array to dataset {}",
-                             gdal_dataset->GetDescription());
-            ok = frame_start_time_ns_array->Write(
-                start.data(), count.data(), nullptr, nullptr, u64Type,
-                reinterpret_cast<const void*>(frame_start_time_ns.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write frame_start_time_ns_array to dataset {}",
-                             gdal_dataset->GetDescription());
-
-            // Write frame_length_fpga_ticks across full file dimension (constant per file)
-            std::vector<GUInt64> start_full = {0};
-            std::vector<size_t> count_full = {num_file_t};
-            std::vector<uint64_t> flft(num_file_t, frame_length_fpga_ticks);
-            ok = frame_length_fpga_ticks_array->Write(
-                start_full.data(), count_full.data(), nullptr, nullptr, u64Type,
-                reinterpret_cast<const void*>(flft.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write frame_length_fpga_ticks_array to dataset {}",
-                             gdal_dataset->GetDescription());
-
-            ok = era_deg_array->Write(start.data(), count.data(), nullptr, nullptr, f64Type,
-                                      reinterpret_cast<const void*>(era_deg.data()), nullptr, 0);
-            if (!ok)
-                ERROR_NON_OO("Failed to write era_deg_array to dataset {}",
-                             gdal_dataset->GetDescription());
-        }
-
-        return true;
-    }
+    bool flush();
 
     /// Close the associated dataset handle if open.
-    void close() {
-        if (gdal_dataset) {
-            GDALClose(gdal_dataset);
-            gdal_dataset = nullptr;
-        }
-    }
+    void close();
 
     /// Check if all (f, t) pairs have been added
     bool full() const {
@@ -386,12 +223,12 @@ public:
 };
 
 /**
- * @class gdalVisWrite
- * @brief Buffered-transpose writer: buffers sequential time frames and writes GDAL Zarr files.
+ * @class hdf5VisWrite
+ * @brief Buffered-transpose writer: buffers sequential time frames and writes HDF5 files.
  *
  * This stage groups frames into UTC-midnight-aligned windows of length
  * `file_seconds`, buffers a complete (num_freq * file_nt) block per output file in
- * memory (via gdalVisFileData), and when the block is full, writes all arrays to
+ * memory (via visFileData), and when the block is full, writes all arrays to
  * disk in large contiguous slabs. If the block is not full, it is nevertheless finalized
  * after `late_frame_grace_seconds` of inactivity once frames for later file windows begin to
  * arrive. Flushes always write the full time range for the file; any missing frames
@@ -415,15 +252,15 @@ public:
  * @conf max_frames                Int.  Stop writing after this many frames (-1 = unlimited)
  *
  * @par Metrics
- * @metric kotekan_gdalviswrite_write_time_seconds  Duration to write the last flush
- * @metric kotekan_gdalviswrite_n_datasets          Number of datasets currently open
+ * @metric kotekan_viswrite_write_time_seconds  Duration to write the last flush
+ * @metric kotekan_viswrite_n_datasets          Number of datasets currently open
  **/
-class gdalVisWrite : public kotekan::Stage {
+class hdf5VisWrite : public kotekan::Stage {
 
 public:
-    gdalVisWrite(kotekan::Config& config, const std::string& unique_name,
+    hdf5VisWrite(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
-    virtual ~gdalVisWrite();
+    virtual ~hdf5VisWrite();
 
     void main_thread() override;
 
@@ -470,38 +307,27 @@ private:
     std::uint64_t _get_file_start_time_ns(const std::shared_ptr<const N2Metadata> meta);
 
     /**
-     * @brief Get the GDAL Zarr filename for the given metadata.
+     * @brief Get the HDF5 filename for the given metadata.
      * @param meta  N2Metadata for the file
-     * @return      Full path to the GDAL Zarr file to write
+     * @return      Full path to the HDF5 file to write
      * This method computes the output filename based on the configured
      * base directory, file name, and whether to prefix with hostname.
      */
-    std::string _get_gdal_vis_filename(std::shared_ptr<const N2Metadata> meta);
+    std::string _get_vis_filename(std::shared_ptr<const N2Metadata> meta);
 
-    /**
-     * @brief Initialize a GDALDataset for the given file and metadata.
-     * @param dataset   GDALDataset pointer to initialize
-     * @param meta      N2Metadata for the file
-     * @param file_nt   Number of time frames in the file
-     *
-     * This method sets up the GDALDataset with the appropriate arrays,
-     * dimensions, chunking, and compression based on the configuration
-     * parameters.
-     */
-    void _initialize_gdal_vis_file(GDALDataset* dataset, std::shared_ptr<const N2Metadata> meta,
-                                   std::uint64_t file_nt);
+    // Internal: HDF5 initialization handled in implementation file.
 
     /**
      * @brief Finalize datasets that have been inactive for too long.
      * @param datasets  Map of datasets to finalize
      * @param late_frame_grace_seconds  Grace period in seconds for late frames
      */
-    void
-    _grace_finalize_datasets(std::map<std::string, std::unique_ptr<gdalVisFileData>>& datasets);
+    void _grace_finalize_datasets(
+        std::map<std::string, std::unique_ptr<visFileData>>& datasets);
 
-    // array creation options (BLOCKSIZE/compress). chunk_dims.size() must equal the array rank.
+    // Array creation options placeholder (unused in HighFive path).
     std::vector<std::string>
-    _get_array_create_options(const std::vector<GUInt64>& chunk_dims) const;
+    _get_array_create_options(const std::vector<std::uint64_t>& chunk_dims) const;
 
     /**
      * @brief Get the partial directory path for temporary files.
@@ -526,4 +352,4 @@ private:
     }
 };
 
-#endif // KOTEKAN_STAGES_GDAL_VIS_WRITE_HPP
+#endif // KOTEKAN_STAGES_HDF5_VIS_WRITE_HPP

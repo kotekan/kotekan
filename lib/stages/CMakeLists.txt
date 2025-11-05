@@ -25,8 +25,8 @@ add_library(
     $<$<BOOL:${ASDF_CXX_FOUND}>:asdfFileWrite.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFileRead.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFileWrite.cpp>
-    $<$<BOOL:${GDAL_FOUND}>:gdalVisWrite.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFiles.cpp>
+    $<${HDF5_CONDITION}:hdf5VisWrite.cpp>
     $<${HDF5_CONDITION}:hdf5FileRead.cpp>
     $<${HDF5_CONDITION}:hdf5FileWrite.cpp>
     $<${HDF5_CONDITION}:hdf5Files.cpp>
@@ -49,7 +49,6 @@ add_library(
     basebandReadout.cpp
     BasebandWriter.cpp
     BaseWriter.cpp
-    VisWriter.cpp
     HFBWriter.cpp
     RawReader.cpp
     VisRawReader.cpp
@@ -126,7 +125,8 @@ if(HDF5_FOUND
    AND HDF5Plugin_PLUGIN_DIR)
     target_sources(kotekan_stages PRIVATE applyGains.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
-    target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
+    target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES}
+                                                HighFive::HighFive)
     # applyGains.cpp uses std::atomic<timespec>, which relies on libatomic on some platforms
     target_link_libraries(kotekan_stages PRIVATE atomic)
 endif()
@@ -141,7 +141,7 @@ if(HDF5_FOUND
    AND HighFive_FOUND
    AND HDF5Plugin_PLUGIN_DIR
    AND OpenMP_FOUND)
-    target_sources(kotekan_stages PRIVATE Transpose.cpp VisTranspose.cpp HFBTranspose.cpp)
+    target_sources(kotekan_stages PRIVATE Transpose.cpp HFBTranspose.cpp)
 endif()
 
 if(${Julia_FOUND})

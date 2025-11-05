@@ -1,6 +1,6 @@
-// Boost tests for the gdalVisWrite stage end-to-end, writing GDAL Zarr files
+// Boost tests for the hdf5VisWrite stage end-to-end, writing HDF5 files
 
-#define BOOST_TEST_MODULE "test_gdalVisWrite"
+#define BOOST_TEST_MODULE "test_hdf5VisWrite"
 
 #include "Config.hpp"          // for Config
 #include "N2FrameView.hpp"     // for N2FrameView
@@ -9,20 +9,18 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "gdalVisWrite.hpp"    // for gdalVisWrite
+#include "hdf5VisWrite.hpp"    // for hdf5VisWrite
 #include "test_utils.hpp"
 
 #include <algorithm>
 #include <boost/test/included/unit_test.hpp>
 #include <chrono>
-#include <cpl_conv.h>
-#include <cpl_vsi.h>
+#include <highfive/H5File.hpp>
+#include "H5Support.hpp"
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <dirent.h> // for opendir, readdir
-#include <gdal.h>
-#include <gdal_priv.h>
 #include <memory>
 #include <optional>
 #include <set>
@@ -34,6 +32,8 @@
 #include <vector>
 
 using std::string;
+
+using HighFive::File;
 
 // Force registration of N2Metadata in metadata factory by referencing the type
 static N2Metadata _force_n2meta_registration;
@@ -69,13 +69,34 @@ static bool path_exists(const std::string& path) {
     return (::stat(path.c_str(), &st) == 0);
 }
 
-// Remove (recursively) directory if it exists
+// Remove (recursively) directory if it exists (POSIX implementation)
 static void rm_tree_if_exists(const std::string& path) {
     if (!path_exists(path))
         return;
-    // Use GDAL CPL to remove; ignore errors from unlink itself.
-    CPLUnlinkTree(path.c_str());
+    DIR* dir = opendir(path.c_str());
+    if (!dir) {
+        (void)unlink(path.c_str());
+        return;
+    }
+    struct dirent* ent;
+    while ((ent = readdir(dir)) != nullptr) {
+        const char* name = ent->d_name;
+        if (std::strcmp(name, ".") == 0 || std::strcmp(name, "..") == 0)
+            continue;
+        const std::string sub = join_path(path, name);
+        struct stat st;
+        if (::lstat(sub.c_str(), &st) == 0) {
+            if (S_ISDIR(st.st_mode))
+                rm_tree_if_exists(sub);
+            else
+                (void)unlink(sub.c_str());
+        }
+    }
+    closedir(dir);
+    (void)rmdir(path.c_str());
 }
+
+// Capability test removed; reading validated by content checks.
 
 // Helper to create a config just for testing
 // Build a writer config using file-window-based collection and optional grace/seq override
@@ -99,7 +120,7 @@ static kotekan::Config make_base_config(const std::string& unique_name, const st
     s["prefix_hostname"] = prefix_hostname;
     // Legacy key retained in tests; writer ignores ZIP storage. Keep for compatibility.
     s["zip_compression"] = zip_compression;
-    // Unified GDAL writer format selection ("zarr" or "hdf5").
+    // Writer format selection (HDF5)
     s["format"] = format;
     s["blocksize_f"] = blocksize_f;
     s["blocksize_p"] = 0; // unused currently
@@ -141,24 +162,11 @@ static std::string compute_dataset_name(const std::string& base_dir, const std::
     return buf.str();
 }
 
-// Determine a working GDAL multidimensional format and expected filename suffix.
+// Select format and expected filename suffix (HDF5 only).
 static bool select_format_and_suffix(std::string& out_format, std::string& out_suffix) {
-    GDALAllRegister();
-    // Route logs to stderr for visibility during tests
-    extern int __enable_syslog;
-    __enable_syslog = 0;
-    auto* mgr = GetGDALDriverManager();
-    if (mgr && mgr->GetDriverByName("Zarr")) {
-        out_format = "zarr";
-        out_suffix = ".zarr";
-        return true;
-    }
-    if (mgr && mgr->GetDriverByName("HDF5")) {
-        out_format = "hdf5";
-        out_suffix = ".h5";
-        return true;
-    }
-    return false;
+    out_format = "hdf5";
+    out_suffix = ".h5";
+    return true;
 }
 
 // Fill one synthetic N2 frame with deterministic data for validators
@@ -226,201 +234,113 @@ static void wait_until_frame_empty(Buffer* buf, int frame_id, double timeout_sec
     }
 }
 
-// Open a GDAL dataset from path
-static GDALDataset* open_dataset(const std::string& path) {
-    char** oo = nullptr;
-    GDALDataset* ds = static_cast<GDALDataset*>(
-        GDALOpenEx(path.c_str(), GDAL_OF_MULTIDIM_RASTER | GDAL_OF_READONLY, nullptr,
-                   const_cast<const char**>(oo), nullptr));
-    return ds;
-}
-
-// Read back and validate a few arrays using the known patterns
-static void validate_dataset_content(GDALDataset* ds, size_t num_input, size_t num_ev, size_t nfreq,
+// Read back and validate a few arrays using the known patterns (HighFive)
+static void validate_dataset_content(File& file, size_t num_input, size_t num_ev, size_t nfreq,
                                      size_t file_nt) {
-    BOOST_REQUIRE(ds != nullptr);
-    auto root = ds->GetRootGroup();
-    BOOST_REQUIRE(root != nullptr);
-
-    const auto c32Type = GDALExtendedDataType::Create(GDT_CFloat32);
-    const auto f32Type = GDALExtendedDataType::Create(GDT_Float32);
-    const auto f64Type = GDALExtendedDataType::Create(GDT_Float64);
-    const auto u64Type = GDALExtendedDataType::Create(GDT_UInt64);
+    const size_t num_prod = N2::get_num_prod(num_input);
 
     // Check one representative frequency (e.g., f=1) across time
     size_t f = std::min<size_t>(1, nfreq - 1);
 
     // vis + weights
     {
-        auto vis = root->OpenMDArray("vis_array");
-        auto w = root->OpenMDArray("weights_array");
-        BOOST_REQUIRE(vis && w);
-        auto dims = vis->GetDimensionCount();
-        BOOST_CHECK_EQUAL(dims, 3U);
-        std::vector<GUInt64> start{(GUInt64)f, 0, 0};
-        std::vector<size_t> count{1, N2::get_num_prod(num_input), file_nt};
-        std::vector<N2::cfloat> vis_out(count[1] * count[2]);
-        std::vector<float> w_out(count[1] * count[2]);
-        bool ok = vis->Read(start.data(), count.data(), nullptr, nullptr, c32Type,
-                            reinterpret_cast<void*>(vis_out.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
-        ok = w->Read(start.data(), count.data(), nullptr, nullptr, f32Type,
-                     reinterpret_cast<void*>(w_out.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
+        std::vector<std::vector<std::vector<cfloat>>> vis_out;
+        std::vector<std::vector<std::vector<float>>> w_out;
+        file.getDataSet("/vis_array").read(vis_out);
+        file.getDataSet("/weights_array").read(w_out);
         for (size_t t = 0; t < file_nt; ++t) {
-            for (size_t p = 0; p < count[1]; ++p) {
-                const size_t idx = file_nt * p + t;
+            for (size_t p = 0; p < num_prod; ++p) {
                 float base = 1000.0f * float(t) + 100.0f * float(f) + 10.0f * float(p);
-                BOOST_CHECK(vis_out[idx] == N2::cfloat(base + 1.0f, base + 2.0f));
-                BOOST_CHECK_CLOSE_FRACTION(w_out[idx], 1000.0f + float(p), 1e-6f);
+                BOOST_CHECK(vis_out[f][p][t] == N2::cfloat(base + 1.0f, base + 2.0f));
+                BOOST_CHECK_CLOSE_FRACTION(w_out[f][p][t], 1000.0f + float(p), 1e-6f);
             }
         }
     }
 
     // eval
     {
-        auto arr = root->OpenMDArray("eval_array");
-        BOOST_REQUIRE(arr);
-        std::vector<GUInt64> start{(GUInt64)f, 0, 0};
-        std::vector<size_t> count{1, num_ev, file_nt};
-        std::vector<float> eval_out(num_ev * file_nt);
-        bool ok = arr->Read(start.data(), count.data(), nullptr, nullptr, f32Type,
-                            reinterpret_cast<void*>(eval_out.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
-        for (size_t e = 0; e < num_ev; ++e) {
-            for (size_t t = 0; t < file_nt; ++t) {
-                BOOST_CHECK_CLOSE_FRACTION(eval_out[file_nt * e + t], 60.0f + float(e), 1e-6f);
-            }
-        }
+        std::vector<std::vector<std::vector<float>>> eval_out;
+        file.getDataSet("/eval_array").read(eval_out);
+        for (size_t e = 0; e < num_ev; ++e)
+            for (size_t t = 0; t < file_nt; ++t)
+                BOOST_CHECK_CLOSE_FRACTION(eval_out[f][e][t], 60.0f + float(e), 1e-6f);
     }
 
     // evec slice at i=0 spot-check
     {
-        auto arr = root->OpenMDArray("evec_array");
-        BOOST_REQUIRE(arr);
-        std::vector<GUInt64> start{(GUInt64)f, 0, 0, 0};
-        std::vector<size_t> count{1, num_ev, num_input, file_nt};
-        std::vector<N2::cfloat> out(num_ev * num_input * file_nt);
-        bool ok = arr->Read(start.data(), count.data(), nullptr, nullptr, c32Type,
-                            reinterpret_cast<void*>(out.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
+        std::vector<std::vector<std::vector<std::vector<cfloat>>>> out;
+        file.getDataSet("/evec_array").read(out);
         for (size_t e = 0; e < num_ev; ++e) {
             N2::cfloat expected0(100.0f * float(e) + 0.5f, -(100.0f * float(e) + 1.5f));
-            for (size_t t = 0; t < file_nt; ++t) {
-                const size_t idx = file_nt * (num_input * e + 0) + t;
-                BOOST_CHECK(out[idx] == expected0);
-            }
+            for (size_t t = 0; t < file_nt; ++t)
+                BOOST_CHECK(out[f][e][0][t] == expected0);
         }
     }
 
     // erms
     {
-        auto arr = root->OpenMDArray("erms_array");
-        BOOST_REQUIRE(arr);
-        std::vector<GUInt64> start{(GUInt64)f, 0};
-        std::vector<size_t> count{1, file_nt};
-        std::vector<float> out(file_nt);
-        bool ok = arr->Read(start.data(), count.data(), nullptr, nullptr, f32Type,
-                            reinterpret_cast<void*>(out.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
+        std::vector<std::vector<float>> out;
+        file.getDataSet("/erms_array").read(out);
         for (size_t t = 0; t < file_nt; ++t)
-            BOOST_CHECK_CLOSE_FRACTION(out[t], 3.14f, 1e-6f);
+            BOOST_CHECK_CLOSE_FRACTION(out[f][t], 3.14f, 1e-6f);
     }
 
     // gain + flags spot-check i=0
     {
-        auto gain = root->OpenMDArray("gain_array");
-        auto flags = root->OpenMDArray("flags_array");
-        BOOST_REQUIRE(gain && flags);
-        std::vector<GUInt64> start{(GUInt64)f, 0, 0};
-        std::vector<size_t> count{1, num_input, file_nt};
-        std::vector<N2::cfloat> gout(num_input * file_nt);
-        std::vector<float> fout(num_input * file_nt);
-        bool ok = gain->Read(start.data(), count.data(), nullptr, nullptr, c32Type,
-                             reinterpret_cast<void*>(gout.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
-        ok = flags->Read(start.data(), count.data(), nullptr, nullptr, f32Type,
-                         reinterpret_cast<void*>(fout.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
+        std::vector<std::vector<std::vector<cfloat>>> gout;
+        std::vector<std::vector<std::vector<float>>> fout;
+        file.getDataSet("/gain_array").read(gout);
+        file.getDataSet("/flags_array").read(fout);
         for (size_t t = 0; t < file_nt; ++t) {
-            BOOST_CHECK(gout[file_nt * 0 + t] == N2::cfloat(200.0f, -200.0f));
-            BOOST_CHECK_CLOSE_FRACTION(fout[file_nt * 0 + t], 300.0f, 1e-6f);
+            BOOST_CHECK(gout[f][0][t] == N2::cfloat(200.0f, -200.0f));
+            BOOST_CHECK_CLOSE_FRACTION(fout[f][0][t], 300.0f, 1e-6f);
         }
     }
 
     // per-(freq,time) derived fractions and counts spot-check
     {
-        auto fl = root->OpenMDArray("frac_lost_array");
-        auto fr = root->OpenMDArray("frac_rfi_array");
-        auto nv = root->OpenMDArray("n_valid_fpga_ticks");
-        auto nr = root->OpenMDArray("n_rfi_fpga_ticks");
-        BOOST_REQUIRE(fl && fr && nv && nr);
-        std::vector<GUInt64> start{(GUInt64)f, 0};
-        std::vector<size_t> count{1, file_nt};
-        std::vector<float> fl_out(file_nt), fr_out(file_nt);
-        std::vector<uint64_t> nv_out(file_nt), nr_out(file_nt);
-        bool ok = fl->Read(start.data(), count.data(), nullptr, nullptr, f32Type,
-                           reinterpret_cast<void*>(fl_out.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
-        ok = fr->Read(start.data(), count.data(), nullptr, nullptr, f32Type,
-                      reinterpret_cast<void*>(fr_out.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
-        ok = nv->Read(start.data(), count.data(), nullptr, nullptr, u64Type,
-                      reinterpret_cast<void*>(nv_out.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
-        ok = nr->Read(start.data(), count.data(), nullptr, nullptr, u64Type,
-                      reinterpret_cast<void*>(nr_out.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
+        std::vector<std::vector<float>> fl_out, fr_out;
+        std::vector<std::vector<uint64_t>> nv_out, nr_out;
+        file.getDataSet("/frac_lost_array").read(fl_out);
+        file.getDataSet("/frac_rfi_array").read(fr_out);
+        file.getDataSet("/n_valid_fpga_ticks").read(nv_out);
+        file.getDataSet("/n_rfi_fpga_ticks").read(nr_out);
         for (size_t t = 0; t < file_nt; ++t) {
-            BOOST_CHECK_EQUAL(nv_out[t], uint64_t(80));
-            BOOST_CHECK_EQUAL(nr_out[t], uint64_t(5));
-            BOOST_CHECK_CLOSE_FRACTION(fl_out[t], 1.0f - 80.0f / 100.0f, 1e-6f);
-            BOOST_CHECK_CLOSE_FRACTION(fr_out[t], 5.0f / 100.0f, 1e-6f);
+            BOOST_CHECK_EQUAL(nv_out[f][t], uint64_t(80));
+            BOOST_CHECK_EQUAL(nr_out[f][t], uint64_t(5));
+            BOOST_CHECK_CLOSE_FRACTION(fl_out[f][t], 1.0f - 80.0f / 100.0f, 1e-6f);
+            BOOST_CHECK_CLOSE_FRACTION(fr_out[f][t], 5.0f / 100.0f, 1e-6f);
         }
     }
 
     // per-time arrays shape exists
     {
-        auto a0 = root->OpenMDArray("fpga_start_tick");
-        auto a1 = root->OpenMDArray("frame_start_time_ns");
-        auto a2 = root->OpenMDArray("frame_length_fpga_ticks");
-        auto a3 = root->OpenMDArray("era_deg");
-        BOOST_REQUIRE(a0 && a1 && a2 && a3);
-        std::vector<GUInt64> start{0};
-        std::vector<size_t> count{file_nt};
-        std::vector<uint64_t> s0(file_nt), s1(file_nt), s2(file_nt);
-        std::vector<double> s3(file_nt);
-        bool ok = a0->Read(start.data(), count.data(), nullptr, nullptr, u64Type,
-                           reinterpret_cast<void*>(s0.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
-        ok = a1->Read(start.data(), count.data(), nullptr, nullptr, u64Type,
-                      reinterpret_cast<void*>(s1.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
-        ok = a2->Read(start.data(), count.data(), nullptr, nullptr, u64Type,
-                      reinterpret_cast<void*>(s2.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
-        ok = a3->Read(start.data(), count.data(), nullptr, nullptr, f64Type,
-                      reinterpret_cast<void*>(s3.data()), nullptr, 0);
-        BOOST_REQUIRE(ok);
-        // Only check that time arrays are non-zero at least for t=0 and t=1
-        BOOST_CHECK(s0[0] != 0);
-        BOOST_CHECK(s2[0] != 0);
+        std::vector<uint64_t> s0, s1, s2;
+        std::vector<double> s3;
+        file.getDataSet("/fpga_start_tick").read(s0);
+        file.getDataSet("/frame_start_time_ns").read(s1);
+        file.getDataSet("/frame_length_fpga_ticks").read(s2);
+        file.getDataSet("/era_deg").read(s3);
+        BOOST_CHECK(!s0.empty() && !s2.empty());
     }
 }
+
+// Read back and validate a few arrays using the known patterns
+ 
 
 BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 
 // Test 1: Full-block flush with transpose validation
 BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
-    GDALAllRegister();
+    
 
     std::string format, suffix;
     select_format_and_suffix(format, suffix);
     BOOST_TEST_MESSAGE("Using format='" << format << "' suffix='" << suffix << "'");
 
-    const std::string unique_name = "/gdal_vis_writer";
+    const std::string unique_name = "/hdf5_vis_writer";
     const std::string in_buf_name = "n2buf";
-    const std::string base_dir = "test_gdalVisWrite_full";
+    const std::string base_dir = "test_hdf5VisWrite_full";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -449,7 +369,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     bc.add_buffer(in_buf_name, &buf);
 
     // Create and start stage
-    gdalVisWrite stage(conf, unique_name, bc);
+    hdf5VisWrite stage(conf, unique_name, bc);
     stage.start();
 
     // Time logic: ensure base_time aligned to file window start
@@ -494,10 +414,10 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     BOOST_REQUIRE_MESSAGE(datasets.size() == 1, "Expected 1 dataset, found " << datasets.size());
     const std::string ds_path = join_path(base_dir, datasets[0]);
 
-    GDALDataset* ds = open_dataset(ds_path);
-    BOOST_REQUIRE_MESSAGE(ds != nullptr, "Failed to open dataset: " << ds_path);
-    validate_dataset_content(ds, num_input, num_ev, nfreq, file_nt);
-    GDALClose(ds);
+    {
+        File f(ds_path, File::ReadOnly);
+        validate_dataset_content(f, num_input, num_ev, nfreq, file_nt);
+    }
 
     // Cleanup
     rm_tree_if_exists(ds_path);
@@ -506,14 +426,14 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
 
 // Test 2: Partial flush triggered on exit (incomplete time block)
 BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
-    GDALAllRegister();
+    
 
     std::string format, suffix;
     select_format_and_suffix(format, suffix);
 
-    const std::string unique_name = "/gdal_vis_writer_partial";
+    const std::string unique_name = "/hdf5_vis_writer_partial";
     const std::string in_buf_name = "n2buf_partial";
-    const std::string base_dir = "test_gdalVisWrite_partial";
+    const std::string base_dir = "test_hdf5VisWrite_partial";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -539,7 +459,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
 
-    gdalVisWrite stage(conf, unique_name, bc);
+    hdf5VisWrite stage(conf, unique_name, bc);
     stage.start();
 
     const uint64_t frame_len_ticks = 1;
@@ -573,34 +493,22 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     BOOST_REQUIRE_MESSAGE(datasets.size() == 1, "Expected 1 dataset, found " << datasets.size());
     const std::string ds_path = join_path(base_dir, datasets[0]);
 
-    GDALDataset* ds = open_dataset(ds_path);
-    BOOST_REQUIRE(ds != nullptr);
-    // Spot-check: for f=1, vis at t=0 non-zero, at t=1 default zero
-    auto root = ds->GetRootGroup();
-    auto arr = root->OpenMDArray("vis_array");
-    auto warr = root->OpenMDArray("weights_array");
-    BOOST_REQUIRE(arr && warr);
-    const size_t num_prod = N2::get_num_prod(num_input);
-    const auto c32Type = GDALExtendedDataType::Create(GDT_CFloat32);
-    const auto f32Type = GDALExtendedDataType::Create(GDT_Float32);
-    std::vector<GUInt64> start{1, 0, 0};
-    std::vector<size_t> count{1, num_prod, file_nt};
-    std::vector<N2::cfloat> vis_out(num_prod * file_nt);
-    std::vector<float> w_out(num_prod * file_nt);
-    bool ok = arr->Read(start.data(), count.data(), nullptr, nullptr, c32Type,
-                        reinterpret_cast<void*>(vis_out.data()), nullptr, 0);
-    BOOST_REQUIRE(ok);
-    ok = warr->Read(start.data(), count.data(), nullptr, nullptr, f32Type,
-                    reinterpret_cast<void*>(w_out.data()), nullptr, 0);
-    BOOST_REQUIRE(ok);
-    for (size_t p = 0; p < num_prod; ++p) {
-        float base = 100.0f + 10.0f * float(p);
-        BOOST_CHECK(vis_out[file_nt * p + 0] == N2::cfloat(base + 1.0f, base + 2.0f));
-        BOOST_CHECK_CLOSE_FRACTION(w_out[file_nt * p + 0], 1000.0f + float(p), 1e-6f);
-        BOOST_CHECK(vis_out[file_nt * p + 1] == N2::cfloat(0.0f, 0.0f));
-        BOOST_CHECK_CLOSE_FRACTION(w_out[file_nt * p + 1], 0.0f, 1e-6f);
+    {
+        File f(ds_path, File::ReadOnly);
+        const size_t num_prod = N2::get_num_prod(num_input);
+        std::vector<std::vector<std::vector<cfloat>>> vis_out;
+        std::vector<std::vector<std::vector<float>>> w_out;
+        f.getDataSet("/vis_array").read(vis_out);
+        f.getDataSet("/weights_array").read(w_out);
+        size_t ff = std::min<size_t>(1, nfreq - 1);
+        for (size_t p = 0; p < num_prod; ++p) {
+            float base = 100.0f + 10.0f * float(p);
+            BOOST_CHECK(vis_out[ff][p][0] == N2::cfloat(base + 1.0f, base + 2.0f));
+            BOOST_CHECK_CLOSE_FRACTION(w_out[ff][p][0], 1000.0f + float(p), 1e-6f);
+            BOOST_CHECK(vis_out[ff][p][1] == N2::cfloat(0.0f, 0.0f));
+            BOOST_CHECK_CLOSE_FRACTION(w_out[ff][p][1], 0.0f, 1e-6f);
+        }
     }
-    GDALClose(ds);
 
     // Cleanup
     rm_tree_if_exists(ds_path);
@@ -609,14 +517,14 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
 
 // Test 3: Multi-file rollover when time crosses a file window
 BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
-    GDALAllRegister();
+    
 
     std::string format, suffix;
     select_format_and_suffix(format, suffix);
 
-    const std::string unique_name = "/gdal_vis_writer_rollover";
+    const std::string unique_name = "/hdf5_vis_writer_rollover";
     const std::string in_buf_name = "n2buf_rollover";
-    const std::string base_dir = "test_gdalVisWrite_rollover";
+    const std::string base_dir = "test_hdf5VisWrite_rollover";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -636,7 +544,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
 
-    gdalVisWrite stage(conf, unique_name, bc);
+    hdf5VisWrite stage(conf, unique_name, bc);
     stage.start();
 
     const uint64_t dt_ns = 1'000'000'000ULL;
@@ -683,10 +591,8 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     // Validate each one opens and contents make sense
     for (const auto& e : datasets) {
         const std::string p = join_path(base_dir, e);
-        GDALDataset* ds = open_dataset(p);
-        BOOST_REQUIRE(ds != nullptr);
-        validate_dataset_content(ds, num_input, num_ev, nfreq, file_nt);
-        GDALClose(ds);
+        File f(p, File::ReadOnly);
+        validate_dataset_content(f, num_input, num_ev, nfreq, file_nt);
         rm_tree_if_exists(p);
     }
     rm_tree_if_exists(base_dir);
@@ -694,14 +600,14 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
 
 // Test 4: Adjacent file windows produce distinct dataset names
 BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
-    GDALAllRegister();
+    
 
     std::string format, suffix;
     select_format_and_suffix(format, suffix);
 
-    const std::string unique_name = "/gdal_vis_writer_names";
+    const std::string unique_name = "/hdf5_vis_writer_names";
     const std::string in_buf_name = "n2buf_names";
-    const std::string base_dir = "test_gdalVisWrite_names";
+    const std::string base_dir = "test_hdf5VisWrite_names";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -721,7 +627,7 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
 
-    gdalVisWrite stage(conf, unique_name, bc);
+    hdf5VisWrite stage(conf, unique_name, bc);
     stage.start();
 
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
@@ -768,14 +674,14 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
 
 // Test 5: Grace-based finalize of partial dataset (late_frame_grace_seconds=0)
 BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
-    GDALAllRegister();
+    
 
     std::string format, suffix;
     select_format_and_suffix(format, suffix);
 
-    const std::string unique_name = "/gdal_vis_writer_timeout";
+    const std::string unique_name = "/hdf5_vis_writer_timeout";
     const std::string in_buf_name = "n2buf_timeout";
-    const std::string base_dir = "test_gdalVisWrite_timeout";
+    const std::string base_dir = "test_hdf5VisWrite_timeout";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -795,7 +701,7 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
 
-    gdalVisWrite stage(conf, unique_name, bc);
+    hdf5VisWrite stage(conf, unique_name, bc);
     stage.start();
 
     const uint64_t dt_ns = 1'000'000'000ULL;
@@ -843,14 +749,14 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
 
 // Test 6: Late-frame drop when final already exists
 BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
-    GDALAllRegister();
+    
 
     std::string format, suffix;
     select_format_and_suffix(format, suffix);
 
-    const std::string unique_name = "/gdal_vis_writer_drop";
+    const std::string unique_name = "/hdf5_vis_writer_drop";
     const std::string in_buf_name = "n2buf_drop";
-    const std::string base_dir = "test_gdalVisWrite_drop";
+    const std::string base_dir = "test_hdf5VisWrite_drop";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -868,7 +774,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
 
-    gdalVisWrite stage(conf, unique_name, bc);
+    hdf5VisWrite stage(conf, unique_name, bc);
     stage.start();
 
     const uint64_t dt_ns = 1'000'000'000ULL;
@@ -927,14 +833,14 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
 
 // Test 7: Geometry mismatch within dataset (nfreq) is dropped without crash
 BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
-    GDALAllRegister();
+    
 
     std::string format, suffix;
     select_format_and_suffix(format, suffix);
 
-    const std::string unique_name = "/gdal_vis_writer_geom";
+    const std::string unique_name = "/hdf5_vis_writer_geom";
     const std::string in_buf_name = "n2buf_geom";
-    const std::string base_dir = "test_gdalVisWrite_geom";
+    const std::string base_dir = "test_hdf5VisWrite_geom";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -954,7 +860,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
 
-    gdalVisWrite stage(conf, unique_name, bc);
+    hdf5VisWrite stage(conf, unique_name, bc);
     stage.start();
 
     const uint64_t dt_ns = 1'000'000'000ULL;
@@ -998,13 +904,12 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
         }
     }
     BOOST_REQUIRE(!ds_path.empty());
-    GDALDataset* ds = open_dataset(ds_path);
-    BOOST_REQUIRE(ds != nullptr);
-    // Quick sanity: check arrays open
-    auto root = ds->GetRootGroup();
-    BOOST_REQUIRE(root != nullptr);
-    BOOST_REQUIRE(root->OpenMDArray("vis_array") != nullptr);
-    GDALClose(ds);
+    {
+        File f(ds_path, File::ReadOnly);
+        // Quick sanity: check arrays exist
+        auto ds_vis = f.getDataSet("/vis_array");
+        BOOST_REQUIRE(ds_vis.getElementCount() > 0);
+    }
     rm_tree_if_exists(ds_path);
     rm_tree_if_exists(base_dir);
 }

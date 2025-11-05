@@ -139,24 +139,24 @@ add_custom_target(
     DEPENDS ${PROJECT_BINARY_DIR}/timeUtil.py
     COMMENT "Generating timeUtil.py script")
 
-# gdalVisFileData unit test (requires GDAL headers)
-if(GDAL_FOUND)
-    add_executable(test_gdalVisFileData test_gdalVisFileData.cpp)
-    target_link_libraries(test_gdalVisFileData PRIVATE libexternal kotekan_libs kotekan_utils
-                                                       kotekan_core ${GDAL_LIBRARIES})
-    target_include_directories(test_gdalVisFileData PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
-                                                            ${GDAL_INCLUDE_DIRS})
-    # Many tests need CUDA include dirs for float16_t via visUtil.hpp
-    target_include_directories(test_gdalVisFileData PUBLIC . ${CUDA_INCLUDE_DIR}
-                                                           ${CUDA_INCLUDE_DIRS})
+# visFileData unit test + end-to-end writer test (HDF5 backend)
+if(HDF5_FOUND AND HighFive_FOUND)
+    add_executable(test_visFileData test_visFileData.cpp)
+    target_link_libraries(test_visFileData PRIVATE libexternal kotekan_libs kotekan_utils
+                                                   kotekan_core ${HDF5_HL_LIBRARIES}
+                                                   ${HDF5_LIBRARIES} HighFive::HighFive)
+    target_include_directories(test_visFileData PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                        ${KOTEKAN_SOURCE_DIR}/lib/utils
+                                                        ${HDF5_INCLUDE_DIRS})
 
-    # End-to-end writer test for gdalVisWrite
-    add_executable(test_gdalVisWrite test_gdalVisWrite.cpp)
-    target_link_libraries(test_gdalVisWrite PRIVATE libexternal kotekan_stages kotekan_libs
-                                                    kotekan_utils kotekan_core ${GDAL_LIBRARIES})
-    target_include_directories(test_gdalVisWrite PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
-                                                         ${GDAL_INCLUDE_DIRS})
-    target_include_directories(test_gdalVisWrite PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+    add_executable(test_hdf5VisWrite test_hdf5VisWrite.cpp)
+    target_link_libraries(test_hdf5VisWrite PRIVATE libexternal kotekan_stages kotekan_libs
+                                                    kotekan_utils kotekan_core ${HDF5_HL_LIBRARIES}
+                                                    ${HDF5_LIBRARIES} HighFive::HighFive)
+    target_include_directories(test_hdf5VisWrite PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                         ${KOTEKAN_SOURCE_DIR}/lib/utils
+                                                         ${HDF5_INCLUDE_DIRS})
+    target_include_directories(test_hdf5VisWrite PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 endif()
 
 add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)
