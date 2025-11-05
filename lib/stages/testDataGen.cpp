@@ -289,6 +289,21 @@ void testDataGen::main_thread() {
         } else if (type == "random1x8") {
             if (chordmeta)
                 chordmeta->type = kotekan::uint1x8;
+        } else if (type == "tpluse") {
+            if (chordmeta)
+                chordmeta->type = kotekan::uint1x8;
+        } else if (type == "tpluseplusf") {
+            if (chordmeta)
+                chordmeta->type = kotekan::uint1x8;
+        } else if (type == "tpluseplusfprime") {
+            if (chordmeta)
+                chordmeta->type = kotekan::uint1x8;
+        } else if (type == "square") {
+            if (chordmeta)
+                chordmeta->type = kotekan::int4x2;
+        } else {
+            ERROR("unexpected type: {s}", type);
+            throw std::runtime_error("unexpected type: " + type);
         }
 
         // this needs the decoded type
@@ -443,6 +458,9 @@ void testDataGen::main_thread() {
                 }
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
+            } else {
+                ERROR("unexpected type: {s}", type);
+                throw std::runtime_error("unexpected type: " + type);
             }
         }
         DEBUG("Generated a {:s} test data set in {:s}[{:d}] at seq {:d}", type, buf->buffer_name,
