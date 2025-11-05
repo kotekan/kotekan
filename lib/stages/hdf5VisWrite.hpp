@@ -44,11 +44,11 @@ public:
 
     // Per-file bookkeeping owned by this object
     std::unique_ptr<HighFive::File> h5_file; // owning HDF5 file handle
-    const std::string partial_path;      // working on-disk location
-    const double open_wall_s;            // time opened
-    double last_update_wall_s = 0.0;     // last frame receipt
-    const uint64_t file_start_time_ns;   // aligned file start time
-    const uint64_t frame_len_ns;         // frame length in ns
+    const std::string partial_path;          // working on-disk location
+    const double open_wall_s;                // time opened
+    double last_update_wall_s = 0.0;         // last frame receipt
+    const uint64_t file_start_time_ns;       // aligned file start time
+    const uint64_t frame_len_ns;             // frame length in ns
 
 protected:
     // Datasets to be stored until ready to write
@@ -65,6 +65,8 @@ protected:
 
     /// Earth rotation angle at corresponding times (t)
     std::vector<double> era_deg; // (t)
+    // Track initialization of ERA values per time index to avoid using a value sentinel
+    std::vector<uint8_t> era_deg_set; // (t), 0 = unset, 1 = set
 
     // Additional metadata
     std::vector<uint64_t> fpga_start_tick;     // (t)
@@ -80,9 +82,9 @@ protected:
 
 public:
     visFileData(const uint64_t num_file_t_, const uint64_t num_freq_, const uint64_t num_input_,
-                    const uint64_t num_prod_, const uint64_t num_ev_, const uint64_t frame_len_ns_,
-                    const uint64_t frame_length_fpga_ticks_, const uint64_t file_start_time_ns_,
-                    std::string partial_path_, const double open_wall_s_) :
+                const uint64_t num_prod_, const uint64_t num_ev_, const uint64_t frame_len_ns_,
+                const uint64_t frame_length_fpga_ticks_, const uint64_t file_start_time_ns_,
+                std::string partial_path_, const double open_wall_s_) :
         num_input(num_input_), num_prod(num_prod_), num_ev(num_ev_), num_freq(num_freq_),
         num_file_t(num_file_t_), partial_path(std::move(partial_path_)), open_wall_s(open_wall_s_),
         last_update_wall_s(open_wall_s_), file_start_time_ns(file_start_time_ns_),
@@ -103,6 +105,7 @@ public:
         fpga_start_tick.assign(num_file_t, 0);
         frame_start_time_ns.assign(num_file_t, 0);
         era_deg.assign(num_file_t, 0.0);
+        era_deg_set.assign(num_file_t, 0);
         n_valid_fpga_ticks.assign(num_freq * num_file_t, 0);
         n_rfi_fpga_ticks.assign(num_freq * num_file_t, 0);
 
@@ -181,8 +184,12 @@ public:
         // Initialize constant per-file frame length from first frame
         if (frame_length_fpga_ticks == 0)
             frame_length_fpga_ticks = meta->frame_length_fpga_ticks;
-        if (era_deg[t_index] == 0)
-            era_deg[t_index] = fv.eop.ERA_deg; // No consistency check for ERA (float comparison)
+        // Initialize ERA value once per time slot; ignore subsequent changes to avoid
+        // relying on a numeric sentinel (e.g., ERA==0) and to ensure consistency.
+        if (!era_deg_set[t_index]) {
+            era_deg[t_index] = fv.eop.ERA_deg;
+            era_deg_set[t_index] = 1;
+        }
 
         // Store vis + weight
         for (size_t p = 0; p < num_prod; ++p) {
@@ -205,8 +212,15 @@ public:
 
         // Derived fractions and counts (sanitize tick counts to avoid out-of-range values)
         const uint64_t frame_len_ticks = meta->frame_length_fpga_ticks;
-        const uint64_t n_valid = std::min(meta->n_valid_fpga_ticks, frame_len_ticks);
-        const uint64_t n_rfi = std::min(meta->n_rfi_fpga_ticks, frame_len_ticks);
+        uint64_t n_valid = std::min(meta->n_valid_fpga_ticks, frame_len_ticks);
+        uint64_t n_rfi = std::min(meta->n_rfi_fpga_ticks, frame_len_ticks);
+        // Ensure counts are non-negative and do not exceed the frame length in total
+        if (n_valid > frame_len_ticks)
+            n_valid = frame_len_ticks;
+        if (n_rfi > frame_len_ticks)
+            n_rfi = frame_len_ticks;
+        if (n_valid + n_rfi > frame_len_ticks)
+            n_rfi = frame_len_ticks - n_valid;
         n_valid_fpga_ticks[idx_ft(f_index, t_index)] = n_valid;
         n_rfi_fpga_ticks[idx_ft(f_index, t_index)] = n_rfi;
         frac_lost[idx_ft(f_index, t_index)] =
@@ -271,8 +285,7 @@ private:
     const bool prefix_hostname;  /// Prefix files with hostname (default: true)
 
     // writer options + compression
-    const std::string format;              /// "zarr" or "hdf5"
-    const std::string compression;         /// "none" | "deflate" | "zstd" | "blosc"
+    const std::string compression; /// "none" | "deflate" | "zstd" (bitshuffle+zstd if enabled)
     const std::uint64_t compression_level; /// compression level (0 = driver default/none)
     const bool use_bitshuffle;             /// use bitshuffle filter if available
     const std::uint64_t blocksize_f;       /// Array chunk size along frequency
@@ -322,12 +335,12 @@ private:
      * @param datasets  Map of datasets to finalize
      * @param late_frame_grace_seconds  Grace period in seconds for late frames
      */
-    void _grace_finalize_datasets(
-        std::map<std::string, std::unique_ptr<visFileData>>& datasets);
+    void _grace_finalize_datasets(std::map<std::string, std::unique_ptr<visFileData>>& datasets,
+                                  const std::string* exclude_path = nullptr);
 
-    // Array creation options placeholder (unused in HighFive path).
-    std::vector<std::string>
-    _get_array_create_options(const std::vector<std::uint64_t>& chunk_dims) const;
+    // Initialize HDF5 datasets with chunking/compression options
+    void _initialize_h5(HighFive::File& file, const std::shared_ptr<const N2Metadata> meta,
+                        std::uint64_t file_nt) const;
 
     /**
      * @brief Get the partial directory path for temporary files.

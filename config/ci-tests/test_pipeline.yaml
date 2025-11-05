@@ -362,13 +362,13 @@ eigencalc:
   krylov: 2
   subspace: 1
 
-# Write out the visibilities using GDAL Zarr
+# Write out the visibilities using HDF5
 
-gdal_vis_write:
+hdf5_vis_write:
     log_level: DEBUG
-    kotekan_stage: gdalVisWrite
+    kotekan_stage: hdf5VisWrite
     in_buf: n2_eigen_buffer
-    base_dir: ./data_out/gdal_vis
+    base_dir: ./vis_data
     file_name: pipeline_test
     prefix_hostname: false
     zip_compression: 0

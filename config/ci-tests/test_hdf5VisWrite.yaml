@@ -4,7 +4,7 @@ log_level: info
 
 num_elements: 16
 num_ev: 4
-cpu_affinity: []
+cpu_affinity: [0,1]
 
 # Minimal CHORD telescope configuration (used by FakeN2 for timestamps/metadata)
 telescope:
@@ -64,11 +64,11 @@ fake_n2:
   wait: false
   mode: default
 
-# Write out the visibilities using GDAL Zarr
-gdal_vis_write:
-  kotekan_stage: gdalVisWrite
+# Write out the visibilities
+hdf5_vis_write:
+  kotekan_stage: hdf5VisWrite
   in_buf: fakevis_buf
-  base_dir: ./data_out/gdal_vis_ci
+  base_dir: ./vis_ci_out
   file_name: ci_test
   prefix_hostname: false
   zip_compression: 0

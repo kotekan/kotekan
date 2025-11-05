@@ -126,7 +126,7 @@ if(HDF5_FOUND
     target_sources(kotekan_stages PRIVATE applyGains.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES}
-                                                HighFive::HighFive)
+                                                 HighFive::HighFive)
     # applyGains.cpp uses std::atomic<timespec>, which relies on libatomic on some platforms
     target_link_libraries(kotekan_stages PRIVATE atomic)
 endif()

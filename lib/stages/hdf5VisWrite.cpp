@@ -1,5 +1,6 @@
 #include "hdf5VisWrite.hpp"
 
+#include "H5Support.hpp"
 #include "Telescope.hpp" // for Telescope
 #include "hdf5Files.hpp"
 #include "util.h" // for mkdir_p
@@ -10,8 +11,10 @@
 #include <N2Metadata.hpp>
 #include <Stage.hpp>
 #include <StageFactory.hpp>
+#include <algorithm>
 #include <cassert>
 #include <chordMetadata.hpp>
+#include <chrono>
 #include <complex>
 #include <configTracker.hpp>
 #include <cstdint>
@@ -19,8 +22,11 @@
 #include <errno.h>
 #include <errors.h>
 #include <fstream>
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5DataSpace.hpp>
 #include <highfive/H5File.hpp>
-#include "H5Support.hpp"
+#include <highfive/H5Object.hpp>       // for H5Z_FLAG_MANDATORY, hsize_t
+#include <highfive/H5PropertyList.hpp> // for PropertyType, RawPropertyList, Chunking
 #include <iomanip>
 #include <map>
 #include <memory>
@@ -37,6 +43,16 @@
 
 using namespace HighFive;
 
+namespace {
+// Monotonic time in seconds
+inline double mono_time_s() {
+    using clock = std::chrono::steady_clock;
+    static const auto t0 = clock::now();
+    auto dt = clock::now() - t0;
+    return std::chrono::duration<double>(dt).count();
+}
+} // namespace
+
 REGISTER_KOTEKAN_STAGE(hdf5VisWrite);
 
 hdf5VisWrite::hdf5VisWrite(kotekan::Config& config, const std::string& unique_name,
@@ -48,7 +64,6 @@ hdf5VisWrite::hdf5VisWrite(kotekan::Config& config, const std::string& unique_na
     base_dir(config.get<std::string>(unique_name, "base_dir")),
     file_name(config.get<std::string>(unique_name, "file_name")),
     prefix_hostname(config.get_default<bool>(unique_name, "prefix_hostname", true)),
-    format(std::string("hdf5")),
     compression(config.get_default<std::string>(unique_name, "compression", "none")),
     compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),
     use_bitshuffle(config.get_default<bool>(unique_name, "use_bitshuffle", false)),
@@ -110,40 +125,56 @@ std::string hdf5VisWrite::_get_vis_filename(std::shared_ptr<const N2Metadata> me
     return buf.str();
 }
 
-std::vector<std::string>
-hdf5VisWrite::_get_array_create_options(const std::vector<std::uint64_t>&) const {
-    // Not used in HighFive path; kept for interface compatibility.
-    return {};
-}
+void hdf5VisWrite::_initialize_h5(HighFive::File& file,
+                                  const std::shared_ptr<const N2Metadata> meta,
+                                  std::uint64_t file_nt) const {
+    auto create_dataset = [&](const std::string& name, const std::vector<hsize_t>& dims,
+                              const HighFive::DataType& dtype) {
+        if (file.exist(name))
+            return;
 
-// HighFive helpers to create datasets
-static void _h5_create_dataset_2d(HighFive::File& f, const std::string& name, size_t dim0,
-                                  size_t dim1, const HighFive::DataType& dtype) {
-    if (f.exist(name))
-        return;
-    HighFive::DataSpace space({dim0, dim1});
-    (void)f.createDataSet(name, space, dtype);
-}
+        // Build chunking using configured block sizes
+        std::vector<hsize_t> chunk = dims;
+        if (!chunk.empty()) {
+            // frequency dimension (0)
+            if (blocksize_f > 0)
+                chunk[0] = std::min<hsize_t>(chunk[0], (hsize_t)blocksize_f);
+            // time dimension (last)
+            size_t tdim = chunk.size() - 1;
+            if (blocksize_t > 0)
+                chunk[tdim] = std::min<hsize_t>(chunk[tdim], (hsize_t)blocksize_t);
+            // ensure >= 1
+            for (auto& c : chunk)
+                c = std::max<hsize_t>(1, c);
+        }
 
-static void _h5_create_dataset_3d(HighFive::File& f, const std::string& name, size_t dim0,
-                                  size_t dim1, size_t dim2, const HighFive::DataType& dtype) {
-    if (f.exist(name))
-        return;
-    HighFive::DataSpace space({dim0, dim1, dim2});
-    (void)f.createDataSet(name, space, dtype);
-}
+        RawPropertyList<PropertyType::DATASET_CREATE> props;
+        (*(DataSetCreateProps*)&props).add(Chunking(chunk));
 
-static void _h5_create_dataset_4d(HighFive::File& f, const std::string& name, size_t dim0,
-                                  size_t dim1, size_t dim2, size_t dim3,
-                                  const HighFive::DataType& dtype) {
-    if (f.exist(name))
-        return;
-    HighFive::DataSpace space({dim0, dim1, dim2, dim3});
-    (void)f.createDataSet(name, space, dtype);
-}
+        // Compression/filters
+        if (use_bitshuffle) {
+            // Use bitshuffle + optional compression backend
+            unsigned int level = (compression_level > 0) ? (unsigned int)compression_level : 9u;
+            unsigned int comp = hdf5::BITSHUFFLE_COMPRESS_NONE;
+            if (compression == "zstd")
+                comp = hdf5::BITSHUFFLE_COMPRESS_ZSTD;
+            else if (compression == "lz4")
+                comp = hdf5::BITSHUFFLE_COMPRESS_LZ4;
+            std::vector<unsigned int> bshuf_flags;
+            bshuf_flags.push_back(hdf5::BITSHUFFLE_BLOCKSIZE_AUTO);
+            bshuf_flags.push_back(comp);
+            bshuf_flags.push_back(level);
+            props.add(H5Pset_filter, hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY, bshuf_flags.size(),
+                      bshuf_flags.data());
+        } else if (compression == "deflate") {
+            unsigned int level = (compression_level > 0) ? (unsigned int)compression_level : 4u;
+            props.add(H5Pset_deflate, level);
+        }
 
-static void _initialize_h5(HighFive::File& file, const std::shared_ptr<const N2Metadata> meta,
-                           std::uint64_t file_nt) {
+        HighFive::DataSpace space(dims.begin(), dims.end());
+        (void)file.createDataSet(name, space, dtype, props);
+    };
+
     // minimal file-level attributes
     file.createAttribute("num_elements", meta->num_elements);
     file.createAttribute("num_prod", meta->num_prod);
@@ -151,28 +182,33 @@ static void _initialize_h5(HighFive::File& file, const std::shared_ptr<const N2M
     file.createAttribute("num_freq", meta->nfreq);
     file.createAttribute("frame_length_fpga_ticks", meta->frame_length_fpga_ticks);
 
-    _h5_create_dataset_3d(file, "/vis_array", meta->nfreq, meta->num_prod, file_nt,
-                          HighFive::create_datatype<cfloat>());
-    _h5_create_dataset_3d(file, "/weights_array", meta->nfreq, meta->num_prod, file_nt,
-                          HighFive::create_datatype<float>());
-    _h5_create_dataset_3d(file, "/eval_array", meta->nfreq, meta->num_ev, file_nt,
-                          HighFive::create_datatype<float>());
-    _h5_create_dataset_4d(file, "/evec_array", meta->nfreq, meta->num_ev, meta->num_elements,
-                          file_nt, HighFive::create_datatype<cfloat>());
-    _h5_create_dataset_2d(file, "/erms_array", meta->nfreq, file_nt,
-                          HighFive::create_datatype<float>());
-    _h5_create_dataset_3d(file, "/gain_array", meta->nfreq, meta->num_elements, file_nt,
-                          HighFive::create_datatype<cfloat>());
-    _h5_create_dataset_3d(file, "/flags_array", meta->nfreq, meta->num_elements, file_nt,
-                          HighFive::create_datatype<float>());
-    _h5_create_dataset_2d(file, "/frac_lost_array", meta->nfreq, file_nt,
-                          HighFive::create_datatype<float>());
-    _h5_create_dataset_2d(file, "/frac_rfi_array", meta->nfreq, file_nt,
-                          HighFive::create_datatype<float>());
-    _h5_create_dataset_2d(file, "/n_valid_fpga_ticks", meta->nfreq, file_nt,
-                          HighFive::create_datatype<uint64_t>());
-    _h5_create_dataset_2d(file, "/n_rfi_fpga_ticks", meta->nfreq, file_nt,
-                          HighFive::create_datatype<uint64_t>());
+    create_dataset("/vis_array", {(hsize_t)meta->nfreq, (hsize_t)meta->num_prod, (hsize_t)file_nt},
+                   HighFive::create_datatype<cfloat>());
+    create_dataset("/weights_array",
+                   {(hsize_t)meta->nfreq, (hsize_t)meta->num_prod, (hsize_t)file_nt},
+                   HighFive::create_datatype<float>());
+    create_dataset("/eval_array", {(hsize_t)meta->nfreq, (hsize_t)meta->num_ev, (hsize_t)file_nt},
+                   HighFive::create_datatype<float>());
+    create_dataset("/evec_array",
+                   {(hsize_t)meta->nfreq, (hsize_t)meta->num_ev, (hsize_t)meta->num_elements,
+                    (hsize_t)file_nt},
+                   HighFive::create_datatype<cfloat>());
+    create_dataset("/erms_array", {(hsize_t)meta->nfreq, (hsize_t)file_nt},
+                   HighFive::create_datatype<float>());
+    create_dataset("/gain_array",
+                   {(hsize_t)meta->nfreq, (hsize_t)meta->num_elements, (hsize_t)file_nt},
+                   HighFive::create_datatype<cfloat>());
+    create_dataset("/flags_array",
+                   {(hsize_t)meta->nfreq, (hsize_t)meta->num_elements, (hsize_t)file_nt},
+                   HighFive::create_datatype<float>());
+    create_dataset("/frac_lost_array", {(hsize_t)meta->nfreq, (hsize_t)file_nt},
+                   HighFive::create_datatype<float>());
+    create_dataset("/frac_rfi_array", {(hsize_t)meta->nfreq, (hsize_t)file_nt},
+                   HighFive::create_datatype<float>());
+    create_dataset("/n_valid_fpga_ticks", {(hsize_t)meta->nfreq, (hsize_t)file_nt},
+                   HighFive::create_datatype<uint64_t>());
+    create_dataset("/n_rfi_fpga_ticks", {(hsize_t)meta->nfreq, (hsize_t)file_nt},
+                   HighFive::create_datatype<uint64_t>());
     if (!file.exist("/fpga_start_tick"))
         (void)file.createDataSet("/fpga_start_tick", HighFive::DataSpace({file_nt}),
                                  HighFive::create_datatype<uint64_t>());
@@ -188,10 +224,15 @@ static void _initialize_h5(HighFive::File& file, const std::shared_ptr<const N2M
 }
 
 void hdf5VisWrite::_grace_finalize_datasets(
-    std::map<std::string, std::unique_ptr<visFileData>>& datasets) {
-    const double now_s = current_time();
+    std::map<std::string, std::unique_ptr<visFileData>>& datasets,
+    const std::string* exclude_path) {
+    const double now_s = mono_time_s();
     for (auto ds_it = datasets.begin(); ds_it != datasets.end();) {
         auto& obj = *ds_it->second;
+        if (exclude_path && ds_it->first == *exclude_path) {
+            ++ds_it;
+            continue;
+        }
         if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
             // Grace finalize: flush and rename
             obj.flush();
@@ -218,10 +259,10 @@ void hdf5VisWrite::main_thread() {
     auto& n_datasets_metric = kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_viswrite_n_datasets", unique_name);
 
-    const double start_time = current_time(); // for logging elapsed time
-    N2::frameID in_frame_id(buffer);          // Input frame ID tracker
-    int frame_counter = 0;                    // Count of frames written
-    bool warned_short_file_window = false;    // Warn only once for short file windows
+    const double start_time = mono_time_s(); // for logging elapsed time
+    N2::frameID in_frame_id(buffer);         // Input frame ID tracker
+    int frame_counter = 0;                   // Count of frames written
+    bool warned_short_file_window = false;   // Warn only once for short file windows
 
     // datasets (files) for writing (multiple may be open simultaneously)
     std::map<std::string, std::unique_ptr<visFileData>> datasets;
@@ -253,7 +294,7 @@ void hdf5VisWrite::main_thread() {
         assert(meta);
 
         // Start timer
-        const double frame_recv_time = current_time();
+        const double frame_recv_time = mono_time_s();
         const double total_elapsed_time = frame_recv_time - start_time;
         INFO("Received buffer {} frame {} (duration_s {})", unique_name, in_frame_id,
              total_elapsed_time);
@@ -279,7 +320,7 @@ void hdf5VisWrite::main_thread() {
             in_frame_id++;
 
             // Before continuing, check for grace-based finalizations on other datasets
-            _grace_finalize_datasets(datasets);
+            _grace_finalize_datasets(datasets, nullptr);
 
             continue;
         } else {
@@ -353,8 +394,8 @@ void hdf5VisWrite::main_thread() {
                 "Dropping frame due to buffer dimensions mismatch within dataset: nfreq {} vs {}, "
                 "num_elements {} vs {}, num_prod {} vs {}, num_ev {} vs {}",
                 meta->nfreq, visFileData_ptr->num_freq, meta->num_elements,
-                visFileData_ptr->num_input, meta->num_prod, visFileData_ptr->num_prod,
-                meta->num_ev, visFileData_ptr->num_ev);
+                visFileData_ptr->num_input, meta->num_prod, visFileData_ptr->num_prod, meta->num_ev,
+                visFileData_ptr->num_ev);
             // Mark frame as done and skip further processing
             buffer->mark_frame_empty(unique_name, in_frame_id);
             in_frame_id++;
@@ -388,9 +429,9 @@ void hdf5VisWrite::main_thread() {
         // If buffer full, flush
         double elapsed_writing_frame = 0.0;
         if (visFileData_ptr->full()) {
-            const double t0 = current_time();
+            const double t0 = mono_time_s();
             visFileData_ptr->flush();
-            const double t1 = current_time();
+            const double t1 = mono_time_s();
             elapsed_writing_frame = t1 - t0;
             // Close dataset after flush
             visFileData_ptr->close();
@@ -405,7 +446,7 @@ void hdf5VisWrite::main_thread() {
         }
 
         // Stop timer/metrics
-        const double currt = current_time();
+        const double currt = mono_time_s();
         if (elapsed_writing_frame <= 0.0)
             elapsed_writing_frame = currt - frame_recv_time;
         write_time_metric.set(elapsed_writing_frame);
@@ -426,7 +467,7 @@ void hdf5VisWrite::main_thread() {
         in_frame_id++;
 
         // After handling this frame, scan for grace-based finalizations
-        _grace_finalize_datasets(datasets);
+        _grace_finalize_datasets(datasets, &final_path);
 
     } // while !stop_thread
 
@@ -449,114 +490,50 @@ void hdf5VisWrite::main_thread() {
     DEBUG("exiting");
 }
 
-// ---------------- HDF5 write helpers (visFileData methods) ----------------
 
 bool visFileData::flush() {
     if (!h5_file)
         return false;
-    const size_t nt = num_file_t;
 
-    // Build nested containers and write
-    // vis: [nfreq][num_prod][nt]
-    {
-        std::vector<std::vector<std::vector<cfloat>>> buf(
-            num_freq, std::vector<std::vector<cfloat>>(num_prod, std::vector<cfloat>(nt)));
-        for (size_t f = 0; f < num_freq; ++f)
-            for (size_t p = 0; p < num_prod; ++p)
-                for (size_t t = 0; t < nt; ++t)
-                    buf[f][p][t] = vis[num_file_t * (num_prod * f + p) + t];
-        h5_file->getDataSet("/vis_array").write(buf);
-    }
-    // weights: same shape
-    {
-        std::vector<std::vector<std::vector<float>>> buf(
-            num_freq, std::vector<std::vector<float>>(num_prod, std::vector<float>(nt)));
-        for (size_t f = 0; f < num_freq; ++f)
-            for (size_t p = 0; p < num_prod; ++p)
-                for (size_t t = 0; t < nt; ++t)
-                    buf[f][p][t] = vis_weight[num_file_t * (num_prod * f + p) + t];
-        h5_file->getDataSet("/weights_array").write(buf);
-    }
-    // eval: [nfreq][num_ev][nt]
-    {
-        std::vector<std::vector<std::vector<float>>> buf(
-            num_freq, std::vector<std::vector<float>>(num_ev, std::vector<float>(nt)));
-        for (size_t f = 0; f < num_freq; ++f)
-            for (size_t e = 0; e < num_ev; ++e)
-                for (size_t t = 0; t < nt; ++t)
-                    buf[f][e][t] = eval[num_file_t * (num_ev * f + e) + t];
-        h5_file->getDataSet("/eval_array").write(buf);
-    }
-    // evec: [nfreq][num_ev][num_input][nt]
-    {
-        std::vector<std::vector<std::vector<std::vector<cfloat>>>> buf(
-            num_freq, std::vector<std::vector<std::vector<cfloat>>>(
-                          num_ev, std::vector<std::vector<cfloat>>(num_input, std::vector<cfloat>(nt))));
-        for (size_t f = 0; f < num_freq; ++f)
-            for (size_t e = 0; e < num_ev; ++e)
-                for (size_t i = 0; i < num_input; ++i)
-                    for (size_t t = 0; t < nt; ++t)
-                        buf[f][e][i][t] = evec[num_file_t * (num_input * (num_ev * f + e) + i) + t];
-        h5_file->getDataSet("/evec_array").write(buf);
-    }
-    // erms: [nfreq][nt]
-    {
-        std::vector<std::vector<float>> buf(num_freq, std::vector<float>(nt));
-        for (size_t f = 0; f < num_freq; ++f)
-            for (size_t t = 0; t < nt; ++t)
-                buf[f][t] = erms[num_file_t * f + t];
-        h5_file->getDataSet("/erms_array").write(buf);
-    }
-    // gain: [nfreq][num_input][nt]
-    {
-        std::vector<std::vector<std::vector<cfloat>>> buf(
-            num_freq, std::vector<std::vector<cfloat>>(num_input, std::vector<cfloat>(nt)));
-        for (size_t f = 0; f < num_freq; ++f)
-            for (size_t i = 0; i < num_input; ++i)
-                for (size_t t = 0; t < nt; ++t)
-                    buf[f][i][t] = gain[num_file_t * (num_input * f + i) + t];
-        h5_file->getDataSet("/gain_array").write(buf);
-    }
-    // flags: [nfreq][num_input][nt]
-    {
-        std::vector<std::vector<std::vector<float>>> buf(
-            num_freq, std::vector<std::vector<float>>(num_input, std::vector<float>(nt)));
-        for (size_t f = 0; f < num_freq; ++f)
-            for (size_t i = 0; i < num_input; ++i)
-                for (size_t t = 0; t < nt; ++t)
-                    buf[f][i][t] = flags[num_file_t * (num_input * f + i) + t];
-        h5_file->getDataSet("/flags_array").write(buf);
-    }
-    // frac_lost / frac_rfi: [nfreq][nt]
-    {
-        std::vector<std::vector<float>> bl(num_freq, std::vector<float>(nt));
-        std::vector<std::vector<float>> br(num_freq, std::vector<float>(nt));
-        for (size_t f = 0; f < num_freq; ++f)
-            for (size_t t = 0; t < nt; ++t) {
-                const size_t idx = num_file_t * f + t;
-                bl[f][t] = frac_lost[idx];
-                br[f][t] = frac_rfi[idx];
-            }
-        h5_file->getDataSet("/frac_lost_array").write(bl);
-        h5_file->getDataSet("/frac_rfi_array").write(br);
-    }
-    // counts: [nfreq][nt]
-    {
-        std::vector<std::vector<uint64_t>> bn(num_freq, std::vector<uint64_t>(nt));
-        std::vector<std::vector<uint64_t>> br(num_freq, std::vector<uint64_t>(nt));
-        for (size_t f = 0; f < num_freq; ++f)
-            for (size_t t = 0; t < nt; ++t) {
-                const size_t idx = num_file_t * f + t;
-                bn[f][t] = n_valid_fpga_ticks[idx];
-                br[f][t] = n_rfi_fpga_ticks[idx];
-            }
-        h5_file->getDataSet("/n_valid_fpga_ticks").write(bn);
-        h5_file->getDataSet("/n_rfi_fpga_ticks").write(br);
-    }
+    // Write directly from buffers, use write_raw(ptr) so memspace is applied
+    h5_file->getDataSet("/vis_array")
+        .select({0, 0, 0}, {num_freq, num_prod, num_file_t})
+        .write_raw(vis.data());
+    h5_file->getDataSet("/weights_array")
+        .select({0, 0, 0}, {num_freq, num_prod, num_file_t})
+        .write_raw(vis_weight.data());
+    h5_file->getDataSet("/eval_array")
+        .select({0, 0, 0}, {num_freq, num_ev, num_file_t})
+        .write_raw(eval.data());
+    h5_file->getDataSet("/evec_array")
+        .select({0, 0, 0, 0}, {num_freq, num_ev, num_input, num_file_t})
+        .write_raw(evec.data());
+    h5_file->getDataSet("/erms_array")
+        .select({0, 0}, {num_freq, num_file_t})
+        .write_raw(erms.data());
+    h5_file->getDataSet("/frac_lost_array")
+        .select({0, 0}, {num_freq, num_file_t})
+        .write_raw(frac_lost.data());
+    h5_file->getDataSet("/frac_rfi_array")
+        .select({0, 0}, {num_freq, num_file_t})
+        .write_raw(frac_rfi.data());
+    h5_file->getDataSet("/n_valid_fpga_ticks")
+        .select({0, 0}, {num_freq, num_file_t})
+        .write_raw(n_valid_fpga_ticks.data());
+    h5_file->getDataSet("/n_rfi_fpga_ticks")
+        .select({0, 0}, {num_freq, num_file_t})
+        .write_raw(n_rfi_fpga_ticks.data());
+    h5_file->getDataSet("/gain_array")
+        .select({0, 0, 0}, {num_freq, num_input, num_file_t})
+        .write_raw(gain.data());
+    h5_file->getDataSet("/flags_array")
+        .select({0, 0, 0}, {num_freq, num_input, num_file_t})
+        .write_raw(flags.data());
+    
     // per-time arrays
     h5_file->getDataSet("/fpga_start_tick").write(fpga_start_tick);
     h5_file->getDataSet("/frame_start_time_ns").write(frame_start_time_ns);
-    std::vector<uint64_t> flft(nt, frame_length_fpga_ticks);
+    std::vector<uint64_t> flft(num_file_t, frame_length_fpga_ticks);
     h5_file->getDataSet("/frame_length_fpga_ticks").write(flft);
     h5_file->getDataSet("/era_deg").write(era_deg);
 
