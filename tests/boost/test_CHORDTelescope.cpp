@@ -25,7 +25,7 @@ using kotekan::restServer;
 const std::string default_config_str = R"config_str({
 "type": "config",
 "log_level": "debug",
-"num_dishes": 32,
+"num_dishes": 2,
 "telescope": {
     "name": "CHORDTelescope",
     "inst_long_deg":  -119.621,
@@ -42,17 +42,7 @@ const std::string default_config_str = R"config_str({
     {"dish_idx": 0, "ew_idx": 0, "ns_idx": 0, "pos_disp_m": [0.0, 0.0, 0.0],
      "coelev_disp_deg": 0.0, "type": 0, "label": "D00"},
     {"dish_idx": 1, "ew_idx": 1, "ns_idx": 0, "pos_disp_m": [0.0, 0.0, 0.0],
-     "coelev_disp_deg": 0.0, "type": 0, "label": "D01"},
-    {"dish_idx": 2, "ew_idx": 0, "ns_idx": 1, "pos_disp_m": [0.0, 0.0, 0.0],
-     "coelev_disp_deg": 0.0, "type": 0, "label": "D10"},
-    {"dish_idx": 3, "ew_idx": 1, "ns_idx": 1, "pos_disp_m": [0.0, 0.0, 0.0],
-     "coelev_disp_deg": 0.0, "type": 0, "label": "D11"},
-    {"dish_idx": 4, "ew_idx": 24, "ns_idx": 0, "pos_disp_m": [0.0, 0.0, 0.0],
-     "coelev_disp_deg": 0.0, "type": 0, "label": "D02"},
-    {"dish_idx": 5, "ew_idx": 0, "ns_idx": 24, "pos_disp_m": [0.0, 0.0, 0.0],
-     "coelev_disp_deg": 0.0, "type": 0, "label": "D20"},
-    {"dish_idx": 6, "ew_idx": 24, "ns_idx": 24, "pos_disp_m": [0.0, 0.0, 0.0],
-     "coelev_disp_deg": 0.0, "type": 0, "label": "D22"}],
+     "coelev_disp_deg": 0.0, "type": 0, "label": "D01"}],
 "gps_time": {
     "frame0_nano": 1761926400000000000
     },
@@ -110,4 +100,56 @@ BOOST_AUTO_TEST_CASE(_instrument_orientation) {
     const CHORDTelescope& tel = get_telescope(json_config);
 
     BOOST_CHECK_EQUAL(tel.get_inst_coelev_deg(), coelev);
+}
+
+void check_dishes(const dishInfo& d1, const dishInfo& d2) {
+    BOOST_CHECK_MESSAGE(d1 == d2,
+            fmt::format("Expected dish (({:s})) == (({:s}))", json(d1).dump(), json(d2).dump()));
+}
+
+void check_equal_vec3d(const std::array<double, 3>& v1, const std::array<double, 3>& v2) {
+    BOOST_CHECK_MESSAGE(v1[0] == v2[0] && v1[1] == v2[1] && v1[2] == v2[2],
+            fmt::format("Expected dish ({:g}, {:g}, {:g}) == ({:g}, {:g}, {:g})",
+                v1[0], v1[1], v1[2], v2[0], v2[1], v2[2]));
+}
+
+BOOST_AUTO_TEST_CASE(_dish_info) {
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0,   0, "D1");
+    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0,  0, "D2");
+    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0,   0, "D3");
+    dishInfo d3 = dish_null;
+    dishInfo d4 = dish_null;
+    dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, 0, "D4");
+    dishInfo d6 = dish_null;
+    dishInfo d7 = dish_null;
+    d3.idx = 3;
+    d4.idx = 4;
+    d6.idx = 6;
+    d7.idx = 7;
+    
+    json json_config = json::parse(default_config_str);
+    json_config["num_dishes"] = 8;
+    json_config["dish_separation_ew_m"] = 1.0;
+    json_config["dish_separation_ns_m"] = 2.0;
+    json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    check_dishes(tel.get_dish_at_idx(0), d0);
+    check_dishes(tel.get_dish_at_idx(1), d1);
+    check_dishes(tel.get_dish_at_idx(2), d2);
+    check_dishes(tel.get_dish_at_idx(3), d3);
+    check_dishes(tel.get_dish_at_idx(4), d4);
+    check_dishes(tel.get_dish_at_idx(5), d5);
+    check_dishes(tel.get_dish_at_idx(6), d6);
+    check_dishes(tel.get_dish_at_idx(7), d7);
+
+    // With weirder input these might fail floating point equality
+    check_equal_vec3d(tel.get_dish_position(0), std::array<double, 3>({0.0, 0.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position(1), std::array<double, 3>({0.0, 2.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position(2), std::array<double, 3>({1.1, 0.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position(3), std::array<double, 3>({0.0, 0.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position(4), std::array<double, 3>({0.0, 0.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position(5), std::array<double, 3>({-5.0-0.3, 814*2.0 + 1.0, 0.5}));
+    check_equal_vec3d(tel.get_dish_position(6), std::array<double, 3>({0.0, 0.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position(7), std::array<double, 3>({0.0, 0.0, 0.0}));
 }

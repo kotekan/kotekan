@@ -47,6 +47,21 @@ struct dishInfo {
     std::string label;
 };
 
+inline bool operator==(const dishInfo& lhs, const dishInfo& rhs) {
+    return (lhs.idx == rhs.idx) && (lhs.ew_idx == rhs.ew_idx) && (lhs.ns_idx == rhs.ns_idx)
+        && (lhs.pos_disp_m[0] == rhs.pos_disp_m[0]) && (lhs.pos_disp_m[1] == rhs.pos_disp_m[1])
+        && (lhs.pos_disp_m[2] == rhs.pos_disp_m[2]) && (lhs.coelev_disp_deg == rhs.coelev_disp_deg)
+        && (lhs.type == rhs.type) && (lhs.label == rhs.label);
+}
+
+inline dishInfo make_dishInfo(int64_t idx, int64_t ew_idx, int64_t ns_idx, const std::array<double, 3> &pos_disp_m,
+        double coelev_disp_deg, int64_t type, const std::string &label) {
+    dishInfo d{.idx = idx, .ew_idx = ew_idx, .ns_idx = ns_idx,
+        .pos_disp_m = {pos_disp_m[0], pos_disp_m[1], pos_disp_m[2]},
+        .coelev_disp_deg = coelev_disp_deg, .type = type, .label = label};
+    return d;
+}
+
 void to_json(nlohmann::json& j, const dishInfo& d);
 void from_json(const nlohmann::json& j, dishInfo& d);
 

@@ -830,8 +830,8 @@ void to_json(nlohmann::json& j, const dishInfo& d) {
 
 void from_json(const nlohmann::json& j, dishInfo& d) {
     d.idx = j.at("dish_idx");
-    d.ns_idx = j.at("ew_idx");
-    d.ew_idx = j.at("ns_idx");
+    d.ew_idx = j.at("ew_idx");
+    d.ns_idx = j.at("ns_idx");
     d.pos_disp_m = j.at("pos_disp_m");
     d.coelev_disp_deg = j.at("coelev_disp_deg");
     d.type = j.at("type");
