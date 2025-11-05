@@ -110,7 +110,7 @@ public:
         added_ft.assign(num_freq * num_file_t, 0);
     }
 
-    /// Flush buffered data to the associated dataset handle, always writing the
+    /// Flush buffered data to the associated dataset, always writing the
     /// entire time range [0 .. num_file_t-1] regardless of which frames were
     /// populated. Returns true if a write occurred.
     bool flush() {
@@ -199,6 +199,7 @@ public:
             if (!ok)
                 ERROR_NON_OO("Failed to write gain_array to dataset {}",
                              gdal_dataset->GetDescription());
+
             ok = flags_array->Write(start_g.data(), count_g.data(), nullptr, nullptr, f32Type,
                                     reinterpret_cast<const void*>(flags.data()), nullptr, 0);
             if (!ok)
@@ -211,17 +212,20 @@ public:
             if (!ok)
                 ERROR_NON_OO("Failed to write frac_lost_array to dataset {}",
                              gdal_dataset->GetDescription());
+
             ok = frac_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, f32Type,
                                        reinterpret_cast<const void*>(frac_rfi.data()), nullptr, 0);
             if (!ok)
                 ERROR_NON_OO("Failed to write frac_rfi_array to dataset {}",
                              gdal_dataset->GetDescription());
+
             ok = n_valid_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
                                       reinterpret_cast<const void*>(n_valid_fpga_ticks.data()),
                                       nullptr, 0);
             if (!ok)
                 ERROR_NON_OO("Failed to write n_valid_array to dataset {}",
                              gdal_dataset->GetDescription());
+
             ok = n_rfi_array->Write(start_et.data(), count_et.data(), nullptr, nullptr, u64Type,
                                     reinterpret_cast<const void*>(n_rfi_fpga_ticks.data()), nullptr,
                                     0);
@@ -246,6 +250,7 @@ public:
             if (!ok)
                 ERROR_NON_OO("Failed to write frame_start_time_ns_array to dataset {}",
                              gdal_dataset->GetDescription());
+
             // Write frame_length_fpga_ticks across full file dimension (constant per file)
             std::vector<GUInt64> start_full = {0};
             std::vector<size_t> count_full = {num_file_t};
@@ -256,6 +261,7 @@ public:
             if (!ok)
                 ERROR_NON_OO("Failed to write frame_length_fpga_ticks_array to dataset {}",
                              gdal_dataset->GetDescription());
+
             ok = era_deg_array->Write(start.data(), count.data(), nullptr, nullptr, f64Type,
                                       reinterpret_cast<const void*>(era_deg.data()), nullptr, 0);
             if (!ok)
@@ -400,8 +406,6 @@ public:
  * @conf base_dir           String. Directory to write into
  * @conf file_name          String. Base filename to write
  * @conf prefix_hostname    Bool. Prefix files with hostname (default: true)
- * @conf zip_compression    UInt. 0 disables ZIP; >0 enables ZIP STORAGE with given DEFLATE level
- *(default: 0)
  * @conf blocksize_f        UInt. Array chunk size along freq (0 = driver default)
  * @conf blocksize_p        UInt. Array chunk size along product (unused currently; 0 = default)
  * @conf blocksize_t        UInt. Array chunk size along time (default: 1)
@@ -429,11 +433,16 @@ private:
     const std::string file_name; /// Base filename to write
     const bool prefix_hostname;  /// Prefix files with hostname (default: true)
 
-    const std::uint64_t zip_compression; /// ZIP compression level (0 = disabled)
-    const std::uint64_t blocksize_f;     /// Array chunk size along frequency
+    // writer options + compression
+    const std::string format;              /// "zarr" or "hdf5"
+    const std::string compression;         /// "none" | "deflate" | "zstd" | "blosc"
+    const std::uint64_t compression_level; /// compression level (0 = driver default/none)
+    const bool use_bitshuffle;             /// use bitshuffle filter if available
+    const std::uint64_t blocksize_f;       /// Array chunk size along frequency
     const std::uint64_t
         blocksize_p; /// Array chunk size along product (0 = default = full num products)
-    const std::uint64_t blocksize_t;  /// Array chunk size along time (default: 1)
+    const std::uint64_t blocksize_t; /// Array chunk size along time (default: 1)
+
     const std::uint64_t file_seconds; /// File length in seconds; must divide 86400
     const std::uint64_t
         late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
@@ -489,6 +498,10 @@ private:
      */
     void
     _grace_finalize_datasets(std::map<std::string, std::unique_ptr<gdalVisFileData>>& datasets);
+
+    // array creation options (BLOCKSIZE/compress). chunk_dims.size() must equal the array rank.
+    std::vector<std::string>
+    _get_array_create_options(const std::vector<GUInt64>& chunk_dims) const;
 
     /**
      * @brief Get the partial directory path for temporary files.

@@ -49,7 +49,10 @@ gdalVisWrite::gdalVisWrite(kotekan::Config& config, const std::string& unique_na
     base_dir(config.get<std::string>(unique_name, "base_dir")),
     file_name(config.get<std::string>(unique_name, "file_name")),
     prefix_hostname(config.get_default<bool>(unique_name, "prefix_hostname", true)),
-    zip_compression(config.get_default<std::uint64_t>(unique_name, "zip_compression", 0)),
+    format(config.get_default<std::string>(unique_name, "format", "zarr")),
+    compression(config.get_default<std::string>(unique_name, "compression", "none")),
+    compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),
+    use_bitshuffle(config.get_default<bool>(unique_name, "use_bitshuffle", false)),
     blocksize_f(config.get_default<std::uint64_t>(unique_name, "blocksize_f", 0)),
     blocksize_p(config.get_default<std::uint64_t>(unique_name, "blocksize_p", 0)),
     blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", 1)),
@@ -59,6 +62,7 @@ gdalVisWrite::gdalVisWrite(kotekan::Config& config, const std::string& unique_na
     max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
     buffer(get_buffer("in_buf")), tick_len_ns_override(config.get_default<std::uint64_t>(
                                       unique_name, "seq_length_nsec_override", 0)) {
+
     GDALAllRegister();
     buffer->register_consumer(unique_name);
 
@@ -104,10 +108,50 @@ std::string gdalVisWrite::_get_gdal_vis_filename(std::shared_ptr<const N2Metadat
     buf << file_name << "." << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S");
     // Include nanosecond suffix to avoid collisions for sub-second file windows
     buf << "_" << std::setw(9) << std::setfill('0') << ns_part;
-    buf << ".zarr";
-    if (zip_compression > 0)
-        buf << ".zip";
+    if (format == std::string("hdf5"))
+        buf << ".h5";
+    else
+        buf << ".zarr";
     return buf.str();
+}
+
+std::vector<std::string>
+gdalVisWrite::_get_array_create_options(const std::vector<GUInt64>& chunk_dims) const {
+    std::vector<std::string> opts;
+    if (!chunk_dims.empty()) {
+        std::ostringstream b;
+        b << "BLOCKSIZE=";
+        for (size_t i = 0; i < chunk_dims.size(); ++i) {
+            if (i)
+                b << ",";
+            b << static_cast<unsigned long long>(chunk_dims[i]);
+        }
+        opts.emplace_back(b.str());
+    }
+
+    // Add compression flags. These may be ignored by drivers that do not support them.
+    if (compression == std::string("deflate")) {
+        opts.emplace_back("COMPRESS=DEFLATE");
+        if (compression_level > 0)
+            opts.emplace_back("LEVEL=" + std::to_string(compression_level));
+        if (use_bitshuffle)
+            opts.emplace_back("SHUFFLE=YES");
+    } else if (compression == std::string("zstd")) {
+        opts.emplace_back("COMPRESS=ZSTD");
+        if (compression_level > 0)
+            opts.emplace_back("LEVEL=" + std::to_string(compression_level));
+        if (use_bitshuffle)
+            opts.emplace_back("SHUFFLE=YES");
+    } else if (compression == std::string("blosc")) {
+        // Approximate with modern ZSTD + SHUFFLE when BLOSC specifics aren't exposed via GDAL.
+        opts.emplace_back("COMPRESS=ZSTD");
+        if (compression_level > 0)
+            opts.emplace_back("LEVEL=" + std::to_string(compression_level));
+        if (use_bitshuffle)
+            opts.emplace_back("SHUFFLE=YES");
+    }
+
+    return opts;
 }
 
 void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
@@ -172,8 +216,6 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
         success = config_attr->Write(cfg_dump.data(), cfg_dump.size());
         if (!success)
             ERROR("Failed to write config_json attribute to dataset {}", dataset->GetDescription());
-
-        // TODO: add any other data that *doesn't vary with time* as an attribute
     }
 
     // GDAL Dimensions
@@ -187,30 +229,29 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
         root_group->CreateDimension("inputs", "", "", meta->num_elements);
     std::shared_ptr<GDALDimension> dim_ev = root_group->CreateDimension("ev", "", "", meta->num_ev);
 
-    // Array creation options (vis/weights only for now).
-    // Ensure positive chunk sizes always.
-    std::vector<std::string> array_options;
-    {
-        const GUInt64 bs_f = (blocksize_f > 0) ? blocksize_f : 1;
-        const GUInt64 bs_p = (blocksize_p > 0) ? blocksize_p : meta->num_prod;
-        const GUInt64 bs_t = (blocksize_t > 0) ? blocksize_t : file_nt;
-        std::ostringstream bbuf;
-        bbuf << "BLOCKSIZE=" << bs_f << "," << bs_p << "," << bs_t;
-        array_options.push_back(bbuf.str());
-    }
-    const auto array_options_c = convert_to_cstring_list(array_options);
+    // Build array creation options for common ranks
+    const GUInt64 bs_f = (blocksize_f > 0) ? blocksize_f : 1;
+    const GUInt64 bs_p = (blocksize_p > 0) ? blocksize_p : meta->num_prod;
+    const GUInt64 bs_t = (blocksize_t > 0) ? blocksize_t : file_nt;
+    const GUInt64 bs_ev = meta->num_ev;
+    const GUInt64 bs_i = meta->num_elements;
 
-    // TODO: add any additional time-varying data/metadata/data-derivatives in arrays.
+    const auto opts_3d_fpt = convert_to_cstring_list(_get_array_create_options({bs_f, bs_p, bs_t}));
+    const auto opts_3d_fet =
+        convert_to_cstring_list(_get_array_create_options({bs_f, bs_ev, bs_t}));
+    const auto opts_4d_feit =
+        convert_to_cstring_list(_get_array_create_options({bs_f, bs_ev, bs_i, bs_t}));
+    const auto opts_3d_fit = convert_to_cstring_list(_get_array_create_options({bs_f, bs_i, bs_t}));
+    const auto opts_2d_ft = convert_to_cstring_list(_get_array_create_options({bs_f, bs_t}));
 
     // vis and weights: (freqs, products, frames)
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_prod, dim_frames};
         auto vis_array = root_group->CreateMDArray(
-            "vis_array", dims, GDALExtendedDataType::Create(GDT_CFloat32), array_options_c.data());
+            "vis_array", dims, GDALExtendedDataType::Create(GDT_CFloat32), opts_3d_fpt.data());
         assert(vis_array && vis_array->GetDimensionCount() == 3);
-        auto weights_array = root_group->CreateMDArray("weights_array", dims,
-                                                       GDALExtendedDataType::Create(GDT_Float32),
-                                                       array_options_c.data());
+        auto weights_array = root_group->CreateMDArray(
+            "weights_array", dims, GDALExtendedDataType::Create(GDT_Float32), opts_3d_fpt.data());
         assert(weights_array && weights_array->GetDimensionCount() == 3);
     }
 
@@ -218,41 +259,41 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_ev, dim_frames};
         auto eval_array = root_group->CreateMDArray(
-            "eval_array", dims, GDALExtendedDataType::Create(GDT_Float32), nullptr);
+            "eval_array", dims, GDALExtendedDataType::Create(GDT_Float32), opts_3d_fet.data());
         (void)eval_array;
     }
     // evec: (freqs, ev, inputs, frames)
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_ev, dim_inputs, dim_frames};
         auto evec_array = root_group->CreateMDArray(
-            "evec_array", dims, GDALExtendedDataType::Create(GDT_CFloat32), nullptr);
+            "evec_array", dims, GDALExtendedDataType::Create(GDT_CFloat32), opts_4d_feit.data());
         (void)evec_array;
     }
     // erms: (freqs, frames)
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_frames};
         auto erms_array = root_group->CreateMDArray(
-            "erms_array", dims, GDALExtendedDataType::Create(GDT_Float32), nullptr);
+            "erms_array", dims, GDALExtendedDataType::Create(GDT_Float32), opts_2d_ft.data());
         (void)erms_array;
     }
     // gain + flags: (freqs, inputs, frames)
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_inputs, dim_frames};
         auto gain_array = root_group->CreateMDArray(
-            "gain_array", dims, GDALExtendedDataType::Create(GDT_CFloat32), nullptr);
+            "gain_array", dims, GDALExtendedDataType::Create(GDT_CFloat32), opts_3d_fit.data());
         (void)gain_array;
         auto flags_array = root_group->CreateMDArray(
-            "flags_array", dims, GDALExtendedDataType::Create(GDT_Float32), nullptr);
+            "flags_array", dims, GDALExtendedDataType::Create(GDT_Float32), opts_3d_fit.data());
         (void)flags_array;
     }
     // frac_*: (freqs, frames)
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_frames};
         auto fl_array = root_group->CreateMDArray(
-            "frac_lost_array", dims, GDALExtendedDataType::Create(GDT_Float32), nullptr);
+            "frac_lost_array", dims, GDALExtendedDataType::Create(GDT_Float32), opts_2d_ft.data());
         (void)fl_array;
         auto fr_array = root_group->CreateMDArray(
-            "frac_rfi_array", dims, GDALExtendedDataType::Create(GDT_Float32), nullptr);
+            "frac_rfi_array", dims, GDALExtendedDataType::Create(GDT_Float32), opts_2d_ft.data());
         (void)fr_array;
     }
     // per-time metadata arrays: (frames)
@@ -271,9 +312,10 @@ void gdalVisWrite::_initialize_gdal_vis_file(GDALDataset* dataset,
     {
         std::vector<std::shared_ptr<GDALDimension>> dims{dim_freq, dim_frames};
         (void)root_group->CreateMDArray("n_valid_fpga_ticks", dims,
-                                        GDALExtendedDataType::Create(GDT_UInt64), nullptr);
-        (void)root_group->CreateMDArray("n_rfi_fpga_ticks", dims,
-                                        GDALExtendedDataType::Create(GDT_UInt64), nullptr);
+                                        GDALExtendedDataType::Create(GDT_UInt64),
+                                        opts_2d_ft.data());
+        (void)root_group->CreateMDArray(
+            "n_rfi_fpga_ticks", dims, GDALExtendedDataType::Create(GDT_UInt64), opts_2d_ft.data());
     }
 }
 
@@ -320,7 +362,9 @@ void gdalVisWrite::main_thread() {
 
     // Choose file format (driver)
     const auto driver_manager = GetGDALDriverManager();
-    const std::string driver_name = "Zarr";
+    std::string driver_name = std::string("HDF5");
+    if (format == std::string("zarr"))
+        driver_name = std::string("Zarr");
     const auto driver = driver_manager->GetDriverByName(driver_name.c_str());
     if (!driver)
         FATAL_ERROR("GDAL driver not available: {:s}", driver_name);
@@ -338,15 +382,15 @@ void gdalVisWrite::main_thread() {
         }
     }
 
-    // Per-file flush/close handled by gdalVisFileData methods
-
+    // Main stage thread
     while (!stop_thread) {
+
         // Wait for the next frame
         const std::uint8_t* const frame = buffer->wait_for_full_frame(unique_name, in_frame_id);
         if (!frame)
             break;
 
-        // Fetch metadata and frame view
+        // Fetch metadata and N2 frame view
         N2FrameView fv(buffer, in_frame_id);
         const std::shared_ptr<N2Metadata> meta = get_N2_metadata(buffer, in_frame_id);
         assert(meta);
@@ -362,44 +406,42 @@ void gdalVisWrite::main_thread() {
         const std::string partial_path = _get_partial_dir() + "/" + file_name_only;
 
         // Ensure dataset exists/open
-        gdalVisFileData* obj_ptr = nullptr;
+        gdalVisFileData* gdalVisFileData_ptr = nullptr;
         auto ds = datasets.find(final_path);
+        struct stat filecheck_buffer {};
         if (ds != datasets.end()) {
             // Dataset already open
-            obj_ptr = ds->second.get();
-        } else {
+            gdalVisFileData_ptr = ds->second.get();
+        } else if (stat(final_path.c_str(), &filecheck_buffer) == 0) {
             // If final file already exists, drop/ignore this frame (late arrival)
-            struct stat filecheck_buffer {};
-            if (stat(final_path.c_str(), &filecheck_buffer) == 0) {
-                WARN(
-                    "Finalized file exists for this frame's file window, dropping late frame: {:s}",
-                    final_path);
-                // Mark frame as done and continue
-                buffer->mark_frame_empty(unique_name, in_frame_id);
-                in_frame_id++;
-                // Before continuing, check for grace-based finalizations on other datasets
-                _grace_finalize_datasets(datasets);
-                continue;
-            }
+            WARN("Finalized file exists for this frame's file window, dropping late frame: {:s}",
+                 final_path);
 
-            // Open existing partial or create new under .partial
+            // Mark frame as done and continue
+            buffer->mark_frame_empty(unique_name, in_frame_id);
+            in_frame_id++;
+
+            // Before continuing, check for grace-based finalizations on other datasets
+            _grace_finalize_datasets(datasets);
+
+            continue;
+        } else {
+            // Create new dataset (or look for .partial)
+
             GDALDataset* dataset = nullptr;
             GUInt64 file_nt = 0;
             if (stat(partial_path.c_str(), &filecheck_buffer) == 0) {
+                // Open existing partial
                 DEBUG("Opening existing partial file: {:s}", partial_path);
                 char** open_options = nullptr;
                 dataset = static_cast<GDALDataset*>(
                     GDALOpenEx(partial_path.c_str(), GDAL_OF_MULTIDIM_RASTER | GDAL_OF_UPDATE,
                                nullptr, const_cast<const char**>(open_options), nullptr));
             } else {
-                // Create Zarr dataset under partial path
+                // Create dataset container under .partial
                 char** options = nullptr;
-                options = CSLSetNameValue(options, "FORMAT", "ZARR_V2");
-                if (zip_compression > 0) {
-                    options = CSLSetNameValue(options, "COMPRESS", "DEFLATE");
-                    options =
-                        CSLSetNameValue(options, "LEVEL", std::to_string(zip_compression).c_str());
-                    options = CSLSetNameValue(options, "STORAGE", "ZIP");
+                if (format == std::string("zarr")) {
+                    options = CSLAddString(options, "FORMAT=ZARR_V2");
                 }
                 dataset = driver->CreateMultiDimensional(partial_path.c_str(), nullptr,
                                                          const_cast<const char**>(options));
@@ -414,6 +456,7 @@ void gdalVisWrite::main_thread() {
                     FATAL_ERROR("Invalid frame_length_fpga_ticks or tick length.");
                 const std::uint64_t frame_len_ns = meta->frame_length_fpga_ticks * tick_len_ns;
                 const std::uint64_t W_ns = file_seconds * 1'000'000'000ULL;
+
                 // Allow non-integer multiples by rounding up the number of frame slots,
                 // so that all frames with start < window_end fit within 0..file_nt-1.
                 if ((W_ns % frame_len_ns) != 0) {
@@ -425,98 +468,51 @@ void gdalVisWrite::main_thread() {
                 _initialize_gdal_vis_file(dataset, meta, file_nt);
             }
 
-            // Validate arrays and dimensions
-            {
-                auto root = dataset->GetRootGroup();
-                if (!root)
-                    FATAL_ERROR("Dataset missing root group: {}", partial_path);
-                auto chk = [&](const char* name, int nd, std::initializer_list<GUInt64> sizes) {
-                    auto arr = root->OpenMDArray(name);
-                    if (!arr)
-                        FATAL_ERROR("Missing array '{}' in dataset {}", name, partial_path);
-                    if ((int)arr->GetDimensionCount() != nd)
-                        FATAL_ERROR("Array '{}' has wrong rank in dataset {}: {} != {}", name,
-                                    partial_path, (int)arr->GetDimensionCount(), nd);
-                    auto dims = arr->GetDimensions();
-                    size_t i = 0;
-                    for (auto s : sizes) {
-                        if (i >= dims.size())
-                            FATAL_ERROR("Array '{}' missing dimension {} in dataset {}", name, i,
-                                        partial_path);
-                        if (dims[i]->GetSize() != s)
-                            FATAL_ERROR("Array '{}' dim {} mismatch in dataset {}: {} != {}", name,
-                                        i, partial_path, (unsigned long long)dims[i]->GetSize(),
-                                        (unsigned long long)s);
-                        ++i;
-                    }
-                };
-                // Determine frames dimension from one array if opening existing partial
-                auto rootTmp = dataset->GetRootGroup();
-                auto frames_arr = rootTmp->OpenMDArray("fpga_start_tick");
-                if (!frames_arr)
-                    FATAL_ERROR("Missing fpga_start_tick in dataset {}", partial_path);
-                auto dims_f = frames_arr->GetDimensions();
-                if (dims_f.size() != 1)
-                    FATAL_ERROR("fpga_start_tick dim mismatch in dataset {}", partial_path);
-                file_nt = dims_f[0]->GetSize();
-
-                chk("vis_array", 3, {meta->nfreq, meta->num_prod, file_nt});
-                chk("weights_array", 3, {meta->nfreq, meta->num_prod, file_nt});
-                chk("eval_array", 3, {meta->nfreq, meta->num_ev, file_nt});
-                chk("evec_array", 4, {meta->nfreq, meta->num_ev, meta->num_elements, file_nt});
-                chk("erms_array", 2, {meta->nfreq, file_nt});
-                chk("gain_array", 3, {meta->nfreq, meta->num_elements, file_nt});
-                chk("flags_array", 3, {meta->nfreq, meta->num_elements, file_nt});
-                chk("frac_lost_array", 2, {meta->nfreq, file_nt});
-                chk("frac_rfi_array", 2, {meta->nfreq, file_nt});
-                chk("fpga_start_tick", 1, {file_nt});
-                chk("frame_start_time_ns", 1, {file_nt});
-                chk("frame_length_fpga_ticks", 1, {file_nt});
-                chk("era_deg", 1, {file_nt});
-                chk("n_valid_fpga_ticks", 2, {meta->nfreq, file_nt});
-                chk("n_rfi_fpga_ticks", 2, {meta->nfreq, file_nt});
-            }
-
-            // Create per-file buffer/state object
+            // Create gdalVisFileData object for file
             const std::uint64_t tick_len_ns = _get_tick_len_ns();
             if (meta->frame_length_fpga_ticks == 0 || tick_len_ns == 0)
                 FATAL_ERROR("Invalid frame_length_fpga_ticks or tick length.");
             const std::uint64_t frame_len_ns2 = meta->frame_length_fpga_ticks * tick_len_ns;
             const std::uint64_t file_start_ns = _get_file_start_time_ns(meta);
-            auto obj = std::make_unique<gdalVisFileData>(
+            auto gdalVisFileData_obj = std::make_unique<gdalVisFileData>(
                 file_nt, meta->nfreq, meta->num_elements, meta->num_prod, meta->num_ev,
                 frame_len_ns2, meta->frame_length_fpga_ticks, file_start_ns, partial_path,
                 frame_recv_time);
-            obj->gdal_dataset = dataset;
-            datasets.emplace(final_path, std::move(obj));
-            obj_ptr = datasets.find(final_path)->second.get();
+            gdalVisFileData_obj->gdal_dataset = dataset;
+            datasets.emplace(final_path, std::move(gdalVisFileData_obj));
+            gdalVisFileData_ptr = datasets.find(final_path)->second.get();
 
             // Warn (once) if the file time span is less than one second.
-            if (!warned_short_file_window && obj_ptr) {
-                const std::uint64_t file_len_ns = obj_ptr->num_file_t * obj_ptr->frame_len_ns;
-                if (obj_ptr->frame_len_ns > 0 && file_len_ns < 1'000'000'000ULL) {
+            if (!warned_short_file_window && gdalVisFileData_ptr) {
+                const std::uint64_t file_len_ns =
+                    gdalVisFileData_ptr->num_file_t * gdalVisFileData_ptr->frame_len_ns;
+                if (gdalVisFileData_ptr->frame_len_ns > 0 && file_len_ns < 1'000'000'000ULL) {
                     WARN("File window is < 1s ({} * {} ns = {} ns). Ensure downstream tools "
                          "handle sub-second file windows; consider increasing file_seconds or "
                          "cadence.",
-                         (unsigned long long)(obj_ptr->num_file_t), obj_ptr->frame_len_ns,
-                         file_len_ns);
+                         (unsigned long long)(gdalVisFileData_ptr->num_file_t),
+                         gdalVisFileData_ptr->frame_len_ns, file_len_ns);
                     warned_short_file_window = true;
                 }
             }
         }
 
-        if (!obj_ptr || !obj_ptr->gdal_dataset) {
+        if (!gdalVisFileData_ptr || !gdalVisFileData_ptr->gdal_dataset) {
             FATAL_ERROR("Dataset is null. Failed to open dataset.");
             return;
         }
 
-        // Validate geometry consistency for this dataset
-        if (meta->nfreq != obj_ptr->num_freq || meta->num_elements != obj_ptr->num_input
-            || meta->num_prod != obj_ptr->num_prod || meta->num_ev != obj_ptr->num_ev) {
-            ERROR("Dropping frame due to geometry mismatch within dataset: nfreq {} vs {}, "
-                  "num_elements {} vs {}, num_prod {} vs {}, num_ev {} vs {}",
-                  meta->nfreq, obj_ptr->num_freq, meta->num_elements, obj_ptr->num_input,
-                  meta->num_prod, obj_ptr->num_prod, meta->num_ev, obj_ptr->num_ev);
+        // Validate N2 buffer dimensions consistency for this dataset
+        if (meta->nfreq != gdalVisFileData_ptr->num_freq
+            || meta->num_elements != gdalVisFileData_ptr->num_input
+            || meta->num_prod != gdalVisFileData_ptr->num_prod
+            || meta->num_ev != gdalVisFileData_ptr->num_ev) {
+            ERROR(
+                "Dropping frame due to buffer dimensions mismatch within dataset: nfreq {} vs {}, "
+                "num_elements {} vs {}, num_prod {} vs {}, num_ev {} vs {}",
+                meta->nfreq, gdalVisFileData_ptr->num_freq, meta->num_elements,
+                gdalVisFileData_ptr->num_input, meta->num_prod, gdalVisFileData_ptr->num_prod,
+                meta->num_ev, gdalVisFileData_ptr->num_ev);
             // Mark frame as done and skip further processing
             buffer->mark_frame_empty(unique_name, in_frame_id);
             in_frame_id++;
@@ -525,42 +521,43 @@ void gdalVisWrite::main_thread() {
             continue;
         }
 
-        // Basic validation: consistent time geometry for this dataset
+        // Check consistent timestamping for this dataset
         const std::uint64_t this_file_start_ns = _get_file_start_time_ns(meta);
-        if (obj_ptr->file_start_time_ns != 0 && obj_ptr->file_start_time_ns != this_file_start_ns) {
+        if (gdalVisFileData_ptr->file_start_time_ns != 0
+            && gdalVisFileData_ptr->file_start_time_ns != this_file_start_ns) {
             FATAL_ERROR("File start mismatch within dataset context: {} vs {}",
-                        obj_ptr->file_start_time_ns, this_file_start_ns);
+                        gdalVisFileData_ptr->file_start_time_ns, this_file_start_ns);
         }
 
-        // Enforce frame lengths and compute t-index
+        // Check frame lengths and compute t-index
         const std::uint64_t tick_len_ns2 = _get_tick_len_ns();
         if (meta->frame_length_fpga_ticks == 0 || tick_len_ns2 == 0)
             FATAL_ERROR("Invalid frame_length_fpga_ticks or tick length.");
         const std::uint64_t frame_len_ns = meta->frame_length_fpga_ticks * tick_len_ns2;
-        if (frame_len_ns != obj_ptr->frame_len_ns) {
+        if (frame_len_ns != gdalVisFileData_ptr->frame_len_ns) {
             FATAL_ERROR("frame_length_fpga_ticks changed within a file window: {} vs {}",
-                        frame_len_ns, obj_ptr->frame_len_ns);
+                        frame_len_ns, gdalVisFileData_ptr->frame_len_ns);
         }
         const std::uint64_t t_in_file =
-            (meta->frame_start_time_ns - obj_ptr->file_start_time_ns) / frame_len_ns;
-        obj_ptr->add_frame(fv, meta, t_in_file);
-        obj_ptr->last_update_wall_s = frame_recv_time;
+            (meta->frame_start_time_ns - gdalVisFileData_ptr->file_start_time_ns) / frame_len_ns;
+        gdalVisFileData_ptr->add_frame(fv, meta, t_in_file);
+        gdalVisFileData_ptr->last_update_wall_s = frame_recv_time;
 
         // If buffer full, flush
         double elapsed_writing_frame = 0.0;
-        if (obj_ptr->full()) {
+        if (gdalVisFileData_ptr->full()) {
             const double t0 = current_time();
-            obj_ptr->flush();
+            gdalVisFileData_ptr->flush();
             const double t1 = current_time();
             elapsed_writing_frame = t1 - t0;
             // Close dataset after flush
-            obj_ptr->close();
+            gdalVisFileData_ptr->close();
             // Finalize: rename partial to final
-            int r = std::rename(obj_ptr->partial_path.c_str(), final_path.c_str());
+            int r = std::rename(gdalVisFileData_ptr->partial_path.c_str(), final_path.c_str());
             if (r != 0) {
                 const char* msg = strerror(errno);
                 ERROR("Failed to rename partial dataset to final: {} -> {}: {}",
-                      obj_ptr->partial_path, final_path, msg);
+                      gdalVisFileData_ptr->partial_path, final_path, msg);
             }
             datasets.erase(final_path);
         }

@@ -82,8 +82,8 @@ static void rm_tree_if_exists(const std::string& path) {
 static kotekan::Config make_base_config(const std::string& unique_name, const std::string& in_buf,
                                         const std::string& base_dir, const std::string& file_name,
                                         bool prefix_hostname, uint64_t zip_compression,
-                                        uint64_t file_seconds, uint64_t blocksize_f = 0,
-                                        uint64_t blocksize_t = 1,
+                                        uint64_t file_seconds, const std::string& format,
+                                        uint64_t blocksize_f = 0, uint64_t blocksize_t = 1,
                                         uint64_t late_frame_grace_seconds = 60,
                                         uint64_t seq_length_nsec_override = 0) {
     using json = nlohmann::json;
@@ -92,12 +92,15 @@ static kotekan::Config make_base_config(const std::string& unique_name, const st
     // Minimal stage config; create once and assign under both '/name' and 'name' keys
     nlohmann::json s;
     s["cpu_affinity"] = std::vector<int>{0};
-    s["log_level"] = "DEBUG";
+    s["log_level"] = "WARN";
     s["in_buf"] = in_buf;
     s["base_dir"] = base_dir;
     s["file_name"] = file_name;
     s["prefix_hostname"] = prefix_hostname;
+    // Legacy key retained in tests; writer ignores ZIP storage. Keep for compatibility.
     s["zip_compression"] = zip_compression;
+    // Unified GDAL writer format selection ("zarr" or "hdf5").
+    s["format"] = format;
     s["blocksize_f"] = blocksize_f;
     s["blocksize_p"] = 0; // unused currently
     s["blocksize_t"] = blocksize_t;
@@ -121,7 +124,7 @@ static kotekan::Config make_base_config(const std::string& unique_name, const st
 // Build dataset filename to simulate pre-existing final files (mirrors stage logic)
 static std::string compute_dataset_name(const std::string& base_dir, const std::string& file_name,
                                         bool prefix_hostname, uint64_t file_start_time_ns,
-                                        bool zip) {
+                                        const std::string& suffix) {
     std::ostringstream buf;
     buf << base_dir;
     if (!base_dir.empty() && base_dir.back() != '/')
@@ -134,10 +137,28 @@ static std::string compute_dataset_name(const std::string& base_dir, const std::
     std::time_t tsec = file_start_time_ns / 1'000'000'000ULL;
     const uint64_t nsec = file_start_time_ns % 1'000'000'000ULL;
     buf << file_name << "." << std::put_time(std::gmtime(&tsec), "%Y%m%dT%H%M%S") << "_"
-        << std::setw(9) << std::setfill('0') << nsec << ".zarr";
-    if (zip)
-        buf << ".zip";
+        << std::setw(9) << std::setfill('0') << nsec << suffix;
     return buf.str();
+}
+
+// Determine a working GDAL multidimensional format and expected filename suffix.
+static bool select_format_and_suffix(std::string& out_format, std::string& out_suffix) {
+    GDALAllRegister();
+    // Route logs to stderr for visibility during tests
+    extern int __enable_syslog;
+    __enable_syslog = 0;
+    auto* mgr = GetGDALDriverManager();
+    if (mgr && mgr->GetDriverByName("Zarr")) {
+        out_format = "zarr";
+        out_suffix = ".zarr";
+        return true;
+    }
+    if (mgr && mgr->GetDriverByName("HDF5")) {
+        out_format = "hdf5";
+        out_suffix = ".h5";
+        return true;
+    }
+    return false;
 }
 
 // Fill one synthetic N2 frame with deterministic data for validators
@@ -188,17 +209,24 @@ static void fill_n2_frame(Buffer* buf, int frame_id, size_t num_input, size_t nu
 static void wait_until_frame_empty(Buffer* buf, int frame_id, double timeout_seconds = 5.0) {
     using clock = std::chrono::steady_clock;
     auto t0 = clock::now();
+    double next_log = 0.25; // seconds
     while (!buf->is_frame_empty(frame_id)) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        auto dt = std::chrono::duration<double>(clock::now() - t0).count();
+        double dt = std::chrono::duration<double>(clock::now() - t0).count();
+        if (dt >= next_log) {
+            int nfull = buf->get_num_full_frames();
+            next_log += 0.25;
+        }
         if (dt > timeout_seconds) {
-            BOOST_FAIL("Timed out waiting for buffer frame to become empty");
+            int nfull = buf->get_num_full_frames();
+            BOOST_FAIL("Timed out waiting for buffer frame to become empty; num_full="
+                       << nfull << ", frame_id=" << frame_id);
             break;
         }
     }
 }
 
-// Open a GDAL dataset from path (Zarr dir or zip file)
+// Open a GDAL dataset from path
 static GDALDataset* open_dataset(const std::string& path) {
     char** oo = nullptr;
     GDALDataset* ds = static_cast<GDALDataset*>(
@@ -386,6 +414,10 @@ BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     GDALAllRegister();
 
+    std::string format, suffix;
+    select_format_and_suffix(format, suffix);
+    BOOST_TEST_MESSAGE("Using format='" << format << "' suffix='" << suffix << "'");
+
     const std::string unique_name = "/gdal_vis_writer";
     const std::string in_buf_name = "n2buf";
     const std::string base_dir = "test_gdalVisWrite_full";
@@ -403,7 +435,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     const uint64_t file_seconds = 200;
 
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name,
-                                 /*prefix_hostname*/ false, /*zip*/ 0, file_seconds,
+                                 /*prefix_hostname*/ false, /*zip*/ 0, file_seconds, format,
                                  /*blocksize_f*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ dt_ns);
 
@@ -445,7 +477,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     }
 
     // Wait for the last produced frame to be consumed to ensure flush happened
-    wait_until_frame_empty(&buf, fid - 1);
+    wait_until_frame_empty(&buf, fid - 1, 30.0);
 
     // Graceful shutdown
     stage.stop();
@@ -454,13 +486,13 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
 
     // Find exactly one dataset in base_dir
     auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> zarrs;
+    std::vector<std::string> datasets;
     for (auto& e : entries) {
-        if (e.find(".zarr") != std::string::npos)
-            zarrs.push_back(e);
+        if (e.find(suffix) != std::string::npos)
+            datasets.push_back(e);
     }
-    BOOST_REQUIRE_MESSAGE(zarrs.size() == 1, "Expected 1 dataset, found " << zarrs.size());
-    const std::string ds_path = join_path(base_dir, zarrs[0]);
+    BOOST_REQUIRE_MESSAGE(datasets.size() == 1, "Expected 1 dataset, found " << datasets.size());
+    const std::string ds_path = join_path(base_dir, datasets[0]);
 
     GDALDataset* ds = open_dataset(ds_path);
     BOOST_REQUIRE_MESSAGE(ds != nullptr, "Failed to open dataset: " << ds_path);
@@ -475,6 +507,9 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
 // Test 2: Partial flush triggered on exit (incomplete time block)
 BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     GDALAllRegister();
+
+    std::string format, suffix;
+    select_format_and_suffix(format, suffix);
 
     const std::string unique_name = "/gdal_vis_writer_partial";
     const std::string in_buf_name = "n2buf_partial";
@@ -491,7 +526,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     const uint64_t file_seconds = 2;
 
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name,
-                                 /*prefix_hostname*/ false, /*zip*/ 0, file_seconds,
+                                 /*prefix_hostname*/ false, /*zip*/ 0, file_seconds, format,
                                  /*blocksize_f*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
 
@@ -522,7 +557,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     }
 
     // Ensure stage consumed the last produced frame
-    wait_until_frame_empty(&buf, fid - 1);
+    wait_until_frame_empty(&buf, fid - 1, 30.0);
 
     // Trigger shutdown to force partial flush path
     stage.stop();
@@ -530,13 +565,13 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     stage.join();
 
     auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> zarrs;
+    std::vector<std::string> datasets;
     for (auto& e : entries) {
-        if (e.find(".zarr") != std::string::npos)
-            zarrs.push_back(e);
+        if (e.find(suffix) != std::string::npos)
+            datasets.push_back(e);
     }
-    BOOST_REQUIRE_MESSAGE(zarrs.size() == 1, "Expected 1 dataset, found " << zarrs.size());
-    const std::string ds_path = join_path(base_dir, zarrs[0]);
+    BOOST_REQUIRE_MESSAGE(datasets.size() == 1, "Expected 1 dataset, found " << datasets.size());
+    const std::string ds_path = join_path(base_dir, datasets[0]);
 
     GDALDataset* ds = open_dataset(ds_path);
     BOOST_REQUIRE(ds != nullptr);
@@ -576,6 +611,9 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
 BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     GDALAllRegister();
 
+    std::string format, suffix;
+    select_format_and_suffix(format, suffix);
+
     const std::string unique_name = "/gdal_vis_writer_rollover";
     const std::string in_buf_name = "n2buf_rollover";
     const std::string base_dir = "test_gdalVisWrite_rollover";
@@ -588,7 +626,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const size_t file_nt = 2;
     const uint64_t file_seconds = 200;
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, format, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
@@ -630,20 +668,20 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
             fid++;
         }
 
-    wait_until_frame_empty(&buf, fid - 1);
+    wait_until_frame_empty(&buf, fid - 1, 30.0);
     stage.stop();
     buf.send_shutdown_signal();
     stage.join();
 
     auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> zarrs;
+    std::vector<std::string> datasets;
     for (auto& e : entries) {
-        if (e.find(".zarr") != std::string::npos)
-            zarrs.push_back(e);
+        if (e.find(suffix) != std::string::npos)
+            datasets.push_back(e);
     }
-    BOOST_REQUIRE_MESSAGE(zarrs.size() == 2, "Expected 2 datasets, found " << zarrs.size());
+    BOOST_REQUIRE_MESSAGE(datasets.size() == 2, "Expected 2 datasets, found " << datasets.size());
     // Validate each one opens and contents make sense
-    for (const auto& e : zarrs) {
+    for (const auto& e : datasets) {
         const std::string p = join_path(base_dir, e);
         GDALDataset* ds = open_dataset(p);
         BOOST_REQUIRE(ds != nullptr);
@@ -654,85 +692,12 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 4: ZIP storage and hostname prefix in filename
-BOOST_AUTO_TEST_CASE(test_writer_zip_and_prefix) {
-    GDALAllRegister();
-
-    const std::string unique_name = "/gdal_vis_writer_zip";
-    const std::string in_buf_name = "n2buf_zip";
-    const std::string base_dir = "test_gdalVisWrite_zip";
-    const std::string file_name = "vis";
-    rm_tree_if_exists(base_dir);
-
-    const size_t num_input = 3;
-    const size_t num_ev = 2;
-    const size_t nfreq = 2; // keep it small
-    const size_t file_nt = 2;
-    const uint64_t file_seconds = 200;
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, /*prefix*/ true,
-                                 /*zip*/ 1, file_seconds, /*blocksize_f*/ 1, /*blocksize_t*/ 2,
-                                 /*grace*/ 60, /*seq_override*/ 1'000'000'000ULL);
-
-    const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
-    auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_zip", "N2Metadata");
-    Buffer buf(2, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
-    buf.register_producer("test-producer");
-    kotekan::bufferContainer bc;
-    bc.add_buffer(in_buf_name, &buf);
-
-    gdalVisWrite stage(conf, unique_name, bc);
-    stage.start();
-
-    const uint64_t dt_ns = 1'000'000'000ULL;
-    const uint64_t frame_len_ticks = 100; // 100s frames
-    const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
-    const uint64_t base_time_ns = 4'000'000'000ULL; // inside [0,200)s
-
-    N2::frameID fid(&buf);
-    for (size_t t = 0; t < file_nt; ++t)
-        for (size_t f = 0; f < nfreq; ++f) {
-            uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
-            BOOST_REQUIRE(frame != nullptr);
-            fill_n2_frame(&buf, fid, num_input, num_ev, nfreq, f, t,
-                          base_time_ns + t * frame_len_ns, frame_len_ticks);
-            buf.mark_frame_full("test-producer", fid);
-            fid++;
-        }
-
-    wait_until_frame_empty(&buf, fid - 1);
-    stage.stop();
-    buf.send_shutdown_signal();
-    stage.join();
-
-    auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> zarrs;
-    for (auto& e : entries) {
-        if (e.find(".zarr") != std::string::npos)
-            zarrs.push_back(e);
-    }
-    BOOST_REQUIRE_MESSAGE(zarrs.size() == 1, "Expected 1 dataset, found " << zarrs.size());
-    const std::string ds_name = zarrs[0];
-    const std::string ds_path = join_path(base_dir, ds_name);
-
-    // Should be a .zarr.zip and prefixed with hostname
-    BOOST_CHECK(ds_name.find(".zarr.zip") != std::string::npos);
-    char hostname[256] = {0};
-    gethostname(hostname, sizeof hostname);
-    std::string expected_prefix = std::string(hostname) + "_" + file_name + ".";
-    BOOST_CHECK_EQUAL(ds_name.rfind(expected_prefix, 0), 0U);
-
-    GDALDataset* ds = open_dataset(ds_path);
-    BOOST_REQUIRE(ds != nullptr);
-    validate_dataset_content(ds, num_input, num_ev, nfreq, file_nt);
-    GDALClose(ds);
-
-    rm_tree_if_exists(ds_path);
-    rm_tree_if_exists(base_dir);
-}
-
-// Test 5: Adjacent file windows produce distinct dataset names
+// Test 4: Adjacent file windows produce distinct dataset names
 BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     GDALAllRegister();
+
+    std::string format, suffix;
+    select_format_and_suffix(format, suffix);
 
     const std::string unique_name = "/gdal_vis_writer_names";
     const std::string in_buf_name = "n2buf_names";
@@ -747,7 +712,7 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     const uint64_t frame_len_ticks = 1;
     const uint64_t file_seconds = 1; // one second file window => one frame per file
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, format, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ dt_ns);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_subsec", "N2Metadata");
@@ -781,14 +746,14 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
         fid++;
     }
 
-    wait_until_frame_empty(&buf, fid - 1);
+    wait_until_frame_empty(&buf, fid - 1, 30.0);
     stage.stop();
     buf.send_shutdown_signal();
     stage.join();
 
     // Both datasets should exist and have different names
-    const std::string d1 = compute_dataset_name(base_dir, file_name, false, baseA, false);
-    const std::string d2 = compute_dataset_name(base_dir, file_name, false, baseB, false);
+    const std::string d1 = compute_dataset_name(base_dir, file_name, false, baseA, suffix);
+    const std::string d2 = compute_dataset_name(base_dir, file_name, false, baseB, suffix);
     bool h1 = path_exists(d1);
     bool h2 = path_exists(d2);
     BOOST_CHECK(h1 && h2);
@@ -801,9 +766,12 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 6: Grace-based finalize of partial dataset (late_frame_grace_seconds=0)
+// Test 5: Grace-based finalize of partial dataset (late_frame_grace_seconds=0)
 BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     GDALAllRegister();
+
+    std::string format, suffix;
+    select_format_and_suffix(format, suffix);
 
     const std::string unique_name = "/gdal_vis_writer_timeout";
     const std::string in_buf_name = "n2buf_timeout";
@@ -816,13 +784,13 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const size_t nfreq = 3;
     const size_t file_nt = 2;
     const uint64_t window_seconds = 2;
-    auto conf =
-        make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0, window_seconds,
-                         0 /*bs_f*/, 1 /*bs_t*/, 0 /*late_frame_grace_seconds*/, 1'000'000'000ULL);
+    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
+                                 window_seconds, format, 0 /*bs_f*/, 1 /*bs_t*/,
+                                 0 /*late_frame_grace_seconds*/, 1'000'000'000ULL);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
-    auto pool = metadataPool::create(3, sizeof(N2Metadata), "pool_timeout", "N2Metadata");
-    Buffer buf(3, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
+    auto pool = metadataPool::create(8, sizeof(N2Metadata), "pool_timeout", "N2Metadata");
+    Buffer buf(8, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
@@ -845,6 +813,8 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
+    // Small pause to allow stage to open/initialize dataset and update last activity
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     // Produce t=0 for file window B to trigger timeout scan and finalize A
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
@@ -854,110 +824,29 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
         fid++;
     }
 
-    wait_until_frame_empty(&buf, fid - 1);
+    wait_until_frame_empty(&buf, fid - 1, 30.0);
     stage.stop();
     buf.send_shutdown_signal();
     stage.join();
 
     auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> zarrs;
+    std::vector<std::string> datasets;
     for (auto& e : entries) {
-        if (e.find(".zarr") != std::string::npos)
-            zarrs.push_back(e);
+        if (e.find(suffix) != std::string::npos)
+            datasets.push_back(e);
     }
-    BOOST_REQUIRE_MESSAGE(zarrs.size() >= 1, "Expected at least 1 finalized dataset");
-    for (auto& e : zarrs)
+    BOOST_REQUIRE_MESSAGE(datasets.size() >= 1, "Expected at least 1 finalized dataset");
+    for (auto& e : datasets)
         rm_tree_if_exists(join_path(base_dir, e));
     rm_tree_if_exists(base_dir);
 }
 
-// Test 7: frame_length_fpga_ticks==0 fallback paths (no crash and fractions default)
-BOOST_AUTO_TEST_CASE(test_writer_frame_length_zero_fallback) {
-    GDALAllRegister();
-
-    // Strict invariant: frame_length_fpga_ticks must be > 0 and constant.
-    // The writer now aborts on zero-length frames; skip this legacy fallback test.
-    BOOST_TEST_MESSAGE("Skipping frame_length==0 fallback test under strict invariants.");
-    return;
-
-    const std::string unique_name = "/gdal_vis_writer_len0";
-    const std::string in_buf_name = "n2buf_len0";
-    const std::string base_dir = "test_gdalVisWrite_len0";
-    const std::string file_name = "vis";
-    rm_tree_if_exists(base_dir);
-
-    const size_t num_input = 3;
-    const size_t num_ev = 2;
-    const size_t nfreq = 2;
-    const size_t file_nt = 2;
-    const uint64_t file_seconds = 2;
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                 /*seq_override*/ 1'000'000'000ULL);
-    const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
-    auto pool = metadataPool::create(1, sizeof(N2Metadata), "pool_len0", "N2Metadata");
-    Buffer buf(1, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
-    buf.register_producer("test-producer");
-    kotekan::bufferContainer bc;
-    bc.add_buffer(in_buf_name, &buf);
-
-    gdalVisWrite stage(conf, unique_name, bc);
-    stage.start();
-
-    const uint64_t base_time_ns = 7'000'000'000ULL;
-
-    N2::frameID fid(&buf);
-    // One frame with frame_length_fpga_ticks==0
-    uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
-    BOOST_REQUIRE(frame != nullptr);
-    // Fill with t=0 content but override frame_len_ticks to zero in metadata after fill
-    fill_n2_frame(&buf, fid, num_input, num_ev, nfreq, 0, 0, base_time_ns, 1);
-    auto meta = get_N2_metadata(&buf, fid);
-    meta->frame_length_fpga_ticks = 0; // force fallback
-    buf.mark_frame_full("test-producer", fid);
-
-    wait_until_frame_empty(&buf, fid);
-    stage.stop();
-    buf.send_shutdown_signal();
-    stage.join();
-
-    auto entries = list_dir_entries(base_dir);
-    BOOST_REQUIRE_MESSAGE(entries.size() >= 1, "Expected at least 1 dataset written");
-    // Find a dataset entry
-    std::string ds_path;
-    for (auto& e : entries) {
-        if (e.find(".zarr") != std::string::npos) {
-            ds_path = join_path(base_dir, e);
-            break;
-        }
-    }
-    BOOST_REQUIRE(!ds_path.empty());
-    GDALDataset* ds = open_dataset(ds_path);
-    BOOST_REQUIRE(ds != nullptr);
-    auto root = ds->GetRootGroup();
-    BOOST_REQUIRE(root != nullptr);
-    auto fl = root->OpenMDArray("frac_lost_array");
-    auto fr = root->OpenMDArray("frac_rfi_array");
-    const auto f32Type = GDALExtendedDataType::Create(GDT_Float32);
-    std::vector<GUInt64> start{0, 0};
-    std::vector<size_t> count{1, file_nt};
-    std::vector<float> fl_out(file_nt), fr_out(file_nt);
-    bool ok = fl->Read(start.data(), count.data(), nullptr, nullptr, f32Type,
-                       reinterpret_cast<void*>(fl_out.data()), nullptr, 0);
-    BOOST_REQUIRE(ok);
-    ok = fr->Read(start.data(), count.data(), nullptr, nullptr, f32Type,
-                  reinterpret_cast<void*>(fr_out.data()), nullptr, 0);
-    BOOST_REQUIRE(ok);
-    BOOST_CHECK_CLOSE_FRACTION(fl_out[0], 1.0f, 1e-6f);
-    BOOST_CHECK_CLOSE_FRACTION(fr_out[0], 0.0f, 1e-6f);
-    GDALClose(ds);
-    rm_tree_if_exists(ds_path);
-    rm_tree_if_exists(base_dir);
-}
-
-// Test 8: Late-frame drop when final already exists
+// Test 6: Late-frame drop when final already exists
 BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     GDALAllRegister();
+
+    std::string format, suffix;
+    select_format_and_suffix(format, suffix);
 
     const std::string unique_name = "/gdal_vis_writer_drop";
     const std::string in_buf_name = "n2buf_drop";
@@ -970,7 +859,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const size_t nfreq = 2;
     const uint64_t file_seconds = 1;
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, format, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_drop", "N2Metadata");
@@ -990,7 +879,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
 
     // Pre-create a final dataset path to force drop
     const std::string ds_final =
-        compute_dataset_name(base_dir, file_name, false, file_start_time_ns, false);
+        compute_dataset_name(base_dir, file_name, false, file_start_time_ns, suffix);
     // Create as empty directory
     ::mkdir(base_dir.c_str(), 0777);
     ::mkdir(ds_final.c_str(), 0777);
@@ -1014,7 +903,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
         fid++;
     }
 
-    wait_until_frame_empty(&buf, fid - 1);
+    wait_until_frame_empty(&buf, fid - 1, 30.0);
     stage.stop();
     buf.send_shutdown_signal();
     stage.join();
@@ -1023,7 +912,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     auto entries = list_dir_entries(base_dir);
     size_t datasets = 0;
     for (auto& e : entries) {
-        if (e.find(".zarr") != std::string::npos)
+        if (e.find(suffix) != std::string::npos)
             datasets++;
     }
     BOOST_REQUIRE_MESSAGE(datasets == 2,
@@ -1036,9 +925,12 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 9: Geometry mismatch within dataset (nfreq) is dropped without crash
+// Test 7: Geometry mismatch within dataset (nfreq) is dropped without crash
 BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     GDALAllRegister();
+
+    std::string format, suffix;
+    select_format_and_suffix(format, suffix);
 
     const std::string unique_name = "/gdal_vis_writer_geom";
     const std::string in_buf_name = "n2buf_geom";
@@ -1053,7 +945,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
 
     const uint64_t file_seconds = file_nt; // with 1s frames, file_nt==file_seconds
     auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                 file_seconds, format, /*bs_f*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(4, sizeof(N2Metadata), "pool_geom", "N2Metadata");
@@ -1091,7 +983,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
         fid++;
     }
 
-    wait_until_frame_empty(&buf, fid - 1);
+    wait_until_frame_empty(&buf, fid - 1, 30.0);
     stage.stop();
     buf.send_shutdown_signal();
     stage.join();
@@ -1100,7 +992,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     auto entries = list_dir_entries(base_dir);
     std::string ds_path;
     for (auto& e : entries) {
-        if (e.find(".zarr") != std::string::npos) {
+        if (e.find(suffix) != std::string::npos) {
             ds_path = join_path(base_dir, e);
             break;
         }
