@@ -93,26 +93,37 @@ void write_backtrace_file(void) {
 
 //////////////////////////////////////////////////////////////////////////////
 
-void signal_handler(int const signum) {
-    pid_t const pid = getpid();
+template<int signum_>
+struct signal_handler_t {
+    signal_handler_t() {
+        old_handler = signal(signum_, signal_handler);
+    }
 
-    cerr << "PID " << pid << " " << "received signal " << signum << endl;
-    // Restore the default signal handler
-    signal(signum, SIG_DFL);
+    static sighandler_t old_handler;
 
-    write_backtrace_file();
+    static void signal_handler(int const signum) {
+        pid_t const pid = getpid();
 
-    // Re-raise the signal to be caught by the default handler
-    kill(pid, signum);
-}
+        cerr << "PID " << pid << " " << "received signal " << signum << endl;
+        // Restore the default signal handler
+        signal(signum, old_handler);
+
+        write_backtrace_file();
+
+        // Re-raise the signal to be caught by the default handler
+        kill(pid, signum);
+    }
+};
+template<int signum_>
+sighandler_t signal_handler_t<signum_>::old_handler = (sighandler_t)SIG_DFL;
 
 void request_backtraces() {
-    signal(SIGQUIT, signal_handler);
-    signal(SIGILL, signal_handler);
-    signal(SIGABRT, signal_handler);
-    signal(SIGFPE, signal_handler);
-    signal(SIGBUS, signal_handler);
-    signal(SIGSEGV, signal_handler);
+    static signal_handler_t<SIGQUIT> quit_signal;
+    static signal_handler_t<SIGILL> ill_signal;
+    static signal_handler_t<SIGABRT> abrt_signal;
+    static signal_handler_t<SIGFPE> fpe_signal;
+    static signal_handler_t<SIGBUS> bus_signal;
+    static signal_handler_t<SIGSEGV> segv_signal;
 }
 
 } // namespace kotekan
