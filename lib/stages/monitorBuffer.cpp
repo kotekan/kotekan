@@ -121,11 +121,13 @@ void monitorBuffer::main_thread() {
                         WARN("No frames were ever received on buffer {:s}.", buf->buffer_name);
                     }
                     exit_kotekan(CLEAN_EXIT);
+                    goto end_loop;
+                } else {
+                    FATAL_ERROR("The buffer {:s} hasn't received a frame for {:f} seconds.\nClosing "
+                                "kotekan because of system timeout.",
+                                buf->buffer_name, (cur_time - last_arrival));
+                    goto end_loop;
                 }
-                FATAL_ERROR("The buffer {:s} hasn't received a frame for {:f} seconds.\nClosing "
-                            "kotekan because of system timeout.",
-                            buf->buffer_name, (cur_time - last_arrival));
-                goto end_loop;
             }
 
             uint32_t num_frames = buf->num_frames;
