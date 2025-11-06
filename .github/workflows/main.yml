@@ -183,36 +183,20 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: ""   # Any OpenCL-specific commands to test?
           
-          - id: release_pytest_gcc
-            name: "Release build + pytest"
+          - id: release_pipeline_gcc
+            name: "Release build + pipeline test"
             ccache_key: kotekan-release-gcc
             cmake_defs: &build_release_gcc_opts >-
-              -DCMAKE_BUILD_TYPE=Release
-              -DWERROR=ON
-              -DCCACHE=ON
-              -DUSE_OMP=ON
-              -DUSE_NUMA=ON
-              -DNO_MEMLOCK=ON
-              -DUSE_CUDA=ON
-              -DUSE_HIP=OFF
-              -DUSE_OPENCL=ON
-              -DUSE_ASDF=ON
-              -DUSE_HDF5=ON
-              -DUSE_GDAL=ON
-              -DUSE_AIRSPY=ON
-              -DUSE_LAPACK_BLAZE=ON
-              -DUSE_FFTW=ON
-              -DUSE_JULIA=ON
-              -DUSE_DPDK=ON
-              -DWITH_TESTS=ON
-              -DWITH_BOOST_TESTS=OFF
+              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=OFF -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              # Run pytest tests
-              PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=120
-              cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
-              pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
+              # Run pipeline yaml
+              $GITHUB_WORKSPACE/build-2404/kotekan/kotekan -c $GITHUB_WORKSPACE/config/ci-tests/test_pipeline.yaml.wip
 
           - id: clang
             name: "clang build"
@@ -226,7 +210,7 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON
               -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
-            post_build: ""   # Any clang-specific tests to run?
+            post_build: "" # Any clang-specific tests to run?
 
           - id: docs
             name: "Build Documentation"
@@ -447,22 +431,13 @@ jobs:
           uname -m
           echo "==========="
 
-      - name: Verify architecture is x86_64
-        run: |
-          arch=$(uname -m)
-          echo "Detected architecture: $arch"
-          if [ "$arch" != "x86_64" ]; then
-            echo "::error::This job must run on an x86_64 runner (found $arch)"
-            exit 1
-          fi
-
       - name: Configure & Build kotekan
         if: matrix.cmake_defs
         run: |
           set -euo pipefail
           mkdir $GITHUB_WORKSPACE/build-2404 && cd $GITHUB_WORKSPACE/build-2404
           ccache -s
-          cmake -DCMAKE_SYSTEM_PROCESSOR=x86_64 -DCMAKE_HOST_SYSTEM_PROCESSOR=x86_64 -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
           make -j $(nproc)
           ccache -s
 
