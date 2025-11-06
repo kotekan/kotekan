@@ -97,6 +97,11 @@ void FakeN2::main_thread() {
 
     double start = current_time();
 
+    // Check if we are using a CHORD telescope
+    if (Telescope::instance().get_name() != "CHORDTelescope") {
+        FATAL_ERROR("FakeN2 only works with the CHORDTelescope telescope type, got {:s}",
+              Telescope::instance().get_name());
+    }
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
 
     // Calculate the time increments using the telescope tick length
@@ -209,14 +214,13 @@ void FakeN2::main_thread() {
         // Increment the timespec
         time_ns += curr_n_frames * delta_ns;
 
-        // Cause kotekan to exit if we've hit the maximum number of frames
+        // Stop generating if we've hit the maximum number of frames.
         if (num_frames > 0 && frame_count >= num_frames) {
-            INFO("Reached frame limit [{:d} frames]. Sleeping and then exiting kotekan...",
+            INFO("Reached frame limit [{:d} frames]. Stopping generation.",
                  num_frames);
             timespec ts = double_to_ts(sleep_after);
             nanosleep(&ts, nullptr);
-            exit_kotekan(ReturnCode::CLEAN_EXIT);
-            return;
+            break;
         }
 
         // If requested sleep for the extra time required to produce a fake vis

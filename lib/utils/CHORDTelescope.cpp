@@ -194,8 +194,6 @@ void CHORDTelescope::set_gps(const std::string& host, const uint32_t port,
 }
 
 bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
-    // Make sure no one is using the EOP table while we're updating it.
-    std::lock_guard<std::mutex> lock(_eop_lock);
     try {
         // Fill a temporary table with the updated values.
         std::vector<struct EOP> tmp_eop_table;
@@ -212,7 +210,11 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
         std::sort(tmp_eop_table.begin(), tmp_eop_table.end(), EOP_comp_time);
 
         // Replace old table with new.
-        _eop_table = tmp_eop_table;
+        {
+            // Make sure no one is using the EOP table while we're updating it.
+            std::lock_guard<std::mutex> lock(_eop_lock);
+            _eop_table = tmp_eop_table;
+        }
 
         INFO("Updated EOP Table with {:d} entries", _eop_table.size());
 
@@ -542,6 +544,12 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
     int64_t t_target = timespec_to_nanosec_i64(ts_target);
     eop.t_inst = t_target;
 
+    if (_eop_table.empty()) {
+        WARN("EOP table is empty, cannot interpolate EOP at time {:d} s + {:d} ns.",
+             t_target / GIGA, t_target % GIGA);
+        return eop_null;
+    }
+
     // _eop_table is always sorted by instrument time. Do a quick search
     // for the first table entry with larger time than the target.
     auto eop_b = std::lower_bound(_eop_table.begin(), _eop_table.end(), eop, EOP_comp_time);
@@ -603,6 +611,12 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
 
     struct EOP eop;
     eop.t_ut1 = t_ut1;
+
+    if (_eop_table.empty()) {
+        WARN("EOP table is empty, cannot interpolate EOP at time {:d} s + {:d} ns.",
+             t_ut1 / GIGA, t_ut1 % GIGA);
+        return eop_null;
+    }
 
     // _eop_table is always sorted by instrument time. UT1 is monotonic
     // with instrument time, unless the Earth has been met with catastrophe.

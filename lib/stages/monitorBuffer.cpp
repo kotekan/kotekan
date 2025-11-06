@@ -11,6 +11,7 @@
 
 #include <map>      // for map, operator!=, _Rb_tree_iterator
 #include <stdint.h> // for uint32_t
+#include <time.h>   // for clock_gettime, timespec
 #include <unistd.h> // for usleep, sleep
 #include <utility>  // for pair
 
@@ -28,6 +29,16 @@ STAGE_CONSTRUCTOR(monitorBuffer) {
     fill_threshold = config.get_default<float>(unique_name, "fill_threshold", 2.0);
     graceful_shutdown = config.get_default<bool>(unique_name, "graceful_shutdown", false);
     wait_for_first_frame = config.get_default<bool>(unique_name, "wait_for_first_frame", true);
+    clean_exit_after_frames = config.get_default<int>(unique_name, "clean_exit_after_frames", -1);
+
+    if (clean_exit_after_frames > 0) {
+        consume_frames = true;
+        buffer_states.reserve(buffers.size());
+        for (Buffer* buf : buffers) {
+            buf->register_consumer(unique_name);
+            buffer_states.push_back({buf, 0u, 0u});
+        }
+    }
 
     if (timeout <= 1)
         FATAL_ERROR("monitorBuffer timeout must be > 1 second, got {:d}", timeout);
@@ -37,19 +48,55 @@ STAGE_CONSTRUCTOR(monitorBuffer) {
         INFO("monitorBuffer configured to perform graceful shutdown on timeout.");
 }
 
-monitorBuffer::~monitorBuffer() {}
+monitorBuffer::~monitorBuffer() {
+    if (consume_frames) {
+        for (Buffer* buf : buffers) {
+            buf->unregister_consumer(get_unique_name());
+        }
+    }
+}
 
 void monitorBuffer::main_thread() {
 
     double monitor_start_time = e_time();
+    const std::string& consumer_name = get_unique_name();
 
     while (!stop_thread) {
+
+        if (consume_frames) {
+            for (auto& state : buffer_states) {
+                while (!stop_thread) {
+                    struct timespec deadline;
+                    clock_gettime(CLOCK_REALTIME, &deadline);
+                    int status = state.buffer->wait_for_full_frame_timeout(
+                        consumer_name, state.next_frame_id, deadline);
+                    if (status == -1) {
+                        goto end_loop;
+                    }
+                    if (status != 0)
+                        break;
+
+                    uint8_t* frame =
+                        state.buffer->wait_for_full_frame(consumer_name, state.next_frame_id);
+                    if (frame == nullptr)
+                        goto end_loop;
+
+                    (void)frame;
+
+                    state.buffer->mark_frame_empty(consumer_name, state.next_frame_id);
+                    state.frames_seen++;
+                    state.next_frame_id =
+                        (state.next_frame_id + 1) % state.buffer->num_frames;
+                }
+            }
+        }
+
         sleep(1);
         double cur_time = e_time();
         for (Buffer* buf : buffers) {
 
             double last_arrival = buf->get_last_arrival_time();
-            // If we are not waiting for data, set last_arrival to start time
+            // If we are not waiting for data, set last_arrival to start time on first check
             if (!wait_for_first_frame && last_arrival == 0) {
                 last_arrival = monitor_start_time;
                 DEBUG("monitorBuffer checking buffer {:s}: last arrival time is monitor start time "
@@ -74,7 +121,6 @@ void monitorBuffer::main_thread() {
                         WARN("No frames were ever received on buffer {:s}.", buf->buffer_name);
                     }
                     exit_kotekan(CLEAN_EXIT);
-                    goto end_loop;
                 }
                 FATAL_ERROR("The buffer {:s} hasn't received a frame for {:f} seconds.\nClosing "
                             "kotekan because of system timeout.",
@@ -97,6 +143,32 @@ void monitorBuffer::main_thread() {
                             buf->buffer_name);
                 goto end_loop;
             }
+        }
+
+        // If we are stopping after a number of frames, check that here (for all buffers)
+        if (consume_frames && clean_exit_after_frames > 0) {
+            bool all_exceeded = true;
+            for (const auto& state : buffer_states) {
+                if (state.frames_seen < static_cast<uint64_t>(clean_exit_after_frames)) {
+                    all_exceeded = false;
+                    break;
+                }
+            }
+            if (all_exceeded) {
+                INFO("monitorBuffer: All monitored buffers have seen >= {:d} frames, stopping monitor.",
+                     clean_exit_after_frames);
+                exit_kotekan(CLEAN_EXIT);
+                goto end_loop;
+            }
+
+            // Print out frames counted so far for debugging
+            std::string frame_counts = "";
+            for (const auto& state : buffer_states) {
+                frame_counts +=
+                    fmt::format("Buffer {:s} has seen {:d} frames. ", state.buffer->buffer_name,
+                                state.frames_seen);
+            }
+            DEBUG("monitorBuffer: {}", frame_counts);
         }
     }
 end_loop:;
