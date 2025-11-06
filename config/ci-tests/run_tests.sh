@@ -3,7 +3,6 @@
 # Tracks pass/fail/timeout status and provides a summary at the end.
 # Usage: ./run_tests.sh <kotekan_binary> <timeout_duration> <test_config_dir>
 
-
 # Check if required arguments are provided
 if [ $# -lt 3 ]; then
   echo "Usage: $0 <kotekan_binary> <timeout_duration> <test_config_dir>"

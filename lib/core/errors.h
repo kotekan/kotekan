@@ -18,6 +18,24 @@ enum ReturnCode {
     DATASET_MANAGER_FAILURE
 };
 
+// Higher priority return codes must win over lower priority codes when deciding
+// the final process exit status. Larger numbers indicate higher priority.
+static inline int return_code_priority(enum ReturnCode code) {
+    switch (code) {
+        case DATASET_MANAGER_FAILURE:
+            return 4;
+        case FATAL_ERROR:
+            return 3;
+        case TEST_FAILED:
+            return 2;
+        case TEST_PASSED:
+            return 1;
+        case CLEAN_EXIT:
+        default:
+            return 0;
+    }
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif

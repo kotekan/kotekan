@@ -51,6 +51,22 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
 
+    out_buf = get_buffer("out_buf");
+    out_buf->register_producer(unique_name);
+
+    // Ensure outgoing buffer is of type N2
+    if (out_buf->buffer_type != "N2")
+        FATAL_ERROR("N2Accumulate out_buf ({:s}) is not of type N2.", out_buf->buffer_name);
+
+    in_buf = get_buffer("in_buf");
+    in_buf->register_consumer(unique_name);
+
+    in_counts_buf = get_buffer("in_counts_buf");
+    in_counts_buf->register_consumer(unique_name);
+
+    in_rfimask_buf = get_buffer("in_rfimask_buf");
+    in_rfimask_buf->register_consumer(unique_name);
+
     // Sanity checks on initialization
     {
         // number of frequencies in incoming frames from n2k
@@ -148,18 +164,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _vis_samples_in_out_frame = 0;
     _accum_fpga_start_tick = 0;
 
-    in_buf = get_buffer("in_buf");
-    in_buf->register_consumer(unique_name);
-
-    in_counts_buf = get_buffer("in_counts_buf");
-    in_counts_buf->register_consumer(unique_name);
-
-    in_rfimask_buf = get_buffer("in_rfimask_buf");
-    in_rfimask_buf->register_consumer(unique_name);
-
-    out_buf = get_buffer("out_buf");
-    out_buf->register_producer(unique_name);
-
     // Ensure incoming buffer frame sizes are correct
     size_t in_corr_frame_size = 2 * sizeof(int32_t) * _n2k_correlation_num_products
                                 * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
@@ -176,10 +180,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     if (in_rfimask_buf->frame_size != in_rfimask_frame_size)
         FATAL_ERROR("N2Accumulate in_rfimask_buf ({:s}) has frame size {:d}. Expected {:d}.",
                     in_rfimask_buf->buffer_name, in_rfimask_buf->frame_size, in_rfimask_frame_size);
-
-    // Ensure outgoing buffer is of type N2
-    if (out_buf->buffer_type != "N2")
-        FATAL_ERROR("N2Accumulate out_buf ({:s}) is not of type N2.", out_buf->buffer_name);
 
     // TODO... Should we ensure output buffer has enough frames (>= # frequencies) to take the
     // output without filling completely?

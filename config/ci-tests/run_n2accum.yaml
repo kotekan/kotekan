@@ -40,8 +40,8 @@ vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 n2_vis_size: 2 * sizeof_float * (num_elements * (num_elements + 1)) / 2
 n2_weight_size: sizeof_float * (num_elements * (num_elements + 1)) / 2
 n2_flags_size: sizeof_float * num_elements
-n2_eval_size: 0  # sizeof_float * num_ev
-n2_evec_size: 0  # 2 * sizeof_float * num_ev * num_elements
+n2_eval_size: sizeof_float * num_ev
+n2_evec_size: 2 * sizeof_float * num_ev * num_elements
 n2_emethod_size: sizeof_int
 n2_erms_size: sizeof_float
 n2_gain_size: 2 * sizeof_float * num_elements
@@ -55,44 +55,43 @@ GIGA: 1000000000
 start_time_s: 1760000000
 
 telescope:
-  name: CHORDTelescope
-  inst_lat_deg: 50.0
-  inst_long_deg: -120.0
-  inst_alt_deg: 90.0
-  inst_grid_x_axis: [1.0, 0.0, 0.0]
-  inst_grid_y_axis: [0.0, 1.0, 0.0]
-  inst_dish_alt_axis: [1.0, 0.0, 0.0]
-  inst_dish_vert_axis: [0.0, 0.0, 1.0]
-  dish_positions: [
-    [0.0, 0.0, 0.0],
-    [6.3, 0.0, 0.0],
-    [0.0, 8.4, 0.0],
-    [6.3, 8.4, 0.0],
-    [151.0, 0.0, 0.0],
-    [0.0, 204.0, 0.0],
-    [151.0, 204.0, 0.0]]
-  require_gps: False
-  updatable_config: /earth_rotation_data
+    name: CHORDTelescope
+    inst_lat_deg: 50.0
+    inst_long_deg: -120.0
+    inst_alt_deg: 90.0
+    inst_grid_x_axis: [1.0, 0.0, 0.0]
+    inst_grid_y_axis: [0.0, 1.0, 0.0]
+    inst_dish_alt_axis: [1.0, 0.0, 0.0]
+    inst_dish_vert_axis: [0.0, 0.0, 1.0]
+    dish_positions: [
+        [0.0, 0.0, 0.0],
+        [6.3, 0.0, 0.0],
+        [0.0, 8.4, 0.0],
+        [6.3, 8.4, 0.0],
+        [151.0, 0.0, 0.0],
+        [0.0, 204.0, 0.0],
+        [151.0, 204.0, 0.0]]
+    require_gps: False
+    updatable_config: /earth_rotation_data
 
 gps_time:
-  frame0_nano: start_time_s * GIGA
+    frame0_nano: start_time_s * GIGA
 
 earth_rotation_data:
-  kotekan_update_endpoint: json
-  earth_orientation_parameter_table: [
-    {
-      time_inst_ns: 1750000000000000000,
-      delta_UT1_inst: 0.5,
-      x_pm: 0.1,
-      y_pm: 0.2
-    }, {
-      time_inst_ns: 1770000000000000000,
-      delta_UT1_inst: -0.5,
-      x_pm: 0.3,
-      y_pm: 0.4
-    }]
+    kotekan_update_endpoint: json
+    earth_orientation_parameter_table: [
+        {
+            time_inst_ns: 1750000000000000000,
+            delta_UT1_inst: 0.5,
+            x_pm: 0.1,
+            y_pm: 0.2
+        }, {
+            time_inst_ns: 1770000000000000000,
+            delta_UT1_inst: -0.5,
+            x_pm: 0.3,
+            y_pm: 0.4
+        }]
 
-  
 
 # Pool
 main_pool:
@@ -104,24 +103,28 @@ n2_pool:
     num_metadata_objects: 16 * buffer_depth
 
 fake_correlation_buffer:
+    log_level: INFO
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
     metadata_pool: main_pool
 
 fake_counts_buffer:
+    log_level: INFO
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
     metadata_pool: main_pool
 
 fake_rfimask_buffer:
+    log_level: INFO
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: (samples_per_data_set * num_local_freq) / 8
     metadata_pool: main_pool
 
 n2_buffer:
+    log_level: INFO
     kotekan_buffer: standard
     num_frames: buffer_depth * num_local_freq
     frame_size: n2_frame_size
@@ -163,37 +166,37 @@ vis_accumulate:
     packet_loss_is_scalar: True
 
 write_fake_correlation:
-  kotekan_stage: hdf5FileWrite
-  base_dir: fake_data
-  file_name: n2k_corr
-  prefix_hostname: false
-  max_frames: -1  # buffer_depth
-  skip_writing: false
-  in_buf: fake_correlation_buffer
+    kotekan_stage: hdf5FileWrite
+    base_dir: fake_data
+    file_name: n2k_corr
+    prefix_hostname: false
+    max_frames: -1  # buffer_depth
+    skip_writing: false
+    in_buf: fake_correlation_buffer
 
 write_fake_counts:
-   kotekan_stage: hdf5FileWrite
-   base_dir: fake_data
-   file_name: n2k_counts
-   prefix_hostname: false
-   max_frames: -1  # buffer_depth # Will trigger exit after writing this many frames
-   skip_writing: false
-   in_buf: fake_counts_buffer
+    kotekan_stage: hdf5FileWrite
+    base_dir: fake_data
+    file_name: n2k_counts
+    prefix_hostname: false
+    max_frames: -1  # buffer_depth # Will trigger exit after writing this many frames
+    skip_writing: false
+    in_buf: fake_counts_buffer
 
 write_fake_rfimask:
-   kotekan_stage: hdf5FileWrite
-   base_dir: fake_data
-   file_name: n2k_rfimask
-   prefix_hostname: false
-   max_frames: -1  # buffer_depth # Will trigger exit after writing this many frames
-   skip_writing: false
-   in_buf: fake_rfimask_buffer
+    kotekan_stage: hdf5FileWrite
+    base_dir: fake_data
+    file_name: n2k_rfimask
+    prefix_hostname: false
+    max_frames: -1  # buffer_depth # Will trigger exit after writing this many frames
+    skip_writing: false
+    in_buf: fake_rfimask_buffer
 
 write_N2:
-   kotekan_stage: hdf5FileWrite
-   base_dir: fake_data
-   file_name: n2_vis
-   prefix_hostname: false
-   max_frames: num_local_freq * n2_frames_to_write  # Will trigger exit after writing this many frames
-   skip_writing: false
-   in_buf: n2_buffer
+    kotekan_stage: hdf5FileWrite
+    base_dir: fake_data
+    file_name: n2_vis
+    prefix_hostname: false
+    max_frames: num_local_freq * n2_frames_to_write  # Will trigger exit after writing this many frames
+    skip_writing: false
+    in_buf: n2_buffer

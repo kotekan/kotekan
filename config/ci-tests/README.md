@@ -1,6 +1,6 @@
 # Kotekan CI YAML Tests
 
-Runs Kotekan tests against multiple YAML configuration files with configurable timeouts.
+Config files in this directory are intended to be run as part of CI. The `run_tests.sh` script runs Kotekan tests against all YAML configuration files. Individual tests can also be run as part of CI if desired.
 
 ## Usage
 
