@@ -270,6 +270,18 @@ jobs:
           free -h
           echo "==========="
           lscpu
+          echo "==========="
+          uname -m
+          echo "==========="
+
+      - name: Verify architecture is x86_64
+        run: |
+          arch=$(uname -m)
+          echo "Detected architecture: $arch"
+          if [ "$arch" != "x86_64" ]; then
+            echo "::error::This job must run on an x86_64 runner (found $arch)"
+            exit 1
+          fi
 
       - name: Configure & Build kotekan
         if: matrix.cmake_defs
@@ -431,6 +443,18 @@ jobs:
           lscpu
           echo "==========="
           nvidia-smi
+          echo "==========="
+          uname -m
+          echo "==========="
+
+      - name: Verify architecture is x86_64
+        run: |
+          arch=$(uname -m)
+          echo "Detected architecture: $arch"
+          if [ "$arch" != "x86_64" ]; then
+            echo "::error::This job must run on an x86_64 runner (found $arch)"
+            exit 1
+          fi
 
       - name: Configure & Build kotekan
         if: matrix.cmake_defs
