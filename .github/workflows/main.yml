@@ -171,7 +171,7 @@ jobs:
               bash $GITHUB_WORKSPACE/tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" $GITHUB_WORKSPACE/build-2404/tests/boost
 
           - id: opencl
-            name: "OpenCL build"
+            name: "OpenCL-enabled build"
             ccache_key: kotekan-opencl
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -187,25 +187,13 @@ jobs:
             name: "Release build + pytest"
             ccache_key: kotekan-release-gcc
             cmake_defs: &build_release_gcc_opts >-
-              -DCMAKE_BUILD_TYPE=Release
-              -DWERROR=ON
-              -DCCACHE=ON
-              -DUSE_OMP=ON
-              -DUSE_NUMA=ON
-              -DNO_MEMLOCK=ON
-              -DUSE_CUDA=ON
-              -DUSE_HIP=OFF
-              -DUSE_OPENCL=ON
-              -DUSE_ASDF=ON
-              -DUSE_HDF5=ON
-              -DUSE_GDAL=ON
-              -DUSE_AIRSPY=ON
-              -DUSE_LAPACK_BLAZE=ON
-              -DUSE_FFTW=ON
-              -DUSE_JULIA=ON
-              -DUSE_DPDK=ON
-              -DWITH_TESTS=ON
-              -DWITH_BOOST_TESTS=OFF
+              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               # Run pytest tests
               PYTHONPATH=$GITHUB_WORKSPACE/python
@@ -223,10 +211,22 @@ jobs:
               -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON
               -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
-              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON
-              -DUSE_DPDK=OFF
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: ""   # Any clang-specific tests to run?
+
+          - id: release_clang
+            name: "Release build with clang"
+            ccache_key: selfhosted-kotekan-release-clang
+            cmake_defs: &runner_build_release_clang_opts >-
+              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+              -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
+            post_build: ""  # clang tests?
 
           - id: docs
             name: "Build Documentation"
@@ -327,8 +327,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: base
-            name: "Build kotekan"
+          - id: test_build_yaml_tests
+            name: "run yamls in config/ci-tests"
             ccache_key: selfhosted-kotekan-default
             cmake_defs: &runner_build_default_opts >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -338,79 +338,28 @@ jobs:
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
-            post_build: "" # Proto-entry for use later
-
-          - id: ci_yaml_tests
-            name: "run yamls in config/ci-tests"
-            ccache_key: selfhosted-kotekan-default # Re-use ccache key from above
-            cmake_defs: *runner_build_default_opts # Re-use build opts from above
             post_build: |
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests
-
-          - id: release_gcc
-            name: "Build release kotekan"
-            ccache_key: selfhosted-kotekan-release-gcc
-            cmake_defs: &runner_build_release_gcc_opts >-
-              -DCMAKE_BUILD_TYPE=Release
-              -DWERROR=ON
-              -DCCACHE=ON
-              -DUSE_OMP=ON
-              -DUSE_NUMA=ON
-              -DNO_MEMLOCK=ON
-              -DUSE_CUDA=ON
-              -DUSE_HIP=OFF
-              -DUSE_OPENCL=ON
-              -DUSE_ASDF=ON
-              -DUSE_HDF5=ON
-              -DUSE_GDAL=ON
-              -DUSE_AIRSPY=ON
-              -DUSE_LAPACK_BLAZE=ON
-              -DUSE_FFTW=ON
-              -DUSE_JULIA=ON
-              -DUSE_DPDK=ON
-              -DWITH_TESTS=ON
-              -DWITH_BOOST_TESTS=OFF
-            post_build: ""
           
-          - id: release_gcc_yaml_tests
+          - id: release_build_yaml_tests
             name: "Build release kotekan"
             ccache_key: selfhosted-kotekan-release-gcc  # re-using key from build
-            cmake_defs: *runner_build_release_gcc_opts      # re-using build opts from build
+            cmake_defs: &runner_build_release_gcc_opts >-
+              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests
-          
-          - id: release_clang
-            name: "Release build with clang"
-            ccache_key: selfhosted-kotekan-release-clang
-            cmake_defs: &runner_build_release_clang_opts >-
-              -DCMAKE_BUILD_TYPE=Release
-              -DCMAKE_C_COMPILER=clang
-              -DCMAKE_CXX_COMPILER=clang++
-              -DWERROR=ON
-              -DCCACHE=ON
-              -DUSE_OMP=ON
-              -DUSE_NUMA=ON
-              -DNO_MEMLOCK=ON
-              -DUSE_CUDA=ON
-              -DUSE_HIP=OFF
-              -DUSE_OPENCL=ON
-              -DUSE_ASDF=ON
-              -DUSE_HDF5=ON
-              -DUSE_GDAL=ON
-              -DUSE_AIRSPY=ON
-              -DUSE_LAPACK_BLAZE=ON
-              -DUSE_FFTW=ON
-              -DUSE_JULIA=ON
-              -DUSE_DPDK=ON
-              -DWITH_TESTS=ON
-              -DWITH_BOOST_TESTS=OFF
-            post_build: ""  # clang tests?
 
           - id: data_test
             name: "/data dir test"
             cmake_defs: ""
             post_build: |
-              # Try something with /data.
+              # Try something with the persistent /data directory.
               touch /data/tmp
               ls /data
               rm /data/tmp
@@ -447,22 +396,13 @@ jobs:
           uname -m
           echo "==========="
 
-      - name: Verify architecture is x86_64
-        run: |
-          arch=$(uname -m)
-          echo "Detected architecture: $arch"
-          if [ "$arch" != "x86_64" ]; then
-            echo "::error::This job must run on an x86_64 runner (found $arch)"
-            exit 1
-          fi
-
       - name: Configure & Build kotekan
         if: matrix.cmake_defs
         run: |
           set -euo pipefail
           mkdir $GITHUB_WORKSPACE/build-2404 && cd $GITHUB_WORKSPACE/build-2404
           ccache -s
-          cmake -DCMAKE_SYSTEM_PROCESSOR=x86_64 -DCMAKE_HOST_SYSTEM_PROCESSOR=x86_64 -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
           make -j $(nproc)
           ccache -s
 
