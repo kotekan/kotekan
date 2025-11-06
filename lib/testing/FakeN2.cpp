@@ -100,7 +100,7 @@ void FakeN2::main_thread() {
     // Check if we are using a CHORD telescope
     if (Telescope::instance().get_name() != "CHORDTelescope") {
         FATAL_ERROR("FakeN2 only works with the CHORDTelescope telescope type, got {:s}",
-              Telescope::instance().get_name());
+                    Telescope::instance().get_name());
     }
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
 
@@ -216,8 +216,7 @@ void FakeN2::main_thread() {
 
         // Stop generating if we've hit the maximum number of frames.
         if (num_frames > 0 && frame_count >= num_frames) {
-            INFO("Reached frame limit [{:d} frames]. Stopping generation.",
-                 num_frames);
+            INFO("Reached frame limit [{:d} frames]. Stopping generation.", num_frames);
             timespec ts = double_to_ts(sleep_after);
             nanosleep(&ts, nullptr);
             break;

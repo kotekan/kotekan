@@ -1,8 +1,8 @@
 #include "errors.h"
 
+#include <pthread.h> // for pthread_mutex_t, pthread_mutex_lock, pthread_mutex_unlock
 #include <signal.h>  // for raise, SIGTERM
 #include <stdarg.h>  // for va_end, va_list, va_start
-#include <pthread.h> // for pthread_mutex_t, pthread_mutex_lock, pthread_mutex_unlock
 
 // Default values for log levels.
 int _global_log_level = 3;

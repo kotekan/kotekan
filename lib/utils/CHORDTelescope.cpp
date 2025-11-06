@@ -613,8 +613,8 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
     eop.t_ut1 = t_ut1;
 
     if (_eop_table.empty()) {
-        WARN("EOP table is empty, cannot interpolate EOP at time {:d} s + {:d} ns.",
-             t_ut1 / GIGA, t_ut1 % GIGA);
+        WARN("EOP table is empty, cannot interpolate EOP at time {:d} s + {:d} ns.", t_ut1 / GIGA,
+             t_ut1 % GIGA);
         return eop_null;
     }
 

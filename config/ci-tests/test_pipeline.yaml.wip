@@ -327,22 +327,20 @@ n2_accumulate:
 
 # Local send/recv mostly for testing
 
-buffer_send:
-  server_ip: 127.0.0.1
-  reconnect_time: 1
-  log_level: debug
-  send:
+buffer_send_n2:
+    log_level: debug
     kotekan_stage: bufferSend
     buf: n2_buffer
-    server_port: 11024
+    server_ip: 127.0.0.1
+    server_port: 11025
+    retry_time: 1.0
+    drop_frames: false
 
-buffer_recv:
-  log_level: debug
-  recv:
+buffer_recv_n2:
+    log_level: debug
     kotekan_stage: bufferRecv
     buf: n2_recv_buffer
-    listen_port: 11024
-    num_threads: 1
+    listen_port: 11025
 
 # Add eigen calculation
 

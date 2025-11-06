@@ -85,8 +85,7 @@ void monitorBuffer::main_thread() {
 
                     state.buffer->mark_frame_empty(consumer_name, state.next_frame_id);
                     state.frames_seen++;
-                    state.next_frame_id =
-                        (state.next_frame_id + 1) % state.buffer->num_frames;
+                    state.next_frame_id = (state.next_frame_id + 1) % state.buffer->num_frames;
                 }
             }
         }
@@ -123,9 +122,10 @@ void monitorBuffer::main_thread() {
                     exit_kotekan(CLEAN_EXIT);
                     goto end_loop;
                 } else {
-                    FATAL_ERROR("The buffer {:s} hasn't received a frame for {:f} seconds.\nClosing "
-                                "kotekan because of system timeout.",
-                                buf->buffer_name, (cur_time - last_arrival));
+                    FATAL_ERROR(
+                        "The buffer {:s} hasn't received a frame for {:f} seconds.\nClosing "
+                        "kotekan because of system timeout.",
+                        buf->buffer_name, (cur_time - last_arrival));
                     goto end_loop;
                 }
             }
@@ -157,7 +157,8 @@ void monitorBuffer::main_thread() {
                 }
             }
             if (all_exceeded) {
-                INFO("monitorBuffer: All monitored buffers have seen >= {:d} frames, stopping monitor.",
+                INFO("monitorBuffer: All monitored buffers have seen >= {:d} frames, stopping "
+                     "monitor.",
                      clean_exit_after_frames);
                 exit_kotekan(CLEAN_EXIT);
                 goto end_loop;
@@ -166,9 +167,8 @@ void monitorBuffer::main_thread() {
             // Print out frames counted so far for debugging
             std::string frame_counts = "";
             for (const auto& state : buffer_states) {
-                frame_counts +=
-                    fmt::format("Buffer {:s} has seen {:d} frames. ", state.buffer->buffer_name,
-                                state.frames_seen);
+                frame_counts += fmt::format("Buffer {:s} has seen {:d} frames. ",
+                                            state.buffer->buffer_name, state.frames_seen);
             }
             DEBUG("monitorBuffer: {}", frame_counts);
         }

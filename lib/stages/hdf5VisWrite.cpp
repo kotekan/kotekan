@@ -529,7 +529,7 @@ bool visFileData::flush() {
     h5_file->getDataSet("/flags_array")
         .select({0, 0, 0}, {num_freq, num_input, num_file_t})
         .write_raw(flags.data());
-    
+
     // per-time arrays
     h5_file->getDataSet("/fpga_start_tick").write(fpga_start_tick);
     h5_file->getDataSet("/frame_start_time_ns").write(frame_start_time_ns);
