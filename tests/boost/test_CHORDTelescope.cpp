@@ -113,7 +113,7 @@ void check_equal_vec3d(const std::array<double, 3>& v1, const std::array<double,
                 v1[0], v1[1], v1[2], v2[0], v2[1], v2[2]));
 }
 
-BOOST_AUTO_TEST_CASE(_dish_info) {
+BOOST_AUTO_TEST_CASE(_dish_num) {
     dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0,   0, "D1");
     dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0,  0, "D2");
     dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0,   0, "D3");
@@ -136,6 +136,28 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
 
     // Check the number of dishes is correct
     BOOST_CHECK_EQUAL(tel.get_num_dishes(), 8);
+}
+
+BOOST_AUTO_TEST_CASE(_dish_info) {
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0,   0, "D1");
+    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0,  0, "D2");
+    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0,   0, "D3");
+    dishInfo d3 = dish_null;
+    dishInfo d4 = dish_null;
+    dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, 0, "D4");
+    dishInfo d6 = dish_null;
+    dishInfo d7 = dish_null;
+    d3.idx = 3;
+    d4.idx = 4;
+    d6.idx = 6;
+    d7.idx = 7;
+    
+    json json_config = json::parse(default_config_str);
+    json_config["num_dishes"] = 8;
+    json_config["dish_separation_ew_m"] = 1.0;
+    json_config["dish_separation_ns_m"] = 2.0;
+    json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
+    const CHORDTelescope& tel = get_telescope(json_config);
 
     // Check dish info is correct for all dishes
     check_dishes(tel.get_dish_at_idx(0), d0);
@@ -146,6 +168,28 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
     check_dishes(tel.get_dish_at_idx(5), d5);
     check_dishes(tel.get_dish_at_idx(6), d6);
     check_dishes(tel.get_dish_at_idx(7), d7);
+}
+
+BOOST_AUTO_TEST_CASE(_dish_position) {
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0,   0, "D1");
+    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0,  0, "D2");
+    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0,   0, "D3");
+    dishInfo d3 = dish_null;
+    dishInfo d4 = dish_null;
+    dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, 0, "D4");
+    dishInfo d6 = dish_null;
+    dishInfo d7 = dish_null;
+    d3.idx = 3;
+    d4.idx = 4;
+    d6.idx = 6;
+    d7.idx = 7;
+    
+    json json_config = json::parse(default_config_str);
+    json_config["num_dishes"] = 8;
+    json_config["dish_separation_ew_m"] = 1.0;
+    json_config["dish_separation_ns_m"] = 2.0;
+    json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
+    const CHORDTelescope& tel = get_telescope(json_config);
 
     // Check dish positions.
     // With weirder input these might fail floating point equality
@@ -157,4 +201,41 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
     check_equal_vec3d(tel.get_dish_position(5), std::array<double, 3>({-5.0-0.3, 814*2.0 + 1.0, 0.5}));
     check_equal_vec3d(tel.get_dish_position(6), std::array<double, 3>({0.0, 0.0, 0.0}));
     check_equal_vec3d(tel.get_dish_position(7), std::array<double, 3>({0.0, 0.0, 0.0}));
+}
+
+BOOST_AUTO_TEST_CASE(_dish_input_fields) {
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0,   0, "D1");
+    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0,  0, "D2");
+    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0,   0, "D3");
+    dishInfo d3 = dish_null;
+    dishInfo d4 = dish_null;
+    dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, 0, "D4");
+    dishInfo d6 = dish_null;
+    dishInfo d7 = dish_null;
+    d3.idx = 3;
+    d4.idx = 4;
+    d6.idx = 6;
+    d7.idx = 7;
+    
+    json json_config = json::parse(default_config_str);
+    json_config["num_dishes"] = 8;
+    json_config["dish_separation_ew_m"] = 1.0;
+    json_config["dish_separation_ns_m"] = 2.0;
+    json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    std::vector<dishInfo> d({d0, d1, d2, d3, d4, d5, d6, d7});
+
+    dishInputFields buf;
+
+    tel.get_dish_inputs(buf);
+
+    for(int i = 0; i < 8; i++) {
+        BOOST_CHECK_EQUAL(buf.ew_idx[i], d[i].ew_idx);
+        BOOST_CHECK_EQUAL(buf.ns_idx[i], d[i].ns_idx);
+        check_equal_vec3d(buf.pos_disp_m[i], d[i].pos_disp_m);
+        BOOST_CHECK_EQUAL(buf.coelev_disp_deg[i], d[i].coelev_disp_deg);
+        BOOST_CHECK_EQUAL(buf.type[i], d[i].type);
+        BOOST_CHECK_EQUAL(buf.label[i], d[i].label);
+    }
 }

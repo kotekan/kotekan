@@ -510,6 +510,34 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const struct EOP& eop
     }
 }
 
+void CHORDTelescope::get_dish_inputs(dishInputFields &input) const {
+
+    // Ensure fields have the correct size
+    input.ew_idx.reserve(_num_dishes);
+    input.ns_idx.reserve(_num_dishes);
+    input.pos_disp_m.reserve(_num_dishes);
+    input.coelev_disp_deg.reserve(_num_dishes);
+    input.type.reserve(_num_dishes);
+    input.label.reserve(_num_dishes);
+
+    input.ew_idx.clear();
+    input.ns_idx.clear();
+    input.pos_disp_m.clear();
+    input.coelev_disp_deg.clear();
+    input.type.clear();
+    input.label.clear();
+
+    // Fill them from our internal table.
+    for(int i = 0; i < _num_dishes; i++) {
+        input.ew_idx.push_back(_dish_info_table[i].ew_idx);
+        input.ns_idx.push_back(_dish_info_table[i].ns_idx);
+        input.pos_disp_m.push_back(_dish_info_table[i].pos_disp_m);
+        input.coelev_disp_deg.push_back(_dish_info_table[i].coelev_disp_deg);
+        input.type.push_back(_dish_info_table[i].type);
+        input.label.push_back(_dish_info_table[i].label);
+    }
+}
+
 double CHORDTelescope::get_tel_orientation_el(int i, int j) const {
     return _R_topo_to_tel[i][j];
 }

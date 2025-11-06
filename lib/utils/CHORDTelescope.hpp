@@ -88,6 +88,15 @@ inline dishInfo make_dishInfo(int64_t idx, int64_t ew_idx, int64_t ns_idx, const
 void to_json(nlohmann::json& j, const dishInfo& d);
 void from_json(const nlohmann::json& j, dishInfo& d);
 
+// A null (all 0) struct EOP;
+const static struct dishInfo dish_null = {.idx = -1,
+                                          .ew_idx = 0,
+                                          .ns_idx = 0,
+                                          .pos_disp_m = {0.0, 0.0, 0.0},
+                                          .coelev_disp_deg = 0.0,
+                                          .type = -1,
+                                          .label = "NULL"};
+
 /**
  * @brief   Struct containing "input" data fields for file writers. Fields are ordered by their appearance
  *          in the standard visibility matrix, ie, the "dish_idx" field in "dish_input" in the config.
@@ -109,18 +118,14 @@ struct dishInputFields {
     std::vector<double> coelev_disp_deg;
     std::vector<int64_t> type;
     std::vector<std::string> label;
-}
 
-
-
-// A null (all 0) struct EOP;
-const static struct dishInfo dish_null = {.idx = -1,
-                                          .ew_idx = 0,
-                                          .ns_idx = 0,
-                                          .pos_disp_m = {0.0, 0.0, 0.0},
-                                          .coelev_disp_deg = 0.0,
-                                          .type = -1,
-                                          .label = "NULL"};
+    dishInputFields() : ew_idx(),
+    ns_idx(),
+    pos_disp_m(),
+    coelev_disp_deg(),
+    type(),
+    label() {}
+};
 
 
 /**
@@ -382,7 +387,15 @@ public:
     void fringestop_phases_1d(double freq_MHz, const struct EOP& eop, const struct EOP& eop0,
                               std::vector<std::complex<double>>& phases) const;
 
-    void get_dish_input(
+    /**
+     * @brief   Fill a dishInputFields struct with dish information. Will possibly
+     *          reallocate the internal vectors in 'input'.
+     *
+     * @param   input   struct dishInputFields reference. The struct to fill,
+     *                  will reallocate the internal vectors if they are not the 
+     *                  correct size.
+     **/
+    void get_dish_inputs(dishInputFields &input) const;
 
     // Implementations of the required frequency mapping functions
     // TODO: Implement these.
