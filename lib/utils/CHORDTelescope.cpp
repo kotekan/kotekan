@@ -510,7 +510,7 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const struct EOP& eop
     }
 }
 
-void CHORDTelescope::get_dish_inputs(dishInputFields &input) const {
+void CHORDTelescope::get_dish_inputs(dishInputFields& input) const {
 
     // Ensure fields have the correct size
     input.ew_idx.reserve(_num_dishes);
@@ -528,7 +528,7 @@ void CHORDTelescope::get_dish_inputs(dishInputFields &input) const {
     input.label.clear();
 
     // Fill them from our internal table.
-    for(int i = 0; i < _num_dishes; i++) {
+    for (int i = 0; i < _num_dishes; i++) {
         input.ew_idx.push_back(_dish_info_table[i].ew_idx);
         input.ns_idx.push_back(_dish_info_table[i].ns_idx);
         input.pos_disp_m.push_back(_dish_info_table[i].pos_disp_m);

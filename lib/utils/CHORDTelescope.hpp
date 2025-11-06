@@ -47,14 +47,14 @@ const static struct EOP eop_null = {
 /**
  * @brief   Simple struct with needed dish info.
  *
- * @param   idx             int64_t Index of this dish (row or column), x polarization, in the 
+ * @param   idx             int64_t Index of this dish (row or column), x polarization, in the
  *                                  standard visibility matrix. The y polarization channel will
  *                                  be at index + num_dishes.
  * @param   ew_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases east
  * @param   ns_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases north
- * @param   pos_disp_m      std::array<double, 3>   Position displacement from grid location, meters,
- *                                                  Telescope coordinates: X = dish E/W separation, Y = dish
- *                                                  N/S separation.  actual_pos = grid_pos + disp
+ * @param   pos_disp_m      std::array<double, 3>   Position displacement from grid location,
+ * meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.  actual_pos =
+ * grid_pos + disp
  * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
  *                                  actual_coelev = target_coelev + disp.
  * @param   type            int64_t Type of dish input.  -1 = NULL, 0 = CHORD Dish.
@@ -72,16 +72,22 @@ struct dishInfo {
 
 inline bool operator==(const dishInfo& lhs, const dishInfo& rhs) {
     return (lhs.idx == rhs.idx) && (lhs.ew_idx == rhs.ew_idx) && (lhs.ns_idx == rhs.ns_idx)
-        && (lhs.pos_disp_m[0] == rhs.pos_disp_m[0]) && (lhs.pos_disp_m[1] == rhs.pos_disp_m[1])
-        && (lhs.pos_disp_m[2] == rhs.pos_disp_m[2]) && (lhs.coelev_disp_deg == rhs.coelev_disp_deg)
-        && (lhs.type == rhs.type) && (lhs.label == rhs.label);
+           && (lhs.pos_disp_m[0] == rhs.pos_disp_m[0]) && (lhs.pos_disp_m[1] == rhs.pos_disp_m[1])
+           && (lhs.pos_disp_m[2] == rhs.pos_disp_m[2])
+           && (lhs.coelev_disp_deg == rhs.coelev_disp_deg) && (lhs.type == rhs.type)
+           && (lhs.label == rhs.label);
 }
 
-inline dishInfo make_dishInfo(int64_t idx, int64_t ew_idx, int64_t ns_idx, const std::array<double, 3> &pos_disp_m,
-        double coelev_disp_deg, int64_t type, const std::string &label) {
-    dishInfo d{.idx = idx, .ew_idx = ew_idx, .ns_idx = ns_idx,
-        .pos_disp_m = {pos_disp_m[0], pos_disp_m[1], pos_disp_m[2]},
-        .coelev_disp_deg = coelev_disp_deg, .type = type, .label = label};
+inline dishInfo make_dishInfo(int64_t idx, int64_t ew_idx, int64_t ns_idx,
+                              const std::array<double, 3>& pos_disp_m, double coelev_disp_deg,
+                              int64_t type, const std::string& label) {
+    dishInfo d{.idx = idx,
+               .ew_idx = ew_idx,
+               .ns_idx = ns_idx,
+               .pos_disp_m = {pos_disp_m[0], pos_disp_m[1], pos_disp_m[2]},
+               .coelev_disp_deg = coelev_disp_deg,
+               .type = type,
+               .label = label};
     return d;
 }
 
@@ -98,14 +104,15 @@ const static struct dishInfo dish_null = {.idx = -1,
                                           .label = "NULL"};
 
 /**
- * @brief   Struct containing "input" data fields for file writers. Fields are ordered by their appearance
- *          in the standard visibility matrix, ie, the "dish_idx" field in "dish_input" in the config.
+ * @brief   Struct containing "input" data fields for file writers. Fields are ordered by their
+ * appearance in the standard visibility matrix, ie, the "dish_idx" field in "dish_input" in the
+ * config.
  *
  * @param   ew_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases east
  * @param   ns_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases north
- * @param   pos_disp_m      std::array<double, 3>   Position displacement from grid location, meters,
- *                                                  Telescope coordinates: X = dish E/W separation, Y = dish
- *                                                  N/S separation.  actual_pos = grid_pos + disp
+ * @param   pos_disp_m      std::array<double, 3>   Position displacement from grid location,
+ * meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.  actual_pos =
+ * grid_pos + disp
  * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
  *                                  actual_coelev = target_coelev + disp.
  * @param   type            int64_t Type of dish input.  -1 = NULL, 0 = CHORD Dish.
@@ -119,12 +126,7 @@ struct dishInputFields {
     std::vector<int64_t> type;
     std::vector<std::string> label;
 
-    dishInputFields() : ew_idx(),
-    ns_idx(),
-    pos_disp_m(),
-    coelev_disp_deg(),
-    type(),
-    label() {}
+    dishInputFields() : ew_idx(), ns_idx(), pos_disp_m(), coelev_disp_deg(), type(), label() {}
 };
 
 
@@ -392,10 +394,10 @@ public:
      *          reallocate the internal vectors in 'input'.
      *
      * @param   input   struct dishInputFields reference. The struct to fill,
-     *                  will reallocate the internal vectors if they are not the 
+     *                  will reallocate the internal vectors if they are not the
      *                  correct size.
      **/
-    void get_dish_inputs(dishInputFields &input) const;
+    void get_dish_inputs(dishInputFields& input) const;
 
     // Implementations of the required frequency mapping functions
     // TODO: Implement these.

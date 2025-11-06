@@ -103,20 +103,20 @@ BOOST_AUTO_TEST_CASE(_instrument_orientation) {
 }
 
 void check_dishes(const dishInfo& d1, const dishInfo& d2) {
-    BOOST_CHECK_MESSAGE(d1 == d2,
-            fmt::format("Expected dish (({:s})) == (({:s}))", json(d1).dump(), json(d2).dump()));
+    BOOST_CHECK_MESSAGE(d1 == d2, fmt::format("Expected dish (({:s})) == (({:s}))", json(d1).dump(),
+                                              json(d2).dump()));
 }
 
 void check_equal_vec3d(const std::array<double, 3>& v1, const std::array<double, 3>& v2) {
     BOOST_CHECK_MESSAGE(v1[0] == v2[0] && v1[1] == v2[1] && v1[2] == v2[2],
-            fmt::format("Expected dish ({:g}, {:g}, {:g}) == ({:g}, {:g}, {:g})",
-                v1[0], v1[1], v1[2], v2[0], v2[1], v2[2]));
+                        fmt::format("Expected dish ({:g}, {:g}, {:g}) == ({:g}, {:g}, {:g})", v1[0],
+                                    v1[1], v1[2], v2[0], v2[1], v2[2]));
 }
 
 BOOST_AUTO_TEST_CASE(_dish_num) {
-    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0,   0, "D1");
-    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0,  0, "D2");
-    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0,   0, "D3");
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D1");
+    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, 0, "D2");
+    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, 0, "D3");
     dishInfo d3 = dish_null;
     dishInfo d4 = dish_null;
     dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, 0, "D4");
@@ -126,7 +126,7 @@ BOOST_AUTO_TEST_CASE(_dish_num) {
     d4.idx = 4;
     d6.idx = 6;
     d7.idx = 7;
-    
+
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
     json_config["dish_separation_ew_m"] = 1.0;
@@ -139,9 +139,9 @@ BOOST_AUTO_TEST_CASE(_dish_num) {
 }
 
 BOOST_AUTO_TEST_CASE(_dish_info) {
-    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0,   0, "D1");
-    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0,  0, "D2");
-    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0,   0, "D3");
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D1");
+    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, 0, "D2");
+    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, 0, "D3");
     dishInfo d3 = dish_null;
     dishInfo d4 = dish_null;
     dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, 0, "D4");
@@ -151,7 +151,7 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
     d4.idx = 4;
     d6.idx = 6;
     d7.idx = 7;
-    
+
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
     json_config["dish_separation_ew_m"] = 1.0;
@@ -171,9 +171,9 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
 }
 
 BOOST_AUTO_TEST_CASE(_dish_position) {
-    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0,   0, "D1");
-    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0,  0, "D2");
-    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0,   0, "D3");
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D1");
+    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, 0, "D2");
+    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, 0, "D3");
     dishInfo d3 = dish_null;
     dishInfo d4 = dish_null;
     dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, 0, "D4");
@@ -183,7 +183,7 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
     d4.idx = 4;
     d6.idx = 6;
     d7.idx = 7;
-    
+
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
     json_config["dish_separation_ew_m"] = 1.0;
@@ -198,15 +198,16 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
     check_equal_vec3d(tel.get_dish_position(2), std::array<double, 3>({1.1, 0.0, 0.0}));
     check_equal_vec3d(tel.get_dish_position(3), std::array<double, 3>({0.0, 0.0, 0.0}));
     check_equal_vec3d(tel.get_dish_position(4), std::array<double, 3>({0.0, 0.0, 0.0}));
-    check_equal_vec3d(tel.get_dish_position(5), std::array<double, 3>({-5.0-0.3, 814*2.0 + 1.0, 0.5}));
+    check_equal_vec3d(tel.get_dish_position(5),
+                      std::array<double, 3>({-5.0 - 0.3, 814 * 2.0 + 1.0, 0.5}));
     check_equal_vec3d(tel.get_dish_position(6), std::array<double, 3>({0.0, 0.0, 0.0}));
     check_equal_vec3d(tel.get_dish_position(7), std::array<double, 3>({0.0, 0.0, 0.0}));
 }
 
 BOOST_AUTO_TEST_CASE(_dish_input_fields) {
-    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0,   0, "D1");
-    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0,  0, "D2");
-    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0,   0, "D3");
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D1");
+    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, 0, "D2");
+    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, 0, "D3");
     dishInfo d3 = dish_null;
     dishInfo d4 = dish_null;
     dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, 0, "D4");
@@ -216,7 +217,7 @@ BOOST_AUTO_TEST_CASE(_dish_input_fields) {
     d4.idx = 4;
     d6.idx = 6;
     d7.idx = 7;
-    
+
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
     json_config["dish_separation_ew_m"] = 1.0;
@@ -230,7 +231,7 @@ BOOST_AUTO_TEST_CASE(_dish_input_fields) {
 
     tel.get_dish_inputs(buf);
 
-    for(int i = 0; i < 8; i++) {
+    for (int i = 0; i < 8; i++) {
         BOOST_CHECK_EQUAL(buf.ew_idx[i], d[i].ew_idx);
         BOOST_CHECK_EQUAL(buf.ns_idx[i], d[i].ns_idx);
         check_equal_vec3d(buf.pos_disp_m[i], d[i].pos_disp_m);
