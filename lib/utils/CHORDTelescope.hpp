@@ -78,6 +78,9 @@ inline bool operator==(const dishInfo& lhs, const dishInfo& rhs) {
            && (lhs.label == rhs.label);
 }
 
+/**
+ * @brief   Function to generate a dishInfo struct from individual members, used in testing.
+ */
 inline dishInfo make_dishInfo(int64_t idx, int64_t ew_idx, int64_t ns_idx,
                               const std::array<double, 3>& pos_disp_m, double coelev_disp_deg,
                               int64_t type, const std::string& label) {
@@ -125,8 +128,6 @@ struct dishInputFields {
     std::vector<double> coelev_disp_deg;
     std::vector<int64_t> type;
     std::vector<std::string> label;
-
-    dishInputFields() : ew_idx(), ns_idx(), pos_disp_m(), coelev_disp_deg(), type(), label() {}
 };
 
 

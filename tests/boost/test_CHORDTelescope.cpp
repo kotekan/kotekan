@@ -109,8 +109,21 @@ void check_dishes(const dishInfo& d1, const dishInfo& d2) {
 
 void check_equal_vec3d(const std::array<double, 3>& v1, const std::array<double, 3>& v2) {
     BOOST_CHECK_MESSAGE(v1[0] == v2[0] && v1[1] == v2[1] && v1[2] == v2[2],
-                        fmt::format("Expected dish ({:g}, {:g}, {:g}) == ({:g}, {:g}, {:g})", v1[0],
+                        fmt::format("Expected ({:g}, {:g}, {:g}) == ({:g}, {:g}, {:g})", v1[0],
                                     v1[1], v1[2], v2[0], v2[1], v2[2]));
+}
+
+void check_close_vec3d(const std::array<double, 3>& v1, const std::array<double, 3>& v2, double atol, double rtol, const std::string &label) {
+
+    double diff[3] = {v1[0] - v2[0], v1[1] - v2[1], v1[2] - v2[2]};
+    double tol[3] = {atol + rtol * fabs(0.5 * (v1[0] + v2[0])),
+                     atol + rtol * fabs(0.5 * (v1[1] + v2[1])),
+                     atol + rtol * fabs(0.5 * (v1[2] + v2[2]))};
+
+    bool pass[3] = {fabs(diff[0]) <= tol[0], fabs(diff[1]) <= tol[1], fabs(diff[2]) <= tol[2]};
+    BOOST_CHECK_MESSAGE(pass[0] && pass[1] && pass[2],
+                        fmt::format("Expected |{:s}| = |{:g}, {:g}, {:g}| <= ({:g}, {:g}, {:g})",
+                            label, diff[0], diff[1], diff[2], tol[0], tol[1], tol[2]));
 }
 
 BOOST_AUTO_TEST_CASE(_dish_num) {
@@ -227,10 +240,12 @@ BOOST_AUTO_TEST_CASE(_dish_input_fields) {
 
     std::vector<dishInfo> d({d0, d1, d2, d3, d4, d5, d6, d7});
 
+    // Set up an object to receive the dish input info.
     dishInputFields buf;
-
+    // Fill the object with the info.
     tel.get_dish_inputs(buf);
 
+    // Make sure its correct.
     for (int i = 0; i < 8; i++) {
         BOOST_CHECK_EQUAL(buf.ew_idx[i], d[i].ew_idx);
         BOOST_CHECK_EQUAL(buf.ns_idx[i], d[i].ns_idx);
@@ -240,3 +255,140 @@ BOOST_AUTO_TEST_CASE(_dish_input_fields) {
         BOOST_CHECK_EQUAL(buf.label[i], d[i].label);
     }
 }
+
+BOOST_AUTO_TEST_CASE(_pointing_vec_dish) {
+
+    // Test co-elevation
+    double coelev_deg = 20.0;
+    
+    // Compute correct pointing vec.
+    double coelev = M_PI * coelev_deg / 180.0;
+    std::array<double, 3> point{0.0, sin(coelev), cos(coelev)};
+
+    // Build telescope
+    json json_config = json::parse(default_config_str);
+    json_config["telescope"]["inst_coelev_deg"] = coelev_deg;
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    // Check (may have FP equality issues)
+    check_equal_vec3d(tel.get_pointing_vec_in_dish_coords(), point);
+
+    // Test value 2
+    coelev_deg = -40.0;
+
+    // Compute truth
+    coelev = M_PI * coelev_deg / 180.0;
+    std::array<double, 3> point2{0.0, sin(coelev), cos(coelev)};
+
+    // construct telescope
+    json_config["telescope"]["inst_coelev_deg"] = coelev_deg;
+    const CHORDTelescope &tel2 = get_telescope(json_config);
+
+    // check
+    check_equal_vec3d(tel2.get_pointing_vec_in_dish_coords(), point2);
+}
+
+BOOST_AUTO_TEST_CASE(_vec_topocen_to_dish) {
+    //Make test frame
+    double dphi = -0.5;
+    double dtheta = 0.2;
+
+    std::array<double, 3> z({cos(dphi)*sin(dtheta), sin(dphi)*sin(dtheta), cos(dtheta)});
+    std::array<double, 3> x({cos(dphi)*cos(dtheta), sin(dphi)*cos(dtheta), -sin(dtheta)});
+    std::array<double, 3> y({-sin(dphi), cos(dphi), 0.0});
+
+    // Make telescope
+    json json_config = json::parse(default_config_str);
+    json_config["telescope"]["inst_dish_elev_axis"] = x;
+    json_config["telescope"]["inst_dish_vert_axis"] = z;
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    // test vectors
+    std::array<double, 3> n1({1.0, 0.0, 0.0});
+    std::array<double, 3> n2({0.0, 1.0, 0.0});
+    std::array<double, 3> n3({0.0, 0.0, 1.0});
+
+    // Should just pick out basis vectors.
+    check_close_vec3d(tel.vec_topocen_to_dish(x), n1, 1.0e-14, 1.0e-14, "x_dish - n1"); 
+    check_close_vec3d(tel.vec_topocen_to_dish(y), n2, 1.0e-14, 1.0e-14, "y_dish - n2"); 
+    check_close_vec3d(tel.vec_topocen_to_dish(z), n3, 1.0e-14, 1.0e-14, "z_dish - n3"); 
+}
+
+BOOST_AUTO_TEST_CASE(_vec_dish_to_topocen) {
+    //Make test frame
+    double dphi = -0.5;
+    double dtheta = 0.2;
+
+    std::array<double, 3> z({cos(dphi)*sin(dtheta), sin(dphi)*sin(dtheta), cos(dtheta)});
+    std::array<double, 3> x({cos(dphi)*cos(dtheta), sin(dphi)*cos(dtheta), -sin(dtheta)});
+    std::array<double, 3> y({-sin(dphi), cos(dphi), 0.0});
+
+    // Make telescope
+    json json_config = json::parse(default_config_str);
+    json_config["telescope"]["inst_dish_elev_axis"] = x;
+    json_config["telescope"]["inst_dish_vert_axis"] = z;
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    // test vectors
+    std::array<double, 3> n1({1.0, 0.0, 0.0});
+    std::array<double, 3> n2({0.0, 1.0, 0.0});
+    std::array<double, 3> n3({0.0, 0.0, 1.0});
+
+    // Should just pick out basis vectors.
+    check_close_vec3d(tel.vec_dish_to_topocen(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x"); 
+    check_close_vec3d(tel.vec_dish_to_topocen(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y"); 
+    check_close_vec3d(tel.vec_dish_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z"); 
+}
+
+BOOST_AUTO_TEST_CASE(_vec_topocen_to_tel) {
+    //Make test frame
+    double dphi = -0.5;
+    double dtheta = 0.2;
+
+    std::array<double, 3> z({cos(dphi)*sin(dtheta), sin(dphi)*sin(dtheta), cos(dtheta)});
+    std::array<double, 3> x({cos(dphi)*cos(dtheta), sin(dphi)*cos(dtheta), -sin(dtheta)});
+    std::array<double, 3> y({-sin(dphi), cos(dphi), 0.0});
+
+    // Make telescope
+    json json_config = json::parse(default_config_str);
+    json_config["telescope"]["inst_grid_x_axis"] = x;
+    json_config["telescope"]["inst_grid_y_axis"] = y;
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    // test vectors
+    std::array<double, 3> n1({1.0, 0.0, 0.0});
+    std::array<double, 3> n2({0.0, 1.0, 0.0});
+    std::array<double, 3> n3({0.0, 0.0, 1.0});
+
+    // Should just pick out basis vectors.
+    check_close_vec3d(tel.vec_topocen_to_tel(x), n1, 1.0e-14, 1.0e-14, "x_tel - n1"); 
+    check_close_vec3d(tel.vec_topocen_to_tel(y), n2, 1.0e-14, 1.0e-14, "y_tel - n2"); 
+    check_close_vec3d(tel.vec_topocen_to_tel(z), n3, 1.0e-14, 1.0e-14, "z_tel - n3"); 
+}
+
+BOOST_AUTO_TEST_CASE(_vec_tel_to_topocen) {
+    //Make test frame
+    double dphi = -0.5;
+    double dtheta = 0.2;
+
+    std::array<double, 3> z({cos(dphi)*sin(dtheta), sin(dphi)*sin(dtheta), cos(dtheta)});
+    std::array<double, 3> x({cos(dphi)*cos(dtheta), sin(dphi)*cos(dtheta), -sin(dtheta)});
+    std::array<double, 3> y({-sin(dphi), cos(dphi), 0.0});
+
+    // Make telescope
+    json json_config = json::parse(default_config_str);
+    json_config["telescope"]["inst_grid_x_axis"] = x;
+    json_config["telescope"]["inst_grid_y_axis"] = y;
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    // test vectors
+    std::array<double, 3> n1({1.0, 0.0, 0.0});
+    std::array<double, 3> n2({0.0, 1.0, 0.0});
+    std::array<double, 3> n3({0.0, 0.0, 1.0});
+
+    // Should just pick out basis vectors.
+    check_close_vec3d(tel.vec_tel_to_topocen(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x"); 
+    check_close_vec3d(tel.vec_tel_to_topocen(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y"); 
+    check_close_vec3d(tel.vec_tel_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z"); 
+}
+
