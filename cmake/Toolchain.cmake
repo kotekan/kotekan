@@ -155,8 +155,8 @@ if(NOT DEFINED ARCH)
 endif()
 # Normalize problematic values
 if(ARCH STREQUAL "x86-64")
-    set(ARCH_MTUNE "generic")   # or "k8" if you want an older baseline
-    set(ARCH_MARCH "x86-64")    # march syntax is valid for x86-64
+    set(ARCH_MTUNE "generic") # or "k8" if you want an older baseline
+    set(ARCH_MARCH "x86-64") # march syntax is valid for x86-64
 else()
     set(ARCH_MTUNE "${ARCH}")
     set(ARCH_MARCH "${ARCH}")
