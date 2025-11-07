@@ -35,11 +35,12 @@
  * @conf  counts_name           String. quantity name for counts in chordMetadata
  * @conf  correlation_type      String. "const", "random".
  * @conf  counts_type           String. "const", "random".
- * @conf  value                 Int. Required for type "const" and "ramp".
- * @conf  values                Vector of ints. Only used for type "onehot" - sets the array element
- * to a different value for each frame; loops through the values.
- * @conf  seed                  Int. For type "random", "random_signed", and "onehot".  If non-zero,
- * seeds the random number generator on startup for reproducible results.
+ * @conf  correlation_value     Pair of ints. Used when `correlation_type` is "const".
+ * @conf  correlation_values    Vector of int pairs. Optional cycle for "const" correlation frames.
+ * @conf  counts_value          Int. Used when `counts_type` is "const" or "const_scalar".
+ * @conf  counts_values         Vector of ints. Optional cycle for "const" count frames.
+ * @conf  seed                  Int. Default 0. Seeds the deterministic RNG for "random" correlation
+ *                              and counts variants.
  * @conf  samples_per_data_set  Int. How often to produce data.
  * @conf  num_frames            Int. How many frames to produce. Default inf.
  * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
