@@ -72,7 +72,87 @@ const CHORDTelescope& get_telescope(json& json_config) {
     return Telescope::instance().cast<CHORDTelescope>();
 }
 
+/******************
+ *
+ * HELPERS
+ *
+ ******************/
 
+
+/*
+ * @brief   Helper to compare dishes
+ */
+void check_dishes(const dishInfo& d1, const dishInfo& d2) {
+    BOOST_CHECK_MESSAGE(d1 == d2, fmt::format("Expected dish (({:s})) == (({:s}))", json(d1).dump(),
+                                              json(d2).dump()));
+}
+
+/*
+ * @brief   Helper to test equality for double vec3s
+ */
+void check_equal_vec3d(const std::array<double, 3>& v1, const std::array<double, 3>& v2) {
+    BOOST_CHECK_MESSAGE(v1[0] == v2[0] && v1[1] == v2[1] && v1[2] == v2[2],
+                        fmt::format("Expected ({:g}, {:g}, {:g}) == ({:g}, {:g}, {:g})", v1[0],
+                                    v1[1], v1[2], v2[0], v2[1], v2[2]));
+}
+
+/*
+ * @brief   Helper to test equality for double vec3s within tolerance.
+ */
+void check_close_vec3d(const std::array<double, 3>& v1, const std::array<double, 3>& v2,
+                       double atol, double rtol, const std::string& label) {
+
+    double diff[3] = {v1[0] - v2[0], v1[1] - v2[1], v1[2] - v2[2]};
+    double tol[3] = {atol + rtol * fabs(0.5 * (v1[0] + v2[0])),
+                     atol + rtol * fabs(0.5 * (v1[1] + v2[1])),
+                     atol + rtol * fabs(0.5 * (v1[2] + v2[2]))};
+
+    bool pass[3] = {fabs(diff[0]) <= tol[0], fabs(diff[1]) <= tol[1], fabs(diff[2]) <= tol[2]};
+    BOOST_CHECK_MESSAGE(pass[0] && pass[1] && pass[2],
+                        fmt::format("Expected |{:s}| = |{:g}, {:g}, {:g}| <= ({:g}, {:g}, {:g})",
+                                    label, diff[0], diff[1], diff[2], tol[0], tol[1], tol[2]));
+}
+
+/*
+ * @brief   helper to calculate cirs -> itrs conversion
+ */
+std::array<double, 3> cirs_to_itrs(const CHORDTelescope &tel, std::array<double, 3> v, double ERA_deg, double xp_as, double yp_as) {
+    double ERA = M_PI * ERA_deg / 180.0;
+    double xp = M_PI * xp_as / (3600 * 180.0);
+    double yp = M_PI * yp_as / (3600 * 180.0);
+
+    std::array<double, 3> Rv = tel.vec_axes_rotation_R3(v, ERA);
+    std::array<double, 3> W2Rv = tel.vec_axes_rotation_R2(Rv, -xp);
+    std::array<double, 3> WRv = tel.vec_axes_rotation_R1(W2Rv, -yp);
+
+    return WRv;
+}
+
+/*
+ * @brief   helper to calculate itrs -> cirs conversion
+ */
+std::array<double, 3> itrs_to_cirs(const CHORDTelescope &tel, std::array<double, 3> v, double ERA_deg, double xp_as, double yp_as) {
+    double ERA = M_PI * ERA_deg / 180.0;
+    double xp = M_PI * xp_as / (3600 * 180.0);
+    double yp = M_PI * yp_as / (3600 * 180.0);
+
+    std::array<double, 3> W1v = tel.vec_axes_rotation_R1(v, yp);
+    std::array<double, 3> Wv = tel.vec_axes_rotation_R2(W1v, xp);
+    std::array<double, 3> RWv = tel.vec_axes_rotation_R3(Wv, -ERA);
+
+    return RWv;
+}
+
+/******************
+ *
+ * TESTS
+ *
+ ******************/
+
+
+/*
+ * @brief   Test position getters.
+ */
 BOOST_AUTO_TEST_CASE(_instrument_position) {
     BOOST_TEST_MESSAGE(fmt::format("Testing telescope position."));
 
@@ -89,8 +169,11 @@ BOOST_AUTO_TEST_CASE(_instrument_position) {
     BOOST_CHECK_EQUAL(tel.get_origin_itrs_lat_deg(), lat);
 }
 
-BOOST_AUTO_TEST_CASE(_instrument_orientation) {
-    BOOST_TEST_MESSAGE(fmt::format("Testing telescope orientation."));
+/*
+ * @brief   Test coelev getters.
+ */
+BOOST_AUTO_TEST_CASE(_dish_coelev) {
+    BOOST_TEST_MESSAGE(fmt::format("Testing telescope coelevation."));
 
     double coelev = -70;
 
@@ -102,31 +185,10 @@ BOOST_AUTO_TEST_CASE(_instrument_orientation) {
     BOOST_CHECK_EQUAL(tel.get_dish_coelev_deg(), coelev);
 }
 
-void check_dishes(const dishInfo& d1, const dishInfo& d2) {
-    BOOST_CHECK_MESSAGE(d1 == d2, fmt::format("Expected dish (({:s})) == (({:s}))", json(d1).dump(),
-                                              json(d2).dump()));
-}
 
-void check_equal_vec3d(const std::array<double, 3>& v1, const std::array<double, 3>& v2) {
-    BOOST_CHECK_MESSAGE(v1[0] == v2[0] && v1[1] == v2[1] && v1[2] == v2[2],
-                        fmt::format("Expected ({:g}, {:g}, {:g}) == ({:g}, {:g}, {:g})", v1[0],
-                                    v1[1], v1[2], v2[0], v2[1], v2[2]));
-}
-
-void check_close_vec3d(const std::array<double, 3>& v1, const std::array<double, 3>& v2,
-                       double atol, double rtol, const std::string& label) {
-
-    double diff[3] = {v1[0] - v2[0], v1[1] - v2[1], v1[2] - v2[2]};
-    double tol[3] = {atol + rtol * fabs(0.5 * (v1[0] + v2[0])),
-                     atol + rtol * fabs(0.5 * (v1[1] + v2[1])),
-                     atol + rtol * fabs(0.5 * (v1[2] + v2[2]))};
-
-    bool pass[3] = {fabs(diff[0]) <= tol[0], fabs(diff[1]) <= tol[1], fabs(diff[2]) <= tol[2]};
-    BOOST_CHECK_MESSAGE(pass[0] && pass[1] && pass[2],
-                        fmt::format("Expected |{:s}| = |{:g}, {:g}, {:g}| <= ({:g}, {:g}, {:g})",
-                                    label, diff[0], diff[1], diff[2], tol[0], tol[1], tol[2]));
-}
-
+/*
+ * @brief   Test dish number getter
+ */
 BOOST_AUTO_TEST_CASE(_dish_num) {
     dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D1");
     dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, 0, "D2");
@@ -152,6 +214,9 @@ BOOST_AUTO_TEST_CASE(_dish_num) {
     BOOST_CHECK_EQUAL(tel.get_num_dishes(), 8);
 }
 
+/*
+ * @brief   Test dish_info retrieval
+ */
 BOOST_AUTO_TEST_CASE(_dish_info) {
     dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D1");
     dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, 0, "D2");
@@ -184,6 +249,9 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
     check_dishes(tel.get_dish_at_idx(7), d7);
 }
 
+/*
+ * @brief   Test dish_position calculation
+ */
 BOOST_AUTO_TEST_CASE(_dish_position) {
     dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D1");
     dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, 0, "D2");
@@ -218,6 +286,9 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
     check_equal_vec3d(tel.get_dish_position(7), std::array<double, 3>({0.0, 0.0, 0.0}));
 }
 
+/*
+ * @brief   Test dish_input fields retrieval
+ */
 BOOST_AUTO_TEST_CASE(_dish_input_fields) {
     dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D1");
     dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, 0, "D2");
@@ -257,6 +328,9 @@ BOOST_AUTO_TEST_CASE(_dish_input_fields) {
     }
 }
 
+/*
+ * @brief   Test pointing vector retrieval
+ */
 BOOST_AUTO_TEST_CASE(_pointing_vec_dish) {
 
     // Test co-elevation
@@ -289,6 +363,9 @@ BOOST_AUTO_TEST_CASE(_pointing_vec_dish) {
     check_equal_vec3d(tel2.get_pointing_vec_in_dish_coords(), point2);
 }
 
+/*
+ * @brief   Test topocen -> dish conversion
+ */
 BOOST_AUTO_TEST_CASE(_vec_topocen_to_dish) {
     // Make test frame
     double dphi = -0.5;
@@ -315,6 +392,9 @@ BOOST_AUTO_TEST_CASE(_vec_topocen_to_dish) {
     check_close_vec3d(tel.vec_topocen_to_dish(z), n3, 1.0e-14, 1.0e-14, "z_dish - n3");
 }
 
+/*
+ * @brief   Test topocen <- dish conversion
+ */
 BOOST_AUTO_TEST_CASE(_vec_dish_to_topocen) {
     // Make test frame
     double dphi = -0.5;
@@ -341,6 +421,9 @@ BOOST_AUTO_TEST_CASE(_vec_dish_to_topocen) {
     check_close_vec3d(tel.vec_dish_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z");
 }
 
+/*
+ * @brief   Test topocen -> tel conversion
+ */
 BOOST_AUTO_TEST_CASE(_vec_topocen_to_tel) {
     // Make test frame
     double dphi = -0.5;
@@ -367,6 +450,9 @@ BOOST_AUTO_TEST_CASE(_vec_topocen_to_tel) {
     check_close_vec3d(tel.vec_topocen_to_tel(z), n3, 1.0e-14, 1.0e-14, "z_tel - n3");
 }
 
+/*
+ * @brief   Test topocen <- tel conversion
+ */
 BOOST_AUTO_TEST_CASE(_vec_tel_to_topocen) {
     // Make test frame
     double dphi = -0.5;
@@ -391,4 +477,337 @@ BOOST_AUTO_TEST_CASE(_vec_tel_to_topocen) {
     check_close_vec3d(tel.vec_tel_to_topocen(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x");
     check_close_vec3d(tel.vec_tel_to_topocen(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y");
     check_close_vec3d(tel.vec_tel_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z");
+}
+
+/*
+ * @brief   Test itrs -> topocen conversion
+ */
+BOOST_AUTO_TEST_CASE(_vec_itrs_to_topocen) {
+    // test vectors
+    std::array<double, 3> n1({1.0, 0.0, 0.0});
+    std::array<double, 3> n2({0.0, 1.0, 0.0});
+    std::array<double, 3> n3({0.0, 0.0, 1.0});
+
+    //"easy" tests
+    // test lat 0 lon 0 -- itrs x
+    json json_config = json::parse(default_config_str);
+    json_config["telescope"]["origin_itrs_lon_deg"] = 0;
+    json_config["telescope"]["origin_itrs_lat_deg"] = 0;
+    const CHORDTelescope& tel_x = get_telescope(json_config);
+    check_close_vec3d(tel_x.vec_itrs_to_topocen(n1), std::array<double, 3>({0, 0, 1}),
+            1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel_x.vec_itrs_to_topocen(n2), std::array<double, 3>({1, 0, 0}),
+            1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel_x.vec_itrs_to_topocen(n3), std::array<double, 3>({0, 1, 0}),
+            1.0e-14, 1.0e-14, "n3_topo - z");
+    
+    // test lat 0 lon 90 -- itrs y
+    json_config["telescope"]["origin_itrs_lon_deg"] = 90;
+    json_config["telescope"]["origin_itrs_lat_deg"] = 0;
+    const CHORDTelescope& tel_y = get_telescope(json_config);
+    check_close_vec3d(tel_y.vec_itrs_to_topocen(n1), std::array<double, 3>({-1, 0, 0}),
+            1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel_y.vec_itrs_to_topocen(n2), std::array<double, 3>({0, 0, 1}),
+            1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel_y.vec_itrs_to_topocen(n3), std::array<double, 3>({0, 1, 0}),
+            1.0e-14, 1.0e-14, "n3_topo - z");
+
+    // test lat 0 lon 90 -- itrs y
+    json_config["telescope"]["origin_itrs_lon_deg"] = -90;
+    json_config["telescope"]["origin_itrs_lat_deg"] = 90;
+    const CHORDTelescope& tel_z = get_telescope(json_config);
+    check_close_vec3d(tel_z.vec_itrs_to_topocen(n1), std::array<double, 3>({1, 0, 0}),
+            1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel_z.vec_itrs_to_topocen(n2), std::array<double, 3>({0, 1, 0}),
+            1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel_z.vec_itrs_to_topocen(n3), std::array<double, 3>({0, 0, 1}),
+            1.0e-14, 1.0e-14, "n3_topo - z");
+
+    // "harder" test
+    double lat_deg = 45;
+    double lon_deg = -120;
+
+    double lat = M_PI * lat_deg / 180.0;
+    double lon = M_PI * lon_deg / 180.0;
+
+    // Make telescope
+    json_config["telescope"]["origin_itrs_lon_deg"] = lon_deg;
+    json_config["telescope"]["origin_itrs_lat_deg"] = lat_deg;
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+
+    // in itrs
+    //
+    // x_topo = cos(lon) * (0, 1, 0) + sin(lon) * (-1, 0, 0)
+    //        = (-sin(lon), cos(lon), 0)
+    // y_topo = cos(lon) * (-sin(lat), 0, cos(lat)/cos(lon)) + sin(lon) * (0, -sin(lat), cos(lat)/sin(lon))
+    //        = (-cos(lon) * sin(lat), -sin(lon) * sin(lat), cos(lat))
+    // z_topo = cos(lon) * (cos(lat), 0, sin(lat)/cos(lon)) + sin(lon) * (0, cos(lat), sin(lat)/sin(lon)
+    //        = (cos(lon) * cos(lat), sin(lon) * cos(lat), sin(lat))
+
+    // Should just pick out basis vectors.
+    check_close_vec3d(tel.vec_itrs_to_topocen(n1), 
+            std::array<double, 3>({-sin(lon), -cos(lon) * sin(lat), cos(lon) * cos(lat)}),
+            1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel.vec_itrs_to_topocen(n2),
+            std::array<double, 3>({cos(lon), -sin(lon) * sin(lat), sin(lon) * cos(lat)}),
+            1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel.vec_itrs_to_topocen(n3),
+            std::array<double, 3>({0, cos(lat), sin(lat)}),
+            1.0e-14, 1.0e-14, "n3_topo - z");
+}
+
+/*
+ * @brief   Test itrs <- topocen conversion
+ */
+BOOST_AUTO_TEST_CASE(_vec_topocen_to_itrs) {
+    // test vectors
+    std::array<double, 3> n1({1.0, 0.0, 0.0});
+    std::array<double, 3> n2({0.0, 1.0, 0.0});
+    std::array<double, 3> n3({0.0, 0.0, 1.0});
+
+    //"easy" tests
+    // test lat 0 lon 0 -- itrs x
+    json json_config = json::parse(default_config_str);
+    json_config["telescope"]["origin_itrs_lon_deg"] = 0;
+    json_config["telescope"]["origin_itrs_lat_deg"] = 0;
+    const CHORDTelescope& tel_x = get_telescope(json_config);
+    check_close_vec3d(tel_x.vec_topocen_to_itrs(n1), std::array<double, 3>({0, 1, 0}),
+            1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel_x.vec_topocen_to_itrs(n2), std::array<double, 3>({0, 0, 1}),
+            1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel_x.vec_topocen_to_itrs(n3), std::array<double, 3>({1, 0, 0}),
+            1.0e-14, 1.0e-14, "n3_topo - z");
+    
+    // test lat 0 lon 90 -- itrs y
+    json_config["telescope"]["origin_itrs_lon_deg"] = 90;
+    json_config["telescope"]["origin_itrs_lat_deg"] = 0;
+    const CHORDTelescope& tel_y = get_telescope(json_config);
+    check_close_vec3d(tel_y.vec_topocen_to_itrs(n1), std::array<double, 3>({-1, 0, 0}),
+            1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel_y.vec_topocen_to_itrs(n2), std::array<double, 3>({0, 0, 1}),
+            1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel_y.vec_topocen_to_itrs(n3), std::array<double, 3>({0, 1, 0}),
+            1.0e-14, 1.0e-14, "n3_topo - z");
+
+    // test lat 0 lon 90 -- itrs y
+    json_config["telescope"]["origin_itrs_lon_deg"] = -90;
+    json_config["telescope"]["origin_itrs_lat_deg"] = 90;
+    const CHORDTelescope& tel_z = get_telescope(json_config);
+    check_close_vec3d(tel_z.vec_topocen_to_itrs(n1), std::array<double, 3>({1, 0, 0}),
+            1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel_z.vec_topocen_to_itrs(n2), std::array<double, 3>({0, 1, 0}),
+            1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel_z.vec_topocen_to_itrs(n3), std::array<double, 3>({0, 0, 1}),
+            1.0e-14, 1.0e-14, "n3_topo - z");
+
+    // "harder" test
+    double lat_deg = 45;
+    double lon_deg = -120;
+
+    double lat = M_PI * lat_deg / 180.0;
+    double lon = M_PI * lon_deg / 180.0;
+
+    // Make telescope
+    json_config["telescope"]["origin_itrs_lon_deg"] = lon_deg;
+    json_config["telescope"]["origin_itrs_lat_deg"] = lat_deg;
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+
+    // in itrs
+    //
+    // x_topo = cos(lon) * (0, 1, 0) + sin(lon) * (-1, 0, 0)
+    //        = (-sin(lon), cos(lon), 0)
+    // y_topo = cos(lon) * (-sin(lat), 0, cos(lat)/cos(lon)) + sin(lon) * (0, -sin(lat), cos(lat)/sin(lon))
+    //        = (-cos(lon) * sin(lat), -sin(lon) * sin(lat), cos(lat))
+    // z_topo = cos(lon) * (cos(lat), 0, sin(lat)/cos(lon)) + sin(lon) * (0, cos(lat), sin(lat)/sin(lon)
+    //        = (cos(lon) * cos(lat), sin(lon) * cos(lat), sin(lat))
+
+    // Should just pick out basis vectors.
+    check_close_vec3d(tel.vec_topocen_to_itrs(n1), 
+            std::array<double, 3>({-sin(lon), cos(lon), 0}),
+            1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel.vec_topocen_to_itrs(n2),
+            std::array<double, 3>({-cos(lon) * sin(lat), -sin(lon) * sin(lat), cos(lat)}),
+            1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel.vec_topocen_to_itrs(n3),
+            std::array<double, 3>({cos(lon) * cos(lat), sin(lon) * cos(lat), sin(lat)}),
+            1.0e-14, 1.0e-14, "n3_topo - z");
+}
+
+/*
+ * @brief   Test R1 rotation
+ */
+BOOST_AUTO_TEST_CASE(_vec_axes_rotation_R1) {
+    // test vectors
+    std::array<double, 3> p1({1.0, 0.0, 0.0});
+    std::array<double, 3> p2({0.0, 1.0, 0.0});
+    std::array<double, 3> p3({0.0, 0.0, 1.0});
+    std::array<double, 3> m3({0.0, 0.0, -1.0});
+
+    //"easy" tests
+    // test lat 0 lon 0 -- itrs x
+    json json_config = json::parse(default_config_str);
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    check_close_vec3d(tel.vec_axes_rotation_R1(p1, 0.0), p1, 1.0e-14, 1.0e-14, "R(x) - x");
+    check_close_vec3d(tel.vec_axes_rotation_R1(p2, 0.0), p2, 1.0e-14, 1.0e-14, "R(y) - y");
+    check_close_vec3d(tel.vec_axes_rotation_R1(p3, 0.0), p3, 1.0e-14, 1.0e-14, "R(z) - z");
+    check_close_vec3d(tel.vec_axes_rotation_R1(p1, 0.5*M_PI), p1, 1.0e-14, 1.0e-14, "R(x) - x");
+    check_close_vec3d(tel.vec_axes_rotation_R1(p2, 0.5*M_PI), m3, 1.0e-14, 1.0e-14, "R(y) - -z");
+    check_close_vec3d(tel.vec_axes_rotation_R1(p3, 0.5*M_PI), p2, 1.0e-14, 1.0e-14, "R(z) - y");
+}
+
+/*
+ * @brief   Test R2 rotation
+ */
+BOOST_AUTO_TEST_CASE(_vec_axes_rotation_R2) {
+    // test vectors
+    std::array<double, 3> p1({1.0, 0.0, 0.0});
+    std::array<double, 3> p2({0.0, 1.0, 0.0});
+    std::array<double, 3> p3({0.0, 0.0, 1.0});
+    std::array<double, 3> m1({-1.0, 0.0, 0.0});
+
+    //"easy" tests
+    // test lat 0 lon 0 -- itrs x
+    json json_config = json::parse(default_config_str);
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    check_close_vec3d(tel.vec_axes_rotation_R2(p1, 0.0), p1, 1.0e-14, 1.0e-14, "R(x) - x");
+    check_close_vec3d(tel.vec_axes_rotation_R2(p2, 0.0), p2, 1.0e-14, 1.0e-14, "R(y) - y");
+    check_close_vec3d(tel.vec_axes_rotation_R2(p3, 0.0), p3, 1.0e-14, 1.0e-14, "R(z) - z");
+    check_close_vec3d(tel.vec_axes_rotation_R2(p1, 0.5*M_PI), p3, 1.0e-14, 1.0e-14, "R(x) - x");
+    check_close_vec3d(tel.vec_axes_rotation_R2(p2, 0.5*M_PI), p2, 1.0e-14, 1.0e-14, "R(y) - -z");
+    check_close_vec3d(tel.vec_axes_rotation_R2(p3, 0.5*M_PI), m1, 1.0e-14, 1.0e-14, "R(z) - y");
+}
+
+/*
+ * @brief   Test R3 rotation
+ */
+BOOST_AUTO_TEST_CASE(_vec_axes_rotation_R3) {
+    // test vectors
+    std::array<double, 3> p1({1.0, 0.0, 0.0});
+    std::array<double, 3> p2({0.0, 1.0, 0.0});
+    std::array<double, 3> p3({0.0, 0.0, 1.0});
+    std::array<double, 3> m2({0.0, -1.0, 0.0});
+
+    //"easy" tests
+    // test lat 0 lon 0 -- itrs x
+    json json_config = json::parse(default_config_str);
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    check_close_vec3d(tel.vec_axes_rotation_R3(p1, 0.0), p1, 1.0e-14, 1.0e-14, "R(x) - x");
+    check_close_vec3d(tel.vec_axes_rotation_R3(p2, 0.0), p2, 1.0e-14, 1.0e-14, "R(y) - y");
+    check_close_vec3d(tel.vec_axes_rotation_R3(p3, 0.0), p3, 1.0e-14, 1.0e-14, "R(z) - z");
+    check_close_vec3d(tel.vec_axes_rotation_R3(p1, 0.5*M_PI), m2, 1.0e-14, 1.0e-14, "R(x) - x");
+    check_close_vec3d(tel.vec_axes_rotation_R3(p2, 0.5*M_PI), p1, 1.0e-14, 1.0e-14, "R(y) - -z");
+    check_close_vec3d(tel.vec_axes_rotation_R3(p3, 0.5*M_PI), p3, 1.0e-14, 1.0e-14, "R(z) - y");
+}
+
+/*
+ * @brief   Test itrs <- cirs conversion
+ */
+BOOST_AUTO_TEST_CASE(_vec_cirs_to_itrs) {
+    // test vectors
+    std::array<double, 3> n1({1.0, 0.0, 0.0});
+    std::array<double, 3> n2({0.0, 1.0, 0.0});
+    std::array<double, 3> n3({0.0, 0.0, 1.0});
+
+    //"easy" tests
+    // test lat 0 lon 0 -- itrs x
+    json json_config = json::parse(default_config_str);
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    // test EOP
+    EOP eop = {.t_inst=0, .t_ut1=0, .delta_UT1_inst=0, .ERA_deg=0.0, .xp_as=0.0, .yp_as=0.0};
+
+    check_close_vec3d(tel.vec_cirs_to_itrs(n1, eop), cirs_to_itrs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel0_x - test0_x");
+    check_close_vec3d(tel.vec_cirs_to_itrs(n2, eop), cirs_to_itrs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel0_y - test0_y");
+    check_close_vec3d(tel.vec_cirs_to_itrs(n3, eop), cirs_to_itrs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel0_z - test0_z");
+
+    eop.ERA_deg = -279.6;
+    eop.xp_as = 0.0;
+    eop.yp_as = 0.0;
+
+    check_close_vec3d(tel.vec_cirs_to_itrs(n1, eop), cirs_to_itrs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel1_x - test1_x");
+    check_close_vec3d(tel.vec_cirs_to_itrs(n2, eop), cirs_to_itrs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel1_y - test1_y");
+    check_close_vec3d(tel.vec_cirs_to_itrs(n3, eop), cirs_to_itrs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel1_z - test1_z");
+
+    eop.ERA_deg = 0.0;
+    eop.xp_as = 123.45;
+    eop.yp_as = 0.0;
+
+    check_close_vec3d(tel.vec_cirs_to_itrs(n1, eop), cirs_to_itrs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel2_x - test2_x");
+    check_close_vec3d(tel.vec_cirs_to_itrs(n2, eop), cirs_to_itrs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel2_y - test2_y");
+    check_close_vec3d(tel.vec_cirs_to_itrs(n3, eop), cirs_to_itrs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel2_z - test2_z");
+
+    eop.ERA_deg = 0.0;
+    eop.xp_as = 0.0;
+    eop.yp_as = -987.654;
+
+    check_close_vec3d(tel.vec_cirs_to_itrs(n1, eop), cirs_to_itrs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel3_x - test3_x");
+    check_close_vec3d(tel.vec_cirs_to_itrs(n2, eop), cirs_to_itrs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel3_y - test3_y");
+    check_close_vec3d(tel.vec_cirs_to_itrs(n3, eop), cirs_to_itrs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel3_z - test3_z");
+
+    eop.ERA_deg = 234.56;
+    eop.xp_as = 789.012;
+    eop.yp_as = 3456.78;
+
+    check_close_vec3d(tel.vec_cirs_to_itrs(n1, eop), cirs_to_itrs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel4_x - test4_x");
+    check_close_vec3d(tel.vec_cirs_to_itrs(n2, eop), cirs_to_itrs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel4_y - test4_y");
+    check_close_vec3d(tel.vec_cirs_to_itrs(n3, eop), cirs_to_itrs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel4_z - test4_z");
+}
+
+/*
+ * @brief   Test itrs -> cirs conversion
+ */
+BOOST_AUTO_TEST_CASE(_vec_itrs_to_cirs) {
+    // test vectors
+    std::array<double, 3> n1({1.0, 0.0, 0.0});
+    std::array<double, 3> n2({0.0, 1.0, 0.0});
+    std::array<double, 3> n3({0.0, 0.0, 1.0});
+
+    //"easy" tests
+    // test lat 0 lon 0 -- itrs x
+    json json_config = json::parse(default_config_str);
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    // test EOP
+    EOP eop = {.t_inst=0, .t_ut1=0, .delta_UT1_inst=0, .ERA_deg=0.0, .xp_as=0.0, .yp_as=0.0};
+
+    check_close_vec3d(tel.vec_itrs_to_cirs(n1, eop), itrs_to_cirs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel0_x - test0_x");
+    check_close_vec3d(tel.vec_itrs_to_cirs(n2, eop), itrs_to_cirs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel0_y - test0_y");
+    check_close_vec3d(tel.vec_itrs_to_cirs(n3, eop), itrs_to_cirs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel0_z - test0_z");
+
+    eop.ERA_deg = -279.6;
+    eop.xp_as = 0.0;
+    eop.yp_as = 0.0;
+
+    check_close_vec3d(tel.vec_itrs_to_cirs(n1, eop), itrs_to_cirs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel1_x - test1_x");
+    check_close_vec3d(tel.vec_itrs_to_cirs(n2, eop), itrs_to_cirs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel1_y - test1_y");
+    check_close_vec3d(tel.vec_itrs_to_cirs(n3, eop), itrs_to_cirs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel1_z - test1_z");
+
+    eop.ERA_deg = 0.0;
+    eop.xp_as = 123.45;
+    eop.yp_as = 0.0;
+
+    check_close_vec3d(tel.vec_itrs_to_cirs(n1, eop), itrs_to_cirs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel2_x - test2_x");
+    check_close_vec3d(tel.vec_itrs_to_cirs(n2, eop), itrs_to_cirs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel2_y - test2_y");
+    check_close_vec3d(tel.vec_itrs_to_cirs(n3, eop), itrs_to_cirs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel2_z - test2_z");
+
+    eop.ERA_deg = 0.0;
+    eop.xp_as = 0.0;
+    eop.yp_as = -987.654;
+
+    check_close_vec3d(tel.vec_itrs_to_cirs(n1, eop), itrs_to_cirs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel3_x - test3_x");
+    check_close_vec3d(tel.vec_itrs_to_cirs(n2, eop), itrs_to_cirs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel3_y - test3_y");
+    check_close_vec3d(tel.vec_itrs_to_cirs(n3, eop), itrs_to_cirs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel3_z - test3_z");
+
+    eop.ERA_deg = 234.56;
+    eop.xp_as = 789.012;
+    eop.yp_as = 3456.78;
+
+    check_close_vec3d(tel.vec_itrs_to_cirs(n1, eop), itrs_to_cirs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel4_x - test4_x");
+    check_close_vec3d(tel.vec_itrs_to_cirs(n2, eop), itrs_to_cirs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel4_y - test4_y");
+    check_close_vec3d(tel.vec_itrs_to_cirs(n3, eop), itrs_to_cirs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14, "tel4_z - test4_z");
 }

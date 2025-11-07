@@ -480,16 +480,23 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const struct EOP& eop
                                           const struct EOP& eop0,
                                           std::vector<std::complex<double>>& phases) const {
 
-    // Take the pointing vector for the telescope (constant in time),
-    // and find it in the CIRS frame at ERA0.  This is the point we are
-    // attempting to stop the fringes at.
-    std::array<double, 3> n_tel0 = get_pointing_vec_in_dish_coords();
-    std::array<double, 3> n_topo0 = vec_dish_to_topocen(n_tel0);
+    // Get the pointing vector (phase center) for the telescope in dish coordinates. This is
+    // constant in time.
+    std::array<double, 3> n_dish0 = get_pointing_vec_in_dish_coords();
+
+    // Transform the pointing vector into topocentric coordinates (from which we can 
+    // transform to the sky), and telescope coordinates (where the dish locations live).
+    // These are also constant in time.
+    std::array<double, 3> n_topo0 = vec_dish_to_topocen(n_dish0);
+    std::array<double, 3> n_tel0 = vec_topocen_to_tel(n_topo0);
+    
+    // Take the pointing vector for the telescope and find it in the CIRS frame at ERA0.
+    // This is the point we are attempting to stop the fringes at.
     std::array<double, 3> n_itrs0 = vec_topocen_to_itrs(n_topo0);
     std::array<double, 3> n_cirs = vec_itrs_to_cirs(n_itrs0, eop0);
 
     // Now, given this CIRS vector, find its components in the telescope
-    // frame at the requested ERA
+    // frame at the requested (current) ERA
     std::array<double, 3> n_itrs = vec_cirs_to_itrs(n_cirs, eop);
     std::array<double, 3> n_topo = vec_itrs_to_topocen(n_itrs);
     std::array<double, 3> n_tel = vec_topocen_to_tel(n_topo);
