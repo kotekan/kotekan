@@ -27,8 +27,8 @@
 #include <set>
 #include <string>
 #include <sys/stat.h> // for stat
-#include <thread>
 #include <sys/wait.h>
+#include <thread>
 #include <unistd.h> // for gethostname
 #include <utility>
 #include <vector>
@@ -46,8 +46,8 @@ static N2Metadata _force_n2meta_registration;
 
 // Build dataset filename to simulate pre-existing final files (mirrors stage logic)
 static std::string get_dataset_name(const std::string& base_dir, const std::string& file_name,
-                                        bool prefix_hostname, uint64_t file_start_time_ns,
-                                        const std::string& suffix) {
+                                    bool prefix_hostname, uint64_t file_start_time_ns,
+                                    const std::string& suffix) {
     std::ostringstream buf;
     buf << base_dir;
     if (!base_dir.empty() && base_dir.back() != '/')
@@ -244,8 +244,7 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_guard", "N2Metadata");
-    Buffer buf(2, frame_size, pool, "n2buf_guard", "N2", 1, false, false, std::vector<int>{},
-               true);
+    Buffer buf(2, frame_size, pool, "n2buf_guard", "N2", 1, false, false, std::vector<int>{}, true);
 
     // Prepare frame view and two metadata instances for the same (f,t)
     for (int idx = 0; idx < 2; ++idx)
@@ -337,9 +336,9 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     const size_t expected_file_nt = 2;
 
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name,
-                                 /*prefix_hostname*/ false, file_seconds,
-                                 /*blocksize_f (0=all)*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
-                                 /*seq_override*/ dt_ns);
+                                   /*prefix_hostname*/ false, file_seconds,
+                                   /*blocksize_f (0=all)*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
+                                   /*seq_override*/ dt_ns);
 
     // Buffer + container
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
@@ -426,9 +425,9 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     const uint64_t file_seconds = 2;
 
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name,
-                                 /*prefix_hostname*/ false, file_seconds,
-                                 /*blocksize_f (0=all)*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
-                                 /*seq_override*/ 1'000'000'000ULL);
+                                   /*prefix_hostname*/ false, file_seconds,
+                                   /*blocksize_f (0=all)*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
+                                   /*seq_override*/ 1'000'000'000ULL);
 
     // Buffer + container
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
@@ -513,8 +512,8 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const size_t file_nt = 2;
     const uint64_t file_seconds = 200;
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
-                                 file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                 /*seq_override*/ 1'000'000'000ULL);
+                                   file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                   /*seq_override*/ 1'000'000'000ULL);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_roll", "N2Metadata");
@@ -596,8 +595,8 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     const uint64_t frame_len_ticks = 1;
     const uint64_t file_seconds = 1; // one second file window => one frame per file
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
-                                 file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                 /*seq_override*/ dt_ns);
+                                   file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                   /*seq_override*/ dt_ns);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_subsec", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
@@ -668,8 +667,8 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const size_t file_nt = 2;
     const uint64_t window_seconds = 2;
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
-                                 window_seconds, 0 /*bs_f*/, 1 /*bs_t*/,
-                                 0 /*late_frame_grace_seconds*/, 1'000'000'000ULL);
+                                   window_seconds, 0 /*bs_f*/, 1 /*bs_t*/,
+                                   0 /*late_frame_grace_seconds*/, 1'000'000'000ULL);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(8, sizeof(N2Metadata), "pool_timeout", "N2Metadata");
@@ -741,8 +740,8 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const size_t nfreq = 2;
     const uint64_t file_seconds = 1;
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
-                                 file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                 /*seq_override*/ 1'000'000'000ULL);
+                                   file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                   /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_drop", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
@@ -826,8 +825,8 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
 
     const uint64_t file_seconds = file_nt; // with 1s frames, file_nt==file_seconds
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
-                                 file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                 /*seq_override*/ 1'000'000'000ULL);
+                                   file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+                                   /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(4, sizeof(N2Metadata), "pool_geom", "N2Metadata");
     Buffer buf(4, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);

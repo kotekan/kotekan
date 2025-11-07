@@ -52,6 +52,7 @@ add_library(
     HFBWriter.cpp
     RawReader.cpp
     VisRawReader.cpp
+    VisWriter.cpp
     HFBRawReader.cpp
     restInspectFrame.cpp
     frbNetworkProcess.cpp

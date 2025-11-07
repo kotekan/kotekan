@@ -6,12 +6,13 @@
 
 #include "Config.hpp"
 #include "Stage.hpp"
-#include "errors.h"
-#include "fmt.hpp"
-#include "kotekanLogging.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
+#include "errors.h"
 #include "hdf5Files.hpp"
+#include "kotekanLogging.hpp"
+
+#include "fmt.hpp"
 
 #include <N2FrameView.hpp>
 #include <N2Metadata.hpp>
@@ -187,7 +188,7 @@ public:
         assert(meta->num_elements == num_input);
         assert(meta->num_prod == num_prod);
         assert(meta->num_ev == num_ev);
-        
+
         // Check per-time metadata consistency and assignment
         if (fpga_start_tick[t_index] != 0)
             assert(fpga_start_tick[t_index] == meta->fpga_start_tick);
@@ -304,7 +305,6 @@ public:
     uint8_t get_added(size_t f, size_t t) const {
         return added_ft[idx_ft(f, t)];
     }
-    
 };
 
 /**

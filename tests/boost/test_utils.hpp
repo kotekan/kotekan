@@ -6,11 +6,11 @@
 #include "N2Metadata.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
-#include "json.hpp"
 #include "visUtil.hpp"
 
-#include <boost/test/included/unit_test.hpp>
+#include "json.hpp"
 
+#include <boost/test/included/unit_test.hpp>
 #include <chrono>
 #include <cstring>
 #include <dirent.h>
