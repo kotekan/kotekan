@@ -11,6 +11,7 @@
 #include "json.hpp"
 
 #include <boost/test/included/unit_test.hpp>
+#include <complex>
 #include <filesystem>
 #include <inttypes.h>
 #include <sys/wait.h>
@@ -21,6 +22,7 @@ using kotekan::Config;
 using json = nlohmann::json;
 using kotekan::configUpdater;
 using kotekan::restServer;
+using namespace std::complex_literals;
 
 const std::string default_config_str = R"config_str({
 "type": "config",
@@ -94,6 +96,19 @@ void check_equal_vec3d(const std::array<double, 3>& v1, const std::array<double,
     BOOST_CHECK_MESSAGE(v1[0] == v2[0] && v1[1] == v2[1] && v1[2] == v2[2],
                         fmt::format("Expected ({:g}, {:g}, {:g}) == ({:g}, {:g}, {:g})", v1[0],
                                     v1[1], v1[2], v2[0], v2[1], v2[2]));
+}
+
+/*
+ * @brief   Helper to test equality for double vec3s within tolerance.
+ */
+void check_close_double(double v1, double v2, double atol, double rtol, const std::string& label1, const std::string& label2) {
+
+    double diff = v1 - v2;
+    double tol = atol + rtol * fabs(0.5 * (v1 + v2));
+
+    BOOST_CHECK_MESSAGE(fabs(diff) <= tol,
+                        fmt::format("Expected |{:s} - {:s}| = |{:g} - {:g}| <= {:g}",
+                                    label1, label2, v1, v2, tol));
 }
 
 /*
@@ -876,4 +891,78 @@ BOOST_AUTO_TEST_CASE(_vec_itrs_to_cirs) {
     check_close_vec3d(tel.vec_itrs_to_cirs(n3, eop),
                       itrs_to_cirs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel4_z - test4_z");
+}
+
+/*
+ * @brief   Test fringestopping phases
+ */
+BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
+    /*
+     * Thompson, Moran, and Swenson (3ed), Eq. 4.9 gives the fringe rate as:
+     * dphi/dt = -w_e * u * cos(delta).
+     *
+     * delta = declination of source
+     * u = E/W baseline in wavelengths
+     * w_e = 7.292115e-5 rad/s = Earth's rotation rate (correcting a typo, the written
+     *        value is 7.29115e-15 rad/s.
+     *
+     * In CHORD we define the visibility with the opposite sign of the phase w.r.t.
+     * Thompson, so we expect:
+     * 
+     * dphi/dt = + w_e * u * cos(delta)
+     *
+     * to first order in time.
+     */
+    double freq_MHz = 1.0;
+
+    double C = 2.99792458e8;
+
+    double lambda = C / (1.0e6 * freq_MHz);
+
+    double w_e = 7.292115e-5;  // = 2pi * 1.0027378... / 86400 s
+
+    double target_dec_deg = 45.0;
+    double tel_lat_deg = 45.0;
+
+    double dec = target_dec_deg * M_PI / 180;
+
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D00");
+    dishInfo d1 = make_dishInfo(1, 1, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D01");
+    dishInfo d2 = make_dishInfo(2, 0, 1, {0.0, 0.0, 0.0}, 0.0, 0, "D10");
+    dishInfo d3 = make_dishInfo(3, 0, 0, {lambda, lambda, 0.0}, 0.0, 0, "D11");
+    
+    double t = 1.0; // A short time to get only 1st order effects
+    EOP eop0 = {.t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0, .xp_as = 0,
+                .yp_as = 0};
+    EOP eop = {.t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0, .xp_as = 0,
+                .yp_as = 0};
+    eop.ERA_deg = t * w_e * 180.0 / M_PI;
+
+    json json_config = json::parse(default_config_str);
+    json_config["num_elements"] = 8;
+    json_config["num_dishes"] = 4;
+    json_config["telescope"]["origin_itrs_lat_deg"] = tel_lat_deg;
+    json_config["telescope"]["origin_itrs_lon_deg"] = 0.0;
+    json_config["telescope"]["dish_separation_ew_m"] = lambda;
+    json_config["telescope"]["dish_separation_ns_m"] = lambda;
+    json_config["telescope"]["dish_inputs"] = {d0, d1, d2, d3};
+    json_config["telescope"]["dish_elev_axis"] = {1.0, 0.0, 0.0};
+    json_config["telescope"]["dish_vert_axis"] = {0.0, 0.0, 1.0};
+    json_config["telescope"]["dish_coelev_deg"] = target_dec_deg - tel_lat_deg;
+    json_config["telescope"]["grid_x_axis"] = {1.0, 0.0, 0.0};
+    json_config["telescope"]["grid_y_axis"] = {0.0, 1.0, 0.0};
+
+    std::vector<std::complex<double>> tel_phases(4, 0);
+
+    std::vector<double> test_phases({0.0, 2*M_PI * w_e * t * cos(dec), 0.0, 2 * M_PI * w_e * t * cos(dec)});
+
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    tel.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
+
+    for(int i = 0; i < 4; i++) {
+        check_close_double(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
+        check_close_double(atan2(tel_phases[i].imag(),  tel_phases[i].real()),
+                          test_phases[i], 1.0e-8, 1.0e-5, "tel_phase", "test_phase");
+    }
 }

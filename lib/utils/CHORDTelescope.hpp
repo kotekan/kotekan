@@ -143,35 +143,55 @@ struct dishInputFields {
  * @conf    gps_host            string. The GPS server IP address.
  * @conf    gps_port            uint.   The port number on the GPS server.
  * @conf    gps_endpoint        string. The enpoint with the GPS time.
- * @conf    origin_itrs_lon_deg       double. Instrument longitude in degrees.
- * @conf    origin_itrs_lat_deg        double. Instrument latitude in degrees.
+ * @conf    origin_itrs_lon_deg double. Instrument longitude in degrees.
+ * @conf    origin_itrs_lat_deg double. Instrument latitude in degrees.
  * @conf    dish_coelev_deg     double. Instrument pointing co-elevation, in
  *                                      degrees from zenith. Positive is North.
  * @conf    sampling_rate_MHz   double. ADC Sampling Rate (~3.2 GHz)
- * @conf    fft_lenth           double. F-engine FFT length (~16384)
- * @conf    inst_grid_x_axis    [double, 3].    The basis vector, measured in
+ * @conf    fft_lenth           double. F-engine FFT length (16384 for CHORD)
+ * @conf    grid_x_axis         [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish-dish
  *                                      E/W separation.  Must be:
  *                                      normalized, orthogonal to the y-axis.
- * @conf    inst_grid_y_axis    [double, 3].    The basis vector, measured in
+ * @conf    grid_y_axis         [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish-dish
  *                                      N/S separation.  Must be:
  *                                      normalized, orthogonal to the x-axis.
- * @conf    inst_dish_elev_axis [double, 3].    The basis vector, measured in
+ * @conf    dish_elev_axis      [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish
  *                                      elevation axis. East-pointing. Must be:
  *                                      normalized, orthogonal to the vert-axis.
- * @conf    inst_dish_vert_axis [double, 3].    The basis vector, measured in
+ * @conf    dish_vert_axis      [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish
  *                                      vertical direction. Up-pointing, 0 deg
  *                                      co-elevation. Must be:
  *                                      normalized, orthogonal to the elev-axis.
- * @conf    dish_positions      [[double, 3], N]    List of 3D dish positions,
- *                                      measured in the "Telescope" frame,
- *                                      where the x-axis is dish E/W sep,
- *                                      and the y-axis is dish N/S sep. Should
- *                                      be, within mm, a rectilinear
- *                                      axis-aligned grid in these coordinates.
+ * @conf    num_dishes          int     Total number of dishes in the kotekan data
+ *                                      pipeline, each providing 2 polarizations. Equal to
+ *                                      the total number of configured dishes, plus possibly
+ *                                      some "fake" dishes to keep the number a multiple of
+ *                                      32.
+ * @conf    dish_separation_ew_m    double.     The separation in meters between dish grid
+ *                                      locations in the Telescope x-axis direction
+ *                                      (generally, East/West).
+ * @conf    dish_separation_ns_m    double.     The separation in meters between dish grid
+ *                                      locations in the Telescope y-axis direction
+ *                                      (generally, North/South).
+ * @conf    dish_inputs         [dishInfo, N]   List of dishInfo structs, each represented
+ *                                      by a map with the following keys:
+ *                                      - dishIdx   int     Position of this dish in the
+ *                                          standard visibility matrix
+ *                                      - ew_idx    int     E/W (x) grid position in the
+ *                                          main array.
+ *                                      - ns_idx    int     N/S (y) grid position in the
+ *                                          main array.
+ *                                      - pos_disp_m [double, 3]    Displacement from grid
+ *                                          position in meters, Telescope frame.
+ *                                      - coelev_disp_deg   double  Displacement from
+ *                                          target co-elevation, degrees.
+ *                                      - type      int     Integer code for type of input,
+ *                                          -1: fake "NULL" dish, 0: standard dish.
+ *                                      - label     String  Label for input.
  **/
 
 /*
