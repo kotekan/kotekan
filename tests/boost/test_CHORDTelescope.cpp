@@ -113,7 +113,8 @@ void check_equal_vec3d(const std::array<double, 3>& v1, const std::array<double,
                                     v1[1], v1[2], v2[0], v2[1], v2[2]));
 }
 
-void check_close_vec3d(const std::array<double, 3>& v1, const std::array<double, 3>& v2, double atol, double rtol, const std::string &label) {
+void check_close_vec3d(const std::array<double, 3>& v1, const std::array<double, 3>& v2,
+                       double atol, double rtol, const std::string& label) {
 
     double diff[3] = {v1[0] - v2[0], v1[1] - v2[1], v1[2] - v2[2]};
     double tol[3] = {atol + rtol * fabs(0.5 * (v1[0] + v2[0])),
@@ -123,7 +124,7 @@ void check_close_vec3d(const std::array<double, 3>& v1, const std::array<double,
     bool pass[3] = {fabs(diff[0]) <= tol[0], fabs(diff[1]) <= tol[1], fabs(diff[2]) <= tol[2]};
     BOOST_CHECK_MESSAGE(pass[0] && pass[1] && pass[2],
                         fmt::format("Expected |{:s}| = |{:g}, {:g}, {:g}| <= ({:g}, {:g}, {:g})",
-                            label, diff[0], diff[1], diff[2], tol[0], tol[1], tol[2]));
+                                    label, diff[0], diff[1], diff[2], tol[0], tol[1], tol[2]));
 }
 
 BOOST_AUTO_TEST_CASE(_dish_num) {
@@ -260,7 +261,7 @@ BOOST_AUTO_TEST_CASE(_pointing_vec_dish) {
 
     // Test co-elevation
     double coelev_deg = 20.0;
-    
+
     // Compute correct pointing vec.
     double coelev = M_PI * coelev_deg / 180.0;
     std::array<double, 3> point{0.0, sin(coelev), cos(coelev)};
@@ -282,19 +283,19 @@ BOOST_AUTO_TEST_CASE(_pointing_vec_dish) {
 
     // construct telescope
     json_config["telescope"]["dish_coelev_deg"] = coelev_deg;
-    const CHORDTelescope &tel2 = get_telescope(json_config);
+    const CHORDTelescope& tel2 = get_telescope(json_config);
 
     // check
     check_equal_vec3d(tel2.get_pointing_vec_in_dish_coords(), point2);
 }
 
 BOOST_AUTO_TEST_CASE(_vec_topocen_to_dish) {
-    //Make test frame
+    // Make test frame
     double dphi = -0.5;
     double dtheta = 0.2;
 
-    std::array<double, 3> z({cos(dphi)*sin(dtheta), sin(dphi)*sin(dtheta), cos(dtheta)});
-    std::array<double, 3> x({cos(dphi)*cos(dtheta), sin(dphi)*cos(dtheta), -sin(dtheta)});
+    std::array<double, 3> z({cos(dphi) * sin(dtheta), sin(dphi) * sin(dtheta), cos(dtheta)});
+    std::array<double, 3> x({cos(dphi) * cos(dtheta), sin(dphi) * cos(dtheta), -sin(dtheta)});
     std::array<double, 3> y({-sin(dphi), cos(dphi), 0.0});
 
     // Make telescope
@@ -309,18 +310,18 @@ BOOST_AUTO_TEST_CASE(_vec_topocen_to_dish) {
     std::array<double, 3> n3({0.0, 0.0, 1.0});
 
     // Should just pick out basis vectors.
-    check_close_vec3d(tel.vec_topocen_to_dish(x), n1, 1.0e-14, 1.0e-14, "x_dish - n1"); 
-    check_close_vec3d(tel.vec_topocen_to_dish(y), n2, 1.0e-14, 1.0e-14, "y_dish - n2"); 
-    check_close_vec3d(tel.vec_topocen_to_dish(z), n3, 1.0e-14, 1.0e-14, "z_dish - n3"); 
+    check_close_vec3d(tel.vec_topocen_to_dish(x), n1, 1.0e-14, 1.0e-14, "x_dish - n1");
+    check_close_vec3d(tel.vec_topocen_to_dish(y), n2, 1.0e-14, 1.0e-14, "y_dish - n2");
+    check_close_vec3d(tel.vec_topocen_to_dish(z), n3, 1.0e-14, 1.0e-14, "z_dish - n3");
 }
 
 BOOST_AUTO_TEST_CASE(_vec_dish_to_topocen) {
-    //Make test frame
+    // Make test frame
     double dphi = -0.5;
     double dtheta = 0.2;
 
-    std::array<double, 3> z({cos(dphi)*sin(dtheta), sin(dphi)*sin(dtheta), cos(dtheta)});
-    std::array<double, 3> x({cos(dphi)*cos(dtheta), sin(dphi)*cos(dtheta), -sin(dtheta)});
+    std::array<double, 3> z({cos(dphi) * sin(dtheta), sin(dphi) * sin(dtheta), cos(dtheta)});
+    std::array<double, 3> x({cos(dphi) * cos(dtheta), sin(dphi) * cos(dtheta), -sin(dtheta)});
     std::array<double, 3> y({-sin(dphi), cos(dphi), 0.0});
 
     // Make telescope
@@ -335,18 +336,18 @@ BOOST_AUTO_TEST_CASE(_vec_dish_to_topocen) {
     std::array<double, 3> n3({0.0, 0.0, 1.0});
 
     // Should just pick out basis vectors.
-    check_close_vec3d(tel.vec_dish_to_topocen(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x"); 
-    check_close_vec3d(tel.vec_dish_to_topocen(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y"); 
-    check_close_vec3d(tel.vec_dish_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z"); 
+    check_close_vec3d(tel.vec_dish_to_topocen(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel.vec_dish_to_topocen(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel.vec_dish_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z");
 }
 
 BOOST_AUTO_TEST_CASE(_vec_topocen_to_tel) {
-    //Make test frame
+    // Make test frame
     double dphi = -0.5;
     double dtheta = 0.2;
 
-    std::array<double, 3> z({cos(dphi)*sin(dtheta), sin(dphi)*sin(dtheta), cos(dtheta)});
-    std::array<double, 3> x({cos(dphi)*cos(dtheta), sin(dphi)*cos(dtheta), -sin(dtheta)});
+    std::array<double, 3> z({cos(dphi) * sin(dtheta), sin(dphi) * sin(dtheta), cos(dtheta)});
+    std::array<double, 3> x({cos(dphi) * cos(dtheta), sin(dphi) * cos(dtheta), -sin(dtheta)});
     std::array<double, 3> y({-sin(dphi), cos(dphi), 0.0});
 
     // Make telescope
@@ -361,18 +362,18 @@ BOOST_AUTO_TEST_CASE(_vec_topocen_to_tel) {
     std::array<double, 3> n3({0.0, 0.0, 1.0});
 
     // Should just pick out basis vectors.
-    check_close_vec3d(tel.vec_topocen_to_tel(x), n1, 1.0e-14, 1.0e-14, "x_tel - n1"); 
-    check_close_vec3d(tel.vec_topocen_to_tel(y), n2, 1.0e-14, 1.0e-14, "y_tel - n2"); 
-    check_close_vec3d(tel.vec_topocen_to_tel(z), n3, 1.0e-14, 1.0e-14, "z_tel - n3"); 
+    check_close_vec3d(tel.vec_topocen_to_tel(x), n1, 1.0e-14, 1.0e-14, "x_tel - n1");
+    check_close_vec3d(tel.vec_topocen_to_tel(y), n2, 1.0e-14, 1.0e-14, "y_tel - n2");
+    check_close_vec3d(tel.vec_topocen_to_tel(z), n3, 1.0e-14, 1.0e-14, "z_tel - n3");
 }
 
 BOOST_AUTO_TEST_CASE(_vec_tel_to_topocen) {
-    //Make test frame
+    // Make test frame
     double dphi = -0.5;
     double dtheta = 0.2;
 
-    std::array<double, 3> z({cos(dphi)*sin(dtheta), sin(dphi)*sin(dtheta), cos(dtheta)});
-    std::array<double, 3> x({cos(dphi)*cos(dtheta), sin(dphi)*cos(dtheta), -sin(dtheta)});
+    std::array<double, 3> z({cos(dphi) * sin(dtheta), sin(dphi) * sin(dtheta), cos(dtheta)});
+    std::array<double, 3> x({cos(dphi) * cos(dtheta), sin(dphi) * cos(dtheta), -sin(dtheta)});
     std::array<double, 3> y({-sin(dphi), cos(dphi), 0.0});
 
     // Make telescope
@@ -387,8 +388,7 @@ BOOST_AUTO_TEST_CASE(_vec_tel_to_topocen) {
     std::array<double, 3> n3({0.0, 0.0, 1.0});
 
     // Should just pick out basis vectors.
-    check_close_vec3d(tel.vec_tel_to_topocen(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x"); 
-    check_close_vec3d(tel.vec_tel_to_topocen(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y"); 
-    check_close_vec3d(tel.vec_tel_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z"); 
+    check_close_vec3d(tel.vec_tel_to_topocen(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel.vec_tel_to_topocen(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel.vec_tel_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z");
 }
-
