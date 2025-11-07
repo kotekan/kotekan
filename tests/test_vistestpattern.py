@@ -248,7 +248,7 @@ def test_pattern_no_noise_freq(tmpdir_factory):
     freq_params["freq_ids"] = [0, 1, 2, 3]
     freq_params["total_frames"] = 12
 
-    random.seed()
+    random.seed(42)
     for i in range(2):
         freq_params["freq_values"][i][0] = random.random() * 128
         freq_params["freq_values"][i][1] = random.random() * 128
@@ -304,7 +304,7 @@ def test_pattern_noise_freq(tmpdir_factory):
     freq_params["freq_ids"] = list(range(0, 30))
     freq_params["total_frames"] = 12
 
-    random.seed()
+    random.seed(42)
     for i in range(10):
         freq_params["freq_values"][i][0] = random.random() * 128
         freq_params["freq_values"][i][1] = random.random() * 128
@@ -423,7 +423,7 @@ def test_pattern_no_noise_inputs(tmpdir_factory):
     input_params["input_values"] = [[0, 0], [1, 1]]
     input_params["total_frames"] = 12
 
-    random.seed()
+    random.seed(42)
     for i in range(2):
         input_params["input_values"][i][0] = random.random() * 128
         input_params["input_values"][i][1] = random.random() * 128
@@ -470,7 +470,7 @@ def test_pattern_noise_inputs(tmpdir_factory):
     input_params["input_values"] = [[0, 0], [1, 1]]
     input_params["total_frames"] = 8
 
-    random.seed()
+    random.seed(42)
     for i in range(2):
         input_params["input_values"][i][0] = random.random() * 128
         input_params["input_values"][i][1] = random.random() * 128
@@ -492,6 +492,7 @@ def test_pattern_noise_inputs(tmpdir_factory):
         ],
     }
     rest_commands = command_test_pattern("inputs", 2, inputs_test_pattern)
+    print(rest_commands)
 
     yield run_test(
         write_dir=write_dir,
