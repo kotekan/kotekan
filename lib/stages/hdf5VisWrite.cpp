@@ -87,6 +87,11 @@ hdf5VisWrite::hdf5VisWrite(kotekan::Config& config, const std::string& unique_na
     if ((day_seconds % file_seconds) != 0) {
         FATAL_ERROR("file_seconds={} must evenly divide 86400.", file_seconds);
     }
+
+    // Ensure the input buffer is a N2Buffer
+    if (buffer->buffer_type != "N2") {
+        FATAL_ERROR("Input buffer must be a N2-type buffer.");
+    }
 }
 
 hdf5VisWrite::~hdf5VisWrite() {}

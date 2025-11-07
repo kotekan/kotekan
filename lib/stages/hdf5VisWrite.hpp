@@ -268,6 +268,8 @@ public:
  * @par Metrics
  * @metric kotekan_viswrite_write_time_seconds  Duration to write the last flush
  * @metric kotekan_viswrite_n_datasets          Number of datasets currently open
+ *
+ * @note User-level documentation lives in docs/sphinx/user/processes/hdf5VisWrite.rst.
  **/
 class hdf5VisWrite : public kotekan::Stage {
 
