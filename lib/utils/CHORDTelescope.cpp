@@ -484,12 +484,12 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const struct EOP& eop
     // constant in time.
     std::array<double, 3> n_dish0 = get_pointing_vec_in_dish_coords();
 
-    // Transform the pointing vector into topocentric coordinates (from which we can 
+    // Transform the pointing vector into topocentric coordinates (from which we can
     // transform to the sky), and telescope coordinates (where the dish locations live).
     // These are also constant in time.
     std::array<double, 3> n_topo0 = vec_dish_to_topocen(n_dish0);
     std::array<double, 3> n_tel0 = vec_topocen_to_tel(n_topo0);
-    
+
     // Take the pointing vector for the telescope and find it in the CIRS frame at ERA0.
     // This is the point we are attempting to stop the fringes at.
     std::array<double, 3> n_itrs0 = vec_topocen_to_itrs(n_topo0);
