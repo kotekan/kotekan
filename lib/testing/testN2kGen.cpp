@@ -20,7 +20,6 @@
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error, invalid_argument
 #include <stdint.h>    // for uint64_t, uint32_t, uint8_t, int32_t
-#include <stdlib.h>    // for rand, srand
 #include <strings.h>   // for bzero
 #include <sys/time.h>  // for gettimeofday, timeval
 #include <sys/types.h> // for uint
@@ -302,10 +301,10 @@ void testN2kGen::main_thread() {
     int num_frames_generated = 0;
     uint64_t seq_num = 0;
 
-    std::random_device rd;
-    if (seed == 0)
-        seed = rd();
-    std::mt19937 gen(seed);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int32_t> count_dist(count_min, count_max);
+    std::uniform_int_distribution<int32_t> corr_real_dist(corr_min[0], corr_max[0]);
+    std::uniform_int_distribution<int32_t> corr_imag_dist(corr_min[1], corr_max[1]);
 
     int corr_val_idx = 0;
     int count_val_idx = 0;
@@ -360,7 +359,7 @@ void testN2kGen::main_thread() {
                 int32_t count_scalar_val = -1;
 
                 if (count_type == "random_scalar")
-                    count_scalar_val = count_min + rand() % (count_max - count_min + 1);
+                    count_scalar_val = count_dist(rng);
                 if (count_type == "const_scalar") {
                     if (count_value_array.size() > 0) {
                         count_scalar_val =
@@ -390,7 +389,7 @@ void testN2kGen::main_thread() {
                                         count[idx] = count_value;
                                     }
                                 } else if (count_type == "random") {
-                                    count[idx] = count_min + rand() % (count_max - count_min + 1);
+                                    count[idx] = count_dist(rng);
                                 } else if (count_type == "const_scalar") {
                                     count[idx] = count_scalar_val;
                                 } else if (count_type == "random_scalar") {
@@ -434,10 +433,8 @@ void testN2kGen::main_thread() {
                                         corr[idx + 1] = corr_value[1];
                                     }
                                 } else if (corr_type == "random") {
-                                    corr[idx + 0] =
-                                        corr_min[0] + rand() % (corr_max[0] - corr_min[0] + 1);
-                                    corr[idx + 1] =
-                                        corr_min[1] + rand() % (corr_max[1] - corr_min[1] + 1);
+                                    corr[idx + 0] = corr_real_dist(rng);
+                                    corr[idx + 1] = corr_imag_dist(rng);
                                 } else if (corr_type == "f_times_ee") {
                                     int i = ilo + corr_blocksize * ihi;
                                     int j = jlo + corr_blocksize * jhi;
