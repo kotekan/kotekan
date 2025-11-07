@@ -19,9 +19,9 @@
 #include <assert.h>    // for assert
 #include <cmath>       // for fmod
 #include <functional>  // for bind, function, _1, _2
+#include <random>      // for mt19937
 #include <stdexcept>   // for invalid_argument
 #include <stdint.h>    // for int8_t, int16_t, int32_t, uint8_t, uint32_t, uint64_t
-#include <stdlib.h>    // for rand, srand
 #include <strings.h>   // for bzero
 #include <sys/time.h>  // for gettimeofday, timeval
 #include <sys/types.h> // for uint
@@ -184,10 +184,8 @@ void testDataGen::main_thread() {
     double frame_length =
         samples_per_data_set * ts_to_double(Telescope::instance().seq_length()) / num_links;
 
-    if (((type == "random") || (type == "random_signed")
-         || (type == "random_signed_offset" || type == "random1x8") || (type == "onehot"))
-        && _seed)
-        srand(_seed);
+    std::mt19937 rng(static_cast<std::mt19937::result_type>(_seed));
+    auto next_rand = [&rng]() -> uint32_t { return rng(); };
 
     while (!stop_thread) {
         double start_time = current_time();
@@ -313,7 +311,7 @@ void testDataGen::main_thread() {
                 std::vector<int> indices;
                 for (size_t i = 0; i < _array_shape.size(); i++) {
                     int n = _array_shape[i];
-                    int k = rand() % n;
+                    int k = static_cast<int>(next_rand() % static_cast<uint32_t>(n));
                     j = j * n + k;
                     if (i)
                         istring += ", ";
@@ -334,7 +332,7 @@ void testDataGen::main_thread() {
                 }
                 DEBUG("PY onehot[{:d}] = (({:s}), 0x{:x})", frame_id_abs, istring, val);
             } else {
-                int j = rand() % n_to_set;
+                int j = static_cast<int>(next_rand() % static_cast<uint32_t>(n_to_set));
                 INFO("Set {:s}[{:d}] flat index {:d} = 0x{:x} to 0x{:x} ({:d})", buf->buffer_name,
                      frame_id, j, j, val, val);
                 frame[j] = val;
@@ -382,8 +380,8 @@ void testDataGen::main_thread() {
                 char new_imaginary;
                 if (_reuse_random && finished_seeding_constant)
                     break;
-                new_real = (rand() % 15) + 1;      // Limit to [-7, 7]
-                new_imaginary = (rand() % 15) + 1; // Limit to [-7, 7]
+                new_real = static_cast<char>((next_rand() % 15) + 1);      // Limit to [-7, 7]
+                new_imaginary = static_cast<char>((next_rand() % 15) + 1); // Limit to [-7, 7]
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
             } else if (type == "random_signed") {
@@ -391,10 +389,10 @@ void testDataGen::main_thread() {
                 char new_imaginary;
                 if (_reuse_random && finished_seeding_constant)
                     break;
-                int r = rand();
-                new_real = (r % 15) + 1; // Limit to [-7, 7]
+                uint32_t r = next_rand();
+                new_real = static_cast<char>((r % 15) + 1); // Limit to [-7, 7]
                 r >>= 4;
-                new_imaginary = (r % 15) + 1; // Limit to [-7, 7]
+                new_imaginary = static_cast<char>((r % 15) + 1); // Limit to [-7, 7]
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output ^ 0x88;
             } else if (type == "random_signed_offset") {
@@ -402,15 +400,15 @@ void testDataGen::main_thread() {
                 char new_imaginary;
                 if (_reuse_random && finished_seeding_constant)
                     break;
-                int r = rand();
-                new_real = (r % 15) + 1; // Limit to [-7, 7]
+                uint32_t r = next_rand();
+                new_real = static_cast<char>((r % 15) + 1); // Limit to [-7, 7]
                 r >>= 4;
-                new_imaginary = (r % 15) + 1; // Limit to [-7, 7]
+                new_imaginary = static_cast<char>((r % 15) + 1); // Limit to [-7, 7]
                 frame[j] = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
             } else if (type == "random1x8") {
                 if (_reuse_random && finished_seeding_constant)
                     break;
-                uint8_t rand_val = rand() & 0xFF;
+                uint8_t rand_val = static_cast<uint8_t>(next_rand() & 0xFFu);
                 frame[j] = rand_val;
             } else if (type == "tpluse") {
                 int time_idx = j / num_elements;
