@@ -289,7 +289,7 @@ jobs:
           set -euo pipefail
           mkdir $GITHUB_WORKSPACE/build-2404 && cd $GITHUB_WORKSPACE/build-2404
           ccache -s
-          cmake -DARCH=x86-64 -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
+          cmake -DARCH=haswell -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
           make -j $(nproc)
           ccache -s
 
