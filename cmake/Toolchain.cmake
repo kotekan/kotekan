@@ -153,8 +153,17 @@ add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-D_GNU
 if(NOT DEFINED ARCH)
     set(ARCH "native")
 endif()
-add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-march=${ARCH}>)
-add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-mtune=${ARCH}>)
+# Normalize problematic values
+if(ARCH STREQUAL "x86-64")
+    set(ARCH_MTUNE "generic")   # or "k8" if you want an older baseline
+    set(ARCH_MARCH "x86-64")    # march syntax is valid for x86-64
+else()
+    set(ARCH_MTUNE "${ARCH}")
+    set(ARCH_MARCH "${ARCH}")
+endif()
+
+add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-march=${ARCH_MARCH}>)
+add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-mtune=${ARCH_MTUNE}>)
 add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-I/opt/rocm/include>)
 
 # OpenMP flags
