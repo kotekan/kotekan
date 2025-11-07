@@ -54,15 +54,15 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     dt_ns = (GIGA * fft_length) / (1.0e6 * sampling_rate_MHz);
     nfreq_total = fft_length / 2;
 
-    _inst_long_deg = config.get<double>(path, "inst_long_deg");
-    _inst_lat_deg = config.get<double>(path, "inst_lat_deg");
-    _inst_coelev_deg = config.get<double>(path, "inst_coelev_deg");
+    _origin_itrs_lon_deg = config.get<double>(path, "origin_itrs_lon_deg");
+    _origin_itrs_lat_deg = config.get<double>(path, "origin_itrs_lat_deg");
+    _dish_coelev_deg = config.get<double>(path, "dish_coelev_deg");
 
-    INFO("Telescope configured with longitude:    {:f} deg", _inst_long_deg);
-    INFO("Telescope configured with latitude:     {:f} deg", _inst_lat_deg);
-    INFO("Telescope configured with co-elevation: {:f} deg", _inst_coelev_deg);
+    INFO("Telescope configured with longitude:    {:f} deg", _origin_itrs_lon_deg);
+    INFO("Telescope configured with latitude:     {:f} deg", _origin_itrs_lat_deg);
+    INFO("Telescope configured with co-elevation: {:f} deg", _dish_coelev_deg);
     INFO("Telescope targetting approximate declination: {:f} deg",
-         _inst_lat_deg + 90 - _inst_coelev_deg);
+         _origin_itrs_lat_deg + 90 - _dish_coelev_deg);
 
     if (gps_enabled)
         INFO("Telescope configured with GPS time0: {:d} ns", time0_ns);
@@ -71,8 +71,8 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
 
 
     // Read in the Telescope Coord axes. Must be normalized and orthogonal.
-    std::array<double, 3> sep_x = config.get<std::array<double, 3>>(path, "inst_grid_x_axis");
-    std::array<double, 3> sep_y = config.get<std::array<double, 3>>(path, "inst_grid_y_axis");
+    std::array<double, 3> sep_x = config.get<std::array<double, 3>>(path, "grid_x_axis");
+    std::array<double, 3> sep_y = config.get<std::array<double, 3>>(path, "grid_y_axis");
     // Compute the Z axis as X x Y
     std::array<double, 3> sep_z = {sep_x[1] * sep_y[2] - sep_x[2] * sep_y[1],
                                    sep_x[2] * sep_y[0] - sep_x[0] * sep_y[2],
@@ -87,8 +87,8 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     }
 
     // Read in the Dish Coord axes. Must be normalized and orthogonal.
-    std::array<double, 3> dish_x = config.get<std::array<double, 3>>(path, "inst_dish_elev_axis");
-    std::array<double, 3> dish_z = config.get<std::array<double, 3>>(path, "inst_dish_vert_axis");
+    std::array<double, 3> dish_x = config.get<std::array<double, 3>>(path, "dish_elev_axis");
+    std::array<double, 3> dish_z = config.get<std::array<double, 3>>(path, "dish_vert_axis");
     // Compute the Y axis as Z x X
     std::array<double, 3> dish_y = {dish_z[1] * dish_x[2] - dish_z[2] * dish_x[1],
                                     dish_z[2] * dish_x[0] - dish_z[0] * dish_x[2],
@@ -105,10 +105,10 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     // Set all dish input data: num_dishes, dish_info_table, dish_position, ...
     set_dish_info(config, path);
 
-    double cos_lon = cos(deg2rad * _inst_long_deg);
-    double sin_lon = sin(deg2rad * _inst_long_deg);
-    double cos_lat = cos(deg2rad * _inst_lat_deg);
-    double sin_lat = sin(deg2rad * _inst_lat_deg);
+    double cos_lon = cos(deg2rad * _origin_itrs_lon_deg);
+    double sin_lon = sin(deg2rad * _origin_itrs_lon_deg);
+    double cos_lat = cos(deg2rad * _origin_itrs_lat_deg);
+    double sin_lat = sin(deg2rad * _origin_itrs_lat_deg);
 
     // Topocentric X (East) in ITRS (Earth-centered, Earth-fixed) coords
     _R_itrs_to_topo[0][0] = -sin_lon;
@@ -260,16 +260,16 @@ uint64_t CHORDTelescope::seq_length_nsec() const {
     return dt_ns;
 }
 
-double CHORDTelescope::get_inst_long_deg() const {
-    return _inst_long_deg;
+double CHORDTelescope::get_origin_itrs_lon_deg() const {
+    return _origin_itrs_lon_deg;
 }
 
-double CHORDTelescope::get_inst_lat_deg() const {
-    return _inst_lat_deg;
+double CHORDTelescope::get_origin_itrs_lat_deg() const {
+    return _origin_itrs_lat_deg;
 }
 
-double CHORDTelescope::get_inst_coelev_deg() const {
-    return _inst_coelev_deg;
+double CHORDTelescope::get_dish_coelev_deg() const {
+    return _dish_coelev_deg;
 }
 
 std::array<double, 3> CHORDTelescope::get_sky_vec_in_tel_coords(double ra, double dec,
@@ -299,7 +299,7 @@ std::array<double, 3> CHORDTelescope::get_pointing_vec_in_dish_coords() const {
     // along the elevation axis of the dish mount.  In this frame the pointing
     // vector is just given by the current elevation.
 
-    double coelev = deg2rad * _inst_coelev_deg;
+    double coelev = deg2rad * _dish_coelev_deg;
 
     // coelev=90 ==> North (y), coelev=0 => Up (z), coelev=-90 -> South (-y)
     std::array<double, 3> n_point = {0.0, sin(coelev), cos(coelev)};

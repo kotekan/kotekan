@@ -28,13 +28,13 @@ const std::string default_config_str = R"config_str({
 "num_dishes": 2,
 "telescope": {
     "name": "CHORDTelescope",
-    "inst_long_deg":  -119.621,
-    "inst_lat_deg":   49.321,
-    "inst_coelev_deg":   100.0,
-    "inst_grid_x_axis":   [1.0, 0.0, 0.0],
-    "inst_grid_y_axis":   [0.0, 1.0, 0.0],
-    "inst_dish_elev_axis": [1.0, 0.0, 0.0],
-    "inst_dish_vert_axis":    [0.0, 0.0, 1.0],
+    "origin_itrs_lon_deg":  -119.621,
+    "origin_itrs_lat_deg":   49.321,
+    "dish_coelev_deg":   100.0,
+    "grid_x_axis":   [1.0, 0.0, 0.0],
+    "grid_y_axis":   [0.0, 1.0, 0.0],
+    "dish_elev_axis": [1.0, 0.0, 0.0],
+    "dish_vert_axis":    [0.0, 0.0, 1.0],
     "require_gps":        false,
     "updatable_config":   "/earth_rotation_data"
     },
@@ -80,13 +80,13 @@ BOOST_AUTO_TEST_CASE(_instrument_position) {
     double lat = 49.321123;
 
     json json_config = json::parse(default_config_str);
-    json_config["telescope"]["inst_lat_deg"] = lat;
-    json_config["telescope"]["inst_long_deg"] = lon;
+    json_config["telescope"]["origin_itrs_lat_deg"] = lat;
+    json_config["telescope"]["origin_itrs_lon_deg"] = lon;
 
     const CHORDTelescope& tel = get_telescope(json_config);
 
-    BOOST_CHECK_EQUAL(tel.get_inst_long_deg(), lon);
-    BOOST_CHECK_EQUAL(tel.get_inst_lat_deg(), lat);
+    BOOST_CHECK_EQUAL(tel.get_origin_itrs_lon_deg(), lon);
+    BOOST_CHECK_EQUAL(tel.get_origin_itrs_lat_deg(), lat);
 }
 
 BOOST_AUTO_TEST_CASE(_instrument_orientation) {
@@ -95,11 +95,11 @@ BOOST_AUTO_TEST_CASE(_instrument_orientation) {
     double coelev = -70;
 
     json json_config = json::parse(default_config_str);
-    json_config["telescope"]["inst_coelev_deg"] = coelev;
+    json_config["telescope"]["dish_coelev_deg"] = coelev;
 
     const CHORDTelescope& tel = get_telescope(json_config);
 
-    BOOST_CHECK_EQUAL(tel.get_inst_coelev_deg(), coelev);
+    BOOST_CHECK_EQUAL(tel.get_dish_coelev_deg(), coelev);
 }
 
 void check_dishes(const dishInfo& d1, const dishInfo& d2) {
@@ -267,7 +267,7 @@ BOOST_AUTO_TEST_CASE(_pointing_vec_dish) {
 
     // Build telescope
     json json_config = json::parse(default_config_str);
-    json_config["telescope"]["inst_coelev_deg"] = coelev_deg;
+    json_config["telescope"]["dish_coelev_deg"] = coelev_deg;
     const CHORDTelescope& tel = get_telescope(json_config);
 
     // Check (may have FP equality issues)
@@ -281,7 +281,7 @@ BOOST_AUTO_TEST_CASE(_pointing_vec_dish) {
     std::array<double, 3> point2{0.0, sin(coelev), cos(coelev)};
 
     // construct telescope
-    json_config["telescope"]["inst_coelev_deg"] = coelev_deg;
+    json_config["telescope"]["dish_coelev_deg"] = coelev_deg;
     const CHORDTelescope &tel2 = get_telescope(json_config);
 
     // check
@@ -299,8 +299,8 @@ BOOST_AUTO_TEST_CASE(_vec_topocen_to_dish) {
 
     // Make telescope
     json json_config = json::parse(default_config_str);
-    json_config["telescope"]["inst_dish_elev_axis"] = x;
-    json_config["telescope"]["inst_dish_vert_axis"] = z;
+    json_config["telescope"]["dish_elev_axis"] = x;
+    json_config["telescope"]["dish_vert_axis"] = z;
     const CHORDTelescope& tel = get_telescope(json_config);
 
     // test vectors
@@ -325,8 +325,8 @@ BOOST_AUTO_TEST_CASE(_vec_dish_to_topocen) {
 
     // Make telescope
     json json_config = json::parse(default_config_str);
-    json_config["telescope"]["inst_dish_elev_axis"] = x;
-    json_config["telescope"]["inst_dish_vert_axis"] = z;
+    json_config["telescope"]["dish_elev_axis"] = x;
+    json_config["telescope"]["dish_vert_axis"] = z;
     const CHORDTelescope& tel = get_telescope(json_config);
 
     // test vectors
@@ -351,8 +351,8 @@ BOOST_AUTO_TEST_CASE(_vec_topocen_to_tel) {
 
     // Make telescope
     json json_config = json::parse(default_config_str);
-    json_config["telescope"]["inst_grid_x_axis"] = x;
-    json_config["telescope"]["inst_grid_y_axis"] = y;
+    json_config["telescope"]["grid_x_axis"] = x;
+    json_config["telescope"]["grid_y_axis"] = y;
     const CHORDTelescope& tel = get_telescope(json_config);
 
     // test vectors
@@ -377,8 +377,8 @@ BOOST_AUTO_TEST_CASE(_vec_tel_to_topocen) {
 
     // Make telescope
     json json_config = json::parse(default_config_str);
-    json_config["telescope"]["inst_grid_x_axis"] = x;
-    json_config["telescope"]["inst_grid_y_axis"] = y;
+    json_config["telescope"]["grid_x_axis"] = x;
+    json_config["telescope"]["grid_y_axis"] = y;
     const CHORDTelescope& tel = get_telescope(json_config);
 
     // test vectors

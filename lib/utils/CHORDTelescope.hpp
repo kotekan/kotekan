@@ -143,9 +143,9 @@ struct dishInputFields {
  * @conf    gps_host            string. The GPS server IP address.
  * @conf    gps_port            uint.   The port number on the GPS server.
  * @conf    gps_endpoint        string. The enpoint with the GPS time.
- * @conf    inst_long_deg       double. Instrument longitude in degrees.
- * @conf    inst_lat_deg        double. Instrument latitude in degrees.
- * @conf    inst_coelev_deg     double. Instrument pointing co-elevation, in
+ * @conf    origin_itrs_lon_deg       double. Instrument longitude in degrees.
+ * @conf    origin_itrs_lat_deg        double. Instrument latitude in degrees.
+ * @conf    dish_coelev_deg     double. Instrument pointing co-elevation, in
  *                                      degrees from zenith. Positive is North.
  * @conf    sampling_rate_MHz   double. ADC Sampling Rate (~3.2 GHz)
  * @conf    fft_lenth           double. F-engine FFT length (~16384)
@@ -199,18 +199,18 @@ public:
     /**
      * @brief   Return the longitude of the instrument.
      **/
-    double get_inst_long_deg() const;
+    double get_origin_itrs_lon_deg() const;
 
     /**
      * @brief   Return the latitude of the instrument.
      **/
-    double get_inst_lat_deg() const;
+    double get_origin_itrs_lat_deg() const;
 
     /**
      * @brief   Return the co-elevation angle of the instrument. 0.0 is up,
      *          90.0 is North.
      **/
-    double get_inst_coelev_deg() const;
+    double get_dish_coelev_deg() const;
 
     /**
      * @brief   Return a component of the Topo -> Telescope frame rotation
@@ -482,15 +482,15 @@ protected:
     std::string _gps_endpoint;
 
     /// Instument geographic coordinates in degrees.
-    double _inst_long_deg;
-    double _inst_lat_deg;
+    double _origin_itrs_lon_deg;
+    double _origin_itrs_lat_deg;
 
     // Matrix to transform from local topocentric coordinates to the
     // telescope (ie. dish position) coordinate system.
     double _R_topo_to_tel[3][3];
 
     // Dish pointing angle.  Measured in degrees from vertical.
-    double _inst_coelev_deg;
+    double _dish_coelev_deg;
 
     // Matrix to transform from local topocentric coordinates to the
     // dish (ie. z is dish zenith, x is elevation axis) coordinate system.

@@ -276,13 +276,13 @@ samples_per_dataset: 32768
 
 telescope:
   name: CHORDTelescope
-  inst_lat_deg: 49.32075144444
-  inst_long_deg: -119.62081125
-  inst_grid_x_axis: [1.0, 0.0, 0.0]
-  inst_grid_y_axis: [0.0, 1.0, 0.0]
-  inst_coelev_deg: 0.0
-  inst_dish_elev_axis: [1.0, 0.0, 0.0]
-  inst_dish_vert_axis: [0.0, 0.0, 1.0]
+  origin_itrs_lat_deg: 49.32075144444
+  origin_itrs_lon_deg: -119.62081125
+  grid_x_axis: [1.0, 0.0, 0.0]
+  grid_y_axis: [0.0, 1.0, 0.0]
+  dish_elev_axis: [1.0, 0.0, 0.0]
+  dish_vert_axis: [0.0, 0.0, 1.0]
+  dish_coelev_deg: 0.0
   require_gps: false
   updatable_config: /earth_rotation_data
 
