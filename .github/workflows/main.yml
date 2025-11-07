@@ -339,11 +339,11 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests
+              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/batch
           
           - id: release_build_yaml_tests
             name: "Build release kotekan"
-            ccache_key: selfhosted-kotekan-release-gcc  # re-using key from build
+            ccache_key: selfhosted-kotekan-release-gcc
             cmake_defs: &runner_build_release_gcc_opts >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
@@ -353,7 +353,7 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests
+              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/batch
 
           - id: data_test
             name: "/data dir test"
