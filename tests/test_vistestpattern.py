@@ -492,7 +492,6 @@ def test_pattern_noise_inputs(tmpdir_factory):
         ],
     }
     rest_commands = command_test_pattern("inputs", 2, inputs_test_pattern)
-    print(rest_commands)
 
     yield run_test(
         write_dir=write_dir,
