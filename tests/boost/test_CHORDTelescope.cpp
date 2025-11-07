@@ -101,14 +101,15 @@ void check_equal_vec3d(const std::array<double, 3>& v1, const std::array<double,
 /*
  * @brief   Helper to test equality for double vec3s within tolerance.
  */
-void check_close_double(double v1, double v2, double atol, double rtol, const std::string& label1, const std::string& label2) {
+void check_close_double(double v1, double v2, double atol, double rtol, const std::string& label1,
+                        const std::string& label2) {
 
     double diff = v1 - v2;
     double tol = atol + rtol * fabs(0.5 * (v1 + v2));
 
-    BOOST_CHECK_MESSAGE(fabs(diff) <= tol,
-                        fmt::format("Expected |{:s} - {:s}| = |{:g} - {:g}| <= {:g}",
-                                    label1, label2, v1, v2, tol));
+    BOOST_CHECK_MESSAGE(
+        fabs(diff) <= tol,
+        fmt::format("Expected |{:s} - {:s}| = |{:g} - {:g}| <= {:g}", label1, label2, v1, v2, tol));
 }
 
 /*
@@ -908,7 +909,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
      *
      * In CHORD we define the visibility with the opposite sign of the phase w.r.t.
      * Thompson, so we expect:
-     * 
+     *
      * dphi/dt = + w_e * u * cos(delta)
      *
      * to first order in time.
@@ -919,7 +920,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     double lambda = C / (1.0e6 * freq_MHz);
 
-    double w_e = 7.292115e-5;  // = 2pi * 1.0027378... / 86400 s
+    double w_e = 7.292115e-5; // = 2pi * 1.0027378... / 86400 s
 
     double target_dec_deg = 45.0;
     double tel_lat_deg = 45.0;
@@ -930,12 +931,10 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     dishInfo d1 = make_dishInfo(1, 1, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D01");
     dishInfo d2 = make_dishInfo(2, 0, 1, {0.0, 0.0, 0.0}, 0.0, 0, "D10");
     dishInfo d3 = make_dishInfo(3, 0, 0, {lambda, lambda, 0.0}, 0.0, 0, "D11");
-    
+
     double t = 1.0; // A short time to get only 1st order effects
-    EOP eop0 = {.t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0, .xp_as = 0,
-                .yp_as = 0};
-    EOP eop = {.t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0, .xp_as = 0,
-                .yp_as = 0};
+    EOP eop0 = {.t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0, .xp_as = 0, .yp_as = 0};
+    EOP eop = {.t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0, .xp_as = 0, .yp_as = 0};
     eop.ERA_deg = t * w_e * 180.0 / M_PI;
 
     json json_config = json::parse(default_config_str);
@@ -954,15 +953,16 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     std::vector<std::complex<double>> tel_phases(4, 0);
 
-    std::vector<double> test_phases({0.0, 2*M_PI * w_e * t * cos(dec), 0.0, 2 * M_PI * w_e * t * cos(dec)});
+    std::vector<double> test_phases(
+        {0.0, 2 * M_PI * w_e * t * cos(dec), 0.0, 2 * M_PI * w_e * t * cos(dec)});
 
     const CHORDTelescope& tel = get_telescope(json_config);
 
     tel.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
 
-    for(int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
         check_close_double(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_double(atan2(tel_phases[i].imag(),  tel_phases[i].real()),
-                          test_phases[i], 1.0e-8, 1.0e-5, "tel_phase", "test_phase");
+        check_close_double(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases[i],
+                           1.0e-8, 1.0e-5, "tel_phase", "test_phase");
     }
 }
