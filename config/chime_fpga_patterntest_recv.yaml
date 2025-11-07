@@ -15,7 +15,7 @@ buffer_depth: 64
 num_ev: 4
 
 # CPU affinity for most processes
-cpu_affinity: [7, 11, 14, 15]
+cpu_affinity: [ 7, 11, 14, 15 ]
 
 dataset_manager:
   use_dataset_broker: True
@@ -61,7 +61,7 @@ buffer_recv:
     kotekan_stage: bufferRecv
     buf: visbuf_10s_all
     listen_port: 11024
-    cpu_affinity: [0, 8]
+    cpu_affinity: [ 0, 8 ]
     num_threads: 2
 
 vis_debug:

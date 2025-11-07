@@ -1,6 +1,6 @@
 # Colorized messaging helpers
 
-if(NOT DEFINED KOTEKAN_COLOR_LOADED)
+if (NOT DEFINED KOTEKAN_COLOR_LOADED)
     set(KOTEKAN_COLOR_LOADED TRUE)
 
     string(ASCII 27 KTK_ESC)
@@ -29,4 +29,4 @@ if(NOT DEFINED KOTEKAN_COLOR_LOADED)
     function(kmsg_status msg)
         message(STATUS "${msg}")
     endfunction()
-endif()
+endif ()

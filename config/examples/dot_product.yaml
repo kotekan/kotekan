@@ -3,7 +3,7 @@ type: config
 # Logging level can be OFF, ERROR, WARN, INFO, DEBUG, or DEBUG2
 log_level: DEBUG
 # Which CPUs is kotekan allowed to run on?
-cpu_affinity: [0,1,2,3]
+cpu_affinity: [ 0,1,2,3 ]
 
 # Constants
 sizeof_float: 4
@@ -31,8 +31,8 @@ data_gen:
     kotekan_stage: ExampleProducer
     init_value: 2.0
     out_buf: input_a_buffer
-  data_gen_b:  
-    kotekan_stage: ExampleProducer 
+  data_gen_b:
+    kotekan_stage: ExampleProducer
     init_value: 3.0
     out_buf: input_b_buffer
 

@@ -296,7 +296,6 @@ def build_EOP_table(times, time0_ns, iers):
     eop_table = []
 
     for t in times:
-
         # Compute number of leap seconds at t.
         dtai = calc_delta_tai_utc(t)
 
@@ -342,11 +341,11 @@ def build_EOP_table(times, time0_ns, iers):
 
 
 def build_time_array(
-    t_ref,
-    n_intervals_before,
-    n_intervals_after,
-    interval_length_days,
-    snap_to_grid=False,
+        t_ref,
+        n_intervals_before,
+        n_intervals_after,
+        interval_length_days,
+        snap_to_grid=False,
 ):
     r"""
     Construct an array of times for the entries in the EOP Table.
@@ -401,7 +400,6 @@ def build_time_array(
 
 
 if __name__ == "__main__":
-
     kotekan_url = "http://localhost"
     kotekan_port = 12048
 

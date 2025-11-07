@@ -106,7 +106,6 @@ params_writer_stage = {"num_samples": 5, "name": fname_buf}
 
 @pytest.fixture()
 def vis_data(tmpdir_factory, comet_broker):
-
     # keeping all the data this test produced here (probably do not need it)
     # using FakeVisBuffer to produce fake data
     fakevis_buffer = runner.FakeVisBuffer(**params_fakevis)
@@ -185,22 +184,22 @@ def check_visraw(visraw):
 
     # check gain/flag update IDs VisRaw got from comet
     assert (
-        visraw.update_id["flags"][valid & (visraw.time["ctime"] < flagging_update_time)]
-        == "None"
+            visraw.update_id["flags"][valid & (visraw.time["ctime"] < flagging_update_time)]
+            == "None"
     ).all()
     assert (
-        visraw.update_id["gains"][valid & (visraw.time["ctime"] < gain_update_time)]
-        == "None"
+            visraw.update_id["gains"][valid & (visraw.time["ctime"] < gain_update_time)]
+            == "None"
     ).all()
     assert (
-        visraw.update_id["flags"][
-            valid & (visraw.time["ctime"] >= flagging_update_time)
-        ]
-        == "flag_update_0"
+            visraw.update_id["flags"][
+                valid & (visraw.time["ctime"] >= flagging_update_time)
+                ]
+            == "flag_update_0"
     ).all()
     assert (
-        visraw.update_id["gains"][valid & (visraw.time["ctime"] >= gain_update_time)]
-        == "gain_update_0"
+            visraw.update_id["gains"][valid & (visraw.time["ctime"] >= gain_update_time)]
+            == "gain_update_0"
     ).all()
 
     evals = visraw.data["eval"]
@@ -217,10 +216,10 @@ def check_visraw(visraw):
     # Check that the datasets have the correct values
     assert (evals == np.arange(num_ev)[np.newaxis, np.newaxis, :]).all()
     assert (
-        evecs.real == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis]
+            evecs.real == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis]
     ).all()
     assert (
-        evecs.imag == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
+            evecs.imag == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
     ).all()
     assert (erms[valid] == 1).all()
 

@@ -13,7 +13,6 @@ import re
 from kotekan import visbuffer
 from kotekan import runner
 
-
 params = {
     "num_elements": 5,
     "num_ev": 0,
@@ -29,7 +28,6 @@ params = {
 
 @pytest.fixture(scope="module")
 def vis_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("freqsub")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -52,7 +50,6 @@ def vis_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def write_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("freqsub_write")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -74,7 +71,6 @@ def write_data(tmpdir_factory):
 
 
 def test_freqslice(vis_data):
-
     assert len(vis_data) == params["total_frames"] * len(params["subset_list"])
 
     # Count frames by frequency
@@ -90,7 +86,6 @@ def test_freqslice(vis_data):
 
 
 def test_write(write_data):
-
     counts = [0] * len(params["subset_list"])
     for t in range(params["total_frames"]):
         for f in range(len(params["subset_list"])):

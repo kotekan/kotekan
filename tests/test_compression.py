@@ -10,7 +10,6 @@ import numpy as np
 
 from kotekan import runner
 
-
 diag_global_params = {
     "num_elements": 16,
     "num_ev": 2,
@@ -55,7 +54,6 @@ def float_allclose(a, b):
 
 @pytest.fixture(scope="module")
 def diagonal_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("diagonal")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -80,7 +78,6 @@ def diagonal_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def chime_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("chime")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -105,7 +102,6 @@ def chime_data(tmpdir_factory):
 
 
 def test_metadata(diagonal_data):
-
     freq_ids = np.array([frame.metadata.freq_id for frame in diagonal_data])
     fpga_seqs = np.array([frame.metadata.fpga_seq for frame in diagonal_data])
     dset_ids = np.array([frame.metadata.dataset_id for frame in diagonal_data])
@@ -113,14 +109,13 @@ def test_metadata(diagonal_data):
 
     assert (freq_ids.reshape((-1, 2)) == np.array([[0, 250]])).all()
     assert (
-        (fpga_seqs.reshape((-1, 2)) / 800e6)
-        == (np.arange(diag_global_params["total_frames"]))[:, np.newaxis]
+            (fpga_seqs.reshape((-1, 2)) / 800e6)
+            == (np.arange(diag_global_params["total_frames"]))[:, np.newaxis]
     ).all()
     assert (nprod == diag_global_params["num_elements"]).all()
 
 
 def test_chime(chime_data):
-
     nvis_chime = 4 * (4 * 256 - 1) + 6 * 4 * 511
 
     # This is the typical number of entries per polarisation (for XX, XY and YY, not YX)
@@ -130,7 +125,7 @@ def test_chime(chime_data):
         assert frame.vis.shape[0] == nvis_chime
 
         # Check that the entries in XX and XY are the same
-        assert float_allclose(frame.vis[:np1], frame.vis[np1 : (2 * np1)])
+        assert float_allclose(frame.vis[:np1], frame.vis[np1: (2 * np1)])
 
         v1 = frame.vis[:np1]
         w1 = frame.weight[:np1]
@@ -138,7 +133,6 @@ def test_chime(chime_data):
         # Loop over all pairs of cylinders for XX
         for ci in range(4):
             for cj in range(ci, 4):
-
                 # These numbers depend if we are within a cyl or not
                 nv = 256 if ci == cj else 511  # Number of entries to compare
                 lb = 0 if ci == cj else -255  # The most negative separation

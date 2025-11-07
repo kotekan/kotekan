@@ -9,6 +9,7 @@ Runs Kotekan tests against multiple YAML configuration files with configurable t
 ```
 
 **Example:**
+
 ```bash
 ./run_tests.sh ./build-2404/kotekan/kotekan 2m config/ci-tests
 ```

@@ -17,7 +17,7 @@ num_elements: 256
 num_local_freq: 8
 samples_per_data_set: 65536
 buffer_depth: 64
-cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+cpu_affinity: [ 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 ]
 
 # Constants
 sizeof_float: 4
@@ -45,7 +45,7 @@ baseband_recv_buffer:
 # Kotekan stages
 baseband_recv:
   kotekan_stage: bufferRecv
-  buf: baseband_recv_buffer 
+  buf: baseband_recv_buffer
   listen_port: 11028
 
 # Write raw baseband data
@@ -53,7 +53,7 @@ write_baseband:
   root_path: /data/pf_baseband_raw/
 
   kotekan_stage: BasebandWriter
-  in_buf: baseband_recv_buffer 
+  in_buf: baseband_recv_buffer
 
 buffer_status:
   kotekan_stage: bufferStatus

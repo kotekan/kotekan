@@ -25,7 +25,6 @@ class CTimeSpec(ctypes.Structure):
 
 
 class EOP(ctypes.Structure):
-
     _fields_ = [
         ("t_inst", ctypes.c_int64),
         ("t_ut1", ctypes.c_int64),
@@ -91,16 +90,15 @@ class N2Buffer(object):
 
     def _set_data_arrays(self):
 
-        _data = self._buffer[ctypes.sizeof(N2Metadata) :]
+        _data = self._buffer[ctypes.sizeof(N2Metadata):]
 
         layout = self.__class__.calculate_layout(
             self.metadata.num_elements, self.metadata.num_prod, self.metadata.num_ev
         )
 
         for member in layout["members"]:
-
             arr = np.frombuffer(
-                _data[member["start"] : member["end"]], dtype=member["dtype"]
+                _data[member["start"]: member["end"]], dtype=member["dtype"]
             )
             setattr(self, member["name"], arr)
 
@@ -209,7 +207,6 @@ class N2Buffer(object):
         msize_c = ctypes.c_int(ctypes.sizeof(N2Metadata))
 
         for ii, buf in enumerate(buffers):
-
             with open(pat % ii, "wb+") as fh:
                 fh.write(msize_c)
                 fh.write(bytearray(buf._buffer))

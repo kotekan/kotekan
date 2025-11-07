@@ -1,39 +1,39 @@
 project(kotekan)
 
-if(HIP_FOUND)
+if (HIP_FOUND)
     hip_add_executable(kotekan kotekan.cpp)
-else()
+else ()
     add_executable(kotekan kotekan.cpp)
-endif()
+endif ()
 
 target_compile_definitions(kotekan PRIVATE mssse3 __STDC_LIMIT_MACROS)
 
 # If HDF5 is enabled and we detected a plugin directory, pass it to the binary so it can set the
 # path programatically at runtime.
-if(HDF5_FOUND
-   AND HighFive_FOUND
-   AND KOTEKAN_HDF5_PLUGIN_DIR)
+if (HDF5_FOUND
+        AND HighFive_FOUND
+        AND KOTEKAN_HDF5_PLUGIN_DIR)
     target_include_directories(kotekan SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
     # Escape any quotes or spaces as a C string literal
     string(REPLACE "\"" "\\\"" _HDF5_PLUGIN_DIR_ESC "${KOTEKAN_HDF5_PLUGIN_DIR}")
     target_compile_definitions(kotekan PRIVATE DEFAULT_HDF5_PLUGIN_PATH="${_HDF5_PLUGIN_DIR_ESC}")
-endif()
+endif ()
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     target_link_libraries(
-        kotekan
-        PRIVATE -Wl,--whole-archive $<TARGET_PROPERTY:kotekan_libs,INTERFACE_LINK_LIBRARIES>
-                -Wl,--no-whole-archive)
-    if(ASDF_CXX_FOUND)
+            kotekan
+            PRIVATE -Wl,--whole-archive $<TARGET_PROPERTY:kotekan_libs,INTERFACE_LINK_LIBRARIES>
+            -Wl,--no-whole-archive)
+    if (ASDF_CXX_FOUND)
         target_link_libraries(kotekan PRIVATE blosc)
-    endif()
-elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    endif ()
+elseif (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     target_link_libraries(kotekan PRIVATE -Wl,-all_load kotekan_libs)
-else()
+else ()
     message(FATAL_ERROR "System type ${CMAKE_SYSTEM_NAME} not supported")
-endif()
+endif ()
 
 install(
-    TARGETS kotekan
-    DESTINATION /usr/local/bin
-    COMPONENT binaries)
+        TARGETS kotekan
+        DESTINATION /usr/local/bin
+        COMPONENT binaries)

@@ -10,7 +10,6 @@ import numpy as np
 
 from kotekan import runner
 
-
 accumulate_params = {
     "num_elements": 4,
     "num_ev": 0,
@@ -26,7 +25,6 @@ accumulate_params = {
 
 @pytest.fixture(scope="module")
 def accumulate_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("accumulate")
 
     dump_buffer = runner.DumpN2Buffer(str(tmpdir))
@@ -49,7 +47,6 @@ def accumulate_data(tmpdir_factory):
 
 
 def test_structure(accumulate_data):
-
     n = accumulate_params["num_elements"]
 
     # Check that each samples is the expected shape
@@ -73,7 +70,6 @@ def test_structure(accumulate_data):
 
 
 def test_metadata(accumulate_data):
-
     nfreq = accumulate_params["num_freq_in_frame"]
 
     # This assumes that that the frequencies have been labelled by the decoded
@@ -90,7 +86,7 @@ def test_time(accumulate_data):
     t0 = timespec_to_float(accumulate_data[0].metadata.ctime)
 
     delta_samp = (
-        accumulate_params["samples_per_data_set"] * accumulate_params["int_frames"]
+            accumulate_params["samples_per_data_set"] * accumulate_params["int_frames"]
     )
 
     nfreq = accumulate_params["num_freq_in_frame"]
@@ -116,13 +112,11 @@ def test_time(accumulate_data):
 
 
 def test_accumulate(accumulate_data):
-
     nfreq = accumulate_params["num_freq_in_frame"]
     ninput = accumulate_params["num_elements"]
     prod_ind = np.arange(ninput * (ninput + 1) // 2)
 
     for ii, frame in enumerate(accumulate_data):
-
         freq_id = accumulate_params["freq"] + (ii % nfreq)
 
         print((ii, freq_id, frame.metadata.fpga_seq, frame.vis))

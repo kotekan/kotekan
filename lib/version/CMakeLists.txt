@@ -14,20 +14,23 @@
 # There are other solutions to this problem, but they all involve some kind of ulgy hack like this,
 # or the cause the system to take forever every time you run make because they do too much work.
 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+# Ensure the generator template can see the Python path:
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/make_version.cmake.in
-               ${CMAKE_CURRENT_BINARY_DIR}/make_version.cmake @ONLY)
+        ${CMAKE_CURRENT_BINARY_DIR}/make_version.cmake @ONLY)
 
 add_custom_command(
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/version.c
-    COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/make_version.cmake
-    DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/make_version.cmake ${CMAKE_CURRENT_SOURCE_DIR}/version.c.in
-    COMMENT "Generating file: version.c")
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/version.c
+        COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/make_version.cmake
+        DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/make_version.cmake ${CMAKE_CURRENT_SOURCE_DIR}/version.c.in
+        COMMENT "Generating file: version.c")
 
 add_library(kotekan_version ${CMAKE_CURRENT_BINARY_DIR}/version.c)
 target_include_directories(kotekan_version PUBLIC .)
 
 add_custom_command(
-    TARGET kotekan_version
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_CURRENT_BINARY_DIR}/version.c
-    COMMENT "Removing generated file: version.c")
+        TARGET kotekan_version
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_CURRENT_BINARY_DIR}/version.c
+        COMMENT "Removing generated file: version.c")

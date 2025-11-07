@@ -16,10 +16,10 @@ baseband_buffer_depth: 282 # 282 = ~34 seconds after accounting for active frame
 vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
-cpu_affinity: [2,3,8,9]
+cpu_affinity: [ 2,3,8,9 ]
 block_size: 32
 num_gpus: 4
-link_map: [0,1,2,3]
+link_map: [ 0,1,2,3 ]
 
 # Constants
 sizeof_float: 4
@@ -42,7 +42,7 @@ downsample_freq: 8
 factor_upchan: 128
 factor_upchan_out: 16
 num_frb_total_beams: 1024
-frb_missing_gains: [1.0,1.0]
+frb_missing_gains: [ 1.0,1.0 ]
 frb_scaling: 0.05 #1.0
 
 # Tracking beams global options
@@ -86,7 +86,7 @@ dataset_manager:
 main_pool:
   kotekan_metadata_pool: chimeMetadata
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
-                        + 100 * 8 * buffer_depth # This part is for the sk/var output.
+    + 100 * 8 * buffer_depth # This part is for the sk/var output.
 
 # Baseband metadata pool
 baseband_pool:
@@ -121,7 +121,7 @@ lost_samples_buffer:
 dpdk:
   kotekan_stage: dpdkCore
   # Format is index = lcore, value = cpu core
-  lcore_cpu_map: [0,1,6,7]
+  lcore_cpu_map: [ 0,1,6,7 ]
   main_lcore_cpu: 2
   status_cadence: 60
   alignment: samples_per_data_set * num_data_sets
@@ -129,10 +129,10 @@ dpdk:
   # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
   # and lcore 1 to service ports 2 and 3.
   lcore_port_map:
-    - [0]
-    - [1]
-    - [2]
-    - [3]
+    - [ 0 ]
+    - [ 1 ]
+    - [ 2 ]
+    - [ 3 ]
   # One handler must be given per port.
   handlers:
     - dpdk_handler: iceBoardShuffle

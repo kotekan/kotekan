@@ -71,7 +71,7 @@ def set_sampling_params(config):
 def to_freq(freq_id):
     """Reimplements ICETelescope::to_freq"""
     if freq_id >= nfreq:
-        raise ValueError(f"Bad freq_id: { freq_id } (< { nfreq })")
+        raise ValueError(f"Bad freq_id: {freq_id} (< {nfreq})")
 
     return freq0_MHz + freq_id * df_MHz
 
@@ -88,7 +88,7 @@ def ts_to_double(ts_sec, ts_nsec):
 
 
 def create_baseband_archive(
-    frame_metadata: baseband_buffer.BasebandMetadata, root: str
+        frame_metadata: baseband_buffer.BasebandMetadata, root: str
 ):
     """Creates a standard baseband HDF5 archive for the event described by `frame_metadata`
 
@@ -108,7 +108,7 @@ def create_baseband_archive(
     d = str(date.day).zfill(2)
     # confirm root path on the recv node.
     file_name = os.path.join(
-        root, f"{y}/{m}/{d}/astro_{event_id}/baseband_{ event_id }_{ freq_id }.h5"
+        root, f"{y}/{m}/{d}/astro_{event_id}/baseband_{event_id}_{freq_id}.h5"
     )
     dir_name = os.path.dirname(file_name)
     if dir_name:
@@ -147,11 +147,11 @@ def raw_baseband_frames(file_name: str, buf: bytes):
 
 
 def process_raw_file(
-    file_name: str,
-    config: Dict[str, int],
-    dry_run: bool = False,
-    verbose: bool = False,
-    root: str = "/data/chime/baseband/raw",
+        file_name: str,
+        config: Dict[str, int],
+        dry_run: bool = False,
+        verbose: bool = False,
+        root: str = "/data/chime/baseband/raw",
 ):
     """Convert raw file `file_name` to a standard baseband HDF5 archive"""
     metadata_size = baseband_buffer.BasebandBuffer.meta_size
@@ -216,7 +216,7 @@ def process_raw_file(
 
         frame_start_idx = fpga_seq - event_fpga_start
         samples = buf[
-            metadata_size : (metadata_size + frame_metadata.valid_to * num_elements)
+            metadata_size: (metadata_size + frame_metadata.valid_to * num_elements)
         ]
 
         if verbose:
@@ -224,10 +224,10 @@ def process_raw_file(
             print("Samples:", frame_metadata.valid_to * num_elements)
             print(len(buf), len(samples))
         baseband[
-            frame_start_idx : (frame_start_idx + frame_metadata.valid_to), :
+            frame_start_idx: (frame_start_idx + frame_metadata.valid_to), :
         ] = np.array(
             buf[
-                metadata_size : (metadata_size + frame_metadata.valid_to * num_elements)
+                metadata_size: (metadata_size + frame_metadata.valid_to * num_elements)
             ]
         ).reshape(
             frame_metadata.valid_to, num_elements
@@ -307,12 +307,12 @@ def sample_present_stats(file_name):
 
 
 def convert(
-    file_name,
-    config_file,
-    stats=False,
-    dry_run=False,
-    verbose=False,
-    root="/data/chime/baseband/raw",
+        file_name,
+        config_file,
+        stats=False,
+        dry_run=False,
+        verbose=False,
+        root="/data/chime/baseband/raw",
 ):
     """Main function to do the conversion."""
     with open(config_file) as f:

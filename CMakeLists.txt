@@ -1,9 +1,11 @@
-# Set the version of CMake required for *all* CMake files in the project. 3.8.2 to match C++17.
-cmake_minimum_required(VERSION 3.8.2)
+# Set the version of CMake required for *all* CMake files in the project. 3.22 to match C++17.
+cmake_minimum_required(VERSION 3.22)
+cmake_policy(SET CMP0074 NEW)
+
 project(
-    KOTEKAN
-    DESCRIPTION "A high performance radio data processing pipeline"
-    LANGUAGES C CXX)
+        KOTEKAN
+        DESCRIPTION "A high performance radio data processing pipeline"
+        LANGUAGES C CXX)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake ${KOTEKAN_SOURCE_DIR}/cmake/Modules)
 include(cmake/Color.cmake)
 include(cmake/Options.cmake)
@@ -11,9 +13,9 @@ include(cmake/Toolchain.cmake)
 
 # Fix a problem with homebrew linking on MacOS >= 10.14 See
 # https://stackoverflow.com/questions/54068035
-if(APPLE)
+if (APPLE)
     link_directories(/usr/local/lib)
-endif()
+endif ()
 
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -Xcompiler -Wall")
 
@@ -22,43 +24,43 @@ include(cmake/Features/FeatureDPDK.cmake)
 
 set(_ktk_airspy_reason "disabled")
 get_property(
-    _ktk_airspy_cache_has
-    CACHE KOTEKAN_AIRSPY_REASON
-    PROPERTY TYPE
-    SET)
-if(_ktk_airspy_cache_has)
-    get_property(
-        _ktk_airspy_reason
+        _ktk_airspy_cache_has
         CACHE KOTEKAN_AIRSPY_REASON
-        PROPERTY VALUE)
-endif()
-if("${USE_AIRSPY}" STREQUAL "AUTO" OR "${USE_AIRSPY}" STREQUAL "ON")
+        PROPERTY TYPE
+        SET)
+if (_ktk_airspy_cache_has)
+    get_property(
+            _ktk_airspy_reason
+            CACHE KOTEKAN_AIRSPY_REASON
+            PROPERTY VALUE)
+endif ()
+if ("${USE_AIRSPY}" STREQUAL "AUTO" OR "${USE_AIRSPY}" STREQUAL "ON")
     find_package(LIBAIRSPY QUIET)
-    if(LIBAIRSPY_FOUND)
+    if (LIBAIRSPY_FOUND)
         set(USE_AIRSPY
-            ON
-            CACHE BOOL "Build Airspy Producer" FORCE)
+                ON
+                CACHE BOOL "Build Airspy Producer" FORCE)
         set(KOTEKAN_AIRSPY_REASON
-            "found"
-            CACHE STRING "Airspy detection summary" FORCE)
+                "found"
+                CACHE STRING "Airspy detection summary" FORCE)
         add_definitions(-DWITH_AIRSPY)
-    else()
+    else ()
         set(USE_AIRSPY
-            OFF
-            CACHE BOOL "Build Airspy Producer" FORCE)
+                OFF
+                CACHE BOOL "Build Airspy Producer" FORCE)
         set(KOTEKAN_AIRSPY_REASON
-            "not found (requires libairspy)"
-            CACHE STRING "Airspy detection summary" FORCE)
+                "not found (requires libairspy)"
+                CACHE STRING "Airspy detection summary" FORCE)
         kmsg_warn("Airspy requested but libairspy not found; disabling Airspy support.")
-    endif()
-else()
-    if(NOT "${_ktk_airspy_reason}" STREQUAL "not found (requires libairspy)")
+    endif ()
+else ()
+    if (NOT "${_ktk_airspy_reason}" STREQUAL "not found (requires libairspy)")
         set(_ktk_airspy_reason "disabled")
-    endif()
+    endif ()
     set(KOTEKAN_AIRSPY_REASON
-        "${_ktk_airspy_reason}"
-        CACHE STRING "Airspy detection summary" FORCE)
-endif()
+            "${_ktk_airspy_reason}"
+            CACHE STRING "Airspy detection summary" FORCE)
+endif ()
 
 # Math features handled in FeatureMath
 include(cmake/Features/FeatureMath.cmake)
@@ -69,16 +71,16 @@ include(cmake/Features/FeatureIO.cmake)
 # Julia runtime and bindings
 include(cmake/Features/FeatureJulia.cmake)
 
-if(${COMPILE_DOCS})
+if (${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
-endif()
+endif ()
 
 # Prevent memory locking and setting any memory policies. This is useful when running in restricted
 # environments, e.g. Docker containers.  Note this can also be done with the configuration file for
 # systems which do support memory locking, but where some memory shouldn't be memory locked.
-if(${NO_MEMLOCK})
+if (${NO_MEMLOCK})
     add_definitions(-DWITH_NO_MEMLOCK)
-endif()
+endif ()
 
 add_subdirectory(lib)
 add_subdirectory(kotekan)
@@ -87,27 +89,27 @@ add_subdirectory(external)
 add_subdirectory(config)
 
 # Testing with boost
-if(${WITH_BOOST_TESTS})
+if (${WITH_BOOST_TESTS})
     set(_BOOST_TESTS_DIR
-        tests/boost/
-        CACHE INTERNAL "Path to boost test sources")
+            tests/boost/
+            CACHE INTERNAL "Path to boost test sources")
     message(STATUS "BOOST_TESTS enabled: building tests in ${_BOOST_TESTS_DIR}")
     add_subdirectory(${_BOOST_TESTS_DIR})
-else()
+else ()
     message(STATUS "BOOST_TESTS disabled")
-endif()
+endif ()
 
 # Enforce code formatting rules with clang-format.
 find_program(
-    CLANG_FORMAT_PATH
-    NAMES "clang-format-8" "clang-format"
-    DOC "Path to clang-format executable")
-if(NOT CLANG_FORMAT_PATH)
+        CLANG_FORMAT_PATH
+        NAMES "clang-format-8" "clang-format"
+        DOC "Path to clang-format executable")
+if (NOT CLANG_FORMAT_PATH)
     message(STATUS "clang-format not found.")
-else()
+else ()
     message(STATUS "clang-format found: ${CLANG_FORMAT_PATH}")
     set(DO_CLANG_FORMAT "${CLANG_FORMAT_PATH}" "-i -style=file")
-endif()
+endif ()
 
 # Final feature summary (last)
 include(cmake/Summary.cmake)
@@ -115,18 +117,18 @@ include(cmake/Summary.cmake)
 # Remove files containing substring from a list of file names.
 function(exclude_files_containing var exclude_string)
     set(listVar "")
-    foreach(file ${ARGN})
+    foreach (file ${ARGN})
         string(FIND ${file} ${exclude_string} EXCLUDE_STRING_FOUND)
-        if(${EXCLUDE_STRING_FOUND} EQUAL -1)
+        if (${EXCLUDE_STRING_FOUND} EQUAL -1)
             list(APPEND listVar ${file})
-        endif()
-    endforeach()
+        endif ()
+    endforeach ()
     set(${var}
-        "${listVar}"
-        PARENT_SCOPE)
+            "${listVar}"
+            PARENT_SCOPE)
 endfunction()
 
-if(CLANG_FORMAT_PATH)
+if (CLANG_FORMAT_PATH)
     # Find all .c(pp) and .h(pp) files.
     file(GLOB_RECURSE KOTEKAN_ALL_CPP_FILES *.cpp)
     file(GLOB_RECURSE KOTEKAN_ALL_HPP_FILES *.hpp)
@@ -146,7 +148,7 @@ if(CLANG_FORMAT_PATH)
 
     # Use .clang-format file to auto format.
     add_custom_target(
-        clang-format
-        COMMAND ${CLANG_FORMAT_PATH} -style=file -i ${FILES_TO_FORMAT}
-        COMMENT "Running clang-format")
-endif()
+            clang-format
+            COMMAND ${CLANG_FORMAT_PATH} -style=file -i ${FILES_TO_FORMAT}
+            COMMENT "Running clang-format")
+endif ()

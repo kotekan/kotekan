@@ -23,7 +23,6 @@ downsamp_params = {
 
 @pytest.fixture(scope="module")
 def vis_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("vis_data")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -46,7 +45,6 @@ def vis_data(tmpdir_factory):
 
 
 def test_structure(vis_data):
-
     n = downsamp_params["num_elements"]
 
     # Check that each samples is the expected shape
@@ -61,7 +59,6 @@ def test_structure(vis_data):
 
 
 def test_metadata(vis_data):
-
     input_frame_length = int(800e6 / 2048 * downsamp_params["cadence"])
     frame_length = input_frame_length * downsamp_params["num_samples"]
     frame_total = (input_frame_length - 2) * downsamp_params["num_samples"]
@@ -87,7 +84,6 @@ def test_time(vis_data):
 
 
 def test_contents(vis_data):
-
     n = downsamp_params["num_elements"]
     n_ev = downsamp_params["num_ev"]
 

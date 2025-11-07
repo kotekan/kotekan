@@ -19,7 +19,7 @@ global_params = {
     },
 }
 frame_size = global_params["frame_size"] = (
-    global_params["num_elements"] * global_params["samples_per_data_set"]
+        global_params["num_elements"] * global_params["samples_per_data_set"]
 )
 
 
@@ -123,10 +123,10 @@ def check_baseband_dump(file_name, freq_id=0):
                     break
                 # calculation used in `testDataGen` for method `tpluse`:
                 expected = (
-                    frame_metadata.frame_fpga_seq + j // num_elements + j % num_elements
-                ) % 256
+                                   frame_metadata.frame_fpga_seq + j // num_elements + j % num_elements
+                           ) % 256
                 assert (
-                    val == expected
+                        val == expected
                 ), f"Baseband data mismatch at index {j}/{frame_index}, fpga_seq={frame_metadata.frame_fpga_seq}"
 
             frame_index += 1

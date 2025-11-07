@@ -10,6 +10,7 @@ CORS(app, support_credentials=True)
 KOTEKAN_ADDRESS = "http://localhost:12048"
 DUMP_DIR = "./"
 
+
 # Load file
 @app.route("/", defaults={"req_path": ""})
 @app.route("/<path:req_path>")
@@ -40,7 +41,6 @@ def dir_listing(req_path):
 # "/kotekan_instance" is used to differentiate from file system
 @app.route("/kotekan_instance/<endpoint>", methods=["GET", "POST"])
 def update(endpoint):
-
     # GET request
     if request.method == "GET":
         data = get(f"{KOTEKAN_ADDRESS}/{endpoint}")

@@ -43,9 +43,9 @@ def has_redis(host="localhost", port=6379):
 def test_produce_consume():
     broker_path = shutil.which("comet")
     if (
-        not os.path.isfile(producer_path)
-        or not os.path.isfile(consumer_path)
-        or not os.path.isfile(producer2_path)
+            not os.path.isfile(producer_path)
+            or not os.path.isfile(consumer_path)
+            or not os.path.isfile(producer2_path)
     ):
         pytest.skip("Build with -DBOOST_TESTS=ON to activate this test")
     if not broker_path:

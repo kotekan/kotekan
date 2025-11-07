@@ -11,10 +11,10 @@ params = {
     "variable_my_stage_needs": -1,
 }
 
+
 # this runs kotekan and yields the data you want to inspect
 @pytest.fixture(scope="module")
 def data(tmpdir_factory):
-
     # keep all the data this test produces in a tmp directory
     tmpdir = tmpdir_factory.mktemp("name_of_the_test_case")
 
@@ -45,9 +45,7 @@ def data(tmpdir_factory):
     # put out is passed on to test the stage
     yield dump_buffer.load()
 
-
 # this is the actual test (give a name to it)
-def test_<name>(data):
-
-    for frame in data:
-        assert frame.vis == {1, 0}
+# def test_<name > (data):
+#     for frame in data:
+#         assert frame.vis == {1, 0}

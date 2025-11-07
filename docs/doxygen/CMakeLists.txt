@@ -4,8 +4,8 @@ set(DOXYFILE ${CMAKE_CURRENT_BINARY_DIR}/kotekan.doxy)
 configure_file(${DOXYFILE_IN} ${DOXYFILE} @ONLY)
 
 add_custom_target(
-    doxygen ALL
-    COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Generating API documentation with Doxygen"
-    VERBATIM)
+        doxygen ALL
+        COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Generating API documentation with Doxygen"
+        VERBATIM)

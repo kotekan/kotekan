@@ -109,7 +109,7 @@ freqlist = np.fromstring(info_header[: pkt_freqs * 4 * 2], dtype=np.float32).res
     -1, 2
 )  # .mean(axis=1)
 freqlist = freqlist / 1e6
-elemlist = np.fromstring(info_header[pkt_freqs * 4 * 2 :], dtype=np.int8)
+elemlist = np.fromstring(info_header[pkt_freqs * 4 * 2:], dtype=np.int8)
 
 plot_freqs = pkt_freqs / 8
 # freqlist = freqlist.reshape(-1,plot_freqs).mean(axis=1)
@@ -157,13 +157,13 @@ def data_listener():
                 data_pkt_samples_summed,
             ) = struct.unpack("III", data[:pkt_header])
             d[:, data_pkt_elem_idx] += (
-                np.fromstring(data[pkt_header:], dtype=np.uint32) * 1.0
+                    np.fromstring(data[pkt_header:], dtype=np.uint32) * 1.0
             )
             n[:, data_pkt_elem_idx] += data_pkt_samples_summed * 1.0
             fold_idx = np.array(
                 (
-                    (sec_per_pkt_frame * data_pkt_frame_idx + 0.5 * fold_period)
-                    % fold_period
+                        (sec_per_pkt_frame * data_pkt_frame_idx + 0.5 * fold_period)
+                        % fold_period
                 )
                 / fold_period
                 * plot_phase,
@@ -251,7 +251,6 @@ for i in np.arange(pkt_elems):
     ax[1, i].set_xlabel("Freq (MHz)")
 
 ax[1, 0].set_ylabel("Pulse Phase")
-
 
 cbar_ax = f.add_axes([0.85, 0.15, 0.05, 0.7])
 c = f.colorbar(p[0], cax=cbar_ax)

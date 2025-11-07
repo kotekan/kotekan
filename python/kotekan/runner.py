@@ -82,15 +82,15 @@ class KotekanRunner(object):
         return json.loads(version_string)
 
     def __init__(
-        self,
-        buffers=None,
-        stages=None,
-        config=None,
-        rest_commands=None,
-        debug=False,
-        expect_failure=False,
-        rest_port=0,
-        gdb=False,
+            self,
+            buffers=None,
+            stages=None,
+            config=None,
+            rest_commands=None,
+            debug=False,
+            expect_failure=False,
+            rest_port=0,
+            gdb=False,
     ):
 
         self._buffers = buffers if buffers is not None else {}
@@ -124,7 +124,7 @@ class KotekanRunner(object):
         config_dict = fix_strings(config_dict)
 
         with tempfile.NamedTemporaryFile(
-            mode="w"  # , delete=False
+                mode="w"  # , delete=False
         ) as fh, tempfile.NamedTemporaryFile() as f_out:
 
             yaml.safe_dump(config_dict, fh)
@@ -350,7 +350,6 @@ class FakeGPUBuffer(InputBuffer):
     _buf_ind = 0
 
     def __init__(self, **kwargs):
-
         self.name = "fakegpu_buf%i" % self._buf_ind
         stage_name = "fakegpu%i" % self._buf_ind
         self.__class__._buf_ind += 1
@@ -394,7 +393,6 @@ class FakeN2KBuffers(InputBuffer):
     _buf_ind = 0
 
     def __init__(self, samples_per_data_set, num_local_freq, n2k_kwargs, rfi_kwargs):
-
         self.name = "faken2k_corr_buf%i" % self._buf_ind
         self.counts_name = "faken2k_counts_buf%i" % self._buf_ind
         self.rfi_name = "faken2k_rfi_buf%i" % self._buf_ind
@@ -488,7 +486,6 @@ class FakeVisBuffer(InputBuffer):
     _buf_ind = 0
 
     def __init__(self, **kwargs):
-
         self.name = "fakevis_buf%i" % self._buf_ind
         stage_name = "fakevis%i" % self._buf_ind
         self.__class__._buf_ind += 1
@@ -524,7 +521,6 @@ class FakeN2Buffer(InputBuffer):
     _buf_ind = 0
 
     def __init__(self, **kwargs):
-
         self.name = "fakevis_buf%i" % self._buf_ind
         stage_name = "fakevis%i" % self._buf_ind
         self.__class__._buf_ind += 1
@@ -622,7 +618,6 @@ class ReadVisBuffer(InputBuffer):
     _buf_ind = 0
 
     def __init__(self, input_dir, buffer_list):
-
         self.name = "rawfileread_buf"
         stage_name = "rawfileread%i" % self._buf_ind
         self.__class__._buf_ind += 1
@@ -668,7 +663,6 @@ class DumpVisBuffer(OutputBuffer):
     name = None
 
     def __init__(self, output_dir):
-
         self.name = "dumpvis_buf%i" % self._buf_ind
         stage_name = "dump%i" % self._buf_ind
         self.__class__._buf_ind += 1
@@ -712,7 +706,6 @@ class ReadN2Buffer(InputBuffer):
     _buf_ind = 0
 
     def __init__(self, input_dir, buffer_list):
-
         self.name = "rawfileread_buf"
         stage_name = "rawfileread%i" % self._buf_ind
         self.__class__._buf_ind += 1
@@ -758,7 +751,6 @@ class DumpN2Buffer(OutputBuffer):
     name = None
 
     def __init__(self, output_dir, exit_after_n_files=0):
-
         self.name = "dumpn2_buf%i" % self._buf_ind
         stage_name = "dump%i" % self._buf_ind
         self.__class__._buf_ind += 1
@@ -812,7 +804,6 @@ class FakeFrbBeamformBuffer(InputBuffer):
     _buf_ind = 0
 
     def __init__(self, cpu=True, **kwargs):
-
         self.name = "fakefrbbeamform_buf%i" % self._buf_ind
         gpu_input_name = "fakefrbbeamform_in_buf%i" % self._buf_ind
         gpu_input_stage_name = "fakefrbbeamform_in%i" % self._buf_ind
@@ -950,7 +941,6 @@ class ReadRawBeamformBuffer(InputBuffer):
     _buf_ind = 0
 
     def __init__(self, input_dir, **kwargs):
-
         self.name = "rawfileread_buf%i" % self._buf_ind
         stage_name = "rawfileread%i" % self._buf_ind
         self.__class__._buf_ind += 1
@@ -982,11 +972,9 @@ class ReadRawBeamformBuffer(InputBuffer):
 
 
 class ReadRawBuffer(InputBuffer):
-
     _buf_ind = 0
 
     def __init__(self, infile, chunk_size):
-
         self.name = "read_raw_buf{:d}".format(self._buf_ind)
         stage_name = "read_raw{:d}".format(self._buf_ind)
         self.__class__._buf_ind += 1
@@ -1026,13 +1014,13 @@ class DumpBasebandBuffer(OutputBuffer):
     _buf_ind = 0
 
     def __init__(
-        self,
-        output_dir,
-        num_frames,
-        frame_size="num_elements * samples_per_data_set",
-        **kwargs,
+            self,
+            output_dir,
+            num_frames,
+            frame_size="num_elements * samples_per_data_set",
+            **kwargs,
     ):
-        self.name = f"baseband_output_buffer_{ self.__class__._buf_ind }"
+        self.name = f"baseband_output_buffer_{self.__class__._buf_ind}"
         self.__class__._buf_ind += 1
         self.output_dir = output_dir
         self.buffer_block = {
@@ -1074,7 +1062,6 @@ class ReadBasebandBuffer(InputBuffer):
     _buf_ind = 0
 
     def __init__(self, input_dir, buffer_list):
-
         self.name = "rawbaseband_buf"
         stage_name = "rawbaseband_read%i" % self._buf_ind
         self.__class__._buf_ind += 1
@@ -1126,11 +1113,11 @@ class DumpFrbPostProcessBuffer(InputBuffer):
             self.name: {
                 "num_frames": "buffer_depth + 4",
                 "frame_size": "(samples_per_data_set / downsample_time / factor_upchan / timesamples_per_frb_packet)"
-                "* 256 * (num_beams_per_frb_packet * num_gpus "
-                "* factor_upchan_out * timesamples_per_frb_packet "
-                "+ 24 + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus "
-                "+ sizeof_float * num_beams_per_frb_packet * num_gpus "
-                "+ sizeof_float * num_beams_per_frb_packet * num_gpus)",
+                              "* 256 * (num_beams_per_frb_packet * num_gpus "
+                              "* factor_upchan_out * timesamples_per_frb_packet "
+                              "+ 24 + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus "
+                              "+ sizeof_float * num_beams_per_frb_packet * num_gpus "
+                              "+ sizeof_float * num_beams_per_frb_packet * num_gpus)",
                 "sizeof_short": 2,
                 "sizeof_float": 4,
                 "kotekan_buffer": "standard",
@@ -1211,11 +1198,9 @@ class DumpPsrPostProcessBuffer(InputBuffer):
 
 
 class DropFramesBuffer(InputBuffer):
-
     _buf_ind = 0
 
     def __init__(self, input_buffer, missing_frames=[], **kwargs):
-
         self.name = "dropframes_buf%i" % self._buf_ind
         stage_name = "dropframes%i" % self._buf_ind
         self.__class__._buf_ind += 1
@@ -1275,18 +1260,18 @@ class KotekanStageTester(KotekanRunner):
     """
 
     def __init__(
-        self,
-        stage_type,
-        stage_config,
-        buffers_in,
-        buffers_out,
-        global_config=None,
-        parallel_stage_type=None,
-        parallel_stage_config={},
-        rest_commands=None,
-        noise=False,
-        expect_failure=False,
-        gdb=False,
+            self,
+            stage_type,
+            stage_config,
+            buffers_in,
+            buffers_out,
+            global_config=None,
+            parallel_stage_type=None,
+            parallel_stage_config={},
+            rest_commands=None,
+            noise=False,
+            expect_failure=False,
+            gdb=False,
     ):
 
         config = stage_config.copy()
@@ -1397,7 +1382,6 @@ N2_pool:
 
 
 def fix_strings(d):
-
     import future.utils
 
     if isinstance(d, list):
@@ -1424,8 +1408,8 @@ def has_hdf5():
 def has_lapack():
     """Is LAPACK support built in."""
     return (
-        KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_LAPACK_BLAZE"]
-        == "ON"
+            KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_LAPACK_BLAZE"]
+            == "ON"
     )
 
 

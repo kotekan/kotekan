@@ -16,11 +16,11 @@ kernel-description:
     sampling-time-μsec: 2.56
     shift-parameter-σ: 4
   compile-parameters:
-    minthreads: [32, 4]
+    minthreads: [ 32, 4 ]
     blocks_per_sm: 8
   call-parameters:
-    threads: [32, 4]
-    blocks: [32]
+    threads: [ 32, 4 ]
+    blocks: [ 32 ]
     shmem_bytes: 43136
   kernel-symbol: "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES4_S5_S5_"
   kernel-arguments:
@@ -33,37 +33,37 @@ kernel-description:
     - name: "A"
       intent: in
       type: Int8
-      indices: [C, D, B, P, F]
-      shape: [2, 1024, 16, 2, 16]
-      strides: [1, 2, 2048, 32768, 65536]
+      indices: [ C, D, B, P, F ]
+      shape: [ 2, 1024, 16, 2, 16 ]
+      strides: [ 1, 2, 2048, 32768, 65536 ]
     - name: "E"
       intent: in
       type: Int4
-      indices: [C, D, P, F, T]
-      shape: [2, 1024, 2, 16, 65536]
-      strides: [1, 2, 2048, 4096, 65536]
+      indices: [ C, D, P, F, T ]
+      shape: [ 2, 1024, 2, 16, 65536 ]
+      strides: [ 1, 2, 2048, 4096, 65536 ]
     - name: "s"
       intent: in
       type: Int32
-      indices: [B, P, F]
-      shape: [16, 2, 16]
-      strides: [1, 16, 32]
+      indices: [ B, P, F ]
+      shape: [ 16, 2, 16 ]
+      strides: [ 1, 16, 32 ]
     - name: "J"
       intent: out
       type: Int4
-      indices: [C, T, P, F, B]
-      shape: [2, 16384, 2, 16, 16]
-      strides: [1, 2, 32768, 65536, 1048576]
+      indices: [ C, T, P, F, B ]
+      shape: [ 2, 16384, 2, 16, 16 ]
+      strides: [ 1, 2, 32768, 65536, 1048576 ]
     - name: "info"
       intent: out
       type: Int32
-      indices: [thread, warp, block]
-      shapes: [32, 4, 32]
-      strides: [1, 32, 128]
+      indices: [ thread, warp, block ]
+      shapes: [ 32, 4, 32 ]
+      strides: [ 1, 32, 128 ]
     - name: "log"
       intent: inout
       type: Int32
-      indices: [block]
-      shapes: [32]
-      strides: [1]
+      indices: [ block ]
+      shapes: [ 32 ]
+      strides: [ 1 ]
 ...

@@ -27,7 +27,6 @@ vis_params = {}
 
 @pytest.fixture(scope="module", params=[[1, 13], [0, 1, 14, 15, 20]])
 def subset_data(request, tmpdir_factory):
-
     inputs = request.param
 
     tmpdir = tmpdir_factory.mktemp("subset")
@@ -84,7 +83,7 @@ def test_data(subset_data):
     )
 
     evecs = (
-        np.arange(subset_params["num_ev"])[:, None] + 1.0j * exp_inputs[None, :]
+            np.arange(subset_params["num_ev"])[:, None] + 1.0j * exp_inputs[None, :]
     ).flatten()
 
     assert (data.data["vis"] == exp_vis).all()

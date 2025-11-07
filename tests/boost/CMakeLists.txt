@@ -25,12 +25,12 @@ target_link_libraries(test_updatequeue PRIVATE libexternal kotekan_libs kotekan_
 # test_dataset_manager_rest needs fmt
 add_executable(test_dataset_manager_rest test_dataset_manager_rest.cpp)
 target_link_libraries(test_dataset_manager_rest PRIVATE libexternal kotekan_libs kotekan_core
-                                                        kotekan_utils)
+        kotekan_utils)
 
 # test_dataset_manager needs fmt
 add_executable(test_dataset_manager test_dataset_manager.cpp)
 target_link_libraries(test_dataset_manager PRIVATE libexternal kotekan_libs kotekan_utils
-                                                   kotekan_core)
+        kotekan_core)
 
 # test_ringbuffer
 add_executable(test_ringbuffer test_ringbuffer.cpp)
@@ -60,12 +60,12 @@ target_link_libraries(test_config PRIVATE libexternal kotekan_core kotekan_stage
 # test_configTracker needs
 add_executable(test_configTracker test_configTracker.cpp)
 target_link_libraries(test_configTracker PRIVATE libexternal kotekan_core kotekan_stages
-                                                 kotekan_metadata kotekan_utils Boost::filesystem)
+        kotekan_metadata kotekan_utils Boost::filesystem)
 
 # test_chime_stacking needs MurmurHash3 and VisUtil
 add_executable(test_chime_stacking test_chime_stacking.cpp)
 target_link_libraries(test_chime_stacking PRIVATE libexternal kotekan_utils kotekan_stages
-                                                  kotekan_core)
+        kotekan_core)
 target_include_directories(test_chime_stacking PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 
 # source files for broker test
@@ -75,39 +75,39 @@ add_executable(dataset_broker_consumer dataset_broker_consumer.cpp)
 
 # dataset_broker executables need fmt
 target_link_libraries(dataset_broker_producer2 PRIVATE libexternal kotekan_libs kotekan_utils
-                                                       kotekan_core)
+        kotekan_core)
 target_link_libraries(dataset_broker_producer PRIVATE libexternal kotekan_libs kotekan_utils
-                                                      kotekan_core)
+        kotekan_core)
 target_link_libraries(dataset_broker_consumer PRIVATE libexternal kotekan_libs kotekan_utils
-                                                      kotekan_core)
+        kotekan_core)
 
 # Many tests now need the Cuda include directory for float16_t via visUtil.hpp
 target_include_directories(dataset_broker_producer2 PUBLIC . ${CUDA_INCLUDE_DIR}
-                                                           ${CUDA_INCLUDE_DIRS})
+        ${CUDA_INCLUDE_DIRS})
 target_include_directories(dataset_broker_producer PUBLIC . ${CUDA_INCLUDE_DIR}
-                                                          ${CUDA_INCLUDE_DIRS})
+        ${CUDA_INCLUDE_DIRS})
 target_include_directories(dataset_broker_consumer PUBLIC . ${CUDA_INCLUDE_DIR}
-                                                          ${CUDA_INCLUDE_DIRS})
+        ${CUDA_INCLUDE_DIRS})
 target_include_directories(test_chime_stacking PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 target_include_directories(test_stat_tracker PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 target_include_directories(test_updatequeue PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 target_include_directories(test_dataset_manager PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 target_include_directories(test_dataset_manager_rest PUBLIC . ${CUDA_INCLUDE_DIR}
-                                                            ${CUDA_INCLUDE_DIRS})
+        ${CUDA_INCLUDE_DIRS})
 
 # list test source files that need HDF5 here:
-if(HDF5_FOUND
-   AND HighFive_FOUND
-   AND HDF5Plugin_PLUGIN_DIR)
+if (HDF5_FOUND
+        AND HighFive_FOUND
+        AND HDF5Plugin_PLUGIN_DIR)
     add_executable(test_transpose test_transpose.cpp)
     target_link_libraries(test_transpose PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
     # test_transpose needs fmt and VisTranspose
     target_link_libraries(test_transpose PRIVATE libexternal kotekan_stages kotekan_core
-                                                 kotekan_utils kotekan_metadata)
+            kotekan_utils kotekan_metadata)
     target_include_directories(test_transpose PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
     target_include_directories(test_transpose SYSTEM PUBLIC ${CUDA_INCLUDE_DIR}
-                                                            ${CUDA_INCLUDE_DIRS})
-endif()
+            ${CUDA_INCLUDE_DIRS})
+endif ()
 
 add_executable(test_DataType test_DataType.cpp)
 target_link_libraries(test_DataType kotekan_metadata libexternal)
@@ -129,15 +129,15 @@ target_link_libraries(test_timeUtil PRIVATE kotekan_utils)
 target_compile_definitions(test_timeUtil PRIVATE TEST_SCRIPT_DIR="${PROJECT_BINARY_DIR}")
 
 add_custom_command(
-    OUTPUT ${PROJECT_BINARY_DIR}/timeUtil.py
-    DEPENDS ${PROJECT_SOURCE_DIR}/timeUtil.py
-    COMMAND ${CMAKE_COMMAND} ARGS -E copy ${PROJECT_SOURCE_DIR}/timeUtil.py
-            ${PROJECT_BINARY_DIR}/timeUtil.py
-    COMMENT "Copying timeUtil.py script into destination")
+        OUTPUT ${PROJECT_BINARY_DIR}/timeUtil.py
+        DEPENDS ${PROJECT_SOURCE_DIR}/timeUtil.py
+        COMMAND ${CMAKE_COMMAND} ARGS -E copy ${PROJECT_SOURCE_DIR}/timeUtil.py
+        ${PROJECT_BINARY_DIR}/timeUtil.py
+        COMMENT "Copying timeUtil.py script into destination")
 add_custom_target(
-    test_timeUtil_script ALL
-    DEPENDS ${PROJECT_BINARY_DIR}/timeUtil.py
-    COMMENT "Generating timeUtil.py script")
+        test_timeUtil_script ALL
+        DEPENDS ${PROJECT_BINARY_DIR}/timeUtil.py
+        COMMENT "Generating timeUtil.py script")
 
 add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)
 target_link_libraries(test_CHORDTelescope kotekan_utils)

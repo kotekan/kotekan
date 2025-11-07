@@ -91,7 +91,6 @@ accumulate_params = {
 
 @pytest.fixture(scope="module")
 def accumulate_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("accumulate")
 
     input_buffers = runner.FakeN2KBuffers(
@@ -111,8 +110,8 @@ def accumulate_data(tmpdir_factory):
         str(tmpdir),
         global_params["num_local_freq"]
         * (
-            global_params["total_frames"]
-            // accumulate_params["num_n2k_samples_to_accumulate"]
+                global_params["total_frames"]
+                // accumulate_params["num_n2k_samples_to_accumulate"]
         ),
     )
 
@@ -137,7 +136,6 @@ def accumulate_data(tmpdir_factory):
 
 
 def gen_vis_data(t_idx, f_idx):
-
     n = global_params["num_elements"]
     n_prod = (n * (n + 1)) // 2
 
@@ -145,9 +143,9 @@ def gen_vis_data(t_idx, f_idx):
     pat0 = (col - 1.0j * row).astype(np.complex64)
 
     seq0 = (
-        t_idx
-        * global_params["sub_integration_ntime"]
-        * accumulate_params["num_n2k_samples_to_accumulate"]
+            t_idx
+            * global_params["sub_integration_ntime"]
+            * accumulate_params["num_n2k_samples_to_accumulate"]
     )
 
     t_n2k_0 = t_idx * accumulate_params["num_n2k_samples_to_accumulate"]
@@ -163,7 +161,7 @@ def gen_vis_data(t_idx, f_idx):
     even_counts = 0
 
     for t in range(
-        t_n2k_0, t_n2k_0 + accumulate_params["num_n2k_samples_to_accumulate"]
+            t_n2k_0, t_n2k_0 + accumulate_params["num_n2k_samples_to_accumulate"]
     ):
 
         count_idx = (t * global_params["num_local_freq"] + f_idx) % len(count_vals)
@@ -186,7 +184,7 @@ def gen_vis_data(t_idx, f_idx):
         vis /= total_counts
         print(diff_vis_sq, diff_N_sq * np.absolute(vis) ** 2)
         weights[:] = total_counts ** 2 / (
-            diff_vis_sq - diff_N_sq * np.absolute(vis) ** 2
+                diff_vis_sq - diff_N_sq * np.absolute(vis) ** 2
         )
     else:
         vis[:] = 0.0
@@ -196,7 +194,6 @@ def gen_vis_data(t_idx, f_idx):
 
 
 def test_structure(accumulate_data):
-
     n = global_params["num_elements"]
     n_prod = (n * (n + 1)) // 2
     n_ev = 0
@@ -215,55 +212,50 @@ def test_structure(accumulate_data):
 
     # Check that we have the expected number of samples
     nsamp = global_params["num_local_freq"] * (
-        global_params["total_frames"]
-        // accumulate_params["num_n2k_samples_to_accumulate"]
+            global_params["total_frames"]
+            // accumulate_params["num_n2k_samples_to_accumulate"]
     )
     assert len(accumulate_data) == nsamp
 
 
 def test_metadata(accumulate_data):
-
     for idx, frame in enumerate(accumulate_data):
-
         f_idx = idx % len(freq_ids)
 
         assert (
-            frame.metadata.frame_length_fpga_ticks
-            == accumulate_params["num_n2k_samples_to_accumulate"]
-            * global_params["sub_integration_ntime"]
+                frame.metadata.frame_length_fpga_ticks
+                == accumulate_params["num_n2k_samples_to_accumulate"]
+                * global_params["sub_integration_ntime"]
         )
         assert frame.metadata.freq_id == freq_ids[f_idx]
         assert (
-            frame.metadata.freq_Hz
-            == freq_ids[f_idx]
-            * global_params["sampling_rate_Hz"]
-            / global_params["fft_length"]
+                frame.metadata.freq_Hz
+                == freq_ids[f_idx]
+                * global_params["sampling_rate_Hz"]
+                / global_params["fft_length"]
         )
 
 
 def test_time(accumulate_data):
-
     dt_ns = GIGA * global_params["fft_length"] / global_params["sampling_rate_Hz"]
 
     for idx, frame in enumerate(accumulate_data):
-
         t_idx = idx // len(freq_ids)
 
         assert (
-            frame.metadata.fpga_start_tick
-            == t_idx
-            * accumulate_params["num_n2k_samples_to_accumulate"]
-            * global_params["sub_integration_ntime"]
+                frame.metadata.fpga_start_tick
+                == t_idx
+                * accumulate_params["num_n2k_samples_to_accumulate"]
+                * global_params["sub_integration_ntime"]
         )
         assert (
-            frame.metadata.frame_start_time_ns
-            == frame.metadata.fpga_start_tick * dt_ns
-            + global_params["gps_time"]["frame0_nano"]
+                frame.metadata.frame_start_time_ns
+                == frame.metadata.fpga_start_tick * dt_ns
+                + global_params["gps_time"]["frame0_nano"]
         )
 
 
 def test_EOP(accumulate_data):
-
     dt_ns = GIGA * global_params["fft_length"] / global_params["sampling_rate_Hz"]
     t0_ns = global_params["gps_time"]["frame0_nano"]
 
@@ -271,11 +263,10 @@ def test_EOP(accumulate_data):
     eopB = global_params["earth_rotation_data"]["earth_orientation_parameter_table"][1]
 
     for idx, frame in enumerate(accumulate_data):
-
         t_idx = idx // len(freq_ids)
         seq_len = (
-            accumulate_params["num_n2k_samples_to_accumulate"]
-            * global_params["sub_integration_ntime"]
+                accumulate_params["num_n2k_samples_to_accumulate"]
+                * global_params["sub_integration_ntime"]
         )
         seq0 = t_idx * seq_len
         seq = seq0 + seq_len // 2
@@ -283,7 +274,7 @@ def test_EOP(accumulate_data):
         t_inst_ns = seq * dt_ns + t0_ns
 
         wA = (eopB["time_inst_ns"] - t_inst_ns) / (
-            eopB["time_inst_ns"] - eopA["time_inst_ns"]
+                eopB["time_inst_ns"] - eopA["time_inst_ns"]
         )
         wB = 1.0 - wA
 
@@ -309,13 +300,11 @@ def test_EOP(accumulate_data):
 
 
 def test_accumulate(accumulate_data):
-
     row, col = np.triu_indices(global_params["num_elements"])
 
     pat0 = (col - 1.0j * row).astype(np.complex64)
 
     for idx, frame in enumerate(accumulate_data):
-
         f = idx % global_params["num_local_freq"]
         t = idx // global_params["num_local_freq"]
 
@@ -332,12 +321,12 @@ def test_accumulate(accumulate_data):
 
 
 def test_rfi(accumulate_data):
-
     num_full_frames_per_accumulation = accumulate_params[
-        "num_n2k_samples_to_accumulate"
-    ] // (
-        global_params["samples_per_data_set"] // global_params["sub_integration_ntime"]
-    )
+                                           "num_n2k_samples_to_accumulate"
+                                       ] // (
+                                               global_params["samples_per_data_set"] // global_params[
+                                           "sub_integration_ntime"]
+                                       )
 
     for idx, frame in enumerate(accumulate_data):
 

@@ -10,11 +10,9 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-
 import matplotlib.pyplot as plt
 import sys, json
 import time
-
 
 header = json.loads(sys.stdin.readline())
 
@@ -29,7 +27,7 @@ if data_type == "CORR_MATRIX":  # N^2
     num_elements = header["num_elements"]
     block_dims = header["block_dim"]
     num_blocks = (
-        (num_elements // block_dims[0]) * (num_elements // block_dims[0] + 1) // 2
+            (num_elements // block_dims[0]) * (num_elements // block_dims[0] + 1) // 2
     )
 
     target.write("Data Length: {}\n".format(data_length))
@@ -45,7 +43,7 @@ if data_type == "CORR_MATRIX":  # N^2
     x_blk = 0
     y_blk = 0
     for i in np.arange(num_blocks):
-        corr_matrix[x_blk : x_blk + block_dims[0], y_blk : y_blk + block_dims[1], :] = (
+        corr_matrix[x_blk: x_blk + block_dims[0], y_blk: y_blk + block_dims[1], :] = (
             data[i, :, :].reshape(block_dims).transpose(1, 0, 2)
         )
         x_blk += block_dims[0]
@@ -77,7 +75,6 @@ if data_type == "CORR_MATRIX":  # N^2
     plt.savefig(
         "correlation_{}.pdf".format(time.time()), dpi=axesdpi, bbox_inches="tight"
     )
-
 
 """
 target.write("{}\n".format(data.shape));

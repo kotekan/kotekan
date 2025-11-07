@@ -89,14 +89,12 @@ global_params = {
 
 
 def seq_to_t_inst_ns(seq):
-
     dt_ns = 5120  # 16384/(3.2 GHz)
 
     return global_params["gps_time"]["frame0_nano"] + dt_ns * seq
 
 
 def calc_raw_frame_times_and_seqs():
-
     delta_seq = int(3.2e9 / 16384 * cadence)
     delta_ns = int(cadence * GIGA)
 
@@ -121,7 +119,6 @@ def calc_raw_frame_times_and_seqs():
 
 
 def calc_t_start_tel(frame0_ns):
-
     t_start_0h_s = (frame0_ns // (86400 * GIGA)) * 86400
     t_start_diff_ns = frame0_ns - GIGA * t_start_0h_s
 
@@ -149,7 +146,6 @@ def calc_t_start_tel(frame0_ns):
 
 
 def calc_t_from_t_inst_ns(t_inst_ns):
-
     frame0_ns = global_params["gps_time"]["frame0_nano"]
 
     t_start_tel = calc_t_start_tel(frame0_ns)
@@ -165,7 +161,6 @@ def calc_t_from_t_inst_ns(t_inst_ns):
 
 
 def calc_t_inst_ns_from_t(t):
-
     frame0_ns = global_params["gps_time"]["frame0_nano"]
     t_start_tel = calc_t_start_tel(frame0_ns)
 
@@ -177,7 +172,6 @@ def calc_t_inst_ns_from_t(t):
 
 
 def calc_t_at_era(t0, era_deg_target, tol):
-
     dta = TimeDelta(-12.0 * units.hour, scale="ut1")
     dtb = TimeDelta(+12.0 * units.hour, scale="ut1")
 
@@ -211,7 +205,6 @@ def calc_t_at_era(t0, era_deg_target, tol):
 
 
 def jd_to_s_ns(jd):
-
     s = int(jd * 86400)
     ns = int((jd * 86400 - s) * GIGA)
 
@@ -219,7 +212,6 @@ def jd_to_s_ns(jd):
 
 
 def t_jd_to_s_ns(t):
-
     t1_s, t1_ns = jd_to_s_ns(t.jd1)
     t2_s, t2_ns = jd_to_s_ns(t.jd2)
 
@@ -247,7 +239,6 @@ def calc_times(t):
 
 
 def calc_downsamp_frame_meta():
-
     seq, dseq, t_ns = calc_raw_frame_times_and_seqs()
     t = calc_t_from_t_inst_ns(t_ns)
 
@@ -327,7 +318,6 @@ def calc_downsamp_frame_meta():
 
 @pytest.fixture(scope="module")
 def n2_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("n2_data")
 
     dump_buffer = runner.DumpN2Buffer(str(tmpdir))
@@ -346,7 +336,6 @@ def n2_data(tmpdir_factory):
 
 
 def test_structure(n2_data):
-
     out_frame_metas = calc_downsamp_frame_meta()
 
     # Check that there are the correct number of samples
@@ -364,7 +353,6 @@ def test_structure(n2_data):
 
 
 def test_metadata(n2_data):
-
     # ticks_per_second = int(3.2e9 / 16384)
 
     # input_frame_length = int(3.2e9 / 16384 * fake_params["cadence"])
@@ -401,7 +389,6 @@ def test_metadata(n2_data):
 
 
 def test_time(n2_data):
-
     frame_time_ns = np.array([v.metadata.frame_start_time_ns for v in n2_data])
 
     frame_meta = calc_downsamp_frame_meta()
@@ -413,7 +400,6 @@ def test_time(n2_data):
 
 
 def test_eop(n2_data):
-
     eop_t_inst = np.array([v.metadata.eop.t_inst for v in n2_data])
     eop_t_ut1 = np.array([v.metadata.eop.t_ut1 for v in n2_data])
     eop_dut1 = np.array([v.metadata.eop.delta_UT1_inst for v in n2_data])
@@ -460,7 +446,6 @@ def test_eop(n2_data):
 
 
 def test_contents(n2_data):
-
     n = global_params["num_elements"]
     n_ev = global_params["num_ev"]
 

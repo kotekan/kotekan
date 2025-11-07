@@ -7,8 +7,8 @@ kernel-description:
   name: "frb"
   description: "FRB beamformer"
   design-parameters:
-    beam-layout: [16, 24]
-    dish-layout: [8, 12]
+    beam-layout: [ 16, 24 ]
+    dish-layout: [ 8, 12 ]
     downsampling-factor: 12
     number-of-complex-components: 2
     number-of-dishes: 64
@@ -19,11 +19,11 @@ kernel-description:
     sampling-time-μsec: 5.12
     upchannelization-factor: 16
   compile-parameters:
-    minthreads: [32, 6]
+    minthreads: [ 32, 6 ]
     blocks_per_sm: 4
   call-parameters:
-    threads: [32, 6]
-    blocks: [128]
+    threads: [ 32, 6 ]
+    blocks: [ 128 ]
     shmem_bytes: 13920
   kernel-symbol: "_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE"
   kernel-arguments:
@@ -54,31 +54,31 @@ kernel-description:
     - name: "S"
       intent: in
       type: Int16
-      indices: [MN, D]
-      shape: [2, 96]
-      strides: [1, 2]
+      indices: [ MN, D ]
+      shape: [ 2, 96 ]
+      strides: [ 1, 2 ]
     - name: "W"
       intent: in
       type: Float16
-      indices: [C, dishM, dishN, P, Fbar]
-      shape: [2, 8, 12, 2, 128]
-      strides: [1, 2, 16, 192, 384, 49152]
+      indices: [ C, dishM, dishN, P, Fbar ]
+      shape: [ 2, 8, 12, 2, 128 ]
+      strides: [ 1, 2, 16, 192, 384, 49152 ]
     - name: "Ē"
       intent: in
       type: Int4
-      indices: [C, D, P, Fbar, Tbar]
-      shape: [2, 64, 2, 128, 2048]
-      strides: [1, 2, 128, 256, 32768]
+      indices: [ C, D, P, Fbar, Tbar ]
+      shape: [ 2, 64, 2, 128, 2048 ]
+      strides: [ 1, 2, 128, 256, 32768 ]
     - name: "I"
       intent: out
       type: Float16
-      indices: [beamP, beamQ, Fbar, Tbar]
-      shape: [16, 24, 512, 1024]
-      strides: [1, 16, 384, 196608]
+      indices: [ beamP, beamQ, Fbar, Tbar ]
+      shape: [ 16, 24, 512, 1024 ]
+      strides: [ 1, 16, 384, 196608 ]
     - name: "info"
       intent: out
       type: Int32
-      indices: [thread, warp, block]
-      shapes: [32, 6, 128]
-      strides: [1, 32, 192]
+      indices: [ thread, warp, block ]
+      shapes: [ 32, 6, 128 ]
+      strides: [ 1, 32, 192 ]
 ...

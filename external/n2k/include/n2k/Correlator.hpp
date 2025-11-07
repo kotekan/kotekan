@@ -10,36 +10,35 @@ namespace n2k {
 #endif
 
 
-struct CorrelatorParams
-{
+struct CorrelatorParams {
     // User-specified parameters (at construction)
     //   nstations = number of stations. A "station" is a dish polarization pair.
     //   nfreq = number of frequency channels (per GPU)
     //
     // Full CHORD: nfreq=16 and nstations=1024 (corresponding to 512 dual-pol dishes).
     // CHORD pathfinder: nfreq=128 and nstations=128 (corresponding to 64 dual-pol dishes).
-    
+
     CorrelatorParams(int nstations, int nfreq);
-    
+
     const int nstations;
     const int nfreq;
 
     // Derived parameters start here (either computed in constructor, or compile-time constants).
     // Some of these may become user-specified parameters in the future!
-    
-    static constexpr int bit_depth = 4;         // correlator operates on signed (4+4) bit data
-    static constexpr int nt_divisor = 256;      // nt_inner must be divisible by this (see below)
-    static constexpr int ns_divisor = 128;      // Number of stations must be divisible by this
+
+    static constexpr int bit_depth = 4;    // correlator operates on signed (4+4) bit data
+    static constexpr int nt_divisor = 256; // nt_inner must be divisible by this (see below)
+    static constexpr int ns_divisor = 128; // Number of stations must be divisible by this
 
     // E-array strides (int32, not bytes!!)
     const int emat_fstride;
     const int emat_tstride;
 
     // Visibililty matrix strides are in int32 (not int32+32)
-    const int vmat_ntiles;   // M*(M+1)/2   where M = nstations/16
-    const int vmat_fstride;  // vmat_ntiles * 16 * 16 * 2
-    const int vmat_tstride;  // nfreq * vmat_fstride
-    
+    const int vmat_ntiles;  // M*(M+1)/2   where M = nstations/16
+    const int vmat_fstride; // vmat_ntiles * 16 * 16 * 2
+    const int vmat_tstride; // nfreq * vmat_fstride
+
     // Tiling of visibility matrix by threadblocks.
     const int ntiles_1d;
     const int ntiles_2d_offdiag;
@@ -51,40 +50,40 @@ struct CorrelatorParams
     const int threadblocks_per_freq;
 
     // Shared memory layout (see overleaf; all strides are int32)
-    static constexpr int shmem_t8_stride = 1;     // Delta(t)=8,16
-    static constexpr int shmem_s1_stride = 4;     // Delta(s)=1,2,4
-    static constexpr int shmem_s8_stride = 33;    // Delta(s)=8,16,32,64
+    static constexpr int shmem_t8_stride = 1;  // Delta(t)=8,16
+    static constexpr int shmem_s1_stride = 4;  // Delta(s)=1,2,4
+    static constexpr int shmem_s8_stride = 33; // Delta(s)=8,16,32,64
     static constexpr int shmem_reim_stride = 16 * 33;
     static constexpr int shmem_ab_stride = 32 * 33;
-    static constexpr int shmem_t32_stride = 64 * 33;   // Delta(t)=32,64
-    static constexpr int shmem_nbytes = 8 * shmem_t32_stride * 4;   // 256 times, convert int32 -> bytes
+    static constexpr int shmem_t32_stride = 64 * 33; // Delta(t)=32,64
+    static constexpr int shmem_nbytes =
+        8 * shmem_t32_stride * 4; // 256 times, convert int32 -> bytes
 
     // Convention for packing an int4+4 (Re,Im) pair into an byte. (CHIME/CHORD use 'false' here.)
     static constexpr bool real_part_in_low_bits = false;
 
-    // Is signed int4 represented as offset-encoded or twos-complement? (CHIME/CHORD use 'true' here.)
+    // Is signed int4 represented as offset-encoded or twos-complement? (CHIME/CHORD use 'true'
+    // here.)
     static constexpr bool offset_encoded = true;
-    
+
     // These switches will artificially remove an important part of the processing, in order
     // to measure computational overhead of key steps (but making the kernel incorrect!)
     //
     //  input_shuffle - transpose input data from natural ordering to tensor core ordering
     //  output_shuffle - transpose visibility matrix to cache-friendly ordering before writing
     //  negate_4bit - minus sign which arises when multiplying complex numbers
-    
+
     static constexpr bool artificially_remove_input_shuffle = false;
     static constexpr bool artificially_remove_output_shuffle = false;
     static constexpr bool artificially_remove_negate_4bit = false;
 };
 
 
-class Correlator
-{
+class Correlator {
 public:
-    Correlator(const CorrelatorParams &params);
+    Correlator(const CorrelatorParams& params);
 
-    Correlator(int nstations, int nfreq) :
-	Correlator(CorrelatorParams(nstations,nfreq)) { }
+    Correlator(int nstations, int nfreq) : Correlator(CorrelatorParams(nstations, nfreq)) {}
 
     // The launch() function below launches the correlator kernel.
     //
@@ -98,7 +97,7 @@ public:
     //  - The 'e_in' array is
     //
     //       int8[nt_outer*nt_inner][nfreq][nstations]  with all axes contiguous    (*)
-    // 
+    //
     //    where we represent complex (4+4) as int8.
     //
     //    Note in (*) that the real/imaginary axis is fastest varying, followed by the
@@ -157,8 +156,8 @@ public:
     //    If you run the 'time-correlator' program, you can see the first few calls take longer, but
     //    the timing quickly settles down.
 
-    void launch(int *vis_out, const int8_t *e_in, const uint *rfimask,
-		int nt_outer, int nt_inner, cudaStream_t stream=nullptr, bool sync=false) const;
+    void launch(int* vis_out, const int8_t* e_in, const uint* rfimask, int nt_outer, int nt_inner,
+                cudaStream_t stream = nullptr, bool sync = false) const;
 
     // This version of launch() uses gputils::Array objects instead of bare pointers.
     // Both arrays must be allocated on the GPU.
@@ -171,19 +170,20 @@ public:
     //
     // The 'rfimask' array must have shape (nfreq, nt_outer * nt_inner / 32).
     // (See previous long comment for indexing logic.)
-    
-    void launch(gputils::Array<int> &vis_out, const gputils::Array<int8_t> &e_in, const gputils::Array<uint> &rfimask,
-		int nt_outer, int nt_inner, cudaStream_t stream=nullptr, bool sync=false) const;
-    
+
+    void launch(gputils::Array<int>& vis_out, const gputils::Array<int8_t>& e_in,
+                const gputils::Array<uint>& rfimask, int nt_outer, int nt_inner,
+                cudaStream_t stream = nullptr, bool sync = false) const;
+
     // Initialized by constructor.
     const CorrelatorParams params;
 
     // Kernel args are (dst, src, rfimask, ptable, nt_inner, nt_outer).
-    using kernel_t = void (*)(int *, const int8_t *, const uint *, const int *, int, int);
+    using kernel_t = void (*)(int*, const int8_t*, const uint*, const int*, int, int);
 
 protected:
-    // This small (currently 27 KB) array will persist in GPU memory for the lifetime of the Correlator object.
-    // Note that the shared_ptr destructor will call cudaFree().
+    // This small (currently 27 KB) array will persist in GPU memory for the lifetime of the
+    // Correlator object. Note that the shared_ptr destructor will call cudaFree().
     std::shared_ptr<int> precomputed_offsets;
 
     kernel_t kernel;
@@ -191,16 +191,16 @@ protected:
 
 
 // Used internally by Correlator constructor
-extern std::shared_ptr<int> precompute_offsets(const CorrelatorParams &params);
+extern std::shared_ptr<int> precompute_offsets(const CorrelatorParams& params);
 extern Correlator::kernel_t get_kernel(int nstations, int nfreq);
 
 // Used internally to "promote" compile-time argument to runtime argument.
 extern void register_kernel(int nstations, int nfreq, Correlator::kernel_t kernel);
 
 // For testing -- returns allowed (nstations, nfreq) pairs
-extern std::vector<std::pair<int,int>> get_all_kernel_params();
+extern std::vector<std::pair<int, int>> get_all_kernel_params();
 
 
-}  // namespace n2k
+} // namespace n2k
 
 #endif // _N2K_CORRELATOR_HPP

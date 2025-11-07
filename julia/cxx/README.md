@@ -9,5 +9,5 @@ kernels, usually up to floating-point round-off or quantization
 differences.
 
 TODO -- there are testing Kotekan stages, eg
-  lib/testing/gpuSimulateCudaBasebandBeamformer.cpp
+lib/testing/gpuSimulateCudaBasebandBeamformer.cpp
 that should either be adapted to include this code, OR be auto-generated.

@@ -10,7 +10,6 @@ import numpy as np
 
 from kotekan import runner
 
-
 replace_params = {
     "num_elements": 16,
     "num_ev": 0,
@@ -25,7 +24,6 @@ replace_params = {
 
 @pytest.fixture(scope="module")
 def replace_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("replace")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -44,7 +42,6 @@ def replace_data(tmpdir_factory):
 
 
 def test_replace(replace_data):
-
     # for frame in replace_data:
     #     print frame.metadata.freq_id, frame.metadata.fpga_seq
     #     print frame.vis
@@ -52,6 +49,6 @@ def test_replace(replace_data):
     for frame in replace_data:
         assert (frame.vis.real[0::2] == frame.metadata.freq_id).all()
         assert (
-            frame.vis.real[1::2] == np.array(frame.metadata.fpga_seq).astype(np.float32)
+                frame.vis.real[1::2] == np.array(frame.metadata.fpga_seq).astype(np.float32)
         ).all()
         assert (frame.vis.imag == np.arange(frame.metadata.num_prod)).all()

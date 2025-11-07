@@ -109,7 +109,7 @@ freqlist = np.fromstring(info_header[: pkt_freqs * 4 * 2], dtype=np.float32).res
     -1, 2
 )  # .mean(axis=1)
 freqlist = freqlist / 1e6
-elemlist = np.fromstring(info_header[pkt_freqs * 4 * 2 :], dtype=np.int8)
+elemlist = np.fromstring(info_header[pkt_freqs * 4 * 2:], dtype=np.int8)
 
 print(freqlist, elemlist)
 
@@ -154,7 +154,7 @@ def data_listener():
                     data_pkt_samples_summed,
                 ) = struct.unpack("III", data[:pkt_header])
                 d[:, data_pkt_elem_idx] += (
-                    np.fromstring(data[pkt_header:], dtype=np.uint32) * 1.0
+                        np.fromstring(data[pkt_header:], dtype=np.uint32) * 1.0
                 )
                 n[:, data_pkt_elem_idx] += data_pkt_samples_summed * 1.0
             roll_idx = (data_pkt_frame_idx - last_idx) // local_integration
@@ -185,7 +185,6 @@ f, ax = plt.subplots(
 )
 f.subplots_adjust(right=0.8, top=0.95, wspace=0.0, hspace=0.0)
 ax[-1, -1].axis("off")
-
 
 plt.ioff()
 p = []
@@ -251,7 +250,6 @@ c.set_label("Power (dB, arbitrary)")
 
 ani = animation.FuncAnimation(f, updatefig, frames=100, interval=100)
 f.show()
-
 
 # UI
 from matplotlib.widgets import Button

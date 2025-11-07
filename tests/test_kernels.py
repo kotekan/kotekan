@@ -29,7 +29,6 @@ def print_msg(msg):
 # pytest as a command line argument
 @pytest.mark.env("run_amd_gpu_tests")
 def test_gpu_kernels():
-
     # Change to kotekan bin directory
     os.chdir(BIN_DIR)
 
@@ -39,7 +38,6 @@ def test_gpu_kernels():
 
     # Run each test in TEST_DIR
     for config in config_files:
-
         print_msg("Running " + os.path.basename(config) + " test")
 
         # Run test

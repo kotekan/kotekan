@@ -110,11 +110,11 @@ gpu_output_split_buffer:
   gpu_output_split_buffer_7:
     kotekan_buffer: standard
 
-cpu_affinity: [4,5,10,11] # other cores are on DPDK
+cpu_affinity: [ 4,5,10,11 ] # other cores are on DPDK
 dpdk:
   kotekan_stage: dpdkCore
   # Format is index = lcore, value = cpu core
-  lcore_cpu_map: [0,1,2,3,4,5,6,7]
+  lcore_cpu_map: [ 0,1,2,3,4,5,6,7 ]
   main_lcore_cpu: 8
   fpga_packet_size: 4680
   alignment: samples_per_data_set
@@ -122,14 +122,14 @@ dpdk:
   # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
   # and lcore 1 to service ports 2 and 3.
   lcore_port_map:
-    - [0]
-    - [1]
-    - [2]
-    - [3]
-    - [4]
-    - [5]
-    - [6]
-    - [7]
+    - [ 0 ]
+    - [ 1 ]
+    - [ 2 ]
+    - [ 3 ]
+    - [ 4 ]
+    - [ 5 ]
+    - [ 6 ]
+    - [ 7 ]
   # One handler must be given per port on the system.
   handlers:
     - dpdk_handler: iceBoardStandard
@@ -328,6 +328,6 @@ vis_writer:
   file_type: hdf5
   log_level: INFO
   root_path: /data/archive/
-  freq_ids: []
+  freq_ids: [ ]
   write_ev: False
   file_length: 512

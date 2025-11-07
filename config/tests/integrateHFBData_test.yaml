@@ -14,7 +14,7 @@ type: config
 log_level: info
 buffer_depth: 2
 baseband_buffer_depth: 120  # 48Gb, 15s buffer.
-cpu_affinity: [2,3,8,9]
+cpu_affinity: [ 2,3,8,9 ]
 
 # Constants
 sizeof_float: 4
@@ -44,35 +44,35 @@ hfb_pool:
 
 # Buffers
 cpu_hfb_output_buffers:
-    num_frames: buffer_depth
-    frame_size: factor_upchan * num_frb_total_beams * sizeof_float
-    metadata_pool: main_pool
-    beamform_hfb_input_buffer_0:
-        num_frames: num_frames_to_integrate
-        kotekan_buffer: standard
-    beamform_hfb_integrate_buffer_0:
-        kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: factor_upchan * num_frb_total_beams * sizeof_float
+  metadata_pool: main_pool
+  beamform_hfb_input_buffer_0:
+    num_frames: num_frames_to_integrate
+    kotekan_buffer: standard
+  beamform_hfb_integrate_buffer_0:
+    kotekan_buffer: standard
 
 hfb_output_buffers:
-    num_frames: buffer_depth
-    metadata_pool: main_pool
-    beamform_hfb_output_buffer_0:
-        metadata_pool: hfb_pool
-        kotekan_buffer: hfb
-    beamform_hfb_sum_test_buffer_0:
-        kotekan_buffer: hfb
+  num_frames: buffer_depth
+  metadata_pool: main_pool
+  beamform_hfb_output_buffer_0:
+    metadata_pool: hfb_pool
+    kotekan_buffer: hfb
+  beamform_hfb_sum_test_buffer_0:
+    kotekan_buffer: hfb
 
 lost_samples_buffer:
-    kotekan_buffer: standard
-    num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set
+  metadata_pool: main_pool
 
 compressed_lost_samples_buffer:
-    kotekan_buffer: standard
-    num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / (factor_upchan * downsample_time) * sizeof_int
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set / (factor_upchan * downsample_time) * sizeof_int
+  metadata_pool: main_pool
 
 # Generate input data for HFBAccumulate stage
 gen_input_data:
@@ -92,13 +92,13 @@ gen_input_data:
 gen_output_data:
   type: const
   # Expected value is normalised
-  value: test_value * num_frames_to_integrate / (_samples_per_data_set * num_frames_to_integrate) 
+  value: test_value * num_frames_to_integrate / (_samples_per_data_set * num_frames_to_integrate)
   test_data_gen_0:
     kotekan_stage: testDataGenFloat
     network_out_buf: beamform_hfb_sum_test_buffer_0
 
 gen_missing_frames:
-  missing_frames: [0, 1, 4, 7]
+  missing_frames: [ 0, 1, 4, 7 ]
   TestDropFrames:
     kotekan_stage: TestDropFrames
     log_level: debug
@@ -120,11 +120,11 @@ hyper_fine_beam:
     hfb_input_buf: beamform_hfb_integrate_buffer_0
     compressed_lost_samples_buf: compressed_lost_samples_buffer
     hfb_output_buf: beamform_hfb_output_buffer_0
-      
+
 # Check output of stage is correct
 check_data:
   hfb_data_check_0:
     num_frames_to_test: 5
     kotekan_stage: testDataCheckFloat
-    first_buf : beamform_hfb_sum_test_buffer_0
+    first_buf: beamform_hfb_sum_test_buffer_0
     second_buf: beamform_hfb_output_buffer_0

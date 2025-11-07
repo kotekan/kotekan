@@ -1,5 +1,5 @@
-#include "../include/n2k/rfi_kernels.hpp"
 #include "../include/n2k/internals/internals.hpp"
+#include "../include/n2k/rfi_kernels.hpp"
 
 #include <gputils/cuda_utils.hpp>
 
@@ -68,8 +68,7 @@ namespace n2k {
 #endif
 
 
-__device__ uint _cmask(int b)
-{
+__device__ uint _cmask(int b) {
     b = (b >= 0) ? b : 0;
     return (b < 32) ? (1U << b) : 0;
 }
@@ -77,15 +76,14 @@ __device__ uint _cmask(int b)
 
 // s0_kernel() arguments:
 //
-//   uint4 s0[T/Nds][F][S/4];                 // output array, (downsampled time index, freq channel, station)
-//   uint pl_mask[T/128][(F+3)/4][S/8][2];    // input array, packet loss mask
-//   long T,                                  // number of time samples in input array (before downsampling)
-//   long Tmin,                               // first time sample in input array
-//   long Tsize,                              // ringbuffer size
-//   long F;                                  // number of freq channels
-//   long S;                                  // number of stations (= dish+pol pairs)
-//   long Nds;                                // time downsampling factor
-//   long out_fstride4;                       // freq stride of s0 array (ulong4_16a stride, not ulong stride)
+//   uint4 s0[T/Nds][F][S/4];                 // output array, (downsampled time index, freq
+//   channel, station) uint pl_mask[T/128][(F+3)/4][S/8][2];    // input array, packet loss mask
+//   long T,                                  // number of time samples in input array (before
+//   downsampling) long Tmin,                               // first time sample in input array long
+//   Tsize,                              // ringbuffer size long F; // number of freq channels long
+//   S;                                  // number of stations (= dish+pol pairs) long Nds; // time
+//   downsampling factor long out_fstride4;                       // freq stride of s0 array
+//   (ulong4_16a stride, not ulong stride)
 //
 // Constraints (checked in launch_s0_kernel() below)
 //
@@ -98,7 +96,7 @@ __device__ uint _cmask(int b)
 //
 // Notes on parallelization:
 //
-//   - blockIdx.z, 
+//   - blockIdx.z,
 //   - Each warp independently processes one tds index, 4 freqs, and 128 stations.
 //     Each thread processes one (t/32) index, 4 freqs, and 8 stations.
 //
@@ -108,62 +106,63 @@ __device__ uint _cmask(int b)
 //   - Within the larger kernel, the warp mapping is:
 //       wz wy wx <-> (tds) (f/4) (s/128)
 
-__global__ void s0_kernel(ulong4_16a *s0, const uint *pl, int T, int Tmin, int Tsize, int F, int S, int Nds, int out_fstride4)
-{
+__global__ void s0_kernel(ulong4_16a* s0, const uint* pl, int T, int Tmin, int Tsize, int F, int S,
+                          int Nds, int out_fstride4) {
     static constexpr uint ALL_LANES = 0xffffffffU;
-    
-    // Warp location within larger kerenl
-    int tds = (blockIdx.z * blockDim.z + threadIdx.z);              // output time
-    int fds = (blockIdx.y * blockDim.y + threadIdx.y);              // input (f/4)
-    int sds = ((blockIdx.x * blockDim.x + threadIdx.x) >> 5) << 4;  // input (s/8), laneId not included, multiple of 16
 
-    int Fds = (F+3) >> 2;      // number of downsampled freq channels in 'pl_mask'.
-    int nf = min(4, F-4*fds);  // number of frequency channels to write
+    // Warp location within larger kerenl
+    int tds = (blockIdx.z * blockDim.z + threadIdx.z); // output time
+    int fds = (blockIdx.y * blockDim.y + threadIdx.y); // input (f/4)
+    int sds = ((blockIdx.x * blockDim.x + threadIdx.x) >> 5)
+              << 4; // input (s/8), laneId not included, multiple of 16
+
+    int Fds = (F + 3) >> 2;       // number of downsampled freq channels in 'pl_mask'.
+    int nf = min(4, F - 4 * fds); // number of frequency channels to write
 
     // These tests guarantee that we don't write past the edge of memory.
-    
-    if (tds*Nds >= T)
-	return;
-    if (4*fds >= F)
-	return;
-    if (8*sds >= S)
-	return;
+
+    if (tds * Nds >= T)
+        return;
+    if (4 * fds >= F)
+        return;
+    if (8 * sds >= S)
+        return;
 
     // Shift input pointer. Note that no time shift is not applied, but laneId is applied.
     // Before the shifts, 'pl' has shape uint[T/128, Fds, S/8, 2].
     // After these shifts, 'pl' has shape uint[T/128] and stride Fds * (S/4).
-    
+
     pl += (sds << 1);
     pl += long(fds) * long(S >> 2);
-    pl += (threadIdx.x & 31);  // laneId
+    pl += (threadIdx.x & 31); // laneId
     long pl_stride = long(Fds) * long(S >> 2);
 
     // Shift output pointer, including time and laneId.
     // Before the shifts, 's0' has shape ulong4_16a[T/Nds, F, S/4].
     // After the shifts, 's0' has shape ulong4_16a[4] and stride 'out_fstride4'.
-    
+
     s0 += (sds << 1);
     s0 += long(fds << 2) * long(out_fstride4);
     s0 += long(tds) * long(F) * long(out_fstride4);
-    s0 += (threadIdx.x & 31);  // laneId
-    
+    s0 += (threadIdx.x & 31); // laneId
+
     // [t2_lo:t2_hi) = range of t2 values processed on this warp.
     int t2_lo = tds * (Nds >> 1);
     int t2_hi = t2_lo + (Nds >> 1);
-    
+
     // [t128_lo:128_hi) = range of t128 values processed on this warp.
     int t128_lo = (t2_lo >> 6);
-    int t128_hi = ((t2_hi-1) >> 6) + 1;
+    int t128_hi = ((t2_hi - 1) >> 6) + 1;
 
     uint s0_accum = 0;
-    
+
     for (int t128 = t128_lo; t128 < t128_hi; t128++) {
         // ringbuffer indexing: add offset, modulo ringbuffer size
         int t128_ind = ((Tmin >> 7) + t128) & ((Tsize >> 7) - 1);
-	uint x = pl[t128_ind * pl_stride];
-	int t2 = (t128 << 6) + ((threadIdx.x & 1) << 5);
-	uint mask = _cmask(t2_hi - t2) - _cmask(t2_lo - t2);
-	s0_accum += __popc(x & mask);
+        uint x = pl[t128_ind * pl_stride];
+        int t2 = (t128 << 6) + ((threadIdx.x & 1) << 5);
+        uint mask = _cmask(t2_hi - t2) - _cmask(t2_lo - t2);
+        s0_accum += __popc(x & mask);
     }
 
     s0_accum <<= 1;
@@ -173,25 +172,23 @@ __global__ void s0_kernel(ulong4_16a *s0, const uint *pl, int T, int Tmin, int T
     s0_x4.x = s0_accum;
     s0_x4.y = s0_accum;
     s0_x4.z = s0_accum;
-    s0_x4.w = s0_accum;    
+    s0_x4.w = s0_accum;
 
     for (int f = 0; f < nf; f++)
-	s0[f * out_fstride4] = s0_x4;
+        s0[f * out_fstride4] = s0_x4;
 }
 
 
 // launch_s0_kernel() arguments, bare pointer ringbuffer version:
 //
-//   ulong s0[T/Nds][F][S];                // output array, (downsampled time index, freq channel, station)
-//   ulong pl_mask[T/128][(F+3)/4][S/8];   // input array, packet loss mask
-//   long T,                               // number of time samples in input array (before downsampling)
-//   long Tmin,                            // first time sample in input array
-//   long Tsize,                           // ringbuffer size
-//   long F;                               // number of freq channels
-//   long S;                               // number of stations (= dish+pol pairs)
-//   long Nds;                             // time downsampling factor
-//   long out_fstride;                     // frequency stride in 'S0' array
-// 
+//   ulong s0[T/Nds][F][S];                // output array, (downsampled time index, freq channel,
+//   station) ulong pl_mask[T/128][(F+3)/4][S/8];   // input array, packet loss mask long T, //
+//   number of time samples in input array (before downsampling) long Tmin, // first time sample in
+//   input array long Tsize,                           // ringbuffer size long F; // number of freq
+//   channels long S;                               // number of stations (= dish+pol pairs) long
+//   Nds;                             // time downsampling factor long out_fstride; // frequency
+//   stride in 'S0' array
+//
 // Constraints (checked here)
 //
 //   - Nds must be even.
@@ -213,62 +210,60 @@ __global__ void s0_kernel(ulong4_16a *s0, const uint *pl, int T, int Tmin, int T
 //       wz wy wx <-> (tds) (f/4) (s/128)
 
 void launch_s0_kernel(ulong* s0, const ulong* pl_mask, long T, long Tmin, long Tsize, long F,
-                      long S, long Nds, long out_fstride, cudaStream_t stream)
-{
+                      long S, long Nds, long out_fstride, cudaStream_t stream) {
     // Note: this kernel does not assume (S <= rfi_max_stations).
 
     if (!s0 || !pl_mask)
         throw runtime_error("launch_s0_kernel: null pointer was specified");
     if (T <= 0)
-	throw runtime_error("launch_s0_kernel: number of time samples T must be > 0");
+        throw runtime_error("launch_s0_kernel: number of time samples T must be > 0");
     if (Tmin < 0)
-	throw runtime_error("launch_s0_kernel: first sample Tmin must be >= 0");
+        throw runtime_error("launch_s0_kernel: first sample Tmin must be >= 0");
     if (Tsize <= 0)
-	throw runtime_error("launch_s0_kernel: ringbuffer size Tsize be > 0");
+        throw runtime_error("launch_s0_kernel: ringbuffer size Tsize be > 0");
     if (T & 127)
-	throw runtime_error("launch_s0_kernel: number of time samples T must be a multiple of 128");
+        throw runtime_error("launch_s0_kernel: number of time samples T must be a multiple of 128");
     if (F <= 0)
-	throw runtime_error("launch_s0_kernel: number of frequency samples F must be > 0");
+        throw runtime_error("launch_s0_kernel: number of frequency samples F must be > 0");
     if (S <= 0)
-	throw runtime_error("launch_s0_kernel: number of stations S must be > 0");
+        throw runtime_error("launch_s0_kernel: number of stations S must be > 0");
     if (S & 127)
-	throw runtime_error("launch_s0_kernel: number of stations S must be a multiple of 128");
+        throw runtime_error("launch_s0_kernel: number of stations S must be a multiple of 128");
     if (Nds <= 0)
-	throw runtime_error("launch_s0_kernel: downsampling factor 'Nds' must be positive");
+        throw runtime_error("launch_s0_kernel: downsampling factor 'Nds' must be positive");
     if (Nds & 1)
-	throw runtime_error("launch_s0_kernel: downsampling factor 'Nds' must be even");
+        throw runtime_error("launch_s0_kernel: downsampling factor 'Nds' must be even");
     if (out_fstride < S)
-	throw runtime_error("launch_s0_kernel(): out_fstride must be >= S");	
+        throw runtime_error("launch_s0_kernel(): out_fstride must be >= S");
     if (out_fstride & 3)
-	throw runtime_error("launch_s0_kernel(): out_fstride must be a multiple of 4");
+        throw runtime_error("launch_s0_kernel(): out_fstride must be a multiple of 4");
     if ((T >= INT_MAX) || (Tmin >= INT_MAX) || (Tsize >= INT_MAX) || (F >= INT_MAX)
         || (S >= INT_MAX) || (Nds >= INT_MAX) || (out_fstride >= INT_MAX))
         throw runtime_error("launch_s0_kernel(): 32-bit overflow");
 
     long Tds = T / Nds;
-    
+
     if (T != Tds * Nds)
-	throw runtime_error("launch_s0_kernel: number of time samples T must be a multiple of downsampling factor 'Nds'");
+        throw runtime_error("launch_s0_kernel: number of time samples T must be a multiple of "
+                            "downsampling factor 'Nds'");
 
     dim3 nblocks, nthreads;
-    gputils::assign_kernel_dims(nblocks, nthreads, S >> 2, (F+3) >> 2, Tds);
+    gputils::assign_kernel_dims(nblocks, nthreads, S >> 2, (F + 3) >> 2, Tds);
 
-    s0_kernel <<< nblocks, nthreads, 0, stream >>>
-        ((ulong4_16a *) s0, (const uint *) pl_mask, T, Tmin, Tsize, F, S, Nds, out_fstride >> 2);
-    
+    s0_kernel<<<nblocks, nthreads, 0, stream>>>((ulong4_16a*)s0, (const uint*)pl_mask, T, Tmin,
+                                                Tsize, F, S, Nds, out_fstride >> 2);
+
     CUDA_PEEK("s0_kernel launch");
 }
 
 
 // launch_s0_kernel() arguments, bare pointer version:
 //
-//   ulong s0[T/Nds][F][S];                // output array, (downsampled time index, freq channel, station)
-//   ulong pl_mask[T/128][(F+3)/4][S/8];   // input array, packet loss mask
-//   long T;                               // number of time samples
-//   long F;                               // number of freq channels
-//   long S;                               // number of stations (= dish+pol pairs)
-//   long Nds;                             // time downsampling factor
-//   long out_fstride;                     // frequency stride in 'S0' array
+//   ulong s0[T/Nds][F][S];                // output array, (downsampled time index, freq channel,
+//   station) ulong pl_mask[T/128][(F+3)/4][S/8];   // input array, packet loss mask long T; //
+//   number of time samples long F;                               // number of freq channels long S;
+//   // number of stations (= dish+pol pairs) long Nds;                             // time
+//   downsampling factor long out_fstride;                     // frequency stride in 'S0' array
 //
 // Constraints (checked here)
 //
@@ -290,8 +285,9 @@ void launch_s0_kernel(ulong* s0, const ulong* pl_mask, long T, long Tmin, long T
 //   - Within the larger kernel, the warp mapping is:
 //       wz wy wx <-> (tds) (f/4) (s/128)
 
-void launch_s0_kernel(ulong* s0, const ulong* pl_mask, long T, long F, long S, long Nds, long out_fstride, cudaStream_t stream) {
-    launch_s0_kernel(s0, pl_mask, T, 0, 1<<30, F, S, Nds, out_fstride, stream);
+void launch_s0_kernel(ulong* s0, const ulong* pl_mask, long T, long F, long S, long Nds,
+                      long out_fstride, cudaStream_t stream) {
+    launch_s0_kernel(s0, pl_mask, T, 0, 1 << 30, F, S, Nds, out_fstride, stream);
 }
 
 
@@ -301,33 +297,35 @@ void launch_s0_kernel(ulong* s0, const ulong* pl_mask, long T, long F, long S, l
 //  - pl_mask: uint64 array of shape (T/128, (F+3)//4, S/8).
 //  - Nds: Time downsampling factor. Must be multiple of 2.
 
-void launch_s0_kernel(Array<ulong> &s0, const Array<ulong> &pl_mask, long Nds, cudaStream_t stream)
-{
+void launch_s0_kernel(Array<ulong>& s0, const Array<ulong>& pl_mask, long Nds,
+                      cudaStream_t stream) {
     // S0 shape = (T/Nds, F, S)
     // pl_mask shape = (T/128, (F+3)/4, S/8)
-    
-    check_array(s0, "launch_s0_kernel", "S0", 3, false);            // ndim=3, contiguous=false
-    check_array(pl_mask, "launch_s0_kernel", "pl_mask", 3, true);   // ndim=3, contiguous=true
-    
+
+    check_array(s0, "launch_s0_kernel", "S0", 3, false);          // ndim=3, contiguous=false
+    check_array(pl_mask, "launch_s0_kernel", "pl_mask", 3, true); // ndim=3, contiguous=true
+
     long Tds = s0.shape[0];
     long F = s0.shape[1];
     long S = s0.shape[2];
     long out_fstride = s0.strides[1];
-    
+
     long T128 = pl_mask.shape[0];
     long Fds = pl_mask.shape[1];
     long Sds = pl_mask.shape[2];
 
-    if ((Tds*Nds != T128*128) || (Fds != ((F+3)/4)) || (S != (Sds*8)))
-	throw runtime_error("launch_s0_kernel(): s0.shape=" + s0.shape_str() + " and pl_mask.shape=" + pl_mask.shape_str() + " are inconsistent");
+    if ((Tds * Nds != T128 * 128) || (Fds != ((F + 3) / 4)) || (S != (Sds * 8)))
+        throw runtime_error("launch_s0_kernel(): s0.shape=" + s0.shape_str()
+                            + " and pl_mask.shape=" + pl_mask.shape_str() + " are inconsistent");
 
     if (s0.strides[2] != 1)
-	throw runtime_error("launch_s0_kernel(): expected innermost (station) axis of S0 to be contiguous");
-    if (s0.strides[0] != F*out_fstride)
-	throw runtime_error("launch_s0_kernel(): expected time+freq axes of S0 to be contiguous");
+        throw runtime_error(
+            "launch_s0_kernel(): expected innermost (station) axis of S0 to be contiguous");
+    if (s0.strides[0] != F * out_fstride)
+        throw runtime_error("launch_s0_kernel(): expected time+freq axes of S0 to be contiguous");
 
-    launch_s0_kernel(s0.data, pl_mask.data, 128*T128, F, S, Nds, out_fstride, stream);
+    launch_s0_kernel(s0.data, pl_mask.data, 128 * T128, F, S, Nds, out_fstride, stream);
 }
 
 
-}  // namespace n2k
+} // namespace n2k

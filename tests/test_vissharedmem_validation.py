@@ -92,7 +92,6 @@ params_writer_stage = {"num_samples": 3, "name": fname_buf}
 
 @pytest.fixture()
 def vis_data(tmpdir_factory, comet_broker):
-
     # keeping all the data this test produced here (probably do not need it)
     # using FakeVisBuffer to produce fake data
     fakevis_buffer = runner.FakeVisBuffer(**params_fakevis)

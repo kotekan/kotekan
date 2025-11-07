@@ -44,7 +44,6 @@ def bad_weights():
 
 @pytest.fixture(scope="module")
 def input_frames(bad_weights):
-
     counts_per_second = 390625
     start_time = time.time()
 
@@ -59,7 +58,7 @@ def input_frames(bad_weights):
             )
         )
         frame_list[ii].metadata.fpga_seq = (
-            counts_per_second * int(root_params["cadence"]) * ii
+                counts_per_second * int(root_params["cadence"]) * ii
         )
         frame_list[ii].metadata.ctime.tv = int(
             start_time + int(root_params["cadence"]) * ii
@@ -79,7 +78,6 @@ def good_weights(bad_weights):
 
 @pytest.fixture(scope="module")
 def output_frames(tmpdir_factory, input_frames):
-
     tmpdir = tmpdir_factory.mktemp("flagbad")
 
     # ReadVisBuffer receives a list of frames and writes them down to disk.
@@ -98,10 +96,8 @@ def output_frames(tmpdir_factory, input_frames):
 
 
 def test_metadata(input_frames, output_frames):
-
     # The metadata should not change
     for in_frame, out_frame in zip(input_frames, output_frames):
-
         assert out_frame.metadata.fpga_seq == in_frame.metadata.fpga_seq
         assert out_frame.metadata.freq_id == in_frame.metadata.freq_id
         assert bytes(out_frame.metadata.dataset_id) == bytes(
@@ -110,9 +106,7 @@ def test_metadata(input_frames, output_frames):
 
 
 def test_data(input_frames, output_frames):
-
     for in_frame, out_frame in zip(input_frames, output_frames):
-
         # The data should not change
         assert np.all(out_frame.vis[:] == in_frame.vis[:])
 

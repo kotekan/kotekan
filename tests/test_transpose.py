@@ -101,7 +101,6 @@ def old_gains():
 
 @pytest.fixture(scope="module")
 def transpose(tmpdir_factory, cal_broker):
-
     writer_params["file_length"] = writer_params["total_frames"]
 
     # Write fake data in raw format
@@ -255,7 +254,6 @@ def transpose(tmpdir_factory, cal_broker):
 
 
 def test_transpose(transpose):
-
     # The transposed and untransposed files
     f_tr = transpose[0]
     f = transpose[1]
@@ -308,7 +306,6 @@ def test_transpose(transpose):
 
 @pytest.fixture(scope="module")
 def transpose_stack(tmpdir_factory):
-
     # Write fake stacked data in raw format
     tmpdir = str(tmpdir_factory.mktemp("writer"))
     fakevis_buffer = runner.FakeVisBuffer(
@@ -383,7 +380,6 @@ def transpose_stack(tmpdir_factory):
 
 
 def test_transpose_stack(transpose_stack):
-
     infile, f = transpose_stack
 
     # some useful params
@@ -440,7 +436,7 @@ def test_transpose_stack(transpose_stack):
             a_weight = f["flags/vis_weight"][ff, :, t]
 
             # Check that the entries in XX and XY are the same
-            assert float_allclose(a_vis[:np1], a_vis[np1 : (2 * np1)])
+            assert float_allclose(a_vis[:np1], a_vis[np1: (2 * np1)])
 
             v1 = a_vis[:np1]
             w1 = a_weight[:np1]
@@ -448,7 +444,6 @@ def test_transpose_stack(transpose_stack):
             # Loop over all pairs of cylinders for XX
             for ci in range(4):
                 for cj in range(ci, 4):
-
                     # These numbers depend if we are within a cyl or not
                     nv = 256 if ci == cj else 511  # Number of entries to compare
                     lb = 0 if ci == cj else -255  # The most negative separation

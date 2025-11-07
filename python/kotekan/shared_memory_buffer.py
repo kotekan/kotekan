@@ -173,7 +173,7 @@ class SharedMemoryReader:
 
     def _initial_validation(self):
         shared_mem_size = (
-            self.size_structural_data + self.size_access_record + self.size_data
+                self.size_structural_data + self.size_access_record + self.size_data
         )
         if shared_mem_size != self.shared_mem.size():
             raise SharedMemoryError(
@@ -383,8 +383,8 @@ class SharedMemoryReader:
                 # check if this time sample should be copied: only if the access record changed and
                 # is not set to invalid (for at least one frequency)
                 if access_record[t, f_i] != self.invalid_value and (
-                    self._last_access_record is None
-                    or access_record[t, f_i] > self._last_access_record[t, f_i]
+                        self._last_access_record is None
+                        or access_record[t, f_i] > self._last_access_record[t, f_i]
                 ):
                     # find the correct time slot for the local buffer
                     try:

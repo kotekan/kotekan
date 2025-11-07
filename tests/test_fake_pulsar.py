@@ -35,7 +35,6 @@ accumulate_params.update(
 
 @pytest.fixture(scope="module")
 def pulsar_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("accumulate")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))

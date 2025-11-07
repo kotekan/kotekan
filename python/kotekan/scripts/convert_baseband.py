@@ -132,11 +132,11 @@ def convert_data(sqlite, conn, e, num_threads):
     datapath = f"/data/baseband_raw/baseband_raw_{e[0]}"
     ready = is_ready(e)
     if (
-        ready is True
-        and not os.path.exists(datapath)
-        and datetime.datetime.utcnow()
-        > datetime.datetime.strptime(e[1], "%Y-%m-%d %H:%M:%S.%f")
-        + datetime.timedelta(hours=1)
+            ready is True
+            and not os.path.exists(datapath)
+            and datetime.datetime.utcnow()
+            > datetime.datetime.strptime(e[1], "%Y-%m-%d %H:%M:%S.%f")
+            + datetime.timedelta(hours=1)
     ):
         print(f"data path: {datapath} not found")
         # TODO: set database status to `MISSING` and exit.
@@ -152,7 +152,7 @@ def convert_data(sqlite, conn, e, num_threads):
         unlocked = is_unlocked(datapath)
 
     if unlocked is True or datetime.datetime.utcnow() > datetime.datetime.strptime(
-        e[1], "%Y-%m-%d %H:%M:%S.%f"
+            e[1], "%Y-%m-%d %H:%M:%S.%f"
     ) + datetime.timedelta(hours=6):
         dp = os.listdir(datapath)
         files = [os.path.join(datapath, f) for f in dp]
@@ -171,7 +171,7 @@ def convert_data(sqlite, conn, e, num_threads):
             conn.commit()
             converted_files = []
             for i in range(0, len(files), num_threads):
-                chunk = files[i : i + num_threads]
+                chunk = files[i: i + num_threads]
                 threads = []
                 manager = multiprocessing.Manager()
                 converted_filenames = manager.dict()
@@ -212,7 +212,10 @@ def connect_conversion_db():
         sqlite = con.cursor()
         sqlite.execute(
             """CREATE TABLE conversion
-                   (event_no int, status text)"""
+               (
+                   event_no int,
+                   status   text
+               )"""
         )
     else:
         con = sqlite3.connect("bb_conversion.db")
@@ -224,7 +227,7 @@ def fetch_last_converted_event(sqlite):
     """Extract the last fully converted event."""
     event = [0]
     for row in sqlite.execute(
-        "SELECT * FROM conversion WHERE status = 'FINISHED' ORDER BY event_no DESC LIMIT 1"
+            "SELECT * FROM conversion WHERE status = 'FINISHED' ORDER BY event_no DESC LIMIT 1"
     ):
         event = row
     return event

@@ -18,7 +18,7 @@ files = os.listdir(data_dir)
 files = [os.path.join(data_dir, f) for f in files]
 t_global = time.time()
 for i in range(0, len(files), num_threads):
-    chunk = files[i : i + num_threads]
+    chunk = files[i: i + num_threads]
     threads = []
     manager = multiprocessing.Manager()
     for f in chunk:

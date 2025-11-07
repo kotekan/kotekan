@@ -86,16 +86,15 @@ class VisBuffer(object):
 
     def _set_data_arrays(self):
 
-        _data = self._buffer[ctypes.sizeof(VisMetadata) :]
+        _data = self._buffer[ctypes.sizeof(VisMetadata):]
 
         layout = self.__class__.calculate_layout(
             self.metadata.num_elements, self.metadata.num_prod, self.metadata.num_ev
         )
 
         for member in layout["members"]:
-
             arr = np.frombuffer(
-                _data[member["start"] : member["end"]], dtype=member["dtype"]
+                _data[member["start"]: member["end"]], dtype=member["dtype"]
             )
             setattr(self, member["name"], arr)
 
@@ -203,7 +202,6 @@ class VisBuffer(object):
         msize_c = ctypes.c_int(ctypes.sizeof(VisMetadata))
 
         for ii, buf in enumerate(buffers):
-
             with open(pat % ii, "wb+") as fh:
                 fh.write(msize_c)
                 fh.write(bytearray(buf._buffer))
@@ -284,17 +282,17 @@ class VisRaw(object):
     """
 
     def __init__(
-        self,
-        num_time,
-        num_freq,
-        num_prod,
-        metadata,
-        time,
-        index_map,
-        data,
-        valid_frames,
-        file_metadata=None,
-        comet_manager=None,
+            self,
+            num_time,
+            num_freq,
+            num_prod,
+            metadata,
+            time,
+            index_map,
+            data,
+            valid_frames,
+            file_metadata=None,
+            comet_manager=None,
     ):
         self.num_time = num_time
         self.num_freq = num_freq
@@ -695,9 +693,9 @@ class VisRaw(object):
 
         # Validate and create the index maps
         if (
-            not isinstance(time, list)
-            or "fpga_count" not in time[0]
-            or "ctime" not in time[0]
+                not isinstance(time, list)
+                or "fpga_count" not in time[0]
+                or "ctime" not in time[0]
         ):
             raise ValueError("Incorrect format for time axis")
 
@@ -833,10 +831,10 @@ def freq_id_to_stream_id(f_id):
     """Convert a frequency ID to a stream ID."""
     pre_encode = (0, (f_id % 16), (f_id // 16), (f_id // 256))
     stream_id = (
-        (pre_encode[0] & 0xF)
-        + ((pre_encode[1] & 0xF) << 4)
-        + ((pre_encode[2] & 0xF) << 8)
-        + ((pre_encode[3] & 0xF) << 12)
+            (pre_encode[0] & 0xF)
+            + ((pre_encode[1] & 0xF) << 4)
+            + ((pre_encode[2] & 0xF) << 8)
+            + ((pre_encode[3] & 0xF) << 12)
     )
     return stream_id
 
@@ -853,7 +851,6 @@ class GpuBuffer(object):
     """
 
     def __init__(self, buffer, metadata):
-
         self.data = buffer
         self.metadata = metadata
 
@@ -903,7 +900,6 @@ class GpuBuffer(object):
         msize_c = np.uint32(ctypes.sizeof(ChimeMetadata))
 
         for ii, buf in enumerate(buffers):
-
             with open(pat % ii, "wb+") as fh:
                 # first write metadata size
                 fh.write(msize_c)

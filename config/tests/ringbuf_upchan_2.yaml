@@ -5,7 +5,7 @@
 ---
 type: config
 log_level: debug2   # info
-cpu_affinity: [0,1,2,3,4,5,6,7]
+cpu_affinity: [ 0,1,2,3,4,5,6,7 ]
 buffer_depth: 4
 
 frame_arrival_period: 2.56e-6 * num_times
@@ -60,8 +60,8 @@ upchannelization_factor_C: 8
 
 # Pool:
 main_pool:
-    kotekan_metadata_pool: chordMetadata
-    num_metadata_objects: 10 * buffer_depth
+  kotekan_metadata_pool: chordMetadata
+  num_metadata_objects: 10 * buffer_depth
 
 # host_bb_phase_buffer:
 #     kotekan_buffer: standard
@@ -76,22 +76,22 @@ main_pool:
 #     metadata_pool: main_pool
 
 host_upchan_gain_buffer_A:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: sizeof_float16 * num_frequencies * upchannelization_factor_A
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: sizeof_float16 * num_frequencies * upchannelization_factor_A
+  metadata_pool: main_pool
 
 host_upchan_gain_buffer_B:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: sizeof_float16 * num_frequencies * upchannelization_factor_B
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: sizeof_float16 * num_frequencies * upchannelization_factor_B
+  metadata_pool: main_pool
 
 host_upchan_gain_buffer_C:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: sizeof_float16 * num_frequencies * upchannelization_factor_C
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: sizeof_float16 * num_frequencies * upchannelization_factor_C
+  metadata_pool: main_pool
 
 # host_frb_phase_buffer:
 #     kotekan_buffer: standard
@@ -100,66 +100,66 @@ host_upchan_gain_buffer_C:
 #     metadata_pool: main_pool
 
 host_voltage_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: num_dishes * num_polarizations * num_frequencies * num_times
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: num_dishes * num_polarizations * num_frequencies * num_times
+  metadata_pool: main_pool
 
 host_upchan_voltage_buffer_A:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: num_dishes * num_polarizations * (num_frequencies * upchannelization_factor_A) * (num_times / upchannelization_factor_A)
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: num_dishes * num_polarizations * (num_frequencies * upchannelization_factor_A) * (num_times / upchannelization_factor_A)
+  metadata_pool: main_pool
 
 host_upchan_voltage_buffer_B:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: num_dishes * num_polarizations * (num_frequencies * upchannelization_factor_B) * (num_times / upchannelization_factor_B)
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: num_dishes * num_polarizations * (num_frequencies * upchannelization_factor_B) * (num_times / upchannelization_factor_B)
+  metadata_pool: main_pool
 
 host_upchan_voltage_buffer_C:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: num_dishes * num_polarizations * (num_frequencies * upchannelization_factor_C) * (num_times / upchannelization_factor_C)
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: num_dishes * num_polarizations * (num_frequencies * upchannelization_factor_C) * (num_times / upchannelization_factor_C)
+  metadata_pool: main_pool
 
 gen_data:
-    kotekan_stage: testDataGen
-    type: const
-    values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] #, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-    #frame_size: num_dishes * num_polarizations * num_frequencies * num_times
+  kotekan_stage: testDataGen
+  type: const
+  values: [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ] #, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+  #frame_size: num_dishes * num_polarizations * num_frequencies * num_times
 
-    # Opposite order from the way Erik writes it!
-    #array_shape: [ 64, 2, 128, 32768 ]
-    #dim_name: ["D", "P", "F", "T"]
-    #array_shape: [ 32768, 128, 2, 64 ]
-    array_shape: [ 2048, 128, 2, 64 ]
-    dim_name: ["T", "F", "P", "D" ]
-    out_buf: host_voltage_buffer
+  # Opposite order from the way Erik writes it!
+  #array_shape: [ 64, 2, 128, 32768 ]
+  #dim_name: ["D", "P", "F", "T"]
+  #array_shape: [ 32768, 128, 2, 64 ]
+  array_shape: [ 2048, 128, 2, 64 ]
+  dim_name: [ "T", "F", "P", "D" ]
+  out_buf: host_voltage_buffer
 
 gen_data_A:
-    kotekan_stage: testDataGen
-    type: constf16
-    value: 1
-    out_buf: host_upchan_gain_buffer_A
-    #num_frequencies * upchannelization_factor_A
-    array_shape: [ 2048 ]
-    dim_name: ["Fbar"]
+  kotekan_stage: testDataGen
+  type: constf16
+  value: 1
+  out_buf: host_upchan_gain_buffer_A
+  #num_frequencies * upchannelization_factor_A
+  array_shape: [ 2048 ]
+  dim_name: [ "Fbar" ]
 gen_data_B:
-    kotekan_stage: testDataGen
-    type: constf16
-    value: 1
-    out_buf: host_upchan_gain_buffer_B
-    #num_frequencies * upchannelization_factor_B
-    array_shape: [ 4096 ]
-    dim_name: ["Fbar"]
+  kotekan_stage: testDataGen
+  type: constf16
+  value: 1
+  out_buf: host_upchan_gain_buffer_B
+  #num_frequencies * upchannelization_factor_B
+  array_shape: [ 4096 ]
+  dim_name: [ "Fbar" ]
 gen_data_C:
-    kotekan_stage: testDataGen
-    type: constf16
-    value: 1
-    out_buf: host_upchan_gain_buffer_C
-    array_shape: [ 1024 ]
-    dim_name: ["Fbar"]
+  kotekan_stage: testDataGen
+  type: constf16
+  value: 1
+  out_buf: host_upchan_gain_buffer_C
+  array_shape: [ 1024 ]
+  dim_name: [ "Fbar" ]
 
 # # Stages
 # gen_voltage:
@@ -186,28 +186,28 @@ upC_ringbuffer_size: upC_chunk_size * 4
 
 # Buffer used for signalling only, between the two GPU pipelines.
 E_ringbuffer:
-    kotekan_buffer: ring
-    ring_buffer_size: e_ringbuffer_size
-    metadata_pool: main_pool
+  kotekan_buffer: ring
+  ring_buffer_size: e_ringbuffer_size
+  metadata_pool: main_pool
 
 upchan_A_ringbuffer:
-    kotekan_buffer: ring
-    ring_buffer_size: upA_ringbuffer_size
-    metadata_pool: main_pool
+  kotekan_buffer: ring
+  ring_buffer_size: upA_ringbuffer_size
+  metadata_pool: main_pool
 upchan_B_ringbuffer:
-    kotekan_buffer: ring
-    ring_buffer_size: upB_ringbuffer_size
-    metadata_pool: main_pool
+  kotekan_buffer: ring
+  ring_buffer_size: upB_ringbuffer_size
+  metadata_pool: main_pool
 upchan_C_ringbuffer:
-    kotekan_buffer: ring
-    ring_buffer_size: upC_ringbuffer_size
-    metadata_pool: main_pool
+  kotekan_buffer: ring
+  ring_buffer_size: upC_ringbuffer_size
+  metadata_pool: main_pool
 
 gpuReadE:
-    #profiling: true
-    #log_profiling: true
-    kernel_path: "../../lib/cuda/kernels/"
-    commands: &command_list
+  #profiling: true
+  #log_profiling: true
+  kernel_path: "../../lib/cuda/kernels/"
+  commands: &command_list
     - name: cudaCopyToRingbuffer
       input_size: e_chunk_size
       ring_buffer_size: e_ringbuffer_size
@@ -215,168 +215,168 @@ gpuReadE:
       signal_buf: host_sig
       gpu_mem_output: e_ringbuf
     - name: cudaSyncInput
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        buffer_depth: 2
-        commands: *command_list
-        in_buffers:
-            host_in: host_voltage_buffer
-        out_buffers:
-            host_sig: E_ringbuffer
+  gpu_0:
+    kotekan_stage: cudaProcess
+    gpu_id: 0
+    buffer_depth: 2
+    commands: *command_list
+    in_buffers:
+      host_in: host_voltage_buffer
+    out_buffers:
+      host_sig: E_ringbuffer
 
 gpuUpA:
-    kernel_path: "lib/cuda/kernels"
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        ### buffer_depth must match a x4 factor baked into the upchan # time samples
-        buffer_depth: 4
-        in_buffers:
-            host_e_sig: E_ringbuffer
-            host_upchan_gain: host_upchan_gain_buffer_A
-        out_buffers:
-            host_upchan_voltage: host_upchan_voltage_buffer_A
-            host_up_sig: upchan_A_ringbuffer
-        commands:
-        - name: cudaInputData
-          in_buf: host_upchan_gain
-          gpu_mem: upchan_gain_A
-        - name: cudaSyncInput
-        - name: cudaUpchannelizer_pathfinder_U16
-          in_signal: host_e_sig
-          out_signal: host_up_sig
-          gpu_mem_input_voltage: e_ringbuf
-          gpu_mem_gain: upchan_gain_A
-          gpu_mem_output_voltage: upchan_ringbuf_A
-        - name: cudaSyncOutput
+  kernel_path: "lib/cuda/kernels"
+  gpu_0:
+    kotekan_stage: cudaProcess
+    gpu_id: 0
+    ### buffer_depth must match a x4 factor baked into the upchan # time samples
+    buffer_depth: 4
+    in_buffers:
+      host_e_sig: E_ringbuffer
+      host_upchan_gain: host_upchan_gain_buffer_A
+    out_buffers:
+      host_upchan_voltage: host_upchan_voltage_buffer_A
+      host_up_sig: upchan_A_ringbuffer
+    commands:
+      - name: cudaInputData
+        in_buf: host_upchan_gain
+        gpu_mem: upchan_gain_A
+      - name: cudaSyncInput
+      - name: cudaUpchannelizer_pathfinder_U16
+        in_signal: host_e_sig
+        out_signal: host_up_sig
+        gpu_mem_input_voltage: e_ringbuf
+        gpu_mem_gain: upchan_gain_A
+        gpu_mem_output_voltage: upchan_ringbuf_A
+      - name: cudaSyncOutput
 
 gpuCopyA:
-    kernel_path: "lib/cuda/kernels"
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        buffer_depth: 2
-        in_buffers:
-            host_sig: upchan_A_ringbuffer
-        out_buffers:
-            host_upchan_voltage: host_upchan_voltage_buffer_A
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_sig
-          gpu_mem_input: upchan_ringbuf_A
-          output_size: upA_chunk_size
-          ring_buffer_size: upA_ringbuffer_size
-          out_buf: host_upchan_voltage
+  kernel_path: "lib/cuda/kernels"
+  gpu_0:
+    kotekan_stage: cudaProcess
+    gpu_id: 0
+    buffer_depth: 2
+    in_buffers:
+      host_sig: upchan_A_ringbuffer
+    out_buffers:
+      host_upchan_voltage: host_upchan_voltage_buffer_A
+    commands:
+      - name: cudaCopyFromRingbuffer
+        host_signal: host_sig
+        gpu_mem_input: upchan_ringbuf_A
+        output_size: upA_chunk_size
+        ring_buffer_size: upA_ringbuffer_size
+        out_buf: host_upchan_voltage
 
 
 gpuUpB:
-    kernel_path: "lib/cuda/kernels"
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        ### buffer_depth must match a x4 factor baked into the upchan # time samples
-        buffer_depth: 4
-        in_buffers:
-            host_e_sig: E_ringbuffer
-            host_upchan_gain: host_upchan_gain_buffer_B
-        out_buffers:
-            host_upchan_voltage: host_upchan_voltage_buffer_B
-            host_up_sig: upchan_B_ringbuffer
-        commands:
-        - name: cudaInputData
-          in_buf: host_upchan_gain
-          gpu_mem: upchan_gain_B
-        - name: cudaSyncInput
-        - name: cudaUpchannelizer_pathfinder_U32
-          in_signal: host_e_sig
-          out_signal: host_up_sig
-          gpu_mem_input_voltage: e_ringbuf
-          gpu_mem_gain: upchan_gain_B
-          gpu_mem_output_voltage: upchan_ringbuf_B
-        - name: cudaSyncOutput
+  kernel_path: "lib/cuda/kernels"
+  gpu_0:
+    kotekan_stage: cudaProcess
+    gpu_id: 0
+    ### buffer_depth must match a x4 factor baked into the upchan # time samples
+    buffer_depth: 4
+    in_buffers:
+      host_e_sig: E_ringbuffer
+      host_upchan_gain: host_upchan_gain_buffer_B
+    out_buffers:
+      host_upchan_voltage: host_upchan_voltage_buffer_B
+      host_up_sig: upchan_B_ringbuffer
+    commands:
+      - name: cudaInputData
+        in_buf: host_upchan_gain
+        gpu_mem: upchan_gain_B
+      - name: cudaSyncInput
+      - name: cudaUpchannelizer_pathfinder_U32
+        in_signal: host_e_sig
+        out_signal: host_up_sig
+        gpu_mem_input_voltage: e_ringbuf
+        gpu_mem_gain: upchan_gain_B
+        gpu_mem_output_voltage: upchan_ringbuf_B
+      - name: cudaSyncOutput
 
 gpuCopyB:
-    kernel_path: "lib/cuda/kernels"
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        buffer_depth: 2
-        in_buffers:
-            host_sig: upchan_B_ringbuffer
-        out_buffers:
-            host_upchan_voltage: host_upchan_voltage_buffer_B
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_sig
-          gpu_mem_input: upchan_ringbuf_B
-          output_size: upB_chunk_size
-          ring_buffer_size: upB_ringbuffer_size
-          out_buf: host_upchan_voltage
+  kernel_path: "lib/cuda/kernels"
+  gpu_0:
+    kotekan_stage: cudaProcess
+    gpu_id: 0
+    buffer_depth: 2
+    in_buffers:
+      host_sig: upchan_B_ringbuffer
+    out_buffers:
+      host_upchan_voltage: host_upchan_voltage_buffer_B
+    commands:
+      - name: cudaCopyFromRingbuffer
+        host_signal: host_sig
+        gpu_mem_input: upchan_ringbuf_B
+        output_size: upB_chunk_size
+        ring_buffer_size: upB_ringbuffer_size
+        out_buf: host_upchan_voltage
 
 
 gpuUpC:
-    kernel_path: "lib/cuda/kernels"
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        ### buffer_depth must match a x4 factor baked into the upchan # time samples
-        buffer_depth: 4
-        in_buffers:
-            host_e_sig: E_ringbuffer
-            host_upchan_gain: host_upchan_gain_buffer_C
-        out_buffers:
-            host_upchan_voltage: host_upchan_voltage_buffer_C
-            host_up_sig: upchan_C_ringbuffer
-        commands:
-        - name: cudaInputData
-          in_buf: host_upchan_gain
-          gpu_mem: upchan_gain_C
-        - name: cudaSyncInput
-        - name: cudaUpchannelizer_pathfinder_U8
-          in_signal: host_e_sig
-          out_signal: host_up_sig
-          gpu_mem_input_voltage: e_ringbuf
-          gpu_mem_gain: upchan_gain_C
-          gpu_mem_output_voltage: upchan_ringbuf_C
-        - name: cudaSyncOutput
+  kernel_path: "lib/cuda/kernels"
+  gpu_0:
+    kotekan_stage: cudaProcess
+    gpu_id: 0
+    ### buffer_depth must match a x4 factor baked into the upchan # time samples
+    buffer_depth: 4
+    in_buffers:
+      host_e_sig: E_ringbuffer
+      host_upchan_gain: host_upchan_gain_buffer_C
+    out_buffers:
+      host_upchan_voltage: host_upchan_voltage_buffer_C
+      host_up_sig: upchan_C_ringbuffer
+    commands:
+      - name: cudaInputData
+        in_buf: host_upchan_gain
+        gpu_mem: upchan_gain_C
+      - name: cudaSyncInput
+      - name: cudaUpchannelizer_pathfinder_U8
+        in_signal: host_e_sig
+        out_signal: host_up_sig
+        gpu_mem_input_voltage: e_ringbuf
+        gpu_mem_gain: upchan_gain_C
+        gpu_mem_output_voltage: upchan_ringbuf_C
+      - name: cudaSyncOutput
 
 gpuCopyC:
-    kernel_path: "lib/cuda/kernels"
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        buffer_depth: 2
-        in_buffers:
-            host_sig: upchan_C_ringbuffer
-        out_buffers:
-            host_upchan_voltage: host_upchan_voltage_buffer_C
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_sig
-          gpu_mem_input: upchan_ringbuf_C
-          output_size: upC_chunk_size
-          ring_buffer_size: upC_ringbuffer_size
-          out_buf: host_upchan_voltage
+  kernel_path: "lib/cuda/kernels"
+  gpu_0:
+    kotekan_stage: cudaProcess
+    gpu_id: 0
+    buffer_depth: 2
+    in_buffers:
+      host_sig: upchan_C_ringbuffer
+    out_buffers:
+      host_upchan_voltage: host_upchan_voltage_buffer_C
+    commands:
+      - name: cudaCopyFromRingbuffer
+        host_signal: host_sig
+        gpu_mem_input: upchan_ringbuf_C
+        output_size: upC_chunk_size
+        ring_buffer_size: upC_ringbuffer_size
+        out_buf: host_upchan_voltage
 
 
 write_data:
-    base_dir: /tmp/ringbuf_upchan
-    exit_after_n_frames: 30
-    exit_with_n_writers: 3
-    write_voltage:
-        #kotekan_stage: asdfFileWrite
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_voltage_buffer
-        file_name: voltage
-    write_gain:
-        #kotekan_stage: asdfFileWrite
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_upchan_gain_buffer_A
-        file_name: upchan_gain
-    write_upchan_voltage:
-        #kotekan_stage: asdfFileWrite
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_upchan_voltage_buffer_A
-        file_name: upchan_voltage
+  base_dir: /tmp/ringbuf_upchan
+  exit_after_n_frames: 30
+  exit_with_n_writers: 3
+  write_voltage:
+    #kotekan_stage: asdfFileWrite
+    kotekan_stage: hdf5FileWrite
+    in_buf: host_voltage_buffer
+    file_name: voltage
+  write_gain:
+    #kotekan_stage: asdfFileWrite
+    kotekan_stage: hdf5FileWrite
+    in_buf: host_upchan_gain_buffer_A
+    file_name: upchan_gain
+  write_upchan_voltage:
+    #kotekan_stage: asdfFileWrite
+    kotekan_stage: hdf5FileWrite
+    in_buf: host_upchan_voltage_buffer_A
+    file_name: upchan_voltage
 ...

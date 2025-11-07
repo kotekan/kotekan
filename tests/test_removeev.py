@@ -3,7 +3,6 @@ import numpy as np
 
 from kotekan import runner
 
-
 remove_params = {
     "num_elements": 16,
     "num_ev": 4,
@@ -18,7 +17,6 @@ remove_params = {
 
 @pytest.fixture(scope="module")
 def remove_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("remove")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -37,7 +35,6 @@ def remove_data(tmpdir_factory):
 
 
 def test_structure(remove_data):
-
     ne = remove_params["num_elements"]
 
     for frame in remove_data:
@@ -47,7 +44,6 @@ def test_structure(remove_data):
 
 
 def test_vis(remove_data):
-
     for frame in remove_data:
         vis = frame.vis[:]
 

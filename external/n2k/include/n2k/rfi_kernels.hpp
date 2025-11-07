@@ -2,7 +2,7 @@
 #define _N2K_RFI_KERNELS_HPP
 
 #include <gputils/Array.hpp>
-#include <iomanip>  // std::setw, std::left
+#include <iomanip> // std::setw, std::left
 
 namespace n2k {
 #if 0
@@ -17,7 +17,7 @@ static constexpr int rfi_max_stations = 4096;
 // For a description of the X-engine RFI flagging logic, see the high-level
 // software overleaf ("RFI statistics computed on GPU" section). The RFI code
 // will be hard to understand unless you're familiar with this document!
-// 
+//
 // This file declares five GPU kernels which create and downsample S-arrays:
 //
 //    launch_s0_kernel(): computes S0 from the packet loss mask.
@@ -60,8 +60,9 @@ static constexpr int rfi_max_stations = 4096;
 //
 //     - The boolean RFI mask (created by 'class SK-kernel') has the following memory layout:
 //
-//          int1 rfimask[F][T*Nds];        // factor of Nds since time index is "high-res" (baseband)
-//          uint rfimask[F][(T*Nds)/32];   // equivalent representation as uint32[] instead of int1[]
+//          int1 rfimask[F][T*Nds];        // factor of Nds since time index is "high-res"
+//          (baseband) uint rfimask[F][(T*Nds)/32];   // equivalent representation as uint32[]
+//          instead of int1[]
 
 
 // -------------------------------------------------------------------------------------------------
@@ -71,7 +72,8 @@ static constexpr int rfi_max_stations = 4096;
 // Computes S0 from packet loss mask, downsampling in time by specified factor 'Nds'.
 //
 // Constraints:
-//   - Nds must be even (but note that the SK-kernel subsequently requires Nds to be a multiple of 32)
+//   - Nds must be even (but note that the SK-kernel subsequently requires Nds to be a multiple of
+//   32)
 //   - S must be a multiple of 128 (required by packet loss array layout, see s0_kernel.cu)
 //   - T must be a multiple of 128 (required by packet loss array layout, see s0_kernel.cu)
 //   - T must be a multiple of Nds.
@@ -92,39 +94,40 @@ static constexpr int rfi_max_stations = 4096;
 
 
 // Version 1: bare-pointer ringbuffer interface.
-extern void launch_s0_kernel(
-    ulong *S0,                   // output array, shape (T/Nds, F, S)
-    const ulong *pl_mask,        // input array, shape (T/128, (F+3)/4, S/8), see above
-    long T,                      // number of time samples in input array (before downsampling)
-    long Tmin,                   // first time sample in input array
-    long Tsize,                  // ringbuffer size
-    long F,                      // number of frequency channels
-    long S,                      // number of stations (= 2*D, where D is number of dishes)
-    long Nds,                    // time downsampling factor
-    long out_fstride,            // frequency stride in 'S0' array, see comment above.
-    cudaStream_t stream=0);
+extern void
+launch_s0_kernel(ulong* S0,            // output array, shape (T/Nds, F, S)
+                 const ulong* pl_mask, // input array, shape (T/128, (F+3)/4, S/8), see above
+                 long T,           // number of time samples in input array (before downsampling)
+                 long Tmin,        // first time sample in input array
+                 long Tsize,       // ringbuffer size
+                 long F,           // number of frequency channels
+                 long S,           // number of stations (= 2*D, where D is number of dishes)
+                 long Nds,         // time downsampling factor
+                 long out_fstride, // frequency stride in 'S0' array, see comment above.
+                 cudaStream_t stream = 0);
 
 
 // Version 2: bare-pointer interface.
-extern void launch_s0_kernel(
-    ulong *S0,                   // output array, shape (T/Nds, F, S)
-    const ulong *pl_mask,        // input array, shape (T/128, (F+3)/4, S/8), see above
-    long T   ,                   // number of time samples in input array (before downsampling)
-    long F,                      // number of frequency channels
-    long S,                      // number of stations (= 2*D, where D is number of dishes)
-    long Nds,                    // time downsampling factor
-    long out_fstride,            // frequency stride in 'S0' array, see comment above.
-    cudaStream_t stream=0);
+extern void
+launch_s0_kernel(ulong* S0,            // output array, shape (T/Nds, F, S)
+                 const ulong* pl_mask, // input array, shape (T/128, (F+3)/4, S/8), see above
+                 long T,           // number of time samples in input array (before downsampling)
+                 long F,           // number of frequency channels
+                 long S,           // number of stations (= 2*D, where D is number of dishes)
+                 long Nds,         // time downsampling factor
+                 long out_fstride, // frequency stride in 'S0' array, see comment above.
+                 cudaStream_t stream = 0);
 
 
 // Version 3: gputils::Array<> interface.
-// Note that there is no 'out_fstride' arugment, since 'S0' is a gputils::Array, which contains strides.
+// Note that there is no 'out_fstride' arugment, since 'S0' is a gputils::Array, which contains
+// strides.
 
 extern void launch_s0_kernel(
-     gputils::Array<ulong> &S0,              // output array, shape (T/Nds, F, S)
-     const gputils::Array<ulong> &pl_mask,   // input array, shape (T/128, (F+3)/4, S/8), see above
-     long Nds,                               // time downsampling factor
-     cudaStream_t stream=0);
+    gputils::Array<ulong>& S0,            // output array, shape (T/Nds, F, S)
+    const gputils::Array<ulong>& pl_mask, // input array, shape (T/128, (F+3)/4, S/8), see above
+    long Nds,                             // time downsampling factor
+    cudaStream_t stream = 0);
 
 
 // -------------------------------------------------------------------------------------------------
@@ -155,42 +158,43 @@ extern void launch_s0_kernel(
 
 
 // Version 1: bare-pointer ringbuffer interface.
-extern void launch_s12_kernel(
-    ulong *S12,           // output array, shape (T/Nds, F, 2, S)
-    const uint8_t *E,     // input int4+4 array, shape (T, F, S)
-    long T,               // number of time samples in input array (before downsampling)
-    long Tmin,            // first time sample in input array
-    long Tsize,           // ringbuffer size
-    long F,               // number of frequency channels
-    long S,               // number of stations (= 2*D, where D is number of dishes)
-    long Nds,             // time downsampling factor
-    long out_fstride,     // frequency stride in 'S12' array, see comment above.
-    bool offset_encoded,  // toggle between twos-complement/offset-encoded int4s
-    cudaStream_t stream=0);
+extern void
+launch_s12_kernel(ulong* S12,       // output array, shape (T/Nds, F, 2, S)
+                  const uint8_t* E, // input int4+4 array, shape (T, F, S)
+                  long T,           // number of time samples in input array (before downsampling)
+                  long Tmin,        // first time sample in input array
+                  long Tsize,       // ringbuffer size
+                  long F,           // number of frequency channels
+                  long S,           // number of stations (= 2*D, where D is number of dishes)
+                  long Nds,         // time downsampling factor
+                  long out_fstride, // frequency stride in 'S12' array, see comment above.
+                  bool offset_encoded, // toggle between twos-complement/offset-encoded int4s
+                  cudaStream_t stream = 0);
 
 
 // Version 2: bare-pointer interface.
-extern void launch_s12_kernel(
-    ulong *S12,           // output array, shape (T/Nds, F, 2, S)
-    const uint8_t *E,     // input int4+4 array, shape (T, F, S)
-    long T,               // number of time samples in input array (before downsampling)
-    long F,               // number of frequency channels
-    long S,               // number of stations (= 2*D, where D is number of dishes)
-    long Nds,             // time downsampling factor
-    long out_fstride,     // frequency stride in 'S12' array, see comment above.
-    bool offset_encoded,  // toggle between twos-complement/offset-encoded int4s
-    cudaStream_t stream=0);
+extern void
+launch_s12_kernel(ulong* S12,       // output array, shape (T/Nds, F, 2, S)
+                  const uint8_t* E, // input int4+4 array, shape (T, F, S)
+                  long T,           // number of time samples in input array (before downsampling)
+                  long F,           // number of frequency channels
+                  long S,           // number of stations (= 2*D, where D is number of dishes)
+                  long Nds,         // time downsampling factor
+                  long out_fstride, // frequency stride in 'S12' array, see comment above.
+                  bool offset_encoded, // toggle between twos-complement/offset-encoded int4s
+                  cudaStream_t stream = 0);
 
 
 // Version 3: gputils::Array<> interface.
-// Note that there is no 'out_fstride' arugment, since 'S12' is a gputils::Array, which contains strides.
+// Note that there is no 'out_fstride' arugment, since 'S12' is a gputils::Array, which contains
+// strides.
 
-extern void launch_s12_kernel(
-    gputils::Array<ulong> &S12,         // output array, shape (T/Nds, F, 2, S)
-    const gputils::Array<uint8_t> &E,   // input int4+4 array, shape (T, F, S)
-    long Nds,                           // time downsampling factor
-    bool offset_encoded,                // toggle between twos-complement/offset-encoded int4s
-    cudaStream_t stream=0);
+extern void
+launch_s12_kernel(gputils::Array<ulong>& S12,       // output array, shape (T/Nds, F, 2, S)
+                  const gputils::Array<uint8_t>& E, // input int4+4 array, shape (T, F, S)
+                  long Nds,                         // time downsampling factor
+                  bool offset_encoded, // toggle between twos-complement/offset-encoded int4s
+                  cudaStream_t stream = 0);
 
 
 // -------------------------------------------------------------------------------------------------
@@ -217,34 +221,34 @@ extern void launch_s12_kernel(
 
 // Version 1: bare-pointer ringbuffer interface.
 extern void launch_s012_time_downsample_kernel(
-    ulong *Sout,        // output array, shape (T/Nds,3,F,S) or equivalently (T/Nds,M)
-    const ulong *Sin,   // input array, shape (T,3,F,S) or equivalently (T,M)
-    long T,             // number of time samples in input array (before downsampling)
-    long M,             // number of spectator indices (3*F*S), see above
-    long Nds,           // time downsampling factor
-    long Trfi_min,      // first time sample in input array
-    long Trfi_size,     // input ringbuffer size
-    long Trfibar_min,   // first time sample in output array
-    long Trfibar_size,  // output ringbuffer size
-    cudaStream_t stream=0);
+    ulong* Sout,       // output array, shape (T/Nds,3,F,S) or equivalently (T/Nds,M)
+    const ulong* Sin,  // input array, shape (T,3,F,S) or equivalently (T,M)
+    long T,            // number of time samples in input array (before downsampling)
+    long M,            // number of spectator indices (3*F*S), see above
+    long Nds,          // time downsampling factor
+    long Trfi_min,     // first time sample in input array
+    long Trfi_size,    // input ringbuffer size
+    long Trfibar_min,  // first time sample in output array
+    long Trfibar_size, // output ringbuffer size
+    cudaStream_t stream = 0);
 
 
 // Version 2: bare-pointer interface.
 extern void launch_s012_time_downsample_kernel(
-    ulong *Sout,        // output array, shape (T/Nds,3,F,S) or equivalently (T/Nds,M)
-    const ulong *Sin,   // input array, shape (T,3,F,S) or equivalently (T,M)
-    long T,             // number of time samples before downsampling
-    long M,             // number of spectator indices (3*F*S), see above
-    long Nds,           // time downsampling factor
-    cudaStream_t stream=0);
+    ulong* Sout,      // output array, shape (T/Nds,3,F,S) or equivalently (T/Nds,M)
+    const ulong* Sin, // input array, shape (T,3,F,S) or equivalently (T,M)
+    long T,           // number of time samples before downsampling
+    long M,           // number of spectator indices (3*F*S), see above
+    long Nds,         // time downsampling factor
+    cudaStream_t stream = 0);
 
 
 // Version 3: gputils::Array<> interface.
-extern void launch_s012_time_downsample_kernel(
-    gputils::Array<ulong> &Sout,        // output array, shape (T/Nds,3,F,S)
-    const gputils::Array<ulong> &Sin,   // input array, shape (T,3,F,S)
-    long Nds,                           // time downsampling factor
-    cudaStream_t stream=0);
+extern void
+launch_s012_time_downsample_kernel(gputils::Array<ulong>& Sout, // output array, shape (T/Nds,3,F,S)
+                                   const gputils::Array<ulong>& Sin, // input array, shape (T,3,F,S)
+                                   long Nds,                         // time downsampling factor
+                                   cudaStream_t stream = 0);
 
 
 // -------------------------------------------------------------------------------------------------
@@ -275,31 +279,31 @@ extern void launch_s012_time_downsample_kernel(
 
 // Version 1: bare-pointer ringbuffer.
 extern void launch_s012_station_downsample_kernel(
-    ulong *Sout,             // output array, shape (T,F,3) or equivalently (M,)
-    const ulong *Sin,        // input array, shape (T,F,3,S) or equivalently (M,S)
-    const uint8_t *bf_mask,  // bad feed mask, shape (S,), see above
-    long T,                  // number of time samples in input array (before downsampling)
-    long Tmin,               // first time sample in input array
-    long Tsize,              // ringbuffer size
-    long F,                  // number of frequency channels
-    long S,                  // number of stations
-    cudaStream_t stream=0);
+    ulong* Sout,            // output array, shape (T,F,3) or equivalently (M,)
+    const ulong* Sin,       // input array, shape (T,F,3,S) or equivalently (M,S)
+    const uint8_t* bf_mask, // bad feed mask, shape (S,), see above
+    long T,                 // number of time samples in input array (before downsampling)
+    long Tmin,              // first time sample in input array
+    long Tsize,             // ringbuffer size
+    long F,                 // number of frequency channels
+    long S,                 // number of stations
+    cudaStream_t stream = 0);
 
 // Version 2: bare-pointer interface.
 extern void launch_s012_station_downsample_kernel(
-    ulong *Sout,             // output array, shape (T,F,3) or equivalently (M,)
-    const ulong *Sin,        // input array, shape (T,F,3,S) or equivalently (M,S)
-    const uint8_t *bf_mask,  // bad feed mask, shape (S,), see above
-    long M,                  // number of spectator indices (3*T*F), see above
-    long S,                  // number of stations
-    cudaStream_t stream=0);
+    ulong* Sout,            // output array, shape (T,F,3) or equivalently (M,)
+    const ulong* Sin,       // input array, shape (T,F,3,S) or equivalently (M,S)
+    const uint8_t* bf_mask, // bad feed mask, shape (S,), see above
+    long M,                 // number of spectator indices (3*T*F), see above
+    long S,                 // number of stations
+    cudaStream_t stream = 0);
 
 // Version 3: gputils::Array<> interface.
 extern void launch_s012_station_downsample_kernel(
-    gputils::Array<ulong> &Sout,              // output array, shape (T,F,3)
-    const gputils::Array<ulong> &Sin,         // input array, shape (T,F,3,S)
-    const gputils::Array<uint8_t> &bf_mask,   // bad feed mask, shape (S,), see above
-    cudaStream_t stream=0);
+    gputils::Array<ulong>& Sout,            // output array, shape (T,F,3)
+    const gputils::Array<ulong>& Sin,       // input array, shape (T,F,3,S)
+    const gputils::Array<uint8_t>& bf_mask, // bad feed mask, shape (S,), see above
+    cudaStream_t stream = 0);
 
 
 // -------------------------------------------------------------------------------------------------
@@ -365,8 +369,7 @@ extern void launch_s012_station_downsample_kernel(
 //   - S must be <= rfi_max_stations.
 
 
-struct SkKernel
-{
+struct SkKernel {
     // High-level parameters for the SkKernel. See overleaf for precise descriptions.
     // We might define kotekan yaml config params for some/all of these.
     //
@@ -374,63 +377,65 @@ struct SkKernel
     // and the S-array (input to SK-kernel). Note that there are two SK-kernels in the
     // pipeline with different time resolutions (~1ms and ~30ms), and these SK-kernels
     // will have different Nds parameters.
-    
+
     struct Params {
-	double sk_rfimask_sigmas = 0.0;             // RFI masking threshold in "sigmas" (only used if out_rfimask != NULL)
-	double single_feed_min_good_frac = 0.0;     // For single-feed SK-statistic (threshold for validity)
-	double feed_averaged_min_good_frac = 0.0;   // For feed-averaged SK-statistic (threshold for validity)
-	double mu_min = 0.0;                        // For single-feed SK-statistic (threshold for validity)
-	double mu_max = 0.0;                        // For single-feed SK-statistic (threshold for validity)
-	long Nds = 0;                               // Downsampling factor used to construct S012 array (see above).
+        double sk_rfimask_sigmas =
+            0.0; // RFI masking threshold in "sigmas" (only used if out_rfimask != NULL)
+        double single_feed_min_good_frac =
+            0.0; // For single-feed SK-statistic (threshold for validity)
+        double feed_averaged_min_good_frac =
+            0.0;             // For feed-averaged SK-statistic (threshold for validity)
+        double mu_min = 0.0; // For single-feed SK-statistic (threshold for validity)
+        double mu_max = 0.0; // For single-feed SK-statistic (threshold for validity)
+        long Nds = 0;        // Downsampling factor used to construct S012 array (see above).
     };
 
     // As noted above, the SkKernel constructor allocates a few-KB array on the GPU,
     // copies data from CPU to GPU, and blocks until the copy is complete.
     //
-    // Note: params are specified at construction, but also can be changed freely between calls to launch():
+    // Note: params are specified at construction, but also can be changed freely between calls to
+    // launch():
     //    sk_kernel->params.sk_rfimask_sigmas = 3.0;   // this sort of thing is okay at any time
 
-    SkKernel(const Params &params, bool check_params=true);
-    
+    SkKernel(const Params& params, bool check_params = true);
+
     Params params;
 
     // Bare-pointer ringbuffer launch() interface.
     // Launches asynchronously (i.e. does not synchronize stream or device after launching kernel.)
-    
-    void launch(
-        float *out_sk_feed_averaged,          // Shape (T,F,3)
-	float *out_sk_single_feed,            // Shape (T,F,3,S), can be NULL
-	uint *out_rfimask,                    // Shape (F,T*Nds/32), can be NULL
-	const ulong *in_S012,                 // Shape (T,F,3,S)
-	const uint8_t *in_bf_mask,            // Length S (bad feed mask)
-	long T,                               // Number of downsampled times in S012 array
-	long F,                               // Number of frequency channels
-	long S,                               // Number of stations (= 2 * dishes)
-        long S012_Tmin,                       // First time sample in S012 array
-        long S012_Tsize,                      // Number of time samples in S012 array
-        long sk_feed_averaged_Tmin,           // First time sample in sk_feed_averaged array
-        long sk_feed_averaged_Tsize,          // Number of time samples in sk_feed_averaged array
-        long sk_single_feed_Tmin,             // First time sample in sk_single_feed array
-        long sk_single_feed_Tsize,            // Number of time samples in sk_single_feed array
-        long rfimask_T1024min,                // First (coarse) time sample in rfimask array
-        long rfimask_T1024size,               // Number of (coarse) time samples in rfimask array
-	cudaStream_t stream = 0,
-	bool check_params = true) const;
-    
+
+    void launch(float* out_sk_feed_averaged, // Shape (T,F,3)
+                float* out_sk_single_feed,   // Shape (T,F,3,S), can be NULL
+                uint* out_rfimask,           // Shape (F,T*Nds/32), can be NULL
+                const ulong* in_S012,        // Shape (T,F,3,S)
+                const uint8_t* in_bf_mask,   // Length S (bad feed mask)
+                long T,                      // Number of downsampled times in S012 array
+                long F,                      // Number of frequency channels
+                long S,                      // Number of stations (= 2 * dishes)
+                long S012_Tmin,              // First time sample in S012 array
+                long S012_Tsize,             // Number of time samples in S012 array
+                long sk_feed_averaged_Tmin,  // First time sample in sk_feed_averaged array
+                long sk_feed_averaged_Tsize, // Number of time samples in sk_feed_averaged array
+                long sk_single_feed_Tmin,    // First time sample in sk_single_feed array
+                long sk_single_feed_Tsize,   // Number of time samples in sk_single_feed array
+                long rfimask_T1024min,       // First (coarse) time sample in rfimask array
+                long rfimask_T1024size,      // Number of (coarse) time samples in rfimask array
+                cudaStream_t stream = 0, bool check_params = true) const;
+
     // gputils::Array<> interface to launch().
     // Launches asynchronously (i.e. does not synchronize stream or device after launching kernel.)
 
-    void launch(
-        gputils::Array<float> &out_sk_feed_averaged,   // Shape (T,F,3)
-	gputils::Array<float> &out_sk_single_feed,     // Either empty array or shape (T,F,3,S)
-	gputils::Array<uint> &out_rfimask,             // Either empty array or shape (F,T*Nds/32), need not be contiguous
-	const gputils::Array<ulong> &in_S012,          // Shape (T,F,3,S)
-	const gputils::Array<uint8_t> &in_bf_mask,     // Length S (bad feed bask)
-	cudaStream_t stream = 0) const;
+    void launch(gputils::Array<float>& out_sk_feed_averaged, // Shape (T,F,3)
+                gputils::Array<float>& out_sk_single_feed, // Either empty array or shape (T,F,3,S)
+                gputils::Array<uint>&
+                    out_rfimask, // Either empty array or shape (F,T*Nds/32), need not be contiguous
+                const gputils::Array<ulong>& in_S012,      // Shape (T,F,3,S)
+                const gputils::Array<uint8_t>& in_bf_mask, // Length S (bad feed bask)
+                cudaStream_t stream = 0) const;
 
     // Used internally by launch() + constructor.
     // You shouldn't need to call this directly.
-    static void check_params(const Params &params);
+    static void check_params(const Params& params);
 
     // Interpolation table, copied to GPU memory by constructor.
     gputils::Array<float> bsigma_coeffs;
@@ -438,6 +443,6 @@ struct SkKernel
 };
 
 
-}  // namespace n2k
+} // namespace n2k
 
 #endif // _N2K_RFI_KERNELS_HPP

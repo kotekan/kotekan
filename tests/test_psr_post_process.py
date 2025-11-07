@@ -44,7 +44,7 @@ def psr_post_process_data(tmpdir_factory, missing_frames=None, test_env=None):
     """
 
     if test_env is None and not glob.glob(
-        path.join(path.dirname(__file__), "data", "fake_psr_beamform_gpu_*.dump")
+            path.join(path.dirname(__file__), "data", "fake_psr_beamform_gpu_*.dump")
     ):
         pytest.skip("No test data and not requesting full generation")
 
@@ -204,7 +204,7 @@ def check_data(data, missing_frames=[]):
     print("Expected output frames:", expected_output)
 
     for frame, (fpga_seq_num, frame_seconds, frame_nanoseconds) in zip(
-        actual_frames, expected_output
+            actual_frames, expected_output
     ):
         beam_id = 0
         beam_frame = 1

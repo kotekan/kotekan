@@ -1,10 +1,10 @@
 #ifndef _GPUTILS_CUDA_UTILS_HPP
 #define _GPUTILS_CUDA_UTILS_HPP
 
-#include <vector>
-#include <memory>
 #include <cassert>
+#include <memory>
 #include <stdexcept>
+#include <vector>
 
 
 // Note: CUDA_CALL(), CUDA_PEEK(), and CUDA_CALL_ABORT() are implemented with #define,
@@ -37,31 +37,32 @@ namespace gputils {
 
 // Branch predictor hint
 #ifndef _unlikely
-#define _unlikely(cond)  (__builtin_expect(cond,0))
+#define _unlikely(cond) (__builtin_expect(cond, 0))
 #endif
 
 #define CUDA_CALL(x) _CUDA_CALL(x, __STRING(x), __FILE__, __LINE__)
 #define CUDA_PEEK(x) _CUDA_CALL(cudaPeekAtLastError(), x, __FILE__, __LINE__)
 #define CUDA_CALL_ABORT(x) _CUDA_CALL_ABORT(x, __STRING(x), __FILE__, __LINE__)
 
-#define _CUDA_CALL(x, xstr, file, line) \
-    do { \
-	cudaError_t xerr = (x); \
-	if (_unlikely(xerr != cudaSuccess)) \
-	    throw ::gputils::make_cuda_exception(xerr, xstr, file, line); \
+#define _CUDA_CALL(x, xstr, file, line)                                                            \
+    do {                                                                                           \
+        cudaError_t xerr = (x);                                                                    \
+        if (_unlikely(xerr != cudaSuccess))                                                        \
+            throw ::gputils::make_cuda_exception(xerr, xstr, file, line);                          \
     } while (0)
 
-#define _CUDA_CALL_ABORT(x, xstr, file, line) \
-    do { \
-	cudaError_t xerr = (x); \
-	if (_unlikely(xerr != cudaSuccess)) { \
-	    fprintf(stderr, "CUDA call '%s' failed at %s:%d\n", xstr, file, line); \
-	    exit(1); \
-	} \
+#define _CUDA_CALL_ABORT(x, xstr, file, line)                                                      \
+    do {                                                                                           \
+        cudaError_t xerr = (x);                                                                    \
+        if (_unlikely(xerr != cudaSuccess)) {                                                      \
+            fprintf(stderr, "CUDA call '%s' failed at %s:%d\n", xstr, file, line);                 \
+            exit(1);                                                                               \
+        }                                                                                          \
     } while (0)
 
 // Helper for CUDA_CALL().
-std::runtime_error make_cuda_exception(cudaError_t xerr, const char *xstr, const char *file, int line);
+std::runtime_error make_cuda_exception(cudaError_t xerr, const char* xstr, const char* file,
+                                       int line);
 
 
 // ------------------------------  RAII wrapper for cudaStream_t  ----------------------------------
@@ -74,29 +75,30 @@ struct CudaStreamWrapper {
     // Reminder: cudaStream_t is a typedef for (CUstream_st *)
     std::shared_ptr<CUstream_st> p;
 
-    CudaStreamWrapper()
-    {
-	cudaStream_t s;
-	CUDA_CALL(cudaStreamCreate(&s));
-	this->p = std::shared_ptr<CUstream_st> (s, cudaStreamDestroy);
+    CudaStreamWrapper() {
+        cudaStream_t s;
+        CUDA_CALL(cudaStreamCreate(&s));
+        this->p = std::shared_ptr<CUstream_st>(s, cudaStreamDestroy);
     }
 
-    // Create cudaStream with priority. CUDA priorities follow a convention where lower numbers represent
-    // higher priorities. '0' represents default priority. The range of meaningful numerical priorities can
-    // be queried using cudaDeviceGetStreamPriorityRange(). On an A40, the allowed range is [-5,0].
-    
-    CudaStreamWrapper(int priority)
-    {
-	cudaStream_t s;
-	CUDA_CALL(cudaStreamCreateWithPriority(&s, cudaStreamDefault, priority));
-	this->p = std::shared_ptr<CUstream_st> (s, cudaStreamDestroy);
+    // Create cudaStream with priority. CUDA priorities follow a convention where lower numbers
+    // represent higher priorities. '0' represents default priority. The range of meaningful
+    // numerical priorities can be queried using cudaDeviceGetStreamPriorityRange(). On an A40, the
+    // allowed range is [-5,0].
+
+    CudaStreamWrapper(int priority) {
+        cudaStream_t s;
+        CUDA_CALL(cudaStreamCreateWithPriority(&s, cudaStreamDefault, priority));
+        this->p = std::shared_ptr<CUstream_st>(s, cudaStreamDestroy);
     }
 
     // A CudaStreamWrapper can be used anywhere a cudaStream_t can be used
     // (e.g. in a kernel launch, or elsewhere in the CUDA API), via this
     // conversion operator.
-    
-    operator cudaStream_t() { return p.get(); }
+
+    operator cudaStream_t() {
+        return p.get();
+    }
 };
 
 
@@ -118,20 +120,22 @@ struct CudaEventWrapper {
     //   cudaEventDefault = 0
     //   cudaEventBlockingSync: callers of cudaEventSynchronize() will block instead of busy-waiting
     //   cudaEventDisableTiming: event does not need to record timing data
-    //   cudaEventInterprocess: event may be used as an interprocess event by cudaIpcGetEventHandle()
-    
-    CudaEventWrapper(unsigned int flags = cudaEventDefault)
-    {
-	cudaEvent_t e;
-	CUDA_CALL(cudaEventCreateWithFlags(&e, flags));
-	this->p = std::shared_ptr<CUevent_st> (e, cudaEventDestroy);
+    //   cudaEventInterprocess: event may be used as an interprocess event by
+    //   cudaIpcGetEventHandle()
+
+    CudaEventWrapper(unsigned int flags = cudaEventDefault) {
+        cudaEvent_t e;
+        CUDA_CALL(cudaEventCreateWithFlags(&e, flags));
+        this->p = std::shared_ptr<CUevent_st>(e, cudaEventDestroy);
     }
 
     // A CudaEventWrapper can be used anywhere a cudaEvent_t can be used
     // (e.g. in a kernel launch, or elsewhere in the CUDA API), via this
     // conversion operator.
-    
-    operator cudaEvent_t() { return p.get(); }
+
+    operator cudaEvent_t() {
+        return p.get();
+    }
 };
 
 
@@ -160,24 +164,22 @@ protected:
     bool running = true;
 
 public:
-    CudaTimer(cudaStream_t stream_ = nullptr)
-    {
-	stream = stream_;
-	CUDA_CALL(cudaEventRecord(start, stream));
+    CudaTimer(cudaStream_t stream_ = nullptr) {
+        stream = stream_;
+        CUDA_CALL(cudaEventRecord(start, stream));
     }
 
-    float stop()
-    {
-	if (!running)
-	    throw std::runtime_error("double call to CudaTimer::stop()");
+    float stop() {
+        if (!running)
+            throw std::runtime_error("double call to CudaTimer::stop()");
 
-	running = false;
-	CUDA_CALL(cudaEventRecord(end, stream));
-	CUDA_CALL(cudaEventSynchronize(end));
+        running = false;
+        CUDA_CALL(cudaEventRecord(end, stream));
+        CUDA_CALL(cudaEventSynchronize(end));
 
-	float milliseconds = 0.0;
-	CUDA_CALL(cudaEventElapsedTime(&milliseconds, start, end));
-	return milliseconds / 1000.;
+        float milliseconds = 0.0;
+        CUDA_CALL(cudaEventElapsedTime(&milliseconds, start, end));
+        return milliseconds / 1000.;
     }
 };
 
@@ -187,12 +189,13 @@ public:
 // Misc
 
 
-extern void assign_kernel_dims(dim3 &nblocks, dim3 &nthreads, long nx, long ny, long nz, int threads_per_block=128, bool noisy=false);
-    
-// Implements command-line usage: program [device].
-extern void set_device_from_command_line(int argc, char **argv);
+extern void assign_kernel_dims(dim3& nblocks, dim3& nthreads, long nx, long ny, long nz,
+                               int threads_per_block = 128, bool noisy = false);
 
-extern double get_sm_cycles_per_second(int device=0);
+// Implements command-line usage: program [device].
+extern void set_device_from_command_line(int argc, char** argv);
+
+extern double get_sm_cycles_per_second(int device = 0);
 
 
 } // namespace gputils

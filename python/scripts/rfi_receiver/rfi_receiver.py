@@ -37,7 +37,6 @@ import json
 from ch_util import ephemeris
 from kotekan import __version__
 
-
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -146,7 +145,7 @@ class CommandLine(object):
                 )
             )
             self.TCP_IP = argument.send[: argument.send.index(":")]
-            self.TCP_PORT = int(argument.send[argument.send.index(":") + 1 :])
+            self.TCP_PORT = int(argument.send[argument.send.index(":") + 1:])
             logger.info("Setting TCP IP: %s PORT: %d" % (self.TCP_IP, self.TCP_PORT))
             status = True
         if argument.receive:
@@ -156,7 +155,7 @@ class CommandLine(object):
                 )
             )
             self.UDP_IP = argument.receive[: argument.receive.index(":")]
-            self.UDP_PORT = int(argument.receive[argument.receive.index(":") + 1 :])
+            self.UDP_PORT = int(argument.receive[argument.receive.index(":") + 1:])
             logger.info("Setting UDP IP: %s PORT: %d" % (self.UDP_IP, self.UDP_PORT))
             status = True
         if argument.config:
@@ -249,7 +248,6 @@ class Stream(object):
 
 
 def HeaderCheck(header, app):
-
     if header["combined_flag"] != 1:
         logger.error("Header Error: Only Combined RFI values are currently supported ")
         return False
@@ -290,8 +288,8 @@ def HeaderCheck(header, app):
         )
         return False
     if (
-        header["frames_per_packet"] != app.config["frames_per_packet"]
-        and header["frames_per_packet"] != app.config["bi_frames_per_packet"]
+            header["frames_per_packet"] != app.config["frames_per_packet"]
+            and header["frames_per_packet"] != app.config["bi_frames_per_packet"]
     ):
         logger.error(
             "Header Error: Frames per Packet does not match config; Got value %d"
@@ -305,7 +303,6 @@ def HeaderCheck(header, app):
 
 # Listen for UDP packets from Kotekan
 def data_listener(thread_id):
-
     global waterfall, t_min, app, sk_receive_watchdogs, InitialKotekanConnection
 
     UDP_PORT = app.UDP_PORT + thread_id
@@ -373,11 +370,11 @@ def data_listener(thread_id):
 
             header = np.fromstring(packet[:RFIHeaderSize], dtype=HeaderDataType)
             freq_bins = np.fromstring(
-                packet[RFIHeaderSize : RFIHeaderSize + 4 * local_freq], dtype=np.uint32
+                packet[RFIHeaderSize: RFIHeaderSize + 4 * local_freq], dtype=np.uint32
             )
             freq_bins_set.update(freq_bins)
             data = np.fromstring(
-                packet[RFIHeaderSize + 4 * local_freq :], dtype=np.float32
+                packet[RFIHeaderSize + 4 * local_freq:], dtype=np.float32
             )
 
             # Create a new stream object each time a new stream connects
@@ -397,8 +394,8 @@ def data_listener(thread_id):
                 t_min = datetime.datetime.utcnow()
                 app.min_seq = header["fpga_seq_num"][0]
                 app.max_seq = (
-                    app.min_seq
-                    + (waterfall.shape[1] - 1) * timesteps_per_frame * frames_per_packet
+                        app.min_seq
+                        + (waterfall.shape[1] - 1) * timesteps_per_frame * frames_per_packet
                 )
                 firstPacket = False
 
@@ -421,31 +418,31 @@ def data_listener(thread_id):
                         waterfall[:, :] = np.nan
                         app.min_seq = header["fpga_seq_num"][0]
                         app.max_seq = (
-                            app.min_seq
-                            + (waterfall.shape[1] - 1)
-                            * timesteps_per_frame
-                            * frames_per_packet
+                                app.min_seq
+                                + (waterfall.shape[1] - 1)
+                                * timesteps_per_frame
+                                * frames_per_packet
                         )
                     else:
                         # DO THE ROLL, Note: Roll Amount is negative
                         waterfall = np.roll(waterfall, roll_amount, axis=1)
                         waterfall[:, roll_amount:] = np.nan
                         app.min_seq -= (
-                            roll_amount * timesteps_per_frame * frames_per_packet
+                                roll_amount * timesteps_per_frame * frames_per_packet
                         )
                         app.max_seq = (
-                            app.min_seq
-                            + (waterfall.shape[1] - 1)
-                            * timesteps_per_frame
-                            * frames_per_packet
+                                app.min_seq
+                                + (waterfall.shape[1] - 1)
+                                * timesteps_per_frame
+                                * frames_per_packet
                         )
                         # Adjust Time
                         t_min += datetime.timedelta(
                             seconds=-1
-                            * roll_amount
-                            * timestep
-                            * timesteps_per_frame
-                            * frames_per_packet
+                                    * roll_amount
+                                    * timestep
+                                    * timesteps_per_frame
+                                    * frames_per_packet
                         )
             # if(thread_id == 1):
             # logger.debug(header['fpga_seq_num'][0],min_seq,timesteps_per_frame,frames_per_packet, (header['fpga_seq_num'][0]-min_seq)/(float(timesteps_per_frame)*frames_per_packet), np.median(data))
@@ -473,7 +470,6 @@ def data_listener(thread_id):
 
 
 def bad_input_listener(thread_id):
-
     global bi_waterfall, bi_t_min, max_t_pos, app, bi_receive_watchdog, InitialKotekanConnection
 
     UDP_PORT = app.UDP_PORT + app.config["num_receive_threads"]
@@ -533,11 +529,11 @@ def bad_input_listener(thread_id):
             header = np.fromstring(packet[:RFIHeaderSize], dtype=HeaderDataType)
             # Read the frequency bins
             freq_bins = np.fromstring(
-                packet[RFIHeaderSize : RFIHeaderSize + 4 * local_freq], dtype=np.uint32
+                packet[RFIHeaderSize: RFIHeaderSize + 4 * local_freq], dtype=np.uint32
             )
             # Read the data
             data = np.fromstring(
-                packet[RFIHeaderSize + 4 * local_freq :], dtype=np.uint8
+                packet[RFIHeaderSize + 4 * local_freq:], dtype=np.uint8
             )
             # Create a new stream object each time a new stream connects
             if header["encoded_stream_ID"][0] not in known_streams:
@@ -558,11 +554,11 @@ def bad_input_listener(thread_id):
             # Add data to waterfall
             fq = stream_dict[header["encoded_stream_ID"][0]].bins
             t = (
-                int(
-                    (header["fpga_seq_num"][0] - bi_min_seq)
-                    // (timesteps_per_frame * frames_per_packet)
-                )
-                % bi_waterfall.shape[2]
+                    int(
+                        (header["fpga_seq_num"][0] - bi_min_seq)
+                        // (timesteps_per_frame * frames_per_packet)
+                    )
+                    % bi_waterfall.shape[2]
             )
             if t > max_t_pos:
                 max_t_pos = t
@@ -573,7 +569,6 @@ def bad_input_listener(thread_id):
 
 
 def TCP_stream():
-
     global sock_tcp, waterfall, t_min, max_t_pos, app, tcp_connected
 
     sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -626,7 +621,6 @@ def TCP_stream():
 
 
 def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
-
     if not app.debug:
         np.warnings.filterwarnings("ignore", r"All-NaN (slice|axis) encountered")
         np.warnings.filterwarnings("ignore", r"Mean of empty slice")
@@ -638,9 +632,9 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     # Bad Input Metrics
     mean_bi_waterfall = np.nanmean(bi_waterfall[:, :, :max_t_pos], axis=2)
     bad_input_band = (
-        100.0
-        * np.nanmedian(mean_bi_waterfall, axis=0)
-        / float(app.config["bi_frames_per_packet"])
+            100.0
+            * np.nanmedian(mean_bi_waterfall, axis=0)
+            / float(app.config["bi_frames_per_packet"])
     )
     bad_input_mask = []
     for i in range(bad_input_band.size):
@@ -722,7 +716,6 @@ class S(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-
         global app, logger
         self._set_headers()
         self.wfile.write(
@@ -731,7 +724,6 @@ class S(BaseHTTPRequestHandler):
 
 
 def metric_thread():
-
     global bi_waterfall, waterfall, max_t_pos, app, InitialKotekanConnection
     logger.info("Starting Metrics Thread")
     metric_dict = dict()
@@ -757,7 +749,6 @@ def metric_thread():
 
 
 def watchdog_thread():
-
     global sk_receive_watchdogs, bi_receive_watchdog, EXIT, InitialKotekanConnection
     logger.info("Starting Watchdog Thread")
     while not InitialKotekanConnection:
@@ -775,7 +766,6 @@ def watchdog_thread():
 
 
 def http_server2():
-
     server_address = ("", 7342)  # RFI2
     httpd = HTTPServer(server_address, S)
     logger.info("Starting HTTP Server 2")
@@ -784,7 +774,6 @@ def http_server2():
 
 # Sends message to coco to turn RFI zeroing on/off
 def set_rfi_zeroing(zeroing_on):
-
     global rfi_zeroing_url, rfi_zeroing_headers
 
     # Create payload
@@ -810,7 +799,6 @@ def set_rfi_zeroing(zeroing_on):
 
 # Disables RFI zeroing during a solar transit
 def rfi_zeroing():
-
     global InitialKotekanConnection
 
     # Downtime of RFI zeroing
@@ -830,7 +818,7 @@ def rfi_zeroing():
 
         # Get the *nearest* transit which we need to determine if we are still in the window
         time_to_nearest_transit = (
-            ephemeris.solar_transit(time_now - 12 * 3600) - time_now
+                ephemeris.solar_transit(time_now - 12 * 3600) - time_now
         )
 
         logger.info(
@@ -870,7 +858,6 @@ def rfi_zeroing():
 
         # If we failed to set new RFI zeroing state sleep for a few seconds
         if not success:
-
             logger.info(
                 "RFI Solar Transit Toggle: Failed to set new RFI zeroing state. Will wait for a few seconds and try again."
             )

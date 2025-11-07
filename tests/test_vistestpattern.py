@@ -58,12 +58,12 @@ def command_test_pattern(name, num_frames, test_pattern):
 
 
 def run_test(
-    write_dir,
-    rest_commands=None,
-    params=params,
-    noise=False,
-    name="simple",
-    expect_failure=False,
+        write_dir,
+        rest_commands=None,
+        params=params,
+        noise=False,
+        name="simple",
+        expect_failure=False,
 ):
     params["write_dir"] = write_dir
 
@@ -166,7 +166,6 @@ def test_no_noise(test_pattern):
 
 @pytest.fixture(scope="module")
 def test_pattern_noise(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("test_pattern_noise")
     write_dir = str(tmpdir)
 
@@ -183,7 +182,6 @@ def test_pattern_noise(tmpdir_factory):
 
 
 def test_noise(test_pattern_noise):
-
     report = test_pattern_noise[0]
     vis_in = test_pattern_noise[1]
     vis_out = test_pattern_noise[2]
@@ -198,8 +196,8 @@ def test_noise(test_pattern_noise):
 
         for f in vis_in:
             if (
-                f.metadata.fpga_seq == frame_out.metadata.fpga_seq
-                and f.metadata.freq_id == frame_out.metadata.freq_id
+                    f.metadata.fpga_seq == frame_out.metadata.fpga_seq
+                    and f.metadata.freq_id == frame_out.metadata.freq_id
             ):
                 frame = f
         assert frame is not None
@@ -335,7 +333,6 @@ def test_pattern_noise_freq(tmpdir_factory):
 
 
 def test_noise_freq(test_pattern_noise_freq):
-
     report = test_pattern_noise_freq[0]
     vis_in = test_pattern_noise_freq[1]
     vis_out = test_pattern_noise_freq[2]
@@ -351,9 +348,9 @@ def test_noise_freq(test_pattern_noise_freq):
         frame = vis_in[i]
 
         if (
-            frame.metadata.fpga_seq == vis_out[0].metadata.fpga_seq
-            and frame.metadata.freq_id == vis_out[0].metadata.freq_id
-            and num_to_compare == 0
+                frame.metadata.fpga_seq == vis_out[0].metadata.fpga_seq
+                and frame.metadata.freq_id == vis_out[0].metadata.freq_id
+                and num_to_compare == 0
         ):
             num_to_compare = 3
 
@@ -504,7 +501,6 @@ def test_pattern_noise_inputs(tmpdir_factory):
 
 
 def test_noise_inputs(test_pattern_noise_inputs):
-
     report = test_pattern_noise_inputs[0]
     vis_in = test_pattern_noise_inputs[1]
     vis_out = test_pattern_noise_inputs[2]
@@ -519,8 +515,8 @@ def test_noise_inputs(test_pattern_noise_inputs):
 
         for f in vis_in:
             if (
-                f.metadata.fpga_seq == frame_out.metadata.fpga_seq
-                and f.metadata.freq_id == frame_out.metadata.freq_id
+                    f.metadata.fpga_seq == frame_out.metadata.fpga_seq
+                    and f.metadata.freq_id == frame_out.metadata.freq_id
             ):
                 frame = f
         assert frame is not None

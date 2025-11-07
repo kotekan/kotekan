@@ -6,7 +6,6 @@ import pytest
 from kotekan.scripts import baseband_archiver
 import kotekan
 
-
 config = {
     "max_dump_samples": 3500,
     "num_elements": 28,
@@ -21,7 +20,7 @@ config = {
     },
 }
 frame_size = config["frame_size"] = (
-    config["num_elements"] * config["samples_per_data_set"]
+        config["num_elements"] * config["samples_per_data_set"]
 )
 num_elements = config["num_elements"]
 config["input_reorder"] = [
@@ -82,13 +81,13 @@ def generate_baseband_raw_files(tmpdir_factory, nfreqs=1):
             )
             frame_list[-1].metadata.event_start_seq = 0
             frame_list[-1].metadata.event_end_seq = (
-                config["buffer_depth"] * samples_per_data_set
+                    config["buffer_depth"] * samples_per_data_set
             )
             frame_list[-1].metadata.frame_fpga_seq = i * samples_per_data_set
             frame_list[-1].metadata.valid_to = samples_per_data_set
         # frame_list[-1].metadata.valid_to -= 17
         print("Saving:", i, current_dir)
-        with open(f"{ current_dir }/baseband_12345_{ freq_id :d}.data", "wb+") as f:
+        with open(f"{current_dir}/baseband_12345_{freq_id :d}.data", "wb+") as f:
             for frame in frame_list:
                 f.write(frame._buffer)
 
@@ -125,10 +124,10 @@ def check_baseband_dump(file_name, freq_id=0):
                     break
                 # calculation used in `testDataGen` for method `tpluse`:
                 expected = (
-                    frame_metadata.frame_fpga_seq + j // num_elements + j % num_elements
-                ) % 256
+                                   frame_metadata.frame_fpga_seq + j // num_elements + j % num_elements
+                           ) % 256
                 assert (
-                    val == expected
+                        val == expected
                 ), f"Baseband data mismatch at index {j}/{frame_index}, fpga_seq={frame_metadata.frame_fpga_seq}"
 
             frame_index += 1
@@ -158,7 +157,7 @@ def check_baseband_archive(file_name):
             j = i % num_elements
             expected = (fpga_seq + j // num_elements + j % num_elements) % 256
             assert (
-                val == expected
+                    val == expected
             ), f"Baseband archive mismatch at index {i} ({fpga_seq}/{j})"
 
 

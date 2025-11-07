@@ -26,7 +26,7 @@ sample_block_size: 2048
 # Set this value to the maximum allowed by the system RAM.
 # Each frame is ~135 MB, and stores about 168ms of data.
 buffer_depth: 105
-cpu_affinity: [2,3]
+cpu_affinity: [ 2,3 ]
 instrument_name: mcgill_lab_test
 
 # Telescope
@@ -62,7 +62,7 @@ lost_samples_buffer:
 dpdk:
   kotekan_stage: dpdkCore
   # Format is index = lcore, value = cpu core
-  lcore_cpu_map: [0]
+  lcore_cpu_map: [ 0 ]
   main_lcore_cpu: 1
   fpga_packet_size: 4160
   samples_per_packet: 2
@@ -72,7 +72,7 @@ dpdk:
   # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
   # and lcore 1 to service ports 2 and 3.
   lcore_port_map:
-    - [0]
+    - [ 0 ]
   # One handler must be given per port on the system.
   handlers:
     - dpdk_handler: iceBoardStandard

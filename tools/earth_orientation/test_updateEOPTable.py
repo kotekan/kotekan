@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 
 import updateEOPTable
 
-
 if __name__ == "__main__":
 
     # time0_ns = read_time0_ns("http://localhost", 12048)

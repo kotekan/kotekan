@@ -45,25 +45,25 @@ no_fringestop_32:
   do_fringestop: false
 
 
-    # direct_no_fringestop_0:
-    #   in_buf: fakevis_buf0
-    #   kotekan_stage: N2FringeStop
-    #   out_buf: dumpvis_direct_nfs0_buf
-    #   fringestop_mode: 0
-    #   era_target_deg: 81.0
-    # 
-    # direct_fringestop_0:
-    #   in_buf: fakevis_buf0
-    #   kotekan_stage: N2FringeStop
-    #   out_buf: dumpvis_direct_fs0_buf
-    #   fringestop_mode: 1
-    #   era_target_deg: 81.0
-    # direct_phase_fringestop_0:
-    #   in_buf: fakevis_buf0
-    #   kotekan_stage: N2FringeStop
-    #   out_buf: dumpvis_direct_pfs0_buf
-    #   fringestop_mode: 2
-    #   era_target_deg: 81.0
+  # direct_no_fringestop_0:
+  #   in_buf: fakevis_buf0
+  #   kotekan_stage: N2FringeStop
+  #   out_buf: dumpvis_direct_nfs0_buf
+  #   fringestop_mode: 0
+  #   era_target_deg: 81.0
+  #
+  # direct_fringestop_0:
+  #   in_buf: fakevis_buf0
+  #   kotekan_stage: N2FringeStop
+  #   out_buf: dumpvis_direct_fs0_buf
+  #   fringestop_mode: 1
+  #   era_target_deg: 81.0
+  # direct_phase_fringestop_0:
+  #   in_buf: fakevis_buf0
+  #   kotekan_stage: N2FringeStop
+  #   out_buf: dumpvis_direct_pfs0_buf
+  #   fringestop_mode: 2
+  #   era_target_deg: 81.0
 
 raw_rate: 1
 rate0: raw_rate
@@ -76,7 +76,7 @@ N2_pool:
 
 block_size: 2
 buffer_depth: 4
-cpu_affinity: [4, 5, 6, 7]
+cpu_affinity: [ 4, 5, 6, 7 ]
 
 # dump_fs0:
 #   base_dir: ./data_out
@@ -141,26 +141,26 @@ dump_raw:
   kotekan_stage: rawFileWrite
   in_buf: fakevis_buf0
 
-    # dump_direct_nfs0:
-    #   base_dir: ./data_out
-    #   file_ext: dump
-    #   file_name: dumpvis_direct_nfs0_buf
-    #   kotekan_stage: rawFileWrite
-    #   in_buf: dumpvis_direct_nfs0_buf
-    # 
-    # dump_direct_fs0:
-    #   base_dir: ./data_out
-    #   file_ext: dump
-    #   file_name: dumpvis_direct_fs0_buf
-    #   kotekan_stage: rawFileWrite
-    #   in_buf: dumpvis_direct_fs0_buf
-    # 
-    # dump_direct_pfs0:
-    #   base_dir: ./data_out
-    #   file_ext: dump
-    #   file_name: dumpvis_direct_pfs0_buf
-    #   kotekan_stage: rawFileWrite
-    #   in_buf: dumpvis_direct_pfs0_buf
+  # dump_direct_nfs0:
+  #   base_dir: ./data_out
+  #   file_ext: dump
+  #   file_name: dumpvis_direct_nfs0_buf
+  #   kotekan_stage: rawFileWrite
+  #   in_buf: dumpvis_direct_nfs0_buf
+  #
+  # dump_direct_fs0:
+  #   base_dir: ./data_out
+  #   file_ext: dump
+  #   file_name: dumpvis_direct_fs0_buf
+  #   kotekan_stage: rawFileWrite
+  #   in_buf: dumpvis_direct_fs0_buf
+  #
+  # dump_direct_pfs0:
+  #   base_dir: ./data_out
+  #   file_ext: dump
+  #   file_name: dumpvis_direct_pfs0_buf
+  #   kotekan_stage: rawFileWrite
+  #   in_buf: dumpvis_direct_pfs0_buf
 
 # dumpvis_fs0_buf:
 #   kotekan_buffer: N2
@@ -202,20 +202,20 @@ dumpvis_nfs32_buf:
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
-    # dumpvis_direct_nfs0_buf:
-    #   kotekan_buffer: N2
-    #   metadata_pool: N2_pool
-    #   num_frames: buffer_depth
-    # 
-    # dumpvis_direct_fs0_buf:
-    #   kotekan_buffer: N2
-    #   metadata_pool: N2_pool
-    #   num_frames: buffer_depth
-    # 
-    # dumpvis_direct_pfs0_buf:
-    #   kotekan_buffer: N2
-    #   metadata_pool: N2_pool
-    #   num_frames: buffer_depth
+  # dumpvis_direct_nfs0_buf:
+  #   kotekan_buffer: N2
+  #   metadata_pool: N2_pool
+  #   num_frames: buffer_depth
+  #
+  # dumpvis_direct_fs0_buf:
+  #   kotekan_buffer: N2
+  #   metadata_pool: N2_pool
+  #   num_frames: buffer_depth
+  #
+  # dumpvis_direct_pfs0_buf:
+  #   kotekan_buffer: N2
+  #   metadata_pool: N2_pool
+  #   num_frames: buffer_depth
 
 giga: 1000000000
 start_time_s: 1417910418
@@ -233,13 +233,13 @@ earth_rotation_data:
       delta_UT1_inst: 0.5,
       x_pm: 0.1,
       y_pm: 0.2
-    }]
+    } ]
 
 fakevis0:
   cadence: T_rot_sec / (86400 * raw_rate)
   dec: 49.32
   ra: -37.0
-  freq_ids: [8000]
+  freq_ids: [ 8000 ]
   kotekan_stage: FakeVis
   mode: point_source
   n_lost_ticks: 0
@@ -276,20 +276,20 @@ samples_per_dataset: 32768
 telescope:
   name: CHORDTelescope
   dish_positions: [
-    [0.0, 0.0, 0.0],
-    [6.3, 0.0, 0.0],
-    [0.0, 8.4, 0.0],
-    [6.3, 8.4, 0.0],
-    [151.0, 0.0, 0.0],
-    [0.0, 204.0, 0.0],
-    [151.0, 204.0, 0.0]]
+    [ 0.0, 0.0, 0.0 ],
+    [ 6.3, 0.0, 0.0 ],
+    [ 0.0, 8.4, 0.0 ],
+    [ 6.3, 8.4, 0.0 ],
+    [ 151.0, 0.0, 0.0 ],
+    [ 0.0, 204.0, 0.0 ],
+    [ 151.0, 204.0, 0.0 ] ]
   inst_lat_deg: 49.32075144444
   inst_long_deg: -119.62081125
-  inst_grid_x_axis: [1.0, 0.0, 0.0]
-  inst_grid_y_axis: [0.0, 1.0, 0.0]
+  inst_grid_x_axis: [ 1.0, 0.0, 0.0 ]
+  inst_grid_y_axis: [ 0.0, 1.0, 0.0 ]
   inst_alt_deg: 90.0
-  inst_dish_alt_axis: [1.0, 0.0, 0.0]
-  inst_dish_vert_axis: [0.0, 0.0, 1.0]
+  inst_dish_alt_axis: [ 1.0, 0.0, 0.0 ]
+  inst_dish_vert_axis: [ 0.0, 0.0, 1.0 ]
   require_gps: false
   updatable_config: /earth_rotation_data
 

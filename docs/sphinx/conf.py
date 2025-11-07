@@ -19,6 +19,7 @@
 #
 import os
 import subprocess
+
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
@@ -32,7 +33,7 @@ if read_the_docs_build:
     subprocess.call('ls', shell=True)
     subprocess.call('mkdir -p ../../build-docs &&\
         cd ../../build-docs && pwd && cmake -DCOMPILE_DOCS=ON .. && make doxygen',
-        shell=True)
+                    shell=True)
     html_extra_path = ['../../build-docs/docs/doxygen/build']
 else:
     html_extra_path = ['@BINARY_BUILD_DIR@/../doxygen/build']
@@ -45,6 +46,7 @@ else:
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 import sphinx_rtd_theme
+
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.intersphinx',
@@ -58,19 +60,17 @@ extensions = [
     'sphinxcontrib.plantuml'
 ]
 
-
 # this is to make plantuml extension find stuff
 
 if not read_the_docs_build:
     # Paths (@...@) will be modified by cmake
     plantuml = 'java -jar @PLANTUML_DIR@/plantuml.jar'
-    breathe_projects = { "kotekan": "@BINARY_BUILD_DIR@/../doxygen/build/xml/" }
+    breathe_projects = {"kotekan": "@BINARY_BUILD_DIR@/../doxygen/build/xml/"}
 else:
-    breathe_projects = { "kotekan": "../../build-docs/docs/doxygen/build/xml/" }
+    breathe_projects = {"kotekan": "../../build-docs/docs/doxygen/build/xml/"}
 
 breathe_default_project = "kotekan"
 breathe_default_members = ('members', 'undoc-members')
-
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -168,7 +168,6 @@ latex_documents = [
     (master_doc, 'kotekan.tex', u'kotekan Documentation', u'Kotekan team', 'manual'),
 ]
 
-
 # -- Options for manual page output ---------------------------------------
 
 # One entry per manual page. List of tuples
@@ -177,13 +176,12 @@ man_pages = [
     (master_doc, 'kotekan', u'kotekan Documentation', [author], 1)
 ]
 
-
 # -- Options for Texinfo output -------------------------------------------
 
 # Grouping the document tree into Texinfo files. List of tuples
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'kotekan', u'kotekan Documentation', author, 'kotekan', 'One line description of project.', 'Miscellaneous'),
+    (master_doc, 'kotekan', u'kotekan Documentation', author, 'kotekan', 'One line description of project.',
+     'Miscellaneous'),
 ]
-

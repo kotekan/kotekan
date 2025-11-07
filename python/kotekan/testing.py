@@ -244,16 +244,16 @@ class SharedMemValidationTest:
     """
 
     def __init__(
-        self,
-        len_test,
-        config,
-        num_readers,
-        shared_memory_name,
-        view_sizes,
-        test_pattern,
-        update_interval,
-        threshold_frame_age_error,
-        threshold_cadence_error,
+            self,
+            len_test,
+            config,
+            num_readers,
+            shared_memory_name,
+            view_sizes,
+            test_pattern,
+            update_interval,
+            threshold_frame_age_error,
+            threshold_cadence_error,
     ):
         # search config for everything we need
         self.cadence = get_from_config("cadence", config)
@@ -418,8 +418,8 @@ class SharedMemValidationTest:
                     fpga_seq, error, age, r
                 )
                 if (
-                    0 <= self.error_threshold < error
-                    and len(self.validated_fpga_seqs[r]) > self.view_sizes[r]
+                        0 <= self.error_threshold < error
+                        and len(self.validated_fpga_seqs[r]) > self.view_sizes[r]
                 ):
                     raise ValidationFailed(msg)
                 else:
@@ -476,10 +476,10 @@ class SharedMemValidationTest:
         missed_time_measured = now - self._last_read[r]
         frames_per_update = np.ceil(missed_time_measured / self.cadence)
         expected = (
-            np.max((0, frames_per_update - self.shm_size))
-            + invalid_timeslots
-            + self._previous_invalid_timeslots[r]
-            + self.cadence
+                np.max((0, frames_per_update - self.shm_size))
+                + invalid_timeslots
+                + self._previous_invalid_timeslots[r]
+                + self.cadence
         )
         self._previous_invalid_timeslots[r] = invalid_timeslots
 
@@ -492,8 +492,8 @@ class SharedMemValidationTest:
                 )
             )
             if (
-                0 <= self.theshold_cadence_error * expected < error
-                and len(self.validated_fpga_seqs[r]) > self.view_sizes[r]
+                    0 <= self.theshold_cadence_error * expected < error
+                    and len(self.validated_fpga_seqs[r]) > self.view_sizes[r]
             ):
                 raise ValidationFailed(msg)
             else:

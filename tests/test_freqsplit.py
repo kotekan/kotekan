@@ -13,7 +13,6 @@ import re
 from kotekan import visbuffer
 from kotekan import runner
 
-
 params = {
     "num_elements": 5,
     "num_ev": 0,
@@ -29,7 +28,6 @@ params = {
 
 @pytest.fixture(scope="module")
 def vis_data(tmpdir_factory):
-
     tmpdir_l = tmpdir_factory.mktemp("freqsplit_lower")
     tmpdir_h = tmpdir_factory.mktemp("freqsplit_higher")
 
@@ -55,7 +53,6 @@ def vis_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def write_data(tmpdir_factory):
-
     tmpdir_l = tmpdir_factory.mktemp("freqsplit_write_lower")
     tmpdir_h = tmpdir_factory.mktemp("freqsplit_write_higher")
 

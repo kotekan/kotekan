@@ -11,11 +11,9 @@ import h5py
 
 from kotekan import runner
 
-
 # Skip if HDF5 support not built into kotekan
 if not runner.has_hdf5():
     pytest.skip("HDF5 support not available.", allow_module_level=True)
-
 
 writer_params = {
     "num_elements": 4,
@@ -28,7 +26,6 @@ writer_params = {
 
 
 def written_data_base(outdir, stage_extra=None, root_extra=None):
-
     fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=writer_params["freq"],
         num_frames=writer_params["total_frames"],
@@ -61,7 +58,6 @@ def written_data_base(outdir, stage_extra=None, root_extra=None):
 
 @pytest.fixture(scope="module")
 def written_data_ev(request, tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("writer_ev")
 
     fhlist = written_data_base(str(tmpdir))
@@ -74,7 +70,6 @@ def written_data_ev(request, tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def written_data_dm(request, tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("writer_dm")
 
     fhlist = written_data_base(str(tmpdir))
@@ -86,7 +81,6 @@ def written_data_dm(request, tmpdir_factory):
 
 
 def test_vis(written_data_ev):
-
     nt = writer_params["total_frames"]
 
     for fh in written_data_ev:
@@ -111,11 +105,9 @@ def test_vis(written_data_ev):
 
 
 def test_metadata(written_data_ev):
-
     nt = writer_params["total_frames"]
 
     for fh in written_data_ev:
-
         # Check the number of samples has been written correctly
         assert fh.attrs["num_time"] == nt
 
@@ -138,7 +130,6 @@ def test_metadata(written_data_ev):
 
 
 def test_eigenvectors(written_data_ev):
-
     for fh in written_data_ev:
         nt = writer_params["total_frames"]
         nf = len(writer_params["freq"])
@@ -160,20 +151,18 @@ def test_eigenvectors(written_data_ev):
         # Check that the datasets have the correct values
         assert (evals == np.arange(ne)[np.newaxis, np.newaxis, :]).all()
         assert (
-            evecs.real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]
+                evecs.real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]
         ).all()
         assert (
-            evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]
+                evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]
         ).all()
         assert (erms == 1.0).all()
 
 
 def test_unwritten(written_data_ev):
-
     nt = writer_params["total_frames"]
 
     for fh in written_data_ev:
-
         assert (fh["vis"][nt:] == 0.0).all()
         assert (fh["flags/vis_weight"][nt:] == 0.0).all()
         assert (fh["index_map/time"][nt:]["ctime"] == 0.0).all()

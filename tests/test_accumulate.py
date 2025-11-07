@@ -10,7 +10,6 @@ import numpy as np
 
 from kotekan import runner
 
-
 accumulate_params = {
     "num_elements": 4,
     "num_ev": 0,
@@ -57,7 +56,6 @@ pulsar_params.update(
 
 @pytest.fixture(scope="module")
 def accumulate_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("accumulate")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -81,7 +79,6 @@ def accumulate_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def gaussian_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("gaussian")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -105,7 +102,6 @@ def gaussian_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def drop_frame_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("drop_frrame")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -130,7 +126,6 @@ def drop_frame_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def lostsamples_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("lostsamples")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -154,7 +149,6 @@ def lostsamples_data(tmpdir_factory):
 
 @pytest.fixture(scope="module", params=[0, 1, 4])
 def lostweights_data(tmpdir_factory, request):
-
     tmpdir = tmpdir_factory.mktemp("lostweights")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -179,7 +173,6 @@ def lostweights_data(tmpdir_factory, request):
 
 @pytest.fixture(scope="module")
 def time_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("time")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -203,7 +196,6 @@ def time_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def pulsar_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("pulsar")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -253,7 +245,6 @@ def pulsar_data(tmpdir_factory):
 
 
 def test_structure(accumulate_data):
-
     n = accumulate_params["num_elements"]
 
     # Check that each samples is the expected shape
@@ -268,7 +259,6 @@ def test_structure(accumulate_data):
 
 
 def test_metadata(accumulate_data):
-
     for frame in accumulate_data:
         assert frame.metadata.freq_id == accumulate_params["freq"]
 
@@ -280,7 +270,7 @@ def test_time(accumulate_data):
     t0 = timespec_to_float(accumulate_data[0].metadata.ctime)
 
     delta_samp = (
-        accumulate_params["samples_per_data_set"] * accumulate_params["int_frames"]
+            accumulate_params["samples_per_data_set"] * accumulate_params["int_frames"]
     )
 
     for ii, frame in enumerate(accumulate_data):
@@ -293,13 +283,11 @@ def test_time(accumulate_data):
 
 
 def test_accumulate(accumulate_data):
-
     row, col = np.triu_indices(accumulate_params["num_elements"])
 
     pat = (row + 1.0j * col).astype(np.complex64)
 
     for frame in accumulate_data:
-
         assert (frame.vis == pat).all()
         assert (frame.weight == 8.0).all()
         assert (frame.flags == 1.0).all()
@@ -309,7 +297,6 @@ def test_accumulate(accumulate_data):
 # Test that we are calculating the weights correctly in the presence of lost
 # data.
 def test_lostweights(lostweights_data):
-
     row, col = np.triu_indices(accumulate_params["num_elements"])
     ns = accumulate_params["samples_per_data_set"]
     nf = accumulate_params["num_gpu_frames"]
@@ -320,14 +307,12 @@ def test_lostweights(lostweights_data):
     weight = pytest.approx((2 * ns - b) ** 2 * nf / 16.0, rel=1e-5)
 
     for frame in data:
-
         assert (frame.vis == pat).all()
         assert frame.weight == weight
 
 
 # Test that we are accumulating the RFI flagged count correctly
 def test_rfi_total(lostweights_data):
-
     ns = accumulate_params["samples_per_data_set"]
     nf = accumulate_params["num_gpu_frames"]
 
@@ -340,10 +325,9 @@ def test_rfi_total(lostweights_data):
 
 # Test that the statistics are being calculated correctly
 def test_gaussian(gaussian_data):
-
     exp_vis = np.identity(4)[np.triu_indices(4)]
     frac_var = 1.0 / (
-        gaussian_params["samples_per_data_set"] * gaussian_params["num_gpu_frames"]
+            gaussian_params["samples_per_data_set"] * gaussian_params["num_gpu_frames"]
     )
 
     vis_set = np.array([frame.vis for frame in gaussian_data])
@@ -357,12 +341,11 @@ def test_gaussian(gaussian_data):
 
 # Test that we can deal with whole frames being dropped
 def test_missing_frames(drop_frame_data):
-
     exp_vis = np.identity(4)[np.triu_indices(4)]
     frac_var = 1.0 / (
-        drop_frame_params["samples_per_data_set"]
-        * drop_frame_params["num_gpu_frames"]
-        * (1 - drop_frame_params["drop_probability"])
+            drop_frame_params["samples_per_data_set"]
+            * drop_frame_params["num_gpu_frames"]
+            * (1 - drop_frame_params["drop_probability"])
     )
 
     vis_set = np.array([frame.vis for frame in drop_frame_data])
@@ -375,7 +358,6 @@ def test_missing_frames(drop_frame_data):
 
 
 def test_int_time(time_data):
-
     time_per_frame = 2.56e-6 * time_params["samples_per_data_set"]
     frames_per_int = (int(time_params["integration_time"] / time_per_frame) // 2) * 2
     delta_samp = time_params["samples_per_data_set"] * frames_per_int
@@ -389,25 +371,22 @@ def test_int_time(time_data):
 
 # Test that we are correctly normalising for lost packets
 def test_lostsamples(lostsamples_data):
-
     row, col = np.triu_indices(accumulate_params["num_elements"])
 
     pat = (row + 1.0j * col).astype(np.complex64)
 
     for frame in lostsamples_data:
-
         assert np.allclose(frame.vis, pat, rtol=1e-7, atol=1e-8)
 
 
 def test_pulsar(pulsar_data):
-
     # count number of frames that span a pulse
     pulse_width = int(
         pulsar_params["pulse_width"] / (pulsar_params["samples_per_data_set"] * 2.56e-6)
     )
     pulse_width += (
-        pulsar_params["pulse_width"] % (pulsar_params["samples_per_data_set"] * 2.56e-6)
-    ) > 0
+                           pulsar_params["pulse_width"] % (pulsar_params["samples_per_data_set"] * 2.56e-6)
+                   ) > 0
     # count total number of frames in an accumulation
     if "num_gpu_frames" in pulsar_params:
         num_tot = pulsar_params["num_gpu_frames"]
@@ -440,8 +419,8 @@ def test_pulsar_metadata(pulsar_data):
         pulsar_params["phase_ref"]
     ]
     assert (
-        pulsar_data.file_metadata["gating_data"]["rot_freq"]
-        == pulsar_params["rot_freq"]
+            pulsar_data.file_metadata["gating_data"]["rot_freq"]
+            == pulsar_params["rot_freq"]
     )
     assert pulsar_data.file_metadata["gating_data"]["segment"] == 100.0
     assert pulsar_data.file_metadata["gating_data"]["pulse_width"] == pytest.approx(

@@ -10,7 +10,6 @@ import numpy as np
 
 from kotekan import runner
 
-
 global_params = {
     "num_elements": 16,
     "num_ev": 2,
@@ -40,7 +39,6 @@ global_params = {
 
 @pytest.fixture(scope="module")
 def complete_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("no_drop")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -70,7 +68,6 @@ def test_complete(complete_data):
 
 @pytest.fixture(scope="module")
 def incomplete_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("drop")
 
     # Make the buffer flow over:
@@ -102,8 +99,6 @@ def test_incomplete(incomplete_data):
 
 
 def test_metadata(incomplete_data):
-
     for frame in incomplete_data:
-
         assert frame.metadata.freq_id == 0 or frame.metadata.freq_id == 250
         assert frame.metadata.num_prod == global_params["num_elements"]

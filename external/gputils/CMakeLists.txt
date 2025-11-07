@@ -14,32 +14,32 @@ message(STATUS "GPUTILS Current binary directory: ${CMAKE_CURRENT_BINARY_DIR}")
 
 # Special rule for generating 'device_mma.hpp'
 add_custom_command(
-    OUTPUT include/device_mma.hpp
-    COMMAND mkdir -p include && python3 ${CMAKE_CURRENT_SOURCE_DIR}/generate_device_mma_hpp.py >
-            include/device_mma.hpp
-    DEPENDS generate_device_mma_hpp.py
-    COMMENT "generating device_mma.hpp")
+        OUTPUT include/device_mma.hpp
+        COMMAND mkdir -p include && python3 ${CMAKE_CURRENT_SOURCE_DIR}/generate_device_mma_hpp.py >
+        include/device_mma.hpp
+        DEPENDS generate_device_mma_hpp.py
+        COMMENT "generating device_mma.hpp")
 
 # Define source files and headers
 set(HFILES
-    include/gputils/Array.hpp
-    include/gputils/Barrier.hpp
-    include/gputils/CpuThreadPool.hpp
-    include/gputils/CudaStreamPool.hpp
-    include/gputils/ThreadSafeRingBuffer.hpp
-    include/gputils/complex_type_traits.hpp
-    include/gputils/constexpr_functions.hpp
-    include/gputils/cuda_utils.hpp
-    include/gputils/device_mma.hpp
-    include/gputils/mem_utils.hpp
-    include/gputils/memcpy_kernels.hpp
-    include/gputils/rand_utils.hpp
-    include/gputils/string_utils.hpp
-    include/gputils/system_utils.hpp
-    include/gputils/test_utils.hpp
-    include/gputils/time_utils.hpp
-    include/gputils.hpp
-    include/device_mma.hpp)
+        include/gputils/Array.hpp
+        include/gputils/Barrier.hpp
+        include/gputils/CpuThreadPool.hpp
+        include/gputils/CudaStreamPool.hpp
+        include/gputils/ThreadSafeRingBuffer.hpp
+        include/gputils/complex_type_traits.hpp
+        include/gputils/constexpr_functions.hpp
+        include/gputils/cuda_utils.hpp
+        include/gputils/device_mma.hpp
+        include/gputils/mem_utils.hpp
+        include/gputils/memcpy_kernels.hpp
+        include/gputils/rand_utils.hpp
+        include/gputils/string_utils.hpp
+        include/gputils/system_utils.hpp
+        include/gputils/test_utils.hpp
+        include/gputils/time_utils.hpp
+        include/gputils.hpp
+        include/device_mma.hpp)
 
 file(GLOB CUFILES "src_lib/*.cu")
 message(STATUS "CUFILES: ${CUFILES}")
@@ -57,7 +57,7 @@ set_target_properties(gputils PROPERTIES LINKER_LANGUAGE CUDA)
 # Compiler options
 set_property(TARGET gputils PROPERTY CUDA_STANDARD 17)
 set(CMAKE_CUDA_FLAGS
-    "${CMAKE_CUDA_FLAGS} -m64 -O3 --compiler-options -Wall,-fPIC --forward-unknown-to-host-compiler"
+        "${CMAKE_CUDA_FLAGS} -m64 -O3 --compiler-options -Wall,-fPIC --forward-unknown-to-host-compiler"
 )
 
 # Include directories

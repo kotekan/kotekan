@@ -8,7 +8,7 @@ Keith Vanderlinde: vanderlinde@dunlap.utoronto.ca
 
 ##Dependencies
 
-The live-view was written to accomodate a python 2 or 3 environment, 
+The live-view was written to accomodate a python 2 or 3 environment,
 however python 3 should be used whenever possible.
 
 The live-view was written for a Linux environment, preferably the latest version
@@ -48,10 +48,10 @@ Where user and hostname refer to the machine running kotekan.
 For easier ssh access add the following to ~/.ssh/config
 
 Host **user_specified_name**
-    HostName **hostname**
-    User **user**
+HostName **hostname**
+User **user**
 
-With the bold parameters indicating the information of the machine running kotekan. 
+With the bold parameters indicating the information of the machine running kotekan.
 
 ##Launching Kotekan
 
@@ -62,7 +62,7 @@ sudo ./kotekan -c **path_to_config**
 ```
 
 Make sure the config you are using has a networkPowerStream process, Take note of the
-port it is streaming to. 
+port it is streaming to.
 
 ##Launching Live-view
 
@@ -72,6 +72,7 @@ and run the following.
 ```
 python3 jacob_qt5_viewer.py
 ```
+
 When prompted, enter the following information of the machine currently running kotekan:
 
 user: example squirrel

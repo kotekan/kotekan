@@ -18,7 +18,6 @@ from subprocess import Popen
 
 from kotekan import runner
 
-
 params_kotekan = {
     "num_elements": 5,
     "num_ev": 0,
@@ -35,7 +34,6 @@ params_kotekan = {
 
 @pytest.mark.serial
 def test_send_receive(tmpdir_factory):
-
     # Run kotekan bufferRecv
     tmpdir = tmpdir_factory.mktemp("writer")
     write_buffer = runner.DumpVisBuffer(str(tmpdir))

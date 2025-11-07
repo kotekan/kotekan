@@ -45,7 +45,7 @@ def frb_post_process_data(tmpdir_factory, missing_frames=None, test_env=None):
     """
 
     if test_env is None and not glob.glob(
-        path.join(path.dirname(__file__), "data", "fake_cpu_beamform_*.dump")
+            path.join(path.dirname(__file__), "data", "fake_cpu_beamform_*.dump")
     ):
         pytest.skip("No test data and not requesting full generation")
 
@@ -91,7 +91,7 @@ def frb_post_process_data(tmpdir_factory, missing_frames=None, test_env=None):
 
 
 def frb_post_process_full_data(
-    tmpdir_factory, num_gpus=1, missing_frames=None, test_env=None
+        tmpdir_factory, num_gpus=1, missing_frames=None, test_env=None
 ):
     """Runs the Kotekan using the full 41952 samples_per_dataset, optionally dropping frames
 
@@ -105,7 +105,7 @@ def frb_post_process_full_data(
     """
 
     if test_env is None and not glob.glob(
-        path.join(path.dirname(__file__), "data", "fake_cpu_beamform_long[0-9]_*.dump")
+            path.join(path.dirname(__file__), "data", "fake_cpu_beamform_long[0-9]_*.dump")
     ):
         pytest.skip("No test data and not requesting full generation")
 

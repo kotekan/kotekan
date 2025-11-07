@@ -1,61 +1,61 @@
 project(kotekan_utils)
 
 add_library(
-    kotekan_utils
-    gateSpec.cpp
-    nt_memcpy.c
-    nt_memset.c
-    output_formating.c
-    type.cpp
-    util.c
-    FrameView.cpp
-    HFBFrameView.cpp
-    BasebandFrameView.cpp
-    visBuffer.cpp
-    visUtil.cpp
-    visFile.cpp
-    visFileRaw.cpp
-    hfbFileRaw.cpp
-    BasebandFileRaw.cpp
-    visFileRing.cpp
-    tx_utils.cpp
-    datasetManager.cpp
-    dataset.cpp
-    pulsarTiming.cpp
-    datasetState.cpp
-    restClient.cpp
-    BipBuffer.cpp
-    Hash.cpp
-    network_functions.cpp
-    Stack.cpp
-    Telescope.cpp
-    ICETelescope.cpp
-    CHIMETelescope.cpp
-    SystemInterface.cpp
-    N2FrameView.cpp
-    timeUtil.cpp
-    CHORDTelescope.cpp)
+        kotekan_utils
+        gateSpec.cpp
+        nt_memcpy.c
+        nt_memset.c
+        output_formating.c
+        type.cpp
+        util.c
+        FrameView.cpp
+        HFBFrameView.cpp
+        BasebandFrameView.cpp
+        visBuffer.cpp
+        visUtil.cpp
+        visFile.cpp
+        visFileRaw.cpp
+        hfbFileRaw.cpp
+        BasebandFileRaw.cpp
+        visFileRing.cpp
+        tx_utils.cpp
+        datasetManager.cpp
+        dataset.cpp
+        pulsarTiming.cpp
+        datasetState.cpp
+        restClient.cpp
+        BipBuffer.cpp
+        Hash.cpp
+        network_functions.cpp
+        Stack.cpp
+        Telescope.cpp
+        ICETelescope.cpp
+        CHIMETelescope.cpp
+        SystemInterface.cpp
+        N2FrameView.cpp
+        timeUtil.cpp
+        CHORDTelescope.cpp)
 
 target_link_libraries(
-    kotekan_utils
-    PRIVATE libexternal
-    PUBLIC kotekan_libs)
+        kotekan_utils
+        PRIVATE libexternal
+        PUBLIC kotekan_libs)
 target_include_directories(kotekan_utils PUBLIC .)
 
 # HDF5 stuff
-if(HDF5_FOUND
-   AND HighFive_FOUND
-   AND HDF5Plugin_PLUGIN_DIR)
+if (HDF5_FOUND
+        AND HighFive_FOUND
+        AND HDF5Plugin_PLUGIN_DIR)
     target_sources(kotekan_utils PRIVATE visFileH5.cpp visFileArchive.cpp HFBFileArchive.cpp)
     target_include_directories(kotekan_utils SYSTEM INTERFACE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(kotekan_utils PRIVATE HighFive::HighFive ${HDF5_HL_LIBRARIES}
-                                                ${HDF5_LIBRARIES})
-endif()
+            ${HDF5_LIBRARIES})
+endif ()
 
 # Libevent core/extra&pthreads is required for the restClient
 find_package(LIBEVENT REQUIRED)
 target_link_libraries(kotekan_utils PUBLIC ${LIBEVENT_CORE} ${LIBEVENT_EXTRA} ${LIBEVENT_PTHREADS})
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     target_sources(kotekan_utils PRIVATE osxBindCPU.cpp)
-endif()
+endif ()

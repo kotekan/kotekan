@@ -151,7 +151,7 @@ class PolycoFile(object):
         if end_t is not None:
             start_ind = np.argmin(np.abs(start_t - self.tmid))
             end_ind = np.argmin(np.abs(end_t - self.tmid))
-            poly = self.polycos[start_ind : end_ind + 1]
+            poly = self.polycos[start_ind: end_ind + 1]
         else:
             poly = [self.get_closest(start_t)]
 
@@ -171,15 +171,15 @@ class PolycoFile(object):
 
     @classmethod
     def generate(
-        cls,
-        start,
-        end,
-        parfile,
-        dm=None,
-        seg=300.0,
-        ncoeff=12,
-        max_ha=12.0,
-        tempo_dir=None,
+            cls,
+            start,
+            end,
+            parfile,
+            dm=None,
+            seg=300.0,
+            ncoeff=12,
+            max_ha=12.0,
+            tempo_dir=None,
     ):
         if tempo_dir is not None:
             env = os.environ.copy()

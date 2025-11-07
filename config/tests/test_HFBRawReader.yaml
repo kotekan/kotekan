@@ -1,7 +1,7 @@
 # Read raw HFB data and write it as HDF5 data
 
 # Constants
-cpu_affinity: []
+cpu_affinity: [ ]
 log_level: info
 num_elements: 2048
 num_ev: 4
@@ -63,7 +63,7 @@ write_hdf5:
   comet_timeout: 180.
   kotekan_stage: HFBTranspose
   in_buf: trunc_buffer
-  outfile:  ./test
+  outfile: ./test
   chunk_size:
     - 16  # chunk_freq 
     - 64  # chunk_stack

@@ -8,7 +8,6 @@ rfi_receiver, a server to receive real-time rfi data from kotekan.
 import setuptools
 import versioneer
 
-
 # Load the PEP508 formatted requirements from the requirements.txt file. Needs
 # pip version > 19.0
 with open("requirements.txt", "r") as fh:

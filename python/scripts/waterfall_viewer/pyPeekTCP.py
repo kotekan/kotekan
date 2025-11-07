@@ -81,7 +81,7 @@ freqlist = np.fromstring(info_header[: pkt_freqs * 4 * 2], dtype=np.float32).res
     -1, 2
 )  # .mean(axis=1)
 freqlist = freqlist / 1e6
-elemlist = np.fromstring(info_header[pkt_freqs * 4 * 2 :], dtype=np.uint8)
+elemlist = np.fromstring(info_header[pkt_freqs * 4 * 2:], dtype=np.uint8)
 
 plot_freqs = pkt_freqs / 8
 # freqlist = freqlist.reshape(-1,plot_freqs).mean(axis=1)
@@ -127,10 +127,10 @@ def data_listener():
                 data_pkt_samples_summed,
             ) = struct.unpack("III", data[:pkt_header])
             d[:, data_pkt_elem_idx] += (
-                np.fromstring(data[pkt_header:], dtype=np.uint32)
-                * 1.0
-                / plot_integration
-                / data_pkt_samples_summed
+                    np.fromstring(data[pkt_header:], dtype=np.uint32)
+                    * 1.0
+                    / plot_integration
+                    / data_pkt_samples_summed
             )
         times = np.roll(times, (data_pkt_frame_idx - last_idx) // plot_integration)
         times[0] = sec_per_pkt_frame * (data_pkt_frame_idx - pkt_idx0) + pkt_utc0

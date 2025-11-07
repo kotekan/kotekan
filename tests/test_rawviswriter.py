@@ -24,7 +24,6 @@ writer_params = {
 
 @pytest.fixture(scope="module")
 def written_data(tmpdir_factory):
-
     tmpdir = str(tmpdir_factory.mktemp("writer"))
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -55,7 +54,6 @@ def written_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def critical_state_data(tmpdir_factory):
-
     tmpdir = str(tmpdir_factory.mktemp("writer"))
     start_time = 1_500_000_000
 
@@ -93,7 +91,6 @@ def critical_state_data(tmpdir_factory):
 
 
 def test_vis(written_data):
-
     for vr in written_data:
 
         # Construct vis array
@@ -120,11 +117,9 @@ def test_vis(written_data):
 
 
 def test_metadata(written_data):
-
     nt = writer_params["total_frames"]
 
     for vr in written_data:
-
         # Extract metadata
         ctime = vr.time["ctime"]
         freq = np.array([f["centre"] for f in vr.index_map["freq"]])
@@ -148,9 +143,7 @@ def test_metadata(written_data):
 
 
 def test_eigenvectors(written_data):
-
     for vr in written_data:
-
         nt = writer_params["total_frames"]
         nf = len(writer_params["freq"])
         ne = writer_params["num_ev"]
@@ -177,10 +170,10 @@ def test_eigenvectors(written_data):
         # Check that the datasets have the correct values
         assert (evals == np.arange(ne)[np.newaxis, np.newaxis, :]).all()
         assert (
-            evecs.real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]
+                evecs.real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]
         ).all()
         assert (
-            evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]
+                evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]
         ).all()
         assert (erms == 1.0).all()
 

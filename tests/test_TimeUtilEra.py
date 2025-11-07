@@ -39,7 +39,6 @@ init_printing()
 @pytest.fixture(scope="module")
 def runner_factory(tmpdir_factory):
     def _runner_factory(t, dUT):
-
         time_length = t.shape[0]
         array_length = 2 * time_length
         frame_size = array_length * entry_size
@@ -93,7 +92,6 @@ def runner_factory(tmpdir_factory):
         test.run()
 
         for frame in dump_buffer.load():
-
             data_bytes = frame._buffer[:]
             data = np.frombuffer(data_bytes, dtype=np.int64)
 
@@ -129,7 +127,6 @@ def time_to_s_ns(t):
 
 
 def time_to_ut1_ns(t):
-
     jd1 = t.ut1.jd1 - 2451545
     jd2 = t.ut1.jd2
 
@@ -141,17 +138,14 @@ def get_dAT(t):
 
 
 def test_structure(runner_factory):
-
     N = 38
     t = t0_gps + (np.linspace(0.0, 10.0, N) * u.s)
 
     for data in runner_factory(t, 0.0):
-
         assert data.shape == (num_outputs * N,)
 
 
 def test_tai(runner_factory):
-
     N = 47
 
     t = astropy.time.TimeDelta(
@@ -161,7 +155,6 @@ def test_tai(runner_factory):
     input_sec, input_nsec = time_to_s_ns(t)
 
     for data in runner_factory(t0_gps + t, 0.0):
-
         stride = num_outputs
         t_sec = data[0::stride]
         t_nsec = data[1::stride]
@@ -171,7 +164,6 @@ def test_tai(runner_factory):
 
 
 def test_ut1(runner_factory):
-
     N = 32
 
     raw_tgps = np.linspace(12345.678, 13579.2468, N)
@@ -190,7 +182,6 @@ def test_ut1(runner_factory):
     check_ut1_ns = time_to_ut1_ns(T)
 
     for data in runner_factory(T, dUT):
-
         stride = num_outputs
         ut1_nsec = data[2::stride]
 
@@ -205,7 +196,6 @@ def test_ut1(runner_factory):
 
 
 def test_era(runner_factory):
-
     N = 32
 
     raw_tgps = np.linspace(12345.678, 13579.2468, N)
@@ -223,7 +213,6 @@ def test_era(runner_factory):
     target_era = T.earth_rotation_angle("tio").deg
 
     for i, data in enumerate(runner_factory(T, dUT)):
-
         my_print("frame:", i)
 
         stride = num_outputs

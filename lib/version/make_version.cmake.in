@@ -5,7 +5,7 @@
 # (and in version.c.in) so build metadata stays in sync with the docs and
 # configure summary.
 # Yes this is generating a file to generate a file,
-# and no I'm not happy this is how it has to work -AR
+# and no I'm not happy this is how it has to work - AR
 
 set(SOURCE_DIR "@CMAKE_SOURCE_DIR@")
 set(BINARY_DIR "@CMAKE_BINARY_DIR@")
@@ -38,45 +38,47 @@ set(IWYU "@IWYU@")
 set(CCACHE "@CCACHE@")
 set(WERROR "@WERROR@")
 
-# Get the current working branch
+# Try Python/versioneer
+set(FULL_KOTEKAN_VERSION "")
 execute_process(
-  COMMAND git rev-parse --abbrev-ref HEAD
-  WORKING_DIRECTORY ${SOURCE_DIR}
-  OUTPUT_VARIABLE GIT_BRANCH
+  COMMAND "@Python3_EXECUTABLE@" -c
+          "import sys, pathlib; sys.path.insert(0, str(pathlib.Path('@CMAKE_SOURCE_DIR@')/'python')); import kotekan._version as V; print(V.get_versions()['version'])"
+  WORKING_DIRECTORY "@CMAKE_SOURCE_DIR@"
+  OUTPUT_VARIABLE FULL_KOTEKAN_VERSION
   OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
 )
 
-# Get the latest abbreviated commit hash of the working branch
-execute_process(
-  COMMAND git log -1 --format=%H
-  WORKING_DIRECTORY ${SOURCE_DIR}
-  OUTPUT_VARIABLE GIT_COMMIT_HASH
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-execute_process(
-  COMMAND python -c "import kotekan; print(kotekan.__version__)"
-  WORKING_DIRECTORY ${SOURCE_DIR}/python/
-  OUTPUT_VARIABLE KOTEKAN_VERSION
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-execute_process(
-  COMMAND git rev-parse --abbrev-ref HEAD
-  WORKING_DIRECTORY ${SOURCE_DIR}
-  OUTPUT_VARIABLE KOTEKAN_BRANCH
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-# Remove branch name if we are on master
-if (${KOTEKAN_BRANCH} MATCHES "master")
-    set(FULL_KOTEKAN_VERSION "${KOTEKAN_VERSION}")
-else()
-    set(FULL_KOTEKAN_VERSION "${KOTEKAN_BRANCH}.${KOTEKAN_VERSION}")
+# Fallback: git describe
+if(NOT FULL_KOTEKAN_VERSION)
+  execute_process(
+    COMMAND git describe --tags --dirty --always
+    WORKING_DIRECTORY "@CMAKE_SOURCE_DIR@"
+    OUTPUT_VARIABLE FULL_KOTEKAN_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
 endif()
 
-configure_file(
-    ${CURRENT_SOURCE_DIR}/version.c.in
-    ${CURRENT_BINARY_DIR}/version.c
-    @ONLY
+# Git branch / hash
+execute_process(
+  COMMAND git rev-parse --abbrev-ref HEAD
+  WORKING_DIRECTORY "@CMAKE_SOURCE_DIR@"
+  OUTPUT_VARIABLE GIT_BRANCH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
 )
+execute_process(
+  COMMAND git rev-parse HEAD
+  WORKING_DIRECTORY "@CMAKE_SOURCE_DIR@"
+  OUTPUT_VARIABLE GIT_COMMIT_HASH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
+)
+
+# Write version.c from template
+set(FULL_KOTEKAN_VERSION "${FULL_KOTEKAN_VERSION}")
+set(GIT_BRANCH "${GIT_BRANCH}")
+set(GIT_COMMIT_HASH "${GIT_COMMIT_HASH}")
+configure_file("@CMAKE_CURRENT_SOURCE_DIR@ / version.c.in"
+               "@CMAKE_CURRENT_BINARY_DIR@ / version.c" @ONLY)

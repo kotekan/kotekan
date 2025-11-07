@@ -115,14 +115,13 @@ class BasebandBuffer(object):
         msize_c = ctypes.c_int(ctypes.sizeof(BasebandMetadata))
 
         for ii, buf in enumerate(buffers):
-
             with open(pat % ii, "wb+") as fh:
                 fh.write(msize_c)
                 fh.write(bytearray(buf._buffer))
 
     @classmethod
     def new_from_params(
-        cls, event_id, freq_id, num_elements, frame_size, frame_data=None
+            cls, event_id, freq_id, num_elements, frame_size, frame_data=None
     ):
         """Create a new BasebandBuffer owning its own memory.
 

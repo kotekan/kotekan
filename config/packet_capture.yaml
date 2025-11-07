@@ -24,68 +24,68 @@ packet_size: 4928
 
 # Pool
 main_pool:
-    kotekan_metadata_pool: chimeMetadata
-    num_metadata_objects: 15 * buffer_depth
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 15 * buffer_depth
 
 # Buffers
 network_input_buffers:
-    num_frames: buffer_depth
-    frame_size: samples_per_data_set * packet_size
-    metadata_pool: main_pool
-    network_input_buffer_0:
-        kotekan_buffer: standard
-    network_input_buffer_1:
-        kotekan_buffer: standard
-    network_input_buffer_2:
-        kotekan_buffer: standard
-    network_input_buffer_3:
-        kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: samples_per_data_set * packet_size
+  metadata_pool: main_pool
+  network_input_buffer_0:
+    kotekan_buffer: standard
+  network_input_buffer_1:
+    kotekan_buffer: standard
+  network_input_buffer_2:
+    kotekan_buffer: standard
+  network_input_buffer_3:
+    kotekan_buffer: standard
 
-cpu_affinity: [2,3,8,9]
+cpu_affinity: [ 2,3,8,9 ]
 dpdk:
-    kotekan_stage: dpdkCore
-    # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [0,1,6,7]
-    main_lcore_cpu: 2
-    # Format is index = lcore, value = array of port IDs
-    # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
-    # and lcore 1 to service ports 2 and 3.
-    lcore_port_map:
-        - [0]
-        - [1]
-        - [2]
-        - [3]
-    # One handler must be given per port.
-    handlers:
-        - dpdk_handler: captureHandler
-          out_buf: network_input_buffer_0
-        - dpdk_handler: captureHandler
-          out_buf: network_input_buffer_1
-        - dpdk_handler: captureHandler
-          out_buf: network_input_buffer_2
-        - dpdk_handler: captureHandler
-          out_buf: network_input_buffer_3
+  kotekan_stage: dpdkCore
+  # Format is index = lcore, value = cpu core
+  lcore_cpu_map: [ 0,1,6,7 ]
+  main_lcore_cpu: 2
+  # Format is index = lcore, value = array of port IDs
+  # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+  # and lcore 1 to service ports 2 and 3.
+  lcore_port_map:
+    - [ 0 ]
+    - [ 1 ]
+    - [ 2 ]
+    - [ 3 ]
+  # One handler must be given per port.
+  handlers:
+    - dpdk_handler: captureHandler
+      out_buf: network_input_buffer_0
+    - dpdk_handler: captureHandler
+      out_buf: network_input_buffer_1
+    - dpdk_handler: captureHandler
+      out_buf: network_input_buffer_2
+    - dpdk_handler: captureHandler
+      out_buf: network_input_buffer_3
 
 hexDump:
-    kotekan_stage: hexDump
-    # Change this buffer to print packets on different ports
-    buf: network_input_buffer_0
-    len: 4928
+  kotekan_stage: hexDump
+  # Change this buffer to print packets on different ports
+  buf: network_input_buffer_0
+  len: 4928
 
 inspect_block:
-    # 0 means dump the full frame on callback, otherwise dump the first `len` bytes 
+  # 0 means dump the full frame on callback, otherwise dump the first `len` bytes
+  len: 0
+  inspect_0:
+    kotekan_stage: restInspectFrame
+    in_buf: network_input_buffer_0
+  inspect_1:
+    kotekan_stage: restInspectFrame
+    in_buf: network_input_buffer_1
     len: 0
-    inspect_0:
-        kotekan_stage: restInspectFrame
-        in_buf: network_input_buffer_0
-    inspect_1:
-        kotekan_stage: restInspectFrame
-        in_buf: network_input_buffer_1
-        len: 0
-    inspect_2:
-        kotekan_stage: restInspectFrame
-        in_buf: network_input_buffer_2
-        len: 0
-    inspect_3:
-        kotekan_stage: restInspectFrame
-        in_buf: network_input_buffer_3
+  inspect_2:
+    kotekan_stage: restInspectFrame
+    in_buf: network_input_buffer_2
+    len: 0
+  inspect_3:
+    kotekan_stage: restInspectFrame
+    in_buf: network_input_buffer_3

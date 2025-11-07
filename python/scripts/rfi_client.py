@@ -101,7 +101,7 @@ class CommandLine(object):
                 )
             )
             self.TCP_IP = argument.receive[: argument.receive.index(":")]
-            self.TCP_PORT = int(argument.receive[argument.receive.index(":") + 1 :])
+            self.TCP_PORT = int(argument.receive[argument.receive.index(":") + 1:])
             print("Setting TCP IP: %s PORT: %d" % (self.TCP_IP, self.TCP_PORT))
             status = True
         if argument.config:
@@ -156,8 +156,8 @@ def animate(i):
                 t_min
                 + datetime.timedelta(
                     seconds=waterfall.shape[1]
-                    * app.config["samples_per_data_set"]
-                    * app.config["timestep"]
+                            * app.config["samples_per_data_set"]
+                            * app.config["timestep"]
                 ),
             ]
         )
@@ -188,7 +188,6 @@ def recvall(sock, n):
 
 
 def data_listener():
-
     global sock_tcp, waterfall, addr, t_min, app
 
     WATERFALLMESSAGE = "W"
@@ -323,8 +322,8 @@ if __name__ == "__main__":
                 t_min
                 + datetime.timedelta(
                     seconds=waterfall.shape[1]
-                    * app.config["samples_per_data_set"]
-                    * app.config["timestep"]
+                            * app.config["samples_per_data_set"]
+                            * app.config["timestep"]
                 ),
             ]
         )

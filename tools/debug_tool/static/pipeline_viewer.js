@@ -1,7 +1,10 @@
-function isIE() { return ((navigator.appName == 'Microsoft Internet Explorer') || ((navigator.appName == 'Netscape') && (new RegExp("Trident/.*rv:([0-9]{1,}[\.0-9]{0,})").exec(navigator.userAgent) != null))); }
+function isIE() {
+    return ((navigator.appName == 'Microsoft Internet Explorer') || ((navigator.appName == 'Netscape') && (new RegExp("Trident/.*rv:([0-9]{1,}[\.0-9]{0,})").exec(navigator.userAgent) != null)));
+}
 
 // Time between updating kotekan metrics
 const POLL_WAIT_TIME_MS = 1000;
+
 // Poll kotekan via web server every POLL_WAIT_TIME_MS and update page with new metrics
 function poll(buffer_labels, stage_labels) {
     get_data("/kotekan_instance/buffers").then(function (new_buffers) {
@@ -14,11 +17,13 @@ function poll(buffer_labels, stage_labels) {
     });
 
     // Call poll() again to get the next message
-    setTimeout(() => { poll(buffer_labels, stage_labels); }, POLL_WAIT_TIME_MS);
+    setTimeout(() => {
+        poll(buffer_labels, stage_labels);
+    }, POLL_WAIT_TIME_MS);
 }
 
 // Update buffer utilization
-function update_buf_utl(new_buffers, label){
+function update_buf_utl(new_buffers, label) {
     label[0].reduce((pre, cur) => {
         var el = d3.select(cur);
         var name = el.select("tspan").text();
@@ -91,7 +96,7 @@ function update_cpu_label(cpu_usage, stage) {
 }
 
 // Update stage cpu usage.
-function update_cpu_utl(cpu_stats, isDynamic, time_required){
+function update_cpu_utl(cpu_stats, isDynamic, time_required) {
     if ("error" in cpu_stats) {
         return;
     }
@@ -207,10 +212,10 @@ var binary_search = function (arr, x) {
         return [arr[end]["value"], arr[end]["timestamp"]];
     }
 
-    while (start < end - 1){
-        let mid = Math.floor((start + end)/2);
+    while (start < end - 1) {
+        let mid = Math.floor((start + end) / 2);
         if (arr[mid]["timestamp"] == x) {
-            return  [arr[mid]["value"], arr[mid]["timestamp"]];
+            return [arr[mid]["value"], arr[mid]["timestamp"]];
         } else if (arr[mid]["timestamp"] < x) {
             start = mid;
         } else {
@@ -220,7 +225,7 @@ var binary_search = function (arr, x) {
     return [arr[start]["value"], arr[start]["timestamp"]];
 }
 
-function update_trackers(trackers, isDynamic, time_required){
+function update_trackers(trackers, isDynamic, time_required) {
     var stage_names = Object.keys(trackers);
     for (stage of stage_names) {
         if (stage == "cpu_monitor") {
@@ -232,7 +237,7 @@ function update_trackers(trackers, isDynamic, time_required){
     }
 }
 
-var show_trackers_in_label = (function() {
+var show_trackers_in_label = (function () {
     var done = false;
     // This function will only execute once at the first time tracker info arrives.
     return function (trackers) {
@@ -252,13 +257,14 @@ var show_trackers_in_label = (function() {
                             var unit = stage_obj[0][tracker]["unit"];
 
                             // Update text and id for easier search later.
-                            var target = document.getElementById(stage + "_" + (i+1));
+                            var target = document.getElementById(stage + "_" + (i + 1));
                             target.setAttribute("id", stage + "/" + tracker + "_sc");
                             target.innerHTML = tracker + ": " + cur + " " + unit;
                         }
                     }
                 });
-            };
+            }
+            ;
 
         }
     }
@@ -286,7 +292,7 @@ async function get_data(endpoint) {
             var doc = new DOMParser().parseFromString(htmlString, "text/html");
             var elements = doc.querySelectorAll("a");
             var files = [];
-            elements.forEach(function(el) {
+            elements.forEach(function (el) {
                 var text = ((el.innerHTML).replaceAll("\n", "")).replaceAll(" ", "");
                 files.push(text);
             })
@@ -305,7 +311,7 @@ async function get_data(endpoint) {
 
 // Sort objects in ascending order.
 function sort_by_key(array, key) {
-    return array.sort(function(a, b) {
+    return array.sort(function (a, b) {
         var x = a[key];
         var y = b[key];
         return ((x < y) ? -1 : ((x > y) ? 1 : 0));
@@ -445,7 +451,10 @@ class PipelineViewer {
 
             for (var stage in obj.producers) {
                 stages.push({name: stage});
-                links.push({source: stages.find(obj => obj.name === stage), target: buffers.find(obj => obj.name === val)});
+                links.push({
+                    source: stages.find(obj => obj.name === stage),
+                    target: buffers.find(obj => obj.name === val)
+                });
             }
             if (obj.consumers !== "None") {
                 for (var stage in obj.consumers) {
@@ -477,7 +486,7 @@ class PipelineViewer {
             .defaultNodeSize(100)
             .handleDisconnected(true)
             .avoidOverlaps(true)
-            .start(30,20,20);
+            .start(30, 20, 20);
 
         // define arrow markers for graph links
         this.#svg.append('svg:defs').append('svg:marker')
@@ -530,23 +539,25 @@ class PipelineViewer {
             .data(this.#graph.stages)
             .enter().append("text")
             .attr("class", "stage_labels")
-            .attr("id", function(d) { return d.name; })
+            .attr("id", function (d) {
+                return d.name;
+            })
             .call(this.#d3cola.drag);
 
         var insertLinebreaks = function (d) {
             var el = d3.select(this);
             var words = d.name.split(' ');
-            var tspan_x = self.margin/2
+            var tspan_x = self.margin / 2
 
             // The first line will be used to check if it is a buffer
             var tspan = el.append('tspan').text(words[0])
-                            .attr('x', tspan_x).attr('dy', '15')
-                            .attr("font-size", "15");
+                .attr('x', tspan_x).attr('dy', '15')
+                .attr("font-size", "15");
 
             for (var i = 1; i < words.length; i++) {
                 tspan = el.append('tspan').text('/' + words[i]);
                 tspan.attr('x', tspan_x).attr('dy', '15')
-                        .attr("font-size", "15");
+                    .attr("font-size", "15");
             }
         }
 
@@ -555,29 +566,41 @@ class PipelineViewer {
 
         // Add names to identify different nodes
         this.#buffers.append("title")
-            .text(function (d) { return d.name; });
+            .text(function (d) {
+                return d.name;
+            });
         this.#stages.append("title")
-            .text(function (d) { return d.name; });
+            .text(function (d) {
+                return d.name;
+            });
 
         // Calculate node, link, and label positions
         this.#d3cola.on("tick", function () {
             self.#buffers.each(function (d) {
-                d.innerBounds = d.bounds.inflate(- self.margin);
+                d.innerBounds = d.bounds.inflate(-self.margin);
             });
 
             self.#stages.each(function (d) {
-                d.innerBounds = d.bounds.inflate(- self.margin);
+                d.innerBounds = d.bounds.inflate(-self.margin);
             });
 
             self.#link.each(function (d) {
                 d.route = cola.makeEdgeBetween(d.source.innerBounds, d.target.innerBounds, 5);
-                if (isIE())  this.parentNode.insertBefore(this, this);
+                if (isIE()) this.parentNode.insertBefore(this, this);
             });
 
-            self.#link.attr("x1", function (d) { return d.route.sourceIntersection.x; })
-                .attr("y1", function (d) { return d.route.sourceIntersection.y; })
-                .attr("x2", function (d) { return d.route.arrowStart.x; })
-                .attr("y2", function (d) { return d.route.arrowStart.y; });
+            self.#link.attr("x1", function (d) {
+                return d.route.sourceIntersection.x;
+            })
+                .attr("y1", function (d) {
+                    return d.route.sourceIntersection.y;
+                })
+                .attr("x2", function (d) {
+                    return d.route.arrowStart.x;
+                })
+                .attr("y2", function (d) {
+                    return d.route.arrowStart.y;
+                });
 
             self.#buffer_labels.each(function (d) {
                 var b = this.getBBox();
@@ -590,21 +613,37 @@ class PipelineViewer {
                 d.height = b.height + 2 * self.margin + 8;
             });
 
-            self.#buffers.attr("x", function (d) { return d.innerBounds.x; })
-                .attr("y", function (d) { return d.innerBounds.y; })
-                .attr("width", function (d) { return Math.abs(d.innerBounds.width()); })
-                .attr("height", function (d) { return Math.abs(d.innerBounds.height()); });
+            self.#buffers.attr("x", function (d) {
+                return d.innerBounds.x;
+            })
+                .attr("y", function (d) {
+                    return d.innerBounds.y;
+                })
+                .attr("width", function (d) {
+                    return Math.abs(d.innerBounds.width());
+                })
+                .attr("height", function (d) {
+                    return Math.abs(d.innerBounds.height());
+                });
 
-            self.#stages.attr("x", function (d) { return d.innerBounds.x; })
-                .attr("y", function (d) { return d.innerBounds.y; })
-                .attr("width", function (d) { return Math.abs(d.innerBounds.width()); })
-                .attr("height", function (d) { return Math.abs(d.innerBounds.height()); });
+            self.#stages.attr("x", function (d) {
+                return d.innerBounds.x;
+            })
+                .attr("y", function (d) {
+                    return d.innerBounds.y;
+                })
+                .attr("width", function (d) {
+                    return Math.abs(d.innerBounds.width());
+                })
+                .attr("height", function (d) {
+                    return Math.abs(d.innerBounds.height());
+                });
 
             self.#buffer_labels.attr("transform", function (d) {
-                return "translate(" + d.innerBounds.x + self.margin + "," + (d.innerBounds.y + self.margin/2) + ")";
+                return "translate(" + d.innerBounds.x + self.margin + "," + (d.innerBounds.y + self.margin / 2) + ")";
             });
             self.#stage_labels.attr("transform", function (d) {
-                return "translate(" + d.innerBounds.x + self.margin + "," + (d.innerBounds.y + self.margin/2) + ")";
+                return "translate(" + d.innerBounds.x + self.margin + "," + (d.innerBounds.y + self.margin / 2) + ")";
             });
         });
     }
@@ -616,11 +655,11 @@ class PipelineViewer {
 
             // Add spots for first two trackers.
             el.append('tspan').text("")
-                .attr('x', this.margin/2).attr('dy', '15')
+                .attr('x', this.margin / 2).attr('dy', '15')
                 .attr("font-size", "15")
                 .attr("id", stage_name + "_1");
             el.append('tspan').text("")
-                .attr('x', this.margin/2).attr('dy', '15')
+                .attr('x', this.margin / 2).attr('dy', '15')
                 .attr("font-size", "15")
                 .attr("id", stage_name + "_2");
         }, 0);
@@ -637,9 +676,9 @@ class PipelineViewer {
 
             // Add CPU usage to stages.
             var tspan = el.append('tspan').text("CPU: -");
-            tspan.attr('x', this.margin/2).attr('dy', '15')
-                    .attr("font-size", "15")
-                    .attr("id", stage_name + "_cpu");
+            tspan.attr('x', this.margin / 2).attr('dy', '15')
+                .attr("font-size", "15")
+                .attr("id", stage_name + "_cpu");
         }, 0);
     }
 
@@ -650,10 +689,10 @@ class PipelineViewer {
 
             // Add CPU usage to buffers.
             var tspan = el.append('tspan')
-                        .text(this.buffers[cur.textContent].num_full_frame + "/" + this.buffers[cur.textContent].num_frames)
-            tspan.attr('x', this.margin/2).attr('dy', '15')
-                    .attr("font-size", "15")
-                    .attr("id", "utl");
+                .text(this.buffers[cur.textContent].num_full_frame + "/" + this.buffers[cur.textContent].num_frames)
+            tspan.attr('x', this.margin / 2).attr('dy', '15')
+                .attr("font-size", "15")
+                .attr("id", "utl");
         }, 0)
     }
 
@@ -667,16 +706,17 @@ class PipelineViewer {
         var dropdown = document.getElementsByClassName("dropdown-btn");
         var i;
         for (i = 0; i < dropdown.length; i++) {
-            dropdown[i].addEventListener("click", function() {
-            this.classList.toggle("active");
-            var dropdownContent = this.nextElementSibling;
-            if (dropdownContent.style.display === "block") {
-                dropdownContent.style.display = "none";
-            } else {
-                dropdownContent.style.display = "block";
-            }
+            dropdown[i].addEventListener("click", function () {
+                this.classList.toggle("active");
+                var dropdownContent = this.nextElementSibling;
+                if (dropdownContent.style.display === "block") {
+                    dropdownContent.style.display = "none";
+                } else {
+                    dropdownContent.style.display = "block";
+                }
             });
-        };
+        }
+        ;
 
         // Add click event for each stage.
         for (let stage of this.#graph.stages) {
@@ -707,7 +747,8 @@ class PipelineViewer {
                     btn.parentNode.insertBefore(div, btn.nextElementSibling);
                 }
             });
-        };
+        }
+        ;
     }
 
     // Clear previous graph and sidebar
@@ -749,20 +790,21 @@ class PipelineViewer {
                         var unit = stage_obj[0][tracker]["unit"];
 
                         // Update text and id for easier search later.
-                        var target = document.getElementById(stage + "_" + (i+1));
+                        var target = document.getElementById(stage + "_" + (i + 1));
                         target.setAttribute("id", stage + "/" + tracker + "_sc");
                         target.innerHTML = tracker + ": " + cur + " " + unit;
                     }
                 }
             });
-        };
+        }
+        ;
 
         var time_min = this.time_min;
         var time_max = this.time_max;
         update_trackers(trackers, false, time_max);
 
         // Slider callback function
-        slider.oninput = function() {
+        slider.oninput = function () {
             var percent = this.value / 100;
             var time_required = Math.floor((time_max - time_min) * percent + time_min);
 

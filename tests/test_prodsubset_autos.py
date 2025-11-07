@@ -12,7 +12,6 @@ import glob
 
 from kotekan import runner
 
-
 subset_params = {
     "num_elements": 16,
     "num_ev": 2,
@@ -30,7 +29,6 @@ vis_params = {}
 
 @pytest.fixture(scope="module")
 def subset_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("subset")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -49,13 +47,12 @@ def subset_data(tmpdir_factory):
 
 
 def test_subset(subset_data):
-
     vis = np.arange(subset_params["num_elements"]) + 1.0j * np.arange(
         subset_params["num_elements"]
     )
     evecs = (
-        np.arange(subset_params["num_ev"])[:, None]
-        + 1.0j * np.arange(subset_params["num_elements"])[None, :]
+            np.arange(subset_params["num_ev"])[:, None]
+            + 1.0j * np.arange(subset_params["num_elements"])[None, :]
     ).flatten()
 
     assert (subset_data.data["vis"] == np.array(vis)).all()

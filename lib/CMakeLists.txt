@@ -4,17 +4,6 @@ project(kotekan_libs)
 
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake ${KOTEKAN_SOURCE_DIR}/cmake/Modules)
 
-# Julia is a convenient language to implement stages for testing and development
-if("${USE_JULIA}" STREQUAL "AUTO" OR "${USE_JULIA}" STREQUAL "ON")
-    find_package(Julia QUIET)
-    if(Julia_FOUND)
-        message(STATUS "Julia support enabled")
-    else()
-        message(WARNING "${ColorYellow}Julia not found; Julia features disabled in"
-                        " kotekan_lib${ColorReset}")
-    endif()
-endif()
-
 add_library(kotekan_libs INTERFACE)
 
 add_subdirectory(utils)
@@ -34,51 +23,51 @@ target_link_libraries(kotekan_libs INTERFACE libexternal)
 # Build C++ testing helpers when requested. WITH_TESTS builds and links the lib/testing helper
 # stages into the main kotekan binary. WITH_BOOST_TESTS also requires these helpers and additionally
 # builds the unit tests under tests/boost.
-if(${WITH_TESTS} OR ${WITH_BOOST_TESTS})
+if (${WITH_TESTS} OR ${WITH_BOOST_TESTS})
     add_subdirectory(testing)
     target_link_libraries(kotekan_libs INTERFACE kotekan_testing)
-endif()
+endif ()
 
 add_subdirectory(metadata)
 target_link_libraries(kotekan_libs INTERFACE kotekan_metadata)
 
-if(OPENCL_FOUND
-   OR CUDAToolkit_FOUND
-   OR HIP_FOUND)
+if (OPENCL_FOUND
+        OR CUDAToolkit_FOUND
+        OR HIP_FOUND)
     add_subdirectory(gpu)
-endif()
+endif ()
 
-if(OPENCL_FOUND)
+if (OPENCL_FOUND)
     add_subdirectory(opencl)
     target_link_libraries(kotekan_libs INTERFACE kotekan_opencl)
-endif()
+endif ()
 
-if(CUDAToolkit_FOUND)
+if (CUDAToolkit_FOUND)
     add_subdirectory(cuda)
     target_link_libraries(kotekan_libs INTERFACE kotekan_cuda)
-endif()
+endif ()
 
-if(HIP_FOUND)
+if (HIP_FOUND)
     add_subdirectory(hip)
     target_link_libraries(kotekan_libs INTERFACE kotekan_hip)
-endif()
+endif ()
 
-if(OPENCL_FOUND
-   OR CUDAToolkit_FOUND
-   OR HIP_FOUND)
+if (OPENCL_FOUND
+        OR CUDAToolkit_FOUND
+        OR HIP_FOUND)
     target_link_libraries(kotekan_libs INTERFACE kotekan_gpu)
-endif()
+endif ()
 
 # DPDK selection is handled in FeatureDPDK.cmake. Only include/link when DPDK was found and the
 # toggle is AUTO or ON.
-if(DPDK_FOUND AND ("${USE_DPDK}" STREQUAL "AUTO" OR "${USE_DPDK}" STREQUAL "ON"))
+if (DPDK_FOUND AND ("${USE_DPDK}" STREQUAL "AUTO" OR "${USE_DPDK}" STREQUAL "ON"))
     add_subdirectory(dpdk)
     target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
-endif()
+endif ()
 
 # HDF5 stuff
-if(HDF5_FOUND
-   AND HighFive_FOUND
-   AND HDF5Plugin_PLUGIN_DIR)
+if (HDF5_FOUND
+        AND HighFive_FOUND
+        AND HDF5Plugin_PLUGIN_DIR)
     target_link_libraries(kotekan_libs INTERFACE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
-endif()
+endif ()

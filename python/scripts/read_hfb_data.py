@@ -7,7 +7,6 @@ from kotekan import hfbbuffer
 
 
 def main():
-
     in_file = sys.argv[1]
 
     print("\nReading file: {}".format(in_file))
@@ -54,15 +53,15 @@ def plot_sky_map(metadata, data, nsubfreq, freq_id):
 
         for beam_id in range(0, nbeams):
             beam_sum[beam_id] += np.sum(
-                d[freq_id][beam_id * nsubfreq : (beam_id + 1) * nsubfreq]
+                d[freq_id][beam_id * nsubfreq: (beam_id + 1) * nsubfreq]
             )
 
         for beam_id in range(0, ns_beams):
             beam_ns_sum[beam_id] += (
-                beam_sum[beam_id]
-                + beam_sum[beam_id + ns_beams]
-                + beam_sum[beam_id + 2 * ns_beams]
-                + beam_sum[beam_id + 3 * ns_beams]
+                    beam_sum[beam_id]
+                    + beam_sum[beam_id + ns_beams]
+                    + beam_sum[beam_id + 2 * ns_beams]
+                    + beam_sum[beam_id + 3 * ns_beams]
             )
 
         hfb_square[ctr] = beam_ns_sum
@@ -91,7 +90,6 @@ def plot_sky_map(metadata, data, nsubfreq, freq_id):
 
 
 def plot_one_beam_freq_over_time(metadata, data, nframes, nsubfreq, freq_id, beam_id):
-
     freq_start = 800.0 - float(freq_id) * 400.0 / 1024.0
 
     hfb_square = np.zeros((nframes, nsubfreq), dtype=np.float32)
@@ -103,7 +101,7 @@ def plot_one_beam_freq_over_time(metadata, data, nframes, nsubfreq, freq_id, bea
     # Filter specific beam from data
     ctr = 0
     for d in data[:nframes]:
-        hfb_square[ctr] = d[freq_id][beam_id * nsubfreq : (beam_id + 1) * nsubfreq]
+        hfb_square[ctr] = d[freq_id][beam_id * nsubfreq: (beam_id + 1) * nsubfreq]
         ctr = ctr + 1
 
     # Plot data

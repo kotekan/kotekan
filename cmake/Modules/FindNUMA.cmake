@@ -6,9 +6,9 @@ include(FindPackageHandleStandardArgs)
 set(NUMA_SEARCH_PATHS /usr/include /usr/local/include)
 
 find_path(
-    NUMA_INCLUDE_DIR
-    NAMES numa.h
-    PATHS ${NUMA_SEARCH_PATHS})
+        NUMA_INCLUDE_DIR
+        NAMES numa.h
+        PATHS ${NUMA_SEARCH_PATHS})
 
 find_library(NUMA_LIBRARY NAMES numa)
 

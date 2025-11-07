@@ -3,7 +3,7 @@ type: config
 # Logging level can be OFF, ERROR, WARN, INFO, DEBUG, or DEBUG2
 log_level: DEBUG
 # Which CPUs is kotekan allowed to run on?
-cpu_affinity: [5]
+cpu_affinity: [ 5 ]
 
 # Constants
 sizeof_float: 4
@@ -24,7 +24,7 @@ earth_rotation_data:
       delta_UT1_inst: 0.5,
       x_pm: 0.1,
       y_pm: 0.2
-    }]
+    } ]
 #, {
 #  time_inst_ns: 1578040000000000380,
 #  delta_UT1_inst: 0.801234,
@@ -43,17 +43,17 @@ telescope:
   require_gps: false
   inst_long_deg: -119.62081125
   inst_lat_deg: 49.3207514444444444
-  inst_grid_x_axis: [1.0, 0.0, 0.0]
-  inst_grid_y_axis: [0.0, 1.0, 0.0]
+  inst_grid_x_axis: [ 1.0, 0.0, 0.0 ]
+  inst_grid_y_axis: [ 0.0, 1.0, 0.0 ]
   inst_alt_deg: 90.0
-  inst_dish_alt_axis: [1.0, 0.0, 0.0]
-  inst_dish_vert_axis: [0.0, 0.0, 1.0]
-  dish_positions: [[0.0, 1.0, 2.0],
-                   [0.0, 2.0, 2.0],
-                   [0.0, 3.0, 2.0],
-                   [1.0, 1.0, 2.0],
-                   [1.0, 2.0, 2.0],
-                   [1.0, 3.0, 2.0]]
+  inst_dish_alt_axis: [ 1.0, 0.0, 0.0 ]
+  inst_dish_vert_axis: [ 0.0, 0.0, 1.0 ]
+  dish_positions: [ [ 0.0, 1.0, 2.0 ],
+                    [ 0.0, 2.0, 2.0 ],
+                    [ 0.0, 3.0, 2.0 ],
+                    [ 1.0, 1.0, 2.0 ],
+                    [ 1.0, 2.0, 2.0 ],
+                    [ 1.0, 3.0, 2.0 ] ]
 
   updatable_config: "/earth_rotation_data"
 gps_time:

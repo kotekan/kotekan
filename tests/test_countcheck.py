@@ -46,7 +46,7 @@ def kotekan_output(tmpdir_factory):
                 )
             )
             frame_list[ii].metadata.fpga_seq = (
-                counts_per_second * int(root_params["cadence"]) * ii
+                    counts_per_second * int(root_params["cadence"]) * ii
             )
             frame_list[ii].metadata.ctime.tv = int(
                 start_time + int(root_params["cadence"]) * ii

@@ -14,7 +14,6 @@ from kotekan import runner
 if not runner.has_lapack():
     pytest.skip("LAPACK support not available.", allow_module_level=True)
 
-
 default_params = {
     "num_elements": 200,
     "num_ev": 4,
@@ -29,7 +28,7 @@ default_params = {
     "earth_rotation_data": {
         "kotekan_update_endpoint": "json",
         "earth_orientation_parameter_table": [
-            {"time_inst_ns": 0, "delta_UT1_inst": 0.0, "x_pm": 0.0, "y_pm": 0.0,},
+            {"time_inst_ns": 0, "delta_UT1_inst": 0.0, "x_pm": 0.0, "y_pm": 0.0, },
             {
                 "time_inst_ns": 3_000_000_000 * 1_000_000_000,
                 "delta_UT1_inst": 0.0,
@@ -56,7 +55,6 @@ default_params = {
 
 
 def run_eigenvis(tdir_factory, params=None):
-
     if not params:
         params = default_params
 
@@ -77,7 +75,6 @@ def run_eigenvis(tdir_factory, params=None):
 
 
 def test_basic(tmpdir_factory):
-
     params = default_params
     num_elements = params["num_elements"]
     expected_evec_phase_fact = np.exp(1j * np.arange(num_elements))
@@ -98,7 +95,6 @@ def test_basic(tmpdir_factory):
 
 
 def test_filled(tmpdir_factory):
-
     params = dict(default_params)
     params["num_diagonals_filled"] = 10
     num_elements = params["num_elements"]
@@ -117,7 +113,6 @@ def test_filled(tmpdir_factory):
 
 
 def test_input_excluded(tmpdir_factory):
-
     params = dict(default_params)
     params["exclude_inputs"] = [5, 10, 6]
     nexclude = len(params["exclude_inputs"])

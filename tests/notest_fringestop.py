@@ -20,7 +20,6 @@ t_gps_0 = astropy.time.Time("1980-01-06 00:00:00", scale="utc")
 
 
 def calc_dtai(t):
-
     tdate = t.ymdhms
     return erfa.dat(tdate.year, tdate.month, tdate.day, 0.0)
 
@@ -30,7 +29,6 @@ dtai = float(calc_dtai(obs_start_time))
 
 t0_nanosec = int((obs_start_time - t_gps_0).to_value("ns"))
 t0_sec = int((obs_start_time - t_gps_0).to_value("s"))
-
 
 downsamp_params = {
     "num_samples": 2,
@@ -87,7 +85,6 @@ global_params = {
 
 @pytest.fixture(scope="module")
 def n2_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("n2_data")
 
     dump_buffer = runner.DumpN2Buffer(str(tmpdir))
@@ -106,7 +103,6 @@ def n2_data(tmpdir_factory):
 
 
 def test_structure(n2_data):
-
     n = global_params["num_elements"]
 
     # Check that each samples is the expected shape
@@ -121,14 +117,13 @@ def test_structure(n2_data):
 
 
 def test_metadata(n2_data):
-
     input_frame_length = int(3.2e9 / 16384 * fakevis_params["cadence"])
     frame_length = input_frame_length * downsamp_params["num_samples"]
     frame_total = (
-        input_frame_length
-        - fakevis_params["n_rfi_ticks"]
-        - fakevis_params["n_lost_ticks"]
-    ) * downsamp_params["num_samples"]
+                          input_frame_length
+                          - fakevis_params["n_rfi_ticks"]
+                          - fakevis_params["n_lost_ticks"]
+                  ) * downsamp_params["num_samples"]
     rfi_total = fakevis_params["n_rfi_ticks"] * downsamp_params["num_samples"]
 
     freq_id = fakevis_params["freq_ids"][0]
@@ -143,7 +138,6 @@ def test_metadata(n2_data):
 
 
 def test_time(n2_data):
-
     time_ns = []
     era_deg = []
 
@@ -170,13 +164,12 @@ def test_time(n2_data):
 
     # assert np.all(time_ns == (t_start - t_gps_0).to_value('ns').astype(int))
     assert (
-        np.fabs(time_ns - (t_start - t_gps_0).to_value("ns").astype(int)) < 5121
+            np.fabs(time_ns - (t_start - t_gps_0).to_value("ns").astype(int)) < 5121
     ).all()
     assert np.all(isclose_sym(era_deg, era_true, atol=1.0e-6))
 
 
 def test_vis(n2_data):
-
     n = global_params["num_elements"]
 
     # Reproduce expected fakeVis output
@@ -209,7 +202,7 @@ def test_vis(n2_data):
             idx = 0
             for i in range(n):
                 line_vals = ["-------"] * i + [
-                    "{}".format(x) for x in frame.vis[idx : idx + n - i]
+                    "{}".format(x) for x in frame.vis[idx: idx + n - i]
                 ]
                 idx += n - i
                 f.write(" ".join(line_vals) + "\n")
@@ -217,7 +210,7 @@ def test_vis(n2_data):
             idx = 0
             for i in range(n):
                 line_vals = ["-------"] * i + [
-                    "{}".format(x) for x in model_vis[idx : idx + n - i]
+                    "{}".format(x) for x in model_vis[idx: idx + n - i]
                 ]
                 idx += n - i
                 f.write(" ".join(line_vals) + "\n")
@@ -230,7 +223,6 @@ def test_vis(n2_data):
 
 
 def test_evec(n2_data):
-
     n = global_params["num_elements"]
     n_ev = global_params["num_ev"]
 
@@ -295,7 +287,6 @@ def test_evec(n2_data):
 
 
 def calc_eig_from_vis(vis):
-
     num_el = global_params["num_elements"]
     vis_square = np.empty((num_el, num_el), dtype=vis.dtype)
 
@@ -314,7 +305,6 @@ def calc_eig_from_vis(vis):
 
 
 def calc_vis_pointsource(time_ns, freq_Hz):
-
     idx = 0
 
     num_el = global_params["num_elements"]
@@ -363,7 +353,6 @@ def calc_vis_pointsource(time_ns, freq_Hz):
 
 
 def calc_n_source(time_ns):
-
     t = time_ns * units.ns + t_gps_0
 
     tel_params = global_params["telescope"]

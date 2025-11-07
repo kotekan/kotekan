@@ -16,12 +16,12 @@ kernel-description:
     sampling-time-μsec: 2.56
     upchannelization-factor: 4
   compile-parameters:
-    minthreads: [32, 4]
+    minthreads: [ 32, 4 ]
     blocks_per_sm: 8
     blocks_per_frequency: 16
   call-parameters:
-    threads: [32, 4]
-    blocks: [256]
+    threads: [ 32, 4 ]
+    blocks: [ 256 ]
     shmem_bytes: 41216
   kernel-symbol: "_Z7upchan45Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE"
   kernel-arguments:
@@ -46,25 +46,25 @@ kernel-description:
     - name: "G"
       intent: in
       type: Float16
-      indices: [F̄]
-      shape: [64]
-      strides: [1]
+      indices: [ F̄ ]
+      shape: [ 64 ]
+      strides: [ 1 ]
     - name: "E"
       intent: in
       type: Int4
-      indices: [C, D, P, F, T]
-      shape: [2, 1024, 2, 16, 65536]
-      strides: [1, 2, 2048, 4096, 65536]
+      indices: [ C, D, P, F, T ]
+      shape: [ 2, 1024, 2, 16, 65536 ]
+      strides: [ 1, 2, 2048, 4096, 65536 ]
     - name: "Ē"
       intent: out
       type: Int4
-      indices: [C, D, P, F̄, T̄]
-      shape: [2, 1024, 2, 64, 16384]
-      strides: [1, 2, 2048, 4096, 262144]
+      indices: [ C, D, P, F̄, T̄ ]
+      shape: [ 2, 1024, 2, 64, 16384 ]
+      strides: [ 1, 2, 2048, 4096, 262144 ]
     - name: "info"
       intent: out
       type: Int32
-      indices: [thread, warp, block]
-      shapes: [32, 4, 256]
-      strides: [1, 32, 128]
+      indices: [ thread, warp, block ]
+      shapes: [ 32, 4, 256 ]
+      strides: [ 1, 32, 128 ]
 ...

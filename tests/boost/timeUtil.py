@@ -3,7 +3,6 @@ from mpmath import mp
 import math
 import sys
 
-
 # 40 digits of decimal precision
 mp.dps = 40
 
@@ -13,7 +12,6 @@ era_B = mp.mpf(1_002_737_811_911_354_480) / mp.mpf(1e18)
 
 
 def get_unix_ns(t):
-
     ymdhms = t.utc.ymdhms
     t0h = Time(
         {
@@ -32,7 +30,6 @@ def get_unix_ns(t):
 
 
 def get_s_ns_from_jd(t):
-
     t_s1 = t.jd1 * 86400.0
     t_s2 = t.jd2 * 86400.0
 
@@ -47,7 +44,6 @@ def get_s_ns_from_jd(t):
 
 
 def get_era_nrot(t):
-
     era_deg = t.earth_rotation_angle("tio").to_value("deg")
 
     dt_jd = (t.ut1.jd1 - 2451545.0) + t.ut1.jd2
@@ -58,7 +54,6 @@ def get_era_nrot(t):
 
 
 def get_era_nrot_basic(t):
-
     jd = t.ut1.jd
 
     mjd = jd - 2451545.0
@@ -75,7 +70,6 @@ def get_era_nrot_basic(t):
 
 
 def get_era_nrot_fancy(t):
-
     jd1 = t.ut1.jd1
     jd2 = t.ut1.jd2
 
@@ -91,22 +85,22 @@ def get_era_nrot_fancy(t):
     jd2n_sdf, jd2n_sdn = math.modf(jd2n * 2.73781191135448e-3)
 
     arg_rot = (
-        0.7790572732640
-        + jd1f
-        + jd2f
-        + (jd1f + jd2f) * 2.73781191135448e-3
-        + jd1n_sdf
-        + jd2n_sdf
+            0.7790572732640
+            + jd1f
+            + jd2f
+            + (jd1f + jd2f) * 2.73781191135448e-3
+            + jd1n_sdf
+            + jd2n_sdf
     )
 
     f_rot, fn_rot = math.modf(arg_rot)
 
     n_rot = (
-        math.floor(jd1n)
-        + math.floor(jd2n)
-        + math.floor(jd1n_sdn)
-        + math.floor(jd2n_sdn)
-        + math.floor(fn_rot)
+            math.floor(jd1n)
+            + math.floor(jd2n)
+            + math.floor(jd1n_sdn)
+            + math.floor(jd2n_sdn)
+            + math.floor(fn_rot)
     )
 
     if f_rot < 0.0:
@@ -119,7 +113,6 @@ def get_era_nrot_fancy(t):
 
 
 def get_era_nrot_precise(t):
-
     ut1_jd = (mp.mpf(t.ut1.jd1) - mp.mpf(2451545)) + mp.mpf(t.ut1.jd2)
 
     rot = era_A + era_B * ut1_jd
@@ -131,7 +124,6 @@ def get_era_nrot_precise(t):
 
 
 def print_isot_times(t_str):
-
     t = Time(t_str, scale="utc", format="isot")
     print(str(t))
     unix_tot_ns = get_unix_ns(t)

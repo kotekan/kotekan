@@ -57,7 +57,7 @@ def gen_gains(filename, mult_factor, num_elements, freq):
 
     nfreq = len(freq)
     gain = (
-        np.arange(nfreq)[:, None] * 1j * np.arange(num_elements)[None, :] * mult_factor
+            np.arange(nfreq)[:, None] * 1j * np.arange(num_elements)[None, :] * mult_factor
     ).astype(np.complex64)
 
     # Make some weights zero to test the behaviour of apply_gains
@@ -66,7 +66,6 @@ def gen_gains(filename, mult_factor, num_elements, freq):
     weight[:, 3] = False
 
     with h5py.File(str(filename), "w") as f:
-
         dset = f.create_dataset("gain", data=gain)
 
         dset2 = f.create_dataset("weight", data=weight)
@@ -88,7 +87,6 @@ def gain_path(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def old_gains(gain_path):
-
     # Get the name of the file to write
     fname = str(gain_path / f"{old_update_id}.h5")
 
@@ -99,7 +97,6 @@ def old_gains(gain_path):
 
 @pytest.fixture(scope="module")
 def new_gains(gain_path):
-
     # Get the name of the file to write
     fname = str(gain_path / f"{new_update_id}.h5")
 
@@ -110,7 +107,6 @@ def new_gains(gain_path):
 
 @pytest.fixture(scope="module", params=["file", "network"])
 def apply_data(request, tmp_path_factory, gain_path, old_gains, new_gains, cal_broker):
-
     output_dir = str(tmp_path_factory.mktemp("output"))
     global_params["gains_dir"] = str(gain_path)
     global_params["read_from_file"] = True if request.param == "file" else False
@@ -189,7 +185,6 @@ def test_metadata(apply_data):
     """Check that the stable metadata has not changed."""
 
     for input_frame, output_frame in zip(*apply_data):
-
         assert input_frame.metadata.freq_id == output_frame.metadata.freq_id
         assert input_frame.metadata.fpga_seq == output_frame.metadata.fpga_seq
         assert visutil.ts_to_double(input_frame.metadata.ctime) == visutil.ts_to_double(
@@ -201,7 +196,6 @@ def test_eigen(apply_data):
     """Check that the eigensector has not been changed."""
 
     for input_frame, output_frame in zip(*apply_data):
-
         assert input_frame.erms == output_frame.erms
         assert (input_frame.eval == output_frame.eval).all()
         assert (input_frame.evec == output_frame.evec).all()
@@ -218,7 +212,6 @@ def test_gain(apply_data, old_gains, new_gains):
     new_gain_arr, weight_arr = new_gains
 
     for input_frame, output_frame in zip(*apply_data):
-
         freq_ind = global_params["freq_ids"].index(output_frame.metadata.freq_id)
 
         # Select the current frequency

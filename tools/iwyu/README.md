@@ -1,12 +1,15 @@
 The include-what-you-use mapping files are from the
 [iwyu repository](https://github.com/include-what-you-use/include-what-you-use) version
 `0.22`. To grab updated files, you can run a command like
+
 ```
 ls *.imp | xargs -I{} wget https://raw.githubusercontent.com/include-what-you-use/include-what-you-use/refs/tags/0.22/{}
 ```
+
 The file kotekan CI uses to reference all mapping files is `iwyu.kotekan.imp` in the
 root directory of the kotekan repository.
 It can be applied by running
+
 ```
 export CXX=clang++
 export CC=clang

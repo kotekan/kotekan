@@ -9,10 +9,10 @@ add_subdirectory(sphinx)
 
 # Aggregate documentation targets
 add_custom_target(
-    docs
-    DEPENDS sphinx doxygen
-    COMMENT "Building all documentation")
+        docs
+        DEPENDS sphinx doxygen
+        COMMENT "Building all documentation")
 add_custom_target(
-    doc
-    DEPENDS docs
-    COMMENT "Building all documentation (alias)")
+        doc
+        DEPENDS docs
+        COMMENT "Building all documentation (alias)")

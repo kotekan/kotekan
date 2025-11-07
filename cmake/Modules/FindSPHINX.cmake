@@ -1,9 +1,9 @@
 find_program(
-    SPHINX_EXECUTABLE
-    NAMES sphinx-build
-    HINTS $ENV{SPHINX_DIR}
-    PATH_SUFFIXES bin
-    DOC "Sphinx documentation generator")
+        SPHINX_EXECUTABLE
+        NAMES sphinx-build
+        HINTS $ENV{SPHINX_DIR}
+        PATH_SUFFIXES bin
+        DOC "Sphinx documentation generator")
 
 include(FindPackageHandleStandardArgs)
 

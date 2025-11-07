@@ -199,24 +199,24 @@ def lst(unixtime):
     show_default=True,
 )
 def update_polyco(
-    fname,
-    start_time,
-    load_polyco,
-    end_time,
-    dm,
-    name,
-    width,
-    segment,
-    ncoeff,
-    max_ha,
-    format,
-    offset,
-    send_update,
-    no_confirm,
-    url,
-    tempo_dir,
-    schedule,
-    time_spec,
+        fname,
+        start_time,
+        load_polyco,
+        end_time,
+        dm,
+        name,
+        width,
+        segment,
+        ncoeff,
+        max_ha,
+        format,
+        offset,
+        send_update,
+        no_confirm,
+        url,
+        tempo_dir,
+        schedule,
+        time_spec,
 ):
     """Generate a gating polyco update from a parfile and send to kotekan.
     Required arguments are the path to the parfile and the start time for the polyco
@@ -368,7 +368,6 @@ def update_polyco(
 )
 @click.pass_context
 def import_schedule(ctx, fname, url, tempo_dir, parfile_dir, reference):
-
     raise NotImplementedError("Not implemented yet. Aborting.")
 
     # WIP

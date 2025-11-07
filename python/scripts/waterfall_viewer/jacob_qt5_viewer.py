@@ -81,7 +81,7 @@ class Settings(QDialog):
         self.Bright_Freq_index = self.main.waterfall.shape[1] // 2
         self.GraphState = 0
         self.Bright_Freq = self.freq_upper - self.Bright_Freq_index * (
-            self.freq_lower / self.main.waterfall.shape[1]
+                self.freq_lower / self.main.waterfall.shape[1]
         )
         self.BrightnessMeasures = []
         self.BrightnessTimes = []
@@ -330,8 +330,8 @@ class Settings(QDialog):
             print("TESTING VALIDITY")
             x = float(text)
             if (
-                x + self.Bright_Freq > self.freq_upper
-                or self.Bright_Freq - x < self.freq_lower
+                    x + self.Bright_Freq > self.freq_upper
+                    or self.Bright_Freq - x < self.freq_lower
             ):
                 print(x, self.Bright_Freq, x + self.Bright_Freq, x - self.Bright_Freq)
                 return
@@ -382,7 +382,7 @@ class Settings(QDialog):
                     self.main.MedSubbed[i, :][
                         (self.main.MedSubbed[i, :] > (5 * y_lower))
                         * (self.main.MedSubbed[i, :] < (5 * y_upper))
-                    ]
+                        ]
                 )
             # y /= self.main.MedSubbed.shape[1]
             p10 = np.poly1d(np.polyfit(x, y, 10))  # Create Line of best fit
@@ -400,7 +400,7 @@ class Settings(QDialog):
                 ]
             )  # Compute Median Values for each freq
             y_lower = (
-                np.round(np.median(y)) - 2 * self.GraphSlider.value()
+                    np.round(np.median(y)) - 2 * self.GraphSlider.value()
             )  # Y axis scale
             y_upper = np.round(np.median(y)) + 2 * self.GraphSlider.value()
             plt.ylim([y_lower, y_upper])
@@ -412,14 +412,14 @@ class Settings(QDialog):
             y = self.main.waterfall[
                 :,
                 int(self.Bright_Freq_index)
-                - self.Width_index : int(self.Bright_Freq_index)
-                + self.Width_index,
+                - self.Width_index: int(self.Bright_Freq_index)
+                                    + self.Width_index,
                 0,
             ]
             self.BrightnessMeasures.append(np.median(y))  # Make measurement
             self.BrightnessTimes.append(
                 (
-                    datetime.datetime.fromtimestamp(np.amin(self.main.times)) - self.t0
+                        datetime.datetime.fromtimestamp(np.amin(self.main.times)) - self.t0
                 ).total_seconds()
             )  # Record Time
             x = np.array(
@@ -562,7 +562,7 @@ class Window(QDialog):
         ).reshape(-1, 2)
         self.freqlist = self.freqlist / 1e6
         self.elemlist = np.fromstring(
-            self.info_header[int(self.pkt_freqs) * 4 * 2 :], dtype=np.int8
+            self.info_header[int(self.pkt_freqs) * 4 * 2:], dtype=np.int8
         )
         self.plot_freqs = self.pkt_freqs // 8
         self.plot_times = 256
@@ -579,11 +579,11 @@ class Window(QDialog):
 
         # Intialize waterfall arrays
         self.waterfall = (
-            np.zeros(
-                (self.plot_times, int(self.plot_freqs), int(self.pkt_elems)),
-                dtype=np.float32,
-            )
-            + np.nan
+                np.zeros(
+                    (self.plot_times, int(self.plot_freqs), int(self.pkt_elems)),
+                    dtype=np.float32,
+                )
+                + np.nan
         )
         self.countfold = np.zeros(
             (self.plot_phase, int(self.plot_freqs), int(self.pkt_elems)),
@@ -621,10 +621,10 @@ class Window(QDialog):
         )
         self.tmax = md.date2num(datetime.datetime.fromtimestamp(self.pkt_utc0))
         self.times = (
-            self.pkt_utc0
-            - np.arange(self.plot_times)
-            * self.local_integration
-            * self.sec_per_pkt_frame
+                self.pkt_utc0
+                - np.arange(self.plot_times)
+                * self.local_integration
+                * self.sec_per_pkt_frame
         )
         self.date_format = md.DateFormatter("%H:%M:%S")
 
@@ -778,7 +778,7 @@ class Window(QDialog):
 
         if self.curtime != 0:  # Calulate J2000 pointing
             Pointing = (
-                self.curtime.isot + "        " + self.curpoint.altaz.to_string("dms")
+                    self.curtime.isot + "        " + self.curpoint.altaz.to_string("dms")
             )
             c = SkyCoord(
                 self.curpoint.altaz.to_string("hmsdms").split(" ")[0],
@@ -814,19 +814,19 @@ class Window(QDialog):
         for i in np.arange(self.pkt_elems):  # For each polirization
             if self.DeDisperse:  # De-disperse
                 for j in range(
-                    self.dedispersed.shape[1]
+                        self.dedispersed.shape[1]
                 ):  # Iterate through frequencies
                     time = (
-                        (4.148808 / 1000)
-                        * (
-                            (1 / 0.4) ** 2
-                            - (
-                                1
-                                / (0.4 + (128 - j) * (0.4 / self.dedispersed.shape[1]))
+                            (4.148808 / 1000)
+                            * (
+                                    (1 / 0.4) ** 2
+                                    - (
+                                            1
+                                            / (0.4 + (128 - j) * (0.4 / self.dedispersed.shape[1]))
+                                    )
+                                    ** 2
                             )
-                            ** 2
-                        )
-                        * self.psrdata["dmeasure"]
+                            * self.psrdata["dmeasure"]
                     )  # Compute Time lag
                     location = 1 * int(
                         (time / self.fold_period) * self.dedispersed.shape[0]
@@ -867,11 +867,11 @@ class Window(QDialog):
                 )  # Update Folded Waterfall
                 self.p[self.pkt_elems + i].set_data(tmpdata)
             self.MedSubbed += (
-                (self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i])
-                - np.median(
-                    (self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i]),
-                    axis=0,
-                )[np.newaxis, :]
+                    (self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i])
+                    - np.median(
+                (self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i]),
+                axis=0,
+            )[np.newaxis, :]
             )
             self.p[i].set_extent(
                 [self.freqlist[0, 0], self.freqlist[-1, -1], self.tmin, self.tmax]
@@ -980,21 +980,21 @@ def data_listener():  # Listens to Data and updates
                     data_pkt_samples_summed,
                 ) = struct.unpack("III", data[: main.pkt_header])
                 data_array = np.fromstring(
-                    data[int(main.pkt_header) :], dtype=np.uint32
+                    data[int(main.pkt_header):], dtype=np.uint32
                 )  # Unpack Data
                 d[:, data_pkt_elem_idx] += data_array * 1.0  # Store Data
                 n[:, data_pkt_elem_idx] += (
-                    data_pkt_samples_summed * 1.0
+                        data_pkt_samples_summed * 1.0
                 )  # Store Integration lengths
                 # n[:,data_pkt_elem_idx][data_array != 0] += data_pkt_samples_summed * 1.0
                 fold_idx = np.array(
                     int(
                         (
-                            (
-                                main.sec_per_pkt_frame * data_pkt_frame_idx
-                                + 0.5 * main.fold_period
-                            )
-                            % main.fold_period
+                                (
+                                        main.sec_per_pkt_frame * data_pkt_frame_idx
+                                        + 0.5 * main.fold_period
+                                )
+                                % main.fold_period
                         )
                         / main.fold_period
                         * main.plot_phase
@@ -1015,8 +1015,8 @@ def data_listener():  # Listens to Data and updates
             roll_idx = (data_pkt_frame_idx - last_idx) // main.local_integration
             main.times = np.roll(main.times, int(roll_idx))  # Roll times
             main.times[0] = (
-                main.sec_per_pkt_frame * (data_pkt_frame_idx - main.pkt_idx0)
-                + main.pkt_utc0
+                    main.sec_per_pkt_frame * (data_pkt_frame_idx - main.pkt_idx0)
+                    + main.pkt_utc0
             )
             main.waterfall = np.roll(main.waterfall, int(roll_idx), axis=0)
             main.waterfall[0, :, :] = 10 * np.log10(
@@ -1098,7 +1098,6 @@ def get_pointing():  # Function to get Pointing information
 
 # Main program
 if __name__ == "__main__":
-
     np.seterr(divide="ignore", invalid="ignore")  # Remove numpy divide error messages
     startup = QApplication(sys.argv)
     main_startup = Startup(startup)

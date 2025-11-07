@@ -156,12 +156,12 @@ def test_zero_weights(vis_data_zero_weights):
         assert np.any(frame.vis != frame_t.vis)
         for i in range(0, int(n * (n + 1) * 0.5)):
             assert (
-                np.abs(frame.vis[i].real - frame_t.vis[i].real)
-                <= np.abs(frame.vis[i].real) * trunc_params["data_fixed_precision"]
+                    np.abs(frame.vis[i].real - frame_t.vis[i].real)
+                    <= np.abs(frame.vis[i].real) * trunc_params["data_fixed_precision"]
             )
             assert (
-                np.abs(frame.vis[i].imag - frame_t.vis[i].imag)
-                <= np.abs(frame.vis[i].imag) * trunc_params["data_fixed_precision"]
+                    np.abs(frame.vis[i].imag - frame_t.vis[i].imag)
+                    <= np.abs(frame.vis[i].imag) * trunc_params["data_fixed_precision"]
             )
         assert np.all(frame.weight == frame_t.weight)
         assert np.all(frame.weight == 0.0)

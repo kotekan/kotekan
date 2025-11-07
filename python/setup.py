@@ -11,7 +11,6 @@ import versioneer
 
 here = path.abspath(path.dirname(__file__))
 
-
 # Get the long description from the README file
 with open(path.join(here, "README.rst"), "r") as f:
     long_description = f.read()
