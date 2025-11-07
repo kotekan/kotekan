@@ -11,6 +11,7 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "hdf5VisWrite.hpp"    // for hdf5VisWrite
+#include "test_logging.hpp"
 #include "test_utils.hpp"
 
 #include <algorithm>
@@ -27,6 +28,7 @@
 #include <string>
 #include <sys/stat.h> // for stat
 #include <thread>
+#include <sys/wait.h>
 #include <unistd.h> // for gethostname
 #include <utility>
 #include <vector>
@@ -35,312 +37,15 @@ using std::string;
 
 using HighFive::File;
 
-// Force registration of N2Metadata in metadata factory by referencing the type
+// Force registration of metadata with Metadata factory
 static N2Metadata _force_n2meta_registration;
 
-// Unit-test helper for visFileData internals (moved from test_visFileData)
-class TestVisFileData : public visFileData {
-public:
-    using visFileData::idx_feit;
-    using visFileData::idx_fet;
-    using visFileData::idx_fit;
-    using visFileData::idx_fpt;
-    using visFileData::idx_ft;
-    using visFileData::visFileData;
-
-    N2::cfloat get_vis(size_t f, size_t p, size_t t) const {
-        return vis[idx_fpt(f, p, t)];
-    }
-    float get_weight(size_t f, size_t p, size_t t) const {
-        return vis_weight[idx_fpt(f, p, t)];
-    }
-    float get_eval(size_t f, size_t e, size_t t) const {
-        return eval[idx_fet(f, e, t)];
-    }
-    N2::cfloat get_evec(size_t f, size_t e, size_t i, size_t t) const {
-        return evec[idx_feit(f, e, i, t)];
-    }
-    float get_erms(size_t f, size_t t) const {
-        return erms[idx_ft(f, t)];
-    }
-    N2::cfloat get_gain(size_t f, size_t i, size_t t) const {
-        return gain[idx_fit(f, i, t)];
-    }
-    float get_flags(size_t f, size_t i, size_t t) const {
-        return flags[idx_fit(f, i, t)];
-    }
-    float get_frac_lost(size_t f, size_t t) const {
-        return frac_lost[idx_ft(f, t)];
-    }
-    float get_frac_rfi(size_t f, size_t t) const {
-        return frac_rfi[idx_ft(f, t)];
-    }
-    uint64_t get_n_valid(size_t f, size_t t) const {
-        return n_valid_fpga_ticks[idx_ft(f, t)];
-    }
-    uint64_t get_n_rfi(size_t f, size_t t) const {
-        return n_rfi_fpga_ticks[idx_ft(f, t)];
-    }
-    uint64_t get_fpga_start_tick(size_t t) const {
-        return fpga_start_tick[t];
-    }
-    uint64_t get_frame_start_time_ns(size_t t) const {
-        return frame_start_time_ns[t];
-    }
-    uint64_t get_frame_length_fpga_ticks(size_t) const {
-        return frame_length_fpga_ticks;
-    }
-    double get_era_deg(size_t t) const {
-        return era_deg[t];
-    }
-    size_t get_added_count() const {
-        return added_count;
-    }
-    uint8_t get_added(size_t f, size_t t) const {
-        return added_ft[idx_ft(f, t)];
-    }
-};
-
-// Helper function to list items in a directory
-static std::vector<std::string> list_dir_entries(const std::string& path) {
-    std::vector<std::string> out;
-    DIR* dir = opendir(path.c_str());
-    if (!dir)
-        return out;
-    while (dirent* ent = readdir(dir)) {
-        const char* name = ent->d_name;
-        if (std::strcmp(name, ".") == 0 || std::strcmp(name, "..") == 0)
-            continue;
-        out.emplace_back(name);
-    }
-    closedir(dir);
-    return out;
-}
-
-// Join two paths with '/' if needed
-static std::string join_path(const std::string& a, const std::string& b) {
-    if (a.empty())
-        return b;
-    if (a.back() == '/')
-        return a + b;
-    return a + "/" + b;
-}
-
-// Check if path exists
-static bool path_exists(const std::string& path) {
-    struct stat st;
-    return (::stat(path.c_str(), &st) == 0);
-}
-
-// Remove (recursively) directory if it exists (POSIX implementation)
-static void rm_tree_if_exists(const std::string& path) {
-    if (!path_exists(path))
-        return;
-    DIR* dir = opendir(path.c_str());
-    if (!dir) {
-        (void)unlink(path.c_str());
-        return;
-    }
-    struct dirent* ent;
-    while ((ent = readdir(dir)) != nullptr) {
-        const char* name = ent->d_name;
-        if (std::strcmp(name, ".") == 0 || std::strcmp(name, "..") == 0)
-            continue;
-        const std::string sub = join_path(path, name);
-        struct stat st;
-        if (::lstat(sub.c_str(), &st) == 0) {
-            if (S_ISDIR(st.st_mode))
-                rm_tree_if_exists(sub);
-            else
-                (void)unlink(sub.c_str());
-        }
-    }
-    closedir(dir);
-    (void)rmdir(path.c_str());
-}
-
-// ---------------- visFileData unit tests (moved and extended) ----------------
-
-BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
-    N2Metadata force_link_marker;
-    const size_t num_input = 3;
-    const size_t num_prod = N2::get_num_prod(num_input);
-    const size_t num_ev = 2;
-    const size_t num_freq = 3;
-    const size_t num_file_t = 2;
-
-    const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
-    auto pool = metadataPool::create(1, sizeof(N2Metadata), "test_pool", "N2Metadata");
-    Buffer buf(1, frame_size, pool, "n2buf", "vis", 1, false, false, std::vector<int>{}, true);
-
-    buf.allocate_new_metadata_object(0);
-    auto meta = get_N2_metadata(&buf, 0);
-    BOOST_REQUIRE(meta);
-    meta->num_elements = num_input;
-    meta->num_prod = num_prod;
-    meta->num_ev = num_ev;
-    meta->nfreq = num_freq;
-    meta->freq_id = 1;
-    meta->fpga_start_tick = 111;
-    meta->frame_start_time_ns = 222;
-    meta->frame_length_fpga_ticks = 100;
-    meta->n_valid_fpga_ticks = 80;
-    meta->n_rfi_fpga_ticks = 5;
-    meta->eop.ERA_deg = 12.34;
-
-    N2FrameView fv(&buf, 0);
-    fv.zero_frame();
-    for (size_t p = 0; p < num_prod; ++p) {
-        fv.vis[p] = N2::cfloat(10.0f * p + 1.0f, 10.0f * p + 2.0f);
-        fv.weight[p] = float(1000 + p);
-    }
-    for (size_t e = 0; e < num_ev; ++e) {
-        fv.eval[e] = float(60 + e);
-        for (size_t i = 0; i < num_input; ++i)
-            fv.evec[num_input * e + i] =
-                N2::cfloat(100.0f * e + float(i) + 0.5f, -(100.0f * e + float(i) + 1.5f));
-    }
-    fv.erms = 3.14f;
-    for (size_t i = 0; i < num_input; ++i) {
-        fv.gain[i] = N2::cfloat(200.0f + float(i), -200.0f - float(i));
-        fv.flags[i] = float(300 + i);
-    }
-
-    TestVisFileData blk(num_file_t, num_freq, num_input, num_prod, num_ev, 100, 100, 0, "", 0.0);
-    const size_t f = meta->freq_id;
-    const size_t t = 1;
-    blk.add_frame(fv, meta, t);
-
-    // Check a few expected values in memory
-    BOOST_CHECK(blk.get_vis(f, 0, t) == N2::cfloat(1.0f, 2.0f));
-    BOOST_CHECK_CLOSE_FRACTION(blk.get_weight(f, 0, t), float(1000), 1e-6f);
-    BOOST_CHECK_CLOSE_FRACTION(blk.get_eval(f, 0, t), float(60), 1e-6f);
-    BOOST_CHECK(blk.get_evec(f, 0, 0, t) == N2::cfloat(0.5f, -1.5f));
-    BOOST_CHECK_CLOSE_FRACTION(blk.get_erms(f, t), 3.14f, 1e-6f);
-    BOOST_CHECK(blk.get_gain(f, 0, t) == N2::cfloat(200.0f, -200.0f));
-    BOOST_CHECK_CLOSE_FRACTION(blk.get_flags(f, 0, t), 300.0f, 1e-6f);
-    BOOST_CHECK_EQUAL(blk.get_n_valid(f, t), uint64_t(80));
-    BOOST_CHECK_EQUAL(blk.get_n_rfi(f, t), uint64_t(5));
-    BOOST_CHECK_CLOSE_FRACTION(blk.get_frac_lost(f, t), 1.0f - 80.0f / 100.0f, 1e-6f);
-    BOOST_CHECK_CLOSE_FRACTION(blk.get_frac_rfi(f, t), 5.0f / 100.0f, 1e-6f);
-    BOOST_CHECK_EQUAL(blk.get_fpga_start_tick(t), uint64_t(111));
-    BOOST_CHECK_EQUAL(blk.get_frame_start_time_ns(t), uint64_t(222));
-    BOOST_CHECK_EQUAL(blk.get_frame_length_fpga_ticks(t), uint64_t(100));
-    BOOST_CHECK_CLOSE_FRACTION(blk.get_era_deg(t), 12.34, 1e-12);
-    BOOST_CHECK_EQUAL(blk.get_added_count(), size_t(1));
-}
-
-BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
-    N2Metadata force_link_marker;
-    const size_t num_input = 2;
-    const size_t num_prod = N2::get_num_prod(num_input);
-    const size_t num_ev = 1;
-    const size_t num_freq = 2;
-    const size_t num_file_t = 2;
-
-    const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
-    auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_guard", "N2Metadata");
-    Buffer buf(2, frame_size, pool, "n2buf_guard", "vis", 1, false, false, std::vector<int>{},
-               true);
-
-    // Prepare frame view and two metadata instances for the same (f,t)
-    for (int idx = 0; idx < 2; ++idx)
-        buf.allocate_new_metadata_object(idx);
-    auto meta1 = get_N2_metadata(&buf, 0);
-    auto meta2 = get_N2_metadata(&buf, 1);
-
-    const size_t f = 1;
-    const size_t t = 1;
-
-    // meta1
-    meta1->num_elements = num_input;
-    meta1->num_prod = num_prod;
-    meta1->num_ev = num_ev;
-    meta1->nfreq = num_freq;
-    meta1->freq_id = f;
-    meta1->fpga_start_tick = 1000;
-    meta1->frame_start_time_ns = 2000;
-    meta1->frame_length_fpga_ticks = 100;
-    meta1->n_valid_fpga_ticks = 80;
-    meta1->n_rfi_fpga_ticks = 30; // sum > frame_len -> should clamp to 20
-    meta1->eop.ERA_deg = 0.0;     // legitimate 0.0 value
-
-    // meta2 (same slot), differing ERA and pathological counts
-    *meta2 = *meta1;
-    meta2->n_valid_fpga_ticks = 150; // > frame len -> clamp to 100
-    meta2->n_rfi_fpga_ticks = 50;    // will be ignored because slot already set; kept for symmetry
-    meta2->eop.ERA_deg = 12.34;      // should not overwrite the first set value
-
-    N2FrameView fv1(&buf, 0);
-    fv1.zero_frame();
-    N2FrameView fv2(&buf, 1);
-    fv2.zero_frame();
-
-    TestVisFileData blk(num_file_t, num_freq, num_input, num_prod, num_ev, 100, 100, 0, "", 0.0);
-
-    // First write
-    blk.add_frame(fv1, meta1, t);
-    // Verify clamped fractions (n_valid=80, n_rfi clamped to 20)
-    BOOST_CHECK_EQUAL(blk.get_n_valid(f, t), uint64_t(80));
-    BOOST_CHECK_EQUAL(blk.get_n_rfi(f, t), uint64_t(20));
-    BOOST_CHECK_CLOSE_FRACTION(blk.get_frac_lost(f, t), 0.2f, 1e-6f);
-    BOOST_CHECK_CLOSE_FRACTION(blk.get_frac_rfi(f, t), 0.2f, 1e-6f);
-    // ERA set to 0.0 and considered valid
-    BOOST_CHECK_CLOSE_FRACTION(blk.get_era_deg(t), 0.0, 1e-12);
-
-    // Second write to same (f,t) with different ERA and counts; ERA should not change
-    blk.add_frame(fv2, meta2, t);
-    BOOST_CHECK_CLOSE_FRACTION(blk.get_era_deg(t), 0.0, 1e-12);
-}
-
-// Capability test removed; reading validated by content checks.
-
-// Helper to create a config just for testing
-// Build a writer config using file-window-based collection and optional grace/seq override
-static kotekan::Config make_base_config(const std::string& unique_name, const std::string& in_buf,
-                                        const std::string& base_dir, const std::string& file_name,
-                                        bool prefix_hostname, uint64_t zip_compression,
-                                        uint64_t file_seconds, const std::string& format,
-                                        uint64_t blocksize_f = 0, uint64_t blocksize_t = 1,
-                                        uint64_t late_frame_grace_seconds = 60,
-                                        uint64_t seq_length_nsec_override = 0) {
-    using json = nlohmann::json;
-
-    json j;
-    // Minimal stage config; create once and assign under both '/name' and 'name' keys
-    nlohmann::json s;
-    s["cpu_affinity"] = std::vector<int>{0};
-    s["log_level"] = "WARN";
-    s["in_buf"] = in_buf;
-    s["base_dir"] = base_dir;
-    s["file_name"] = file_name;
-    s["prefix_hostname"] = prefix_hostname;
-    // Legacy key retained in tests; writer ignores ZIP storage. Keep for compatibility.
-    s["zip_compression"] = zip_compression;
-    // Writer format selection (HDF5)
-    s["format"] = format;
-    s["blocksize_f"] = blocksize_f;
-    s["blocksize_p"] = 0; // unused currently
-    s["blocksize_t"] = blocksize_t;
-    s["file_seconds"] = file_seconds; // length of each file in seconds (must divide 86400, >0)
-    s["join_timeout"] = 5;            // faster failure for tests
-    s["late_frame_grace_seconds"] = late_frame_grace_seconds;
-    // optionally override fpga sequence length so the Telescope singleton is not needed
-    if (seq_length_nsec_override > 0)
-        s["seq_length_nsec_override"] = seq_length_nsec_override;
-    // Assign to both forms
-    j[unique_name] = s;
-    if (!unique_name.empty() && unique_name.front() == '/')
-        j[unique_name.substr(1)] = s;
-
-    kotekan::Config conf;
-    conf.update_config(j);
-
-    return conf;
-}
+/********************************************************/
+/* Re-usable utility functions specific to writer tests */
+/********************************************************/
 
 // Build dataset filename to simulate pre-existing final files (mirrors stage logic)
-static std::string compute_dataset_name(const std::string& base_dir, const std::string& file_name,
+static std::string get_dataset_name(const std::string& base_dir, const std::string& file_name,
                                         bool prefix_hostname, uint64_t file_start_time_ns,
                                         const std::string& suffix) {
     std::ostringstream buf;
@@ -359,78 +64,9 @@ static std::string compute_dataset_name(const std::string& base_dir, const std::
     return buf.str();
 }
 
-// Select format and expected filename suffix (HDF5 only).
-static bool select_format_and_suffix(std::string& out_format, std::string& out_suffix) {
-    out_format = "hdf5";
-    out_suffix = ".h5";
-    return true;
-}
-
-// Fill one synthetic N2 frame with deterministic data for validators
-static void fill_n2_frame(Buffer* buf, int frame_id, size_t num_input, size_t num_ev, size_t nfreq,
-                          size_t f_index, size_t t_index, uint64_t frame_start_time_ns,
-                          uint64_t frame_length_ticks) {
-    // Ensure metadata exists
-    buf->allocate_new_metadata_object(frame_id);
-    auto meta = get_N2_metadata(buf, frame_id);
-    BOOST_REQUIRE(meta);
-    const size_t num_prod = N2::get_num_prod(num_input);
-    meta->num_elements = num_input;
-    meta->num_prod = num_prod;
-    meta->num_ev = num_ev;
-    meta->nfreq = nfreq;
-    meta->freq_id = f_index;
-    meta->fpga_start_tick = 100 + t_index;
-    meta->frame_start_time_ns = frame_start_time_ns;
-    meta->frame_length_fpga_ticks = frame_length_ticks;
-    meta->n_valid_fpga_ticks = 80;
-    meta->n_rfi_fpga_ticks = 5;
-    meta->eop.ERA_deg = 9.87 + double(t_index);
-
-    N2FrameView fv(buf, frame_id);
-    fv.zero_frame();
-    // vis / weight pattern encodes (t,f,p)
-    for (size_t p = 0; p < num_prod; ++p) {
-        float base = 1000.0f * float(t_index) + 100.0f * float(f_index) + 10.0f * float(p);
-        fv.vis[p] = N2::cfloat(base + 1.0f, base + 2.0f);
-        fv.weight[p] = 1000.0f + float(p);
-    }
-    // eval / evec encode (e,i)
-    for (size_t e = 0; e < num_ev; ++e) {
-        fv.eval[e] = 60.0f + float(e);
-        for (size_t i = 0; i < num_input; ++i) {
-            fv.evec[num_input * e + i] = N2::cfloat(100.0f * float(e) + float(i) + 0.5f,
-                                                    -(100.0f * float(e) + float(i) + 1.5f));
-        }
-    }
-    fv.erms = 3.14f + 0.0f * float(t_index);
-    for (size_t i = 0; i < num_input; ++i) {
-        fv.gain[i] = N2::cfloat(200.0f + float(i), -200.0f - float(i));
-        fv.flags[i] = 300.0f + float(i);
-    }
-}
-
-// Wait helper: spin until a given frame ID becomes empty (consumed by the stage)
-static void wait_until_frame_empty(Buffer* buf, int frame_id, double timeout_seconds = 5.0) {
-    using clock = std::chrono::steady_clock;
-    auto t0 = clock::now();
-    double next_log = 0.25; // seconds
-    while (!buf->is_frame_empty(frame_id)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        double dt = std::chrono::duration<double>(clock::now() - t0).count();
-        if (dt >= next_log) {
-            next_log += 0.25;
-        }
-        if (dt > timeout_seconds) {
-            int nfull = buf->get_num_full_frames();
-            BOOST_FAIL("Timed out waiting for buffer frame to become empty; num_full="
-                       << nfull << ", frame_id=" << frame_id);
-            break;
-        }
-    }
-}
-
-// Read back and validate a few arrays using the known patterns (HighFive)
+// Read back and validate a few arrays using the known patterns
+// Note this is not a full validation of all data, just spot-checks
+// This function assumes the fill_n2_frame function has been called
 static void validate_dataset_content(File& file, size_t num_input, size_t num_ev, size_t nfreq,
                                      size_t file_nt) {
     const size_t num_prod = N2::get_num_prod(num_input);
@@ -521,18 +157,169 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
     }
 }
 
-// Read back and validate a few arrays using the known patterns
+/***********************************/
+/* Tests for the visFileData class */
+/***********************************/
 
+// Test 1: add_frame for a single (f,t) slot, verify data stored correctly in memory
+BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
+    N2Metadata force_link_marker;
+    const size_t num_input = 3;
+    const size_t num_prod = N2::get_num_prod(num_input);
+    const size_t num_ev = 2;
+    const size_t num_freq = 3;
+    const size_t num_file_t = 2;
+
+    const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
+    auto pool = metadataPool::create(1, sizeof(N2Metadata), "test_pool", "N2Metadata");
+    Buffer buf(1, frame_size, pool, "n2buf", "N2", 1, false, false, std::vector<int>{}, true);
+
+    buf.allocate_new_metadata_object(0);
+    auto meta = get_N2_metadata(&buf, 0);
+    BOOST_REQUIRE(meta);
+    meta->num_elements = num_input;
+    meta->num_prod = num_prod;
+    meta->num_ev = num_ev;
+    meta->nfreq = num_freq;
+    meta->freq_id = 1;
+    meta->fpga_start_tick = 111;
+    meta->frame_start_time_ns = 222;
+    meta->frame_length_fpga_ticks = 100;
+    meta->n_valid_fpga_ticks = 80;
+    meta->n_rfi_fpga_ticks = 5;
+    meta->eop.ERA_deg = 12.34;
+
+    N2FrameView fv(&buf, 0);
+    fv.zero_frame();
+    for (size_t p = 0; p < num_prod; ++p) {
+        fv.vis[p] = N2::cfloat(10.0f * p + 1.0f, 10.0f * p + 2.0f);
+        fv.weight[p] = float(1000 + p);
+    }
+    for (size_t e = 0; e < num_ev; ++e) {
+        fv.eval[e] = float(60 + e);
+        for (size_t i = 0; i < num_input; ++i)
+            fv.evec[num_input * e + i] =
+                N2::cfloat(100.0f * e + float(i) + 0.5f, -(100.0f * e + float(i) + 1.5f));
+    }
+    fv.erms = 3.14f;
+    for (size_t i = 0; i < num_input; ++i) {
+        fv.gain[i] = N2::cfloat(200.0f + float(i), -200.0f - float(i));
+        fv.flags[i] = float(300 + i);
+    }
+
+    visFileData data(num_file_t, num_freq, num_input, num_prod, num_ev, 100, 100, 0, "", 0.0);
+    const size_t f = meta->freq_id;
+    const size_t t = 1;
+
+    // Add frame to (f,t) slot
+    data.add_frame(fv, meta, t);
+
+    // Check a few expected values in memory
+    BOOST_CHECK(data.get_vis(f, 0, t) == N2::cfloat(1.0f, 2.0f));
+    BOOST_CHECK_CLOSE_FRACTION(data.get_weight(f, 0, t), float(1000), 1e-6f);
+    BOOST_CHECK_CLOSE_FRACTION(data.get_eval(f, 0, t), float(60), 1e-6f);
+    BOOST_CHECK(data.get_evec(f, 0, 0, t) == N2::cfloat(0.5f, -1.5f));
+    BOOST_CHECK_CLOSE_FRACTION(data.get_erms(f, t), 3.14f, 1e-6f);
+    BOOST_CHECK(data.get_gain(f, 0, t) == N2::cfloat(200.0f, -200.0f));
+    BOOST_CHECK_CLOSE_FRACTION(data.get_flags(f, 0, t), 300.0f, 1e-6f);
+    BOOST_CHECK_EQUAL(data.get_n_valid(f, t), uint64_t(80));
+    BOOST_CHECK_EQUAL(data.get_n_rfi(f, t), uint64_t(5));
+    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_lost(f, t), 1.0f - 80.0f / 100.0f, 1e-6f);
+    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_rfi(f, t), 5.0f / 100.0f, 1e-6f);
+    BOOST_CHECK_EQUAL(data.get_fpga_start_tick(t), uint64_t(111));
+    BOOST_CHECK_EQUAL(data.get_frame_start_time_ns(t), uint64_t(222));
+    BOOST_CHECK_EQUAL(data.get_frame_length_fpga_ticks(t), uint64_t(100));
+    BOOST_CHECK_CLOSE_FRACTION(data.get_era_deg(t), 12.34, 1e-12);
+    BOOST_CHECK_EQUAL(data.get_added_count(), size_t(1));
+}
+
+// Test 2: add_frame for the same (f,t) slot twice with differing metadata values
+BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
+    N2Metadata force_link_marker;
+    const size_t num_input = 2;
+    const size_t num_prod = N2::get_num_prod(num_input);
+    const size_t num_ev = 1;
+    const size_t num_freq = 2;
+    const size_t num_file_t = 2;
+
+    const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
+    auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_guard", "N2Metadata");
+    Buffer buf(2, frame_size, pool, "n2buf_guard", "N2", 1, false, false, std::vector<int>{},
+               true);
+
+    // Prepare frame view and two metadata instances for the same (f,t)
+    for (int idx = 0; idx < 2; ++idx)
+        buf.allocate_new_metadata_object(idx);
+    auto meta1 = get_N2_metadata(&buf, 0);
+    auto meta2 = get_N2_metadata(&buf, 1);
+
+    const size_t f = 1;
+    const size_t t = 1;
+
+    // meta1
+    meta1->num_elements = num_input;
+    meta1->num_prod = num_prod;
+    meta1->num_ev = num_ev;
+    meta1->nfreq = num_freq;
+    meta1->freq_id = f;
+    meta1->fpga_start_tick = 1000;
+    meta1->frame_start_time_ns = 2000;
+    meta1->frame_length_fpga_ticks = 100;
+    meta1->n_valid_fpga_ticks = 80;
+    meta1->n_rfi_fpga_ticks = 30; // sum > frame_len -> should clamp to 20
+    meta1->eop.ERA_deg = 0.0;     // legitimate 0.0 value
+
+    // meta2 (same slot), differing ERA and pathological counts
+    *meta2 = *meta1;
+    meta2->n_valid_fpga_ticks = 150; // > frame len -> clamp to 100
+    meta2->n_rfi_fpga_ticks = 50;    // will be ignored because slot already set; kept for symmetry
+    meta2->eop.ERA_deg = 12.34;      // should not overwrite the first set value
+
+    N2FrameView fv1(&buf, 0);
+    fv1.zero_frame();
+    N2FrameView fv2(&buf, 1);
+    fv2.zero_frame();
+
+    visFileData data(num_file_t, num_freq, num_input, num_prod, num_ev, 100, 100, 0, "", 0.0);
+
+    // First write
+    data.add_frame(fv1, meta1, t);
+    // Verify clamped fractions (n_valid=80, n_rfi clamped to 20)
+    BOOST_CHECK_EQUAL(data.get_n_valid(f, t), uint64_t(80));
+    BOOST_CHECK_EQUAL(data.get_n_rfi(f, t), uint64_t(20));
+    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_lost(f, t), 0.2f, 1e-6f);
+    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_rfi(f, t), 0.2f, 1e-6f);
+    // ERA set to 0.0 and considered valid
+    BOOST_CHECK_CLOSE_FRACTION(data.get_era_deg(t), 0.0, 1e-12);
+
+    // Second write to same (f,t) with different ERA and counts should trigger fatal exit.
+    pid_t pid = fork();
+    BOOST_REQUIRE(pid >= 0);
+    if (pid == 0) {
+        kotekan_test_logging::configure();
+        visFileData duplicate_data(num_file_t, num_freq, num_input, num_prod, num_ev, 100, 100, 0,
+                                   "", 0.0);
+        duplicate_data.add_frame(fv1, meta1, t);
+        duplicate_data.add_frame(fv2, meta2, t);
+        std::_Exit(EXIT_SUCCESS); // Should be unreachable if fatal triggers.
+    }
+    int status = 0;
+    BOOST_REQUIRE(waitpid(pid, &status, 0) == pid);
+    const bool signaled = WIFSIGNALED(status) && WTERMSIG(status) == SIGTERM;
+    const bool exited = WIFEXITED(status) && WEXITSTATUS(status) == (128 + SIGTERM);
+    BOOST_CHECK(signaled || exited);
+}
+
+/*************************************/
+/* Tests for the visFileWriter class */
+/*************************************/
 
 BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 
 // Test 1: Full-block flush with transpose validation
 BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
 
-    std::string format, suffix;
-    select_format_and_suffix(format, suffix);
-    BOOST_TEST_MESSAGE("Using format='" << format << "' suffix='" << suffix << "'");
-
+    const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer";
     const std::string in_buf_name = "n2buf";
     const std::string base_dir = "test_hdf5VisWrite_full";
@@ -549,15 +336,15 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     const uint64_t file_seconds = 200;
     const size_t expected_file_nt = 2;
 
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name,
-                                 /*prefix_hostname*/ false, /*zip*/ 0, file_seconds, format,
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name,
+                                 /*prefix_hostname*/ false, file_seconds,
                                  /*blocksize_f (0=all)*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ dt_ns);
 
     // Buffer + container
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_full", "N2Metadata");
-    Buffer buf(2, frame_size, pool, in_buf_name, "vis", /*numa*/ 0, /*huge*/ false,
+    Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
                /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
@@ -622,10 +409,9 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
 // Test 2: Partial flush triggered on exit (incomplete time block)
 BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
 
+    kotekan_test_logging::configure();
 
-    std::string format, suffix;
-    select_format_and_suffix(format, suffix);
-
+    const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer_partial";
     const std::string in_buf_name = "n2buf_partial";
     const std::string base_dir = "test_hdf5VisWrite_partial";
@@ -639,15 +425,15 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     // Use a 2-second file window so file_nt=2 with 1s frames
     const uint64_t file_seconds = 2;
 
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name,
-                                 /*prefix_hostname*/ false, /*zip*/ 0, file_seconds, format,
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name,
+                                 /*prefix_hostname*/ false, file_seconds,
                                  /*blocksize_f (0=all)*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
 
     // Buffer + container
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_partial", "N2Metadata");
-    Buffer buf(2, frame_size, pool, in_buf_name, "vis", /*numa*/ 0, /*huge*/ false,
+    Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
                /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
@@ -712,10 +498,9 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
 // Test 3: Multi-file rollover when time crosses a file window
 BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
 
+    kotekan_test_logging::configure();
 
-    std::string format, suffix;
-    select_format_and_suffix(format, suffix);
-
+    const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer_rollover";
     const std::string in_buf_name = "n2buf_rollover";
     const std::string base_dir = "test_hdf5VisWrite_rollover";
@@ -727,13 +512,13 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const size_t nfreq = 3;
     const size_t file_nt = 2;
     const uint64_t file_seconds = 200;
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, format, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
+                                 file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_roll", "N2Metadata");
-    Buffer buf(2, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
+    Buffer buf(2, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
@@ -795,10 +580,9 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
 // Test 4: Adjacent file windows produce distinct dataset names
 BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
 
+    kotekan_test_logging::configure();
 
-    std::string format, suffix;
-    select_format_and_suffix(format, suffix);
-
+    const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer_names";
     const std::string in_buf_name = "n2buf_names";
     const std::string base_dir = "test_hdf5VisWrite_names";
@@ -811,12 +595,12 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 1;
     const uint64_t file_seconds = 1; // one second file window => one frame per file
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, format, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
+                                 file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ dt_ns);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_subsec", "N2Metadata");
-    Buffer buf(2, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
+    Buffer buf(2, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
@@ -852,8 +636,8 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     stage.join();
 
     // Both datasets should exist and have different names
-    const std::string d1 = compute_dataset_name(base_dir, file_name, false, baseA, suffix);
-    const std::string d2 = compute_dataset_name(base_dir, file_name, false, baseB, suffix);
+    const std::string d1 = get_dataset_name(base_dir, file_name, false, baseA, suffix);
+    const std::string d2 = get_dataset_name(base_dir, file_name, false, baseB, suffix);
     bool h1 = path_exists(d1);
     bool h2 = path_exists(d2);
     BOOST_CHECK(h1 && h2);
@@ -869,10 +653,9 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
 // Test 5: Grace-based finalize of partial dataset (late_frame_grace_seconds=0)
 BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
 
+    kotekan_test_logging::configure();
 
-    std::string format, suffix;
-    select_format_and_suffix(format, suffix);
-
+    const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer_timeout";
     const std::string in_buf_name = "n2buf_timeout";
     const std::string base_dir = "test_hdf5VisWrite_timeout";
@@ -884,13 +667,13 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const size_t nfreq = 3;
     const size_t file_nt = 2;
     const uint64_t window_seconds = 2;
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 window_seconds, format, 0 /*bs_f*/, 1 /*bs_t*/,
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
+                                 window_seconds, 0 /*bs_f*/, 1 /*bs_t*/,
                                  0 /*late_frame_grace_seconds*/, 1'000'000'000ULL);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(8, sizeof(N2Metadata), "pool_timeout", "N2Metadata");
-    Buffer buf(8, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
+    Buffer buf(8, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
@@ -944,10 +727,9 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
 // Test 6: Late-frame drop when final already exists
 BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
 
+    kotekan_test_logging::configure();
 
-    std::string format, suffix;
-    select_format_and_suffix(format, suffix);
-
+    const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer_drop";
     const std::string in_buf_name = "n2buf_drop";
     const std::string base_dir = "test_hdf5VisWrite_drop";
@@ -958,12 +740,12 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const size_t num_ev = 2;
     const size_t nfreq = 2;
     const uint64_t file_seconds = 1;
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, format, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
+                                 file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_drop", "N2Metadata");
-    Buffer buf(2, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
+    Buffer buf(2, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
@@ -979,7 +761,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
 
     // Pre-create a final dataset path to force drop
     const std::string ds_final =
-        compute_dataset_name(base_dir, file_name, false, file_start_time_ns, suffix);
+        get_dataset_name(base_dir, file_name, false, file_start_time_ns, suffix);
     // Create as empty directory
     ::mkdir(base_dir.c_str(), 0777);
     ::mkdir(ds_final.c_str(), 0777);
@@ -1025,13 +807,12 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 7: Geometry mismatch within dataset (nfreq) is dropped without crash
+// Test 7: Geometry mismatch within dataset (nfreq) is dropped correctly
 BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
 
+    kotekan_test_logging::configure();
 
-    std::string format, suffix;
-    select_format_and_suffix(format, suffix);
-
+    const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer_geom";
     const std::string in_buf_name = "n2buf_geom";
     const std::string base_dir = "test_hdf5VisWrite_geom";
@@ -1044,12 +825,12 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     const size_t file_nt = 2;
 
     const uint64_t file_seconds = file_nt; // with 1s frames, file_nt==file_seconds
-    auto conf = make_base_config(unique_name, in_buf_name, base_dir, file_name, false, 0,
-                                 file_seconds, format, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
+                                 file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                  /*seq_override*/ 1'000'000'000ULL);
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev);
     auto pool = metadataPool::create(4, sizeof(N2Metadata), "pool_geom", "N2Metadata");
-    Buffer buf(4, frame_size, pool, in_buf_name, "vis", 0, false, false, std::vector<int>{}, true);
+    Buffer buf(4, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);

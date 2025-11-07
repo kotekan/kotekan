@@ -228,8 +228,8 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: ""  # clang tests?
 
-          - id: docs
-            name: "Build Documentation"
+          - id: local-docs
+            name: "Build Documentation Locally"
             ccache_key: kotekan-docs
             cmake_defs: >-
               -DCOMPILE_DOCS=ON

@@ -6,6 +6,9 @@
 
 #include "Config.hpp"
 #include "Stage.hpp"
+#include "errors.h"
+#include "fmt.hpp"
+#include "kotekanLogging.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "hdf5Files.hpp"
@@ -16,6 +19,7 @@
 #include <cassert>
 #include <highfive/H5File.hpp>
 #include <memory>
+#include <string>
 #include <vector>
 #include <visUtil.hpp>
 
@@ -156,8 +160,21 @@ public:
     void add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metadata>& meta, size_t t_index) {
         const size_t f_index = meta->freq_id; // TODO: sync with telescope object. For now assume
                                               // 0..num_freq-1 indexing
+
+        // TODO: What behavior do we want if these checks don't pass in release builds?
+
         assert(f_index < num_freq);
         assert(t_index < num_file_t);
+
+        // Make sure frame hasn't been added yet
+        size_t check_idx = idx_ft(f_index, t_index);
+        if (added_ft[check_idx] != 0) {
+            auto msg = fmt::format("visFileData: duplicate frame insertion at (f={}, t={})",
+                                   f_index, t_index);
+            kotekan::kotekanLogging::internal_logging(LOG_ERR, "", msg);
+            kotekan::kotekanLogging::set_error_message(msg);
+            exit_kotekan(ReturnCode::FATAL_ERROR);
+        }
 
         // Check structural and metadata properties of incoming frame
         assert(meta->frame_length_fpga_ticks > 0);
@@ -170,8 +187,7 @@ public:
         assert(meta->num_elements == num_input);
         assert(meta->num_prod == num_prod);
         assert(meta->num_ev == num_ev);
-        // meta->num_elements already asserted above
-
+        
         // Check per-time metadata consistency and assignment
         if (fpga_start_tick[t_index] != 0)
             assert(fpga_start_tick[t_index] == meta->fpga_start_tick);
@@ -184,6 +200,7 @@ public:
         // Initialize constant per-file frame length from first frame
         if (frame_length_fpga_ticks == 0)
             frame_length_fpga_ticks = meta->frame_length_fpga_ticks;
+
         // Initialize ERA value once per time slot; ignore subsequent changes to avoid
         // relying on a numeric sentinel (e.g., ERA==0) and to ensure consistency.
         if (!era_deg_set[t_index]) {
@@ -234,6 +251,60 @@ public:
             ++added_count; // number of frames added
         }
     }
+
+    // Some getters for testing and verification
+    N2::cfloat get_vis(size_t f, size_t p, size_t t) const {
+        return vis[idx_fpt(f, p, t)];
+    }
+    float get_weight(size_t f, size_t p, size_t t) const {
+        return vis_weight[idx_fpt(f, p, t)];
+    }
+    float get_eval(size_t f, size_t e, size_t t) const {
+        return eval[idx_fet(f, e, t)];
+    }
+    N2::cfloat get_evec(size_t f, size_t e, size_t i, size_t t) const {
+        return evec[idx_feit(f, e, i, t)];
+    }
+    float get_erms(size_t f, size_t t) const {
+        return erms[idx_ft(f, t)];
+    }
+    N2::cfloat get_gain(size_t f, size_t i, size_t t) const {
+        return gain[idx_fit(f, i, t)];
+    }
+    float get_flags(size_t f, size_t i, size_t t) const {
+        return flags[idx_fit(f, i, t)];
+    }
+    float get_frac_lost(size_t f, size_t t) const {
+        return frac_lost[idx_ft(f, t)];
+    }
+    float get_frac_rfi(size_t f, size_t t) const {
+        return frac_rfi[idx_ft(f, t)];
+    }
+    uint64_t get_n_valid(size_t f, size_t t) const {
+        return n_valid_fpga_ticks[idx_ft(f, t)];
+    }
+    uint64_t get_n_rfi(size_t f, size_t t) const {
+        return n_rfi_fpga_ticks[idx_ft(f, t)];
+    }
+    uint64_t get_fpga_start_tick(size_t t) const {
+        return fpga_start_tick[t];
+    }
+    uint64_t get_frame_start_time_ns(size_t t) const {
+        return frame_start_time_ns[t];
+    }
+    uint64_t get_frame_length_fpga_ticks(size_t) const {
+        return frame_length_fpga_ticks;
+    }
+    double get_era_deg(size_t t) const {
+        return era_deg[t];
+    }
+    size_t get_added_count() const {
+        return added_count;
+    }
+    uint8_t get_added(size_t f, size_t t) const {
+        return added_ft[idx_ft(f, t)];
+    }
+    
 };
 
 /**
