@@ -19,7 +19,3 @@ docs/sphinx/html/*
 scratch/*
 Manifest*.toml
 *.log
-.venv/
-*:Zone.Identifier
-iwyu*.log
-iwyu*.out
