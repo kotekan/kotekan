@@ -3,14 +3,14 @@
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "SystemInterface.hpp" // for get_hostname, get_username
-#include "visBuffer.hpp"       // for VisFrameView
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for datasetManager
 #include "datasetState.hpp"    // for freqState, metadataState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR
-#include "visUtil.hpp"         // for ts_to_double, time_ctype
 #include "version.h"           // for get_git_commit_hash
+#include "visBuffer.hpp"       // for VisFrameView
+#include "visUtil.hpp"         // for ts_to_double, time_ctype
 
 #include <future>  // for async
 #include <utility> // for std::get

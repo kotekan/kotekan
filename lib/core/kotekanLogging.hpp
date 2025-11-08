@@ -8,6 +8,7 @@
 #include <errno.h>  // for errno
 #include <string>   // for string
 #include <syslog.h> // for LOG_ERR, LOG_INFO, LOG_WARNING
+#include <thread>   // for thread, get_id
 
 // Boost messages (conditional on test compile/link)
 #if defined(BOOST_TEST_MODULE) || defined(BOOST_TEST_MAIN) || defined(BOOST_TEST_DYN_LINK)
