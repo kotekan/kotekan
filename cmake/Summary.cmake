@@ -277,7 +277,7 @@ else()
 endif()
 
 set(_ktk_flag_summary
-        "${_ktk_flag_openssl}
+    "${_ktk_flag_openssl}
         ${_ktk_flag_blaze}
         ${_ktk_flag_hdf5_plugin}
         ${_ktk_flag_cl}
