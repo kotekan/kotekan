@@ -46,8 +46,9 @@ def data(tmpdir_factory):
     yield dump_buffer.load()
 
 
-# this is the actual test (give a name to it)
-def test_<name>(data):
-
+# this is the actual test function
+@pytest.mark.skip(reason="Test assertions not yet implemented")
+def test_stage_output(data):
     for frame in data:
+        # TODO: Replace with real assertions
         assert frame.vis == {1, 0}

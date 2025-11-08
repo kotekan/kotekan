@@ -63,7 +63,7 @@ endif()
 
 # ##################################################################################################
 # First search for headers
-message(" MESSAGES " ${LAPACKE_SEARCH_PATHS})
+message(STATUS ${LAPACKE_SEARCH_PATHS})
 find_path(
     LAPACKE_CBLAS_INCLUDE_DIR
     NAMES cblas.h
@@ -188,16 +188,10 @@ mark_as_advanced(
     LAPACKE_VERSION_STRING)
 
 # For debugging
-message(
-    STATUS
-        "LAPACKE_FOUND                  :${LAPACKE_FOUND}:  - set to true if the library is found")
-message(STATUS string ("LAPACKE_INCLUDE_DIRS           :${LAPACKE_INCLUDE_DIRS}:"
-                       " - list of required include directories"))
-message(
-    STATUS "LAPACKE_LIBRARIES              :${LAPACKE_LIBRARIES}: - list of libraries to be linked")
+message(STATUS "LAPACKE_FOUND                  :${LAPACKE_FOUND}:  - set to true if the library is found")
+message(STATUS "LAPACKE_INCLUDE_DIRS           :${LAPACKE_INCLUDE_DIRS}: - list of required include directories")
+message(STATUS "LAPACKE_LIBRARIES              :${LAPACKE_LIBRARIES}: - list of libraries to be linked")
 message(STATUS "LAPACKE_VERSION_MAJOR          :${LAPACKE_VERSION_MAJOR}: - major version number")
 message(STATUS "LAPACKE_VERSION_MINOR          :${LAPACKE_VERSION_MINOR}: - minor version number")
 message(STATUS "LAPACKE_VERSION_PATCH          :${LAPACKE_VERSION_PATCH}: - patch version number")
-message(
-    STATUS "LAPACKE_VERSION_STRING         :${LAPACKE_VERSION_STRING}: - version number as a string"
-)
+message(STATUS "LAPACKE_VERSION_STRING         :${LAPACKE_VERSION_STRING}: - version number as a string")
