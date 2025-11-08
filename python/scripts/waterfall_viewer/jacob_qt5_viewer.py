@@ -6,7 +6,6 @@ Date: August 2017
 Compatibility: Python 2.7 & Python 3.5
 Dependencies: Astropy, PyQt5, Matplotlib, Numpy
 """
-
 # === Start Python 2/3 compatibility
 from __future__ import absolute_import, division, print_function, unicode_literals
 from future.builtins import *  # noqa  pylint: disable=W0401, W0614
@@ -868,13 +867,12 @@ class Window(QDialog):
                 )  # Update Folded Waterfall
                 self.p[self.pkt_elems + i].set_data(tmpdata)
             self.MedSubbed += (
-                self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i]
-            ) - np.median(
-                (self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i]),
-                axis=0,
-            )[
-                np.newaxis, :
-            ]
+                (self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i])
+                - np.median(
+                    (self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i]),
+                    axis=0,
+                )[np.newaxis, :]
+            )
             self.p[i].set_extent(
                 [self.freqlist[0, 0], self.freqlist[-1, -1], self.tmin, self.tmax]
             )  # Update Graph Scale

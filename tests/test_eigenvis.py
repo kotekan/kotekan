@@ -29,12 +29,7 @@ default_params = {
     "earth_rotation_data": {
         "kotekan_update_endpoint": "json",
         "earth_orientation_parameter_table": [
-            {
-                "time_inst_ns": 0,
-                "delta_UT1_inst": 0.0,
-                "x_pm": 0.0,
-                "y_pm": 0.0,
-            },
+            {"time_inst_ns": 0, "delta_UT1_inst": 0.0, "x_pm": 0.0, "y_pm": 0.0,},
             {
                 "time_inst_ns": 3_000_000_000 * 1_000_000_000,
                 "delta_UT1_inst": 0.0,
