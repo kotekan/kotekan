@@ -1,5 +1,5 @@
-"""Convert a baseband raw file into a standard baseband HDF5 archive
-"""
+"""Convert a baseband raw file into a standard baseband HDF5 archive"""
+
 import time
 import click
 import h5py
@@ -223,23 +223,21 @@ def process_raw_file(
             print("Copying", frame_metadata.valid_to, "samples to", frame_start_idx)
             print("Samples:", frame_metadata.valid_to * num_elements)
             print(len(buf), len(samples))
-        baseband[
-            frame_start_idx : (frame_start_idx + frame_metadata.valid_to), :
-        ] = np.array(
-            buf[
-                metadata_size : (metadata_size + frame_metadata.valid_to * num_elements)
-            ]
-        ).reshape(
-            frame_metadata.valid_to, num_elements
+        baseband[frame_start_idx : (frame_start_idx + frame_metadata.valid_to), :] = (
+            np.array(
+                buf[
+                    metadata_size : (
+                        metadata_size + frame_metadata.valid_to * num_elements
+                    )
+                ]
+            ).reshape(frame_metadata.valid_to, num_elements)
         )
         # sample_present[
         #    frame_start_idx : (frame_start_idx + frame_metadata.valid_to)
         # ] = True
         clip_after += frame_metadata.valid_to
 
-    baseband = baseband[
-        :clip_after,
-    ]
+    baseband = baseband[:clip_after,]
     if not dry_run:
         archive_file.create_dataset("baseband", data=baseband)
         archive_file["baseband"].attrs["axis"] = ["time", "input"]

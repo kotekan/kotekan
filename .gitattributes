@@ -1,3 +1,4 @@
 # Force all text files to use LF
 # * text=auto eol=lf
 *.[sS][hH] text eol=lf
+*.[sS][hH] text eol=lf
