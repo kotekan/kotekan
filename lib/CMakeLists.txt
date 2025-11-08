@@ -4,16 +4,10 @@ project(kotekan_libs)
 
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake ${KOTEKAN_SOURCE_DIR}/cmake/Modules)
 
-# Julia is a convenient language to implement stages for testing and development
-if("${USE_JULIA}" STREQUAL "AUTO" OR "${USE_JULIA}" STREQUAL "ON")
-    find_package(Julia QUIET)
-    if(Julia_FOUND)
-        message(STATUS "Julia support enabled")
-    else()
-        message(WARNING "${ColorYellow}Julia not found; Julia features disabled in"
-                        " kotekan_lib${ColorReset}")
-    endif()
-endif()
+# Julia is a convenient language to implement stages for testing and development if("${USE_JULIA}"
+# STREQUAL "AUTO" OR "${USE_JULIA}" STREQUAL "ON") find_package(Julia QUIET) if(Julia_FOUND)
+# message(STATUS "Julia support enabled") else() message(WARNING "${ColorYellow}Julia not found;
+# Julia features disabled in" " kotekan_lib${ColorReset}") endif() endif()
 
 add_library(kotekan_libs INTERFACE)
 

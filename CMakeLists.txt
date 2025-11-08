@@ -1,5 +1,6 @@
 # Set the version of CMake required for *all* CMake files in the project. 3.8.2 to match C++17.
 cmake_minimum_required(VERSION 3.8.2)
+cmake_policy(SET CMP0074 NEW)
 project(
     KOTEKAN
     DESCRIPTION "A high performance radio data processing pipeline"
