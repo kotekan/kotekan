@@ -141,7 +141,7 @@ if(HDF5_FOUND
    AND HighFive_FOUND
    AND HDF5Plugin_PLUGIN_DIR
    AND OpenMP_FOUND)
-    target_sources(kotekan_stages PRIVATE Transpose.cpp HFBTranspose.cpp)
+    target_sources(kotekan_stages PRIVATE Transpose.cpp VisTranspose.cpp HFBTranspose.cpp)
 endif()
 
 if(${Julia_FOUND})
