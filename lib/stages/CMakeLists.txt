@@ -81,7 +81,6 @@ add_library(
     BeamExtract.cpp
     BeamInspect.cpp
     configTrackerWriter.cpp
-    testDataGen.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
     hexDump.cpp

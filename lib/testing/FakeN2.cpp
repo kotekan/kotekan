@@ -214,12 +214,13 @@ void FakeN2::main_thread() {
         // Increment the timespec
         time_ns += curr_n_frames * delta_ns;
 
-        // Stop generating if we've hit the maximum number of frames.
+        // Cause kotekan to exit if we've hit the maximum number of frames.
         if (num_frames > 0 && frame_count >= num_frames) {
             INFO("Reached frame limit [{:d} frames]. Stopping generation.", num_frames);
             timespec ts = double_to_ts(sleep_after);
             nanosleep(&ts, nullptr);
-            break;
+            exit_kotekan(ReturnCode::CLEAN_EXIT);
+            return;
         }
 
         // If requested sleep for the extra time required to produce a fake vis
