@@ -1,15 +1,15 @@
 #include "applyGenPL.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata
-#include "kotekanLogging.hpp"  // for INFO, DEBUG
+#include <cstdint>              // for int32_t, uint64_t
+#include <cstdlib>              // for abort, size_t
+#include <functional>           // for bind, function
 
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "fmt.hpp"              // for compile_string_to_view
+#include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO
 
 using kotekan::bufferContainer;
 using kotekan::Config;

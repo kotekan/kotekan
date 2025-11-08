@@ -8,6 +8,12 @@
 #ifndef FAKE_VIS
 #define FAKE_VIS
 
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t, int32_t
+#include <memory>   // for unique_ptr
+#include <string>   // for string
+#include <vector>   // for vector
+
 #include "Config.hpp"          // for Config
 #include "FakeVisPattern.hpp"  // for FakeVisPattern
 #include "Stage.hpp"           // for Stage
@@ -16,12 +22,6 @@
 #include "datasetManager.hpp"  // for dset_id_t
 #include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for cfloat
-
-#include <memory>   // for unique_ptr
-#include <stddef.h> // for size_t
-#include <stdint.h> // for uint32_t, int32_t
-#include <string>   // for string
-#include <vector>   // for vector
 
 /**
  * @brief Generate fake visibility data into a ``VisBuffer``.

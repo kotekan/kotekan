@@ -14,11 +14,11 @@
 #ifndef CONFIG_TRACKER_WRITER_HPP
 #define CONFIG_TRACKER_WRITER_HPP
 
+#include <string>
+
 #include "Config.hpp"
 #include "Stage.hpp"
 #include "bufferContainer.hpp"
-
-#include <string>
 
 class configTrackerWriter : public kotekan::Stage {
 public:

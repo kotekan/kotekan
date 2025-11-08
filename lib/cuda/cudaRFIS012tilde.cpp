@@ -1,27 +1,28 @@
-#include "Config.hpp"              // for Config
-#include "NDArray.hpp"             // for NDArray
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "driver_types.h"          // for cudaEvent_t, CUevent_st, CUstream_st
-#include "gpuCommand.hpp"          // for gpuCommandType
-#include "kotekanLogging.hpp"      // for DEBUG
-#include "n2k/rfi_kernels.hpp"     // for launch_s012_station_downsample_kernel
+#include <NDArrayBuffer.hpp>        // for NDArrayBuffer, buffer_type_t
+#include <NDArrayRingBuffer.hpp>    // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include <cudaCommand.hpp>          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include <div.hpp>                  // for div_noremainder, round_down
+#include <sys/types.h>              // for ulong
+#include <algorithm>                // for min
+#include <array>                    // for array
+#include <cstddef>                  // for ptrdiff_t
+#include <cstdint>                  // for uint64_t, int8_t, uint8_t
+#include <functional>               // for function
+#include <memory>                   // for allocator, shared_ptr
+#include <string>                   // for basic_string, string
+#include <vector>                   // for vector
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <NDArrayBuffer.hpp>     // for NDArrayBuffer, buffer_type_t
-#include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include <algorithm>             // for min
-#include <array>                 // for array
-#include <cstddef>               // for ptrdiff_t
-#include <cstdint>               // for uint64_t, int8_t, uint8_t
-#include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include <div.hpp>               // for div_noremainder, round_down
-#include <functional>            // for function
-#include <memory>                // for allocator, shared_ptr
-#include <string>                // for basic_string, string
-#include <sys/types.h>           // for ulong
-#include <vector>                // for vector
+#include "Config.hpp"               // for Config
+#include "NDArray.hpp"              // for NDArray
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h"       // for cudaStreamSynchronize
+#include "driver_types.h"           // for cudaEvent_t, CUevent_st, CUstream_st
+#include "fmt.hpp"                  // for compile_string_to_view
+#include "gpuCommand.hpp"           // for gpuCommandType
+#include "kotekanLogging.hpp"       // for DEBUG
+#include "n2k/rfi_kernels.hpp"      // for launch_s012_station_downsample_kernel
 
 using kotekan::div_noremainder;
 using kotekan::round_down;

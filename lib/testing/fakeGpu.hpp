@@ -6,6 +6,11 @@
 #ifndef FAKE_GPU_HPP
 #define FAKE_GPU_HPP
 
+#include <stdint.h> // for int32_t, uint32_t, uint64_t
+#include <time.h>   // for timespec
+#include <memory>   // for unique_ptr
+#include <string>   // for string
+
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "Telescope.hpp"       // for freq_id_t, Telescope, stream_t
@@ -13,11 +18,6 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t
 #include "fakeGpuPattern.hpp"  // for FakeGpuPattern
-
-#include <memory>   // for unique_ptr
-#include <stdint.h> // for int32_t, uint32_t, uint64_t
-#include <string>   // for string
-#include <time.h>   // for timespec
 
 
 /**
