@@ -14,7 +14,7 @@ if(NOT HDF5Plugin_PLUGIN_DIR)
 
         # Now search in those paths
         find_path(HDF5Plugin_PLUGIN_DIR
-            NAMES libh5blosc.so libh5blosc.dylib h5blosc.dll
+            NAMES libh5blosc.so libh5blosc.dylib libH5Zblosc.so h5blosc.dll
             PATHS
                 ${ENV_HDF5_PLUGIN_PATH}
             PATH_SUFFIXES plugins hdf5/plugins
@@ -52,10 +52,11 @@ endif()
 # 4. Look in likely system/conda/etc locations.
 if(NOT HDF5Plugin_PLUGIN_DIR)
     find_path(HDF5Plugin_PLUGIN_DIR
-        NAMES libh5blosc.so libh5blosc.dylib h5blosc.dll
+        NAMES libh5blosc.so libh5blosc.dylib libH5Zblosc.so h5blosc.dll
         PATHS
             ${HDF5_ROOT}/lib/plugin
             /usr/lib/x86_64-linux-gnu/hdf5/plugins
+            /usr/lib/x86_64-linux-gnu/hdf5/serial/plugins
             /usr/lib/hdf5/plugins
             /usr/local/lib/hdf5/plugins
             $ENV{CONDA_PREFIX}/lib/hdf5/plugins

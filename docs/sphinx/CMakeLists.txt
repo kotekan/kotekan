@@ -51,6 +51,8 @@ add_custom_target(
     "${SPHINX_HTML_DIR}"
     COMMENT "Building HTML documentation with Sphinx")
 
+add_dependencies(sphinx doxygen)
+
 if(DEFINED DOWNLOAD_PLANTUML)
     add_dependencies(sphinx plantuml)
 endif()
