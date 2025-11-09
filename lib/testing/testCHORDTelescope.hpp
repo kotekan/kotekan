@@ -1,11 +1,11 @@
 #ifndef TEST_CHORD_TELESCOPE_H
 #define TEST_CHORD_TELESCOPE_H
 
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
+#include <string> // for string
 
 /**
  * @class TestCHORDTelescope

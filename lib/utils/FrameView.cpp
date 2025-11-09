@@ -6,8 +6,7 @@
 #include <string>        // for basic_string, string
 #include <vector>        // for vector
 
-#include "fmt.hpp"       // for format, fmt
-#include "fmt/format.h"  // for compile_string_to_view
+#include "fmt.hpp"       // for compile_string_to_view, format, fmt
 #include "metadata.hpp"  // for metadataObject
 
 FrameView::FrameView(Buffer* buf, int frame_id) :

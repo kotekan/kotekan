@@ -2,9 +2,9 @@
 #define GDALFILES_HPP
 
 #include <DataType.hpp> // for KOTEKAN_FLOAT16, float16_t, DataType
-#include <gdal.h>       // for GDALDataType, GDT_UInt32, GDT_Byte, GDT_Int32, GDT_Int64, GDT_Int8
 #include <array>        // for array
 #include <complex>      // for complex
+#include <gdal.h>       // for GDALDataType, GDT_UInt32, GDT_Byte, GDT_Int32, GDT_Int64, GDT_Int8
 #include <string>       // for string
 #include <type_traits>  // for integral_constant, is_signed_v, remove_cv_t, remove_reference_t
 #include <vector>       // for vector

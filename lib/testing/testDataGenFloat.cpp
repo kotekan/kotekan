@@ -1,23 +1,24 @@
 #include "testDataGenFloat.hpp"
 
-#include <assert.h>             // for assert
-#include <stdint.h>             // for uint32_t, uint64_t
-#include <stdlib.h>             // for srand
-#include <sys/time.h>           // for gettimeofday, timeval
-#include <sys/types.h>          // for uint
-#include <unistd.h>             // for usleep
-#include <cmath>                // for fmod
-#include <functional>           // for bind, function
-#include <memory>               // for __shared_ptr_access, shared_ptr
-#include <random>               // for uniform_real_distribution, mt19937
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "kotekanLogging.hpp"  // for DEBUG
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for DEBUG
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <assert.h>    // for assert
+#include <cmath>       // for fmod
+#include <functional>  // for bind, function
+#include <memory>      // for __shared_ptr_access, shared_ptr
+#include <random>      // for uniform_real_distribution, mt19937
+#include <stdint.h>    // for uint32_t, uint64_t
+#include <stdlib.h>    // for srand
+#include <sys/time.h>  // for gettimeofday, timeval
+#include <sys/types.h> // for uint
+#include <unistd.h>    // for usleep
 
 
 using kotekan::bufferContainer;

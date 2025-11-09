@@ -1,26 +1,27 @@
 #include "fakeGpu.hpp"
 
-#include <assert.h>            // for assert
-#include <sys/time.h>          // for TIMESPEC_TO_TIMEVAL, timeval
-#include <time.h>              // for timespec, time_t, nanosleep
-#include <csignal>             // for raise, SIGTERM
-#include <functional>          // for bind, function
-#include <random>              // for random_device, uniform_real_distribution, mt19937
-#include <string>              // for basic_string, string
-#include <vector>              // for vector
+#include "Config.hpp"         // for Config
+#include "Stage.hpp"          // for Stage
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
+#include "errors.h"           // for ReturnCode, exit_kotekan
+#include "factory.hpp"        // for FACTORY
+#include "fakeGpuPattern.hpp" // for FakeGpuPattern, _factory_aliasFakeGpuPattern
+#include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
+#include "visUtil.hpp"        // for frameID, gpu_N2_size, modulo, operator+
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
-#include "errors.h"            // for ReturnCode, exit_kotekan
-#include "factory.hpp"         // for FACTORY
-#include "fakeGpuPattern.hpp"  // for FakeGpuPattern, _factory_aliasFakeGpuPattern
-#include "fmt.hpp"             // for compile_string_to_view
-#include "gsl-lite.hpp"        // for span
-#include "kotekanLogging.hpp"  // for DEBUG, ERROR, INFO
-#include "visUtil.hpp"         // for frameID, gpu_N2_size, modulo, operator+
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <assert.h>   // for assert
+#include <csignal>    // for raise, SIGTERM
+#include <functional> // for bind, function
+#include <random>     // for random_device, uniform_real_distribution, mt19937
+#include <string>     // for basic_string, string
+#include <sys/time.h> // for TIMESPEC_TO_TIMEVAL, timeval
+#include <time.h>     // for timespec, time_t, nanosleep
+#include <vector>     // for vector
 
 
 REGISTER_KOTEKAN_STAGE(FakeGpu);

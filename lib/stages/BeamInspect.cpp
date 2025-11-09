@@ -1,16 +1,17 @@
 #include "BeamInspect.hpp"
 
-#include <stddef.h>            // for size_t
-#include <stdint.h>            // for uint8_t
-#include <memory>              // for shared_ptr
-#include <vector>              // for vector
+#include "BeamMetadata.hpp"   // for BeamMetadata
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"         // for Buffer
+#include "kotekanLogging.hpp" // for INFO
+#include "visUtil.hpp"        // for frameID, modulo
 
-#include "BeamMetadata.hpp"    // for BeamMetadata
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "fmt.hpp"             // for compile_string_to_view, format, format_string
-#include "kotekanLogging.hpp"  // for INFO
-#include "visUtil.hpp"         // for frameID, modulo
+#include "fmt.hpp" // for compile_string_to_view, format, format_string
+
+#include <memory>   // for shared_ptr
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint8_t
+#include <vector>   // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

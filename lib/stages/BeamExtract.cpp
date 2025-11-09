@@ -1,18 +1,19 @@
 #include "BeamExtract.hpp"
 
-#include <time.h>              // for timespec
-#include <functional>          // for bind, function
-#include <memory>              // for shared_ptr, __shared_ptr_access
-#include <stdexcept>           // for runtime_error
-#include <vector>              // for vector
+#include "BeamMetadata.hpp"   // for BeamMetadata
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp" // for DEBUG2
+#include "visUtil.hpp"        // for frameID, modulo
 
-#include "BeamMetadata.hpp"    // for BeamMetadata
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
-#include "fmt.hpp"             // for compile_string_to_view
-#include "kotekanLogging.hpp"  // for DEBUG2
-#include "visUtil.hpp"         // for frameID, modulo
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdexcept>  // for runtime_error
+#include <time.h>     // for timespec
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

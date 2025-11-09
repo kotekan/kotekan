@@ -28,8 +28,7 @@
 #include "H5Support.hpp"                          // for create_datatype
 #include "datasetManager.hpp"                     // for datasetManager, dset_id_t
 #include "datasetState.hpp"                       // for eigenvalueState, freqState, inputState
-#include "fmt.hpp"                                // for format, fmt
-#include "fmt/format.h"                           // for compile_string_to_view
+#include "fmt.hpp"                                // for compile_string_to_view, format, fmt
 #include "gsl-lite.hpp"                           // for span
 #include "visBuffer.hpp"                          // for VisFrameView
 #include "visUtil.hpp"                            // for time_ctype, cfloat, freq_ctype, input_c...

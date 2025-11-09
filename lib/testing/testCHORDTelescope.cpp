@@ -1,21 +1,22 @@
 #include "testCHORDTelescope.hpp"
 
-#include <bits/chrono.h>       // for milliseconds
-#include <stdint.h>            // for int64_t
-#include <time.h>              // for timespec, time_t
-#include <algorithm>           // for max
-#include <array>               // for array
-#include <functional>          // for bind, function
-#include <thread>              // for sleep_for
-#include <vector>              // for vector
+#include "CHORDTelescope.hpp" // for CHORDTelescope, EOP
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"      // for Telescope
+#include "errors.h"           // for exit_kotekan, ReturnCode
+#include "kotekanLogging.hpp" // for INFO
+#include "timeUtil.hpp"       // for get_ERA_from_UT1, get_UT1_from_ERA, get_time_from_UT1
 
-#include "CHORDTelescope.hpp"  // for CHORDTelescope, EOP
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"       // for Telescope
-#include "errors.h"            // for exit_kotekan, ReturnCode
-#include "fmt.hpp"             // for compile_string_to_view
-#include "kotekanLogging.hpp"  // for INFO
-#include "timeUtil.hpp"        // for get_ERA_from_UT1, get_UT1_from_ERA, get_time_from_UT1
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>     // for max
+#include <array>         // for array
+#include <bits/chrono.h> // for milliseconds
+#include <functional>    // for bind, function
+#include <stdint.h>      // for int64_t
+#include <thread>        // for sleep_for
+#include <time.h>        // for timespec, time_t
+#include <vector>        // for vector
 
 // Include the classes we will be using
 using kotekan::bufferContainer;

@@ -1,18 +1,19 @@
 #include "networkOutputSim.hpp"
 
-#include <pthread.h>            // for pthread_exit
-#include <stdlib.h>             // for exit
-#include <sys/time.h>           // for gettimeofday, timeval
-#include <functional>           // for bind, function
-#include <memory>               // for __shared_ptr_access, shared_ptr
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "kotekanLogging.hpp"  // for ERROR
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for ERROR
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <pthread.h>  // for pthread_exit
+#include <stdlib.h>   // for exit
+#include <sys/time.h> // for gettimeofday, timeval
 
 
 using kotekan::bufferContainer;

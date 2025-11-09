@@ -14,8 +14,7 @@
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
 #include "errors.h"            // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F, FATAL_ERROR_F
-#include "fmt.hpp"             // for format, fmt
-#include "fmt/format.h"        // for compile_string_to_view
+#include "fmt.hpp"             // for compile_string_to_view, format, fmt
 #include "kotekanLogging.hpp"  // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
 #include "metadata.hpp"        // for metadataObject, metadataPool
 #include "nt_memset.h"         // for nt_memset

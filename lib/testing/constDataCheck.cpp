@@ -1,14 +1,15 @@
 #include "constDataCheck.hpp"
 
-#include <functional>           // for bind, function
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "errors.h"            // for TEST_PASSED
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "errors.h"             // for TEST_PASSED
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for DEBUG, FATAL_ERROR, INFO
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
 
 
 REGISTER_KOTEKAN_STAGE(constDataCheck);

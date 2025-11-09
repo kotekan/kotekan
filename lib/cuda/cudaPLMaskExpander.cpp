@@ -5,7 +5,7 @@
 #include <div.hpp>                  // for div_noremainder, round_down
 #include <stdint.h>                 // for int64_t
 #include <sys/types.h>              // for ulong
-#include <algorithm>                // for fill_n, min
+#include <algorithm>                // for min
 #include <array>                    // for array
 #include <cassert>                  // for assert
 #include <cstddef>                  // for ptrdiff_t
@@ -19,7 +19,7 @@
 #include "bufferContainer.hpp"      // for bufferContainer
 #include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
 #include "driver_types.h"           // for cudaEvent_t, CUevent_st, CUstream_st
-#include "fmt/format.h"             // for compile_string_to_view
+#include "fmt.hpp"                  // for compile_string_to_view
 #include "gpuCommand.hpp"           // for gpuCommandType
 #include "kotekanLogging.hpp"       // for DEBUG, FATAL_ERROR
 #include "n2k/pl_kernels.hpp"       // for launch_pl_mask_expander

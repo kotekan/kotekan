@@ -1,29 +1,30 @@
 #include "FakeN2.hpp"
 
-#include <assert.h>             // for assert
-#include <time.h>               // for nanosleep, timespec
-#include <algorithm>            // for fill, max, shuffle
-#include <complex>              // for complex
-#include <functional>           // for bind, function, placeholders
-#include <memory>               // for allocator, shared_ptr, __shared_ptr_access, unique_ptr
-#include <numeric>              // for iota
-#include <random>               // for random_device, uniform_real_distribution, mt19937
-#include <utility>              // for pair
+#include "CHORDTelescope.hpp"  // for CHORDTelescope, EOP
+#include "Config.hpp"          // for Config
+#include "N2FrameView.hpp"     // for N2FrameView
+#include "N2Metadata.hpp"      // for N2Metadata, get_N2_metadata
+#include "N2Util.hpp"          // for get_num_prod
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "errors.h"            // for ReturnCode, exit_kotekan
+#include "factory.hpp"         // for FACTORY
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
 
-#include "CHORDTelescope.hpp"   // for CHORDTelescope, EOP
-#include "Config.hpp"           // for Config
-#include "N2FrameView.hpp"      // for N2FrameView
-#include "N2Metadata.hpp"       // for N2Metadata, get_N2_metadata
-#include "N2Util.hpp"           // for get_num_prod
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"        // for Telescope
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "errors.h"             // for ReturnCode, exit_kotekan
-#include "factory.hpp"          // for FACTORY
-#include "fmt.hpp"              // for compile_string_to_view
-#include "gsl-lite.hpp"         // for span
-#include "kotekanLogging.hpp"   // for DEBUG, INFO
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for fill, max, shuffle
+#include <assert.h>   // for assert
+#include <complex>    // for complex
+#include <functional> // for bind, function, placeholders
+#include <memory>     // for allocator, shared_ptr, __shared_ptr_access, unique_ptr
+#include <numeric>    // for iota
+#include <random>     // for random_device, uniform_real_distribution, mt19937
+#include <time.h>     // for nanosleep, timespec
+#include <utility>    // for pair
 
 
 using namespace std::placeholders;

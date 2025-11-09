@@ -1,28 +1,29 @@
 #ifndef TEST_DATA_CHECK_H
 #define TEST_DATA_CHECK_H
 
-#include <assert.h>             // for assert
-#include <string.h>             // for strncmp
-#include <algorithm>            // for max
-#include <cmath>                // for abs
-#include <cstdint>              // for uint32_t, int32_t, uint8_t
-#include <functional>           // for bind
-#include <limits>               // for numeric_limits
-#include <memory>               // for shared_ptr, __shared_ptr_access, allocator
-#include <string>               // for basic_string, operator!=, string
-#include <type_traits>          // for enable_if
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, metadata_is_chord, CHO...
+#include "errors.h"            // for TEST_FAILED, TEST_PASSED
+#include "kotekanLogging.hpp"  // for INFO, ERROR, DEBUG, FATAL_ERROR
+#include "metadata.hpp"        // for metadataObject
+#include "visUtil.hpp"         // for format_nice_string
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata, metadata_is_chord, CHO...
-#include "errors.h"             // for TEST_FAILED, TEST_PASSED
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for INFO, ERROR, DEBUG, FATAL_ERROR
-#include "metadata.hpp"         // for metadataObject
-#include "visUtil.hpp"          // for format_nice_string
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>   // for max
+#include <assert.h>    // for assert
+#include <cmath>       // for abs
+#include <cstdint>     // for uint32_t, int32_t, uint8_t
+#include <functional>  // for bind
+#include <limits>      // for numeric_limits
+#include <memory>      // for shared_ptr, __shared_ptr_access, allocator
+#include <string.h>    // for strncmp
+#include <string>      // for basic_string, operator!=, string
+#include <type_traits> // for enable_if
+#include <vector>      // for vector
 
 #define CHECK_META_SCALAR_INT_DIRECT(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1,         \
                                      BUF_NAME2, FRAME_ID2)                                         \

@@ -33,7 +33,7 @@
 #include "bufferContainer.hpp"      // for bufferContainer
 #include "cuda_runtime_api.h"       // for cudaMemcpy2D, cudaMemset2DAsync
 #include "driver_types.h"           // for CUstream_st, cudaMemcpyKind
-#include "fmt/format.h"             // for compile_string_to_view
+#include "fmt.hpp"                  // for compile_string_to_view
 #include "metadata.hpp"             // for metadataObject
 
 using kotekan::div_noremainder;

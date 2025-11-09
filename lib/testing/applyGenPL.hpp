@@ -1,13 +1,13 @@
 #ifndef APPLY_GEN_PL_HPP
 #define APPLY_GEN_PL_HPP
 
-#include <cstdint>              // for int32_t
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
+#include <cstdint> // for int32_t
+#include <string>  // for string
 
 /**
  * @brief Apply a generated packet loss mask to a generated voltage stream

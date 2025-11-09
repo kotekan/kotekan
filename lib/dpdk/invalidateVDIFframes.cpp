@@ -1,15 +1,15 @@
 #include "invalidateVDIFframes.hpp"
 
-#include <assert.h>               // for assert
-#include <stddef.h>               // for size_t
-#include <functional>             // for bind, function
-#include <memory>                 // for __shared_ptr_access, shared_ptr
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "chordMetadata.hpp"     // for get_chord_metadata, chordMetadata
+#include "prometheusMetrics.hpp" // for Metrics, Counter
+#include "vdif_functions.h"      // for VDIFHeader
 
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer
-#include "chordMetadata.hpp"      // for get_chord_metadata, chordMetadata
-#include "prometheusMetrics.hpp"  // for Metrics, Counter
-#include "vdif_functions.h"       // for VDIFHeader
+#include <assert.h>   // for assert
+#include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <stddef.h>   // for size_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -1,8 +1,8 @@
 #include "Telescope.hpp"
 
-#include <stdexcept> // for invalid_argument
-
 #include "fmt.hpp" // for compile_string_to_view
+
+#include <stdexcept> // for invalid_argument
 
 
 Telescope::Telescope(const std::string& log_level) {

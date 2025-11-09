@@ -5,13 +5,13 @@
 #define SIM_FULL_RANGE 1
 #define SIM_SINE 2
 
-#include <stdint.h>             // for int32_t
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 
 class networkOutputSim : public kotekan::Stage {
 public:

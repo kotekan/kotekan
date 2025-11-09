@@ -1,15 +1,16 @@
 #include "fakeGpuPattern.hpp"
 
-#include <time.h>             // for timespec
-#include <algorithm>          // for fill
-#include <cmath>              // for pow, lroundf
-#include <vector>             // for vector
+#include "Config.hpp"        // for Config
+#include "chordMetadata.hpp" // for chordMetadata
+#include "visUtil.hpp"       // for prod_index
 
-#include "Config.hpp"         // for Config
-#include "chordMetadata.hpp"  // for chordMetadata
-#include "fmt.hpp"            // for compile_string_to_view
-#include "gsl-lite.hpp"       // for span
-#include "visUtil.hpp"        // for prod_index
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm> // for fill
+#include <cmath>     // for pow, lroundf
+#include <time.h>    // for timespec
+#include <vector>    // for vector
 
 // Register test patterns
 REGISTER_FAKE_GPU_PATTERN(BlockGpuPattern, "block");

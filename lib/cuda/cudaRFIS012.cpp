@@ -21,7 +21,7 @@
 #include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h"       // for cudaStreamSynchronize
 #include "driver_types.h"           // for CUstream_st, cudaEvent_t, CUevent_st
-#include "fmt/format.h"             // for compile_string_to_view
+#include "fmt.hpp"                  // for compile_string_to_view
 #include "gpuCommand.hpp"           // for gpuCommandType
 #include "kotekanLogging.hpp"       // for DEBUG, FATAL_ERROR
 #include "n2k/rfi_kernels.hpp"      // for launch_s0_kernel, launch_s12_kernel

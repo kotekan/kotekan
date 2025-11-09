@@ -1,23 +1,24 @@
 #include "gpuSimulateN2kPL1bitCorr.hpp"
 
-#include <assert.h>             // for assert
-#include <bitset>               // for bitset
-#include <cstdint>              // for uint64_t, int32_t, int64_t
-#include <cstdlib>              // for abort
-#include <functional>           // for bind, function
-#include <memory>               // for shared_ptr, __shared_ptr_access
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType, GetType
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata, CHO...
+#include "div.hpp"             // for div_noremainder
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, DEBUG
+#include "metadata.hpp"        // for metadataObject
 
-#include "Config.hpp"           // for Config
-#include "DataType.hpp"         // for DataType, GetType
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, metadata_is_chord, get_chord_metadata, CHO...
-#include "div.hpp"              // for div_noremainder
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO, DEBUG
-#include "metadata.hpp"         // for metadataObject
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <assert.h>   // for assert
+#include <bitset>     // for bitset
+#include <cstdint>    // for uint64_t, int32_t, int64_t
+#include <cstdlib>    // for abort
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

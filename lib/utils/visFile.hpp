@@ -19,7 +19,7 @@
 #include "FrameView.hpp"       // for FrameView
 #include "dataset.hpp"         // for dset_id_t
 #include "factory.hpp"         // for CREATE_FACTORY, FACTORY, REGISTER_NAMED_TYPE_WITH_FACTORY
-#include "fmt/format.h"        // for compile_string_to_view
+#include "fmt.hpp"             // for compile_string_to_view
 #include "kotekanLogging.hpp"  // for logLevel, kotekanLogging, DEBUG
 #include "visUtil.hpp"         // for time_ctype, operator<
 

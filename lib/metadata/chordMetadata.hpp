@@ -19,7 +19,7 @@
 #include "buffer.hpp"          // for Buffer
 // TODO: CHIME and CHORD differ whether they use the datasetManager
 #include "dataset.hpp"         // for dset_id_t
-#include "fmt/format.h"        // for compile_string_to_view
+#include "fmt.hpp"             // for compile_string_to_view
 #include "json.hpp"            // for basic_json, json
 #include "jsonMetadata.hpp"    // for COARSE_FREQ, LOST_TIMESAMPLES, STREAM_ID, BEAM_COORD, DATA...
 #include "kotekanLogging.hpp"  // for WARN_NON_OO

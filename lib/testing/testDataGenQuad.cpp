@@ -1,18 +1,19 @@
 #include "testDataGenQuad.hpp"
 
-#include <assert.h>             // for assert
-#include <sys/time.h>           // for gettimeofday, timeval
-#include <unistd.h>             // for usleep, size_t
-#include <functional>           // for bind, function
-#include <memory>               // for __shared_ptr_access, shared_ptr
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "kotekanLogging.hpp"  // for INFO
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for INFO
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <assert.h>   // for assert
+#include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <sys/time.h> // for gettimeofday, timeval
+#include <unistd.h>   // for usleep, size_t
 
 
 using kotekan::bufferContainer;

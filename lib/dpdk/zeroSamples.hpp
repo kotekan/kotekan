@@ -1,14 +1,14 @@
 #ifndef ZERO_SAMPLES_HPP
 #define ZERO_SAMPLES_HPP
 
-#include <stdint.h> // for int32_t, uint32_t, uint8_t
-#include <string>   // for string
-#include <vector>   // for vector
-
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+
+#include <stdint.h> // for int32_t, uint32_t, uint8_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @brief Zeros samples in the @c out_buf based on flags in the @c lost_samples_buf

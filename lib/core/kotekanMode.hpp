@@ -11,11 +11,11 @@
 #include "cpuMonitor.hpp" // for CpuMonitor
 #endif
 
+#include "json.hpp" // for json
+
 #include <map>    // for map
 #include <memory> // for shared_ptr
 #include <string> // for string
-
-#include "json.hpp" // for json
 
 // doxygen wants the namespace to be documented somewhere
 /*!

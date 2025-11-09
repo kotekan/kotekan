@@ -1,15 +1,16 @@
 #include "gpuSimulate.hpp"
 
-#include <assert.h>             // for assert
-#include <stdlib.h>             // for free, malloc
-#include <functional>           // for bind, function
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for DEBUG, INFO
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <assert.h>   // for assert
+#include <functional> // for bind, function
+#include <stdlib.h>   // for free, malloc
 
 
 using kotekan::bufferContainer;

@@ -23,31 +23,32 @@
 #ifndef CONFIGTRACKER_H
 #define CONFIGTRACKER_H
 
-#include <arpa/inet.h>         // for inet_pton
-#include <errno.h>             // for errno
-#include <netinet/in.h>        // for sockaddr_in
-#include <openssl/md5.h>       // for MD5, MD5_DIGEST_LENGTH
-#include <stdint.h>            // for uint16_t
-#include <string.h>            // for strerror
-#include <sys/socket.h>        // for AF_INET
-#include <sys/stat.h>          // for stat, S_ISDIR
-#include <cstdio>              // for remove, rename, size_t
-#include <exception>           // for exception
-#include <fstream>             // for basic_ostream, operator<<, basic_ofstream, basic_ostream::...
-#include <functional>          // for bind, _1, function
-#include <iomanip>             // for operator<<, setfill, setw
-#include <map>                 // for map, operator!=, _Rb_tree_iterator, _Rb_tree_const_iterator
-#include <mutex>               // for mutex, lock_guard
-#include <sstream>             // for basic_stringstream, basic_ostringstream
-#include <string>              // for basic_string, allocator, char_traits, operator+, string
-#include <tuple>               // for tie, operator<, tuple
-#include <utility>             // for pair
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, ERROR_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO
+#include "restClient.hpp"     // for restClient
+#include "restServer.hpp"     // for connectionInstance, restServer
 
-#include "fmt.hpp"             // for compile_string_to_view
-#include "json.hpp"            // for iter_impl, json, json_ref, iteration_proxy_value, basic_json
-#include "kotekanLogging.hpp"  // for FATAL_ERROR_NON_OO, ERROR_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO
-#include "restClient.hpp"      // for restClient
-#include "restServer.hpp"      // for connectionInstance, restServer
+#include "fmt.hpp"  // for compile_string_to_view
+#include "json.hpp" // for iter_impl, json, json_ref, iteration_proxy_value, basic_json
+
+#include <arpa/inet.h>   // for inet_pton
+#include <cstdio>        // for remove, rename, size_t
+#include <errno.h>       // for errno
+#include <exception>     // for exception
+#include <fstream>       // for basic_ostream, operator<<, basic_ofstream, basic_ostream::...
+#include <functional>    // for bind, _1, function
+#include <iomanip>       // for operator<<, setfill, setw
+#include <map>           // for map, operator!=, _Rb_tree_iterator, _Rb_tree_const_iterator
+#include <mutex>         // for mutex, lock_guard
+#include <netinet/in.h>  // for sockaddr_in
+#include <openssl/md5.h> // for MD5, MD5_DIGEST_LENGTH
+#include <sstream>       // for basic_stringstream, basic_ostringstream
+#include <stdint.h>      // for uint16_t
+#include <string.h>      // for strerror
+#include <string>        // for basic_string, allocator, char_traits, operator+, string
+#include <sys/socket.h>  // for AF_INET
+#include <sys/stat.h>    // for stat, S_ISDIR
+#include <tuple>         // for tie, operator<, tuple
+#include <utility>       // for pair
 
 namespace kotekan {
 
