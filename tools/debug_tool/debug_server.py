@@ -10,6 +10,7 @@ CORS(app, support_credentials=True)
 KOTEKAN_ADDRESS = "http://localhost:12048"
 DUMP_DIR = "./"
 
+
 # Load file
 @app.route("/", defaults={"req_path": ""})
 @app.route("/<path:req_path>")
