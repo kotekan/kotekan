@@ -6,15 +6,15 @@
 #ifndef GEN_HFB_FRAMES_HPP
 #define GEN_HFB_FRAMES_HPP
 
+#include <stdint.h> // for uint32_t
+#include <random>   // for default_random_engine, normal_distribution, uniform_int_d...
+#include <string>   // for string
+
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "dataset.hpp"         // for dset_id_t
-
-#include <random>   // for default_random_engine, normal_distribution, uniform_int_d...
-#include <stdint.h> // for uint32_t
-#include <string>   // for string
 
 /**
  * @class GenHFBFrames

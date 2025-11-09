@@ -1,31 +1,26 @@
 #include "fakeGpu.hpp"
 
-#include "Config.hpp"       // for Config
-#include "Stage.hpp"        // for Stage
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"       // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "chordMetadata.hpp"
-#include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "factory.hpp"        // for FACTORY
-#include "fakeGpuPattern.hpp" // for FakeGpuPattern, _factory_aliasFakeGpuPattern
-#include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
-#include "metadata.hpp"       // for metadataContainer
-#include "visUtil.hpp"        // for frameID, gpu_N2_size, modulo, operator+
+#include <assert.h>            // for assert
+#include <sys/time.h>          // for TIMESPEC_TO_TIMEVAL, timeval
+#include <time.h>              // for timespec, time_t, nanosleep
+#include <csignal>             // for raise, SIGTERM
+#include <functional>          // for bind, function
+#include <random>              // for random_device, uniform_real_distribution, mt19937
+#include <string>              // for basic_string, string
+#include <vector>              // for vector
 
-#include "gsl-lite.hpp" // for span
-
-#include <atomic>     // for atomic_bool
-#include <csignal>    // for raise, SIGTERM
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <random>     // for mt19937, random_device, uniform_real_distribution
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <string>     // for string
-#include <sys/time.h> // for CLOCK_REALTIME, TIMESPEC_TO_TIMEVAL, timeval
-#include <time.h>     // for timespec, clock_gettime, nanosleep
-#include <vector>     // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "errors.h"            // for ReturnCode, exit_kotekan
+#include "factory.hpp"         // for FACTORY
+#include "fakeGpuPattern.hpp"  // for FakeGpuPattern, _factory_aliasFakeGpuPattern
+#include "fmt.hpp"             // for compile_string_to_view
+#include "gsl-lite.hpp"        // for span
+#include "kotekanLogging.hpp"  // for DEBUG, ERROR, INFO
+#include "visUtil.hpp"         // for frameID, gpu_N2_size, modulo, operator+
 
 
 REGISTER_KOTEKAN_STAGE(FakeGpu);

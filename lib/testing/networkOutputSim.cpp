@@ -1,21 +1,18 @@
 #include "networkOutputSim.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for mark_frame_full, register_producer, wait_for_empty_frame
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp" // for ERROR
+#include <pthread.h>            // for pthread_exit
+#include <stdlib.h>             // for exit
+#include <sys/time.h>           // for gettimeofday, timeval
+#include <functional>           // for bind, function
+#include <memory>               // for __shared_ptr_access, shared_ptr
 
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <pthread.h>  // for pthread_exit
-#include <regex>      // for match_results<>::_Base_type
-#include <stdlib.h>   // for exit
-#include <sys/time.h> // for gettimeofday, timeval
-#include <vector>     // for vector
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
+#include "fmt.hpp"              // for compile_string_to_view
+#include "kotekanLogging.hpp"   // for ERROR
 
 
 using kotekan::bufferContainer;

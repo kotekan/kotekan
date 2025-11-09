@@ -1,12 +1,13 @@
 #ifndef GPU_SIMULATE_N2K_CORR_HPP
 #define GPU_SIMULATE_N2K_CORR_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
+#include <cstdint>              // for int32_t
+#include <string>               // for string
 
-#include <cstdint> // for int32_t
-#include <string>  // for string
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
 
 /**
  * @brief Perform on CPU the equivalent of the CudaCorrelator stage:

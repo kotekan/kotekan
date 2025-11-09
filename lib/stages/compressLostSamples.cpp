@@ -1,13 +1,14 @@
 #include "compressLostSamples.hpp"
 
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"       // for Buffer
-#include "chordMetadata.hpp"
+#include <visUtil.hpp>        // for frameID, modulo
+#include <functional>         // for bind, function
+#include <memory>             // for __shared_ptr_access, shared_ptr
+#include <stdexcept>          // for runtime_error
+#include <string>             // for allocator, basic_string, string
 
-#include <functional>  // for bind, function
-#include <stdexcept>   // for runtime_error
-#include <string>      // for allocator, basic_string, string
-#include <visUtil.hpp> // for frameID, modulo
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
 
 
 using kotekan::bufferContainer;

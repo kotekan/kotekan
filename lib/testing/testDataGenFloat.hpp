@@ -1,12 +1,13 @@
 #ifndef TEST_DATA_GEN_FLOAT_H
 #define TEST_DATA_GEN_FLOAT_H
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "bufferContainer.hpp"
+#include <stdint.h>             // for uint32_t
+#include <string>               // for string, basic_string
 
-#include <stdint.h> // for uint32_t
-#include <string>   // for string
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
 
 // Type: one of "random", "const"
 // Value: the value of the constant

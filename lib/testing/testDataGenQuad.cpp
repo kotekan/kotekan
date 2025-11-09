@@ -1,20 +1,18 @@
 #include "testDataGenQuad.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp" // for INFO
+#include <assert.h>             // for assert
+#include <sys/time.h>           // for gettimeofday, timeval
+#include <unistd.h>             // for usleep, size_t
+#include <functional>           // for bind, function
+#include <memory>               // for __shared_ptr_access, shared_ptr
 
-#include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <stddef.h>   // for size_t
-#include <sys/time.h> // for gettimeofday, timeval
-#include <unistd.h>   // for usleep
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
+#include "fmt.hpp"              // for compile_string_to_view
+#include "kotekanLogging.hpp"   // for INFO
 
 
 using kotekan::bufferContainer;

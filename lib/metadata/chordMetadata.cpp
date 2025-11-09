@@ -1,9 +1,12 @@
 #include "chordMetadata.hpp"
 
-#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
+#include <string.h>     // for strncmp, strncpy, memset, strnlen
+#include <algorithm>    // for copy_n, copy, max
+#include <cstring>      // for memset
+#include <type_traits>  // for is_pod_v
 
-#include <string.h> // for size_t, memset
-#include <type_traits>
+#include "Symbol.hpp"   // for Symbol
+#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 

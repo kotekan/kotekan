@@ -1,6 +1,10 @@
 #ifndef KOTEKAN_CUDA_COPYFROMRINGBUFFER_HPP
 #define KOTEKAN_CUDA_COPYFROMRINGBUFFER_HPP
 
+#include <stddef.h> // for size_t
+#include <string>   // for string, basic_string
+#include <vector>   // for vector
+
 #include "Config.hpp"              // for Config
 #include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"     // for bufferContainer
@@ -8,10 +12,6 @@
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "driver_types.h"          // for cudaEvent_t
 #include "ringbuffer.hpp"          // for RingBuffer
-
-#include <stddef.h> // for size_t
-#include <string>   // for string, basic_string
-#include <vector>   // for vector
 
 /**
  * @class cudaCopyFromRingbuffer

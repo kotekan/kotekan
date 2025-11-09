@@ -1,19 +1,18 @@
 #ifndef TEST_N2K_GEN_H
 #define TEST_N2K_GEN_H
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata
-#include "visUtil.hpp"         // for frameID
+#include <stdint.h>             // for int32_t, uint32_t, uint64_t
+#include <array>                // for array
+#include <memory>               // for shared_ptr
+#include <string>               // for string, basic_string
+#include <vector>               // for vector
 
-#include "json.hpp" // for json
-
-#include <memory>   // for shared_ptr
-#include <stddef.h> // for size_t
-#include <stdint.h> // for uint32_t
-#include <string>   // for string
-#include <vector>   // for vector
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for chordMetadata
+#include "visUtil.hpp"          // for frameID
 
 /**
  * @class testN2kGen

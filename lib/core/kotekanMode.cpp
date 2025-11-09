@@ -1,27 +1,27 @@
 #include "kotekanMode.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for StageFactory
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for StageInfo, GenericBuffer
-#include "bufferFactory.hpp"     // for bufferFactory
-#include "configTracker.hpp"     // for ConfigTracker
-#include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for datasetManager
-#include "kotekanLogging.hpp"    // for INFO_NON_OO
-#include "kotekanTrackers.hpp"   // for KotekanTrackers
-#include "metadataFactory.hpp"   // for metadataFactory
-#include "prometheusMetrics.hpp" // for Metrics
-#include "restServer.hpp"        // for restServer, connectionInstance
-#include "version.h" // for get_kotekan_version, get_cmake_build_options, get_git_commit_hash
+#include <stdint.h>               // for uint16_t
+#include <exception>              // for exception
+#include <functional>             // for bind, function, _1
+#include <utility>                // for pair
 
-#include "fmt.hpp"  // for compile_string_to_view, format, format_string
-#include "json.hpp" // for json, basic_json
-
-#include <functional> // for bind, function, _1
-#include <stdint.h>   // for uint16_t
-#include <utility>    // for pair
+#include "Config.hpp"             // for Config
+#include "Stage.hpp"              // for Stage
+#include "StageFactory.hpp"       // for StageFactory
+#include "Telescope.hpp"          // for Telescope
+#include "buffer.hpp"             // for StageInfo, GenericBuffer
+#include "bufferFactory.hpp"      // for bufferFactory
+#include "configTracker.hpp"      // for ConfigTracker
+#include "configUpdater.hpp"      // for configUpdater
+#include "datasetManager.hpp"     // for datasetManager
+#include "fmt.hpp"                // for compile_string_to_view, format, format_string
+#include "json.hpp"               // for json, basic_json
+#include "kotekanLogging.hpp"     // for INFO_NON_OO, ERROR_NON_OO
+#include "kotekanTrackers.hpp"    // for KotekanTrackers
+#include "metadataFactory.hpp"    // for metadataFactory
+#include "prometheusMetrics.hpp"  // for Metrics
+#include "restServer.hpp"         // for restServer, connectionInstance
+#include "version.h"              // for get_cmake_build_options, get_git_branch, get_git_commit...
 
 using namespace std::placeholders;
 

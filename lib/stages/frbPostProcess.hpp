@@ -7,16 +7,16 @@
 #ifndef FRB_POST_PROCESS
 #define FRB_POST_PROCESS
 
+#include <stdint.h> // for int32_t, uint16_t, int16_t, uint32_t, uint8_t
+#include <string>   // for string
+#include <vector>   // for vector
+
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "frb_functions.h"       // for FRBHeader
 #include "prometheusMetrics.hpp" // for Counter
-
-#include <stdint.h> // for int32_t, uint16_t, int16_t, uint32_t, uint8_t
-#include <string>   // for string
-#include <vector>   // for vector
 
 
 /**

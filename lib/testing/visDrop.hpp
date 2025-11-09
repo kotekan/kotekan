@@ -6,14 +6,14 @@
 #ifndef VISDROP_HPP
 #define VISDROP_HPP
 
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
+
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
-
-#include <stdint.h> // for uint32_t
-#include <string>   // for string
-#include <vector>   // for vector
 
 /**
  * @brief Drops frames based on given criteria (for testing) without telling the

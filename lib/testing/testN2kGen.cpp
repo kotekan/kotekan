@@ -1,30 +1,23 @@
 #include "testN2kGen.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"       // for Telescope, stream_t
-#include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp" // for INFO, DEBUG
-#include "visUtil.hpp"        // for frameID
+#include <assert.h>             // for assert
+#include <stdint.h>             // for int32_t, uint32_t, uint64_t, int64_t
+#include <cstdlib>              // for abort, size_t
+#include <functional>           // for bind, function
+#include <random>               // for uniform_int_distribution, mt19937
+#include <utility>              // for swap
+#include <vector>               // for vector
 
-#include <algorithm>  // for copy, max
-#include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
-#include <cmath>      // for fmod
-#include <cstdint>    // for uint64_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
-#include <random>
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for runtime_error, invalid_argument
-#include <stdint.h>    // for uint64_t, uint32_t, uint8_t, int32_t
-#include <strings.h>   // for bzero
-#include <sys/time.h>  // for gettimeofday, timeval
-#include <sys/types.h> // for uint
-#include <unistd.h>    // for usleep
-#include <vector>      // for vector
+#include "Config.hpp"           // for Config
+#include "DataType.hpp"         // for DataType
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
+#include "fmt.hpp"              // for compile_string_to_view
+#include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG, INFO
+#include "metadata.hpp"         // for metadataObject
+#include "visUtil.hpp"          // for frameID, modulo
 
 
 using kotekan::bufferContainer;

@@ -1,17 +1,14 @@
 #include "constDataCheck.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
-#include "bufferContainer.hpp" // for bufferContainer
-#include "errors.h"            // for TEST_PASSED
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
+#include <functional>           // for bind, function
 
-#include <atomic>     // for atomic_bool
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "errors.h"             // for TEST_PASSED
+#include "fmt.hpp"              // for compile_string_to_view
+#include "kotekanLogging.hpp"   // for DEBUG, FATAL_ERROR, INFO
 
 
 REGISTER_KOTEKAN_STAGE(constDataCheck);

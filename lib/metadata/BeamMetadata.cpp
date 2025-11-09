@@ -1,9 +1,11 @@
 #include "BeamMetadata.hpp"
 
-#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
+#include <assert.h>           // for assert
+#include <memory>             // for shared_ptr, dynamic_pointer_cast, __shared_ptr_access
+#include <string>             // for basic_string
 
-#include <assert.h> // for assert
-#include <memory>   // for allocator
+#include "chordMetadata.hpp"  // for CHORD_META_MAX_FREQ
+#include "factory.hpp"        // for REGISTER_TYPE_WITH_FACTORY
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, BeamMetadata);
 

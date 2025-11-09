@@ -1,8 +1,8 @@
 #include "N2Metadata.hpp"
 
-#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
-
 #include <string.h> // for size_t, memset
+
+#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, N2Metadata);
 N2Metadata::N2Metadata() : N2MetadataFormat{0, 0, 0, 0, 0, 0.0, eop_null, 0, 0, 0, 0, 0} {
