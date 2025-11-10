@@ -156,8 +156,10 @@ jobs:
               PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
-              pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
+              pytest -v -n -s auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              pytest -rP
+              pytest -v -x -s --timeout="${PYTEST_TIMEOUT}" -m serial
+              pytest -rP
 
           - id: boost
             name: "Full build + boost tests"

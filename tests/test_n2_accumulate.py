@@ -20,6 +20,7 @@ count_vals = [0, 8192, 8191, 20, 5000]
 rfi_vals = [255, 0, 255, 255]
 
 global_params = {
+    "logging": "DEBUG",
     "fft_length": 16384,
     "sampling_rate_Hz": 3.2e9,
     "num_elements": 64,
