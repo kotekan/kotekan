@@ -4,7 +4,7 @@
 namespace kotekan {
 
 std::mutex Symbol::mutex;
-std::unordered_set<std::string_view> Symbol::known_symbols;
+owning_unordered_set<std::string_view> Symbol::known_symbols;
 
 // Look up a string in the known symbols. If it is not known, insert
 // it.

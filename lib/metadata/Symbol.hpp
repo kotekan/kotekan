@@ -8,11 +8,21 @@
 #include <iostream>      // for ostream
 #include <mutex>         // for mutex
 #include <string>        // for string, basic_string
-#include <string_view>   // for string_view, hash
 #include <unordered_set> // for unordered_set
 
 
 namespace kotekan {
+
+template<typename T>
+struct owning_unordered_set;
+template<>
+struct owning_unordered_set<std::string_view> : public std::unordered_set<std::string_view> {
+    ~owning_unordered_set() {
+        for (auto s : *this) {
+            delete[] s.data();
+        }
+    }
+};
 
 // A symbol is similar to a string: A symbol can be created from a
 // string (this is expensive). As pay-off, comparing symbols to each
@@ -22,7 +32,7 @@ class Symbol {
     // We keep a set of all symbols that have been created
     // (`known_symbols). It is protected by a mutex.
     static std::mutex mutex;
-    static std::unordered_set<std::string_view> known_symbols;
+    static owning_unordered_set<std::string_view> known_symbols;
 
     // A symbol's value is a pointer to a C string.
     const char* value;
