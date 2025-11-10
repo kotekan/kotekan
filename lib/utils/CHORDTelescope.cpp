@@ -629,18 +629,21 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
             eop.delta_UT1_inst = eop_b->delta_UT1_inst;
             eop.xp_as = eop_b->xp_as;
             eop.yp_as = eop_b->yp_as;
-            WARN("Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. Earliest "
-                 "time = {:d} s + {:d} ns.",
-                 t_target / GIGA, t_target % GIGA, eop_b->t_inst / GIGA, eop_b->t_inst % GIGA);
+            WARN(
+                "Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. Earliest "
+                "time = {:d} s + {:d} ns.",
+                t_target / GIGA, t_target % GIGA, eop_b->t_inst / GIGA, eop_b->t_inst % GIGA);
         } else if (eop_b == _eop_table.end()) {
             // Time is later than covered by the table, use the last value.
             auto eop_last = eop_b - 1;
             eop.delta_UT1_inst = eop_last->delta_UT1_inst;
             eop.xp_as = eop_last->xp_as;
             eop.yp_as = eop_last->yp_as;
-            WARN("Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest UT1 = "
+            WARN("Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest "
+                 "UT1 = "
                  "{:d} s + {:d} ns.",
-                 t_target / GIGA, t_target % GIGA, eop_last->t_inst / GIGA, eop_last->t_inst % GIGA);
+                 t_target / GIGA, t_target % GIGA, eop_last->t_inst / GIGA,
+                 eop_last->t_inst % GIGA);
         } else {
             // Interpolate!
             auto eop_a = eop_b - 1;
@@ -694,7 +697,8 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
             eop.delta_UT1_inst = eop_b->delta_UT1_inst;
             eop.xp_as = eop_b->xp_as;
             eop.yp_as = eop_b->yp_as;
-            WARN("Requesting EOP earlier than in table. Requested UT1 = {:d} s + {:d} ns. Earliest UT1 "
+            WARN("Requesting EOP earlier than in table. Requested UT1 = {:d} s + {:d} ns. Earliest "
+                 "UT1 "
                  "= {:d} s + {:d} ns.",
                  t_ut1 / GIGA, t_ut1 % GIGA, eop_b->t_ut1 / GIGA, eop_b->t_ut1 % GIGA);
         } else if (eop_b == _eop_table.end()) {
@@ -703,7 +707,8 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
             eop.delta_UT1_inst = eop_last->delta_UT1_inst;
             eop.xp_as = eop_last->xp_as;
             eop.yp_as = eop_last->yp_as;
-            WARN("Requesting EOP later than in table. Requested UT1 = {:d} s + {:d} ns. Latest UT1 = "
+            WARN("Requesting EOP later than in table. Requested UT1 = {:d} s + {:d} ns. Latest UT1 "
+                 "= "
                  "{:d} s + {:d} ns.",
                  t_ut1 / GIGA, t_ut1 % GIGA, eop_last->t_ut1 / GIGA, eop_last->t_ut1 % GIGA);
         } else {
