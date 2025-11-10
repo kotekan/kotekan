@@ -899,18 +899,27 @@ BOOST_AUTO_TEST_CASE(_vec_itrs_to_cirs) {
  */
 BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     /*
-     * Thompson, Moran, and Swenson (3ed), Eq. 4.9 gives the fringe rate as:
-     * dphi/dt = -w_e * u * cos(delta).
+     * Thompson, Moran, and Swenson (3ed), Eq. 4.9 gives observed the fringe rate as:
+     * 
+     * dw/dt = -w_e * u * cos(delta),
+     *
+     * and their visibility is defined as:
+     *
+     * V = \int_dOmega A(\hat{n}) I(\hat{n}) exp(-2*pi*i * (u, v, w)*\hat{n})
+     *
+     * Therefore the observed visibility phase evolves as:
+     *
+     * Thompson, obs -- dphi/dt = -2*pi * dw/dt = 2 * pi * w_e * u * cos(delta)
      *
      * delta = declination of source
      * u = E/W baseline in wavelengths
      * w_e = 7.292115e-5 rad/s = Earth's rotation rate (correcting a typo, the written
-     *        value is 7.29115e-15 rad/s.
+     *        value is 7.29115e-15 rad/s.)
      *
      * In CHORD we define the visibility with the opposite sign of the phase w.r.t.
      * Thompson, so we expect:
      *
-     * dphi/dt = + w_e * u * cos(delta)
+     * CHORD, obs -- dphi/dt = + 2 * pi * w_e * u * cos(delta)
      *
      * to first order in time.
      */
@@ -922,6 +931,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     double w_e = 7.292115e-5; // = 2pi * 1.0027378... / 86400 s
 
+    // target straight overhead
     double target_dec_deg = 45.0;
     double tel_lat_deg = 45.0;
 
@@ -953,8 +963,10 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     std::vector<std::complex<double>> tel_phases(4, 0);
 
+    double test_phase_val = 2 * M_PI * w_e * t * cos(dec);
+
     std::vector<double> test_phases(
-        {0.0, 2 * M_PI * w_e * t * cos(dec), 0.0, 2 * M_PI * w_e * t * cos(dec)});
+        {0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel = get_telescope(json_config);
 
@@ -963,6 +975,67 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     for (int i = 0; i < 4; i++) {
         check_close_double(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
         check_close_double(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases[i],
-                           1.0e-8, 1.0e-5, "tel_phase", "test_phase");
+                           1.0e-8, 1.0e-5, "tel_phase1", "test_phase1");
+    }
+
+    // Position the array at a different latitude (tests that we're converting
+    // topo -> itrs coords)
+    tel_lat_deg = 60.0;
+    target_dec_deg = 30.0;
+    json_config["telescope"]["origin_itrs_lat_deg"] = tel_lat_deg;
+    json_config["telescope"]["dish_coelev_deg"] = target_dec_deg - tel_lat_deg;
+    
+    test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI/180);
+    std::vector<double> test_phases2(
+        {0.0, test_phase_val, 0.0, test_phase_val});
+
+    const CHORDTelescope& tel2 = get_telescope(json_config);
+    tel2.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
+
+    for (int i = 0; i < 4; i++) {
+        check_close_double(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
+        check_close_double(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases2[i],
+                           1.0e-7, 1.0e-5, "tel_phase2", "test_phase2");
+    }
+
+    // Rotate the dish orientation (tests that we're converting dish -> topo coords)
+    double deflection_deg = 20.0;
+    double deflection = deflection_deg * M_PI / 180;
+    target_dec_deg = 70.0;
+    json_config["telescope"]["dish_vert_axis"] = {0.0, sin(deflection), cos(deflection)};
+    json_config["telescope"]["dish_coelev_deg"] = target_dec_deg - tel_lat_deg - deflection_deg;
+    
+    test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI/180);
+    std::vector<double> test_phases3(
+        {0.0, test_phase_val, 0.0, test_phase_val});
+    
+    const CHORDTelescope& tel3 = get_telescope(json_config);
+    tel3.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
+
+    for (int i = 0; i < 4; i++) {
+        check_close_double(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
+        check_close_double(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases3[i],
+                           1.0e-7, 1.0e-5, "tel_phase3", "test_phase3");
+    }
+
+    // Rotate the grid orientation (tests that we've converting tel -> topo
+    // coords)
+    //    |2 3      3 1|
+    //    |0 1  --> 2 0| 
+    // ---+---      ---+---
+    json_config["telescope"]["grid_x_axis"] = {0.0, 1.0, 0.0};
+    json_config["telescope"]["grid_y_axis"] = {-1.0, 0.0, 0.0};
+
+    test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI/180);
+    std::vector<double> test_phases4(
+        {0.0, 0.0, -test_phase_val, -test_phase_val});
+
+    const CHORDTelescope& tel4 = get_telescope(json_config);
+    tel4.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
+
+    for (int i = 0; i < 4; i++) {
+        check_close_double(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
+        check_close_double(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases4[i],
+                           1.0e-7, 1.0e-5, "tel_phase4", "test_phase4");
     }
 }
