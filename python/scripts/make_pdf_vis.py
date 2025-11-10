@@ -39,7 +39,7 @@ for i in range(0, len(data)):
 for i in range(0, len(data)):
     vis_imag[i][ut_indices] = data[i]["vis"]["imag"]
 
-vis_mag = sqrt(vis_real ** 2 + vis_imag ** 2)
+vis_mag = sqrt(vis_real**2 + vis_imag**2)
 
 # Generate graphs
 
