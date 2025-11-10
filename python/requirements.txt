@@ -1,12 +1,11 @@
-numpy>=1.15.1
+numpy>1.20
 msgpack>=0.6.1
 click
 h5py
-future
 requests
 pyyaml
 tabulate
-comet @ git+ssh://git@github.com/chime-experiment/comet.git
+comet @ git+https://git@github.com/chime-experiment/comet.git
 posix_ipc
 prometheus-client
 jinja2
