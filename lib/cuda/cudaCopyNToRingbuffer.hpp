@@ -22,9 +22,9 @@
  * into a single ringbuffer with layout (T_frame, F, T_sample, E)
  * Where each input frame has F=1, and each output frame has F=16.
  *
- * @config in_bufs            List of input buffer names
- * @config gpu_mem_output     Name of the GPU memory region to use for the output
- * @config signal_buf         Name of the ringbuffer to manage the GPU memory
+ * @conf in_bufs            List of input buffer names
+ * @conf gpu_mem_output     Name of the GPU memory region to use for the output
+ * @conf signal_buf         Name of the ringbuffer to manage the GPU memory
  */
 class cudaCopyNToRingbuffer : public cudaCommand {
 public:

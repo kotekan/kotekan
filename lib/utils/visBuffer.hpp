@@ -236,7 +236,7 @@ public:
      * the `dataset_id` is set to zero.
      *
      * @param chord_metadata Metadata to fill from.
-     * @param ind            Frequency ind for multifrequency buffers (use zero
+     * @param f_ind          Frequency ind for multifrequency buffers (use zero
      *                       if not multifrequency)
      *
      **/

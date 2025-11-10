@@ -97,7 +97,7 @@ public:
      * @param buffer_name Unique name for this buffer based on location in config file
      * @param buffer_type Type name, eg "standard", "vis", "hfb", "ring"
      * @param num_frames The buffer depth (for subclasses that have that concept)
-     * @param metadata_pool The name of the metadata pool to associate with the buffer
+     * @param pool The name of the metadata pool to associate with the buffer
      */
     GenericBuffer(const std::string& buffer_name, const std::string& buffer_type,
                   std::shared_ptr<metadataPool> pool, int num_frames);
@@ -224,9 +224,9 @@ public:
      * the reference counter. Once it reaches zero, the the metadata is returned to the
      * pool.
      *
-     * @param[in] from_frame_id The frame ID to copy the metadata from
+     * @param[in] from_ID The frame ID to copy the metadata from
      * @param[in] to_buf The buffer to copy the metadata into
-     * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
+     * @param[in] to_ID The frame ID in the @c to_buf to copy the metadata into
      */
     void pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID);
 
@@ -348,7 +348,7 @@ public:
      *
      * @param num_frames - number of "frames" in this ring buffer
      * @param len - length in bytes of each frame
-     * @param metadata_pool The name of the metadata pool to associate with the buffer
+     * @param pool The name of the metadata pool to associate with the buffer
      * @param buffer_name: unique name for this buffer, from the config file declaration
      * @param buffer_type: "standard", "vis", "hfb"
      * @param numa_node The NUMA domain to mbind the memory into
@@ -526,6 +526,7 @@ public:
      * @param[in] frame_id The frame ID of the frame to describe
      * @param[in] extents Array extentds in the D dimensions
      * @param[in] dimnames Array axis labels in the D dimensions
+     * @param[in] quantity_name
      */
     template<typename T, std::size_t D>
     void allocate_new_frame_desc(int frame_id, kotekan::Symbol quantity_name,
@@ -540,7 +541,7 @@ public:
      *        array of type T
      * @param[in] frame_id The frame ID of the frame to describe
      * @param[in] value_type the kotekan type enomerator of the values stored
-     * @param[in] rank dimensionality of the data array
+     * @param[in] quantity_name
      * @param[in] extents Array extentds in the D dimensions
      * @param[in] dimnames Array axis labels in the D dimensions
      */
@@ -564,7 +565,6 @@ public:
 
     /**
      * @brief Returns the last time a frame was marked as full
-     * @param buf The buffer to get the last arrival time for.
      * @return A double (with units: seconds) containing the unix time of the last frame arrival
      */
     double get_last_arrival_time();
@@ -635,7 +635,7 @@ private:
     /**
      * @brief Marks a frame as empty and if the buffer requires zeroing then it starts
      *        the zeroing thread and delays marking it as empty until the zeroing is done.
-     * @param id The id of the frame to mark as empty.
+     * @param ID The id of the frame to mark as empty.
      * @return True if the frame was marked as empty, false if it is being zeroed.
      */
     bool private_mark_frame_empty(const int ID);

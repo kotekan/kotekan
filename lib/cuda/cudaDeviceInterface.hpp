@@ -86,6 +86,7 @@ public:
     /**
      * @brief Builds a list of kernels from the file with name: @c kernel_file_name
      *
+     * @param kernel_filename Kernel file
      * @param kernel_names Vector list of kernel names in the kernel file
      * @param opts         List of options to pass to nvrtc
      **/

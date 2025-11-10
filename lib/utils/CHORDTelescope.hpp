@@ -174,7 +174,7 @@ public:
      *          over table, using the first or last entry if target time is
      *          out of table range.
      *
-     * @param   ts  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
+     * @param   ut1  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
      **/
     struct EOP get_EOP_at_UT1(int64_t ut1) const;
 
@@ -204,7 +204,7 @@ public:
     /**
      * @brief   Transform the given vector from Dish to Topocentric coords.
      *
-     * @param   v_topo  Vector in dish coordinates.
+     * @param   v_dish  Vector in dish coordinates.
      **/
     std::array<double, 3> vec_dish_to_topocen(const std::array<double, 3>& v_dish) const;
 
@@ -218,14 +218,14 @@ public:
     /**
      * @brief   Transform the given vector from telescope to topocentric coords.
      *
-     * @param   v_topo  Vector in telescope coordinates.
+     * @param   v_tel  Vector in telescope coordinates.
      **/
     std::array<double, 3> vec_tel_to_topocen(const std::array<double, 3>& v_tel) const;
 
     /**
      * @brief   Transform the given vector from ITRS to topocentric coords.
      *
-     * @param   v_topo  Vector in ITRS coordinates.
+     * @param   v_itrs  Vector in ITRS coordinates.
      **/
     std::array<double, 3> vec_itrs_to_topocen(const std::array<double, 3>& v_itrs) const;
 
@@ -239,7 +239,7 @@ public:
     /**
      * @brief   Transform the given vector from CIRS to ITRS coords.
      *
-     * @param   v_topo  Vector in CIRS coordinates.
+     * @param   v_cirs  Vector in CIRS coordinates.
      * @param   eop     EOP for time of transformation.
      **/
     std::array<double, 3> vec_cirs_to_itrs(const std::array<double, 3>& v_cirs,
@@ -248,7 +248,7 @@ public:
     /**
      * @brief   Transform the given vector from ITRS to CIRS coords.
      *
-     * @param   v_topo  Vector in ITRS coordinates.
+     * @param   v_itrs  Vector in ITRS coordinates.
      * @param   eop     EOP for time of transformation.
      **/
     std::array<double, 3> vec_itrs_to_cirs(const std::array<double, 3>& v_itrs,

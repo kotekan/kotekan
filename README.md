@@ -1,17 +1,17 @@
 
 # Documentation
 
-Compiled docs are available at https://kotekan.readthedocs.io/en/latest/.
+Compiled docs are available at https://kotekan.readthedocs.io/elatest/.
 
-[![Documentation Status](https://readthedocs.org/projects/kotekan/badge/?version=latest)](https://kotekan.readthedocs.io/en/latest/?badge=latest)
+[![Documentation Status](https://readthedocs.org/projects/kotekan/badge/?version=latest)](https://kotekan.readthedocs.io/latest/?badge=latest)
 
 
 # Build Instructions
 
 [![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yml/badge.svg)](https://github.com/kotekan/kotekan/actions/workflows/main.yml)
 
-Detailed instructions at https://kotekan.readthedocs.io/en/latest/.
-Full list of CMake options: https://kotekan.readthedocs.io/en/latest/compiling/cmake_options.html
+Detailed instructions at https://kotekan.readthedocs.io/latest/.
+Full list of CMake options: https://kotekan.readthedocs.io/latest/compiling/cmake_options.html
 
 This project is built using cmake, so you will need to install cmake
 before starting a build.

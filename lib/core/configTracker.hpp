@@ -163,7 +163,6 @@ public:
      * This function checks if the number of configurations stored in _configs
      * matches the number of hashes stored in _config_hashes.
      *
-     * @returns True if the sizes are consistent, false otherwise.
      */
     void check_num_configs_consistent() const {
         std::lock_guard<std::mutex> lock(_lock);
@@ -221,7 +220,6 @@ public:
     /**
      * @brief Check if a config exists in the _configs map.
      *
-     * @param hash The hash of the config.
      * @returns True if the config exists, false otherwise.
      */
     bool hasConfig(std::string host, uint16_t port) const {

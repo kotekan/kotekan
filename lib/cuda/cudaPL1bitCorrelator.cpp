@@ -39,26 +39,26 @@ namespace {} // namespace
  *
  * @par GPU Memory
  * @gpu_mem Input expanded PL mask
- *   @gpu_mem_buffer    @c ring
+ *   @gpu_mem           @c ring
  *   @gpu_mem_quantity  @c pl_mask
  *   @gpu_mem_type      @c uint1x8
  *   @gpu_mem_dim_name  [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
- *   @gpu_mem_shape     [@c num_times / 64][@c num_frequencies][@c num_polarizations]
+ *   @buffer_shape      [@c num_times / 64][@c num_frequencies][@c num_polarizations]
  *                      [@c num_dishes / 8][@c 64 / 8]
  *   @gpu_mem_metadata  @c chordMetadata
  * @gpu_mem Input RFI mask ringbuffer
- *   @gpu_mem_buffer    @c ring
+ *   @gpu_mem           @c ring
  *   @gpu_mem_quantity  @c RFImask
  *   @gpu_mem_type      @c uint1x8
  *   @gpu_mem_dim_name  [@c T8hi128][@c F][@c T8lo128]
- *   @gpu_mem_shape     [@c buffer_depth * num_times / 8 / 128][@c num_local_freq][@c 2][@c 128]
+ *   @buffer_shape      [@c buffer_depth * num_times / 8 / 128][@c num_local_freq][@c 2][@c 128]
  *   @gpu_mem_metadata  @c chordMetadata
  * @gpu_mem Output N2 counts array
- *   @gpu_mem_buffer    @c standard
+ *   @gpu_mem           @c standard
  *   @gpu_mem_quantity  @c n2k_counts
  *   @gpu_mem_type      @c int32
  *   @gpu_mem_dim_name  [@c Tc][@c F][@c D8Phi][@c D8Plo1[@c D8Plo2]
- *   @gpu_mem_shape     [@c num_subintegrations][@c num_frequencies][@c triangle_num_blocks]
+ *   @buffer_shape      [@c num_subintegrations][@c num_frequencies][@c triangle_num_blocks]
  *                      [@c blocksize][@c blocksize]
  *   @gpu_mem_metadata  @c chordMetadata
  * @conf  buffer_depth           Int.     The number of GPU frames used for pipelining commands.

@@ -283,7 +283,7 @@ TAB_SIZE               = 4
 # with the commands \{ and \} for these it is advised to use the version @{ and
 # @} or use a double escape (\\{ and \\})
 
-ALIASES                = conf="@param" \
+ALIASES                = conf="@c" \
                          buffer="- @c" \
                          buffer_format="  - @b Format: " \
                          buffer_shape="  - @b Shape: " \
@@ -292,6 +292,8 @@ ALIASES                = conf="@param" \
                          gpu_mem_type="  - @b Type: @e" \
                          gpu_mem_format="  -  @b Format:" \
                          gpu_mem_metadata="  -  @b Metadata:  @c" \
+                         gpu_mem_quantity="  - @b Quantity: @c" \
+                         gpu_mem_dim_name="  - @b Dim: @c" \
                          requires_kernel="@b Required @b Kernel @arg @c" \
                          metric="- @c" \
                          endpoint="- @c" \
@@ -1062,7 +1064,8 @@ EXCLUDE                = @PROJECT_SOURCE_DIR@/external \
                          @PROJECT_SOURCE_DIR@/build \
                          @PROJECT_SOURCE_DIR@/build-docs \
                          @PROJECT_SOURCE_DIR@/.git \
-                         @PROJECT_SOURCE_DIR@/docs
+                         @PROJECT_SOURCE_DIR@/docs \
+                         @PROJECT_SOURCE_DIR@/julia/kernels
 
 # The EXCLUDE_SYMLINKS tag can be used to select whether or not files or
 # directories that are symbolic links (a Unix file system feature) are excluded

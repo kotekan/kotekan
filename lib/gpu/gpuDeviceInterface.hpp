@@ -80,6 +80,7 @@ public:
      * @param view_offset the offset in bytes of the view.
      * @param view_len the length in bytes of the view.  *view_offset*
      *   + *view_len* must be <= *source_len*.
+     * @param buffer_depth
      */
     void create_gpu_memory_array_view(const std::string& source_name, const size_t source_len,
                                       const std::string& view_name, const size_t view_offset,
@@ -112,6 +113,7 @@ public:
      * @param source_len  the size in bytes of the "real" GPU memory array.
      * @param view_name   the name of the view onto the "real" GPU memory array.
      * @param view_offset the offset in bytes of the views.
+     * @param buffer_depth
      * @param view_len the length in bytes of the views.  *view_offset*
      *   + *view_len* * gpu_buffer_depth must be <= *source_len*.
      */

@@ -27,29 +27,29 @@
  *
  * @par GPU Memory
  * @gpu_mem Input voltage
- *   @gpu_mem_buffer    @c ring
+ *   @gpu_mem           @c ring
  *   @gpu_mem_quantity  @c E
  *   @gpu_mem_type      @c int4x2_swapped_withoffset
  *   @gpu_mem_dim_name  [@c T][@c F][@c P][@c D]
- *   @gpu_mem_shape     [@c buffer_depth * num_times][@c num_local_freq][@c 2][@c num_elements / 2]
+ *   @buffer_shape      [@c buffer_depth * num_times][@c num_local_freq][@c 2][@c num_elements / 2]
  *   @gpu_mem_metadata  @c chordMetadata
  * @gpu_mem Input RFI mask ringbuffer
- *   @gpu_mem_buffer    @c ring
+ *   @gpu_mem           @c ring
  *   @gpu_mem_quantity  @c RFImask
  *   @gpu_mem_type      @c uint1x8
  *   @gpu_mem_dim_name  [@c T8hi128][@c F][@c T8lo128]
- *   @gpu_mem_shape     [@c buffer_depth * num_times / 8 / 128][@c num_local_freq][@c 2][@c 128]
+ *   buffer_shape       [@c buffer_depth * num_times / 8 / 128][@c num_local_freq][@c 2][@c 128]
  *   @gpu_mem_metadata  @c chordMetadata
  * @gpu_mem Output complex correlation values
  *   num_subintegrations := samples_per_data_set / sub_integration_ntime
  *   blocksize           := 16
  *   linear_num_blocks   := ceil(num_elements, / blocksize)
  *   triangle_num_blocks := linear_num_blocks * (linear_num_blocks + 1) / 2
- *   @gpu_mem_buffer    @c standard
+ *   @gpu_mem           @c standard
  *   @gpu_mem_quantity  @c n2k_correlation
  *   @gpu_mem_type      @c int32
  *   @gpu_mem_dim_name  [@c Tc][@c F][@c DPhi][@c DPlo1][@c DPlo2][@c C]
- *   @gpu_mem_shape     [@c samples_per_data_set / sub_integration_ntimes]
+ *   buffer_shape       [@c samples_per_data_set / sub_integration_ntimes]
  *                      [@c triangle_num_blocks][@c blocksize][@c blocksize][@c 2]
  *   @gpu_mem_metadata  @c chordMetadata
  * @conf  buffer_depth           Int.     The number of GPU frames used for pipelining commands.

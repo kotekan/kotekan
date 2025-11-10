@@ -144,7 +144,7 @@ Python Code Formatting
 ----------------------
 
 All python code in this project should be formatted accoring to the
-`black code style <https://black.readthedocs.io/en/stable/the_black_code_style.html>`_. You can let black take care
+`black code style <https://black.readthedocs.io/en/stable/the_black_code_style/index.html>`_. You can let black take care
 of that using ``black --exclude docs kotekan/root/dir`` before you commit python code.
 
 

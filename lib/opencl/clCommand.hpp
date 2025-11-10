@@ -50,6 +50,8 @@ public:
      * @param config                    kotekan config object
      * @param unique_name               kotekan unique name
      * @param host_buffers              kotekan host-side buffers
+     * @param instance_num              instance number of the command
+     * @param command_state            (optional) shared pointer to a gpuCommandState
      * @param device                    The instance of the clDeviceInterface class that abstracts
      *                                  the interfacing layer between the software and hardware.
      * @param default_kernel_command    (optional) function name / proper name for a derived command
@@ -74,14 +76,10 @@ public:
     void setKernelArg(cl_uint param_ArgPos, cl_mem param_Buffer);
 
     /** Execute a kernel, copy, etc.
-     * @param gpu_frame_id  The bufferID associated with the GPU commands.
-     * @param pre_event     The preceeding event in a sequence of chained event sequence of
-     *commands.
      **/
     virtual cl_event execute(cl_event pre_event) = 0;
 
     /** Releases the memory of the event chain arrays per buffer_id
-     * @param gpu_frame_id    The bufferID to release all the memory references for.
      **/
     virtual void finalize_frame() override;
 

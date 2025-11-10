@@ -73,6 +73,8 @@ public:
      * @param device       Abstracted GPU API interface for managing memory and common operations.
      * @param default_kernel_command   Name of the kernel for profiling read out.
      * @param default_kernel_file_name Kernel dile name, not really needed with cuda kernels.
+     * @param instance_num             The instance number of this command in the pipeline.
+     * @param state_                   (optional) shared pointer to a gpuCommandState
      */
     cudaCommand(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,

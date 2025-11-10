@@ -14,17 +14,15 @@ timespec nanosec_i64_to_timespec(int64_t t);
 /**
  * @brief Compute UT1 time Julian Date (in seconds, nanoseconds) from GPS time
  * @param   t The instrument time to convert, const reference timespec
- * @param   dAT double Difference between TAI-UTC at t and value at frame0.
- * @param   dUT dobule Value of UT1-UTC at t, seconds
+ * @param   delta_UT1_inst dobule Value of UT1-UTC at t, seconds
  * @return  UT1 time as a timespec
  */
 int64_t get_UT1_from_time(const timespec& t, double delta_UT1_inst);
 
 /**
  * @brief Compute UT1 time Julian Date (in seconds, nanoseconds) from GPS time
- * @param   t The instrument time to convert, const reference timespec
- * @param   dAT double Difference between TAI-UTC at t and value at frame0.
- * @param   dUT dobule Value of UT1-UTC at t, seconds
+ * @param   t_ut1 The instrument time to convert, const reference timespec
+ * @param   delta_UT1_inst dobule Value of UT1-UTC at t, seconds
  * @return  UT1 time as a timespec
  */
 timespec get_time_from_UT1(int64_t t_ut1, double delta_UT1_inst);

@@ -54,6 +54,7 @@ public:
      * @param ring_size: the number of elements in the ring buffer to be managed
      * @param buffer_name: unique name for this buffer, from the config file declaration
      * @param buffer_type: "ring"
+     * @param pool
      */
     RingBuffer(std::ptrdiff_t ring_size, std::shared_ptr<metadataPool>,
                const std::string& buffer_name, const std::string& buffer_type);

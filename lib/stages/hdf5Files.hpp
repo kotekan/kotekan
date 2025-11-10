@@ -38,6 +38,7 @@ HighFive::DataType chord2hdf5(const kotekan::DataType type);
 } // namespace hdf5
 
 namespace HighFive {
+/// @cond
 template<>
 inline HighFive::AtomicType<float16_t>::AtomicType() {
     _hid = detail::h5t_copy(H5T_NATIVE_FLOAT);
@@ -48,6 +49,7 @@ inline HighFive::AtomicType<float16_t>::AtomicType() {
     // Floating point exponent bias
     detail::h5t_set_ebias(_hid, 15);
 }
+/// @endcond
 } // namespace HighFive
 
 #endif // #ifndef HDF5FILES_HPP

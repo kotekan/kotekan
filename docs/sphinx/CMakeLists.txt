@@ -30,7 +30,7 @@ if(NOT DEFINED PLANTUML_PATH)
     set(PLANTUML_DIR "${CMAKE_CURRENT_BINARY_DIR}/plantuml/src")
     set(DOWNLOAD_PLANTUML 1)
 else()
-    set(PLANTUML_DIR ${PLANTUML_PATH})
+    get_filename_component(PLANTUML_DIR "${PLANTUML_PATH}" DIRECTORY)
 endif()
 
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/conf.py" "${BINARY_BUILD_DIR}/conf.py" @ONLY)
@@ -38,7 +38,7 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/conf.py" "${BINARY_BUILD_DIR}/conf.p
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/_static")
 
 add_custom_target(
-    sphinx ALL
+    sphinx
     ${SPHINX_EXECUTABLE}
     -q
     -b
@@ -50,6 +50,7 @@ add_custom_target(
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${SPHINX_HTML_DIR}"
     COMMENT "Building HTML documentation with Sphinx")
+add_dependencies(sphinx doxygen)
 
 if(DEFINED DOWNLOAD_PLANTUML)
     add_dependencies(sphinx plantuml)
