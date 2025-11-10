@@ -48,12 +48,6 @@ telescope:
   dish_elev_axis: [1.0, 0.0, 0.0]
   dish_vert_axis: [0.0, 0.0, 1.0]
   dish_coelev_deg: 0.0
-  dish_positions: [[0.0, 1.0, 2.0],
-                   [0.0, 2.0, 2.0],
-                   [0.0, 3.0, 2.0],
-                   [1.0, 1.0, 2.0],
-                   [1.0, 2.0, 2.0],
-                   [1.0, 3.0, 2.0]]
 
   updatable_config: "/earth_rotation_data"
 gps_time:

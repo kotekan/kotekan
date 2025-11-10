@@ -546,6 +546,13 @@ protected:
     bool receive_eop_updates(nlohmann::json& json);
 
     /**
+     * @brief   Callback to send current EOP table
+     *
+     * @param   conn    Kotekan connection.
+     */
+    void send_eop_table(kotekan::connectionInstance& conn);
+
+    /**
      * @brief   Callback to send time0_ns value
      *
      * @param   conn    Kotekan connection.

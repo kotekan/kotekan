@@ -133,12 +133,15 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
 
     rest_server.register_get_callback(path + "/time0_ns",
                                       std::bind(&CHORDTelescope::send_time0_ns, this, _1));
+    rest_server.register_get_callback(path + "/eop_table",
+                                      std::bind(&CHORDTelescope::send_eop_table, this, _1));
 }
 
 CHORDTelescope::~CHORDTelescope() {
-    // Must manually remove the GET callback
+    // Must manually remove the GET callbacks
     restServer& rest_server = restServer::instance();
     rest_server.remove_get_callback(_unique_name + "/time0_ns");
+    rest_server.remove_get_callback(_unique_name + "/eop_table");
 }
 
 void CHORDTelescope::set_sampling_params(const kotekan::Config& config, const std::string& path) {
@@ -250,6 +253,15 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
     }
 
     return true;
+}
+
+void CHORDTelescope::send_eop_table(connectionInstance& conn) {
+    nlohmann::json reply;
+    {
+        std::shared_lock lock(_eop_lock);
+        reply["eop_table"] = _eop_table;
+    }
+    conn.send_json_reply(reply);
 }
 
 void CHORDTelescope::send_time0_ns(connectionInstance& conn) {

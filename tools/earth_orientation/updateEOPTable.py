@@ -39,6 +39,38 @@ def read_time0_ns(base_url, port):
     return resp.json()["time0_ns"]
 
 
+def read_eop_table(base_url, port):
+    r"""
+    Read the "eop_table" from a running Kotekan instance.
+
+    The eop_table is a list of EOP objects, each containing a "t_inst_ns",
+    "t_ut1_ns", "delta_UT1_inst", "ERA_deg", "xp_as", "yp_as".
+
+    Parameters
+    ----------
+    base_url : String
+        The URL at which to find the kotekan instance, no trailing "/". For
+        instance "http://localhost".
+    port : int
+        The port at which to find the kotekan instance. For instance 12048.
+
+    Returns
+    -------
+    eop_table : [EOP, ...]
+        List of EOP JSON objects
+
+    Raises
+    ------
+    Exceptions from requests.
+    """
+
+    url = "{0:s}:{1:d}/telescope/eop_table".format(base_url, port)
+
+    resp = requests.get(url)
+
+    return resp.json()["eop_table"]
+
+
 def broadcast_eop_table(base_url, port, eop_table):
     r"""
     Send a new EOP table to a running Kotekan instance.

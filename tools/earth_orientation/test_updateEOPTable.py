@@ -11,9 +11,11 @@ import updateEOPTable
 
 if __name__ == "__main__":
 
-    # time0_ns = read_time0_ns("http://localhost", 12048)
+    time0_ns = updateEOPTable.read_time0_ns("http://localhost", 12048)
+    print(time0_ns)
 
-    # print(time0_ns)
+    eop_table = updateEOPTable.read_eop_table("http://localhost", 12048)
+    print(eop_table)
 
     ts = [
         Time("2015-06-30 00:00:00"),
