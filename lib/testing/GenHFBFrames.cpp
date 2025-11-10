@@ -1,21 +1,18 @@
 #include "GenHFBFrames.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"       // for allocate_new_metadata_object, mark_frame_full, register_pr...
-#include "chordMetadata.hpp"
-#include "datasetManager.hpp" // for dset_id_t
-#include "kotekanLogging.hpp" // for DEBUG, INFO
-#include "visUtil.hpp"        // for frameID, modulo
+#include <cmath>               // for sqrt
+#include <functional>          // for bind, function
+#include <memory>              // for __shared_ptr_access, shared_ptr
+#include <random>              // for normal_distribution, default_random_engine
 
-#include <atomic>     // for atomic_bool
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <math.h>     // for sqrt
-#include <random>     // for default_random_engine, normal_distribution
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <vector>     // for vector
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "datasetManager.hpp"  // for dset_id_t
+#include "fmt.hpp"             // for compile_string_to_view
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
+#include "visUtil.hpp"         // for frameID, modulo
 
 using kotekan::bufferContainer;
 using kotekan::Config;

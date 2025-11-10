@@ -7,14 +7,14 @@
 #ifndef VISNOISE_HPP
 #define VISNOISE_HPP
 
+#include <stddef.h> // for size_t
+#include <random>   // for default_random_engine
+#include <string>   // for string
+
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
-
-#include <random>   // for default_random_engine
-#include <stddef.h> // for size_t
-#include <string>   // for string
 
 /**
  * @brief Adds gaussian noise.

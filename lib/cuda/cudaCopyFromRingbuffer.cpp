@@ -1,21 +1,23 @@
 #include "cudaCopyFromRingbuffer.hpp"
 
-#include "chordMetadata.hpp"  // for chordMetadata
-#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaMemcpyAsync, cudaHostRegister, cudaH...
-#include "gpuCommand.hpp"     // for gpuCommandType
-#include "kotekanLogging.hpp" // for DEBUG
+#include <assert.h>            // for assert
+#include <stdint.h>            // for uint8_t
+#include <string.h>            // for strnlen
+#include <sys/types.h>         // for uint
+#include <algorithm>           // for max
+#include <cstddef>             // for ptrdiff_t
+#include <memory>              // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
+#include <optional>            // for optional
+#include <stdexcept>           // for runtime_error
+#include <tuple>               // for tuple, make_tuple
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <algorithm>   // for max
-#include <assert.h>    // for assert
-#include <memory>      // for allocator, shared_ptr, __shared_ptr_access, dynamic_pointe...
-#include <optional>    // for optional
-#include <stdexcept>   // for runtime_error
-#include <stdint.h>    // for uint8_t
-#include <sys/types.h> // for size_t, uint
-#include <tuple>       // for tuple, make_tuple
+#include "Symbol.hpp"          // for Symbol
+#include "chordMetadata.hpp"   // for chordMetadata
+#include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h"  // for cudaHostGetFlags, cudaMemcpyAsync, cudaHostRegister, cudaH...
+#include "fmt.hpp"             // for compile_string_to_view
+#include "gpuCommand.hpp"      // for gpuCommandType
+#include "kotekanLogging.hpp"  // for DEBUG
 
 using kotekan::bufferContainer;
 using kotekan::Config;

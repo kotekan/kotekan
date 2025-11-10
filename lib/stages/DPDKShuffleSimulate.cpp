@@ -1,19 +1,19 @@
 #include "DPDKShuffleSimulate.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"       // for Telescope
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp" // for DEBUG, INFO
-#include "visUtil.hpp"        // for frameID, modulo, current_time, ts_to_double
+#include <assert.h>             // for assert
+#include <sys/time.h>           // for gettimeofday, timeval
+#include <unistd.h>             // for sleep, usleep, size_t
+#include <memory>               // for __shared_ptr_access, shared_ptr
 
-#include "fmt.hpp" // for compile_string_to_view, format, format_string
-
-#include <assert.h>   // for assert
-#include <sys/time.h> // for gettimeofday, timeval
-#include <unistd.h>   // for sleep, usleep, size_t
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"        // for Telescope
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
+#include "fmt.hpp"              // for compile_string_to_view, format, format_string
+#include "kotekanLogging.hpp"   // for DEBUG, INFO
+#include "visUtil.hpp"          // for frameID, modulo, current_time, ts_to_double
 
 using kotekan::bufferContainer;
 using kotekan::Config;

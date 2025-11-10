@@ -7,17 +7,17 @@
 #ifndef PULSAR_POST_PROCESS
 #define PULSAR_POST_PROCESS
 
+#include <stdint.h>    // for uint32_t, uint64_t, uint16_t, uint8_t
+#include <sys/types.h> // for uint
+#include <time.h>      // for timespec
+#include <optional>    // for optional
+#include <string>      // for string
+
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp" // for beamCoord
-
-#include <optional>    // for optional
-#include <stdint.h>    // for uint32_t, uint64_t, uint16_t, uint8_t
-#include <string>      // for string
-#include <sys/types.h> // for uint
-#include <time.h>      // for timespec
 
 
 /**

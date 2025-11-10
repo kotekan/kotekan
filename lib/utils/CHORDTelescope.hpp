@@ -1,20 +1,19 @@
 #ifndef CHORD_TELESCOPE_HPP
 #define CHORD_TELESCOPE_HPP
 
-#include "Config.hpp"     // for Config
-#include "Telescope.hpp"  // for freq_id_t, Telescope, stream_t
-#include "restServer.hpp" // for connectionInstance
-
-#include "json.hpp" // for json
-
+#include <stdint.h> // for uint64_t, uint32_t, int64_t, uint8_t
+#include <time.h>   // for timespec
 #include <array>    // for array
 #include <complex>  // for complex
 #include <mutex>    // for mutex
-#include <stdint.h> // for uint64_t, uint32_t, int64_t, uint8_t
 #include <string>   // for string, basic_string
-#include <time.h>   // for timespec
 #include <utility>  // for forward
 #include <vector>   // for vector
+
+#include "Config.hpp"     // for Config
+#include "Telescope.hpp"  // for freq_id_t, Telescope, stream_t
+#include "json.hpp" // for json
+#include "restServer.hpp" // for connectionInstance
 
 
 /**
