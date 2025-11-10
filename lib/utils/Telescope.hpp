@@ -218,7 +218,7 @@ public:
     virtual uint64_t seq_length_nsec() const = 0;
 
 private:
-    static inline std::unique_ptr<Telescope> tel_instance = nullptr;
+    static std::unique_ptr<Telescope>& tel_instance();
 
 protected:
     /**
