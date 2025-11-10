@@ -48,11 +48,13 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
         throw std::runtime_error("The system requires a GPS time, but none was found.");
     }
 
-    double sampling_rate_MHz = config.get_default<double>(path, "sampling_rate_MHz", 3.2e3);
-    uint64_t fft_length = config.get_default<uint64_t>(path, "fft_length", 16384);
-    ny_zone = config.get_default<uint8_t>(path, "nyquist_zone", 1);
-    dt_ns = (GIGA * fft_length) / (1.0e6 * sampling_rate_MHz);
-    nfreq_total = fft_length / 2;
+    if (gps_enabled)
+        INFO("Telescope configured with GPS time0: {:d} ns", time0_ns);
+    else
+        INFO("Telescope GPS time not enabled.");
+
+    // Set the time- and frequency-sampling parameters from the config.
+    set_sampling_params(config, path);
 
     _origin_itrs_lon_deg = config.get<double>(path, "origin_itrs_lon_deg");
     _origin_itrs_lat_deg = config.get<double>(path, "origin_itrs_lat_deg");
@@ -63,12 +65,6 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     INFO("Telescope configured with co-elevation: {:f} deg", _dish_coelev_deg);
     INFO("Telescope targetting approximate declination: {:f} deg",
          _origin_itrs_lat_deg + 90 - _dish_coelev_deg);
-
-    if (gps_enabled)
-        INFO("Telescope configured with GPS time0: {:d} ns", time0_ns);
-    else
-        INFO("Telescope GPS time not enabled.");
-
 
     // Read in the Telescope Coord axes. Must be normalized and orthogonal.
     std::array<double, 3> sep_x = config.get<std::array<double, 3>>(path, "grid_x_axis");
@@ -145,6 +141,27 @@ CHORDTelescope::~CHORDTelescope() {
     rest_server.remove_get_callback(_unique_name + "/time0_ns");
 }
 
+void CHORDTelescope::set_sampling_params(const kotekan::Config& config, const std::string& path) {
+
+    double sampling_rate_MHz = config.get_default<double>(path, "sampling_rate_MHz", 3.2e3);
+    uint64_t fft_length = config.get_default<uint64_t>(path, "fft_length", 16384);
+    ny_zone = config.get_default<uint8_t>(path, "nyquist_zone", 1);
+
+    // Find the time in nanoseconds between fpga_seq_nums (ie. the time between fft_length raw ADC
+    // samples)
+    dt_ns = (GIGA * fft_length) / (1.0e6 * sampling_rate_MHz);
+
+    // Set the physical frequency of id=0, and the spacing, taking into account
+    // the aliasing of each Nyquist zone
+
+    // the freq0 mode jumps in frequency every 2 nyquist zones. The first zone (zone = 1) is the
+    // textbook FFT and has freq0 = 0.
+    freq0_MHz = (ny_zone / 2) * sampling_rate_MHz;
+    // Odd zones count up from freq0, even zones count down.
+    df_MHz = (ny_zone % 2 == 1 ? 1 : -1) * sampling_rate_MHz / fft_length;
+    // Total number of frequency channels (input data is Real)
+    nfreq_total = fft_length / 2;
+}
 
 void CHORDTelescope::set_gps(const kotekan::Config& config) {
     if (!config.exists("/", "gps_time")) {
@@ -714,12 +731,17 @@ const struct dishInfo& CHORDTelescope::get_dish_at_idx(int64_t idx) const {
 
 // Get the frequency in MHz corresponding to the given freq_id.
 double CHORDTelescope::to_freq_MHz(freq_id_t freq_id) const {
-    return freq_id * (1e3 / (double)dt_ns);
+    if (freq_id >= nfreq_total) {
+        FATAL_ERROR("Invalid frequency ID={:d}, accepted range [0, {:d})", freq_id, nfreq_total);
+    }
+    // In even Nyquist zones df_MHz < 0 so the freq_ids count down from freq0.
+    return freq0_MHz + freq_id * df_MHz;
 }
 
-// TODO: This is a stub to satisfy in
+// Get the configured frequency spacing
 double CHORDTelescope::freq_width_MHz(freq_id_t) const {
-    return 0;
+    // In even Nyquist zones df_MHz < 0, so need to take absolute value.
+    return std::abs(df_MHz);
 }
 
 // Return the configured Nyquist Zone

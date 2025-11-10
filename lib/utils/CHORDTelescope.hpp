@@ -147,8 +147,13 @@ struct dishInputFields {
  * @conf    origin_itrs_lat_deg double. Instrument latitude in degrees.
  * @conf    dish_coelev_deg     double. Instrument pointing co-elevation, in
  *                                      degrees from zenith. Positive is North.
- * @conf    sampling_rate_MHz   double. ADC Sampling Rate (~3.2 GHz)
- * @conf    fft_lenth           double. F-engine FFT length (16384 for CHORD)
+ * @conf    sampling_rate_MHz   double. ADC Sampling Rate (default: 3.2 GHz for CHORD)
+ * @conf    fft_lenth           double. F-engine FFT length (default: 16384 for CHORD)
+ * @conf    nyquist_zone        uint8.  Nyquist Zone we're operating in (default: 1 for CHORD)
+ * @conf    origin_itrs_lon_deg double. ITRS longitude of the telescope & topocentric coordinate
+ *origin.
+ * @conf    origin_itrs_lat_deg double. ITRS latitude of the telescope & topocentric coordinate
+ *origin.
  * @conf    grid_x_axis         [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish-dish
  *                                      E/W separation.  Must be:
@@ -197,6 +202,8 @@ struct dishInputFields {
 /*
  * 2024/10/25: Initial version copied from ICETelescope. Frequency logic
  *              stripped out. GR
+ * 2025/11/10: Required frequency logic re-added (no stream_t behaviour). Dish input table
+ *              introduced with per-dish grid placement, positioning, pointing, and labels. GR
  */
 
 
@@ -204,10 +211,43 @@ class CHORDTelescope : public Telescope {
 public:
     CHORDTelescope(const kotekan::Config& config, const std::string& path);
 
-    // Implementations of the required time mapping functions
+    /**
+     * @brief Is the GPS time source enabled?
+     *
+     * @return  True if the GPS time is available.
+     **/
     bool gps_time_enabled() const override;
+
+    /**
+     * Convert a sequence number into an instrument time (UNIX epoch time at start plus TAI time
+     *elapsed since start).
+     *
+     * @param  seq  The sequence number.
+     *
+     * @return  The corresponding instrument time (UNIX epoch time at start plus TAI time elapsed
+     *since start).
+     **/
     timespec to_time(uint64_t seq) const override;
+
+    /**
+     * @brief Convert an instrument time (UNIX epoch time at start plus TAI time elapsed since
+     *start) into the nearest sequence number.
+     *
+     * @note When there is not an exact correspondence between the given time
+     *       and FPGA sequence numbers, this routine will return the latest valid
+     *       FPGA sequence number before the given timestamp.
+     *
+     * @param  time  The instrument time.
+     *
+     * @return  The corresponding sequence number.
+     **/
     uint64_t to_seq(timespec time) const override;
+
+    /**
+     * @brief Get the length in nanoseconds of an FPGA sequence number tick.
+     *
+     * @return  Length of an FPGA sequence number tick in nanoseconds.
+     **/
     uint64_t seq_length_nsec() const override;
 
     /**
@@ -420,14 +460,50 @@ public:
      **/
     void get_dish_inputs(dishInputFields& input) const;
 
-    // Implementations of the required frequency mapping functions
-    // TODO: Implement these.
-    freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
+    /**
+     * Get the physical frequency in MHz of the specified freq ID.
+     *
+     * @param  freq_id  The frequency ID.
+     *
+     * @returns         The central frequency in MHz.
+     **/
     double to_freq_MHz(freq_id_t freq_id) const override;
-    uint32_t num_freq_per_stream() const override;
+
+    /**
+     * @brief Get the total number of frequencies channels.
+     *
+     * This is the upper bound for freq_id.
+     *
+     * @return  The total number of frequency channels.
+     **/
     uint32_t num_freq() const override;
+
+    /**
+     * @brief Get the frequency width of a given channel.  When the frequency spacing is constant,
+     *this is the equivalent to the spacing between frequency channels.
+     *
+     * @return  The width of the frequency channel in MHz.
+     **/
     double freq_width_MHz(freq_id_t freq_id) const override;
+
+    /**
+     * @brief Get which Nyquist zone we are in.
+     *
+     * @return  The Nyquist zone.
+     **/
     uint8_t nyquist_zone() const override;
+
+    /**
+     * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
+     * dpdk.
+     */
+    freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
+
+    /**
+     * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
+     * dpdk.
+     */
+    uint32_t num_freq_per_stream() const override;
 
     // A forwarding constructor, such that derived classes can skip the main
     // CHORDTelescope constructor but still construct the Telescope class
@@ -437,6 +513,15 @@ public:
     ~CHORDTelescope();
 
 protected:
+    /**
+     * @brief Set the internal parameters `dt_ns`, `freq0_MHz`, `df_MHz`, `nfreq_total`, and
+     * `ny_zone` which set the basic time and frequency sampling behaviour.  Reads the
+     * `sampling_rate_MHz`, `fft_length`, and `nyquist_zone` Config fields.
+     * @param config    The config.
+     * @param path      This telescope object's path.
+     */
+    void set_sampling_params(const kotekan::Config& config, const std::string& path);
+
     /**
      * @brief Set the GPS time parameters from the config.
      *
@@ -539,6 +624,8 @@ protected:
     uint64_t dt_ns;
     uint8_t ny_zone;
     uint64_t nfreq_total;
+    double freq0_MHz;
+    double df_MHz;
 
     // Earth Orientation Parameters
     mutable std::mutex _eop_lock;
