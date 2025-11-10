@@ -216,7 +216,6 @@ void CHORDTelescope::set_gps(const std::string& host, const uint32_t port,
 
 bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
     // Make sure no one is using the EOP table while we're updating it.
-    std::lock_guard<std::mutex> lock(_eop_lock);
     try {
         // Fill a temporary table with the updated values.
         std::vector<struct EOP> tmp_eop_table;
@@ -239,9 +238,11 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
         std::sort(tmp_eop_table.begin(), tmp_eop_table.end(), EOP_comp_time);
 
         // Replace old table with new.
-        _eop_table = tmp_eop_table;
-
-        INFO("Updated EOP Table with {:d} entries", _eop_table.size());
+        {
+            std::unique_lock lock(_eop_lock);
+            _eop_table = tmp_eop_table;
+            INFO("Updated EOP Table with {:d} entries", _eop_table.size());
+        }
 
     } catch (std::exception& e) {
         WARN("CHORDTelescope failed to read EOP update: {:s}", e.what());
@@ -579,12 +580,12 @@ int CHORDTelescope::get_num_dishes() const {
 }
 
 int CHORDTelescope::get_EOP_table_len() const {
-    std::lock_guard<std::mutex> lock(_eop_lock);
+    std::shared_lock lock(_eop_lock);
     return _eop_table.size();
 }
 
 struct EOP CHORDTelescope::get_EOP_at_idx(uint64_t i) const {
-    std::lock_guard<std::mutex> lock(_eop_lock);
+    std::shared_lock lock(_eop_lock);
 
     if (i < _eop_table.size()) {
         struct EOP eop = _eop_table[i];
@@ -597,55 +598,56 @@ struct EOP CHORDTelescope::get_EOP_at_idx(uint64_t i) const {
 struct EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
     // Interpolate on the EOP table to find EOP for the given instrument time.
 
-    std::lock_guard<std::mutex> lock(_eop_lock);
-
     struct EOP eop;
 
     int64_t t_target = timespec_to_nanosec_i64(ts_target);
     eop.t_inst = t_target;
 
-    // _eop_table is always sorted by instrument time. Do a quick search
-    // for the first table entry with larger time than the target.
-    auto eop_b = std::lower_bound(_eop_table.begin(), _eop_table.end(), eop, EOP_comp_time);
+    {
+        std::shared_lock lock(_eop_lock);
+        // _eop_table is always sorted by instrument time. Do a quick search
+        // for the first table entry with larger time than the target.
+        auto eop_b = std::lower_bound(_eop_table.begin(), _eop_table.end(), eop, EOP_comp_time);
 
-    // DUT1, xp_as, and yp_as evolve slowly, on secular time scales, so we
-    // interpolate these, and calculate ERA after.
+        // DUT1, xp_as, and yp_as evolve slowly, on secular time scales, so we
+        // interpolate these, and calculate ERA after.
 
-    if (eop_b == _eop_table.begin()) {
-        // Time is earlier than covered by the table, use the first value.
-        eop.delta_UT1_inst = eop_b->delta_UT1_inst;
-        eop.xp_as = eop_b->xp_as;
-        eop.yp_as = eop_b->yp_as;
-        WARN("Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. Earliest "
-             "time = {:d} s + {:d} ns.",
-             t_target / GIGA, t_target % GIGA, eop_b->t_inst / GIGA, eop_b->t_inst % GIGA);
-    } else if (eop_b == _eop_table.end()) {
-        // Time is later than covered by the table, use the last value.
-        auto eop_last = eop_b - 1;
-        eop.delta_UT1_inst = eop_last->delta_UT1_inst;
-        eop.xp_as = eop_last->xp_as;
-        eop.yp_as = eop_last->yp_as;
-        WARN("Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest UT1 = "
-             "{:d} s + {:d} ns.",
-             t_target / GIGA, t_target % GIGA, eop_last->t_inst / GIGA, eop_last->t_inst % GIGA);
-    } else {
-        // Interpolate!
-        auto eop_a = eop_b - 1;
-        // t - ta in ns. Should be > 0
-        int64_t diff_ns_a = t_target - eop_a->t_inst;
-        // t - tb in ns. Should be < 0
-        int64_t diff_ns_b = t_target - eop_b->t_inst;
-        // tb - ta in ns.
-        int64_t diff_ns = diff_ns_a - diff_ns_b;
+        if (eop_b == _eop_table.begin()) {
+            // Time is earlier than covered by the table, use the first value.
+            eop.delta_UT1_inst = eop_b->delta_UT1_inst;
+            eop.xp_as = eop_b->xp_as;
+            eop.yp_as = eop_b->yp_as;
+            WARN("Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. Earliest "
+                 "time = {:d} s + {:d} ns.",
+                 t_target / GIGA, t_target % GIGA, eop_b->t_inst / GIGA, eop_b->t_inst % GIGA);
+        } else if (eop_b == _eop_table.end()) {
+            // Time is later than covered by the table, use the last value.
+            auto eop_last = eop_b - 1;
+            eop.delta_UT1_inst = eop_last->delta_UT1_inst;
+            eop.xp_as = eop_last->xp_as;
+            eop.yp_as = eop_last->yp_as;
+            WARN("Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest UT1 = "
+                 "{:d} s + {:d} ns.",
+                 t_target / GIGA, t_target % GIGA, eop_last->t_inst / GIGA, eop_last->t_inst % GIGA);
+        } else {
+            // Interpolate!
+            auto eop_a = eop_b - 1;
+            // t - ta in ns. Should be > 0
+            int64_t diff_ns_a = t_target - eop_a->t_inst;
+            // t - tb in ns. Should be < 0
+            int64_t diff_ns_b = t_target - eop_b->t_inst;
+            // tb - ta in ns.
+            int64_t diff_ns = diff_ns_a - diff_ns_b;
 
-        // weights for points a and b.
-        double wb = diff_ns_a / ((double)diff_ns);
-        double wa = 1.0 - wb;
+            // weights for points a and b.
+            double wb = diff_ns_a / ((double)diff_ns);
+            double wa = 1.0 - wb;
 
-        // interpolate
-        eop.delta_UT1_inst = wa * eop_a->delta_UT1_inst + wb * eop_b->delta_UT1_inst;
-        eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
-        eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
+            // interpolate
+            eop.delta_UT1_inst = wa * eop_a->delta_UT1_inst + wb * eop_b->delta_UT1_inst;
+            eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
+            eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
+        }
     }
 
     // now that we have a delta_UT1, can compute UT1 and ERA
@@ -661,58 +663,59 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
 struct EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
     // Interpolate on the EOP table to find EOP for the given UT1 time.
 
-    std::lock_guard<std::mutex> lock(_eop_lock);
-
     struct EOP eop;
     eop.t_ut1 = t_ut1;
 
-    // _eop_table is always sorted by instrument time. UT1 is monotonic
-    // with instrument time, unless the Earth has been met with catastrophe.
-    // Do a quick search for the first table entry with larger UT1 time than
-    // the target.
-    auto eop_b = std::lower_bound(_eop_table.begin(), _eop_table.end(), eop, EOP_comp_ut1);
+    {
+        std::shared_lock lock(_eop_lock);
+        // _eop_table is always sorted by instrument time. UT1 is monotonic
+        // with instrument time, unless the Earth has been met with catastrophe.
+        // Do a quick search for the first table entry with larger UT1 time than
+        // the target.
+        auto eop_b = std::lower_bound(_eop_table.begin(), _eop_table.end(), eop, EOP_comp_ut1);
 
-    // DUT1, xp_as, and yp_as evolve slowly, on secular time scales, so we
-    // interpolate these, and calculate ERA after.
+        // DUT1, xp_as, and yp_as evolve slowly, on secular time scales, so we
+        // interpolate these, and calculate ERA after.
 
-    if (eop_b == _eop_table.begin()) {
-        // Time is earlier than covered by the table, use the first value.
-        eop.delta_UT1_inst = eop_b->delta_UT1_inst;
-        eop.xp_as = eop_b->xp_as;
-        eop.yp_as = eop_b->yp_as;
-        WARN("Requesting EOP earlier than in table. Requested UT1 = {:d} s + {:d} ns. Earliest UT1 "
-             "= {:d} s + {:d} ns.",
-             t_ut1 / GIGA, t_ut1 % GIGA, eop_b->t_ut1 / GIGA, eop_b->t_ut1 % GIGA);
-    } else if (eop_b == _eop_table.end()) {
-        // Time is later than covered by the table, use the last value.
-        auto eop_last = eop_b - 1;
-        eop.delta_UT1_inst = eop_last->delta_UT1_inst;
-        eop.xp_as = eop_last->xp_as;
-        eop.yp_as = eop_last->yp_as;
-        WARN("Requesting EOP later than in table. Requested UT1 = {:d} s + {:d} ns. Latest UT1 = "
-             "{:d} s + {:d} ns.",
-             t_ut1 / GIGA, t_ut1 % GIGA, eop_last->t_ut1 / GIGA, eop_last->t_ut1 % GIGA);
-    } else {
-        // Interpolate! Target time = t, in table interval [ta, tb]
-        auto eop_a = eop_b - 1;
+        if (eop_b == _eop_table.begin()) {
+            // Time is earlier than covered by the table, use the first value.
+            eop.delta_UT1_inst = eop_b->delta_UT1_inst;
+            eop.xp_as = eop_b->xp_as;
+            eop.yp_as = eop_b->yp_as;
+            WARN("Requesting EOP earlier than in table. Requested UT1 = {:d} s + {:d} ns. Earliest UT1 "
+                 "= {:d} s + {:d} ns.",
+                 t_ut1 / GIGA, t_ut1 % GIGA, eop_b->t_ut1 / GIGA, eop_b->t_ut1 % GIGA);
+        } else if (eop_b == _eop_table.end()) {
+            // Time is later than covered by the table, use the last value.
+            auto eop_last = eop_b - 1;
+            eop.delta_UT1_inst = eop_last->delta_UT1_inst;
+            eop.xp_as = eop_last->xp_as;
+            eop.yp_as = eop_last->yp_as;
+            WARN("Requesting EOP later than in table. Requested UT1 = {:d} s + {:d} ns. Latest UT1 = "
+                 "{:d} s + {:d} ns.",
+                 t_ut1 / GIGA, t_ut1 % GIGA, eop_last->t_ut1 / GIGA, eop_last->t_ut1 % GIGA);
+        } else {
+            // Interpolate! Target time = t, in table interval [ta, tb]
+            auto eop_a = eop_b - 1;
 
-        // t - ta in ns. Should be > 0
-        int64_t diff_ns_a = t_ut1 - eop_a->t_ut1;
-        // t - tb in ns. Should be < 0
-        int64_t diff_ns_b = t_ut1 - eop_b->t_ut1;
+            // t - ta in ns. Should be > 0
+            int64_t diff_ns_a = t_ut1 - eop_a->t_ut1;
+            // t - tb in ns. Should be < 0
+            int64_t diff_ns_b = t_ut1 - eop_b->t_ut1;
 
-        // tb - ta in ns.
-        int64_t diff_ns = diff_ns_a - diff_ns_b;
+            // tb - ta in ns.
+            int64_t diff_ns = diff_ns_a - diff_ns_b;
 
-        // weight for b point
-        double wb = diff_ns_a / ((double)diff_ns);
-        // weight for a point.
-        double wa = 1.0 - wb;
+            // weight for b point
+            double wb = diff_ns_a / ((double)diff_ns);
+            // weight for a point.
+            double wa = 1.0 - wb;
 
-        // interpolate.
-        eop.delta_UT1_inst = wa * eop_a->delta_UT1_inst + wb * eop_b->delta_UT1_inst;
-        eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
-        eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
+            // interpolate.
+            eop.delta_UT1_inst = wa * eop_a->delta_UT1_inst + wb * eop_b->delta_UT1_inst;
+            eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
+            eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
+        }
     }
 
     // Now that we have a delta_UT1, can get t_inst and the ERA

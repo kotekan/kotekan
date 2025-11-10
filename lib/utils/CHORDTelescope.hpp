@@ -628,7 +628,7 @@ protected:
     double df_MHz;
 
     // Earth Orientation Parameters
-    mutable std::mutex _eop_lock;
+    mutable std::shared_mutex _eop_lock;
     std::vector<struct EOP> _eop_table;
 
     // Dish Properties
