@@ -1,28 +1,29 @@
 #include "FakeVis.hpp"
 
-#include <time.h>               // for timespec, nanosleep
-#include <algorithm>            // for max, fill, transform
-#include <complex>              // for complex
-#include <functional>           // for bind, function, placeholders
-#include <iterator>             // for back_insert_iterator, back_inserter, begin, end
-#include <memory>               // for allocator, unique_ptr
-#include <tuple>                // for get, make_tuple, tuple
-#include <utility>              // for pair
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t, state_id_t
+#include "datasetState.hpp"    // for eigenvalueState, freqState, inputState, metadataState
+#include "errors.h"            // for ReturnCode, exit_kotekan
+#include "factory.hpp"         // for FACTORY
+#include "kotekanLogging.hpp"  // for INFO, DEBUG
+#include "version.h"           // for get_git_commit_hash
+#include "visBuffer.hpp"       // for VisFrameView
+#include "visUtil.hpp"         // for input_ctype, prod_ctype, freq_ctype, double_to_ts, curren...
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for datasetManager, dset_id_t, state_id_t
-#include "datasetState.hpp"     // for eigenvalueState, freqState, inputState, metadataState
-#include "errors.h"             // for ReturnCode, exit_kotekan
-#include "factory.hpp"          // for FACTORY
-#include "fmt.hpp"              // for compile_string_to_view, format, fmt
-#include "gsl-lite.hpp"         // for span
-#include "kotekanLogging.hpp"   // for INFO, DEBUG
-#include "version.h"            // for get_git_commit_hash
-#include "visBuffer.hpp"        // for VisFrameView
-#include "visUtil.hpp"          // for input_ctype, prod_ctype, freq_ctype, double_to_ts, curren...
+#include "fmt.hpp"      // for compile_string_to_view, format, fmt
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for max, fill, transform
+#include <complex>    // for complex
+#include <functional> // for bind, function, placeholders
+#include <iterator>   // for back_insert_iterator, back_inserter, begin, end
+#include <memory>     // for allocator, unique_ptr
+#include <time.h>     // for timespec, nanosleep
+#include <tuple>      // for get, make_tuple, tuple
+#include <utility>    // for pair
 
 
 using namespace std::placeholders;

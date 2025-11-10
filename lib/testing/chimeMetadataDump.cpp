@@ -1,20 +1,21 @@
 #include "chimeMetadataDump.hpp"
 
-#include <stdint.h>             // for uint64_t, uint8_t
-#include <sys/time.h>           // for timeval
-#include <time.h>               // for timespec, gmtime, strftime, time_t
-#include <functional>           // for bind, function
-#include <memory>               // for __shared_ptr_access, shared_ptr
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope, freq_id_t
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "kotekanLogging.hpp"  // for INFO
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"        // for Telescope, freq_id_t
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for INFO
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <stdint.h>   // for uint64_t, uint8_t
+#include <sys/time.h> // for timeval
+#include <time.h>     // for timespec, gmtime, strftime, time_t
+#include <vector>     // for vector
 
 
 REGISTER_KOTEKAN_STAGE(chimeMetadataDump);

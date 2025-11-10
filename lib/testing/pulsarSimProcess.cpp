@@ -1,21 +1,22 @@
 #include "pulsarSimProcess.hpp"
 
-#include <stdlib.h>             // for exit
-#include <string.h>             // for memcpy
-#include <sys/time.h>           // for timeval
-#include <unistd.h>             // for gethostname
-#include <functional>           // for bind, function
-#include <sstream>              // for basic_ostream, basic_ostream::operator<<, operator<<, bas...
-#include <string>               // for allocator, char_traits, basic_string, string
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata
+#include "kotekanLogging.hpp"  // for INFO, CHECK_MEM
+#include "vdif_functions.h"    // for VDIFHeader
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for INFO, CHECK_MEM
-#include "vdif_functions.h"     // for VDIFHeader
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <sstream>    // for basic_ostream, basic_ostream::operator<<, operator<<, bas...
+#include <stdlib.h>   // for exit
+#include <string.h>   // for memcpy
+#include <string>     // for allocator, char_traits, basic_string, string
+#include <sys/time.h> // for timeval
+#include <unistd.h>   // for gethostname
 
 using std::string;
 

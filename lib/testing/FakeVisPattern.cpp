@@ -1,29 +1,30 @@
 #include "FakeVisPattern.hpp"
 
-#include <math.h>              // for cos, sin, cosf, sinf, M_PI
-#include <time.h>              // for timespec
-#include <array>               // for array
-#include <complex>             // for complex, conj, operator*
+#include <array>   // for array
+#include <complex> // for complex, conj, operator*
+#include <math.h>  // for cos, sin, cosf, sinf, M_PI
+#include <time.h>  // for timespec
 // #include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
-#include <map>                 // for map
-#include <memory>              // for shared_ptr, __shared_ptr_access, weak_ptr
-#include <stdexcept>           // for invalid_argument
-#include <tuple>               // for get
-#include <vector>              // for vector
+#include "CHORDTelescope.hpp" // for CHORDTelescope, EOP
+#include "Config.hpp"         // for Config
+#include "Hash.hpp"           // for Hash
+#include "N2Metadata.hpp"     // for N2Metadata
+#include "Telescope.hpp"      // for Telescope
+#include "datasetManager.hpp" // for datasetManager, state_id_t
+#include "datasetState.hpp"   // for flagState, gainState, inputState
+#include "metadata.hpp"       // for metadataPool
+#include "visBuffer.hpp"      // for VisFrameView
+#include "visUtil.hpp"        // for input_ctype, cfloat, cmap, ts_to_double
 
-#include "CHORDTelescope.hpp"  // for CHORDTelescope, EOP
-#include "Config.hpp"          // for Config
-#include "Hash.hpp"            // for Hash
-#include "N2Metadata.hpp"      // for N2Metadata
-#include "Telescope.hpp"       // for Telescope
-#include "datasetManager.hpp"  // for datasetManager, state_id_t
-#include "datasetState.hpp"    // for flagState, gainState, inputState
-#include "fmt.hpp"             // for compile_string_to_view, format, format_string
-#include "gsl-lite.hpp"        // for span
-#include "json.hpp"            // for basic_json, iter_impl, json
-#include "metadata.hpp"        // for metadataPool
-#include "visBuffer.hpp"       // for VisFrameView
-#include "visUtil.hpp"         // for input_ctype, cfloat, cmap, ts_to_double
+#include "fmt.hpp"      // for compile_string_to_view, format, format_string
+#include "gsl-lite.hpp" // for span
+#include "json.hpp"     // for basic_json, iter_impl, json
+
+#include <map>       // for map
+#include <memory>    // for shared_ptr, __shared_ptr_access, weak_ptr
+#include <stdexcept> // for invalid_argument
+#include <tuple>     // for get
+#include <vector>    // for vector
 
 static constexpr double C = 299792458.0;
 

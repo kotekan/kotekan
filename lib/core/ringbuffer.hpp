@@ -7,15 +7,15 @@
 #ifndef RINGBUFFER_H
 #define RINGBUFFER_H
 
+#include "buffer.hpp"   // for GenericBuffer
+#include "metadata.hpp" // for metadataPool
+
 #include <cstddef>  // for ptrdiff_t
 #include <map>      // for map
 #include <memory>   // for shared_ptr
 #include <optional> // for optional
 #include <string>   // for string
 #include <utility>  // for pair
-
-#include "buffer.hpp"   // for GenericBuffer
-#include "metadata.hpp" // for metadataPool
 
 /**
  * @brief A buffer to manage the signalling between stages when those

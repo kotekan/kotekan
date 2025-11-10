@@ -1,48 +1,49 @@
-#include <DataType.hpp>             // for type_to_string, type_total_bytes
-#include <N2FrameView.hpp>          // for N2FrameView
-#include <N2Metadata.hpp>           // for N2Metadata, metadata_is_N2
-#include <Stage.hpp>                // for Stage
-#include <StageFactory.hpp>         // for REGISTER_KOTEKAN_STAGE
-#include <asdf/asdf.hxx>            // for asdf
-#include <asdf/byteorder.hxx>       // for host_byteorder
-#include <asdf/config.hxx>          // for ASDF_CHECK_VERSION
-#include <asdf/datatype.hxx>        // for datatype_t, complex64_t, float32_t, scalar_type_id_t
-#include <asdf/entry.hxx>           // for int_entry, group, sequence, ndarray_entry, string_entry
-#include <asdf/io.hxx>              // for block_format_t, compression_t
-#include <asdf/memoized.hxx>        // for make_constant_memoized
-#include <asdf/ndarray.hxx>         // for ndarray, ptr_block_t, block_info_t, block_t
-#include <chordMetadata.hpp>        // for chordMetadata, metadata_is_chord, get_chord_metadata
-#include <errno.h>                  // for errno, EEXIST, EISDIR
-#include <errors.h>                 // for exit_kotekan, ReturnCode
-#include <prometheusMetrics.hpp>    // for Metrics, Gauge
-#include <sys/stat.h>               // for mkdir
-#include <unistd.h>                 // for ssize_t, gethostname
-#include <visUtil.hpp>              // for current_time
-#include <waitingForMaxFrames.hpp>  // for waiting_for_max_frames
-#include <algorithm>                // for max
-#include <array>                    // for array
-#include <atomic>                   // for __atomic_base, atomic
-#include <cassert>                  // for assert
-#include <cstddef>                  // for ptrdiff_t, size_t
-#include <cstdint>                  // for int64_t, uint8_t, uint32_t
-#include <cstring>                  // for memcpy, strerror
-#include <functional>               // for function
-#include <iomanip>                  // for operator<<, setfill, setw
-#include <memory>                   // for shared_ptr, __shared_ptr_access, make_shared, allocator
-#include <optional>                 // for optional
-#include <sstream>                  // for basic_ostream, operator<<, basic_ostringstream, ostri...
-#include <string>                   // for basic_string, char_traits, string, operator<<
-#include <vector>                   // for vector
+#include "Config.hpp"          // for Config
+#include "NDArray.hpp"         // for GenericNDArray
+#include "asdfFiles.hpp"       // for beautify_buffer_name, chord2asdf, chord_metadata_version
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, ERROR, INFO, WARN
+#include "metadata.hpp"        // for metadataObject
 
-#include "Config.hpp"               // for Config
-#include "NDArray.hpp"              // for GenericNDArray
-#include "asdfFiles.hpp"            // for beautify_buffer_name, chord2asdf, chord_metadata_version
-#include "buffer.hpp"               // for Buffer
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "fmt.hpp"                  // for compile_string_to_view, join
-#include "gsl-lite.hpp"             // for span
-#include "kotekanLogging.hpp"       // for DEBUG, FATAL_ERROR, ERROR, INFO, WARN
-#include "metadata.hpp"             // for metadataObject
+#include "fmt.hpp"      // for compile_string_to_view, join
+#include "gsl-lite.hpp" // for span
+
+#include <DataType.hpp>            // for type_to_string, type_total_bytes
+#include <N2FrameView.hpp>         // for N2FrameView
+#include <N2Metadata.hpp>          // for N2Metadata, metadata_is_N2
+#include <Stage.hpp>               // for Stage
+#include <StageFactory.hpp>        // for REGISTER_KOTEKAN_STAGE
+#include <algorithm>               // for max
+#include <array>                   // for array
+#include <asdf/asdf.hxx>           // for asdf
+#include <asdf/byteorder.hxx>      // for host_byteorder
+#include <asdf/config.hxx>         // for ASDF_CHECK_VERSION
+#include <asdf/datatype.hxx>       // for datatype_t, complex64_t, float32_t, scalar_type_id_t
+#include <asdf/entry.hxx>          // for int_entry, group, sequence, ndarray_entry, string_entry
+#include <asdf/io.hxx>             // for block_format_t, compression_t
+#include <asdf/memoized.hxx>       // for make_constant_memoized
+#include <asdf/ndarray.hxx>        // for ndarray, ptr_block_t, block_info_t, block_t
+#include <atomic>                  // for __atomic_base, atomic
+#include <cassert>                 // for assert
+#include <chordMetadata.hpp>       // for chordMetadata, metadata_is_chord, get_chord_metadata
+#include <cstddef>                 // for ptrdiff_t, size_t
+#include <cstdint>                 // for int64_t, uint8_t, uint32_t
+#include <cstring>                 // for memcpy, strerror
+#include <errno.h>                 // for errno, EEXIST, EISDIR
+#include <errors.h>                // for exit_kotekan, ReturnCode
+#include <functional>              // for function
+#include <iomanip>                 // for operator<<, setfill, setw
+#include <memory>                  // for shared_ptr, __shared_ptr_access, make_shared, allocator
+#include <optional>                // for optional
+#include <prometheusMetrics.hpp>   // for Metrics, Gauge
+#include <sstream>                 // for basic_ostream, operator<<, basic_ostringstream, ostri...
+#include <string>                  // for basic_string, char_traits, string, operator<<
+#include <sys/stat.h>              // for mkdir
+#include <unistd.h>                // for ssize_t, gethostname
+#include <vector>                  // for vector
+#include <visUtil.hpp>             // for current_time
+#include <waitingForMaxFrames.hpp> // for waiting_for_max_frames
 
 using namespace asdf;
 

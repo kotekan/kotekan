@@ -1,15 +1,16 @@
 #include "TestDropFrames.hpp"
 
-#include <cstring>             // for memcpy
-#include <functional>          // for bind, function
-#include <random>              // for bernoulli_distribution, random_device, default_random_engine
-#include <unordered_set>       // for unordered_set
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"         // for Buffer
+#include "kotekanLogging.hpp" // for INFO
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "fmt.hpp"             // for compile_string_to_view
-#include "kotekanLogging.hpp"  // for INFO
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <cstring>       // for memcpy
+#include <functional>    // for bind, function
+#include <random>        // for bernoulli_distribution, random_device, default_random_engine
+#include <unordered_set> // for unordered_set
 
 
 using kotekan::bufferContainer;

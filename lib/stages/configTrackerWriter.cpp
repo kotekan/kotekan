@@ -1,17 +1,18 @@
 #include "configTrackerWriter.hpp"
 
-#include <bits/chrono.h>       // for operator""ms
-#include <stddef.h>            // for size_t
-#include <exception>           // for exception
-#include <filesystem>          // for path, absolute, create_directories, exists, is_directory
-#include <functional>          // for bind, function
-#include <system_error>        // for error_code
-#include <thread>              // for sleep_for
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "configTracker.hpp"  // for ConfigTracker
+#include "kotekanLogging.hpp" // for FATAL_ERROR, INFO
 
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "configTracker.hpp"   // for ConfigTracker
-#include "fmt.hpp"             // for compile_string_to_view
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <bits/chrono.h> // for operator""ms
+#include <exception>     // for exception
+#include <filesystem>    // for path, absolute, create_directories, exists, is_directory
+#include <functional>    // for bind, function
+#include <stddef.h>      // for size_t
+#include <system_error>  // for error_code
+#include <thread>        // for sleep_for
 
 using kotekan::Config;
 using kotekan::Stage;

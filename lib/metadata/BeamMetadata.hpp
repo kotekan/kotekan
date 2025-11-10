@@ -1,16 +1,17 @@
 #ifndef BEAMMETADATA_HPP
 #define BEAMMETADATA_HPP
 
-#include <stdint.h>            // for uint32_t, int64_t
-#include <time.h>              // for size_t, timespec
-#include <algorithm>           // for copy
-#include <memory>              // for shared_ptr
-#include <vector>              // for vector
+#include "Hash.hpp"           // for Hash
+#include "datasetManager.hpp" // for dset_id_t
+#include "metadata.hpp"       // for metadataObject
 
-#include "Hash.hpp"            // for Hash
-#include "datasetManager.hpp"  // for dset_id_t
-#include "json.hpp"            // for json
-#include "metadata.hpp"        // for metadataObject
+#include "json.hpp" // for json
+
+#include <algorithm> // for copy
+#include <memory>    // for shared_ptr
+#include <stdint.h>  // for uint32_t, int64_t
+#include <time.h>    // for size_t, timespec
+#include <vector>    // for vector
 
 class BeamMetadata : public metadataObject {
 public:

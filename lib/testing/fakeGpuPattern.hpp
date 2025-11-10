@@ -11,18 +11,19 @@
 #ifndef FAKE_GPU_PATTERN_HPP
 #define FAKE_GPU_PATTERN_HPP
 
-#include <stddef.h> // for size_t
-#include <stdint.h> // for int32_t, uint32_t
-#include <random>   // for mt19937, normal_distribution, random_device
-#include <string>   // for string
-
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
 #include "chordMetadata.hpp"
 #include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
-#include "gsl-lite.hpp" // for span
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "pulsarTiming.hpp"   // for Polyco
+
+#include "gsl-lite.hpp" // for span
+
+#include <random>   // for mt19937, normal_distribution, random_device
+#include <stddef.h> // for size_t
+#include <stdint.h> // for int32_t, uint32_t
+#include <string>   // for string
 
 // Create the abstract factory for generating patterns
 class FakeGpuPattern;

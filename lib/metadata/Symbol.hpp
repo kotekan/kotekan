@@ -1,17 +1,17 @@
 #ifndef SYMBOL_HPP
 #define SYMBOL_HPP
 
-#include <fmt/format.h>   // for formatter
-#include <array>          // for array
-#include <cstring>        // for size_t
-#include <functional>     // for equal_to, less
-#include <iostream>       // for ostream
-#include <mutex>          // for mutex
-#include <string>         // for string, basic_string
-#include <string_view>    // for string_view, hash
-#include <unordered_set>  // for unordered_set
+#include "fmt.hpp" // for formatter
 
-#include "fmt.hpp"        // for formatter
+#include <array>         // for array
+#include <cstring>       // for size_t
+#include <fmt/format.h>  // for formatter
+#include <functional>    // for equal_to, less
+#include <iostream>      // for ostream
+#include <mutex>         // for mutex
+#include <string>        // for string, basic_string
+#include <string_view>   // for string_view, hash
+#include <unordered_set> // for unordered_set
 
 
 namespace kotekan {

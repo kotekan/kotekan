@@ -1,15 +1,16 @@
 #include "visDrop.hpp"
 
-#include <algorithm>            // for find
-#include <functional>           // for bind, function
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
+#include "visBuffer.hpp"       // for VisFrameView
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for DEBUG, INFO
-#include "visBuffer.hpp"        // for VisFrameView
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for find
+#include <functional> // for bind, function
 
 
 using kotekan::bufferContainer;

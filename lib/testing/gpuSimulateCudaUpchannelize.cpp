@@ -1,25 +1,26 @@
 #include "gpuSimulateCudaUpchannelize.hpp"
 
-#include <assert.h>             // for assert
-#include <algorithm>            // for max, min
-#include <array>                // for array
-#include <cmath>                // for pow, M_PI, cos, floor
-#include <complex>              // for complex, operator*, polar, abs, sin
-#include <cstddef>              // for size_t
-#include <functional>           // for bind, function
-#include <stdexcept>            // for runtime_error
-#include <utility>              // for pair
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "cuda_fp16.h"         // for __half, __half::operator float, operator/
+#include "kotekanLogging.hpp"  // for INFO, DEBUG
+#include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_frame_counter, get_onehot_...
+#include "visUtil.hpp"         // for get4, set4, int4x2_t
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "cuda_fp16.h"          // for __half, __half::operator float, operator/
-#include "fmt.hpp"              // for compile_string_to_view, format, format_string
-#include "kotekanLogging.hpp"   // for INFO, DEBUG
-#include "oneHotMetadata.hpp"   // for metadata_is_onehot, get_onehot_frame_counter, get_onehot_...
-#include "visUtil.hpp"          // for get4, set4, int4x2_t
+#include "fmt.hpp" // for compile_string_to_view, format, format_string
+
+#include <algorithm>  // for max, min
+#include <array>      // for array
+#include <assert.h>   // for assert
+#include <cmath>      // for pow, M_PI, cos, floor
+#include <complex>    // for complex, operator*, polar, abs, sin
+#include <cstddef>    // for size_t
+#include <functional> // for bind, function
+#include <stdexcept>  // for runtime_error
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

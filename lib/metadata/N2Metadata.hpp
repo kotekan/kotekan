@@ -1,23 +1,24 @@
 #ifndef N2_METADATA
 #define N2_METADATA
 
-#include "CHORDTelescope.hpp"  // for EOP
-#include "Config.hpp"          // for Config
+#include "CHORDTelescope.hpp" // for EOP
+#include "Config.hpp"         // for Config
 #include "N2Metadata.hpp"
-#include "buffer.hpp"          // for Buffer
-#include "fmt.hpp"             // for compile_string_to_view
-#include "json.hpp"            // for json
-#include "kotekanLogging.hpp"  // for WARN_NON_OO
-#include "metadata.hpp"        // for metadataObject, metadataPool
+#include "buffer.hpp"         // for Buffer
+#include "kotekanLogging.hpp" // for WARN_NON_OO
+#include "metadata.hpp"       // for metadataObject, metadataPool
+
+#include "fmt.hpp"  // for compile_string_to_view
+#include "json.hpp" // for json
 
 using kotekan::Config;
 
-#include <assert.h>            // for assert
-#include <stddef.h>            // for size_t
-#include <stdint.h>            // for uint32_t, uint64_t
-#include <memory>              // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
-#include <string>              // for operator==, char_traits, basic_string
-#include <vector>              // for vector
+#include <assert.h> // for assert
+#include <memory>   // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t, uint64_t
+#include <string>   // for operator==, char_traits, basic_string
+#include <vector>   // for vector
 
 // Struct containing metadata fields for an N2 frame
 struct N2MetadataFormat {

@@ -43,7 +43,7 @@ class Polyco(object):
         dt = (t - self.tmid) * 1440
         phase = self.phase_ref + dt * 60 * self.f0
         for i in range(len(self.coeff)):
-            phase += self.coeff[i] * dt ** i
+            phase += self.coeff[i] * dt**i
 
         return phase
 
@@ -162,9 +162,9 @@ class PolycoFile(object):
             "rot_freq": poly[0].f0,
             "dm": poly[0].dm if self.dm is None else self.dm,
             "segment": poly[0].seg * 60,
-            "pulsar_name": self.polyco_specs[0]["name"]
-            if self.name is None
-            else self.name,
+            "pulsar_name": (
+                self.polyco_specs[0]["name"] if self.name is None else self.name
+            ),
             "enabled": True,
             "pulse_width": self.width,
         }

@@ -1,17 +1,18 @@
 #include "gpuSimulateCudaBasebandBeamformer.hpp"
 
-#include <stddef.h>             // for size_t
-#include <functional>           // for bind, function
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO, DEBUG
+#include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_indices, get_onehot_frame_...
+#include "visUtil.hpp"         // for set4, get4
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for INFO, DEBUG
-#include "oneHotMetadata.hpp"   // for metadata_is_onehot, get_onehot_indices, get_onehot_frame_...
-#include "visUtil.hpp"          // for set4, get4
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <stddef.h>   // for size_t
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

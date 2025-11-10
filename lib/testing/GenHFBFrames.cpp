@@ -1,18 +1,19 @@
 #include "GenHFBFrames.hpp"
 
-#include <cmath>               // for sqrt
-#include <functional>          // for bind, function
-#include <memory>              // for __shared_ptr_access, shared_ptr
-#include <random>              // for normal_distribution, default_random_engine
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
+#include "datasetManager.hpp" // for dset_id_t
+#include "kotekanLogging.hpp" // for DEBUG, INFO
+#include "visUtil.hpp"        // for frameID, modulo
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
-#include "datasetManager.hpp"  // for dset_id_t
-#include "fmt.hpp"             // for compile_string_to_view
-#include "kotekanLogging.hpp"  // for DEBUG, INFO
-#include "visUtil.hpp"         // for frameID, modulo
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <cmath>      // for sqrt
+#include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <random>     // for normal_distribution, default_random_engine
 
 using kotekan::bufferContainer;
 using kotekan::Config;

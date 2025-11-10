@@ -1,23 +1,24 @@
 #include "gpuSimulateCudaFRBBeamformer.hpp"
 
-#include <assert.h>             // for assert
-#include <cuda_fp16.h>          // for __half::operator float
-#include <math.h>               // for M_PI
-#include <stdlib.h>             // for free, malloc, size_t
-#include <array>                // for array
-#include <complex>              // for complex, operator*, norm, polar, complex_literals
-#include <functional>           // for bind, function
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for float16_t, KOTEKAN_FLOAT16
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG, INFO, WARN
+#include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_frame_counter, get_onehot_...
+#include "visUtil.hpp"         // for get4, int4x2_t
 
-#include "Config.hpp"           // for Config
-#include "DataType.hpp"         // for float16_t, KOTEKAN_FLOAT16
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for DEBUG, INFO, WARN
-#include "oneHotMetadata.hpp"   // for metadata_is_onehot, get_onehot_frame_counter, get_onehot_...
-#include "visUtil.hpp"          // for get4, int4x2_t
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <array>       // for array
+#include <assert.h>    // for assert
+#include <complex>     // for complex, operator*, norm, polar, complex_literals
+#include <cuda_fp16.h> // for __half::operator float
+#include <functional>  // for bind, function
+#include <math.h>      // for M_PI
+#include <stdlib.h>    // for free, malloc, size_t
+#include <vector>      // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -1,15 +1,16 @@
 #include "applyGenPL.hpp"
 
-#include <cstdint>              // for int32_t, uint64_t
-#include <cstdlib>              // for abort, size_t
-#include <functional>           // for bind, function
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <cstdint>    // for int32_t, uint64_t
+#include <cstdlib>    // for abort, size_t
+#include <functional> // for bind, function
 
 using kotekan::bufferContainer;
 using kotekan::Config;

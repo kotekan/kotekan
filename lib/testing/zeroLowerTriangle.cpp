@@ -1,13 +1,14 @@
 #include "zeroLowerTriangle.hpp"
 
-#include <functional>           // for bind, function
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for INFO
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
 
 using kotekan::bufferContainer;
 using kotekan::Config;

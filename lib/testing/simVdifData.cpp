@@ -1,18 +1,19 @@
 #include "simVdifData.hpp"
 
-#include <string.h>             // for memcpy, memset
-#include <unistd.h>             // for usleep
-#include <functional>           // for bind, function
-#include <random>               // for random_device, uniform_int_distribution, mt19937
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO
+#include "util.h"              // for e_time
+#include "vdif_functions.h"    // for VDIFHeader
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "fmt.hpp"              // for compile_string_to_view
-#include "kotekanLogging.hpp"   // for INFO
-#include "util.h"               // for e_time
-#include "vdif_functions.h"     // for VDIFHeader
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <random>     // for random_device, uniform_int_distribution, mt19937
+#include <string.h>   // for memcpy, memset
+#include <unistd.h>   // for usleep
 
 
 using kotekan::bufferContainer;

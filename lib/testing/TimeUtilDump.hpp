@@ -1,12 +1,12 @@
 #ifndef TIME_UTIL_DUMP_HPP
 #define TIME_UTIL_DUMP_HPP
 
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
+#include <string> // for string
 
 /**
  * @class ExampleConsumer

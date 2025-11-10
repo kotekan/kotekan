@@ -7,14 +7,14 @@
 #ifndef PULSAR_SIM_PROCESS
 #define PULSAR_SIM_PROCESS
 
-#include <stdint.h>             // for int32_t, uint16_t, uint64_t
-#include <string>               // for string, basic_string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata
+#include <stdint.h> // for int32_t, uint16_t, uint64_t
+#include <string>   // for string, basic_string
 
 
 /**
