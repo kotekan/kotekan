@@ -900,7 +900,7 @@ BOOST_AUTO_TEST_CASE(_vec_itrs_to_cirs) {
 BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     /*
      * Thompson, Moran, and Swenson (3ed), Eq. 4.9 gives observed the fringe rate as:
-     * 
+     *
      * dw/dt = -w_e * u * cos(delta),
      *
      * and their visibility is defined as:
@@ -965,8 +965,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     double test_phase_val = 2 * M_PI * w_e * t * cos(dec);
 
-    std::vector<double> test_phases(
-        {0.0, test_phase_val, 0.0, test_phase_val});
+    std::vector<double> test_phases({0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel = get_telescope(json_config);
 
@@ -984,10 +983,9 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     target_dec_deg = 30.0;
     json_config["telescope"]["origin_itrs_lat_deg"] = tel_lat_deg;
     json_config["telescope"]["dish_coelev_deg"] = target_dec_deg - tel_lat_deg;
-    
-    test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI/180);
-    std::vector<double> test_phases2(
-        {0.0, test_phase_val, 0.0, test_phase_val});
+
+    test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI / 180);
+    std::vector<double> test_phases2({0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel2 = get_telescope(json_config);
     tel2.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
@@ -1004,11 +1002,10 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     target_dec_deg = 70.0;
     json_config["telescope"]["dish_vert_axis"] = {0.0, sin(deflection), cos(deflection)};
     json_config["telescope"]["dish_coelev_deg"] = target_dec_deg - tel_lat_deg - deflection_deg;
-    
-    test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI/180);
-    std::vector<double> test_phases3(
-        {0.0, test_phase_val, 0.0, test_phase_val});
-    
+
+    test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI / 180);
+    std::vector<double> test_phases3({0.0, test_phase_val, 0.0, test_phase_val});
+
     const CHORDTelescope& tel3 = get_telescope(json_config);
     tel3.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
 
@@ -1021,14 +1018,13 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     // Rotate the grid orientation (tests that we've converting tel -> topo
     // coords)
     //    |2 3      3 1|
-    //    |0 1  --> 2 0| 
+    //    |0 1  --> 2 0|
     // ---+---      ---+---
     json_config["telescope"]["grid_x_axis"] = {0.0, 1.0, 0.0};
     json_config["telescope"]["grid_y_axis"] = {-1.0, 0.0, 0.0};
 
-    test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI/180);
-    std::vector<double> test_phases4(
-        {0.0, 0.0, -test_phase_val, -test_phase_val});
+    test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI / 180);
+    std::vector<double> test_phases4({0.0, 0.0, -test_phase_val, -test_phase_val});
 
     const CHORDTelescope& tel4 = get_telescope(json_config);
     tel4.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
