@@ -30,6 +30,8 @@ class ICETelescope : public Telescope {
 public:
     ICETelescope(const kotekan::Config& config, const std::string& path);
 
+    void reset() const override {}
+
     // Implementations of the required frequency mapping functions
     freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
     double to_freq(freq_id_t freq_id) const override;

@@ -93,6 +93,12 @@ public:
     }
 
     /**
+     * Reset the internal state, removing REST endpoints, making the telescope
+     * safe to have its destructor run.
+     */
+    virtual void reset() const = 0;
+
+    /**
      * Get the frequency ID from the FPGA stream ID.
      *
      * @param  stream  The generic stream ID.

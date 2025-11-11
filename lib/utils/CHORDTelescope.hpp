@@ -91,6 +91,12 @@ class CHORDTelescope : public Telescope {
 public:
     CHORDTelescope(const kotekan::Config& config, const std::string& path);
 
+    /**
+     * Reset the internal state, removing REST endpoints, making the telescope
+     * safe to have its destructor run.
+     */
+    void reset() const override;
+
     // Implementations of the required time mapping functions
     bool gps_time_enabled() const override;
     timespec to_time(uint64_t seq) const override;

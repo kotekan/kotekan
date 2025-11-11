@@ -101,6 +101,8 @@ class FakeTelescope : public Telescope {
 public:
     FakeTelescope(const kotekan::Config& config, const std::string& path);
 
+    void reset() const override {}
+
     // Dummy freq map implementations
     freq_id_t to_freq_id(stream_t stream_id, uint32_t ind) const override;
     double to_freq(freq_id_t freq_id) const override;

@@ -47,6 +47,7 @@ kotekanMode::kotekanMode(Config& config_) : config(config_) {
 kotekanMode::~kotekanMode() {
 
     configUpdater::instance().reset();
+    Telescope::instance().reset();
     restServer::instance().remove_get_callback("/config");
     restServer::instance().remove_get_callback("/buffers");
     restServer::instance().remove_get_callback("/pipeline_dot");
