@@ -45,7 +45,7 @@ for file in "$path"/{,**/}CMakeLists.txt; do
     fi
 
     # Capture cmake-lint output; treat any output as an issue
-    lint_out=$("$CMAKE_LINT_CMD" --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file" || true)
+    lint_out=$($CMAKE_LINT_CMD --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file" || true)
     if [[ -n "$lint_out" ]]; then
         echo "$lint_out"
         had_issues=1
@@ -67,7 +67,7 @@ for file in "$path"/cmake/*.cmake; do
     fi
 
     # Capture cmake-lint output; treat any output as an issue
-    lint_out=$("$CMAKE_LINT_CMD" --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file" || true)
+    lint_out=$($CMAKE_LINT_CMD --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file" || true)
     if [[ -n "$lint_out" ]]; then
         echo "$lint_out"
         had_issues=1
