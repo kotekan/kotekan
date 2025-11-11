@@ -161,7 +161,6 @@ compressed_lost_samples_buffer_cpy:
     frame_size: samples_per_data_set * num_data_sets / (factor_upchan * downsample_time) * sizeof_int
     metadata_pool: main_pool
 
-cpu_affinity: [2,3,8,9]
 
 gen_data:
   test_data_gen_network:
@@ -245,7 +244,7 @@ hyper_fine_beam:
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     compressed_lost_samples_buf: compressed_lost_samples_buffer
     hfb_output_buf: beamform_hfb_output_buffer_0
-  
+
 hfb:
   file_length: 1
   file_type: hfbraw
@@ -262,7 +261,7 @@ read_gain:
   in_buf: network_buffer_0
   gain_frb_buf: gain_frb_buffer
   gain_tracking_buf: gain_tracking_buffer
-      
+
 updatable_config:
   frb_gain:
     kotekan_update_endpoint: json

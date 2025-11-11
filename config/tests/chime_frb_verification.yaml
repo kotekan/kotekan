@@ -142,7 +142,7 @@ beamform_hfb_output_buffers:
     metadata_pool: main_pool
     beamform_hfb_output_buffer_0:
         metadata_pool: hfb_pool
-        kotekan_buffer: hfb 
+        kotekan_buffer: hfb
     beamform_hfb_output_buffer_read:
         metadata_pool: hfb_pool
         kotekan_buffer: hfb
@@ -165,7 +165,6 @@ compressed_lost_samples_buffer_cpy:
     frame_size: samples_per_data_set * num_data_sets / (factor_upchan * downsample_time) * sizeof_int
     metadata_pool: main_pool
 
-cpu_affinity: [2,3,8,9]
 
 gen_data:
   test_data_gen_network:
@@ -258,7 +257,7 @@ hyper_fine_beam:
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     compressed_lost_samples_buf: compressed_lost_samples_buffer
     hfb_output_buf: beamform_hfb_output_buffer_0
-  
+
 hfb:
     kotekan_stage: rawFileWrite
     in_buf: beamform_hfb_output_buffer_0
@@ -270,7 +269,7 @@ hfb_read:
     kotekan_stage: rawFileRead
     buf: beamform_hfb_output_buffer_read
     file_name: 'hfb_buf'
-    prefix_hostname: true 
+    prefix_hostname: true
     file_ext: 'dump'
     base_dir: '/home/willis/hfb_data'
 
@@ -282,13 +281,13 @@ read_gain:
     in_buf: network_buffer_0
     gain_frb_buf: gain_frb_buffer
     gain_tracking_buf: gain_tracking_buffer
-      
+
 check_data:
   bf_data_check_0:
     num_frames_to_test: 1
     epsilon: 0.001
     kotekan_stage: testDataCheckFloat
-    first_buf : gpu_beamform_output_buffer_0
+    first_buf: gpu_beamform_output_buffer_0
     second_buf: cpu_output_buffer_0
 
 check_hfb_data:
@@ -296,7 +295,7 @@ check_hfb_data:
     num_frames_to_test: 1
     epsilon: 0.001
     kotekan_stage: testDataCheckFloat
-    first_buf : gpu_beamform_hfb_output_buffer_0
+    first_buf: gpu_beamform_hfb_output_buffer_0
     second_buf: cpu_hfb_output_buffer_0
 
 updatable_config:
