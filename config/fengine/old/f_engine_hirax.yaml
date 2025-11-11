@@ -200,7 +200,7 @@ frb_opening_angle_ew: 2.0 * 3.141592653589793 / 180
 
 frb_chunk_size: 256
 
-CONTINUE HERE
+# CONTINUE HERE
 
 # Pool:
 main_pool:

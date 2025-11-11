@@ -45,7 +45,7 @@ n2_evec_size: 0  # 2 * sizeof_float * num_ev * num_elements
 n2_emethod_size: sizeof_int
 n2_erms_size: sizeof_float
 n2_gain_size: 2 * sizeof_float * num_elements
-n2_frame_size: n2_vis_size + n2_weight_size + n2_flags_size + n2_eval_size + 
+n2_frame_size: n2_vis_size + n2_weight_size + n2_flags_size + n2_eval_size +
   n2_evec_size + n2_emethod_size + n2_erms_size + n2_gain_size
 
 frames_to_generate: 8 * buffer_depth  # must be at least n2_frames_to_write * num_n2k_samples_to_accumulate
@@ -92,7 +92,7 @@ earth_rotation_data:
       y_pm: 0.4
     }]
 
-  
+
 
 # Pool
 main_pool:

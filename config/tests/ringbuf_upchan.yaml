@@ -113,7 +113,7 @@ gen_data_2:
     type: constf16
     value: 1
     out_buf: host_upchan_gain_buffer
-    #num_frequencies * upchannelization_factor 
+    #num_frequencies * upchannelization_factor
     array_shape: [ 2048 ]
     dim_name: ["Fbar"]
 

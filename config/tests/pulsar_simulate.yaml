@@ -153,8 +153,8 @@ dump_pulsar_data:
     file_name: psr_post_process
 
 # Pulsar parameters
-feed_sep_NS : 0.3048
-feed_sep_EW : 22.0
+feed_sep_NS: 0.3048
+feed_sep_EW: 22.0
 num_beams: 10
 num_pol: 2
 

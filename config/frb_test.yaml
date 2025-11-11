@@ -82,7 +82,6 @@ cpu_output_buffers:
     cpu_output_buffer_0:
         kotekan_buffer: standard
 
-cpu_affinity: [2,3,8,9]
 
 gen_data:
   type: random
@@ -138,11 +137,11 @@ read_gain:
     in_buf: network_buffer_0
     gain_frb_buf: gain_frb_buffer
     gain_tracking_buf: gain_tracking_buffer
-      
+
 check_data:
   bf_data_check_0:
     kotekan_stage: testDataCheckFloat
-    first_buf : gpu_beamform_output_buffer_0
+    first_buf: gpu_beamform_output_buffer_0
     second_buf: cpu_output_buffer_0
 
 updatable_config:
@@ -162,7 +161,7 @@ updatable_config:
       - /mnt/frb-archiver/GainFiles/Latest_PSR
       - /mnt/frb-archiver/GainFiles/Latest_PSR
       - /mnt/frb-archiver/GainFiles/Latest_PSR
- 
+
         #updatable_config:
         #  frb_gain:
         #    kotekan_update_endpoint: json

@@ -120,11 +120,11 @@ hyper_fine_beam:
     hfb_input_buf: beamform_hfb_integrate_buffer_0
     compressed_lost_samples_buf: compressed_lost_samples_buffer
     hfb_output_buf: beamform_hfb_output_buffer_0
-      
+
 # Check output of stage is correct
 check_data:
   hfb_data_check_0:
     num_frames_to_test: 5
     kotekan_stage: testDataCheckFloat
-    first_buf : beamform_hfb_sum_test_buffer_0
+    first_buf: beamform_hfb_sum_test_buffer_0
     second_buf: beamform_hfb_output_buffer_0

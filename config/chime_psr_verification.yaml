@@ -74,8 +74,8 @@ reorder_map: [32,33,34,35,40,41,42,43,48,49,50,51,56,57,58,59,96,97,98,99,
               485,486,487]
 
 #Pulsar stuff
-feed_sep_NS : 0.3048
-feed_sep_EW : 22.0
+feed_sep_NS: 0.3048
+feed_sep_EW: 22.0
 num_beams: 12
 num_pol: 2
 updatable_config:
@@ -220,7 +220,7 @@ read_gain:
     updatable_config:
       gain_frb: /updatable_config/frb_gain
       gain_tracking: /updatable_config/tracking_gain
-    in_buf: gpu_input_buffer_0 
+    in_buf: gpu_input_buffer_0
     gain_frb_buf: gain_frb_buffer
     gain_tracking_buf: gain_tracking_buffer
  
@@ -282,5 +282,5 @@ check_data:
     num_frames_to_test: 5
     epsilon: 0.2
     kotekan_stage: testDataCheckFloat
-    first_buf : beamform_tracking_output_buffer_0
+    first_buf: beamform_tracking_output_buffer_0
     second_buf: cpu_output_buffer_0

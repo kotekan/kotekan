@@ -82,7 +82,7 @@ gen_hfb_data:
   pattern: "drop"
   rng_mean: samples_per_data_set
   kotekan_stage: GenHFBFrames
-  out_buf: beamform_hfb_integrate_buffer_0 
+  out_buf: beamform_hfb_integrate_buffer_0
   cls_out_buf: compressed_lost_samples_buffer
 
 # Run stage under test
@@ -93,7 +93,7 @@ hyper_fine_beam:
     hfb_input_buf: beamform_hfb_integrate_buffer_0
     compressed_lost_samples_buf: compressed_lost_samples_buffer
     hfb_output_buf: beamform_hfb_output_buffer_0
- 
+
 write_hfb:
   file_length: 64
   file_type: hfbraw

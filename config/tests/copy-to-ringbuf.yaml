@@ -36,7 +36,7 @@ host_in_buffer:
 # Buffer used for signalling only, between the two GPU pipelines.
 host_signal_buffer:
     kotekan_buffer: ring
-    #ring_buffer_size: 
+    #ring_buffer_size:
     metadata_pool: main_pool
 
 host_out_buffer:

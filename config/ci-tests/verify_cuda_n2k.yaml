@@ -137,7 +137,7 @@ gen_data_rfi_RFImask:
     meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
 
 gen_pl_mask:
-    type: random1x8 
+    type: random1x8
     value: 120
     kotekan_stage: testDataGen
     out_buf: host_pl_mask_buffer

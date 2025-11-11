@@ -43,7 +43,7 @@ hfbbuf_10s:
 # Kotekan stages
 hfb_recv:
   kotekan_stage: bufferRecv
-  buf: hfbbuf_10s 
+  buf: hfbbuf_10s
   listen_port: 11027
 
 # Write raw HFB data

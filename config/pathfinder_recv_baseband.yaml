@@ -45,7 +45,7 @@ baseband_recv_buffer:
 # Kotekan stages
 baseband_recv:
   kotekan_stage: bufferRecv
-  buf: baseband_recv_buffer 
+  buf: baseband_recv_buffer
   listen_port: 11028
 
 # Write raw baseband data
@@ -53,7 +53,7 @@ write_baseband:
   root_path: /data/pf_baseband_raw/
 
   kotekan_stage: BasebandWriter
-  in_buf: baseband_recv_buffer 
+  in_buf: baseband_recv_buffer
 
 buffer_status:
   kotekan_stage: bufferStatus

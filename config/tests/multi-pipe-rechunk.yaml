@@ -30,7 +30,7 @@ main_pool:
 host_in_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    # frame_size: 
+    # frame_size:
     metadata_pool: main_pool
 
 # Buffer used for signalling only, between the two GPU pipelines.
