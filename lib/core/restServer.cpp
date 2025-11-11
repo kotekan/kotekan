@@ -506,8 +506,10 @@ void restServer::http_server_thread() {
     // run event loop
     event_base_dispatch(event_base);
 
+    event_free(timer_event);
     evhttp_free(ev_server);
     event_base_free(event_base);
+    event_config_free(ev_config);
 }
 
 void restServer::set_server_affinity(Config& config) {

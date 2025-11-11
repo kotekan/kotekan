@@ -136,9 +136,9 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
 }
 
 CHORDTelescope::~CHORDTelescope() {
-    // Must manually remove the POST callback
+    // Must manually remove the GET callback
     restServer& rest_server = restServer::instance();
-    rest_server.remove_json_callback(_unique_name + "/time0_ns");
+    rest_server.remove_get_callback(_unique_name + "/time0_ns");
 }
 
 

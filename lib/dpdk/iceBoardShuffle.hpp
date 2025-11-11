@@ -474,6 +474,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         std::strncpy(meta->name, "E", sizeof meta->name);
         meta->dim[0] = out_bufs[i]->frame_size / sample_size;
         meta->dim[1] = sample_size;
+        meta->set_strides_simple();
         /* new style array description */
         out_bufs[i]
             ->allocate_new_frame_desc<kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type,
