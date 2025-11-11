@@ -60,7 +60,7 @@ enum class InputType : int64_t {
  *                                  be at index + num_dishes.
  * @param   ew_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases east
  * @param   ns_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases north
- * @param   pos_disp_m      std::array<double, 3>   Position displacement from grid location,
+ * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid location,
  * meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.  actual_pos =
  * grid_pos + disp
  * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
@@ -72,7 +72,7 @@ struct dishInfo {
     int64_t idx;
     int64_t ew_idx;
     int64_t ns_idx;
-    std::array<double, 3> pos_disp_m;
+    std::array<double, 3> feed_pos_disp_m;
     double coelev_disp_deg;
     InputType type;
     std::string label;
@@ -80,8 +80,8 @@ struct dishInfo {
 
 inline bool operator==(const dishInfo& lhs, const dishInfo& rhs) {
     return (lhs.idx == rhs.idx) && (lhs.ew_idx == rhs.ew_idx) && (lhs.ns_idx == rhs.ns_idx)
-           && (lhs.pos_disp_m[0] == rhs.pos_disp_m[0]) && (lhs.pos_disp_m[1] == rhs.pos_disp_m[1])
-           && (lhs.pos_disp_m[2] == rhs.pos_disp_m[2])
+           && (lhs.feed_pos_disp_m[0] == rhs.feed_pos_disp_m[0]) && (lhs.feed_pos_disp_m[1] == rhs.feed_pos_disp_m[1])
+           && (lhs.feed_pos_disp_m[2] == rhs.feed_pos_disp_m[2])
            && (lhs.coelev_disp_deg == rhs.coelev_disp_deg) && (lhs.type == rhs.type)
            && (lhs.label == rhs.label);
 }
@@ -90,12 +90,12 @@ inline bool operator==(const dishInfo& lhs, const dishInfo& rhs) {
  * @brief   Function to generate a dishInfo struct from individual members, used in testing.
  */
 inline dishInfo make_dishInfo(int64_t idx, int64_t ew_idx, int64_t ns_idx,
-                              const std::array<double, 3>& pos_disp_m, double coelev_disp_deg,
+                              const std::array<double, 3>& feed_pos_disp_m, double coelev_disp_deg,
                               InputType type, const std::string& label) {
     dishInfo d{.idx = idx,
                .ew_idx = ew_idx,
                .ns_idx = ns_idx,
-               .pos_disp_m = {pos_disp_m[0], pos_disp_m[1], pos_disp_m[2]},
+               .feed_pos_disp_m = {feed_pos_disp_m[0], feed_pos_disp_m[1], feed_pos_disp_m[2]},
                .coelev_disp_deg = coelev_disp_deg,
                .type = type,
                .label = label};
@@ -109,7 +109,7 @@ void from_json(const nlohmann::json& j, dishInfo& d);
 const static struct dishInfo dish_null = {.idx = -1,
                                           .ew_idx = 0,
                                           .ns_idx = 0,
-                                          .pos_disp_m = {0.0, 0.0, 0.0},
+                                          .feed_pos_disp_m = {0.0, 0.0, 0.0},
                                           .coelev_disp_deg = 0.0,
                                           .type = InputType::Fake,
                                           .label = "Fake"};
@@ -121,7 +121,7 @@ const static struct dishInfo dish_null = {.idx = -1,
  *
  * @param   ew_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases east
  * @param   ns_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases north
- * @param   pos_disp_m      std::array<double, 3>   Position displacement from grid location,
+ * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid location,
  * meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.  actual_pos =
  * grid_pos + disp
  * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
@@ -132,7 +132,7 @@ const static struct dishInfo dish_null = {.idx = -1,
 struct dishInputFields {
     std::vector<int64_t> ew_idx;
     std::vector<int64_t> ns_idx;
-    std::vector<std::array<double, 3>> pos_disp_m;
+    std::vector<std::array<double, 3>> feed_pos_disp_m;
     std::vector<double> coelev_disp_deg;
     std::vector<int64_t> type;
     std::vector<std::string> label;
@@ -198,7 +198,7 @@ struct dishInputFields {
  *                                          main array.
  *                                      - ns_idx    int     N/S (y) grid position in the
  *                                          main array.
- *                                      - pos_disp_m [double, 3]    Displacement from grid
+ *                                      - feed_pos_disp_m [double, 3]    Displacement of feed from grid
  *                                          position in meters, Telescope frame.
  *                                      - coelev_disp_deg   double  Displacement from
  *                                          target co-elevation, degrees.

@@ -41,9 +41,9 @@ const std::string default_config_str = R"config_str({
     "updatable_config":   "/earth_rotation_data"
     },
 "dish_inputs" : [
-    {"dish_idx": 0, "ew_idx": 0, "ns_idx": 0, "pos_disp_m": [0.0, 0.0, 0.0],
+    {"dish_idx": 0, "ew_idx": 0, "ns_idx": 0, "feed_pos_disp_m": [0.0, 0.0, 0.0],
      "coelev_disp_deg": 0.0, "type": 0, "label": "D00"},
-    {"dish_idx": 1, "ew_idx": 1, "ns_idx": 0, "pos_disp_m": [0.0, 0.0, 0.0],
+    {"dish_idx": 1, "ew_idx": 1, "ns_idx": 0, "feed_pos_disp_m": [0.0, 0.0, 0.0],
      "coelev_disp_deg": 0.0, "type": 0, "label": "D01"}],
 "gps_time": {
     "frame0_nano": 1761926400000000000
@@ -339,7 +339,7 @@ BOOST_AUTO_TEST_CASE(_dish_input_fields) {
     for (int i = 0; i < 8; i++) {
         BOOST_CHECK_EQUAL(buf.ew_idx[i], d[i].ew_idx);
         BOOST_CHECK_EQUAL(buf.ns_idx[i], d[i].ns_idx);
-        check_equal_vec3d(buf.pos_disp_m[i], d[i].pos_disp_m);
+        check_equal_vec3d(buf.feed_pos_disp_m[i], d[i].feed_pos_disp_m);
         BOOST_CHECK_EQUAL(buf.coelev_disp_deg[i], d[i].coelev_disp_deg);
         BOOST_CHECK_EQUAL(buf.type[i], static_cast<int64_t>(d[i].type));
         BOOST_CHECK_EQUAL(buf.label[i], d[i].label);

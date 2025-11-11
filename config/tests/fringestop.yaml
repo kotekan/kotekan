@@ -289,13 +289,13 @@ telescope:
 dish_separation_ew_m: 6.3
 dish_separation_ns_m: 8.5
 dish_inputs: [
-  {dish_idx: 0, ew_idx: 0,  ns_idx: 0,  pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "A01"},
-  {dish_idx: 1, ew_idx: 1,  ns_idx: 0,  pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "A02"},
-  {dish_idx: 2, ew_idx: 0,  ns_idx: 1,  pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "B01"},
-  {dish_idx: 3, ew_idx: 1,  ns_idx: 1,  pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "B02"},
-  {dish_idx: 4, ew_idx: 24, ns_idx: 0,  pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "A25"},
-  {dish_idx: 5, ew_idx: 0,  ns_idx: 24, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "Y01"},
-  {dish_idx: 6, ew_idx: 24, ns_idx: 24, pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "Y25"}
+  {dish_idx: 0, ew_idx: 0,  ns_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "A01"},
+  {dish_idx: 1, ew_idx: 1,  ns_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "A02"},
+  {dish_idx: 2, ew_idx: 0,  ns_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "B01"},
+  {dish_idx: 3, ew_idx: 1,  ns_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "B02"},
+  {dish_idx: 4, ew_idx: 24, ns_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "A25"},
+  {dish_idx: 5, ew_idx: 0,  ns_idx: 24, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "Y01"},
+  {dish_idx: 6, ew_idx: 24, ns_idx: 24, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "Y25"}
 ]
 
 type: config
