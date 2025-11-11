@@ -136,9 +136,9 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
 }
 
 CHORDTelescope::~CHORDTelescope() {}
-    
+
 void CHORDTelescope::reset() const {
-    // Must manually remove the POST callback. This function must be called 
+    // Must manually remove the POST callback. This function must be called
     // before the CHORDTelescope destructor.
     restServer::instance().remove_json_callback(_unique_name + "/time0_ns");
 }
