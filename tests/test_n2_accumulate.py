@@ -185,7 +185,9 @@ def gen_vis_data(t_idx, f_idx):
     if total_counts > 0:
         vis /= total_counts
         print(diff_vis_sq, diff_N_sq * np.absolute(vis) ** 2)
-        weights[:] = total_counts**2 / (diff_vis_sq - diff_N_sq * np.absolute(vis) ** 2)
+        weights[:] = total_counts ** 2 / (
+            diff_vis_sq - diff_N_sq * np.absolute(vis) ** 2
+        )
     else:
         vis[:] = 0.0
         weights[:] = 0.0

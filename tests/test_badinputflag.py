@@ -89,12 +89,7 @@ def output_frames(tmpdir_factory, input_frames):
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
-        "BadInputFlag",
-        {},
-        read_buffer,
-        dump_buffer,
-        root_params,
-        expect_failure=True,
+        "BadInputFlag", {}, read_buffer, dump_buffer, root_params, expect_failure=True,
     )
 
     test.run()

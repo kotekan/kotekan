@@ -1,5 +1,4 @@
 """Load configuration files."""
-
 import errno
 import json
 import os

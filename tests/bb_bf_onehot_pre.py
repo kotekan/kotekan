@@ -18,7 +18,6 @@ It's used like
 python /tmp/run.py
 
 """
-
 bb = {}
 onehot = {}
 sparse = {}
