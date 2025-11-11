@@ -47,8 +47,8 @@ const static struct EOP eop_null = {
  * @brief Enum for denoting the type of dish input into Kotekan
  */
 enum class InputType : int64_t {
-    Fake = -1,          // Not a real dish
-    ArrayDish = 0,      // A standard dish in the main array.
+    Fake = -1,     // Not a real dish
+    ArrayDish = 0, // A standard dish in the main array.
 };
 
 
@@ -60,9 +60,9 @@ enum class InputType : int64_t {
  *                                  be at index + num_dishes.
  * @param   ew_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases east
  * @param   ns_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases north
- * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid location,
- * meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.  actual_pos =
- * grid_pos + disp
+ * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid
+ * location, meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.
+ * actual_pos = grid_pos + disp
  * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
  *                                  actual_coelev = target_coelev + disp.
  * @param   type            int64_t Type of dish input.  -1 = NULL, 0 = CHORD Dish.
@@ -80,7 +80,8 @@ struct dishInfo {
 
 inline bool operator==(const dishInfo& lhs, const dishInfo& rhs) {
     return (lhs.idx == rhs.idx) && (lhs.ew_idx == rhs.ew_idx) && (lhs.ns_idx == rhs.ns_idx)
-           && (lhs.feed_pos_disp_m[0] == rhs.feed_pos_disp_m[0]) && (lhs.feed_pos_disp_m[1] == rhs.feed_pos_disp_m[1])
+           && (lhs.feed_pos_disp_m[0] == rhs.feed_pos_disp_m[0])
+           && (lhs.feed_pos_disp_m[1] == rhs.feed_pos_disp_m[1])
            && (lhs.feed_pos_disp_m[2] == rhs.feed_pos_disp_m[2])
            && (lhs.coelev_disp_deg == rhs.coelev_disp_deg) && (lhs.type == rhs.type)
            && (lhs.label == rhs.label);
@@ -121,9 +122,9 @@ const static struct dishInfo dish_null = {.idx = -1,
  *
  * @param   ew_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases east
  * @param   ns_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases north
- * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid location,
- * meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.  actual_pos =
- * grid_pos + disp
+ * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid
+ * location, meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.
+ * actual_pos = grid_pos + disp
  * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
  *                                  actual_coelev = target_coelev + disp.
  * @param   type            int64_t Type of dish input.  -1 = NULL, 0 = CHORD Dish.
@@ -198,8 +199,8 @@ struct dishInputFields {
  *                                          main array.
  *                                      - ns_idx    int     N/S (y) grid position in the
  *                                          main array.
- *                                      - feed_pos_disp_m [double, 3]    Displacement of feed from grid
- *                                          position in meters, Telescope frame.
+ *                                      - feed_pos_disp_m [double, 3]    Displacement of feed from
+ *grid position in meters, Telescope frame.
  *                                      - coelev_disp_deg   double  Displacement from
  *                                          target co-elevation, degrees.
  *                                      - type      int64_t     Integer code for type of input,
