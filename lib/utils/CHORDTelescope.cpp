@@ -570,7 +570,7 @@ void CHORDTelescope::get_dish_inputs(dishInputFields& input) const {
         input.ns_idx.push_back(_dish_info_table[i].ns_idx);
         input.pos_disp_m.push_back(_dish_info_table[i].pos_disp_m);
         input.coelev_disp_deg.push_back(_dish_info_table[i].coelev_disp_deg);
-        input.type.push_back(_dish_info_table[i].type);
+        input.type.push_back(static_cast<int64_t>(_dish_info_table[i].type));
         input.label.push_back(_dish_info_table[i].label);
     }
 }

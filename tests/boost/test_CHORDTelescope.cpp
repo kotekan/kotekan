@@ -208,12 +208,12 @@ BOOST_AUTO_TEST_CASE(_dish_coelev) {
  * @brief   Test dish number getter
  */
 BOOST_AUTO_TEST_CASE(_dish_num) {
-    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D1");
-    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, 0, "D2");
-    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, 0, "D3");
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D1");
+    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, InputType::ArrayDish, "D2");
+    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D3");
     dishInfo d3 = dish_null;
     dishInfo d4 = dish_null;
-    dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, 0, "D4");
+    dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, InputType::ArrayDish, "D4");
     dishInfo d6 = dish_null;
     dishInfo d7 = dish_null;
     d3.idx = 3;
@@ -236,12 +236,12 @@ BOOST_AUTO_TEST_CASE(_dish_num) {
  * @brief   Test dish_info retrieval
  */
 BOOST_AUTO_TEST_CASE(_dish_info) {
-    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D1");
-    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, 0, "D2");
-    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, 0, "D3");
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D1");
+    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, InputType::ArrayDish, "D2");
+    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D3");
     dishInfo d3 = dish_null;
     dishInfo d4 = dish_null;
-    dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, 0, "D4");
+    dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, InputType::ArrayDish, "D4");
     dishInfo d6 = dish_null;
     dishInfo d7 = dish_null;
     d3.idx = 3;
@@ -271,12 +271,12 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
  * @brief   Test dish_position calculation
  */
 BOOST_AUTO_TEST_CASE(_dish_position) {
-    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D1");
-    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, 0, "D2");
-    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, 0, "D3");
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D1");
+    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, InputType::ArrayDish, "D2");
+    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D3");
     dishInfo d3 = dish_null;
     dishInfo d4 = dish_null;
-    dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, 0, "D4");
+    dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, InputType::ArrayDish, "D4");
     dishInfo d6 = dish_null;
     dishInfo d7 = dish_null;
     d3.idx = 3;
@@ -308,12 +308,12 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
  * @brief   Test dish_input fields retrieval
  */
 BOOST_AUTO_TEST_CASE(_dish_input_fields) {
-    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D1");
-    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, 0, "D2");
-    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, 0, "D3");
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D1");
+    dishInfo d1 = make_dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, InputType::ArrayDish, "D2");
+    dishInfo d2 = make_dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D3");
     dishInfo d3 = dish_null;
     dishInfo d4 = dish_null;
-    dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, 0, "D4");
+    dishInfo d5 = make_dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, InputType::ArrayDish, "D4");
     dishInfo d6 = dish_null;
     dishInfo d7 = dish_null;
     d3.idx = 3;
@@ -341,7 +341,7 @@ BOOST_AUTO_TEST_CASE(_dish_input_fields) {
         BOOST_CHECK_EQUAL(buf.ns_idx[i], d[i].ns_idx);
         check_equal_vec3d(buf.pos_disp_m[i], d[i].pos_disp_m);
         BOOST_CHECK_EQUAL(buf.coelev_disp_deg[i], d[i].coelev_disp_deg);
-        BOOST_CHECK_EQUAL(buf.type[i], d[i].type);
+        BOOST_CHECK_EQUAL(buf.type[i], static_cast<int64_t>(d[i].type));
         BOOST_CHECK_EQUAL(buf.label[i], d[i].label);
     }
 }
@@ -937,10 +937,10 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     double dec = target_dec_deg * M_PI / 180;
 
-    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D00");
-    dishInfo d1 = make_dishInfo(1, 1, 0, {0.0, 0.0, 0.0}, 0.0, 0, "D01");
-    dishInfo d2 = make_dishInfo(2, 0, 1, {0.0, 0.0, 0.0}, 0.0, 0, "D10");
-    dishInfo d3 = make_dishInfo(3, 0, 0, {lambda, lambda, 0.0}, 0.0, 0, "D11");
+    dishInfo d0 = make_dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D00");
+    dishInfo d1 = make_dishInfo(1, 1, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D01");
+    dishInfo d2 = make_dishInfo(2, 0, 1, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D10");
+    dishInfo d3 = make_dishInfo(3, 0, 0, {lambda, lambda, 0.0}, 0.0, InputType::ArrayDish, "D11");
 
     double t = 1.0; // A short time to get only 1st order effects
     EOP eop0 = {.t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0, .xp_as = 0, .yp_as = 0};

@@ -43,6 +43,14 @@ void from_json(const nlohmann::json& j, EOP& m);
 const static struct EOP eop_null = {
     .t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0.0, .ERA_deg = 0.0, .xp_as = 0.0, .yp_as = 0.0};
 
+/**
+ * @brief Enum for denoting the type of dish input into Kotekan
+ */
+enum class InputType : int64_t {
+    Fake = -1,          // Not a real dish
+    ArrayDish = 0,      // A standard dish in the main array.
+};
+
 
 /**
  * @brief   Simple struct with needed dish info.
@@ -66,7 +74,7 @@ struct dishInfo {
     int64_t ns_idx;
     std::array<double, 3> pos_disp_m;
     double coelev_disp_deg;
-    int64_t type;
+    InputType type;
     std::string label;
 };
 
@@ -83,7 +91,7 @@ inline bool operator==(const dishInfo& lhs, const dishInfo& rhs) {
  */
 inline dishInfo make_dishInfo(int64_t idx, int64_t ew_idx, int64_t ns_idx,
                               const std::array<double, 3>& pos_disp_m, double coelev_disp_deg,
-                              int64_t type, const std::string& label) {
+                              InputType type, const std::string& label) {
     dishInfo d{.idx = idx,
                .ew_idx = ew_idx,
                .ns_idx = ns_idx,
@@ -103,8 +111,8 @@ const static struct dishInfo dish_null = {.idx = -1,
                                           .ns_idx = 0,
                                           .pos_disp_m = {0.0, 0.0, 0.0},
                                           .coelev_disp_deg = 0.0,
-                                          .type = -1,
-                                          .label = "NULL"};
+                                          .type = InputType::Fake,
+                                          .label = "Fake"};
 
 /**
  * @brief   Struct containing "input" data fields for file writers. Fields are ordered by their
@@ -194,7 +202,7 @@ struct dishInputFields {
  *                                          position in meters, Telescope frame.
  *                                      - coelev_disp_deg   double  Displacement from
  *                                          target co-elevation, degrees.
- *                                      - type      int     Integer code for type of input,
+ *                                      - type      int64_t     Integer code for type of input,
  *                                          -1: fake "NULL" dish, 0: standard dish.
  *                                      - label     String  Label for input.
  **/
