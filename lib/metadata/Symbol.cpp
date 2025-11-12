@@ -29,7 +29,7 @@ const char* Symbol::lookup_or_insert(const char* str) {
 }
 
 Symbol::Symbol(const std::string_view& str) : value(lookup_or_insert(str.data())) {}
-Symbol::Symbol(const std::string& str) : value(lookup_or_insert(str.data())) {}
+Symbol::Symbol(const std::string& str) : value(lookup_or_insert(str.c_str())) {}
 Symbol::Symbol(const char* str) : value(lookup_or_insert(str)) {}
 
 std::string Symbol::get_string() const {
