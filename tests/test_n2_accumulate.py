@@ -296,6 +296,7 @@ def test_metadata(accumulate_data):
             * global_params["sampling_rate_MHz"]
             / global_params["fft_length"]
         )
+        assert(frame.metadata.layout == 0)
 
 
 def test_time(accumulate_data):
@@ -310,6 +311,8 @@ def test_time(accumulate_data):
 
         t_idx = idx // len(freq_ids)
 
+        assert (
+            frame.metadata.abs_time_idx == t_idx)
         assert (
             frame.metadata.fpga_start_tick
             == t_idx
