@@ -528,6 +528,12 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     meta->dim[0] = lost_samples_buf->frame_size; // One byte per time sample
     meta->dims = 1;
     std::strncpy(meta->name, "lost_samples", sizeof meta->name);
+    meta->set_strides_simple();
+    /* new style array description */
+    lost_samples_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::uint8>::type, 1>(
+        lost_samples_frame_id, "lost_samples", {ptrdiff_t(lost_samples_buf->frame_size)}, {"T"});
+    /* test that things are consistent */
+    meta->check_frame_desc(lost_samples_buf->get_frame_desc(lost_samples_frame_id));
 
 
     return true;
