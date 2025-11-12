@@ -404,6 +404,7 @@ def test_metadata(n2_data):
 
     for i, frame in enumerate(n2_data):
         assert frame.metadata.abs_time_idx == i + 1  # First frame skipped.
+        assert frame.metadata.layout == 0
         assert frame.metadata.freq_id == 0
         assert frame.metadata.fpga_start_tick == frame_meta[i]["seq_start"]
         assert frame.metadata.frame_length_fpga_ticks == frame_meta[i]["seq_len"]

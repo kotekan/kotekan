@@ -198,10 +198,12 @@ void N2TimeDownsample::main_thread() {
 
             // Set the output to target EOP.
             output_frame.eop = eop_target;
-            
+
             // Set the output absolute time index, from the difference between the current ERA bin
             // and the ERA bin at startup
-            output_frame.abs_time_idx = (era_bin_idx + num_bins_per_rotation * (num_rotations - num_rotations_startup)) - era_bin_idx_startup;
+            output_frame.abs_time_idx =
+                (era_bin_idx + num_bins_per_rotation * (num_rotations - num_rotations_startup))
+                - era_bin_idx_startup;
 
             // Initialize the weights, and weigh vis/weight by number of samples.
             for (size_t i = 0; i < nprod; i++) {

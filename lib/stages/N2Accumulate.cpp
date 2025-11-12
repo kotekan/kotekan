@@ -262,20 +262,26 @@ void N2Accumulate::main_thread() {
         // Get metadata for all incoming frames.
         std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
         int64_t in_frame_num = frame_metadata->get_fpga_seq_num() / _n_fpga_samples_per_n2k_frame;
-        
-        std::shared_ptr<chordMetadata> counts_metadata = get_chord_metadata(in_counts_buf, in_counts_frame_id);
-        std::shared_ptr<chordMetadata> rfimask_metadata = get_chord_metadata(in_rfimask_buf, in_rfimask_frame_id);
+
+        std::shared_ptr<chordMetadata> counts_metadata =
+            get_chord_metadata(in_counts_buf, in_counts_frame_id);
+        std::shared_ptr<chordMetadata> rfimask_metadata =
+            get_chord_metadata(in_rfimask_buf, in_rfimask_frame_id);
 
         // Check synchronization
         if (frame_metadata->get_fpga_seq_num() != counts_metadata->get_fpga_seq_num()) {
-            FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with Counts buffer {:s}[{:d}] seq={:d}", 
-                    in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
-                    in_counts_buf->buffer_name, in_counts_frame_id, counts_metadata->get_fpga_seq_num());
+            FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
+                        "Counts buffer {:s}[{:d}] seq={:d}",
+                        in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
+                        in_counts_buf->buffer_name, in_counts_frame_id,
+                        counts_metadata->get_fpga_seq_num());
         }
         if (frame_metadata->get_fpga_seq_num() != rfimask_metadata->get_fpga_seq_num()) {
-            FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with RFIMask buffer {:s}[{:d}] seq={:d}", 
-                    in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
-                    in_rfimask_buf->buffer_name, in_rfimask_frame_id, rfimask_metadata->get_fpga_seq_num());
+            FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
+                        "RFIMask buffer {:s}[{:d}] seq={:d}",
+                        in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
+                        in_rfimask_buf->buffer_name, in_rfimask_frame_id,
+                        rfimask_metadata->get_fpga_seq_num());
         }
 
         // Start and end times of this frame
@@ -465,7 +471,8 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
         meta->num_prod = _N2_num_products;
         meta->num_ev = 0;
         meta->layout = N2Layout::FullUpperTri;
-        meta->abs_time_idx = _accum_fpga_start_tick / (_vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation);
+        meta->abs_time_idx = _accum_fpga_start_tick
+                             / (_vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation);
         meta->nfreq = _num_freq_per_n2k_frame;
         meta->freq_id = chord_frame_metadata->get_coarse_freq()[f];
         meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
