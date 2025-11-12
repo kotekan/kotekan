@@ -80,6 +80,15 @@ void N2TimeDownsample::main_thread() {
 
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
 
+
+    // Calculate the startup (seq = 0) EOP and ERA index, for absolute time indexing
+    timespec ts_startup = tel.to_time(0);
+    struct EOP eop_startup = tel.get_EOP_at_time(ts_startup);
+
+    uint64_t era_bin_idx_startup = (uint64_t)(eop_startup.ERA_deg / era_bin_width);
+    int64_t num_rotations_startup;
+    get_ERA_from_UT1(eop_startup.t_ut1, &num_rotations_startup);
+
     // Make an array to hold the per-dish phases.
     int num_dishes = tel.get_num_dishes();
     std::vector<std::complex<double>> fringe_phase(num_dishes, 1.0);
@@ -189,6 +198,10 @@ void N2TimeDownsample::main_thread() {
 
             // Set the output to target EOP.
             output_frame.eop = eop_target;
+            
+            // Set the output absolute time index, from the difference between the current ERA bin
+            // and the ERA bin at startup
+            output_frame.abs_time_idx = (era_bin_idx + num_bins_per_rotation * (num_rotations - num_rotations_startup)) - era_bin_idx_startup;
 
             // Initialize the weights, and weigh vis/weight by number of samples.
             for (size_t i = 0; i < nprod; i++) {

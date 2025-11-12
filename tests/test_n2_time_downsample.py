@@ -107,6 +107,7 @@ def calc_raw_frame_times_and_seqs():
 
     t_inst_ns = seq_to_t_inst_ns(seq)
 
+    """
     with open("raw_test_frame_seq.out", "w") as f:
         f.write("DELTA_SEQ {:d}\n".format(delta_seq))
         f.write("DELTA_NS  {:d}\n".format(delta_ns))
@@ -116,6 +117,7 @@ def calc_raw_frame_times_and_seqs():
                     i, seq[i], dseq[i], t_inst_ns[i]
                 )
             )
+    """
 
     return seq, dseq, t_inst_ns
 
@@ -183,13 +185,16 @@ def calc_t_at_era(t0, era_deg_target, tol):
 
     t0_ut1 = t0.ut1
 
+    """
     with open("t_search.out", "w"):
         pass
+    """
 
     while dtb - dta >= tol:
-
+        """
         with open("t_search.out", "a") as f:
             f.write(str(dta) + "   " + str(dtb) + "\n")
+        """
 
         dt = 0.5 * (dta + dtb)
         t = t0_ut1 + dt
@@ -318,9 +323,11 @@ def calc_downsamp_frame_meta():
     if not out_frames[-1]["finalized"]:
         out_frames.pop()
 
+    """
     with open("frame_meta.out", "w") as f:
         for frame in out_frames:
             f.write(str(frame) + "\n")
+    """
 
     return out_frames
 
@@ -375,6 +382,7 @@ def test_metadata(n2_data):
 
     frame_meta = calc_downsamp_frame_meta()
 
+    """
     with open("frame_seq.out", "w") as f:
         for i, frame in enumerate(n2_data):
             f.write(
@@ -392,8 +400,10 @@ def test_metadata(n2_data):
                     frame_meta[i]["t_start_ns"],
                 )
             )
+    """
 
     for i, frame in enumerate(n2_data):
+        assert frame.metadata.abs_time_idx == i + 1  # First frame skipped.
         assert frame.metadata.freq_id == 0
         assert frame.metadata.fpga_start_tick == frame_meta[i]["seq_start"]
         assert frame.metadata.frame_length_fpga_ticks == frame_meta[i]["seq_len"]
@@ -430,6 +440,7 @@ def test_eop(n2_data):
     ut1_bin = np.array([t[1] for t in t_cent_tup])
     era_bin = np.array([t[2] for t in t_cent_tup])
 
+    """
     with open("era.out", "w") as f:
         for i in range(len(eop_era)):
             f.write("{:04d} ERA_FRAME:   {:.17f}\n".format(i, eop_era[i]))
@@ -442,6 +453,7 @@ def test_eop(n2_data):
             f.write("     YPM_TEST:    {:.17f}\n".format(y_pm))
             f.write("     T_DIFF_NS:   {:d}\n".format(eop_t_inst[i] - t_inst_bin[i]))
             f.write("     UT1_DIFF_NS: {:d}\n".format(eop_t_ut1[i] - ut1_bin[i]))
+    """
 
     # check EOP
     assert np.all(np.isclose(eop_dut1, dut1, 1.0e-15, 0.0))
@@ -479,13 +491,16 @@ def test_contents(n2_data):
         for j in range(n):
             model_evec[i * n + j] = i + 1j * j
 
+    """
     with open("test_contents.out", "w"):
         pass
+    """
 
     out_frame_metas = calc_downsamp_frame_meta()
 
     # Averaging shouldn't change vis, eigenstuff
     for i, frame in enumerate(n2_data):
+        """
         with open("test_contents.out", "a") as f:
             f.write(
                 "{0:d} {1:d} {2:d}\n".format(
@@ -494,6 +509,7 @@ def test_contents(n2_data):
                     frame.metadata.frame_length_fpga_ticks,
                 )
             )
+        """
         assert np.all(frame.vis == model_vis)
         assert np.all(frame.evec == model_evec)
         assert np.all(frame.eval == model_eval)

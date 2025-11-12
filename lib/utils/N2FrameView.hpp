@@ -71,7 +71,7 @@ public:
     const double& freq_MHz;
 
     /// Absolute time index of frame
-    const uint64_t& abs_time_idx;
+    uint64_t& abs_time_idx;
 
     /// Earth Orientation Paramters
     struct EOP& eop;
