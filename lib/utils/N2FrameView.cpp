@@ -18,9 +18,7 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     frame_layout(get_frame_layout(_metadata->num_elements, _metadata->num_ev)),
 
     // Non-structural data
-    layout(_metadata->layout),
-    freq_id(_metadata->freq_id),
-    freq_MHz(_metadata->freq_MHz),
+    layout(_metadata->layout), freq_id(_metadata->freq_id), freq_MHz(_metadata->freq_MHz),
     abs_time_idx(_metadata->abs_time_idx),
 
     eop(_metadata->eop),
