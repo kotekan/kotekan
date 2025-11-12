@@ -40,11 +40,13 @@ const std::string default_config_str = R"config_str({
     "require_gps":        false,
     "updatable_config":   "/earth_rotation_data"
     },
-"dish_inputs" : [
-    {"dish_idx": 0, "ew_idx": 0, "ns_idx": 0, "feed_pos_disp_m": [0.0, 0.0, 0.0],
-     "coelev_disp_deg": 0.0, "type": 0, "label": "D00"},
-    {"dish_idx": 1, "ew_idx": 1, "ns_idx": 0, "feed_pos_disp_m": [0.0, 0.0, 0.0],
-     "coelev_disp_deg": 0.0, "type": 0, "label": "D01"}],
+    "dish_ew_separation_m": 6.3,
+    "dish_ns_separation_m": 8.5,
+    "dish_inputs" : [
+        {"dish_idx": 0, "ew_idx": 0, "ns_idx": 0, "feed_pos_disp_m": [0.0, 0.0, 0.0],
+         "coelev_disp_deg": 0.0, "type": 0, "label": "D00"},
+        {"dish_idx": 1, "ew_idx": 1, "ns_idx": 0, "feed_pos_disp_m": [0.0, 0.0, 0.0],
+         "coelev_disp_deg": 0.0, "type": 0, "label": "D01"}],
 "gps_time": {
     "frame0_nano": 1761926400000000000
     },

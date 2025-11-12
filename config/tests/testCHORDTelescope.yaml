@@ -50,28 +50,27 @@ telescope:
   dish_coelev_deg: 0.0
 
   updatable_config: "/earth_rotation_data"
+
+  dish_separation_ew_m: 6.3
+  dish_separation_ns_m: 8.5
+
+  dish_inputs: [
+    {dish_idx: 0, ew_idx: 0, ns_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-A01"},
+    {dish_idx: 1, ew_idx: 1, ns_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-A02"},
+    {dish_idx: 4, ew_idx: 0, ns_idx: 1, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-B01"},
+    {dish_idx: 5, ew_idx: 1, ns_idx: 1, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-B02"},
+    {dish_idx: 2, ew_idx: 7, ns_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-A08"},
+    {dish_idx: 6, ew_idx: 0, ns_idx: 7, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-H01"},
+    {dish_idx: 7, ew_idx: 7, ns_idx: 7, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-H08"},
+    {dish_idx: 3, ew_idx: 15, ns_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-A16"},
+    {dish_idx: 8, ew_idx: 0, ns_idx: 15, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-P01"},
+    {dish_idx: 9, ew_idx: 15, ns_idx: 15, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-P16"}
+  ]
+
 gps_time:
   frame0_nano: 50 * nsec_in_jyear
 
 num_dishes: 32
-
-dish_separation_ew_m: 6.3
-dish_separation_ns_m: 8.5
-
-dish_inputs: [
-  {dish_idx: 0, ew_idx: 0, ns_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-A01"},
-  {dish_idx: 1, ew_idx: 1, ns_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-A02"},
-  {dish_idx: 4, ew_idx: 0, ns_idx: 1, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-B01"},
-  {dish_idx: 5, ew_idx: 1, ns_idx: 1, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-B02"},
-  {dish_idx: 2, ew_idx: 7, ns_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-A08"},
-  {dish_idx: 6, ew_idx: 0, ns_idx: 7, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-H01"},
-  {dish_idx: 7, ew_idx: 7, ns_idx: 7, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-H08"},
-  {dish_idx: 3, ew_idx: 15, ns_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-A16"},
-  {dish_idx: 8, ew_idx: 0, ns_idx: 15, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-P01"},
-  {dish_idx: 9, ew_idx: 15, ns_idx: 15, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "CHORD-P16"}
-]
-
-
 
 # Add a consumer stage that prints the output buffer to screen
 screen_dump:

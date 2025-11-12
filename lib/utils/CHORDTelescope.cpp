@@ -56,9 +56,9 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     // Set the time- and frequency-sampling parameters from the config.
     set_sampling_params(config, path);
 
-    _origin_itrs_lon_deg = config.get<double>(path, "origin_itrs_lon_deg");
-    _origin_itrs_lat_deg = config.get<double>(path, "origin_itrs_lat_deg");
-    _dish_coelev_deg = config.get<double>(path, "dish_coelev_deg");
+    _origin_itrs_lon_deg = config.get_default<double>(path, "origin_itrs_lon_deg", 0.0);
+    _origin_itrs_lat_deg = config.get_default<double>(path, "origin_itrs_lat_deg", 0.0);
+    _dish_coelev_deg = config.get_default<double>(path, "dish_coelev_deg", 0.0);
 
     INFO("Telescope configured with longitude:    {:f} deg", _origin_itrs_lon_deg);
     INFO("Telescope configured with latitude:     {:f} deg", _origin_itrs_lat_deg);
@@ -67,8 +67,8 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
          _origin_itrs_lat_deg + 90 - _dish_coelev_deg);
 
     // Read in the Telescope Coord axes. Must be normalized and orthogonal.
-    std::array<double, 3> sep_x = config.get<std::array<double, 3>>(path, "grid_x_axis");
-    std::array<double, 3> sep_y = config.get<std::array<double, 3>>(path, "grid_y_axis");
+    std::array<double, 3> sep_x = config.get_default<std::array<double, 3>>(path, "grid_x_axis", {1.0, 0.0, 0.0});
+    std::array<double, 3> sep_y = config.get_default<std::array<double, 3>>(path, "grid_y_axis", {0.0, 1.0, 0.0});
     // Compute the Z axis as X x Y
     std::array<double, 3> sep_z = {sep_x[1] * sep_y[2] - sep_x[2] * sep_y[1],
                                    sep_x[2] * sep_y[0] - sep_x[0] * sep_y[2],
@@ -83,8 +83,8 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     }
 
     // Read in the Dish Coord axes. Must be normalized and orthogonal.
-    std::array<double, 3> dish_x = config.get<std::array<double, 3>>(path, "dish_elev_axis");
-    std::array<double, 3> dish_z = config.get<std::array<double, 3>>(path, "dish_vert_axis");
+    std::array<double, 3> dish_x = config.get_default<std::array<double, 3>>(path, "dish_elev_axis", {1.0, 0.0, 0.0});
+    std::array<double, 3> dish_z = config.get_default<std::array<double, 3>>(path, "dish_vert_axis", {0.0, 0.0, 1.0});
     // Compute the Y axis as Z x X
     std::array<double, 3> dish_y = {dish_z[1] * dish_x[2] - dish_z[2] * dish_x[1],
                                     dish_z[2] * dish_x[0] - dish_z[0] * dish_x[2],
