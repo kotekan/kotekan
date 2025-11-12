@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for atomic_add_lost_timesamples
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
 #include "nt_memset.h"         // for nt_memset
 
 #include "json.hpp" // for basic_json, json, iter_impl
@@ -12,6 +12,7 @@
 #include <algorithm>  // for max
 #include <assert.h>   // for assert
 #include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <string.h>   // for memcpy, size_t
 #include <vector>     // for vector
 

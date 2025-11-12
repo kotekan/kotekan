@@ -1,11 +1,12 @@
 #include "Config.hpp"          // for Config
+#include "NDArray.hpp"         // for GenericNDArray
 #include "asdfFiles.hpp"       // for beautify_buffer_name, chord2asdf, chord_metadata_version
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, ERROR, INFO, WARN
 #include "metadata.hpp"        // for metadataObject
 
-#include "fmt.hpp"      // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view, join
 #include "gsl-lite.hpp" // for span
 
 #include <DataType.hpp>            // for type_to_string, type_total_bytes
@@ -39,7 +40,7 @@
 #include <sstream>                 // for basic_ostream, operator<<, basic_ostringstream, ostri...
 #include <string>                  // for basic_string, char_traits, string, operator<<
 #include <sys/stat.h>              // for mkdir
-#include <unistd.h>                // for gethostname
+#include <unistd.h>                // for ssize_t, gethostname
 #include <vector>                  // for vector
 #include <visUtil.hpp>             // for current_time
 #include <waitingForMaxFrames.hpp> // for waiting_for_max_frames

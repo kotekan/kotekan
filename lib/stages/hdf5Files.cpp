@@ -2,10 +2,10 @@
 
 #include "DataType.hpp" // for DataType, float16_t
 
-#include "fmt.hpp" // for format
+#include "fmt.hpp" // for format, format_string
 
-#include <cassert> // for assert
-#include <cstdint> // for uint8_t, int16_t, int32_t, int64_t, int8_t, uint16_t, uint32_t
+#include <cstdint>   // for uint8_t, int64_t, int16_t, int32_t, int8_t, uint16_t, uint32_t
+#include <stdexcept> // for runtime_error
 
 namespace hdf5 {
 

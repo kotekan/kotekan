@@ -1,8 +1,9 @@
 #include "ringbuffer.hpp"
 
-#include "kotekanLogging.hpp" // for DEBUG2, DEBUG, logLevel, DEBUG_NON_OO
+#include "kotekanLogging.hpp" // for DEBUG2, logLevel, DEBUG_NON_OO
 
-#include "fmt.hpp" // for compile_string_to_view, group_digits, format, format_string
+#include "fmt.hpp"      // for format, format_string
+#include "fmt/format.h" // for compile_string_to_view, group_digits
 
 #include <algorithm>          // for min
 #include <cassert>            // for assert

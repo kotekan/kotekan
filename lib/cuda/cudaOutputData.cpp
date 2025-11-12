@@ -6,6 +6,7 @@
 
 #include "cudaOutputData.hpp"
 
+#include "Symbol.hpp"         // for Symbol
 #include "chordMetadata.hpp"  // for chordMetadata
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaHostRegister, cudaHostUnregister
@@ -16,9 +17,11 @@
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
 
 #include <algorithm>   // for max
-#include <memory>      // for allocator, shared_ptr
+#include <memory>      // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
+#include <stddef.h>    // for ptrdiff_t
 #include <stdint.h>    // for uint8_t
-#include <sys/types.h> // for uint, size_t
+#include <string.h>    // for strnlen
+#include <sys/types.h> // for size_t, uint
 #include <tuple>       // for tuple, make_tuple
 
 using kotekan::bufferContainer;

@@ -3,29 +3,25 @@
 #include "Config.hpp"          // for Config
 #include "HFBFrameView.hpp"    // for HFBFrameView
 #include "HFBMetadata.hpp"     // for HFBMetadata
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"       // for Telescope
-#include "buffer.hpp"          // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t, state_id_t
 #include "datasetState.hpp"    // for beamState, freqState, metadataState, subfreqState
-#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "errors.h"            // for ReturnCode, exit_kotekan
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
-#include "metadata.hpp"        // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
-#include "visUtil.hpp"         // for double_to_ts, current_time, freq_ctype, cfloat
+#include "visUtil.hpp"         // for freq_ctype, double_to_ts, current_time
 
+#include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
 #include <algorithm>  // for max, transform
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for uint32_t, int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function, placeholders
+#include <functional> // for bind, function, placeholders
 #include <iterator>   // for back_insert_iterator, back_inserter, begin, end
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <time.h>     // for nanosleep, timespec
+#include <memory>     // for shared_ptr
+#include <time.h>     // for timespec, nanosleep
 #include <utility>    // for pair
 
 

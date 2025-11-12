@@ -5,7 +5,7 @@
 #include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "errors.h"                // for ReturnCode, exit_kotekan
-#include "kotekanLogging.hpp"      // for ERROR, INFO
+#include "kotekanLogging.hpp"      // for ERROR, DEBUG, INFO
 #include "metadata.hpp"            // for metadataObject
 #include "prometheusMetrics.hpp"   // for Metrics, Gauge
 #include "visUtil.hpp"             // for current_time
@@ -13,6 +13,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
+#include <atomic>     // for __atomic_base, atomic
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
 #include <functional> // for bind, function

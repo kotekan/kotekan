@@ -3,7 +3,9 @@
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "chordMetadata.hpp"       // for chordMetadata
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "driver_types.h"          // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h"      // for cudaStreamSynchronize
+#include "driver_types.h"          // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG
 #include "n2k/rfi_kernels.hpp"     // for SkKernel
@@ -16,7 +18,7 @@
 #include <algorithm>             // for min
 #include <array>                 // for array
 #include <cstddef>               // for ptrdiff_t
-#include <cstdint>               // for int8_t, uint64_t, uint8_t
+#include <cstdint>               // for int8_t, uint64_t, uint8_t, int64_t
 #include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include <div.hpp>               // for div_noremainder, round_down
 #include <functional>            // for function

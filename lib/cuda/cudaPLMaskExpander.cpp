@@ -7,11 +7,11 @@
 #include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
 #include "n2k/pl_kernels.hpp"      // for launch_pl_mask_expander
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt/format.h" // for compile_string_to_view
 
 #include <DataType.hpp>          // for uint1x8_t
 #include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include <algorithm>             // for min
+#include <algorithm>             // for fill_n, min
 #include <array>                 // for array
 #include <cassert>               // for assert
 #include <chordMetadata.hpp>     // for chordMetadata
@@ -20,6 +20,7 @@
 #include <div.hpp>               // for div_noremainder, round_down
 #include <functional>            // for function
 #include <memory>                // for allocator, shared_ptr, __shared_ptr_access
+#include <stdint.h>              // for int64_t
 #include <string>                // for basic_string, string
 #include <sys/types.h>           // for ulong
 #include <vector>                // for vector

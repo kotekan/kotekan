@@ -11,15 +11,15 @@
 #include "Config.hpp"          // for Config
 #include "FakeVisPattern.hpp"  // for FakeVisPattern
 #include "N2FrameView.hpp"     // for N2FrameView
-#include "N2Util.hpp"          // for cfloat
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "visUtil.hpp"         // for cfloat
 
 #include <memory>   // for unique_ptr
 #include <stddef.h> // for size_t
-#include <stdint.h> // for uint32_t, int32_t
-#include <string>   // for string
+#include <stdint.h> // for int64_t, uint32_t
+#include <string>   // for string, basic_string
 #include <vector>   // for vector
 
 /**

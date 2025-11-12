@@ -8,20 +8,23 @@
 #ifndef KOTEKAN_BUFFER_HPP
 #define KOTEKAN_BUFFER_HPP
 
-#include "NDArray.hpp"
+#include "DataType.hpp"       // for DataType
+#include "NDArray.hpp"        // for GenericNDArray, NDArray
+#include "Symbol.hpp"         // for Symbol
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "metadata.hpp"       // for metadataObject, metadataPool
 
 #include "json.hpp" // for json
 
+#include <array>              // for array
 #include <condition_variable> // for condition_variable_any
+#include <cstddef>            // for size_t, ptrdiff_t
 #include <map>                // for map
-#include <memory>             // for shared_ptr
+#include <memory>             // for shared_ptr, make_shared
 #include <mutex>              // for recursive_mutex
 #include <sched.h>            // for cpu_set_t
 #include <stdint.h>           // for uint8_t
 #include <string>             // for string, basic_string
-#include <time.h>             // for size_t
 #include <vector>             // for vector
 
 #ifdef MAC_OSX

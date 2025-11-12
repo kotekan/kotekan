@@ -2,12 +2,12 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"       // for stream_t
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
 
 #include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <sys/time.h> // for timeval
 #include <time.h>     // for timespec
 

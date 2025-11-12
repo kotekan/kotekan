@@ -1,18 +1,21 @@
 #include "chimeMetadataDump.hpp"
 
-#include "Config.hpp"
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
-#include "buffer.hpp"          // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp" //
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp" // for INFO
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope, freq_id_t
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "kotekanLogging.hpp"  // for INFO
 
-#include <atomic>     // for atomic_bool
-#include <functional> // for _Bind_helper<>::type, bind, function
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <stdint.h>   // for uint64_t, uint8_t
 #include <sys/time.h> // for timeval
-#include <time.h>     // for gmtime, strftime, timespec, time_t
+#include <time.h>     // for timespec, gmtime, strftime, time_t
+#include <vector>     // for vector
 
 
 REGISTER_KOTEKAN_STAGE(chimeMetadataDump);

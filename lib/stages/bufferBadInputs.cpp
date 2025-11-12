@@ -2,10 +2,10 @@
 
 #include "bufferBadInputs.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"       // for Buffer
-#include "chordMetadata.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
 #include "configUpdater.hpp"  // for configUpdater
 #include "kotekanLogging.hpp" // for DEBUG, ERROR
 #include "visUtil.hpp"        // for parse_reorder_default
@@ -15,6 +15,7 @@
 #include <algorithm>  // for copy, max
 #include <exception>  // for exception
 #include <functional> // for bind, function, _1
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <tuple>      // for get
 
 using kotekan::bufferContainer;

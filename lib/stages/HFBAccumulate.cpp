@@ -1,11 +1,11 @@
 #include "HFBAccumulate.hpp"
 
-#include "HFBFrameView.hpp" // for HFBFrameView
-#include "Hash.hpp"         // for operator!=, Hash
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"    // for Telescope
-#include "buffer.hpp"       // for Buffer
-#include "chordMetadata.hpp"
+#include "HFBFrameView.hpp"   // for HFBFrameView
+#include "Hash.hpp"           // for operator!=, Hash
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"      // for Telescope
+#include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for beamState, freqState, metadataState, subfreqState
 #include "kotekanLogging.hpp" // for DEBUG, DEBUG2
@@ -20,9 +20,10 @@
 #include <cstring>    // for memcpy, size_t
 #include <functional> // for bind, function
 #include <iterator>   // for back_insert_iterator, begin, end, back_inserter
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <numeric>    // for iota
 #include <string>     // for allocator, basic_string, string
-#include <time.h>     // for size_t, timespec
+#include <time.h>     // for timespec
 #include <utility>    // for pair
 #include <vector>     // for vector
 

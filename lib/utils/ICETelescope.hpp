@@ -3,7 +3,6 @@
 
 #include "Config.hpp"    // for Config
 #include "Telescope.hpp" // for freq_id_t, stream_t, Telescope
-#include "buffer.hpp"    // for Buffer
 
 #include <stdint.h> // for uint32_t, uint8_t, uint64_t
 #include <string>   // for string, basic_string

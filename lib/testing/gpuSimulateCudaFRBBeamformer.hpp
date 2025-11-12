@@ -8,11 +8,12 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
-#include <stdint.h> // for int32_t
+#include <stdint.h> // for int32_t, uint8_t
 #include <string>   // for string
-#include <vector>
+#include <vector>   // for vector
 
 /**
  * @class gpuSimulateCudaFRBBeamformer

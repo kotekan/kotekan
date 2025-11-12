@@ -3,12 +3,14 @@
 
 #include <DataType.hpp>     // for DataType
 #include <Symbol.hpp>       // for Symbol
+#include <algorithm>        // for fill_n
 #include <array>            // for array
 #include <cassert>          // for assert
-#include <cstddef>          // for size_t, ptrdiff_t
+#include <cstddef>          // for ptrdiff_t, size_t
 #include <functional>       // for function
 #include <initializer_list> // for initializer_list
 #include <iostream>         // for ostream
+#include <iterator>         // for pair
 #include <memory>           // for shared_ptr
 #include <utility>          // for pair
 #include <vector>           // for vector

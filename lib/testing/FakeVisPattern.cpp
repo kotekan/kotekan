@@ -1,29 +1,30 @@
 #include "FakeVisPattern.hpp"
 
-#include "CHORDTelescope.hpp" // for CHORDTelescope
+#include <array>   // for array
+#include <complex> // for complex, conj, operator*
+#include <math.h>  // for cos, sin, cosf, sinf, M_PI
+#include <time.h>  // for timespec
+// #include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
+#include "CHORDTelescope.hpp" // for CHORDTelescope, EOP
 #include "Config.hpp"         // for Config
 #include "Hash.hpp"           // for Hash
-#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
-#include "datasetState.hpp"   // for flagState, inputState
-#include "timeUtil.hpp"       // for get_ERA_from_time
+#include "N2Metadata.hpp"     // for N2Metadata
+#include "Telescope.hpp"      // for Telescope
+#include "datasetManager.hpp" // for datasetManager, state_id_t
+#include "datasetState.hpp"   // for flagState, gainState, inputState
+#include "metadata.hpp"       // for metadataPool
 #include "visBuffer.hpp"      // for VisFrameView
-#include "visUtil.hpp"        // for cfloat, input_ctype, ts_to_double, cmap
+#include "visUtil.hpp"        // for input_ctype, cfloat, cmap, ts_to_double
 
-#include "fmt.hpp"      // for format
+#include "fmt.hpp"      // for compile_string_to_view, format, format_string
 #include "gsl-lite.hpp" // for span
-#include "json.hpp"     // for json, basic_json, basic_json<>::object_t
+#include "json.hpp"     // for basic_json, iter_impl, json
 
-#include <algorithm> // for copy, max, copy_backward
-#include <complex>   // for complex, operator*
-#include <cstdint>   // for uint32_t, uint16_t
-#include <exception> // for exception
-// #include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
-#include <map>       // for map, map<>::mapped_type
-#include <math.h>    // for cosf, sinf
-#include <regex>     // for match_results<>::_Base_type
-#include <stdexcept> // for invalid_argument, runtime_error
+#include <map>       // for map
+#include <memory>    // for shared_ptr, __shared_ptr_access, weak_ptr
+#include <stdexcept> // for invalid_argument
 #include <tuple>     // for get
-#include <vector>    // for vector, __alloc_traits<>::value_type
+#include <vector>    // for vector
 
 static constexpr double C = 299792458.0;
 

@@ -3,10 +3,11 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
-#include <cstdint>
-#include <string> // for string
+#include <cstdint> // for int32_t
+#include <string>  // for string
 
 /**
  * @brief Perform on CPU the equivalent of the CudaCorrelator stage:

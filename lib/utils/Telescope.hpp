@@ -2,7 +2,6 @@
 #define TELESCOPE_HPP
 
 #include "Config.hpp"         // for Config
-#include "buffer.hpp"         // for Buffer
 #include "factory.hpp"        // for FACTORY, CREATE_FACTORY, REGISTER_NAMED_TYPE_WITH_FACTORY
 #include "kotekanLogging.hpp" // for ERROR, kotekanLogging
 

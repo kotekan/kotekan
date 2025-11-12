@@ -1,25 +1,22 @@
 #include "pulsarSimProcess.hpp"
 
 #include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for wait_for_empty_frame, mark_frame_full, register_producer
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp" // for INFO, CHECK_MEM
-#include "vdif_functions.h"   // for VDIFHeader
+#include "chordMetadata.hpp"   // for chordMetadata
+#include "kotekanLogging.hpp"  // for INFO, CHECK_MEM
+#include "vdif_functions.h"    // for VDIFHeader
 
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <fstream>    // for basic_ostream::operator<<, operator<<, stringstream, basi...
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <sstream>    // for basic_ostream, basic_ostream::operator<<, operator<<, bas...
 #include <stdlib.h>   // for exit
 #include <string.h>   // for memcpy
-#include <string>     // for allocator, string, char_traits
+#include <string>     // for allocator, char_traits, basic_string, string
 #include <sys/time.h> // for timeval
 #include <unistd.h>   // for gethostname
-#include <vector>     // for vector
 
 using std::string;
 

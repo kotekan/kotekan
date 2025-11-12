@@ -4,15 +4,14 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "configTracker.hpp"     // for configTracker
-#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, DEBUG, WARN, INFO
-#include "metadata.hpp"          // for metadataContainer
-#include "prometheusMetrics.hpp" // for Metrics, Counter
-#include "restServer.hpp"        // for restServer
+#include "configTracker.hpp"     // for ConfigTracker
+#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
+#include "metadata.hpp"          // for metadataObject
+#include "prometheusMetrics.hpp" // for Counter, Metrics
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
 
-#include <arpa/inet.h>   // for inet_addr, htons
+#include <arpa/inet.h>   // for htons, inet_addr
 #include <bits/chrono.h> // for seconds
 #include <cerrno>        // for errno
 #include <cstring>       // for strerror, size_t

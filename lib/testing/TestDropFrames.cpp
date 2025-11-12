@@ -1,19 +1,15 @@
 #include "TestDropFrames.hpp"
 
 #include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"         // for Buffer, get_num_consumers, mark_frame_empty, mark_frame_full
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"         // for Buffer
 #include "kotekanLogging.hpp" // for INFO
 
-#include <algorithm>     // for find
-#include <atomic>        // for atomic_bool
-#include <cstdint>       // for uint32_t
+#include "fmt.hpp" // for compile_string_to_view
+
 #include <cstring>       // for memcpy
-#include <exception>     // for exception
-#include <functional>    // for _Bind_helper<>::type, bind, function
-#include <random>        // for default_random_engine, bernoulli_distribution, random_device
-#include <regex>         // for match_results<>::_Base_type
-#include <stdexcept>     // for runtime_error
+#include <functional>    // for bind, function
+#include <random>        // for bernoulli_distribution, random_device, default_random_engine
 #include <unordered_set> // for unordered_set
 
 

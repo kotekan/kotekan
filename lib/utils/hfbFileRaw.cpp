@@ -6,8 +6,9 @@
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for beamState, freqState, subfreqState
 
-#include "fmt.hpp"  // for compile_string_to_view, format, fmt
-#include "json.hpp" // for basic_json, json
+#include "fmt.hpp"      // for format, fmt
+#include "fmt/format.h" // for compile_string_to_view
+#include "json.hpp"     // for basic_json, json
 
 #include <algorithm>  // for max
 #include <assert.h>   // for assert

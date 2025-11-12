@@ -1,13 +1,14 @@
 #include "testDataGen.hpp"
 
 #include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for KOTEKAN_FLOAT16, float16_t
+#include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Symbol.hpp"          // for Symbol
 #include "Telescope.hpp"       // for Telescope, stream_t
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, chordDataType, get_chord_metadata, metadat...
-#include "kotekanLogging.hpp"  // for DEBUG, INFO, ERROR
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
+#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
 #include "kotekanTrackers.hpp" // for KotekanTrackers
 #include "oneHotMetadata.hpp"  // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
 #include "restServer.hpp"      // for HTTP_RESPONSE, restServer, connectionInstance
@@ -21,7 +22,7 @@
 #include <functional>  // for bind, function, _1, _2
 #include <random>      // for mt19937
 #include <stdexcept>   // for invalid_argument
-#include <stdint.h>    // for int8_t, int16_t, int32_t, uint8_t, uint32_t, uint64_t
+#include <stdint.h>    // for int8_t, uint32_t, uint8_t, int16_t, int32_t, uint64_t
 #include <strings.h>   // for bzero
 #include <sys/time.h>  // for gettimeofday, timeval
 #include <sys/types.h> // for uint

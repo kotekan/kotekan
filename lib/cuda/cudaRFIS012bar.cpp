@@ -2,19 +2,21 @@
 #include "NDArray.hpp"             // for NDArray
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "driver_types.h"          // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h"      // for cudaStreamSynchronize
+#include "driver_types.h"          // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG
 #include "n2k/rfi_kernels.hpp"     // for launch_s012_time_downsample_kernel
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt/format.h" // for compile_string_to_view
 
 #include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, extent_t, read_descriptor_t
 #include <algorithm>             // for min
 #include <array>                 // for array
 #include <cassert>               // for assert
 #include <chordMetadata.hpp>     // for chordMetadata
-#include <cstddef>               // for ptrdiff_t
+#include <cstddef>               // for ptrdiff_t, size_t
 #include <cstdint>               // for uint64_t
 #include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include <div.hpp>               // for div_noremainder, round_down
