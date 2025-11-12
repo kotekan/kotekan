@@ -1,7 +1,7 @@
 
 # Documentation
 
-Compiled docs are available at https://kotekan.readthedocs.io/elatest/.
+Compiled docs are available at https://kotekan.readthedocs.io/latest/.
 
 [![Documentation Status](https://readthedocs.org/projects/kotekan/badge/?version=latest)](https://kotekan.readthedocs.io/latest/?badge=latest)
 

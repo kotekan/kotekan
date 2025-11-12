@@ -97,7 +97,7 @@ public:
      * @param buffer_name Unique name for this buffer based on location in config file
      * @param buffer_type Type name, eg "standard", "vis", "hfb", "ring"
      * @param num_frames The buffer depth (for subclasses that have that concept)
-     * @param pool The name of the metadata pool to associate with the buffer
+     * @param pool The metadata pool to associate with the buffer
      */
     GenericBuffer(const std::string& buffer_name, const std::string& buffer_type,
                   std::shared_ptr<metadataPool> pool, int num_frames);
@@ -348,7 +348,7 @@ public:
      *
      * @param num_frames - number of "frames" in this ring buffer
      * @param len - length in bytes of each frame
-     * @param pool The name of the metadata pool to associate with the buffer
+     * @param pool The metadata pool to associate with the buffer
      * @param buffer_name: unique name for this buffer, from the config file declaration
      * @param buffer_type: "standard", "vis", "hfb"
      * @param numa_node The NUMA domain to mbind the memory into
@@ -541,7 +541,7 @@ public:
      *        array of type T
      * @param[in] frame_id The frame ID of the frame to describe
      * @param[in] value_type the kotekan type enomerator of the values stored
-     * @param[in] quantity_name
+     * @param[in] quantity_name Name of the quantity in the frame, e.g. "E" for electric field"
      * @param[in] extents Array extentds in the D dimensions
      * @param[in] dimnames Array axis labels in the D dimensions
      */

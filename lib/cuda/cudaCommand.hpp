@@ -74,14 +74,15 @@ public:
      * @param default_kernel_command   Name of the kernel for profiling read out.
      * @param default_kernel_file_name Kernel dile name, not really needed with cuda kernels.
      * @param instance_num             The instance number of this command in the pipeline.
-     * @param state_                   (optional) shared pointer to a gpuCommandState
+     * @param command_state            (optional) shared pointer to a gpuCommandState
      */
     cudaCommand(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
                 int instance_num,
                 std::shared_ptr<cudaCommandState> = std::shared_ptr<cudaCommandState>(),
                 const std::string& default_kernel_command = "",
-                const std::string& default_kernel_file_name = "");
+                const std::string& default_kernel_file_name = "",
+                const std::string& command_state = "");
     /// Destructor that frees memory for the kernel and name.
     virtual ~cudaCommand();
 
