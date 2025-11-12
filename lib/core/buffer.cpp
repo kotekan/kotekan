@@ -484,6 +484,7 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
                       buffer_name, ID);
                 is_full[ID] = false;
                 metadata[ID].reset();
+                frames_desc.at(ID).reset();
                 set_empty = true;
                 private_reset_consumers(ID);
             }
@@ -581,8 +582,10 @@ bool Buffer::private_mark_frame_empty(const int ID) {
         private_reset_consumers(ID);
         broadcast = true;
     }
-    if (metadata[ID])
+    if (metadata[ID]) {
         metadata[ID].reset();
+        frames_desc.at(ID).reset();
+    }
     return broadcast;
 }
 
