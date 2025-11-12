@@ -62,6 +62,19 @@ public:
 
     std::map<N2Field, std::pair<size_t, size_t>> frame_layout;
 
+    /// Vis Matrix Layout
+    const N2Layout& layout;
+
+    /// ID of the frequency bin
+    const uint32_t& freq_id;
+    /// Physical frequency of bin
+    const double& freq_MHz;
+
+    /// Absolute time index of frame
+    const uint64_t& abs_time_idx;
+
+    /// Earth Orientation Paramters
+    struct EOP& eop;
 
     /// The sequence number of the first FPGA frame integrated into this
     /// visibility frame (time<0> in VisFrameView)
@@ -74,14 +87,6 @@ public:
     uint64_t& n_valid_fpga_ticks;
     /// The number of lost samples due to RFI (rfi_total)
     uint64_t& n_rfi_fpga_ticks;
-
-    /// ID of the frequency bin
-    const uint32_t& freq_id;
-    /// Physical frequency of bin
-    const double& freq_MHz;
-
-    /// Earth Orientation Paramters
-    struct EOP& eop;
 
     /// View of the visibility data.
     const gsl_lite::span<N2::cfloat> vis;

@@ -20,6 +20,11 @@ using kotekan::Config;
 #include <string>   // for operator==, char_traits, basic_string
 #include <vector>   // for vector
 
+enum class N2Layout : int32_t {
+    FullUpperTri = 0,
+    RedundantBaselineAvg = 1,
+};
+
 // Struct containing metadata fields for an N2 frame
 struct N2MetadataFormat {
 
@@ -32,10 +37,17 @@ struct N2MetadataFormat {
     /// Total number of frequencies in pipeline
     uint32_t nfreq;
 
+    /// enum specifying the layout type of the visibility matrix.
+    N2Layout layout;
+
     /// ID of the frequency bin
     uint32_t freq_id; // this is an int in chordMetadata, maybe change later
     /// Physical frequency in Hz
     double freq_MHz;
+
+    /// absolute time index of this frame in its stream. Begins at 0 at instument start
+    /// and counts monitonically afterwards.
+    uint64_t abs_time_idx;
 
     /// Earth Orientation Paramters
     struct EOP eop;
