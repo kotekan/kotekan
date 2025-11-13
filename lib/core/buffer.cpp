@@ -38,8 +38,6 @@ struct zero_frames_thread_args {
     int ID;
 };
 
-typedef std::lock_guard<std::recursive_mutex> buffer_lock;
-
 GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
                              std::shared_ptr<metadataPool> pool, int _num_frames) :
     num_frames(_num_frames), shutdown_signal(false), buffer_name(_buffer_name),

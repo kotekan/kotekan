@@ -283,6 +283,7 @@ public:
     std::vector<std::shared_ptr<metadataObject>> metadata;
 
 protected:
+    typedef std::lock_guard<std::recursive_mutex> buffer_lock;
     /// The main lock for frame state management
     std::recursive_mutex mutex;
 
@@ -535,8 +536,9 @@ public:
                                  const std::array<std::ptrdiff_t, D>& extents,
                                  const std::array<kotekan::Symbol, D>& dimnames) {
         buffer_lock lock(mutex);
-        frames_desc.at(frame_id) =
-            std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
+        if (!frames_desc.at(frame_id))
+            frames_desc.at(frame_id) =
+                std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
     }
 
     /**
@@ -553,8 +555,9 @@ public:
                                  const std::vector<std::ptrdiff_t>& extents,
                                  const std::vector<kotekan::Symbol>& dimnames) {
         buffer_lock lock(mutex);
-        frames_desc.at(frame_id) =
-            kotekan::GenericNDArray::create(value_type, quantity_name, extents, dimnames, nullptr);
+        if (!frames_desc.at(frame_id))
+            frames_desc.at(frame_id) = kotekan::GenericNDArray::create(value_type, quantity_name,
+                                                                       extents, dimnames, nullptr);
     }
 
     /**
