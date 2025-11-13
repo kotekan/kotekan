@@ -22,7 +22,7 @@ num_polarizations: 2
 num_dishes: 64
 num_elements: num_polarizations * num_dishes
 num_local_freq: 16
-num_ev: 4
+num_ev: 0
 
 num_n2k_samples_to_accumulate: 4
 
@@ -35,17 +35,6 @@ counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
 vis_blocksize: 16
 vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
-
-n2_vis_size: 2 * sizeof_float * (num_elements * (num_elements + 1)) / 2
-n2_weight_size: sizeof_float * (num_elements * (num_elements + 1)) / 2
-n2_flags_size: sizeof_float * num_elements
-n2_eval_size: 0  # sizeof_float * num_ev
-n2_evec_size: 0  # 2 * sizeof_float * num_ev * num_elements
-n2_emethod_size: sizeof_int
-n2_erms_size: sizeof_float
-n2_gain_size: 2 * sizeof_float * num_elements
-n2_frame_size: n2_vis_size + n2_weight_size + n2_flags_size + n2_eval_size + 
-  n2_evec_size + n2_emethod_size + n2_erms_size + n2_gain_size
 
 frames_to_generate: 8 * buffer_depth  # must be at least n2_frames_to_write * num_n2k_samples_to_accumulate
 n2_frames_to_write: 2 * buffer_depth
@@ -113,9 +102,9 @@ fake_rfimask_buffer:
     metadata_pool: main_pool
 
 n2_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: N2
+    layout: 0
     num_frames: buffer_depth * num_local_freq
-    frame_size: n2_frame_size
     metadata_pool: n2_pool
 
 gen_fake_rfi_RFImask:
