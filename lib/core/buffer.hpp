@@ -534,6 +534,7 @@ public:
     void allocate_new_frame_desc(int frame_id, kotekan::Symbol quantity_name,
                                  const std::array<std::ptrdiff_t, D>& extents,
                                  const std::array<kotekan::Symbol, D>& dimnames) {
+        buffer_lock lock(mutex);
         frames_desc.at(frame_id) =
             std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
     }
@@ -551,6 +552,7 @@ public:
                                  kotekan::Symbol quantity_name,
                                  const std::vector<std::ptrdiff_t>& extents,
                                  const std::vector<kotekan::Symbol>& dimnames) {
+        buffer_lock lock(mutex);
         frames_desc.at(frame_id) =
             kotekan::GenericNDArray::create(value_type, quantity_name, extents, dimnames, nullptr);
     }
