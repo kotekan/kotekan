@@ -2,11 +2,18 @@
 
 #include "CHORDTelescope.hpp"    // for EOP, CHORDTelescope, eop_null
 #include "Config.hpp"            // for Config
+#include "N2FrameView.hpp"       // for N2FrameView
+#include "N2Util.hpp"            // for cfloat, frameID
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
+#include "timeUtil.hpp"          // for get_ERA_from_UT1, get_UT1_from_ERA
+
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
 
 #include <algorithm>  // for copy, equal, max
 #include <complex>    // for complex, operator*, conj
@@ -14,15 +21,6 @@
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint32_t, int64_t, int32_t
 #include <vector>     // for vector
-// #include "visBuffer.hpp"         // for VisFrameView
-#include "N2FrameView.hpp" // for N2FrameView
-#include "N2Util.hpp"      // for cfloat
-#include "Telescope.hpp"   // for Telescope
-#include "timeUtil.hpp"    // for get_ERA_from_UT1, get_UT1_from_ERA
-#include "visUtil.hpp"     // for frameID, modulo
-
-#include "fmt.hpp"      // for compile_string_to_view
-#include "gsl-lite.hpp" // for span
 
 #define GIGA 1'000'000'000L
 
@@ -30,6 +28,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
+using N2::frameID;
 
 REGISTER_KOTEKAN_STAGE(N2TimeDownsample);
 

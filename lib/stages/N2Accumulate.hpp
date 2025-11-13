@@ -18,6 +18,7 @@
 #include <string>  // for string
 #include <vector>  // for vector
 
+using N2::frameID;
 
 /**
  * @class N2Accumulate
@@ -57,7 +58,7 @@ public:
      * @param out_frame_id The output frame ID.
      * @return bool True if successful, false otherwise.
      */
-    bool output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_frame_id);
+    bool output_and_reset(frameID& in_frame_id, frameID& out_frame_id);
 
 private:
     // Buffers to read/write

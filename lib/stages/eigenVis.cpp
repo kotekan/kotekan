@@ -97,7 +97,7 @@ void eigenVis::main_thread() {
         num_ev = input_frame.num_ev;
 
         // Start the calculation clock.
-        u_int64_t start_time = N2::current_time();
+        int64_t start_time = N2::current_system_time_ns();
 
         if (!initialized) {
             num_elements = input_frame.num_elements;
@@ -201,7 +201,7 @@ void eigenVis::main_thread() {
 
         // Stop the calculation clock. This doesn't include time to copy stuff into
         // the buffers, but that has to wait for one to be available.
-        u_int64_t elapsed_time = N2::current_time() - start_time;
+        int64_t elapsed_time = N2::current_system_time_ns() - start_time;
 
         // Report all eigenvalues to stdout.
         std::string str_evals = "";

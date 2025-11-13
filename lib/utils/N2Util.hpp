@@ -6,6 +6,7 @@
 #define N2_UTIL_HPP
 
 #include "buffer.hpp"
+#include "timeUtil.hpp"
 
 #include <complex> // for complex, imag, real
 #include <cstdint> // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
@@ -75,16 +76,6 @@ inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
     uint32_t b_ix = cmap(i / block, j / block, num_blocks1);
 
     return block * block * b_ix + (i % block) * block + (j % block);
-}
-
-
-/**
- * @brief Convert timespec type into total nanoseconds as an uint64.
- * @param  ts Time as timespec.
- * @return    Time as an uint64.
- */
-inline uint64_t ts_to_uint64(const timespec& ts) {
-    return 1000000000L * (uint64_t)ts.tv_sec + (uint64_t)ts.tv_nsec;
 }
 
 /**
@@ -296,10 +287,10 @@ private:
  *
  * @returns  The current time in nanoseconds.
  **/
-inline uint64_t current_time() {
+inline int64_t current_system_time_ns() {
     timespec output_ts;
     timespec_get(&output_ts, TIME_UTC);
-    return N2::ts_to_uint64(output_ts);
+    return timespec_to_nanosec_i64(output_ts);
 }
 
 } // namespace N2

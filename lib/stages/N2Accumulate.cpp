@@ -4,7 +4,7 @@
 #include "Config.hpp"            // for Config
 #include "N2FrameView.hpp"       // for N2FrameView
 #include "N2Metadata.hpp"        // for N2Metadata, get_N2_metadata
-#include "N2Util.hpp"            // for frameID, modulo, cfloat, cmap, ts_to_uint64
+#include "N2Util.hpp"            // for frameID, modulo, cfloat, cmap
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for Buffer
@@ -22,7 +22,7 @@
 #include <cstdlib>    // for abort
 #include <functional> // for bind, function, placeholders
 #include <memory>     // for shared_ptr, __shared_ptr_access
-#include <time.h>     // for size_t, timespec_get, TIME_UTC, timespec
+#include <time.h>     // for size_t, timespec
 #include <vector>     // for vector
 
 
@@ -32,6 +32,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
+using N2::frameID;
 
 REGISTER_KOTEKAN_STAGE(N2Accumulate);
 
@@ -214,19 +215,13 @@ void N2Accumulate::main_thread() {
     auto& samples_in_out_frame =
         Metrics::instance().add_gauge("kotekan_samples_in_accumulated_out_frame", unique_name);
 
-    N2::frameID in_frame_id(in_buf);
-    N2::frameID in_counts_frame_id(in_counts_buf);
-    N2::frameID in_rfimask_frame_id(in_rfimask_buf);
-    N2::frameID out_frame_id(out_buf);
+    frameID in_frame_id(in_buf);
+    frameID in_counts_frame_id(in_counts_buf);
+    frameID in_rfimask_frame_id(in_rfimask_buf);
+    frameID out_frame_id(out_buf);
 
     INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]", in_buf->buffer_name,
          in_frame_id, out_buf->buffer_name, out_frame_id);
-
-    // Start time of an output frame (initialize to now)
-    timespec output_ts;
-    timespec_get(&output_ts, TIME_UTC);
-    // uint64_t t_output = N2::ts_to_uint64(output_ts);
-
 
     uint64_t corr_stride_t = 2 * _n2k_correlation_num_products * _num_freq_per_n2k_frame;
     uint64_t counts_stride_f = _n2k_counts_num_products;
@@ -285,33 +280,13 @@ void N2Accumulate::main_thread() {
                         rfimask_metadata->get_fpga_seq_num());
         }
 
-        // Start and end times of this frame
-        bool gps_time_enabled = false;
-        // Here we'll just use raw nanoseconds
-        uint64_t t_frame_s;
-        if (gps_time_enabled) {
-            t_frame_s = N2::ts_to_uint64(frame_metadata->get_gps_time());
-        } else {
-            // If GPS time is not set, fall back to system time.
-            /*
-            timespec ts;
-            timeval tv = frame_metadata->get_first_packet_recv_time();
-            TIMEVAL_TO_TIMESPEC(&tv, &ts);
-            t_frame_s = N2::ts_to_uint64(ts);
-            */
-            t_frame_s = 0; // TODO: move this logic to telescope
-        }
-        // uint64_t t_frame_e = t_frame_s + _in_frame_duration_nsec;
-        comp_time_seconds_metric.set(t_frame_s / 1e9);
+        // Record the current frame time being processed.
+        comp_time_seconds_metric.set(
+            timespec_to_nanosec_i64(_tel.to_time(frame_metadata->get_fpga_seq_num())) / 1e9);
 
         // Accumulate each visibility sample in the in_frame
         // t_outer
         for (int64_t vis_samp_n = 0; vis_samp_n < _n_integrations_per_n2k_frame; ++vis_samp_n) {
-
-            // Start and end times of the visibility matrix sample
-            // uint64_t t_vis_s = t_frame_s + vis_samp_n * _in_frame_vis_duration_nsec;
-            // uint64_t t_vis_e = t_vis_s + _in_frame_vis_duration_nsec;
-
             // "absolute" vis sample number
             int64_t vis_sample_num_abs = in_frame_num * _n_integrations_per_n2k_frame + vis_samp_n;
 
@@ -444,7 +419,7 @@ void N2Accumulate::main_thread() {
     }
 }
 
-bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_frame_id) {
+bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id) {
     // Different frame for each frequency
     // But, same metadata
     std::shared_ptr<chordMetadata> chord_frame_metadata = get_chord_metadata(in_buf, in_frame_id);
