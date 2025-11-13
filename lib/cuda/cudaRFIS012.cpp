@@ -9,7 +9,7 @@
 #include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
 #include "n2k/rfi_kernels.hpp"     // for launch_s0_kernel, launch_s12_kernel
 
-#include "fmt/format.h" // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <DataType.hpp>          // for int4x2_swapped_withoffset_t, uint1x8_t
 #include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, read_descriptor_t, extent_t

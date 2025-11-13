@@ -9,7 +9,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <arpa/inet.h>  // for inet_aton, htons
+#include <arpa/inet.h>  // for htons, inet_aton
 #include <errno.h>      // for errno
 #include <functional>   // for bind, function
 #include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP

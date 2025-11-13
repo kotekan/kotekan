@@ -7,7 +7,7 @@
 #include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
 #include "n2k/pl_kernels.hpp"      // for launch_pl_mask_expander
 
-#include "fmt/format.h" // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <DataType.hpp>          // for uint1x8_t
 #include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, extent_t, read_descriptor_t

@@ -15,16 +15,16 @@
 
 // Convenience function for checking HIP runtime API results
 // can be wrapped around any runtime API call. No-op in release builds.
-#define CHECK_HIP_ERROR(result)                                                                    \
-    if (result != hipSuccess) {                                                                    \
-        FATAL_ERROR_NON_OO("Error at {:s}:{:d}; Error type: {:s}", __FILE__, __LINE__,             \
-                           hipGetErrorString(result));                                             \
+#define CHECK_HIP_ERROR(result)                                                        \
+    if (result != hipSuccess) {                                                        \
+        FATAL_ERROR_NON_OO("Error at {:s}:{:d}; Error type: {:s}", __FILE__, __LINE__, \
+                           hipGetErrorString(result));                                 \
     }
 
-#define CHECK_HIP_ERROR_NON_OO(result)                                                             \
-    if (result != hipSuccess) {                                                                    \
-        FATAL_ERROR_NON_OO("Error at {:s}:{:d}; Error type: {:s}", __FILE__, __LINE__,             \
-                           hipGetErrorString(result));                                             \
+#define CHECK_HIP_ERROR_NON_OO(result)                                                 \
+    if (result != hipSuccess) {                                                        \
+        FATAL_ERROR_NON_OO("Error at {:s}:{:d}; Error type: {:s}", __FILE__, __LINE__, \
+                           hipGetErrorString(result));                                 \
     }
 
 #endif // HIP_UTILS_H

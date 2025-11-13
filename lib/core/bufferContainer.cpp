@@ -2,8 +2,8 @@
 
 #include "buffer.hpp" // for GenericBuffer, Buffer, is_frame_buffer
 
-#include "fmt.hpp"      // for format, fmt
-#include "fmt/format.h" // for compile_string_to_view
+#include "fmt.hpp"    // for compile_string_to_view, fmt
+#include "fmt/core.h" // for format
 
 #include <stdexcept> // for runtime_error
 

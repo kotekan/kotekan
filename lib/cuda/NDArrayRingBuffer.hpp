@@ -6,7 +6,7 @@
 #include "driver_types.h"      // for CUstream_st, cudaMemcpyKind
 #include "metadata.hpp"        // for metadataObject
 
-#include "fmt/format.h" // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <DataType.hpp>            // for uint_from_element_bits, operator<<, GetType_t, isfinite
 #include <NDArray.hpp>             // for NDArray
@@ -17,16 +17,15 @@
 #include <cassert>                 // for assert
 #include <chordMetadata.hpp>       // for chordMetadata, get_chord_metadata
 #include <cmath>                   // for isfinite
-#include <cstddef>                 // for ptrdiff_t, size_t
 #include <cstdint>                 // for uint8_t
-#include <cstring>                 // for memcmp, memcpy, memset
+#include <cstring>                 // for size_t, memcmp, memcpy, memset
 #include <cudaCommand.hpp>         // for cudaCommand
 #include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
 #include <cudaUtils.hpp>           // for CHECK_CUDA_ERROR
 #include <div.hpp>                 // for mod, div_noremainder
 #include <functional>              // for function
 #include <iomanip>                 // for setfill, operator<<, setw
-#include <iostream>                // for basic_ostream, operator<<, ostream, cerr, dec, hex
+#include <iostream>                // for ptrdiff_t, basic_ostream, operator<<, ostream, cerr, dec
 #include <kotekanLogging.hpp>      // for FATAL_ERROR, ERROR, kotekanLogging
 #include <memory>                  // for shared_ptr, __shared_ptr_access, allocator
 #include <optional>                // for optional

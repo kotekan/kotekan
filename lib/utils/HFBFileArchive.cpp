@@ -5,6 +5,8 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
+#include <H5Zpublic.h>                           // for H5Z_FLAG_MANDATORY
+#include <H5public.h>                            // for hsize_t
 #include <algorithm>                             // for max, copy
 #include <cstdio>                                // for remove
 #include <highfive/H5Attribute.hpp>              // for Attribute, Attribute::write
@@ -13,7 +15,6 @@
 #include <highfive/H5DataType.hpp>               // for create_datatype, DataType
 #include <highfive/H5File.hpp>                   // for File, NodeTraits::createDataSet, operator|
 #include <highfive/H5Group.hpp>                  // for Group
-#include <highfive/H5Object.hpp>                 // for H5Z_FLAG_MANDATORY, hsize_t
 #include <highfive/H5PropertyList.hpp>           // for PropertyType, RawPropertyList, Chunking
 #include <highfive/H5Selection.hpp>              // for SliceTraits::write, SliceTraits::select
 #include <highfive/bits/H5PropertyList_misc.hpp> // for PropertyList::_initializeIfNeeded, Chun...

@@ -15,8 +15,8 @@
 #include <array>                 // for array
 #include <cassert>               // for assert
 #include <chordMetadata.hpp>     // for chordMetadata
-#include <cstddef>               // for ptrdiff_t
-#include <cstdint>               // for int32_t
+#include <cstddef>               // for ptrdiff_t, size_t
+#include <cstdint>               // for int32_t, int64_t
 #include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include <cudaMemsetInt.hpp>     // for cudaMemsetInt
 #include <div.hpp>               // for div_noremainder, round_down

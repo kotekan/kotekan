@@ -4,8 +4,9 @@
 #include "cuda_runtime_api.h" // for cudaHostRegister, cudaMemcpyAsync
 #include "gpuCommand.hpp"     // for gpuCommandType
 
-#include <stdlib.h> // for free, malloc
-#include <string.h> // for memset
+#include <driver_types.h> // for CUevent_st, cudaEvent_t, CUstream_st, cudaMemcpyKind
+#include <stdlib.h>       // for free, malloc
+#include <string.h>       // for memset
 
 using kotekan::bufferContainer;
 using kotekan::Config;

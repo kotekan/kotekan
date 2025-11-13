@@ -10,6 +10,7 @@
 #include "prometheusMetrics.hpp" // for Metrics
 #include "visBuffer.hpp"         // for VisFrameView, VisField
 
+#include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span_iterator, span, at
 
 #include <cblas.h>     // for cblas_cgemv, CBLAS_ORDER, CBLAS_TRANSPOSE

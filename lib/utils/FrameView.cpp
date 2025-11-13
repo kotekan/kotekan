@@ -2,8 +2,8 @@
 
 #include "metadata.hpp" // for metadataObject
 
-#include "fmt.hpp"      // for format, fmt
-#include "fmt/format.h" // for compile_string_to_view
+#include "fmt.hpp"    // for compile_string_to_view, fmt
+#include "fmt/core.h" // for format
 
 #include <cstring>   // for memcpy
 #include <memory>    // for shared_ptr, __shared_ptr_access

@@ -146,6 +146,7 @@ struct int4x2_swapped_withoffset_t {
 // In C++20+, prefer std::bit_cast to keep them constexpr-capable.
 #if (__cplusplus >= 202002L) || defined(__cpp_lib_bit_cast)
 #include <bit>
+
 constexpr inline bool isfinite(const float16_t x) {
     const std::uint16_t bits = std::bit_cast<std::uint16_t>(x);
     return (bits & 0b0111110000000000) != 0b0111110000000000;

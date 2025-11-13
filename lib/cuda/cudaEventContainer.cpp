@@ -3,6 +3,8 @@
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR_NON_OO
 #include "cuda_runtime_api.h" // for cudaEventSynchronize
 
+#include <driver_types.h> // for CUevent_st, cudaEvent_t
+
 void cudaEventContainer::set(void* sig) {
     signal = (cudaEvent_t)sig;
 }

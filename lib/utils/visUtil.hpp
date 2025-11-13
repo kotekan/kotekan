@@ -27,25 +27,22 @@
 #include <complex>       // for complex, imag, real
 #include <cstdint>       // for uint32_t, int8_t, uint16_t, uint8_t, int64_t, uint64_t, int32_t
 #include <cstdlib>       // for size_t, div
-#ifdef WITH_CUDA
-#include <cuda_fp16.h> // for __half::operator float
-#endif
-#include <deque>       // for deque
-#include <functional>  // for function
-#include <iosfwd>      // for ostream
-#include <iterator>    // for pair
-#include <map>         // for map
-#include <math.h>      // for fmod, cosf, sinf, M_PI
-#include <memory>      // for unique_ptr
-#include <mutex>       // for recursive_mutex
-#include <string>      // for string, basic_string
-#include <sys/time.h>  // for timeval, gettimeofday, CLOCK_REALTIME
-#include <sys/types.h> // for suseconds_t
-#include <time.h>      // for timespec, clock_gettime, time_t
-#include <tuple>       // for tuple, tie
-#include <type_traits> // for enable_if_t, is_integral, make_unsigned
-#include <utility>     // for pair
-#include <vector>      // for vector
+#include <deque>         // for deque
+#include <functional>    // for function
+#include <iosfwd>        // for ostream
+#include <iterator>      // for pair
+#include <map>           // for map
+#include <math.h>        // for fmod, cosf, sinf, M_PI
+#include <memory>        // for unique_ptr
+#include <mutex>         // for recursive_mutex
+#include <string>        // for string, basic_string
+#include <sys/time.h>    // for timeval, gettimeofday, CLOCK_REALTIME
+#include <sys/types.h>   // for suseconds_t
+#include <time.h>        // for timespec, clock_gettime, time_t
+#include <tuple>         // for tuple, tie
+#include <type_traits>   // for enable_if_t, is_integral, make_unsigned
+#include <utility>       // for pair
+#include <vector>        // for vector
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;

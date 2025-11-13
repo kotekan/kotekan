@@ -77,7 +77,7 @@ protected:
 CREATE_FACTORY(hipCommand, // const string &, const string &,
                kotekan::Config&, const std::string&, kotekan::bufferContainer&,
                hipDeviceInterface&);
-#define REGISTER_HIP_COMMAND(newCommand)                                                           \
+#define REGISTER_HIP_COMMAND(newCommand) \
     REGISTER_NAMED_TYPE_WITH_FACTORY(hipCommand, newCommand, #newCommand)
 
 #endif // HIP_COMMAND_H

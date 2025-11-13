@@ -16,11 +16,11 @@
 #include <assert.h>    // for assert
 #include <cmath>       // for isnan
 #include <functional>  // for bind, ref, function, _1
-#include <map>         // for map
+#include <map>         // for operator!=, map, _Rb_tree_const_iterator, _Rb_tree_ite...
 #include <memory>      // for __shared_ptr_access, shared_ptr
 #include <pthread.h>   // for pthread_setaffinity_np
 #include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <set>         // for set, operator!=, _Rb_tree_const_iterator, _Rb_tree_ite...
+#include <set>         // for set
 #include <sstream>     // for basic_ostringstream, basic_ostream, ostringstream
 #include <sys/types.h> // for uint
 #include <tuple>       // for get, tuple

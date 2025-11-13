@@ -6,8 +6,9 @@
 
 #include "fmt.hpp" // for format, format_string, compile_string_to_view
 
-#include <map>       // for map
-#include <stdexcept> // for runtime_error
+#include <driver_types.h> // for CUevent_st, cudaEvent_t, CUstream_st
+#include <map>            // for map
+#include <stdexcept>      // for runtime_error
 
 using kotekan::bufferContainer;
 using kotekan::Config;

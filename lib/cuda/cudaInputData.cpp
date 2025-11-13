@@ -7,11 +7,12 @@
 
 #include "fmt.hpp" // for format, format_string
 
-#include <algorithm>   // for max
-#include <memory>      // for allocator, shared_ptr
-#include <stdint.h>    // for uint8_t
-#include <sys/types.h> // for uint, size_t
-#include <tuple>       // for tuple, make_tuple
+#include <algorithm>      // for max
+#include <driver_types.h> // for cudaError, cudaEvent_t, CUevent_st
+#include <memory>         // for shared_ptr
+#include <stdint.h>       // for uint8_t
+#include <sys/types.h>    // for uint, size_t
+#include <tuple>          // for tuple, make_tuple
 
 using kotekan::bufferContainer;
 using kotekan::Config;

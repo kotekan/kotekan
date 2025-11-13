@@ -9,7 +9,7 @@
 #include "kotekanLogging.hpp"      // for DEBUG
 #include "n2k/rfi_kernels.hpp"     // for launch_s012_time_downsample_kernel
 
-#include "fmt/format.h" // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, extent_t, read_descriptor_t
 #include <algorithm>             // for min

@@ -15,6 +15,7 @@
 #include <assert.h>          // for assert
 #include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, metadata_is_chord
 #include <cstdlib>           // for abort
+#include <cublas_api.h>      // for cublasGetStatusString, CUBLAS_STATUS_SUCCESS, cublasH...
 #include <div.hpp>           // for div_noremainder, mod
 #include <fmt.hpp>           // for compile_string_to_view
 #include <memory>            // for shared_ptr, __shared_ptr_access

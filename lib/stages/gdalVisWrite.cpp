@@ -29,10 +29,10 @@
 #include <memory>                // for shared_ptr, allocator, __shared_ptr_access
 #include <prometheusMetrics.hpp> // for Metrics, Gauge
 #include <sstream>               // for basic_ostream, operator<<, basic_ostringstream, ostring...
-#include <string.h>              // for strerror
+#include <string.h>              // for strerror, size_t
 #include <string>                // for basic_string, char_traits, string, operator<, operator<<
 #include <sys/stat.h>            // for stat, mkdir
-#include <unistd.h>              // for gethostname, size_t
+#include <unistd.h>              // for gethostname
 #include <utility>               // for pair
 #include <vector>                // for vector
 #include <visUtil.hpp>           // for current_time

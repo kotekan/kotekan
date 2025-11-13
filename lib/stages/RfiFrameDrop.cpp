@@ -1,12 +1,12 @@
 #include "RfiFrameDrop.hpp"
 
-#include "Config.hpp"          // for Config
-#include "Hash.hpp"            // for Hash, operator!=
-#include "Stage.hpp"           // for Stage
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator!=
+#include "Stage.hpp"             // for Stage
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chordMetadata.hpp"     // for get_chord_metadata, chordMetadata
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
 #include "kotekanLogging.hpp"    // for WARN, INFO, DEBUG, DEBUG2
@@ -21,7 +21,7 @@
 #include <cstring>    // for memcpy
 #include <functional> // for function, bind, _1
 #include <map>        // for map
-#include <memory>     // for shared_ptr
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for int64_t, uint32_t, uint8_t
 #include <string>     // for basic_string, allocator, to_string, operator<, string

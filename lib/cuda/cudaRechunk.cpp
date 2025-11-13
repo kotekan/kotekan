@@ -7,9 +7,10 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <algorithm> // for max
-#include <assert.h>  // for assert
-#include <tuple>     // for tuple, make_tuple
+#include <algorithm>      // for max
+#include <assert.h>       // for assert
+#include <driver_types.h> // for CUstream_st, cudaMemcpyKind, CUevent_st, cudaEvent_t
+#include <tuple>          // for tuple, make_tuple
 
 using kotekan::bufferContainer;
 using kotekan::Config;

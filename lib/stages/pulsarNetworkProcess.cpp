@@ -11,7 +11,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <arpa/inet.h>  // for inet_pton, htons
+#include <arpa/inet.h>  // for htons, inet_pton
 #include <cstdio>       // for snprintf
 #include <cstring>      // for memset
 #include <functional>   // for bind, function

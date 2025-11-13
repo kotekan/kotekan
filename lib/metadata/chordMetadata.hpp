@@ -7,7 +7,7 @@
 #include "buffer.hpp"    // for Buffer
 
 #include <cassert>    // for assert
-#include <cstddef>    // for size_t, ptrdiff_t
+#include <cstddef>    // for size_t
 #include <cstdint>    // for int64_t, int32_t, uint32_t, uint64_t
 #include <memory>     // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
 #include <mutex>      // for mutex, lock_guard
@@ -22,7 +22,7 @@
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
 
-#include "fmt/format.h"     // for compile_string_to_view
+#include "fmt.hpp"          // for compile_string_to_view
 #include "json.hpp"         // for basic_json, json
 #include "jsonMetadata.hpp" // for COARSE_FREQ, LOST_TIMESAMPLES, STREAM_ID, BEAM_COORD, DATA...
 

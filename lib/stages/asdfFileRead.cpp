@@ -21,9 +21,9 @@
 #include <asdf/ndarray.hxx>      // for ndarray, block_t
 #include <cassert>               // for assert
 #include <chordMetadata.hpp>     // for chordMetadata, CHORD_META_MAX_FREQ, metadata_is_chord
-#include <cstddef>               // for ptrdiff_t, size_t
+#include <cstddef>               // for ptrdiff_t
 #include <cstdint>               // for int64_t, uint32_t, uint8_t
-#include <cstring>               // for memcpy, strncpy
+#include <cstring>               // for memcpy, strncpy, size_t
 #include <fstream>               // for basic_ostream, basic_ifstream, operator<<, ostringstream
 #include <functional>            // for function
 #include <iomanip>               // for operator<<, setfill, setw

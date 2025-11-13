@@ -174,11 +174,11 @@ CREATE_FACTORY_VARIANT(state, cudaCommand, kotekan::Config&, const std::string&,
 CREATE_FACTORY(cudaCommandState, kotekan::Config&, const std::string&, kotekan::bufferContainer&,
                cudaDeviceInterface&);
 
-#define REGISTER_CUDA_COMMAND(newCommand)                                                          \
+#define REGISTER_CUDA_COMMAND(newCommand) \
     REGISTER_NAMED_TYPE_WITH_FACTORY(cudaCommand, newCommand, #newCommand)
 
-#define REGISTER_CUDA_COMMAND_WITH_STATE(newCommand, newCommandState)                              \
-    REGISTER_NAMED_TYPE_WITH_FACTORY_VARIANT(state, cudaCommand, newCommand, #newCommand);         \
+#define REGISTER_CUDA_COMMAND_WITH_STATE(newCommand, newCommandState)                      \
+    REGISTER_NAMED_TYPE_WITH_FACTORY_VARIANT(state, cudaCommand, newCommand, #newCommand); \
     REGISTER_NAMED_TYPE_WITH_FACTORY(cudaCommandState, newCommandState, #newCommand)
 
 #endif // CUDA_COMMAND_H

@@ -7,7 +7,8 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
 
-#include <stddef.h> // for size_t
+#include <driver_types.h> // for CUevent_st, cudaEvent_t
+#include <stddef.h>       // for size_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -3,8 +3,6 @@
 #include "Config.hpp"          // for Config
 #include "kotekanTrackers.hpp" // for KotekanTrackers
 
-#include "fmt.hpp" // for format, format_string
-
 #include <algorithm> // for max
 #include <vector>    // for vector
 

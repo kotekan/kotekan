@@ -10,15 +10,16 @@
 
 #include "fmt.hpp" // for compile_string_to_view, join
 
-#include <algorithm>   // for max
-#include <cassert>     // for assert
-#include <memory>      // for shared_ptr, __shared_ptr_access, allocator, dynamic_pointe...
-#include <optional>    // for optional
-#include <stdexcept>   // for runtime_error
-#include <stdint.h>    // for int64_t, uint8_t
-#include <sys/types.h> // for size_t, uint
-#include <tuple>       // for tuple, make_tuple
-#include <vector>      // for vector
+#include <algorithm>      // for max
+#include <cassert>        // for assert
+#include <driver_types.h> // for CUevent_st, cudaEvent_t, cudaError
+#include <memory>         // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
+#include <optional>       // for optional
+#include <stdexcept>      // for runtime_error
+#include <stdint.h>       // for int64_t, uint8_t
+#include <sys/types.h>    // for uint
+#include <tuple>          // for tuple, make_tuple
+#include <vector>         // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

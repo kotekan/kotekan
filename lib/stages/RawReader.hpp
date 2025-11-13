@@ -31,10 +31,10 @@
 #include <fstream>    // for basic_ifstream, basic_ios, ios_base, basic_istream::read
 #include <functional> // for bind
 #include <map>        // for map, _Rb_tree_iterator, operator!=, operator==
-#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <memory>     // for allocator, __shared_ptr_access, shared_ptr
 #include <stdexcept>  // for runtime_error, invalid_argument
 #include <stdint.h>   // for uint32_t, uint8_t
-#include <string>     // for allocator, basic_string, operator+, char_traits, string
+#include <string>     // for basic_string, operator+, char_traits, string, to_string
 #include <sys/mman.h> // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_...
 #include <sys/stat.h> // for stat
 #include <time.h>     // for nanosleep, timespec

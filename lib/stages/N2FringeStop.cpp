@@ -1,22 +1,22 @@
 #include "N2FringeStop.hpp"
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope, EOP
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for DEBUG
-#include "prometheusMetrics.hpp" // for Metrics
+#include "CHORDTelescope.hpp" // for CHORDTelescope, EOP
+#include "Config.hpp"         // for Config
 
 #include <complex>    // for complex, conj, operator*
 #include <functional> // for bind, function
 #include <stdint.h>   // for int64_t
 #include <vector>     // for vector
 // #include "visBuffer.hpp"         // for VisFrameView
-#include "N2FrameView.hpp" // for N2FrameView
-#include "Telescope.hpp"   // for Telescope
-#include "timeUtil.hpp"    // for get_UT1_from_ERA
-#include "visUtil.hpp"     // for frameID, modulo
+#include "N2FrameView.hpp"       // for N2FrameView
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"         // for Telescope
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for DEBUG
+#include "prometheusMetrics.hpp" // for Metrics
+#include "timeUtil.hpp"          // for get_UT1_from_ERA
+#include "visUtil.hpp"           // for frameID, modulo
 
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span

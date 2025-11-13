@@ -81,7 +81,7 @@ public:
 
 // Create the abstract factory for generating patterns
 CREATE_FACTORY(FakeVisPattern, kotekan::Config&, const std::string&);
-#define REGISTER_FAKE_VIS_PATTERN(PatternType, name)                                               \
+#define REGISTER_FAKE_VIS_PATTERN(PatternType, name) \
     REGISTER_NAMED_TYPE_WITH_FACTORY(FakeVisPattern, PatternType, name)
 
 

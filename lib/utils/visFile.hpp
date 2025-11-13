@@ -13,7 +13,7 @@
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging, DEBUG
 #include "visUtil.hpp"        // for time_ctype, operator<
 
-#include "fmt/format.h" // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <cstdint>    // for uint32_t
 #include <functional> // for function
@@ -245,13 +245,13 @@ std::string create_lockfile(std::string filename);
 // Taken from
 // https://android.googlesource.com/platform/system/core/+/master/base/include/android-base/macros.h
 #ifndef TEMP_FAILURE_RETRY
-#define TEMP_FAILURE_RETRY(exp)                                                                    \
-    ({                                                                                             \
-        decltype(exp) _rc;                                                                         \
-        do {                                                                                       \
-            _rc = (exp);                                                                           \
-        } while (_rc == -1 && errno == EINTR);                                                     \
-        _rc;                                                                                       \
+#define TEMP_FAILURE_RETRY(exp)                \
+    ({                                         \
+        decltype(exp) _rc;                     \
+        do {                                   \
+            _rc = (exp);                       \
+        } while (_rc == -1 && errno == EINTR); \
+        _rc;                                   \
     })
 #endif
 #endif

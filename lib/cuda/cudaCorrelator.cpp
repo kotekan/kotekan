@@ -19,8 +19,9 @@
 #include <cassert>           // for assert
 #include <chordMetadata.hpp> // for chordMetadata
 #include <cstddef>           // for ptrdiff_t
-#include <cstdint>           // for int32_t, int8_t, uint32_t
+#include <cstdint>           // for int32_t, int64_t, int8_t, uint32_t
 #include <div.hpp>           // for div_noremainder, mod
+#include <driver_types.h>    // for CUevent_st, cudaEvent_t, CUstream_st
 #include <functional>        // for function
 #include <memory>            // for shared_ptr, __shared_ptr_access
 #include <stdexcept>         // for runtime_error

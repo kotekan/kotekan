@@ -10,7 +10,7 @@
 #include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for basic_json, json, iter_impl, input_adapter
 
-#include <algorithm>  // for lower_bound, copy, sort, max
+#include <algorithm>  // for copy, lower_bound, sort
 #include <assert.h>   // for assert
 #include <exception>  // for exception
 #include <functional> // for bind, _1, function

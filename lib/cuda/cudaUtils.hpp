@@ -27,27 +27,27 @@
 
 // Similar to CHECK_CUDA_ERROR, but for cu API functions (starting with "cu", vs starting with
 // "cuda").
-#define CHECK_CU_ERROR(cmd)                                                                        \
-    do {                                                                                           \
-        const CUresult result = (cmd);                                                             \
-        if (result != CUDA_SUCCESS) {                                                              \
-            const char* errstr = NULL;                                                             \
-            cuGetErrorString(result, &errstr);                                                     \
-            internal_logging(LOG_ERR, __log_prefix, "Error at {:s}:{:d}; Error type: {:s}",        \
-                             __FILE__, __LINE__, errstr);                                          \
-            std::abort();                                                                          \
-        }                                                                                          \
+#define CHECK_CU_ERROR(cmd)                                                                 \
+    do {                                                                                    \
+        const CUresult result = (cmd);                                                      \
+        if (result != CUDA_SUCCESS) {                                                       \
+            const char* errstr = NULL;                                                      \
+            cuGetErrorString(result, &errstr);                                              \
+            internal_logging(LOG_ERR, __log_prefix, "Error at {:s}:{:d}; Error type: {:s}", \
+                             __FILE__, __LINE__, errstr);                                   \
+            std::abort();                                                                   \
+        }                                                                                   \
     } while (0)
 
-#define CHECK_CUDA_ERROR_NON_OO(cmd)                                                               \
-    do {                                                                                           \
-        const cudaError_t result = (cmd);                                                          \
-        if (result != cudaSuccess) {                                                               \
-            kotekan::kotekanLogging::internal_logging(                                             \
-                LOG_ERR, "", "Error at {:s}:{:d}; Error type: {:s}", __FILE__, __LINE__,           \
-                cudaGetErrorString(result));                                                       \
-            std::abort();                                                                          \
-        }                                                                                          \
+#define CHECK_CUDA_ERROR_NON_OO(cmd)                                                     \
+    do {                                                                                 \
+        const cudaError_t result = (cmd);                                                \
+        if (result != cudaSuccess) {                                                     \
+            kotekan::kotekanLogging::internal_logging(                                   \
+                LOG_ERR, "", "Error at {:s}:{:d}; Error type: {:s}", __FILE__, __LINE__, \
+                cudaGetErrorString(result));                                             \
+            std::abort();                                                                \
+        }                                                                                \
     } while (0)
 
 #endif // CUDA_UTILS_H

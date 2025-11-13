@@ -124,9 +124,9 @@ private:
 
 /// Helper defined to reduce the boiler plate needed to crate the
 /// standarized constructor in sub classes
-#define STAGE_CONSTRUCTOR(T)                                                                       \
-    T::T(kotekan::Config& config, const std::string& unique_name,                                  \
-         kotekan::bufferContainer& buffer_container) :                                             \
+#define STAGE_CONSTRUCTOR(T)                                      \
+    T::T(kotekan::Config& config, const std::string& unique_name, \
+         kotekan::bufferContainer& buffer_container) :            \
         Stage(config, unique_name, buffer_container, std::bind(&T::main_thread, this))
 
 #endif /* KOTEKAN_STAGE_H */

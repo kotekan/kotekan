@@ -14,7 +14,7 @@
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
 
 #include <algorithm>    // for max, max_element
-#include <arpa/inet.h>  // for inet_pton, htons, inet_ntop
+#include <arpa/inet.h>  // for htons, inet_pton, inet_ntop
 #include <assert.h>     // for assert
 #include <cstring>      // for strerror, memset, size_t
 #include <errno.h>      // for errno, EINTR

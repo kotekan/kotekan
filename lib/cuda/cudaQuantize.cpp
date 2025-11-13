@@ -18,6 +18,7 @@
 #include <cstdint>           // for int64_t
 #include <cudaUtils.hpp>     // for CHECK_CUDA_ERROR
 #include <div.hpp>           // for div_noremainder
+#include <driver_types.h>    // for CUevent_st, cudaEvent_t, CUstream_st, cudaMemcpyKind
 #include <memory>            // for shared_ptr, __shared_ptr_access
 #include <stdexcept>         // for runtime_error
 #include <string>            // for allocator, basic_string, string, operator+

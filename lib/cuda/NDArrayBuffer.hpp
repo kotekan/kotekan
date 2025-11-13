@@ -10,20 +10,20 @@
 
 #include <DataType.hpp>            // for operator<<
 #include <NDArray.hpp>             // for NDArray
-#include <Symbol.hpp>              // for Symbol, strings_to_symbols, operator==
+#include <Symbol.hpp>              // for Symbol, operator==, strings_to_symbols, operator<<
 #include <algorithm>               // for find_if
 #include <array>                   // for array
 #include <cassert>                 // for assert
 #include <chordMetadata.hpp>       // for chordMetadata, get_chord_metadata
-#include <cstddef>                 // for ptrdiff_t, size_t
+#include <cstddef>                 // for ptrdiff_t
 #include <cstdint>                 // for uint8_t
-#include <cstring>                 // for memcmp, memset
+#include <cstring>                 // for size_t, memcmp, memset
 #include <cudaCommand.hpp>         // for cudaCommand
 #include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
-#include <kotekanLogging.hpp>      // for kotekanLogging, FATAL_ERROR
+#include <kotekanLogging.hpp>      // for kotekanLogging, ERROR, FATAL_ERROR
 #include <memory>                  // for shared_ptr, __shared_ptr_access, allocator
 #include <sstream>                 // for basic_ostream, operator<<, ostream, basic_ostringstream
-#include <string>                  // for string, basic_string, char_traits, operator+, operator<<
+#include <string>                  // for basic_string, string, char_traits, operator+, operator<<
 #include <vector>                  // for vector
 
 // This affects copying from host to device. A standard buffer is

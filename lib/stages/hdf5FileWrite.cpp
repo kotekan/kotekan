@@ -14,6 +14,8 @@
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
+#include <H5Zpublic.h>                           // for H5Z_FLAG_MANDATORY
+#include <H5public.h>                            // for hsize_t
 #include <Stage.hpp>                             // for Stage
 #include <StageFactory.hpp>                      // for REGISTER_KOTEKAN_STAGE
 #include <algorithm>                             // for max, min
@@ -30,7 +32,6 @@
 #include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::DataSpace, DataSp...
 #include <highfive/H5DataType.hpp>               // for DataType, DataType::getSize
 #include <highfive/H5File.hpp>                   // for File, NodeTraits::createDataSet, File::...
-#include <highfive/H5Object.hpp>                 // for hsize_t, H5Z_FLAG_MANDATORY
 #include <highfive/H5PropertyList.hpp>           // for PropertyType, RawPropertyList, Chunking
 #include <highfive/bits/H5PropertyList_misc.hpp> // for PropertyList::_initializeIfNeeded, Chun...
 #include <highfive/bits/H5Slice_traits_misc.hpp> // for SliceTraits::write_raw

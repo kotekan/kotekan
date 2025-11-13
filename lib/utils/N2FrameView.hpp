@@ -16,8 +16,8 @@
 #include "gsl-lite.hpp" // for span
 
 #include <algorithm> // for max
-#include <map>       // for allocator, map
-#include <memory>    // for shared_ptr
+#include <map>       // for map
+#include <memory>    // for allocator, shared_ptr
 #include <set>       // for set
 #include <stddef.h>  // for size_t
 #include <stdint.h>  // for uint32_t, uint64_t

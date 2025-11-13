@@ -5,35 +5,48 @@
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for eigenvalueState, freqState, inputState
 #include "visBuffer.hpp"      // for VisFrameView
-#include "visUtil.hpp"        // for time_ctype, cfloat, freq_ctype, input_c...
+#include "visUtil.hpp"        // for time_ctype, cfloat, freq_ctype, inpu...
 
-#include "fmt.hpp"      // for format, fmt
-#include "fmt/format.h" // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view, fmt
+#include "fmt/core.h"   // for format
 #include "gsl-lite.hpp" // for span
 
-#include <complex>                               // for complex
-#include <cstdio>                                // for remove
-#include <errno.h>                               // for errno
-#include <fcntl.h>                               // for sync_file_range, SYNC_FILE_RANGE_WRITE
-#include <future>                                // for async, future
-#include <highfive/H5Attribute.hpp>              // for Attribute, Attribute::write, Attribute:...
-#include <highfive/H5DataSet.hpp>                // for DataSet, H5Dget_offset, DataSet::resize
-#include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::From, DataSpace::...
-#include <highfive/H5DataType.hpp>               // for create_datatype, DataType
-#include <highfive/H5File.hpp>                   // for File, NodeTraits::createDataSet, File::...
-#include <highfive/H5Group.hpp>                  // for Group
-#include <highfive/H5Object.hpp>                 // for Object::getId, hsize_t
-#include <highfive/H5PropertyList.hpp>           // for PropertyType, RawPropertyList, Chunking
-#include <highfive/H5Selection.hpp>              // for Selection, SliceTraits::write, SliceTra...
-#include <highfive/bits/H5PropertyList_misc.hpp> // for PropertyList::_initializeIfNeeded, RawP...
-#include <highfive/bits/H5Selection_misc.hpp>    // for Selection::getDataType, Selection::getM...
-#include <numeric>                               // for iota
-#include <stdexcept>                             // for runtime_error
-#include <string.h>                              // for strerror
-#include <sys/stat.h>                            // for fstat, stat
-#include <tuple>                                 // for tuple, make_tuple, get
-#include <unistd.h>                              // for pwrite, TEMP_FAILURE_RETRY
-#include <utility>                               // for pair
+#include <H5Dpublic.h>                              // for H5Dget_offset, H5D_alloc_time_t, H5D...
+#include <H5Ppublic.h>                              // for H5Fget_vfd_handle, H5P_DEFAULT, H5Ps...
+#include <H5public.h>                               // for hsize_t
+#include <algorithm>                                // for copy, fill_n, max
+#include <complex>                                  // for complex
+#include <cstdio>                                   // for remove
+#include <errno.h>                                  // for errno
+#include <fcntl.h>                                  // for sync_file_range, SYNC_FILE_RANGE_WRITE
+#include <future>                                   // for async, future
+#include <highfive/H5Attribute.hpp>                 // for Attribute
+#include <highfive/H5DataSet.hpp>                   // for DataSet
+#include <highfive/H5DataSpace.hpp>                 // for DataSpace
+#include <highfive/H5DataType.hpp>                  // for create_datatype, DataType
+#include <highfive/H5File.hpp>                      // for File, operator|
+#include <highfive/H5Group.hpp>                     // for Group
+#include <highfive/H5PropertyList.hpp>              // for PropertyType, RawPropertyList, Chunking
+#include <highfive/H5Selection.hpp>                 // for Selection
+#include <highfive/bits/H5Annotate_traits_misc.hpp> // for AnnotateTraits::createAttribute, Ann...
+#include <highfive/bits/H5Attribute_misc.hpp>       // for Attribute::write, Attribute::getSpace
+#include <highfive/bits/H5DataSet_misc.hpp>         // for DataSet::resize, DataSet::getDataType
+#include <highfive/bits/H5Dataspace_misc.hpp>       // for checkDimensions, DataSpace::From
+#include <highfive/bits/H5File_misc.hpp>            // for File::flush, File::File
+#include <highfive/bits/H5Inspector_decl.hpp>       // for unqualified_t
+#include <highfive/bits/H5Node_traits_misc.hpp>     // for NodeTraits::createDataSet, NodeTrait...
+#include <highfive/bits/H5Object_misc.hpp>          // for Object::~Object, Object::Object, Obj...
+#include <highfive/bits/H5PropertyList_misc.hpp>    // for PropertyList::_initializeIfNeeded
+#include <highfive/bits/H5Selection_misc.hpp>       // for Selection::getDataType, Selection::g...
+#include <highfive/bits/H5Slice_traits_misc.hpp>    // for SliceTraits::write, SliceTraits::select
+#include <highfive/bits/string_padding.hpp>         // for StringPadding
+#include <numeric>                                  // for iota
+#include <stdexcept>                                // for runtime_error
+#include <string.h>                                 // for strerror
+#include <sys/stat.h>                               // for fstat, stat
+#include <tuple>                                    // for tuple, make_tuple, get
+#include <unistd.h>                                 // for pwrite, TEMP_FAILURE_RETRY
+#include <utility>                                  // for pair
 
 using namespace HighFive;
 

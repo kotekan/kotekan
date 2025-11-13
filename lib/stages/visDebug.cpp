@@ -10,7 +10,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <algorithm>  // for copy, equal, max
+#include <algorithm>  // for equal
 #include <cstdint>    // for uint64_t
 #include <functional> // for bind, function
 #include <vector>     // for vector

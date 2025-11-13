@@ -8,7 +8,7 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
-#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
+#include "kotekanLogging.hpp"  // for DEBUG, ERROR, INFO
 #include "kotekanTrackers.hpp" // for KotekanTrackers
 #include "oneHotMetadata.hpp"  // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
 #include "restServer.hpp"      // for HTTP_RESPONSE, restServer, connectionInstance
@@ -21,7 +21,7 @@
 #include <cmath>       // for fmod
 #include <functional>  // for bind, function, _1, _2
 #include <random>      // for mt19937
-#include <stdexcept>   // for invalid_argument
+#include <stdexcept>   // for invalid_argument, runtime_error
 #include <stdint.h>    // for int8_t, uint32_t, uint8_t, int16_t, int32_t, uint64_t
 #include <strings.h>   // for bzero
 #include <sys/time.h>  // for gettimeofday, timeval

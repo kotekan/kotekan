@@ -2,7 +2,7 @@
 #include "StageFactory.hpp"       // for StageFactoryRegistry, StageMaker
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "errors.h"               // for ReturnCode, get_error_message, __enable_syslog, exit_k...
-#include "kotekanLogging.hpp"     // for logLevel, INFO_NON_OO, ERROR_NON_OO, FATAL_ERROR_NON_OO
+#include "kotekanLogging.hpp"     // for logLevel, ERROR_NON_OO, INFO_NON_OO, FATAL_ERROR_NON_OO
 #include "kotekanMode.hpp"        // for kotekanMode
 #include "kotekanTrackers.hpp"    // for KotekanTrackers
 #include "prometheusMetrics.hpp"  // for Metrics, Gauge

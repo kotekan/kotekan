@@ -5,6 +5,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
+#include <algorithm>               // for max
 #include <arpa/inet.h>             // for inet_pton, ntohs
 #include <assert.h>                // for assert
 #include <cstring>                 // for memset
@@ -13,7 +14,6 @@
 #include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
 #include <event2/keyvalq_struct.h> // for evkeyvalq, evkeyval
 #include <event2/thread.h>         // for evthread_use_pthreads
-#include <evhttp.h>                // for evhttp_request
 #include <exception>               // for exception
 #include <mutex>                   // for unique_lock
 #include <netdb.h>                 // for addrinfo, freeaddrinfo, gai_strerror, getaddrinfo

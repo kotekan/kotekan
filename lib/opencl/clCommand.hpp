@@ -115,11 +115,11 @@ CREATE_FACTORY_VARIANT(state, clCommand, kotekan::Config&, const std::string&,
 CREATE_FACTORY(clCommandState, kotekan::Config&, const std::string&, kotekan::bufferContainer&,
                clDeviceInterface&);
 
-#define REGISTER_CL_COMMAND(newCommand)                                                            \
+#define REGISTER_CL_COMMAND(newCommand) \
     REGISTER_NAMED_TYPE_WITH_FACTORY(clCommand, newCommand, #newCommand)
 
-#define REGISTER_CL_COMMAND_WITH_STATE(newCommand, newCommandState)                                \
-    REGISTER_NAMED_TYPE_WITH_FACTORY_VARIANT(state, clCommand, newCommand, #newCommand);           \
+#define REGISTER_CL_COMMAND_WITH_STATE(newCommand, newCommandState)                      \
+    REGISTER_NAMED_TYPE_WITH_FACTORY_VARIANT(state, clCommand, newCommand, #newCommand); \
     REGISTER_NAMED_TYPE_WITH_FACTORY(clCommandState, newCommandState, #newCommand)
 
 #endif // CL_COMMAND_H

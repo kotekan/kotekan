@@ -15,9 +15,9 @@
 #include <array>                 // for array
 #include <cassert>               // for assert
 #include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, get_chord_metadata
-#include <cstddef>               // for ptrdiff_t, size_t
+#include <cstddef>               // for ptrdiff_t
 #include <cstdint>               // for int64_t, uint8_t
-#include <cstring>               // for strncpy
+#include <cstring>               // for size_t, strncpy
 #include <functional>            // for function
 #include <gdal.h>                // for GDALOpenEx, GEDTC_STRING, GDALAllRegister, GDAL_OF_MULT...
 #include <gdal_priv.h>           // for GDALAttribute, GDALGroup, GDALMDArray, GDALDataset, GDA...

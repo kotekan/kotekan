@@ -15,7 +15,7 @@
 #include <DataType.hpp>          // for uint1x8_t
 #include <NDArrayBuffer.hpp>     // for NDArrayBuffer, buffer_type_t
 #include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include <algorithm>             // for min
+#include <algorithm>             // for fill_n, min
 #include <array>                 // for array
 #include <cstddef>               // for ptrdiff_t
 #include <cstdint>               // for int8_t, uint64_t, uint8_t, int64_t

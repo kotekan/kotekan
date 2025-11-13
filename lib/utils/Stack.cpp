@@ -8,6 +8,7 @@
 #include <cstdint>    // for uint32_t, int8_t, int16_t
 #include <functional> // for bind, _1
 #include <iterator>   // for back_insert_iterator, begin, end, back_inserter
+#include <math.h>     // for abs
 #include <numeric>    // for iota
 #include <ostream>    // for basic_ostream
 #include <stdexcept>  // for invalid_argument

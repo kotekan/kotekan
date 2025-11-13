@@ -1,5 +1,6 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for string_to_type, DataType
+#include "H5DataType.hpp"      // for DataType::isVariableStr
 #include "Symbol.hpp"          // for Symbol
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -9,29 +10,37 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <Stage.hpp>                             // for Stage
-#include <StageFactory.hpp>                      // for REGISTER_KOTEKAN_STAGE
-#include <algorithm>                             // for copy
-#include <array>                                 // for array
-#include <cassert>                               // for assert
-#include <chordMetadata.hpp>                     // for chordMetadata, metadata_is_chord, get_c...
-#include <cstddef>                               // for ptrdiff_t
-#include <cstdint>                               // for int64_t, uint8_t
-#include <functional>                            // for function
-#include <highfive/H5Attribute.hpp>              // for Attribute, Attribute::read
-#include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::getAttribute
-#include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::getDimensions
-#include <highfive/H5Exception.hpp>              // for FileException
-#include <highfive/H5File.hpp>                   // for File, File::File, NodeTraits::getDataSet
-#include <highfive/bits/H5Slice_traits_misc.hpp> // for SliceTraits::read_raw
-#include <iomanip>                               // for operator<<, setfill, setw
-#include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
-#include <prometheusMetrics.hpp>                 // for Metrics, Gauge
-#include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
-#include <string>                                // for basic_string, char_traits, string, oper...
-#include <unistd.h>                              // for gethostname, sleep
-#include <vector>                                // for vector
-#include <visUtil.hpp>                           // for current_time
+#include <Stage.hpp>                                // for Stage
+#include <StageFactory.hpp>                         // for REGISTER_KOTEKAN_STAGE
+#include <algorithm>                                // for copy
+#include <array>                                    // for array
+#include <cassert>                                  // for assert
+#include <chordMetadata.hpp>                        // for chordMetadata, metadata_is_chord
+#include <cstddef>                                  // for ptrdiff_t
+#include <cstdint>                                  // for int64_t, uint8_t
+#include <functional>                               // for function
+#include <highfive/H5Attribute.hpp>                 // for Attribute
+#include <highfive/H5DataSet.hpp>                   // for DataSet
+#include <highfive/H5DataSpace.hpp>                 // for DataSpace
+#include <highfive/H5Exception.hpp>                 // for FileException
+#include <highfive/H5File.hpp>                      // for File
+#include <highfive/bits/H5Annotate_traits_misc.hpp> // for AnnotateTraits::getAttribute, Annota...
+#include <highfive/bits/H5Attribute_misc.hpp>       // for Attribute::read
+#include <highfive/bits/H5DataSet_misc.hpp>         // for DataSet::getSpace, DataSet::getDataType
+#include <highfive/bits/H5Dataspace_misc.hpp>       // for checkDimensions, DataSpace::getDimen...
+#include <highfive/bits/H5File_misc.hpp>            // for File::File
+#include <highfive/bits/H5Inspector_decl.hpp>       // for unqualified_t
+#include <highfive/bits/H5Node_traits_misc.hpp>     // for NodeTraits::getDataSet
+#include <highfive/bits/H5Object_misc.hpp>          // for Object::Object, Object::~Object
+#include <highfive/bits/H5Slice_traits_misc.hpp>    // for SliceTraits::read_raw
+#include <iomanip>                                  // for operator<<, setfill, setw
+#include <memory>                                   // for allocator, shared_ptr, __shared_ptr_...
+#include <prometheusMetrics.hpp>                    // for Metrics, Gauge
+#include <sstream>                                  // for basic_ostream, operator<<, basic_ost...
+#include <string>                                   // for basic_string, char_traits, string
+#include <unistd.h>                                 // for gethostname, sleep
+#include <vector>                                   // for vector
+#include <visUtil.hpp>                              // for current_time
 
 using namespace hdf5;
 using namespace HighFive;

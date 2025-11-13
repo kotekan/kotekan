@@ -19,10 +19,10 @@
 #include <algorithm>  // for fill, copy
 #include <assert.h>   // for assert
 #include <complex>    // for conj, norm, operator*, complex
-#include <cstdlib>    // for abort
+#include <cstdlib>    // for abort, size_t
 #include <functional> // for bind, function, placeholders
 #include <memory>     // for shared_ptr, __shared_ptr_access
-#include <time.h>     // for size_t, timespec_get, TIME_UTC, timespec
+#include <time.h>     // for timespec_get, TIME_UTC, timespec
 #include <vector>     // for vector
 
 

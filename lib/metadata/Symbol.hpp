@@ -1,22 +1,23 @@
 #ifndef SYMBOL_HPP
 #define SYMBOL_HPP
 
-#include "fmt.hpp" // for formatter
+#include "fmt/core.h" // for formatter
 
 #include <array>         // for array
 #include <cstring>       // for size_t
-#include <fmt/format.h>  // for formatter
 #include <functional>    // for equal_to, less
 #include <iostream>      // for ostream
 #include <mutex>         // for mutex
 #include <string>        // for string, basic_string
-#include <unordered_set> // for unordered_set
+#include <string_view>   // for hash, string_view, basic_string_view
+#include <unordered_set> // for operator!=, _Node_iterator, _Node_iterator_base, unordered_set
 
 
 namespace kotekan {
 
 template<typename T>
 struct owning_unordered_set;
+
 template<>
 struct owning_unordered_set<std::string_view> : public std::unordered_set<std::string_view> {
     ~owning_unordered_set() {

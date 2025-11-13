@@ -1,5 +1,6 @@
 #include "buffer.hpp"
 
+#include <algorithm>     // for fill_n
 #include <assert.h>      // for assert
 #include <bits/chrono.h> // for duration, operator+, nanoseconds, seconds, system_clock
 #include <errno.h>       // for errno
@@ -8,7 +9,7 @@
 #include <stdexcept>     // for runtime_error
 #include <stdlib.h>      // for free, malloc
 #include <string.h>      // for strerror, memset, memcpy
-#include <sys/mman.h>    // for mmap, munmap, MAP_FAILED
+#include <sys/mman.h>    // for mlock, mmap, munmap, MAP_FAILED
 #include <utility>       // for pair
 
 // IWYU pragma: no_include <asm/mman-common.h>
@@ -19,15 +20,15 @@
 #include "nt_memset.h"        // for nt_memset
 #include "util.h"             // for e_time
 
-#include "fmt.hpp"      // for format, fmt
-#include "fmt/format.h" // for compile_string_to_view
+#include "fmt.hpp"    // for compile_string_to_view, fmt
+#include "fmt/core.h" // for format
 #ifndef MAC_OSX
 #include <linux/mman.h> // for MAP_HUGE_2MB, MAP_PRIVATE
 #endif
 #include <time.h> // for timespec
 #ifdef WITH_NUMA
-#include <numa.h>   // for bitmask, numa_alloc_onnode, numa_allocate_nodemask, numa_b...
-#include <numaif.h> // for mbind, MPOL_BIND, MPOL_MF_STRICT
+#include <numa.h>   // for bitmask, numa_allocate_nodemask, numa_bitmask_free, numa_b...
+#include <numaif.h> // for set_mempolicy, MPOL_BIND, mbind, MPOL_DEFAULT, MPOL_MF_STRICT
 #endif
 
 // It is assumed this is a power of two in the code.

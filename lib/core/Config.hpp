@@ -21,6 +21,7 @@
 #include <list>        // for list
 #include <regex>       // for regex, regex_match, cmatch, sregex_token_iterator
 #include <stdexcept>   // for runtime_error
+#include <stdlib.h>    // for free
 #include <string>      // for basic_string, operator==, string, char_traits, allocator
 #include <type_traits> // for conditional, is_arithmetic, is_integral, is_unsigned, enab...
 #include <typeinfo>    // for type_info

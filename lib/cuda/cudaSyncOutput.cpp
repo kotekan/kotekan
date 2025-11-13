@@ -8,7 +8,7 @@
 
 #include <algorithm> // for max
 #include <stdint.h>  // for int32_t
-#include <vector>    // for allocator, vector
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

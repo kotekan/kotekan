@@ -29,7 +29,7 @@
 class FakeGpuPattern;
 
 CREATE_FACTORY(FakeGpuPattern, kotekan::Config&, const std::string&);
-#define REGISTER_FAKE_GPU_PATTERN(patternType, name)                                               \
+#define REGISTER_FAKE_GPU_PATTERN(patternType, name) \
     REGISTER_NAMED_TYPE_WITH_FACTORY(FakeGpuPattern, patternType, name)
 
 

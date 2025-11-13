@@ -1,9 +1,9 @@
 #include "StageFactory.hpp"
 
 #include "Config.hpp"         // for Config
-#include "kotekanLogging.hpp" // for ERROR_NON_OO
+#include "kotekanLogging.hpp" // for ERROR_NON_OO, DEBUG_NON_OO
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 
 #include <stdexcept> // for runtime_error
 #include <utility>   // for pair

@@ -4,8 +4,9 @@
 #include "cuda_runtime_api.h" // for cudaStreamWaitEvent
 #include "gpuCommand.hpp"     // for gpuCommandType
 
-#include <algorithm> // for copy
-#include <stdexcept> // for runtime_error
+#include <algorithm>      // for copy
+#include <driver_types.h> // for CUevent_st, cudaEvent_t, CUstream_st
+#include <stdexcept>      // for runtime_error
 
 using kotekan::bufferContainer;
 using kotekan::Config;

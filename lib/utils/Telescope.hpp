@@ -17,7 +17,7 @@
 class Telescope;
 
 CREATE_FACTORY(Telescope, const kotekan::Config&, const std::string&);
-#define REGISTER_TELESCOPE(TelescopeType, name)                                                    \
+#define REGISTER_TELESCOPE(TelescopeType, name) \
     REGISTER_NAMED_TYPE_WITH_FACTORY(Telescope, TelescopeType, name)
 
 

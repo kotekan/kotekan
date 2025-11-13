@@ -12,6 +12,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
+#include <algorithm>     // for equal
 #include <bits/chrono.h> // for seconds
 #include <exception>     // for exception
 #include <functional>    // for bind, function, _1
