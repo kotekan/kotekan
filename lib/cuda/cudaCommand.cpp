@@ -52,7 +52,8 @@ cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
                          bufferContainer& host_buffers_, cudaDeviceInterface& device_,
                          int instance_num_, std::shared_ptr<cudaCommandState> state_,
                          const std::string& default_kernel_command,
-                         const std::string& default_kernel_file_name) :
+                         const std::string& default_kernel_file_name,
+                         [[maybe_unused]] const std::string& command_state) :
     gpuCommand(config_, unique_name_, host_buffers_, device_, instance_num_, state_,
                default_kernel_command, default_kernel_file_name),
     start_event(nullptr), end_event(nullptr), device(device_) {

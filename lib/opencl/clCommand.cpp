@@ -16,7 +16,8 @@ clCommand::clCommand(Config& config_, const std::string& unique_name_,
                      bufferContainer& host_buffers_, clDeviceInterface& device_, int instance_num,
                      std::shared_ptr<gpuCommandState> command_state,
                      const std::string& default_kernel_command,
-                     const std::string& default_kernel_file_name) :
+                     const std::string& default_kernel_file_name,
+                     [[maybe_unused]] const std::string& command_state) :
     gpuCommand(config_, unique_name_, host_buffers_, device_, instance_num, command_state,
                default_kernel_command, default_kernel_file_name),
     post_event(nullptr), device(device_) {}
