@@ -16,6 +16,7 @@
 
 #include "json.hpp" // for json
 
+#include <algorithm>          // for equal
 #include <array>              // for array
 #include <condition_variable> // for condition_variable_any
 #include <cstddef>            // for size_t, ptrdiff_t
@@ -539,6 +540,15 @@ public:
         if (!frames_desc.at(frame_id))
             frames_desc.at(frame_id) =
                 std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
+        else {
+            assert(D == frames_desc.at(frame_id)->get_rank());
+            assert(kotekan::GetDataType_v<T> == frames_desc.at(frame_id)->get_value_datatype());
+            assert(quantity_name == frames_desc.at(frame_id)->get_quantity_name());
+            assert(std::equal(extents.begin(), extents.end(),
+                              frames_desc.at(frame_id)->get_extents().begin()));
+            assert(std::equal(dimnames.begin(), dimnames.end(),
+                              frames_desc.at(frame_id)->get_dimnames().begin()));
+        }
     }
 
     /**
@@ -558,6 +568,13 @@ public:
         if (!frames_desc.at(frame_id))
             frames_desc.at(frame_id) = kotekan::GenericNDArray::create(value_type, quantity_name,
                                                                        extents, dimnames, nullptr);
+        else {
+            assert(extents.size() == frames_desc.at(frame_id)->get_rank());
+            assert(value_type == frames_desc.at(frame_id)->get_value_datatype());
+            assert(quantity_name == frames_desc.at(frame_id)->get_quantity_name());
+            assert(extents == frames_desc.at(frame_id)->get_extents());
+            assert(dimnames == frames_desc.at(frame_id)->get_dimnames());
+        }
     }
 
     /**
