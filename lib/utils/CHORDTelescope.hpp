@@ -470,6 +470,11 @@ public:
     void get_dish_inputs(dishInputFields& input) const;
 
     /**
+     * @brief Get the number of unique baselines in the array
+     */
+    uint64_t get_num_stacks() const;
+
+    /**
      * Get the physical frequency in MHz of the specified freq ID.
      *
      * @param  freq_id  The frequency ID.

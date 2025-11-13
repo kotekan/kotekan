@@ -44,6 +44,7 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
     num_eigenvectors = config.get<size_t>(unique_name, "num_ev");
+    n2_layout = config.get_default<N2Layout>(unique_name, "layout", N2Layout::FullUpperTri);
     sleep_before = config.get_default<float>(unique_name, "sleep_before", 0.0);
     sleep_after = config.get_default<float>(unique_name, "sleep_after", 1.0);
 
@@ -145,13 +146,17 @@ void FakeN2::main_thread() {
 
             meta->num_elements = num_elements;
             /// Number of products in the data
-            meta->num_prod = N2::get_num_prod(num_elements);
+            meta->num_prod = N2FrameView::get_num_prod(num_elements, n2_layout);
             /// Number of eigenvectors and values calculated
             meta->num_ev = num_eigenvectors;
             /// Total number of frequencies in pipeline
             meta->nfreq = freq.size();
             // Set the frequency index
             meta->freq_id = f;
+            // Set the time index
+            meta->abs_time_idx = t;
+            // Set the layout
+            meta->layout = n2_layout;
 
             /// The sequence number of the first FPGA frame integrated into this visibility frame
             meta->fpga_start_tick = fpga_seq + t * delta_seq;

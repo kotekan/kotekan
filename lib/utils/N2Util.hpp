@@ -18,13 +18,6 @@ namespace N2 {
 using cfloat = typename std::complex<float>;
 
 /**
- * @brief Get the number of products for a given number of elements.
- */
-inline size_t get_num_prod(size_t num_elements) {
-    return num_elements * (num_elements + 1) / 2;
-}
-
-/**
  * @brief Index into a flattened upper matrix triangle.
  * @param  i Row index.
  * @param  j Column index.

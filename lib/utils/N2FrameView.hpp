@@ -7,6 +7,7 @@
 #ifndef N2BUFFER_HPP
 #define N2BUFFER_HPP
 
+#include "CHORDTelescope.hpp" // for CHORDTelescope
 #include "Config.hpp"     // for Config
 #include "FrameView.hpp"  // for FrameView
 #include "N2Metadata.hpp" // for N2Metadata
@@ -16,10 +17,12 @@
 #include "gsl-lite.hpp" // for span
 
 #include <algorithm> // for max
+#include <exception> // for exception
 #include <map>       // for allocator, map
 #include <memory>    // for shared_ptr
 #include <set>       // for set
 #include <stddef.h>  // for size_t
+#include <stdexcept> // for runtime_error
 #include <stdint.h>  // for uint32_t, uint64_t
 #include <string>    // for basic_string, string
 #include <utility>   // for pair, make_pair
@@ -109,13 +112,12 @@ public:
      * @brief The sizes of the fields in the N2FrameView.
      */
     static std::vector<std::pair<N2Field, size_t>> get_field_sizes(uint32_t num_elements_in,
-                                                                   uint32_t num_ev_in) {
-
-        size_t num_prod = N2::get_num_prod(num_elements_in);
+                                                                   uint32_t num_ev_in,
+                                                                   size_t   num_prod_in) {
 
         std::vector<std::pair<N2Field, size_t>> field_sizes;
-        field_sizes.push_back({N2Field::vis, sizeof(N2::cfloat) * num_prod});
-        field_sizes.push_back({N2Field::weight, sizeof(float) * num_prod});
+        field_sizes.push_back({N2Field::vis, sizeof(N2::cfloat) * num_prod_in});
+        field_sizes.push_back({N2Field::weight, sizeof(float) * num_prod_in});
         field_sizes.push_back({N2Field::flags, sizeof(float) * num_elements_in});
         field_sizes.push_back({N2Field::eval, sizeof(float) * num_ev_in});
         field_sizes.push_back({N2Field::evec, sizeof(N2::cfloat) * num_ev_in * num_elements_in});
@@ -132,10 +134,11 @@ public:
      * @return A map of the field to the { start, end } of the field in the frame.
      **/
     static std::map<N2Field, std::pair<size_t, size_t>> get_frame_layout(uint32_t num_elements_in,
-                                                                         uint32_t num_ev_in) {
+                                                                         uint32_t num_ev_in,
+                                                                         size_t   num_prod_in) {
         std::map<N2Field, std::pair<size_t, size_t>> frame_layout;
         std::vector<std::pair<N2Field, size_t>> field_sizes =
-            get_field_sizes(num_elements_in, num_ev_in);
+            get_field_sizes(num_elements_in, num_ev_in, num_prod_in);
 
         // build the layout
         size_t offset = 0;
@@ -150,8 +153,8 @@ public:
     /**
      * @brief Calculate the size of the frame.
      */
-    static size_t calculate_frame_size(uint32_t num_elements_in, uint32_t num_ev_in) {
-        size_t frame_size = get_frame_layout(num_elements_in, num_ev_in)[N2Field::gain].second;
+    static size_t calculate_frame_size(uint32_t num_elements_in, uint32_t num_ev_in, size_t num_prod_in) {
+        size_t frame_size = get_frame_layout(num_elements_in, num_ev_in, num_prod_in)[N2Field::gain].second;
         return frame_size;
     }
 
@@ -160,7 +163,34 @@ public:
         const int num_elements_in = config.get<int>(unique_name, "num_elements");
         const int num_ev_in = config.get<int>(unique_name, "num_ev");
 
-        return calculate_frame_size(num_elements_in, num_ev_in);
+        const N2Layout layout = config.get_default<N2Layout>(unique_name, "layout", N2Layout::FullUpperTri);
+
+        const uint64_t num_prod_in = get_num_prod(num_elements_in, layout);
+
+        return calculate_frame_size(num_elements_in, num_ev_in, num_prod_in);
+    }
+
+    /**
+     * @brief Get the number of products in the visibility matrix for the given number of elements and layout.
+     */
+    static size_t get_num_prod(uint32_t num_elements_in, N2Layout layout_in) {
+    
+        size_t num_prod_in;
+
+        switch(layout_in) {
+            case N2Layout::FullUpperTri:
+                num_prod_in = (num_elements_in * (num_elements_in + 1)) / 2;
+                break;
+            case N2Layout::RedundantBaselineAvg:
+                num_prod_in = Telescope::instance().cast<CHORDTelescope>().get_num_stacks();
+                break;
+            default:
+                throw std::runtime_error(fmt::format("N2FrameView given unknown N2Layout: {:d}",
+                            static_cast<int32_t>(layout_in)));
+                break;
+        }
+
+        return num_prod_in;
     }
 
 

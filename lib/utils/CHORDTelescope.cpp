@@ -579,6 +579,10 @@ void CHORDTelescope::get_dish_inputs(dishInputFields& input) const {
     }
 }
 
+uint64_t CHORDTelescope::get_num_stacks() const {
+    return 0;
+}
+
 double CHORDTelescope::get_tel_orientation_el(int i, int j) const {
     return _R_topo_to_tel[i][j];
 }

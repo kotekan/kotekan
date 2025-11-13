@@ -15,7 +15,7 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     // Set the const refs to the structural metadata
     num_elements(_metadata->num_elements), num_prod(_metadata->num_prod), num_ev(_metadata->num_ev),
     nfreq(_metadata->nfreq),
-    frame_layout(get_frame_layout(_metadata->num_elements, _metadata->num_ev)),
+    frame_layout(get_frame_layout(_metadata->num_elements, _metadata->num_ev, _metadata->num_prod)),
 
     // Non-structural data
     layout(_metadata->layout), freq_id(_metadata->freq_id), freq_MHz(_metadata->freq_MHz),
@@ -42,7 +42,7 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 }
 
 size_t N2FrameView::data_size() const {
-    return calculate_frame_size(_metadata->num_elements, _metadata->num_ev);
+    return calculate_frame_size(_metadata->num_elements, _metadata->num_ev, _metadata->num_prod);
 }
 
 void N2FrameView::zero_frame() {

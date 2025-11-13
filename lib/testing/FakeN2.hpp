@@ -82,6 +82,9 @@ private:
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors;
 
+    /// Layout of the N2 vis matrix
+    N2Layout n2_layout;
+
     /// Config parameters for freq or inputs test pattern
     std::vector<cfloat> test_pattern_value;
 
