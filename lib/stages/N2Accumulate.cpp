@@ -179,7 +179,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     size_t in_counts_frame_size = sizeof(int32_t) * _n2k_counts_num_products
                                   * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
     size_t in_rfimask_frame_size = _num_freq_per_n2k_frame * _n_fpga_samples_per_n2k_frame / 8;
-    size_t out_n2_frame_size = N2FrameView::calculate_frame_size(_num_elements, 0, _N2_num_products);
+    size_t out_n2_frame_size =
+        N2FrameView::calculate_frame_size(_num_elements, 0, _N2_num_products);
 
     if (in_buf->frame_size != in_corr_frame_size) {
         FATAL_ERROR("N2Accumulate in_buf ({:s}) has frame size {:d}. Expected {:d}.",
