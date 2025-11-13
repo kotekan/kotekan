@@ -121,3 +121,13 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.nfreq = j.at("nfreq");
     m.layout = j.at("layout");
 }
+/*
+void to_json(nlohmann::json& j, const N2Layout &layout) {
+    switch layout {
+
+    }
+}
+
+void from_json(const nlohmann::json& j, N2Layout &layout) {
+}
+*/

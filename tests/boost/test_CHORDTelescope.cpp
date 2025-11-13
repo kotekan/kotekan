@@ -306,7 +306,7 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
 /*
  * @brief   Test dish_input fields retrieval
  */
-BOOST_AUTO_TEST_CASE(_dish_input_fields) {
+BOOST_AUTO_TEST_CASE(_get_input_maps) {
     dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D1");
     dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, InputType::ArrayDish, "D2");
     dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D3");
@@ -332,7 +332,7 @@ BOOST_AUTO_TEST_CASE(_dish_input_fields) {
     // Set up an object to receive the dish input info.
     dishInputFields buf;
     // Fill the object with the info.
-    tel.get_dish_inputs(buf);
+    tel.get_input_maps(buf);
 
     // Make sure its correct.
     for (int i = 0; i < 8; i++) {

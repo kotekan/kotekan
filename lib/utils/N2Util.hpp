@@ -30,6 +30,8 @@ inline uint32_t cmap(uint32_t i, uint32_t j, uint32_t n) {
 
 /**
  * @brief Product index map type.
+ *
+ * input_a is the row index into the full visibility matrix, and input_b is the column index into the full visibility matrix.  That is, for visibility matrix entry V_{ij}, input_a = i and input_b = j.
  */
 struct prod_ctype {
     /// Index of input A

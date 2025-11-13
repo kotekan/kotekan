@@ -440,7 +440,7 @@ public:
      *                  will reallocate the internal vectors if they are not the
      *                  correct size.
      **/
-    void get_dish_inputs(dishInputFields& input) const;
+    void get_input_maps(dishInputFields& input) const;
 
     /**
      * @brief Get the number of unique baselines in the array

@@ -25,6 +25,9 @@ enum class N2Layout : int32_t {
     RedundantBaselineAvg = 1,
 };
 
+//void to_json(nlohmann::json& j, const N2Layout &layout);
+//void from_json(const nlohmann::json& j, N2Layout &layout);
+
 // Struct containing metadata fields for an N2 frame
 struct N2MetadataFormat {
 
