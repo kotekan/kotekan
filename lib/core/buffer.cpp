@@ -208,7 +208,7 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                bool zero_new_frames) :
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
-    _zero_frames(false), frames(num_frames, nullptr), frames_desc(num_frames, nullptr),
+    _zero_frames(false), frames(num_frames, nullptr), frames_desc(nullptr),
     is_full(num_frames, false), last_arrival_time(0), use_hugepages(_use_hugepages),
     mlock_frames(_mlock_frames), numa_node(_numa_node) {
     assert(num_frames > 0);
@@ -482,7 +482,6 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
                       buffer_name, ID);
                 is_full[ID] = false;
                 metadata[ID].reset();
-                frames_desc.at(ID).reset();
                 set_empty = true;
                 private_reset_consumers(ID);
             }
@@ -582,7 +581,6 @@ bool Buffer::private_mark_frame_empty(const int ID) {
     }
     if (metadata[ID]) {
         metadata[ID].reset();
-        frames_desc.at(ID).reset();
     }
     return broadcast;
 }

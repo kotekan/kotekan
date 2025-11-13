@@ -528,63 +528,58 @@ public:
     /**
      * @brief Allocates a new frame description object holding a D dimensional
      *        array of type T
-     * @param[in] frame_id The frame ID of the frame to describe
      * @param[in] extents Array extentds in the D dimensions
      * @param[in] dimnames Array axis labels in the D dimensions
      */
     template<typename T, std::size_t D>
-    void allocate_new_frame_desc(int frame_id, kotekan::Symbol quantity_name,
+    void allocate_new_frame_desc(kotekan::Symbol quantity_name,
                                  const std::array<std::ptrdiff_t, D>& extents,
                                  const std::array<kotekan::Symbol, D>& dimnames) {
         buffer_lock lock(mutex);
-        if (!frames_desc.at(frame_id))
-            frames_desc.at(frame_id) =
+        if (!frames_desc)
+            frames_desc =
                 std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
         else {
-            assert(D == frames_desc.at(frame_id)->get_rank());
-            assert(kotekan::GetDataType_v<T> == frames_desc.at(frame_id)->get_value_datatype());
-            assert(quantity_name == frames_desc.at(frame_id)->get_quantity_name());
-            assert(std::equal(extents.begin(), extents.end(),
-                              frames_desc.at(frame_id)->get_extents().begin()));
-            assert(std::equal(dimnames.begin(), dimnames.end(),
-                              frames_desc.at(frame_id)->get_dimnames().begin()));
+            assert(D == frames_desc->get_rank());
+            assert(kotekan::GetDataType_v<T> == frames_desc->get_value_datatype());
+            assert(quantity_name == frames_desc->get_quantity_name());
+            assert(std::equal(extents.begin(), extents.end(), frames_desc->get_extents().begin()));
+            assert(
+                std::equal(dimnames.begin(), dimnames.end(), frames_desc->get_dimnames().begin()));
         }
     }
 
     /**
      * @brief Allocates a new frame description object holding a D dimensional
      *        array of type T
-     * @param[in] frame_id The frame ID of the frame to describe
      * @param[in] value_type the kotekan type enomerator of the values stored
      * @param[in] rank dimensionality of the data array
      * @param[in] extents Array extentds in the D dimensions
      * @param[in] dimnames Array axis labels in the D dimensions
      */
-    void allocate_new_frame_desc(int frame_id, kotekan::DataType value_type,
-                                 kotekan::Symbol quantity_name,
+    void allocate_new_frame_desc(kotekan::DataType value_type, kotekan::Symbol quantity_name,
                                  const std::vector<std::ptrdiff_t>& extents,
                                  const std::vector<kotekan::Symbol>& dimnames) {
         buffer_lock lock(mutex);
-        if (!frames_desc.at(frame_id))
-            frames_desc.at(frame_id) = kotekan::GenericNDArray::create(value_type, quantity_name,
-                                                                       extents, dimnames, nullptr);
+        if (!frames_desc)
+            frames_desc = kotekan::GenericNDArray::create(value_type, quantity_name, extents,
+                                                          dimnames, nullptr);
         else {
-            assert(extents.size() == frames_desc.at(frame_id)->get_rank());
-            assert(value_type == frames_desc.at(frame_id)->get_value_datatype());
-            assert(quantity_name == frames_desc.at(frame_id)->get_quantity_name());
-            assert(extents == frames_desc.at(frame_id)->get_extents());
-            assert(dimnames == frames_desc.at(frame_id)->get_dimnames());
+            assert(extents.size() == frames_desc->get_rank());
+            assert(value_type == frames_desc->get_value_datatype());
+            assert(quantity_name == frames_desc->get_quantity_name());
+            assert(extents == frames_desc->get_extents());
+            assert(dimnames == frames_desc->get_dimnames());
         }
     }
 
     /**
      * @brief provides read access to the array description
-     * @param[in] frame_id The frame ID of the frame to describe
      * @return The NDArray data structure describing the array
      */
-    std::shared_ptr<const kotekan::GenericNDArray> get_frame_desc(int frame_id) {
+    std::shared_ptr<const kotekan::GenericNDArray> get_frame_desc() {
         // TODO: use a get/set pair instead?
-        return frames_desc.at(frame_id);
+        return frames_desc;
     }
 
     /**
@@ -628,8 +623,8 @@ public:
     /// The array of frames (the actual data we are carrying)
     std::vector<uint8_t*> frames;
 
-    /// An array of metdata describing the shape of the data stored in frames
-    std::vector<std::shared_ptr<kotekan::GenericNDArray>> frames_desc;
+    /// Metdata describing the shape of the data stored in frames
+    std::shared_ptr<kotekan::GenericNDArray> frames_desc;
 
     /**
      * @brief Flag variables to say which frames are full
