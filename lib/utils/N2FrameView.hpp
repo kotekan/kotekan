@@ -194,29 +194,33 @@ public:
 
         return num_prod_in;
     }
-    
+
     /**
-     * @brief Get the product maps for each product in the visibility matrix in the FullUpperTri layout.
+     * @brief Get the product maps for each product in the visibility matrix in the FullUpperTri
+     * layout.
      *
      * See N2FrameView::get_prod_maps() for full details.
      *
      * @param   prods   Vector to fill.
      */
-    static void get_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods, uint32_t num_elements_in, size_t num_prod_in) {
-        
+    static void get_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods,
+                                           uint32_t num_elements_in, size_t num_prod_in) {
+
         prods.resize(num_prod_in);
-        
+
         if (num_prod_in != (num_elements_in * (num_elements_in + 1)) / 2) {
-            throw std::runtime_error(fmt::format("get_prod_maps_FullUpperTri called with num_elements {:d} and num_prod {:d} which do not saatisfy num_prod == num_elements * (num_elements + 1) / 2",
-                    num_elements_in, num_prod_in));
+            throw std::runtime_error(fmt::format(
+                "get_prod_maps_FullUpperTri called with num_elements {:d} and num_prod {:d} which "
+                "do not saatisfy num_prod == num_elements * (num_elements + 1) / 2",
+                num_elements_in, num_prod_in));
         }
         assert(num_prod_in == (num_elements_in * (num_elements_in + 1)) / 2);
-        
+
         // Loop over all rows
         size_t p = 0;
-        for(uint16_t i = 0; i < num_elements_in; i++) {
+        for (uint16_t i = 0; i < num_elements_in; i++) {
             // Upper Triangular!  Loop over upper columns only;
-            for(uint16_t j = i; j < num_elements_in; j++) {
+            for (uint16_t j = i; j < num_elements_in; j++) {
                 prods[p] = {.input_a = i, .input_b = j};
                 p++;
             }
@@ -277,9 +281,15 @@ public:
     /**
      * @brief Get the product maps for each product in the visibility matrix.
      *
-     * Every product in the frame view is a visibility matrix V_{ab} that was formed from two input elements: a (first, the full vis matrix row index) and b (second, the full vis matrix column index), where 0 <= a, b < num_elements. This function fills the given vector prods with num_prod entries, that is, one entry for each object in vis or weights. Each is a prod_ctype which has the 'a' element index for this product in prod.index_a, and the 'b' element index in prod.index_b.
+     * Every product in the frame view is a visibility matrix V_{ab} that was formed from two input
+     * elements: a (first, the full vis matrix row index) and b (second, the full vis matrix column
+     * index), where 0 <= a, b < num_elements. This function fills the given vector prods with
+     * num_prod entries, that is, one entry for each object in vis or weights. Each is a prod_ctype
+     * which has the 'a' element index for this product in prod.index_a, and the 'b' element index
+     * in prod.index_b.
      *
-     * @note The given vector prods is reserved to num_prods size, which potentially performs an allocation of size num_prod * sizeof(prod_ctype).
+     * @note The given vector prods is reserved to num_prods size, which potentially performs an
+     * allocation of size num_prod * sizeof(prod_ctype).
      *
      * @param   prods   Vector of prod_ctype to fill.
      */

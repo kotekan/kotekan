@@ -96,12 +96,14 @@ void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Fie
 
 void N2FrameView::get_prod_maps(std::vector<N2::prod_ctype>& prods) {
 
-    switch(layout) {
+    switch (layout) {
         case N2Layout::FullUpperTri:
             get_prod_maps_FullUpperTri(prods, num_elements, num_prod);
             break;
         default:
-            throw std::runtime_error(fmt::format("N2FrameView::get_prod_maps has not been implemented for N2Layout {:d}", static_cast<int32_t>(layout)));
+            throw std::runtime_error(
+                fmt::format("N2FrameView::get_prod_maps has not been implemented for N2Layout {:d}",
+                            static_cast<int32_t>(layout)));
             break;
     }
 }
