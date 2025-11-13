@@ -4,11 +4,11 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"      // for Telescope
 #include "errors.h"           // for exit_kotekan, ReturnCode
-#include "json.hpp"           // for json
 #include "kotekanLogging.hpp" // for INFO
 #include "timeUtil.hpp"       // for get_ERA_from_UT1, get_UT1_from_ERA, get_time_from_UT1
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt.hpp"  // for compile_string_to_view
+#include "json.hpp" // for json
 
 #include <algorithm>     // for max
 #include <array>         // for array
