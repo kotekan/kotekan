@@ -79,6 +79,16 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     input_rfimask_buf->register_consumer(unique_name);
     output_buf = get_buffer("out_buf");
     output_buf->register_producer(unique_name);
+
+    /* new style array description */
+    int n_integrations = _samples_per_data_set / _sub_integration_ntime;
+    int nf = _num_local_freq;
+    int ne = _num_elements / 8;
+    int n_block_lin = ne / _blocksize;
+    int n_blocks = (n_block_lin * (n_block_lin + 1)) / 2;
+    output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 5>(
+        "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
+        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
 }
 
 gpuSimulateN2kPL1bitCorr::~gpuSimulateN2kPL1bitCorr() {}
@@ -241,12 +251,9 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         meta_out->set_array_dimension(3, _blocksize, "D8Plo1");
         meta_out->set_array_dimension(4, _blocksize, "D8Plo2");
         meta_out->set_strides_simple();
-        /* new style array description */
-        output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 5>(
-            output_frame_id, "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
-            {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+        // frame_desc set in constructor
         /* test that things are consistent */
-        meta_out->check_frame_desc(output_buf->get_frame_desc(output_frame_id));
+        meta_out->check_frame_desc(output_buf->get_frame_desc());
 
         //
         // In GPU:
