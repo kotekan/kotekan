@@ -226,10 +226,9 @@ public:
                         const std::string dim_name = dim_names->at(d)->get_maybe_string().value();
                         dimnames.push_back(dim_name);
                     }
-                    buffer->allocate_new_frame_desc(frame_id, value_type, name, dimensions,
-                                                    dimnames);
+                    buffer->allocate_new_frame_desc(value_type, name, dimensions, dimnames);
                     /* test that things are consistent */
-                    meta->check_frame_desc(buffer->get_frame_desc(frame_id));
+                    meta->check_frame_desc(buffer->get_frame_desc());
                 }
 
 
