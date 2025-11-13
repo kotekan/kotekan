@@ -27,8 +27,35 @@ when ERA rolls over from 360.0 to 0.0 degrees.  Used to enable conversions from 
 #ifndef TIME_UTIL_HPP
 #define TIME_UTIL_HPP
 
+#include "json.hpp" // for json
+
 #include <inttypes.h>
 #include <time.h> // for timespec
+
+/**
+ * @brief   Simple struct for containing Earth Orientation Parameter (EOP) data
+ *
+ * @param   t_inst          int64_t Instrument time, nanoseconds, UNIX epoch.
+ * @param   t_ut1           int64_t UT1 time, nanoseconds, J2000(UT1) epoch.
+ * @param   delta_UT1_inst  double  Difference between UT1 and Instrument time, seconds.
+ * @param   ERA_deg         double  Earth Rotation Angle, degrees.
+ * @param   xp_as           double  Polar Motion x', arcseconds.
+ * @param   yp_as           double  Polar Motion y', arcseconds.
+ */
+struct EOP {
+    int64_t t_inst;        // Instrument time, nanoseconds, UNIX epoch.
+    int64_t t_ut1;         // UT1 time, nanoseconds, J2000(UT1) epoch.
+    double delta_UT1_inst; // Diff between UT1 and Instrument time, seconds
+    double ERA_deg;        // Earth Rotation Angle, degrees
+    double xp_as;          // Polar Motion x', in arcseconds.
+    double yp_as;          // Polar Motion y', in arcseconds.
+};
+
+static constexpr struct EOP eop_null = {
+    .t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0.0, .ERA_deg = 0.0, .xp_as = 0.0, .yp_as = 0.0};
+
+void to_json(nlohmann::json& j, const EOP& m);
+void from_json(const nlohmann::json& j, EOP& m);
 
 /**
  * @brief   Directly convert timespec fields into a count of nanoseconds in an int64_t. Overflows

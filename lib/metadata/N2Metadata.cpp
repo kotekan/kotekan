@@ -1,6 +1,7 @@
 #include "N2Metadata.hpp"
 
-#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
+#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
+#include "timeUtil.hpp" // for EOP()
 
 #include <string.h> // for size_t, memset
 

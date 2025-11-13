@@ -1,12 +1,12 @@
 #ifndef N2_METADATA
 #define N2_METADATA
 
-#include "CHORDTelescope.hpp" // for EOP
-#include "Config.hpp"         // for Config
+#include "Config.hpp" // for Config
 #include "N2Metadata.hpp"
 #include "buffer.hpp"         // for Buffer
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
+#include "timeUtil.hpp"       // for EOP
 
 #include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for json

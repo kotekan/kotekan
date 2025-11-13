@@ -832,12 +832,12 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
     std::vector<dishInfo> cfg_tab =
         config.get_default<std::vector<dishInfo>>(path, "dish_inputs", std::vector<dishInfo>());
 
-    // Make real dish table full of NULL dishes.
-    _dish_info_table = std::vector<dishInfo>(_num_dishes, dish_null);
+    // Make real dish table full of Fake dishes.
+    _dish_info_table = std::vector<dishInfo>();
 
     // Set indices for NULL dishes.
     for (int i = 0; i < _num_dishes; i++)
-        _dish_info_table[i].idx = i;
+        _dish_info_table.push_back(dishInfo(i));
 
     // Load the dishes from the config into the table. Make sure dish indices are consistent.
     for (const dishInfo& dish : cfg_tab) {
@@ -854,7 +854,7 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
         }
         assert(idx < _num_dishes);
 
-        if (_dish_info_table[idx].type != dish_null.type) {
+        if (_dish_info_table[idx].type != InputType::Fake) {
             FATAL_ERROR("dish {:s} has dish_idx {:d}, which is duplicated in `dish_inputs`",
                         dish.label, dish.idx);
         }

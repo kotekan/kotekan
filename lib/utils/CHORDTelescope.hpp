@@ -18,32 +18,6 @@
 
 
 /**
- * @brief   Simple struct for containing Earth Orientation Parameter (EOP) data
- *
- * @param   t_inst          int64_t Instrument time, nanoseconds, UNIX epoch.
- * @param   t_ut1           int64_t UT1 time, nanoseconds, J2000(UT1) epoch.
- * @param   delta_UT1_inst  double  Difference between UT1 and Instrument time, seconds.
- * @param   ERA_deg         double  Earth Rotation Angle, degrees.
- * @param   xp_as           double  Polar Motion x', arcseconds.
- * @param   yp_as           double  Polar Motion y', arcseconds.
- */
-struct EOP {
-    int64_t t_inst;        // Instrument time, nanoseconds, UNIX epoch.
-    int64_t t_ut1;         // UT1 time, nanoseconds, J2000(UT1) epoch.
-    double delta_UT1_inst; // Diff between UT1 and Instrument time, seconds
-    double ERA_deg;        // Earth Rotation Angle, degrees
-    double xp_as;          // Polar Motion x', in arcseconds.
-    double yp_as;          // Polar Motion y', in arcseconds.
-};
-
-void to_json(nlohmann::json& j, const EOP& m);
-void from_json(const nlohmann::json& j, EOP& m);
-
-// A null (all 0) struct EOP;
-const static struct EOP eop_null = {
-    .t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0.0, .ERA_deg = 0.0, .xp_as = 0.0, .yp_as = 0.0};
-
-/**
  * @brief Enum for denoting the type of dish input into Kotekan
  */
 enum class InputType : int64_t {
@@ -76,6 +50,29 @@ struct dishInfo {
     double coelev_disp_deg;
     InputType type;
     std::string label;
+
+    /**
+     * @brief   Default constructor for a Fake, un-indexed dishInfo.
+     */
+    dishInfo() :
+        idx(-1), ew_idx(0), ns_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}), coelev_disp_deg(0.0),
+        type(InputType::Fake), label("Fake") {}
+
+    /**
+     * @brief   Constructor for a Fake dishInfo with an index.
+     */
+    dishInfo(int64_t idx) :
+        idx(idx), ew_idx(0), ns_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}), coelev_disp_deg(0.0),
+        type(InputType::Fake), label("Fake") {}
+
+    /**
+     * @brief   Constructor for dishInfo with all fields.
+     */
+    dishInfo(int64_t idx, int64_t ew_idx, int64_t ns_idx,
+             const std::array<double, 3>& feed_pos_disp_m, double coelev_disp_deg, InputType type,
+             const std::string& label) :
+        idx(idx), ew_idx(ew_idx), ns_idx(ns_idx), feed_pos_disp_m(feed_pos_disp_m),
+        coelev_disp_deg(coelev_disp_deg), type(type), label(label) {}
 };
 
 inline bool operator==(const dishInfo& lhs, const dishInfo& rhs) {
@@ -87,33 +84,9 @@ inline bool operator==(const dishInfo& lhs, const dishInfo& rhs) {
            && (lhs.label == rhs.label);
 }
 
-/**
- * @brief   Function to generate a dishInfo struct from individual members, used in testing.
- */
-inline dishInfo make_dishInfo(int64_t idx, int64_t ew_idx, int64_t ns_idx,
-                              const std::array<double, 3>& feed_pos_disp_m, double coelev_disp_deg,
-                              InputType type, const std::string& label) {
-    dishInfo d{.idx = idx,
-               .ew_idx = ew_idx,
-               .ns_idx = ns_idx,
-               .feed_pos_disp_m = {feed_pos_disp_m[0], feed_pos_disp_m[1], feed_pos_disp_m[2]},
-               .coelev_disp_deg = coelev_disp_deg,
-               .type = type,
-               .label = label};
-    return d;
-}
 
 void to_json(nlohmann::json& j, const dishInfo& d);
 void from_json(const nlohmann::json& j, dishInfo& d);
-
-// A null (all 0) struct EOP;
-const static struct dishInfo dish_null = {.idx = -1,
-                                          .ew_idx = 0,
-                                          .ns_idx = 0,
-                                          .feed_pos_disp_m = {0.0, 0.0, 0.0},
-                                          .coelev_disp_deg = 0.0,
-                                          .type = InputType::Fake,
-                                          .label = "Fake"};
 
 /**
  * @brief   Struct containing "input" data fields for file writers. Fields are ordered by their
