@@ -553,15 +553,15 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const
 void CHORDTelescope::get_input_maps(dishInputFields& input) const {
 
     // Ensure fields have the correct size
-    input.ew_idx.reserve(_num_dishes);
-    input.ns_idx.reserve(_num_dishes);
+    input.grid_x_idx.reserve(_num_dishes);
+    input.grid_y_idx.reserve(_num_dishes);
     input.feed_pos_disp_m.reserve(_num_dishes);
     input.coelev_disp_deg.reserve(_num_dishes);
     input.type.reserve(_num_dishes);
     input.label.reserve(_num_dishes);
 
-    input.ew_idx.clear();
-    input.ns_idx.clear();
+    input.grid_x_idx.clear();
+    input.grid_y_idx.clear();
     input.feed_pos_disp_m.clear();
     input.coelev_disp_deg.clear();
     input.type.clear();
@@ -569,8 +569,8 @@ void CHORDTelescope::get_input_maps(dishInputFields& input) const {
 
     // Fill them from our internal table.
     for (int i = 0; i < _num_dishes; i++) {
-        input.ew_idx.push_back(_dish_info_table[i].ew_idx);
-        input.ns_idx.push_back(_dish_info_table[i].ns_idx);
+        input.grid_x_idx.push_back(_dish_info_table[i].grid_x_idx);
+        input.grid_y_idx.push_back(_dish_info_table[i].grid_y_idx);
         input.feed_pos_disp_m.push_back(_dish_info_table[i].feed_pos_disp_m);
         input.coelev_disp_deg.push_back(_dish_info_table[i].coelev_disp_deg);
         input.type.push_back(static_cast<int64_t>(_dish_info_table[i].type));
@@ -827,8 +827,8 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
     assert(_num_dishes > 0);
 
     // Get the grid separation distances.
-    _dish_separation_ew_m = config.get_default<double>(path, "dish_separation_ew_m", 6.3);
-    _dish_separation_ns_m = config.get_default<double>(path, "dish_separation_ns_m", 8.5);
+    _dish_separation_x_m = config.get_default<double>(path, "dish_separation_x_m", 6.3);
+    _dish_separation_y_m = config.get_default<double>(path, "dish_separation_y_m", 8.5);
 
     // Load the dish_inputs table into temporary storage
     std::vector<dishInfo> cfg_tab =
@@ -856,7 +856,7 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
         }
         assert(idx < _num_dishes);
 
-        if (_dish_info_table[idx].type != InputType::Fake) {
+        if (_dish_info_table[idx].type != DishType::Fake) {
             FATAL_ERROR("dish {:s} has dish_idx {:d}, which is duplicated in `dish_inputs`",
                         dish.label, dish.idx);
         }
@@ -864,13 +864,16 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
         _dish_info_table[dish.idx] = dish;
     }
 
+    INFO("CHORDTelescope configured with {:d} dishes.  Loaded {:d} from 'dish_inputs'.",
+         _num_dishes, cfg_tab.size());
+
     // Make dish positions table.
     _dish_positions = std::vector<std::array<double, 3>>();
 
     // Calculate and fill the dish positions table.
     for (const dishInfo& d : _dish_info_table) {
-        _dish_positions.push_back({_dish_separation_ew_m * d.ew_idx + d.feed_pos_disp_m[0],
-                                   _dish_separation_ns_m * d.ns_idx + d.feed_pos_disp_m[1],
+        _dish_positions.push_back({_dish_separation_x_m * d.grid_x_idx + d.feed_pos_disp_m[0],
+                                   _dish_separation_y_m * d.grid_y_idx + d.feed_pos_disp_m[1],
                                    d.feed_pos_disp_m[2]});
     }
 }
@@ -907,8 +910,8 @@ void from_json(const nlohmann::json& j, EOP& m) {
 void to_json(nlohmann::json& j, const dishInfo& d) {
     j = {};
     j.emplace("dish_idx", d.idx);
-    j.emplace("ew_idx", d.ew_idx);
-    j.emplace("ns_idx", d.ns_idx);
+    j.emplace("grid_x_idx", d.grid_x_idx);
+    j.emplace("grid_y_idx", d.grid_y_idx);
     j.emplace("feed_pos_disp_m", d.feed_pos_disp_m);
     j.emplace("coelev_disp_deg", d.coelev_disp_deg);
     j.emplace("type", d.type);
@@ -917,8 +920,8 @@ void to_json(nlohmann::json& j, const dishInfo& d) {
 
 void from_json(const nlohmann::json& j, dishInfo& d) {
     d.idx = j.at("dish_idx");
-    d.ew_idx = j.at("ew_idx");
-    d.ns_idx = j.at("ns_idx");
+    d.grid_x_idx = j.at("grid_x_idx");
+    d.grid_y_idx = j.at("grid_y_idx");
     d.feed_pos_disp_m = j.at("feed_pos_disp_m");
     d.coelev_disp_deg = j.at("coelev_disp_deg");
     d.type = j.at("type");

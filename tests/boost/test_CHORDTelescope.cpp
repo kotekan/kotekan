@@ -44,9 +44,9 @@ const std::string default_config_str = R"config_str({
     "dish_ew_separation_m": 6.3,
     "dish_ns_separation_m": 8.5,
     "dish_inputs" : [
-        {"dish_idx": 0, "ew_idx": 0, "ns_idx": 0, "feed_pos_disp_m": [0.0, 0.0, 0.0],
+        {"dish_idx": 0, "grid_x_idx": 0, "grid_y_idx": 0, "feed_pos_disp_m": [0.0, 0.0, 0.0],
          "coelev_disp_deg": 0.0, "type": 0, "label": "D00"},
-        {"dish_idx": 1, "ew_idx": 1, "ns_idx": 0, "feed_pos_disp_m": [0.0, 0.0, 0.0],
+        {"dish_idx": 1, "grid_x_idx": 1, "grid_y_idx": 0, "feed_pos_disp_m": [0.0, 0.0, 0.0],
          "coelev_disp_deg": 0.0, "type": 0, "label": "D01"}],
 "gps_time": {
     "frame0_nano": 1761926400000000000
@@ -211,19 +211,19 @@ BOOST_AUTO_TEST_CASE(_dish_coelev) {
  * @brief   Test dish number getter
  */
 BOOST_AUTO_TEST_CASE(_dish_num) {
-    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D1");
-    dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, InputType::ArrayDish, "D2");
-    dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D3");
+    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D1");
+    dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, DishType::ArrayDish, "D2");
+    dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
     dishInfo d3 = dishInfo(3);
     dishInfo d4 = dishInfo(4);
-    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, InputType::ArrayDish, "D4");
+    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
 
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
-    json_config["dish_separation_ew_m"] = 1.0;
-    json_config["dish_separation_ns_m"] = 2.0;
+    json_config["dish_separation_x_m"] = 1.0;
+    json_config["dish_separation_y_m"] = 2.0;
     json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
     const CHORDTelescope& tel = get_telescope(json_config);
 
@@ -235,12 +235,12 @@ BOOST_AUTO_TEST_CASE(_dish_num) {
  * @brief   Test dish_info retrieval
  */
 BOOST_AUTO_TEST_CASE(_dish_info) {
-    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D1");
-    dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, InputType::ArrayDish, "D2");
-    dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D3");
+    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D1");
+    dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, DishType::ArrayDish, "D2");
+    dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
     dishInfo d3 = dishInfo(3);
     dishInfo d4 = dishInfo(4);
-    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, InputType::ArrayDish, "D4");
+    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
     d3.idx = 3;
@@ -250,8 +250,8 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
 
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
-    json_config["dish_separation_ew_m"] = 1.0;
-    json_config["dish_separation_ns_m"] = 2.0;
+    json_config["dish_separation_x_m"] = 1.0;
+    json_config["dish_separation_y_m"] = 2.0;
     json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
     const CHORDTelescope& tel = get_telescope(json_config);
 
@@ -270,12 +270,12 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
  * @brief   Test dish_position calculation
  */
 BOOST_AUTO_TEST_CASE(_dish_position) {
-    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D1");
-    dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, InputType::ArrayDish, "D2");
-    dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D3");
+    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D1");
+    dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, DishType::ArrayDish, "D2");
+    dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
     dishInfo d3 = dishInfo(3);
     dishInfo d4 = dishInfo(4);
-    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, InputType::ArrayDish, "D4");
+    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
     d3.idx = 3;
@@ -285,8 +285,8 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
 
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
-    json_config["dish_separation_ew_m"] = 1.0;
-    json_config["dish_separation_ns_m"] = 2.0;
+    json_config["dish_separation_x_m"] = 1.0;
+    json_config["dish_separation_y_m"] = 2.0;
     json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
     const CHORDTelescope& tel = get_telescope(json_config);
 
@@ -307,12 +307,12 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
  * @brief   Test dish_input fields retrieval
  */
 BOOST_AUTO_TEST_CASE(_get_input_maps) {
-    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D1");
-    dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, InputType::ArrayDish, "D2");
-    dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D3");
+    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D1");
+    dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, DishType::ArrayDish, "D2");
+    dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
     dishInfo d3 = dishInfo(3);
     dishInfo d4 = dishInfo(4);
-    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, InputType::ArrayDish, "D4");
+    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
     d3.idx = 3;
@@ -322,8 +322,8 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
 
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
-    json_config["dish_separation_ew_m"] = 1.0;
-    json_config["dish_separation_ns_m"] = 2.0;
+    json_config["dish_separation_x_m"] = 1.0;
+    json_config["dish_separation_y_m"] = 2.0;
     json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
     const CHORDTelescope& tel = get_telescope(json_config);
 
@@ -336,8 +336,8 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
 
     // Make sure its correct.
     for (int i = 0; i < 8; i++) {
-        BOOST_CHECK_EQUAL(buf.ew_idx[i], d[i].ew_idx);
-        BOOST_CHECK_EQUAL(buf.ns_idx[i], d[i].ns_idx);
+        BOOST_CHECK_EQUAL(buf.grid_x_idx[i], d[i].grid_x_idx);
+        BOOST_CHECK_EQUAL(buf.grid_y_idx[i], d[i].grid_y_idx);
         check_equal_vec3d(buf.feed_pos_disp_m[i], d[i].feed_pos_disp_m);
         BOOST_CHECK_EQUAL(buf.coelev_disp_deg[i], d[i].coelev_disp_deg);
         BOOST_CHECK_EQUAL(buf.type[i], static_cast<int64_t>(d[i].type));
@@ -936,10 +936,10 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     double dec = target_dec_deg * M_PI / 180;
 
-    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D00");
-    dishInfo d1 = dishInfo(1, 1, 0, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D01");
-    dishInfo d2 = dishInfo(2, 0, 1, {0.0, 0.0, 0.0}, 0.0, InputType::ArrayDish, "D10");
-    dishInfo d3 = dishInfo(3, 0, 0, {lambda, lambda, 0.0}, 0.0, InputType::ArrayDish, "D11");
+    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D00");
+    dishInfo d1 = dishInfo(1, 1, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D01");
+    dishInfo d2 = dishInfo(2, 0, 1, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D10");
+    dishInfo d3 = dishInfo(3, 0, 0, {lambda, lambda, 0.0}, 0.0, DishType::ArrayDish, "D11");
 
     double t = 1.0; // A short time to get only 1st order effects
     EOP eop0 = {.t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0, .xp_as = 0, .yp_as = 0};
@@ -951,8 +951,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     json_config["num_dishes"] = 4;
     json_config["telescope"]["origin_itrs_lat_deg"] = tel_lat_deg;
     json_config["telescope"]["origin_itrs_lon_deg"] = 0.0;
-    json_config["telescope"]["dish_separation_ew_m"] = lambda;
-    json_config["telescope"]["dish_separation_ns_m"] = lambda;
+    json_config["telescope"]["dish_separation_x_m"] = lambda;
+    json_config["telescope"]["dish_separation_y_m"] = lambda;
     json_config["telescope"]["dish_inputs"] = {d0, d1, d2, d3};
     json_config["telescope"]["dish_elev_axis"] = {1.0, 0.0, 0.0};
     json_config["telescope"]["dish_vert_axis"] = {0.0, 0.0, 1.0};

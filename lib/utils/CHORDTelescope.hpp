@@ -21,7 +21,7 @@
 /**
  * @brief Enum for denoting the type of dish input into Kotekan
  */
-enum class InputType : int64_t {
+enum class DishType : int64_t {
     Fake = -1,     // Not a real dish
     ArrayDish = 0, // A standard dish in the main array.
 };
@@ -33,8 +33,10 @@ enum class InputType : int64_t {
  * @param   idx             int64_t Index of this dish (row or column), x polarization, in the
  *                                  standard visibility matrix. The y polarization channel will
  *                                  be at index + num_dishes.
- * @param   ew_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases east
- * @param   ns_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases north
+ * @param   grid_x_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases
+ * east
+ * @param   grid_y_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases
+ * north
  * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid
  * location, meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.
  * actual_pos = grid_pos + disp
@@ -45,39 +47,40 @@ enum class InputType : int64_t {
  */
 struct dishInfo {
     int64_t idx;
-    int64_t ew_idx;
-    int64_t ns_idx;
+    int64_t grid_x_idx;
+    int64_t grid_y_idx;
     std::array<double, 3> feed_pos_disp_m;
     double coelev_disp_deg;
-    InputType type;
+    DishType type;
     std::string label;
 
     /**
      * @brief   Default constructor for a Fake, un-indexed dishInfo.
      */
     dishInfo() :
-        idx(-1), ew_idx(0), ns_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}), coelev_disp_deg(0.0),
-        type(InputType::Fake), label("Fake") {}
+        idx(-1), grid_x_idx(0), grid_y_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}),
+        coelev_disp_deg(0.0), type(DishType::Fake), label("Fake") {}
 
     /**
      * @brief   Constructor for a Fake dishInfo with an index.
      */
     dishInfo(int64_t idx) :
-        idx(idx), ew_idx(0), ns_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}), coelev_disp_deg(0.0),
-        type(InputType::Fake), label("Fake") {}
+        idx(idx), grid_x_idx(0), grid_y_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}),
+        coelev_disp_deg(0.0), type(DishType::Fake), label("Fake") {}
 
     /**
      * @brief   Constructor for dishInfo with all fields.
      */
-    dishInfo(int64_t idx, int64_t ew_idx, int64_t ns_idx,
-             const std::array<double, 3>& feed_pos_disp_m, double coelev_disp_deg, InputType type,
+    dishInfo(int64_t idx, int64_t grid_x_idx, int64_t grid_y_idx,
+             const std::array<double, 3>& feed_pos_disp_m, double coelev_disp_deg, DishType type,
              const std::string& label) :
-        idx(idx), ew_idx(ew_idx), ns_idx(ns_idx), feed_pos_disp_m(feed_pos_disp_m),
+        idx(idx), grid_x_idx(grid_x_idx), grid_y_idx(grid_y_idx), feed_pos_disp_m(feed_pos_disp_m),
         coelev_disp_deg(coelev_disp_deg), type(type), label(label) {}
 };
 
 inline bool operator==(const dishInfo& lhs, const dishInfo& rhs) {
-    return (lhs.idx == rhs.idx) && (lhs.ew_idx == rhs.ew_idx) && (lhs.ns_idx == rhs.ns_idx)
+    return (lhs.idx == rhs.idx) && (lhs.grid_x_idx == rhs.grid_x_idx)
+           && (lhs.grid_y_idx == rhs.grid_y_idx)
            && (lhs.feed_pos_disp_m[0] == rhs.feed_pos_disp_m[0])
            && (lhs.feed_pos_disp_m[1] == rhs.feed_pos_disp_m[1])
            && (lhs.feed_pos_disp_m[2] == rhs.feed_pos_disp_m[2])
@@ -94,8 +97,10 @@ void from_json(const nlohmann::json& j, dishInfo& d);
  * appearance in the standard visibility matrix, ie, the "dish_idx" field in "dish_input" in the
  * config.
  *
- * @param   ew_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases east
- * @param   ns_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases north
+ * @param   grid_x_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases
+ * east
+ * @param   grid_y_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases
+ * north
  * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid
  * location, meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.
  * actual_pos = grid_pos + disp
@@ -105,8 +110,8 @@ void from_json(const nlohmann::json& j, dishInfo& d);
  * @param   label           std::string Label for dish. Future: key for layout DB?
  */
 struct dishInputFields {
-    std::vector<int64_t> ew_idx;
-    std::vector<int64_t> ns_idx;
+    std::vector<int64_t> grid_x_idx;
+    std::vector<int64_t> grid_y_idx;
     std::vector<std::array<double, 3>> feed_pos_disp_m;
     std::vector<double> coelev_disp_deg;
     std::vector<int64_t> type;
@@ -159,19 +164,19 @@ struct dishInputFields {
  *                                      the total number of configured dishes, plus possibly
  *                                      some "fake" dishes to keep the number a multiple of
  *                                      32.
- * @conf    dish_separation_ew_m    double.     The separation in meters between dish grid
+ * @conf    dish_separation_x_m    double.     The separation in meters between dish grid
  *                                      locations in the Telescope x-axis direction
  *                                      (generally, East/West).
- * @conf    dish_separation_ns_m    double.     The separation in meters between dish grid
+ * @conf    dish_separation_y_m    double.     The separation in meters between dish grid
  *                                      locations in the Telescope y-axis direction
  *                                      (generally, North/South).
  * @conf    dish_inputs         [dishInfo, N]   List of dishInfo structs, each represented
  *                                      by a map with the following keys:
  *                                      - dishIdx   int     Position of this dish in the
  *                                          standard visibility matrix
- *                                      - ew_idx    int     E/W (x) grid position in the
+ *                                      - grid_x_idx    int     E/W (x) grid position in the
  *                                          main array.
- *                                      - ns_idx    int     N/S (y) grid position in the
+ *                                      - grid_y_idx    int     N/S (y) grid position in the
  *                                          main array.
  *                                      - feed_pos_disp_m [double, 3]    Displacement of feed from
  *grid position in meters, Telescope frame.
@@ -604,8 +609,8 @@ protected:
     int32_t _num_dishes;
 
     // Dish-dish grid spacing in the E/W (x) and N/S (y) directions in meters.
-    double _dish_separation_ew_m;
-    double _dish_separation_ns_m;
+    double _dish_separation_x_m;
+    double _dish_separation_y_m;
 
     // Dish positions in dish coordinate system.
     std::vector<std::array<double, 3>> _dish_positions;
