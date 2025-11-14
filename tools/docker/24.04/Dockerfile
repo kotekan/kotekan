@@ -1,15 +1,32 @@
+# tools/docker/24.04/Dockerfile
 # check=skip=UndefinedVar
-FROM ubuntu:24.04
+
+###################
+# Base Docker Image
+# From Ubuntu 24.04
+###################
+
+ARG BASE_IMAGE=ubuntu:24.04
+FROM ${BASE_IMAGE} AS base
+
+#############################################################
+# CPU-ONLY IMAGE
+# An image without GPU functionality can be built as a target
+# from this Dockerfile, i.e. add `--target cpu` when building
+# the docker image.
+#############################################################
+
+FROM base AS cpu
 
 # So tzdata package doesn't ask for user interaction
-ARG DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN mkdir -p /code/build
 WORKDIR /code/build
 
 # Install any needed packages to run cmake with full CHORD build options
-RUN apt update && \
-    apt install -y \
+RUN apt-get update && \
+    apt-get install -y \
         bison \
         build-essential \
         ccache \
@@ -61,7 +78,7 @@ RUN apt update && \
         wget \
         xtensor-dev \
         && \
-    apt clean && apt autoclean
+    apt-get clean && apt-get autoclean && rm -rf /var/lib/apt/lists/*
 
 # Install pip and python packages
 # Disable pip caching (keep docker image size smaller)
@@ -108,24 +125,7 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
 # RUN apt-cache policy <package>
 
 # We want the `python` command to point to python3
-RUN ln -s /usr/bin/python3 /usr/bin/python
-
-# CUDA / opencl driver installs and packages
-RUN mkdir src && \
-    ( \
-        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb && \
-        dpkg -i cuda-keyring_1.1-1_all.deb && \
-        apt -y update && \
-        apt-get install -y cuda-toolkit nvidia-open && \
-        apt-get install -y --no-install-recommends libopencl-clang-17-dev opencl-headers ocl-icd-opencl-dev && \
-        apt-get clean && \
-    true) && \
-    rm -rf src
-
-ENV CUDADIR=/usr/local/cuda
-ENV PATH="${PATH:+${PATH}:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
-ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
+RUN ln -sf /usr/bin/python3 /usr/bin/python
 
 # Install Blaze for the eigenvalue processes
 RUN mkdir src && \
@@ -222,3 +222,30 @@ ENV PYTHONPATH=/code/kotekan/python/
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]
+
+
+##############################################################
+# GPU IMAGE
+# This image extends the cpu image with NVIDIA drivers and the
+# CUDA toolkit.
+##############################################################
+
+FROM cpu AS gpu
+
+# CUDA / opencl driver installs and packages
+RUN mkdir src && \
+    ( cd src &&\
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb && \
+        dpkg -i cuda-keyring_1.1-1_all.deb && \
+        apt-get -y update && \
+        apt-get install -y cuda-toolkit nvidia-open && \
+        apt-get install -y --no-install-recommends libopencl-clang-17-dev opencl-headers ocl-icd-opencl-dev && \
+        apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    true) && \
+    rm -rf src
+
+ENV CUDADIR=/usr/local/cuda
+ENV PATH="${PATH:+${PATH}:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
+ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
+

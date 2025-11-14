@@ -1,0 +1,149 @@
+name: Build and optionally push docker images
+
+env:
+  REGISTRY: ghcr.io
+  CPU_IMG: "ghcr.io/${{ github.repository }}/kotekan-2404-cpu"
+  GPU_IMG: "ghcr.io/${{ github.repository }}/kotekan-2404"
+
+on:
+  workflow_call:
+    inputs:
+      build_branch:
+        required: false
+        type: string
+
+jobs:
+
+  build-push-docker-base:
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    outputs:
+      docker_cpu_img_name: ${{ steps.docker_img.outputs.cpu_img_name }}
+      docker_gpu_img_name: ${{ steps.docker_img.outputs.gpu_img_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for file changes
+        uses: tj-actions/changed-files@v47
+        id: changed-files
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        if: ${{ !env.ACT }} # Don't log in if running locally
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check to see if Docker rebuild is needed
+        id: docker_img
+        env:
+          DOCKERFILE_CHANGED: ${{ contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/24.04/Dockerfile') }}
+          BUILD_BRANCH: ${{ inputs.build_branch }}
+        run: |
+          set -euo pipefail
+          echo "docker_build=0" >> "$GITHUB_OUTPUT"
+          event="$GITHUB_EVENT_NAME"
+          force_build=0
+          tag=""
+
+          # determine "safe" head/base branches
+          head_branch="$GITHUB_REF_NAME"
+          base_branch="$GITHUB_REF_NAME"
+          if [[ "$event" == "pull_request" || "$event" == "pull_request_target" ]]; then
+            head_branch="$GITHUB_HEAD_REF"
+            base_branch="$GITHUB_BASE_REF"
+          fi
+          safe_head=${head_branch//\//.}
+          safe_base=${base_branch//\//.}
+
+          # If build_branch is provided, we use that as the tag and always rebuild
+          override_branch="${BUILD_BRANCH:-}"
+          if [[ -n "$override_branch" ]]; then
+            echo "build_branch input provided: $override_branch. Forcing docker rebuild for that tag."
+            tag="${override_branch//\//.}"
+            force_build=1
+          else
+            # If this was triggered manually or on a schedule, force a rebuild
+            if [[ "$event" == "workflow_dispatch" || "$event" == "schedule" ]]; then
+              echo "Trigger detected: ${event}. Forcing docker rebuild."
+              force_build=1
+            fi
+
+            if [[ "$event" == "pull_request" || "$event" == "pull_request_target" ]]; then
+              echo "Using base branch image tag: $base_branch"
+              tag="$safe_base"
+            else
+              echo "Using head branch image tag: $head_branch"
+              tag="$safe_head"
+            fi
+          fi
+
+          # Compute whether we actually build
+          if [[ "$DOCKERFILE_CHANGED" == "true" || -n "${DOCKER_BUILD:-}" || "$force_build" -eq 1 ]]; then
+            needs_build=1
+          else
+            needs_build=0
+          fi
+
+          CPU_IMAGE_TAG="${CPU_IMG}:${tag}"
+          GPU_IMAGE_TAG="${GPU_IMG}:${tag}"
+
+          echo "docker_build=$needs_build" >> "$GITHUB_OUTPUT"
+          echo "cpu_img_name=$CPU_IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "gpu_img_name=$GPU_IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+          echo "CPU image: $CPU_IMAGE_TAG"
+          echo "GPU image: $GPU_IMAGE_TAG"
+          echo "docker_build=$needs_build"
+
+      - name: Output environment and variable details
+        run: |
+          echo "The job_id is: $GITHUB_JOB"
+          echo "The id of this action is: $GITHUB_ACTION"
+          echo "The run id is: $GITHUB_RUN_ID"
+          echo "The repository is: $GITHUB_REPOSITORY"
+          echo "The GitHub Actor's username is: $GITHUB_ACTOR"
+          echo "GitHub SHA: $GITHUB_SHA"
+          echo "GitHub event name: $GITHUB_EVENT_NAME"
+          echo "GitHub Ref: $GITHUB_REF"
+          echo "GitHub Head Ref: $GITHUB_HEAD_REF"
+          echo "GitHub Base Ref: $GITHUB_BASE_REF"
+          echo "GitHub Ref Name: $GITHUB_REF_NAME"
+          echo "Docker CPU image base: $CPU_IMG"
+          echo "Used docker CPU image name: ${{ steps.docker_img.outputs.cpu_img_name }}"
+          echo "Docker GPU image base: $GPU_IMG"
+          echo "Used docker GPU image name: ${{ steps.docker_img.outputs.gpu_img_name }}"
+          echo "docker_build: ${{ steps.docker_img.outputs.docker_build }}"
+          echo "ACT: ${ACT:-}"
+
+      - name: Build CPU (target=cpu) image
+        if: steps.docker_img.outputs.docker_build == '1'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: tools/docker/24.04/Dockerfile
+          target: cpu
+          tags: ${{ steps.docker_img.outputs.cpu_img_name }}
+          push: ${{ !env.ACT }} # push on GitHub, not under act
+          load: ${{ env.ACT }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build GPU (target=gpu) image
+        if: steps.docker_img.outputs.docker_build == '1'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: tools/docker/24.04/Dockerfile
+          target: gpu
+          tags: ${{ steps.docker_img.outputs.gpu_img_name }}
+          push: ${{ !env.ACT }} # push on GitHub, not under act
+          load: ${{ env.ACT }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
