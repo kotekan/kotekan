@@ -50,7 +50,7 @@ global_params = {
                 "grid_y_idx": 0,
                 "feed_pos_disp_m": [0.0, 0.0, 0.0],
                 "coelev_disp_deg": 0.0,
-                "type": 0,
+                "type": "ArrayDish",
                 "label": "D00",
             },
             {
@@ -59,7 +59,7 @@ global_params = {
                 "grid_y_idx": 0,
                 "feed_pos_disp_m": [0.0, 0.0, 0.0],
                 "coelev_disp_deg": 0.0,
-                "type": 0,
+                "type": "ArrayDish",
                 "label": "D01",
             },
             {
@@ -68,7 +68,7 @@ global_params = {
                 "grid_y_idx": 1,
                 "feed_pos_disp_m": [0.0, 0.0, 0.0],
                 "coelev_disp_deg": 0.0,
-                "type": 0,
+                "type": "ArrayDish",
                 "label": "D10",
             },
             {
@@ -77,7 +77,7 @@ global_params = {
                 "grid_y_idx": 1,
                 "feed_pos_disp_m": [0.0, 0.0, 0.0],
                 "coelev_disp_deg": 0.0,
-                "type": 0,
+                "type": "ArrayDish",
                 "label": "D11",
             },
             {
@@ -86,7 +86,7 @@ global_params = {
                 "grid_y_idx": 0,
                 "feed_pos_disp_m": [0.0, 0.0, 0.0],
                 "coelev_disp_deg": 0.0,
-                "type": 0,
+                "type": "ArrayDish",
                 "label": "D02",
             },
             {
@@ -95,7 +95,7 @@ global_params = {
                 "grid_y_idx": 24,
                 "feed_pos_disp_m": [0.0, 0.0, 0.0],
                 "coelev_disp_deg": 0.0,
-                "type": 0,
+                "type": "ArrayDish",
                 "label": "D20",
             },
             {
@@ -104,7 +104,7 @@ global_params = {
                 "grid_y_idx": 24,
                 "feed_pos_disp_m": [0.0, 0.0, 0.0],
                 "coelev_disp_deg": 0.0,
-                "type": 0,
+                "type": "ArrayDish",
                 "label": "D22",
             },
         ],

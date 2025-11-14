@@ -102,8 +102,8 @@ void N2FrameView::get_prod_maps(std::vector<N2::prod_ctype>& prods) {
             break;
         default:
             std::string msg =
-                fmt::format("N2FrameView::get_prod_maps has not been implemented for N2Layout {:d}",
-                            static_cast<int32_t>(layout));
+                fmt::format("N2FrameView::get_prod_maps has not been implemented for N2Layout {:s}",
+                            N2Layout_to_string(layout));
             ERROR_NON_OO("{:s}", msg);
             throw std::runtime_error(msg);
             break;

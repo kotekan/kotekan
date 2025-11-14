@@ -50,6 +50,7 @@ default_params = {
         "dish_vert_axis": [0, 0, 1],
         "dish_coelev_deg": 0.0,
         "updatable_config": "/earth_rotation_data",
+        "dish_inputs": [],
     },
     "num_dishes": 100,
     "gps_time": {"frame0_nano": 0},

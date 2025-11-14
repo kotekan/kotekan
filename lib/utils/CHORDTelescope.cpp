@@ -574,7 +574,7 @@ void CHORDTelescope::get_input_maps(dishInputFields& input) const {
         input.grid_y_idx.push_back(_dish_info_table[i].grid_y_idx);
         input.feed_pos_disp_m.push_back(_dish_info_table[i].feed_pos_disp_m);
         input.coelev_disp_deg.push_back(_dish_info_table[i].coelev_disp_deg);
-        input.type.push_back(static_cast<int64_t>(_dish_info_table[i].type));
+        input.type.push_back(_dish_info_table[i].type);
         input.label.push_back(_dish_info_table[i].label);
     }
 }
@@ -833,7 +833,9 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
 
     // Load the dish_inputs table into temporary storage
     std::vector<dishInfo> cfg_tab =
-        config.get_default<std::vector<dishInfo>>(path, "dish_inputs", std::vector<dishInfo>());
+        //    config.get_default<std::vector<dishInfo>>(path, "dish_inputs",
+        //    std::vector<dishInfo>());
+        config.get<std::vector<dishInfo>>(path, "dish_inputs");
 
     // Make real dish table full of Fake dishes.
     _dish_info_table = std::vector<dishInfo>();
@@ -927,4 +929,29 @@ void from_json(const nlohmann::json& j, dishInfo& d) {
     d.coelev_disp_deg = j.at("coelev_disp_deg");
     d.type = j.at("type");
     d.label = j.at("label");
+}
+
+
+void to_json(nlohmann::json& j, const DishType& t) {
+    switch (t) {
+        case DishType::Fake:
+            j = "Fake";
+            break;
+        case DishType::ArrayDish:
+            j = "ArrayDish";
+            break;
+        default:
+            throw std::runtime_error(
+                fmt::format("to_json - unknown DishType, value: {:d}", static_cast<int32_t>(t)));
+            break;
+    }
+}
+
+void from_json(const nlohmann::json& j, DishType& t) {
+    if (j == "Fake")
+        t = DishType::Fake;
+    else if (j == "ArrayDish")
+        t = DishType::ArrayDish;
+    else
+        throw std::runtime_error(fmt::format("from_json - unknown DishType: {}", j.dump()));
 }

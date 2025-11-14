@@ -83,6 +83,7 @@ global_params = {
         "dish_vert_axis": [0, 0, 1],
         "dish_coelev_deg": 0.0,
         "updatable_config": "/earth_rotation_data",
+        "dish_inputs": [],
     },
     "gps_time": {"frame0_nano": t_start_inst_ns},
 }

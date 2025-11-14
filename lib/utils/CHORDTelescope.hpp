@@ -21,10 +21,13 @@
 /**
  * @brief Enum for denoting the type of dish input into Kotekan
  */
-enum class DishType : int64_t {
+enum class DishType : int32_t {
     Fake = -1,     // Not a real dish
     ArrayDish = 0, // A standard dish in the main array.
 };
+
+void to_json(nlohmann::json& j, const DishType& t);
+void from_json(const nlohmann::json& j, DishType& t);
 
 
 /**
@@ -88,7 +91,6 @@ inline bool operator==(const dishInfo& lhs, const dishInfo& rhs) {
            && (lhs.label == rhs.label);
 }
 
-
 void to_json(nlohmann::json& j, const dishInfo& d);
 void from_json(const nlohmann::json& j, dishInfo& d);
 
@@ -106,7 +108,7 @@ void from_json(const nlohmann::json& j, dishInfo& d);
  * actual_pos = grid_pos + disp
  * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
  *                                  actual_coelev = target_coelev + disp.
- * @param   type            int64_t Type of dish input.  -1 = NULL, 0 = CHORD Dish.
+ * @param   type            DishType Type of dish input. DishType::Fake, DishType::ArrayDish
  * @param   label           std::string Label for dish. Future: key for layout DB?
  */
 struct dishInputFields {
@@ -114,7 +116,7 @@ struct dishInputFields {
     std::vector<int64_t> grid_y_idx;
     std::vector<std::array<double, 3>> feed_pos_disp_m;
     std::vector<double> coelev_disp_deg;
-    std::vector<int64_t> type;
+    std::vector<DishType> type;
     std::vector<std::string> label;
 };
 

@@ -163,8 +163,7 @@ public:
         const int num_elements_in = config.get<int>(unique_name, "num_elements");
         const int num_ev_in = config.get<int>(unique_name, "num_ev");
 
-        const N2Layout layout =
-            config.get_default<N2Layout>(unique_name, "layout", N2Layout::FullUpperTri);
+        const N2Layout layout = config.get<N2Layout>(unique_name, "layout");
 
         const uint64_t num_prod_in = get_num_prod(num_elements_in, layout);
 
@@ -193,8 +192,8 @@ public:
                 break;
             default:
                 std::string msg =
-                    fmt::format("N2FrameView::get_num_prod given unknown N2Layout: {:d}",
-                                static_cast<int32_t>(layout_in));
+                    fmt::format("N2FrameView::get_num_prod given unknown N2Layout: {:s}",
+                                N2Layout_to_string(layout_in));
                 ERROR_NON_OO("{:s}", msg);
                 throw std::runtime_error(msg);
                 break;

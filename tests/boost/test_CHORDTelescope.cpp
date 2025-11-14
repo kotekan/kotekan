@@ -45,9 +45,9 @@ const std::string default_config_str = R"config_str({
     "dish_ns_separation_m": 8.5,
     "dish_inputs" : [
         {"dish_idx": 0, "grid_x_idx": 0, "grid_y_idx": 0, "feed_pos_disp_m": [0.0, 0.0, 0.0],
-         "coelev_disp_deg": 0.0, "type": 0, "label": "D00"},
+         "coelev_disp_deg": 0.0, "type": "ArrayDish", "label": "D00"},
         {"dish_idx": 1, "grid_x_idx": 1, "grid_y_idx": 0, "feed_pos_disp_m": [0.0, 0.0, 0.0],
-         "coelev_disp_deg": 0.0, "type": 0, "label": "D01"}],
+         "coelev_disp_deg": 0.0, "type": "ArrayDish", "label": "D01"}],
 "gps_time": {
     "frame0_nano": 1761926400000000000
     },
@@ -170,6 +170,33 @@ std::array<double, 3> itrs_to_cirs(const CHORDTelescope& tel, std::array<double,
  *
  ******************/
 
+BOOST_AUTO_TEST_CASE(_DishType_to_json) {
+
+    json fake = DishType::Fake;
+    BOOST_CHECK_MESSAGE(fake == "Fake", "to_json(Fake)");
+
+    json arrayDish = DishType::ArrayDish;
+    BOOST_CHECK_MESSAGE(arrayDish == "ArrayDish", "to_json(ArrayDish)");
+
+    json j;
+    BOOST_CHECK_THROW(to_json(j, static_cast<DishType>(-2)), std::runtime_error);
+}
+
+BOOST_AUTO_TEST_CASE(_DishType_from_json) {
+
+    json fake = "Fake";
+    BOOST_CHECK_MESSAGE(fake.get<DishType>() == DishType::Fake, "from_json(Fake)");
+
+    json array_dish = "ArrayDish";
+    BOOST_CHECK_MESSAGE(array_dish.get<DishType>() == DishType::ArrayDish, "from_json(ArrayDish)");
+
+    json bad = "UnKnOwN";
+    BOOST_CHECK_THROW(bad.get<DishType>(), std::runtime_error);
+
+    json fake_int = -1;
+    BOOST_CHECK_THROW(fake_int.get<DishType>(), std::runtime_error);
+}
+
 
 /*
  * @brief   Test position getters.
@@ -243,10 +270,6 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
     dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
-    d3.idx = 3;
-    d4.idx = 4;
-    d6.idx = 6;
-    d7.idx = 7;
 
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
@@ -278,10 +301,6 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
     dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
-    d3.idx = 3;
-    d4.idx = 4;
-    d6.idx = 6;
-    d7.idx = 7;
 
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
@@ -322,10 +341,6 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
     dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
-    d3.idx = 3;
-    d4.idx = 4;
-    d6.idx = 6;
-    d7.idx = 7;
 
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
@@ -347,7 +362,7 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
         BOOST_CHECK_EQUAL(buf.grid_y_idx[i], d[i].grid_y_idx);
         check_equal_vec3d(buf.feed_pos_disp_m[i], d[i].feed_pos_disp_m);
         BOOST_CHECK_EQUAL(buf.coelev_disp_deg[i], d[i].coelev_disp_deg);
-        BOOST_CHECK_EQUAL(buf.type[i], static_cast<int64_t>(d[i].type));
+        BOOST_CHECK_EQUAL(static_cast<int32_t>(buf.type[i]), static_cast<int32_t>(d[i].type));
         BOOST_CHECK_EQUAL(buf.label[i], d[i].label);
     }
 }

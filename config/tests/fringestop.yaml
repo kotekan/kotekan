@@ -164,56 +164,67 @@ dump_raw:
 
 # dumpvis_fs0_buf:
 #   kotekan_buffer: N2
+#   layout: FullUpperTri
 #   metadata_pool: N2_pool
 #   num_frames: buffer_depth
 
 dumpvis_fs01_buf:
   kotekan_buffer: N2
+  layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
 dumpvis_fs02_buf:
   kotekan_buffer: N2
+  layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
 dumpvis_fs04_buf:
   kotekan_buffer: N2
+  layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
 dumpvis_fs08_buf:
   kotekan_buffer: N2
+  layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
 dumpvis_fs16_buf:
   kotekan_buffer: N2
+  layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
 dumpvis_fs32_buf:
   kotekan_buffer: N2
+  layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
 dumpvis_nfs32_buf:
   kotekan_buffer: N2
+  layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
     # dumpvis_direct_nfs0_buf:
     #   kotekan_buffer: N2
+    #   layout: FullUpperTri
     #   metadata_pool: N2_pool
     #   num_frames: buffer_depth
     # 
     # dumpvis_direct_fs0_buf:
     #   kotekan_buffer: N2
+    #   layout: FullUpperTri
     #   metadata_pool: N2_pool
     #   num_frames: buffer_depth
     # 
     # dumpvis_direct_pfs0_buf:
     #   kotekan_buffer: N2
+    #   layout: FullUpperTri
     #   metadata_pool: N2_pool
     #   num_frames: buffer_depth
 
@@ -257,6 +268,7 @@ fakevis0:
 
 fakevis_buf0:
   kotekan_buffer: N2
+  layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
@@ -289,13 +301,13 @@ telescope:
   dish_separation_x_m: 6.3
   dish_separation_y_m: 8.5
   dish_inputs: [
-    {dish_idx: 0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "A01"},
-    {dish_idx: 1, grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "A02"},
-    {dish_idx: 2, grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "B01"},
-    {dish_idx: 3, grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "B02"},
-    {dish_idx: 4, grid_x_idx: 24, grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "A25"},
-    {dish_idx: 5, grid_x_idx: 0,  grid_y_idx: 24, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "Y01"},
-    {dish_idx: 6, grid_x_idx: 24, grid_y_idx: 24, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: 0, label: "Y25"}
+    {dish_idx: 0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01},
+    {dish_idx: 1, grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A02},
+    {dish_idx: 2, grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B01},
+    {dish_idx: 3, grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B02},
+    {dish_idx: 4, grid_x_idx: 24, grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A25},
+    {dish_idx: 5, grid_x_idx: 0,  grid_y_idx: 24, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: Y01},
+    {dish_idx: 6, grid_x_idx: 24, grid_y_idx: 24, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: Y25}
 ]
 
 type: config
