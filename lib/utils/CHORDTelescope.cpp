@@ -11,6 +11,7 @@
 #include "json.hpp" // for basic_json, json, iter_impl, input_adapter
 
 #include <algorithm>  // for lower_bound, copy, sort, max
+#include <assert.h>   // for assert
 #include <exception>  // for exception
 #include <functional> // for bind, _1, function
 #include <math.h>     // for sin, cos, M_PI

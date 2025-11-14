@@ -10,6 +10,7 @@
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "StageFactory.hpp"    // IWYU pragma: keep
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
 #include <atomic>     // for atomic_bool   // IWYU pragma: keep

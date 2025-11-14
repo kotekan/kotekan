@@ -1,27 +1,28 @@
 #include "N2Accumulate.hpp"
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope
+#include "CHORDTelescope.hpp"    // for CHORDTelescope, EOP
 #include "Config.hpp"            // for Config
 #include "N2FrameView.hpp"       // for N2FrameView
-#include "N2Metadata.hpp"        // for alloc_N2_from_chord_metadata, N2Metadata
-#include "N2Util.hpp"            // for frameID, modulo, ts_to_uint64, cmap, get_num_prod, cfloat
+#include "N2Metadata.hpp"        // for N2Metadata, get_N2_metadata
+#include "N2Util.hpp"            // for frameID, modulo, cfloat, cmap, ts_to_uint64
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"    // for DEBUG, INFO
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
 #include <algorithm>  // for fill, copy
-#include <complex>    // for norm, operator*, complex
+#include <assert.h>   // for assert
+#include <complex>    // for conj, norm, operator*, complex
+#include <cstdlib>    // for abort
 #include <functional> // for bind, function, placeholders
 #include <memory>     // for shared_ptr, __shared_ptr_access
-#include <sys/time.h> // for TIMEVAL_TO_TIMESPEC
-#include <time.h>     // for size_t, timespec, timespec_get, TIME_UTC
+#include <time.h>     // for size_t, timespec_get, TIME_UTC, timespec
 #include <vector>     // for vector
 
 

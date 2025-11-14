@@ -3,16 +3,15 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata
 #include "visUtil.hpp"         // for frameID
 
-#include "json.hpp" // for json
-
+#include <array>    // for array
 #include <memory>   // for shared_ptr
-#include <stddef.h> // for size_t
-#include <stdint.h> // for uint32_t
-#include <string>   // for string
+#include <stdint.h> // for int32_t, uint32_t, uint64_t
+#include <string>   // for string, basic_string
 #include <vector>   // for vector
 
 /**

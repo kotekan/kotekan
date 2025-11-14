@@ -14,9 +14,8 @@
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
 
-#include <cstdint> // for uint32_t, int32_t
+#include <cstdint> // for int64_t, int32_t
 #include <string>  // for string
-#include <time.h>  // for size_t, timespec
 #include <vector>  // for vector
 
 

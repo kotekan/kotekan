@@ -4,6 +4,7 @@
 #include "visUtil.hpp" // Needed for timespec conversion  // IWYU pragma: keep
 
 #include <assert.h> // for assert
+#include <string>   // for basic_string
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, HFBMetadata);
 

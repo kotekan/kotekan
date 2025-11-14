@@ -6,12 +6,12 @@
 #include "driver_types.h"      // for CUstream_st, cudaMemcpyKind
 #include "metadata.hpp"        // for metadataObject
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt/format.h" // for compile_string_to_view
 
 #include <DataType.hpp>            // for uint_from_element_bits, operator<<, GetType_t, isfinite
 #include <NDArray.hpp>             // for NDArray
-#include <Symbol.hpp>              // for Symbol, strings_to_symbols, operator==
-#include <algorithm>               // for find_if
+#include <Symbol.hpp>              // for Symbol, operator==, strings_to_symbols, operator<<
+#include <algorithm>               // for find_if, fill_n
 #include <array>                   // for array
 #include <buffer.hpp>              // for GenericBuffer
 #include <cassert>                 // for assert
@@ -26,13 +26,13 @@
 #include <div.hpp>                 // for mod, div_noremainder
 #include <functional>              // for function
 #include <iomanip>                 // for setfill, operator<<, setw
-#include <iostream>                // for cerr
-#include <kotekanLogging.hpp>      // for FATAL_ERROR, kotekanLogging, ERROR
-#include <memory>                  // for shared_ptr, __shared_ptr_access
+#include <iostream>                // for basic_ostream, operator<<, ostream, cerr, dec, hex
+#include <kotekanLogging.hpp>      // for FATAL_ERROR, ERROR, kotekanLogging
+#include <memory>                  // for shared_ptr, __shared_ptr_access, allocator
 #include <optional>                // for optional
 #include <ringbuffer.hpp>          // for RingBuffer
-#include <sstream>                 // for basic_ostream, operator<<, ostream, basic_ostringstream
-#include <string>                  // for basic_string, char_traits, string, operator+, allocator
+#include <sstream>                 // for basic_ostringstream
+#include <string>                  // for basic_string, char_traits, string, operator+, operator<<
 #include <type_traits>             // for is_floating_point_v, is_same_v
 #include <utility>                 // for pair
 #include <vector>                  // for vector

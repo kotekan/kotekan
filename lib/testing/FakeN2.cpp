@@ -1,36 +1,30 @@
 #include "FakeN2.hpp"
 
-#include "CHORDTelescope.hpp"  // for struct EOP, eop_null, CHORDTelescope
+#include "CHORDTelescope.hpp"  // for CHORDTelescope, EOP
 #include "Config.hpp"          // for Config
 #include "N2FrameView.hpp"     // for N2FrameView
-#include "N2Util.hpp"          // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for allocate_new_metadata_object, mark_frame_full, register_p...
+#include "N2Metadata.hpp"      // for N2Metadata, get_N2_metadata
+#include "N2Util.hpp"          // for get_num_prod
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "errors.h"            // for ReturnCode, exit_kotekan
 #include "factory.hpp"         // for FACTORY
-#include "kotekanLogging.hpp"  // for INFO, DEBUG
-#include "version.h"           // for get_git_commit_hash
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span<>::iterator, span
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
 
-#include <algorithm>   // for max, fill, transform
-#include <atomic>      // for atomic_bool
-#include <complex>     // for complex
-#include <cstdint>     // for uint32_t, int32_t
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function, placeholders
-#include <iterator>    // for back_insert_iterator, back_inserter, begin, end
-#include <memory>      // for allocator, unique_ptr
-#include <numeric>     // for iota
-#include <random>      // for random_device, mt19937
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for runtime_error
-#include <time.h>      // for nanosleep, timespec
-#include <tuple>       // for get, make_tuple, tuple
-#include <type_traits> // for __decay_and_strip<>::__type
-#include <utility>     // for pair
+#include <algorithm>  // for fill, max, shuffle
+#include <assert.h>   // for assert
+#include <complex>    // for complex
+#include <functional> // for bind, function, placeholders
+#include <memory>     // for allocator, shared_ptr, __shared_ptr_access, unique_ptr
+#include <numeric>    // for iota
+#include <random>     // for random_device, uniform_real_distribution, mt19937
+#include <time.h>     // for nanosleep, timespec
+#include <utility>    // for pair
 
 
 using namespace std::placeholders;

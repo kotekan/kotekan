@@ -4,9 +4,9 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp" // for ERROR, INFO
-#include "util.h"             // for cp, make_raw_dirs
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "kotekanLogging.hpp"  // for ERROR, INFO
+#include "util.h"              // for cp, make_raw_dirs
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
@@ -14,6 +14,7 @@
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for open, posix_fadvise, O_CREAT, O_WRONLY, POSIX_FADV_DONTNEED
 #include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <pthread.h>  // for pthread_setaffinity_np
 #include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdio.h>    // for fprintf, snprintf, fclose, fopen, size_t, FILE

@@ -1,11 +1,11 @@
 #include "frbPostProcess.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"       // for Telescope
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"         // for Telescope
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chordMetadata.hpp"     // for get_chord_metadata, chordMetadata
 #include "kotekanLogging.hpp"    // for DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 
@@ -14,6 +14,7 @@
 #include <algorithm>   // for find, max, min
 #include <functional>  // for bind, function
 #include <immintrin.h> // for _mm256_broadcast_ss, __m256, _mm256_load_ps, _mm256_min_ps
+#include <memory>      // for __shared_ptr_access, shared_ptr
 #include <stdexcept>   // for runtime_error
 #include <stdlib.h>    // for free, calloc, malloc, posix_memalign
 #include <string.h>    // for memcpy, memset

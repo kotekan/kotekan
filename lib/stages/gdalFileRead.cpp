@@ -12,10 +12,9 @@
 
 #include <Stage.hpp>             // for Stage
 #include <StageFactory.hpp>      // for REGISTER_KOTEKAN_STAGE
-#include <algorithm>             // for copy
 #include <array>                 // for array
 #include <cassert>               // for assert
-#include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, CHORD_META_MAX_FREQ
+#include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, get_chord_metadata
 #include <cstddef>               // for ptrdiff_t, size_t
 #include <cstdint>               // for int64_t, uint8_t
 #include <cstring>               // for strncpy

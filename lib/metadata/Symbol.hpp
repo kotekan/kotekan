@@ -1,9 +1,11 @@
 #ifndef SYMBOL_HPP
 #define SYMBOL_HPP
 
-#include <array>   // for array
-#include <cstring> // for size_t
-#include <fmt/format.h>
+#include "fmt.hpp" // for formatter
+
+#include <array>         // for array
+#include <cstring>       // for size_t
+#include <fmt/format.h>  // for formatter
 #include <functional>    // for equal_to, less
 #include <iostream>      // for ostream
 #include <mutex>         // for mutex

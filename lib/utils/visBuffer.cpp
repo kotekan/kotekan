@@ -3,9 +3,8 @@
 #include "FrameView.hpp" // for bind_span, bind_scalar, FrameView
 #include "Telescope.hpp" // for freq_id_t
 #include "buffer.hpp"    // for Buffer
-#include "chordMetadata.hpp"
-#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
-#include "metadata.hpp" // for metadataObject, _factory_aliasmetadataObject
+#include "factory.hpp"   // for REGISTER_TYPE_WITH_FACTORY
+#include "metadata.hpp"  // for metadataObject, _factory_aliasmetadataObject
 
 #include "fmt.hpp" // for format, compile_string_to_view, fmt, format_string
 

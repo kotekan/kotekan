@@ -17,7 +17,7 @@
 #include "Config.hpp"         // for Config
 #include "N2FrameView.hpp"    // for N2FrameView
 #include "datasetManager.hpp" // for state_id_t, dset_id_t
-#include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
+#include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat
@@ -26,6 +26,7 @@
 #include <functional> // for function
 #include <optional>   // for optional
 #include <stddef.h>   // for size_t
+#include <stdint.h>   // for uint32_t
 #include <string>     // for string
 #include <utility>    // for pair
 #include <vector>     // for vector

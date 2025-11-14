@@ -1,14 +1,18 @@
-#include "Config.hpp"   // for Config
-#include "DataType.hpp" // for type_to_string
-#include "N2FrameView.hpp"
-#include "N2Metadata.hpp"
+#include "CHORDTelescope.hpp"  // for EOP
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType, type_to_string
+#include "N2FrameView.hpp"     // for N2FrameView
+#include "N2Metadata.hpp"      // for metadata_is_N2
+#include "NDArray.hpp"         // for GenericNDArray
+#include "Symbol.hpp"          // for Symbol
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "hdf5Files.hpp"       // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
+#include "hdf5Files.hpp"       // for chord2hdf5, BITSHUFFLE_BLOCKSIZE_AUTO
 #include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, WARN, INFO
 #include "metadata.hpp"        // for metadataObject
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
 
 #include <Stage.hpp>                             // for Stage
 #include <StageFactory.hpp>                      // for REGISTER_KOTEKAN_STAGE
@@ -18,20 +22,20 @@
 #include <cassert>                               // for assert
 #include <chordMetadata.hpp>                     // for chordMetadata, metadata_is_chord, get_c...
 #include <cstddef>                               // for size_t, ptrdiff_t
-#include <cstdint>                               // for int64_t, uint32_t, uint8_t
+#include <cstdint>                               // for uint8_t, int64_t, uint32_t
 #include <errno.h>                               // for errno, EEXIST, EISDIR
 #include <errors.h>                              // for exit_kotekan, ReturnCode
 #include <functional>                            // for function
 #include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::createAttribute
 #include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::DataSpace, DataSp...
 #include <highfive/H5DataType.hpp>               // for DataType, DataType::getSize
-#include <highfive/H5File.hpp>                   // for File, File::File, NodeTraits::createDat...
-#include <highfive/H5Object.hpp>                 // for H5Z_FLAG_MANDATORY, hsize_t
+#include <highfive/H5File.hpp>                   // for File, NodeTraits::createDataSet, File::...
+#include <highfive/H5Object.hpp>                 // for hsize_t, H5Z_FLAG_MANDATORY
 #include <highfive/H5PropertyList.hpp>           // for PropertyType, RawPropertyList, Chunking
 #include <highfive/bits/H5PropertyList_misc.hpp> // for PropertyList::_initializeIfNeeded, Chun...
 #include <highfive/bits/H5Slice_traits_misc.hpp> // for SliceTraits::write_raw
 #include <iomanip>                               // for operator<<, setfill, setw
-#include <memory>                                // for shared_ptr, __shared_ptr_access, allocator
+#include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
 #include <prometheusMetrics.hpp>                 // for Metrics, Gauge
 #include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
 #include <string.h>                              // for strerror

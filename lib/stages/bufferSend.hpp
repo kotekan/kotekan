@@ -10,7 +10,6 @@
 #include "Stage.hpp"             // for Stage
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "configTracker.hpp"     // for configTracker
 #include "prometheusMetrics.hpp" // for Counter
 
 #include <atomic>             // for atomic

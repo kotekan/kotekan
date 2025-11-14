@@ -1,18 +1,23 @@
 #include "gpuSimulateN2kPL1bitCorr.hpp"
 
 #include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "DataType.hpp"        // for DataType, GetType
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata
+#include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata, CHO...
 #include "div.hpp"             // for div_noremainder
-#include "kotekanLogging.hpp"  // for INFO, DEBUG
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, DEBUG
+#include "metadata.hpp"        // for metadataObject
 
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <assert.h>   // for assert
+#include <bitset>     // for bitset
+#include <cstdint>    // for uint64_t, int32_t, int64_t
+#include <cstdlib>    // for abort
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
 #include <vector>     // for vector
 
 using kotekan::bufferContainer;

@@ -2,11 +2,11 @@
 
 #include "BranchPrediction.hpp" // for likely, unlikely
 #include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"        // for Telescope
-#include "buffer.hpp"           // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
+#include "buffer.hpp"           // for Buffer
 #include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"
+#include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
 #include "kotekanLogging.hpp"   // for DEBUG, ERROR
 #include "pulsar_functions.hpp" // for PSRHeader
 
@@ -16,9 +16,11 @@
 #include <assert.h>   // for assert
 #include <cmath>      // for round
 #include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <stdexcept>  // for runtime_error
 #include <string.h>   // for memcpy
 #include <string>     // for allocator, basic_string, operator+, string, to_string
+#include <vector>     // for vector
 
 using std::string;
 

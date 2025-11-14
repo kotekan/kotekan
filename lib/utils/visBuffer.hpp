@@ -12,7 +12,7 @@
 #include "Hash.hpp"           // for Hash
 #include "Telescope.hpp"      // for Telescope, freq_id_t
 #include "buffer.hpp"         // for Buffer
-#include "chordMetadata.hpp"  // for get_chord_metadata
+#include "chordMetadata.hpp"  // for chordMetadata
 #include "datasetManager.hpp" // for dset_id_t
 #include "metadata.hpp"       // for metadataObject, metadataPool
 #include "visUtil.hpp"        // for cfloat, struct_layout
@@ -25,9 +25,10 @@
 #include <set>        // for set
 #include <stdint.h>   // for uint32_t, uint64_t
 #include <string>     // for char_traits, operator==, basic_string, string
-#include <sys/time.h> // for TIMEVAL_TO_TIMESPEC
-#include <time.h>     // for size_t, timespec
+#include <sys/time.h> // for TIMEVAL_TO_TIMESPEC, timeval
+#include <time.h>     // for timespec, size_t
 #include <tuple>      // for make_tuple, tuple
+#include <vector>     // for vector
 
 
 /**
