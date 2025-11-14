@@ -5,7 +5,7 @@
 #include "kotekanLogging.hpp" // for WARN, INFO, DEBUG
 #include "restClient.hpp"     // for restClient
 #include "restServer.hpp"     // for restServer, connectionInstance
-#include "timeUtil.hpp"       // for get_ERA_from_UT1, get_UT1_from_time, nanosec_i64_to_timespec
+#include "timeUtil.hpp" // for EOP, get_ERA_from_UT1, get_UT1_from_time, nanosec_i64_to_timespec
 
 #include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for basic_json, json, iter_impl, input_adapter
@@ -225,7 +225,7 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
     // Make sure no one is using the EOP table while we're updating it.
     try {
         // Fill a temporary table with the updated values.
-        std::vector<struct EOP> tmp_eop_table;
+        std::vector<EOP> tmp_eop_table;
         for (const auto& elem : json.at("earth_orientation_parameter_table")) {
             INFO("CHORDTelescope EOP update: {:s}", elem.dump());
             int64_t t_ns = elem.at("time_inst_ns").get<int64_t>();
@@ -307,7 +307,7 @@ double CHORDTelescope::get_dish_coelev_deg() const {
 }
 
 std::array<double, 3> CHORDTelescope::get_sky_vec_in_tel_coords(double ra, double dec,
-                                                                const struct EOP& eop) const {
+                                                                const EOP& eop) const {
 
     // Taking the ra & dec to be in CIRS frame
 
@@ -453,7 +453,7 @@ CHORDTelescope::vec_topocen_to_itrs(const std::array<double, 3>& v_topo) const {
 }
 
 std::array<double, 3> CHORDTelescope::vec_cirs_to_itrs(const std::array<double, 3>& v_cirs,
-                                                       const struct EOP& eop) const {
+                                                       const EOP& eop) const {
 
     // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the
     // ITRS -> CIRS Transformation:
@@ -483,7 +483,7 @@ std::array<double, 3> CHORDTelescope::vec_cirs_to_itrs(const std::array<double, 
 }
 
 std::array<double, 3> CHORDTelescope::vec_itrs_to_cirs(const std::array<double, 3>& v_itrs,
-                                                       const struct EOP& eop) const {
+                                                       const EOP& eop) const {
 
     // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the
     // ITRS -> CIRS Transformation:
@@ -510,8 +510,7 @@ std::array<double, 3> CHORDTelescope::vec_itrs_to_cirs(const std::array<double, 
     return v_cirs;
 }
 
-void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const struct EOP& eop,
-                                          const struct EOP& eop0,
+void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
                                           std::vector<std::complex<double>>& phases) const {
 
     // Get the pointing vector (phase center) for the telescope in dish coordinates. This is
@@ -580,6 +579,7 @@ void CHORDTelescope::get_input_maps(dishInputFields& input) const {
 }
 
 uint64_t CHORDTelescope::get_num_stacks() const {
+    FATAL_ERROR("get_num_stacks() has not been implemented in CHORDTelescope yet.");
     return 0;
 }
 
@@ -604,21 +604,21 @@ int CHORDTelescope::get_EOP_table_len() const {
     return _eop_table.size();
 }
 
-struct EOP CHORDTelescope::get_EOP_at_idx(uint64_t i) const {
+EOP CHORDTelescope::get_EOP_at_idx(uint64_t i) const {
     std::shared_lock lock(_eop_lock);
 
     if (i < _eop_table.size()) {
-        struct EOP eop = _eop_table[i];
+        EOP eop = _eop_table[i];
         return eop;
     }
 
     return eop_null;
 }
 
-struct EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
+EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
     // Interpolate on the EOP table to find EOP for the given instrument time.
 
-    struct EOP eop;
+    EOP eop;
 
     int64_t t_target = timespec_to_nanosec_i64(ts_target);
     eop.t_inst = t_target;
@@ -683,10 +683,10 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
     return eop;
 }
 
-struct EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
+EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
     // Interpolate on the EOP table to find EOP for the given UT1 time.
 
-    struct EOP eop;
+    EOP eop;
     eop.t_ut1 = t_ut1;
 
     {
@@ -800,17 +800,19 @@ uint32_t CHORDTelescope::num_freq_per_stream() const {
     return 0;
 }
 
-struct EOP CHORDTelescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst,
-                                                 double xp_as, double yp_as) const {
+EOP CHORDTelescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst, double xp_as,
+                                          double yp_as) const {
 
     struct timespec ts_inst = nanosec_i64_to_timespec(time_ns);
     int64_t ut1 = get_UT1_from_time(ts_inst, delta_ut1_inst);
     double era = get_ERA_from_UT1(ut1, nullptr);
 
-    struct EOP eop {
-        .t_inst = time_ns, .t_ut1 = ut1, .delta_UT1_inst = delta_ut1_inst, .ERA_deg = era,
-        .xp_as = xp_as, .yp_as = yp_as
-    };
+    EOP eop{.t_inst = time_ns,
+            .t_ut1 = ut1,
+            .delta_UT1_inst = delta_ut1_inst,
+            .ERA_deg = era,
+            .xp_as = xp_as,
+            .yp_as = yp_as};
 
     return eop;
 }
@@ -874,11 +876,11 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
 }
 
 
-bool EOP_comp_time(const struct EOP& eop1, const struct EOP& eop2) {
+bool EOP_comp_time(const EOP& eop1, const EOP& eop2) {
     return eop1.t_inst < eop2.t_inst;
 }
 
-bool EOP_comp_ut1(const struct EOP& eop1, const struct EOP& eop2) {
+bool EOP_comp_ut1(const EOP& eop1, const EOP& eop2) {
     return eop1.t_ut1 < eop2.t_ut1;
 }
 

@@ -4,6 +4,7 @@
 #include "Config.hpp"     // for Config
 #include "Telescope.hpp"  // for freq_id_t, Telescope, stream_t
 #include "restServer.hpp" // for connectionInstance
+#include "timeUtil.hpp"   // for EOP
 
 #include "json.hpp" // for json
 
@@ -293,7 +294,7 @@ public:
      *
      * @param   i   Index of desired EOP entry, 0 <= i < EOP_table_len
      **/
-    struct EOP get_EOP_at_idx(uint64_t i) const;
+    EOP get_EOP_at_idx(uint64_t i) const;
 
     /**
      * @brief   Return the EOP at the desired instrument time. Will interpolate
@@ -302,7 +303,7 @@ public:
      *
      * @param   ts  Target instrument time, as a timespec.
      **/
-    struct EOP get_EOP_at_time(const timespec& ts) const;
+    EOP get_EOP_at_time(const timespec& ts) const;
 
     /**
      * @brief   Return the EOP at the desired UT1 time. Will interpolate
@@ -311,7 +312,7 @@ public:
      *
      * @param   ts  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
      **/
-    struct EOP get_EOP_at_UT1(int64_t ut1) const;
+    EOP get_EOP_at_UT1(int64_t ut1) const;
 
     const struct dishInfo& get_dish_at_idx(int64_t idx) const;
 
@@ -322,8 +323,7 @@ public:
      * @param   dec Target Declination in CIRS frame.
      * @param   eop EOP for the time of observation.
      **/
-    std::array<double, 3> get_sky_vec_in_tel_coords(double ra, double dec,
-                                                    const struct EOP& eop) const;
+    std::array<double, 3> get_sky_vec_in_tel_coords(double ra, double dec, const EOP& eop) const;
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the
      *          phase center), in Dish coordinates (x is elevation axis (~East),
@@ -380,7 +380,7 @@ public:
      * @param   eop     EOP for time of transformation.
      **/
     std::array<double, 3> vec_cirs_to_itrs(const std::array<double, 3>& v_cirs,
-                                           const struct EOP& eop) const;
+                                           const EOP& eop) const;
 
     /**
      * @brief   Transform the given vector from ITRS to CIRS coords.
@@ -389,7 +389,7 @@ public:
      * @param   eop     EOP for time of transformation.
      **/
     std::array<double, 3> vec_itrs_to_cirs(const std::array<double, 3>& v_itrs,
-                                           const struct EOP& eop) const;
+                                           const EOP& eop) const;
 
     /**
      * @brief   Transform the given vector to a frame where the basis has
@@ -429,7 +429,7 @@ public:
      *                  least num_dishes. The phases will be written to the
      *                  first num_dishes elements of this vector.
      **/
-    void fringestop_phases_1d(double freq_MHz, const struct EOP& eop, const struct EOP& eop0,
+    void fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
                               std::vector<std::complex<double>>& phases) const;
 
     /**
@@ -554,8 +554,8 @@ protected:
      * @param   xp_as   Polar Motion x' coordinate in arcseconds
      * @param   yp_as   Polar Motion y' coordinate in arcseconds
      **/
-    struct EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
-                                     double yp_as) const;
+    EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
+                              double yp_as) const;
 
     /**
      * @brief   Load information about dish inputs from the config.
@@ -623,7 +623,7 @@ protected:
 
     // Earth Orientation Parameters
     mutable std::shared_mutex _eop_lock;
-    std::vector<struct EOP> _eop_table;
+    std::vector<EOP> _eop_table;
 
     // Dish Properties
     std::vector<struct dishInfo> _dish_info_table;
@@ -636,7 +636,7 @@ protected:
  * @params  eop1    First EOP to compare.
  * @params  eop2    Second EOP to compare.
  **/
-bool EOP_comp_time(const struct EOP& eop1, const struct EOP& eop2);
+bool EOP_comp_time(const EOP& eop1, const EOP& eop2);
 
 /*
  * @brief   Comparison function for searching/sorting the EOP table. Compares
@@ -646,6 +646,6 @@ bool EOP_comp_time(const struct EOP& eop1, const struct EOP& eop2);
  * @params  eop1    First EOP to compare.
  * @params  eop2    Second EOP to compare.
  **/
-bool EOP_comp_ut1(const struct EOP& eop1, const struct EOP& eop2);
+bool EOP_comp_ut1(const EOP& eop1, const EOP& eop2);
 
 #endif // CHORD_TELESCOPE_HPP

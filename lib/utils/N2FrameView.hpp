@@ -174,6 +174,11 @@ public:
     /**
      * @brief Get the number of products in the visibility matrix for the given number of elements
      * and layout.
+     *
+     * @param   num_elemens_in  number of elements (dishes x polarizations) in the pipeline
+     * @param   layout_in       the layout of the N2FrameView
+     *
+     * @throws std::runtime_error    If layout_in is unknown.
      */
     static size_t get_num_prod(uint32_t num_elements_in, N2Layout layout_in) {
 
@@ -187,8 +192,11 @@ public:
                 num_prod_in = Telescope::instance().cast<CHORDTelescope>().get_num_stacks();
                 break;
             default:
-                throw std::runtime_error(fmt::format("N2FrameView given unknown N2Layout: {:d}",
-                                                     static_cast<int32_t>(layout_in)));
+                std::string msg =
+                    fmt::format("N2FrameView::get_num_prod given unknown N2Layout: {:d}",
+                                static_cast<int32_t>(layout_in));
+                ERROR_NON_OO("{:s}", msg);
+                throw std::runtime_error(msg);
                 break;
         }
 
@@ -201,20 +209,15 @@ public:
      *
      * See N2FrameView::get_prod_maps() for full details.
      *
-     * @param   prods   Vector to fill.
+     * @param   prods           Vector to fill.
+     * @param   num_elements_in Number of elements (dishes x polarizations) in the pipeline
      */
     static void get_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods,
-                                           uint32_t num_elements_in, size_t num_prod_in) {
+                                           uint32_t num_elements_in) {
+
+        size_t num_prod_in = (num_elements_in * (num_elements_in + 1)) / 2;
 
         prods.resize(num_prod_in);
-
-        if (num_prod_in != (num_elements_in * (num_elements_in + 1)) / 2) {
-            throw std::runtime_error(fmt::format(
-                "get_prod_maps_FullUpperTri called with num_elements {:d} and num_prod {:d} which "
-                "do not saatisfy num_prod == num_elements * (num_elements + 1) / 2",
-                num_elements_in, num_prod_in));
-        }
-        assert(num_prod_in == (num_elements_in * (num_elements_in + 1)) / 2);
 
         // Loop over all rows
         size_t p = 0;
@@ -292,6 +295,8 @@ public:
      * allocation of size num_prod * sizeof(prod_ctype).
      *
      * @param   prods   Vector of prod_ctype to fill.
+     *
+     * @throws  std::runtime_error  If this N2FrameView has an unknown layout.
      */
     void get_prod_maps(std::vector<N2::prod_ctype>& prods);
 };
