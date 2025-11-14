@@ -87,6 +87,8 @@ void N2TimeDownsample::main_thread() {
     uint64_t era_bin_idx_startup = (uint64_t)(eop_startup.ERA_deg / era_bin_width);
     int64_t num_rotations_startup;
     get_ERA_from_UT1(eop_startup.t_ut1, &num_rotations_startup);
+    
+    uint64_t prev_abs_time_idx = 0;
 
     // Make an array to hold the per-dish phases.
     int num_dishes = tel.get_num_dishes();
@@ -203,6 +205,12 @@ void N2TimeDownsample::main_thread() {
             output_frame.abs_time_idx =
                 (era_bin_idx + num_bins_per_rotation * (num_rotations - num_rotations_startup))
                 - era_bin_idx_startup;
+
+            // Check that the input isn't coming too fast.
+            if(prev_abs_time_idx > 0 && output_frame.abs_time_idx != prev_abs_time_idx + 1) {
+                ERROR("New downsampled frame will have abs_time_idx = {:d}, expected previous abs_time_idx {:d} + 1.", output_frame.abs_time_idx, prev_abs_time_idx);
+            }
+            prev_abs_time_idx = output_frame.abs_time_idx;
 
             // Initialize the weights, and weigh vis/weight by number of samples.
             for (size_t i = 0; i < nprod; i++) {
