@@ -19,10 +19,10 @@
 #include <N2Util.hpp>
 #include <cassert>
 #include <highfive/H5File.hpp>
+#include <map>
 #include <memory>
-#include <string>
-#include <sys/stat.h>
 #include <optional>
+#include <string>
 #include <vector>
 #include <filesystem>
 #include <visUtil.hpp>
@@ -93,16 +93,15 @@ protected:
 private:
     std::unique_ptr<HighFive::File> _open_or_create_file(const std::string& filepath) const {
         std::unique_ptr<HighFive::File> file;
-        stat filecheck_buffer {};
-        if (stat(partial_filepath.c_str(), &filecheck_buffer) == 0) {
+        if (std::filesystem::exists(filepath)) {
             // Open existing .partial file
             file = std::make_unique<HighFive::File>(
-                partial_filepath, HighFive::File::ReadWrite);
+                filepath, HighFive::File::ReadWrite);
             // TODO: guard against multiple writers?
         } else {
             // Create new .partial file
             file = std::make_unique<HighFive::File>(
-                partial_filepath, HighFive::File::ReadWrite | HighFive::File::Create);
+                filepath, HighFive::File::ReadWrite | HighFive::File::Create);
         }
         return file;
     }
@@ -284,8 +283,10 @@ private:
      * @param datasets  Map of datasets to finalize
      * @param late_frame_grace_seconds  Grace period in seconds for late frames
      */
-    void _grace_finalize_datasets(std::map<std::string, std::unique_ptr<visFileData>>& datasets,
-                                  const std::string* exclude_path = nullptr);
+    void _grace_finalize_datasets(std::map<size_t, std::unique_ptr<visFileData>>& datasets,
+                                  const size_t* exclude_abs_file_idx = nullptr);
+
+    bool _finalfile_exists(std::uint64_t abs_file_idx) const;
 
     /// Create a (f, ..., t) or  (t) dataset
     void _create_dataset(HighFive::File& file, const std::string& name, const std::vector<hsize_t>& dims,

@@ -21,6 +21,7 @@
 #include <cstring>
 #include <errno.h>
 #include <errors.h>
+#include <filesystem>
 #include <fstream>
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
@@ -371,12 +372,12 @@ void hdf5VisWrite::_finalize_dataset(std::unique_ptr<visFileData> dataset) {
 }
 
 void hdf5VisWrite::_grace_finalize_datasets(
-    std::map<std::string, std::unique_ptr<visFileData>>& datasets,
-    const std::string* exclude_path) {
+    std::map<size_t, std::unique_ptr<visFileData>>& datasets,
+    const size_t* exclude_abs_file_idx) {
     const double now_s = mono_time_s();
     for (auto ds_it = datasets.begin(); ds_it != datasets.end();) {
         auto& obj = *ds_it->second;
-        if (exclude_path && ds_it->first == *exclude_path) {
+        if (exclude_abs_file_idx && ds_it->first == *exclude_abs_file_idx) {
             ++ds_it;
             continue;
         }
@@ -389,17 +390,20 @@ void hdf5VisWrite::_grace_finalize_datasets(
     }
 }
 
-_finalfile_exists(abs_file_idx, base_dir) {
-    // look for any files in base_dir that are named vis_<abs_file_idx>_*.h5
-    std::string pattern = "vis_" + std::to_string(abs_file_idx) + "_*.h5";
-    for (const auto& entry : std::filesystem::directory_iterator(base_dir)) {
-        if (entry.is_regular_file()) {
-            const std::string filename = entry.path().filename().string();
-            if (std::filesystem::path(filename).extension() == ".h5" &&
-                filename.find("vis_" + std::to_string(abs_file_idx) + "_") == 0) {
-                return true;
+bool hdf5VisWrite::_finalfile_exists(std::uint64_t abs_file_idx) const {
+    const std::string prefix = "vis_" + std::to_string(abs_file_idx) + "_";
+    try {
+        for (const auto& entry : std::filesystem::directory_iterator(base_dir)) {
+            if (entry.is_regular_file()) {
+                const std::string filename = entry.path().filename().string();
+                if (std::filesystem::path(filename).extension() == ".h5"
+                    && filename.rfind(prefix, 0) == 0) {
+                    return true;
+                }
             }
         }
+    } catch (const std::filesystem::filesystem_error&) {
+        return false;
     }
     return false;
 }
@@ -463,8 +467,9 @@ void hdf5VisWrite::main_thread() {
             visFileData_ptr = ds->second.get();
         } else if (_finalfile_exists(abs_file_idx, base_dir)) {
             // If final file already exists, drop/ignore this frame (late arrival)
-            WARN("Finalized file exists for this frame's file window, dropping late frame: {:s}",
-                 final_path);
+            WARN("Finalized file exists for this frame's file window, dropping late frame: "
+                 "abs_file_idx={}, frame_id={}",
+                 abs_file_idx, in_frame_id);
 
             // Mark frame as done, finalize, and continue
             buffer->mark_frame_empty(unique_name, in_frame_id);
@@ -481,7 +486,7 @@ void hdf5VisWrite::main_thread() {
             visFileData_ptr = datasets.find(abs_file_idx)->second.get();
         }
 
-        if (!visFileData_ptr || !visFileData_ptr->h5_file || ) {
+        if (!visFileData_ptr || !visFileData_ptr->h5_file) {
             // Mark frame as done, finalize, and continue
             ERROR("Dataset is null. Failed to open dataset.");
             buffer->mark_frame_empty(unique_name, in_frame_id);
@@ -507,19 +512,12 @@ void hdf5VisWrite::main_thread() {
         double elapsed_writing_frame = 0.0;
         if (visFileData_ptr->full()) {
             const double t0 = mono_time_s();
-            visFileData_ptr->flush();
+            _finalize_dataset(visFileData_ptr);
             const double t1 = mono_time_s();
             elapsed_writing_frame = t1 - t0;
             // Close dataset after flush
             visFileData_ptr->close();
-            // Finalize: rename partial to final
-            int r = std::rename(visFileData_ptr->partial_path.c_str(), final_path.c_str());
-            if (r != 0) {
-                const char* msg = strerror(errno);
-                ERROR("Failed to rename partial dataset to final: {} -> {}: {}",
-                      visFileData_ptr->partial_path, final_path, msg);
-            }
-            datasets.erase(final_path);
+            datasets.erase(abs_file_idx);
         }
 
         // Stop timer/metrics
@@ -544,7 +542,7 @@ void hdf5VisWrite::main_thread() {
         in_frame_id++;
 
         // After handling this frame, scan for grace-based finalizations
-        _grace_finalize_datasets(datasets, &final_path);
+        _grace_finalize_datasets(datasets, &abs_file_idx);
 
     } // while !stop_thread
 
