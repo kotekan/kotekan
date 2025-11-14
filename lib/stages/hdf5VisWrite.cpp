@@ -94,7 +94,7 @@ bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metad
                 meta->frame_length_fpga_ticks, frame_length_fpga_ticks[t_index],
                 frame_EOP[t_index], meta->frame_EOP, bin_EOP[t_index],  meta->bin_EOP);
         return false;
-    }        
+    }
 
     
     // Store vis + weight
@@ -137,8 +137,33 @@ bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metad
     return true;
 }
 
-std::optional<std::string> visFileData::get_final_filename() {
-    // Get the earliest time in 
+std::optional<std::string> visFileData::_get_final_filename() {
+    // Get the earliest (non-zero) time in the bin ut1 array
+    if (num_file_t == 0)
+        return std::nullopt;
+    
+    std::optional<std::uint64_t> earliest_ut1_ns;
+    for (size_t t = 0; t < num_file_t; ++t)
+    {
+        if (bin_ut1[t] != 0) {
+            if (!earliest_ut1_ns.has_value() || bin_ut1[t] < earliest_ut1_ns.value()) {
+                earliest_ut1_ns = bin_ut1[t];
+            }
+        }
+    }
+    if (!earliest_ut1_ns.has_value())
+        return std::nullopt;
+
+    // Construct final filename based on earliest_ut1_ns
+    std::ostringstream buf;
+    std::time_t time_t_format = earliest_ut1_ns.value() / 1'000'000'000;      // seconds
+    const std::uint64_t ns_part = earliest_ut1_ns.value() % 1'000'000'000ULL; // sub-second
+    buf << "vis_" << std::to_string(file_start_abs_frame_idx)  << "_" << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S");
+    // Include nanosecond suffix to avoid collisions for sub-second file windows
+    buf << "_" << std::setw(9) << std::setfill('0') << ns_part;
+    buf << ".h5";
+
+    return buf.str();
 }
 
 bool visFileData::flush() {
@@ -226,31 +251,6 @@ std::uint64_t hdf5VisWrite::_get_abs_file_idx(const std::shared_ptr<const N2Meta
 
     // Truncate towards zero
     return meta->abs_frame_index / file_num_t;
-}
-
-std::string hdf5VisWrite::_get_vis_filename(visFileData& file_data) const {
-    
-    earliest_file_ut1_ns = file_data.file_start_time_ns;
-
-    std::ostringstream buf;
-    buf << base_dir;
-    if (!base_dir.empty() && base_dir.back() != '/') {
-        buf << '/';
-    }
-    if (prefix_hostname) {
-        char hostname[256];
-        gethostname(hostname, sizeof hostname);
-        buf << hostname << "_";
-    }
-
-    const std::uint64_t file_start_time_ns = _get_file_start_time_ns(meta);
-    std::time_t time_t_format = file_start_time_ns / 1'000'000'000;      // seconds
-    const std::uint64_t ns_part = file_start_time_ns % 1'000'000'000ULL; // sub-second
-    buf << file_name << "." << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S");
-    // Include nanosecond suffix to avoid collisions for sub-second file windows
-    buf << "_" << std::setw(9) << std::setfill('0') << ns_part;
-    buf << ".h5";
-    return buf.str();
 }
 
 void hdf5VisWrite::_create_dataset(HighFive::File& file, const std::string& name, const std::vector<hsize_t>& dims,
@@ -362,12 +362,12 @@ void hdf5VisWrite::_finalize_dataset(std::unique_ptr<visFileData>> dataset) {
     dataset->close();
 
     // Attempt rename from partial to final
-    // tODO ...
-    int r = std::rename(obj.partial_path.c_str(), ds_it->first.c_str());
+    auto ds_filename = dataset->_get_final_filename();
+    int r = std::rename(dataset->partial_filepath.c_str(), ds_filename->c_str());
     if (r != 0) {
         const char* msg = strerror(errno);
-        ERROR("Failed to rename partial dataset to final: {} -> {}: {}", obj.partial_path,
-                ds_it->first, msg);
+        ERROR("Failed to rename partial dataset to final: {} -> {}: {}", dataset->partial_filepath,
+                *ds_filename, msg);
     }
 }
 

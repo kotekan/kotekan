@@ -58,7 +58,7 @@ public:
     const double open_wall_s;                // time opened
     double last_update_wall_s = 0.0;         // last frame receipt
     const uint64_t file_start_abs_frame_idx; // absolute frame index at the file start
-    std::string partial_filepath;                         // working on-disk location
+    const std::string partial_filepath;                         // working on-disk location
     std::unique_ptr<HighFive::File> h5_file;          // Working on-disk HDF5 file handle
 
 protected:
@@ -88,6 +88,23 @@ protected:
     std::vector<uint8_t> added_ft; // size = num_freq * num_file_t
     size_t added_count = 0;        // number of (f, t) frames added
 
+private:
+    std::unique_ptr<HighFive::File> open_or_create_file(pathname_t filepath) {
+        std::unique_ptr<HighFive::File> file;
+        stat filecheck_buffer {};
+        if (stat(partial_filepath.c_str(), &filecheck_buffer) == 0) {
+            // Open existing .partial file
+            file = std::make_unique<HighFive::File>(
+                partial_filepath, HighFive::File::ReadWrite);
+            // TODO: guard against multiple writers?
+        } else {
+            // Create new .partial file
+            file = std::make_unique<HighFive::File>(
+                partial_filepath, HighFive::File::ReadWrite | HighFive::File::Create);
+        }
+        return file;
+    }
+
 public:
     visFileData(const uint64_t num_file_t_, const uint64_t num_freq_, const uint64_t num_input_,
                 const uint64_t num_prod_, const uint64_t num_ev_,
@@ -97,7 +114,8 @@ public:
         open_wall_s(open_wall_s_), last_update_wall_s(open_wall_s_),
         file_start_abs_frame_idx(file_start_abs_frame_idx_),
         partial_filepath(base_dir_ + "/.partial/" + 
-                     "vis_" + std::to_string(file_start_abs_frame_idx_) + ".h5") {
+                     "vis_" + std::to_string(file_start_abs_frame_idx_) + ".h5"),
+        h5_file(open_or_create_file(partial_filepath)) {
 
         // resize arrays to hold data across (freq, time) blocks
         vis.assign(num_prod * num_freq * num_file_t, N2::cfloat{0.0f, 0.0f});
@@ -117,20 +135,13 @@ public:
         bin_EOP.assign(num_file_t, 0);
 
         added_ft.assign(num_freq * num_file_t, 0);
-
-        // If .partial file exists, open it, otherwise create a new one
-        stat filecheck_buffer {};
-        if (stat(partial_filepath.c_str(), &filecheck_buffer) == 0) {
-            // Open existing .partial file
-            h5_file = std::make_unique<HighFive::File>(
-                partial_filepath, HighFive::File::ReadWrite);
-            // TODO: guard against multiple writers?
-        } else {
-            // Create new .partial file
-            h5_file = std::make_unique<HighFive::File>(
-                partial_filepath, HighFive::File::ReadWrite | HighFive::File::Create);
-        }
     }
+
+    /// Get the final filename for this file based on earliest frame time
+    /// May return std::nullopt if no frames have been added yet,
+    /// so earliest time is unknown. If earlier frames are later added,
+    /// this method may return a different filename.
+    std::optional<std::string> _get_final_filename();
 
     /// Flush buffered data to the associated dataset, always writing the
     /// entire time range [0 .. num_file_t-1] regardless of which frames were
@@ -259,15 +270,6 @@ private:
      * number of time frames per file.
      */
     std::uint64_t _get_abs_file_idx(const std::shared_ptr<const N2Metadata> meta) const;
-
-    /**
-     * @brief Get the HDF5 filename for the given metadata.
-     * @param meta  N2Metadata for the file
-     * @return      Full path to the HDF5 file to write
-     * This method computes the output filename based on the configured
-     * base directory, file name, and whether to prefix with hostname.
-     */
-    std::string _get_vis_filename(std::shared_ptr<const N2Metadata> meta);
 
     /**
      * @brief Finalize a dataset: close and rename from .partial to final name.
