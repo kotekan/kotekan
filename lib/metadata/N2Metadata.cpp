@@ -5,7 +5,8 @@
 #include <string.h> // for size_t, memset
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, N2Metadata);
-N2Metadata::N2Metadata() : N2MetadataFormat{0, 0, 0, 0, 0, 0.0, eop_null, eop_null, 0, 0, 0, 0, 0, 0} {
+N2Metadata::N2Metadata() :
+    N2MetadataFormat{0, 0, 0, 0, 0, 0.0, eop_null, eop_null, 0, 0, 0, 0, 0, 0} {
     ;
 }
 
@@ -33,8 +34,8 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
 
     freq_id = fmt->freq_id; // this is an int in chordMetadata, maybe change later
     freq_Hz = fmt->freq_Hz;
-    frame_eop = fmt->eop;
-    bin_eop = fmt->eop;
+    frame_eop = fmt->frame_eop;
+    bin_eop = fmt->bin_eop;
     abs_frame_index = fmt->abs_frame_index;
 
     num_elements = fmt->num_elements;

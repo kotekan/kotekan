@@ -6,6 +6,7 @@
 
 #include "Config.hpp"
 #include "Stage.hpp"
+#include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "errors.h"
@@ -18,13 +19,13 @@
 #include <N2Metadata.hpp>
 #include <N2Util.hpp>
 #include <cassert>
+#include <filesystem>
 #include <highfive/H5File.hpp>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
-#include <filesystem>
 #include <visUtil.hpp>
 
 /**
@@ -40,7 +41,7 @@
  * (Note that num_freq and num_file_t are not necessarily the same as the actual
  * frequency or time BLOCKSIZEs when written to file, which is configurable via the
  * stage parameters, but it may be beneficial to have them match.)
- * 
+ *
  * Additional bookkeeping regarding the file (HDF5 handle, paths, open time) is
  * also stored here. The file start time (and therefore final file name) is determined
  * by the timestamp of the earliest frame in the file, so it cannot be set until
@@ -60,8 +61,9 @@ public:
     const double open_wall_s;                // time opened
     double last_update_wall_s = 0.0;         // last frame receipt
     const uint64_t file_start_abs_frame_idx; // absolute frame index at the file start
-    const std::string partial_filepath;                         // working on-disk location
-    std::unique_ptr<HighFive::File> h5_file;          // Working on-disk HDF5 file handle
+    const std::string base_dir;              // base output directory (without /.partial)
+    const std::string partial_filepath;      // working on-disk location
+    std::unique_ptr<HighFive::File> h5_file; // Working on-disk HDF5 file handle
 
 protected:
     // Datasets to be stored until ready to write
@@ -75,16 +77,16 @@ protected:
     std::vector<float> frac_lost;  // (f, t)
     std::vector<float> frac_rfi;   // (f, t)
     std::vector<float> flags;      // (f, i, t)
-    
+
     // f,t-dependent metadata
-    std::vector<uint64_t> n_valid_fpga_ticks;  // (f, t)
-    std::vector<uint64_t> n_rfi_fpga_ticks;    // (f, t)
+    std::vector<uint64_t> n_valid_fpga_ticks; // (f, t)
+    std::vector<uint64_t> n_rfi_fpga_ticks;   // (f, t)
 
     // t-dependent metadata
-    std::vector<uint64_t> fpga_start_tick;          // (t)
-    std::vector<uint64_t> frame_length_fpga_ticks;  // (t)
-    std::vector<uint64_t> frame_ut1;                // (t)
-    std::vector<uint64_t> bin_ut1;                  // (t)
+    std::vector<uint64_t> fpga_start_tick;         // (t)
+    std::vector<uint64_t> frame_length_fpga_ticks; // (t)
+    std::vector<uint64_t> frame_ut1;               // (t)
+    std::vector<uint64_t> bin_ut1;                 // (t)
 
     // Tracking what (f, t) pairs have been added
     std::vector<uint8_t> added_ft; // size = num_freq * num_file_t
@@ -95,27 +97,25 @@ private:
         std::unique_ptr<HighFive::File> file;
         if (std::filesystem::exists(filepath)) {
             // Open existing .partial file
-            file = std::make_unique<HighFive::File>(
-                filepath, HighFive::File::ReadWrite);
+            file = std::make_unique<HighFive::File>(filepath, HighFive::File::ReadWrite);
             // TODO: guard against multiple writers?
         } else {
             // Create new .partial file
-            file = std::make_unique<HighFive::File>(
-                filepath, HighFive::File::ReadWrite | HighFive::File::Create);
+            file = std::make_unique<HighFive::File>(filepath, HighFive::File::ReadWrite
+                                                                  | HighFive::File::Create);
         }
         return file;
     }
 
 public:
     visFileData(const uint64_t num_file_t_, const uint64_t num_freq_, const uint64_t num_input_,
-                const uint64_t num_prod_, const uint64_t num_ev_,
-                const double open_wall_s_, const uint64_t file_start_abs_frame_idx_, std::string base_dir_) :
-        num_input(num_input_), num_prod(num_prod_), num_ev(num_ev_),
-        num_freq(num_freq_), num_file_t(num_file_t_),
-        open_wall_s(open_wall_s_), last_update_wall_s(open_wall_s_),
-        file_start_abs_frame_idx(file_start_abs_frame_idx_),
-        partial_filepath(base_dir_ + "/.partial/" + 
-                     "vis_" + std::to_string(file_start_abs_frame_idx_) + ".h5"),
+                const uint64_t num_prod_, const uint64_t num_ev_, const double open_wall_s_,
+                const uint64_t file_start_abs_frame_idx_, std::string base_dir_) :
+        num_input(num_input_), num_prod(num_prod_), num_ev(num_ev_), num_freq(num_freq_),
+        num_file_t(num_file_t_), open_wall_s(open_wall_s_), last_update_wall_s(open_wall_s_),
+        file_start_abs_frame_idx(file_start_abs_frame_idx_), base_dir(std::move(base_dir_)),
+        partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(file_start_abs_frame_idx_)
+                         + ".h5"),
         h5_file(_open_or_create_file(partial_filepath)) {
 
         // resize arrays to hold data across (freq, time) blocks
@@ -184,7 +184,7 @@ public:
      * @param fv      Frame view containing data.
      * @param meta    N2 metadata for the frame.
      * @param t_index Time index within this file block (0..num_file_t-1).
-     * 
+     *
      * @returns success status (false if frame could not be added).
      */
     bool add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metadata>& meta, size_t t_index);
@@ -245,10 +245,13 @@ private:
     const std::uint64_t compression_level; /// compression level (0 = driver default/none)
     const bool use_bitshuffle;             /// use bitshuffle filter if available
     const std::uint64_t blocksize_f;       /// Array chunk size along frequency
-    const std::uint64_t blocksize_p; /// Array chunk size along product (0 = default = full num products)
+    const std::uint64_t
+        blocksize_p; /// Array chunk size along product (0 = default = full num products)
     const std::uint64_t blocksize_t; /// Array chunk size along time (default: 1)
-    const std::uint64_t file_num_t; /// Number of incoming time frames per file, as indexed by the absolute frame index
-    const std::uint64_t late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
+    const std::uint64_t file_num_t;  /// Number of incoming time frames per file, as indexed by the
+                                     /// absolute frame index
+    const std::uint64_t
+        late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
 
     const int max_frames; /// Stop writing after this many frames (-1 = unlimited)
 
@@ -276,26 +279,26 @@ private:
      * @brief Finalize a dataset: close and rename from .partial to final name.
      * @param dataset  Dataset to finalize
      */
-    void _finalize_dataset(std::unique_ptr<visFileData> dataset);
+    void _finalize_dataset(visFileData& dataset);
 
     /**
      * @brief Finalize datasets that have been inactive for too long.
      * @param datasets  Map of datasets to finalize
-     * @param late_frame_grace_seconds  Grace period in seconds for late frames
+     * @param exclude_abs_file_idx  Optional file index to skip while finalizing
      */
     void _grace_finalize_datasets(std::map<size_t, std::unique_ptr<visFileData>>& datasets,
                                   const size_t* exclude_abs_file_idx = nullptr);
 
-    bool _finalfile_exists(std::uint64_t abs_file_idx) const;
+    bool _finalfile_exists(std::uint64_t abs_file_idx, const std::string& search_dir) const;
 
     /// Create a (f, ..., t) or  (t) dataset
-    void _create_dataset(HighFive::File& file, const std::string& name, const std::vector<hsize_t>& dims,
-                                       const HighFive::DataType& dtype, HighFive::DataSetCreateProps props) const;
+    void _create_dataset(HighFive::File& file, const std::string& name,
+                         const std::vector<hsize_t>& dims, const HighFive::DataType& dtype,
+                         HighFive::DataSetCreateProps props) const;
 
     /// Initialize HDF5 datasets with chunking/compression options
     void _initialize_h5(HighFive::File& file, const std::shared_ptr<const N2Metadata> meta,
                         std::uint64_t file_nt) const;
-
 };
 
 #endif // KOTEKAN_STAGES_HDF5_VIS_WRITE_HPP

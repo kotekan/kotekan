@@ -18,16 +18,21 @@
 #include <complex>
 #include <configTracker.hpp>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <errno.h>
 #include <errors.h>
 #include <filesystem>
 #include <fstream>
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
+#include <highfive/H5DataType.hpp>
 #include <highfive/H5File.hpp>
 #include <highfive/H5Object.hpp>       // for H5Z_FLAG_MANDATORY, hsize_t
 #include <highfive/H5PropertyList.hpp> // for PropertyType, RawPropertyList, Chunking
+#include <highfive/bits/H5PropertyList_misc.hpp>
+#include <highfive/bits/H5Slice_traits_misc.hpp>
 #include <iomanip>
 #include <map>
 #include <memory>
@@ -52,52 +57,49 @@ inline double mono_time_s() {
     return std::chrono::duration<double>(dt).count();
 }
 
-bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metadata>& meta, size_t t_index) {
+bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metadata>& meta,
+                            size_t t_index) {
     const size_t f_index = meta->freq_id; // TODO: sync with telescope object. For now assume
                                           // 0..num_freq-1 indexing
 
     // Make sure frame hasn't been added yet
     size_t check_idx = idx_ft(f_index, t_index);
     if (added_ft[check_idx] != 0) {
-        ERROR("visFileData: duplicate frame insertion at (f={}, t={})",
-                                f_index, t_index);
+        ERROR_NON_OO("visFileData: duplicate frame insertion at (f={}, t={})", f_index, t_index);
         return false;
     }
     if (f_index >= num_freq || t_index >= num_file_t) {
-        ERROR("visFileData: index out of bounds: f_index={} >= num_freq={}; t_index={} >= num_file_t={}",
-                                f_index, num_freq, t_index, num_file_t);
+        ERROR_NON_OO("visFileData: index out of bounds: f_index={} >= num_freq={}; t_index={} >= "
+              "num_file_t={}",
+              f_index, num_freq, t_index, num_file_t);
         return false;
     }
-    if(fv.vis.size() != N2::get_num_prod(meta->num_elements) ||
-        fv.weight.size() != N2::get_num_prod(meta->num_elements) ||
-        fv.eval.size() != meta->num_ev ||
-        fv.evec.size() != meta->num_ev * meta->num_elements ||
-        fv.gain.size() != meta->num_elements ||
-        fv.flags.size() != meta->num_elements ||
-        meta->num_elements != num_input ||
-        meta->num_prod != num_prod ||
-        meta->num_ev != num_ev ||
-        fpga_start_tick[t_index] != meta->fpga_start_tick ||
-        meta->frame_length_fpga_ticks > 0 ||
-        frame_length_fpga_ticks[t_index] != meta->frame_length_fpga_ticks ||
-        frame_ut1[t_index] != meta->frame_eop.t_ut1 ||
-        bin_ut1[t_index] != meta->bin_eop.t_ut1) {
-        ERROR("visFileData: frame information mismatch at (f={}, t={}): "
-                "fv.vis.size()={}, fv.weight.size()={}, fv.eval.size()={}, fv.evec.size()={}, "
-                "fv.gain.size()={}, fv.flags.size()={}, meta->num_elements={}, meta->num_prod={}, "
-                "meta->num_ev={}, fpga_start_tick[t_index]={}, meta->fpga_start_tick={}, "
-                "meta->frame_length_fpga_ticks={}, frame_length_fpga_ticks[t_index]={}, "
-                "frame_ut1[t_index]={}, meta->frame_eop.t_ut1={}, bin_ut1[t_index]={}, meta->bin_eop.t_ut1={}",
-                f_index, t_index,
-                fv.vis.size(), fv.weight.size(), fv.eval.size(), fv.evec.size(),
-                fv.gain.size(), fv.flags.size(), meta->num_elements, meta->num_prod,
-                meta->num_ev, fpga_start_tick[t_index], meta->fpga_start_tick,
-                meta->frame_length_fpga_ticks, frame_length_fpga_ticks[t_index],
-                frame_ut1[t_index], meta->frame_eop.t_ut1, bin_ut1[t_index], meta->bin_eop.t_ut1);
+    if (fv.vis.size() != N2::get_num_prod(meta->num_elements)
+        || fv.weight.size() != N2::get_num_prod(meta->num_elements)
+        || fv.eval.size() != meta->num_ev || fv.evec.size() != meta->num_ev * meta->num_elements
+        || fv.gain.size() != meta->num_elements || fv.flags.size() != meta->num_elements
+        || meta->num_elements != num_input || meta->num_prod != num_prod || meta->num_ev != num_ev
+        || meta->frame_length_fpga_ticks == 0
+        || ( fpga_start_tick[t_index] > 0 && fpga_start_tick[t_index] != meta->fpga_start_tick)
+        || ( frame_length_fpga_ticks[t_index] > 0 && frame_length_fpga_ticks[t_index] != meta->frame_length_fpga_ticks)
+        || ( frame_ut1[t_index] > 0 && frame_ut1[t_index] != meta->frame_eop.t_ut1)
+        || ( bin_ut1[t_index] > 0 && bin_ut1[t_index] != meta->bin_eop.t_ut1) ) {
+        ERROR_NON_OO("visFileData: frame information mismatch at (f={}, t={}): "
+              "fv.vis.size()={}, fv.weight.size()={}, fv.eval.size()={}, fv.evec.size()={}, "
+              "fv.gain.size()={}, fv.flags.size()={}, meta->num_elements={}, meta->num_prod={}, "
+              "meta->num_ev={}, fpga_start_tick[t_index]={}, meta->fpga_start_tick={}, "
+              "meta->frame_length_fpga_ticks={}, frame_length_fpga_ticks[t_index]={}, "
+              "frame_ut1[t_index]={}, meta->frame_eop.t_ut1={}, bin_ut1[t_index]={}, "
+              "meta->bin_eop.t_ut1={}",
+              f_index, t_index, fv.vis.size(), fv.weight.size(), fv.eval.size(), fv.evec.size(),
+              fv.gain.size(), fv.flags.size(), meta->num_elements, meta->num_prod, meta->num_ev,
+              fpga_start_tick[t_index], meta->fpga_start_tick, meta->frame_length_fpga_ticks,
+              frame_length_fpga_ticks[t_index], frame_ut1[t_index], meta->frame_eop.t_ut1,
+              bin_ut1[t_index], meta->bin_eop.t_ut1);
         return false;
     }
 
-    
+
     // Store vis + weight
     for (size_t p = 0; p < num_prod; ++p) {
         vis[idx_fpt(f_index, p, t_index)] = fv.vis[p];
@@ -134,7 +136,7 @@ bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metad
     size_t si = idx_ft(f_index, t_index);
     added_ft[si] = 1;
     ++added_count; // increment total number of frames added
-    
+
     return true;
 }
 
@@ -142,10 +144,9 @@ std::optional<std::string> visFileData::_get_final_filename() {
     // Get the earliest (non-zero) time in the bin ut1 array
     if (num_file_t == 0)
         return std::nullopt;
-    
+
     std::optional<std::uint64_t> earliest_ut1_ns;
-    for (size_t t = 0; t < num_file_t; ++t)
-    {
+    for (size_t t = 0; t < num_file_t; ++t) {
         if (bin_ut1[t] != 0) {
             if (!earliest_ut1_ns.has_value() || bin_ut1[t] < earliest_ut1_ns.value()) {
                 earliest_ut1_ns = bin_ut1[t];
@@ -159,23 +160,28 @@ std::optional<std::string> visFileData::_get_final_filename() {
     std::ostringstream buf;
     std::time_t time_t_format = earliest_ut1_ns.value() / 1'000'000'000;      // seconds
     const std::uint64_t ns_part = earliest_ut1_ns.value() % 1'000'000'000ULL; // sub-second
-    buf << "vis_" << std::to_string(file_start_abs_frame_idx)  << "_" << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S");
+    buf << "vis_" << std::to_string(file_start_abs_frame_idx) << "_"
+        << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S");
     // Include nanosecond suffix to avoid collisions for sub-second file windows
     buf << "_" << std::setw(9) << std::setfill('0') << ns_part;
     buf << ".h5";
 
-    return buf.str();
+    const std::string basename = buf.str();
+    std::filesystem::path final_path = std::filesystem::path(base_dir) / basename;
+    return final_path.string();
 }
 
 bool visFileData::flush() {
     if (!h5_file)
         return false;
 
+    const std::string flags_group_prefix = ""; // "/flags"; // TODO: make config option
+
     // Write directly from buffers, use write_raw(ptr) so memspace is applied
     h5_file->getDataSet("/vis")
         .select({0, 0, 0}, {num_freq, num_prod, num_file_t})
         .write_raw(vis.data());
-    h5_file->getDataSet("/flags/vis_weight")
+    h5_file->getDataSet(flags_group_prefix + "/vis_weight")
         .select({0, 0, 0}, {num_freq, num_prod, num_file_t})
         .write_raw(vis_weight.data());
     h5_file->getDataSet("/eval")
@@ -185,10 +191,10 @@ bool visFileData::flush() {
         .select({0, 0, 0, 0}, {num_freq, num_ev, num_input, num_file_t})
         .write_raw(evec.data());
     h5_file->getDataSet("/erms").select({0, 0}, {num_freq, num_file_t}).write_raw(erms.data());
-    h5_file->getDataSet("/flags/frac_lost")
+    h5_file->getDataSet(flags_group_prefix + "/frac_lost")
         .select({0, 0}, {num_freq, num_file_t})
         .write_raw(frac_lost.data());
-    h5_file->getDataSet("/flags/frac_rfi")
+    h5_file->getDataSet(flags_group_prefix + "/frac_rfi")
         .select({0, 0}, {num_freq, num_file_t})
         .write_raw(frac_rfi.data());
     h5_file->getDataSet("/gain")
@@ -227,10 +233,11 @@ hdf5VisWrite::hdf5VisWrite(kotekan::Config& config, const std::string& unique_na
     blocksize_p(config.get_default<std::uint64_t>(unique_name, "blocksize_p", 0)),
     blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", 1)),
     file_num_t(config.get_default<std::uint64_t>(unique_name, "file_num_t", 10)),
-    late_frame_grace_seconds(config.get_default<std::uint64_t>(unique_name, "late_frame_grace_seconds", 60)),
+    late_frame_grace_seconds(
+        config.get_default<std::uint64_t>(unique_name, "late_frame_grace_seconds", 60)),
     max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
-    buffer(get_buffer("in_buf")),
-    tick_len_ns_override(config.get_default<std::uint64_t>(unique_name, "seq_length_nsec_override", 0)) {
+    buffer(get_buffer("in_buf")), tick_len_ns_override(config.get_default<std::uint64_t>(
+                                      unique_name, "seq_length_nsec_override", 0)) {
 
     buffer->register_consumer(unique_name);
 
@@ -254,11 +261,12 @@ std::uint64_t hdf5VisWrite::_get_abs_file_idx(const std::shared_ptr<const N2Meta
     return meta->abs_frame_index / file_num_t;
 }
 
-void hdf5VisWrite::_create_dataset(HighFive::File& file, const std::string& name, const std::vector<hsize_t>& dims,
-                                       const HighFive::DataType& dtype, HighFive::DataSetCreateProps props) const {
+void hdf5VisWrite::_create_dataset(HighFive::File& file, const std::string& name,
+                                   const std::vector<hsize_t>& dims,
+                                   const HighFive::DataType& dtype,
+                                   HighFive::DataSetCreateProps props) const {
 
-    if (file.exist(name))
-    {
+    if (file.exist(name)) {
         ERROR("Dataset {} already exists in HDF5 file, not creating again.", name);
         return;
     }
@@ -313,8 +321,8 @@ void hdf5VisWrite::_initialize_h5(HighFive::File& file,
 
         std::vector<unsigned int> bshuf_flags{hdf5::BITSHUFFLE_BLOCKSIZE_AUTO, comp, level};
 
-        props_compressed.add(H5Pset_filter, hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY, bshuf_flags.size(),
-                  bshuf_flags.data());
+        props_compressed.add(H5Pset_filter, hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
+                             bshuf_flags.size(), bshuf_flags.data());
 
     } else if (compression == "deflate") {
         auto level = static_cast<unsigned int>(compression_level > 0 ? compression_level : 4);
@@ -330,50 +338,49 @@ void hdf5VisWrite::_initialize_h5(HighFive::File& file,
     file.createAttribute("num_freq", meta->nfreq);
 
     _create_dataset(file, "/vis", {meta->nfreq, meta->num_prod, file_nt},
-                   HighFive::create_datatype<cfloat>(), props_compressed);
-    _create_dataset(file, flags_group_prefix + "/vis_weight", {meta->nfreq, meta->num_prod, file_nt},
-                   HighFive::create_datatype<float>(), props_compressed);
+                    HighFive::create_datatype<cfloat>(), props_compressed);
+    _create_dataset(file, flags_group_prefix + "/vis_weight",
+                    {meta->nfreq, meta->num_prod, file_nt}, HighFive::create_datatype<float>(),
+                    props_compressed);
     _create_dataset(file, "/eval", {meta->nfreq, meta->num_ev, file_nt},
-                   HighFive::create_datatype<float>(), props_compressed);
+                    HighFive::create_datatype<float>(), props_compressed);
     _create_dataset(file, "/evec", {meta->nfreq, meta->num_ev, meta->num_elements, file_nt},
-                   HighFive::create_datatype<cfloat>(), props_compressed);
-    _create_dataset(file, "/erms", {meta->nfreq, file_nt},
-                   HighFive::create_datatype<float>(), props_empty);
+                    HighFive::create_datatype<cfloat>(), props_compressed);
+    _create_dataset(file, "/erms", {meta->nfreq, file_nt}, HighFive::create_datatype<float>(),
+                    props_empty);
     _create_dataset(file, "/gain", {meta->nfreq, meta->num_elements, file_nt},
-                   HighFive::create_datatype<cfloat>(), props_empty);
+                    HighFive::create_datatype<cfloat>(), props_empty);
     _create_dataset(file, flags_group_prefix + "/frac_lost", {meta->nfreq, file_nt},
-                   HighFive::create_datatype<float>(), props_empty);
+                    HighFive::create_datatype<float>(), props_empty);
     _create_dataset(file, flags_group_prefix + "/frac_rfi", {meta->nfreq, file_nt},
-                   HighFive::create_datatype<float>(), props_empty);
+                    HighFive::create_datatype<float>(), props_empty);
 
-    _create_dataset(file, "/fpga_start_tick", {file_nt},
-                   HighFive::create_datatype<uint64_t>(), props_empty);
+    _create_dataset(file, "/fpga_start_tick", {file_nt}, HighFive::create_datatype<uint64_t>(),
+                    props_empty);
     _create_dataset(file, "/frame_length_fpga_ticks", {file_nt},
-                   HighFive::create_datatype<uint64_t>(), props_empty);
-    _create_dataset(file, "/frame_ut1", {file_nt},
-                   HighFive::create_datatype<uint64_t>(), props_empty);
-    _create_dataset(file, "/bin_ut1", {file_nt},
-                   HighFive::create_datatype<uint64_t>(), props_empty);
-
+                    HighFive::create_datatype<uint64_t>(), props_empty);
+    _create_dataset(file, "/frame_ut1", {file_nt}, HighFive::create_datatype<uint64_t>(),
+                    props_empty);
+    _create_dataset(file, "/bin_ut1", {file_nt}, HighFive::create_datatype<uint64_t>(),
+                    props_empty);
 }
 
-void hdf5VisWrite::_finalize_dataset(std::unique_ptr<visFileData> dataset) {
-    dataset->flush();
-    dataset->close();
+void hdf5VisWrite::_finalize_dataset(visFileData& dataset) {
+    dataset.flush();
+    dataset.close();
 
     // Attempt rename from partial to final
-    auto ds_filename = dataset->_get_final_filename();
-    int r = std::rename(dataset->partial_filepath.c_str(), ds_filename->c_str());
+    auto ds_filename = dataset._get_final_filename();
+    int r = std::rename(dataset.partial_filepath.c_str(), ds_filename->c_str());
     if (r != 0) {
         const char* msg = strerror(errno);
-        ERROR("Failed to rename partial dataset to final: {} -> {}: {}", dataset->partial_filepath,
-                *ds_filename, msg);
+        ERROR("Failed to rename partial dataset to final: {} -> {}: {}", dataset.partial_filepath,
+              *ds_filename, msg);
     }
 }
 
 void hdf5VisWrite::_grace_finalize_datasets(
-    std::map<size_t, std::unique_ptr<visFileData>>& datasets,
-    const size_t* exclude_abs_file_idx) {
+    std::map<size_t, std::unique_ptr<visFileData>>& datasets, const size_t* exclude_abs_file_idx) {
     const double now_s = mono_time_s();
     for (auto ds_it = datasets.begin(); ds_it != datasets.end();) {
         auto& obj = *ds_it->second;
@@ -382,7 +389,7 @@ void hdf5VisWrite::_grace_finalize_datasets(
             continue;
         }
         if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
-            _finalize_dataset(ds_it->second);
+            _finalize_dataset(*ds_it->second);
             ds_it = datasets.erase(ds_it);
         } else {
             ++ds_it;
@@ -390,10 +397,11 @@ void hdf5VisWrite::_grace_finalize_datasets(
     }
 }
 
-bool hdf5VisWrite::_finalfile_exists(std::uint64_t abs_file_idx) const {
+bool hdf5VisWrite::_finalfile_exists(std::uint64_t abs_file_idx,
+                                     const std::string& search_dir) const {
     const std::string prefix = "vis_" + std::to_string(abs_file_idx) + "_";
     try {
-        for (const auto& entry : std::filesystem::directory_iterator(base_dir)) {
+        for (const auto& entry : std::filesystem::directory_iterator(search_dir)) {
             if (entry.is_regular_file()) {
                 const std::string filename = entry.path().filename().string();
                 if (std::filesystem::path(filename).extension() == ".h5"
@@ -457,7 +465,8 @@ void hdf5VisWrite::main_thread() {
 
         auto abs_file_idx = _get_abs_file_idx(meta);
         const std::string partial_dir = base_dir + "/.partial";
-        const std::string partial_filename = partial_dir + "/vis_" + std::to_string(abs_file_idx) + ".h5";
+        const std::string partial_filename =
+            partial_dir + "/vis_" + std::to_string(abs_file_idx) + ".h5";
 
         // Ensure dataset exists/open
         visFileData* visFileData_ptr = nullptr;
@@ -478,9 +487,10 @@ void hdf5VisWrite::main_thread() {
             continue;
         } else {
             // Create visFileData object for file (also looks for .partial)
+            const std::uint64_t file_start_abs_frame = abs_file_idx * file_num_t;
             auto visFileData_obj = std::make_unique<visFileData>(
-                file_num_t, meta->nfreq, meta->num_elements,
-                meta->num_prod, meta->num_ev, frame_recv_time, base_dir);
+                file_num_t, meta->nfreq, meta->num_elements, meta->num_prod, meta->num_ev,
+                frame_recv_time, file_start_abs_frame, base_dir);
 
             datasets.emplace(abs_file_idx, std::move(visFileData_obj));
             visFileData_ptr = datasets.find(abs_file_idx)->second.get();
@@ -497,7 +507,8 @@ void hdf5VisWrite::main_thread() {
 
         // Attempt to add frame to dataset
         const std::uint64_t t_in_file = meta->abs_frame_index % file_num_t;
-        bool success = visFileData_ptr->add_frame(fv, meta, t_in_file); // performs error checking internally.
+        bool success =
+            visFileData_ptr->add_frame(fv, meta, t_in_file); // performs error checking internally.
         if (!success) {
             // Mark frame as done, finalize, and continue
             ERROR("Failed to add frame to dataset (f={}, t={})", meta->freq_id, t_in_file);
@@ -512,7 +523,7 @@ void hdf5VisWrite::main_thread() {
         double elapsed_writing_frame = 0.0;
         if (visFileData_ptr->full()) {
             const double t0 = mono_time_s();
-            _finalize_dataset(visFileData_ptr);
+            _finalize_dataset(*visFileData_ptr);
             const double t1 = mono_time_s();
             elapsed_writing_frame = t1 - t0;
             // Close dataset after flush
@@ -548,7 +559,7 @@ void hdf5VisWrite::main_thread() {
 
     // Finalize any partially-filled datasets on exit
     for (auto& dset : datasets) {
-        _finalize_dataset(dset.second);
+        _finalize_dataset(*dset.second);
     }
     datasets.clear();
 

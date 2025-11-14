@@ -176,7 +176,8 @@ void FakeN2::main_thread() {
 
             // Set EOP
             timespec time_cen = tel.to_time(fpga_seq + t * delta_seq + delta_seq / 2);
-            meta->eop = tel.get_EOP_at_time(time_cen);
+            meta->frame_eop = tel.get_EOP_at_time(time_cen);
+            meta->bin_eop = tel.get_EOP_at_time(time_cen);
 
             DEBUG("Creating N2FrameView.");
             DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}", meta->num_elements,
