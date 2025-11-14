@@ -38,8 +38,13 @@ struct N2MetadataFormat {
     /// Physical frequency in Hz
     double freq_Hz;
 
-    /// Earth Orientation Paramters
-    struct EOP eop;
+    /// Frame Earth Orientation Paramters
+    struct EOP frame_eop;
+    /// Bin Earth Orientation Parameters
+    struct EOP bin_eop;
+
+    /// Absolute frame index since start of observation
+    uint64_t abs_frame_index;
 
     /// The sequence number of the first FPGA frame integrated into this visibility frame
     uint64_t fpga_start_tick;

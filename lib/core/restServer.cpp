@@ -171,6 +171,8 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
         // which add or remove callbacks from the maps. So a more fine-grained
         // locking system is needed here.
         // std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
+        // Probably this should be a recursive mutex?
+        // https://en.cppreference.com/w/cpp/thread/recursive_mutex.html
         map<string, string>& aliases = server->get_aliases();
         if (aliases.find(url) != aliases.end()) {
             url = aliases[url];

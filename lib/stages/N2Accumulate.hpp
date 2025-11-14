@@ -82,6 +82,9 @@ private:
     int64_t _num_elements; ///< Total number of telescope elements (~2 * num dishes)
     int64_t _num_ev;       ///< Number of eigenvalues/vectors
 
+    // Absolute frame counter (TODO: determine this another way)
+    uint64_t _abs_frame_count;
+
     // Some derived parameters
 
     int64_t _N2_num_products; ///< Number of products produced by the N2 correlator
@@ -99,7 +102,6 @@ private:
     int64_t _n2k_counts_lin_blocks;   ///< Linear number of blocks in the counts matrix
     int64_t _n2k_counts_num_blocks;   ///< Total number of blocks in the counts matrix
     int64_t _n2k_counts_num_products; ///< Total number of products in n2k's counts matrix
-
 
     // The below vectors are initialized in the constructor after _num_vis_products
     // and _num_freq_in_frame are known.

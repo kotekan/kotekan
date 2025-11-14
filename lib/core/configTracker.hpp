@@ -18,7 +18,6 @@
  *   -- register_with_server
  *   -- getUpstreamConfigs
  *   -- writeConfigsToDisk
- *   -- getAllConfigsAsJson
  *   -- reset
  */
 #ifndef CONFIGTRACKER_H
@@ -498,22 +497,6 @@ public:
         }
 
         return written;
-    }
-
-    /**
-     * @brief Get a JSON object with all stored configurations.
-     *
-     * @return nlohmann::json The JSON object containing all configurations.
-     */
-    nlohmann::json getAllConfigsAsJson() const {
-        std::lock_guard<std::mutex> lock(_lock);
-        nlohmann::json result = nlohmann::json::array();
-
-        for (const auto& [host_port, config_info] : _configs) {
-            result.push_back(config_info.to_json());
-        }
-
-        return result;
     }
 
     /**

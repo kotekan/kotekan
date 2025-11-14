@@ -5,7 +5,7 @@
 #include <string.h> // for size_t, memset
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, N2Metadata);
-N2Metadata::N2Metadata() : N2MetadataFormat{0, 0, 0, 0, 0, 0.0, eop_null, 0, 0, 0, 0, 0} {
+N2Metadata::N2Metadata() : N2MetadataFormat{0, 0, 0, 0, 0, 0.0, eop_null, eop_null, 0, 0, 0, 0, 0, 0} {
     ;
 }
 
@@ -33,7 +33,9 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
 
     freq_id = fmt->freq_id; // this is an int in chordMetadata, maybe change later
     freq_Hz = fmt->freq_Hz;
-    eop = fmt->eop;
+    frame_eop = fmt->eop;
+    bin_eop = fmt->eop;
+    abs_frame_index = fmt->abs_frame_index;
 
     num_elements = fmt->num_elements;
     num_prod = fmt->num_prod;
@@ -56,7 +58,9 @@ size_t N2Metadata::serialize(char* bytes) {
 
     fmt->freq_id = freq_id; // this is an int in chordMetadata, maybe change later
     fmt->freq_Hz = freq_Hz;
-    fmt->eop = eop;
+    fmt->frame_eop = frame_eop;
+    fmt->bin_eop = bin_eop;
+    fmt->abs_frame_index = abs_frame_index;
 
     fmt->num_elements = num_elements;
     fmt->num_prod = num_prod;
@@ -84,7 +88,9 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
 
     j.emplace("freq_id", m.freq_id); // this is an int in chordMetadata, maybe change later
     j.emplace("freq_Hz", m.freq_Hz);
-    j.emplace("eop", m.eop);
+    j.emplace("frame_eop", m.frame_eop);
+    j.emplace("bin_eop", m.bin_eop);
+    j.emplace("abs_frame_index", m.abs_frame_index);
 
     j.emplace("num_elements", m.num_elements);
     j.emplace("num_prod", m.num_prod);
@@ -102,7 +108,9 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
 
     m.freq_id = j.at("freq_id"); // this is an int in chordMetadata, maybe change later
     m.freq_Hz = j.at("freq_Hz");
-    m.eop = j.at("eop");
+    m.frame_eop = j.at("frame_eop");
+    m.bin_eop = j.at("bin_eop");
+    m.abs_frame_index = j.at("abs_frame_index");
 
     m.num_elements = j.at("num_elements");
     m.num_prod = j.at("num_prod");

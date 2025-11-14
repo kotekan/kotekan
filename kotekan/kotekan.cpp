@@ -45,6 +45,8 @@
 // IWYU pragma: no_include <H5public.h>
 #endif
 
+#include <signal.h>
+
 
 using std::string;
 using json = nlohmann::json;
@@ -65,6 +67,22 @@ static inline int ensure_hdf5_plugin() {
     return 0;
 }
 #endif
+
+void closelog_with_timeout(int seconds) {
+    pid_t pid = fork();
+    if (pid == 0) {
+        closelog();
+        _exit(0);
+    }
+
+    sleep(seconds);
+
+    int status;
+    if (waitpid(pid, &status, WNOHANG) == 0) {
+        kill(pid, SIGKILL); // still running: force kill
+        waitpid(pid, nullptr, 0);
+    }
+}
 
 // Embedded script for converting the YAML config to json
 // Copied from python/scripts/config_to_json.py
@@ -717,9 +735,12 @@ int main(int argc, char** argv) {
     // Print error message if there is one.
     if (string(get_error_message()) != "not set") {
         INFO_NON_OO("Fatal error message was: {:s}", get_error_message());
+    } else {
+        INFO_NON_OO("No final error messages recorded.");
     }
 
-    closelog();
+    // Try to close syslog properly; but exit if this doesn't run within 5 seconds
+    closelog_with_timeout(5);
 
     // If a test was run and passed, we have already printed the status message,
     // exit with a CLEAN_EXIT signal.

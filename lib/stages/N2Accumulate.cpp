@@ -46,7 +46,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _n_fpga_samples_per_n2k_correlation(config.get<int64_t>(unique_name, "sub_integration_ntime")),
     _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")),
     _num_elements(config.get<int64_t>(unique_name, "num_elements")),
-    _num_ev(config.get<int64_t>(unique_name, "num_ev")),
+    _num_ev(config.get<int64_t>(unique_name, "num_ev")), _abs_frame_count(0),
     _tel(Telescope::instance().cast<CHORDTelescope>()),
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
@@ -241,6 +241,9 @@ void N2Accumulate::main_thread() {
         std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
         int64_t in_frame_num = frame_metadata->get_fpga_seq_num() / _n_fpga_samples_per_n2k_frame;
 
+        // TODO: check that data, counts, and mask FPGA ids are
+        // all equal (grab other metadata too)?
+
         // Start and end times of this frame
         bool gps_time_enabled = false;
         // Here we'll just use raw nanoseconds
@@ -405,6 +408,7 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
     // But, same metadata
     std::shared_ptr<chordMetadata> chord_frame_metadata = get_chord_metadata(in_buf, in_frame_id);
 
+
     // strides into the N2K shaped accumulation array
     int64_t stride_ilo = _n2k_correlation_blocksize;
     int64_t stride_block = stride_ilo * _n2k_correlation_blocksize;
@@ -420,6 +424,7 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
         DEBUG("Allocating metadata.");
         out_buf->allocate_new_metadata_object(out_frame_id);
         std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, out_frame_id);
+        meta->abs_frame_index = _abs_frame_count; // TODO: fix
 
         meta->fpga_start_tick = _accum_fpga_start_tick;
         meta->frame_length_fpga_ticks =
@@ -519,6 +524,7 @@ bool N2Accumulate::output_and_reset(N2::frameID& in_frame_id, N2::frameID& out_f
     std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);
     std::fill(_n_valid_sample_diff_sq_sum.begin(), _n_valid_sample_diff_sq_sum.end(), 0);
     std::fill(_n_rfi_samples_in_vis.begin(), _n_rfi_samples_in_vis.end(), 0);
+    _abs_frame_count++; // TODO: fix
 
     return true;
 }
