@@ -20,7 +20,7 @@ jobs:
     uses: ./.github/workflows/build_push_docker.yml
 
   github-kotekan-cpu-tests:
-    name: "Kotekan Build Tests"
+    name: "Kotekan CPU Build Tests"
     needs: kotekan-docker
     uses: ./.github/workflows/test_kotekan_build.yml
     with:
@@ -32,10 +32,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: test_basic_build
-            name: "test build + no features"
+          - id: test_gcc_basic
+            name: "Test gcc build + no features"
             ccache_key: kotekan-test-gcc-cpu
-            cmake_defs: &test_basic_build_opts >-
+            cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
               -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=OFF
@@ -45,10 +45,10 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: ""   # nothing to run
 
-          - id: test_build_pytests
-            name: "test build + pytests tests"
+          - id: test_gcc_pytests
+            name: "Test gcc build + pytests"
             ccache_key: kotekan-test-gcc-cpu
-            cmake_defs: &test_build_pytests_opts >-
+            cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
               -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
@@ -65,10 +65,10 @@ jobs:
               pytest -v -x -s --timeout="${PYTEST_TIMEOUT}" -m serial
               pytest -rP
 
-          - id: test_build_boost
-            name: "test build + boost tests"
+          - id: test_gcc_boost
+            name: "Test gcc build + boost tests"
             ccache_key: kotekan-test-gcc-cpu
-            cmake_defs: &test_build_pytests_opts >-
+            cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
               -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
@@ -80,22 +80,77 @@ jobs:
               TEST_TIMEOUT=30
               bash $GITHUB_WORKSPACE/tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" $GITHUB_WORKSPACE/build-2404/tests/boost
 
-          - id: release_pytest_gcc
-            name: "Release build + pytest"
-            ccache_key: kotekan-release-gcc-cpu
-            cmake_defs: &release_build_gcc_opts >-
+          - id: clang
+            name: "Test clang build"
+            ccache_key: kotekan-test-clang-cpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+              -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
+            post_build: ""  # Any clang tests to run?
+
+          - id: release_clang
+            name: "Release clang build"
+            ccache_key: kotekan-release-clang-cpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+              -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
+            post_build: ""  # Any clang tests to run?
+
+          - id: local-docs
+            name: "Test gcc build with docs"
+            ccache_key: kotekan-test-gcc-docs
+            cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
-              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
-              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=ON
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=100
-              cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto -s --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
-              pytest -rP
-              pytest -v -x -s --timeout="${PYTEST_TIMEOUT}" -m serial
-              pytest -rP
+              cd $GITHUB_WORKSPACE/build-2404 && make docs
+
+          - id: lint
+            name: "Run Linter"
+            cmake_defs: ""
+            post_build: |
+              cd $GITHUB_WORKSPACE
+              git config --global --add safe.directory $GITHUB_WORKSPACE
+              bash ./tools/lint.sh
+
+
+  github-kotekan-gpu-tests:
+    name: "Kotekan GPU Build Tests"
+    needs: kotekan-docker
+    uses: ./.github/workflows/test_kotekan_build.yml
+    with:
+      container_image: ${{ needs.kotekan-docker.outputs.docker_gpu_img_name }}
+      ccache_key: ${{ matrix.ccache_key }}
+      cmake_defs: ${{ matrix.cmake_defs }}
+      post_build: ${{ matrix.post_build }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: kotekan-test-gcc-opencl
+            name: "Test gcc build + OpenCL"
+            ccache_key: kotekan-opencl
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
+            post_build: ""   # Any OpenCL-specific commands to test?

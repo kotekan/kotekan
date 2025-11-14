@@ -24,6 +24,13 @@ jobs:
       docker_gpu_img_name: ${{ steps.docker_img.outputs.gpu_img_name }}
 
     steps:
+      - name: "Github-hosted runner cleanup"
+        if: ${{ !contains(inputs.runs_on || '', 'self-hosted') }}
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          sudo docker builder prune -a
+
       - uses: actions/checkout@v4
 
       - name: Check for file changes
