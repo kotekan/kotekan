@@ -20,11 +20,8 @@ ENV PIP_BREAK_SYSTEM_PACKAGES=1
 ENV PIP_NO_CACHE_DIR=1
 
 # Create build dir and make it writable for non-root users (via chmod 777)
-# RUN mkdir -p /code/build && chmod 777 /code/build
-# WORKDIR /code/build
-RUN mkdir -p /code/kotekan && chmod 777 /code/kotekan
-WORKDIR /code/kotekan
-
+RUN mkdir -p /code/build && chmod 777 /code/build
+WORKDIR /code/build
 
 # -----------------------------------------------------------------------------
 # 1. REGISTER NVIDIA REPOSITORY
@@ -62,10 +59,7 @@ RUN apt-get update && \
         flex \
         gdb \
         valgrind \
-        plantuml \
         iwyu \
-        ninja-build \
-        black \
         # --- C. Python Runtime ---
         python3 \
         python3-dev \
@@ -128,13 +122,12 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 # -----------------------------------------------------------------------------
 # 3. PYTHON ENVIRONMENT
 # -----------------------------------------------------------------------------
-# WORKDIR /code/build
-WORKDIR /code/kotekan
+WORKDIR /code/build
 # Use --ignore-installed to overwrite system 'wheel' package cleanly
 RUN python3 -m pip install --upgrade --ignore-installed pip setuptools wheel
 
 COPY requirements.txt /tmp/requirements.txt
-# Added --ignore-installed to prevent h5py uninstall errors
+# FIX: Added --ignore-installed to prevent h5py uninstall errors
 RUN python3 -m pip install --ignore-installed -r /tmp/requirements.txt
 
 # -----------------------------------------------------------------------------
@@ -186,8 +179,7 @@ RUN wget -q -O julia.tar.gz https://julialang-s3.julialang.org/bin/linux/x64/1.1
 # -----------------------------------------------------------------------------
 # 5. FINAL CONFIGURATION
 # -----------------------------------------------------------------------------
-# WORKDIR /code/build
-WORKDIR /code/kotekan
+WORKDIR /code/build
 
 ENV CCACHE_NOHASHDIR=1
 ENV CCACHE_BASEDIR=/code/kotekan/
