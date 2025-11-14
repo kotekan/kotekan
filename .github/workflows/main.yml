@@ -16,16 +16,15 @@ jobs:
 
   # Kotekan docker image build and push
   kotekan-docker:
-    runs-on: ubuntu-latest
     permissions: write-all
     uses: ./.github/workflows/build_push_docker.yml
 
   github-kotekan-cpu-tests:
     name: "Kotekan Build Tests"
-    needs: build-push-docker-base
+    needs: kotekan-docker
     uses: ./.github/workflows/test_kotekan_build.yml
     with:
-      container_image: ${{ matrix.container_image }}
+      container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
       ccache_key: ${{ matrix.ccache_key }}
       cmake_defs: ${{ matrix.cmake_defs }}
       post_build: ${{ matrix.post_build }}
@@ -35,7 +34,6 @@ jobs:
         include:
           - id: test_basic_build
             name: "test build + no features"
-            container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
             ccache_key: kotekan-test-gcc-cpu
             cmake_defs: &test_basic_build_opts >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -49,7 +47,6 @@ jobs:
 
           - id: test_build_pytests
             name: "test build + pytests tests"
-            container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
             ccache_key: kotekan-test-gcc-cpu
             cmake_defs: &test_build_pytests_opts >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -70,7 +67,6 @@ jobs:
 
           - id: test_build_boost
             name: "test build + boost tests"
-            container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
             ccache_key: kotekan-test-gcc-cpu
             cmake_defs: &test_build_pytests_opts >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -86,7 +82,6 @@ jobs:
 
           - id: release_pytest_gcc
             name: "Release build + pytest"
-            container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
             ccache_key: kotekan-release-gcc-cpu
             cmake_defs: &release_build_gcc_opts >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
