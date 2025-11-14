@@ -27,10 +27,10 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-    options: >-
-      ${{ contains(inputs.runs_on || '', 'self-hosted')
-          && '--privileged --mount type=bind,source=/data,target=/data'
-          || '' }}
+      options: >-
+        ${{ contains(inputs.runs_on || '', 'self-hosted')
+            && '--privileged --mount type=bind,source=/data,target=/data'
+            || '' }}
     defaults:
       run:
         shell: bash
