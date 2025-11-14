@@ -1,224 +1,208 @@
 # check=skip=UndefinedVar
 FROM ubuntu:24.04
 
-# So tzdata package doesn't ask for user interaction
+LABEL description="Reproducible build environment for CHORD/Kotekan pipeline"
+LABEL version="2025.11"
+
+# -----------------------------------------------------------------------------
+# CONFIGURATION
+# -----------------------------------------------------------------------------
 ARG DEBIAN_FRONTEND=noninteractive
+# Pinned to 13-0 (Requires Host Driver 550+)
+ARG CUDA_PKG_VERSION=13-0
+ARG JULIA_VER=1.10.10
 
-RUN mkdir -p /code/build
-WORKDIR /code/build
+# Fail fast if a piped command errors
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install any needed packages to run cmake with full CHORD build options
-RUN apt update && \
-    apt install -y \
-        bison \
+# PREVENT PYTHON BREAKAGE
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ENV PIP_NO_CACHE_DIR=1
+
+# Create build dir and make it writable for non-root users (via chmod 777)
+# RUN mkdir -p /code/build && chmod 777 /code/build
+# WORKDIR /code/build
+RUN mkdir -p /code/kotekan && chmod 777 /code/kotekan
+WORKDIR /code/kotekan
+
+
+# -----------------------------------------------------------------------------
+# 1. REGISTER NVIDIA REPOSITORY
+# -----------------------------------------------------------------------------
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends wget ca-certificates gnupg && \
+    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb && \
+    dpkg -i cuda-keyring_1.1-1_all.deb && \
+    rm cuda-keyring_1.1-1_all.deb && \
+    apt-get update && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# -----------------------------------------------------------------------------
+# 2. INSTALL SYSTEM DEPENDENCIES
+# -----------------------------------------------------------------------------
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        # --- A. NVIDIA / CUDA Stack ---
+        cuda-toolkit-${CUDA_PKG_VERSION} \
+        libopencl-clang-17-dev \
+        opencl-headers \
+        ocl-icd-opencl-dev \
+        # --- B. Core Compilers & Build Tools ---
+        gcc-14 \
+        g++-14 \
+        clang-18 \
+        clang-format-18 \
         build-essential \
-        ccache \
-        clang \
-        clang-format \
+        make \
         cmake \
-        coreutils \
-        curl \
-        default-jre \
-        doxygen \
-        dpdk \
-        dpdk-dev \
-        file \
+        cmake-format \
+        ccache \
+        pkg-config \
+        bison \
         flex \
-        g++ \
-        gcc \
         gdb \
-        git \
-        graphviz \
+        valgrind \
+        plantuml \
         iwyu \
-        libairspy-dev \
+        ninja-build \
+        black \
+        # --- C. Python Runtime ---
+        python3 \
+        python3-dev \
+        python3-pip \
+        cython3 \
+        # --- D. Scientific Math & Numerics ---
+        libopenblas-dev \
+        liblapack-dev \
+        liblapacke-dev \
+        libfftw3-dev \
+        libgmp-dev \
+        libmpc-dev \
+        libmpfr-dev \
+        # --- E. Libraries (HDF5, Boost, Compression) ---
+        libhdf5-dev \
+        libhdf5-serial-dev \
         libboost-filesystem-dev \
         libboost-system-dev \
         libboost-test-dev \
         libbz2-dev \
-        libdpdk-dev \
-        libevent-dev \
-        libfftw3-dev \
-        libgdal-dev \
-        libhdf5-dev \
-        libhdf5-serial-dev \
-        liblapack-dev \
-        liblapacke-dev \
         liblz4-dev \
-        libnuma-dev \
-        libomp-dev \
-        libopenblas-dev \
         libssl-dev \
+        libyaml-cpp-dev \
+        # --- F. Hardware & Network Drivers ---
+        dpdk \
+        dpdk-dev \
+        libdpdk-dev \
+        libairspy-dev \
+        libnuma-dev \
+        # --- G. Utilities ---
+        coreutils \
+        curl \
+        git \
+        default-jre \
+        doxygen \
+        graphviz \
+        file \
+        libevent-dev \
+        libgdal-dev \
+        libomp-dev \
         libstdc++-14-dev \
         libsystemd-dev \
         libxtensor-dev \
-        libyaml-cpp-dev \
-        make \
-        pkg-config \
-        python3 \
-        python3-dev \
         software-properties-common \
-        valgrind \
-        wget \
         xtensor-dev \
-        && \
-    apt clean && apt autoclean
-
-# Install pip and python packages
-# Disable pip caching (keep docker image size smaller)
-ENV PIP_NO_CACHE_DIR=1
-# Overwrite system install of python/pip if needed
-RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
-    wget https://bootstrap.pypa.io/get-pip.py && \
-    python3 get-pip.py && \
-    python3 -m pip install --upgrade \
-        astropy \
         bitshuffle \
-        black==19.10b0 \
-        breathe==4.35.* \
-        click==8.0.2 \
-        cmake_format \
-        cython \
+        click \
         distro-info \
-        flask \
-        future \
-        gmpy2 \
-        h5py \
-        hdf5plugin \
-        mpmath \
-        msgpack \
-        numpy \
-        pip \
-        pkgconfig \
-        posix_ipc \
-        pytest \
-        pytest-cpp \
-        pytest-localserver \
-        pytest-timeout \
-        pytest-xdist \
-        requests \
-        setuptools \
-        sphinx==6.2.* \
-        sphinx_rtd_theme==2.0.* \
-        sphinxcontrib-plantuml==0.25 \
-        tabulate \
-        wheel
+        && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Uncomment this to check what version got installed
-# RUN python3 -m pip show <package>
-# RUN apt-cache policy <package>
+# Force the system to use our PINNED compilers by default
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100 && \
+    update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
 
-# We want the `python` command to point to python3
+# Link Python convenience alias
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# CUDA / opencl driver installs and packages
-RUN mkdir src && \
-    ( \
-        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb && \
-        dpkg -i cuda-keyring_1.1-1_all.deb && \
-        apt -y update && \
-        apt-get install -y cuda-toolkit nvidia-open && \
-        apt-get install -y --no-install-recommends libopencl-clang-17-dev opencl-headers ocl-icd-opencl-dev && \
-        apt-get clean && \
-    true) && \
-    rm -rf src
+# -----------------------------------------------------------------------------
+# 3. PYTHON ENVIRONMENT
+# -----------------------------------------------------------------------------
+# WORKDIR /code/build
+WORKDIR /code/kotekan
+# Use --ignore-installed to overwrite system 'wheel' package cleanly
+RUN python3 -m pip install --upgrade --ignore-installed pip setuptools wheel
 
-ENV CUDADIR=/usr/local/cuda
-ENV PATH="${PATH:+${PATH}:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
-ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
+COPY requirements.txt /tmp/requirements.txt
+# Added --ignore-installed to prevent h5py uninstall errors
+RUN python3 -m pip install --ignore-installed -r /tmp/requirements.txt
 
-# Install Blaze for the eigenvalue processes
-RUN mkdir src && \
-    ( \
-        git clone -b v3.8.2 https://bitbucket.org/blaze-lib/blaze.git blaze && \
-        cd blaze && \
-        git checkout && \
-        cmake -B cmake-build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr/local \
-            && \
-        cmake --build cmake-build --parallel $(nproc) && \
-        cmake --install cmake-build && \
-    true) && \
-    rm -rf src
+# -----------------------------------------------------------------------------
+# 4. SOURCE BUILDS (STABLE/LTS)
+# -----------------------------------------------------------------------------
+WORKDIR /tmp/src
 
-# Install Blosc2 (a prerequisite for ASDF)
-RUN mkdir src && \
-    (cd src && \
-    wget https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.21.3.tar.gz && \
-    tar xzf v2.21.3.tar.gz && \
-    cd c-blosc2-2.21.3 && \
-    cmake -B cmake-build \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DBUILD_BENCHMARKS=OFF \
-        -DBUILD_EXAMPLES=OFF \
-        -DBUILD_FUZZERS=OFF \
-        -DBUILD_TESTS=OFF \
-        && \
-    cmake --build cmake-build --parallel $(nproc) && \
-    cmake --install cmake-build && \
-    true) && \
-    rm -rf src
+# --- Blaze ---
+RUN git clone -b v3.8.2 --depth 1 https://bitbucket.org/blaze-lib/blaze.git blaze && \
+    cmake -S blaze -B blaze/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake --build blaze/build --parallel $(nproc) && \
+    cmake --install blaze/build && \
+    rm -rf blaze
 
-# Install ASDF (depends on Blosc2)
-RUN mkdir src && \
-    ( \
-        cd src && \
-        git clone -n https://github.com/jbmertens/asdf-cxx && \
-        cd asdf-cxx && \
-        git checkout 13a7112 && \
-        cmake -B cmake-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
-        cmake --build cmake-build --parallel $(nproc) && \
-        cmake --install cmake-build && \
-    true) && \
-    rm -rf src
-# Depends on lz4.pc (called liblz4.pc in apt install)
+# --- C-Blosc2 ---
+RUN wget -q -O blosc.tar.gz https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.21.3.tar.gz && \
+    tar xzf blosc.tar.gz && \
+    cmake -S c-blosc2-2.21.3 -B c-blosc2-2.21.3/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_FUZZERS=OFF -DBUILD_TESTS=OFF && \
+    cmake --build c-blosc2-2.21.3/build --parallel $(nproc) && \
+    cmake --install c-blosc2-2.21.3/build && \
+    rm -rf c-blosc2-2.21.3 blosc.tar.gz
+
+# --- ASDF-CXX ---
+RUN git clone -n https://github.com/jbmertens/asdf-cxx && \
+    cd asdf-cxx && \
+    git checkout 13a7112 && \
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake --build build --parallel $(nproc) && \
+    cmake --install build && \
+    cd .. && rm -rf asdf-cxx
+
+# Link lz4 pkgconfig
 RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig/lz4.pc
 
-# Clone HighFive
-RUN mkdir src && \
-    ( \
-        cd src && \
-        git clone --recurse-submodules --single-branch --branch v3.2.0 https://github.com/highfive-devs/highfive && \
-        cd highfive && \
-        cmake -B cmake-build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr/local \
-            -DHIGHFIVE_UNIT_TESTS=OFF \
-            -DHIGHFIVE_EXAMPLES=OFF \
-            -DHIGHFIVE_BUILD_DOCS=OFF \
-            -DHIGHFIVE_TEST_HALF_FLOAT=ON \
-            && \
-        cmake --build cmake-build --parallel $(nproc) && \
-        cmake --install cmake-build && \
-    true) && \
-    rm -rf src
+# --- HighFive ---
+RUN git clone --depth 1 --branch v3.2.0 https://github.com/highfive-devs/highfive && \
+    cmake -S highfive -B highfive/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DHIGHFIVE_UNIT_TESTS=OFF -DHIGHFIVE_EXAMPLES=OFF -DHIGHFIVE_BUILD_DOCS=OFF -DHIGHFIVE_TEST_HALF_FLOAT=ON && \
+    cmake --build highfive/build --parallel $(nproc) && \
+    cmake --install highfive/build && \
+    rm -rf highfive
 
-# Install Julia 1.11.7 directly (no juliaup for no automatic update checks)
-RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.7-linux-x86_64.tar.gz && \
-    tar -xzf julia-1.11.7-linux-x86_64.tar.gz -C /opt && \
-    ln -s /opt/julia-1.11.7/bin/julia /usr/local/bin/julia && \
-    rm julia-1.11.7-linux-x86_64.tar.gz
+# --- Julia ---
+RUN wget -q -O julia.tar.gz https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-${JULIA_VER}-linux-x86_64.tar.gz && \
+    mkdir -p /opt/julia && \
+    tar -xzf julia.tar.gz -C /opt/julia --strip-components=1 && \
+    ln -s /opt/julia/bin/julia /usr/local/bin/julia && \
+    rm julia.tar.gz
 
-# Set ccache to store things sensibly
+# -----------------------------------------------------------------------------
+# 5. FINAL CONFIGURATION
+# -----------------------------------------------------------------------------
+# WORKDIR /code/build
+WORKDIR /code/kotekan
+
 ENV CCACHE_NOHASHDIR=1
 ENV CCACHE_BASEDIR=/code/kotekan/
 ENV CCACHE_DIR=/code/kotekan/.ccache/
 ENV CCACHE_COMPRESS=1
 ENV CCACHE_MAXSIZE=1G
-
-# Set the plugin path so kotekan can find bitshuffle
-# Ideally this would be determined dynamically, but for now...
 ENV HDF5_PLUGIN_PATH=/usr/local/lib/python3.12/dist-packages/hdf5plugin/plugins
-
 ENV KOTEKAN_BUILD_DIRNAME=build-2404
+ENV CUDADIR=/usr/local/cuda
+ENV PATH="${PATH}:/usr/local/cuda/bin"
+ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
 
-# Code is often cloned into /code/kotekan
-# Don't worry about permission issues in here
-RUN git config --global --add safe.directory /code/kotekan
-# Add this to pythonpath
+# Use --system so this config applies to ANY user running the container
+RUN git config --system --add safe.directory /code/kotekan
 ENV PYTHONPATH=/code/kotekan/python/
 
-# Do nothing when the container launches
 CMD ["/bin/bash"]

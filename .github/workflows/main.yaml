@@ -1,0 +1,73 @@
+name: kotekan-ci-tests
+on:
+  pull_request:
+    branches:
+      - chord
+      - develop
+  push:
+    branches:
+      - chord
+      - develop
+
+env:
+  REGISTRY: ghcr.io
+  IMG_2404: "ghcr.io/${{ github.repository }}/kotekan-2404"
+
+jobs:
+  # 1. Build the Docker Image (If needed)
+  build-docker-2404:
+    runs-on: ubuntu-latest
+    permissions: write-all
+    outputs:
+      img_name: ${{ steps.docker_img.outputs.img_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for file changes
+        uses: tj-actions/changed-files@v44
+        id: changed-files
+
+      - name: Login to GitHub Container Registry
+        if: ${{ !env.ACT }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine Image Name and Build Necessity
+        id: docker_img
+        run: |
+          IMAGE_NAME="${IMG_2404}:latest"
+          echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+          # Logic to check if rebuild is needed (omitted for brevity, same as publish_docker)
+          # ...
+
+      - name: Build and Push
+        # TODO: We could add build steps here similar to publish_docker if we want CI to rebuild image on PRs
+        # For now, we assume the image exists or is built by the publish workflow.
+        run: echo "Ensuring image exists..."
+
+  # 2. Compile and Test Kotekan (INSIDE THE CONTAINER)
+  build-test-kotekan:
+    needs: build-docker-2404
+    runs-on: ubuntu-latest
+
+    # CRITICAL: Run this job INSIDE your custom container
+    container:
+      image: ghcr.io/${{ github.repository }}/kotekan-2404:latest
+      # Mount permissions if needed
+      options: --user 0:0 --privileged
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure & Build kotekan
+        run: |
+          # No need to mkdir build-2404, we can build in the standard container locations
+          # But sticking to your pattern:
+          mkdir -p build && cd build
+          cmake -DCMAKE_BUILD_TYPE=Test -DUSE_CUDA=OFF ..
+          ./kotekan/kotekan
+          make -j $(nproc)

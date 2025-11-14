@@ -1,9 +1,10 @@
 # Set the version of CMake required for *all* CMake files in the project. 3.8.2 to match C++17.
 cmake_minimum_required(VERSION 3.8.2)
+cmake_policy(SET CMP0074 NEW)
 project(
-    KOTEKAN
-    DESCRIPTION "A high performance radio data processing pipeline"
-    LANGUAGES C CXX)
+        KOTEKAN
+        DESCRIPTION "A high performance radio data processing pipeline"
+        LANGUAGES C CXX)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake ${KOTEKAN_SOURCE_DIR}/cmake/Modules)
 include(cmake/Color.cmake)
 include(cmake/Options.cmake)
@@ -22,33 +23,33 @@ include(cmake/Features/FeatureDPDK.cmake)
 
 set(_ktk_airspy_reason "disabled")
 get_property(
-    _ktk_airspy_cache_has
-    CACHE KOTEKAN_AIRSPY_REASON
-    PROPERTY TYPE
-    SET)
+        _ktk_airspy_cache_has
+        CACHE KOTEKAN_AIRSPY_REASON
+        PROPERTY TYPE
+        SET)
 if(_ktk_airspy_cache_has)
     get_property(
-        _ktk_airspy_reason
-        CACHE KOTEKAN_AIRSPY_REASON
-        PROPERTY VALUE)
+            _ktk_airspy_reason
+            CACHE KOTEKAN_AIRSPY_REASON
+            PROPERTY VALUE)
 endif()
 if("${USE_AIRSPY}" STREQUAL "AUTO" OR "${USE_AIRSPY}" STREQUAL "ON")
     find_package(LIBAIRSPY QUIET)
     if(LIBAIRSPY_FOUND)
         set(USE_AIRSPY
-            ON
-            CACHE BOOL "Build Airspy Producer" FORCE)
+                ON
+                CACHE BOOL "Build Airspy Producer" FORCE)
         set(KOTEKAN_AIRSPY_REASON
-            "found"
-            CACHE STRING "Airspy detection summary" FORCE)
+                "found"
+                CACHE STRING "Airspy detection summary" FORCE)
         add_definitions(-DWITH_AIRSPY)
     else()
         set(USE_AIRSPY
-            OFF
-            CACHE BOOL "Build Airspy Producer" FORCE)
+                OFF
+                CACHE BOOL "Build Airspy Producer" FORCE)
         set(KOTEKAN_AIRSPY_REASON
-            "not found (requires libairspy)"
-            CACHE STRING "Airspy detection summary" FORCE)
+                "not found (requires libairspy)"
+                CACHE STRING "Airspy detection summary" FORCE)
         kmsg_warn("Airspy requested but libairspy not found; disabling Airspy support.")
     endif()
 else()
@@ -56,8 +57,8 @@ else()
         set(_ktk_airspy_reason "disabled")
     endif()
     set(KOTEKAN_AIRSPY_REASON
-        "${_ktk_airspy_reason}"
-        CACHE STRING "Airspy detection summary" FORCE)
+            "${_ktk_airspy_reason}"
+            CACHE STRING "Airspy detection summary" FORCE)
 endif()
 
 # Math features handled in FeatureMath
@@ -89,8 +90,8 @@ add_subdirectory(config)
 # Testing with boost
 if(${WITH_BOOST_TESTS})
     set(_BOOST_TESTS_DIR
-        tests/boost/
-        CACHE INTERNAL "Path to boost test sources")
+            tests/boost/
+            CACHE INTERNAL "Path to boost test sources")
     message(STATUS "BOOST_TESTS enabled: building tests in ${_BOOST_TESTS_DIR}")
     add_subdirectory(${_BOOST_TESTS_DIR})
 else()
@@ -99,9 +100,10 @@ endif()
 
 # Enforce code formatting rules with clang-format.
 find_program(
-    CLANG_FORMAT_PATH
-    NAMES "clang-format-8" "clang-format"
-    DOC "Path to clang-format executable")
+        CLANG_FORMAT_PATH
+        NAMES "clang-format-18" "clang-format"
+        DOC "Path to clang-format executable")
+
 if(NOT CLANG_FORMAT_PATH)
     message(STATUS "clang-format not found.")
 else()
@@ -122,8 +124,8 @@ function(exclude_files_containing var exclude_string)
         endif()
     endforeach()
     set(${var}
-        "${listVar}"
-        PARENT_SCOPE)
+            "${listVar}"
+            PARENT_SCOPE)
 endfunction()
 
 if(CLANG_FORMAT_PATH)
@@ -146,7 +148,7 @@ if(CLANG_FORMAT_PATH)
 
     # Use .clang-format file to auto format.
     add_custom_target(
-        clang-format
-        COMMAND ${CLANG_FORMAT_PATH} -style=file -i ${FILES_TO_FORMAT}
-        COMMENT "Running clang-format")
+            clang-format
+            COMMAND ${CLANG_FORMAT_PATH} -style=file -i ${FILES_TO_FORMAT}
+            COMMENT "Running clang-format")
 endif()

@@ -3,17 +3,18 @@ on:
   workflow_dispatch:
     inputs:
       image_branch:
-        description: 'Branch with Dockerfile (and image tag)'
+        description: 'Branch with Dockerfile'
         required: true
         default: 'chord'
       uyear:
-        description: 'Ubuntu year (18, 22, or 24)'
+        description: 'Ubuntu year (24)'
         required: true
         default: '24'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions: write-all
 
     steps:
       - name: Checkout repository
@@ -21,7 +22,7 @@ jobs:
         with:
           ref: ${{ github.event.inputs.image_branch }}
 
-      - name: Login to GitHub Container Registry # https://github.com/docker/login-action?tab=readme-ov-file#github-container-registry
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -31,11 +32,18 @@ jobs:
       - name: Get docker image name
         id: docker_img
         run: |
-          IMAGE_NAME="ghcr.io/${{ github.repository }}/kotekan-${{ github.event.inputs.uyear }}04:$(echo ${{ github.event.inputs.image_branch }} | tr / .)"
+          # Normalize branch name for docker tag
+          SAFE_BRANCH=$(echo ${{ github.event.inputs.image_branch }} | tr / .)
+          IMAGE_NAME="ghcr.io/${{ github.repository }}/kotekan-${{ github.event.inputs.uyear }}04:${SAFE_BRANCH}"
           echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
 
       - name: Build and Push Docker Image
         run: |
           echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
-          docker build -t "${{ steps.docker_img.outputs.img_name }}" - < "tools/docker/${{ github.event.inputs.uyear }}.04/Dockerfile"
+          
+          # Construct path: tools/docker/24.04
+          DOCKER_DIR="tools/docker/${{ github.event.inputs.uyear }}.04"
+          
+          cd $DOCKER_DIR
+          docker build -t "${{ steps.docker_img.outputs.img_name }}" .
           docker push "${{ steps.docker_img.outputs.img_name }}"

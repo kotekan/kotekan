@@ -1,0 +1,23 @@
+# Ignore git history (saves time/space)
+.git
+.gitignore
+
+# Ignore local build artifacts so they don't pollute the container
+build/
+dist/
+*.egg-info
+__pycache__
+*.pyc
+
+# Ignore local virtual environments
+.venv
+venv
+
+# Ignore IDE settings
+.vscode
+.idea
+
+# Ignore heavy data files usually found in scientific repos
+*.h5
+*.fits
+*.dat

@@ -24,8 +24,8 @@ function(kpad_right out_var in_str width)
         set(res "${res}${spaces}")
     endif()
     set(${out_var}
-        "${res}"
-        PARENT_SCOPE)
+            "${res}"
+            PARENT_SCOPE)
 endfunction()
 
 # kfeature_row: print one aligned feature row; optional 5th arg is toggle var (e.g., USE_CUDA)
@@ -61,9 +61,9 @@ function(kfeature_row name enabled reason present)
         # If the toggle is a cached BOOL option, show the explicit command-line form with =ON/=OFF.
         # Otherwise, just show -D<VAR>.
         get_property(
-            _ktk_toggle_type
-            CACHE ${toggle_var}
-            PROPERTY TYPE)
+                _ktk_toggle_type
+                CACHE ${toggle_var}
+                PROPERTY TYPE)
         if("${_ktk_toggle_type}" STREQUAL "BOOL")
             if(enabled)
                 set(toggle_note ", -D${toggle_var}=ON")
@@ -155,7 +155,7 @@ kfeature_row("HDF5" "${USE_HDF5}" "${HDF5_REASON}" "${_hdf5_present}" USE_HDF5)
 kfeature_header("Math")
 kfeature_row("FFTW" "${USE_FFTW}" "${FFTW_REASON}" "${_fftw_present}" USE_FFTW)
 kfeature_row("LAPACK/Blaze" "${USE_LAPACK_BLAZE}" "${LAPACK_BLAZE_REASON}"
-             "${_lapack_blaze_present}" USE_LAPACK_BLAZE)
+        "${_lapack_blaze_present}" USE_LAPACK_BLAZE)
 
 # Other
 kfeature_header("Other")
@@ -258,7 +258,7 @@ else()
 endif()
 
 if(DEFINED KOTEKAN_CL_TARGET_OPENCL_VERSION AND NOT "${KOTEKAN_CL_TARGET_OPENCL_VERSION}" STREQUAL
-                                                "")
+        "")
     set(_ktk_flag_cl "CL_TARGET_OPENCL_VERSION=${KOTEKAN_CL_TARGET_OPENCL_VERSION}")
 else()
     set(_ktk_flag_cl "CL_TARGET_OPENCL_VERSION=")
@@ -276,8 +276,13 @@ else()
     set(_ktk_flag_cuda "CUDAToolkit_ROOT=")
 endif()
 
-set(_ktk_flag_summary "${_ktk_flag_openssl} ${_ktk_flag_blaze} ${_ktk_flag_hdf5_plugin} "
-                      "${_ktk_flag_cl} ${_ktk_flag_prefix} ${_ktk_flag_cuda}")
+set(_ktk_flag_summary
+        "${_ktk_flag_openssl}
+        ${_ktk_flag_blaze}
+        ${_ktk_flag_hdf5_plugin}
+        ${_ktk_flag_cl}
+        ${_ktk_flag_prefix}
+        ${_ktk_flag_cuda}")
 kmsg_status("Flag Overrides: ${_ktk_flag_summary}")
 kmsg_status("Cache Hint: run 'cmake -U<VAR> .' or remove CMakeCache.txt to reset")
 

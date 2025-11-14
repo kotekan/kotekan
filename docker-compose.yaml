@@ -1,0 +1,20 @@
+services:
+  dev:
+    image: kotekan-build:latest
+    build:
+      context: tools/docker/24.04
+    volumes:
+      - .:/code/kotekan
+      - /etc/passwd:/etc/passwd:ro
+      - /etc/group:/etc/group:ro
+    user: "${HOST_UID}:${HOST_GID}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: /bin/bash
+    stdin_open: true # Equivalent to -i
+    tty: true        # Equivalent to -t

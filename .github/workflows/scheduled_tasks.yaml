@@ -1,0 +1,76 @@
+name: Scheduled Tasks
+on:
+  workflow_dispatch:
+    inputs:
+      trigger_source:
+        description: 'Source of trigger'
+        required: false
+        default: 'manual'
+        type: choice
+        options:
+          - manual
+          - scheduled
+      triggered_at:
+        description: 'ISO timestamp when triggered'
+        required: false
+        type: string
+      schedule_type:
+        description: 'Which schedule triggered this'
+        required: false
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMG_2404: "ghcr.io/${{ github.repository }}/kotekan-2404"
+
+jobs:
+  log-execution:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log execution context
+        run: |
+          echo "Workflow triggered by: ${{ github.event.inputs.trigger_source }}"
+          echo "Triggered at: ${{ github.event.inputs.triggered_at }}"
+          echo "Schedule type: ${{ github.event.inputs.schedule_type }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"
+
+  build-scheduled-tests-2404:
+    runs-on: self-hosted
+    # UPDATED: Use your custom Kotekan container
+    container:
+      image: ghcr.io/${{ github.repository }}/kotekan-2404:latest
+      options: --user 0:0 --privileged
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure & Build
+        run: |
+          mkdir -p build && cd build
+          cmake -DCMAKE_BUILD_TYPE=Test -DUSE_CUDA=ON ..
+          make -j $(nproc)
+
+      # Run tests in the config/scheduled-tests directory with timeout
+      - name: Run scheduled Kotekan tests
+        run: |
+          TIMEOUT_DURATION="5m"
+          TEST_CONFIG_DIR="config/scheduled-tests"
+          
+          for config_file in "$TEST_CONFIG_DIR"/*.yaml; do
+            echo "Running test with config: $config_file"
+          
+            timeout "$TIMEOUT_DURATION" ./build/kotekan/kotekan \
+              --bind-address 0:23000 \
+              --config "$config_file"
+          
+            EXIT_CODE=$?
+            if [ $EXIT_CODE -eq 124 ]; then
+              echo "Test timed out for config: $config_file"
+              exit 1
+            elif [ $EXIT_CODE -ne 0 ]; then
+              echo "Test failed for config: $config_file with exit code: $EXIT_CODE"
+              exit 1
+            fi
+          done

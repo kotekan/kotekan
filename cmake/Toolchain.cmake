@@ -69,9 +69,9 @@ endif()
 
 # Clang-only: explicitly allow VLAs in C++ without promoting them to errors
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    check_cxx_compiler_flag(-Wno-vla-cxx-extension HAVE_CLANG_NO_WVLA_CXX_EXTENSION)
+    check_cxx_compiler_flag(-Wno-vla-extension HAVE_CLANG_NO_WVLA_CXX_EXTENSION)
     if(HAVE_CLANG_NO_WVLA_CXX_EXTENSION)
-        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-vla-cxx-extension>)
+        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-vla-extension>)
     endif()
     check_cxx_compiler_flag(-Wno-tautological-compare HAVE_CLANG_NO_TAUTOLOGICAL_COMPARE)
     if(HAVE_CLANG_NO_TAUTOLOGICAL_COMPARE)
