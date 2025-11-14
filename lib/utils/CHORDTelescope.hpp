@@ -138,10 +138,8 @@ struct dishInputFields {
  * @conf    sampling_rate_MHz   double. ADC Sampling Rate (default: 3.2 GHz for CHORD)
  * @conf    fft_lenth           double. F-engine FFT length (default: 16384 for CHORD)
  * @conf    nyquist_zone        uint8.  Nyquist Zone we're operating in (default: 1 for CHORD)
- * @conf    origin_itrs_lon_deg double. ITRS longitude of the telescope & topocentric coordinate
- *origin.
- * @conf    origin_itrs_lat_deg double. ITRS latitude of the telescope & topocentric coordinate
- *origin.
+ * @conf    origin_itrs_lon_deg double. ITRS longitude of the topocentric coordinate origin.
+ * @conf    origin_itrs_lat_deg double. ITRS latitude of the topocentric coordinate origin.
  * @conf    grid_x_axis         [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish-dish
  *                                      E/W separation.  Must be:
@@ -185,6 +183,8 @@ struct dishInputFields {
  *                                      - type      int64_t     Integer code for type of input,
  *                                          -1: fake "NULL" dish, 0: standard dish.
  *                                      - label     String  Label for input.
+ *
+ * @author Geoffrey Ryan
  **/
 
 /*
@@ -261,13 +261,13 @@ public:
     double get_dish_coelev_deg() const;
 
     /**
-     * @brief   Return a component of the Topo -> Telescope frame rotation
+     * @brief   Return a component of the Topo -> Grid frame rotation
      *          matrix.
      *
      * @param   i   First index, int, 0 <= i < 3, row
      * @param   j   First index, int, 0 <= j < 3, col
      **/
-    double get_tel_orientation_el(int i, int j) const;
+    double get_grid_orientation_el(int i, int j) const;
 
     /**
      * @brief   Return a component of the Topo -> Dish frame rotation matrix.
@@ -278,11 +278,11 @@ public:
     double get_dish_orientation_el(int i, int j) const;
 
     /**
-     * @brief   Return a dish location, in the Telescope frame.
+     * @brief   Return a dish location, in grid coordinates.
      *
      * @param   i   Dish index, int, 0 <= i < num_dishes
      **/
-    std::array<double, 3> get_dish_position(int i) const;
+    std::array<double, 3> get_dish_position_in_grid_coords(int i) const;
 
     /**
      * @brief   Return the number of dishes.
@@ -322,13 +322,13 @@ public:
     const struct dishInfo& get_dish_at_idx(int64_t idx) const;
 
     /**
-     * @brief   Return an observing vector (normalized vec3) in telescope
+     * @brief   Return an observing vector (normalized vec3) in grid
      *          coordinates, corresponding to the given CIRS RA and DEC.
      * @param   ra  Target Right Ascension in CIRS frame.
      * @param   dec Target Declination in CIRS frame.
      * @param   eop EOP for the time of observation.
      **/
-    std::array<double, 3> get_sky_vec_in_tel_coords(double ra, double dec, const EOP& eop) const;
+    std::array<double, 3> get_sky_vec_in_grid_coords(double ra, double dec, const EOP& eop) const;
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the
      *          phase center), in Dish coordinates (x is elevation axis (~East),
@@ -351,18 +351,18 @@ public:
     std::array<double, 3> vec_dish_to_topocen(const std::array<double, 3>& v_dish) const;
 
     /**
-     * @brief   Transform the given vector from topocentric to telescope coords.
+     * @brief   Transform the given vector from topocentric to grid coords.
      *
      * @param   v_topo  Vector in topocentric coordinates.
      **/
-    std::array<double, 3> vec_topocen_to_tel(const std::array<double, 3>& v_topo) const;
+    std::array<double, 3> vec_topocen_to_grid(const std::array<double, 3>& v_topo) const;
 
     /**
-     * @brief   Transform the given vector from telescope to topocentric coords.
+     * @brief   Transform the given vector from grid to topocentric coords.
      *
-     * @param   v_topo  Vector in telescope coordinates.
+     * @param   v_grid  Vector in grid coordinates.
      **/
-    std::array<double, 3> vec_tel_to_topocen(const std::array<double, 3>& v_tel) const;
+    std::array<double, 3> vec_grid_to_topocen(const std::array<double, 3>& v_grid) const;
 
     /**
      * @brief   Transform the given vector from ITRS to topocentric coords.
@@ -589,35 +589,35 @@ protected:
     double _origin_itrs_lon_deg;
     double _origin_itrs_lat_deg;
 
-    // Matrix to transform from local topocentric coordinates to the
-    // telescope (ie. dish position) coordinate system.
-    double _R_topo_to_tel[3][3];
+    /// Matrix to transform from local topocentric coordinates to the
+    /// grid (ie. dish position) coordinate system.
+    double _R_topo_to_grid[3][3];
 
-    // Dish pointing angle.  Measured in degrees from vertical.
+    /// Dish pointing angle.  Measured in degrees from vertical.
     double _dish_coelev_deg;
 
-    // Matrix to transform from local topocentric coordinates to the
-    // dish (ie. z is dish zenith, x is elevation axis) coordinate system.
+    /// Matrix to transform from local topocentric coordinates to the
+    /// dish (ie. z is dish zenith, x is elevation axis) coordinate system.
     double _R_topo_to_dish[3][3];
 
-    // Matrix to transform vectors from ITRS geocentric coordinates (ECEF) to
-    // local topocentric coordinates
+    /// Matrix to transform vectors from ITRS geocentric coordinates (ECEF) to
+    /// local topocentric coordinates
     double _R_itrs_to_topo[3][3];
 
-    // Total number of dishes in the telescope, each provides 2 polarizations,
-    // so num_elements = 2 * num_dishes.
+    /// Total number of dishes in the telescope, each provides 2 polarizations,
+    /// so num_elements = 2 * num_dishes.
     int32_t _num_dishes;
 
-    // Dish-dish grid spacing in the E/W (x) and N/S (y) directions in meters.
+    /// Dish-dish grid spacing in the E/W (x) and N/S (y) directions in meters.
     double _dish_separation_x_m;
     double _dish_separation_y_m;
 
-    // Dish positions in dish coordinate system.
+    /// Dish positions in dish coordinate system.
     std::vector<std::array<double, 3>> _dish_positions;
 
-    // The time of FPGA frame=0, and the time length of each frame (in ns)
-    // time0_ns is a UNIX timestamp, in nanoseconds. It does not include
-    // leap seconds.
+    /// The time of FPGA frame=0, and the time length of each frame (in ns)
+    /// time0_ns is a UNIX timestamp, in nanoseconds. It does not include
+    /// leap seconds.
     bool gps_enabled = false;
     uint64_t time0_ns = 0;
     uint64_t dt_ns;
@@ -626,11 +626,11 @@ protected:
     double freq0_MHz;
     double df_MHz;
 
-    // Earth Orientation Parameters
+    /// Earth Orientation Parameters
     mutable std::shared_mutex _eop_lock;
     std::vector<EOP> _eop_table;
 
-    // Dish Properties
+    /// Dish Properties
     std::vector<struct dishInfo> _dish_info_table;
 };
 

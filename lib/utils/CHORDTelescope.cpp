@@ -76,12 +76,12 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
                                    sep_x[2] * sep_y[0] - sep_x[0] * sep_y[2],
                                    sep_x[0] * sep_y[1] - sep_x[1] * sep_y[0]};
 
-    // Construct the topocentric -> tel rotation matrix.
+    // Construct the topocentric -> grid rotation matrix.
     // We assume the inverse is the transpose.
     for (int i = 0; i < 3; i++) {
-        _R_topo_to_tel[0][i] = sep_x[i];
-        _R_topo_to_tel[1][i] = sep_y[i];
-        _R_topo_to_tel[2][i] = sep_z[i];
+        _R_topo_to_grid[0][i] = sep_x[i];
+        _R_topo_to_grid[1][i] = sep_y[i];
+        _R_topo_to_grid[2][i] = sep_z[i];
     }
 
     // Read in the Dish Coord axes. Must be normalized and orthogonal.
@@ -306,8 +306,8 @@ double CHORDTelescope::get_dish_coelev_deg() const {
     return _dish_coelev_deg;
 }
 
-std::array<double, 3> CHORDTelescope::get_sky_vec_in_tel_coords(double ra, double dec,
-                                                                const EOP& eop) const {
+std::array<double, 3> CHORDTelescope::get_sky_vec_in_grid_coords(double ra, double dec,
+                                                                 const EOP& eop) const {
 
     // Taking the ra & dec to be in CIRS frame
 
@@ -324,7 +324,7 @@ std::array<double, 3> CHORDTelescope::get_sky_vec_in_tel_coords(double ra, doubl
     std::array<double, 3> n_itrs = vec_cirs_to_itrs(n_cirs, eop);
     std::array<double, 3> n_topo = vec_itrs_to_topocen(n_itrs);
 
-    return vec_topocen_to_tel(n_topo);
+    return vec_topocen_to_grid(n_topo);
 }
 
 std::array<double, 3> CHORDTelescope::get_pointing_vec_in_dish_coords() const {
@@ -366,24 +366,25 @@ CHORDTelescope::vec_dish_to_topocen(const std::array<double, 3>& v_dish) const {
 }
 
 std::array<double, 3>
-CHORDTelescope::vec_topocen_to_tel(const std::array<double, 3>& v_topocen) const {
+CHORDTelescope::vec_topocen_to_grid(const std::array<double, 3>& v_topocen) const {
 
     // Just multiply by known Rotation matrix.
-    std::array<double, 3> v_tel = {0, 0, 0};
+    std::array<double, 3> v_grid = {0, 0, 0};
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++)
-            v_tel[i] += _R_topo_to_tel[i][j] * v_topocen[j];
+            v_grid[i] += _R_topo_to_grid[i][j] * v_topocen[j];
 
-    return v_tel;
+    return v_grid;
 }
 
-std::array<double, 3> CHORDTelescope::vec_tel_to_topocen(const std::array<double, 3>& v_tel) const {
+std::array<double, 3>
+CHORDTelescope::vec_grid_to_topocen(const std::array<double, 3>& v_grid) const {
 
     // Inverse transform, use R transpose.
     std::array<double, 3> v_topocen = {0, 0, 0};
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++)
-            v_topocen[i] += _R_topo_to_tel[j][i] * v_tel[j];
+            v_topocen[i] += _R_topo_to_grid[j][i] * v_grid[j];
 
     return v_topocen;
 }
@@ -518,10 +519,10 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const
     std::array<double, 3> n_dish0 = get_pointing_vec_in_dish_coords();
 
     // Transform the pointing vector into topocentric coordinates (from which we can
-    // transform to the sky), and telescope coordinates (where the dish locations live).
+    // transform to the sky), and grid coordinates (where the dish locations live).
     // These are also constant in time.
     std::array<double, 3> n_topo0 = vec_dish_to_topocen(n_dish0);
-    std::array<double, 3> n_tel0 = vec_topocen_to_tel(n_topo0);
+    std::array<double, 3> n_grid0 = vec_topocen_to_grid(n_topo0);
 
     // Take the pointing vector for the telescope and find it in the CIRS frame at ERA0.
     // This is the point we are attempting to stop the fringes at.
@@ -532,19 +533,19 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const
     // frame at the requested (current) ERA
     std::array<double, 3> n_itrs = vec_cirs_to_itrs(n_cirs, eop);
     std::array<double, 3> n_topo = vec_itrs_to_topocen(n_itrs);
-    std::array<double, 3> n_tel = vec_topocen_to_tel(n_topo);
+    std::array<double, 3> n_grid = vec_topocen_to_grid(n_topo);
 
-    // n_tel is now (at ERA) the point on the sky which will be at the
-    // phase center (n_tel0) at ERA0.
+    // n_grid is now (at ERA) the point on the sky which will be at the
+    // phase center (n_grid0) at ERA0.
 
     // wavenumber for this frequency
     double k = 2 * M_PI * 1e6 * freq_MHz / C;
 
     for (uint64_t i = 0; i < _dish_positions.size(); i++) {
         double phase = -k
-                       * (_dish_positions[i][0] * (n_tel[0] - n_tel0[0])
-                          + _dish_positions[i][1] * (n_tel[1] - n_tel0[1])
-                          + _dish_positions[i][2] * (n_tel[2] - n_tel0[2]));
+                       * (_dish_positions[i][0] * (n_grid[0] - n_grid0[0])
+                          + _dish_positions[i][1] * (n_grid[1] - n_grid0[1])
+                          + _dish_positions[i][2] * (n_grid[2] - n_grid0[2]));
 
         phases[i] = {cos(phase), sin(phase)};
     }
@@ -583,15 +584,15 @@ uint64_t CHORDTelescope::get_num_stacks() const {
     return 0;
 }
 
-double CHORDTelescope::get_tel_orientation_el(int i, int j) const {
-    return _R_topo_to_tel[i][j];
+double CHORDTelescope::get_grid_orientation_el(int i, int j) const {
+    return _R_topo_to_grid[i][j];
 }
 
 double CHORDTelescope::get_dish_orientation_el(int i, int j) const {
     return _R_topo_to_dish[i][j];
 }
 
-std::array<double, 3> CHORDTelescope::get_dish_position(int i) const {
+std::array<double, 3> CHORDTelescope::get_dish_position_in_grid_coords(int i) const {
     return _dish_positions[i];
 }
 

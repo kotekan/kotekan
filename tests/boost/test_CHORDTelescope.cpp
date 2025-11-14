@@ -292,15 +292,22 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
 
     // Check dish positions.
     // With weirder input these might fail floating point equality
-    check_equal_vec3d(tel.get_dish_position(0), std::array<double, 3>({0.0, 0.0, 0.0}));
-    check_equal_vec3d(tel.get_dish_position(1), std::array<double, 3>({0.0, 2.0, 0.0}));
-    check_equal_vec3d(tel.get_dish_position(2), std::array<double, 3>({1.1, 0.0, 0.0}));
-    check_equal_vec3d(tel.get_dish_position(3), std::array<double, 3>({0.0, 0.0, 0.0}));
-    check_equal_vec3d(tel.get_dish_position(4), std::array<double, 3>({0.0, 0.0, 0.0}));
-    check_equal_vec3d(tel.get_dish_position(5),
+    check_equal_vec3d(tel.get_dish_position_in_grid_coords(0),
+                      std::array<double, 3>({0.0, 0.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position_in_grid_coords(1),
+                      std::array<double, 3>({0.0, 2.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position_in_grid_coords(2),
+                      std::array<double, 3>({1.1, 0.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position_in_grid_coords(3),
+                      std::array<double, 3>({0.0, 0.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position_in_grid_coords(4),
+                      std::array<double, 3>({0.0, 0.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position_in_grid_coords(5),
                       std::array<double, 3>({-5.0 - 0.3, 814 * 2.0 + 1.0, 0.5}));
-    check_equal_vec3d(tel.get_dish_position(6), std::array<double, 3>({0.0, 0.0, 0.0}));
-    check_equal_vec3d(tel.get_dish_position(7), std::array<double, 3>({0.0, 0.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position_in_grid_coords(6),
+                      std::array<double, 3>({0.0, 0.0, 0.0}));
+    check_equal_vec3d(tel.get_dish_position_in_grid_coords(7),
+                      std::array<double, 3>({0.0, 0.0, 0.0}));
 }
 
 /*
@@ -439,9 +446,9 @@ BOOST_AUTO_TEST_CASE(_vec_dish_to_topocen) {
 }
 
 /*
- * @brief   Test topocen -> tel conversion
+ * @brief   Test topocen -> grid conversion
  */
-BOOST_AUTO_TEST_CASE(_vec_topocen_to_tel) {
+BOOST_AUTO_TEST_CASE(_vec_topocen_to_grid) {
     // Make test frame
     double dphi = -0.5;
     double dtheta = 0.2;
@@ -462,15 +469,15 @@ BOOST_AUTO_TEST_CASE(_vec_topocen_to_tel) {
     std::array<double, 3> n3({0.0, 0.0, 1.0});
 
     // Should just pick out basis vectors.
-    check_close_vec3d(tel.vec_topocen_to_tel(x), n1, 1.0e-14, 1.0e-14, "x_tel - n1");
-    check_close_vec3d(tel.vec_topocen_to_tel(y), n2, 1.0e-14, 1.0e-14, "y_tel - n2");
-    check_close_vec3d(tel.vec_topocen_to_tel(z), n3, 1.0e-14, 1.0e-14, "z_tel - n3");
+    check_close_vec3d(tel.vec_topocen_to_grid(x), n1, 1.0e-14, 1.0e-14, "x_grid - n1");
+    check_close_vec3d(tel.vec_topocen_to_grid(y), n2, 1.0e-14, 1.0e-14, "y_grid - n2");
+    check_close_vec3d(tel.vec_topocen_to_grid(z), n3, 1.0e-14, 1.0e-14, "z_grid - n3");
 }
 
 /*
- * @brief   Test topocen <- tel conversion
+ * @brief   Test topocen <- grid conversion
  */
-BOOST_AUTO_TEST_CASE(_vec_tel_to_topocen) {
+BOOST_AUTO_TEST_CASE(_vec_grid_to_topocen) {
     // Make test frame
     double dphi = -0.5;
     double dtheta = 0.2;
@@ -491,9 +498,9 @@ BOOST_AUTO_TEST_CASE(_vec_tel_to_topocen) {
     std::array<double, 3> n3({0.0, 0.0, 1.0});
 
     // Should just pick out basis vectors.
-    check_close_vec3d(tel.vec_tel_to_topocen(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x");
-    check_close_vec3d(tel.vec_tel_to_topocen(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y");
-    check_close_vec3d(tel.vec_tel_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z");
+    check_close_vec3d(tel.vec_grid_to_topocen(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel.vec_grid_to_topocen(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel.vec_grid_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z");
 }
 
 /*
