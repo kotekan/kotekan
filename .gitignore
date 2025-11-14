@@ -14,8 +14,10 @@
 /nbproject/
 /cmake-build*/
 build-*
+build/
 docs/sphinx/html/*
 .ccache/*
 scratch/*
 Manifest*.toml
 *.log
+*_Zone.Identifier

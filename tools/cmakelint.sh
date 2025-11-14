@@ -9,6 +9,12 @@ if [ "$#" = 1 ]; then
     path="$1"
 fi
 
+# Check for tools
+if ! command -v cmake-format > /dev/null 2>&1; then
+    echo "Error: cmake-format not found. Please install it (pip install cmake-format)." >&2
+    exit 1
+fi
+
 echo "Checking all cmake files in '$path' and its subdirectories."
 
 # Track whether any issues were found (format changes or lint warnings)
@@ -25,10 +31,14 @@ for file in "$path"/{,**/}CMakeLists.txt; do
     fi
 
     # Capture cmake-lint output; treat any output as an issue
-    lint_out=$(cmake-lint --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file" || true)
-    if [[ -n "$lint_out" ]]; then
-        echo "$lint_out"
-        had_issues=1
+    # Note: cmake-lint might not be installed if cmake-format was installed via some packages,
+    # but pip install cmake-format usually provides both.
+    if command -v cmake-lint > /dev/null 2>&1; then
+        lint_out=$(cmake-lint --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file" || true)
+        if [[ -n "$lint_out" ]]; then
+            echo "$lint_out"
+            had_issues=1
+        fi
     fi
 done
 
@@ -46,17 +56,19 @@ for file in "$path"/cmake/*.cmake; do
         had_issues=1
     fi
 
-    # Capture cmake-lint output; treat any output as an issue
-    lint_out=$(cmake-lint --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file" || true)
-    if [[ -n "$lint_out" ]]; then
-        echo "$lint_out"
-        had_issues=1
+    if command -v cmake-lint > /dev/null 2>&1; then
+        lint_out=$(cmake-lint --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file" || true)
+        if [[ -n "$lint_out" ]]; then
+            echo "$lint_out"
+            had_issues=1
+        fi
     fi
 done
 
-echo "Done."
-
-# Exit non-zero if any issues were found
-if [[ $had_issues -ne 0 ]]; then
+if [ $had_issues -ne 0 ]; then
+    echo "Issues found."
     exit 1
 fi
+
+echo "No issues found."
+exit 0
