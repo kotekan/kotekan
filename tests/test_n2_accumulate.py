@@ -127,18 +127,6 @@ global_params = {
         ],
     },
     "gps_time": {"frame0_nano": t_start_s * GIGA},
-    "DumpN2HDF5": {
-        "kotekan_stage": "hdf5FileWrite",
-        "base_dir": "fake_n2_data",
-        "file_name": "n2_vis",
-        "in_buf": "",
-    },
-    "DumpN2kCountsHDF5": {
-        "kotekan_stage": "hdf5FileWrite",
-        "base_dir": "fake_n2_data",
-        "file_name": "n2k_counts",
-        "in_buf": "",
-    },
 }
 
 accumulate_params = {
@@ -176,9 +164,6 @@ def accumulate_data(tmpdir_factory):
     accumulate_run_params = accumulate_params.copy()
     accumulate_run_params["in_counts_buf"] = input_buffers.counts_name
     accumulate_run_params["in_rfimask_buf"] = input_buffers.rfi_name
-
-    global_params["DumpN2HDF5"]["in_buf"] = dump_buffer.name
-    global_params["DumpN2kCountsHDF5"]["in_buf"] = input_buffers.counts_name
 
     test = runner.KotekanStageTester(
         "N2Accumulate",
