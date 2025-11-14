@@ -40,14 +40,17 @@ jobs:
       CCACHE_COMPRESS: true
       CCACHE_TEMPDIR: /tmp/.ccache
       CCACHE_MAXSIZE: 1G
+      
     steps:
       - name: "Github-hosted runner cleanup"
         if: ${{ !contains(inputs.runs_on || '', 'self-hosted') }}
         run: |
+          df -h
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
           sudo docker builder prune -a
-          
+          df -h
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
