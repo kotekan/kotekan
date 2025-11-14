@@ -275,6 +275,9 @@ jobs:
           echo "==========="
           uname -m
           echo "==========="
+          sudo du -xh --max-depth=1 / | sort -h
+          echo "==========="
+          du -sm .ccache | cut -f1
 
       - name: Verify architecture is x86_64
         run: |
