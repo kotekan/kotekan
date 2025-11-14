@@ -86,13 +86,13 @@ bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metad
                 "fv.gain.size()={}, fv.flags.size()={}, meta->num_elements={}, meta->num_prod={}, "
                 "meta->num_ev={}, fpga_start_tick[t_index]={}, meta->fpga_start_tick={}, "
                 "meta->frame_length_fpga_ticks={}, frame_length_fpga_ticks[t_index]={}, "
-                "frame_EOP[t_index]={}, meta->frame_EOP={}, bin_EOP[t_index]={}, meta->bin_EOP={}",
+                "frame_ut1[t_index]={}, meta->frame_eop.t_ut1={}, bin_ut1[t_index]={}, meta->bin_eop.t_ut1={}",
                 f_index, t_index,
                 fv.vis.size(), fv.weight.size(), fv.eval.size(), fv.evec.size(),
                 fv.gain.size(), fv.flags.size(), meta->num_elements, meta->num_prod,
                 meta->num_ev, fpga_start_tick[t_index], meta->fpga_start_tick,
                 meta->frame_length_fpga_ticks, frame_length_fpga_ticks[t_index],
-                frame_EOP[t_index], meta->frame_EOP, bin_EOP[t_index],  meta->bin_EOP);
+                frame_ut1[t_index], meta->frame_eop.t_ut1, bin_ut1[t_index], meta->bin_eop.t_ut1);
         return false;
     }
 
@@ -126,8 +126,8 @@ bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metad
     // Store per-time metadata
     fpga_start_tick[t_index] = meta->fpga_start_tick;
     frame_length_fpga_ticks[t_index] = meta->frame_length_fpga_ticks;
-    frame_EOP[t_index] = meta->frame_EOP;
-    bin_EOP[t_index] = meta->bin_EOP;
+    frame_ut1[t_index] = meta->frame_eop.t_ut1;
+    bin_ut1[t_index] = meta->bin_eop.t_ut1;
 
     // Mark (f, t) as added
     size_t si = idx_ft(f_index, t_index);
@@ -196,8 +196,8 @@ bool visFileData::flush() {
 
     h5_file->getDataSet("/fpga_start_tick").write(fpga_start_tick);
     h5_file->getDataSet("/frame_length_fpga_ticks").write(frame_length_fpga_ticks);
-    h5_file->getDataSet("/frame_EOP").write(frame_EOP);
-    h5_file->getDataSet("/bin_EOP").write(bin_EOP);
+    h5_file->getDataSet("/frame_ut1").write(frame_ut1);
+    h5_file->getDataSet("/bin_ut1").write(bin_ut1);
 
     return true;
 }
@@ -283,9 +283,8 @@ void hdf5VisWrite::_create_dataset(HighFive::File& file, const std::string& name
             for (auto& c : chunk)
                 c = std::max<hsize_t>(1, c);
         }
+        props.add(HighFive::Chunking(chunk));
     }
-
-    props.add(HighFive::Chunking(chunk));
 
     HighFive::DataSpace space(dims.begin(), dims.end());
     (void)file.createDataSet(name, space, dtype, props);
@@ -297,7 +296,7 @@ void hdf5VisWrite::_initialize_h5(HighFive::File& file,
 
 
     HighFive::DataSetCreateProps props_compressed;
-    HighFive::DataSetCreateProps props_normal;
+    HighFive::DataSetCreateProps props_empty;
 
     // Compression/filters
     if (use_bitshuffle) {
@@ -347,17 +346,17 @@ void hdf5VisWrite::_initialize_h5(HighFive::File& file,
                    HighFive::create_datatype<float>(), props_empty);
 
     _create_dataset(file, "/fpga_start_tick", {file_nt},
-                   HighFive::create_datatype<uint64_t>(), props_normal);
+                   HighFive::create_datatype<uint64_t>(), props_empty);
     _create_dataset(file, "/frame_length_fpga_ticks", {file_nt},
-                   HighFive::create_datatype<uint64_t>(), props_normal);
-    _create_dataset(file, "/frame_EOP", {file_nt},
-                   HighFive::create_datatype<uint64_t>(), props_normal);
-    _create_dataset(file, "/bin_EOP", {file_nt},
-                   HighFive::create_datatype<uint64_t>(), props_normal);
+                   HighFive::create_datatype<uint64_t>(), props_empty);
+    _create_dataset(file, "/frame_ut1", {file_nt},
+                   HighFive::create_datatype<uint64_t>(), props_empty);
+    _create_dataset(file, "/bin_ut1", {file_nt},
+                   HighFive::create_datatype<uint64_t>(), props_empty);
 
 }
 
-void hdf5VisWrite::_finalize_dataset(std::unique_ptr<visFileData>> dataset) {
+void hdf5VisWrite::_finalize_dataset(std::unique_ptr<visFileData> dataset) {
     dataset->flush();
     dataset->close();
 
@@ -388,6 +387,21 @@ void hdf5VisWrite::_grace_finalize_datasets(
             ++ds_it;
         }
     }
+}
+
+_finalfile_exists(abs_file_idx, base_dir) {
+    // look for any files in base_dir that are named vis_<abs_file_idx>_*.h5
+    std::string pattern = "vis_" + std::to_string(abs_file_idx) + "_*.h5";
+    for (const auto& entry : std::filesystem::directory_iterator(base_dir)) {
+        if (entry.is_regular_file()) {
+            const std::string filename = entry.path().filename().string();
+            if (std::filesystem::path(filename).extension() == ".h5" &&
+                filename.find("vis_" + std::to_string(abs_file_idx) + "_") == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 void hdf5VisWrite::main_thread() {
@@ -444,11 +458,10 @@ void hdf5VisWrite::main_thread() {
         // Ensure dataset exists/open
         visFileData* visFileData_ptr = nullptr;
         auto ds = datasets.find(abs_file_idx);
-        stat filecheck_buffer {}; // TODO: change to use std::filesystem
         if (ds != datasets.end()) {
             // Dataset already open
             visFileData_ptr = ds->second.get();
-        } else if (stat(visFileData_ptr->final_path.c_str(), &filecheck_buffer) == 0) {
+        } else if (_finalfile_exists(abs_file_idx, base_dir)) {
             // If final file already exists, drop/ignore this frame (late arrival)
             WARN("Finalized file exists for this frame's file window, dropping late frame: {:s}",
                  final_path);
@@ -535,19 +548,9 @@ void hdf5VisWrite::main_thread() {
 
     } // while !stop_thread
 
-    // Flush any partially-filled datasets on exit
-    for (auto& kv : datasets) {
-        const std::string& path = kv.first;
-        auto& obj = *kv.second;
-        obj.flush();
-        obj.close();
-        // Finalize rename
-        int r = std::rename(obj.partial_path.c_str(), path.c_str());
-        if (r != 0) {
-            const char* msg = strerror(errno);
-            ERROR("Failed to rename partial dataset to final on exit: {} -> {}: {}",
-                  obj.partial_path, path, msg);
-        }
+    // Finalize any partially-filled datasets on exit
+    for (auto& dset : datasets) {
+        _finalize_dataset(dset.second);
     }
     datasets.clear();
 

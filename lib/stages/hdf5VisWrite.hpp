@@ -21,6 +21,8 @@
 #include <highfive/H5File.hpp>
 #include <memory>
 #include <string>
+#include <sys/stat.h>
+#include <optional>
 #include <vector>
 #include <filesystem>
 #include <visUtil.hpp>
@@ -81,15 +83,15 @@ protected:
     // t-dependent metadata
     std::vector<uint64_t> fpga_start_tick;          // (t)
     std::vector<uint64_t> frame_length_fpga_ticks;  // (t)
-    std::vector<uint64_t> frame_EOP;                // (t)
-    std::vector<uint64_t> bin_EOP;                  // (t)
+    std::vector<uint64_t> frame_ut1;                // (t)
+    std::vector<uint64_t> bin_ut1;                  // (t)
 
     // Tracking what (f, t) pairs have been added
     std::vector<uint8_t> added_ft; // size = num_freq * num_file_t
     size_t added_count = 0;        // number of (f, t) frames added
 
 private:
-    std::unique_ptr<HighFive::File> open_or_create_file(pathname_t filepath) {
+    std::unique_ptr<HighFive::File> _open_or_create_file(const std::string& filepath) const {
         std::unique_ptr<HighFive::File> file;
         stat filecheck_buffer {};
         if (stat(partial_filepath.c_str(), &filecheck_buffer) == 0) {
@@ -115,7 +117,7 @@ public:
         file_start_abs_frame_idx(file_start_abs_frame_idx_),
         partial_filepath(base_dir_ + "/.partial/" + 
                      "vis_" + std::to_string(file_start_abs_frame_idx_) + ".h5"),
-        h5_file(open_or_create_file(partial_filepath)) {
+        h5_file(_open_or_create_file(partial_filepath)) {
 
         // resize arrays to hold data across (freq, time) blocks
         vis.assign(num_prod * num_freq * num_file_t, N2::cfloat{0.0f, 0.0f});
@@ -131,8 +133,8 @@ public:
         // Additional metadata
         fpga_start_tick.assign(num_file_t, 0);
         frame_length_fpga_ticks.assign(num_file_t, 0);
-        frame_EOP.assign(num_file_t, 0.0);
-        bin_EOP.assign(num_file_t, 0);
+        frame_ut1.assign(num_file_t, 0.0);
+        bin_ut1.assign(num_file_t, 0);
 
         added_ft.assign(num_freq * num_file_t, 0);
     }
