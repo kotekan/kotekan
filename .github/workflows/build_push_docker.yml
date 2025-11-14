@@ -16,7 +16,7 @@ jobs:
 
   build-push-docker:
     name: "Build and push CPU and GPU docker images"
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions: write-all
 
     outputs:
