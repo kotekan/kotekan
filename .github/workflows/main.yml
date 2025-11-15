@@ -20,6 +20,7 @@ jobs:
     uses: ./.github/workflows/build_push_docker.yml
 
   kotekan-cpu-tests:
+    name: CPU
     needs: kotekan-docker
     uses: ./.github/workflows/test_kotekan_build.yml
     with:
@@ -31,8 +32,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          
+          # Test gcc build + no features
           - id: test_gcc_basic
-            name: "Test gcc build + no features"
             ccache_key: kotekan-test-gcc-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -44,8 +46,8 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: ""   # nothing to run
 
+          # Test gcc build + serial pytests
           - id: test_gcc_pytests
-            name: "Test gcc build + serial pytests"
             ccache_key: kotekan-test-gcc-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -61,8 +63,8 @@ jobs:
               cd $GITHUB_WORKSPACE/tests
               pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
 
+          # Test gcc build + parallel pytests
           - id: test_gcc_pytests
-            name: "Test gcc build + parallel pytests"
             ccache_key: kotekan-test-gcc-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -78,8 +80,8 @@ jobs:
               cd $GITHUB_WORKSPACE/tests
               pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
 
+          # Test gcc build + boost tests
           - id: test_gcc_boost
-            name: "Test gcc build + boost tests"
             ccache_key: kotekan-test-gcc-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -93,8 +95,8 @@ jobs:
               TEST_TIMEOUT=30
               bash $GITHUB_WORKSPACE/tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" $GITHUB_WORKSPACE/build-2404/tests/boost
 
+          # Release gcc build + serial pytests
           - id: release_gcc_pytests
-            name: "Release gcc build + serial pytests"
             ccache_key: kotekan-release-gcc-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
@@ -110,8 +112,8 @@ jobs:
               cd $GITHUB_WORKSPACE/tests
               pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
 
+          # Release gcc build + parallel pytests
           - id: release_gcc_pytests
-            name: "Release gcc build + parallel pytests"
             ccache_key: kotekan-release-gcc-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
@@ -127,8 +129,8 @@ jobs:
               cd $GITHUB_WORKSPACE/tests
               pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
 
+          # Test clang build
           - id: clang
-            name: "Test clang build"
             ccache_key: kotekan-test-clang-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -140,8 +142,8 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: ""  # Any clang tests to run?
 
+          # Release clang build
           - id: release_clang
-            name: "Release clang build"
             ccache_key: kotekan-release-clang-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
@@ -153,8 +155,8 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: ""  # Any clang tests to run?
 
+          # Test gcc build with docs
           - id: local-docs
-            name: "Test gcc build with docs"
             ccache_key: kotekan-test-gcc-docs
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
@@ -167,8 +169,8 @@ jobs:
             post_build: |
               cd $GITHUB_WORKSPACE/build-2404 && make docs
 
+          # Run Linter
           - id: lint
-            name: "Run Linter"
             cmake_defs: ""
             post_build: |
               cd $GITHUB_WORKSPACE
@@ -177,7 +179,7 @@ jobs:
 
 
   kotekan-gpu-tests:
-    name: "Kotekan GPU Tests"
+    name: "GPU"
     needs: kotekan-docker
     uses: ./.github/workflows/test_kotekan_build.yml
     with:
@@ -190,8 +192,9 @@ jobs:
       fail-fast: true
       matrix:
         include:
+
+          # Test gcc build + CUDA/OpenCL
           - id: test-gcc-cuda-opencl
-            name: "Test gcc build + CUDA/OpenCL"
             ccache_key: kotekan-test-gcc-gpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -204,8 +207,8 @@ jobs:
             post_build: ""   # Any OpenCL-specific commands to test?
             runs_on: ubuntu-latest # github
 
+          # run yamls in config/ci-tests
           - id: test-gcc-yaml
-            name: "run yamls in config/ci-tests"
             ccache_key: kotekan-test-gcc-yaml
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -219,8 +222,8 @@ jobs:
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests
             runs_on: self-hosted
 
+          # run yamls in config/ci-tests"
           - id: release-gcc-yaml
-            name: "run yamls in config/ci-tests"
             ccache_key: kotekan-release-gcc-yaml
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
@@ -234,8 +237,8 @@ jobs:
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests
             runs_on: self-hosted
 
+          # /data dir test"
           - id: data-test
-            name: "/data dir test"
             cmake_defs: ""
             post_build: |
               # Try something with the persistent /data directory.
