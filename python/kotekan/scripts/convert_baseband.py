@@ -179,6 +179,26 @@ def validate_file_existence(files):
     return exists, missing
 
 
+def check_if_heartbeat(raw_folder):
+    """Checks if the raw folder is a heatbeat data file, and if it is indicates that it will be skippped. 
+    Heartbeat dirs event_ids are linux utc time in seconds, followed by 6 zeros"""
+    # Extract the event_id from the folder name
+    event_str = os.path.basename(raw_folder).replace("baseband_raw_", "")
+    
+    # Must have exactly 6 trailing zeros and more than 8 digits total
+    if event_str.endswith("000000") and len(event_str) > 8:
+        try:
+            # Leading digits are timestamp
+            timestamp = int(event_str[:-6])
+            dt = datetime.fromtimestamp(timestamp, tz=timezone.utc) # validate timestamp
+            print(f"Ignoring data dir {raw_folder}, it is a heartbeat")
+            return True
+        except (ValueError, OSError):
+            pass  # Not a valid timestamp, not a heartbeat
+
+    return False
+
+
 def convert_data(e, num_threads, sqlite, conn, conv_backend):
     """Main conversion function to track the conversion of events.
 
@@ -201,6 +221,9 @@ def convert_data(e, num_threads, sqlite, conn, conv_backend):
     except requests.exceptions.HTTPError:
         ready = True  # convert if X engine is down
     raw_folder = raw_path_from_event_id(e[0], conv_backend["RAW_PATH"])
+    heartbeat = check_if_heartbeat(raw_folder)
+    if heartbeat: # skip processing heartbeat directories
+        return
     if (
         ready is True
         and not os.path.exists(raw_folder)
