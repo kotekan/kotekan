@@ -14,7 +14,6 @@
 #include <array>       // for array
 #include <assert.h>    // for assert
 #include <complex>     // for complex, operator*, norm, polar, complex_literals
-#include <cuda_fp16.h> // for __half::operator float
 #include <functional>  // for bind, function
 #include <math.h>      // for M_PI
 #include <stdlib.h>    // for free, malloc, size_t
