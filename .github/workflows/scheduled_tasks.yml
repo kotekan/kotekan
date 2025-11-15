@@ -21,7 +21,7 @@ on:
 
 jobs:
 
-  log-execution:
+  log-github-execution:
     runs-on: ubuntu-latest
     steps:
       - name: Log execution context
@@ -32,6 +32,7 @@ jobs:
           echo "Branch: ${{ github.ref_name }}"
           echo "Actor: ${{ github.actor }}"
 
+  log-selfhosted-execution:
     runs-on: self-hosted
     steps:
       - name: Log execution context
