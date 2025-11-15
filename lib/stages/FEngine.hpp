@@ -10,11 +10,13 @@
 // IWYU pragma: no_include "nvtx3/nvtxDetail/nvtxImplCore.h"
 // IWYU pragma: no_include <nvtx3/nvtxDetail/nvtxImplCore.h>
 
-#include <array>              // for array
-#include <cstdint>            // for int64_t
+#include <array>   // for array
+#include <cstdint> // for int64_t
+#ifdef WITH_CUDA
 #include <nvtx3/nvToolsExt.h> // IWYU pragma: keep
-#include <string>             // for string, basic_string
-#include <vector>             // for vector
+#endif
+#include <string> // for string, basic_string
+#include <vector> // for vector
 
 /**
  * @class FEngine
