@@ -188,7 +188,7 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/batch
+              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests
             runs_on: self-hosted
 
           - id: release-gcc-yaml
@@ -203,7 +203,7 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/batch
+              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests
             runs_on: self-hosted
 
           - id: data-test
