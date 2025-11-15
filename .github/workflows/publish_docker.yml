@@ -15,7 +15,7 @@ jobs:
     # Only run if the PR was actually merged (not just closed)
     if: ${{ github.event.pull_request.merged == true }}
     uses: ./.github/workflows/build_push_docker.yml
-    with:
-      # No build_branch here: let build_push_docker.yml decide tags
-      # based on base/head and whether the Dockerfile changed.
-      # build_branch: ${{ github.event.pull_request.base.ref }}
+    # No build_branch here: let build_push_docker.yml decide tags
+    # based on base/head and whether the Dockerfile changed.
+    # with:
+    #   build_branch: ${{ github.event.pull_request.base.ref }}
