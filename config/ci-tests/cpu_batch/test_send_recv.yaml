@@ -25,7 +25,11 @@ telescope:
 
 earth_rotation_data:
     kotekan_update_endpoint: json
-    earth_orientation_parameter_table: []
+    earth_orientation_parameter_table:
+      - time_inst_ns: 0
+        delta_UT1_inst: 0.0
+        x_pm: 0.0
+        y_pm: 0.0
 
 # Pools
 main_pool:
@@ -93,6 +97,7 @@ buffer_recv_standard:
 
 num_elements: 16
 num_ev: 4
+freq_ids: [0,1,2,3,4]
 fake_n2:
     log_level: WARN
     kotekan_stage: FakeN2

@@ -8,6 +8,7 @@ if(NOT DEFINED KOTEKAN_COLOR_LOADED)
     set(KTK_GREEN "${KTK_ESC}[1;32m")
     set(KTK_YELLOW "${KTK_ESC}[1;33m")
     set(KTK_RED "${KTK_ESC}[1;31m")
+    set(KTK_PALE_BLUE "${KTK_ESC}[1;36m")
 
     # Prior (non-summary) messages: keep uncolored and non-warning for readability kmsg_ok: Print an
     # OK/info message during configure

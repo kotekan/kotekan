@@ -209,6 +209,12 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
             tmp_eop_table.push_back(build_EOP_from_update(t_ns, dut1, x_pm, y_pm));
         }
 
+        if (tmp_eop_table.empty()) {
+            FATAL_ERROR_NON_OO(
+                "CHORDTelescope {}: earth_orientation_parameter_table update contained no entries.",
+                _unique_name);
+        }
+
         // Sort chronologically
         std::sort(tmp_eop_table.begin(), tmp_eop_table.end(), EOP_comp_time);
 

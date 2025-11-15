@@ -226,7 +226,7 @@ kfeature_header("Build")
 # Build Type aligned so value starts where ON/OFF would
 set(_bt_name "Build Type:")
 kpad_right(_bt_name "${_bt_name}" ${KFeature_name_col_width})
-kmsg_status("${_bt_name} ${CMAKE_BUILD_TYPE} (-DCMAKE_BUILD_TYPE=Debug|Release|Test)")
+kmsg_status("${KTK_PALE_BLUE}${_bt_name} ${CMAKE_BUILD_TYPE} (-DCMAKE_BUILD_TYPE=Debug|Release|Test)${KTK_RESET}")
 
 if(DEFINED KOTEKAN_USE_OMP_REASON)
     set(OMP_REASON "${KOTEKAN_USE_OMP_REASON}")
