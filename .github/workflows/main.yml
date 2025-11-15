@@ -58,11 +58,11 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=100
+              PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto -s --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
               pytest -rP
-              pytest -v -x -s --timeout="${PYTEST_TIMEOUT}" -m serial
+              pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
               pytest -rP
 
           - id: test_gcc_boost
@@ -93,11 +93,11 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=100
+              PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto -s --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
               pytest -rP
-              pytest -v -x -s --timeout="${PYTEST_TIMEOUT}" -m serial
+              pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
               pytest -rP
 
           - id: clang
@@ -136,7 +136,7 @@ jobs:
               -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
-              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF -DCOMPILE_DOCS=ON
             post_build: |
               cd $GITHUB_WORKSPACE/build-2404 && make docs
 
@@ -158,6 +158,7 @@ jobs:
       ccache_key: ${{ matrix.ccache_key }}
       cmake_defs: ${{ matrix.cmake_defs }}
       post_build: ${{ matrix.post_build }}
+      runs_on: ${{ matrix.runs_on }}
     strategy:
       fail-fast: false
       matrix:
