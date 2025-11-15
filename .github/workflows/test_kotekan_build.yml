@@ -27,10 +27,7 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      options: >-
-        ${{ contains(inputs.runs_on || '', 'self-hosted')
-            && '--privileged --mount type=bind,source=/data,target=/data'
-            || '' }}
+      options: ${{ contains(inputs.runs_on || '', 'self-hosted') && '--privileged --mount type=bind,source=/data,target=/data' || null }}
     defaults:
       run:
         shell: bash
@@ -40,7 +37,7 @@ jobs:
       CCACHE_COMPRESS: true
       CCACHE_TEMPDIR: /tmp/.ccache
       CCACHE_MAXSIZE: 1G
-      
+
     steps:
       - name: "Github-hosted runner cleanup"
         if: ${{ !contains(inputs.runs_on || '', 'self-hosted') }}
