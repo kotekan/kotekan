@@ -1,0 +1,16 @@
+name: manual-docker-image-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_branch:
+        description: "Tag/branch name to use for the Docker images (will be sanitized for tag)"
+        required: true
+        default: 'chord'
+        type: string
+
+jobs:
+  manual-build-docker:
+    uses: ./.github/workflows/build_push_docker.yml
+    with:
+      build_branch: ${{ github.event.inputs.build_branch }}

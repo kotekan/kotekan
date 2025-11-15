@@ -61,9 +61,7 @@ jobs:
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
               pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
-              pytest -rP
               pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
-              pytest -rP
 
           - id: test_gcc_boost
             name: "Test gcc build + boost tests"
@@ -96,9 +94,7 @@ jobs:
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
               pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
-              pytest -rP
               pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
-              pytest -rP
 
           - id: clang
             name: "Test clang build"
