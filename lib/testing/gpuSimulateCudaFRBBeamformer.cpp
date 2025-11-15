@@ -11,13 +11,13 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <array>       // for array
-#include <assert.h>    // for assert
-#include <complex>     // for complex, operator*, norm, polar, complex_literals
-#include <functional>  // for bind, function
-#include <math.h>      // for M_PI
-#include <stdlib.h>    // for free, malloc, size_t
-#include <vector>      // for vector
+#include <array>      // for array
+#include <assert.h>   // for assert
+#include <complex>    // for complex, operator*, norm, polar, complex_literals
+#include <functional> // for bind, function
+#include <math.h>     // for M_PI
+#include <stdlib.h>   // for free, malloc, size_t
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

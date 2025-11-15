@@ -48,6 +48,7 @@ RUN apt-get update && \
         graphviz \
         iwyu \
         libairspy-dev \
+        libblosc2-dev \
         libboost-filesystem-dev \
         libboost-system-dev \
         libboost-test-dev \
@@ -139,25 +140,6 @@ RUN mkdir src && \
             && \
         cmake --build cmake-build --parallel $(nproc) && \
         cmake --install cmake-build && \
-    true) && \
-    rm -rf src
-
-# Install Blosc2 (a prerequisite for ASDF)
-RUN mkdir src && \
-    (cd src && \
-    wget https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.21.3.tar.gz && \
-    tar xzf v2.21.3.tar.gz && \
-    cd c-blosc2-2.21.3 && \
-    cmake -B cmake-build \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DBUILD_BENCHMARKS=OFF \
-        -DBUILD_EXAMPLES=OFF \
-        -DBUILD_FUZZERS=OFF \
-        -DBUILD_TESTS=OFF \
-        && \
-    cmake --build cmake-build --parallel $(nproc) && \
-    cmake --install cmake-build && \
     true) && \
     rm -rf src
 

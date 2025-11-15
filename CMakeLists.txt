@@ -21,44 +21,40 @@ include(cmake/Features/FeatureGPU.cmake)
 include(cmake/Features/FeatureDPDK.cmake)
 
 set(_ktk_airspy_reason "disabled")
-get_property(
-    _ktk_airspy_cache_has
-    CACHE KOTEKAN_AIRSPY_REASON
-    PROPERTY TYPE
-    SET)
-if(_ktk_airspy_cache_has)
-    get_property(
-        _ktk_airspy_reason
-        CACHE KOTEKAN_AIRSPY_REASON
-        PROPERTY VALUE)
-endif()
-if("${USE_AIRSPY}" STREQUAL "AUTO" OR "${USE_AIRSPY}" STREQUAL "ON")
+set(_ktk_airspy_enabled OFF)
+if("${USE_AIRSPY}" STREQUAL "AUTO")
     find_package(LIBAIRSPY QUIET)
     if(LIBAIRSPY_FOUND)
-        set(USE_AIRSPY
-            ON
-            CACHE BOOL "Build Airspy Producer" FORCE)
-        set(KOTEKAN_AIRSPY_REASON
-            "found"
-            CACHE STRING "Airspy detection summary" FORCE)
+        set(_ktk_airspy_reason "auto-detected")
+        set(_ktk_airspy_enabled ON)
         add_definitions(-DWITH_AIRSPY)
+        kmsg_ok(
+            "Airspy found (autodetected): enabling Airspy producer (disable with -DUSE_AIRSPY=OFF)")
     else()
-        set(USE_AIRSPY
-            OFF
-            CACHE BOOL "Build Airspy Producer" FORCE)
-        set(KOTEKAN_AIRSPY_REASON
-            "not found (requires libairspy)"
-            CACHE STRING "Airspy detection summary" FORCE)
+        set(_ktk_airspy_reason "disabled, not found (requires libairspy)")
+        kmsg_warn("Airspy not found (default AUTO, continuing without).")
+    endif()
+elseif("${USE_AIRSPY}" STREQUAL "ON")
+    find_package(LIBAIRSPY QUIET)
+    if(LIBAIRSPY_FOUND)
+        set(_ktk_airspy_reason "enabled, found")
+        set(_ktk_airspy_enabled ON)
+        add_definitions(-DWITH_AIRSPY)
+        kmsg_ok("Airspy explicitly enabled via -DUSE_AIRSPY=ON")
+    else()
+        set(_ktk_airspy_reason "enabled, not found (requires libairspy)")
         kmsg_warn("Airspy requested but libairspy not found; disabling Airspy support.")
     endif()
 else()
-    if(NOT "${_ktk_airspy_reason}" STREQUAL "not found (requires libairspy)")
-        set(_ktk_airspy_reason "disabled")
-    endif()
-    set(KOTEKAN_AIRSPY_REASON
-        "${_ktk_airspy_reason}"
-        CACHE STRING "Airspy detection summary" FORCE)
+    set(_ktk_airspy_reason "disabled")
+    kmsg_status("Airspy explicitly disabled via -DUSE_AIRSPY=OFF")
 endif()
+set(KOTEKAN_AIRSPY_REASON
+    "${_ktk_airspy_reason}"
+    CACHE STRING "Airspy detection summary" FORCE)
+set(KOTEKAN_AIRSPY_ENABLED
+    "${_ktk_airspy_enabled}"
+    CACHE BOOL "Airspy enabled state" FORCE)
 
 # Math features handled in FeatureMath
 include(cmake/Features/FeatureMath.cmake)
