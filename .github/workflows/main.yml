@@ -19,8 +19,8 @@ jobs:
     permissions: write-all
     uses: ./.github/workflows/build_push_docker.yml
 
-  github-kotekan-cpu-tests:
-    name: "Kotekan CPU Build Tests"
+  kotekan-cpu-tests:
+    name: "Kotekan CPU Tests"
     needs: kotekan-docker
     uses: ./.github/workflows/test_kotekan_build.yml
     with:
@@ -80,6 +80,26 @@ jobs:
               TEST_TIMEOUT=30
               bash $GITHUB_WORKSPACE/tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" $GITHUB_WORKSPACE/build-2404/tests/boost
 
+          - id: release_gcc_pytests
+            name: "Release gcc build + pytests"
+            ccache_key: kotekan-release-gcc-cpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+            post_build: |
+              PYTHONPATH=$GITHUB_WORKSPACE/python
+              PYTEST_TIMEOUT=100
+              cd $GITHUB_WORKSPACE/tests
+              pytest -v -n auto -s --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              pytest -rP
+              pytest -v -x -s --timeout="${PYTEST_TIMEOUT}" -m serial
+              pytest -rP
+
           - id: clang
             name: "Test clang build"
             ccache_key: kotekan-test-clang-cpu
@@ -129,8 +149,8 @@ jobs:
               bash ./tools/lint.sh
 
 
-  github-kotekan-gpu-tests:
-    name: "Kotekan GPU Build Tests"
+  kotekan-gpu-tests:
+    name: "Kotekan GPU Tests"
     needs: kotekan-docker
     uses: ./.github/workflows/test_kotekan_build.yml
     with:
@@ -142,8 +162,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: kotekan-test-gcc-opencl
-            name: "Test gcc build + OpenCL"
+          - id: test-gcc-cuda-opencl
+            name: "Test gcc build + CUDA/OpenCL"
             ccache_key: kotekan-opencl
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -154,3 +174,44 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: ""   # Any OpenCL-specific commands to test?
+            runs_on: ubuntu-latest # github
+
+          - id: test-gcc-yaml
+            name: "run yamls in config/ci-tests"
+            ccache_key: selfhosted-kotekan-default
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+            post_build: |
+              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/batch
+            runs_on: self-hosted
+
+          - id: release-gcc-yaml
+            name: "run yamls in config/ci-tests"
+            ccache_key: selfhosted-kotekan-default
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+            post_build: |
+              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/batch
+            runs_on: self-hosted
+
+          - id: data-test
+            name: "/data dir test"
+            cmake_defs: ""
+            post_build: |
+              # Try something with the persistent /data directory.
+              touch /data/tmp
+              ls /data
+              rm /data/tmp
+            runs_on: self-hosted

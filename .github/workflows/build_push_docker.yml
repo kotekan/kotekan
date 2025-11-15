@@ -20,7 +20,7 @@ on:
         value: ${{ jobs.build-push-docker.outputs.docker_gpu_img_name }}
 
 jobs:
-  
+
   build-push-docker:
     name: "Build and push CPU and GPU docker images"
     runs-on: ubuntu-latest
@@ -138,6 +138,30 @@ jobs:
 
           CPU_IMAGE_TAG="${CPU_IMG}:${tag}"
           GPU_IMAGE_TAG="${GPU_IMG}:${tag}"
+
+          # As a last check, ensure images actually exist in the registry.
+          # If they don't, force a rebuild (only for real GitHub runs, not act).
+          if [[ -z "${ACT:-}" ]]; then
+            echo "Checking whether images exist in ${REGISTRY}..."
+            missing=0
+
+            if ! docker manifest inspect "$CPU_IMAGE_TAG" >/dev/null 2>&1; then
+              echo "CPU image $CPU_IMAGE_TAG not found in registry."
+              missing=1
+            fi
+
+            if ! docker manifest inspect "$GPU_IMAGE_TAG" >/dev/null 2>&1; then
+              echo "GPU image $GPU_IMAGE_TAG not found in registry."
+              missing=1
+            fi
+
+            if [[ "$missing" -eq 1 ]]; then
+              echo "One or more images missing; forcing docker rebuild."
+              needs_build=1
+            fi
+          else
+            echo "ACT detected; skipping remote image existence check."
+          fi
 
           echo "docker_build=$needs_build"   >> "$GITHUB_OUTPUT"
           echo "cpu_img_name=$CPU_IMAGE_TAG" >> "$GITHUB_OUTPUT"
