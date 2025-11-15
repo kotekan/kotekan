@@ -11,6 +11,13 @@ on:
       build_branch:
         required: false
         type: string
+    outputs:
+      docker_cpu_img_name:
+        description: Fully qualified CPU image name
+        value: ${{ jobs.build-push-docker.outputs.docker_cpu_img_name }}
+      docker_gpu_img_name:
+        description: Fully qualified GPU image name
+        value: ${{ jobs.build-push-docker.outputs.docker_gpu_img_name }}
 
 jobs:
 
