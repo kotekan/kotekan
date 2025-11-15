@@ -29,8 +29,8 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
       options: >-
         ${{ contains(inputs.runs_on || '', 'self-hosted')
-            && '--privileged --mount type=bind,source=/data,target=/data --log-level=info'
-            || '--log-level=info' }}
+            && '--privileged --mount type=bind,source=/data,target=/data --label ci-runner=kotekan'
+            || '--label ci-runner=kotekan' }}
     defaults:
       run:
         shell: bash
