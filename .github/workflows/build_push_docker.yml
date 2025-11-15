@@ -13,14 +13,14 @@ on:
         type: string
     outputs:
       docker_cpu_img_name:
-        description: Fully qualified CPU image name
+        description: "Full CPU image name (including tag) built or selected by this workflow"
         value: ${{ jobs.build-push-docker.outputs.docker_cpu_img_name }}
       docker_gpu_img_name:
-        description: Fully qualified GPU image name
+        description: "Full GPU image name (including tag) built or selected by this workflow"
         value: ${{ jobs.build-push-docker.outputs.docker_gpu_img_name }}
 
 jobs:
-
+  
   build-push-docker:
     name: "Build and push CPU and GPU docker images"
     runs-on: ubuntu-latest
@@ -33,14 +33,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check for file changes
-        id: changed-files
+      # Has the Dockerfile ever changed vs base branch? (for tag selection)
+      - name: Check Dockerfile diff vs base
+        id: changed-vs-base
         uses: tj-actions/changed-files@v47
         with:
-          # only care about the Dockerfile
           files: |
             tools/docker/24.04/Dockerfile
-          # compare against last remote commit, not the PR base
+
+       # Has the Dockerfile changed in the latest push? (for rebuild decision)
+      - name: Check Dockerfile diff in latest push
+        id: changed-latest
+        uses: tj-actions/changed-files@v47
+        with:
+          files: |
+            tools/docker/24.04/Dockerfile
           since_last_remote_commit: true
 
       - name: Set up Docker Buildx
@@ -57,7 +64,8 @@ jobs:
       - name: Check to see if Docker rebuild is needed
         id: docker_img
         env:
-          DOCKERFILE_CHANGED: ${{ steps.changed-files.outputs.any_changed }}
+          DOCKERFILE_EVER_CHANGED: ${{ steps.changed-vs-base.outputs.any_changed }}
+          DOCKERFILE_RECENT_CHANGED: ${{ steps.changed-latest.outputs.any_changed }}
           BUILD_BRANCH: ${{ inputs.build_branch }}
         run: |
           set -euo pipefail
@@ -76,6 +84,10 @@ jobs:
           safe_head=${head_branch//\//.}
           safe_base=${base_branch//\//.}
 
+          echo "DOCKERFILE_EVER_CHANGED=${DOCKERFILE_EVER_CHANGED}"
+          echo "DOCKERFILE_RECENT_CHANGED=${DOCKERFILE_RECENT_CHANGED}"
+          echo "event=${event}"
+
           # If build_branch is provided, we use that as the tag and always rebuild
           override_branch="${BUILD_BRANCH:-}"
           if [[ -n "$override_branch" ]]; then
@@ -83,32 +95,51 @@ jobs:
             tag="${override_branch//\//.}"
             force_build=1
           else
-            # If this was triggered manually or on a schedule, force a rebuild
-            if [[ "$event" == "workflow_dispatch" || "$event" == "schedule" ]]; then
-              echo "Trigger detected: ${event}. Forcing docker rebuild."
-              force_build=1
-            fi
-
+            # 1) Decide which branch/tag to use
             if [[ "$event" == "pull_request" || "$event" == "pull_request_target" ]]; then
-              echo "Using base branch image tag: $base_branch"
-              tag="$safe_base"
+              if [[ "$DOCKERFILE_EVER_CHANGED" == "true" ]]; then
+                echo "Dockerfile changed at some point in this PR. Using HEAD branch tag."
+                tag="$safe_head"
+              else
+                echo "Dockerfile never changed vs base in this PR. Using BASE branch tag."
+                tag="$safe_base"
+              fi
             else
-              echo "Using head branch image tag: $head_branch"
+              echo "Non-PR event. Using HEAD branch tag."
               tag="$safe_head"
             fi
           fi
 
-          # Compute whether we actually build
-          if [[ "$DOCKERFILE_CHANGED" == "true" || -n "${DOCKER_BUILD:-}" || "$force_build" -eq 1 ]]; then
+          # 2) Decide whether we actually build
+          needs_build=0
+
+          # Force rebuild for manual/scheduled runs
+          if [[ "$event" == "workflow_dispatch" || "$event" == "schedule" ]]; then
+            echo "Manual or scheduled trigger (${event}). Forcing docker rebuild."
             needs_build=1
-          else
-            needs_build=0
+          fi
+
+          # Rebuild if Dockerfile changed in the latest push
+          if [[ "$DOCKERFILE_RECENT_CHANGED" == "true" ]]; then
+            echo "Dockerfile changed in latest push. Forcing docker rebuild."
+            needs_build=1
+          fi
+
+          # Or if DOCKER_BUILD is set
+          if [[ -n "${DOCKER_BUILD:-}" ]]; then
+            echo "DOCKER_BUILD set. Forcing docker rebuild."
+            needs_build=1
+          fi
+
+          # Or if override_branch logic requested a build
+          if [[ "$force_build" -eq 1 ]]; then
+            needs_build=1
           fi
 
           CPU_IMAGE_TAG="${CPU_IMG}:${tag}"
           GPU_IMAGE_TAG="${GPU_IMG}:${tag}"
 
-          echo "docker_build=$needs_build" >> "$GITHUB_OUTPUT"
+          echo "docker_build=$needs_build"   >> "$GITHUB_OUTPUT"
           echo "cpu_img_name=$CPU_IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "gpu_img_name=$GPU_IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
