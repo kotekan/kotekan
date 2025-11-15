@@ -71,14 +71,6 @@ jobs:
           echo "==========="
           uname -m
           echo "==========="
-          du -xh --max-depth=2 / | sort -h | tail -40
-          echo "==========="
-          du -xh --max-depth=1 /__e | sort -h
-          echo "==========="
-          du -xh --max-depth=3 /__w | sort -h | tail -40
-          echo "==========="
-          find / -xdev -type f -size +500M -printf '%p %kK\n' 2>/dev/null | sort -nk2 | tail -40
-          echo "==========="
 
       - name: Verify architecture is x86_64
         if: ${{ !contains(runner.labels, 'self-hosted') }}
