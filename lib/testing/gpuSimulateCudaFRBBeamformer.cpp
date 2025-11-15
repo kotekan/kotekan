@@ -1,7 +1,7 @@
 #include "gpuSimulateCudaFRBBeamformer.hpp"
 
 #include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for float16_t, KOTEKAN_FLOAT16
+#include "DataType.hpp"        // for float16_t, KOTEKAN_FLOAT16, IWYU pragma: keep
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer

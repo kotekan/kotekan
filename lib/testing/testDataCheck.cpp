@@ -1,7 +1,5 @@
-#include "DataType.hpp"     // for KOTEKAN_FLOAT16, float16_t
+#include "DataType.hpp"     // for KOTEKAN_FLOAT16, float16_t, IWYU pragma: keep
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
-
-#include <cuda_fp16.h> // for __half::operator float, operator!=, operator*, operator+
 // Put visUtil.hpp before testDataCheck.hpp because we want the preprocessor symbol
 // KOTEKAN_FLOAT16 to be set before including the code that's going to be templated!
 #include "testDataCheck.hpp"

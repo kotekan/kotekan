@@ -1,10 +1,10 @@
 #include "gpuSimulateCudaUpchannelize.hpp"
 
 #include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for float16_t, KOTEKAN_FLOAT16, IWYU pragma: keep
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "cuda_fp16.h"         // for __half, __half::operator float, operator/
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_frame_counter, get_onehot_...
 #include "visUtil.hpp"         // for get4, set4, int4x2_t
