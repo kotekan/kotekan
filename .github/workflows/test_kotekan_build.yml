@@ -20,7 +20,7 @@ on:
         type: string
 
 jobs:
-  test-kotekan-build:
+  build:
     runs-on: ${{ inputs.runs_on || 'ubuntu-latest' }}
     container:
       image: ${{ inputs.container_image }}
