@@ -161,7 +161,7 @@ jobs:
         include:
           - id: test-gcc-cuda-opencl
             name: "Test gcc build + CUDA/OpenCL"
-            ccache_key: kotekan-opencl
+            ccache_key: kotekan-test-gcc-gpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
@@ -175,7 +175,7 @@ jobs:
 
           - id: test-gcc-yaml
             name: "run yamls in config/ci-tests"
-            ccache_key: selfhosted-kotekan-default
+            ccache_key: kotekan-test-gcc-yaml
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
@@ -190,7 +190,7 @@ jobs:
 
           - id: release-gcc-yaml
             name: "run yamls in config/ci-tests"
-            ccache_key: selfhosted-kotekan-default
+            ccache_key: kotekan-release-gcc-yaml
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
