@@ -24,15 +24,6 @@ jobs:
       docker_gpu_img_name: ${{ steps.docker_img.outputs.gpu_img_name }}
 
     steps:
-      - name: "Github-hosted runner cleanup"
-        if: ${{ !contains(inputs.runs_on || '', 'self-hosted') }}
-        run: |
-          df -h
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force
-          sudo docker builder prune -a
-          df -h
-
       - uses: actions/checkout@v4
 
       - name: Check for file changes
@@ -137,6 +128,16 @@ jobs:
           echo "Used docker GPU image name: ${{ steps.docker_img.outputs.gpu_img_name }}"
           echo "docker_build: ${{ steps.docker_img.outputs.docker_build }}"
           echo "ACT: ${ACT:-}"
+
+      # This takes about a minute to clean, so only run it when we need to.
+      - name: "Github-hosted runner cleanup"
+        if: ${{ !contains(inputs.runs_on || '', 'self-hosted') && steps.docker_img.outputs.docker_build == '1' }}
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          sudo docker builder prune -a
+          df -h
 
       - name: Build CPU (target=cpu) image
         if: steps.docker_img.outputs.docker_build == '1'
