@@ -28,7 +28,7 @@ on:
         type: string
 
 jobs:
-  build:
+  test:
     runs-on: ${{ inputs.runs_on || 'ubuntu-latest' }}
     container:
       image: ${{ inputs.container_image }}
@@ -100,7 +100,7 @@ jobs:
           make -j $(nproc)
           ccache -s
 
-      - name: Post-build commands
+      - name: Run commands
         if: inputs.post_build
         shell: bash
         run: |

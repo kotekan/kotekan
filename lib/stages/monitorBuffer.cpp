@@ -66,8 +66,7 @@ void monitorBuffer::main_thread() {
         if (consume_frames) {
             for (auto& state : buffer_states) {
                 while (!stop_thread) {
-                    struct timespec deadline;
-                    clock_gettime(CLOCK_REALTIME, &deadline);
+                    double deadline = e_time();
                     int status = state.buffer->wait_for_full_frame_timeout(
                         consumer_name, state.next_frame_id, deadline);
                     if (status == -1) {

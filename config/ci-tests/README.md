@@ -25,5 +25,5 @@ Failed: 1
 Timed out: 1
 
 Failed tests:
-  - config/ci-tests/batch/test_broken.yaml (exit code: 1)
+  - config/ci-tests/cpu_batch/test_broken.yaml (exit code: 1)
 ```
