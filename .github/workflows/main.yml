@@ -132,7 +132,7 @@ jobs:
               PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto --dist=loadfile--durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              pytest -v -n auto --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
 
           # Test clang build
           - id: clang

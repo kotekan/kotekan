@@ -61,6 +61,7 @@ def _chime_feed_props(chan_id):
         "feed": chan_id % 256,
     }
 
+
 # The following function was written by codex, and I have
 # not verified the math in it. -JM
 def _chime_stack_expectations(num_elements):
@@ -81,12 +82,14 @@ def _chime_stack_expectations(num_elements):
 
             # Canonical ordering and conjugation flag (matches calculate_chime_vis)
             conj = False
-            if (fi["cyl"] > fj["cyl"]) or (
-                fi["cyl"] == fj["cyl"] and fi["feed"] > fj["feed"]
-            ) or (
-                fi["cyl"] == fj["cyl"]
-                and fi["feed"] == fj["feed"]
-                and fi["pol"] > fj["pol"]
+            if (
+                (fi["cyl"] > fj["cyl"])
+                or (fi["cyl"] == fj["cyl"] and fi["feed"] > fj["feed"])
+                or (
+                    fi["cyl"] == fj["cyl"]
+                    and fi["feed"] == fj["feed"]
+                    and fi["pol"] > fj["pol"]
+                )
             ):
                 fi, fj = fj, fi
                 conj = True
