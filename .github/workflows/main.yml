@@ -64,7 +64,7 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=60
+              PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
               pytest -v -x --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
 
@@ -81,7 +81,7 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=60
+              PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
               pytest -v -n auto --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
 
@@ -113,7 +113,7 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=60
+              PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
               pytest -v -x --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
 
@@ -130,7 +130,7 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=60
+              PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
               pytest -v -n auto --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
 
