@@ -13,6 +13,7 @@ from kotekan import conv_backends
 from glob import glob
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
+
 NUM_THREADS = 5
 
 
@@ -190,7 +191,7 @@ def check_if_heartbeat(raw_folder):
         try:
             # Leading digits are timestamp
             timestamp = int(event_str[:-6])
-            dt = datetime.fromtimestamp(timestamp, tz=timezone.utc) # validate timestamp
+            dt = datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc)  # validate timestamp
             print(f"Ignoring data dir {raw_folder}, it is a heartbeat")
             return True
         except (ValueError, OSError):
