@@ -1,3 +1,6 @@
+# Run the iwyu linter. Generally, triggered manually or via scheduler.
+# Running IWYU takes a while, so is not currently run for every PR.
+---
 name: IWYU tasks
 
 on:

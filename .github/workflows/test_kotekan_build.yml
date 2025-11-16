@@ -1,22 +1,30 @@
+# This re-usable workflow builds and runs post-build commands on a kotekan install.
+# The inputs documented below should generally be supplied when this workflow is called.
+# Notes:
+# - we verify the architecture is x86_64 on github runners
+# - we use -DARCH=haswell for compatibility across runners
+# - Because this runs inside a container rather than on the host runner itself, the
+#   14 GB space limits (including image) apply.
+---
 name: Test Kotekan Build
 
 on:
   workflow_call:
     inputs:
-      runs_on:
+      runs_on: # Base runner image, ubuntu-latest if not specified
         required: false
         type: string
-      container_image:
+      container_image: # Typically, the cpu or gpu kotekan docker image.
         required: true
         type: string
-      ccache_key:
+      ccache_key: # Should roughly be unique per OS-compiler-optimization-hardware combo
         required: true
         type: string
-      cmake_defs:
-        required: true
+      cmake_defs: # Compiler flags to build kotekan with, if building
+        required: false
         type: string
-      post_build:
-        required: true
+      post_build: # Commands to run (from the main kotekan directory) after building
+        required: false
         type: string
 
 jobs:

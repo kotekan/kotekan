@@ -1,3 +1,8 @@
+# This workflow runs suites of tests on both a local runner and github runners.
+# Generally, it should be when pull requests are open/updated, or on direct pushes (uncommon).
+# It calls the build_push_docker workflow to make sure the kotekan docker image exists,
+# and the test_kotekan_build workflow for kotekan tests.
+---
 name: kotekan-ci-tests
 on:
   pull_request:

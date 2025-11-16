@@ -1,3 +1,6 @@
+# This workflow can be used to trigger manual builds on github.
+# This will only work if/when it exists on the default branch.
+---
 name: manual-docker-image-build
 
 on:

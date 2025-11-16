@@ -1,3 +1,22 @@
+# This re-usable workflow conditionally builds and pushes both the kotekan
+# `cpu` and `gpu` docker builds. It returns a full image location plus tag
+# for the pushed builds, corresponding to CPU_IMG and GPU_IMG locations
+# below, and a changed branch or PR base as a tag.
+# 
+#  - If this workflow is triggered by a PR open, PR update, or push, it
+#    should only execute if the Dockerfile has changed since the last
+#    commit(s), or if there aren't changes, if the PR is new and the PR
+#    branches Dockerfiles differ between the PR base and head.
+#  - On manual or scheduled builds, the build will execute.
+#  - If this job is run locally, i.e. using ACT, the variable force_build
+#    in the script can be locally set to 1 to trigger a build.
+#
+# The GPU docker file sizes are significant, 12-13 GB, and we only (as of
+# writing this) get 14 GB on the github runners, so an additional step may
+# clear some bloat on the github hosted runners.
+# 
+---
+
 name: Build and optionally push docker images
 
 env:
