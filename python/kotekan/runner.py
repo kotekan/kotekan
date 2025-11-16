@@ -1368,7 +1368,7 @@ class KotekanStageTester(KotekanRunner):
 default_config = """
 ---
 type: config
-log_level: debug
+log_level: INFO
 num_elements: 10
 num_freq_in_frame: 1
 num_local_freq: 1
