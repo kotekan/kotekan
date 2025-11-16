@@ -61,7 +61,7 @@ jobs:
               PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
+              pytest -v -x --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
 
           # Test gcc build + parallel pytests
           - id: test_gcc_pytests
@@ -78,7 +78,7 @@ jobs:
               PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              pytest -v -n auto --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
 
           # Test gcc build + boost tests
           - id: test_gcc_boost
@@ -110,7 +110,7 @@ jobs:
               PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
+              pytest -v -x --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
 
           # Release gcc build + parallel pytests
           - id: release_gcc_pytests
@@ -127,7 +127,7 @@ jobs:
               PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              pytest -v -n auto --dist=loadfile--durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
 
           # Test clang build
           - id: clang
