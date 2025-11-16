@@ -6,6 +6,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for FATAL_ERROR
 #include "util.h"              // for e_time
+#include "visUtil.hpp"         // for double_to_ts
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -67,8 +68,9 @@ void monitorBuffer::main_thread() {
             for (auto& state : buffer_states) {
                 while (!stop_thread) {
                     double deadline = e_time();
+                    const timespec deadline_ts = double_to_ts(deadline);
                     int status = state.buffer->wait_for_full_frame_timeout(
-                        consumer_name, state.next_frame_id, deadline);
+                        consumer_name, state.next_frame_id, deadline_ts);
                     if (status == -1) {
                         goto end_loop;
                     }
