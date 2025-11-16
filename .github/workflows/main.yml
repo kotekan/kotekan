@@ -63,7 +63,6 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
               pytest -v -x --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
@@ -80,7 +79,6 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
               pytest -v -n auto --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
@@ -112,7 +110,6 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
               pytest -v -x --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
@@ -129,7 +126,6 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
               PYTEST_TIMEOUT=120
               cd $GITHUB_WORKSPACE/tests
               pytest -v -n auto --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
