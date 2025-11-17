@@ -360,7 +360,7 @@ public:
     inline void handle_error(const std::string& msg, int err_num, ssize_t bytes_read) {
         // Resource temporarily unavailable, no need to close connection
         // The two error codes cover MacOS and Linux
-        if ((err_num == 35 || err_num == 11) && bytes_read != 0) {
+        if (bytes_read < 0 && (err_num == EDEADLK || err_num == EAGAIN)) {
             DEBUG2("Got resource unavailable error, {:d}, read return {:d}", err_num, bytes_read);
             decrement_ref_count();
             // Add the event back to the libevent queue, so we are notified
