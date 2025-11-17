@@ -497,10 +497,10 @@ int testDataCheck<A_Type>::check_N2_metadata(const std::shared_ptr<const N2Metad
     // Frequency identifiers
     CHECK_META_SCALAR_INT_DIRECT(freq_id, meta1, meta2, num_errors, first_buf->buffer_name,
                                  first_buf_id, second_buf->buffer_name, second_buf_id);
-    if (meta1->freq_Hz != meta2->freq_Hz) {
-        ERROR("metadata {:s}[{:d}] freq_Hz != {:s}[{:d}] freq_Hz; values: {:g} {:g}",
+    if (meta1->freq_MHz != meta2->freq_MHz) {
+        ERROR("metadata {:s}[{:d}] freq_MHz != {:s}[{:d}] freq_MHz; values: {:g} {:g}",
               first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
-              meta1->freq_Hz, meta2->freq_Hz);
+              meta1->freq_MHz, meta2->freq_MHz);
         num_errors++;
     }
 
