@@ -573,6 +573,15 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
 
     std::array<double, 3> n = tel.get_sky_vec_in_grid_coords(ra, dec, eop);
 
+    std::array<double, 3> n_point_dish = tel.get_pointing_vec_in_dish_coords();
+    std::array<double, 3> n_point_topo = tel.vec_dish_to_topocen(n_point_dish);
+    std::array<double, 3> n_point_grid = tel.vec_topocen_to_grid(n_point_topo);
+
+    double theta_sep =
+        acos(n_point_grid[0] * n[0] + n_point_grid[1] * n[1] + n_point_grid[2] * n[2]);
+    double beam_width = 2.0 * M_PI / 180.0;
+    double beam_fac = exp(-0.5 * (theta_sep * theta_sep) / (beam_width * beam_width));
+
     double f = tel.to_freq_MHz(frame.freq_id);
     double lambda = C / (1e6 * f);
 
@@ -628,6 +637,8 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
                 power_r = stokes_U;
                 power_i = -stokes_V;
             }
+            power_r *= beam_fac;
+            power_i *= beam_fac;
 
             frame.vis[ind] = {(float)(power_r * cp - power_i * sp),
                               (float)(power_r * sp + power_i * cp)};
