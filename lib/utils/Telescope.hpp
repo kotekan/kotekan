@@ -119,14 +119,14 @@ public:
      *
      * @returns         The central frequency in MHz.
      **/
-    virtual double to_freq(freq_id_t freq_id) const = 0;
+    virtual double to_freq_MHz(freq_id_t freq_id) const = 0;
 
 
     /**
      * Get the physical frequency in MHz of the specified channel.
      *
      * The baseclass implementation just calls
-     * `to_freq(to_freq_id(args))`, override with a custom implementation
+     * `to_freq_MHz(to_freq_id(args))`, override with a custom implementation
      * to save a function call.
      *
      * @param  args  Any arguments accepted by `to_freq_id`.
@@ -134,8 +134,8 @@ public:
      * @returns      The central frequency in MHz.
      **/
     template<typename... Args>
-    double to_freq(Args... args) const {
-        return to_freq(to_freq_id(args...));
+    double to_freq_MHz(Args... args) const {
+        return to_freq_MHz(to_freq_id(args...));
     }
 
 
@@ -161,7 +161,7 @@ public:
      *
      * @return  The width of the frequency channel in MHz.
      **/
-    virtual double freq_width(freq_id_t freq_id) const = 0;
+    virtual double freq_width_MHz(freq_id_t freq_id) const = 0;
 
     /**
      * @brief Get which Nyquist zone we are in.

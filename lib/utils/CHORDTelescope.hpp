@@ -4,6 +4,7 @@
 #include "Config.hpp"     // for Config
 #include "Telescope.hpp"  // for freq_id_t, Telescope, stream_t
 #include "restServer.hpp" // for connectionInstance
+#include "timeUtil.hpp"   // for EOP
 
 #include "json.hpp" // for json
 
@@ -18,23 +19,106 @@
 
 
 /**
- * @brief   Simple struct for containing Earth Orientation Parameter (EOP) data
+ * @brief Enum for denoting the type of dish input into Kotekan
  */
-struct EOP {
-    int64_t t_inst;        // Instrument time, nanoseconds, UNIX epoch.
-    int64_t t_ut1;         // UT1 time, nanoseconds, J2000(UT1) epoch.
-    double delta_UT1_inst; // Diff between UT1 and Instrument time, seconds
-    double ERA_deg;        // Earth Rotation Angle, degrees
-    double xp_as;          // Polar Motion x', in arcseconds.
-    double yp_as;          // Polar Motion y', in arcseconds.
+enum class DishType : int32_t {
+    Fake = -1,     // Not a real dish
+    ArrayDish = 0, // A standard dish in the main array.
 };
 
-void to_json(nlohmann::json& j, const EOP& m);
-void from_json(const nlohmann::json& j, EOP& m);
+void to_json(nlohmann::json& j, const DishType& t);
+void from_json(const nlohmann::json& j, DishType& t);
 
-// A null (all 0) struct EOP;
-const static struct EOP eop_null = {
-    .t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0.0, .ERA_deg = 0.0, .xp_as = 0.0, .yp_as = 0.0};
+
+/**
+ * @brief   Simple struct with needed dish info.
+ *
+ * @param   idx             int64_t Index of this dish (row or column), x polarization, in the
+ *                                  standard visibility matrix. The y polarization channel will
+ *                                  be at index + num_dishes.
+ * @param   grid_x_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases
+ * east
+ * @param   grid_y_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases
+ * north
+ * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid
+ * location, meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.
+ * actual_pos = grid_pos + disp
+ * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
+ *                                  actual_coelev = target_coelev + disp.
+ * @param   type            int64_t Type of dish input.  -1 = NULL, 0 = CHORD Dish.
+ * @param   label           std::string Label for dish. Future: key for layout DB?
+ */
+struct dishInfo {
+    int64_t idx;
+    int64_t grid_x_idx;
+    int64_t grid_y_idx;
+    std::array<double, 3> feed_pos_disp_m;
+    double coelev_disp_deg;
+    DishType type;
+    std::string label;
+
+    /**
+     * @brief   Default constructor for a Fake, un-indexed dishInfo.
+     */
+    dishInfo() :
+        idx(-1), grid_x_idx(0), grid_y_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}),
+        coelev_disp_deg(0.0), type(DishType::Fake), label("Fake") {}
+
+    /**
+     * @brief   Constructor for a Fake dishInfo with an index.
+     */
+    dishInfo(int64_t idx) :
+        idx(idx), grid_x_idx(0), grid_y_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}),
+        coelev_disp_deg(0.0), type(DishType::Fake), label("Fake") {}
+
+    /**
+     * @brief   Constructor for dishInfo with all fields.
+     */
+    dishInfo(int64_t idx, int64_t grid_x_idx, int64_t grid_y_idx,
+             const std::array<double, 3>& feed_pos_disp_m, double coelev_disp_deg, DishType type,
+             const std::string& label) :
+        idx(idx), grid_x_idx(grid_x_idx), grid_y_idx(grid_y_idx), feed_pos_disp_m(feed_pos_disp_m),
+        coelev_disp_deg(coelev_disp_deg), type(type), label(label) {}
+};
+
+inline bool operator==(const dishInfo& lhs, const dishInfo& rhs) {
+    return (lhs.idx == rhs.idx) && (lhs.grid_x_idx == rhs.grid_x_idx)
+           && (lhs.grid_y_idx == rhs.grid_y_idx)
+           && (lhs.feed_pos_disp_m[0] == rhs.feed_pos_disp_m[0])
+           && (lhs.feed_pos_disp_m[1] == rhs.feed_pos_disp_m[1])
+           && (lhs.feed_pos_disp_m[2] == rhs.feed_pos_disp_m[2])
+           && (lhs.coelev_disp_deg == rhs.coelev_disp_deg) && (lhs.type == rhs.type)
+           && (lhs.label == rhs.label);
+}
+
+void to_json(nlohmann::json& j, const dishInfo& d);
+void from_json(const nlohmann::json& j, dishInfo& d);
+
+/**
+ * @brief   Struct containing "input" data fields for file writers. Fields are ordered by their
+ * appearance in the standard visibility matrix, ie, the "dish_idx" field in "dish_input" in the
+ * config.
+ *
+ * @param   grid_x_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases
+ * east
+ * @param   grid_y_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases
+ * north
+ * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid
+ * location, meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.
+ * actual_pos = grid_pos + disp
+ * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
+ *                                  actual_coelev = target_coelev + disp.
+ * @param   type            DishType Type of dish input. DishType::Fake, DishType::ArrayDish
+ * @param   label           std::string Label for dish. Future: key for layout DB?
+ */
+struct dishInputFields {
+    std::vector<int64_t> grid_x_idx;
+    std::vector<int64_t> grid_y_idx;
+    std::vector<std::array<double, 3>> feed_pos_disp_m;
+    std::vector<double> coelev_disp_deg;
+    std::vector<DishType> type;
+    std::vector<std::string> label;
+};
 
 
 /**
@@ -49,41 +133,67 @@ const static struct EOP eop_null = {
  * @conf    gps_host            string. The GPS server IP address.
  * @conf    gps_port            uint.   The port number on the GPS server.
  * @conf    gps_endpoint        string. The enpoint with the GPS time.
- * @conf    inst_long_deg       double. Instrument longitude in degrees.
- * @conf    inst_lat_deg        double. Instrument latitude in degrees.
- * @conf    inst_alt_deg        double. Instrument pointing altitude, in
- *                                      degrees from the northern horizon
- *                                      (az=0).
- * @conf    sampling_rate_Hz    double. ADC Sampling Rate (~3.2 GHz)
- * @conf    sampling_rate_Hz    double. F-engine FFT length (~16384)
- * @conf    inst_grid_x_axis    [double, 3].    The basis vector, measured in
+ * @conf    origin_itrs_lon_deg double. Instrument longitude in degrees.
+ * @conf    origin_itrs_lat_deg double. Instrument latitude in degrees.
+ * @conf    dish_coelev_deg     double. Instrument pointing co-elevation, in
+ *                                      degrees from zenith. Positive is North.
+ * @conf    sampling_rate_MHz   double. ADC Sampling Rate (default: 3.2 GHz for CHORD)
+ * @conf    fft_lenth           double. F-engine FFT length (default: 16384 for CHORD)
+ * @conf    nyquist_zone        uint8.  Nyquist Zone we're operating in (default: 1 for CHORD)
+ * @conf    origin_itrs_lon_deg double. ITRS longitude of the topocentric coordinate origin.
+ * @conf    origin_itrs_lat_deg double. ITRS latitude of the topocentric coordinate origin.
+ * @conf    grid_x_axis         [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish-dish
  *                                      E/W separation.  Must be:
  *                                      normalized, orthogonal to the y-axis.
- * @conf    inst_grid_y_axis    [double, 3].    The basis vector, measured in
+ * @conf    grid_y_axis         [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish-dish
  *                                      N/S separation.  Must be:
  *                                      normalized, orthogonal to the x-axis.
- * @conf    inst_dish_alt_axis  [double, 3].    The basis vector, measured in
+ * @conf    dish_elev_axis      [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish
- *                                      altitude axis. East-pointing. Must be:
+ *                                      elevation axis. East-pointing. Must be:
  *                                      normalized, orthogonal to the vert-axis.
- * @conf    inst_dish_vert_axis [double, 3].    The basis vector, measured in
+ * @conf    dish_vert_axis      [double, 3].    The basis vector, measured in
  *                                      the topocentric frame, of the dish
- *                                      vertical direction. Up-pointing, 90 deg
- *                                      altitude. Must be:
- *                                      normalized, orthogonal to the alt-axis.
- * @conf    dish_positions      [[double, 3], N]    List of 3D dish positions,
- *                                      measured in the "Telescope" frame,
- *                                      where the x-axis is dish E/W sep,
- *                                      and the y-axis is dish N/S sep. Should
- *                                      be, within mm, a rectilinear
- *                                      axis-aligned grid in these coordinates.
+ *                                      vertical direction. Up-pointing, 0 deg
+ *                                      co-elevation. Must be:
+ *                                      normalized, orthogonal to the elev-axis.
+ * @conf    num_dishes          int     Total number of dishes in the kotekan data
+ *                                      pipeline, each providing 2 polarizations. Equal to
+ *                                      the total number of configured dishes, plus possibly
+ *                                      some "fake" dishes to keep the number a multiple of
+ *                                      32.
+ * @conf    dish_separation_x_m    double.     The separation in meters between dish grid
+ *                                      locations in the Telescope x-axis direction
+ *                                      (generally, East/West).
+ * @conf    dish_separation_y_m    double.     The separation in meters between dish grid
+ *                                      locations in the Telescope y-axis direction
+ *                                      (generally, North/South).
+ * @conf    dish_inputs         [dishInfo, N]   List of dishInfo structs, each represented
+ *                                      by a map with the following keys:
+ *                                      - dishIdx   int     Position of this dish in the
+ *                                          standard visibility matrix
+ *                                      - grid_x_idx    int     E/W (x) grid position in the
+ *                                          main array.
+ *                                      - grid_y_idx    int     N/S (y) grid position in the
+ *                                          main array.
+ *                                      - feed_pos_disp_m [double, 3]    Displacement of feed from
+ *grid position in meters, Telescope frame.
+ *                                      - coelev_disp_deg   double  Displacement from
+ *                                          target co-elevation, degrees.
+ *                                      - type      int64_t     Integer code for type of input,
+ *                                          -1: fake "NULL" dish, 0: standard dish.
+ *                                      - label     String  Label for input.
+ *
+ * @author Geoffrey Ryan
  **/
 
 /*
  * 2024/10/25: Initial version copied from ICETelescope. Frequency logic
  *              stripped out. GR
+ * 2025/11/10: Required frequency logic re-added (no stream_t behaviour). Dish input table
+ *              introduced with per-dish grid placement, positioning, pointing, and labels. GR
  */
 
 
@@ -91,10 +201,43 @@ class CHORDTelescope : public Telescope {
 public:
     CHORDTelescope(const kotekan::Config& config, const std::string& path);
 
-    // Implementations of the required time mapping functions
+    /**
+     * @brief Is the GPS time source enabled?
+     *
+     * @return  True if the GPS time is available.
+     **/
     bool gps_time_enabled() const override;
+
+    /**
+     * Convert a sequence number into an instrument time (UNIX epoch time at start plus TAI time
+     *elapsed since start).
+     *
+     * @param  seq  The sequence number.
+     *
+     * @return  The corresponding instrument time (UNIX epoch time at start plus TAI time elapsed
+     *since start).
+     **/
     timespec to_time(uint64_t seq) const override;
+
+    /**
+     * @brief Convert an instrument time (UNIX epoch time at start plus TAI time elapsed since
+     *start) into the nearest sequence number.
+     *
+     * @note When there is not an exact correspondence between the given time
+     *       and FPGA sequence numbers, this routine will return the latest valid
+     *       FPGA sequence number before the given timestamp.
+     *
+     * @param  time  The instrument time.
+     *
+     * @return  The corresponding sequence number.
+     **/
     uint64_t to_seq(timespec time) const override;
+
+    /**
+     * @brief Get the length in nanoseconds of an FPGA sequence number tick.
+     *
+     * @return  Length of an FPGA sequence number tick in nanoseconds.
+     **/
     uint64_t seq_length_nsec() const override;
 
     /**
@@ -106,27 +249,27 @@ public:
     /**
      * @brief   Return the longitude of the instrument.
      **/
-    double get_inst_long_deg() const;
+    double get_origin_itrs_lon_deg() const;
 
     /**
      * @brief   Return the latitude of the instrument.
      **/
-    double get_inst_lat_deg() const;
+    double get_origin_itrs_lat_deg() const;
 
     /**
-     * @brief   Return the altitude angle of the instrument. 90.0 is up,
-     *          0.0 is North.
+     * @brief   Return the co-elevation angle of the instrument. 0.0 is up,
+     *          90.0 is North.
      **/
-    double get_inst_alt_deg() const;
+    double get_dish_coelev_deg() const;
 
     /**
-     * @brief   Return a component of the Topo -> Telescope frame rotation
+     * @brief   Return a component of the Topo -> Grid frame rotation
      *          matrix.
      *
      * @param   i   First index, int, 0 <= i < 3, row
      * @param   j   First index, int, 0 <= j < 3, col
      **/
-    double get_tel_orientation_el(int i, int j) const;
+    double get_grid_orientation_el(int i, int j) const;
 
     /**
      * @brief   Return a component of the Topo -> Dish frame rotation matrix.
@@ -137,11 +280,11 @@ public:
     double get_dish_orientation_el(int i, int j) const;
 
     /**
-     * @brief   Return a dish location, in the Telescope frame.
+     * @brief   Return a dish location, in grid coordinates.
      *
      * @param   i   Dish index, int, 0 <= i < num_dishes
      **/
-    std::array<double, 3> get_dish_position(int i) const;
+    std::array<double, 3> get_dish_position_in_grid_coords(int i) const;
 
     /**
      * @brief   Return the number of dishes.
@@ -158,7 +301,7 @@ public:
      *
      * @param   i   Index of desired EOP entry, 0 <= i < EOP_table_len
      **/
-    struct EOP get_EOP_at_idx(uint64_t i) const;
+    EOP get_EOP_at_idx(uint64_t i) const;
 
     /**
      * @brief   Return the EOP at the desired instrument time. Will interpolate
@@ -167,7 +310,7 @@ public:
      *
      * @param   ts  Target instrument time, as a timespec.
      **/
-    struct EOP get_EOP_at_time(const timespec& ts) const;
+    EOP get_EOP_at_time(const timespec& ts) const;
 
     /**
      * @brief   Return the EOP at the desired UT1 time. Will interpolate
@@ -176,21 +319,22 @@ public:
      *
      * @param   ts  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
      **/
-    struct EOP get_EOP_at_UT1(int64_t ut1) const;
+    EOP get_EOP_at_UT1(int64_t ut1) const;
+
+    const struct dishInfo& get_dish_at_idx(int64_t idx) const;
 
     /**
-     * @brief   Return an observing vector (normalized vec3) in telescope
+     * @brief   Return an observing vector (normalized vec3) in grid
      *          coordinates, corresponding to the given CIRS RA and DEC.
      * @param   ra  Target Right Ascension in CIRS frame.
      * @param   dec Target Declination in CIRS frame.
      * @param   eop EOP for the time of observation.
      **/
-    std::array<double, 3> get_sky_vec_in_tel_coords(double ra, double dec,
-                                                    const struct EOP& eop) const;
+    std::array<double, 3> get_sky_vec_in_grid_coords(double ra, double dec, const EOP& eop) const;
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the
-     *          phase center), in Dish coordinates (x is altitude axis (~East),
-     *          y is ~North, z is altitude = 90deg (~up).
+     *          phase center), in Dish coordinates (x is elevation axis (~East),
+     *          y is ~North, z is co-elevation = 0 deg (~up).
      **/
     std::array<double, 3> get_pointing_vec_in_dish_coords() const;
 
@@ -209,18 +353,18 @@ public:
     std::array<double, 3> vec_dish_to_topocen(const std::array<double, 3>& v_dish) const;
 
     /**
-     * @brief   Transform the given vector from topocentric to telescope coords.
+     * @brief   Transform the given vector from topocentric to grid coords.
      *
      * @param   v_topo  Vector in topocentric coordinates.
      **/
-    std::array<double, 3> vec_topocen_to_tel(const std::array<double, 3>& v_topo) const;
+    std::array<double, 3> vec_topocen_to_grid(const std::array<double, 3>& v_topo) const;
 
     /**
-     * @brief   Transform the given vector from telescope to topocentric coords.
+     * @brief   Transform the given vector from grid to topocentric coords.
      *
-     * @param   v_topo  Vector in telescope coordinates.
+     * @param   v_grid  Vector in grid coordinates.
      **/
-    std::array<double, 3> vec_tel_to_topocen(const std::array<double, 3>& v_tel) const;
+    std::array<double, 3> vec_grid_to_topocen(const std::array<double, 3>& v_grid) const;
 
     /**
      * @brief   Transform the given vector from ITRS to topocentric coords.
@@ -243,7 +387,7 @@ public:
      * @param   eop     EOP for time of transformation.
      **/
     std::array<double, 3> vec_cirs_to_itrs(const std::array<double, 3>& v_cirs,
-                                           const struct EOP& eop) const;
+                                           const EOP& eop) const;
 
     /**
      * @brief   Transform the given vector from ITRS to CIRS coords.
@@ -252,7 +396,7 @@ public:
      * @param   eop     EOP for time of transformation.
      **/
     std::array<double, 3> vec_itrs_to_cirs(const std::array<double, 3>& v_itrs,
-                                           const struct EOP& eop) const;
+                                           const EOP& eop) const;
 
     /**
      * @brief   Transform the given vector to a frame where the basis has
@@ -284,7 +428,7 @@ public:
     /**
      * @brief   Compute the fringestopping phases for each dish.
      *
-     * @param   freq_Hz Frequency to compute phases for.
+     * @param   freq_MHz Frequency to compute phases for.
      * @param   eop     Current EOP.
      * @param   eop0    EOP of phase reference time. if eop=eop0 all phases are
      *                  1.0
@@ -292,17 +436,68 @@ public:
      *                  least num_dishes. The phases will be written to the
      *                  first num_dishes elements of this vector.
      **/
-    void fringestop_phases_1d(double freq_Hz, const struct EOP& eop, const struct EOP& eop0,
+    void fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
                               std::vector<std::complex<double>>& phases) const;
 
-    // Implementations of the required frequency mapping functions
-    // TODO: Implement these.
-    freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
-    double to_freq(freq_id_t freq_id) const override;
-    uint32_t num_freq_per_stream() const override;
+    /**
+     * @brief   Fill a dishInputFields struct with dish information. Will possibly
+     *          reallocate the internal vectors in 'input'.
+     *
+     * @param   input   struct dishInputFields reference. The struct to fill,
+     *                  will reallocate the internal vectors if they are not the
+     *                  correct size.
+     **/
+    void get_input_maps(dishInputFields& input) const;
+
+    /**
+     * @brief Get the number of unique baselines in the array
+     */
+    uint64_t get_num_stacks() const;
+
+    /**
+     * Get the physical frequency in MHz of the specified freq ID.
+     *
+     * @param  freq_id  The frequency ID.
+     *
+     * @returns         The central frequency in MHz.
+     **/
+    double to_freq_MHz(freq_id_t freq_id) const override;
+
+    /**
+     * @brief Get the total number of frequencies channels.
+     *
+     * This is the upper bound for freq_id.
+     *
+     * @return  The total number of frequency channels.
+     **/
     uint32_t num_freq() const override;
-    double freq_width(freq_id_t freq_id) const override;
+
+    /**
+     * @brief Get the frequency width of a given channel.  When the frequency spacing is constant,
+     *this is the equivalent to the spacing between frequency channels.
+     *
+     * @return  The width of the frequency channel in MHz.
+     **/
+    double freq_width_MHz(freq_id_t freq_id) const override;
+
+    /**
+     * @brief Get which Nyquist zone we are in.
+     *
+     * @return  The Nyquist zone.
+     **/
     uint8_t nyquist_zone() const override;
+
+    /**
+     * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
+     * dpdk.
+     */
+    freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
+
+    /**
+     * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
+     * dpdk.
+     */
+    uint32_t num_freq_per_stream() const override;
 
     // A forwarding constructor, such that derived classes can skip the main
     // CHORDTelescope constructor but still construct the Telescope class
@@ -312,6 +507,15 @@ public:
     ~CHORDTelescope();
 
 protected:
+    /**
+     * @brief Set the internal parameters `dt_ns`, `freq0_MHz`, `df_MHz`, `nfreq_total`, and
+     * `ny_zone` which set the basic time and frequency sampling behaviour.  Reads the
+     * `sampling_rate_MHz`, `fft_length`, and `nyquist_zone` Config fields.
+     * @param config    The config.
+     * @param path      This telescope object's path.
+     */
+    void set_sampling_params(const kotekan::Config& config, const std::string& path);
+
     /**
      * @brief Set the GPS time parameters from the config.
      *
@@ -336,6 +540,13 @@ protected:
     bool receive_eop_updates(nlohmann::json& json);
 
     /**
+     * @brief   Callback to send current EOP table
+     *
+     * @param   conn    Kotekan connection.
+     */
+    void send_eop_table(kotekan::connectionInstance& conn);
+
+    /**
      * @brief   Callback to send time0_ns value
      *
      * @param   conn    Kotekan connection.
@@ -350,8 +561,16 @@ protected:
      * @param   xp_as   Polar Motion x' coordinate in arcseconds
      * @param   yp_as   Polar Motion y' coordinate in arcseconds
      **/
-    struct EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
-                                     double yp_as) const;
+    EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
+                              double yp_as) const;
+
+    /**
+     * @brief   Load information about dish inputs from the config.
+     *
+     * @param   config  The config.
+     * @param   path    This telescope's path in the config.
+     **/
+    void set_dish_info(const kotekan::Config& config, const std::string& path);
 
     // The telescope's name in the config
     std::string _unique_name;
@@ -369,37 +588,52 @@ protected:
     std::string _gps_endpoint;
 
     /// Instument geographic coordinates in degrees.
-    double _inst_long_deg;
-    double _inst_lat_deg;
+    double _origin_itrs_lon_deg;
+    double _origin_itrs_lat_deg;
 
-    // Matrix to transform from local topocentric coordinates to the
-    // telescope (ie. dish position) coordinate system.
-    double _R_topo_to_tel[3][3];
+    /// Matrix to transform from local topocentric coordinates to the
+    /// grid (ie. dish position) coordinate system.
+    double _R_topo_to_grid[3][3];
 
-    // Dish pointing angle.  Measured in degrees from vertical.
-    double _inst_alt_deg;
+    /// Dish pointing angle.  Measured in degrees from vertical.
+    double _dish_coelev_deg;
 
-    // Matrix to transform from local topocentric coordinates to the
-    // dish (ie. z is dish zenith, x is altitude axis) coordinate system.
+    /// Matrix to transform from local topocentric coordinates to the
+    /// dish (ie. z is dish zenith, x is elevation axis) coordinate system.
     double _R_topo_to_dish[3][3];
 
-    // Matrix to transform vectors from ITRS geocentric coordinates (ECEF) to
-    // local topocentric coordinates
+    /// Matrix to transform vectors from ITRS geocentric coordinates (ECEF) to
+    /// local topocentric coordinates
     double _R_itrs_to_topo[3][3];
 
-    // Dish positions in dish coordinate system.
+    /// Total number of dishes in the telescope, each provides 2 polarizations,
+    /// so num_elements = 2 * num_dishes.
+    int32_t _num_dishes;
+
+    /// Dish-dish grid spacing in the E/W (x) and N/S (y) directions in meters.
+    double _dish_separation_x_m;
+    double _dish_separation_y_m;
+
+    /// Dish positions in dish coordinate system.
     std::vector<std::array<double, 3>> _dish_positions;
 
-    // The time of FPGA frame=0, and the time length of each frame (in ns)
-    // time0_ns is a UNIX timestamp, in nanoseconds. It does not include
-    // leap seconds.
+    /// The time of FPGA frame=0, and the time length of each frame (in ns)
+    /// time0_ns is a UNIX timestamp, in nanoseconds. It does not include
+    /// leap seconds.
     bool gps_enabled = false;
     uint64_t time0_ns = 0;
     uint64_t dt_ns;
+    uint8_t ny_zone;
+    uint64_t nfreq_total;
+    double freq0_MHz;
+    double df_MHz;
 
-    // Earth Orientation Parameters
-    mutable std::mutex _eop_lock;
-    std::vector<struct EOP> _eop_table;
+    /// Earth Orientation Parameters
+    mutable std::shared_mutex _eop_lock;
+    std::vector<EOP> _eop_table;
+
+    /// Dish Properties
+    std::vector<struct dishInfo> _dish_info_table;
 };
 
 /*
@@ -409,7 +643,7 @@ protected:
  * @params  eop1    First EOP to compare.
  * @params  eop2    Second EOP to compare.
  **/
-bool EOP_comp_time(const struct EOP& eop1, const struct EOP& eop2);
+bool EOP_comp_time(const EOP& eop1, const EOP& eop2);
 
 /*
  * @brief   Comparison function for searching/sorting the EOP table. Compares
@@ -419,6 +653,6 @@ bool EOP_comp_time(const struct EOP& eop1, const struct EOP& eop2);
  * @params  eop1    First EOP to compare.
  * @params  eop2    Second EOP to compare.
  **/
-bool EOP_comp_ut1(const struct EOP& eop1, const struct EOP& eop2);
+bool EOP_comp_ut1(const EOP& eop1, const EOP& eop2);
 
 #endif // CHORD_TELESCOPE_HPP

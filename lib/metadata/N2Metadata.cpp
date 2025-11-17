@@ -1,11 +1,13 @@
 #include "N2Metadata.hpp"
 
-#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
+#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
+#include "timeUtil.hpp" // for EOP()
 
 #include <string.h> // for size_t, memset
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, N2Metadata);
-N2Metadata::N2Metadata() : N2MetadataFormat{0, 0, 0, 0, 0, 0.0, eop_null, 0, 0, 0, 0, 0} {
+N2Metadata::N2Metadata() :
+    N2MetadataFormat{0, 0, 0, 0, N2Layout::FullUpperTri, 0, 0.0, 0, eop_null, 0, 0, 0, 0, 0} {
     ;
 }
 
@@ -31,14 +33,17 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
     n_valid_fpga_ticks = fmt->n_valid_fpga_ticks;
     n_rfi_fpga_ticks = fmt->n_rfi_fpga_ticks;
 
+    abs_time_idx = fmt->abs_time_idx;
     freq_id = fmt->freq_id; // this is an int in chordMetadata, maybe change later
-    freq_Hz = fmt->freq_Hz;
+    freq_MHz = fmt->freq_MHz;
     eop = fmt->eop;
 
     num_elements = fmt->num_elements;
     num_prod = fmt->num_prod;
     num_ev = fmt->num_ev;
     nfreq = fmt->nfreq;
+
+    layout = fmt->layout;
 
     return sizeof(N2MetadataFormat);
 }
@@ -54,14 +59,17 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->n_valid_fpga_ticks = n_valid_fpga_ticks;
     fmt->n_rfi_fpga_ticks = n_rfi_fpga_ticks;
 
+    fmt->abs_time_idx = abs_time_idx;
     fmt->freq_id = freq_id; // this is an int in chordMetadata, maybe change later
-    fmt->freq_Hz = freq_Hz;
+    fmt->freq_MHz = freq_MHz;
     fmt->eop = eop;
 
     fmt->num_elements = num_elements;
     fmt->num_prod = num_prod;
     fmt->num_ev = num_ev;
     fmt->nfreq = nfreq;
+
+    fmt->layout = layout;
 
     return sizeof(N2MetadataFormat);
 }
@@ -82,14 +90,16 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
     j.emplace("n_valid_fpga_ticks", m.n_valid_fpga_ticks);
     j.emplace("n_rfi_fpga_ticks", m.n_rfi_fpga_ticks);
 
+    j.emplace("abs_time_idx", m.abs_time_idx);
     j.emplace("freq_id", m.freq_id); // this is an int in chordMetadata, maybe change later
-    j.emplace("freq_Hz", m.freq_Hz);
+    j.emplace("freq_MHz", m.freq_MHz);
     j.emplace("eop", m.eop);
 
     j.emplace("num_elements", m.num_elements);
     j.emplace("num_prod", m.num_prod);
     j.emplace("num_ev", m.num_ev);
     j.emplace("nfreq", m.nfreq);
+    j.emplace("layout", m.layout);
 }
 
 void from_json(const nlohmann::json& j, N2Metadata& m) {
@@ -100,12 +110,38 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.n_valid_fpga_ticks = j.at("n_valid_fpga_ticks");
     m.n_rfi_fpga_ticks = j.at("n_rfi_fpga_ticks");
 
+    m.abs_time_idx = j.at("abs_time_idx");
     m.freq_id = j.at("freq_id"); // this is an int in chordMetadata, maybe change later
-    m.freq_Hz = j.at("freq_Hz");
+    m.freq_MHz = j.at("freq_MHz");
     m.eop = j.at("eop");
 
     m.num_elements = j.at("num_elements");
     m.num_prod = j.at("num_prod");
     m.num_ev = j.at("num_ev");
     m.nfreq = j.at("nfreq");
+    m.layout = j.at("layout");
+}
+
+void to_json(nlohmann::json& j, const N2Layout& l) {
+    switch (l) {
+        case N2Layout::FullUpperTri:
+            j = "FullUpperTri";
+            break;
+        case N2Layout::RedundantBaselineAvg:
+            j = "RedundantBaselineAvg";
+            break;
+        default:
+            throw std::runtime_error(
+                fmt::format("to_json - unknown N2Layout value: {:s}", static_cast<int32_t>(l)));
+            break;
+    }
+}
+
+void from_json(const nlohmann::json& j, N2Layout& l) {
+    if (j == "FullUpperTri")
+        l = N2Layout::FullUpperTri;
+    else if (j == "RedundantBaselineAvg")
+        l = N2Layout::RedundantBaselineAvg;
+    else
+        throw std::runtime_error(fmt::format("from_json - unknown N2Layout: {}", j.dump()));
 }

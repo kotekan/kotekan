@@ -180,7 +180,7 @@ basebandApiManager::translate_trigger(const int64_t fpga_time0, const int64_t fp
                                       const uint32_t freq_id, const double ref_freq_hz) {
 
     auto& tel = Telescope::instance();
-    const double freq = tel.to_freq(freq_id) * 1e6;
+    const double freq = tel.to_freq_MHz(freq_id) * 1e6;
     const double fpga_frame_rate = 1.0 / ts_to_double(tel.seq_length());
 
     const double freq_inv_sq_diff = (1. / (freq * freq) - 1. / (ref_freq_hz * ref_freq_hz));

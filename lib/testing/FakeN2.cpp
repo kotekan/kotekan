@@ -76,6 +76,14 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
+
+    size_t num_prod = N2FrameView::get_num_prod(num_elements, N2Layout::FullUpperTri);
+    size_t frame_size = N2FrameView::calculate_frame_size(num_elements, num_eigenvectors, num_prod);
+    if (out_buf->frame_size != frame_size) {
+        FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d}", out_buf->buffer_name,
+                    out_buf->frame_size, frame_size);
+    }
+    assert(frame_size == out_buf->frame_size);
 }
 
 void FakeN2::main_thread() {
@@ -145,13 +153,17 @@ void FakeN2::main_thread() {
 
             meta->num_elements = num_elements;
             /// Number of products in the data
-            meta->num_prod = N2::get_num_prod(num_elements);
+            meta->num_prod = N2FrameView::get_num_prod(num_elements, n2_layout);
             /// Number of eigenvectors and values calculated
             meta->num_ev = num_eigenvectors;
             /// Total number of frequencies in pipeline
             meta->nfreq = freq.size();
             // Set the frequency index
             meta->freq_id = f;
+            // Set the time index
+            meta->abs_time_idx = t;
+            // Set the layout
+            meta->layout = n2_layout;
 
             /// The sequence number of the first FPGA frame integrated into this visibility frame
             meta->fpga_start_tick = fpga_seq + t * delta_seq;
@@ -181,7 +193,8 @@ void FakeN2::main_thread() {
 
             // Fill out the frame with the selected pattern
             pattern->fill(output_frame);
-            INFO("First eval is: {}", output_frame.eval[0]);
+            if (meta->num_ev > 0)
+                INFO("First eval is: {}", output_frame.eval[0]);
 
             // gains
             for (uint32_t i = 0; i < num_elements; i++) {

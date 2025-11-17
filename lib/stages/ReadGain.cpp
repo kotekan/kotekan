@@ -272,7 +272,7 @@ void ReadGain::main_thread() {
     auto& tel = Telescope::instance();
     // TODO: handle multiple frequencies
     freq_idx = get_chord_metadata(metadata_buf, metadata_buffer_id)->get_coarse_freq()[0];
-    freq_MHz = tel.to_freq(freq_idx);
+    freq_MHz = tel.to_freq_MHz(freq_idx);
     metadata_buffer_precondition_id =
         (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
 

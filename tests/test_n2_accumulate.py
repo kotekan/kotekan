@@ -14,15 +14,16 @@ t_start_s = 1_760_000_000
 GIGA = 1_000_000_000
 
 nfreq = 3
-freq_ids = [1, 1024, 8192]
+freq_ids = [0, 1024, 8191]
 
 count_vals = [0, 8192, 8191, 20, 5000]
 rfi_vals = [255, 0, 255, 255]
 
 global_params = {
     "fft_length": 16384,
-    "sampling_rate_Hz": 3.2e9,
+    "sampling_rate_MHz": 3.2e3,
     "num_elements": 64,
+    "num_dishes": 32,
     "num_ev": 0,
     "samples_per_data_set": 16384,
     "sub_integration_ntime": 4096,
@@ -31,24 +32,82 @@ global_params = {
     "total_frames": 32,
     "telescope": {
         "name": "CHORDTelescope",
-        "inst_lat_deg": 50.0,
-        "inst_long_deg": -120.0,
-        "inst_alt_deg": 90.0,
-        "inst_grid_x_axis": [1.0, 0.0, 0.0],
-        "inst_grid_y_axis": [0.0, 1.0, 0.0],
-        "inst_dish_alt_axis": [1.0, 0.0, 0.0],
-        "inst_dish_vert_axis": [0.0, 0.0, 1.0],
-        "dish_positions": [
-            [0.0, 0.0, 0.0],
-            [6.3, 0.0, 0.0],
-            [0.0, 8.4, 0.0],
-            [6.3, 8.4, 0.0],
-            [151.0, 0.0, 0.0],
-            [0.0, 204.0, 0.0],
-            [151.0, 204.0, 0.0],
-        ],
+        "origin_itrs_lat_deg": 50.0,
+        "origin_itrs_lon_deg": -120.0,
+        "grid_x_axis": [1.0, 0.0, 0.0],
+        "grid_y_axis": [0.0, 1.0, 0.0],
+        "dish_elev_axis": [1.0, 0.0, 0.0],
+        "dish_vert_axis": [0.0, 0.0, 1.0],
+        "dish_coelev_deg": 90.0,
         "require_gps": False,
         "updatable_config": "/earth_rotation_data",
+        "dish_separation_x_m": 6.3,
+        "dish_separation_y_m": 8.5,
+        "dish_inputs": [
+            {
+                "dish_idx": 0,
+                "grid_x_idx": 0,
+                "grid_y_idx": 0,
+                "feed_pos_disp_m": [0.0, 0.0, 0.0],
+                "coelev_disp_deg": 0.0,
+                "type": "ArrayDish",
+                "label": "D00",
+            },
+            {
+                "dish_idx": 1,
+                "grid_x_idx": 1,
+                "grid_y_idx": 0,
+                "feed_pos_disp_m": [0.0, 0.0, 0.0],
+                "coelev_disp_deg": 0.0,
+                "type": "ArrayDish",
+                "label": "D01",
+            },
+            {
+                "dish_idx": 2,
+                "grid_x_idx": 0,
+                "grid_y_idx": 1,
+                "feed_pos_disp_m": [0.0, 0.0, 0.0],
+                "coelev_disp_deg": 0.0,
+                "type": "ArrayDish",
+                "label": "D10",
+            },
+            {
+                "dish_idx": 3,
+                "grid_x_idx": 1,
+                "grid_y_idx": 1,
+                "feed_pos_disp_m": [0.0, 0.0, 0.0],
+                "coelev_disp_deg": 0.0,
+                "type": "ArrayDish",
+                "label": "D11",
+            },
+            {
+                "dish_idx": 4,
+                "grid_x_idx": 24,
+                "grid_y_idx": 0,
+                "feed_pos_disp_m": [0.0, 0.0, 0.0],
+                "coelev_disp_deg": 0.0,
+                "type": "ArrayDish",
+                "label": "D02",
+            },
+            {
+                "dish_idx": 5,
+                "grid_x_idx": 0,
+                "grid_y_idx": 24,
+                "feed_pos_disp_m": [0.0, 0.0, 0.0],
+                "coelev_disp_deg": 0.0,
+                "type": "ArrayDish",
+                "label": "D20",
+            },
+            {
+                "dish_idx": 6,
+                "grid_x_idx": 24,
+                "grid_y_idx": 24,
+                "feed_pos_disp_m": [0.0, 0.0, 0.0],
+                "coelev_disp_deg": 0.0,
+                "type": "ArrayDish",
+                "label": "D22",
+            },
+        ],
     },
     "earth_rotation_data": {
         "kotekan_update_endpoint": "json",
@@ -68,18 +127,6 @@ global_params = {
         ],
     },
     "gps_time": {"frame0_nano": t_start_s * GIGA},
-    "DumpN2HDF5": {
-        "kotekan_stage": "hdf5FileWrite",
-        "base_dir": "fake_n2_data",
-        "file_name": "n2_vis",
-        "in_buf": "",
-    },
-    "DumpN2kCountsHDF5": {
-        "kotekan_stage": "hdf5FileWrite",
-        "base_dir": "fake_n2_data",
-        "file_name": "n2k_counts",
-        "in_buf": "",
-    },
 }
 
 accumulate_params = {
@@ -117,9 +164,6 @@ def accumulate_data(tmpdir_factory):
     accumulate_run_params = accumulate_params.copy()
     accumulate_run_params["in_counts_buf"] = input_buffers.counts_name
     accumulate_run_params["in_rfimask_buf"] = input_buffers.rfi_name
-
-    global_params["DumpN2HDF5"]["in_buf"] = dump_buffer.name
-    global_params["DumpN2kCountsHDF5"]["in_buf"] = input_buffers.counts_name
 
     test = runner.KotekanStageTester(
         "N2Accumulate",
@@ -232,21 +276,27 @@ def test_metadata(accumulate_data):
         )
         assert frame.metadata.freq_id == freq_ids[f_idx]
         assert (
-            frame.metadata.freq_Hz
+            frame.metadata.freq_MHz
             == freq_ids[f_idx]
-            * global_params["sampling_rate_Hz"]
+            * global_params["sampling_rate_MHz"]
             / global_params["fft_length"]
         )
+        assert frame.metadata.layout == 0
 
 
 def test_time(accumulate_data):
 
-    dt_ns = GIGA * global_params["fft_length"] / global_params["sampling_rate_Hz"]
+    dt_ns = (
+        GIGA
+        * global_params["fft_length"]
+        / (1.0e6 * global_params["sampling_rate_MHz"])
+    )
 
     for idx, frame in enumerate(accumulate_data):
 
         t_idx = idx // len(freq_ids)
 
+        assert frame.metadata.abs_time_idx == t_idx
         assert (
             frame.metadata.fpga_start_tick
             == t_idx
@@ -262,7 +312,11 @@ def test_time(accumulate_data):
 
 def test_EOP(accumulate_data):
 
-    dt_ns = GIGA * global_params["fft_length"] / global_params["sampling_rate_Hz"]
+    dt_ns = (
+        GIGA
+        * global_params["fft_length"]
+        / (1.0e6 * global_params["sampling_rate_MHz"])
+    )
     t0_ns = global_params["gps_time"]["frame0_nano"]
 
     eopA = global_params["earth_rotation_data"]["earth_orientation_parameter_table"][0]

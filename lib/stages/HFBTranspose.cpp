@@ -136,7 +136,7 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
 
     // Work out if the frequencies are decreasing or increasing
     const double sign = (tel.nyquist_zone() % 2 ? 1 : -1);
-    const double freq_width = tel.freq_width(0);
+    const double freq_width = tel.freq_width_MHz(0);
     double freq_diff = -sign * 0.5 * freq_width;
     const double freq_inc = freq_width / num_subfreq;
     for (auto& sf : sub_freqs) {

@@ -104,7 +104,7 @@ void FakeHFB::main_thread() {
         std::vector<std::pair<uint32_t, freq_ctype>> fspec;
         std::transform(std::begin(freq), std::end(freq), std::back_inserter(fspec),
                        [&tel](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
-                           return {id, {tel.to_freq(id), tel.freq_width(id)}};
+                           return {id, {tel.to_freq_MHz(id), tel.freq_width_MHz(id)}};
                        });
 
         states.push_back(dm.create_state<freqState>(fspec).first);
