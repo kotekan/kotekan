@@ -2,8 +2,8 @@
 #define TEST_DATA_CHECK_H
 
 #include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
 #include "N2Metadata.hpp"      // for N2Metadata, get_N2_metadata, metadata_is_N2
+#include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, metadata_is_chord, CHO...
@@ -312,7 +312,6 @@ void testDataCheck<A_Type>::main_thread() {
             } else {
                 FATAL_ERROR("metadata types should both be chord or both be N2!");
             }
-
         }
 
         if (num_errors == 0) {
@@ -507,9 +506,10 @@ int testDataCheck<A_Type>::check_N2_metadata(const std::shared_ptr<const N2Metad
 
     // Timing fields
     if (meta1->fpga_start_tick != meta2->fpga_start_tick) {
-        ERROR("metadata {:s}[{:d}] fpga_start_tick != {:s}[{:d}] fpga_start_tick; values: {:d} {:d}",
-              first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
-              meta1->fpga_start_tick, meta2->fpga_start_tick);
+        ERROR(
+            "metadata {:s}[{:d}] fpga_start_tick != {:s}[{:d}] fpga_start_tick; values: {:d} {:d}",
+            first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
+            meta1->fpga_start_tick, meta2->fpga_start_tick);
         num_errors++;
     }
     if (meta1->frame_start_time_ns != meta2->frame_start_time_ns) {

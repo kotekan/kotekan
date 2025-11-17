@@ -52,7 +52,7 @@ jobs:
             post_build: ""   # nothing to run
 
           # Test gcc build + serial pytests
-          - id: test_gcc_pytests
+          - id: test_gcc_serial_pytests
             ccache_key: kotekan-test-gcc-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -69,7 +69,7 @@ jobs:
               pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
 
           # Test gcc build + parallel pytests
-          - id: test_gcc_pytests
+          - id: test_gcc_parallel_pytests
             ccache_key: kotekan-test-gcc-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
@@ -101,7 +101,7 @@ jobs:
               bash $GITHUB_WORKSPACE/tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" $GITHUB_WORKSPACE/build-2404/tests/boost
 
           # Release gcc build + serial pytests
-          - id: release_gcc_pytests
+          - id: release_gcc_serial_pytests
             ccache_key: kotekan-release-gcc-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
@@ -118,7 +118,7 @@ jobs:
               pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
 
           # Release gcc build + parallel pytests
-          - id: release_gcc_pytests
+          - id: release_gcc_parallel_pytests
             ccache_key: kotekan-release-gcc-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON

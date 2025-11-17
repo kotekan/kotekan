@@ -67,7 +67,9 @@ def run_eigenvis(tdir_factory, params=None):
         freq_ids=params["freq"], num_frames=params["total_frames"], mode=params["mode"]
     )
 
-    dump_buffer = runner.DumpN2Buffer(str(tmpdir), exit_after_n_files=params["total_frames"])
+    dump_buffer = runner.DumpN2Buffer(
+        str(tmpdir), exit_after_n_files=params["total_frames"]
+    )
 
     test = runner.KotekanStageTester(
         "eigenVis", {}, fakevis_buffer, dump_buffer, params

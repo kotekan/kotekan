@@ -108,12 +108,9 @@ def accumulate_data(tmpdir_factory):
     )
 
     # Number of accumulated frames expected at the output (per freq).
-    expected_frames = (
-        global_params["num_local_freq"]
-        * (
-            global_params["total_frames"]
-            // accumulate_params["num_n2k_samples_to_accumulate"]
-        )
+    expected_frames = global_params["num_local_freq"] * (
+        global_params["total_frames"]
+        // accumulate_params["num_n2k_samples_to_accumulate"]
     )
     dump_buffer = runner.DumpN2Buffer(str(tmpdir), exit_after_n_files=expected_frames)
 

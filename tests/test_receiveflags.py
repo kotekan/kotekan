@@ -339,7 +339,7 @@ def test_start_time(tmpdir_factory):
         [3],
     ]
     frame_flags = [[1, 0, 1, 1, 0], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
-    ts = [time.time() + 6, time.time() + 8, time.time() + 10]
+    ts = [time.time() + 6, time.time() + 8, time.time() + 9.5]
     cmds = [
         [
             "post",
@@ -401,7 +401,7 @@ def test_start_time_out_of_order(tmpdir_factory):
         [3],
     ]
     frame_flags = [[1, 0, 1, 1, 0], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
-    ts = [time.time() + 6, time.time() + 8, time.time() + 10]
+    ts = [time.time() + 6, time.time() + 8, time.time() + 9.5]
 
     # reorder start_times
     cmds = [
@@ -575,7 +575,7 @@ def test_dset_id_change(tmpdir_factory):
         [3],
     ]
     frame_flags = [[1, 0, 1, 1, 0], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
-    ts = [time.time() + 6, time.time() + 8, time.time() + 10]
+    ts = [time.time() + 6, time.time() + 8, time.time() + 9.5]
     cmds = [
         [
             "post",
