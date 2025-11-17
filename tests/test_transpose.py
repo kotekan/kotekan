@@ -16,11 +16,10 @@ from flask import Flask, jsonify, request as flask_req
 from pytest_localserver.http import WSGIServer
 
 from kotekan import runner
-from test_compression import float_allclose
+from test_compression import _chime_stack_expectations, float_allclose
 
-# Skip if HDF5 support not built into kotekan
 if not runner.has_hdf5():
-    pytest.skip("HDF5 support not available.", allow_module_level=True)
+    pytest.fail("HDF5 support not available; unable to run tests!")
 
 NULL_DSET_ID = b"00000000000000000000000000000000"
 
@@ -69,11 +68,11 @@ writer_params = {
 }
 
 stack_params = {
-    "num_elements": 2048,
-    "num_ev": 2,
-    "cadence": 5.0,
-    "file_length": 3,
-    "freq": freq,
+    "num_elements": 128,
+    "num_ev": 1,
+    "cadence": 1.0,
+    "file_length": 2,
+    "freq": [0, 250, 500],
     "chunk_size": [2, 64, 3],
     "dataset_manager": {"use_dataset_broker": False},
 }
@@ -391,7 +390,8 @@ def test_transpose_stack(transpose_stack):
     n_f = len(stack_params["freq"])
     n_elems = stack_params["num_elements"]
     n_prod = n_elems * (n_elems + 1) // 2
-    n_stack = 4 * (4 * 256 - 1) + 6 * 4 * 511
+    expected_vis, expected_weight = _chime_stack_expectations(n_elems)
+    n_stack = len(expected_vis)
     n_ev = stack_params["num_ev"]
 
     # check if shapes are correct
@@ -428,36 +428,12 @@ def test_transpose_stack(transpose_stack):
     )
     assert (f["reverse_map/stack"][:] == stack_rm).all()
 
-    # check stacked visibilities are still as expected
-    # this is adapted from test_compression.py
-
-    # This is the typical number of entries per polarisation (for XX, XY and YY, not YX)
-    np1 = 4 * 256 + 6 * 511
+    # check stacked visibilities are still as expected (matches test_compression smallchime helper)
     for t in range(n_t):
         for ff in range(n_f):
 
             a_vis = f["vis"][ff, :, t]
             a_weight = f["flags/vis_weight"][ff, :, t]
 
-            # Check that the entries in XX and XY are the same
-            assert float_allclose(a_vis[:np1], a_vis[np1 : (2 * np1)])
-
-            v1 = a_vis[:np1]
-            w1 = a_weight[:np1]
-
-            # Loop over all pairs of cylinders for XX
-            for ci in range(4):
-                for cj in range(ci, 4):
-
-                    # These numbers depend if we are within a cyl or not
-                    nv = 256 if ci == cj else 511  # Number of entries to compare
-                    lb = 0 if ci == cj else -255  # The most negative separation
-
-                    # A list of the feed separations in the NS dir
-                    d = np.arange(lb, 256)
-
-                    assert float_allclose(v1[:nv], (cj - ci + 1.0j * d))
-                    assert float_allclose(w1[:nv], (256.0 - np.abs(d)))
-
-                    v1 = v1[nv:]
-                    w1 = w1[nv:]
+            assert float_allclose(a_vis, expected_vis)
+            assert float_allclose(a_weight, expected_weight)

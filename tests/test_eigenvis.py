@@ -10,9 +10,10 @@ import numpy as np
 
 from kotekan import runner
 
-# Skip if LAPACK support not built into kotekan
-if not runner.has_lapack():
-    pytest.skip("LAPACK support not available.", allow_module_level=True)
+
+# Fail if run when the eigenVis stage is not built
+if not runner.has_eigenvis():
+    pytest.fail("eigenVis stage not available; unable to run tests!")
 
 
 default_params = {
@@ -66,7 +67,9 @@ def run_eigenvis(tdir_factory, params=None):
         freq_ids=params["freq"], num_frames=params["total_frames"], mode=params["mode"]
     )
 
-    dump_buffer = runner.DumpN2Buffer(str(tmpdir))
+    dump_buffer = runner.DumpN2Buffer(
+        str(tmpdir), exit_after_n_files=params["total_frames"]
+    )
 
     test = runner.KotekanStageTester(
         "eigenVis", {}, fakevis_buffer, dump_buffer, params

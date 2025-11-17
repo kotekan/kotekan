@@ -1,3 +1,8 @@
+# This workflow runs suites of tests on both a local runner and github runners.
+# Generally, it should be when pull requests are open/updated, or on direct pushes (uncommon).
+# It calls the build_push_docker workflow to make sure the kotekan docker image exists,
+# and the test_kotekan_build workflow for kotekan tests.
+---
 name: kotekan-ci-tests
 on:
   pull_request:
@@ -11,326 +16,221 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMG_2404: "ghcr.io/${{ github.repository }}/kotekan-2404"
 
 jobs:
 
   # Kotekan docker image build and push
-  build-docker-2404:
-    runs-on: ubuntu-latest
+  kotekan-docker:
     permissions: write-all
+    uses: ./.github/workflows/build_push_docker.yml
 
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Check for file changes
-      uses: tj-actions/changed-files@v44
-      id: changed-files
-
-    - name: Login to GitHub Container Registry
-      if: ${{ !env.ACT }} # Don't log in if running locally
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    # Rebuild (or build) for a push/pr from a local branch (separate workflow for PR merges)
-    - name: Check to see if a docker rebuild is needed
-      id: docker_img
-      run: |
-        echo "docker_build=" >> $GITHUB_OUTPUT; # Default to no rebuild
-
-        if [[ ${{ contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/24.04/Dockerfile') }} == "true" || ${DOCKER_BUILD} ]] ; then
-          echo "Modified Dockerfile found (or re-build requested). Building on local branch."
-          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-            IMAGE_NAME="${IMG_2404}:$(echo ${GITHUB_REF_NAME} | tr / .)"
-          else
-            IMAGE_NAME="${IMG_2404}:$(echo ${GITHUB_HEAD_REF} | tr / .)"
-          fi
-          echo "docker_build=1" >> $GITHUB_OUTPUT;
-        else
-          if [[ "${GITHUB_EVENT_NAME}" = "pull_request" || "${GITHUB_EVENT_NAME}" = "pull_request_target" ]]; then
-            echo "Dockerfile was not modified. Using image from branch ${GITHUB_BASE_REF}."
-            IMAGE_NAME="${IMG_2404}:$(echo ${GITHUB_BASE_REF} | tr / .)"
-          else
-            # This can happen when we're merging a chord branch back to chord, eg
-            echo "Dockerfile was not modified. Using image from branch ${GITHUB_REF_NAME}."
-            IMAGE_NAME="${IMG_2404}:$(echo ${GITHUB_REF_NAME} | tr / .)"
-          fi
-        fi
-
-        if docker manifest inspect ${IMAGE_NAME} >/dev/null; then
-          echo "Docker package found."
-        else
-          echo "Docker package NOT found. Setting docker_build=1."
-          echo "docker_build=1" >> $GITHUB_OUTPUT;
-        fi
-
-        echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
-        echo "Image name: ${IMAGE_NAME}"
-
-    - name: Output environment variable details
-      run: |
-        echo "The job_id is: $GITHUB_JOB"
-        echo "The id of this action is: $GITHUB_ACTION"
-        echo "The run id is: $GITHUB_RUN_ID"
-        echo "The repository is: $GITHUB_REPOSITORY"
-        echo "The GitHub Actor's username is: $GITHUB_ACTOR"
-        echo "GitHub SHA: $GITHUB_SHA"
-        echo "GitHub event name: $GITHUB_EVENT_NAME"
-        echo "GitHub Ref: $GITHUB_REF"
-        echo "GitHub Head Ref: $GITHUB_HEAD_REF"
-        echo "GitHub Base Ref: $GITHUB_BASE_REF"
-        echo "GitHub Ref Name: $GITHUB_REF_NAME"
-        echo "Docker 2404 image: $IMG_2404"
-        echo "Used docker image name: ${{ steps.docker_img.outputs.img_name }}"
-        echo "docker_build: ${{ steps.docker_img.outputs.docker_build }}"
-        echo "img_name: ${{ steps.docker_img.outputs.img_name }}"
-
-    - name: Build and Push Docker Image (outside of act)
-      if: ${{ steps.docker_img.outputs.docker_build && !env.ACT }} # Push if not running locally
-      run: |
-        echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
-        docker build --cache-from=${IMG_2404} -t "${{ steps.docker_img.outputs.img_name }}" - < tools/docker/24.04/Dockerfile
-        docker push "${{ steps.docker_img.outputs.img_name }}"
-
-    - name: Build Docker Image (locally, in act)
-      if: ${{ steps.docker_img.outputs.docker_build && env.ACT }} # Don't push if running locally
-      run: |
-        echo "Building ${{ steps.docker_img.outputs.img_name }} (local only, no push)"
-        docker build --cache-from=${IMG_2404} -t "${{ steps.docker_img.outputs.img_name }}" - < tools/docker/24.04/Dockerfile
-
-    outputs:
-      docker_img_name: "${{ steps.docker_img.outputs.img_name }}"
-
-
-  github-kotekan-tests:
-    name: "Github"
-    runs-on: ubuntu-latest
-    needs: build-docker-2404
-    container:
-      image: ${{ needs.build-docker-2404.outputs.docker_img_name }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    defaults:
-      run:
-        shell: bash
-    env:
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_BASEDIR: ${{ github.workspace }}
-      CCACHE_COMPRESS: true
-      CCACHE_TEMPDIR: /tmp/.ccache
-
+  kotekan-cpu-tests:
+    name: CPU
+    needs: kotekan-docker
+    uses: ./.github/workflows/test_kotekan_build.yml
+    with:
+      container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
+      ccache_key: ${{ matrix.ccache_key }}
+      cmake_defs: ${{ matrix.cmake_defs }}
+      post_build: ${{ matrix.post_build }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - id: base
-            name: "Base build (no extras)"
-            ccache_key: kotekan-base
-            cmake_defs: &base_build_cmake_opts >-
+          
+          # Test gcc build + no features
+          - id: test_gcc_basic
+            ccache_key: kotekan-test-gcc-cpu
+            cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
               -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=OFF
               -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
               -DUSE_ASDF=OFF -DUSE_HDF5=OFF -DUSE_GDAL=OFF
               -DUSE_AIRSPY=OFF -DUSE_LAPACK_BLAZE=OFF -DUSE_FFTW=OFF -DUSE_JULIA=OFF -DUSE_DPDK=OFF
-              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: ""   # nothing to run
 
-          - id: full
-            name: "Full build + pytests tests"
-            ccache_key: kotekan-full-pytest
-            cmake_defs: &full_build_cmake_opts >-
+          # Test gcc build + serial pytests
+          - id: test_gcc_serial_pytests
+            ccache_key: kotekan-test-gcc-cpu
+            cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
               -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
-              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+            post_build: |
+              PYTHONPATH=$GITHUB_WORKSPACE/python
+              PYTEST_TIMEOUT=60
+              cd $GITHUB_WORKSPACE/tests
+              pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
+
+          # Test gcc build + parallel pytests
+          - id: test_gcc_parallel_pytests
+            ccache_key: kotekan-test-gcc-cpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+            post_build: |
+              PYTHONPATH=$GITHUB_WORKSPACE/python
+              PYTEST_TIMEOUT=60
+              cd $GITHUB_WORKSPACE/tests
+              pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+
+          # Test gcc build + boost tests
+          - id: test_gcc_boost
+            ccache_key: kotekan-test-gcc-cpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
-            post_build: |
-              # Run pytest tests
-              PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=120
-              cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
-              pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
-
-          - id: boost
-            name: "Full build + boost tests"
-            ccache_key: kotekan-full-boost
-            runner: ubuntu-latest
-            container_image: ""
-            container_options: ""
-            cmake_defs: *full_build_cmake_opts
             post_build: |
               TEST_TIMEOUT=30
               bash $GITHUB_WORKSPACE/tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" $GITHUB_WORKSPACE/build-2404/tests/boost
 
-          - id: opencl
-            name: "OpenCL-enabled build"
-            ccache_key: kotekan-opencl
+          # Release gcc build + serial pytests
+          - id: release_gcc_serial_pytests
+            ccache_key: kotekan-release-gcc-cpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+            post_build: |
+              PYTHONPATH=$GITHUB_WORKSPACE/python
+              PYTEST_TIMEOUT=60
+              cd $GITHUB_WORKSPACE/tests
+              pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
+
+          # Release gcc build + parallel pytests
+          - id: release_gcc_parallel_pytests
+            ccache_key: kotekan-release-gcc-cpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+            post_build: |
+              PYTHONPATH=$GITHUB_WORKSPACE/python
+              PYTEST_TIMEOUT=60
+              cd $GITHUB_WORKSPACE/tests
+              pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+
+          # Test clang build
+          - id: clang
+            ccache_key: kotekan-test-clang-cpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+              -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
+            post_build: ""  # Any clang tests to run?
+
+          # Release clang build
+          - id: release_clang
+            ccache_key: kotekan-release-clang-cpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+              -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
+            post_build: ""  # Any clang tests to run?
+
+          # run yamls in config/ci-tests/cpu_batch
+          - id: test-gcc-cpu-yaml
+            ccache_key: kotekan-test-gcc-yaml
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
               -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
-              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
-              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
-              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
-              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
-            post_build: ""   # Any OpenCL-specific commands to test?
-          
-          - id: release_pytest_gcc
-            name: "Release build + pytest"
-            ccache_key: kotekan-release-gcc
-            cmake_defs: &build_release_gcc_opts >-
-              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
-              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
-              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
-              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              # Run pytest tests
-              PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=120
-              cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto --dist=loadfile --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
-              pytest -v -x --timeout="${PYTEST_TIMEOUT}" -m serial
+              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/cpu_batch
+            runs_on: self-hosted
 
-          - id: clang
-            name: "clang build"
-            ccache_key: kotekan-clang
+          # Test gcc build with docs
+          - id: local-docs
+            ccache_key: kotekan-test-gcc-docs
             cmake_defs: >-
-              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
-              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-              -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON
-              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
-              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
-              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
-              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
-            post_build: ""   # Any clang-specific tests to run?
-
-          - id: release_clang
-            name: "Release build with clang"
-            ccache_key: selfhosted-kotekan-release-clang
-            cmake_defs: &runner_build_release_clang_opts >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
-              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
               -DUSE_OMP=ON -DUSE_NUMA=OFF -DNO_MEMLOCK=ON
-              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
-              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
-            post_build: ""  # clang tests?
-
-          - id: docs
-            name: "Build Documentation"
-            ccache_key: kotekan-docs
-            cmake_defs: >-
-              -DCOMPILE_DOCS=ON
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF -DCOMPILE_DOCS=ON
             post_build: |
               cd $GITHUB_WORKSPACE/build-2404 && make docs
 
+          # Run Linter
           - id: lint
-            name: "Run Linter"
             cmake_defs: ""
             post_build: |
               cd $GITHUB_WORKSPACE
               git config --global --add safe.directory $GITHUB_WORKSPACE
               bash ./tools/lint.sh
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: .ccache
-          key: ccache-${{ matrix.ccache_key }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ matrix.ccache_key }}-
-
-      - name: Print working environment details
-        run: |
-          echo "==========="
-          pwd
-          echo "==========="
-          ls -la
-          echo "==========="
-          env
-          echo "==========="
-          df -h
-          echo "==========="
-          free -h
-          echo "==========="
-          lscpu
-          echo "==========="
-          uname -m
-          echo "==========="
-
-      - name: Verify architecture is x86_64
-        run: |
-          arch=$(uname -m)
-          echo "Detected architecture: $arch"
-          if [ "$arch" != "x86_64" ]; then
-            echo "::error::This job must run on an x86_64 runner (found $arch)"
-            exit 1
-          fi
-
-      - name: Configure & Build kotekan
-        if: matrix.cmake_defs
-        run: |
-          set -euo pipefail
-          mkdir $GITHUB_WORKSPACE/build-2404 && cd $GITHUB_WORKSPACE/build-2404
-          ccache -s
-          cmake -DARCH=haswell -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
-          make -j $(nproc)
-          ccache -s
-
-      - name: Post-build commands
-        if: matrix.post_build
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Run any commands specified ...
-          ${{ matrix.post_build }}
-
-
-  selfhosted-kotekan-tests:
-    name: "Self-Hosted"
-    runs-on: self-hosted
-    needs: build-docker-2404
-    container:
-      image: ${{ needs.build-docker-2404.outputs.docker_img_name }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      options: >-
-        --privileged
-        --mount type=bind,source=/data,target=/data
-    defaults:
-      run:
-        shell: bash
-    env:
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_BASEDIR: ${{ github.workspace }}
-      CCACHE_COMPRESS: true
-      CCACHE_TEMPDIR: /tmp/.ccache
-
+  kotekan-gpu-tests:
+    name: "GPU"
+    needs: kotekan-docker
+    uses: ./.github/workflows/test_kotekan_build.yml
+    with:
+      container_image: ${{ needs.kotekan-docker.outputs.docker_gpu_img_name }}
+      ccache_key: ${{ matrix.ccache_key }}
+      cmake_defs: ${{ matrix.cmake_defs }}
+      post_build: ${{ matrix.post_build }}
+      runs_on: ${{ matrix.runs_on }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
-          - id: test_build_yaml_tests
-            name: "run yamls in config/ci-tests"
-            ccache_key: selfhosted-kotekan-default
-            cmake_defs: &runner_build_default_opts >-
+
+          # Test gcc build + CUDA/OpenCL
+          - id: test-gcc-cuda-opencl
+            ccache_key: kotekan-test-gcc-gpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=ON
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
+            post_build: ""   # Any OpenCL-specific commands to test?
+            runs_on: ubuntu-latest # github
+
+          # run yamls in config/ci-tests/gpu_batch
+          - id: test-gcc-gpu-yaml
+            ccache_key: kotekan-test-gcc-yaml
+            cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
               -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
@@ -339,12 +239,13 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests
-          
-          - id: release_build_yaml_tests
-            name: "Build release kotekan"
-            ccache_key: selfhosted-kotekan-release-gcc  # re-using key from build
-            cmake_defs: &runner_build_release_gcc_opts >-
+              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/gpu_batch
+            runs_on: self-hosted
+
+          # run yamls in config/ci-tests/gpu_batch
+          - id: release-gcc-gpu-yaml
+            ccache_key: kotekan-release-gcc-yaml
+            cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
               -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
               -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
@@ -353,63 +254,15 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests
+              bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/gpu_batch
+            runs_on: self-hosted
 
-          - id: data_test
-            name: "/data dir test"
+          # /data dir test"
+          - id: data-test
             cmake_defs: ""
             post_build: |
               # Try something with the persistent /data directory.
               touch /data/tmp
               ls /data
               rm /data/tmp
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: .ccache
-          key: ccache-${{ matrix.ccache_key }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ matrix.ccache_key }}-
-
-      - name: Print working environment details
-        run: |
-          echo "==========="
-          pwd
-          echo "==========="
-          ls -la
-          echo "==========="
-          env
-          echo "==========="
-          df -h
-          echo "==========="
-          free -h
-          echo "==========="
-          lscpu
-          echo "==========="
-          nvidia-smi
-          echo "==========="
-          uname -m
-          echo "==========="
-
-      - name: Configure & Build kotekan
-        if: matrix.cmake_defs
-        run: |
-          set -euo pipefail
-          mkdir $GITHUB_WORKSPACE/build-2404 && cd $GITHUB_WORKSPACE/build-2404
-          ccache -s
-          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ matrix.cmake_defs }} ..
-          make -j $(nproc)
-          ccache -s
-
-      - name: Post-build commands
-        if: matrix.post_build
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Run any commands specified ...
-          ${{ matrix.post_build }}
+            runs_on: self-hosted

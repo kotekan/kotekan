@@ -19,13 +19,9 @@ on:
         required: false
         type: string
 
-env:
-  REGISTRY: ghcr.io
-  IMG_2404: "ghcr.io/${{ github.repository }}/kotekan-2404"
-
 jobs:
 
-  log-execution:
+  log-github-execution:
     runs-on: ubuntu-latest
     steps:
       - name: Log execution context
@@ -36,79 +32,13 @@ jobs:
           echo "Branch: ${{ github.ref_name }}"
           echo "Actor: ${{ github.actor }}"
 
-  # Build a version of kotekan and run some direct tests
-  build-scheduled-tests-2404:
+  log-selfhosted-execution:
     runs-on: self-hosted
-    container: 
-      image: summerwind/actions-runner:ubuntu-22.04
-      options: --user root
-
     steps:
-    - uses: actions/checkout@v4
-
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Cache ccache files
-      uses: actions/cache@v4
-      with:
-        path: .ccache
-        key: ccache-direct-2404-${{ github.sha }}
-        restore-keys: |
-          ccache-direct-2404
-          ccache-base-build-2404
-
-    - name: Build kotekan
-      shell: bash
-      run: |
-        OPTS=(--pull=always --privileged --rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/ ${IMG_2404}:chord)
-        docker run "${OPTS[@]}" ccache -s
-        docker run "${OPTS[@]}" \
-          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-            -DWERROR=ON \
-            -DCMAKE_BUILD_TYPE=Test \
-            -DNO_MEMLOCK=ON \
-            -DUSE_OMP=ON \
-            -DWITH_BOOST_TESTS=ON \
-            -DUSE_CUDA=ON \
-            -DCCACHE=ON ..
-        docker run "${OPTS[@]}" make -j
-        docker run "${OPTS[@]}" rm -r lib
-        docker run "${OPTS[@]}" ccache -s
-        df -h
-
-    # Run tests in the config/scheduled-tests directory with timeout
-    - name: Run scheduled Kotekan tests
-      run: |
-        TIMEOUT_DURATION="5m"  # Timeout duration per test
-        TEST_CONFIG_DIR="config/scheduled-tests"
-        for config_file in "$TEST_CONFIG_DIR"/*.yaml; do
-          echo "Running test with config: $config_file"
-          
-          # Run the test with timeout
-          timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
-            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
-            -w /code/kotekan \
-            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
-            ./build-2404/kotekan/kotekan --bind-address 0:23000 --config "$config_file"
-
-          EXIT_CODE=$?
-
-          if [ $EXIT_CODE -eq 124 ]; then
-            echo "Test timed out for config: $config_file"
-            exit 1
-          elif [ $EXIT_CODE -ne 0 ]; then
-            echo "Test failed for config: $config_file with exit code $EXIT_CODE"
-            exit 1
-          else
-            echo "Test passed for config: $config_file"
-          fi
-        done
-
-    - name: Clean up
-      run: |
-        rm -rf kotekan
+      - name: Log execution context
+        run: |
+          echo "Workflow triggered by: ${{ github.event.inputs.trigger_source }}"
+          echo "Triggered at: ${{ github.event.inputs.triggered_at }}"
+          echo "Schedule type: ${{ github.event.inputs.schedule_type }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"

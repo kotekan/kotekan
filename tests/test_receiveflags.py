@@ -323,7 +323,7 @@ def test_flags_no_argument(tmpdir_factory):
 
 
 def test_start_time(tmpdir_factory):
-    global_params["total_frames"] = 200
+    global_params["total_frames"] = 120
     params["num_kept_updates"] = 5
     global_params["cadence"] = 0.1
     global_params["wait"] = True
@@ -339,7 +339,7 @@ def test_start_time(tmpdir_factory):
         [3],
     ]
     frame_flags = [[1, 0, 1, 1, 0], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
-    ts = [time.time() + 15, time.time() + 17, time.time() + 18.5]
+    ts = [time.time() + 6, time.time() + 8, time.time() + 9.5]
     cmds = [
         [
             "post",
@@ -386,7 +386,7 @@ def test_start_time(tmpdir_factory):
 
 
 def test_start_time_out_of_order(tmpdir_factory):
-    global_params["total_frames"] = 200
+    global_params["total_frames"] = 120
     params["num_kept_updates"] = 5
     global_params["cadence"] = 0.1
     global_params["num_elements"] = 5
@@ -401,7 +401,7 @@ def test_start_time_out_of_order(tmpdir_factory):
         [3],
     ]
     frame_flags = [[1, 0, 1, 1, 0], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
-    ts = [time.time() + 15, time.time() + 17, time.time() + 18.5]
+    ts = [time.time() + 6, time.time() + 8, time.time() + 9.5]
 
     # reorder start_times
     cmds = [
@@ -451,7 +451,7 @@ def test_start_time_out_of_order(tmpdir_factory):
 
 
 def test_start_time_new_update(tmpdir_factory):
-    global_params["total_frames"] = 200
+    global_params["total_frames"] = 120
     params["num_kept_updates"] = 5
     global_params["cadence"] = 0.1
     global_params["num_elements"] = 5
@@ -466,7 +466,7 @@ def test_start_time_new_update(tmpdir_factory):
         [3],
     ]
     frame_flags = [[1, 1, 1, 1, 1], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
-    ts = [time.time() + 15, time.time() + 15, time.time() + 15]
+    ts = [time.time() + 6, time.time() + 6, time.time() + 6]
     cmds = [
         [
             "post",
@@ -559,7 +559,7 @@ def test_flags_wrong_type(tmpdir_factory):
 
 
 def test_dset_id_change(tmpdir_factory):
-    global_params["total_frames"] = 200
+    global_params["total_frames"] = 120
     params["num_kept_updates"] = 5
     global_params["cadence"] = 0.1
     global_params["wait"] = True
@@ -575,7 +575,7 @@ def test_dset_id_change(tmpdir_factory):
         [3],
     ]
     frame_flags = [[1, 0, 1, 1, 0], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
-    ts = [time.time() + 15, time.time() + 17, time.time() + 18.5]
+    ts = [time.time() + 6, time.time() + 8, time.time() + 9.5]
     cmds = [
         [
             "post",

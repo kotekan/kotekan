@@ -1,7 +1,7 @@
 #include "gpuSimulateCudaFRBBeamformer.hpp"
 
 #include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for float16_t, KOTEKAN_FLOAT16
+#include "DataType.hpp"        // for float16_t, KOTEKAN_FLOAT16, IWYU pragma: keep
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -11,14 +11,13 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <array>       // for array
-#include <assert.h>    // for assert
-#include <complex>     // for complex, operator*, norm, polar, complex_literals
-#include <cuda_fp16.h> // for __half::operator float
-#include <functional>  // for bind, function
-#include <math.h>      // for M_PI
-#include <stdlib.h>    // for free, malloc, size_t
-#include <vector>      // for vector
+#include <array>      // for array
+#include <assert.h>   // for assert
+#include <complex>    // for complex, operator*, norm, polar, complex_literals
+#include <functional> // for bind, function
+#include <math.h>     // for M_PI
+#include <stdlib.h>   // for free, malloc, size_t
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

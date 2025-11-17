@@ -50,8 +50,8 @@
  *                      the set of FakeVisPattern implementations for details.
  * @conf  wait          Bool. Sleep to try and output data at roughly
  *                      the correct cadence.
- * @conf  num_frames    Exit after num_frames have been produced. If
- *                      less than zero, no limit is applied. Default is `-1`.
+ * @conf  num_frames    Stop after num_frames have been produced (but don't exit).
+ *                      If less than zero, no limit is applied. Default is `-1`.
  * @conf  zero_weight   Bool. Set all weights to zero, if this is True.
  *                      Default is False.
  * @conf  frequencies   Array of UInt32. Definition of frequency IDs for
