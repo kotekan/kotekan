@@ -28,7 +28,7 @@ def in_container() -> bool:
         return False
 
 
-if in_container() or True:
+if in_container():
     pytest.skip("Does not work in Github Actions docker run.", allow_module_level=True)
 
 default_params = {

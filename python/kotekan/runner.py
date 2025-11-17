@@ -1415,18 +1415,23 @@ def fix_strings(d):
     return d
 
 
-## Quick tests for kotekan's builds
 def has_hdf5():
-    """Is HDF5 support built in."""
-    return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_HDF5"] == "ON"
+    """ Check for HDF5 via registered stages """
+    config = KotekanRunner.kotekan_config()
+
+    available = set(config.get("available_stages", []))
+    required = {"hdf5FileWrite", "hdf5FileRead", "VisWriter", "VisTranspose"}
+    missing = required - available
+
+    return len(missing) == 0
 
 
-def has_lapack():
-    """Is LAPACK support built in."""
-    return (
-        KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_LAPACK_BLAZE"]
-        == "ON"
-    )
+def has_eigenvis():
+    """Check for eigenVis via registered stages."""
+
+    config = KotekanRunner.kotekan_config()
+    available = set(config.get("available_stages", []))
+    return "eigenVis" in available
 
 
 def has_openmp():

@@ -330,7 +330,8 @@ def n2_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("n2_data")
 
-    dump_buffer = runner.DumpN2Buffer(str(tmpdir))
+    expected_frames = len(calc_downsamp_frame_meta())
+    dump_buffer = runner.DumpN2Buffer(str(tmpdir), exit_after_n_files=expected_frames)
 
     test = runner.KotekanStageTester(
         "N2TimeDownsample",

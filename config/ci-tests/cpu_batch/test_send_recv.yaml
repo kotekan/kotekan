@@ -78,7 +78,7 @@ gen_buffer_data:
     out_buf: send_buffer
     array_shape: [ 2048 ]
     dim_name: ["S"]
-    num_frames: 10
+    num_frames: 6
 
 buffer_send_standard:
     kotekan_stage: bufferSend
@@ -102,7 +102,7 @@ fake_n2:
     log_level: WARN
     kotekan_stage: FakeN2
     out_buf: send_N2_buffer
-    num_total_freq: 5
+    num_total_freq: 3
     cadence: 0.2
     wait: false
     mode: default
@@ -121,14 +121,32 @@ buffer_recv_n2:
     buf: recv_N2_buffer
     listen_port: 11025
 
-# Monitor recv buffers for activity, shutdown after some inactivity.
+# Verify buffers are the same.
+
+check_standard_send_recv:
+    kotekan_stage: testDataCheckUchar
+    first_buf: send_buffer
+    second_buf: recv_buffer
+    num_frames_to_test: buffer_depth
+    trigger_exit_on_pass: false
+    check_metadata: true
+
+check_n2_send_recv:
+    kotekan_stage: testDataCheckUchar
+    first_buf: send_N2_buffer
+    second_buf: recv_N2_buffer
+    num_frames_to_test: buffer_depth
+    trigger_exit_on_pass: false
+    check_metadata: true
+
+# Monitor recv buffers for completion, shutdown after some inactivity if none.
 
 buffer_monitor:
     kotekan_stage: monitorBuffer
-    timeout: 15.0 # If no activity in this buffer for this many seconds,
+    timeout: 10.0 # If no activity in this buffer for this many seconds,
     graceful_shutdown: false # trigger failure
     wait_for_first_frame: true
     bufs:
       - recv_buffer
       - recv_N2_buffer
-    clean_exit_after_frames: 10 # Stop (successfully) after this many frames have been seen
+    clean_exit_after_frames: 6 # Trigger success after this many frames have been seen

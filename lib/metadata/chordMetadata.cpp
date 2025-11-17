@@ -203,9 +203,11 @@ size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t 
     if (fmt->freq_upchan_factor[0] != 0) // 0 should be an invalid value
         this->set_freq_upchan_factor(
             std::vector<int>(fmt->freq_upchan_factor, fmt->freq_upchan_factor + nfreq));
-    if (fmt->half_fpga_sample0[0] != 0) // 0 should be an invalid value
+    // Preserve half_fpga_sample0 for serialization (-1 = absent).
+    if (fmt->half_fpga_sample0[0] != -1) {
         this->set_half_fpga_sample0(
             std::vector<int64_t>(fmt->half_fpga_sample0, fmt->half_fpga_sample0 + nfreq));
+    }
     if (fmt->time_downsampling_fpga[0] != 0) // 0 should be an invalid value
         this->set_time_downsampling_fpga(
             std::vector<int>(fmt->time_downsampling_fpga, fmt->time_downsampling_fpga + nfreq));
@@ -247,7 +249,7 @@ size_t chordMetadata::serialize(char* bytes) {
         fmt->frame_counter = this->get_frame_counter();
     else
         fmt->frame_counter = -1;
-    if (this->get_fpga_seq_num())
+    if (this->has_fpga_seq_num())
         fmt->fpga_seq_num = this->get_fpga_seq_num();
     else
         fmt->fpga_seq_num = -1;
@@ -277,9 +279,13 @@ size_t chordMetadata::serialize(char* bytes) {
     if (this->has_freq_upchan_factor())
         std::copy_n(this->get_freq_upchan_factor().data(), this->get_nfreq(),
                     fmt->freq_upchan_factor);
-    if (this->has_half_fpga_sample0())
+    if (this->has_half_fpga_sample0()) {
         std::copy_n(this->get_half_fpga_sample0().data(), this->get_nfreq(),
                     fmt->half_fpga_sample0);
+    } else {
+        // Use -1 as a placeholder for "absent"
+        std::fill_n(fmt->half_fpga_sample0, this->get_nfreq(), int64_t(-1));
+    }
     if (this->has_time_downsampling_fpga())
         std::copy_n(this->get_time_downsampling_fpga().data(), this->get_nfreq(),
                     fmt->time_downsampling_fpga);

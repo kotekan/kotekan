@@ -64,9 +64,9 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=120
+              PYTEST_TIMEOUT=60
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -x --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
+              pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
 
           # Test gcc build + parallel pytests
           - id: test_gcc_pytests
@@ -81,9 +81,9 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=120
+              PYTEST_TIMEOUT=60
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
 
           # Test gcc build + boost tests
           - id: test_gcc_boost
@@ -113,9 +113,9 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=120
+              PYTEST_TIMEOUT=60
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -x --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
+              pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
 
           # Release gcc build + parallel pytests
           - id: release_gcc_pytests
@@ -130,9 +130,9 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
               PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=120
+              PYTEST_TIMEOUT=60
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
 
           # Test clang build
           - id: clang
