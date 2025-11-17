@@ -193,7 +193,8 @@ void FakeN2::main_thread() {
 
             // Fill out the frame with the selected pattern
             pattern->fill(output_frame);
-            INFO("First eval is: {}", output_frame.eval[0]);
+            if(meta->num_ev > 0)
+                INFO("First eval is: {}", output_frame.eval[0]);
 
             // gains
             for (uint32_t i = 0; i < num_elements; i++) {
