@@ -4,7 +4,7 @@ find_package(Doxygen REQUIRED)
 add_subdirectory(doxygen)
 
 # find_package(SPHINX REQUIRED)
-find_package(BREATHE REQUIRED)
+# find_package(BREATHE REQUIRED)
 add_subdirectory(sphinx)
 
 # Aggregate documentation targets
