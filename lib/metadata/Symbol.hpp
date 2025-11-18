@@ -147,8 +147,8 @@ namespace fmt {
 template<>
 struct formatter<kotekan::Symbol> : fmt::formatter<std::string> {
     template<typename FormatContext>
-    auto format(const kotekan::Symbol& sym, FormatContext& ctx) {
-        return formatter<std::string>::format(sym.get_string(), ctx);
+    auto format(const kotekan::Symbol& sym, FormatContext& ctx) const {
+        return fmt::formatter<std::string>::format(sym.get_string(), ctx);
     }
 };
 } // namespace fmt
