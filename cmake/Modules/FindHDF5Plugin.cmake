@@ -24,7 +24,6 @@ endif()
 
 # 3. Try Python hdf5plugin, this is where the deployment plugins are.
 if(NOT HDF5Plugin_PLUGIN_DIR)
-    message(STATUS "HDF5Plugin: Attempting python")
     execute_process(
         COMMAND uv run -- python3 -c "
 try:
@@ -40,9 +39,8 @@ except ImportError:
 except: pass"
         OUTPUT_VARIABLE _hdf5plugin_path
         OUTPUT_STRIP_TRAILING_WHITESPACE
-        # ERROR_QUIET
+        ERROR_QUIET
     )
-    message(STATUS "python returned: ${_hdf5plugin_path}")
     if(_hdf5plugin_path AND EXISTS "${_hdf5plugin_path}")
         set(HDF5Plugin_PLUGIN_DIR "${_hdf5plugin_path}")
     endif()
