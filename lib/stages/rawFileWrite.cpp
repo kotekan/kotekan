@@ -117,6 +117,7 @@ void rawFileWrite::main_thread() {
                 exit(-1);
             }
         }
+        DEBUG("Wrote {:d} metadata bytes to {:s}.", metadata_size, full_path);
 
         // Write the contents of the buffer frame to disk.
         ssize_t bytes_writen = write(fd, frame, buf->frame_size);
@@ -125,6 +126,7 @@ void rawFileWrite::main_thread() {
             ERROR("Failed to write buffer to disk for file {:s}", full_path);
             exit(-1);
         }
+        DEBUG("Wrote {:d} data bytes to {:s}.", bytes_writen, full_path);
 
         INFO("Data file write done for {:s}", full_path);
 

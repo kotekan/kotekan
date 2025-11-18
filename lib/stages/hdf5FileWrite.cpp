@@ -287,7 +287,7 @@ public:
         file.createAttribute("num_ev", frame.num_ev);
         file.createAttribute("nfreq", frame.nfreq);
         file.createAttribute("freq_id", frame.freq_id);
-        file.createAttribute("freq_Hz", frame.freq_Hz);
+        file.createAttribute("freq_MHz", frame.freq_MHz);
         file.createAttribute("eop.t_inst", frame.eop.t_inst);
         file.createAttribute("eop.t_ut1", frame.eop.t_ut1);
         file.createAttribute("eop.delta_UT1_inst", frame.eop.delta_UT1_inst);

@@ -15,3 +15,7 @@ The following command will authenticate (providing secrets with the ``-s`` flag)
 
     act -s GITHUB_TOKEN="$(gh auth token)" -j "build-base-2204"
 
+Workflows
+---------
+
+The github actions workflow files live in ``.github/workflows/`` and are documented in ``.github/workflows/README.md``. Refer to those files for details.

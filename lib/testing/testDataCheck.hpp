@@ -2,6 +2,7 @@
 #define TEST_DATA_CHECK_H
 
 #include "Config.hpp"          // for Config
+#include "N2Metadata.hpp"      // for N2Metadata, get_N2_metadata, metadata_is_N2
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -138,6 +139,9 @@ private:
     int check_chord_metadata(const std::shared_ptr<const chordMetadata> meta1,
                              const std::shared_ptr<const chordMetadata> meta2, int first_buf_id,
                              int second_buf_id);
+    int check_N2_metadata(const std::shared_ptr<const N2Metadata> meta1,
+                          const std::shared_ptr<const N2Metadata> meta2, int first_buf_id,
+                          int second_buf_id);
 };
 
 template<typename A_Type>
@@ -284,6 +288,29 @@ void testDataCheck<A_Type>::main_thread() {
                          first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
                          second_buf_id);
                 }
+            } else if (metadata_is_N2(mc1) && metadata_is_N2(mc2)) {
+                INFO("Checking that the buffers {:s}[{:d}] and {:s}[{:d}] have matching N2 "
+                     "metadata...",
+                     first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id);
+
+                const std::shared_ptr<const N2Metadata> meta1 = get_N2_metadata(mc1);
+                const std::shared_ptr<const N2Metadata> meta2 = get_N2_metadata(mc2);
+
+                int num_meta_errors = check_N2_metadata(meta1, meta2, first_buf_id, second_buf_id);
+                num_errors += num_meta_errors;
+
+                if (num_meta_errors > 0) {
+                    INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained {:d} different N2 "
+                         "metadata values.",
+                         first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
+                         second_buf_id, num_meta_errors);
+                } else {
+                    INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained matching N2 metadata.",
+                         first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
+                         second_buf_id);
+                }
+            } else {
+                FATAL_ERROR("metadata types should both be chord or both be N2!");
             }
         }
 
@@ -447,6 +474,72 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
                                  second_buf_id);
 
     // TODO: int* dish_index; // [non-owning pointer] dish index for a possible dish location, or -1
+
+    return num_errors;
+}
+
+template<typename A_Type>
+int testDataCheck<A_Type>::check_N2_metadata(const std::shared_ptr<const N2Metadata> meta1,
+                                             const std::shared_ptr<const N2Metadata> meta2,
+                                             int first_buf_id, int second_buf_id) {
+    int num_errors = 0;
+
+    // Basic dimensionality and indexing
+    CHECK_META_SCALAR_INT_DIRECT(num_elements, meta1, meta2, num_errors, first_buf->buffer_name,
+                                 first_buf_id, second_buf->buffer_name, second_buf_id);
+    CHECK_META_SCALAR_INT_DIRECT(num_prod, meta1, meta2, num_errors, first_buf->buffer_name,
+                                 first_buf_id, second_buf->buffer_name, second_buf_id);
+    CHECK_META_SCALAR_INT_DIRECT(num_ev, meta1, meta2, num_errors, first_buf->buffer_name,
+                                 first_buf_id, second_buf->buffer_name, second_buf_id);
+    CHECK_META_SCALAR_INT_DIRECT(nfreq, meta1, meta2, num_errors, first_buf->buffer_name,
+                                 first_buf_id, second_buf->buffer_name, second_buf_id);
+
+    // Frequency identifiers
+    CHECK_META_SCALAR_INT_DIRECT(freq_id, meta1, meta2, num_errors, first_buf->buffer_name,
+                                 first_buf_id, second_buf->buffer_name, second_buf_id);
+    if (meta1->freq_MHz != meta2->freq_MHz) {
+        ERROR("metadata {:s}[{:d}] freq_MHz != {:s}[{:d}] freq_MHz; values: {:g} {:g}",
+              first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
+              meta1->freq_MHz, meta2->freq_MHz);
+        num_errors++;
+    }
+
+    // Timing fields
+    if (meta1->fpga_start_tick != meta2->fpga_start_tick) {
+        ERROR(
+            "metadata {:s}[{:d}] fpga_start_tick != {:s}[{:d}] fpga_start_tick; values: {:d} {:d}",
+            first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
+            meta1->fpga_start_tick, meta2->fpga_start_tick);
+        num_errors++;
+    }
+    if (meta1->frame_start_time_ns != meta2->frame_start_time_ns) {
+        ERROR("metadata {:s}[{:d}] frame_start_time_ns != {:s}[{:d}] frame_start_time_ns; "
+              "values: {:d} {:d}",
+              first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
+              meta1->frame_start_time_ns, meta2->frame_start_time_ns);
+        num_errors++;
+    }
+    if (meta1->frame_length_fpga_ticks != meta2->frame_length_fpga_ticks) {
+        ERROR("metadata {:s}[{:d}] frame_length_fpga_ticks != {:s}[{:d}] frame_length_fpga_ticks; "
+              "values: {:d} {:d}",
+              first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
+              meta1->frame_length_fpga_ticks, meta2->frame_length_fpga_ticks);
+        num_errors++;
+    }
+    if (meta1->n_valid_fpga_ticks != meta2->n_valid_fpga_ticks) {
+        ERROR("metadata {:s}[{:d}] n_valid_fpga_ticks != {:s}[{:d}] n_valid_fpga_ticks; values: "
+              "{:d} {:d}",
+              first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
+              meta1->n_valid_fpga_ticks, meta2->n_valid_fpga_ticks);
+        num_errors++;
+    }
+    if (meta1->n_rfi_fpga_ticks != meta2->n_rfi_fpga_ticks) {
+        ERROR("metadata {:s}[{:d}] n_rfi_fpga_ticks != {:s}[{:d}] n_rfi_fpga_ticks; values: {:d} "
+              "{:d}",
+              first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id,
+              meta1->n_rfi_fpga_ticks, meta2->n_rfi_fpga_ticks);
+        num_errors++;
+    }
 
     return num_errors;
 }

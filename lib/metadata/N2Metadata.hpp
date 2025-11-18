@@ -1,12 +1,12 @@
 #ifndef N2_METADATA
 #define N2_METADATA
 
-#include "CHORDTelescope.hpp" // for EOP
-#include "Config.hpp"         // for Config
+#include "Config.hpp" // for Config
 #include "N2Metadata.hpp"
 #include "buffer.hpp"         // for Buffer
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
+#include "timeUtil.hpp"       // for EOP
 
 #include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for json
@@ -20,6 +20,19 @@ using kotekan::Config;
 #include <string>   // for operator==, char_traits, basic_string
 #include <vector>   // for vector
 
+enum class N2Layout : int32_t {
+    FullUpperTri = 0,
+    RedundantBaselineAvg = 1,
+};
+
+void to_json(nlohmann::json& j, const N2Layout& t);
+void from_json(const nlohmann::json& j, N2Layout& t);
+
+inline std::string N2Layout_to_string(N2Layout l) {
+    nlohmann::json j{l};
+    return j.dump();
+}
+
 // Struct containing metadata fields for an N2 frame
 struct N2MetadataFormat {
 
@@ -32,18 +45,22 @@ struct N2MetadataFormat {
     /// Total number of frequencies in pipeline
     uint32_t nfreq;
 
+    /// enum specifying the layout type of the visibility matrix.
+    N2Layout layout;
+
     /// ID of the frequency bin
     uint32_t freq_id; // this is an int in chordMetadata, maybe change later
     /// Physical frequency in Hz
-    double freq_Hz;
+    double freq_MHz;
+
+    /// absolute time index of this frame in its stream. Begins at 0 at instument start
+    /// and counts monitonically afterwards.
+    uint64_t abs_time_idx;
 
     /// Frame Earth Orientation Paramters
     struct EOP frame_eop;
     /// Bin Earth Orientation Parameters
     struct EOP bin_eop;
-
-    /// Absolute frame index since start of observation
-    uint64_t abs_frame_index;
 
     /// The sequence number of the first FPGA frame integrated into this visibility frame
     uint64_t fpga_start_tick;

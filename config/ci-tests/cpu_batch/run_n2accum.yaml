@@ -5,7 +5,6 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: DEBUG2
 
-num_gpus: 1
 buffer_depth: 4
 cpu_affinity: [2]  # [2,3,4,5,8,9,10,11]
 sizeof_float: 4
@@ -23,7 +22,7 @@ num_polarizations: 2
 num_dishes: 64
 num_elements: num_polarizations * num_dishes
 num_local_freq: 16
-num_ev: 4
+num_ev: 0
 
 num_n2k_samples_to_accumulate: 4
 
@@ -44,6 +43,7 @@ GIGA: 1000000000
 start_time_s: 1760000000
 
 telescope:
+<<<<<<<< HEAD:config/ci-tests/batch/run_n2accum.yaml
     name: CHORDTelescope
     inst_lat_deg: 50.0
     inst_long_deg: -120.0
@@ -62,6 +62,19 @@ telescope:
         [151.0, 204.0, 0.0]]
     require_gps: False
     updatable_config: /earth_rotation_data
+========
+  name: CHORDTelescope
+  origin_itrs_lat_deg: 50.0
+  origin_itrs_lon_deg: -120.0
+  dish_coelev_deg: 90.0
+  grid_x_axis: [1.0, 0.0, 0.0]
+  grid_y_axis: [0.0, 1.0, 0.0]
+  dish_elev_axis: [1.0, 0.0, 0.0]
+  dish_vert_axis: [0.0, 0.0, 1.0]
+  require_gps: False
+  updatable_config: /earth_rotation_data
+  dish_inputs: []
+>>>>>>>> 435924ebdc542e242a3524cc95510b49d21e810c:config/ci-tests/cpu_batch/run_n2accum.yaml
 
 gps_time:
     frame0_nano: start_time_s * GIGA
@@ -113,8 +126,13 @@ fake_rfimask_buffer:
     metadata_pool: main_pool
 
 n2_buffer:
+<<<<<<<< HEAD:config/ci-tests/batch/run_n2accum.yaml
     log_level: INFO
     kotekan_buffer: N2
+========
+    kotekan_buffer: N2
+    layout: "FullUpperTri"
+>>>>>>>> 435924ebdc542e242a3524cc95510b49d21e810c:config/ci-tests/cpu_batch/run_n2accum.yaml
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 

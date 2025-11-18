@@ -10,9 +10,10 @@ import numpy as np
 
 from kotekan import runner
 
-# Skip if LAPACK support not built into kotekan
-if not runner.has_lapack():
-    pytest.skip("LAPACK support not available.", allow_module_level=True)
+
+# Fail if run when the eigenVis stage is not built
+if not runner.has_eigenvis():
+    pytest.fail("eigenVis stage not available; unable to run tests!")
 
 
 default_params = {
@@ -41,16 +42,17 @@ default_params = {
     "telescope": {
         "name": "CHORDTelescope",
         "require_gps": False,
-        "inst_long_deg": -119.62081125,
-        "inst_lat_deg": 49.32075144444,
-        "inst_grid_x_axis": [1, 0, 0],
-        "inst_grid_y_axis": [0, 1, 0],
-        "inst_dish_alt_axis": [1, 0, 0],
-        "inst_dish_vert_axis": [0, 0, 1],
-        "inst_alt_deg": 90.0,
-        "dish_positions": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+        "origin_itrs_lon_deg": -119.62081125,
+        "origin_itrs_lat_deg": 49.32075144444,
+        "grid_x_axis": [1, 0, 0],
+        "grid_y_axis": [0, 1, 0],
+        "dish_elev_axis": [1, 0, 0],
+        "dish_vert_axis": [0, 0, 1],
+        "dish_coelev_deg": 0.0,
         "updatable_config": "/earth_rotation_data",
+        "dish_inputs": [],
     },
+    "num_dishes": 100,
     "gps_time": {"frame0_nano": 0},
 }
 
@@ -66,7 +68,9 @@ def run_eigenvis(tdir_factory, params=None):
         freq_ids=params["freq"], num_frames=params["total_frames"], mode=params["mode"]
     )
 
-    dump_buffer = runner.DumpN2Buffer(str(tmpdir))
+    dump_buffer = runner.DumpN2Buffer(
+        str(tmpdir), exit_after_n_files=params["total_frames"]
+    )
 
     test = runner.KotekanStageTester(
         "eigenVis", {}, fakevis_buffer, dump_buffer, params

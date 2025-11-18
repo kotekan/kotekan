@@ -7,7 +7,8 @@
 #include "kotekanLogging.hpp" // for INFO
 #include "timeUtil.hpp"       // for get_ERA_from_UT1, get_UT1_from_ERA, get_time_from_UT1
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt.hpp"  // for compile_string_to_view
+#include "json.hpp" // for json
 
 #include <algorithm>     // for max
 #include <array>         // for array
@@ -22,6 +23,7 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using json = nlohmann::json;
 
 #define GIGA 1'000'000'000L
 
@@ -59,19 +61,19 @@ void TestCHORDTelescope::main_thread() {
         INFO("CHORD Tel - GPS enabled: {:d}", tel.gps_time_enabled());
         INFO("            time0:       {:d} s + {:d} ns", t0.tv_sec, t0.tv_nsec);
 
-        double lat = tel.get_inst_lat_deg();
-        double lon = tel.get_inst_long_deg();
+        double lat = tel.get_origin_itrs_lat_deg();
+        double lon = tel.get_origin_itrs_lon_deg();
         INFO("            lat:         {:f} deg", lat);
-        INFO("            long:        {:f} deg", lon);
+        INFO("            lon:         {:f} deg", lon);
         INFO("            Telescope Orientation: {0:.6f} {1:.6f} {2:.6f}",
-             tel.get_tel_orientation_el(0, 0), tel.get_tel_orientation_el(0, 1),
-             tel.get_tel_orientation_el(0, 2));
+             tel.get_grid_orientation_el(0, 0), tel.get_grid_orientation_el(0, 1),
+             tel.get_grid_orientation_el(0, 2));
         INFO("                                   {0:.6f} {1:.6f} {2:.6f}",
-             tel.get_tel_orientation_el(1, 0), tel.get_tel_orientation_el(1, 1),
-             tel.get_tel_orientation_el(1, 2));
+             tel.get_grid_orientation_el(1, 0), tel.get_grid_orientation_el(1, 1),
+             tel.get_grid_orientation_el(1, 2));
         INFO("                                   {0:.6f} {1:.6f} {2:.6f}",
-             tel.get_tel_orientation_el(2, 0), tel.get_tel_orientation_el(2, 1),
-             tel.get_tel_orientation_el(2, 2));
+             tel.get_grid_orientation_el(2, 0), tel.get_grid_orientation_el(2, 1),
+             tel.get_grid_orientation_el(2, 2));
         INFO("            Dish Orientation: {0:.6f} {1:.6f} {2:.6f}",
              tel.get_dish_orientation_el(0, 0), tel.get_dish_orientation_el(0, 1),
              tel.get_dish_orientation_el(0, 2));
@@ -162,9 +164,14 @@ void TestCHORDTelescope::main_thread() {
         int n_dish = tel.get_num_dishes();
         INFO("            Num Dishes:  {:d}", n_dish);
         for (i = 0; i < n_dish; i++) {
-            std::array<double, 3> pos = tel.get_dish_position(i);
+            std::array<double, 3> pos = tel.get_dish_position_in_grid_coords(i);
             INFO("            Dish Pos:    {0:d} - ({1:f}, {2:f}, {3:f})", i, pos[0], pos[1],
                  pos[2]);
+        }
+
+        for (i = 0; i < n_dish; i++) {
+            json j = tel.get_dish_at_idx(i);
+            INFO("            Dish Info: {:s}", j.dump());
         }
 
         // break;

@@ -58,6 +58,7 @@ fakevis_params = {
 
 global_params = {
     "num_elements": 4,
+    "num_dishes": 2,
     "num_ev": 4,
     "earth_rotation_data": {
         "kotekan_update_endpoint": "json",
@@ -67,20 +68,35 @@ global_params = {
     "telescope": {
         "name": "CHORDTelescope",
         "require_gps": False,
-        "inst_long_deg": -119.62081125,
-        "inst_lat_deg": 49.32075144444,
-        "inst_alt_deg": 90.0,
-        "inst_orientation": [1, 0, 0, 0, 1, 0, 0, 0, 1],
-        "dish_positions": [
-            [0.0, 0.0, 0.0],
-            # [1.0, 0.0, 0.0],
-            # [0.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [10.0, 10.0, 0.0],
-            [100.0, 100.0, 0.0],
-        ],
+        "origin_itrs_lon_deg": -119.62081125,
+        "origin_itrs_lat_deg": 49.32075144444,
+        "grid_x_axis": [1, 0, 0],
+        "grid_y_axis": [0, 1, 0],
+        "dish_elev_axis": [1, 0, 0],
+        "dish_vert_axis": [0, 0, 1],
+        "dish_coelev_deg": 0.0,
         "updatable_config": "/earth_rotation_data",
     },
+    "dish_inputs": [
+        {
+            "dish_idx": 0,
+            "ew_idx": 0,
+            "ns_idx": 0,
+            "pos_disp_m": [0.0, 0.0, 0.0],
+            "coelev_disp_deg": 0.0,
+            "type": 0,
+            "label": "A00",
+        },
+        {
+            "dish_idx": 1,
+            "ew_idx": 1,
+            "ns_idx": 0,
+            "pos_disp_m": [0.0, 0.0, 0.0],
+            "coelev_disp_deg": 0.0,
+            "type": 0,
+            "label": "A01",
+        },
+    ],
     "gps_time": {"frame0_nano": t0_nanosec},
 }
 
@@ -132,14 +148,14 @@ def test_metadata(n2_data):
     rfi_total = fakevis_params["n_rfi_ticks"] * downsamp_params["num_samples"]
 
     freq_id = fakevis_params["freq_ids"][0]
-    freq_Hz = freq_id * 1.6e9 / 8192
+    freq_MHz = 1.0e-6 * freq_id * 1.6e9 / 8192
 
     for frame in n2_data:
         assert frame.metadata.freq_id == fakevis_params["freq_ids"][0]
         assert frame.metadata.frame_length_fpga_ticks == frame_length
         assert frame.metadata.n_valid_fpga_ticks == frame_total
         assert frame.metadata.n_rfi_fpga_ticks == rfi_total
-        assert frame.metadata.freq_Hz == freq_Hz
+        assert frame.metadata.freq_MHz == freq_MHz
 
 
 def test_time(n2_data):
@@ -201,7 +217,7 @@ def test_vis(n2_data):
             frame.metadata.frame_start_time_ns
             + int(0.5 * fakevis_params["cadence"] * 1e9)
             * downsamp_params["num_samples"],
-            frame.metadata.freq_id * 1.6e9 / 8192,
+            1.0e-6 * frame.metadata.freq_id * 1.6e9 / 8192,
         )
 
         with open("vis_out.txt", "a") as f:
@@ -246,7 +262,7 @@ def test_evec(n2_data):
             frame.metadata.frame_start_time_ns
             + int(0.5 * fakevis_params["cadence"] * 1e9)
             * downsamp_params["num_samples"],
-            frame.metadata.freq_id * 1.6e9 / 8192,
+            1.0e-6 * frame.metadata.freq_id * 1.6e9 / 8192,
         )
 
         model_eval, model_evec = calc_eig_from_vis(model_vis)
@@ -313,7 +329,7 @@ def calc_eig_from_vis(vis):
     return eigval[-num_ev:][::-1], eigvec[:, -num_ev:][:, ::-1].T
 
 
-def calc_vis_pointsource(time_ns, freq_Hz):
+def calc_vis_pointsource(time_ns, freq_MHz):
 
     idx = 0
 
@@ -329,7 +345,7 @@ def calc_vis_pointsource(time_ns, freq_Hz):
 
     # print("n_source:", n_source)
 
-    lambda_m = const.c.to_value("m/s") / freq_Hz
+    lambda_m = const.c.to_value("m/s") / (1.0e6 * freq_MHz)
 
     vis = np.empty((num_el * (num_el + 1)) // 2, dtype=np.complex64)
 
