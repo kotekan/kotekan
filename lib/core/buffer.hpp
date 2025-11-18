@@ -540,12 +540,18 @@ public:
             frames_desc =
                 std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
         else {
-            assert(D == frames_desc->get_rank());
-            assert(kotekan::GetDataType_v<T> == frames_desc->get_value_datatype());
-            assert(quantity_name == frames_desc->get_quantity_name());
-            assert(std::equal(extents.begin(), extents.end(), frames_desc->get_extents().begin()));
-            assert(
-                std::equal(dimnames.begin(), dimnames.end(), frames_desc->get_dimnames().begin()));
+#if 0
+            if(D != frames_desc->get_rank())
+                ERROR("Rank mismatch: {:d} != {:d}", D, frames_desc->get_rank());
+            if(kotekan::GetDataType_v<T> != frames_desc->get_value_datatype())
+                ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(kotekan::GetDataType_v<T>), kotekan::type_to_string(frames_desc->get_value_datatype()));
+            if(quantity_name != frames_desc->get_quantity_name())
+                ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name, frames_desc->get_quantity_name());
+            if(!std::equal(extents.begin(), extents.end(), frames_desc->get_extents().begin()))
+                ERROR("Extents do not match: [{:s}] != [{:s}]", fmt::join(extents, ", "), fmt::join(frames_desc->get_extents(), ", "));
+            if(!std::equal(dimnames.begin(), dimnames.end(), frames_desc->get_dimnames().begin()))
+                ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "), fmt::join(frames_desc->get_dimnames(), ", "));
+#endif
         }
     }
 
@@ -565,11 +571,22 @@ public:
             frames_desc = kotekan::GenericNDArray::create(value_type, quantity_name, extents,
                                                           dimnames, nullptr);
         else {
-            assert(extents.size() == frames_desc->get_rank());
-            assert(value_type == frames_desc->get_value_datatype());
-            assert(quantity_name == frames_desc->get_quantity_name());
-            assert(extents == frames_desc->get_extents());
-            assert(dimnames == frames_desc->get_dimnames());
+            if (extents.size() != frames_desc->get_rank())
+                ERROR("Rank mismatch: {:d} != {:d}", extents.size(), frames_desc->get_rank());
+            if (value_type != frames_desc->get_value_datatype())
+                ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(value_type),
+                      kotekan::type_to_string(frames_desc->get_value_datatype()));
+            if (quantity_name != frames_desc->get_quantity_name())
+                ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
+                      frames_desc->get_quantity_name());
+            if (extents != frames_desc->get_extents())
+                ERROR("Extents do not match: [{:s}] != [{:s}]",
+                      fmt::format("{:s}", fmt::join(extents, ", ")),
+                      fmt::format("{:s}", fmt::join(frames_desc->get_extents(), ", ")));
+            if (dimnames != frames_desc->get_dimnames())
+                ERROR("Dimnames do not match: [{:s}] != [{:s}]",
+                      fmt::format("{:s}", fmt::join(dimnames, ", ")),
+                      fmt::format("{:s}", fmt::join(frames_desc->get_dimnames(), ", ")));
         }
     }
 
