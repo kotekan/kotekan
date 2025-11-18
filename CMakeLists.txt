@@ -4,6 +4,10 @@ project(
     KOTEKAN
     DESCRIPTION "A high performance radio data processing pipeline"
     LANGUAGES C CXX)
+
+# CMake will look in (uv's) venv first for python.
+set(Python_FIND_VIRTUALENV FIRST)
+
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake ${KOTEKAN_SOURCE_DIR}/cmake/Modules)
 include(cmake/Color.cmake)
 include(cmake/Options.cmake)
