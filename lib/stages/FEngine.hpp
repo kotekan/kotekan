@@ -10,11 +10,13 @@
 // IWYU pragma: no_include "nvtx3/nvtxDetail/nvtxImplCore.h"
 // IWYU pragma: no_include <nvtx3/nvtxDetail/nvtxImplCore.h>
 
-#include <array>              // for array
-#include <cstdint>            // for int64_t
+#include <array>   // for array
+#include <cstdint> // for int64_t
+#ifdef WITH_CUDA
 #include <nvtx3/nvToolsExt.h> // IWYU pragma: keep
-#include <string>             // for string, basic_string
-#include <vector>             // for vector
+#endif
+#include <string> // for string, basic_string
+#include <vector> // for vector
 
 /**
  * @class FEngine
@@ -39,6 +41,7 @@
  * @conf num_taps           Int    how many taps in the F-engine's polyphase filter bank?
  * @conf num_frequencies    Int    how many frequencies are produced by the F-engine?
  * @conf num_times          Int    how many time samples per chunk?
+ * @conf receive_chime      Bool   input buffer layout (CHIME or CHORD)
  * @conf bb_num_dishes_M    Int    Baseband beamformer: input dish grid size
  * @conf bb_num_dishes_N    Int    Baseband beamformer: input dish grid size
  * @conf bb_num_beams_P    Int    Baseband beamformer: output beam grid size
@@ -104,6 +107,9 @@ class FEngine : public kotekan::Stage {
     // Dish reordering
     const std::vector<int> scatter_indices;
 
+    // Input buffer layout (CHIME or CHORD)
+    const bool receive_chime;
+
     // Baseband beamformer setup
     const int bb_num_beams_ew;
     const int bb_num_beams_ns;
@@ -159,8 +165,9 @@ class FEngine : public kotekan::Stage {
     // int8 bf_mask[dish][polr]
     Buffer* const bf_mask_buffer; // 0=bad, 1=good
     // bool pl_mask[time / 2 % 64][dish][polr][freq / 4][time / 2 / 64]
-    Buffer* const pl_mask_buffer; // 0=bad, 1=good
-    Buffer* const E_buffer;
+    Buffer* const pl_mask_buffer;               // 0=bad, 1=good
+    Buffer* const E_buffer_chord;               // CHORD uses a single input buffer
+    std::vector<Buffer*> const E_buffers_chime; // CHIME uses one input buffer per frequency
     Buffer* const scatter_indices_buffer;
     Buffer* const bb_beam_positions_buffer;
     Buffer* const A_buffer;

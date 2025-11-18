@@ -13,7 +13,6 @@
 #include "Stage.hpp"             // for Stage
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "bufferSend.hpp"        // for bufferFrameHeader
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, kotekanLogging
 #include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily
 
@@ -25,7 +24,7 @@
 #include <event2/util.h>      // for evutil_socket_t
 #include <map>                // for map
 #include <mutex>              // for mutex
-#include <stdint.h>           // for uint32_t, uint8_t
+#include <stdint.h>           // for uint16_t, uint32_t, uint8_t
 #include <stdio.h>            // for size_t
 #include <string.h>           // for strerror
 #include <string>             // for string, basic_string

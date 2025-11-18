@@ -6,12 +6,12 @@
 #include "driver_types.h"      // for CUstream_st, cudaMemcpyKind
 #include "metadata.hpp"        // for metadataObject
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt/format.h" // for compile_string_to_view
 
 #include <DataType.hpp>            // for uint_from_element_bits, operator<<, GetType_t, isfinite
 #include <NDArray.hpp>             // for NDArray
-#include <Symbol.hpp>              // for Symbol, strings_to_symbols, operator==
-#include <algorithm>               // for find_if
+#include <Symbol.hpp>              // for Symbol, operator==, strings_to_symbols, operator<<
+#include <algorithm>               // for find_if, fill_n
 #include <array>                   // for array
 #include <buffer.hpp>              // for GenericBuffer
 #include <cassert>                 // for assert
@@ -26,13 +26,13 @@
 #include <div.hpp>                 // for mod, div_noremainder
 #include <functional>              // for function
 #include <iomanip>                 // for setfill, operator<<, setw
-#include <iostream>                // for cerr
-#include <kotekanLogging.hpp>      // for FATAL_ERROR, kotekanLogging, ERROR
-#include <memory>                  // for shared_ptr, __shared_ptr_access
+#include <iostream>                // for basic_ostream, operator<<, ostream, cerr, dec, hex
+#include <kotekanLogging.hpp>      // for FATAL_ERROR, ERROR, kotekanLogging
+#include <memory>                  // for shared_ptr, __shared_ptr_access, allocator
 #include <optional>                // for optional
 #include <ringbuffer.hpp>          // for RingBuffer
-#include <sstream>                 // for basic_ostream, operator<<, ostream, basic_ostringstream
-#include <string>                  // for basic_string, char_traits, string, operator+, allocator
+#include <sstream>                 // for basic_ostringstream
+#include <string>                  // for basic_string, char_traits, string, operator+, operator<<
 #include <type_traits>             // for is_floating_point_v, is_same_v
 #include <utility>                 // for pair
 #include <vector>                  // for vector
@@ -136,7 +136,6 @@ class NDArrayRingBuffer : public kotekan::kotekanLogging {
     cudaCommand& cuda_command;
     RingBuffer* const ringbuffer;
 
-    const std::string quantity;
     kotekan::NDArray<T, D> ndarray;
 
     // Begin and end of the valid region where reading/writing is
@@ -165,7 +164,7 @@ private:
     }
 
 public:
-    NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity,
+    NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
                       const std::array<std::ptrdiff_t, D>& extents,
                       const std::array<kotekan::Symbol, D>& dimnames, cudaCommand& cuda_command) :
         // metadata
@@ -178,8 +177,7 @@ public:
         ringbuffer(dynamic_cast<RingBuffer*>(
             cuda_command.get_host_buffers().get_generic_buffer(signal_buffer_name))),
         // NDArray
-        quantity(quantity), // e.g. "J"
-        ndarray(extents, dimnames, get_buffer_pointer(extents)),
+        ndarray(quantity_name, extents, dimnames, get_buffer_pointer(extents)),
         // State
         write_valid(0, 0), read_valid(0, 0), read_claimed(0, 0)
     //
@@ -189,17 +187,17 @@ public:
         assert(ringbuffer);
     }
 
-    NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity,
+    NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
                       const std::array<std::ptrdiff_t, D>& extents,
                       const std::array<std::string, D>& dimnames, cudaCommand& cuda_command) :
-        NDArrayRingBuffer(buffer_name, quantity, extents, kotekan::strings_to_symbols(dimnames),
-                          cuda_command) {}
+        NDArrayRingBuffer(buffer_name, quantity_name, extents,
+                          kotekan::strings_to_symbols(dimnames), cuda_command) {}
 
-    NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity,
+    NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
                       const std::array<std::ptrdiff_t, D>& extents,
                       const std::array<const char*, D>& dimnames, cudaCommand& cuda_command) :
-        NDArrayRingBuffer(buffer_name, quantity, extents, kotekan::strings_to_symbols(dimnames),
-                          cuda_command) {}
+        NDArrayRingBuffer(buffer_name, quantity_name, extents,
+                          kotekan::strings_to_symbols(dimnames), cuda_command) {}
 
     virtual ~NDArrayRingBuffer() {}
 
@@ -371,10 +369,6 @@ public:
 
     // NDArray:
 
-    std::string get_quantity() const {
-        return quantity;
-    }
-
     const kotekan::NDArray<T, D>& get_ndarray() const {
         return ndarray;
     }
@@ -411,13 +405,18 @@ public:
 
     void check_metadata() const {
         const std::shared_ptr<const chordMetadata> metadata = get_metadata();
-        if (!(metadata->get_name() == quantity))
-            ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}", buffer_name, quantity,
-                  metadata->get_name());
-        assert(metadata->get_name() == quantity);
+        if (!(metadata->get_name() == ndarray.quantity_name()))
+            ERROR("buffer name: {:s}, metadata name: {:s}, quantity_name: {:s}", buffer_name,
+                  metadata->get_name(), ndarray.quantity_name());
+        assert(metadata->get_name() == ndarray.quantity_name());
         assert(metadata->type == ndarray.value_datatype);
         assert(metadata->dims == ndarray.rank);
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
+            if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
+                ERROR("buffer name: {:s}, dimension: {:d}, metadata dimension name: {:s}, ndarray "
+                      "dimname: {:s}",
+                      buffer_name, d, metadata->get_dimension_name(d),
+                      std::string(ndarray.dimname(d)));
             assert(metadata->get_dimension_name(d) == ndarray.dimname(d));
             // The ring buffer direction is special
             if (d > 0)
@@ -433,8 +432,8 @@ public:
         // const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
         ringbuffer->allocate_new_metadata_object(0);
         const std::shared_ptr<chordMetadata> metadata = get_metadata();
-        *metadata = *other_metadata;
-        metadata->set_name(quantity);
+        metadata->deepCopy(other_metadata);
+        metadata->set_name(ndarray.quantity_name());
         metadata->type = ndarray.value_datatype;
         metadata->dims = ndarray.rank;
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
@@ -452,8 +451,9 @@ public:
     // Poison
 
     // Poison an NDArray ring buffer
-    void set_to_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
-                       const std::ptrdiff_t F_max) {
+    void set_to_poison([[maybe_unused]] const std::uint8_t poison_value,
+                       [[maybe_unused]] const std::ptrdiff_t F_min,
+                       [[maybe_unused]] const std::ptrdiff_t F_max) {
 #ifdef DEBUGGING
         assert(get_write_valid().size() > 0);
 
@@ -507,8 +507,9 @@ public:
     }
 
     // Check an NDArray ring buffer for poison
-    void check_for_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
-                          const std::ptrdiff_t F_max) {
+    void check_for_poison([[maybe_unused]] const std::uint8_t poison_value,
+                          [[maybe_unused]] const std::ptrdiff_t F_min,
+                          [[maybe_unused]] const std::ptrdiff_t F_max) {
 #ifdef DEBUGGING
         assert(get_write_valid().size() > 0);
 
@@ -616,7 +617,7 @@ public:
 
     std::ostream& output(std::ostream& os) const {
         return os << "NDArrayRingBuffer<" << ndarray.value_datatype << "," << ndarray.rank << ">("
-                  << buffer_name << "," << quantity << ")";
+                  << buffer_name << "," << ndarray.quantity_name() << ")";
     }
 
     friend std::ostream& operator<<(std::ostream& os, const NDArrayRingBuffer& rb) {

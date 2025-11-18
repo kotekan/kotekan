@@ -75,7 +75,7 @@ private:
     static constexpr int cuda_number_of_frequencies = 16;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_max_number_of_timesamples = 65536;
-    static constexpr int cuda_granularity_number_of_timesamples = 32;
+    static constexpr int cuda_granularity_number_of_timesamples = 16384;
 
     // Kernel compile parameters:
     static constexpr int minthreads = 512;
@@ -114,23 +114,23 @@ private:
     static constexpr const char* Ein_quantity = "Ein";
     static constexpr kotekan::DataType Ein_type = kotekan::int4x2_swapped_withoffset;
     enum Ein_indices {
-        Ein_index_D,
-        Ein_index_P,
+        Ein_index_E,
+        Ein_index_Tlo16384,
         Ein_index_F,
-        Ein_index_T,
+        Ein_index_Thi16384,
         Ein_rank,
     };
     static constexpr std::array<const char*, Ein_rank> Ein_labels = {
-        "D",
-        "P",
+        "E",
+        "Tlo16384",
         "F",
-        "T",
+        "Thi16384",
     };
     static constexpr std::array<std::ptrdiff_t, Ein_rank> Ein_lengths = {
-        1024,
-        2,
+        2048,
+        16384,
         16,
-        65536,
+        4,
     };
     static constexpr auto Ein_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -139,8 +139,9 @@ private:
         return str;
     };
     static constexpr std::array<std::ptrdiff_t, Ein_rank + 1> Ein_strides = {
-        Ein_calc_stride(Ein_index_D), Ein_calc_stride(Ein_index_P), Ein_calc_stride(Ein_index_F),
-        Ein_calc_stride(Ein_index_T), Ein_calc_stride(Ein_rank),
+        Ein_calc_stride(Ein_index_E), Ein_calc_stride(Ein_index_Tlo16384),
+        Ein_calc_stride(Ein_index_F), Ein_calc_stride(Ein_index_Thi16384),
+        Ein_calc_stride(Ein_rank),
     };
     static constexpr std::ptrdiff_t Ein_length = Ein_strides[Ein_rank];
     static constexpr std::ptrdiff_t Ein_length_in_bytes = type_total_bytes(Ein_type) * Ein_length;
@@ -332,15 +333,13 @@ int cudaTranspose2048_chime::wait_on_precondition() {
     }
 
     // Wait for data to be available in input ringbuffer
-    const std::ptrdiff_t Tin_ringbuf = Ein_buffer.get_ndarray().extent(0);
-    const std::ptrdiff_t Tin_read_max = Tin_ringbuf / 4;
-    std::ptrdiff_t Tin_read = -1;
+    const std::ptrdiff_t Tin_read = 1;
     {
         const int errcode =
             Ein_buffer.wait_and_claim_readable([&](const std::ptrdiff_t Tin_available) {
                 using std::min;
-                Tin_read = round_down(min(Tin_available, Tin_read_max),
-                                      cuda_granularity_number_of_timesamples);
+                if (Tin_available < Tin_read)
+                    return read_descriptor_t{.claimed = 0, .read = 0};
                 return read_descriptor_t{.claimed = Tin_read, .read = Tin_read};
             });
         if (errcode < 0)
@@ -348,7 +347,7 @@ int cudaTranspose2048_chime::wait_on_precondition() {
     }
 
     // Wait for space to be available in output ringbuffer
-    const std::ptrdiff_t T_written = Tin_read;
+    const std::ptrdiff_t T_written = 16384 * Tin_read;
     {
         const int errcode = E_buffer.wait_for_writable(T_written);
         if (errcode < 0)
@@ -372,7 +371,7 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
         // Replace "Ein" with "E" etc.
         // Ein_buffer.check_metadata();
         const std::string quantity = "E";
-        const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
+        const std::array<std::string, 4> dimname = {"Thi16384", "F", "Tlo16384", "E"};
         const std::shared_ptr<const chordMetadata> metadata = Ein_buffer.get_metadata();
         if (!(metadata->get_name() == quantity))
             ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
@@ -382,10 +381,19 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
         assert(metadata->type == ndarray.value_datatype);
         assert(metadata->dims == ndarray.rank);
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
-            assert(metadata->get_dimension_name(d) == dimname[d]);
+            if (!(metadata->get_dimension_name(d) == dimname.at(d)))
+                ERROR(
+                    "buffer name: {:s}, dimension: {:d}: dimension name: {:s}, metadata name: {:s}",
+                    Ein_buffer.get_buffer_name(), d, dimname.at(d),
+                    metadata->get_dimension_name(d));
+            assert(metadata->get_dimension_name(d) == dimname.at(d));
             // The ring buffer direction is special
             if (d > 0)
                 assert(metadata->dim[d] == int(ndarray.extent(d)));
+            if (!(metadata->stride[d] == ndarray.stride(d)))
+                ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, ndarray stride: "
+                      "{:d}",
+                      Ein_buffer.get_buffer_name(), d, metadata->stride[d], ndarray.stride(d));
             assert(metadata->stride[d] == ndarray.stride(d));
         }
     } else {
@@ -396,7 +404,7 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
         // Replace "Ein" with "E" etc.
         // scatter_indices_buffer.check_metadata();
         const std::string quantity = "E";
-        const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
+        const std::array<std::string, 4> dimname = {"Thi16384", "F", "Tlo16384", "E"};
         const std::shared_ptr<const chordMetadata> metadata = Ein_buffer.get_metadata();
         if (!(metadata->get_name() == quantity))
             ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
@@ -406,10 +414,19 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
         assert(metadata->type == ndarray.value_datatype);
         assert(metadata->dims == ndarray.rank);
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
-            assert(metadata->get_dimension_name(d) == dimname[d]);
+            if (!(metadata->get_dimension_name(d) == dimname.at(d)))
+                ERROR(
+                    "buffer name: {:s}, dimension: {:d}: dimension name: {:s}, metadata name: {:s}",
+                    Ein_buffer.get_buffer_name(), d, dimname.at(d),
+                    metadata->get_dimension_name(d));
+            assert(metadata->get_dimension_name(d) == dimname.at(d));
             // The ring buffer direction is special
             if (d > 0)
                 assert(metadata->dim[d] == int(ndarray.extent(d)));
+            if (!(metadata->stride[d] == ndarray.stride(d)))
+                ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, ndarray stride: "
+                      "{:d}",
+                      Ein_buffer.get_buffer_name(), d, metadata->stride[d], ndarray.stride(d));
             assert(metadata->stride[d] == ndarray.stride(d));
         }
     } else {
@@ -439,19 +456,27 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
     // Ringbuffer size
     const std::ptrdiff_t Tin_ringbuf = Ein_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
+    DEBUG("Tin_ringbuf: {:d}", Tin_ringbuf);
+    DEBUG("T_ringbuf:   {:d}", T_ringbuf);
 
     const std::ptrdiff_t Tin_min = Ein_buffer.get_read_valid().begin();
     const std::ptrdiff_t Tin_max = Ein_buffer.get_read_valid().end();
     const std::ptrdiff_t T_min = E_buffer.get_write_valid().begin();
     const std::ptrdiff_t T_max = E_buffer.get_write_valid().end();
+    DEBUG("Tin_min:     {:d}", Tin_min);
+    DEBUG("Tin_max:     {:d}", Tin_max);
+    DEBUG("T_min:       {:d}", T_min);
+    DEBUG("T_max:       {:d}", T_max);
 
     const std::ptrdiff_t Tin_length = Tin_max - Tin_min;
     const std::ptrdiff_t T_length = T_max - T_min;
+    DEBUG("Tin_length:  {:d}", Tin_length);
+    DEBUG("T_length:    {:d}", T_length);
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    Tin_min_arg = mod(Tin_min, Tin_ringbuf);
-    Tin_max_arg = mod(Tin_min, Tin_ringbuf) + Tin_length;
+    Tin_min_arg = 16384 * mod(Tin_min, Tin_ringbuf);
+    Tin_max_arg = 16384 * (mod(Tin_min, Tin_ringbuf) + Tin_length);
     T_min_arg = mod(T_min, T_ringbuf);
     T_max_arg = mod(T_min, T_ringbuf) + T_length;
 

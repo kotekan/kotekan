@@ -14,7 +14,7 @@
 #include <vector>   // for vector
 
 /**
- * @class cudaCopyNtoRingbuffer
+ * @class cudaCopyNToRingbuffer
  * @brief Merges frames from multiple input buffers into a single GPU ringbuffer.
  *
  * This is _very_ spesific to the CHIME (N=2048 + ICEBoard) layout. The core idea is
@@ -26,12 +26,12 @@
  * @config gpu_mem_output     Name of the GPU memory region to use for the output
  * @config signal_buf         Name of the ringbuffer to manage the GPU memory
  */
-class cudaCopyNtoRingbuffer : public cudaCommand {
+class cudaCopyNToRingbuffer : public cudaCommand {
 public:
-    cudaCopyNtoRingbuffer(kotekan::Config& config, const std::string& unique_name,
+    cudaCopyNToRingbuffer(kotekan::Config& config, const std::string& unique_name,
                           kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
                           int instance_num);
-    virtual ~cudaCopyNtoRingbuffer();
+    virtual ~cudaCopyNToRingbuffer();
 
     int wait_on_precondition() override;
     cudaEvent_t execute(cudaPipelineState& pipestate,

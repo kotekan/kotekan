@@ -1,9 +1,17 @@
 #include "TimeUtilDump.hpp"
 
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
 #include "kotekanLogging.hpp" // for INFO
-#include "timeUtil.hpp"
-#include "visUtil.hpp" // for frameID, modulo
+#include "timeUtil.hpp"       // for get_ERA_from_UT1, get_UT1_from_time
+#include "visUtil.hpp"        // for frameID, modulo
+
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <functional> // for bind, function
+#include <stdexcept>  // for runtime_error
+#include <stdint.h>   // for int64_t, uint32_t, uint8_t
+#include <string.h>   // for memcpy
+#include <time.h>     // for timespec
 
 // Include the classes we will be using
 using kotekan::bufferContainer;

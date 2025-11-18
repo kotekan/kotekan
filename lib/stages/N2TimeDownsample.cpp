@@ -2,11 +2,18 @@
 
 #include "CHORDTelescope.hpp"    // for EOP, CHORDTelescope, eop_null
 #include "Config.hpp"            // for Config
+#include "N2FrameView.hpp"       // for N2FrameView
+#include "N2Util.hpp"            // for cfloat, frameID
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
+#include "timeUtil.hpp"          // for get_ERA_from_UT1, get_UT1_from_ERA
+
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
 
 #include <algorithm>  // for copy, equal, max
 #include <complex>    // for complex, operator*, conj
@@ -14,15 +21,6 @@
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint32_t, int64_t, int32_t
 #include <vector>     // for vector
-// #include "visBuffer.hpp"         // for VisFrameView
-#include "N2FrameView.hpp" // for N2FrameView
-#include "N2Util.hpp"      // for cfloat
-#include "Telescope.hpp"   // for Telescope
-#include "timeUtil.hpp"    // for get_ERA_from_UT1, get_UT1_from_ERA
-#include "visUtil.hpp"     // for frameID, modulo
-
-#include "fmt.hpp"      // for compile_string_to_view
-#include "gsl-lite.hpp" // for span
 
 #define GIGA 1'000'000'000L
 
@@ -30,6 +28,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
+using N2::frameID;
 
 REGISTER_KOTEKAN_STAGE(N2TimeDownsample);
 
@@ -70,7 +69,7 @@ void N2TimeDownsample::main_thread() {
 
     int64_t num_rotations = -1;
     int32_t freq_id = -1; // needs to be set by first frame
-    double freq_Hz = -1.0;
+    double freq_MHz = -1.0;
 
     // Whether we're waiting for an accumulation bin to start.
     bool wait_for_alignment = true;
@@ -79,6 +78,17 @@ void N2TimeDownsample::main_thread() {
         "kotekan_timedownsample_skipped_frame_total", unique_name, {"freq_id", "reason"});
 
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
+
+
+    // Calculate the startup (seq = 0) EOP and ERA index, for absolute time indexing
+    timespec ts_startup = tel.to_time(0);
+    struct EOP eop_startup = tel.get_EOP_at_time(ts_startup);
+
+    uint64_t era_bin_idx_startup = (uint64_t)(eop_startup.ERA_deg / era_bin_width);
+    int64_t num_rotations_startup;
+    get_ERA_from_UT1(eop_startup.t_ut1, &num_rotations_startup);
+
+    uint64_t prev_abs_time_idx = 0;
 
     // Make an array to hold the per-dish phases.
     int num_dishes = tel.get_num_dishes();
@@ -100,7 +110,7 @@ void N2TimeDownsample::main_thread() {
 
             // Get parameters from first frame
             freq_id = frame.freq_id;
-            freq_Hz = frame.freq_Hz;
+            freq_MHz = frame.freq_MHz;
             nprod = frame.num_prod;
             num_elements = frame.num_elements;
             num_eigenvectors = frame.num_ev;
@@ -190,6 +200,20 @@ void N2TimeDownsample::main_thread() {
             // Set the output to target EOP.
             output_frame.eop = eop_target;
 
+            // Set the output absolute time index, from the difference between the current ERA bin
+            // and the ERA bin at startup
+            output_frame.abs_time_idx =
+                (era_bin_idx + num_bins_per_rotation * (num_rotations - num_rotations_startup))
+                - era_bin_idx_startup;
+
+            // Check that the input isn't coming too fast.
+            if (prev_abs_time_idx > 0 && output_frame.abs_time_idx != prev_abs_time_idx + 1) {
+                ERROR("New downsampled frame will have abs_time_idx = {:d}, expected previous "
+                      "abs_time_idx {:d} + 1.",
+                      output_frame.abs_time_idx, prev_abs_time_idx);
+            }
+            prev_abs_time_idx = output_frame.abs_time_idx;
+
             // Initialize the weights, and weigh vis/weight by number of samples.
             for (size_t i = 0; i < nprod; i++) {
                 output_frame.weight[i] =
@@ -200,7 +224,7 @@ void N2TimeDownsample::main_thread() {
 
             if (do_fringestop) {
                 // Get the per-dish fringestopping phases.
-                tel.fringestop_phases_1d(freq_Hz, frame.eop, eop_target, fringe_phase);
+                tel.fringestop_phases_1d(freq_MHz, frame.eop, eop_target, fringe_phase);
 
                 // This indexing requires the el_id = (n_dish)*pol_id + dish_id
                 size_t idx = 0;
@@ -250,7 +274,7 @@ void N2TimeDownsample::main_thread() {
 
             // Recalculate fringestop phases
             if (do_fringestop)
-                tel.fringestop_phases_1d(freq_Hz, frame.eop, eop_target, fringe_phase);
+                tel.fringestop_phases_1d(freq_MHz, frame.eop, eop_target, fringe_phase);
 
             // Accumulate contents of buffer
             size_t idx = 0;

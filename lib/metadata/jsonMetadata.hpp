@@ -4,6 +4,7 @@
 
 #include "json.hpp"
 
+#include <cassert>
 #include <cstdint>
 #include <ctime>
 #include <string>
@@ -64,22 +65,11 @@ struct beamCoord {
     float right_ascension[MAX_NUM_BEAMS];
     float declination[MAX_NUM_BEAMS];
     uint32_t scaling[MAX_NUM_BEAMS];
-
-    beamCoord() {
-#ifdef DEBUG
-        for (auto& ra : right_ascension)
-            ra = std::nanf("");
-        for (auto& dec : declination)
-            dec = std::nanf("");
-        for (auto& scale : scaling)
-            scale = 0;
-#endif
-    }
 };
 
 static inline void from_json(const nlohmann::json& j, beamCoord& c) {
     {
-        const auto& ra(j[RIGHT_ASCENSION]);
+        const auto& ra(j.at(RIGHT_ASCENSION));
         if (ra.size() > MAX_NUM_BEAMS)
             throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
         size_t i = 0;
@@ -94,7 +84,7 @@ static inline void from_json(const nlohmann::json& j, beamCoord& c) {
     }
 
     {
-        const auto& dec(j[DECLINATION]);
+        const auto& dec(j.at(DECLINATION));
         if (dec.size() > MAX_NUM_BEAMS)
             throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
         size_t i = 0;
@@ -109,7 +99,7 @@ static inline void from_json(const nlohmann::json& j, beamCoord& c) {
     }
 
     {
-        const auto& scale(j[SCALING]);
+        const auto& scale(j.at(SCALING));
         if (scale.size() > MAX_NUM_BEAMS)
             throw std::runtime_error("Number of beams request exceeds MAX_NUM_BEAMS");
         size_t i = 0;
@@ -124,6 +114,24 @@ static inline void from_json(const nlohmann::json& j, beamCoord& c) {
     }
 }
 
+static inline void to_json(nlohmann::json& j, const beamCoord& c) {
+    assert(j.empty());
+    {
+        std::vector<float> ra(c.right_ascension, c.right_ascension + MAX_NUM_BEAMS);
+        j.emplace(RIGHT_ASCENSION, ra);
+    }
+
+    {
+        std::vector<float> dec(c.declination, c.declination + MAX_NUM_BEAMS);
+        j.emplace(DECLINATION, dec);
+    }
+
+    {
+        std::vector<uint32_t> scale(c.scaling, c.scaling + MAX_NUM_BEAMS);
+        j.emplace(SCALING, scale);
+    }
+}
+
 } // namespace jsonMetadata
 
 static inline void to_json(nlohmann::json& j, const timeval& tv) {
@@ -134,8 +142,8 @@ static inline void to_json(nlohmann::json& j, const timeval& tv) {
 
 static inline void from_json(const nlohmann::json& j, timeval& tv) {
     using namespace jsonMetadata;
-    tv.tv_sec = j[TV_SEC].template get<std::int64_t>();
-    tv.tv_usec = j[TV_USEC].template get<std::int64_t>();
+    tv.tv_sec = j.at(TV_SEC).template get<std::int64_t>();
+    tv.tv_usec = j.at(TV_USEC).template get<std::int64_t>();
 }
 
 #endif

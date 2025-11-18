@@ -11,10 +11,8 @@ import h5py
 
 from kotekan import runner
 
-
-# Skip if HDF5 support not built into kotekan
 if not runner.has_hdf5():
-    pytest.skip("HDF5 support not available.", allow_module_level=True)
+    pytest.fail("HDF5 support not available; unable to run tests!")
 
 
 writer_params = {

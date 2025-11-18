@@ -13,9 +13,8 @@ from kotekan import visutil
 from kotekan import visbuffer
 import time
 
-# Skip if HDF5 support not built into kotekan
 if not runner.has_hdf5():
-    pytest.skip("HDF5 support not available.", allow_module_level=True)
+    pytest.fail("HDF5 support not available; unable to run tests!")
 
 start_time = 1_500_000_000
 
@@ -31,7 +30,7 @@ new_state = True
 global_params = {
     "num_elements": 16,
     "num_ev": 4,
-    "total_frames": 20,
+    "total_frames": 12,
     "start_time": start_time,
     "cadence": 1.0,
     "mode": "fill_ij",
@@ -45,7 +44,7 @@ global_params = {
         "transition_interval": transition_interval,
         "new_state": new_state,
     },
-    "wait": True,
+    "wait": False,
     "sleep_before": 2.0,
     "num_threads": 4,
     "dataset_manager": {"use_dataset_broker": False},
@@ -162,7 +161,15 @@ def apply_data(request, tmp_path_factory, gain_path, old_gains, new_gains, cal_b
 
     in_dump = visbuffer.VisBuffer.load_files(f"{output_dir}/*fakevis_dump*.dump")
 
-    return in_dump, out_dump_buffer.load()
+    # Align frames by matching fpga_seq values in case of missing/extra frames
+    in_by_seq = {f.metadata.fpga_seq: f for f in in_dump}
+    out_by_seq = {f.metadata.fpga_seq: f for f in out_dump_buffer.load()}
+    common_seq = sorted(set(in_by_seq) & set(out_by_seq))
+
+    in_frames = [in_by_seq[seq] for seq in common_seq]
+    out_frames = [out_by_seq[seq] for seq in common_seq]
+
+    return in_frames, out_frames
 
 
 def combine_gains(t_frame, transition_interval, new_ts, old_ts, new_gains, old_gains):

@@ -1,9 +1,11 @@
 #include "BeamMetadata.hpp"
 
-#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
+#include "chordMetadata.hpp" // for CHORD_META_MAX_FREQ
+#include "factory.hpp"       // for REGISTER_TYPE_WITH_FACTORY
 
 #include <assert.h> // for assert
-#include <memory>   // for allocator
+#include <memory>   // for shared_ptr, dynamic_pointer_cast, __shared_ptr_access
+#include <string>   // for basic_string
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, BeamMetadata);
 
@@ -19,11 +21,17 @@ struct BeamMetadataFormat {
     uint32_t scaling;
 };
 
+void BeamMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
+    auto beam_other = std::dynamic_pointer_cast<const BeamMetadata>(other);
+    assert(beam_other);
+    *this = *beam_other;
+}
+
 size_t BeamMetadata::get_serialized_size() {
     return sizeof(BeamMetadataFormat);
 }
 
-size_t BeamMetadata::set_from_bytes(const char* bytes, size_t length) {
+size_t BeamMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t length) {
     size_t sz = get_serialized_size();
     assert(length >= sz);
     const BeamMetadataFormat* fmt = reinterpret_cast<const BeamMetadataFormat*>(bytes);
@@ -66,23 +74,25 @@ nlohmann::json BeamMetadata::to_json() {
 }
 
 void to_json(nlohmann::json& j, const BeamMetadata& m) {
-    j["fpga_seq_start"] = m.fpga_seq_start;
-    j["ctime"] = m.ctime;
-    j["coarse_freq"] = m.coarse_freq;
-    j["dataset_id"] = m.dataset_id;
-    j["beam_number"] = m.beam_number;
-    j["ra"] = m.ra;
-    j["dec"] = m.dec;
-    j["scaling"] = m.scaling;
+    assert(j.empty());
+
+    j.emplace("fpga_seq_start", m.fpga_seq_start);
+    j.emplace("ctime", m.ctime);
+    j.emplace("coarse_freq", m.coarse_freq);
+    j.emplace("dataset_id", m.dataset_id);
+    j.emplace("beam_number", m.beam_number);
+    j.emplace("ra", m.ra);
+    j.emplace("dec", m.dec);
+    j.emplace("scaling", m.scaling);
 }
 
 void from_json(const nlohmann::json& j, BeamMetadata& m) {
-    m.fpga_seq_start = j["fpga_seq_start"];
-    m.ctime = j["ctime"];
-    m.coarse_freq = j["coarse_freq"].template get<std::vector<int>>();
-    m.dataset_id = j["dataset_id"];
-    m.beam_number = j["beam_number"];
-    m.ra = j["ra"];
-    m.dec = j["dec"];
-    m.scaling = j["scaling"];
+    m.fpga_seq_start = j.at("fpga_seq_start");
+    m.ctime = j.at("ctime");
+    m.coarse_freq = j.at("coarse_freq").template get<std::vector<int>>();
+    m.dataset_id = j.at("dataset_id");
+    m.beam_number = j.at("beam_number");
+    m.ra = j.at("ra");
+    m.dec = j.at("dec");
+    m.scaling = j.at("scaling");
 }

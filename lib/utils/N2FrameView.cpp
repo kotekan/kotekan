@@ -15,18 +15,19 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     // Set the const refs to the structural metadata
     num_elements(_metadata->num_elements), num_prod(_metadata->num_prod), num_ev(_metadata->num_ev),
     nfreq(_metadata->nfreq),
-    frame_layout(get_frame_layout(_metadata->num_elements, _metadata->num_ev)),
+    frame_layout(get_frame_layout(_metadata->num_elements, _metadata->num_ev, _metadata->num_prod)),
 
     // Non-structural data
+    layout(_metadata->layout), freq_id(_metadata->freq_id), freq_MHz(_metadata->freq_MHz),
+    abs_time_idx(_metadata->abs_time_idx),
+
+    eop(_metadata->eop),
+
     fpga_start_tick(_metadata->fpga_start_tick),
     frame_start_time_ns(_metadata->frame_start_time_ns),
     frame_length_fpga_ticks(_metadata->frame_length_fpga_ticks),
     n_valid_fpga_ticks(_metadata->n_valid_fpga_ticks),
     n_rfi_fpga_ticks(_metadata->n_rfi_fpga_ticks),
-
-    freq_id(_metadata->freq_id), freq_Hz(_metadata->freq_Hz),
-
-    eop(_metadata->eop),
 
     vis(bind_span<N2::cfloat>(_frame, frame_layout[N2Field::vis])),
     weight(bind_span<float>(_frame, frame_layout[N2Field::weight])),
@@ -41,7 +42,7 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 }
 
 size_t N2FrameView::data_size() const {
-    return calculate_frame_size(_metadata->num_elements, _metadata->num_ev);
+    return calculate_frame_size(_metadata->num_elements, _metadata->num_ev, _metadata->num_prod);
 }
 
 void N2FrameView::zero_frame() {
@@ -91,4 +92,20 @@ void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Fie
 
     if (copy_member(N2Field::gain))
         std::copy(frame_to_copy_from.gain.begin(), frame_to_copy_from.gain.end(), gain.begin());
+}
+
+void N2FrameView::get_prod_maps(std::vector<N2::prod_ctype>& prods) {
+
+    switch (layout) {
+        case N2Layout::FullUpperTri:
+            get_prod_maps_FullUpperTri(prods, num_elements);
+            break;
+        default:
+            std::string msg =
+                fmt::format("N2FrameView::get_prod_maps has not been implemented for N2Layout {:s}",
+                            N2Layout_to_string(layout));
+            ERROR_NON_OO("{:s}", msg);
+            throw std::runtime_error(msg);
+            break;
+    }
 }

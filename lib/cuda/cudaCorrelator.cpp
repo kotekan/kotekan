@@ -42,7 +42,6 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     _num_times(config.get<int>(unique_name, "num_times")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
     _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
-    _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     _sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
     _voltage_name(config.get<std::string>(unique_name, "voltage_name")),
     _rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
@@ -57,8 +56,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
                 std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, *this),
     n2k_correlation([&]() {
         // aka "nt_outer" in n2k.hpp
-        const int num_subintegrations =
-            div_noremainder(_samples_per_data_set, _sub_integration_ntime);
+        const int num_subintegrations = div_noremainder(_num_times, _sub_integration_ntime);
         const int blocksize = 16;
         const int linear_num_blocks = (_num_elements + 1) / blocksize;
         const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
@@ -69,7 +67,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
                                               n2k_dimnames, *this);
     }()),
     n2correlator(_num_elements, _num_local_freq) {
-    if (_samples_per_data_set % _sub_integration_ntime)
+    if (_num_times % _sub_integration_ntime)
         throw std::runtime_error(
             "The sub_integration_ntime parameter must evenly divide samples_per_data_set");
 
@@ -90,11 +88,10 @@ int cudaCorrelator::wait_on_precondition() {
     DEBUG("Waiting for voltage input ringbuffer data for frame {:d}...", gpu_frame_id);
     const int voltage_errcode =
         voltage.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
-            if (available_elements < _samples_per_data_set)
+            if (available_elements < _num_times)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else
-                return read_descriptor_t{.claimed = _samples_per_data_set,
-                                         .read = _samples_per_data_set};
+                return read_descriptor_t{.claimed = _num_times, .read = _num_times};
         });
     if (voltage_errcode < 0)
         return voltage_errcode;
@@ -103,7 +100,7 @@ int cudaCorrelator::wait_on_precondition() {
     DEBUG("Waiting for rfi_RFImask input ringbuffer data for frame {:d}...", gpu_frame_id);
     const int rfi_RFImask_errcode =
         rfi_RFImask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
-            const int rfi_needed_samples = div_noremainder(_samples_per_data_set, 8 * 128);
+            const int rfi_needed_samples = div_noremainder(_num_times, 8 * 128);
             if (available_elements < rfi_needed_samples)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else
@@ -127,19 +124,30 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     const std::shared_ptr<const chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
     const std::shared_ptr<chordMetadata> out_meta = n2k_correlation.get_metadata();
 
-    // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+    // The input ringbuffers do not contain time-dependent data,
+    // so we must reconstruct it here. (fpga_seq_num and sample0_offset)
     // TODO: do this automatically in `NDArrayRingBuffer`
-    out_meta->set_sample0_offset(voltage.get_read_valid().begin());
+
+    // Assuming the voltage is coming in at the raw sample rate.
+    out_meta->set_fpga_seq_num(voltage.get_read_valid().begin());
+    out_meta->set_sample0_offset(out_meta->get_fpga_seq_num() / _sub_integration_ntime);
+
     std::vector<int> out_time_downsampling_fpga(out_meta->get_nfreq());
     std::vector<int64_t> out_half_fpga_sample0(out_meta->get_nfreq());
     const std::vector<int64_t> in_half_fpga_sample0 = in_meta->get_half_fpga_sample0();
     const std::vector<int> in_time_downsampling_fpga = in_meta->get_time_downsampling_fpga();
+
     for (int freq = 0; freq < out_meta->get_nfreq(); ++freq) {
         out_time_downsampling_fpga[freq] = _sub_integration_ntime * in_time_downsampling_fpga[freq];
-        out_half_fpga_sample0[freq] = in_half_fpga_sample0[freq] + out_time_downsampling_fpga[freq];
+        out_half_fpga_sample0[freq] = in_half_fpga_sample0[freq] + out_time_downsampling_fpga[freq]
+                                      - in_time_downsampling_fpga[freq];
     }
+
     out_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
     out_meta->set_half_fpga_sample0(out_half_fpga_sample0);
+
+    // Set poison for debug checks.
+    n2k_correlation.set_to_poison(0x80);
 
     // The ringbuffering here is fishy. We should fix the kernel instead.
 
@@ -168,7 +176,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
         &rfi_RFImask.get_ndarray()(rfi_time_offset, 0, 0);
 
     // aka "nt_outer" in n2k.hpp
-    const int num_subintegrations = div_noremainder(_samples_per_data_set, _sub_integration_ntime);
+    const int num_subintegrations = div_noremainder(_num_times, _sub_integration_ntime);
 
     record_start_event();
 
@@ -177,6 +185,9 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
                         _sub_integration_ntime, device.getStream(cuda_stream_id), true);
 
     CHECK_CUDA_ERROR(cudaGetLastError());
+
+    // Check if poison value made it through
+    n2k_correlation.check_for_poison(0x80);
 
     return record_end_event();
 }

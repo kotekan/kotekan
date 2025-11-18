@@ -1,6 +1,5 @@
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "visUtil.hpp"
-
+#include "DataType.hpp"     // for KOTEKAN_FLOAT16, float16_t, IWYU pragma: keep
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
 // Put visUtil.hpp before testDataCheck.hpp because we want the preprocessor symbol
 // KOTEKAN_FLOAT16 to be set before including the code that's going to be templated!
 #include "testDataCheck.hpp"

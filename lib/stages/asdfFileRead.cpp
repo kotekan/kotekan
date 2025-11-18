@@ -1,4 +1,5 @@
 #include "Config.hpp"          // for Config
+#include "Symbol.hpp"          // for Symbol
 #include "asdfFiles.hpp"       // for beautify_buffer_name, chord_metadata_version
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -10,6 +11,7 @@
 #include <DataType.hpp>          // for string_to_type, type_to_string, DataType
 #include <Stage.hpp>             // for Stage
 #include <StageFactory.hpp>      // for REGISTER_KOTEKAN_STAGE
+#include <algorithm>             // for max
 #include <array>                 // for array
 #include <asdf/asdf.hxx>         // for asdf
 #include <asdf/config.hxx>       // for ASDF_CHECK_VERSION
@@ -19,7 +21,7 @@
 #include <asdf/ndarray.hxx>      // for ndarray, block_t
 #include <cassert>               // for assert
 #include <chordMetadata.hpp>     // for chordMetadata, CHORD_META_MAX_FREQ, metadata_is_chord
-#include <cstddef>               // for ptrdiff_t
+#include <cstddef>               // for ptrdiff_t, size_t
 #include <cstdint>               // for int64_t, uint32_t, uint8_t
 #include <cstring>               // for memcpy, strncpy
 #include <fstream>               // for basic_ostream, basic_ifstream, operator<<, ostringstream
@@ -203,6 +205,34 @@ public:
                     assert(meta->stride[d] == npoints);
                     npoints *= meta->dim[d];
                 }
+
+                {
+                    /* new style array description */
+                    DEBUG("[{:s}/{:d}] group0->at(\"type\")", buffer->buffer_name, frame_counter);
+                    const std::string type = group->at("type")->get_maybe_string().value();
+                    const kotekan::DataType value_type = kotekan::string_to_type(type);
+                    DEBUG("[{:s}/{:d}] value_type={}", buffer->buffer_name, frame_counter,
+                          type_to_string(value_type));
+                    assert(value_type != kotekan::unknown_type);
+                    const std::string name = group->at("name")->get_maybe_string().value();
+                    DEBUG("[{:s}/{:d}] meta->name={}", buffer->buffer_name, frame_counter, name);
+
+                    DEBUG("[{:s}/{:d}] group0->at(\"dim_names\")", buffer->buffer_name,
+                          frame_counter);
+                    const auto dim_names = group->at("dim_names")->get_maybe_sequence();
+                    assert(dim_names);
+                    std::vector<kotekan::Symbol> dimnames;
+                    for (size_t d = 0; d < dimensions.size(); ++d) {
+                        const std::string dim_name = dim_names->at(d)->get_maybe_string().value();
+                        dimnames.push_back(dim_name);
+                    }
+                    buffer->allocate_new_frame_desc(frame_id, value_type, name, dimensions,
+                                                    dimnames);
+                    /* test that things are consistent */
+                    meta->check_frame_desc(buffer->get_frame_desc(frame_id));
+                }
+
+
                 const std::ptrdiff_t data_size = npoints * datatype_size;
                 DEBUG("[{:s}/{:d}] data_size={} datatype->type_size={} meta->stride[0]={} "
                       "meta->dim[0]={} buffer->frame_size={}",

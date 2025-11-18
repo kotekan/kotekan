@@ -3,7 +3,8 @@
 #include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
 
 #include <assert.h> // for assert
-#include <memory>   // for allocator
+#include <memory>   // for allocator, shared_ptr, dynamic_pointer_cast, __shared_ptr_access
+#include <string>   // for basic_string
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, BasebandMetadata);
 
@@ -23,11 +24,17 @@ struct BasebandMetadataFormat {
     int32_t reserved;
 };
 
+void BasebandMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
+    auto bb_other = std::dynamic_pointer_cast<const BasebandMetadata>(other);
+    assert(bb_other);
+    *this = *bb_other;
+}
+
 size_t BasebandMetadata::get_serialized_size() {
     return sizeof(BasebandMetadataFormat);
 }
 
-size_t BasebandMetadata::set_from_bytes(const char* bytes, size_t length) {
+size_t BasebandMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t length) {
     size_t sz = get_serialized_size();
     assert(length >= sz);
     const BasebandMetadataFormat* fmt = reinterpret_cast<const BasebandMetadataFormat*>(bytes);
@@ -62,4 +69,42 @@ size_t BasebandMetadata::serialize(char* bytes) {
     fmt->fpga0_ns = fpga0_ns;
     fmt->num_elements = num_elements;
     return sz;
+}
+
+nlohmann::json BasebandMetadata::to_json() {
+    nlohmann::json rtn = {};
+    ::to_json(rtn, *this);
+    return rtn;
+}
+
+void to_json(nlohmann::json& j, const BasebandMetadata& m) {
+    assert(j.empty());
+
+    j.emplace("event_id", m.event_id);
+    j.emplace("freq_id", m.freq_id);
+    j.emplace("event_start_fpga", m.event_start_fpga);
+    j.emplace("event_end_fpga", m.event_end_fpga);
+    j.emplace("time0_fpga", m.time0_fpga);
+    j.emplace("time0_ctime", m.time0_ctime);
+    j.emplace("time0_ctime_offset", m.time0_ctime_offset);
+    j.emplace("first_packet_recv_time", m.first_packet_recv_time);
+    j.emplace("frame_fpga_seq", m.frame_fpga_seq);
+    j.emplace("valid_to", m.valid_to);
+    j.emplace("fpga0_ns", m.fpga0_ns);
+    j.emplace("num_elements", m.num_elements);
+}
+
+void from_json(const nlohmann::json& j, BasebandMetadata& m) {
+    m.event_id = j.at("event_id");
+    m.freq_id = j.at("freq_id");
+    m.event_start_fpga = j.at("event_start_fpga");
+    m.event_end_fpga = j.at("event_end_fpga");
+    m.time0_fpga = j.at("time0_fpga");
+    m.time0_ctime = j.at("time0_ctime");
+    m.time0_ctime_offset = j.at("time0_ctime_offset");
+    m.first_packet_recv_time = j.at("first_packet_recv_time");
+    m.frame_fpga_seq = j.at("frame_fpga_seq");
+    m.valid_to = j.at("valid_to");
+    m.fpga0_ns = j.at("fpga0_ns");
+    m.num_elements = j.at("num_elements");
 }

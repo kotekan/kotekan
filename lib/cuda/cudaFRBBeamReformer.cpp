@@ -211,7 +211,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         std::shared_ptr<metadataObject> const out_mc = device.create_gpu_memory_array_metadata(
             _gpu_mem_beamout + "_buffer", gpu_frame_id, in_mc->parent_pool);
         std::shared_ptr<chordMetadata> const out_meta = get_chord_metadata(out_mc);
-        *out_meta = *in_meta;
+        out_meta->deepCopy(in_meta);
         // Output shape is (Ttilde x Fbar x beam) in float16
         out_meta->set_name("frb2_beams");
         out_meta->type = kotekan::float16;

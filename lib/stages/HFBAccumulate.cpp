@@ -1,11 +1,11 @@
 #include "HFBAccumulate.hpp"
 
-#include "HFBFrameView.hpp" // for HFBFrameView
-#include "Hash.hpp"         // for operator!=, Hash
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"    // for Telescope
-#include "buffer.hpp"       // for Buffer
-#include "chordMetadata.hpp"
+#include "HFBFrameView.hpp"   // for HFBFrameView
+#include "Hash.hpp"           // for operator!=, Hash
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"      // for Telescope
+#include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for beamState, freqState, metadataState, subfreqState
 #include "kotekanLogging.hpp" // for DEBUG, DEBUG2
@@ -20,9 +20,10 @@
 #include <cstring>    // for memcpy, size_t
 #include <functional> // for bind, function
 #include <iterator>   // for back_insert_iterator, begin, end, back_inserter
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <numeric>    // for iota
 #include <string>     // for allocator, basic_string, string
-#include <time.h>     // for size_t, timespec
+#include <time.h>     // for timespec
 #include <utility>    // for pair
 #include <vector>     // for vector
 
@@ -72,7 +73,7 @@ HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
     std::vector<std::pair<uint32_t, freq_ctype>> freqs;
     std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(freqs),
                    [&tel](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
-                       return {id, {tel.to_freq(id), tel.freq_width(id)}};
+                       return {id, {tel.to_freq_MHz(id), tel.freq_width_MHz(id)}};
                    });
 
     // Create all the states

@@ -1,36 +1,30 @@
 #include "FakeN2.hpp"
 
-#include "CHORDTelescope.hpp"  // for struct EOP, eop_null, CHORDTelescope
+#include "CHORDTelescope.hpp"  // for CHORDTelescope, EOP
 #include "Config.hpp"          // for Config
 #include "N2FrameView.hpp"     // for N2FrameView
-#include "N2Util.hpp"          // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for allocate_new_metadata_object, mark_frame_full, register_p...
+#include "N2Metadata.hpp"      // for N2Metadata, get_N2_metadata
+#include "N2Util.hpp"          // for get_num_prod
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "errors.h"            // for ReturnCode, exit_kotekan
 #include "factory.hpp"         // for FACTORY
-#include "kotekanLogging.hpp"  // for INFO, DEBUG
-#include "version.h"           // for get_git_commit_hash
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span<>::iterator, span
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
 
-#include <algorithm>   // for max, fill, transform
-#include <atomic>      // for atomic_bool
-#include <complex>     // for complex
-#include <cstdint>     // for uint32_t, int32_t
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function, placeholders
-#include <iterator>    // for back_insert_iterator, back_inserter, begin, end
-#include <memory>      // for allocator, unique_ptr
-#include <numeric>     // for iota
-#include <random>      // for random_device, mt19937
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for runtime_error
-#include <time.h>      // for nanosleep, timespec
-#include <tuple>       // for get, make_tuple, tuple
-#include <type_traits> // for __decay_and_strip<>::__type
-#include <utility>     // for pair
+#include <algorithm>  // for fill, max, shuffle
+#include <assert.h>   // for assert
+#include <complex>    // for complex
+#include <functional> // for bind, function, placeholders
+#include <memory>     // for allocator, shared_ptr, __shared_ptr_access, unique_ptr
+#include <numeric>    // for iota
+#include <random>     // for random_device, uniform_real_distribution, mt19937
+#include <time.h>     // for nanosleep, timespec
+#include <utility>    // for pair
 
 
 using namespace std::placeholders;
@@ -82,6 +76,14 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
+
+    size_t num_prod = N2FrameView::get_num_prod(num_elements, N2Layout::FullUpperTri);
+    size_t frame_size = N2FrameView::calculate_frame_size(num_elements, num_eigenvectors, num_prod);
+    if (out_buf->frame_size != frame_size) {
+        FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d}", out_buf->buffer_name,
+                    out_buf->frame_size, frame_size);
+    }
+    assert(frame_size == out_buf->frame_size);
 }
 
 void FakeN2::main_thread() {
@@ -151,13 +153,17 @@ void FakeN2::main_thread() {
 
             meta->num_elements = num_elements;
             /// Number of products in the data
-            meta->num_prod = N2::get_num_prod(num_elements);
+            meta->num_prod = N2FrameView::get_num_prod(num_elements, n2_layout);
             /// Number of eigenvectors and values calculated
             meta->num_ev = num_eigenvectors;
             /// Total number of frequencies in pipeline
             meta->nfreq = freq.size();
             // Set the frequency index
             meta->freq_id = f;
+            // Set the time index
+            meta->abs_time_idx = t;
+            // Set the layout
+            meta->layout = n2_layout;
 
             /// The sequence number of the first FPGA frame integrated into this visibility frame
             meta->fpga_start_tick = fpga_seq + t * delta_seq;
@@ -187,7 +193,8 @@ void FakeN2::main_thread() {
 
             // Fill out the frame with the selected pattern
             pattern->fill(output_frame);
-            INFO("First eval is: {}", output_frame.eval[0]);
+            if (meta->num_ev > 0)
+                INFO("First eval is: {}", output_frame.eval[0]);
 
             // gains
             for (uint32_t i = 0; i < num_elements; i++) {
@@ -209,14 +216,13 @@ void FakeN2::main_thread() {
         // Increment the timespec
         time_ns += curr_n_frames * delta_ns;
 
-        // Cause kotekan to exit if we've hit the maximum number of frames
+        // Cause stop generating if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count >= num_frames) {
             INFO("Reached frame limit [{:d} frames]. Sleeping and then exiting kotekan...",
                  num_frames);
             timespec ts = double_to_ts(sleep_after);
             nanosleep(&ts, nullptr);
-            exit_kotekan(ReturnCode::CLEAN_EXIT);
-            return;
+            break;
         }
 
         // If requested sleep for the extra time required to produce a fake vis

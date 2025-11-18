@@ -447,7 +447,7 @@ nlohmann::json iceBoardHandler::get_json_port_info() {
                 stream_t encoded_id = ice_encode_stream_id(temp_stream_id);
 
                 freq_bins.push_back(tel.to_freq_id(encoded_id, i));
-                freq_mhz.push_back(tel.to_freq(encoded_id, i));
+                freq_mhz.push_back(tel.to_freq_MHz(encoded_id, i));
             }
         }
     }

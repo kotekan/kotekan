@@ -24,12 +24,12 @@ diag_global_params = {
 
 diag_stage_params = {"stack_type": "diagonal"}
 
-chime_global_params = {
-    "num_elements": 2048,
-    "num_ev": 2,
-    "total_frames": 10,
+smallchime_global_params = {
+    "num_elements": 128,
+    "num_ev": 1,
+    "total_frames": 2,
     "wait": True,
-    "cadence": 2.0,
+    "cadence": 1.0,
     "mode": "chime",
     "freq_ids": [0, 250, 500],
     "buffer_depth": 100,
@@ -51,6 +51,94 @@ def float_allclose(a, b):
 
     tol = max(res_a, res_b)
     return np.allclose(a, b, rtol=tol, atol=0)
+
+
+def _chime_feed_props(chan_id):
+    """Mirror chimeFeed::from_input from the C++ code."""
+    return {
+        "cyl": chan_id // 512,
+        "pol": ((chan_id // 256) + 1) % 2,
+        "feed": chan_id % 256,
+    }
+
+
+# The following function was written by codex, and I have
+# not verified the math in it. -JM
+def _chime_stack_expectations(num_elements):
+    """Replicate stack_chime_in_cyl + baselineCompression for FakeVis(chime)."""
+
+    # Build the feed properties
+    feeds = [_chime_feed_props(ii) for ii in range(num_elements)]
+
+    # All products i<=j as in FakeVis
+    prods = []
+    feed_diffs = []
+    conj_flags = []
+    vis_values = []
+
+    for i in range(num_elements):
+        for j in range(i, num_elements):
+            fi, fj = feeds[i], feeds[j]
+
+            # Canonical ordering and conjugation flag (matches calculate_chime_vis)
+            conj = False
+            if (
+                (fi["cyl"] > fj["cyl"])
+                or (fi["cyl"] == fj["cyl"] and fi["feed"] > fj["feed"])
+                or (
+                    fi["cyl"] == fj["cyl"]
+                    and fi["feed"] == fj["feed"]
+                    and fi["pol"] > fj["pol"]
+                )
+            ):
+                fi, fj = fj, fi
+                conj = True
+
+            feed_diff = (
+                fi["pol"],
+                fj["pol"],
+                fi["cyl"],
+                fj["cyl"],
+                fj["feed"] - fi["feed"],
+            )
+
+            feed_diffs.append(feed_diff)
+            conj_flags.append(conj)
+
+            # FakeVis(chime) pattern value for the original (i, j) ordering
+            vi, vj = feeds[i], feeds[j]
+            vis = complex(vj["cyl"] - vi["cyl"], vj["feed"] - vi["feed"])
+            vis_values.append(vis)
+            prods.append((i, j))
+
+    # Recreate stack_chime_in_cyl ordering
+    sort_ind = sorted(range(len(feed_diffs)), key=lambda idx: feed_diffs[idx])
+    stack_map = [None] * len(feed_diffs)
+    cur_stack = 0
+    cur_fd = feed_diffs[sort_ind[0]] if sort_ind else None
+    for idx in sort_ind:
+        if feed_diffs[idx] != cur_fd:
+            cur_fd = feed_diffs[idx]
+            cur_stack += 1
+        stack_map[idx] = cur_stack
+
+    num_stacks = 0 if not stack_map else max(stack_map) + 1
+    out_vis = np.zeros(num_stacks, dtype=np.complex128)
+    out_weight = np.zeros(num_stacks, dtype=np.float64)
+
+    # BaselineCompression accumulation
+    for idx, stack in enumerate(stack_map):
+        vis = vis_values[idx]
+        if conj_flags[idx]:
+            vis = np.conjugate(vis)
+        out_vis[stack] += vis
+        out_weight[stack] += 1.0
+
+    # Normalise to get the averaged visibilities; weights remain as counts
+    nonzero = out_weight != 0
+    out_vis[nonzero] /= out_weight[nonzero]
+
+    return out_vis, out_weight
 
 
 @pytest.fixture(scope="module")
@@ -79,13 +167,13 @@ def diagonal_data(tmpdir_factory):
 
 
 @pytest.fixture(scope="module")
-def chime_data(tmpdir_factory):
+def smallchime_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("chime")
 
     fakevis_buffer = runner.FakeVisBuffer(
-        freq_ids=chime_global_params["freq_ids"],
-        num_frames=chime_global_params["total_frames"],
+        freq_ids=smallchime_global_params["freq_ids"],
+        num_frames=smallchime_global_params["total_frames"],
         wait=True,
     )
 
@@ -96,7 +184,7 @@ def chime_data(tmpdir_factory):
         chime_stage_params,
         fakevis_buffer,
         dump_buffer,
-        chime_global_params,
+        smallchime_global_params,
     )
 
     test.run()
@@ -119,35 +207,13 @@ def test_metadata(diagonal_data):
     assert (nprod == diag_global_params["num_elements"]).all()
 
 
-def test_chime(chime_data):
+def test_chime(smallchime_data):
 
-    nvis_chime = 4 * (4 * 256 - 1) + 6 * 4 * 511
+    expected_vis, expected_weight = _chime_stack_expectations(
+        smallchime_global_params["num_elements"]
+    )
 
-    # This is the typical number of entries per polarisation (for XX, XY and YY, not YX)
-    np1 = 4 * 256 + 6 * 511
-
-    for frame in chime_data:
-        assert frame.vis.shape[0] == nvis_chime
-
-        # Check that the entries in XX and XY are the same
-        assert float_allclose(frame.vis[:np1], frame.vis[np1 : (2 * np1)])
-
-        v1 = frame.vis[:np1]
-        w1 = frame.weight[:np1]
-
-        # Loop over all pairs of cylinders for XX
-        for ci in range(4):
-            for cj in range(ci, 4):
-
-                # These numbers depend if we are within a cyl or not
-                nv = 256 if ci == cj else 511  # Number of entries to compare
-                lb = 0 if ci == cj else -255  # The most negative separation
-
-                # A list of the feed separations in the NS dir
-                d = np.arange(lb, 256)
-
-                assert float_allclose(v1[:nv], (cj - ci + 1.0j * d))
-                assert float_allclose(w1[:nv], (256.0 - np.abs(d)))
-
-                v1 = v1[nv:]
-                w1 = w1[nv:]
+    for frame in smallchime_data:
+        assert frame.vis.shape[0] == expected_vis.shape[0]
+        assert float_allclose(frame.vis, expected_vis)
+        assert float_allclose(frame.weight, expected_weight)

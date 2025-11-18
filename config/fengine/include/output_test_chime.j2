@@ -282,10 +282,12 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_pl_expanded_mask_buffer
         file_name: pl_expanded_mask
-    write_voltage:
+    {%- for id in range(16) %}
+    write_voltage_{{ id }}:
         kotekan_stage: hdf5FileWrite
-        in_buf: host_voltage_buffer
-        file_name: voltage
+        in_buf: host_voltage_buffer_{{ id }}
+        file_name: voltage_{{ id }}
+    {%- endfor %}
     write_scatter_indices:
         kotekan_stage: hdf5FileWrite
         in_buf: host_scatter_indices_buffer

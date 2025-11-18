@@ -1,17 +1,15 @@
 #include "fakeGpuPattern.hpp"
 
-#include "Config.hpp" // for Config
-#include "chordMetadata.hpp"
-#include "visUtil.hpp" // for prod_index
+#include "Config.hpp"        // for Config
+#include "chordMetadata.hpp" // for chordMetadata
+#include "visUtil.hpp"       // for prod_index
 
-#include "gsl-lite.hpp" // for span, span<>::iterator
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
 
 #include <algorithm> // for fill
-#include <cmath>     // for lroundf, pow
-#include <exception> // for exception
-#include <regex>     // for match_results<>::_Base_type
-#include <stdexcept> // for runtime_error
-#include <time.h>    // for timespec  // IWYU pragma: keep
+#include <cmath>     // for pow, lroundf
+#include <time.h>    // for timespec
 #include <vector>    // for vector
 
 // Register test patterns
@@ -212,7 +210,7 @@ void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metada
     DEBUG2("GPS time %ds%dns", metadata->get_gps_time().tv_sec, metadata->get_gps_time().tv_nsec);
 
     // Figure out if we are in a pulse
-    double toa = _polyco.next_toa(metadata->get_gps_time(), tel.to_freq(freq_id));
+    double toa = _polyco.next_toa(metadata->get_gps_time(), tel.to_freq_MHz(freq_id));
     double last_toa = toa - 1. / _rot_freq;
     DEBUG2("TOA: %f, last TOA: %f", toa, last_toa);
 

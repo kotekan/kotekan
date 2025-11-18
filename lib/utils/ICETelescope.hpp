@@ -3,7 +3,6 @@
 
 #include "Config.hpp"    // for Config
 #include "Telescope.hpp" // for freq_id_t, stream_t, Telescope
-#include "buffer.hpp"    // for Buffer
 
 #include <stdint.h> // for uint32_t, uint8_t, uint64_t
 #include <string>   // for string, basic_string
@@ -32,10 +31,10 @@ public:
 
     // Implementations of the required frequency mapping functions
     freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
-    double to_freq(freq_id_t freq_id) const override;
+    double to_freq_MHz(freq_id_t freq_id) const override;
     uint32_t num_freq_per_stream() const override;
     uint32_t num_freq() const override;
-    double freq_width(freq_id_t freq_id) const override;
+    double freq_width_MHz(freq_id_t freq_id) const override;
     uint8_t nyquist_zone() const override;
 
     // Implementations of the required time mapping functions

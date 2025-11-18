@@ -1,7 +1,10 @@
 #ifndef DATATYPE_HPP
 #define DATATYPE_HPP
 
+#include "json.hpp"
+
 #include <cassert>
+#include <complex>
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
@@ -31,11 +34,11 @@ using float16_t = _Float16;
 
 namespace kotekan {
 
-#ifdef DEBUGGING
+// #ifdef DEBUGGING
 #define KOTEKAN_ASSERT(cond) assert(cond)
-#else
-#define KOTEKAN_ASSERT(cond) 0
-#endif
+// #else
+// #define KOTEKAN_ASSERT(cond) 0
+// #endif
 
 // 8 bools (packed into a type)
 struct uint1x8_t {
@@ -194,9 +197,9 @@ inline std::ostream& operator<<(std::ostream& os, const float16_t x) {
 
 // This enum lets us talk about the various datatypes we're using.
 enum DataType {
-    unknown_type,
-    uint1x8, // 8 bools (packed into a type)
-    uint4x2, // 2 unsigned 4-bit integers (packed into a byte)
+    unknown_type, // keep this as first entry for GenericNDArray::create
+    uint1x8,      // 8 bools (packed into a type)
+    uint4x2,      // 2 unsigned 4-bit integers (packed into a byte)
     uint8,
     uint16,
     uint32,
@@ -210,6 +213,18 @@ enum DataType {
     float16,
     float32,
     float64,
+    cuint8,
+    cuint16,
+    cuint32,
+    cuint64,
+    cint8,
+    cint16,
+    cint32,
+    cint64,
+    cfloat16,
+    cfloat32,
+    cfloat64,
+    end_type, // keep the as the last entry for GenericNDArray::create
 };
 
 // Number of bits (not bytes!) in a type. For packed types, say how
@@ -246,6 +261,28 @@ constexpr std::size_t type_value_bits(DataType type) {
             return 32;
         case float64:
             return 64;
+        case cuint8:
+            return 16;
+        case cuint16:
+            return 32;
+        case cuint32:
+            return 64;
+        case cuint64:
+            return 128;
+        case cint8:
+            return 16;
+        case cint16:
+            return 32;
+        case cint32:
+            return 64;
+        case cint64:
+            return 128;
+        case cfloat16:
+            return 32;
+        case cfloat32:
+            return 64;
+        case cfloat64:
+            return 128;
         default:
             return 0;
     }
@@ -285,6 +322,28 @@ constexpr std::size_t type_total_bytes(DataType type) {
             return 4;
         case float64:
             return 8;
+        case cuint8:
+            return 2;
+        case cuint16:
+            return 4;
+        case cuint32:
+            return 8;
+        case cuint64:
+            return 16;
+        case cint8:
+            return 2;
+        case cint16:
+            return 4;
+        case cint32:
+            return 8;
+        case cint64:
+            return 16;
+        case cfloat16:
+            return 4;
+        case cfloat32:
+            return 8;
+        case cfloat64:
+            return 16;
         default:
             return 0;
     }
@@ -337,6 +396,112 @@ constexpr DataType float_from_element_bits(std::size_t bits) {
             return float32;
         case 64:
             return float64;
+        default:
+            return unknown_type;
+    }
+}
+
+// Find a complex unsigned int with that many bits
+constexpr DataType cuint_from_element_bits(std::size_t bits) {
+    switch (bits) {
+        case 16:
+            return cuint8;
+        case 32:
+            return cuint16;
+        case 64:
+            return cuint32;
+        case 128:
+            return cuint64;
+        default:
+            return unknown_type;
+    }
+}
+
+// Find a complex signed int with that many bits
+constexpr DataType cint_from_element_bits(std::size_t bits) {
+    switch (bits) {
+        case 16:
+            return cint8;
+        case 32:
+            return cint16;
+        case 64:
+            return cint32;
+        case 128:
+            return cint64;
+        default:
+            return unknown_type;
+    }
+}
+
+// Find a complex floating-point type with that many bits
+constexpr DataType cfloat_from_element_bits(std::size_t bits) {
+    switch (bits) {
+        case 32:
+            return cfloat16;
+        case 64:
+            return cfloat32;
+        case 128:
+            return cfloat64;
+        default:
+            return unknown_type;
+    }
+}
+
+// Find a real type for a complex type
+constexpr DataType real_from_complex(DataType type) {
+    switch (type) {
+        case cuint8:
+            return uint8;
+        case cuint16:
+            return uint16;
+        case cuint32:
+            return uint32;
+        case cuint64:
+            return uint64;
+        case cint8:
+            return int8;
+        case cint16:
+            return int16;
+        case cint32:
+            return int32;
+        case cint64:
+            return int64;
+        case cfloat16:
+            return float16;
+        case cfloat32:
+            return float32;
+        case cfloat64:
+            return float64;
+        default:
+            return unknown_type;
+    }
+}
+
+// Find a complex type for a real type
+constexpr DataType complex_from_real(DataType type) {
+    switch (type) {
+        case uint8:
+            return cuint8;
+        case uint16:
+            return cuint16;
+        case uint32:
+            return cuint32;
+        case uint64:
+            return cuint64;
+        case int8:
+            return cint8;
+        case int16:
+            return cint16;
+        case int32:
+            return cint32;
+        case int64:
+            return cint64;
+        case float16:
+            return cfloat16;
+        case float32:
+            return cfloat32;
+        case float64:
+            return cfloat64;
         default:
             return unknown_type;
     }
@@ -406,6 +571,10 @@ template<>
 struct GetDataType<int4x2_swapped_withoffset_t>
     : std::integral_constant<DataType, int4x2_swapped_withoffset> {};
 
+template<typename T>
+struct GetDataType<std::complex<T>>
+    : std::integral_constant<DataType, complex_from_real(GetDataType<T>::value)> {};
+
 // Use e.g. as `DataType double_type = GetDataType_v<double>`
 template<typename T>
 constexpr DataType GetDataType_v = GetDataType<T>::value;
@@ -473,6 +642,52 @@ struct GetType<float32> {
 template<>
 struct GetType<float64> {
     using type = double;
+};
+template<>
+struct GetType<cuint8> {
+    using type = std::complex<std::uint8_t>;
+};
+template<>
+struct GetType<cuint16> {
+    using type = std::complex<std::uint16_t>;
+};
+template<>
+struct GetType<cuint32> {
+    using type = std::complex<std::uint32_t>;
+};
+template<>
+struct GetType<cuint64> {
+    using type = std::complex<std::uint64_t>;
+};
+template<>
+struct GetType<cint8> {
+    using type = std::complex<std::int8_t>;
+};
+template<>
+struct GetType<cint16> {
+    using type = std::complex<std::int16_t>;
+};
+template<>
+struct GetType<cint32> {
+    using type = std::complex<std::int32_t>;
+};
+template<>
+struct GetType<cint64> {
+    using type = std::complex<std::int64_t>;
+};
+#if KOTEKAN_FLOAT16
+template<>
+struct GetType<cfloat16> {
+    using type = std::complex<float16_t>;
+};
+#endif
+template<>
+struct GetType<cfloat32> {
+    using type = std::complex<float>;
+};
+template<>
+struct GetType<cfloat64> {
+    using type = std::complex<double>;
 };
 
 template<DataType type>
@@ -614,6 +829,17 @@ struct PoisonValue<int4x2_swapped_withoffset_t> {
     }
 };
 
+template<typename T>
+struct PoisonValue<std::complex<T>> {
+    static constexpr std::complex<T> value{PoisonValue<T>(), PoisonValue<T>()};
+    using value_type = std::complex<T>;
+    constexpr operator value_type() const noexcept {
+        return value;
+    }
+    constexpr value_type operator()() const noexcept {
+        return value;
+    }
+};
 
 // Convert a type to a string
 std::string type_to_string(DataType type);
@@ -623,6 +849,10 @@ DataType string_to_type(const std::string& type_name);
 
 // Output a type
 std::ostream& operator<<(std::ostream& os, DataType type);
+
+// conversion from / to json
+void to_json(nlohmann::json& j, const DataType& d);
+void from_json(const nlohmann::json& j, DataType& d);
 
 } // namespace kotekan
 

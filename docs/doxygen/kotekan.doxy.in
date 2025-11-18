@@ -295,7 +295,7 @@ ALIASES                = conf="@param" \
                          requires_kernel="@b Required @b Kernel @arg @c" \
                          metric="- @c" \
                          endpoint="- @c" \
-                         raises=="- @c" \
+                         raises="- @c" \
 
 # Set the OPTIMIZE_OUTPUT_FOR_C tag to YES if your project consists of C sources
 # only. Doxygen will then generate output that is more tailored for C. For
@@ -1058,6 +1058,7 @@ RECURSIVE              = YES
 EXCLUDE                = @PROJECT_SOURCE_DIR@/external \
                          @PROJECT_SOURCE_DIR@/scripts \
                          @PROJECT_SOURCE_DIR@/python/scripts \
+                         @PROJECT_SOURCE_DIR@/python/kotekan/scripts \
                          @PROJECT_SOURCE_DIR@/build \
                          @PROJECT_SOURCE_DIR@/build-docs \
                          @PROJECT_SOURCE_DIR@/.git \

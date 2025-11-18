@@ -3,6 +3,7 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
 #include <cstdint> // for int32_t
@@ -70,6 +71,8 @@ private:
     int32_t _num_elements;
     int32_t _samples_per_data_set;
     int32_t _sub_integration_ntime;
+
+    static constexpr int _corr_blocksize = 16; // Always 16
 };
 
 #endif

@@ -80,7 +80,7 @@ visTransform::visTransform(Config& config, const std::string& unique_name,
     // Create the frequency specification
     std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(_freqs),
                    [&tel](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
-                       return {id, {tel.to_freq(id), tel.freq_width(id)}};
+                       return {id, {tel.to_freq_MHz(id), tel.freq_width_MHz(id)}};
                    });
 
     // The input specification from the config

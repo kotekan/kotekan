@@ -307,7 +307,7 @@ RawReader<T>::RawReader(Config& config, const std::string& unique_name,
     // ... first construct a map of central frequencies to IDs known by the
     // telescope object
     for (uint32_t id = 0; id < tel.num_freq(); id++) {
-        inv_freq_map[tel.to_freq(id)] = id;
+        inv_freq_map[tel.to_freq_MHz(id)] = id;
     }
 
     // ... then use this to match the central frequencies given in the file

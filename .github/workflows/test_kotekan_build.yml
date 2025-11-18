@@ -1,0 +1,109 @@
+# This re-usable workflow builds and runs post-build commands on a kotekan install.
+# The inputs documented below should generally be supplied when this workflow is called.
+# Notes:
+# - we verify the architecture is x86_64 on github runners
+# - we use -DARCH=haswell for compatibility across runners
+# - Because this runs inside a container rather than on the host runner itself, the
+#   14 GB space limits (including image) apply.
+---
+name: Test Kotekan Build
+
+on:
+  workflow_call:
+    inputs:
+      runs_on: # Base runner image, ubuntu-latest if not specified
+        required: false
+        type: string
+      container_image: # Typically, the cpu or gpu kotekan docker image.
+        required: true
+        type: string
+      ccache_key: # Should roughly be unique per OS-compiler-optimization-hardware combo
+        required: true
+        type: string
+      cmake_defs: # Compiler flags to build kotekan with, if building
+        required: false
+        type: string
+      post_build: # Commands to run (from the main kotekan directory) after building
+        required: false
+        type: string
+
+jobs:
+  test:
+    runs-on: ${{ inputs.runs_on || 'ubuntu-latest' }}
+    container:
+      image: ${{ inputs.container_image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: >-
+        ${{ contains(inputs.runs_on || '', 'self-hosted')
+            && '--privileged --mount type=bind,source=/data,target=/data --label ci-runner=kotekan'
+            || '--label ci-runner=kotekan' }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPRESS: true
+      CCACHE_TEMPDIR: /tmp/.ccache
+      CCACHE_MAXSIZE: 1G
+
+    steps:
+      
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ inputs.ccache_key }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ inputs.ccache_key }}-
+
+      - name: Print local compute environment details
+        run: |
+          echo "==========="
+          pwd
+          echo "==========="
+          ls -la
+          echo "==========="
+          env
+          echo "==========="
+          df -h
+          echo "==========="
+          free -h
+          echo "==========="
+          lscpu
+          echo "==========="
+          uname -m
+          echo "==========="
+
+      - name: Verify architecture is x86_64
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
+        run: |
+          arch=$(uname -m)
+          echo "Detected architecture: $arch"
+          if [ "$arch" != "x86_64" ]; then
+            echo "::error::This job must run on an x86_64 runner (found $arch)"
+            exit 1
+          fi
+
+      - name: Configure & Build kotekan
+        if: inputs.cmake_defs
+        run: |
+          set -euo pipefail
+          mkdir $GITHUB_WORKSPACE/build-2404 && cd $GITHUB_WORKSPACE/build-2404
+          ccache -s
+          cmake -DARCH=haswell -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ${{ inputs.cmake_defs }} ..
+          make -j $(nproc)
+          ccache -s
+
+      - name: Run commands
+        if: inputs.post_build
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Run any commands specified ...
+          ${{ inputs.post_build }}

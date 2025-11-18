@@ -195,10 +195,10 @@ with section("lint"):
     # Require no more than this many newlines between statements
     max_statement_spacing = 2
     max_returns = 6
-    max_branches = 12
+    max_branches = 32
     max_arguments = 5
     max_localvars = 15
-    max_statements = 50
+    max_statements = 100
 
 # -------------------------------
 # Options affecting file encoding

@@ -41,27 +41,36 @@ earth_rotation_data:
 telescope:
   name: CHORDTelescope
   require_gps: false
-  inst_long_deg: -119.62081125
-  inst_lat_deg: 49.3207514444444444
-  inst_grid_x_axis: [1.0, 0.0, 0.0]
-  inst_grid_y_axis: [0.0, 1.0, 0.0]
-  inst_alt_deg: 90.0
-  inst_dish_alt_axis: [1.0, 0.0, 0.0]
-  inst_dish_vert_axis: [0.0, 0.0, 1.0]
-  dish_positions: [[0.0, 1.0, 2.0],
-                   [0.0, 2.0, 2.0],
-                   [0.0, 3.0, 2.0],
-                   [1.0, 1.0, 2.0],
-                   [1.0, 2.0, 2.0],
-                   [1.0, 3.0, 2.0]]
+  origin_itrs_lon_deg: -119.62081125
+  origin_itrs_lat_deg: 49.3207514444444444
+  grid_x_axis: [1.0, 0.0, 0.0]
+  grid_y_axis: [0.0, 1.0, 0.0]
+  dish_elev_axis: [1.0, 0.0, 0.0]
+  dish_vert_axis: [0.0, 0.0, 1.0]
+  dish_coelev_deg: 0.0
 
   updatable_config: "/earth_rotation_data"
+
+  dish_separation_x_m: 6.3
+  dish_separation_y_m: 8.5
+
+  dish_inputs: [
+    {dish_idx: 0, grid_x_idx: 0, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A01},
+    {dish_idx: 1, grid_x_idx: 1, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A02},
+    {dish_idx: 4, grid_x_idx: 0, grid_y_idx: 1, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-B01},
+    {dish_idx: 5, grid_x_idx: 1, grid_y_idx: 1, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-B02},
+    {dish_idx: 2, grid_x_idx: 7, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A08},
+    {dish_idx: 6, grid_x_idx: 0, grid_y_idx: 7, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-H01},
+    {dish_idx: 7, grid_x_idx: 7, grid_y_idx: 7, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-H08},
+    {dish_idx: 3, grid_x_idx: 15, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A16},
+    {dish_idx: 8, grid_x_idx: 0, grid_y_idx: 15, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-P01},
+    {dish_idx: 9, grid_x_idx: 15, grid_y_idx: 15, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-P16}
+  ]
+
 gps_time:
   frame0_nano: 50 * nsec_in_jyear
 
-updates:
-  kotekan_update_endpoint: "json"
-  var: 1.2
+num_dishes: 32
 
 # Add a consumer stage that prints the output buffer to screen
 screen_dump:

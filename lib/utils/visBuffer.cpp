@@ -3,9 +3,8 @@
 #include "FrameView.hpp" // for bind_span, bind_scalar, FrameView
 #include "Telescope.hpp" // for freq_id_t
 #include "buffer.hpp"    // for Buffer
-#include "chordMetadata.hpp"
-#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
-#include "metadata.hpp" // for metadataObject, _factory_aliasmetadataObject
+#include "factory.hpp"   // for REGISTER_TYPE_WITH_FACTORY
+#include "metadata.hpp"  // for metadataObject, _factory_aliasmetadataObject
 
 #include "fmt.hpp" // for format, compile_string_to_view, fmt, format_string
 
@@ -22,8 +21,8 @@
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
 
-void VisMetadata::deepCopy(std::shared_ptr<metadataObject> other) {
-    std::shared_ptr<VisMetadata> o = std::dynamic_pointer_cast<VisMetadata>(other);
+void VisMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
+    std::shared_ptr<const VisMetadata> o = std::dynamic_pointer_cast<const VisMetadata>(other);
     *this = *o;
 }
 
@@ -44,7 +43,7 @@ size_t VisMetadata::get_serialized_size() {
     return sizeof(VisMetadataFormat);
 }
 
-size_t VisMetadata::set_from_bytes(const char* bytes, size_t length) {
+size_t VisMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t length) {
     size_t sz = get_serialized_size();
     assert(length >= sz);
     const VisMetadataFormat* fmt = reinterpret_cast<const VisMetadataFormat*>(bytes);

@@ -10,7 +10,7 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: DEBUG2
+log_level: INFO
 
 num_gpus: 1
 buffer_depth: 4
@@ -124,7 +124,6 @@ run_recv_pl_mask:
 
 cpu:
     kotekan_stage: gpuSimulateN2kPLExpand
-    log_level: debug
     in_buf: host_pl_mask_buffer
     out_buf: simulated_pl_mask_exp_buffer
 
@@ -133,3 +132,4 @@ check_data:
     first_buf: host_pl_mask_exp_buffer
     second_buf: simulated_pl_mask_exp_buffer
     num_frames_to_test: buffer_depth
+    check_metadata: True

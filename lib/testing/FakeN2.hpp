@@ -11,15 +11,15 @@
 #include "Config.hpp"          // for Config
 #include "FakeVisPattern.hpp"  // for FakeVisPattern
 #include "N2FrameView.hpp"     // for N2FrameView
-#include "N2Util.hpp"          // for cfloat
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "visUtil.hpp"         // for cfloat
 
 #include <memory>   // for unique_ptr
 #include <stddef.h> // for size_t
-#include <stdint.h> // for uint32_t, int32_t
-#include <string>   // for string
+#include <stdint.h> // for int64_t, uint32_t
+#include <string>   // for string, basic_string
 #include <vector>   // for vector
 
 /**
@@ -50,8 +50,8 @@
  *                      the set of FakeVisPattern implementations for details.
  * @conf  wait          Bool. Sleep to try and output data at roughly
  *                      the correct cadence.
- * @conf  num_frames    Exit after num_frames have been produced. If
- *                      less than zero, no limit is applied. Default is `-1`.
+ * @conf  num_frames    Stop after num_frames have been produced (but don't exit).
+ *                      If less than zero, no limit is applied. Default is `-1`.
  * @conf  zero_weight   Bool. Set all weights to zero, if this is True.
  *                      Default is False.
  * @conf  frequencies   Array of UInt32. Definition of frequency IDs for
@@ -81,6 +81,9 @@ public:
 private:
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors;
+
+    /// Layout of the N2 vis matrix
+    N2Layout n2_layout;
 
     /// Config parameters for freq or inputs test pattern
     std::vector<cfloat> test_pattern_value;

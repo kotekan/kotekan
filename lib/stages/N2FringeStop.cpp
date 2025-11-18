@@ -100,7 +100,7 @@ void N2FringeStop::main_thread() {
         output_frame.eop = eop_target;
 
         if (fringestop_mode > 0)
-            tel.fringestop_phases_1d(frame.freq_Hz, eop, eop_target, fringe_phase);
+            tel.fringestop_phases_1d(frame.freq_MHz, eop, eop_target, fringe_phase);
 
         size_t idx = 0;
         for (size_t i = 0; i < num_elements; i++) {

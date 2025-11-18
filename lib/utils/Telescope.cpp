@@ -11,11 +11,11 @@ Telescope::Telescope(const std::string& log_level) {
 }
 
 const Telescope& Telescope::instance() {
-    if (tel_instance == nullptr) {
+    if (!tel_instance()) {
         FATAL_ERROR_NON_OO("Telescope singleton must be configured before use.");
     }
 
-    return *tel_instance;
+    return *tel_instance();
 }
 
 const Telescope& Telescope::instance(const kotekan::Config& config) {
@@ -25,11 +25,18 @@ const Telescope& Telescope::instance(const kotekan::Config& config) {
         FATAL_ERROR_NON_OO("Requested telescope type {} is not registered", telescope_name);
     }
 
-    tel_instance = FACTORY(Telescope)::create_unique(telescope_name, config, "/telescope");
+    tel_instance() = FACTORY(Telescope)::create_unique(telescope_name, config, "/telescope");
 
-    return *tel_instance;
+    return *tel_instance();
 }
 
+std::unique_ptr<Telescope>& Telescope::tel_instance() {
+    // this must be declare in a function to ensure correct order of
+    // desctructors when unwinding the ctor stack
+    static std::unique_ptr<Telescope> the_tel_instance;
+
+    return the_tel_instance;
+}
 
 freq_id_t Telescope::to_freq_id(stream_t stream) const {
     if (num_freq_per_stream() != 1) {

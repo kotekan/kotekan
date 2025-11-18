@@ -1,29 +1,30 @@
 #include "FakeVisPattern.hpp"
 
-#include "CHORDTelescope.hpp" // for CHORDTelescope
+#include <array>   // for array
+#include <complex> // for complex, conj, operator*
+#include <math.h>  // for cos, sin, cosf, sinf, M_PI
+#include <time.h>  // for timespec
+// #include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
+#include "CHORDTelescope.hpp" // for CHORDTelescope, EOP
 #include "Config.hpp"         // for Config
 #include "Hash.hpp"           // for Hash
-#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
-#include "datasetState.hpp"   // for flagState, inputState
-#include "timeUtil.hpp"       // for get_ERA_from_time
+#include "N2Metadata.hpp"     // for N2Metadata
+#include "Telescope.hpp"      // for Telescope
+#include "datasetManager.hpp" // for datasetManager, state_id_t
+#include "datasetState.hpp"   // for flagState, gainState, inputState
+#include "metadata.hpp"       // for metadataPool
 #include "visBuffer.hpp"      // for VisFrameView
-#include "visUtil.hpp"        // for cfloat, input_ctype, ts_to_double, cmap
+#include "visUtil.hpp"        // for input_ctype, cfloat, cmap, ts_to_double
 
-#include "fmt.hpp"      // for format
+#include "fmt.hpp"      // for compile_string_to_view, format, format_string
 #include "gsl-lite.hpp" // for span
-#include "json.hpp"     // for json, basic_json, basic_json<>::object_t
+#include "json.hpp"     // for basic_json, iter_impl, json
 
-#include <algorithm> // for copy, max, copy_backward
-#include <complex>   // for complex, operator*
-#include <cstdint>   // for uint32_t, uint16_t
-#include <exception> // for exception
-// #include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
-#include <map>       // for map, map<>::mapped_type
-#include <math.h>    // for cosf, sinf
-#include <regex>     // for match_results<>::_Base_type
-#include <stdexcept> // for invalid_argument, runtime_error
+#include <map>       // for map
+#include <memory>    // for shared_ptr, __shared_ptr_access, weak_ptr
+#include <stdexcept> // for invalid_argument
 #include <tuple>     // for get
-#include <vector>    // for vector, __alloc_traits<>::value_type
+#include <vector>    // for vector
 
 static constexpr double C = 299792458.0;
 
@@ -492,9 +493,9 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
     timespec time = tel.to_time(std::get<0>(frame.time) + frame.fpga_seq_length / 2);
     struct EOP eop = tel.get_EOP_at_time(time);
 
-    std::array<double, 3> n = tel.get_sky_vec_in_tel_coords(ra, dec, eop);
+    std::array<double, 3> n = tel.get_sky_vec_in_grid_coords(ra, dec, eop);
 
-    double f = tel.to_freq(frame.freq_id);
+    double f = 1e6 * tel.to_freq_MHz(frame.freq_id);
     double lambda = C / f;
 
     /*
@@ -523,8 +524,8 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
             uint32_t pol_i = el_i / num_dishes;
             uint32_t pol_j = el_j / num_dishes;
 
-            std::array<double, 3> pos_i = tel.get_dish_position(dish_i);
-            std::array<double, 3> pos_j = tel.get_dish_position(dish_j);
+            std::array<double, 3> pos_i = tel.get_dish_position_in_grid_coords(dish_i);
+            std::array<double, 3> pos_j = tel.get_dish_position_in_grid_coords(dish_j);
 
             double phase = 2 * M_PI
                            * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]
@@ -570,12 +571,21 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
 
     struct EOP eop = tel.get_EOP_at_time(time);
 
-    std::array<double, 3> n = tel.get_sky_vec_in_tel_coords(ra, dec, eop);
+    std::array<double, 3> n = tel.get_sky_vec_in_grid_coords(ra, dec, eop);
 
-    double f = tel.to_freq(frame.freq_id);
-    double lambda = C / f;
+    std::array<double, 3> n_point_dish = tel.get_pointing_vec_in_dish_coords();
+    std::array<double, 3> n_point_topo = tel.vec_dish_to_topocen(n_point_dish);
+    std::array<double, 3> n_point_grid = tel.vec_topocen_to_grid(n_point_topo);
 
-    frame._metadata->freq_Hz = f;
+    double theta_sep =
+        acos(n_point_grid[0] * n[0] + n_point_grid[1] * n[1] + n_point_grid[2] * n[2]);
+    double beam_width = 2.0 * M_PI / 180.0;
+    double beam_fac = exp(-0.5 * (theta_sep * theta_sep) / (beam_width * beam_width));
+
+    double f = tel.to_freq_MHz(frame.freq_id);
+    double lambda = C / (1e6 * f);
+
+    frame._metadata->freq_MHz = f;
     frame._metadata->eop = eop;
 
     /*
@@ -603,8 +613,8 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
             uint32_t pol_i = el_i / num_dishes;
             uint32_t pol_j = el_j / num_dishes;
 
-            std::array<double, 3> pos_i = tel.get_dish_position(dish_i);
-            std::array<double, 3> pos_j = tel.get_dish_position(dish_j);
+            std::array<double, 3> pos_i = tel.get_dish_position_in_grid_coords(dish_i);
+            std::array<double, 3> pos_j = tel.get_dish_position_in_grid_coords(dish_j);
 
             double phase = 2 * M_PI
                            * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]
@@ -627,6 +637,8 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
                 power_r = stokes_U;
                 power_i = -stokes_V;
             }
+            power_r *= beam_fac;
+            power_i *= beam_fac;
 
             frame.vis[ind] = {(float)(power_r * cp - power_i * sp),
                               (float)(power_r * sp + power_i * cp)};
