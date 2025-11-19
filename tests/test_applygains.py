@@ -8,6 +8,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 import pytest
 import numpy as np
 import h5py
+# import hdf5plugin
 from kotekan import runner
 from kotekan import visutil
 from kotekan import visbuffer
@@ -209,6 +210,8 @@ def test_eigen(apply_data):
 
     for input_frame, output_frame in zip(*apply_data):
 
+        print("input erms", input_frame.erms)
+        print("output erms", output_frame.erms)
         assert input_frame.erms == output_frame.erms
         assert (input_frame.eval == output_frame.eval).all()
         assert (input_frame.evec == output_frame.evec).all()
