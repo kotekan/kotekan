@@ -83,9 +83,9 @@ void N2FringeStop::main_thread() {
 
         size_t num_elements = frame.num_elements;
 
-        DEBUG("ERA: {:f}; ERA_target: {:f}", frame.eop.ERA_deg, era_target_deg);
+        DEBUG("ERA: {:f}; ERA_target: {:f}", frame.bin_eop.ERA_deg, era_target_deg);
 
-        struct EOP eop = frame.eop;
+        struct EOP eop = frame.bin_eop;
 
         // Wait for an empty frame
         if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
@@ -96,8 +96,9 @@ void N2FringeStop::main_thread() {
         auto output_frame = N2FrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
 
 
-        // Set the target EOP.
-        output_frame.eop = eop_target;
+        // Set the target EOP. Frame and bin are the same for now. TODO: generalize.
+        output_frame.frame_eop = eop_target;
+        output_frame.bin_eop = eop_target;
 
         if (fringestop_mode > 0)
             tel.fringestop_phases_1d(frame.freq_MHz, eop, eop_target, fringe_phase);

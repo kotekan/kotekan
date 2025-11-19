@@ -77,7 +77,8 @@ public:
     uint64_t& abs_time_idx;
 
     /// Earth Orientation Paramters
-    struct EOP& eop;
+    struct EOP& frame_eop;
+    struct EOP& bin_eop;
 
     /// The sequence number of the first FPGA frame integrated into this
     /// visibility frame (time<0> in VisFrameView)

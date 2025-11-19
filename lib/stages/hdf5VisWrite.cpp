@@ -74,8 +74,8 @@ bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metad
                      f_index, num_freq, t_index, num_file_t);
         return false;
     }
-    if (fv.vis.size() != N2::get_num_prod(meta->num_elements)
-        || fv.weight.size() != N2::get_num_prod(meta->num_elements)
+    if (fv.vis.size() != N2FrameView::get_num_prod(meta->num_elements, N2Layout::FullUpperTri)
+        || fv.weight.size() != N2FrameView::get_num_prod(meta->num_elements, N2Layout::FullUpperTri)
         || fv.eval.size() != meta->num_ev || fv.evec.size() != meta->num_ev * meta->num_elements
         || fv.gain.size() != meta->num_elements || fv.flags.size() != meta->num_elements
         || meta->num_elements != num_input || meta->num_prod != num_prod || meta->num_ev != num_ev
@@ -147,7 +147,7 @@ std::optional<std::string> visFileData::_get_final_filename() {
     if (num_file_t == 0)
         return std::nullopt;
 
-    std::optional<std::uint64_t> earliest_ut1_ns;
+    std::optional<std::int64_t> earliest_ut1_ns;
     for (size_t t = 0; t < num_file_t; ++t) {
         if (bin_ut1[t] != 0) {
             if (!earliest_ut1_ns.has_value() || bin_ut1[t] < earliest_ut1_ns.value()) {
@@ -162,7 +162,7 @@ std::optional<std::string> visFileData::_get_final_filename() {
     std::ostringstream buf;
     std::time_t time_t_format = earliest_ut1_ns.value() / 1'000'000'000;      // seconds
     const std::uint64_t ns_part = earliest_ut1_ns.value() % 1'000'000'000ULL; // sub-second
-    buf << "vis_" << std::to_string(file_start_abs_frame_idx) << "_"
+    buf << "vis_" << std::to_string(abs_file_idx) << "_"
         << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S");
     // Include nanosecond suffix to avoid collisions for sub-second file windows
     buf << "_" << std::setw(9) << std::setfill('0') << ns_part;
@@ -202,6 +202,9 @@ bool visFileData::flush() {
     h5_file->getDataSet("/gain")
         .select({0, 0, 0}, {num_freq, num_input, num_file_t})
         .write_raw(gain.data());
+    h5_file->getDataSet("/flags")
+        .select({0, 0, 0}, {num_freq, num_input, num_file_t})
+        .write_raw(flags.data());
 
     h5_file->getDataSet("/fpga_start_tick").write(fpga_start_tick);
     h5_file->getDataSet("/frame_length_fpga_ticks").write(frame_length_fpga_ticks);
@@ -259,8 +262,8 @@ std::uint64_t hdf5VisWrite::_get_abs_file_idx(const std::shared_ptr<const N2Meta
     // Get the absolute file index based on the absolute frame index and
     // configured number of time frames per file.
 
-    // Truncate towards zero
-    return meta->abs_frame_index / file_num_t;
+    // Just truncate towards zero
+    return meta->abs_time_idx / file_num_t;
 }
 
 void hdf5VisWrite::_create_dataset(HighFive::File& file, const std::string& name,
@@ -306,12 +309,13 @@ void hdf5VisWrite::_initialize_h5(HighFive::File& file,
                                   std::uint64_t file_nt) const {
 
 
-    HighFive::DataSetCreateProps props_compressed;
-    HighFive::DataSetCreateProps props_empty;
+    HighFive::DataSetCreateProps props_compressed = HighFive::DataSetCreateProps::Empty();
+    HighFive::DataSetCreateProps props_empty = HighFive::DataSetCreateProps::Empty();
 
     // Compression/filters
     if (use_bitshuffle) {
         // bitshuffle + optional compression backend
+        
         auto level = static_cast<unsigned int>(compression_level > 0 ? compression_level : 9);
         unsigned int comp = hdf5::BITSHUFFLE_COMPRESS_NONE;
 
@@ -323,12 +327,21 @@ void hdf5VisWrite::_initialize_h5(HighFive::File& file,
 
         std::vector<unsigned int> bshuf_flags{hdf5::BITSHUFFLE_BLOCKSIZE_AUTO, comp, level};
 
-        props_compressed.add(H5Pset_filter, hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
-                             bshuf_flags.size(), bshuf_flags.data());
+        // props_compressed.add(H5Pset_filter, hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
+        //                      bshuf_flags.size(), bshuf_flags.data());
+        hid_t dcpl = props_compressed.getId();
+        herr_t status = H5Pset_filter(dcpl,
+                                      hdf5::H5Z_BITSHUFFLE,
+                                      H5Z_FLAG_MANDATORY,
+                                      static_cast<unsigned>(bshuf_flags.size()),
+                                      bshuf_flags.data());
+        if (status < 0) {
+            throw std::runtime_error("H5Pset_filter(BITSHUFFLE) failed");
+        }
 
     } else if (compression == "deflate") {
         auto level = static_cast<unsigned int>(compression_level > 0 ? compression_level : 4);
-        props_compressed.add(H5Pset_deflate, level);
+        props_compressed.add(HighFive::Deflate(level));
     }
 
     std::string flags_group_prefix = ""; // "/flags"; // TODO: make config option
@@ -352,6 +365,8 @@ void hdf5VisWrite::_initialize_h5(HighFive::File& file,
                     props_empty);
     _create_dataset(file, "/gain", {meta->nfreq, meta->num_elements, file_nt},
                     HighFive::create_datatype<cfloat>(), props_empty);
+    _create_dataset(file, "/flags", {meta->nfreq, meta->num_elements, file_nt},
+                    HighFive::create_datatype<float>(), props_empty);
     _create_dataset(file, flags_group_prefix + "/frac_lost", {meta->nfreq, file_nt},
                     HighFive::create_datatype<float>(), props_empty);
     _create_dataset(file, flags_group_prefix + "/frac_rfi", {meta->nfreq, file_nt},
@@ -361,9 +376,9 @@ void hdf5VisWrite::_initialize_h5(HighFive::File& file,
                     props_empty);
     _create_dataset(file, "/frame_length_fpga_ticks", {file_nt},
                     HighFive::create_datatype<uint64_t>(), props_empty);
-    _create_dataset(file, "/frame_ut1", {file_nt}, HighFive::create_datatype<uint64_t>(),
+    _create_dataset(file, "/frame_ut1", {file_nt}, HighFive::create_datatype<int64_t>(),
                     props_empty);
-    _create_dataset(file, "/bin_ut1", {file_nt}, HighFive::create_datatype<uint64_t>(),
+    _create_dataset(file, "/bin_ut1", {file_nt}, HighFive::create_datatype<int64_t>(),
                     props_empty);
 }
 
@@ -373,6 +388,12 @@ void hdf5VisWrite::_finalize_dataset(visFileData& dataset) {
 
     // Attempt rename from partial to final
     auto ds_filename = dataset._get_final_filename();
+    if (!ds_filename) {
+        WARN("Could not determine final filename for {} (no UT1 found); leaving partial in place.",
+             dataset.partial_filepath);
+        return;
+    }
+
     int r = std::rename(dataset.partial_filepath.c_str(), ds_filename->c_str());
     if (r != 0) {
         const char* msg = strerror(errno);
@@ -489,13 +510,17 @@ void hdf5VisWrite::main_thread() {
             continue;
         } else {
             // Create visFileData object for file (also looks for .partial)
-            const std::uint64_t file_start_abs_frame = abs_file_idx * file_num_t;
+            const bool partial_exists = std::filesystem::exists(partial_filename);
             auto visFileData_obj = std::make_unique<visFileData>(
                 file_num_t, meta->nfreq, meta->num_elements, meta->num_prod, meta->num_ev,
-                frame_recv_time, file_start_abs_frame, base_dir);
+                frame_recv_time, abs_file_idx, base_dir);
 
             datasets.emplace(abs_file_idx, std::move(visFileData_obj));
             visFileData_ptr = datasets.find(abs_file_idx)->second.get();
+
+            if (!partial_exists) {
+                _initialize_h5(*visFileData_ptr->h5_file, meta, file_num_t);
+            }
         }
 
         if (!visFileData_ptr || !visFileData_ptr->h5_file) {
@@ -508,7 +533,7 @@ void hdf5VisWrite::main_thread() {
         }
 
         // Attempt to add frame to dataset
-        const std::uint64_t t_in_file = meta->abs_frame_index % file_num_t;
+        const std::uint64_t t_in_file = meta->abs_time_idx % file_num_t;
         bool success =
             visFileData_ptr->add_frame(fv, meta, t_in_file); // performs error checking internally.
         if (!success) {

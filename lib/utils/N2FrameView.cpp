@@ -21,7 +21,8 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     layout(_metadata->layout), freq_id(_metadata->freq_id), freq_MHz(_metadata->freq_MHz),
     abs_time_idx(_metadata->abs_time_idx),
 
-    eop(_metadata->eop),
+    frame_eop(_metadata->frame_eop),
+    bin_eop(_metadata->bin_eop),
 
     fpga_start_tick(_metadata->fpga_start_tick),
     frame_start_time_ns(_metadata->frame_start_time_ns),

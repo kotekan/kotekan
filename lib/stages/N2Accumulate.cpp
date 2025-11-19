@@ -56,7 +56,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    // Ensure outgoing buffer is of type N2 (ensures correct size)
+    // Ensure outgoing buffer is of type N2 (correct size implicit)
     if (out_buf->buffer_type != "N2")
         FATAL_ERROR("N2Accumulate out_buf ({:s}) is not of type N2.", out_buf->buffer_name);
 
@@ -420,7 +420,6 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
         DEBUG("Allocating metadata.");
         out_buf->allocate_new_metadata_object(out_frame_id);
         std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, out_frame_id);
-        meta->abs_frame_index = _abs_frame_count; // TODO: fix
 
         meta->fpga_start_tick = _accum_fpga_start_tick;
         meta->frame_length_fpga_ticks =
@@ -437,7 +436,9 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
 
         meta->frame_start_time_ns = _tel.to_time_ns(meta->fpga_start_tick);
         meta->freq_MHz = _tel.to_freq_MHz(meta->freq_id);
-        meta->eop = _tel.get_EOP_at_time(
+        meta->frame_eop = _tel.get_EOP_at_time(
+            _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
+        meta->bin_eop = _tel.get_EOP_at_time(
             _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
         meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];
 

@@ -30,7 +30,7 @@ File lifecycle
 1. For every incoming frame, the stage computes the aligned file start time
    ``<midnight> + k * file_seconds`` and generates a filename of the form::
 
-        <base_dir>/<hostname_?>file_name.YYYYMMDDThhmmss_<nsec>.h5
+        <base_dir>/vis_<abs_idx>_YYYYMMDDThhmmss_<nsec>.h5
 
 2. If a partial dataset for that window already exists it is reopened; otherwise
    the stage creates the directory structure, pre-allocates all arrays, and
@@ -103,11 +103,6 @@ Configuration
     Name of the ``N2Buffer`` supplying frames.
 ``base_dir`` (string, required)
     Output directory.  The stage creates it (plus ``.partial``) if necessary.
-``file_name`` (string, required)
-    Filename stem used when building ``<file_name>.timestamp.h5``.
-``prefix_hostname`` (bool, default ``true``)
-    Add ``<hostname>_`` in front of every filename so multiple hosts can share
-    a destination directory.
 ``blocksize_f`` (uint, default ``0``)
     Chunk length along the frequency axis; ``0`` lets HighFive choose.
 ``blocksize_p`` (uint, default ``0``)
@@ -143,8 +138,6 @@ snippet looks like::
         kotekan_stage: hdf5VisWrite
         in_buf: fakevis_buf
         base_dir: ./vis_ci_out
-        file_name: ci_test
-        prefix_hostname: false
         blocksize_f: 1
         blocksize_t: 5
         file_seconds: 6

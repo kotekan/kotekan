@@ -60,7 +60,7 @@ public:
     // Per-file bookkeeping owned by this object
     const double open_wall_s;                // time opened
     double last_update_wall_s = 0.0;         // last frame receipt
-    const uint64_t file_start_abs_frame_idx; // absolute frame index at the file start
+    const uint64_t abs_file_idx;             // absolute file index (abs_time_idx / file_num_t)
     const std::string base_dir;              // base output directory (without /.partial)
     const std::string partial_filepath;      // working on-disk location
     std::unique_ptr<HighFive::File> h5_file; // Working on-disk HDF5 file handle
@@ -85,8 +85,8 @@ protected:
     // t-dependent metadata
     std::vector<uint64_t> fpga_start_tick;         // (t)
     std::vector<uint64_t> frame_length_fpga_ticks; // (t)
-    std::vector<uint64_t> frame_ut1;               // (t)
-    std::vector<uint64_t> bin_ut1;                 // (t)
+    std::vector<int64_t> frame_ut1;                // (t)
+    std::vector<int64_t> bin_ut1;                  // (t)
 
     // Tracking what (f, t) pairs have been added
     std::vector<uint8_t> added_ft; // size = num_freq * num_file_t
@@ -110,12 +110,12 @@ private:
 public:
     visFileData(const uint64_t num_file_t_, const uint64_t num_freq_, const uint64_t num_input_,
                 const uint64_t num_prod_, const uint64_t num_ev_, const double open_wall_s_,
-                const uint64_t file_start_abs_frame_idx_, std::string base_dir_) :
+                const uint64_t abs_file_idx_, std::string base_dir_) :
         num_input(num_input_), num_prod(num_prod_), num_ev(num_ev_), num_freq(num_freq_),
         num_file_t(num_file_t_), open_wall_s(open_wall_s_), last_update_wall_s(open_wall_s_),
-        file_start_abs_frame_idx(file_start_abs_frame_idx_), base_dir(std::move(base_dir_)),
+        abs_file_idx(abs_file_idx_), base_dir(std::move(base_dir_)),
         partial_filepath(base_dir + "/.partial/" + "vis_"
-                         + std::to_string(file_start_abs_frame_idx_) + ".h5"),
+                         + std::to_string(abs_file_idx_) + ".h5"),
         h5_file(_open_or_create_file(partial_filepath)) {
 
         // resize arrays to hold data across (freq, time) blocks
