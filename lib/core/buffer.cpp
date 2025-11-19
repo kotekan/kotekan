@@ -38,8 +38,6 @@ struct zero_frames_thread_args {
     int ID;
 };
 
-typedef std::lock_guard<std::recursive_mutex> buffer_lock;
-
 GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
                              std::shared_ptr<metadataPool> pool, int _num_frames) :
     num_frames(_num_frames), shutdown_signal(false), buffer_name(_buffer_name),
@@ -210,7 +208,7 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                bool zero_new_frames) :
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
-    _zero_frames(false), frames(num_frames, nullptr), frames_desc(num_frames, nullptr),
+    _zero_frames(false), frames(num_frames, nullptr), frames_desc(nullptr),
     is_full(num_frames, false), last_arrival_time(0), use_hugepages(_use_hugepages),
     mlock_frames(_mlock_frames), numa_node(_numa_node) {
     assert(num_frames > 0);
@@ -581,8 +579,9 @@ bool Buffer::private_mark_frame_empty(const int ID) {
         private_reset_consumers(ID);
         broadcast = true;
     }
-    if (metadata[ID])
+    if (metadata[ID]) {
         metadata[ID].reset();
+    }
     return broadcast;
 }
 

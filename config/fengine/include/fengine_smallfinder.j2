@@ -14,12 +14,13 @@
 
 # Dishes
 
-# TODO: remove
-num_dish_locations_ew: 12        # east-west is x
-num_dish_locations_ns: 8         # north-south is y
+#TODO num_dish_locations_ew: 12        # east-west is x
+#TODO num_dish_locations_ns: 8         # north-south is y
 #TODO num_dish_locations: num_dish_locations_ns * num_dish_locations_ew
 #TODO dish_separation_ew: 6.3          # [m] east-west
 #TODO dish_separation_ns: 8.5          # [m] north-south
+num_dishes_x: 12
+num_dishes_y: 8
 num_dishes: 64
 
 #TODO # The actual dishes live on an 11x6 grid.
@@ -54,9 +55,6 @@ telescope:
     dish_coelev_deg: 0.0
 
     updatable_config: "/earth_rotation_data"
-
-    num_dishes_x: 12
-    num_dishes_y: 8
 
     dish_separation_x_m: 6.3
     dish_separation_y_m: 8.5
