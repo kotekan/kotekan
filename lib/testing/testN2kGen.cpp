@@ -152,6 +152,10 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
                     rfi_buf->frame_size, rfi_frame_size);
         std::abort();
     }
+
+    // allocate frame descriptors
+    allocate_correlation_frame_desc(corr_buf);
+    allocate_counts_frame_desc(count_buf);
 }
 
 std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID frame_id) {
@@ -173,16 +177,16 @@ std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID
     return meta;
 }
 
-void testN2kGen::allocate_correlation_frame_desc(Buffer* buf, frameID frame_id) {
+void testN2kGen::allocate_correlation_frame_desc(Buffer* buf) {
     buf->allocate_new_frame_desc(
-        frame_id, kotekan::int32, "n2k_correlation",
+        kotekan::int32, "n2k_correlation",
         {num_integrations, num_local_freq, corr_num_blocks, corr_blocksize, corr_blocksize, 2},
         {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
 }
 
-void testN2kGen::allocate_counts_frame_desc(Buffer* buf, frameID frame_id) {
+void testN2kGen::allocate_counts_frame_desc(Buffer* buf) {
     buf->allocate_new_frame_desc(
-        frame_id, kotekan::int32, "n2k_counts",
+        kotekan::int32, "n2k_counts",
         {num_integrations, num_local_freq, count_num_blocks, count_blocksize, count_blocksize},
         {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
 }
@@ -325,13 +329,9 @@ void testN2kGen::main_thread() {
         set_correlation_metadata(corr_meta, seq_num);
         set_counts_metadata(count_meta, seq_num);
 
-        // allocate frame descriptors
-        allocate_correlation_frame_desc(corr_buf, corr_frame_id);
-        allocate_counts_frame_desc(count_buf, count_frame_id);
-
         // check frame descriptors match metadata
-        corr_meta->check_frame_desc(corr_buf->get_frame_desc(corr_frame_id));
-        count_meta->check_frame_desc(count_buf->get_frame_desc(count_frame_id));
+        corr_meta->check_frame_desc(corr_buf->get_frame_desc());
+        count_meta->check_frame_desc(count_buf->get_frame_desc());
 
         // block, freq, and time strides for access into the
         // correlation and counts buffers

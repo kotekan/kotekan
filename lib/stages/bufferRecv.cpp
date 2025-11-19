@@ -5,7 +5,6 @@
 #include "Symbol.hpp"            // for Symbol
 #include "buffer.hpp"            // for Buffer, buffer_free, buffer_malloc
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "bufferSend.hpp"        // for bufferFrameHeader, bufferFrameHeaderNoConfigTracker
 #include "chordMetadata.hpp"     // for chordMetadata
 #include "configTracker.hpp"     // for ConfigTracker
 #include "metadata.hpp"          // for metadataObject, metadataPool
@@ -424,106 +423,92 @@ void connInstance::internal_read_callback() {
     }
 
     ssize_t n = 0;
-    uint32_t metadata_size = 0;
-    uint32_t frame_size = 0;
-    bool config_tracker_update = false;
 
     DEBUG2("Read Callback");
     while (!buffer_recv->get_worker_stop_thread()) {
         switch (state) {
-            case connState::header:
+            case connState::header: {
                 start_time = current_time();
 
-                if (use_config_tracker) {
+                if (use_config_tracker)
                     DEBUG2("Using config tracker header");
-                    bufferFrameHeader buf_frame_header;
-
-                    n = read(fd, (void*)(((int8_t*)&buf_frame_header) + bytes_read),
-                             sizeof(bufferFrameHeader) - bytes_read);
-                    if (n <= 0) {
-                        handle_error("reading header", errno, n);
-                        return;
-                    }
-                    bytes_read += n;
-                    DEBUG2("Header read bytes: {:d}, bytes_read {:d}, expected: {:d}", n,
-                           bytes_read, sizeof(bufferFrameHeader));
-                    assert(bytes_read == sizeof(bufferFrameHeader));
-
-                    metadata_size = buf_frame_header.metadata_size;
-                    frame_size = buf_frame_header.frame_size;
-                    // header field is uint32_t on the wire; convert to bool
-                    config_tracker_update = (buf_frame_header.config_tracker_update != 0);
-                } else {
+                else
                     DEBUG2("Using no config tracker header");
-                    bufferFrameHeaderNoConfigTracker buf_frame_header;
 
-                    n = read(fd, (void*)(((int8_t*)&buf_frame_header) + bytes_read),
-                             sizeof(bufferFrameHeaderNoConfigTracker) - bytes_read);
-                    if (n <= 0) {
-                        handle_error("reading header", errno, n);
-                        return;
-                    }
-                    bytes_read += n;
-                    DEBUG2("Header read bytes: {:d}, bytes_read {:d}, expected: {:d}", n,
-                           bytes_read, sizeof(bufferFrameHeaderNoConfigTracker));
-                    assert(bytes_read == sizeof(bufferFrameHeaderNoConfigTracker));
+                size_t bytes_to_read = use_config_tracker
+                                           ? sizeof(bufferFrameHeader)
+                                           : sizeof(bufferFrameHeaderNoConfigTracker);
 
-                    metadata_size = buf_frame_header.metadata_size;
-                    frame_size = buf_frame_header.frame_size;
-                }
-
-                state = connState::metadata;
-                bytes_read = 0;
-
-                DEBUG2("Got header: metadata_size: {:d}, frame_size: {:d}, "
-                       "config_tracker_update: {:d}",
-                       metadata_size, frame_size, config_tracker_update);
-
-
-                if ((unsigned int)buf->frame_size != frame_size) {
-                    ERROR("Frame size does not match between server: {:d} and client: {:d}",
-                          buf->frame_size, frame_size);
-                    decrement_ref_count();
-                    close_instance();
-                    return;
-                }
-                if (metadata_size != expected_metadata_size) {
-                    ERROR("Metadata size does not match between server and client!");
-                    decrement_ref_count();
-                    close_instance();
-                    return;
-                }
-                if (config_tracker_update) {
-                    DEBUG("Config tracker data update requested, updating config tracker data.");
-                    // Need to fetch configs from the sender's REST server
-                    ConfigTracker::instance().getUpstreamConfigs(client_ip, upstream_rest_port);
-                }
-
-                break;
-            case connState::metadata:
-                n = read(fd, (void*)(metadata_space + bytes_read), metadata_size - bytes_read);
+                n = read(fd, (void*)(((int8_t*)&buf_frame_header) + bytes_read),
+                         sizeof(bufferFrameHeader) - bytes_read);
                 if (n <= 0) {
                     handle_error("reading header", errno, n);
                     return;
                 }
+                bytes_read += n;
+                DEBUG2("Header read bytes: {:d}, bytes_read {:d}, expected: {:d}", n, bytes_read,
+                       bytes_to_read);
+
+                if (bytes_read >= bytes_to_read) {
+                    assert(bytes_read == bytes_to_read);
+
+                    DEBUG2("Got header: metadata_size: {:d}, frame_size: {:d}, "
+                           "config_tracker_update: {:d}",
+                           buf_frame_header.metadata_size, buf_frame_header.frame_size,
+                           buf_frame_header.config_tracker_update);
+
+                    if ((unsigned int)buf->frame_size != buf_frame_header.frame_size) {
+                        ERROR("Frame size does not match between server: {:d} and client: {:d}",
+                              buf->frame_size, buf_frame_header.frame_size);
+                        decrement_ref_count();
+                        close_instance();
+                        return;
+                    }
+                    if (buf_frame_header.metadata_size != expected_metadata_size) {
+                        ERROR("Metadata size does not match between server and client!");
+                        decrement_ref_count();
+                        close_instance();
+                        return;
+                    }
+                    // header field is uint32_t on the wire
+                    if (use_config_tracker && buf_frame_header.config_tracker_update) {
+                        DEBUG(
+                            "Config tracker data update requested, updating config tracker data.");
+                        // Need to fetch configs from the sender's REST server
+                        ConfigTracker::instance().getUpstreamConfigs(client_ip, upstream_rest_port);
+                    }
+
+                    state = connState::metadata;
+                    bytes_read = 0;
+                }
+
+            } break;
+            case connState::metadata:
+                n = read(fd, (void*)(metadata_space + bytes_read),
+                         buf_frame_header.metadata_size - bytes_read);
+                if (n <= 0) {
+                    handle_error("reading metadata", errno, n);
+                    return;
+                }
                 DEBUG2("Metadata read bytes: {:d}", n);
                 bytes_read += n;
-                if (bytes_read >= metadata_size) {
-                    assert(bytes_read == metadata_size);
+                if (bytes_read >= buf_frame_header.metadata_size) {
+                    assert(bytes_read == buf_frame_header.metadata_size);
                     state = connState::frame;
                     bytes_read = 0;
                 }
                 break;
             case connState::frame:
-                n = read(fd, (void*)(frame_space + bytes_read), frame_size - bytes_read);
+                n = read(fd, (void*)(frame_space + bytes_read),
+                         buf_frame_header.frame_size - bytes_read);
                 if (n <= 0) {
-                    handle_error("reading header", errno, n);
+                    handle_error("reading frame", errno, n);
                     return;
                 }
                 bytes_read += n;
                 DEBUG2("Frame read bytes: {:d}, total read: {:d}", n, bytes_read);
-                if (bytes_read >= frame_size) {
-                    assert(bytes_read == frame_size);
+                if (bytes_read >= buf_frame_header.frame_size) {
+                    assert(bytes_read == buf_frame_header.frame_size);
                     state = connState::finished;
                     bytes_read = 0;
                 }
@@ -558,7 +543,7 @@ void connInstance::internal_read_callback() {
                 // but this is more complex, and mucher lower overhead to just memcpy here.
                 std::shared_ptr<metadataObject> metadata = buf->get_metadata(frame_id);
                 if (metadata)
-                    metadata->set_from_bytes((char*)metadata_space, metadata_size);
+                    metadata->set_from_bytes((char*)metadata_space, buf_frame_header.metadata_size);
 
                 // TODO: actuall transfer the NDArray information
                 auto chord = std::dynamic_pointer_cast<chordMetadata>(metadata);
@@ -572,10 +557,10 @@ void connInstance::internal_read_callback() {
                                         strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
                     }
 
-                    buf->allocate_new_frame_desc(frame_id, chord->type, chord->get_name(),
-                                                 dimensions, dimnames);
+                    buf->allocate_new_frame_desc(chord->type, chord->get_name(), dimensions,
+                                                 dimnames);
                     /* test that things are consistent */
-                    chord->check_frame_desc(buf->get_frame_desc(frame_id));
+                    chord->check_frame_desc(buf->get_frame_desc());
                 }
 
                 buf->mark_frame_full(producer_name, frame_id);

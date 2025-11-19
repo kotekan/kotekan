@@ -93,7 +93,15 @@ void monitorBuffer::main_thread() {
 
         sleep(1);
         double cur_time = e_time();
-        for (Buffer* buf : buffers) {
+        for (size_t i = 0; i < buffers.size(); ++i) {
+            // skip timeout check for buffer that has reached frame count
+            if (consume_frames && clean_exit_after_frames > 0) {
+                auto state = buffer_states[i];
+                if (state.frames_seen < static_cast<uint64_t>(clean_exit_after_frames))
+                    continue;
+            }
+
+            Buffer* buf = buffers[i];
 
             double last_arrival = buf->get_last_arrival_time();
             // If we are not waiting for data, set last_arrival to start time on first check

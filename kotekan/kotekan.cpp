@@ -1,5 +1,6 @@
 #include "Config.hpp"             // for Config
 #include "StageFactory.hpp"       // for StageFactoryRegistry, StageMaker
+#include "backtrace.hpp"          // for request_backtraces
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "errors.h"               // for ReturnCode, get_error_message, __enable_syslog, exit_k...
 #include "kotekanLogging.hpp"     // for logLevel, INFO_NON_OO, ERROR_NON_OO, FATAL_ERROR_NON_OO
@@ -435,6 +436,8 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
     if (dump_config)
         config.dump_config();
     update_log_levels(config);
+
+    request_backtraces(config.get_default<std::vector<std::string>>("/", "trap_signals", {}));
 
     kotekan_mode = new kotekanMode(config);
 

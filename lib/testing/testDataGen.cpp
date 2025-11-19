@@ -304,13 +304,14 @@ void testDataGen::main_thread() {
         }
 
         // this needs the decoded type
+        // could be moved into constructor, but need the bit of code above
         /* new style array description */
         const std::vector<ptrdiff_t> extents(_array_shape.begin(), _array_shape.end());
         const std::vector<kotekan::Symbol> dimnames(_dim_name.begin(), _dim_name.end());
 
-        buf->allocate_new_frame_desc(frame_id, chordmeta->type, _name, extents, dimnames);
+        buf->allocate_new_frame_desc(chordmeta->type, _name, extents, dimnames);
         /* test that things are consistent */
-        chordmeta->check_frame_desc(buf->get_frame_desc(frame_id));
+        chordmeta->check_frame_desc(buf->get_frame_desc());
 
         if (type == "onehot") {
             int val = value;

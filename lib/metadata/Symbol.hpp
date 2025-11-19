@@ -142,15 +142,13 @@ struct hash<kotekan::Symbol> {
 };
 } // namespace std
 
-namespace fmt {
 // Formatter
 template<>
-struct formatter<kotekan::Symbol> : fmt::formatter<std::string> {
+struct fmt::formatter<kotekan::Symbol> : fmt::formatter<std::string> {
     template<typename FormatContext>
-    auto format(const kotekan::Symbol& sym, FormatContext& ctx) {
-        return formatter<std::string>::format(sym.get_string(), ctx);
+    auto format(const kotekan::Symbol& sym, FormatContext& ctx) const {
+        return fmt::formatter<std::string>::format(sym.get_string(), ctx);
     }
 };
-} // namespace fmt
 
 #endif // #ifndef SYMBOL_HPP

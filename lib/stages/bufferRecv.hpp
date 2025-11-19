@@ -13,6 +13,7 @@
 #include "Stage.hpp"             // for Stage
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
+#include "bufferSend.hpp"        // for bufferFrameHeader, bufferFrameHeaderNoConfigTracker
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, kotekanLogging
 #include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily
 
@@ -327,6 +328,11 @@ public:
     /// Pointer to local memory for storing the metadata of the incoming frame.
     uint8_t* metadata_space;
 
+    /// Local memory to store the header of the incoming frame.
+    /// This will be used as either a bufferFrameHeader or a
+    /// bufferFrameHeaderNoConfigTracker depending on use_config_tracker
+    bufferFrameHeader buf_frame_header;
+
     /// Lock to make sure only one instance of this jobs call backs is run at any one time.
     std::mutex instance_lock;
 
@@ -354,7 +360,7 @@ public:
     inline void handle_error(const std::string& msg, int err_num, ssize_t bytes_read) {
         // Resource temporarily unavailable, no need to close connection
         // The two error codes cover MacOS and Linux
-        if ((err_num == 35 || err_num == 11) && bytes_read != 0) {
+        if (bytes_read < 0 && (err_num == EDEADLK || err_num == EAGAIN)) {
             DEBUG2("Got resource unavailable error, {:d}, read return {:d}", err_num, bytes_read);
             decrement_ref_count();
             // Add the event back to the libevent queue, so we are notified
