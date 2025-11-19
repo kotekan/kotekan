@@ -122,6 +122,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     // Derived quantities
     {
+        // number of "integrations" (coarse time samples) per n2k (gpu) frame
         _n_integrations_per_n2k_frame =
             _n_fpga_samples_per_n2k_frame / _n_fpga_samples_per_n2k_correlation;
 

@@ -70,8 +70,8 @@ bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metad
     }
     if (f_index >= num_freq || t_index >= num_file_t) {
         ERROR_NON_OO("visFileData: index out of bounds: f_index={} >= num_freq={}; t_index={} >= "
-              "num_file_t={}",
-              f_index, num_freq, t_index, num_file_t);
+                     "num_file_t={}",
+                     f_index, num_freq, t_index, num_file_t);
         return false;
     }
     if (fv.vis.size() != N2::get_num_prod(meta->num_elements)
@@ -80,22 +80,24 @@ bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metad
         || fv.gain.size() != meta->num_elements || fv.flags.size() != meta->num_elements
         || meta->num_elements != num_input || meta->num_prod != num_prod || meta->num_ev != num_ev
         || meta->frame_length_fpga_ticks == 0
-        || ( fpga_start_tick[t_index] > 0 && fpga_start_tick[t_index] != meta->fpga_start_tick)
-        || ( frame_length_fpga_ticks[t_index] > 0 && frame_length_fpga_ticks[t_index] != meta->frame_length_fpga_ticks)
-        || ( frame_ut1[t_index] > 0 && frame_ut1[t_index] != meta->frame_eop.t_ut1)
-        || ( bin_ut1[t_index] > 0 && bin_ut1[t_index] != meta->bin_eop.t_ut1) ) {
-        ERROR_NON_OO("visFileData: frame information mismatch at (f={}, t={}): "
-              "fv.vis.size()={}, fv.weight.size()={}, fv.eval.size()={}, fv.evec.size()={}, "
-              "fv.gain.size()={}, fv.flags.size()={}, meta->num_elements={}, meta->num_prod={}, "
-              "meta->num_ev={}, fpga_start_tick[t_index]={}, meta->fpga_start_tick={}, "
-              "meta->frame_length_fpga_ticks={}, frame_length_fpga_ticks[t_index]={}, "
-              "frame_ut1[t_index]={}, meta->frame_eop.t_ut1={}, bin_ut1[t_index]={}, "
-              "meta->bin_eop.t_ut1={}",
-              f_index, t_index, fv.vis.size(), fv.weight.size(), fv.eval.size(), fv.evec.size(),
-              fv.gain.size(), fv.flags.size(), meta->num_elements, meta->num_prod, meta->num_ev,
-              fpga_start_tick[t_index], meta->fpga_start_tick, meta->frame_length_fpga_ticks,
-              frame_length_fpga_ticks[t_index], frame_ut1[t_index], meta->frame_eop.t_ut1,
-              bin_ut1[t_index], meta->bin_eop.t_ut1);
+        || (fpga_start_tick[t_index] > 0 && fpga_start_tick[t_index] != meta->fpga_start_tick)
+        || (frame_length_fpga_ticks[t_index] > 0
+            && frame_length_fpga_ticks[t_index] != meta->frame_length_fpga_ticks)
+        || (frame_ut1[t_index] > 0 && frame_ut1[t_index] != meta->frame_eop.t_ut1)
+        || (bin_ut1[t_index] > 0 && bin_ut1[t_index] != meta->bin_eop.t_ut1)) {
+        ERROR_NON_OO(
+            "visFileData: frame information mismatch at (f={}, t={}): "
+            "fv.vis.size()={}, fv.weight.size()={}, fv.eval.size()={}, fv.evec.size()={}, "
+            "fv.gain.size()={}, fv.flags.size()={}, meta->num_elements={}, meta->num_prod={}, "
+            "meta->num_ev={}, fpga_start_tick[t_index]={}, meta->fpga_start_tick={}, "
+            "meta->frame_length_fpga_ticks={}, frame_length_fpga_ticks[t_index]={}, "
+            "frame_ut1[t_index]={}, meta->frame_eop.t_ut1={}, bin_ut1[t_index]={}, "
+            "meta->bin_eop.t_ut1={}",
+            f_index, t_index, fv.vis.size(), fv.weight.size(), fv.eval.size(), fv.evec.size(),
+            fv.gain.size(), fv.flags.size(), meta->num_elements, meta->num_prod, meta->num_ev,
+            fpga_start_tick[t_index], meta->fpga_start_tick, meta->frame_length_fpga_ticks,
+            frame_length_fpga_ticks[t_index], frame_ut1[t_index], meta->frame_eop.t_ut1,
+            bin_ut1[t_index], meta->bin_eop.t_ut1);
         return false;
     }
 

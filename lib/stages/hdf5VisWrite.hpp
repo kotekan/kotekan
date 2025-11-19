@@ -114,8 +114,8 @@ public:
         num_input(num_input_), num_prod(num_prod_), num_ev(num_ev_), num_freq(num_freq_),
         num_file_t(num_file_t_), open_wall_s(open_wall_s_), last_update_wall_s(open_wall_s_),
         file_start_abs_frame_idx(file_start_abs_frame_idx_), base_dir(std::move(base_dir_)),
-        partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(file_start_abs_frame_idx_)
-                         + ".h5"),
+        partial_filepath(base_dir + "/.partial/" + "vis_"
+                         + std::to_string(file_start_abs_frame_idx_) + ".h5"),
         h5_file(_open_or_create_file(partial_filepath)) {
 
         // resize arrays to hold data across (freq, time) blocks
