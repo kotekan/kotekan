@@ -427,7 +427,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
         meta->num_elements = _num_elements;
         meta->num_prod = _N2_num_products;
         meta->num_ev = _num_ev;
-        meta->layout = N2Layout::FullUpperTri;
+        meta->vis_layout = N2Layout::FullUpperTri;
         meta->abs_time_idx = _accum_fpga_start_tick
                              / (_vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation);
         meta->nfreq = _num_freq_per_n2k_frame;
@@ -436,10 +436,15 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
 
         meta->frame_start_time_ns = _tel.to_time_ns(meta->fpga_start_tick);
         meta->freq_MHz = _tel.to_freq_MHz(meta->freq_id);
-        meta->frame_eop = _tel.get_EOP_at_time(
-            _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
+        
+        meta->time_center_eop = eop_null; // TODO: update
         meta->bin_eop = _tel.get_EOP_at_time(
             _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
+        meta->bin_start_ERA_deg = _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick)).ERA_deg;
+        meta->bin_end_ERA_deg = _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks)).ERA_deg;
+        meta->bin_start_LAST = -1; // TODO: update
+        meta->bin_end_LAST = -1; // TODO: update
+
         meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];
 
         DEBUG("Creating N2FrameView for freq f[{:d}] = {:d}", f,

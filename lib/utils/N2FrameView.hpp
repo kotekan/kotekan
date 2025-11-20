@@ -66,7 +66,7 @@ public:
     std::map<N2Field, std::pair<size_t, size_t>> frame_layout;
 
     /// Vis Matrix Layout
-    const N2Layout& layout;
+    const N2Layout& vis_layout;
 
     /// ID of the frequency bin
     const uint32_t& freq_id;
@@ -77,8 +77,12 @@ public:
     uint64_t& abs_time_idx;
 
     /// Earth Orientation Paramters
-    struct EOP& frame_eop;
+    struct EOP& time_center_eop;
     struct EOP& bin_eop;
+    double& bin_start_ERA_deg;
+    double& bin_end_ERA_deg;
+    int64_t& bin_start_LAST;
+    int64_t& bin_end_LAST;
 
     /// The sequence number of the first FPGA frame integrated into this
     /// visibility frame (time<0> in VisFrameView)
@@ -164,9 +168,9 @@ public:
         const int num_elements_in = config.get<int>(unique_name, "num_elements");
         const int num_ev_in = config.get<int>(unique_name, "num_ev");
 
-        const N2Layout layout = config.get<N2Layout>(unique_name, "layout");
+        const N2Layout vis_layout = config.get<N2Layout>(unique_name, "vis_layout");
 
-        const uint64_t num_prod_in = get_num_prod(num_elements_in, layout);
+        const uint64_t num_prod_in = get_num_prod(num_elements_in, vis_layout);
 
         return calculate_frame_size(num_elements_in, num_ev_in, num_prod_in);
     }
@@ -176,15 +180,14 @@ public:
      * and layout.
      *
      * @param   num_elemens_in  number of elements (dishes x polarizations) in the pipeline
-     * @param   layout_in       the layout of the N2FrameView
+     * @param   vis_layout_in       the layout of the visibility matrix in the N2FrameView
      *
-     * @throws std::runtime_error    If layout_in is unknown.
+     * @throws std::runtime_error    If vis_layout_in is unknown.
      */
-    static size_t get_num_prod(uint32_t num_elements_in, N2Layout layout_in) {
-
+    static size_t get_num_prod(uint32_t num_elements_in, N2Layout vis_layout_in) {
         size_t num_prod_in;
 
-        switch (layout_in) {
+        switch (vis_layout_in) {
             case N2Layout::FullUpperTri:
                 num_prod_in = (num_elements_in * (num_elements_in + 1)) / 2;
                 break;
@@ -194,7 +197,7 @@ public:
             default:
                 std::string msg =
                     fmt::format("N2FrameView::get_num_prod given unknown N2Layout: {:s}",
-                                N2Layout_to_string(layout_in));
+                                N2Layout_to_string(vis_layout_in));
                 ERROR_NON_OO("{:s}", msg);
                 throw std::runtime_error(msg);
                 break;

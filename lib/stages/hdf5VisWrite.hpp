@@ -85,7 +85,7 @@ protected:
     // t-dependent metadata
     std::vector<uint64_t> fpga_start_tick;         // (t)
     std::vector<uint64_t> frame_length_fpga_ticks; // (t)
-    std::vector<int64_t> frame_ut1;                // (t)
+    std::vector<int64_t> time_center_ut1;                // (t)
     std::vector<int64_t> bin_ut1;                  // (t)
 
     // Tracking what (f, t) pairs have been added
@@ -132,7 +132,7 @@ public:
         // Additional metadata
         fpga_start_tick.assign(num_file_t, 0);
         frame_length_fpga_ticks.assign(num_file_t, 0);
-        frame_ut1.assign(num_file_t, 0.0);
+        time_center_ut1.assign(num_file_t, 0.0);
         bin_ut1.assign(num_file_t, 0);
 
         added_ft.assign(num_freq * num_file_t, 0);

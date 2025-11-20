@@ -214,7 +214,7 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     auto meta = get_N2_metadata(buf, frame_id);
     BOOST_REQUIRE(meta);
 
-    const size_t num_prod = N2::get_num_prod(num_input);
+    const size_t num_prod = N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri);
     meta->num_elements = num_input;
     meta->num_prod = num_prod;
     meta->num_ev = num_ev;
@@ -225,7 +225,8 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     meta->frame_length_fpga_ticks = frame_length_ticks;
     meta->n_valid_fpga_ticks = 80;
     meta->n_rfi_fpga_ticks = 5;
-    meta->eop.ERA_deg = 9.87 + double(t_index);
+    meta->frame_eop.ERA_deg = 9.87 + double(t_index);
+    meta->bin_eop.ERA_deg = 9.87 + double(t_index);
 
     N2FrameView fv(buf, frame_id);
     fv.zero_frame();

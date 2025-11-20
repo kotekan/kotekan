@@ -74,6 +74,8 @@ bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metad
                      f_index, num_freq, t_index, num_file_t);
         return false;
     }
+
+    // Structural metadata consistency checks
     if (fv.vis.size() != N2FrameView::get_num_prod(meta->num_elements, N2Layout::FullUpperTri)
         || fv.weight.size() != N2FrameView::get_num_prod(meta->num_elements, N2Layout::FullUpperTri)
         || fv.eval.size() != meta->num_ev || fv.evec.size() != meta->num_ev * meta->num_elements
@@ -83,7 +85,7 @@ bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metad
         || (fpga_start_tick[t_index] > 0 && fpga_start_tick[t_index] != meta->fpga_start_tick)
         || (frame_length_fpga_ticks[t_index] > 0
             && frame_length_fpga_ticks[t_index] != meta->frame_length_fpga_ticks)
-        || (frame_ut1[t_index] > 0 && frame_ut1[t_index] != meta->frame_eop.t_ut1)
+        || (time_center_ut1[t_index] > 0 && time_center_ut1[t_index] != meta->time_center_eop.t_ut1)
         || (bin_ut1[t_index] > 0 && bin_ut1[t_index] != meta->bin_eop.t_ut1)) {
         ERROR_NON_OO(
             "visFileData: frame information mismatch at (f={}, t={}): "
@@ -91,17 +93,17 @@ bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metad
             "fv.gain.size()={}, fv.flags.size()={}, meta->num_elements={}, meta->num_prod={}, "
             "meta->num_ev={}, fpga_start_tick[t_index]={}, meta->fpga_start_tick={}, "
             "meta->frame_length_fpga_ticks={}, frame_length_fpga_ticks[t_index]={}, "
-            "frame_ut1[t_index]={}, meta->frame_eop.t_ut1={}, bin_ut1[t_index]={}, "
+            "time_center_ut1[t_index]={}, meta->time_center_eop.t_ut1={}, bin_ut1[t_index]={}, "
             "meta->bin_eop.t_ut1={}",
             f_index, t_index, fv.vis.size(), fv.weight.size(), fv.eval.size(), fv.evec.size(),
             fv.gain.size(), fv.flags.size(), meta->num_elements, meta->num_prod, meta->num_ev,
             fpga_start_tick[t_index], meta->fpga_start_tick, meta->frame_length_fpga_ticks,
-            frame_length_fpga_ticks[t_index], frame_ut1[t_index], meta->frame_eop.t_ut1,
+            frame_length_fpga_ticks[t_index], time_center_ut1[t_index], meta->time_center_eop.t_ut1,
             bin_ut1[t_index], meta->bin_eop.t_ut1);
         return false;
     }
 
-
+    
     // Store vis + weight
     for (size_t p = 0; p < num_prod; ++p) {
         vis[idx_fpt(f_index, p, t_index)] = fv.vis[p];
@@ -131,7 +133,7 @@ bool visFileData::add_frame(const N2FrameView& fv, const std::shared_ptr<N2Metad
     // Store per-time metadata
     fpga_start_tick[t_index] = meta->fpga_start_tick;
     frame_length_fpga_ticks[t_index] = meta->frame_length_fpga_ticks;
-    frame_ut1[t_index] = meta->frame_eop.t_ut1;
+    time_center_ut1[t_index] = meta->time_center_eop.t_ut1;
     bin_ut1[t_index] = meta->bin_eop.t_ut1;
 
     // Mark (f, t) as added
@@ -208,7 +210,7 @@ bool visFileData::flush() {
 
     h5_file->getDataSet("/fpga_start_tick").write(fpga_start_tick);
     h5_file->getDataSet("/frame_length_fpga_ticks").write(frame_length_fpga_ticks);
-    h5_file->getDataSet("/frame_ut1").write(frame_ut1);
+    h5_file->getDataSet("/time_center_ut1").write(time_center_ut1);
     h5_file->getDataSet("/bin_ut1").write(bin_ut1);
 
     return true;
@@ -376,7 +378,7 @@ void hdf5VisWrite::_initialize_h5(HighFive::File& file,
                     props_empty);
     _create_dataset(file, "/frame_length_fpga_ticks", {file_nt},
                     HighFive::create_datatype<uint64_t>(), props_empty);
-    _create_dataset(file, "/frame_ut1", {file_nt}, HighFive::create_datatype<int64_t>(),
+    _create_dataset(file, "/time_center_ut1", {file_nt}, HighFive::create_datatype<int64_t>(),
                     props_empty);
     _create_dataset(file, "/bin_ut1", {file_nt}, HighFive::create_datatype<int64_t>(),
                     props_empty);

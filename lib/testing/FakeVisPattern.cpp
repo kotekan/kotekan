@@ -586,8 +586,16 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     double lambda = C / (1e6 * f);
 
     frame._metadata->freq_MHz = f;
-    frame._metadata->frame_eop = eop;
+    frame._metadata->time_center_eop = eop;
     frame._metadata->bin_eop = eop;
+
+    struct EOP bin_start_eop = tel.get_EOP_at_time(tel.to_time(frame.fpga_start_tick));
+    frame._metadata->bin_start_ERA_deg = bin_start_eop.ERA_deg;
+    frame._metadata->bin_start_LAST = -1;
+
+    struct EOP bin_end_eop = tel.get_EOP_at_time(tel.to_time(frame.fpga_start_tick + frame.frame_length_fpga_ticks));
+    frame._metadata->bin_end_ERA_deg = bin_end_eop.ERA_deg;
+    frame._metadata->bin_end_LAST = -1;
 
     /*
     n[0] = 0.0;

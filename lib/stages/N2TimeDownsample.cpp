@@ -197,9 +197,13 @@ void N2TimeDownsample::main_thread() {
             // Copy frame into output buffer
             auto output_frame = N2FrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
 
-            // Set the output to target EOP. Same for now, but TODO: generalize
+            // Set the output to target EOP.
+            output_frame.time_center_eop = eop_null; // TODO: set properly later
             output_frame.bin_eop = eop_target;
-            output_frame.frame_eop = eop_target;
+            output_frame.bin_start_ERA_deg = era_deg_lo;
+            output_frame.bin_end_ERA_deg = era_deg_hi;
+            output_frame.bin_start_LAST = -1; // TODO: update
+            output_frame.bin_end_LAST = -1; // TODO: update
 
             // Set the output absolute time index, from the difference between the current ERA bin
             // and the ERA bin at startup
@@ -225,7 +229,7 @@ void N2TimeDownsample::main_thread() {
 
             if (do_fringestop) {
                 // Get the per-dish fringestopping phases.
-                tel.fringestop_phases_1d(freq_MHz, frame.frame_eop, eop_target, fringe_phase);
+                tel.fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, fringe_phase);
 
                 // This indexing requires the el_id = (n_dish)*pol_id + dish_id
                 size_t idx = 0;
@@ -271,11 +275,11 @@ void N2TimeDownsample::main_thread() {
         auto output_frame = N2FrameView(out_buf, output_frame_id);
 
         // Check we are still in accumulation window
-        if (frame.frame_eop.ERA_deg >= era_deg_lo && frame.frame_eop.ERA_deg < era_deg_hi) {
+        if (frame.bin_eop.ERA_deg >= era_deg_lo && frame.bin_eop.ERA_deg < era_deg_hi) {
 
             // Recalculate fringestop phases
             if (do_fringestop)
-                tel.fringestop_phases_1d(freq_MHz, frame.frame_eop, eop_target, fringe_phase);
+                tel.fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, fringe_phase);
             // Accumulate contents of buffer
             size_t idx = 0;
             for (size_t i = 0; i < num_elements; i++) {
@@ -376,11 +380,11 @@ void N2TimeDownsample::main_thread() {
             }
 
             DEBUG("Output frame - num_elements: {:d}", output_frame.num_elements);
-            DEBUG("Output T:   {:d}s + {:d}ns", output_frame.frame_eop.t_inst / GIGA,
-                  output_frame.frame_eop.t_inst % GIGA);
-            DEBUG("Output UT1: {:d}s + {:d}ns", output_frame.frame_eop.t_ut1 / GIGA,
-                  output_frame.frame_eop.t_ut1 % GIGA);
-            DEBUG("Output ERA: {:f}", output_frame.frame_eop.ERA_deg);
+            DEBUG("Output T:   {:d}s + {:d}ns", output_frame.bin_eop.t_inst / GIGA,
+                  output_frame.bin_eop.t_inst % GIGA);
+            DEBUG("Output UT1: {:d}s + {:d}ns", output_frame.bin_eop.t_ut1 / GIGA,
+                  output_frame.bin_eop.t_ut1 % GIGA);
+            DEBUG("Output ERA: {:f}", output_frame.bin_eop.ERA_deg);
 
             char* addr0 = (char*)&(output_frame.vis[0]);
             DEBUG("Output frame Struct - vis: {}, w: {}, flags: {}, eval: {}, evec: {}, emeth: {}, "

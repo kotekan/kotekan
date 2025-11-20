@@ -167,8 +167,8 @@ void FakeN2::main_thread() {
             meta->freq_id = f;
             // Set the time index
             meta->abs_time_idx = t;
-            // Set the layout
-            meta->layout = n2_layout;
+            // Set the vis matrix layout
+            meta->vis_layout = n2_layout;
 
             // The sequence number of the first FPGA frame integrated into this visibility frame
             meta->fpga_start_tick = fpga_seq + t * delta_seq;
@@ -182,8 +182,16 @@ void FakeN2::main_thread() {
 
             // Set EOP
             timespec time_cen = tel.to_time(fpga_seq + t * delta_seq + delta_seq / 2);
-            meta->frame_eop = tel.get_EOP_at_time(time_cen);
+            meta->time_center_eop = tel.get_EOP_at_time(time_cen);
             meta->bin_eop = tel.get_EOP_at_time(time_cen);
+
+            struct EOP bin_start_eop = tel.get_EOP_at_time(tel.to_time(fpga_seq + t * delta_seq));
+            meta->bin_start_ERA_deg = bin_start_eop.ERA_deg;
+            meta->bin_start_LAST = -1;
+
+            struct EOP bin_end_eop = tel.get_EOP_at_time(tel.to_time(fpga_seq + t * delta_seq + delta_seq));
+            meta->bin_end_ERA_deg = bin_end_eop.ERA_deg;
+            meta->bin_end_LAST = -1;
 
             DEBUG("Creating N2FrameView.");
             DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}", meta->num_elements,
