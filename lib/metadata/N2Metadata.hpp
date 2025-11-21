@@ -46,7 +46,7 @@ struct N2MetadataFormat {
     uint32_t nfreq;
 
     /// enum specifying the layout type of the visibility matrix.
-    N2Layout layout;
+    N2Layout vis_layout;
 
     /// ID of the frequency bin
     uint32_t freq_id; // this is an int in chordMetadata, maybe change later
@@ -57,8 +57,15 @@ struct N2MetadataFormat {
     /// and counts monitonically afterwards.
     uint64_t abs_time_idx;
 
-    /// Earth Orientation Paramters
-    struct EOP eop;
+    /// Earth Orientation Paramters at the center of the integration/accumulation time
+    struct EOP time_center_eop;
+    /// Earth Orientation Parameters within an integration/accumulation bin
+    struct EOP bin_eop;
+    // bin start/end info for convenience
+    double bin_start_ERA_deg; /// Earth Rotation Angle at start of bin
+    double bin_end_ERA_deg;   /// Earth Rotation Angle at end of bin
+    int64_t bin_start_LAST;   /// local apparant siderial time (nanoseconds) at start of bin
+    int64_t bin_end_LAST;     /// local apparant siderial time (nanoseconds) at end of bin
 
     /// The sequence number of the first FPGA frame integrated into this visibility frame
     uint64_t fpga_start_tick;

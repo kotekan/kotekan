@@ -25,7 +25,6 @@ add_library(
     $<$<BOOL:${ASDF_CXX_FOUND}>:asdfFileWrite.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFileRead.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFileWrite.cpp>
-    $<$<BOOL:${GDAL_FOUND}>:gdalVisWrite.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFiles.cpp>
     $<${HDF5_CONDITION}:hdf5FileRead.cpp>
     $<${HDF5_CONDITION}:hdf5FileWrite.cpp>

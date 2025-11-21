@@ -8,6 +8,7 @@
 #include <errno.h>  // for errno
 #include <string>   // for string
 #include <syslog.h> // for LOG_ERR, LOG_INFO, LOG_WARNING
+#include <thread>   // for thread, get_id
 
 // Boost messages (conditional on test compile/link)
 #if defined(BOOST_TEST_MODULE) || defined(BOOST_TEST_MAIN) || defined(BOOST_TEST_DYN_LINK)
@@ -151,6 +152,7 @@
         ERROR(m, ##__VA_ARGS__);                                                                   \
         set_error_message(fmt(m), ##__VA_ARGS__);                                                  \
         exit_kotekan(ReturnCode::FATAL_ERROR);                                                     \
+        pthread_exit(nullptr);                                                                     \
     } while (0)
 #define FATAL_ERROR_NON_OO(m, ...)                                                                 \
     do {                                                                                           \
@@ -178,6 +180,12 @@ enum class logLevel {
     DEBUG = 4, /*!< Message for debugging reasons only */
     DEBUG2 = 5 /*!< Super detailed debugging messages */
 };
+
+extern std::thread::id main_thread_id;
+inline void fatal_error_thread_exit() {
+    if (std::this_thread::get_id() != main_thread_id)
+        pthread_exit(nullptr);
+}
 
 class kotekanLogging {
 public:

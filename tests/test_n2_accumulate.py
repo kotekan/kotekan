@@ -20,6 +20,7 @@ count_vals = [0, 8192, 8191, 20, 5000]
 rfi_vals = [255, 0, 255, 255]
 
 global_params = {
+    "logging": "DEBUG",
     "fft_length": 16384,
     "sampling_rate_MHz": 3.2e3,
     "num_elements": 64,
@@ -127,6 +128,7 @@ global_params = {
         ],
     },
     "gps_time": {"frame0_nano": t_start_s * GIGA},
+    "vis_layout": "FullUpperTri",
 }
 
 accumulate_params = {
@@ -281,7 +283,7 @@ def test_metadata(accumulate_data):
             * global_params["sampling_rate_MHz"]
             / global_params["fft_length"]
         )
-        assert frame.metadata.layout == 0
+        assert frame.metadata.vis_layout == 0
 
 
 def test_time(accumulate_data):
@@ -339,21 +341,21 @@ def test_EOP(accumulate_data):
         )
         wB = 1.0 - wA
 
-        assert frame.metadata.eop.t_inst == t_inst_ns
+        assert frame.metadata.bin_eop.t_inst == t_inst_ns
         assert np.isclose(
-            frame.metadata.eop.delta_UT1_inst,
+            frame.metadata.bin_eop.delta_UT1_inst,
             wA * eopA["delta_UT1_inst"] + wB * eopB["delta_UT1_inst"],
             atol=0.0,
             rtol=1.0e-12,
         )
         assert np.isclose(
-            frame.metadata.eop.xp_as,
+            frame.metadata.bin_eop.xp_as,
             wA * eopA["x_pm"] + wB * eopB["x_pm"],
             atol=0.0,
             rtol=1.0e-12,
         )
         assert np.isclose(
-            frame.metadata.eop.yp_as,
+            frame.metadata.bin_eop.yp_as,
             wA * eopA["y_pm"] + wB * eopB["y_pm"],
             atol=0.0,
             rtol=1.0e-12,

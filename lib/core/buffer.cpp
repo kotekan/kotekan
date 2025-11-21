@@ -712,7 +712,7 @@ void Buffer::private_copy_frame(int dest_frame_id, Buffer* src, int src_frame_id
 }
 
 bool is_frame_buffer(GenericBuffer* buf) {
-    // See also bufferFactor::new_buffer()
+    // See also bufferFactory::new_buffer()
     return (buf->buffer_type == "standard") || (buf->buffer_type == "vis")
            || (buf->buffer_type == "hfb") || (buf->buffer_type == "N2");
 }

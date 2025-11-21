@@ -1,0 +1,87 @@
+---
+type: config
+log_level: info
+cpu_affinity: [0]
+
+num_elements: 16
+num_ev: 4
+
+# Minimal telescope metadata
+telescope:
+    name: CHORDTelescope
+    require_gps: false
+    inst_long_deg: -119.62081125
+    inst_lat_deg: 49.3207514444444444
+    inst_alt_deg: 90.0
+    inst_grid_x_axis: [1.0, 0.0, 0.0]
+    inst_grid_y_axis: [0.0, 1.0, 0.0]
+    inst_dish_alt_axis: [1.0, 0.0, 0.0]
+    inst_dish_vert_axis: [0.0, 0.0, 1.0]
+    dish_positions: [[0.0, 0.0, 0.0]]
+    updatable_config: "/earth_rotation_data"
+
+earth_rotation_data:
+    kotekan_update_endpoint: json
+    earth_orientation_parameter_table:
+        - time_inst_ns: 1578010000000000300
+          delta_UT1_inst: 0.0
+          x_pm: 0.0
+          y_pm: 0.0
+        - time_inst_ns: 1578010001000000300
+          delta_UT1_inst: 0.0
+          x_pm: 0.0
+          y_pm: 0.0
+
+gps_time:
+    frame0_nano: 1578010000000000300
+
+N2_pool:
+    kotekan_metadata_pool: N2Metadata
+    num_metadata_objects: 128
+
+fakevis_buf:
+    kotekan_buffer: N2
+    metadata_pool: N2_pool
+    num_frames: 64
+
+eigenvis_buf:
+    kotekan_buffer: N2
+    metadata_pool: N2_pool
+    num_frames: 64
+
+fake_n2:
+    kotekan_stage: FakeN2
+    out_buf: fakevis_buf
+    num_elements: 16
+    num_ev: 4
+    num_total_freq: 16
+    cadence: 1.0
+    num_frames: 20
+    wait: false
+    mode: fill_ij
+    start_time: 1578010000.0
+
+# eigen_vis:
+#     kotekan_stage: EigenVisIter
+#     in_buf: fakevis_buf
+#     out_buf: eigenvis_buf
+#     tol_eval: 1.0e-4
+#     tol_evec: 1.0e-3
+#     max_iterations: 15
+#     num_ev_conv: 2
+#     krylov: 2
+#     subspace: 1
+
+hdf5_vis_writer:
+    kotekan_stage: hdf5VisWrite
+    in_buf: fakevis_buf #eigenvis_buf
+    base_dir: ./vis_test_output/fake_n2_eigen_split
+    file_name: fake_n2_eigen_vis
+    prefix_hostname: false
+    compression: deflate
+    compression_level: 1
+    use_bitshuffle: false
+    blocksize_f: 16
+    blocksize_t: 10
+    file_seconds: 10
+    late_frame_grace_seconds: 5

@@ -55,7 +55,7 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     out_buf->register_producer(unique_name);
 
     // Get frequency IDs from config
-    freq = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
+    freq = config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids", {});
     if (freq.size() == 0) {
         size_t n = config.get<size_t>(unique_name, "num_total_freq");
         freq.resize(n);
@@ -93,20 +93,25 @@ void FakeN2::main_thread() {
 
     int64_t time_ns = (uint64_t)start_time * 1000000000;
 
-    // Calculate the time increments in seq and ctime
-    // int64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
-    int64_t delta_seq = (uint64_t)(cadence * 3.2e9 / 16384);
-    // calculate delta_ns from delta_seq (instead of cadence) in case rounding occured.
-    int64_t delta_ns = delta_seq * ((int64_t)(16384 / 3.2));
-    DEBUG("delta_seq = {:d}, delta_ns = {:d}", delta_seq, delta_ns);
-
     // Sleep before starting up
     timespec ts_sleep = double_to_ts(sleep_before);
     nanosleep(&ts_sleep, nullptr);
 
     double start = current_time();
 
+    // Check if we are using a CHORD telescope
+    if (Telescope::instance().get_name() != "CHORDTelescope") {
+        FATAL_ERROR("FakeN2 only works with the CHORDTelescope telescope type, got {:s}",
+                    Telescope::instance().get_name());
+    }
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
+
+    // Calculate the time increments using the telescope tick length
+    const int64_t tick_len_ns = (int64_t)tel.seq_length_nsec();
+    int64_t delta_seq = (int64_t)(cadence * 1e9 / (double)tick_len_ns);
+    int64_t delta_ns = delta_seq * tick_len_ns;
+    DEBUG("delta_seq = {:d}, delta_ns = {:d} (tick_len_ns = {:d})", delta_seq, delta_ns,
+          tick_len_ns);
 
     // random number generators in case we randomize things
     std::random_device rd;
@@ -156,16 +161,16 @@ void FakeN2::main_thread() {
             meta->num_prod = N2FrameView::get_num_prod(num_elements, n2_layout);
             /// Number of eigenvectors and values calculated
             meta->num_ev = num_eigenvectors;
-            /// Total number of frequencies in pipeline
+            // Total number of frequencies in pipeline
             meta->nfreq = freq.size();
             // Set the frequency index
             meta->freq_id = f;
             // Set the time index
             meta->abs_time_idx = t;
-            // Set the layout
-            meta->layout = n2_layout;
+            // Set the vis matrix layout
+            meta->vis_layout = n2_layout;
 
-            /// The sequence number of the first FPGA frame integrated into this visibility frame
+            // The sequence number of the first FPGA frame integrated into this visibility frame
             meta->fpga_start_tick = fpga_seq + t * delta_seq;
             // Set the length and total data
             meta->frame_length_fpga_ticks = delta_seq;
@@ -177,7 +182,17 @@ void FakeN2::main_thread() {
 
             // Set EOP
             timespec time_cen = tel.to_time(fpga_seq + t * delta_seq + delta_seq / 2);
-            meta->eop = tel.get_EOP_at_time(time_cen);
+            meta->time_center_eop = tel.get_EOP_at_time(time_cen);
+            meta->bin_eop = tel.get_EOP_at_time(time_cen);
+
+            struct EOP bin_start_eop = tel.get_EOP_at_time(tel.to_time(fpga_seq + t * delta_seq));
+            meta->bin_start_ERA_deg = bin_start_eop.ERA_deg;
+            meta->bin_start_LAST = -1;
+
+            struct EOP bin_end_eop =
+                tel.get_EOP_at_time(tel.to_time(fpga_seq + t * delta_seq + delta_seq));
+            meta->bin_end_ERA_deg = bin_end_eop.ERA_deg;
+            meta->bin_end_LAST = -1;
 
             DEBUG("Creating N2FrameView.");
             DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}", meta->num_elements,
@@ -216,10 +231,9 @@ void FakeN2::main_thread() {
         // Increment the timespec
         time_ns += curr_n_frames * delta_ns;
 
-        // Cause stop generating if we've hit the maximum number of frames
+        // Stop generating if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count >= num_frames) {
-            INFO("Reached frame limit [{:d} frames]. Sleeping and then exiting kotekan...",
-                 num_frames);
+            INFO("Reached frame limit [{:d} frames]. Stopping generation.", num_frames);
             timespec ts = double_to_ts(sleep_after);
             nanosleep(&ts, nullptr);
             break;

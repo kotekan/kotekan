@@ -209,19 +209,19 @@ public:
     bool gps_time_enabled() const override;
 
     /**
-     * Convert a sequence number into an instrument time (UNIX epoch time at start plus TAI time
-     *elapsed since start).
+     * Convert an FPGA sequence number into an instrument time (UNIX epoch time at start plus TAI
+     *time elapsed since start).
      *
-     * @param  seq  The sequence number.
+     * @param  seq  The FPGA sequence number.
      *
      * @return  The corresponding instrument time (UNIX epoch time at start plus TAI time elapsed
-     *since start).
+     * since start).
      **/
     timespec to_time(uint64_t seq) const override;
 
     /**
      * @brief Convert an instrument time (UNIX epoch time at start plus TAI time elapsed since
-     *start) into the nearest sequence number.
+     * start) into the nearest sequence number.
      *
      * @note When there is not an exact correspondence between the given time
      *       and FPGA sequence numbers, this routine will return the latest valid
@@ -229,7 +229,7 @@ public:
      *
      * @param  time  The instrument time.
      *
-     * @return  The corresponding sequence number.
+     * @return  The corresponding FPGA sequence number.
      **/
     uint64_t to_seq(timespec time) const override;
 

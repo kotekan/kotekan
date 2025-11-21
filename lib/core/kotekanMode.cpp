@@ -121,7 +121,7 @@ void kotekanMode::initalize_stages() {
         // Use the bound REST address and port for identification. If bound to 0.0.0.0, use
         // loopback which will work for local tests.
         std::string host = restServer::instance().bind_address();
-        if (host == "0.0.0.0")
+        if (host == "0.0.0.0" || host == "localhost")
             host = "127.0.0.1";
         uint16_t port = restServer::instance().port();
 

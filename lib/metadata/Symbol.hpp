@@ -41,15 +41,14 @@ class Symbol {
 
     // Look up a string in the known symbols. If it is not known,
     // insert it.
-    const char* lookup_or_insert(const std::string_view& str);
+    const char* lookup_or_insert(const char* str);
 
 public:
     // Default constructure, returning an invalid symbol. Think null
     // pointer.
     Symbol() : value() {}
 
-    // Create a symbol from a string, an empty string or a NULL pointer return
-    // an invalid symbol
+    // Create a symbol from a string
     Symbol(const std::string_view& str);
     Symbol(const std::string& str);
     Symbol(const char* str);

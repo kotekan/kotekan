@@ -39,7 +39,9 @@
  *                      correlator data,
  * @conf  num_ev        Int. The number of eigenvectors to be stored.
  * @conf  freq_ids      List of int. The frequency IDs to generate frames
- *                      for.
+ *                      for. Leave empty for 0..num_total_freq-1.
+ * @conf  num_total_freq Int. The total number of frequencies in the
+ *                      system. Used if freq_ids is empty.
  * @conf  start_time    Double. The start time of the range of data (as a
  *                      Unix time in seconds). This simply changes the time
  *                      the frames are labelled with. Default is the current
@@ -65,8 +67,6 @@
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.
- *
- * @author  Tristan Pinsonneault-Marotte
  */
 class FakeN2 : public kotekan::Stage {
 

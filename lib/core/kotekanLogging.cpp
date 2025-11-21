@@ -12,6 +12,8 @@
 
 namespace kotekan {
 
+std::thread::id main_thread_id{};
+
 kotekanLogging::kotekanLogging() {
     _member_log_level = 3;
     __log_prefix = "";
