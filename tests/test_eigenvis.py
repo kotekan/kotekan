@@ -54,7 +54,6 @@ default_params = {
     },
     "num_dishes": 100,
     "gps_time": {"frame0_nano": 0},
-    "vis_layout": "FullUpperTri",
 }
 
 

@@ -80,7 +80,6 @@ private:
     int64_t _rfi_downsampling_factor; ///< Downsampling factor for RFI mask
 
     int64_t _num_elements; ///< Total number of telescope elements (~2 * num dishes)
-    int64_t _num_ev;       ///< Number of eigenvalues/vectors
 
     // Absolute frame counter (TODO: determine this another way)
     uint64_t _abs_frame_count;

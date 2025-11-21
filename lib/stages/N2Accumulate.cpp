@@ -47,8 +47,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _n_fpga_samples_per_n2k_frame(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _n_fpga_samples_per_n2k_correlation(config.get<int64_t>(unique_name, "sub_integration_ntime")),
     _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")),
-    _num_elements(config.get<int64_t>(unique_name, "num_elements")),
-    _num_ev(config.get<int64_t>(unique_name, "num_ev")), _abs_frame_count(0),
+    _num_elements(config.get<int64_t>(unique_name, "num_elements")), _abs_frame_count(0),
     _tel(Telescope::instance().cast<CHORDTelescope>()),
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
@@ -426,7 +425,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
             _vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation;
         meta->num_elements = _num_elements;
         meta->num_prod = _N2_num_products;
-        meta->num_ev = _num_ev;
+        meta->num_ev = 0;
         meta->vis_layout = N2Layout::FullUpperTri;
         meta->abs_time_idx = _accum_fpga_start_tick
                              / (_vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation);

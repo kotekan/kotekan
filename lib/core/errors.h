@@ -172,7 +172,6 @@ void set_error_message_f(const char* format, ...);
         ERROR_F(m, ##a);                                                                           \
         set_error_message_f(m, ##a);                                                               \
         exit_kotekan(ReturnCode::FATAL_ERROR);                                                     \
-        kotekan::fatal_error_thread_exit();                                                        \
     } while (0)
 
 // Exit kotekan after a successful test.

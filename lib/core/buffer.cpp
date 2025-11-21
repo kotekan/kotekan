@@ -145,8 +145,8 @@ void GenericBuffer::allocate_new_metadata_object(int ID) {
 
     buffer_lock lock(mutex);
     if (metadata_pool == nullptr) {
-        FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer",
-                      buffer_name.c_str());
+        FATAL_ERROR("No metadata pool on %s but metadata was needed by a producer",
+                    buffer_name.c_str());
     }
     DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", this, ID);
 

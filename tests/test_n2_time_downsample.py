@@ -86,7 +86,6 @@ global_params = {
         "dish_inputs": [],
     },
     "gps_time": {"frame0_nano": t_start_inst_ns},
-    "vis_layout": "FullUpperTri",
 }
 
 

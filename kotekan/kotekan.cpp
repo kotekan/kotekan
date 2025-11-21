@@ -432,7 +432,6 @@ int main(int argc, char** argv) {
 
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
-    main_thread_id = std::this_thread::get_id();
 
     // Set HDF5_PLUGIN_PATH if a default was detected at configure time.
     if (ensure_hdf5_plugin()) {

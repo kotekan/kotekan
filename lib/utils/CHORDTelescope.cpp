@@ -628,7 +628,7 @@ EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
         std::shared_lock lock(_eop_lock);
 
         if (_eop_table.empty()) {
-            WARN("EOP table is empty, cannot interpolate EOP at time {:d} s + {:d} ns.",
+            WARN("EOP table is empty, cannot interpolate EOP at UT1 time {:d} s + {:d} ns.",
                  t_target / GIGA, t_target % GIGA);
             return eop_null;
         }
@@ -701,7 +701,7 @@ EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
         std::shared_lock lock(_eop_lock);
 
         if (_eop_table.empty()) {
-            WARN("EOP table is empty, cannot interpolate EOP at time {:d} s + {:d} ns.",
+            WARN("EOP table is empty, cannot interpolate EOP at UT1 time {:d} s + {:d} ns.",
                  t_ut1 / GIGA, t_ut1 % GIGA);
             return eop_null;
         }

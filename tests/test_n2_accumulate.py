@@ -128,7 +128,6 @@ global_params = {
         ],
     },
     "gps_time": {"frame0_nano": t_start_s * GIGA},
-    "vis_layout": "FullUpperTri",
 }
 
 accumulate_params = {

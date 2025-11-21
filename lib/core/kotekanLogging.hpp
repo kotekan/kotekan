@@ -8,7 +8,11 @@
 #include <errno.h>  // for errno
 #include <string>   // for string
 #include <syslog.h> // for LOG_ERR, LOG_INFO, LOG_WARNING
-#include <thread>   // for thread, get_id
+
+class FatalError : public std::runtime_error {
+public:
+    explicit FatalError(const std::string& what_arg) : std::runtime_error(what_arg) {}
+};
 
 // Boost messages (conditional on test compile/link)
 #if defined(BOOST_TEST_MODULE) || defined(BOOST_TEST_MAIN) || defined(BOOST_TEST_DYN_LINK)
@@ -102,7 +106,38 @@
     } while (0)
 #endif // DEBUGGING
 
-// Use this for serious errors.  i.e. things that require the program to end.
+// Use this for fatal errors that need to exit immediately.
+// Prints an error message and immediately calls exit().
+#define EXIT_ERROR(m, ...)                                                                         \
+    do {                                                                                           \
+        ERROR(m, ##__VA_ARGS__);                                                                   \
+        std::exit();                                                                               \
+    } while (0)
+#define EXIT_ERROR_NON_OO(m, ...)                                                                  \
+    do {                                                                                           \
+        ERROR_NON_OO(m, ##__VA_ARGS__);                                                            \
+        std::exit();                                                                               \
+    } while (0)
+
+// Use this for fatal errors that kotekan can't recover from. May shut down gracefully.
+// Prints an error message, raises a SIGTERM, and throws (caught for stages)
+#define FATAL_ERROR(m, ...)                                                                        \
+    do {                                                                                           \
+        ERROR(m, ##__VA_ARGS__);                                                                   \
+        set_error_message(fmt(m), ##__VA_ARGS__);                                                  \
+        exit_kotekan(ReturnCode::FATAL_ERROR);                                                     \
+        throw FatalError(fmt::format(FMT_STRING(m), ##__VA_ARGS__));                               \
+    } while (0)
+#define FATAL_ERROR_NON_OO(m, ...)                                                                 \
+    do {                                                                                           \
+        ERROR_NON_OO(m, ##__VA_ARGS__);                                                            \
+        kotekan::kotekanLogging::set_error_message(fmt(m), ##__VA_ARGS__);                         \
+        exit_kotekan(ReturnCode::FATAL_ERROR);                                                     \
+        throw FatalError(fmt::format(FMT_STRING(m), ##__VA_ARGS__));                               \
+    } while (0)
+
+
+// Use this for serious errors that are guaranteed to cause issues with operation.
 // Always prints, no check for log level
 #define ERROR(m, ...)                                                                              \
     do {                                                                                           \
@@ -145,23 +180,6 @@
             kotekan::kotekanLogging::internal_logging(LOG_INFO, "", fmt(m), ##__VA_ARGS__);        \
     } while (0)
 
-// Use this for fatal errors that kotekan can't recover from.
-// Prints an error message and raises a SIGTERM.
-#define FATAL_ERROR(m, ...)                                                                        \
-    do {                                                                                           \
-        ERROR(m, ##__VA_ARGS__);                                                                   \
-        set_error_message(fmt(m), ##__VA_ARGS__);                                                  \
-        exit_kotekan(ReturnCode::FATAL_ERROR);                                                     \
-        kotekan::fatal_error_thread_exit();                                                        \
-    } while (0)
-#define FATAL_ERROR_NON_OO(m, ...)                                                                 \
-    do {                                                                                           \
-        ERROR_NON_OO(m, ##__VA_ARGS__);                                                            \
-        kotekan::kotekanLogging::set_error_message(fmt(m), ##__VA_ARGS__);                         \
-        exit_kotekan(ReturnCode::FATAL_ERROR);                                                     \
-    } while (0)
-
-
 namespace kotekan {
 
 /**
@@ -180,12 +198,6 @@ enum class logLevel {
     DEBUG = 4, /*!< Message for debugging reasons only */
     DEBUG2 = 5 /*!< Super detailed debugging messages */
 };
-
-extern std::thread::id main_thread_id;
-inline void fatal_error_thread_exit() {
-    if (std::this_thread::get_id() != main_thread_id)
-        pthread_exit(nullptr);
-}
 
 class kotekanLogging {
 public:
