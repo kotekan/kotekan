@@ -225,8 +225,12 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     meta->frame_length_fpga_ticks = frame_length_ticks;
     meta->n_valid_fpga_ticks = 80;
     meta->n_rfi_fpga_ticks = 5;
-    meta->frame_eop.ERA_deg = 9.87 + double(t_index);
+    meta->time_center_eop.ERA_deg = 9.87 + double(t_index);
     meta->bin_eop.ERA_deg = 9.87 + double(t_index);
+    meta->bin_start_ERA_deg = 1.23 + double(t_index);
+    meta->bin_end_ERA_deg = 4.56 + double(t_index);
+    meta->bin_start_LAST = 1000000 + int64_t(t_index) * 1000;
+    meta->bin_end_LAST = 2000000 + int64_t(t_index) * 1000;
 
     N2FrameView fv(buf, frame_id);
     fv.zero_frame();

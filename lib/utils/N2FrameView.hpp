@@ -68,9 +68,9 @@ public:
     /// Vis Matrix Layout
     const N2Layout& vis_layout;
 
-    /// ID of the frequency bin
+    /// ID of the frequency associated with this frame
     const uint32_t& freq_id;
-    /// Physical frequency of bin
+    /// Physical frequency associated with this frame
     const double& freq_MHz;
 
     /// Absolute time index of frame

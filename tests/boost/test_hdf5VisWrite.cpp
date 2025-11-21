@@ -11,7 +11,7 @@
 #include "restServer.hpp"
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "hdf5VisWrite.hpp"    // for hdf5VisWrite
+#include "hdf5VisWrite.hpp"    // for hdf5N2Write
 #include "test_logging.hpp"
 #include "test_utils.hpp"
 #include "json.hpp"
@@ -42,19 +42,25 @@ using HighFive::File;
 
 namespace {
 
-/// Simple test double to expose visFileData internals without modifying production code.
-class TestVisFileData : public visFileData {
+/// Simple test double to expose N2FileData internals without modifying production code.
+class TestVisFileData : public N2FileData {
 public:
-    TestVisFileData(uint64_t num_file_t,
-                    uint64_t num_freq,
-                    uint64_t num_input,
-                    uint64_t num_prod,
-                    uint64_t num_ev,
+    TestVisFileData(const N2FrameView& fv,
+                    uint64_t num_file_t,
                     double open_wall_s,
                     uint64_t abs_file_idx,
                     std::string base_dir) :
-        visFileData(num_file_t, num_freq, num_input, num_prod, num_ev, open_wall_s, abs_file_idx,
-                    std::move(base_dir)) {}
+        N2FileData(N2FileData::CHORD,
+                   num_file_t,
+                   fv,
+                   open_wall_s,
+                   abs_file_idx,
+                   /*blocksize_f*/ 0,
+                   /*blocksize_t*/ 1,
+                   /*compression*/ "none",
+                   /*compression_level*/ 0,
+                   /*use_bitshuffle*/ false,
+                   std::move(base_dir)) {}
 
     N2::cfloat get_vis(size_t f, size_t p, size_t t) const {
         return vis[idx_fpt(f, p, t)];
@@ -89,8 +95,8 @@ public:
     uint64_t get_frame_length_fpga_ticks(size_t t) const {
         return frame_length_fpga_ticks.at(t);
     }
-    int64_t get_frame_ut1(size_t t) const {
-        return frame_ut1.at(t);
+    int64_t get_time_center_ut1(size_t t) const {
+        return time_center_ut1.at(t);
     }
     int64_t get_bin_ut1(size_t t) const {
         return bin_ut1.at(t);
@@ -149,7 +155,7 @@ static void fill_n2_frame_with_abs(Buffer* buf,
     auto meta = get_N2_metadata(buf, frame_id);
     BOOST_REQUIRE(meta);
     meta->abs_time_idx = abs_time_idx;
-    meta->frame_eop.t_ut1 = static_cast<int64_t>(frame_start_time_ns);
+    meta->time_center_eop.t_ut1 = static_cast<int64_t>(frame_start_time_ns);
     meta->bin_eop.t_ut1 = static_cast<int64_t>(frame_start_time_ns);
 }
 
@@ -258,13 +264,13 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
     // per-time arrays shape exists
     {
         std::vector<uint64_t> s0, s2;
-        std::vector<int64_t> ut1, bin;
+        std::vector<int64_t> tcen, bin;
         file.getDataSet("/fpga_start_tick").read(s0);
         file.getDataSet("/frame_length_fpga_ticks").read(s2);
-        file.getDataSet("/frame_ut1").read(ut1);
+        file.getDataSet("/time_center_ut1").read(tcen);
         file.getDataSet("/bin_ut1").read(bin);
         BOOST_CHECK(!s0.empty() && !s2.empty());
-        BOOST_CHECK(!ut1.empty() && ut1.size() == bin.size());
+        BOOST_CHECK(!tcen.empty() && tcen.size() == bin.size());
     }
 }
 
@@ -299,9 +305,9 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     meta->n_valid_fpga_ticks = 80;
     meta->n_rfi_fpga_ticks = 5;
     meta->abs_time_idx = 5;
-    meta->frame_eop.t_ut1 = 333;
+    meta->time_center_eop.t_ut1 = 333;
     meta->bin_eop.t_ut1 = 444;
-    meta->frame_eop.ERA_deg = 12.34;
+    meta->time_center_eop.ERA_deg = 12.34;
     meta->bin_eop.ERA_deg = 56.78;
 
     N2FrameView fv(&buf, 0);
@@ -326,12 +332,12 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     rm_tree_if_exists(base_dir);
     ensure_directory(base_dir);
     ensure_directory(base_dir + "/.partial");
-    TestVisFileData data(num_file_t, num_freq, num_input, num_prod, num_ev, 100.0, 0, base_dir);
+    TestVisFileData data(fv, num_file_t, 100.0, 0, base_dir);
     const size_t f = meta->freq_id;
     const size_t t = 1;
 
     // Add frame to (f,t) slot
-    data.add_frame(fv, meta, t);
+    data.add_frame(fv, t);
 
     // Check a few expected values in memory
     BOOST_CHECK(data.get_vis(f, 0, t) == N2::cfloat(1.0f, 2.0f));
@@ -345,7 +351,7 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     BOOST_CHECK_CLOSE_FRACTION(data.get_frac_rfi(f, t), 5.0f / 100.0f, 1e-6f);
     BOOST_CHECK_EQUAL(data.get_fpga_start_tick(t), uint64_t(111));
     BOOST_CHECK_EQUAL(data.get_frame_length_fpga_ticks(t), uint64_t(100));
-    BOOST_CHECK_EQUAL(data.get_frame_ut1(t), int64_t(333));
+    BOOST_CHECK_EQUAL(data.get_time_center_ut1(t), int64_t(333));
     BOOST_CHECK_EQUAL(data.get_bin_ut1(t), int64_t(444));
     BOOST_CHECK_EQUAL(data.get_added_count(), size_t(1));
     rm_tree_if_exists(base_dir);
@@ -385,17 +391,17 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     meta1->n_valid_fpga_ticks = 80;
     meta1->n_rfi_fpga_ticks = 30; // sum > frame_len -> should clamp to 20
     meta1->abs_time_idx = 10;
-    meta1->frame_eop.t_ut1 = 10'000;
+    meta1->time_center_eop.t_ut1 = 10'000;
     meta1->bin_eop.t_ut1 = 10'000;
-    meta1->frame_eop.ERA_deg = 0.0; // legitimate 0.0 value
+    meta1->time_center_eop.ERA_deg = 0.0; // legitimate 0.0 value
 
     // meta2 (same slot), differing ERA and pathological counts
     *meta2 = *meta1;
     meta2->n_valid_fpga_ticks = 150; // > frame len -> clamp to 100
     meta2->n_rfi_fpga_ticks = 50;    // will be ignored because slot already set; kept for symmetry
-    meta2->frame_eop.t_ut1 = 11'000; // should not overwrite the first set value
+    meta2->time_center_eop.t_ut1 = 11'000; // should not overwrite the first set value
     meta2->bin_eop.t_ut1 = 11'000;
-    meta2->frame_eop.ERA_deg = 12.34;
+    meta2->time_center_eop.ERA_deg = 12.34;
 
     N2FrameView fv1(&buf, 0);
     fv1.zero_frame();
@@ -406,21 +412,21 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     rm_tree_if_exists(base_dir);
     ensure_directory(base_dir);
     ensure_directory(base_dir + "/.partial");
-    TestVisFileData data(num_file_t, num_freq, num_input, num_prod, num_ev, 100.0, 0, base_dir);
+    TestVisFileData data(fv1, num_file_t, 100.0, 0, base_dir);
 
     // First write
-    BOOST_REQUIRE(data.add_frame(fv1, meta1, t));
+    BOOST_REQUIRE(data.add_frame(fv1, t));
     // Verify fractions computed directly from metadata values
     BOOST_CHECK_CLOSE_FRACTION(data.get_frac_lost(f, t), 0.2f, 1e-6f);
     BOOST_CHECK_CLOSE_FRACTION(data.get_frac_rfi(f, t), 0.3f, 1e-6f);
-    BOOST_CHECK_EQUAL(data.get_frame_ut1(t), int64_t(10'000));
+    BOOST_CHECK_EQUAL(data.get_time_center_ut1(t), int64_t(10'000));
     BOOST_CHECK_EQUAL(data.get_bin_ut1(t), int64_t(10'000));
 
     // Second write to same (f,t) with different UT1 values should be rejected gracefully.
-    bool accepted = data.add_frame(fv2, meta2, t);
+    bool accepted = data.add_frame(fv2, t);
     BOOST_CHECK(!accepted);
     // Stored values remain the originals.
-    BOOST_CHECK_EQUAL(data.get_frame_ut1(t), int64_t(10'000));
+    BOOST_CHECK_EQUAL(data.get_time_center_ut1(t), int64_t(10'000));
     BOOST_CHECK_EQUAL(data.get_bin_ut1(t), int64_t(10'000));
     rm_tree_if_exists(base_dir);
 }
@@ -478,7 +484,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     bc.add_buffer(in_buf_name, &buf);
 
     // Create and start stage
-    hdf5VisWrite stage(conf, unique_name, bc);
+    hdf5N2Write stage(conf, unique_name, bc);
     stage.start();
 
     // Time logic: ensure base_time aligned to file window start
@@ -572,7 +578,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
 
-    hdf5VisWrite stage(conf, unique_name, bc);
+    hdf5N2Write stage(conf, unique_name, bc);
     stage.start();
 
     const uint64_t frame_len_ticks = 1;
@@ -658,7 +664,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
 
-    hdf5VisWrite stage(conf, unique_name, bc);
+    hdf5N2Write stage(conf, unique_name, bc);
     stage.start();
 
     const uint64_t dt_ns = 1'000'000'000ULL;
@@ -745,7 +751,7 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
 
-    hdf5VisWrite stage(conf, unique_name, bc);
+    hdf5N2Write stage(conf, unique_name, bc);
     stage.start();
 
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
@@ -825,7 +831,7 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
 
-    hdf5VisWrite stage(conf, unique_name, bc);
+    hdf5N2Write stage(conf, unique_name, bc);
     stage.start();
 
     const uint64_t dt_ns = 1'000'000'000ULL;
@@ -905,7 +911,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
 
-    hdf5VisWrite stage(conf, unique_name, bc);
+    hdf5N2Write stage(conf, unique_name, bc);
     stage.start();
 
     const uint64_t dt_ns = 1'000'000'000ULL;
@@ -999,7 +1005,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
 
-    hdf5VisWrite stage(conf, unique_name, bc);
+    hdf5N2Write stage(conf, unique_name, bc);
     stage.start();
 
     const uint64_t dt_ns = 1'000'000'000ULL;
