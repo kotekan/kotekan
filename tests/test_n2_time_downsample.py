@@ -86,6 +86,7 @@ global_params = {
         "dish_inputs": [],
     },
     "gps_time": {"frame0_nano": t_start_inst_ns},
+    "vis_layout": "FullUpperTri",
 }
 
 
@@ -405,7 +406,7 @@ def test_metadata(n2_data):
 
     for i, frame in enumerate(n2_data):
         assert frame.metadata.abs_time_idx == i + 1  # First frame skipped.
-        assert frame.metadata.layout == 0
+        assert frame.metadata.vis_layout == 0
         assert frame.metadata.freq_id == 0
         assert frame.metadata.fpga_start_tick == frame_meta[i]["seq_start"]
         assert frame.metadata.frame_length_fpga_ticks == frame_meta[i]["seq_len"]
@@ -427,12 +428,12 @@ def test_time(n2_data):
 
 def test_eop(n2_data):
 
-    eop_t_inst = np.array([v.metadata.eop.t_inst for v in n2_data])
-    eop_t_ut1 = np.array([v.metadata.eop.t_ut1 for v in n2_data])
-    eop_dut1 = np.array([v.metadata.eop.delta_UT1_inst for v in n2_data])
-    eop_x_pm = np.array([v.metadata.eop.xp_as for v in n2_data])
-    eop_y_pm = np.array([v.metadata.eop.yp_as for v in n2_data])
-    eop_era = np.array([v.metadata.eop.ERA_deg for v in n2_data])
+    eop_t_inst = np.array([v.metadata.bin_eop.t_inst for v in n2_data])
+    eop_t_ut1 = np.array([v.metadata.bin_eop.t_ut1 for v in n2_data])
+    eop_dut1 = np.array([v.metadata.bin_eop.delta_UT1_inst for v in n2_data])
+    eop_x_pm = np.array([v.metadata.bin_eop.xp_as for v in n2_data])
+    eop_y_pm = np.array([v.metadata.bin_eop.yp_as for v in n2_data])
+    eop_era = np.array([v.metadata.bin_eop.ERA_deg for v in n2_data])
 
     out_frame_metas = calc_downsamp_frame_meta()
 
