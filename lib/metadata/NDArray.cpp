@@ -2,11 +2,9 @@
 #include "Symbol.hpp"   // for operator<<, Symbol
 
 #include <NDArray.hpp>
-#include <cassert>  // for assert
-#include <format>   // include for format_vector
-#include <iostream> // include for cout
-#include <sstream>  // for basic_ostringstream
-#include <string>   // for operator<<, basic_string, string
+#include <cassert> // for assert
+#include <sstream> // for basic_ostringstream
+#include <string>  // for operator<<, basic_string, string
 
 namespace kotekan {
 
@@ -78,16 +76,7 @@ std::shared_ptr<GenericNDArray> GenericNDArray::create(const DataType value_data
                                                        const std::vector<std::ptrdiff_t>& extents,
                                                        const std::vector<Symbol>& dimnames,
                                                        void* data) {
-    // Print information even if assert fails
-    if (extents.size() != dimnames.size()) {
-        // use STL to format error message
-        std::ostringstream oss;
-        oss << "GenericNDArray::create: extents (" << format_vector(extents) << ") != dimnames ("
-            << format_vector(dimnames) << ")";
-        std::cout << oss.str() << std::endl;
-    }
     assert(extents.size() == dimnames.size());
-
     return make_NDArray<DataType(end_type - 1), max_rank>(value_datatype, quantity_name, extents,
                                                           dimnames, data);
 }
