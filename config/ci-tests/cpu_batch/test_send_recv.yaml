@@ -12,16 +12,17 @@ buffer_depth: 10
 telescope:
     log_level: ERROR
     name: CHORDTelescope
-    inst_lat_deg: 50.0
-    inst_long_deg: -120.0
-    inst_alt_deg: 90.0
-    inst_grid_x_axis: [1.0, 0.0, 0.0]
-    inst_grid_y_axis: [0.0, 1.0, 0.0]
-    inst_dish_alt_axis: [1.0, 0.0, 0.0]
-    inst_dish_vert_axis: [0.0, 0.0, 1.0]
-    dish_positions: []
+    origin_itrs_lat_deg: 50.0
+    origin_itrs_lon_deg: -120.0
+    dish_coelev_deg: 90.0
+    grid_x_axis: [1.0, 0.0, 0.0]
+    grid_y_axis: [0.0, 1.0, 0.0]
+    dish_elev_axis: [1.0, 0.0, 0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
     require_gps: False
     updatable_config: /earth_rotation_data
+    num_dishes: 64
+    dish_inputs: []
 
 earth_rotation_data:
     kotekan_update_endpoint: json
@@ -68,11 +69,13 @@ recv_buffer_noCT:
 send_N2_buffer:
     kotekan_buffer: N2
     metadata_pool: N2_pool
+    layout: "FullUpperTri"
     num_frames: buffer_depth
 
 recv_N2_buffer:
     kotekan_buffer: N2
     metadata_pool: N2_pool
+    layout: "FullUpperTri"
     num_frames: buffer_depth
 
 
