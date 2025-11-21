@@ -6,10 +6,10 @@
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
-#include "prometheusMetrics.hpp"
 #include "errors.h"
 #include "hdf5Files.hpp"
 #include "kotekanLogging.hpp"
+#include "prometheusMetrics.hpp"
 
 #include "fmt.hpp"
 
@@ -51,11 +51,11 @@ public:
     enum FileMode { CHORD, CHIME };
 
     // Structural information and fixed sizes
-    const size_t num_elements;  // number of inputs / elements
-    const size_t num_prod;   // number of products
-    const size_t num_ev;     // number of eigenvectors/values
-    const size_t num_freq;   // number of frequencies
-    const size_t num_file_t; // frames ("time" dimension)
+    const size_t num_elements; // number of inputs / elements
+    const size_t num_prod;     // number of products
+    const size_t num_ev;       // number of eigenvectors/values
+    const size_t num_freq;     // number of frequencies
+    const size_t num_file_t;   // frames ("time" dimension)
 
     // file bookkeeping owned by this object
     FileMode file_mode;                      // CHORD or CHIME (or other?)-type file
@@ -105,25 +105,28 @@ private:
 
     /// Create (or check existence of) a (f, ..., t) or  (t) dataset
     void _check_create_dataset(HighFive::File& file, const std::string& name,
-                         const std::vector<hsize_t>& dims, const HighFive::DataType& dtype,
-                         HighFive::DataSetCreateProps props) const;
+                               const std::vector<hsize_t>& dims, const HighFive::DataType& dtype,
+                               HighFive::DataSetCreateProps props) const;
 
     /// Open/create/init datasets in h5 file
     std::unique_ptr<HighFive::File> _open_or_create_file(const std::string& filepath,
-        const uint64_t num_file_t_, const N2FrameView& fv, const FileMode file_mode) const;
+                                                         const uint64_t num_file_t_,
+                                                         const N2FrameView& fv,
+                                                         const FileMode file_mode) const;
 
 public:
-    N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameView& fv, const double open_wall_s_,
-                const uint64_t abs_file_idx_, const size_t blocksize_f_, const size_t blocksize_t_,
-                const std::string compression_, const size_t compression_level_, const bool use_bitshuffle_,
-                const std::string base_dir_) :
+    N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameView& fv,
+               const double open_wall_s_, const uint64_t abs_file_idx_, const size_t blocksize_f_,
+               const size_t blocksize_t_, const std::string compression_,
+               const size_t compression_level_, const bool use_bitshuffle_,
+               const std::string base_dir_) :
         num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev), num_freq(fv.nfreq),
         num_file_t(num_file_t_), file_mode(file_mode_), blocksize_f(blocksize_f_),
         blocksize_t(blocksize_t_), compression(compression_), compression_level(compression_level_),
-        use_bitshuffle(use_bitshuffle_), open_wall_s(open_wall_s_), last_update_wall_s(open_wall_s_),
-        abs_file_idx(abs_file_idx_), base_dir(std::move(base_dir_)),
-        partial_filepath(base_dir + "/.partial/" + "vis_"
-                         + std::to_string(abs_file_idx_) + ".h5"),
+        use_bitshuffle(use_bitshuffle_), open_wall_s(open_wall_s_),
+        last_update_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_),
+        base_dir(std::move(base_dir_)),
+        partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(abs_file_idx_) + ".h5"),
         h5_file(_open_or_create_file(partial_filepath, num_file_t_, fv, file_mode)) {
 
         // resize arrays to hold data across (freq, time) blocks
@@ -235,22 +238,22 @@ class hdf5N2Write : public kotekan::Stage {
 
 public:
     hdf5N2Write(kotekan::Config& config, const std::string& unique_name,
-                 kotekan::bufferContainer& buffer_container);
+                kotekan::bufferContainer& buffer_container);
     virtual ~hdf5N2Write();
 
     void main_thread() override;
 
 private:
     // Config settings (initialized from Config in constructor)
-    const std::string base_dir;  /// Base directory to write files into
-    const std::uint64_t file_num_t;  /// Number of incoming time frames per file, as indexed by the
-                                     /// absolute frame index
+    const std::string base_dir;     /// Base directory to write files into
+    const std::uint64_t file_num_t; /// Number of incoming time frames per file, as indexed by the
+                                    /// absolute frame index
     const std::uint64_t
         late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
-    const int max_frames; /// Stop writing after this many frames (-1 = unlimited)
+    const int max_frames;         /// Stop writing after this many frames (-1 = unlimited)
 
     Buffer* const buffer;
-    
+
     kotekan::prometheus::Gauge& write_time_metric;
     kotekan::prometheus::Gauge& n_datasets_metric;
 
@@ -276,7 +279,7 @@ private:
      * @param exclude_abs_file_idx  Optional file index to skip while finalizing
      */
     void _grace_finalize_files(std::map<size_t, std::unique_ptr<N2FileData>>& files,
-                                  const size_t* exclude_abs_file_idx = nullptr);
+                               const size_t* exclude_abs_file_idx = nullptr);
 
     bool _finalfile_exists(std::uint64_t abs_file_idx, const std::string& search_dir) const;
 };

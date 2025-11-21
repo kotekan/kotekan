@@ -290,7 +290,8 @@ public:
         file.createAttribute("freq_MHz", frame.freq_MHz);
         file.createAttribute("time_center_eop.t_inst", frame.time_center_eop.t_inst);
         file.createAttribute("time_center_eop.t_ut1", frame.time_center_eop.t_ut1);
-        file.createAttribute("time_center_eop.delta_UT1_inst", frame.time_center_eop.delta_UT1_inst);
+        file.createAttribute("time_center_eop.delta_UT1_inst",
+                             frame.time_center_eop.delta_UT1_inst);
         file.createAttribute("time_center_eop.ERA_deg", frame.time_center_eop.ERA_deg);
         file.createAttribute("time_center_eop.xp_as", frame.time_center_eop.xp_as);
         file.createAttribute("time_center_eop.yp_as", frame.time_center_eop.yp_as);

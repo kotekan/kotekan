@@ -209,8 +209,8 @@ public:
     bool gps_time_enabled() const override;
 
     /**
-     * Convert an FPGA sequence number into an instrument time (UNIX epoch time at start plus TAI time
-     * elapsed since start).
+     * Convert an FPGA sequence number into an instrument time (UNIX epoch time at start plus TAI
+     *time elapsed since start).
      *
      * @param  seq  The FPGA sequence number.
      *

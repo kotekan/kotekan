@@ -159,8 +159,8 @@ void N2TimeDownsample::main_thread() {
 
         DEBUG("T:   {:d}s + {:d}ns", frame.bin_eop.t_inst / GIGA, frame.bin_eop.t_inst % GIGA);
         DEBUG("UT1: {:d}s + {:d}ns", frame.bin_eop.t_ut1 / GIGA, frame.bin_eop.t_ut1 % GIGA);
-        DEBUG("ERA: {:f}; ERA_target: {:f}; ERA_bin_lo: {:f}; ERA_bin_hi: {:f}", frame.bin_eop.ERA_deg,
-              eop_target.ERA_deg, era_deg_lo, era_deg_hi);
+        DEBUG("ERA: {:f}; ERA_target: {:f}; ERA_bin_lo: {:f}; ERA_bin_hi: {:f}",
+              frame.bin_eop.ERA_deg, eop_target.ERA_deg, era_deg_lo, era_deg_hi);
 
         // Don't start accumulating unless at the start of window
         if (nframes == 0 && wait_for_alignment) {
@@ -203,7 +203,7 @@ void N2TimeDownsample::main_thread() {
             output_frame.bin_start_ERA_deg = era_deg_lo;
             output_frame.bin_end_ERA_deg = era_deg_hi;
             output_frame.bin_start_LAST = -1; // TODO: update
-            output_frame.bin_end_LAST = -1; // TODO: update
+            output_frame.bin_end_LAST = -1;   // TODO: update
 
             // Set the output absolute time index, from the difference between the current ERA bin
             // and the ERA bin at startup

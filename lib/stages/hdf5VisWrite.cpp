@@ -57,8 +57,9 @@ inline double mono_time_s() {
     return std::chrono::duration<double>(dt).count();
 }
 
-template <typename T>
-void N2FileData::_check_create_attribute(HighFive::File& file, const std::string& name, T value) const {
+template<typename T>
+void N2FileData::_check_create_attribute(HighFive::File& file, const std::string& name,
+                                         T value) const {
     if (file.hasAttribute(name)) {
         // Attribute exists, check value
         auto attr = file.getAttribute(name);
@@ -66,7 +67,7 @@ void N2FileData::_check_create_attribute(HighFive::File& file, const std::string
         attr.read(existing_value);
         if (existing_value != value) {
             ERROR_NON_OO("Attribute {} already exists with different value (existing={}, new={})",
-                  name, existing_value, value);
+                         name, existing_value, value);
         }
         return;
     }
@@ -77,8 +78,9 @@ void N2FileData::_check_create_attribute(HighFive::File& file, const std::string
 }
 
 void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& name,
-                                   const std::vector<hsize_t>& dims, const HighFive::DataType& dtype,
-                                   HighFive::DataSetCreateProps props) const {
+                                       const std::vector<hsize_t>& dims,
+                                       const HighFive::DataType& dtype,
+                                       HighFive::DataSetCreateProps props) const {
 
     if (file.exist(name)) {
         WARN_NON_OO("Dataset {} already exists in HDF5 file, not creating again.", name);
@@ -114,7 +116,9 @@ void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& 
 };
 
 std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::string& filepath,
-    const uint64_t num_file_t_, const N2FrameView& fv, const FileMode file_mode_) const {
+                                                                 const uint64_t num_file_t_,
+                                                                 const N2FrameView& fv,
+                                                                 const FileMode file_mode_) const {
 
     // 1) Open/create file
     std::unique_ptr<HighFive::File> file;
@@ -124,17 +128,17 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         // TODO: guard against multiple writers?
     } else {
         // Create new .partial file
-        file = std::make_unique<HighFive::File>(filepath, HighFive::File::ReadWrite
-                                                                | HighFive::File::Create);
+        file = std::make_unique<HighFive::File>(filepath,
+                                                HighFive::File::ReadWrite | HighFive::File::Create);
     }
-    
+
     // 2) Describe compression/filters
     HighFive::DataSetCreateProps props_compressed = HighFive::DataSetCreateProps::Empty();
     HighFive::DataSetCreateProps props_empty = HighFive::DataSetCreateProps::Empty();
 
     if (use_bitshuffle) {
         // bitshuffle + optional compression backend
-        
+
         auto level = static_cast<unsigned int>(compression_level > 0 ? compression_level : 9);
         unsigned int comp = hdf5::BITSHUFFLE_COMPRESS_NONE;
 
@@ -149,11 +153,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         // props_compressed.add(H5Pset_filter, hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
         //                      bshuf_flags.size(), bshuf_flags.data());
         hid_t dcpl = props_compressed.getId();
-        herr_t status = H5Pset_filter(dcpl,
-                                      hdf5::H5Z_BITSHUFFLE,
-                                      H5Z_FLAG_MANDATORY,
-                                      static_cast<unsigned>(bshuf_flags.size()),
-                                      bshuf_flags.data());
+        herr_t status =
+            H5Pset_filter(dcpl, hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
+                          static_cast<unsigned>(bshuf_flags.size()), bshuf_flags.data());
         if (status < 0) {
             throw std::runtime_error("H5Pset_filter(BITSHUFFLE) failed");
         }
@@ -182,12 +184,14 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
     _check_create_attribute(*file, "num_prod", fv.num_prod);
     _check_create_attribute(*file, "num_ev", fv.num_ev);
     _check_create_attribute(*file, "num_freq", fv.nfreq);
-    _check_create_attribute(*file, "vis_layout", std::string(fv.vis_layout == N2Layout::FullUpperTri ? "FullUpperTri"
-                                                              : "RedundantBaselineAvg"));
+    _check_create_attribute(*file, "vis_layout",
+                            std::string(fv.vis_layout == N2Layout::FullUpperTri
+                                            ? "FullUpperTri"
+                                            : "RedundantBaselineAvg"));
 
     // track which (f,t) frames have been added
     _check_create_dataset(*file, "/frames_added", {fv.nfreq, num_file_t_},
-                HighFive::create_datatype<uint8_t>(), props_empty);
+                          HighFive::create_datatype<uint8_t>(), props_empty);
 
     // JSON config data
     HighFive::DataSetCreateProps json_props = HighFive::DataSetCreateProps::Empty();
@@ -198,42 +202,43 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
 
     // create datasets
     _check_create_dataset(*file, "/vis", {fv.nfreq, fv.num_prod, num_file_t_},
-                    HighFive::create_datatype<cfloat>(), props_compressed);
+                          HighFive::create_datatype<cfloat>(), props_compressed);
     _check_create_dataset(*file, flags_group_prefix + "/vis_weight",
-                    {fv.nfreq, fv.num_prod, num_file_t_}, HighFive::create_datatype<float>(),
-                    props_compressed);
+                          {fv.nfreq, fv.num_prod, num_file_t_}, HighFive::create_datatype<float>(),
+                          props_compressed);
     _check_create_dataset(*file, "/eval", {fv.nfreq, fv.num_ev, num_file_t_},
-                    HighFive::create_datatype<float>(), props_compressed);
+                          HighFive::create_datatype<float>(), props_compressed);
     _check_create_dataset(*file, "/evec", {fv.nfreq, fv.num_ev, fv.num_elements, num_file_t_},
-                    HighFive::create_datatype<cfloat>(), props_compressed);
-    _check_create_dataset(*file, "/erms", {fv.nfreq, num_file_t_}, HighFive::create_datatype<float>(),
-                    props_empty);
+                          HighFive::create_datatype<cfloat>(), props_compressed);
+    _check_create_dataset(*file, "/erms", {fv.nfreq, num_file_t_},
+                          HighFive::create_datatype<float>(), props_empty);
     _check_create_dataset(*file, "/gain", {fv.nfreq, fv.num_elements, num_file_t_},
-                    HighFive::create_datatype<cfloat>(), props_empty);
+                          HighFive::create_datatype<cfloat>(), props_empty);
 
-    _check_create_dataset(*file, flags_group_prefix + "/flags", {fv.nfreq, fv.num_elements, num_file_t_},
-                    HighFive::create_datatype<float>(), props_empty);
+    _check_create_dataset(*file, flags_group_prefix + "/flags",
+                          {fv.nfreq, fv.num_elements, num_file_t_},
+                          HighFive::create_datatype<float>(), props_empty);
     _check_create_dataset(*file, flags_group_prefix + "/frac_lost", {fv.nfreq, num_file_t_},
-                    HighFive::create_datatype<float>(), props_empty);
+                          HighFive::create_datatype<float>(), props_empty);
     _check_create_dataset(*file, flags_group_prefix + "/frac_rfi", {fv.nfreq, num_file_t_},
-                    HighFive::create_datatype<float>(), props_empty);
-    _check_create_dataset(*file, "/fpga_start_tick", {num_file_t_}, HighFive::create_datatype<uint64_t>(),
-                    props_empty);
+                          HighFive::create_datatype<float>(), props_empty);
+    _check_create_dataset(*file, "/fpga_start_tick", {num_file_t_},
+                          HighFive::create_datatype<uint64_t>(), props_empty);
     _check_create_dataset(*file, "/frame_length_fpga_ticks", {num_file_t_},
-                    HighFive::create_datatype<uint64_t>(), props_empty);
+                          HighFive::create_datatype<uint64_t>(), props_empty);
 
-    _check_create_dataset(*file, "/time_center_ut1", {num_file_t_}, HighFive::create_datatype<int64_t>(),
-                    props_empty);
+    _check_create_dataset(*file, "/time_center_ut1", {num_file_t_},
+                          HighFive::create_datatype<int64_t>(), props_empty);
     _check_create_dataset(*file, "/bin_ut1", {num_file_t_}, HighFive::create_datatype<int64_t>(),
-                    props_empty);
-    _check_create_dataset(*file, "/bin_start_ERA_deg", {num_file_t_}, HighFive::create_datatype<double>(),
-                    props_empty);
-    _check_create_dataset(*file, "/bin_end_ERA_deg", {num_file_t_}, HighFive::create_datatype<double>(),
-                    props_empty);
-    _check_create_dataset(*file, "/bin_start_LAST", {num_file_t_}, HighFive::create_datatype<int64_t>(),
-                    props_empty);
-    _check_create_dataset(*file, "/bin_end_LAST", {num_file_t_}, HighFive::create_datatype<int64_t>(),
-                    props_empty);
+                          props_empty);
+    _check_create_dataset(*file, "/bin_start_ERA_deg", {num_file_t_},
+                          HighFive::create_datatype<double>(), props_empty);
+    _check_create_dataset(*file, "/bin_end_ERA_deg", {num_file_t_},
+                          HighFive::create_datatype<double>(), props_empty);
+    _check_create_dataset(*file, "/bin_start_LAST", {num_file_t_},
+                          HighFive::create_datatype<int64_t>(), props_empty);
+    _check_create_dataset(*file, "/bin_end_LAST", {num_file_t_},
+                          HighFive::create_datatype<int64_t>(), props_empty);
 
     return file;
 }
@@ -268,10 +273,9 @@ bool N2FileData::add_frame(const N2FrameView& fv, size_t t_index) {
             && frame_length_fpga_ticks[t_index] != fv.frame_length_fpga_ticks)
         || (time_center_ut1[t_index] > 0 && time_center_ut1[t_index] != fv.time_center_eop.t_ut1)
         || (bin_ut1[t_index] > 0 && bin_ut1[t_index] != fv.bin_eop.t_ut1)
-        || (bin_start_ERA_deg[t_index] < 0)
-        || (bin_end_ERA_deg[t_index] < 0)
+        || (bin_start_ERA_deg[t_index] < 0) || (bin_end_ERA_deg[t_index] < 0)
         || (bin_start_LAST[t_index] > 0 && bin_start_LAST[t_index] != fv.bin_start_LAST)
-        || (bin_end_LAST[t_index] > 0 && bin_end_LAST[t_index] != fv.bin_end_LAST) ) {
+        || (bin_end_LAST[t_index] > 0 && bin_end_LAST[t_index] != fv.bin_end_LAST)) {
         ERROR_NON_OO(
             "N2FileData: frame information mismatch at (f={}, t={}): "
             "fv.vis.size()={}, fv.weight.size()={}, fv.eval.size()={}, fv.evec.size()={}, "
@@ -288,7 +292,7 @@ bool N2FileData::add_frame(const N2FrameView& fv, size_t t_index) {
         return false;
     }
 
-    
+
     // Store vis + weight
     for (size_t p = 0; p < num_prod; ++p) {
         vis[idx_fpt(f_index, p, t_index)] = fv.vis[p];
@@ -373,12 +377,12 @@ bool N2FileData::flush_to_disk() {
     // Add and write configs in configTracker
     std::vector<std::string> json_objs = kotekan::ConfigTracker::instance().getAllJSONConfigs();
     HighFive::DataSet json_dset = h5_file->getDataSet("/config_json");
-    auto space    = json_dset.getSpace();
+    auto space = json_dset.getSpace();
     auto cur_dims = space.getDimensions();
     std::size_t old_n = cur_dims.empty() ? 0 : cur_dims[0];
     std::size_t extra_n = json_objs.size();
-    json_dset.resize({ old_n + extra_n });
-    json_dset.select({ old_n }, { extra_n }).write(json_objs);
+    json_dset.resize({old_n + extra_n});
+    json_dset.select({old_n}, {extra_n}).write(json_objs);
 
     // Write directly from buffers, use write_raw(ptr) so memspace is applied
     h5_file->getDataSet("/frames_added")
@@ -432,7 +436,7 @@ void N2FileData::close() {
 REGISTER_KOTEKAN_STAGE(hdf5N2Write);
 
 hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name,
-                           kotekan::bufferContainer& buffer_container) :
+                         kotekan::bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           [](const kotekan::Stage& stage) {
               return const_cast<kotekan::Stage&>(stage).main_thread();
@@ -490,8 +494,8 @@ void hdf5N2Write::_finalize_file(N2FileData& filedata) {
     }
 }
 
-void hdf5N2Write::_grace_finalize_files(
-    std::map<size_t, std::unique_ptr<N2FileData>>& files, const size_t* exclude_abs_file_idx) {
+void hdf5N2Write::_grace_finalize_files(std::map<size_t, std::unique_ptr<N2FileData>>& files,
+                                        const size_t* exclude_abs_file_idx) {
     const double now_s = mono_time_s();
     for (auto file_it = files.begin(); file_it != files.end();) {
         auto& obj = *file_it->second;
@@ -509,7 +513,7 @@ void hdf5N2Write::_grace_finalize_files(
 }
 
 bool hdf5N2Write::_finalfile_exists(std::uint64_t abs_file_idx,
-                                     const std::string& search_dir) const {
+                                    const std::string& search_dir) const {
     const std::string prefix = "vis_" + std::to_string(abs_file_idx) + "_";
     try {
         for (const auto& entry : std::filesystem::directory_iterator(search_dir)) {
@@ -592,7 +596,8 @@ void hdf5N2Write::main_thread() {
             // Create N2FileData for file (also looks for .partial)
 
             auto compression = config.get_default<std::string>(unique_name, "compression", "none");
-            auto compression_level = config.get_default<std::uint64_t>(unique_name, "compression_level", 0);
+            auto compression_level =
+                config.get_default<std::uint64_t>(unique_name, "compression_level", 0);
             auto use_bitshuffle = config.get_default<bool>(unique_name, "use_bitshuffle", false);
             auto blocksize_f = config.get_default<std::uint64_t>(unique_name, "blocksize_f", 0);
             auto blocksize_t = config.get_default<std::uint64_t>(unique_name, "blocksize_t", 1);
@@ -616,7 +621,8 @@ void hdf5N2Write::main_thread() {
 
         // Attempt to add frame to dataset
         const std::uint64_t t_in_file = fv.abs_time_idx % file_num_t;
-        bool success = N2FileData_ptr->add_frame(fv, t_in_file); // performs error checking internally.
+        bool success =
+            N2FileData_ptr->add_frame(fv, t_in_file); // performs error checking internally.
         if (!success) {
             // Mark frame as done, finalize, and continue
             ERROR("Failed to add frame to dataset (f={}, t={})", fv.freq_id, t_in_file);

@@ -21,12 +21,9 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     vis_layout(_metadata->vis_layout), freq_id(_metadata->freq_id), freq_MHz(_metadata->freq_MHz),
     abs_time_idx(_metadata->abs_time_idx),
 
-    time_center_eop(_metadata->time_center_eop),
-    bin_eop(_metadata->bin_eop),
-    bin_start_ERA_deg(_metadata->bin_start_ERA_deg),
-    bin_end_ERA_deg(_metadata->bin_end_ERA_deg),
-    bin_start_LAST(_metadata->bin_start_LAST),
-    bin_end_LAST(_metadata->bin_end_LAST),
+    time_center_eop(_metadata->time_center_eop), bin_eop(_metadata->bin_eop),
+    bin_start_ERA_deg(_metadata->bin_start_ERA_deg), bin_end_ERA_deg(_metadata->bin_end_ERA_deg),
+    bin_start_LAST(_metadata->bin_start_LAST), bin_end_LAST(_metadata->bin_end_LAST),
 
     fpga_start_tick(_metadata->fpga_start_tick),
     frame_start_time_ns(_metadata->frame_start_time_ns),

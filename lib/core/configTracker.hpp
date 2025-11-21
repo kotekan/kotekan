@@ -443,13 +443,14 @@ public:
     }
 
     /**
-     * @brief Get a vector of strings of all config json 
+     * @brief Get a vector of strings of all config json
      */
     std::vector<std::string> getAllJSONConfigs() const {
         std::vector<std::string> configs;
         std::lock_guard<std::mutex> lock(_lock);
         for (const auto& [host_port, config_info] : _configs) {
-            configs.push_back(config_info.to_json().dump(4, ' ', false, nlohmann::json::error_handler_t::strict));
+            configs.push_back(
+                config_info.to_json().dump(4, ' ', false, nlohmann::json::error_handler_t::strict));
         }
         return configs;
     }
