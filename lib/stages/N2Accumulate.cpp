@@ -55,9 +55,14 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    // Ensure outgoing buffer is of type N2 (correct size implicit)
+    // Ensure outgoing buffer is of type N2 and sized correctly
     if (out_buf->buffer_type != "N2")
         FATAL_ERROR("N2Accumulate out_buf ({:s}) is not of type N2.", out_buf->buffer_name);
+    size_t out_n2_frame_size =
+        N2FrameView::calculate_frame_size(_num_elements, 0, _N2_num_products); // Enforce 0 ev
+    if (out_buf->frame_size != out_n2_frame_size)
+        FATAL_ERROR("N2Accumulate out_buf ({:s}) has frame size {:d}. Expected {:d}.",
+                    out_buf->buffer_name, out_buf->frame_size, out_n2_frame_size);
 
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
