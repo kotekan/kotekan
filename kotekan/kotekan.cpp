@@ -33,6 +33,7 @@
 #include <string.h>    // for strdup
 #include <string>      // for basic_string, allocator, string, operator!=, char_traits
 #include <strings.h>   // for strcasecmp
+#include <thread>      // for thread, get_id
 #include <sys/wait.h>  // for waitpid
 #include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
 #include <type_traits> // for underlying_type
@@ -431,6 +432,7 @@ int main(int argc, char** argv) {
 
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
+    main_thread_id = std::this_thread::get_id();
 
     // Set HDF5_PLUGIN_PATH if a default was detected at configure time.
     if (ensure_hdf5_plugin()) {

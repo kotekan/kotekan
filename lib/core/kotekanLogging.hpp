@@ -152,7 +152,7 @@
         ERROR(m, ##__VA_ARGS__);                                                                   \
         set_error_message(fmt(m), ##__VA_ARGS__);                                                  \
         exit_kotekan(ReturnCode::FATAL_ERROR);                                                     \
-        pthread_exit(nullptr);                                                                     \
+        kotekan::fatal_error_thread_exit();                                                        \
     } while (0)
 #define FATAL_ERROR_NON_OO(m, ...)                                                                 \
     do {                                                                                           \
