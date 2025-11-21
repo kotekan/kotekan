@@ -145,7 +145,7 @@ void bufferSend::main_thread() {
                 DEBUG2("Sending header");
                 while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
                                  MSG_NOSIGNAL))
-                       >= 0) {
+                       > 0) {
                     n_sent += n;
                 }
             }
