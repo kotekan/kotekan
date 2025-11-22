@@ -100,6 +100,9 @@ void Stage::start() {
 #endif
         try {
             main_thread_fn(std::ref(*this));
+        } catch (const FatalError& e) {
+            // FATAL_ERROR already called exit_kotekan; avoid terminating the thread abruptly.
+            ERROR("Stage {:s} caught FatalError: {:s}", unique_name, e.what());
         } catch (const std::exception& e) {
             ERROR("Exception in stage {:s}: {:s}", unique_name, e.what());
             throw;
