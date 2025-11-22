@@ -440,7 +440,7 @@ void connInstance::internal_read_callback() {
                                            : sizeof(bufferFrameHeaderNoConfigTracker);
 
                 n = read(fd, (void*)(((int8_t*)&buf_frame_header) + bytes_read),
-                         sizeof(bufferFrameHeader) - bytes_read);
+                         bytes_to_read - bytes_read);
                 if (n <= 0) {
                     handle_error("reading header", errno, n);
                     return;
