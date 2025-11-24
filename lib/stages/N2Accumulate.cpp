@@ -70,6 +70,11 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     // Sanity checks on initialization
     {
+        // Check num_ev is zero (not using eigenvalues here, and this is now hardcoded.)
+        int num_ev = config.get_default<int>(unique_name, "num_ev", 0);
+        if (num_ev != 0)
+            FATAL_ERROR("N2Accumulate stage requires num_ev=0, got {:d}", num_ev);
+
         // number of frequencies in incoming frames from n2k
         if (_num_freq_per_n2k_frame <= 0)
             FATAL_ERROR("num_freq_per_n2k_frame is not positive: {:d}", _num_freq_per_n2k_frame);

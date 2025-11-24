@@ -1,6 +1,6 @@
-// Boost tests for the hdf5VisWrite stage end-to-end, writing HDF5 files
+// Boost tests for the hdf5N2Write stage end-to-end, writing HDF5 files
 
-#define BOOST_TEST_MODULE "test_hdf5VisWrite"
+#define BOOST_TEST_MODULE "test_hdf5N2Write"
 
 #include "Config.hpp" // for Config
 #include "H5Support.hpp"
@@ -41,9 +41,8 @@ using std::string;
 
 using HighFive::File;
 
-namespace {
 
-/// Simple test double to expose N2FileData internals without modifying production code.
+/// Simple class to expose N2FileData internals without modifying production code.
 class TestVisFileData : public N2FileData {
 public:
     TestVisFileData(const N2FrameView& fv, uint64_t num_file_t, double open_wall_s,
@@ -98,55 +97,6 @@ public:
         return added_count;
     }
 };
-
-static void ensure_directory(const std::string& path) {
-    if (path.empty())
-        return;
-    if (::mkdir(path.c_str(), 0777) != 0 && errno != EEXIST) {
-        BOOST_FAIL("Failed to create directory " << path << " errno=" << errno);
-    }
-}
-
-static void set_file_num_t(kotekan::Config& conf, const std::string& unique_name,
-                           uint64_t file_num_t) {
-    nlohmann::json cfg = conf.get_full_config_json();
-    auto update_stage = [&](const std::string& key) {
-        if (!key.empty() && cfg.contains(key) && cfg[key].is_object())
-            cfg[key]["file_num_t"] = file_num_t;
-    };
-    update_stage(unique_name);
-    if (!unique_name.empty() && unique_name.front() == '/')
-        update_stage(unique_name.substr(1));
-    conf.update_config(cfg);
-}
-
-static void set_stage_log_level(kotekan::Config& conf, const std::string& unique_name,
-                                const std::string& level) {
-    nlohmann::json cfg = conf.get_full_config_json();
-    auto update_stage = [&](const std::string& key) {
-        if (!key.empty() && cfg.contains(key) && cfg[key].is_object())
-            cfg[key]["log_level"] = level;
-    };
-    update_stage(unique_name);
-    if (!unique_name.empty() && unique_name.front() == '/')
-        update_stage(unique_name.substr(1));
-    conf.update_config(cfg);
-}
-
-static void fill_n2_frame_with_abs(Buffer* buf, int frame_id, size_t num_input, size_t num_ev,
-                                   size_t nfreq, size_t f_index, size_t t_index,
-                                   uint64_t frame_start_time_ns, uint64_t frame_length_ticks,
-                                   uint64_t abs_time_idx) {
-    fill_n2_frame(buf, frame_id, num_input, num_ev, nfreq, f_index, t_index, frame_start_time_ns,
-                  frame_length_ticks);
-    auto meta = get_N2_metadata(buf, frame_id);
-    BOOST_REQUIRE(meta);
-    meta->abs_time_idx = abs_time_idx;
-    meta->time_center_eop.t_ut1 = static_cast<int64_t>(frame_start_time_ns);
-    meta->bin_eop.t_ut1 = static_cast<int64_t>(frame_start_time_ns);
-}
-
-} // namespace
 
 // Force registration of metadata with Metadata factory
 static N2Metadata _force_n2meta_registration;
@@ -438,7 +388,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer";
     const std::string in_buf_name = "n2buf";
-    const std::string base_dir = "test_hdf5VisWrite_full";
+    const std::string base_dir = "test_hdf5N2Write_full";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -533,7 +483,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer_partial";
     const std::string in_buf_name = "n2buf_partial";
-    const std::string base_dir = "test_hdf5VisWrite_partial";
+    const std::string base_dir = "test_hdf5N2Write_partial";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -624,7 +574,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer_rollover";
     const std::string in_buf_name = "n2buf_rollover";
-    const std::string base_dir = "test_hdf5VisWrite_rollover";
+    const std::string base_dir = "test_hdf5N2Write_rollover";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -710,7 +660,7 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer_names";
     const std::string in_buf_name = "n2buf_names";
-    const std::string base_dir = "test_hdf5VisWrite_names";
+    const std::string base_dir = "test_hdf5N2Write_names";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -789,7 +739,7 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer_timeout";
     const std::string in_buf_name = "n2buf_timeout";
-    const std::string base_dir = "test_hdf5VisWrite_timeout";
+    const std::string base_dir = "test_hdf5N2Write_timeout";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -869,7 +819,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer_drop";
     const std::string in_buf_name = "n2buf_drop";
-    const std::string base_dir = "test_hdf5VisWrite_drop";
+    const std::string base_dir = "test_hdf5N2Write_drop";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 
@@ -961,7 +911,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer_geom";
     const std::string in_buf_name = "n2buf_geom";
-    const std::string base_dir = "test_hdf5VisWrite_geom";
+    const std::string base_dir = "test_hdf5N2Write_geom";
     const std::string file_name = "vis";
     rm_tree_if_exists(base_dir);
 

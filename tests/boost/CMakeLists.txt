@@ -141,9 +141,9 @@ add_custom_target(
 
 # visFileData unit test + end-to-end writer test (HDF5 backend)
 if(HDF5_FOUND AND HighFive_FOUND)
-    add_executable(test_hdf5VisWrite test_hdf5VisWrite.cpp)
+    add_executable(test_hdf5N2Write test_hdf5N2Write.cpp)
     target_link_libraries(
-        test_hdf5VisWrite
+        test_hdf5N2Write
         PRIVATE libexternal
                 kotekan_stages
                 kotekan_libs
@@ -153,9 +153,9 @@ if(HDF5_FOUND AND HighFive_FOUND)
                 ${HDF5_LIBRARIES}
                 HighFive::HighFive)
     target_include_directories(
-        test_hdf5VisWrite PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages ${KOTEKAN_SOURCE_DIR}/lib/utils
+        test_hdf5N2Write PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages ${KOTEKAN_SOURCE_DIR}/lib/utils
                                   ${HDF5_INCLUDE_DIRS})
-    target_include_directories(test_hdf5VisWrite PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+    target_include_directories(test_hdf5N2Write PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 endif()
 
 add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)

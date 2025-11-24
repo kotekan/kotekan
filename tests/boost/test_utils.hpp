@@ -92,6 +92,43 @@ struct CompareCTypes {
     }
 };
 
+// Ensure a directory exists (creates it if needed)
+[[maybe_unused]] void ensure_directory(const std::string& path) {
+    if (path.empty())
+        return;
+    if (::mkdir(path.c_str(), 0777) != 0 && errno != EEXIST) {
+        BOOST_FAIL("Failed to create directory " << path << " errno=" << errno);
+    }
+}
+
+// Set the file_num_t parameter for a stage in the config
+[[maybe_unused]] static void set_file_num_t(kotekan::Config& conf, const std::string& unique_name,
+                           uint64_t file_num_t) {
+    nlohmann::json cfg = conf.get_full_config_json();
+    auto update_stage = [&](const std::string& key) {
+        if (!key.empty() && cfg.contains(key) && cfg[key].is_object())
+            cfg[key]["file_num_t"] = file_num_t;
+    };
+    update_stage(unique_name);
+    if (!unique_name.empty() && unique_name.front() == '/')
+        update_stage(unique_name.substr(1));
+    conf.update_config(cfg);
+}
+
+// Set the log level for a stage in the config
+[[maybe_unused]] static void set_stage_log_level(kotekan::Config& conf, const std::string& unique_name,
+                                const std::string& level) {
+    nlohmann::json cfg = conf.get_full_config_json();
+    auto update_stage = [&](const std::string& key) {
+        if (!key.empty() && cfg.contains(key) && cfg[key].is_object())
+            cfg[key]["log_level"] = level;
+    };
+    update_stage(unique_name);
+    if (!unique_name.empty() && unique_name.front() == '/')
+        update_stage(unique_name.substr(1));
+    conf.update_config(cfg);
+}
+
 // Helper function to list items in a directory
 [[maybe_unused]] static std::vector<std::string> list_dir_entries(const std::string& path) {
     std::vector<std::string> out;
@@ -254,6 +291,20 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
         fv.gain[i] = N2::cfloat(200.0f + float(i), -200.0f - float(i));
         fv.flags[i] = 300.0f + float(i);
     }
+}
+
+// Helper to fill an N2 frame and set abs_time_idx in metadata
+[[maybe_unused]] static void fill_n2_frame_with_abs(Buffer* buf, int frame_id, size_t num_input, size_t num_ev,
+                                   size_t nfreq, size_t f_index, size_t t_index,
+                                   uint64_t frame_start_time_ns, uint64_t frame_length_ticks,
+                                   uint64_t abs_time_idx) {
+    fill_n2_frame(buf, frame_id, num_input, num_ev, nfreq, f_index, t_index, frame_start_time_ns,
+                  frame_length_ticks);
+    auto meta = get_N2_metadata(buf, frame_id);
+    BOOST_REQUIRE(meta);
+    meta->abs_time_idx = abs_time_idx;
+    meta->time_center_eop.t_ut1 = static_cast<int64_t>(frame_start_time_ns);
+    meta->bin_eop.t_ut1 = static_cast<int64_t>(frame_start_time_ns);
 }
 
 #endif // TEST_UTILS_HPP

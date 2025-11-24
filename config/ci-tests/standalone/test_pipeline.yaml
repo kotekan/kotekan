@@ -136,7 +136,7 @@ n2_buffer:
 
 n2_recv_buffer:
     kotekan_buffer: N2
-    num_ev: 2
+    num_ev: 0
     vis_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
@@ -382,6 +382,8 @@ hdf5_vis_write:
     blocksize_t: 2
     file_seconds: 1
     late_frame_grace_seconds: 2
+    num_ev: 2
+    vis_layout: "FullUpperTri"
 
 # Monitor N2 buffer for activity
 
