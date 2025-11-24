@@ -12,16 +12,17 @@ buffer_depth: 10
 telescope:
     log_level: ERROR
     name: CHORDTelescope
-    inst_lat_deg: 50.0
-    inst_long_deg: -120.0
-    inst_alt_deg: 90.0
-    inst_grid_x_axis: [1.0, 0.0, 0.0]
-    inst_grid_y_axis: [0.0, 1.0, 0.0]
-    inst_dish_alt_axis: [1.0, 0.0, 0.0]
-    inst_dish_vert_axis: [0.0, 0.0, 1.0]
-    dish_positions: []
+    origin_itrs_lat_deg: 50.0
+    origin_itrs_lon_deg: -120.0
+    dish_coelev_deg: 90.0
+    grid_x_axis: [1.0, 0.0, 0.0]
+    grid_y_axis: [0.0, 1.0, 0.0]
+    dish_elev_axis: [1.0, 0.0, 0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
     require_gps: False
     updatable_config: /earth_rotation_data
+    num_dishes: 64
+    dish_inputs: []
 
 earth_rotation_data:
     kotekan_update_endpoint: json
@@ -53,14 +54,28 @@ recv_buffer:
     frame_size: num_frame_samples
     metadata_pool: main_pool
 
+send_buffer_noCT:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_frame_samples
+    metadata_pool: main_pool
+
+recv_buffer_noCT:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_frame_samples
+    metadata_pool: main_pool
+
 send_N2_buffer:
     kotekan_buffer: N2
     metadata_pool: N2_pool
+    layout: "FullUpperTri"
     num_frames: buffer_depth
 
 recv_N2_buffer:
     kotekan_buffer: N2
     metadata_pool: N2_pool
+    layout: "FullUpperTri"
     num_frames: buffer_depth
 
 
@@ -92,6 +107,35 @@ buffer_recv_standard:
     kotekan_stage: bufferRecv
     buf: recv_buffer
     listen_port: 11024
+
+# standard buffer, no config tracker: generate and send/recv some random data
+
+gen_buffer_data_noCT:
+    log_level: WARN
+    # type: const
+    # value: 34 # 1i # 34 # = 2 + 2i
+    type: random_signed
+    value: 1532
+    kotekan_stage: testDataGen
+    out_buf: send_buffer_noCT
+    array_shape: [ 2048 ]
+    dim_name: ["S"]
+    num_frames: 6
+
+buffer_send_standard_noCT:
+    kotekan_stage: bufferSend
+    use_config_tracker: false
+    buf: send_buffer_noCT
+    server_ip: 127.0.0.1
+    server_port: 11026
+    retry_time: 1.0
+    drop_frames: false
+
+buffer_recv_standard_NoCT:
+    kotekan_stage: bufferRecv
+    use_config_tracker: false
+    buf: recv_buffer_noCT
+    listen_port: 11026
 
 # N2 buffer: generate and send/recv some random data
 
@@ -131,6 +175,14 @@ check_standard_send_recv:
     trigger_exit_on_pass: false
     check_metadata: true
 
+check_standard_send_recv_noCT:
+    kotekan_stage: testDataCheckUchar
+    first_buf: send_buffer_noCT
+    second_buf: recv_buffer_noCT
+    num_frames_to_test: buffer_depth
+    trigger_exit_on_pass: false
+    check_metadata: true
+
 check_n2_send_recv:
     kotekan_stage: testDataCheckUchar
     first_buf: send_N2_buffer
@@ -148,5 +200,6 @@ buffer_monitor:
     wait_for_first_frame: true
     bufs:
       - recv_buffer
+      - recv_buffer_noCT
       - recv_N2_buffer
     clean_exit_after_frames: 6 # Trigger success after this many frames have been seen
