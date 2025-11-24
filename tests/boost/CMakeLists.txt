@@ -139,5 +139,24 @@ add_custom_target(
     DEPENDS ${PROJECT_BINARY_DIR}/timeUtil.py
     COMMENT "Generating timeUtil.py script")
 
+# visFileData unit test + end-to-end writer test (HDF5 backend)
+if(HDF5_FOUND AND HighFive_FOUND)
+    add_executable(test_hdf5VisWrite test_hdf5VisWrite.cpp)
+    target_link_libraries(
+        test_hdf5VisWrite
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                ${HDF5_HL_LIBRARIES}
+                ${HDF5_LIBRARIES}
+                HighFive::HighFive)
+    target_include_directories(
+        test_hdf5VisWrite PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages ${KOTEKAN_SOURCE_DIR}/lib/utils
+                                  ${HDF5_INCLUDE_DIRS})
+    target_include_directories(test_hdf5VisWrite PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+endif()
+
 add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)
 target_link_libraries(test_CHORDTelescope kotekan_utils)
