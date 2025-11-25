@@ -346,8 +346,8 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
 
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
-    json_config["num_dishes_x"] = 8;
-    json_config["num_dishes_y"] = 8;
+    json_config["num_dishes_x"] = 22;
+    json_config["num_dishes_y"] = 24;
     json_config["dish_separation_x_m"] = 1.0;
     json_config["dish_separation_y_m"] = 2.0;
     json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
