@@ -324,7 +324,7 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
     check_equal_vec3d(tel.get_dish_position_in_grid_coords(4),
                       std::array<double, 3>({0.0, 0.0, 0.0}));
     check_equal_vec3d(tel.get_dish_position_in_grid_coords(5),
-                      std::array<double, 3>({-5.0 - 0.3, 814 * 2.0 + 1.0, 0.5}));
+                      std::array<double, 3>({21.0 - 0.3, 23.0 * 2.0 + 1.0, 0.5}));
     check_equal_vec3d(tel.get_dish_position_in_grid_coords(6),
                       std::array<double, 3>({0.0, 0.0, 0.0}));
     check_equal_vec3d(tel.get_dish_position_in_grid_coords(7),
