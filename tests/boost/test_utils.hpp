@@ -213,7 +213,7 @@ struct CompareCTypes {
 [[maybe_unused]] static kotekan::Config
 make_writer_config(const std::string& unique_name, const std::string& in_buf,
                    const std::string& base_dir, const std::string& file_name, bool prefix_hostname,
-                   uint64_t file_seconds, uint64_t blocksize_f = 0, uint64_t blocksize_t = 1,
+                   uint64_t num_file_t, uint64_t blocksize_f = 0, uint64_t blocksize_t = 1,
                    uint64_t late_frame_grace_seconds = 60, uint64_t seq_length_nsec_override = 0) {
     using json = nlohmann::json;
 
@@ -228,7 +228,7 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     stage["blocksize_f"] = blocksize_f;
     stage["blocksize_p"] = 0;
     stage["blocksize_t"] = blocksize_t;
-    stage["file_seconds"] = file_seconds;
+    stage["num_file_t"] = num_file_t;
     stage["join_timeout"] = 5;
     stage["late_frame_grace_seconds"] = late_frame_grace_seconds;
     if (seq_length_nsec_override > 0)

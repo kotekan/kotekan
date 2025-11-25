@@ -396,17 +396,17 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     const size_t num_input = 3;
     const size_t num_ev = 2;
     const size_t nfreq = 3;
-    // Use 100-second frames and 200-second file windows to get file_nt=2
+    // Two 100-second frames per file -> file_nt=2
     const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 100; // ensure fractions compute as 80/100
-    const uint64_t file_seconds = 200;
-    const size_t expected_file_nt = 2;
+    const uint64_t num_file_t = 2;
+    const size_t expected_num_file_t = num_file_t;
 
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name,
-                                   /*prefix_hostname*/ false, file_seconds,
+                                   /*prefix_hostname*/ false, num_file_t,
                                    /*blocksize_f (0=all)*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
                                    /*seq_override*/ dt_ns);
-    set_file_num_t(conf, unique_name, expected_file_nt);
+    set_file_num_t(conf, unique_name, num_file_t);
 
     // Buffer + container
     const size_t num_prod = N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri);
@@ -422,9 +422,9 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     hdf5N2Write stage(conf, unique_name, bc);
     stage.start();
 
-    // Time logic: ensure base_time aligned to file window start
+    // Time logic: keep base_time within the first file window for deterministic naming
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
-    const uint64_t base_time_ns = 10'000'000'000ULL; // falls within file window [0,200)s
+    const uint64_t base_time_ns = 10'000'000'000ULL; // falls within file window
 
     // Send frames out of time order to exercise t-indexing
     N2::frameID fid(&buf);
@@ -467,7 +467,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
 
     {
         File f(ds_path, File::ReadOnly);
-        validate_dataset_content(f, num_input, num_ev, nfreq, expected_file_nt);
+        validate_dataset_content(f, num_input, num_ev, nfreq, expected_num_file_t);
     }
 
     // Cleanup
@@ -491,16 +491,15 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     const size_t num_input = 3;
     const size_t num_ev = 2;
     const size_t nfreq = 3;
-    // Use a 2-second file window so file_nt=2 with 1s frames
-    const uint64_t file_seconds = 2;
-    const size_t file_nt = 2;
+    // Use 2 time frames per file so file_nt=2 with 1s frames
+    const uint64_t num_file_t = 2;
     const size_t num_prod = N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri);
 
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name,
-                                   /*prefix_hostname*/ false, file_seconds,
+                                   /*prefix_hostname*/ false, num_file_t,
                                    /*blocksize_f (0=all)*/ 0, /*blocksize_t*/ 1, /*grace*/ 60,
                                    /*seq_override*/ 1'000'000'000ULL);
-    set_file_num_t(conf, unique_name, file_nt);
+    set_file_num_t(conf, unique_name, num_file_t);
 
     // Buffer + container
     const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev, num_prod);
@@ -581,12 +580,11 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const size_t num_input = 3;
     const size_t num_ev = 2;
     const size_t nfreq = 3;
-    const size_t file_nt = 2;
-    const uint64_t file_seconds = 200;
-    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
-                                   file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+    const uint64_t num_file_t = 2;
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
+                                   /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                    /*seq_override*/ 1'000'000'000ULL);
-    set_file_num_t(conf, unique_name, file_nt);
+    set_file_num_t(conf, unique_name, num_file_t);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(
         num_input, num_ev, N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri));
@@ -602,15 +600,15 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 100;
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
-    const uint64_t file_len_ns = file_seconds * 1'000'000'000ULL;
-    const uint64_t baseA = 12'000'000'000ULL; // align to even multiple of 2s file windows
+    const uint64_t file_len_ns = frame_len_ns * num_file_t;
+    const uint64_t baseA = 12'000'000'000ULL;
     const uint64_t baseB = baseA + file_len_ns;
 
     N2::frameID fid(&buf);
     const uint64_t abs_base_a = 0;
-    const uint64_t abs_base_b = file_nt;
+    const uint64_t abs_base_b = num_file_t;
     // File window A (t=0..1)
-    for (size_t t = 0; t < file_nt; ++t)
+    for (size_t t = 0; t < num_file_t; ++t)
         for (size_t f = 0; f < nfreq; ++f) {
             uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
             BOOST_REQUIRE(frame != nullptr);
@@ -620,7 +618,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
             fid++;
         }
     // File window B (t=0..1)
-    for (size_t t = 0; t < file_nt; ++t)
+    for (size_t t = 0; t < num_file_t; ++t)
         for (size_t f = 0; f < nfreq; ++f) {
             uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
             BOOST_REQUIRE(frame != nullptr);
@@ -646,7 +644,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     for (const auto& e : datasets) {
         const std::string p = join_path(base_dir, e);
         File f(p, File::ReadOnly);
-        validate_dataset_content(f, num_input, num_ev, nfreq, file_nt);
+        validate_dataset_content(f, num_input, num_ev, nfreq, num_file_t);
         rm_tree_if_exists(p);
     }
     rm_tree_if_exists(base_dir);
@@ -669,11 +667,11 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     const size_t nfreq = 3;
     const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 1;
-    const uint64_t file_seconds = 1; // one second file window => one frame per file
-    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
-                                   file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+    const uint64_t num_file_t = 1; // one frame per file
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
+                                   /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                    /*seq_override*/ dt_ns);
-    set_file_num_t(conf, unique_name, 1);
+    set_file_num_t(conf, unique_name, num_file_t);
     const size_t frame_size = N2FrameView::calculate_frame_size(
         num_input, num_ev, N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri));
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_subsec", "N2Metadata");
@@ -746,12 +744,11 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const size_t num_input = 3;
     const size_t num_ev = 2;
     const size_t nfreq = 3;
-    const size_t file_nt = 2;
-    const uint64_t window_seconds = 2;
+    const uint64_t num_file_t = 2;
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
-                                   window_seconds, 0 /*bs_f*/, 1 /*bs_t*/,
+                                   num_file_t, 0 /*bs_f*/, 1 /*bs_t*/,
                                    0 /*late_frame_grace_seconds*/, 1'000'000'000ULL);
-    set_file_num_t(conf, unique_name, file_nt);
+    set_file_num_t(conf, unique_name, num_file_t);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(
         num_input, num_ev, N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri));
@@ -768,11 +765,11 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const uint64_t frame_len_ticks = 1;
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
     const uint64_t baseA = 6'000'000'000ULL;
-    const uint64_t baseB = baseA + frame_len_ns * file_nt; // next file window
+    const uint64_t baseB = baseA + frame_len_ns * num_file_t; // next file window
 
     N2::frameID fid(&buf);
     const uint64_t abs_base_a = 0;
-    const uint64_t abs_base_b = file_nt;
+    const uint64_t abs_base_b = num_file_t;
     // Produce only t=0 for file window A (all freqs)
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
@@ -826,11 +823,11 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const size_t num_input = 3;
     const size_t num_ev = 2;
     const size_t nfreq = 2;
-    const uint64_t file_seconds = 1;
-    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
-                                   file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+    const uint64_t num_file_t = 1;
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
+                                   /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                    /*seq_override*/ 1'000'000'000ULL);
-    set_file_num_t(conf, unique_name, 1);
+    set_file_num_t(conf, unique_name, num_file_t);
     set_stage_log_level(conf, unique_name, "ERROR");
     const size_t frame_size = N2FrameView::calculate_frame_size(
         num_input, num_ev, N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri));
@@ -918,13 +915,12 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     const size_t num_input = 3;
     const size_t num_ev = 2;
     const size_t nfreq = 3;
-    const size_t file_nt = 2;
-
-    const uint64_t file_seconds = file_nt; // with 1s frames, file_nt==file_seconds
-    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
-                                   file_seconds, /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
+    const uint64_t num_file_t = 2;
+    
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
+                                   /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                    /*seq_override*/ 1'000'000'000ULL);
-    set_file_num_t(conf, unique_name, file_nt);
+    set_file_num_t(conf, unique_name, num_file_t);
     const size_t frame_size = N2FrameView::calculate_frame_size(
         num_input, num_ev, N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri));
     auto pool = metadataPool::create(4, sizeof(N2Metadata), "pool_geom", "N2Metadata");
