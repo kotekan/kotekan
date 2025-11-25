@@ -101,10 +101,13 @@ void Stage::start() {
         try {
             main_thread_fn(std::ref(*this));
         } catch (const FatalError& e) {
-            // FATAL_ERROR already called exit_kotekan; avoid terminating the thread abruptly.
-            ERROR("Stage {:s} caught FatalError: {:s}", unique_name, e.what());
+            // FATAL_ERROR already called exit_kotekan; avoid terminating the whole application
+            // abruptly.
+            ERROR("Stage {:s} caught FatalError: {:s}, attempting controlled shutdown.",
+                  unique_name, e.what());
         } catch (const std::exception& e) {
             ERROR("Exception in stage {:s}: {:s}", unique_name, e.what());
+            // throw will throw the same exception.
             throw;
         }
 #if !defined(MAC_OSX)

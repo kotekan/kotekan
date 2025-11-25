@@ -111,12 +111,12 @@ public:
 #define EXIT_ERROR(m, ...)                                                                         \
     do {                                                                                           \
         ERROR(m, ##__VA_ARGS__);                                                                   \
-        std::exit();                                                                               \
+        std::exit(ReturnCode::FATAL_ERROR);                                                        \
     } while (0)
 #define EXIT_ERROR_NON_OO(m, ...)                                                                  \
     do {                                                                                           \
         ERROR_NON_OO(m, ##__VA_ARGS__);                                                            \
-        std::exit();                                                                               \
+        std::exit(ReturnCode::FATAL_ERROR);                                                        \
     } while (0)
 
 // Use this for fatal errors that kotekan can't recover from. May shut down gracefully.
