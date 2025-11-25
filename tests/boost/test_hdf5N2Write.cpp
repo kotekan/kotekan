@@ -745,9 +745,9 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const size_t num_ev = 2;
     const size_t nfreq = 3;
     const uint64_t num_file_t = 2;
-    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false,
-                                   num_file_t, 0 /*bs_f*/, 1 /*bs_t*/,
-                                   0 /*late_frame_grace_seconds*/, 1'000'000'000ULL);
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
+                                   0 /*bs_f*/, 1 /*bs_t*/, 0 /*late_frame_grace_seconds*/,
+                                   1'000'000'000ULL);
     set_file_num_t(conf, unique_name, num_file_t);
 
     const size_t frame_size = N2FrameView::calculate_frame_size(
@@ -916,7 +916,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     const size_t num_ev = 2;
     const size_t nfreq = 3;
     const uint64_t num_file_t = 2;
-    
+
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_t*/ 1, /*grace*/ 60,
                                    /*seq_override*/ 1'000'000'000ULL);
