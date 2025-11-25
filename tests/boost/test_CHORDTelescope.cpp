@@ -340,12 +340,14 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
     dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
     dishInfo d3 = dishInfo(3);
     dishInfo d4 = dishInfo(4);
-    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
+    dishInfo d5 = dishInfo(5, 21, 23, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
 
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
+    json_config["num_dishes_x"] = 8;
+    json_config["num_dishes_y"] = 8;
     json_config["dish_separation_x_m"] = 1.0;
     json_config["dish_separation_y_m"] = 2.0;
     json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
@@ -358,7 +360,7 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
     // Fill the object with the info.
     tel.get_input_maps(buf);
 
-    // Make sure its correct.
+    // Make sure it's correct.
     for (int i = 0; i < 8; i++) {
         BOOST_CHECK_EQUAL(buf.grid_x_idx[i], d[i].grid_x_idx);
         BOOST_CHECK_EQUAL(buf.grid_y_idx[i], d[i].grid_y_idx);
