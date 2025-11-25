@@ -399,10 +399,16 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
          frb2_num_beams_ns * frb2_num_beams_ew, 2 * chord_telescope.get_num_dishes_x(),
          2 * chord_telescope.get_num_dishes_y()},
         {"Fbar", "R", "beamQ", "beamP"});
-    for (int freq = 0; freq < (!receive_chime ? 1 : num_frequencies); ++freq) {
-        Buffer* const E_buffer = !receive_chime ? E_buffer_chord : E_buffers_chime.at(freq);
-        assert(E_buffer);
-        E_buffer->allocate_new_frame_desc<kotekan::int4x2_swapped_withoffset_t, 4>(
+    if (receive_chime) {
+        // Use the CHIME input buffer layout (one buffer per frequency)
+        for (auto E_buffer_chime : E_buffers_chime)
+            E_buffer_chime->allocate_new_frame_desc<
+                kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 2>(
+                "E", {num_times, num_dishes * num_polarizations}, {"T", "E"});
+    } else {
+        // Use CHORDs input buffer layout
+        E_buffer_chord->allocate_new_frame_desc<
+            kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 4>(
             "E", {num_times, num_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"});
     }
     pl_mask_buffer->allocate_new_frame_desc<kotekan::uint1x8_t, 5>(
