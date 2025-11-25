@@ -23,6 +23,7 @@
 #include <errno.h>
 #include <errors.h>
 #include <filesystem>
+#include <fmt/ranges.h>
 #include <fstream>
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
@@ -56,9 +57,16 @@ inline double mono_time_s() {
     return std::chrono::duration<double>(dt).count();
 }
 
+// Trait to detect containers with a value_type (e.g., std::vector/std::array), but not std::string.
+template<typename T, typename = void>
+struct has_value_type : std::false_type {};
+
+template<typename T>
+struct has_value_type<T, std::void_t<typename T::value_type>> : std::true_type {};
+
 template<typename T>
 void N2FileData::_check_create_attribute(HighFive::File& file, const std::string& name,
-                                         T value) const {
+                                         const T& value) const {
     if (file.hasAttribute(name)) {
         // Attribute exists, check value
         auto attr = file.getAttribute(name);
@@ -71,13 +79,20 @@ void N2FileData::_check_create_attribute(HighFive::File& file, const std::string
         return;
     }
 
-    // Create attribute
-    auto attr = file.createAttribute<T>(name, HighFive::DataSpace::From(value));
-    attr.write(value);
+    // Create attribute; container types need an explicit element datatype.
+    if constexpr (has_value_type<T>::value && !std::is_same_v<T, std::string>) {
+        auto attr = file.createAttribute(name, HighFive::DataSpace::From(value),
+                                         HighFive::create_datatype<typename T::value_type>());
+        attr.write(value);
+    } else {
+        auto attr = file.createAttribute<T>(name, HighFive::DataSpace::From(value));
+        attr.write(value);
+    }
 }
 
 void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& name,
                                        const std::vector<hsize_t>& dims,
+                                       const std::vector<std::string>& dim_names,
                                        const HighFive::DataType& dtype,
                                        HighFive::DataSetCreateProps props) const {
 
@@ -85,6 +100,9 @@ void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& 
         WARN_NON_OO("Dataset {} already exists in HDF5 file, not creating again.", name);
         return;
     }
+    // size of dims should = size of dim_names, and > 0
+    assert(dims.size() == dim_names.size());
+    assert(dims.size() > 0);
 
     if (dims.size() == 1) {
         // if only one dimension, assume a simple array, chunking is just that dimension.
@@ -93,25 +111,31 @@ void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& 
     } else {
         // chunking is assumed to be ( blocksize_f, ...array dimensions..., blocksize_t )
         std::vector<hsize_t> chunk = dims;
-        if (!chunk.empty()) {
-            // frequency dimension
-            if (blocksize_f > 0)
-                chunk[0] = std::min<hsize_t>(chunk[0], (hsize_t)blocksize_f);
 
-            // time dimension
-            size_t tdim = chunk.size() - 1;
-            if (blocksize_t > 0)
-                chunk[tdim] = std::min<hsize_t>(chunk[tdim], (hsize_t)blocksize_t);
-
-            // ensure >= 1
-            for (auto& c : chunk)
-                c = std::max<hsize_t>(1, c);
+        // If dimension is "time" (usually last dimension), apply blocksize_t
+        // If dimension is "frequency" (usually first dimension), apply blocksize_f
+        // If dimension is product or element, use blocksize_p
+        for (size_t i = 0; i < dim_names.size(); i++) {
+            if (dim_names[i] == "time" && blocksize_t > 0) {
+                chunk[i] = std::min<hsize_t>(chunk[i], (hsize_t)blocksize_t);
+            } else if (dim_names[i].substr(0, 4) == "freq" && blocksize_f > 0) {
+                chunk[i] = std::min<hsize_t>(chunk[i], (hsize_t)blocksize_f);
+            } else if ((dim_names[i].substr(0, 4) == "prod" || dim_names[i].substr(0, 2) == "el")
+                       && blocksize_p > 0) {
+                chunk[i] = std::min<hsize_t>(chunk[i], (hsize_t)blocksize_p);
+            }
         }
+
+        for (auto& c : chunk)
+            c = std::max<hsize_t>(1, c);
+
         props.add(HighFive::Chunking(chunk));
     }
 
+    // Create dataset
     HighFive::DataSpace space(dims.begin(), dims.end());
-    (void)file.createDataSet(name, space, dtype, props);
+    auto dataset = file.createDataSet(name, space, dtype, props);
+    dataset.createAttribute("dim_names", dim_names);
 };
 
 std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::string& filepath,
@@ -188,55 +212,153 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                                             ? "FullUpperTri"
                                             : "RedundantBaselineAvg"));
 
-    // track which (f,t) frames have been added
-    _check_create_dataset(*file, "/frames_added", {fv.nfreq, num_file_t_},
-                          HighFive::create_datatype<uint8_t>(), props_empty);
+    // Telescope info
+    const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
+    _check_create_attribute(*file, "fpga_seq_length_nsec", telescope.seq_length_nsec());
+    _check_create_attribute(*file, "origin_itrs_lon_deg", telescope.get_origin_itrs_lon_deg());
+    _check_create_attribute(*file, "origin_itrs_lat_deg", telescope.get_origin_itrs_lat_deg());
+    _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
+    _check_create_attribute(*file, "num_dishes", telescope.get_num_dishes());
+    _check_create_attribute(*file, "EOP_table_len", telescope.get_EOP_table_len());
 
-    // JSON config data
+    // Store EOP table ERA_deg and t_ut1 only
+    {
+        const int eop_len = telescope.get_EOP_table_len();
+        if (eop_len > 0) {
+            std::vector<double> eop_deg(eop_len);
+            std::vector<int64_t> eop_t_ut1(eop_len);
+
+            for (int i = 0; i < eop_len; i++) {
+                EOP eop = telescope.get_EOP_at_idx(i);
+                eop_deg[i] = eop.ERA_deg;
+                eop_t_ut1[i] = eop.t_ut1;
+            }
+            _check_create_attribute(*file, "EOP_ERA_deg", eop_deg);
+            _check_create_attribute(*file, "EOP_t_ut1", eop_t_ut1);
+        }
+    }
+
+    // Store grid orientation (3x3 matrix) and dish orientation (3x3 matrix)
+    {
+        std::vector<double> grid_orientation(9);
+        std::vector<double> dish_orientation(9);
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                grid_orientation[i * 3 + j] = telescope.get_grid_orientation_el(i, j);
+                dish_orientation[i * 3 + j] = telescope.get_dish_orientation_el(i, j);
+            }
+        }
+        _check_create_attribute(*file, "grid_orientation", grid_orientation);
+        _check_create_attribute(*file, "dish_orientation", dish_orientation);
+    }
+
+    // Store dish positions
+    {
+        const int num_dishes = telescope.get_num_dishes();
+        std::vector<std::array<double, 3>> dish_positions(num_dishes);
+        for (int i = 0; i < num_dishes; i++) {
+            auto pos = telescope.get_dish_position_in_grid_coords(i);
+            dish_positions[i] = {pos[0], pos[1], pos[2]};
+        }
+        _check_create_dataset(*file, "/dish_positions_in_grid_coords",
+                              {static_cast<hsize_t>(num_dishes), 3}, {"dish", "xyz"},
+                              HighFive::create_datatype<double>(), props_empty);
+        auto dataset = file->getDataSet("/dish_positions_in_grid_coords");
+        dataset.write(dish_positions);
+    }
+
+    // Store element-dish mapping
+    {
+        const int num_elements = fv.num_elements;
+        std::vector<int> element_dish_map(num_elements);
+        for (int i = 0; i < num_elements; i++) {
+            element_dish_map[i] = 0; // TODO: telescope.get_dish_id_for_element(i);
+        }
+        // Store element-dish mapping as a dataset
+        _check_create_dataset(*file, "/element_dish_map", {static_cast<hsize_t>(num_elements)},
+                              {"element"}, HighFive::create_datatype<int>(), props_empty);
+        auto dataset = file->getDataSet("/element_dish_map");
+        dataset.write(element_dish_map);
+    }
+
+    // Store physical frequencies as a dataset
+    {
+        std::vector<N2::freq_ctype> freq_chans(fv.nfreq);
+        for (uint32_t f = 0; f < fv.nfreq; f++)
+            freq_chans[f] = N2::freq_ctype{telescope.to_freq_MHz(f), telescope.freq_width_MHz(f)};
+
+        auto freq_dtype = HighFive::create_datatype<N2::freq_ctype>();
+        _check_create_dataset(*file, "/frequency_channels", {fv.nfreq}, {"frequency"}, freq_dtype,
+                              props_empty);
+        auto dataset = file->getDataSet("/frequency_channels");
+        dataset.write(freq_chans);
+    }
+
+    // Store product list as a dataset
+    {
+        std::vector<N2::prod_ctype> prods(fv.num_prod);
+        fv.fill_prod_maps(prods);
+        auto prod_dtype = HighFive::create_datatype<N2::prod_ctype>();
+        _check_create_dataset(*file, "/product_list", {fv.num_prod}, {"product"}, prod_dtype,
+                              props_empty);
+        auto dataset = file->getDataSet("/product_list");
+        dataset.write(prods);
+    }
+
+    // JSON config data (written at file flush time)
     HighFive::DataSetCreateProps json_props = HighFive::DataSetCreateProps::Empty();
     json_props.add(HighFive::Chunking(std::vector<hsize_t>{8}));
     HighFive::DataSpace json_dspace({0}, {HighFive::DataSpace::UNLIMITED});
     if (!file->exist("/config_json"))
         file->createDataSet<std::string>("/config_json", json_dspace, json_props);
 
-    // create datasets
+
+    // tracker for which (f,t) frames have been added (written at file flush time)
+    _check_create_dataset(*file, "/frames_added", {fv.nfreq, num_file_t_}, {"frequency", "time"},
+                          HighFive::create_datatype<uint8_t>(), props_empty);
+
+    // create datasets (written at file flush time)
     _check_create_dataset(*file, "/vis", {fv.nfreq, fv.num_prod, num_file_t_},
-                          HighFive::create_datatype<cfloat>(), props_compressed);
-    _check_create_dataset(*file, flags_group_prefix + "/vis_weight",
-                          {fv.nfreq, fv.num_prod, num_file_t_}, HighFive::create_datatype<float>(),
+                          {"frequency", "product", "time"}, HighFive::create_datatype<cfloat>(),
                           props_compressed);
-    _check_create_dataset(*file, "/eval", {fv.nfreq, fv.num_ev, num_file_t_},
+    _check_create_dataset(*file, flags_group_prefix + "/vis_weight",
+                          {fv.nfreq, fv.num_prod, num_file_t_}, {"frequency", "product", "time"},
                           HighFive::create_datatype<float>(), props_compressed);
+    _check_create_dataset(*file, "/eval", {fv.nfreq, fv.num_ev, num_file_t_},
+                          {"frequency", "eigenval", "time"}, HighFive::create_datatype<float>(),
+                          props_compressed);
     _check_create_dataset(*file, "/evec", {fv.nfreq, fv.num_ev, fv.num_elements, num_file_t_},
+                          {"frequency", "eigenvec", "element", "time"},
                           HighFive::create_datatype<cfloat>(), props_compressed);
-    _check_create_dataset(*file, "/erms", {fv.nfreq, num_file_t_},
+    _check_create_dataset(*file, "/erms", {fv.nfreq, num_file_t_}, {"frequency", "time"},
                           HighFive::create_datatype<float>(), props_empty);
     _check_create_dataset(*file, "/gain", {fv.nfreq, fv.num_elements, num_file_t_},
-                          HighFive::create_datatype<cfloat>(), props_empty);
-
-    _check_create_dataset(*file, flags_group_prefix + "/flags",
-                          {fv.nfreq, fv.num_elements, num_file_t_},
-                          HighFive::create_datatype<float>(), props_empty);
-    _check_create_dataset(*file, flags_group_prefix + "/frac_lost", {fv.nfreq, num_file_t_},
-                          HighFive::create_datatype<float>(), props_empty);
-    _check_create_dataset(*file, flags_group_prefix + "/frac_rfi", {fv.nfreq, num_file_t_},
-                          HighFive::create_datatype<float>(), props_empty);
-    _check_create_dataset(*file, "/fpga_start_tick", {num_file_t_},
-                          HighFive::create_datatype<uint64_t>(), props_empty);
-    _check_create_dataset(*file, "/frame_length_fpga_ticks", {num_file_t_},
-                          HighFive::create_datatype<uint64_t>(), props_empty);
-
-    _check_create_dataset(*file, "/time_center_ut1", {num_file_t_},
-                          HighFive::create_datatype<int64_t>(), props_empty);
-    _check_create_dataset(*file, "/bin_ut1", {num_file_t_}, HighFive::create_datatype<int64_t>(),
+                          {"frequency", "element", "time"}, HighFive::create_datatype<cfloat>(),
                           props_empty);
-    _check_create_dataset(*file, "/bin_start_ERA_deg", {num_file_t_},
-                          HighFive::create_datatype<double>(), props_empty);
-    _check_create_dataset(*file, "/bin_end_ERA_deg", {num_file_t_},
-                          HighFive::create_datatype<double>(), props_empty);
-    _check_create_dataset(*file, "/bin_start_LAST", {num_file_t_},
+
+    _check_create_dataset(
+        *file, flags_group_prefix + "/flags", {fv.nfreq, fv.num_elements, num_file_t_},
+        {"frequency", "element", "time"}, HighFive::create_datatype<float>(), props_empty);
+    _check_create_dataset(*file, flags_group_prefix + "/frac_lost", {fv.nfreq, num_file_t_},
+                          {"frequency", "time"}, HighFive::create_datatype<float>(), props_empty);
+    _check_create_dataset(*file, flags_group_prefix + "/frac_rfi", {fv.nfreq, num_file_t_},
+                          {"frequency", "time"}, HighFive::create_datatype<float>(), props_empty);
+    _check_create_dataset(*file, "/fpga_start_tick", {num_file_t_}, {"time"},
+                          HighFive::create_datatype<uint64_t>(), props_empty);
+    _check_create_dataset(*file, "/frame_length_fpga_ticks", {num_file_t_}, {"time"},
+                          HighFive::create_datatype<uint64_t>(), props_empty);
+
+    _check_create_dataset(*file, "/time_center_ut1", {num_file_t_}, {"time"},
                           HighFive::create_datatype<int64_t>(), props_empty);
-    _check_create_dataset(*file, "/bin_end_LAST", {num_file_t_},
+    _check_create_dataset(*file, "/bin_ut1", {num_file_t_}, {"time"},
+                          HighFive::create_datatype<int64_t>(), props_empty);
+    _check_create_dataset(*file, "/bin_start_ERA_deg", {num_file_t_}, {"time"},
+                          HighFive::create_datatype<double>(), props_empty);
+    _check_create_dataset(*file, "/bin_end_ERA_deg", {num_file_t_}, {"time"},
+                          HighFive::create_datatype<double>(), props_empty);
+    _check_create_dataset(*file, "/bin_start_LAST", {num_file_t_}, {"time"},
+                          HighFive::create_datatype<int64_t>(), props_empty);
+    _check_create_dataset(*file, "/bin_end_LAST", {num_file_t_}, {"time"},
                           HighFive::create_datatype<int64_t>(), props_empty);
 
     return file;
@@ -445,8 +567,9 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     compression(config.get_default<std::string>(unique_name, "compression", "none")),
     compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),
     use_bitshuffle(config.get_default<bool>(unique_name, "use_bitshuffle", false)),
-    blocksize_f(config.get_default<std::uint64_t>(unique_name, "blocksize_f", 0)),
-    blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", 1)),
+    blocksize_f(config.get_default<std::uint64_t>(unique_name, "blocksize_f", 16)),
+    blocksize_p(config.get_default<std::uint64_t>(unique_name, "blocksize_p", 16)),
+    blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", num_file_t)),
     late_frame_grace_seconds(
         config.get_default<std::uint64_t>(unique_name, "late_frame_grace_seconds", 60)),
     max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
@@ -600,7 +723,7 @@ void hdf5N2Write::main_thread() {
             // Create N2FileData for file (also looks for .partial)
             auto N2FileData_obj = std::make_unique<N2FileData>(
                 N2FileData::CHORD, num_file_t, fv, frame_recv_time, abs_file_idx, blocksize_f,
-                blocksize_t, compression, compression_level, use_bitshuffle, base_dir);
+                blocksize_p, blocksize_t, compression, compression_level, use_bitshuffle, base_dir);
 
             filedata.emplace(abs_file_idx, std::move(N2FileData_obj));
             N2FileData_ptr = filedata.find(abs_file_idx)->second.get();

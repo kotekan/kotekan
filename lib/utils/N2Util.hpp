@@ -19,6 +19,16 @@ namespace N2 {
 using cfloat = typename std::complex<float>;
 
 /**
+ * @brief Frequency index map type for the N2 pipeline.
+ */
+struct freq_ctype {
+    /// Centre of frequency channel in MHz
+    double centre;
+    /// Width of frequency channel in MHz
+    double width;
+};
+
+/**
  * @brief Index into a flattened upper matrix triangle.
  * @param  i Row index.
  * @param  j Column index.

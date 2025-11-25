@@ -209,15 +209,62 @@ struct CompareCTypes {
     }
 }
 
+// Add a minimal CHORD telescope configuration (dish geometry + EOP endpoint) to a JSON config.
+[[maybe_unused]] static void add_test_telescope_config(nlohmann::json& cfg) {
+    nlohmann::json telescope;
+    telescope["name"] = "CHORDTelescope";
+    telescope["log_level"] = "WARN";
+    telescope["num_dishes"] = 2;
+    telescope["dish_separation_x_m"] = 6.3;
+    telescope["dish_separation_y_m"] = 8.5;
+    telescope["dish_inputs"] = nlohmann::json::array({{{"dish_idx", 0},
+                                                       {"grid_x_idx", 0},
+                                                       {"grid_y_idx", 0},
+                                                       {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                       {"coelev_disp_deg", 0.0},
+                                                       {"type", "ArrayDish"},
+                                                       {"label", "D00"}},
+                                                      {{"dish_idx", 1},
+                                                       {"grid_x_idx", 1},
+                                                       {"grid_y_idx", 0},
+                                                       {"feed_pos_disp_m", {0.0, 0.0, 0.0}},
+                                                       {"coelev_disp_deg", 0.0},
+                                                       {"type", "ArrayDish"},
+                                                       {"label", "D01"}}});
+    telescope["updatable_config"] = "/earth_rotation_data";
+    telescope["grid_x_axis"] = {1.0, 0.0, 0.0};
+    telescope["grid_y_axis"] = {0.0, 1.0, 0.0};
+    telescope["dish_elev_axis"] = {1.0, 0.0, 0.0};
+    telescope["dish_vert_axis"] = {0.0, 0.0, 1.0};
+
+    nlohmann::json eop_update;
+    eop_update["kotekan_update_endpoint"] = "json";
+    eop_update["earth_orientation_parameter_table"] = nlohmann::json::array(
+        {{{"time_inst_ns", 0}, {"delta_UT1_inst", 0.0}, {"x_pm", 0.0}, {"y_pm", 0.0}},
+         {{"time_inst_ns", 1'000'000}, {"delta_UT1_inst", 0.0}, {"x_pm", 0.0}, {"y_pm", 0.0}}});
+
+    auto set_path = [&](const std::string& key, const nlohmann::json& val) {
+        cfg[key] = val;
+        if (!key.empty() && key.front() == '/')
+            cfg[key.substr(1)] = val;
+    };
+
+    set_path("/telescope", telescope);
+    set_path("/earth_rotation_data", eop_update);
+}
+
 // Helper to create a writer config for testing
 [[maybe_unused]] static kotekan::Config
 make_writer_config(const std::string& unique_name, const std::string& in_buf,
                    const std::string& base_dir, const std::string& file_name, bool prefix_hostname,
-                   uint64_t num_file_t, uint64_t blocksize_f = 0, uint64_t blocksize_t = 1,
-                   uint64_t late_frame_grace_seconds = 60, uint64_t seq_length_nsec_override = 0) {
+                   uint64_t num_file_t, uint64_t blocksize_f = 0, uint64_t blocksize_p = 0,
+                   uint64_t blocksize_t = 1, uint64_t late_frame_grace_seconds = 60,
+                   uint64_t seq_length_nsec_override = 0) {
     using json = nlohmann::json;
 
     json cfg;
+
+    add_test_telescope_config(cfg);
     nlohmann::json stage;
     stage["cpu_affinity"] = std::vector<int>{0};
     stage["log_level"] = "WARN";
@@ -226,7 +273,7 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     stage["file_name"] = file_name;
     stage["prefix_hostname"] = prefix_hostname;
     stage["blocksize_f"] = blocksize_f;
-    stage["blocksize_p"] = 0;
+    stage["blocksize_p"] = blocksize_p;
     stage["blocksize_t"] = blocksize_t;
     stage["num_file_t"] = num_file_t;
     stage["join_timeout"] = 5;

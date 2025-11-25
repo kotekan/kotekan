@@ -207,16 +207,16 @@ public:
     }
 
     /**
-     * @brief Get the product maps for each product in the visibility matrix in the FullUpperTri
-     * layout.
+     * @brief Fill the product maps vector for each product in the visibility matrix in the
+     * FullUpperTri layout.
      *
-     * See N2FrameView::get_prod_maps() for full details.
+     * See N2FrameView::fill_prod_maps() for full details.
      *
      * @param   prods           Vector to fill.
      * @param   num_elements_in Number of elements (dishes x polarizations) in the pipeline
      */
-    static void get_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods,
-                                           uint32_t num_elements_in) {
+    static void fill_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods,
+                                            uint32_t num_elements_in) {
 
         size_t num_prod_in = (num_elements_in * (num_elements_in + 1)) / 2;
 
@@ -285,7 +285,7 @@ public:
     void copy_data(N2FrameView frame_to_copy_from, const std::set<N2Field>& skip_members);
 
     /**
-     * @brief Get the product maps for each product in the visibility matrix.
+     * @brief Fill the product maps vector for each product in the visibility matrix.
      *
      * Every product in the frame view is a visibility matrix V_{ab} that was formed from two input
      * elements: a (first, the full vis matrix row index) and b (second, the full vis matrix column
@@ -301,7 +301,7 @@ public:
      *
      * @throws  std::runtime_error  If this N2FrameView has an unknown layout.
      */
-    void get_prod_maps(std::vector<N2::prod_ctype>& prods);
+    void fill_prod_maps(std::vector<N2::prod_ctype>& prods) const;
 };
 
 #endif

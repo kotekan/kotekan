@@ -60,6 +60,7 @@ public:
     // file bookkeeping owned by this object
     FileMode file_mode;                      // CHORD or CHIME (or other?)-type file
     const size_t blocksize_f;                // frequency block size for chunking
+    const size_t blocksize_p;                // product/element block size for chunking
     const size_t blocksize_t;                // time block size for chunking
     const std::string compression;           // compression type
     const size_t compression_level;          // gzip compression level
@@ -101,11 +102,14 @@ protected:
 private:
     /// Create (or check existence of) an attribute
     template<typename T>
-    void _check_create_attribute(HighFive::File& file, const std::string& name, T value) const;
+    void _check_create_attribute(HighFive::File& file, const std::string& name,
+                                 const T& value) const;
 
-    /// Create (or check existence of) a (f, ..., t) or  (t) dataset
+    /// Create (or check existence of) a dataset
     void _check_create_dataset(HighFive::File& file, const std::string& name,
-                               const std::vector<hsize_t>& dims, const HighFive::DataType& dtype,
+                               const std::vector<hsize_t>& dims,
+                               const std::vector<std::string>& dim_names,
+                               const HighFive::DataType& dtype,
                                HighFive::DataSetCreateProps props) const;
 
     /// Open/create/init datasets in h5 file
@@ -117,14 +121,14 @@ private:
 public:
     N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameView& fv,
                const double open_wall_s_, const uint64_t abs_file_idx_, const size_t blocksize_f_,
-               const size_t blocksize_t_, const std::string compression_,
+               const size_t blocksize_p_, const size_t blocksize_t_, const std::string compression_,
                const size_t compression_level_, const bool use_bitshuffle_,
                const std::string base_dir_) :
         num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev), num_freq(fv.nfreq),
         num_file_t(num_file_t_), file_mode(file_mode_), blocksize_f(blocksize_f_),
-        blocksize_t(blocksize_t_), compression(compression_), compression_level(compression_level_),
-        use_bitshuffle(use_bitshuffle_), open_wall_s(open_wall_s_),
-        last_update_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_),
+        blocksize_p(blocksize_p_), blocksize_t(blocksize_t_), compression(compression_),
+        compression_level(compression_level_), use_bitshuffle(use_bitshuffle_),
+        open_wall_s(open_wall_s_), last_update_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_),
         base_dir(std::move(base_dir_)),
         partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(abs_file_idx_) + ".h5"),
         h5_file(_open_or_create_file(partial_filepath, num_file_t_, fv, file_mode)) {
@@ -252,6 +256,7 @@ private:
     const std::uint64_t compression_level;
     const bool use_bitshuffle;
     const std::uint64_t blocksize_f;
+    const std::uint64_t blocksize_p;
     const std::uint64_t blocksize_t;
     const std::uint64_t
         late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
