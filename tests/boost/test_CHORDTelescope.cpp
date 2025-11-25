@@ -975,8 +975,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     json json_config = json::parse(default_config_str);
     json_config["num_elements"] = 8;
     json_config["num_dishes"] = 4;
-    json_config["num_dishes_x"] = 2;
-    json_config["num_dishes_y"] = 2;
+    json_config["num_dishes_x"] = 3;
+    json_config["num_dishes_y"] = 3;
     json_config["telescope"]["origin_itrs_lat_deg"] = tel_lat_deg;
     json_config["telescope"]["origin_itrs_lon_deg"] = 0.0;
     json_config["telescope"]["dish_separation_x_m"] = lambda;
