@@ -515,8 +515,8 @@ void FEngine::main_thread() {
             args[iargc++] =
                 jl_box_voidpointer(const_cast<int*>(dish_grid.get_dish_indices().data()));
             // TODO: Pass dish positions instead
-            args[iargc++] = jl_box_float32(chord_telescope.get_dish_separation_x_m_DONOTUSETHIS());
-            args[iargc++] = jl_box_float32(chord_telescope.get_dish_separation_y_m_DONOTUSETHIS());
+            args[iargc++] = jl_box_float32(chord_telescope.get_dish_separation_x_m());
+            args[iargc++] = jl_box_float32(chord_telescope.get_dish_separation_y_m());
             args[iargc++] = jl_box_int64(num_dishes);
             args[iargc++] = jl_box_float32(adc_frequency);
             args[iargc++] = jl_box_int64(num_taps);
@@ -1270,8 +1270,8 @@ void FEngine::main_thread() {
 
             const int num_dishes_ew = chord_telescope.get_num_dishes_x();
             const int num_dishes_ns = chord_telescope.get_num_dishes_y();
-            const float dish_separation_ew = chord_telescope.get_dish_separation_x_m_DONOTUSETHIS();
-            const float dish_separation_ns = chord_telescope.get_dish_separation_y_m_DONOTUSETHIS();
+            const float dish_separation_ew = chord_telescope.get_dish_separation_x_m();
+            const float dish_separation_ns = chord_telescope.get_dish_separation_y_m();
 
 #pragma omp parallel
             {

@@ -349,8 +349,8 @@ public:
     int get_num_dishes_x() const;
     int get_num_dishes_y() const;
 
-    double get_dish_separation_x_m_DONOTUSETHIS() const;
-    double get_dish_separation_y_m_DONOTUSETHIS() const;
+    double get_dish_separation_x_m() const;
+    double get_dish_separation_y_m() const;
 
     /**
      * @brief   Return the number of entries in the EOP table.

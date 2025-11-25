@@ -608,10 +608,10 @@ int CHORDTelescope::get_num_dishes_y() const {
     return _num_dishes_y;
 }
 
-double CHORDTelescope::get_dish_separation_x_m_DONOTUSETHIS() const {
+double CHORDTelescope::get_dish_separation_x_m() const {
     return _dish_separation_x_m;
 }
-double CHORDTelescope::get_dish_separation_y_m_DONOTUSETHIS() const {
+double CHORDTelescope::get_dish_separation_y_m() const {
     return _dish_separation_y_m;
 }
 
