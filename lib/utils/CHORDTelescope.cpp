@@ -895,7 +895,7 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
         }
         assert(idx < _num_dishes);
 
-        if (dish_info.type != DishType::Fake) {
+        if (dish.type != DishType::Fake) {
             assert(dish.grid_x_idx >= 0 && dish.grid_x_idx < _num_dishes_x);
             assert(dish.grid_y_idx >= 0 && dish.grid_y_idx < _num_dishes_y);
         }
