@@ -245,7 +245,7 @@ BOOST_AUTO_TEST_CASE(_dish_num) {
     dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
     dishInfo d3 = dishInfo(3);
     dishInfo d4 = dishInfo(4);
-    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
+    dishInfo d5 = dishInfo(5, 21, 23, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
 
@@ -269,7 +269,7 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
     dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
     dishInfo d3 = dishInfo(3);
     dishInfo d4 = dishInfo(4);
-    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
+    dishInfo d5 = dishInfo(5, 21, 23, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
 
@@ -300,7 +300,7 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
     dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
     dishInfo d3 = dishInfo(3);
     dishInfo d4 = dishInfo(4);
-    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
+    dishInfo d5 = dishInfo(5, 21, 23, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
 
