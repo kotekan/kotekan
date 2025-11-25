@@ -441,7 +441,12 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
     base_dir(config.get<std::string>(unique_name, "base_dir")),
-    num_file_t(config.get_default<std::uint64_t>(unique_name, "num_file_t")),
+    num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),
+    compression(config.get_default<std::string>(unique_name, "compression", "none")),
+    compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),
+    use_bitshuffle(config.get_default<bool>(unique_name, "use_bitshuffle", false)),
+    blocksize_f(config.get_default<std::uint64_t>(unique_name, "blocksize_f", 0)),
+    blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", 1)),
     late_frame_grace_seconds(
         config.get_default<std::uint64_t>(unique_name, "late_frame_grace_seconds", 60)),
     max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
@@ -593,14 +598,6 @@ void hdf5N2Write::main_thread() {
             continue;
         } else {
             // Create N2FileData for file (also looks for .partial)
-
-            auto compression = config.get_default<std::string>(unique_name, "compression", "none");
-            auto compression_level =
-                config.get_default<std::uint64_t>(unique_name, "compression_level", 0);
-            auto use_bitshuffle = config.get_default<bool>(unique_name, "use_bitshuffle", false);
-            auto blocksize_f = config.get_default<std::uint64_t>(unique_name, "blocksize_f", 0);
-            auto blocksize_t = config.get_default<std::uint64_t>(unique_name, "blocksize_t", 1);
-
             auto N2FileData_obj = std::make_unique<N2FileData>(
                 N2FileData::CHORD, num_file_t, fv, frame_recv_time, abs_file_idx, blocksize_f,
                 blocksize_t, compression, compression_level, use_bitshuffle, base_dir);

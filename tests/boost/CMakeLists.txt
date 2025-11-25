@@ -154,7 +154,7 @@ if(HDF5_FOUND AND HighFive_FOUND)
                 HighFive::HighFive)
     target_include_directories(
         test_hdf5N2Write PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages ${KOTEKAN_SOURCE_DIR}/lib/utils
-                                  ${HDF5_INCLUDE_DIRS})
+                                 ${HDF5_INCLUDE_DIRS})
     target_include_directories(test_hdf5N2Write PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 endif()
 

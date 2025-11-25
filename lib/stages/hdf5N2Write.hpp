@@ -248,6 +248,11 @@ private:
     const std::string base_dir;     /// Base directory to write files into
     const std::uint64_t num_file_t; /// Number of incoming time frames per file, as indexed by the
                                     /// absolute frame index
+    const std::string compression;
+    const std::uint64_t compression_level;
+    const bool use_bitshuffle;
+    const std::uint64_t blocksize_f;
+    const std::uint64_t blocksize_t;
     const std::uint64_t
         late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
     const int max_frames;         /// Stop writing after this many frames (-1 = unlimited)

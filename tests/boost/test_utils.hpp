@@ -103,7 +103,7 @@ struct CompareCTypes {
 
 // Set the file_num_t parameter for a stage in the config
 [[maybe_unused]] static void set_file_num_t(kotekan::Config& conf, const std::string& unique_name,
-                           uint64_t file_num_t) {
+                                            uint64_t file_num_t) {
     nlohmann::json cfg = conf.get_full_config_json();
     auto update_stage = [&](const std::string& key) {
         if (!key.empty() && cfg.contains(key) && cfg[key].is_object())
@@ -116,8 +116,9 @@ struct CompareCTypes {
 }
 
 // Set the log level for a stage in the config
-[[maybe_unused]] static void set_stage_log_level(kotekan::Config& conf, const std::string& unique_name,
-                                const std::string& level) {
+[[maybe_unused]] static void set_stage_log_level(kotekan::Config& conf,
+                                                 const std::string& unique_name,
+                                                 const std::string& level) {
     nlohmann::json cfg = conf.get_full_config_json();
     auto update_stage = [&](const std::string& key) {
         if (!key.empty() && cfg.contains(key) && cfg[key].is_object())
@@ -294,10 +295,11 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
 }
 
 // Helper to fill an N2 frame and set abs_time_idx in metadata
-[[maybe_unused]] static void fill_n2_frame_with_abs(Buffer* buf, int frame_id, size_t num_input, size_t num_ev,
-                                   size_t nfreq, size_t f_index, size_t t_index,
-                                   uint64_t frame_start_time_ns, uint64_t frame_length_ticks,
-                                   uint64_t abs_time_idx) {
+[[maybe_unused]] static void fill_n2_frame_with_abs(Buffer* buf, int frame_id, size_t num_input,
+                                                    size_t num_ev, size_t nfreq, size_t f_index,
+                                                    size_t t_index, uint64_t frame_start_time_ns,
+                                                    uint64_t frame_length_ticks,
+                                                    uint64_t abs_time_idx) {
     fill_n2_frame(buf, frame_id, num_input, num_ev, nfreq, f_index, t_index, frame_start_time_ns,
                   frame_length_ticks);
     auto meta = get_N2_metadata(buf, frame_id);
