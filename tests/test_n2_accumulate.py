@@ -41,8 +41,8 @@ global_params = {
         "dish_coelev_deg": 90.0,
         "require_gps": False,
         "updatable_config": "/earth_rotation_data",
-        "num_dishes_x": 12,
-        "num_dishes_y": 8,
+        "num_dishes_x": 22,
+        "num_dishes_y": 24,
         "dish_separation_x_m": 6.3,
         "dish_separation_y_m": 8.5,
         "dish_inputs": [
@@ -84,7 +84,7 @@ global_params = {
             },
             {
                 "dish_idx": 4,
-                "grid_x_idx": 24,
+                "grid_x_idx": 21,
                 "grid_y_idx": 0,
                 "feed_pos_disp_m": [0.0, 0.0, 0.0],
                 "coelev_disp_deg": 0.0,
@@ -94,7 +94,7 @@ global_params = {
             {
                 "dish_idx": 5,
                 "grid_x_idx": 0,
-                "grid_y_idx": 24,
+                "grid_y_idx": 23,
                 "feed_pos_disp_m": [0.0, 0.0, 0.0],
                 "coelev_disp_deg": 0.0,
                 "type": "ArrayDish",
@@ -102,8 +102,8 @@ global_params = {
             },
             {
                 "dish_idx": 6,
-                "grid_x_idx": 24,
-                "grid_y_idx": 24,
+                "grid_x_idx": 21,
+                "grid_y_idx": 23,
                 "feed_pos_disp_m": [0.0, 0.0, 0.0],
                 "coelev_disp_deg": 0.0,
                 "type": "ArrayDish",
