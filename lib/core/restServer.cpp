@@ -172,6 +172,8 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
         // which add or remove callbacks from the maps. So a more fine-grained
         // locking system is needed here.
         // std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
+        // Probably this should be a recursive mutex?
+        // https://en.cppreference.com/w/cpp/thread/recursive_mutex.html
         map<string, string>& aliases = server->get_aliases();
         if (aliases.find(url) != aliases.end()) {
             url = aliases[url];
@@ -184,7 +186,18 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
                 conn.send_error("Not Found", HTTP_RESPONSE::NOT_FOUND);
                 return;
             }
-            server->get_callbacks[url](conn);
+            try {
+                server->get_callbacks[url](conn);
+            } catch (const FatalError& e) {
+                ERROR_NON_OO("restServer: GET endpoint {:s} raised FatalError: {:s}", url,
+                             e.what());
+                conn.send_error("Fatal error while handling request",
+                                HTTP_RESPONSE::INTERNAL_ERROR);
+            } catch (const std::exception& e) {
+                ERROR_NON_OO("restServer: GET endpoint {:s} threw exception: {:s}", url, e.what());
+                conn.send_error("Internal error while handling request",
+                                HTTP_RESPONSE::INTERNAL_ERROR);
+            }
             return;
         }
 
@@ -202,7 +215,18 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
                 return;
             }
 
-            server->json_callbacks[url](conn, json_request);
+            try {
+                server->json_callbacks[url](conn, json_request);
+            } catch (const FatalError& e) {
+                ERROR_NON_OO("restServer: POST endpoint {:s} raised FatalError: {:s}", url,
+                             e.what());
+                conn.send_error("Fatal error while handling request",
+                                HTTP_RESPONSE::INTERNAL_ERROR);
+            } catch (const std::exception& e) {
+                ERROR_NON_OO("restServer: POST endpoint {:s} threw exception: {:s}", url, e.what());
+                conn.send_error("Internal error while handling request",
+                                HTTP_RESPONSE::INTERNAL_ERROR);
+            }
             return;
         }
     }

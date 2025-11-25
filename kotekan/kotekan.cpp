@@ -35,6 +35,7 @@
 #include <strings.h>   // for strcasecmp
 #include <sys/wait.h>  // for waitpid
 #include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
+#include <thread>      // for thread, get_id
 #include <type_traits> // for underlying_type
 #include <unistd.h>    // for close, optarg, dup2, execvp, fork, pipe, sleep, STDOUT...
 #include <utility>     // for pair

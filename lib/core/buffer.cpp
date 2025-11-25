@@ -145,8 +145,8 @@ void GenericBuffer::allocate_new_metadata_object(int ID) {
 
     buffer_lock lock(mutex);
     if (metadata_pool == nullptr) {
-        FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer",
-                      buffer_name.c_str());
+        FATAL_ERROR("No metadata pool on %s but metadata was needed by a producer",
+                    buffer_name.c_str());
     }
     DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", this, ID);
 
@@ -712,7 +712,7 @@ void Buffer::private_copy_frame(int dest_frame_id, Buffer* src, int src_frame_id
 }
 
 bool is_frame_buffer(GenericBuffer* buf) {
-    // See also bufferFactor::new_buffer()
+    // See also bufferFactory::new_buffer()
     return (buf->buffer_type == "standard") || (buf->buffer_type == "vis")
            || (buf->buffer_type == "hfb") || (buf->buffer_type == "N2");
 }

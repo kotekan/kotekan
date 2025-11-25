@@ -98,31 +98,31 @@ dump_raw:
 
 dumpvis_fs001_buf:
   kotekan_buffer: N2
-  layout: FullUpperTri
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
 dumpvis_fs032_buf:
   kotekan_buffer: N2
-  layout: FullUpperTri
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
 dumpvis_nfs032_buf:
   kotekan_buffer: N2
-  layout: FullUpperTri
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
 dumpvis_fs128_buf:
   kotekan_buffer: N2
-  layout: FullUpperTri
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
 dumpvis_nfs128_buf:
   kotekan_buffer: N2
-  layout: FullUpperTri
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
@@ -167,7 +167,7 @@ fakevis0:
 
 fakevis_buf0:
   kotekan_buffer: N2
-  layout: FullUpperTri
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
