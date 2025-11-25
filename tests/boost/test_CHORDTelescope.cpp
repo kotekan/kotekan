@@ -965,7 +965,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D00");
     dishInfo d1 = dishInfo(1, 1, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D01");
     dishInfo d2 = dishInfo(2, 0, 1, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D10");
-    dishInfo d3 = dishInfo(3, 1, 1, {lambda, lambda, 0.0}, 0.0, DishType::ArrayDish, "D11");
+    dishInfo d3 = dishInfo(3, 2, 2, {-lambda, -lambda, 0.0}, 0.0, DishType::ArrayDish, "D11");
 
     double t = 1.0; // A short time to get only 1st order effects
     EOP eop0 = {.t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0, .xp_as = 0, .yp_as = 0};
@@ -992,7 +992,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     double test_phase_val = 2 * M_PI * w_e * t * cos(dec);
 
-    std::vector<double> test_phases({0.0, test_phase_val, 0.0, 2 * test_phase_val});
+    std::vector<double> test_phases({0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel = get_telescope(json_config);
 
