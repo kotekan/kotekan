@@ -41,6 +41,8 @@ global_params = {
         "dish_coelev_deg": 90.0,
         "require_gps": False,
         "updatable_config": "/earth_rotation_data",
+        "num_dishes_x": 12,
+        "num_dishes_y": 8,
         "dish_separation_x_m": 6.3,
         "dish_separation_y_m": 8.5,
         "dish_inputs": [
