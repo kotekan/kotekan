@@ -992,7 +992,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     double test_phase_val = 2 * M_PI * w_e * t * cos(dec);
 
-    std::vector<double> test_phases({0.0, test_phase_val, 0.0, test_phase_val});
+    std::vector<double> test_phases({0.0, test_phase_val, 0.0, 2 * test_phase_val});
 
     const CHORDTelescope& tel = get_telescope(json_config);
 
