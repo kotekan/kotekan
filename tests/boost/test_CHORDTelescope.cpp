@@ -41,6 +41,8 @@ const std::string default_config_str = R"config_str({
     "require_gps":        false,
     "updatable_config":   "/earth_rotation_data"
     },
+    "num_dishes_x" : 12,
+    "num_dishes_y" : 8,
     "dish_ew_separation_m": 6.3,
     "dish_ns_separation_m": 8.5,
     "dish_inputs" : [
