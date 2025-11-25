@@ -441,7 +441,7 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
     base_dir(config.get<std::string>(unique_name, "base_dir")),
-    file_num_t(config.get_default<std::uint64_t>(unique_name, "file_num_t", 10)),
+    num_file_t(config.get_default<std::uint64_t>(unique_name, "num_file_t")),
     late_frame_grace_seconds(
         config.get_default<std::uint64_t>(unique_name, "late_frame_grace_seconds", 60)),
     max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
@@ -454,8 +454,8 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     buffer->register_consumer(unique_name);
 
     // Validate file window configuration
-    if (file_num_t == 0) {
-        FATAL_ERROR("file_num_t must be > 0 for hdf5N2Write");
+    if (num_file_t == 0) {
+        FATAL_ERROR("num_file_t must be > 0 for hdf5N2Write");
     }
     // Ensure the input buffer is an N2Buffer
     if (buffer->buffer_type != "N2") {
@@ -470,7 +470,7 @@ std::uint64_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
     // configured number of time frames per file.
 
     // Just truncate towards zero
-    return fv.abs_time_idx / file_num_t;
+    return fv.abs_time_idx / num_file_t;
 }
 
 void hdf5N2Write::_finalize_file(N2FileData& filedata) {
@@ -538,7 +538,7 @@ void hdf5N2Write::main_thread() {
     int frame_counter = 0;                   // Count of frames written
 
     /// file data for writing (multiple may be open simultaneously)
-    /// Keyed by absolute file id = absolute frame index / file_num_t
+    /// Keyed by absolute file id = absolute frame index / num_file_t
     std::map<size_t, std::unique_ptr<N2FileData>> filedata;
 
     // Create base_dir and partial dir if necessary (recursively)
@@ -602,7 +602,7 @@ void hdf5N2Write::main_thread() {
             auto blocksize_t = config.get_default<std::uint64_t>(unique_name, "blocksize_t", 1);
 
             auto N2FileData_obj = std::make_unique<N2FileData>(
-                N2FileData::CHORD, file_num_t, fv, frame_recv_time, abs_file_idx, blocksize_f,
+                N2FileData::CHORD, num_file_t, fv, frame_recv_time, abs_file_idx, blocksize_f,
                 blocksize_t, compression, compression_level, use_bitshuffle, base_dir);
 
             filedata.emplace(abs_file_idx, std::move(N2FileData_obj));
@@ -619,7 +619,7 @@ void hdf5N2Write::main_thread() {
         }
 
         // Attempt to add frame to dataset
-        const std::uint64_t t_in_file = fv.abs_time_idx % file_num_t;
+        const std::uint64_t t_in_file = fv.abs_time_idx % num_file_t;
         bool success =
             N2FileData_ptr->add_frame(fv, t_in_file); // performs error checking internally.
         if (!success) {

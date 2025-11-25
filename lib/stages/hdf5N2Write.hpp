@@ -66,7 +66,7 @@ public:
     const bool use_bitshuffle;               // whether to use bitshuffle filter
     const double open_wall_s;                // time opened
     double last_update_wall_s;               // last frame receipt
-    const uint64_t abs_file_idx;             // absolute file index (abs_time_idx / file_num_t)
+    const uint64_t abs_file_idx;             // absolute file index (abs_time_idx / num_file_t)
     const std::string base_dir;              // base output directory (without /.partial)
     const std::string partial_filepath;      // working on-disk location
     std::unique_ptr<HighFive::File> h5_file; // Working on-disk HDF5 file handle
@@ -246,7 +246,7 @@ public:
 private:
     // Config settings (initialized from Config in constructor)
     const std::string base_dir;     /// Base directory to write files into
-    const std::uint64_t file_num_t; /// Number of incoming time frames per file, as indexed by the
+    const std::uint64_t num_file_t; /// Number of incoming time frames per file, as indexed by the
                                     /// absolute frame index
     const std::uint64_t
         late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
