@@ -1,3 +1,20 @@
+"""
+generate_chime_kotekan_config_feed_positions.py
+
+Author: Aaron B. Pearlman (aaron.b.pearlman@physics.mcgill.ca)
+Date: 2025.10.29
+
+Helper script that queries the Layout Database (LayoutDB) for CHIME and generates the feed_positions section for the
+CHIME kotekan config file. This script must be run in an environment that has ch_util and chimedb installed.
+The environment must be able to access the LayoutDB through the CHIME database.
+
+The output of this script can be copied and pasted at the end of the CHIME kotekan config files (e.g.,
+chime_science_run_gpu.yaml and chime_science_run_gpu_no_output.yaml).
+
+Usage: python generate_chime_kotekan_config_feed_positions.py
+
+"""
+
 import numpy as np
 import datetime
 
