@@ -135,7 +135,7 @@ void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& 
     // Create dataset
     HighFive::DataSpace space(dims.begin(), dims.end());
     auto dataset = file.createDataSet(name, space, dtype, props);
-    dataset.createAttribute("dim_names", dim_names);
+    dataset.createAttribute("axis", dim_names);
 };
 
 std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::string& filepath,
@@ -214,13 +214,17 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
 
     // Telescope info
     const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
+    _check_create_attribute(*file, "instrument_name", Telescope::instance().get_name());
+    // _check_create_attribute(*file, "num_stacks", telescope.get_num_stacks());
+    _check_create_attribute(*file, "nyquist_zone", telescope.nyquist_zone());
+    _check_create_attribute(*file, "gps_time_enabled", telescope.gps_time_enabled());
     _check_create_attribute(*file, "fpga_seq_length_nsec", telescope.seq_length_nsec());
     _check_create_attribute(*file, "origin_itrs_lon_deg", telescope.get_origin_itrs_lon_deg());
     _check_create_attribute(*file, "origin_itrs_lat_deg", telescope.get_origin_itrs_lat_deg());
     _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
     _check_create_attribute(*file, "num_dishes", telescope.get_num_dishes());
     _check_create_attribute(*file, "EOP_table_len", telescope.get_EOP_table_len());
-
+    
     // Store EOP table ERA_deg and t_ut1 only
     {
         const int eop_len = telescope.get_EOP_table_len();
@@ -260,10 +264,10 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
             auto pos = telescope.get_dish_position_in_grid_coords(i);
             dish_positions[i] = {pos[0], pos[1], pos[2]};
         }
-        _check_create_dataset(*file, "/dish_positions_in_grid_coords",
+        _check_create_dataset(*file, "/index_map/dish_positions_in_grid_coords",
                               {static_cast<hsize_t>(num_dishes), 3}, {"dish", "xyz"},
                               HighFive::create_datatype<double>(), props_empty);
-        auto dataset = file->getDataSet("/dish_positions_in_grid_coords");
+        auto dataset = file->getDataSet("/index_map/dish_positions_in_grid_coords");
         dataset.write(dish_positions);
     }
 
@@ -275,9 +279,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
             element_dish_map[i] = 0; // TODO: telescope.get_dish_id_for_element(i);
         }
         // Store element-dish mapping as a dataset
-        _check_create_dataset(*file, "/element_dish_map", {static_cast<hsize_t>(num_elements)},
+        _check_create_dataset(*file, "/index_map/element_dish_map", {static_cast<hsize_t>(num_elements)},
                               {"element"}, HighFive::create_datatype<int>(), props_empty);
-        auto dataset = file->getDataSet("/element_dish_map");
+        auto dataset = file->getDataSet("/index_map/element_dish_map");
         dataset.write(element_dish_map);
     }
 
@@ -288,9 +292,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
             freq_chans[f] = N2::freq_ctype{telescope.to_freq_MHz(f), telescope.freq_width_MHz(f)};
 
         auto freq_dtype = HighFive::create_datatype<N2::freq_ctype>();
-        _check_create_dataset(*file, "/frequency_channels", {fv.nfreq}, {"frequency"}, freq_dtype,
+        _check_create_dataset(*file, "/index_map/freq", {fv.nfreq}, {"frequency"}, freq_dtype,
                               props_empty);
-        auto dataset = file->getDataSet("/frequency_channels");
+        auto dataset = file->getDataSet("/index_map/freq");
         dataset.write(freq_chans);
     }
 
@@ -299,9 +303,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         std::vector<N2::prod_ctype> prods(fv.num_prod);
         fv.fill_prod_maps(prods);
         auto prod_dtype = HighFive::create_datatype<N2::prod_ctype>();
-        _check_create_dataset(*file, "/product_list", {fv.num_prod}, {"product"}, prod_dtype,
+        _check_create_dataset(*file, "/index_map/prod", {fv.num_prod}, {"product"}, prod_dtype,
                               props_empty);
-        auto dataset = file->getDataSet("/product_list");
+        auto dataset = file->getDataSet("/index_map/prod");
         dataset.write(prods);
     }
 
