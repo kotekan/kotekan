@@ -224,7 +224,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
     _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
     _check_create_attribute(*file, "num_dishes", telescope.get_num_dishes());
     _check_create_attribute(*file, "EOP_table_len", telescope.get_EOP_table_len());
-    
+
     // Store EOP table ERA_deg and t_ut1 only
     {
         const int eop_len = telescope.get_EOP_table_len();
@@ -279,8 +279,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
             element_dish_map[i] = 0; // TODO: telescope.get_dish_id_for_element(i);
         }
         // Store element-dish mapping as a dataset
-        _check_create_dataset(*file, "/index_map/element_dish_map", {static_cast<hsize_t>(num_elements)},
-                              {"element"}, HighFive::create_datatype<int>(), props_empty);
+        _check_create_dataset(*file, "/index_map/element_dish_map",
+                              {static_cast<hsize_t>(num_elements)}, {"element"},
+                              HighFive::create_datatype<int>(), props_empty);
         auto dataset = file->getDataSet("/index_map/element_dish_map");
         dataset.write(element_dish_map);
     }
