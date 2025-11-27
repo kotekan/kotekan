@@ -89,6 +89,23 @@ inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
 }
 
 /**
+ * @brief Correlator input type
+ */
+struct input_ctype {
+    input_ctype(uint16_t idx, std::string input_id) {
+        element_idx = idx;
+        std::memset(input_id_str, 0, 32);
+        input_id.copy(input_id_str, 32);
+    }
+
+    /// element index
+    uint16_t element_idx;
+    /// input identifier
+    char input_id_str[32];
+};
+
+
+/**
  * @brief A class for modular arithmetic. Used for holding ring buffer indices.
  *
  * This implements comparison and arithmetic operators for modular arithmetic.

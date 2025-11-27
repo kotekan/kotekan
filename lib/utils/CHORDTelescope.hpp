@@ -133,13 +133,17 @@ struct dishInputFields {
  * @conf    gps_host            string. The GPS server IP address.
  * @conf    gps_port            uint.   The port number on the GPS server.
  * @conf    gps_endpoint        string. The enpoint with the GPS time.
+ * @conf    sampling_rate_MHz   double. ADC Sampling Rate (default: 3.2 GHz for CHORD)
+ * @conf    fft_lenth           double. F-engine FFT length (default: 16384 for CHORD)
+ * @conf    nyquist_zone        uint8.  Nyquist Zone we're operating in (default: 1 for CHORD)
+ * @conf    max_output_freq_MHz double. Maximum output frequency for file writing, in MHz (default:
+ *300.0)
+ * @conf    min_output_freq_MHz double. Minimum output frequency for file writing, in MHz (default:
+ *1500.0)
  * @conf    origin_itrs_lon_deg double. Instrument longitude in degrees.
  * @conf    origin_itrs_lat_deg double. Instrument latitude in degrees.
  * @conf    dish_coelev_deg     double. Instrument pointing co-elevation, in
  *                                      degrees from zenith. Positive is North.
- * @conf    sampling_rate_MHz   double. ADC Sampling Rate (default: 3.2 GHz for CHORD)
- * @conf    fft_lenth           double. F-engine FFT length (default: 16384 for CHORD)
- * @conf    nyquist_zone        uint8.  Nyquist Zone we're operating in (default: 1 for CHORD)
  * @conf    origin_itrs_lon_deg double. ITRS longitude of the topocentric coordinate origin.
  * @conf    origin_itrs_lat_deg double. ITRS latitude of the topocentric coordinate origin.
  * @conf    grid_x_axis         [double, 3].    The basis vector, measured in
@@ -447,7 +451,7 @@ public:
      *                  will reallocate the internal vectors if they are not the
      *                  correct size.
      **/
-    void get_input_maps(dishInputFields& input) const;
+    void fill_input_maps(dishInputFields& input) const;
 
     /**
      * @brief Get the number of unique baselines in the array
@@ -462,15 +466,6 @@ public:
      * @returns         The central frequency in MHz.
      **/
     double to_freq_MHz(freq_id_t freq_id) const override;
-
-    /**
-     * @brief Get the total number of frequencies channels.
-     *
-     * This is the upper bound for freq_id.
-     *
-     * @return  The total number of frequency channels.
-     **/
-    uint32_t num_freq() const override;
 
     /**
      * @brief Get the frequency width of a given channel.  When the frequency spacing is constant,
@@ -488,14 +483,55 @@ public:
     uint8_t nyquist_zone() const override;
 
     /**
+     * @brief Get the total number of frequencies channels.
+     *
+     * This is the upper bound for freq_id.
+     *
+     * @return  The total number of frequency channels.
+     **/
+    uint32_t num_freq() const override;
+
+    /**
+     * @brief Get the maximum frequency ID that will be output to files.
+     * @returns     The maximum frequency ID used in files.
+     **/
+    size_t max_output_freq_id() const;
+
+    /**
+     * @brief Get the minimum frequency ID that will be output to files.
+     * @returns     The minimum frequency ID used in files.
+     **/
+    size_t min_output_freq_id() const;
+
+    /**
+     * @brief Get an index of the frequency ID used for output (files).
+     * Ranges from 0 to (max_output_freq_id - min_output_freq_id)
+     * (corresponding to min_output_freq_id to max_output_freq_id).
+     * Not guarded against freq_id being outside output range.
+     *
+     * @param  freq_id  The internal frequency ID.
+     *
+     * @returns     The frequency index written in files.
+     **/
+    size_t get_output_freq_idx(freq_id_t freq_id) const;
+
+    /**
+     * @brief Get the number of frequency channels that will be output to files.
+     * @returns     The number of frequency channels used in files.
+     **/
+    size_t num_output_freq() const;
+
+    /**
      * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
-     * dpdk.
+     * dpdk. This stub remains to satisfy inheritance and will likely be removed in the future, it
+     * will abort if called.
      */
     freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
 
     /**
      * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
-     * dpdk.
+     * dpdk. This stub remains to satisfy inheritance and will likely be removed in the future, it
+     * will abort if called.
      */
     uint32_t num_freq_per_stream() const override;
 
@@ -508,29 +544,20 @@ public:
 
 protected:
     /**
-     * @brief Set the internal parameters `dt_ns`, `freq0_MHz`, `df_MHz`, `nfreq_total`, and
-     * `ny_zone` which set the basic time and frequency sampling behaviour.  Reads the
-     * `sampling_rate_MHz`, `fft_length`, and `nyquist_zone` Config fields.
-     * @param config    The config.
-     * @param path      This telescope object's path.
-     */
-    void set_sampling_params(const kotekan::Config& config, const std::string& path);
-
-    /**
-     * @brief Set the GPS time parameters from the config.
+     * @brief Set the GPS time parameters (gps_enabled, time0_ns) from the config.
      *
      * @param   config  Kotekan config
      **/
-    void set_gps(const kotekan::Config& config);
+    void set_gps_params(const kotekan::Config& config);
 
     /**
-     * @brief Set the GPS time from a remote server (fpga_master)
+     * @brief Set the GPS time parameters (gps_enabled, time0_ns) from a remote server (fpga_master)
      *
      * @param host  The host name of the server with the GPS time information
      * @param port  The port of the server with the GPS time information
      * @param path  The endpoint resource name (e.g. /get-frame0-time)
      **/
-    void set_gps(const std::string& host, const uint32_t port, const std::string& path);
+    void set_gps_params(const std::string& host, const uint32_t port, const std::string& path);
 
     /**
      * @brief Callback to update EOP data
@@ -573,10 +600,13 @@ protected:
     void set_dish_info(const kotekan::Config& config, const std::string& path);
 
     // The telescope's name in the config
-    std::string _unique_name;
+    const std::string _unique_name;
+
+    /// Should we require GPS time to be available
+    const bool _require_gps;
 
     /// Should we try to get the GPS time from remote server
-    bool _query_gps;
+    const bool _query_gps;
 
     /// The GPS server IP address
     std::string _gps_host;
@@ -587,16 +617,38 @@ protected:
     /// The endpoint with the GPS time
     std::string _gps_endpoint;
 
+    /// The time of FPGA frame=0, and the time length of each frame (in ns)
+    /// time0_ns is a UNIX timestamp, in nanoseconds. It does not include
+    /// leap seconds.
+    // TODO: These should probably be const too
+    bool gps_enabled = false;
+    uint64_t time0_ns = 0;
+
+    const double _sampling_rate_MHz;
+    const uint64_t _fft_length;
+    const uint8_t _nyquist_zone;
+    // Set the physical frequency of id=0, and the spacing, taking into account aliasing of each
+    // Nyquist zone
+    const uint64_t _dt_ns;   /// time in nanoseconds between fpga_seq_nums (ie. the time between
+                             /// fft_length raw ADC samples)
+    const double _freq0_MHz; /// the freq0 mode jumps in frequency every 2 nyquist zones. The first
+                             /// zone (zone = 1) is the textbook FFT and has freq0 = 0.
+    const double _df_MHz;    /// Odd zones count up from freq0, even zones count down.
+    const uint64_t _nfreq_total; /// Total number of frequency channels (input data is Real)
+
+    const double _max_output_freq_MHz;
+    const double _min_output_freq_MHz;
+
     /// Instument geographic coordinates in degrees.
-    double _origin_itrs_lon_deg;
-    double _origin_itrs_lat_deg;
+    const double _origin_itrs_lon_deg;
+    const double _origin_itrs_lat_deg;
 
     /// Matrix to transform from local topocentric coordinates to the
     /// grid (ie. dish position) coordinate system.
     double _R_topo_to_grid[3][3];
 
     /// Dish pointing angle.  Measured in degrees from vertical.
-    double _dish_coelev_deg;
+    const double _dish_coelev_deg;
 
     /// Matrix to transform from local topocentric coordinates to the
     /// dish (ie. z is dish zenith, x is elevation axis) coordinate system.
@@ -611,22 +663,11 @@ protected:
     int32_t _num_dishes;
 
     /// Dish-dish grid spacing in the E/W (x) and N/S (y) directions in meters.
-    double _dish_separation_x_m;
-    double _dish_separation_y_m;
+    const double _dish_separation_x_m;
+    const double _dish_separation_y_m;
 
     /// Dish positions in dish coordinate system.
     std::vector<std::array<double, 3>> _dish_positions;
-
-    /// The time of FPGA frame=0, and the time length of each frame (in ns)
-    /// time0_ns is a UNIX timestamp, in nanoseconds. It does not include
-    /// leap seconds.
-    bool gps_enabled = false;
-    uint64_t time0_ns = 0;
-    uint64_t dt_ns;
-    uint8_t ny_zone;
-    uint64_t nfreq_total;
-    double freq0_MHz;
-    double df_MHz;
 
     /// Earth Orientation Parameters
     mutable std::shared_mutex _eop_lock;

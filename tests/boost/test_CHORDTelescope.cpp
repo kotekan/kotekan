@@ -354,7 +354,7 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
     // Set up an object to receive the dish input info.
     dishInputFields buf;
     // Fill the object with the info.
-    tel.get_input_maps(buf);
+    tel.fill_input_maps(buf);
 
     // Make sure its correct.
     for (int i = 0; i < 8; i++) {

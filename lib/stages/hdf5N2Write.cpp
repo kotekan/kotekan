@@ -206,7 +206,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
     _check_create_attribute(*file, "num_elements", fv.num_elements);
     _check_create_attribute(*file, "num_prod", fv.num_prod);
     _check_create_attribute(*file, "num_ev", fv.num_ev);
-    _check_create_attribute(*file, "num_freq", fv.nfreq);
+    _check_create_attribute(*file, "num_freq",
+                            fv.nfreq); // telescope frequencies (not just file freqs)
     _check_create_attribute(*file, "vis_layout",
                             std::string(fv.vis_layout == N2Layout::FullUpperTri
                                             ? "FullUpperTri"
@@ -224,6 +225,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
     _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
     _check_create_attribute(*file, "num_dishes", telescope.get_num_dishes());
     _check_create_attribute(*file, "EOP_table_len", telescope.get_EOP_table_len());
+    _check_create_attribute(*file, "num_file_f",
+                            telescope.num_output_freq()); // just file frequencies
 
     // Store EOP table ERA_deg and t_ut1 only
     {
@@ -256,7 +259,59 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "dish_orientation", dish_orientation);
     }
 
-    // Store dish positions
+    // Store dish input info
+    {
+        // Set up an object to receive the dish input info.
+        dishInputFields dish_inputs;
+        // Fill the object with the info.
+        telescope.fill_input_maps(dish_inputs);
+
+        _check_create_dataset(*file, "/index_map/grid_x_idx", {dish_inputs.grid_x_idx.size()},
+                              {"element"}, HighFive::create_datatype<int64_t>(), props_empty);
+        auto dataset_x = file->getDataSet("/index_map/grid_x_idx");
+        dataset_x.write(dish_inputs.grid_x_idx);
+
+        _check_create_dataset(*file, "/index_map/grid_y_idx", {dish_inputs.grid_y_idx.size()},
+                              {"element"}, HighFive::create_datatype<int64_t>(), props_empty);
+        auto dataset_y = file->getDataSet("/index_map/grid_y_idx");
+        dataset_y.write(dish_inputs.grid_y_idx);
+
+        _check_create_dataset(*file, "/index_map/feed_pos_disp_m",
+                              {dish_inputs.feed_pos_disp_m.size(), 3}, {"element", "xyz"},
+                              HighFive::create_datatype<double>(), props_empty);
+        auto dataset_pos = file->getDataSet("/index_map/feed_pos_disp_m");
+        dataset_pos.write(dish_inputs.feed_pos_disp_m);
+
+        _check_create_dataset(*file, "/index_map/coelev_disp_deg",
+                              {dish_inputs.coelev_disp_deg.size()}, {"element"},
+                              HighFive::create_datatype<double>(), props_empty);
+        auto dataset_coelev = file->getDataSet("/index_map/coelev_disp_deg");
+        dataset_coelev.write(dish_inputs.coelev_disp_deg);
+
+        _check_create_dataset(*file, "/index_map/type", {dish_inputs.type.size()}, {"element"},
+                              HighFive::create_datatype<int32_t>(), props_empty);
+        auto dataset_type = file->getDataSet("/index_map/type");
+        // Cast DishType enum to int32_t for storage
+        std::vector<int32_t> type_int(dish_inputs.type.size());
+        for (size_t i = 0; i < dish_inputs.type.size(); i++) {
+            type_int[i] = static_cast<int32_t>(dish_inputs.type[i]);
+        }
+        dataset_type.write(type_int);
+
+        // Store dish labels, convert dish_inputs.label to a vector of input_ctype for storage
+        // std::vector<N2::input_ctype> label_input(dish_inputs.label.size());
+        // for (size_t i = 0; i < dish_inputs.label.size(); i++) {
+        //     label_input[i] = N2::input_ctype(dish_inputs.label[i]);
+        // }
+        // _check_create_dataset(*file, "/index_map/input", // "input" is legacy/CHIME name for dish
+        // labels
+        //                       {dish_inputs.label.size()}, {"element"},
+        //                       HighFive::create_datatype<N2::input_ctype>(), props_empty);
+        // auto dataset_label = file->getDataSet("/index_map/input");
+        // dataset_label.write(label_input);
+    }
+
+    // Store full dish positions
     {
         const int num_dishes = telescope.get_num_dishes();
         std::vector<std::array<double, 3>> dish_positions(num_dishes);
@@ -271,29 +326,17 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         dataset.write(dish_positions);
     }
 
-    // Store element-dish mapping
+    // Store physical frequencies (file frequencies) as a dataset
     {
-        const int num_elements = fv.num_elements;
-        std::vector<int> element_dish_map(num_elements);
-        for (int i = 0; i < num_elements; i++) {
-            element_dish_map[i] = 0; // TODO: telescope.get_dish_id_for_element(i);
+        std::vector<N2::freq_ctype> freq_chans(num_file_f);
+        for (uint32_t f = 0; f < num_file_f; f++) {
+            freq_id_t freq_id = telescope.min_output_freq_id() + f;
+            freq_chans[f] =
+                N2::freq_ctype{telescope.to_freq_MHz(freq_id), telescope.freq_width_MHz(freq_id)};
         }
-        // Store element-dish mapping as a dataset
-        _check_create_dataset(*file, "/index_map/element_dish_map",
-                              {static_cast<hsize_t>(num_elements)}, {"element"},
-                              HighFive::create_datatype<int>(), props_empty);
-        auto dataset = file->getDataSet("/index_map/element_dish_map");
-        dataset.write(element_dish_map);
-    }
-
-    // Store physical frequencies as a dataset
-    {
-        std::vector<N2::freq_ctype> freq_chans(fv.nfreq);
-        for (uint32_t f = 0; f < fv.nfreq; f++)
-            freq_chans[f] = N2::freq_ctype{telescope.to_freq_MHz(f), telescope.freq_width_MHz(f)};
 
         auto freq_dtype = HighFive::create_datatype<N2::freq_ctype>();
-        _check_create_dataset(*file, "/index_map/freq", {fv.nfreq}, {"frequency"}, freq_dtype,
+        _check_create_dataset(*file, "/index_map/freq", {num_file_f}, {"frequency"}, freq_dtype,
                               props_empty);
         auto dataset = file->getDataSet("/index_map/freq");
         dataset.write(freq_chans);
@@ -348,6 +391,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                           {"frequency", "time"}, HighFive::create_datatype<float>(), props_empty);
     _check_create_dataset(*file, flags_group_prefix + "/frac_rfi", {fv.nfreq, num_file_t_},
                           {"frequency", "time"}, HighFive::create_datatype<float>(), props_empty);
+
     _check_create_dataset(*file, "/fpga_start_tick", {num_file_t_}, {"time"},
                           HighFive::create_datatype<uint64_t>(), props_empty);
     _check_create_dataset(*file, "/frame_length_fpga_ticks", {num_file_t_}, {"time"},
@@ -369,15 +413,56 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
     return file;
 }
 
+N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameView& fv,
+                       const double open_wall_s_, const uint64_t abs_file_idx_,
+                       const size_t blocksize_f_, const size_t blocksize_p_,
+                       const size_t blocksize_t_, const std::string compression_,
+                       const size_t compression_level_, const bool use_bitshuffle_,
+                       const std::string base_dir_) :
+    num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev),
+    num_file_f(Telescope::instance().cast<CHORDTelescope>().num_output_freq()),
+    num_file_t(num_file_t_), file_mode(file_mode_), blocksize_f(blocksize_f_),
+    blocksize_p(blocksize_p_), blocksize_t(blocksize_t_), compression(compression_),
+    compression_level(compression_level_), use_bitshuffle(use_bitshuffle_),
+    open_wall_s(open_wall_s_), last_update_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_),
+    base_dir(std::move(base_dir_)),
+    partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(abs_file_idx_) + ".h5"),
+    h5_file(_open_or_create_file(partial_filepath, num_file_t_, fv, file_mode)) {
+
+    // resize arrays to hold data across (freq, time) blocks
+    vis.assign(num_prod * num_file_f * num_file_t, N2::cfloat{0.0f, 0.0f});
+    vis_weight.assign(num_prod * num_file_f * num_file_t, 0.0f);
+    eval.assign(num_ev * num_file_f * num_file_t, 0.0f);
+    evec.assign(num_ev * num_elements * num_file_f * num_file_t, N2::cfloat{0.0f, 0.0f});
+    erms.assign(num_file_f * num_file_t, 0.0f);
+    gain.assign(num_elements * num_file_f * num_file_t, N2::cfloat{0.0f, 0.0f});
+    frac_lost.assign(num_file_f * num_file_t, 1.0f); // match empty frames by default
+    frac_rfi.assign(num_file_f * num_file_t, 0.0f);
+    flags.assign(num_elements * num_file_f * num_file_t, 0.0f);
+
+    // Additional metadata
+    fpga_start_tick.assign(num_file_t, 0);
+    frame_length_fpga_ticks.assign(num_file_t, 0);
+    time_center_ut1.assign(num_file_t, 0.0);
+    bin_ut1.assign(num_file_t, 0);
+    bin_start_ERA_deg.assign(num_file_t, 0.0);
+    bin_end_ERA_deg.assign(num_file_t, 0.0);
+    bin_start_LAST.assign(num_file_t, 0);
+    bin_end_LAST.assign(num_file_t, 0);
+
+    added_ft.assign(num_file_f * num_file_t, 0);
+}
+
+
 bool N2FileData::add_frame(const N2FrameView& fv, size_t t_index) {
-    const size_t f_index = fv.freq_id; // TODO: sync with telescope object. For now assume
-                                       // 0..num_freq-1 indexing
+    const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
+    const size_t f_index = telescope.get_output_freq_idx(fv.freq_id);
 
     // Make sure frame hasn't been added yet
-    if (f_index >= num_freq || t_index >= num_file_t) {
-        ERROR_NON_OO("N2FileData: index out of bounds: f_index={} >= num_freq={}; t_index={} >= "
+    if (f_index >= num_file_f || t_index >= num_file_t) {
+        ERROR_NON_OO("N2FileData: index out of bounds: f_index={} >= num_file_f={}; t_index={} >= "
                      "num_file_t={}",
-                     f_index, num_freq, t_index, num_file_t);
+                     f_index, num_file_f, t_index, num_file_t);
         return false;
     }
     size_t check_idx = idx_ft(f_index, t_index);
@@ -397,8 +482,9 @@ bool N2FileData::add_frame(const N2FrameView& fv, size_t t_index) {
         || (fpga_start_tick[t_index] > 0 && fpga_start_tick[t_index] != fv.fpga_start_tick)
         || (frame_length_fpga_ticks[t_index] > 0
             && frame_length_fpga_ticks[t_index] != fv.frame_length_fpga_ticks)
-        || (time_center_ut1[t_index] > 0 && time_center_ut1[t_index] != fv.time_center_eop.t_ut1)
-        || (bin_ut1[t_index] > 0 && bin_ut1[t_index] != fv.bin_eop.t_ut1)
+        || (time_center_ut1[t_index] > 0
+            && time_center_ut1[t_index] != fv.time_center_eop.t_ut1)      // TODO: relax a bit?
+        || (bin_ut1[t_index] > 0 && bin_ut1[t_index] != fv.bin_eop.t_ut1) // TODO: relax a bit?
         || (bin_start_ERA_deg[t_index] < 0) || (bin_end_ERA_deg[t_index] < 0)
         || (bin_start_LAST[t_index] > 0 && bin_start_LAST[t_index] != fv.bin_start_LAST)
         || (bin_end_LAST[t_index] > 0 && bin_end_LAST[t_index] != fv.bin_end_LAST)) {
@@ -512,33 +598,33 @@ bool N2FileData::flush_to_disk() {
 
     // Write directly from buffers, use write_raw(ptr) so memspace is applied
     h5_file->getDataSet("/frames_added")
-        .select({0, 0}, {num_freq, num_file_t})
+        .select({0, 0}, {num_file_f, num_file_t})
         .write_raw(added_ft.data());
 
     h5_file->getDataSet("/vis")
-        .select({0, 0, 0}, {num_freq, num_prod, num_file_t})
+        .select({0, 0, 0}, {num_file_f, num_prod, num_file_t})
         .write_raw(vis.data());
     h5_file->getDataSet(flags_group_prefix + "/vis_weight")
-        .select({0, 0, 0}, {num_freq, num_prod, num_file_t})
+        .select({0, 0, 0}, {num_file_f, num_prod, num_file_t})
         .write_raw(vis_weight.data());
     h5_file->getDataSet("/eval")
-        .select({0, 0, 0}, {num_freq, num_ev, num_file_t})
+        .select({0, 0, 0}, {num_file_f, num_ev, num_file_t})
         .write_raw(eval.data());
     h5_file->getDataSet("/evec")
-        .select({0, 0, 0, 0}, {num_freq, num_ev, num_elements, num_file_t})
+        .select({0, 0, 0, 0}, {num_file_f, num_ev, num_elements, num_file_t})
         .write_raw(evec.data());
-    h5_file->getDataSet("/erms").select({0, 0}, {num_freq, num_file_t}).write_raw(erms.data());
+    h5_file->getDataSet("/erms").select({0, 0}, {num_file_f, num_file_t}).write_raw(erms.data());
     h5_file->getDataSet(flags_group_prefix + "/frac_lost")
-        .select({0, 0}, {num_freq, num_file_t})
+        .select({0, 0}, {num_file_f, num_file_t})
         .write_raw(frac_lost.data());
     h5_file->getDataSet(flags_group_prefix + "/frac_rfi")
-        .select({0, 0}, {num_freq, num_file_t})
+        .select({0, 0}, {num_file_f, num_file_t})
         .write_raw(frac_rfi.data());
     h5_file->getDataSet("/gain")
-        .select({0, 0, 0}, {num_freq, num_elements, num_file_t})
+        .select({0, 0, 0}, {num_file_f, num_elements, num_file_t})
         .write_raw(gain.data());
     h5_file->getDataSet(flags_group_prefix + "/flags")
-        .select({0, 0, 0}, {num_freq, num_elements, num_file_t})
+        .select({0, 0, 0}, {num_file_f, num_elements, num_file_t})
         .write_raw(flags.data());
 
     h5_file->getDataSet("/fpga_start_tick").write(fpga_start_tick);

@@ -31,12 +31,12 @@
  * @brief Buffer a full file worth of arrays in memory, then flush to disk
  * all at once.
  *
- * A file contains `num_file_t` time frames across `num_freq` freqs.
+ * A file contains `num_file_t` time frames across `num_file_f` freqs.
  * This class holds all relevant arrays in their target on-disk layout,
  * "transposed" so the time-axis is fastest-varying, to facilitate large
  * contiguous writes, rather than writing as individual frames arrive.
  *
- * (Note that num_freq and num_file_t are not necessarily the same as the actual
+ * (Note that num_file_f and num_file_t are not necessarily the same as the actual
  * frequency or time BLOCKSIZEs when written to file, which is configurable via the
  * stage parameters, but it may be beneficial to have them match.)
  *
@@ -54,7 +54,7 @@ public:
     const size_t num_elements; // number of inputs / elements
     const size_t num_prod;     // number of products
     const size_t num_ev;       // number of eigenvectors/values
-    const size_t num_freq;     // number of frequencies
+    const size_t num_file_f;   // number of frequencies
     const size_t num_file_t;   // frames ("time" dimension)
 
     // file bookkeeping owned by this object
@@ -96,7 +96,7 @@ protected:
     std::vector<int64_t> bin_end_LAST;             // (t)
 
     // Tracking what (f, t) pairs have been added
-    std::vector<uint8_t> added_ft; // size = num_freq * num_file_t
+    std::vector<uint8_t> added_ft; // size = num_file_f * num_file_t
     size_t added_count = 0;        // number of (f, t) frames added
 
 private:
@@ -123,39 +123,7 @@ public:
                const double open_wall_s_, const uint64_t abs_file_idx_, const size_t blocksize_f_,
                const size_t blocksize_p_, const size_t blocksize_t_, const std::string compression_,
                const size_t compression_level_, const bool use_bitshuffle_,
-               const std::string base_dir_) :
-        num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev), num_freq(fv.nfreq),
-        num_file_t(num_file_t_), file_mode(file_mode_), blocksize_f(blocksize_f_),
-        blocksize_p(blocksize_p_), blocksize_t(blocksize_t_), compression(compression_),
-        compression_level(compression_level_), use_bitshuffle(use_bitshuffle_),
-        open_wall_s(open_wall_s_), last_update_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_),
-        base_dir(std::move(base_dir_)),
-        partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(abs_file_idx_) + ".h5"),
-        h5_file(_open_or_create_file(partial_filepath, num_file_t_, fv, file_mode)) {
-
-        // resize arrays to hold data across (freq, time) blocks
-        vis.assign(num_prod * num_freq * num_file_t, N2::cfloat{0.0f, 0.0f});
-        vis_weight.assign(num_prod * num_freq * num_file_t, 0.0f);
-        eval.assign(num_ev * num_freq * num_file_t, 0.0f);
-        evec.assign(num_ev * num_elements * num_freq * num_file_t, N2::cfloat{0.0f, 0.0f});
-        erms.assign(num_freq * num_file_t, 0.0f);
-        gain.assign(num_elements * num_freq * num_file_t, N2::cfloat{0.0f, 0.0f});
-        frac_lost.assign(num_freq * num_file_t, 1.0f); // match empty frames by default
-        frac_rfi.assign(num_freq * num_file_t, 0.0f);
-        flags.assign(num_elements * num_freq * num_file_t, 0.0f);
-
-        // Additional metadata
-        fpga_start_tick.assign(num_file_t, 0);
-        frame_length_fpga_ticks.assign(num_file_t, 0);
-        time_center_ut1.assign(num_file_t, 0.0);
-        bin_ut1.assign(num_file_t, 0);
-        bin_start_ERA_deg.assign(num_file_t, 0.0);
-        bin_end_ERA_deg.assign(num_file_t, 0.0);
-        bin_start_LAST.assign(num_file_t, 0);
-        bin_end_LAST.assign(num_file_t, 0);
-
-        added_ft.assign(num_freq * num_file_t, 0);
-    }
+               const std::string base_dir_);
 
     /**
      * @brief Add a frame of data at the computed time index.
@@ -183,7 +151,7 @@ public:
 
     /// Check if all (f, t) pairs have been added
     bool full() const {
-        return added_count == num_freq * num_file_t;
+        return added_count == num_file_f * num_file_t;
     }
 
     // Accessors for internal storage (index calculation)
@@ -214,7 +182,7 @@ public:
  * @brief Buffered-transpose writer: buffers sequential time frames and writes HDF5 files.
  *
  * This stage groups frames into UTC-midnight-aligned windows of length
- * `file_seconds`, buffers a complete (num_freq * file_nt) block per output file in
+ * `file_seconds`, buffers a complete (num_file_f * file_nt) block per output file in
  * memory (via N2FileData), and when the block is full, writes all arrays to
  * disk in large contiguous slabs. If the block is not full, it is nevertheless finalized
  * after `late_frame_grace_seconds` of inactivity once frames for later file windows begin to
