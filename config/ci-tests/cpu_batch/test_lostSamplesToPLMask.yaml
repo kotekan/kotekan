@@ -1,0 +1,98 @@
+#
+# Just a simple test pipeline that generates test lost_samples and converts to
+# pl_mask
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [0, 1]
+
+num_dishes: 1024
+num_polarizations: 2
+num_freq_bins: 3 # actual CHIME has 4, but then its 4 bins of 4 freqs each, which is a worse test case
+
+pl_mask_downsampling_factor: 2
+pl_mask_dishes_per_bin: 8
+pl_mask_hilo_split: 64
+
+buffer_depth: 5
+num_frame_samples: pl_mask_hilo_split * pl_mask_downsampling_factor * 2  # 2 pl_mask tiles worth of samples
+
+# Pools
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 4 * buffer_depth
+
+# Buffers
+lost_samples_buffers:
+    num_frames: buffer_depth
+    frame_size: num_frame_samples
+    metadata_pool: main_pool
+    lost_samples_buffer_0:
+        kotekan_buffer: standard
+    lost_samples_buffer_1:
+        kotekan_buffer: standard
+    lost_samples_buffer_2:
+        kotekan_buffer: standard
+
+pl_mask_buffers:
+    num_frames: buffer_depth
+    frame_size: num_frame_samples/pl_mask_downsampling_factor * num_dishes/pl_mask_dishes_per_bin * num_polarizations * num_freq_bins / 8
+    metadata_pool: main_pool
+    out_pl_mask_buffer:
+        kotekan_buffer: standard
+    cmp_pl_mask_buffer:
+        kotekan_buffer: standard
+
+# Kotekan stages
+gen_test_data:
+    log_level: WARN
+    kotekan_stage: testLostSamplesToPLMask
+    pl_mask_buf: cmp_pl_mask_buffer
+    lost_samples_buffers:
+      - lost_samples_buffer_0
+      - lost_samples_buffer_1
+      - lost_samples_buffer_2
+
+lostSamplesToPLMask:
+    kotekan_stage: lostSamplesToPLMask
+    pl_mask_buf: out_pl_mask_buffer
+    lost_samples_buffers:
+      - lost_samples_buffer_0
+      - lost_samples_buffer_1
+      - lost_samples_buffer_2
+
+check_lostSamplesToPLMask:
+    kotekan_stage: testDataCheckUchar
+    first_buf: cmp_pl_mask_buffer
+    second_buf: out_pl_mask_buffer
+    num_frames_to_test: buffer_depth
+    trigger_exit_on_pass: false
+    check_metadata: true
+
+# dump to disk to inspect manually
+writers:
+    base_dir: test_lostSamplesToPLMask
+    prefix_hostname: false
+    max_frames: buffer_depth
+    skip_writing: true # change to false to see the files
+    lost_samples_0:
+        kotekan_stage: hdf5FileWrite
+        file_name: lost_samples_buffer_0
+        in_buf: lost_samples_buffer_0
+    lost_samples_1:
+        kotekan_stage: hdf5FileWrite
+        file_name: lost_samples_buffer_1
+        in_buf: lost_samples_buffer_1
+    lost_samples_2:
+        kotekan_stage: hdf5FileWrite
+        file_name: lost_samples_buffer_2
+        in_buf: lost_samples_buffer_2
+    out_pl_mask:
+        kotekan_stage: hdf5FileWrite
+        file_name: out_pl_mask_buffer
+        in_buf: out_pl_mask_buffer
+    cmp_pl_mask:
+        kotekan_stage: hdf5FileWrite
+        file_name: cmp_pl_mask_buffer
+        in_buf: cmp_pl_mask_buffer
