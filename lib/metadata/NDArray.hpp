@@ -116,6 +116,9 @@ public:
 
     // Output the array metadata, useful for logging or debugging
     void output_metadata(std::ostream& os) const;
+
+    // Compare two NDArrays, useful to compare metadata
+    bool operator==(const GenericNDArray& other) const;
 };
 
 // A `NDArray<T,D>` is a `D`-dimensional array of type `T`. Different
