@@ -78,7 +78,7 @@ void lostSamplesToPLMask::main_thread() {
         uint8_t* pl_mask_frame =
             pl_mask_buf->wait_for_empty_frame(unique_name, pl_mask_buf_frame_id);
         if (pl_mask_frame == nullptr)
-            break;
+            return;
         pl_mask_buf->allocate_new_metadata_object(pl_mask_buf_frame_id);
         auto pl_mask_meta = get_chord_metadata(pl_mask_buf, pl_mask_buf_frame_id);
 
@@ -87,7 +87,7 @@ void lostSamplesToPLMask::main_thread() {
             uint8_t* flag_frame =
                 lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_buf_frame_id);
             if (flag_frame == nullptr)
-                break;
+                return;
 
             // constant for all iterations but only set by the producer before
             // it marks the frame as full, so cannot be checked before the first
