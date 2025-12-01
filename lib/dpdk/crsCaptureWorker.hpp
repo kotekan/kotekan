@@ -57,6 +57,9 @@ protected:
 
     /// Number of frames captured
     uint64_t num_frames_captured = 0;
+
+    /// Previous seq num
+    uint64_t last_seq = 0;
 };
 
 inline crsCaptureWorker::crsCaptureWorker(kotekan::Config& config, const std::string& unique_name,
@@ -133,6 +136,7 @@ inline int crsCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
             (double)packet_size * 390000 * 8 / (time_now - previous_time) / 1.0e9,
             (time_now - previous_time));
         previous_time = time_now;
+        last_seq = seq_num;
     }
 
     if (packet_location * packet_size == (uint32_t)out_buf->frame_size) {

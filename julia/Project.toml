@@ -1,7 +1,7 @@
 name = "Kotekan"
 uuid = "4b3ecac4-cfa8-46ac-ae66-cdd0e0e0ae48"
-authors = ["Erik Schnetter <schnetter@gmail.com>"]
 version = "0.1.0"
+authors = ["Erik Schnetter <schnetter@gmail.com>"]
 
 [deps]
 ASDF = "686f71d1-807d-59a4-a860-28280ea06d7b"
@@ -22,6 +22,7 @@ JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
 MappedArrays = "dbb5928d-eab1-5f90-85c2-b9b0edb7c900"
 Mustache = "ffc61752-8dc7-55ee-8c37-f3e9cdd09e70"
 NetCDF = "30363a11-5582-574a-97bb-aa9a979735b9"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
@@ -48,6 +49,7 @@ IndexSpaces = "1.8.0"
 JuliaFormatter = "1.0.42"
 MappedArrays = "0.4.2"
 Mustache = "1.0.18"
+Plots = "1.41.1"
 Printf = "1.11.0"
 StaticArrays = "1.9.7"
 Statistics = "1.10.0"

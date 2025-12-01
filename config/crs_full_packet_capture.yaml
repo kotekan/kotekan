@@ -16,11 +16,12 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: debug
 
-buffer_depth: 8
-packets_per_frame: 32768
+buffer_depth: 120
+packets_per_frame: 65536
 packet_size: 6208
 num_crs_boards: 1
 capture_n_frames: buffer_depth  # Total number of frames to capture, 0 = unlimited
+numa_node: 0
 
 # Pool
 main_pool:
@@ -82,7 +83,7 @@ dpdk:
 
 raw_file_writers:
     ### UPDATE THIS PATH FOR EACH RUN ###
-    base_dir: /data/crs_capture
+    base_dir: /data/20251127_0325_packetdump
     frames_per_file: 1
     prefix_hostname: false
     include_metadata: false
