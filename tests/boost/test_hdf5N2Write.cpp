@@ -4,6 +4,7 @@
 
 #include "Config.hpp" // for Config
 #include "H5Support.hpp"
+#include "CHORDTelescope.hpp"
 #include "N2FrameView.hpp" // for N2FrameView
 #include "N2Metadata.hpp"  // for N2Metadata, get_N2_metadata
 #include "N2Util.hpp"      // for N2 helpers
@@ -42,6 +43,22 @@
 using std::string;
 
 using HighFive::File;
+
+static size_t get_abs_freq_id(size_t f_index) {
+    const auto& tel = Telescope::instance().cast<CHORDTelescope>();
+    return tel.min_output_freq_id() + f_index;
+}
+
+static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_input,
+                                        size_t num_ev, size_t nfreq, size_t f_index,
+                                        size_t t_index, uint64_t frame_start_time_ns,
+                                        uint64_t frame_length_ticks, uint64_t abs_time_idx) {
+    fill_n2_frame_with_abs(buf, frame_id, num_input, num_ev, nfreq, f_index, t_index,
+                           frame_start_time_ns, frame_length_ticks, abs_time_idx);
+    auto meta = get_N2_metadata(buf, frame_id);
+    BOOST_REQUIRE(meta);
+    meta->freq_id = get_abs_freq_id(f_index);
+}
 
 
 /// Simple class to expose N2FileData internals without modifying production code.
@@ -236,7 +253,8 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     meta->num_prod = num_prod;
     meta->num_ev = num_ev;
     meta->nfreq = num_freq;
-    meta->freq_id = 1;
+    const size_t f_index = 1;
+    meta->freq_id = get_abs_freq_id(f_index);
     meta->fpga_start_tick = 111;
     meta->frame_start_time_ns = 222;
     meta->frame_length_fpga_ticks = 100;
@@ -271,22 +289,21 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     ensure_directory(base_dir);
     ensure_directory(base_dir + "/.partial");
     TestVisFileData data(fv, num_file_t, 100.0, 0, base_dir);
-    const size_t f = meta->freq_id;
     const size_t t = 1;
 
     // Add frame to (f,t) slot
     data.add_frame(fv, t);
 
     // Check a few expected values in memory
-    BOOST_CHECK(data.get_vis(f, 0, t) == N2::cfloat(1.0f, 2.0f));
-    BOOST_CHECK_CLOSE_FRACTION(data.get_weight(f, 0, t), float(1000), 1e-6f);
-    BOOST_CHECK_CLOSE_FRACTION(data.get_eval(f, 0, t), float(60), 1e-6f);
-    BOOST_CHECK(data.get_evec(f, 0, 0, t) == N2::cfloat(0.5f, -1.5f));
-    BOOST_CHECK_CLOSE_FRACTION(data.get_erms(f, t), 3.14f, 1e-6f);
-    BOOST_CHECK(data.get_gain(f, 0, t) == N2::cfloat(200.0f, -200.0f));
-    BOOST_CHECK_CLOSE_FRACTION(data.get_flags(f, 0, t), 300.0f, 1e-6f);
-    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_lost(f, t), 1.0f - 80.0f / 100.0f, 1e-6f);
-    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_rfi(f, t), 5.0f / 100.0f, 1e-6f);
+    BOOST_CHECK(data.get_vis(f_index, 0, t) == N2::cfloat(1.0f, 2.0f));
+    BOOST_CHECK_CLOSE_FRACTION(data.get_weight(f_index, 0, t), float(1000), 1e-6f);
+    BOOST_CHECK_CLOSE_FRACTION(data.get_eval(f_index, 0, t), float(60), 1e-6f);
+    BOOST_CHECK(data.get_evec(f_index, 0, 0, t) == N2::cfloat(0.5f, -1.5f));
+    BOOST_CHECK_CLOSE_FRACTION(data.get_erms(f_index, t), 3.14f, 1e-6f);
+    BOOST_CHECK(data.get_gain(f_index, 0, t) == N2::cfloat(200.0f, -200.0f));
+    BOOST_CHECK_CLOSE_FRACTION(data.get_flags(f_index, 0, t), 300.0f, 1e-6f);
+    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_lost(f_index, t), 1.0f - 80.0f / 100.0f, 1e-6f);
+    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_rfi(f_index, t), 5.0f / 100.0f, 1e-6f);
     BOOST_CHECK_EQUAL(data.get_fpga_start_tick(t), uint64_t(111));
     BOOST_CHECK_EQUAL(data.get_frame_length_fpga_ticks(t), uint64_t(100));
     BOOST_CHECK_EQUAL(data.get_time_center_ut1(t), int64_t(333));
@@ -314,7 +331,7 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     auto meta1 = get_N2_metadata(&buf, 0);
     auto meta2 = get_N2_metadata(&buf, 1);
 
-    const size_t f = 1;
+    const size_t f_index = 1;
     const size_t t = 1;
 
     // meta1
@@ -322,7 +339,7 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     meta1->num_prod = num_prod;
     meta1->num_ev = num_ev;
     meta1->nfreq = num_freq;
-    meta1->freq_id = f;
+    meta1->freq_id = get_abs_freq_id(f_index);
     meta1->fpga_start_tick = 1000;
     meta1->frame_start_time_ns = 2000;
     meta1->frame_length_fpga_ticks = 100;
@@ -355,8 +372,8 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     // First write
     BOOST_REQUIRE(data.add_frame(fv1, t));
     // Verify fractions computed directly from metadata values
-    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_lost(f, t), 0.2f, 1e-6f);
-    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_rfi(f, t), 0.3f, 1e-6f);
+    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_lost(f_index, t), 0.2f, 1e-6f);
+    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_rfi(f_index, t), 0.3f, 1e-6f);
     BOOST_CHECK_EQUAL(data.get_time_center_ut1(t), int64_t(10'000));
     BOOST_CHECK_EQUAL(data.get_bin_ut1(t), int64_t(10'000));
 
@@ -450,16 +467,17 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, f, /*t*/ 1,
-                               base_time_ns + 1 * frame_len_ns, frame_len_ticks, abs_base_idx + 1);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, /*t*/ 1,
+                                    base_time_ns + 1 * frame_len_ns, frame_len_ticks,
+                                    abs_base_idx + 1);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, f, /*t*/ 0, base_time_ns,
-                               frame_len_ticks, abs_base_idx + 0);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, /*t*/ 0, base_time_ns,
+                                    frame_len_ticks, abs_base_idx + 0);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -539,8 +557,8 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, f, /*t*/ 0, base_time_ns,
-                               frame_len_ticks, 0);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, /*t*/ 0, base_time_ns,
+                                    frame_len_ticks, 0);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -630,8 +648,8 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
         for (size_t f = 0; f < nfreq; ++f) {
             uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
             BOOST_REQUIRE(frame != nullptr);
-            fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, f, t,
-                                   baseA + t * frame_len_ns, frame_len_ticks, abs_base_a + t);
+            fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, t,
+                                        baseA + t * frame_len_ns, frame_len_ticks, abs_base_a + t);
             buf.mark_frame_full("test-producer", fid);
             fid++;
         }
@@ -640,8 +658,8 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
         for (size_t f = 0; f < nfreq; ++f) {
             uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
             BOOST_REQUIRE(frame != nullptr);
-            fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, f, t,
-                                   baseB + t * frame_len_ns, frame_len_ticks, abs_base_b + t);
+            fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, t,
+                                        baseB + t * frame_len_ns, frame_len_ticks, abs_base_b + t);
             buf.mark_frame_full("test-producer", fid);
             fid++;
         }
@@ -712,8 +730,8 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, f, 0, baseA, frame_len_ticks,
-                               abs_base_a);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, baseA,
+                                    frame_len_ticks, abs_base_a);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -721,8 +739,8 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, f, 0, baseB, frame_len_ticks,
-                               abs_base_b);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, baseB,
+                                    frame_len_ticks, abs_base_b);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -792,8 +810,8 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, f, 0, baseA, frame_len_ticks,
-                               abs_base_a);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, baseA,
+                                    frame_len_ticks, abs_base_a);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -803,8 +821,8 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, f, 0, baseB, frame_len_ticks,
-                               abs_base_b);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, baseB,
+                                    frame_len_ticks, abs_base_b);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -880,8 +898,8 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, f, 0, base_time_ns,
-                               frame_len_ticks, abs_base_a);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, base_time_ns,
+                                    frame_len_ticks, abs_base_a);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -890,8 +908,8 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, f, 0, next_time,
-                               frame_len_ticks, abs_base_b);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, next_time,
+                                    frame_len_ticks, abs_base_b);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -961,8 +979,8 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, f, 0, base_time_ns,
-                               frame_len_ticks, abs_base);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, base_time_ns,
+                                    frame_len_ticks, abs_base);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -970,8 +988,8 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs(&buf, fid, num_input, num_ev, nfreq, 0, 1,
-                               base_time_ns + frame_len_ns, frame_len_ticks, abs_base + 1);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, 0, 1,
+                                    base_time_ns + frame_len_ns, frame_len_ticks, abs_base + 1);
         auto meta = get_N2_metadata(&buf, fid);
         meta->nfreq = nfreq + 1; // Force mismatch
         buf.mark_frame_full("test-producer", fid);

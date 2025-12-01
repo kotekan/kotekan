@@ -47,8 +47,8 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     _df_MHz((_nyquist_zone % 2 == 1 ? 1 : -1) * _sampling_rate_MHz
             / _fft_length), // Odd zones count up from freq0, even zones count down.
     _nfreq_total(_fft_length / 2),
-    _max_output_freq_MHz(config.get_default<double>(path, "max_output_freq_MHz", 300.0)),
-    _min_output_freq_MHz(config.get_default<double>(path, "min_output_freq_MHz", 1500.0)),
+    _max_output_freq_MHz(config.get_default<double>(path, "max_output_freq_MHz", 1500.0)),
+    _min_output_freq_MHz(config.get_default<double>(path, "min_output_freq_MHz", 300.0)),
     // Instrument geographic coordinates
     _origin_itrs_lon_deg(config.get_default<double>(path, "origin_itrs_lon_deg", 0.0)),
     _origin_itrs_lat_deg(config.get_default<double>(path, "origin_itrs_lat_deg", 0.0)),
@@ -73,9 +73,14 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     INFO("Telescope configured with {} frequency channels total", _nfreq_total);
     INFO("Telescope configured with {} MHz channel width", _df_MHz);
     INFO("Telescope configured with {} MHz starting frequency", _freq0_MHz);
-    INFO("Telescope configured with {} ns sequence length_", _dt_ns);
-    INFO("Telescope configured with {} MHz max final output frequency", _max_output_freq_MHz);
-    INFO("Telescope configured with {} MHz min final output frequency", _min_output_freq_MHz);
+    INFO("Telescope configured with {} ns sequence length", _dt_ns);
+    INFO("Telescope configured so min_output_freq_id is {}", min_output_freq_id());
+    INFO("Telescope configured so max_output_freq_id is {}", max_output_freq_id());
+    if (min_output_freq_id() >= max_output_freq_id()) {
+        FATAL_ERROR("Telescope minimum output frequency ({:f} MHz) is greater than or equal to "
+                    "maximum output frequency ({:f} MHz)!",
+                    _min_output_freq_MHz, _max_output_freq_MHz);
+    }
 
     INFO("Telescope configured with longitude:    {:f} deg", _origin_itrs_lon_deg);
     INFO("Telescope configured with latitude:     {:f} deg", _origin_itrs_lat_deg);
@@ -802,6 +807,7 @@ size_t CHORDTelescope::min_output_freq_id() const {
 
 size_t CHORDTelescope::get_output_freq_idx(freq_id_t freq_id) const {
     size_t output_freq_idx = freq_id - min_output_freq_id();
+
     // Non-fatal error check.
     if (freq_id < min_output_freq_id() || freq_id > max_output_freq_id()) {
         ERROR_NON_OO(

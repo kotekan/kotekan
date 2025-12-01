@@ -1,6 +1,7 @@
 #include "testDataGen.hpp"
 
 #include "Config.hpp"          // for Config
+#include "CHORDTelescope.hpp"  // for CHORDTelescope
 #include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"          // for Symbol
@@ -178,8 +179,10 @@ void testDataGen::main_thread() {
 
     int link_id = 0;
 
+    const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
+
     double frame_length =
-        samples_per_data_set * ts_to_double(Telescope::instance().seq_length()) / num_links;
+        samples_per_data_set * ts_to_double(telescope.seq_length()) / num_links;
 
     std::mt19937 rng(_seed);
 
@@ -220,7 +223,7 @@ void testDataGen::main_thread() {
             if (_manual_freq_ids.size() > 0)
                 coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
             else
-                coarse_freq[f] = f;
+                coarse_freq[f] = telescope.min_output_freq_id() + f;
             freq_upchan_factor[f] = 1;
             half_fpga_sample0[f] = _meta_time_downsample_factor - 1;
             time_downsampling_fpga[f] = _meta_time_downsample_factor;

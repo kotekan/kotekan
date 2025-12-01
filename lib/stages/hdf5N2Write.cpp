@@ -207,7 +207,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
     _check_create_attribute(*file, "num_prod", fv.num_prod);
     _check_create_attribute(*file, "num_ev", fv.num_ev);
     _check_create_attribute(*file, "num_freq",
-                            fv.nfreq); // telescope frequencies (not just file freqs)
+                            fv.nfreq); // telescope frequencies (not file freqs)
     _check_create_attribute(*file, "vis_layout",
                             std::string(fv.vis_layout == N2Layout::FullUpperTri
                                             ? "FullUpperTri"
@@ -362,34 +362,34 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
 
 
     // tracker for which (f,t) frames have been added (written at file flush time)
-    _check_create_dataset(*file, "/frames_added", {fv.nfreq, num_file_t_}, {"frequency", "time"},
+    _check_create_dataset(*file, "/frames_added", {num_file_f, num_file_t_}, {"frequency", "time"},
                           HighFive::create_datatype<uint8_t>(), props_empty);
 
     // create datasets (written at file flush time)
-    _check_create_dataset(*file, "/vis", {fv.nfreq, fv.num_prod, num_file_t_},
+    _check_create_dataset(*file, "/vis", {num_file_f, fv.num_prod, num_file_t_},
                           {"frequency", "product", "time"}, HighFive::create_datatype<cfloat>(),
                           props_compressed);
     _check_create_dataset(*file, flags_group_prefix + "/vis_weight",
-                          {fv.nfreq, fv.num_prod, num_file_t_}, {"frequency", "product", "time"},
+                          {num_file_f, fv.num_prod, num_file_t_}, {"frequency", "product", "time"},
                           HighFive::create_datatype<float>(), props_compressed);
-    _check_create_dataset(*file, "/eval", {fv.nfreq, fv.num_ev, num_file_t_},
+    _check_create_dataset(*file, "/eval", {num_file_f, fv.num_ev, num_file_t_},
                           {"frequency", "eigenval", "time"}, HighFive::create_datatype<float>(),
                           props_compressed);
-    _check_create_dataset(*file, "/evec", {fv.nfreq, fv.num_ev, fv.num_elements, num_file_t_},
+    _check_create_dataset(*file, "/evec", {num_file_f, fv.num_ev, fv.num_elements, num_file_t_},
                           {"frequency", "eigenvec", "element", "time"},
                           HighFive::create_datatype<cfloat>(), props_compressed);
-    _check_create_dataset(*file, "/erms", {fv.nfreq, num_file_t_}, {"frequency", "time"},
+    _check_create_dataset(*file, "/erms", {num_file_f, num_file_t_}, {"frequency", "time"},
                           HighFive::create_datatype<float>(), props_empty);
-    _check_create_dataset(*file, "/gain", {fv.nfreq, fv.num_elements, num_file_t_},
+    _check_create_dataset(*file, "/gain", {num_file_f, fv.num_elements, num_file_t_},
                           {"frequency", "element", "time"}, HighFive::create_datatype<cfloat>(),
                           props_empty);
 
     _check_create_dataset(
-        *file, flags_group_prefix + "/flags", {fv.nfreq, fv.num_elements, num_file_t_},
+        *file, flags_group_prefix + "/flags", {num_file_f, fv.num_elements, num_file_t_},
         {"frequency", "element", "time"}, HighFive::create_datatype<float>(), props_empty);
-    _check_create_dataset(*file, flags_group_prefix + "/frac_lost", {fv.nfreq, num_file_t_},
+    _check_create_dataset(*file, flags_group_prefix + "/frac_lost", {num_file_f, num_file_t_},
                           {"frequency", "time"}, HighFive::create_datatype<float>(), props_empty);
-    _check_create_dataset(*file, flags_group_prefix + "/frac_rfi", {fv.nfreq, num_file_t_},
+    _check_create_dataset(*file, flags_group_prefix + "/frac_rfi", {num_file_f, num_file_t_},
                           {"frequency", "time"}, HighFive::create_datatype<float>(), props_empty);
 
     _check_create_dataset(*file, "/fpga_start_tick", {num_file_t_}, {"time"},

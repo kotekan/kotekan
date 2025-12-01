@@ -609,18 +609,18 @@ protected:
     const bool _query_gps;
 
     /// The GPS server IP address
-    std::string _gps_host;
+    const std::string _gps_host;
 
     /// The port number on the GPS server
-    uint32_t _gps_port;
+    const uint32_t _gps_port;
 
     /// The endpoint with the GPS time
-    std::string _gps_endpoint;
+    const std::string _gps_endpoint;
 
     /// The time of FPGA frame=0, and the time length of each frame (in ns)
     /// time0_ns is a UNIX timestamp, in nanoseconds. It does not include
     /// leap seconds.
-    // TODO: These should probably be const too
+    // TODO: Other fields like these should probably be const too
     bool gps_enabled = false;
     uint64_t time0_ns = 0;
 

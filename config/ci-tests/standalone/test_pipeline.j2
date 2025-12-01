@@ -13,7 +13,7 @@
 # num_local_freq: number of contiguous frequency IDs to simulate on this GPU;
 #    must be divisible by 4 because pl_mask shapes use num_local_freq/4.
 {% set num_local_freq = 4 %}
-{% set freq_ids_list = range(num_local_freq) %}
+{% set freq_ids_list = range(4000, 4000 + num_local_freq) %}
 
 # num_dishes: dishes/antennas to simulate.
 # With 2 polarizations, num_elements = 2 * num_dishes, which the n2k correlator requires to be a multiple of 128
@@ -63,7 +63,7 @@ type: config
 log_level: INFO
 
 
-freq_ids: [{% for i in freq_ids_list %}{{ i }}{% if not loop.last %}, {% endif %}{% endfor %}]
+freq_ids: {{ freq_ids_list | list }}
 
 num_gpus: 1
 buffer_depth: 4
@@ -228,6 +228,7 @@ gen_data_voltage:
     array_shape: [ {{ samples_per_data_set }}, {{ num_local_freq }}, 2, {{ num_dishes }} ]
     dim_name: ["T", "F", "P", "D" ]
     num_frames: {{ frames_to_generate }}
+    manual_freq_ids: {{ freq_ids_list | list }}
 
 gen_data_rfi_RFImask:
     type: const1x8
@@ -239,6 +240,7 @@ gen_data_rfi_RFImask:
     dim_name: ["T8hi128", "F", "T8lo128"]
     num_frames: {{ frames_to_generate }}
     meta_time_downsample_factor: 1024
+    manual_freq_ids: {{ freq_ids_list | list }}
 
 gen_pl_mask:
     type: random1x8
@@ -250,6 +252,7 @@ gen_pl_mask:
     dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
     num_frames: {{ frames_to_generate }}
     meta_time_downsample_factor: 128  # The number of time samples represented by each coarse time index.
+    manual_freq_ids: {{ freq_ids_list | list }}
 
 
 # Send data to GPU ringbuffers (and expand PL mask)
