@@ -2,9 +2,9 @@
 
 #define BOOST_TEST_MODULE "test_hdf5N2Write"
 
+#include "CHORDTelescope.hpp"
 #include "Config.hpp" // for Config
 #include "H5Support.hpp"
-#include "CHORDTelescope.hpp"
 #include "N2FrameView.hpp" // for N2FrameView
 #include "N2Metadata.hpp"  // for N2Metadata, get_N2_metadata
 #include "N2Util.hpp"      // for N2 helpers
@@ -49,10 +49,10 @@ static size_t get_abs_freq_id(size_t f_index) {
     return tel.min_output_freq_id() + f_index;
 }
 
-static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_input,
-                                        size_t num_ev, size_t nfreq, size_t f_index,
-                                        size_t t_index, uint64_t frame_start_time_ns,
-                                        uint64_t frame_length_ticks, uint64_t abs_time_idx) {
+static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_input, size_t num_ev,
+                                        size_t nfreq, size_t f_index, size_t t_index,
+                                        uint64_t frame_start_time_ns, uint64_t frame_length_ticks,
+                                        uint64_t abs_time_idx) {
     fill_n2_frame_with_abs(buf, frame_id, num_input, num_ev, nfreq, f_index, t_index,
                            frame_start_time_ns, frame_length_ticks, abs_time_idx);
     auto meta = get_N2_metadata(buf, frame_id);
