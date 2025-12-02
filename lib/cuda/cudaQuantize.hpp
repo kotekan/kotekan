@@ -58,8 +58,6 @@ private:
     const std::string _gpu_mem_beams;
     /// GPU side memory name for mean,stdev output
     const std::string _gpu_mem_beams_meanstd;
-    /// GPU side index array
-    const std::string _gpu_mem_index;
 
     const NDArrayBuffer<float16_t, 3> input_buffer;
     NDArrayBuffer<kotekan::uint4x2_t, 3> beam_buffer;

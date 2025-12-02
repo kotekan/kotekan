@@ -1,21 +1,24 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
-const int chunksPerFrame = 32;
+#include <cassert>
 
-__device__ unsigned int clamped_round_down(__half x) {
+static const int chunksPerFrame = 32;
+
+static __device__ unsigned int clamped_round_down(__half x) {
     x = __hmax(x, __float2half(1.5f));
     x = __hmin(x, __float2half(15.5f));
     return __half2int_rd(x);
 }
 
-__device__ float sum_half2(__half2 x) {
+static __device__ float sum_half2(__half2 x) {
     return __low2float(x) + __high2float(x);
 }
 
-__global__ void quantize(const __half2* __restrict__ in_base, __half2* __restrict__ outf_base,
-                         unsigned int* __restrict__ outi_base,
-                         const int* __restrict__ index_array) {
+static __global__ void quantize(const __half2* __restrict__ in_base,
+                                __half2* __restrict__ outf_base,
+                                unsigned int* __restrict__ outi_base,
+                                const int* __restrict__ index_array) {
     __half2* __restrict__ outf = outf_base + index_array[64 * blockIdx.x + 32];
     unsigned int* __restrict__ outi = outi_base + index_array[64 * blockIdx.x + 33];
     __half2 outf_temp = __float2half2_rn(0);

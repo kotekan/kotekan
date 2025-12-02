@@ -34,6 +34,7 @@ add_library(
     cudaPLMaskExpander.cpp
     cudaPL1bitCorrelator.cpp
     cudaQuantizeKernel.cu
+    cudaQuantizeKernel4.cu
     cudaQuantize.cpp
     cudaRechunk.cpp
     cudaRFIS012.cpp
