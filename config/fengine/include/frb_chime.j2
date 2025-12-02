@@ -8,8 +8,8 @@ frb_downsampling_factor: 384 / upchannelization_factor
 # cudaQuantize requires `frb_num_output_times` to be a multiple of 256
 frb_num_output_times: 256
 # TODO: remove
-frb_num_beams_P: 2 * num_dish_locations_ns
-frb_num_beams_Q: 2 * num_dish_locations_ew
+frb_num_beams_P: 2 * num_dishes_y
+frb_num_beams_Q: 2 * num_dishes_x
 frb1_input_scale: 1.0 / 1024
 
 frb_num_beams_ns: 32            # TODO: 256
@@ -31,49 +31,49 @@ frb_chunk_size: 256
 host_frb1_U1_phase_buffer:
     kotekan_buffer: standard
     num_frames: 1
-    frame_size: 1   # sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U1_max_num_channels * 1 * num_polarizations
+    frame_size: 1   # sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U1_max_num_channels * 1 * num_polarizations
     metadata_pool: main_pool
 
 host_frb1_U2_phase_buffer:
     kotekan_buffer: standard
     num_frames: 1
-    frame_size: 1   # sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U2_max_num_channels * 2 * num_polarizations
+    frame_size: 1   # sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U2_max_num_channels * 2 * num_polarizations
     metadata_pool: main_pool
 
 host_frb1_U4_phase_buffer:
     kotekan_buffer: standard
     num_frames: 1
-    frame_size: 1   # sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U4_max_num_channels * 4 * num_polarizations
+    frame_size: 1   # sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U4_max_num_channels * 4 * num_polarizations
     metadata_pool: main_pool
 
 host_frb1_U8_phase_buffer:
     kotekan_buffer: standard
     num_frames: 1
-    frame_size: 1   # sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U8_max_num_channels * 8 * num_polarizations
+    frame_size: 1   # sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U8_max_num_channels * 8 * num_polarizations
     metadata_pool: main_pool
 
 host_frb1_U16_phase_buffer:
     kotekan_buffer: standard
     num_frames: 1
-    frame_size: sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U16_max_num_channels * 16 * num_polarizations
+    frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U16_max_num_channels * 16 * num_polarizations
     metadata_pool: main_pool
 
 host_frb1_U32_phase_buffer:
     kotekan_buffer: standard
     num_frames: 1
-    frame_size: 1   # sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U32_max_num_channels * 32 * num_polarizations
+    frame_size: 1   # sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U32_max_num_channels * 32 * num_polarizations
     metadata_pool: main_pool
 
 host_frb1_U64_phase_buffer:
     kotekan_buffer: standard
     num_frames: 1
-    frame_size: 1   # sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U64_max_num_channels * 64 * num_polarizations
+    frame_size: 1   # sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U64_max_num_channels * 64 * num_polarizations
     metadata_pool: main_pool
 
 host_frb2_phase_buffer:
     kotekan_buffer: standard
     num_frames: 1
-    frame_size: sizeof_float16 * (2 * num_dish_locations_ns) * (2 * num_dish_locations_ew) * (frb_num_beams_ns * frb_num_beams_ew) * (upchan_all_max_output_channel - upchan_all_min_output_channel)
+    frame_size: sizeof_float16 * (2 * num_dishes_y) * (2 * num_dishes_x) * (frb_num_beams_ns * frb_num_beams_ew) * (upchan_all_max_output_channel - upchan_all_min_output_channel)
     metadata_pool: main_pool
 
 # Beams

@@ -82,6 +82,8 @@ global_params = {
         "dish_elev_axis": [1, 0, 0],
         "dish_vert_axis": [0, 0, 1],
         "dish_coelev_deg": 0.0,
+        "num_dishes_x": 22,
+        "num_dishes_y": 24,
         "updatable_config": "/earth_rotation_data",
         "dish_inputs": [],
     },
