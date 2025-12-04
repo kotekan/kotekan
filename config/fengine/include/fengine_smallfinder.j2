@@ -14,8 +14,8 @@
 
 # Dishes
 
-num_dishes_x: 12   # TODO: 8
-num_dishes_y: 8    # TODO: 12
+num_dishes_x: 8
+num_dishes_y: 12
 num_dishes: 64
 
 # Telescope
@@ -47,33 +47,18 @@ telescope:
     # xxxxxxx
     # xxxxxxx
 
-    # This is the real layout, but we cannot handle it yet because we transposed the 8x12 dish grid
-    {#
-    #TODO dish_inputs:
-    #TODO {% for y in range(0, 10) %}
-    #TODO {% for x in range(0, 7) %}
-    #TODO {% if x+7*y < 64 %}
-    #TODO - dish_idx: {{x+7*y}}
-    #TODO   grid_x_idx: {{x}}
-    #TODO   grid_y_idx: {{y}}
-    #TODO   feed_pos_disp_m: [0.0, 0.0, 0.0]
-    #TODO   coelev_disp_deg: 0.0
-    #TODO   type: ArrayDish
-    #TODO   label: CHORD-{{"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[y]}}{{"{:02d}".format(x+1)}}
-    #TODO {% endif %}
-    #TODO {% endfor %}
-    #TODO {% endfor %}
-    #}
     dish_inputs:
-    {% for y in range(0, 8) %}
-    {% for x in range(0, 8) %}
-    - dish_idx: {{x+8*y}}
+    {% for y in range(0, 10) %}
+    {% for x in range(0, 7) %}
+    {% if x+7*y < 64 %}
+    - dish_idx: {{x+7*y}}
       grid_x_idx: {{x}}
       grid_y_idx: {{y}}
       feed_pos_disp_m: [0.0, 0.0, 0.0]
       coelev_disp_deg: 0.0
       type: ArrayDish
       label: CHORD-{{"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[y]}}{{"{:02d}".format(x+1)}}
+    {% endif %}
     {% endfor %}
     {% endfor %}
 dummy_declaration_to_eat_jinja2_white_space_keep_this_right_after_the_telescope_definition:
