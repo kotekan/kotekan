@@ -156,8 +156,8 @@ run_frb23:
         - name: cudaFRBBeamReformer
           max_num_local_freq: upchan_all_max_num_output_channels
           num_local_freq: upchan_all_max_output_channel - upchan_all_min_output_channel
-          beam_grid_size_ns: frb_num_beams_P
-          beam_grid_size_ew: frb_num_beams_Q
+          beam_grid_size_P: frb_num_beams_P
+          beam_grid_size_Q: frb_num_beams_Q
           num_beams: frb_num_beams
           samples_per_data_set: frb_num_output_times
           in_signal: host_frb1_beams_ringbuffer

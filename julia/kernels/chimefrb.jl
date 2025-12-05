@@ -63,6 +63,7 @@ const Fbar = U == 1 ? F : F̄
 
     const M = 256               # north-south
     const N = 4                 # east-west
+    # dish layout in E array: E[C,M,N,P,F,T]
 
     const Treg = 1
     @assert Tds % Treg == 0
