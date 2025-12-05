@@ -215,7 +215,7 @@ public:
      *
      * @return  Length of an FPGA sequence number tick.
      **/
-    virtual size_t seq_length_nsec() const = 0;
+    virtual uint64_t seq_length_nsec() const = 0;
 
 private:
     static std::unique_ptr<Telescope>& tel_instance();
