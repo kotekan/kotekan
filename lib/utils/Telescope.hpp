@@ -21,7 +21,8 @@ CREATE_FACTORY(Telescope, const kotekan::Config&, const std::string&);
     REGISTER_NAMED_TYPE_WITH_FACTORY(Telescope, TelescopeType, name)
 
 
-using freq_id_t = uint32_t;
+using nyquist_zone_t = std::uint8_t;
+using freq_id_t = std::uint32_t; // logical ID, not necessarily an index
 #define FREQ_ID_NOT_SET UINT32_MAX
 
 
@@ -144,7 +145,7 @@ public:
      *
      * @return  The number of frequencies on a stream.
      **/
-    virtual uint32_t num_freq_per_stream() const = 0;
+    virtual size_t num_freq_per_stream() const = 0;
 
 
     /**
@@ -154,7 +155,7 @@ public:
      *
      * @return  The total number of frequency channels.
      **/
-    virtual uint32_t num_freq() const = 0;
+    virtual size_t num_freq() const = 0;
 
     /**
      * @brief Get the frequency width of a given channel.
@@ -168,7 +169,7 @@ public:
      *
      * @return  The Nyquist zone.
      **/
-    virtual uint8_t nyquist_zone() const = 0;
+    virtual nyquist_zone_t nyquist_zone() const = 0;
 
     /**
      * Convert a sequence number into a UNIX epoch time.
@@ -214,7 +215,7 @@ public:
      *
      * @return  Length of an FPGA sequence number tick.
      **/
-    virtual uint64_t seq_length_nsec() const = 0;
+    virtual size_t seq_length_nsec() const = 0;
 
 private:
     static std::unique_ptr<Telescope>& tel_instance();

@@ -200,26 +200,33 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss.at(U64) * upchan_factor(U64),
     },
     W1_frame_sizes{
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U1) * upchan_factor(U1),
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U2) * upchan_factor(U2),
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U4) * upchan_factor(U4),
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U8) * upchan_factor(U8),
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U16) * upchan_factor(U16),
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U32) * upchan_factor(U32),
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U64) * upchan_factor(U64),
     },
     W2_frame_size(sizeof(float16_t) * (frb1_num_beams_P * frb1_num_beams_Q)
@@ -389,15 +396,16 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         W1_buffer->allocate_new_frame_desc<float16_t, 5>(
             "W",
             {upchan_max_num_channelss[Ufactor] * U, num_polarizations,
-             chord_telescope.get_num_dishes_x(), chord_telescope.get_num_dishes_y(),
-             num_components},
+             std::int64_t(chord_telescope.get_num_dishes_x()),
+             std::int64_t(chord_telescope.get_num_dishes_y()), num_components},
             {"F", "P", "dishN", "dishM", "C"});
     }
     W2_buffer->allocate_new_frame_desc<float16_t, 4>(
         "W2",
         {upchan_all_max_output_channel - upchan_all_min_output_channel,
-         frb2_num_beams_ns * frb2_num_beams_ew, 2 * chord_telescope.get_num_dishes_x(),
-         2 * chord_telescope.get_num_dishes_y()},
+         frb2_num_beams_ns * frb2_num_beams_ew,
+         2 * std::int64_t(chord_telescope.get_num_dishes_x()),
+         2 * std::int64_t(chord_telescope.get_num_dishes_y())},
         {"Fbar", "R", "beamQ", "beamP"});
     if (receive_chime) {
         // Use the CHIME input buffer layout (one buffer per frequency)
@@ -519,7 +527,7 @@ void FEngine::main_thread() {
             args[iargc++] = jl_box_int64(dish_grid.get_num_dishes_x());
             args[iargc++] = jl_box_int64(dish_grid.get_num_dishes_y());
             args[iargc++] =
-                jl_box_voidpointer(const_cast<int*>(dish_grid.get_dish_indices().data()));
+                jl_box_voidpointer(const_cast<int64_t*>(dish_grid.get_dish_indices().data()));
             // TODO: Pass dish positions instead
             args[iargc++] = jl_box_float32(chord_telescope.get_dish_separation_x_m());
             args[iargc++] = jl_box_float32(chord_telescope.get_dish_separation_y_m());
@@ -702,7 +710,7 @@ void FEngine::main_thread() {
         scatter_indices_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
         scatter_indices_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
         scatter_indices_metadata->dish_index =
-            const_cast<int*>(dish_grid.get_dish_indices().data());
+            const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
         // Mark buffer as full
         scatter_indices_buffer->mark_frame_full(unique_name, scatter_indices_frame_id);
@@ -760,7 +768,8 @@ void FEngine::main_thread() {
         bf_mask_metadata->ndishes = num_dishes;
         bf_mask_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
         bf_mask_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
-        bf_mask_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+        bf_mask_metadata->dish_index =
+            const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
         // Mark buffer as full
         profile_mark("bf_mask_frame::mark_frame_full");
@@ -858,7 +867,7 @@ void FEngine::main_thread() {
         bb_beam_positions_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
         bb_beam_positions_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
         bb_beam_positions_metadata->dish_index =
-            const_cast<int*>(dish_grid.get_dish_indices().data());
+            const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
         // Mark buffer as full
         bb_beam_positions_buffer->mark_frame_full(unique_name, bb_beam_positions_frame_id);
@@ -952,7 +961,7 @@ void FEngine::main_thread() {
         A_metadata->ndishes = num_dishes;
         A_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
         A_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
-        A_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+        A_metadata->dish_index = const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
         // Mark buffer as full
         A_buffer->mark_frame_full(unique_name, A_frame_id);
@@ -1018,7 +1027,7 @@ void FEngine::main_thread() {
         s_metadata->ndishes = num_dishes;
         s_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
         s_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
-        s_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+        s_metadata->dish_index = const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
         // Mark buffer as full
         s_buffer->mark_frame_full(unique_name, s_frame_id);
@@ -1092,7 +1101,7 @@ void FEngine::main_thread() {
             G_metadata->ndishes = num_dishes;
             G_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
             G_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
-            G_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+            G_metadata->dish_index = const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
             // Mark buffer as full
             G_buffer->mark_frame_full(unique_name, G_frame_id);
@@ -1152,9 +1161,9 @@ void FEngine::main_thread() {
                     JL_GC_POP();
                 });
             } else {
-                for (int n = 0;
-                     n < chord_telescope.get_num_dishes_y() * chord_telescope.get_num_dishes_x()
-                             * num_polarizations * num_local_channels * U;
+                for (int n = 0; n < int(chord_telescope.get_num_dishes_y()
+                                        * chord_telescope.get_num_dishes_x())
+                                        * num_polarizations * num_local_channels * U;
                      ++n) {
                     assert(n >= 0
                            && std::size_t(n)
@@ -1205,7 +1214,8 @@ void FEngine::main_thread() {
             W1_metadata->ndishes = num_dishes;
             W1_metadata->n_dish_locations_ew = chord_telescope.get_num_dishes_x();
             W1_metadata->n_dish_locations_ns = chord_telescope.get_num_dishes_y();
-            W1_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+            W1_metadata->dish_index =
+                const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
             // Mark buffer as full
             W1_buffer->mark_frame_full(unique_name, W1_frame_id);
@@ -1389,7 +1399,7 @@ void FEngine::main_thread() {
         W2_metadata->ndishes = num_dishes;
         W2_metadata->n_dish_locations_ew = chord_telescope.get_num_dishes_x();
         W2_metadata->n_dish_locations_ns = chord_telescope.get_num_dishes_y();
-        W2_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+        W2_metadata->dish_index = const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
         // Mark buffer as full
         W2_buffer->mark_frame_full(unique_name, W2_frame_id);
@@ -1608,7 +1618,7 @@ void FEngine::main_thread() {
             E_metadata->ndishes = num_dishes;
             E_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
             E_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
-            E_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+            E_metadata->dish_index = const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
             // Mark buffer as full
             DEBUG("[{:d}] Marking E buffer as full...", E_frame_index);
@@ -1710,7 +1720,8 @@ void FEngine::main_thread() {
             pl_mask_metadata->ndishes = num_dishes;
             pl_mask_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
             pl_mask_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
-            pl_mask_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+            pl_mask_metadata->dish_index =
+                const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
             // Mark buffer as full
             DEBUG("[{:d}] Marking pl buffer as full...", E_frame_index);

@@ -177,7 +177,7 @@ void FakeGpu::main_thread() {
 
 FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(config.get<std::string>(path, "log_level")) {
-    _num_local_freq = config.get_default<uint32_t>(path, "num_local_freq", 1);
+    _num_local_freq = config.get_default<size_t>(path, "num_local_freq", 1);
 }
 
 freq_id_t FakeTelescope::to_freq_id(stream_t stream_id, uint32_t ind) const {
@@ -194,15 +194,15 @@ double FakeTelescope::freq_width_MHz(freq_id_t /*freq_id*/) const {
     return 400.0 / 1024;
 }
 
-uint32_t FakeTelescope::num_freq_per_stream() const {
+size_t FakeTelescope::num_freq_per_stream() const {
     return _num_local_freq;
 }
 
-uint32_t FakeTelescope::num_freq() const {
+size_t FakeTelescope::num_freq() const {
     return 1024;
 }
 
-uint8_t FakeTelescope::nyquist_zone() const {
+nyquist_zone_t FakeTelescope::nyquist_zone() const {
     return 2;
 }
 
@@ -217,7 +217,7 @@ uint64_t FakeTelescope::to_seq(timespec time) const {
     return ns / seq_length_nsec();
 }
 
-uint64_t FakeTelescope::seq_length_nsec() const {
+size_t FakeTelescope::seq_length_nsec() const {
     return 2560;
 }
 

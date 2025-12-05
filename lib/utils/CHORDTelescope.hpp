@@ -8,15 +8,21 @@
 
 #include "json.hpp" // for json
 
-#include <array>    // for array
-#include <complex>  // for complex
-#include <mutex>    // for mutex
-#include <stdint.h> // for uint64_t, uint32_t, int64_t, uint8_t
-#include <string>   // for string, basic_string
-#include <time.h>   // for timespec
-#include <utility>  // for forward
-#include <vector>   // for vector
+#include <array>        // for array
+#include <complex>      // for complex
+#include <mutex>        // for mutex
+#include <shared_mutex> // for shared_mutex
+#include <stdint.h>     // for uint64_t, uint32_t, int64_t, uint8_t
+#include <string>       // for string, basic_string
+#include <time.h>       // for timespec
+#include <utility>      // for forward
+#include <vector>       // for vector
 
+// Types for frequency and dish indexing
+// (Not necessarily logical IDs)
+using freq_index_t = size_t;
+using dish_index_t =
+    int64_t; // int to allow negative values. TODO: separate types / avoid ad-hoc -1?
 
 /**
  * @brief Enum for denoting the type of dish input into Kotekan
@@ -33,25 +39,25 @@ void from_json(const nlohmann::json& j, DishType& t);
 /**
  * @brief   Simple struct with needed dish info.
  *
- * @param   idx             int64_t Index of this dish (row or column), x polarization, in the
+ * @param   idx             dish_index_t Index of this dish (row or column), x polarization, in the
  *                                  standard visibility matrix. The y polarization channel will
  *                                  be at index + num_dishes.
- * @param   grid_x_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases
- * east
- * @param   grid_y_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases
- * north
+ * @param   grid_x_idx          dish_index_t Grid location E/W (x) index. 0 = westmost column,
+ * increases east
+ * @param   grid_y_idx          dish_index_t Grid location N/S (y) index. 0 = southmost row,
+ * increases north
  * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid
  * location, meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.
  * actual_pos = grid_pos + disp
  * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
  *                                  actual_coelev = target_coelev + disp.
- * @param   type            int64_t Type of dish input.  -1 = NULL, 0 = CHORD Dish.
+ * @param   type            Type of dish input (enum DishType)
  * @param   label           std::string Label for dish. Future: key for layout DB?
  */
 struct dishInfo {
-    int64_t idx;
-    int64_t grid_x_idx;
-    int64_t grid_y_idx;
+    dish_index_t idx;
+    dish_index_t grid_x_idx;
+    dish_index_t grid_y_idx;
     std::array<double, 3> feed_pos_disp_m;
     double coelev_disp_deg;
     DishType type;
@@ -67,14 +73,14 @@ struct dishInfo {
     /**
      * @brief   Constructor for a Fake dishInfo with an index.
      */
-    dishInfo(int64_t idx) :
+    dishInfo(dish_index_t idx) :
         idx(idx), grid_x_idx(0), grid_y_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}),
         coelev_disp_deg(0.0), type(DishType::Fake), label("Fake") {}
 
     /**
      * @brief   Constructor for dishInfo with all fields.
      */
-    dishInfo(int64_t idx, int64_t grid_x_idx, int64_t grid_y_idx,
+    dishInfo(dish_index_t idx, dish_index_t grid_x_idx, dish_index_t grid_y_idx,
              const std::array<double, 3>& feed_pos_disp_m, double coelev_disp_deg, DishType type,
              const std::string& label) :
         idx(idx), grid_x_idx(grid_x_idx), grid_y_idx(grid_y_idx), feed_pos_disp_m(feed_pos_disp_m),
@@ -99,10 +105,10 @@ void from_json(const nlohmann::json& j, dishInfo& d);
  * appearance in the standard visibility matrix, ie, the "dish_idx" field in "dish_input" in the
  * config.
  *
- * @param   grid_x_idx          int64_t Grid location E/W (x) index. 0 = westmost column, increases
- * east
- * @param   grid_y_idx          int64_t Grid location N/S (y) index. 0 = southmost row, increases
- * north
+ * @param   grid_x_idx          dish_index_t Grid location E/W (x) index. 0 = westmost column,
+ * increases east
+ * @param   grid_y_idx          dish_index_t Grid location N/S (y) index. 0 = southmost row,
+ * increases north
  * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid
  * location, meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.
  * actual_pos = grid_pos + disp
@@ -112,20 +118,38 @@ void from_json(const nlohmann::json& j, dishInfo& d);
  * @param   label           std::string Label for dish. Future: key for layout DB?
  */
 struct dishInputFields {
-    std::vector<int64_t> grid_x_idx;
-    std::vector<int64_t> grid_y_idx;
+    std::vector<dish_index_t> grid_x_idx;
+    std::vector<dish_index_t> grid_y_idx;
     std::vector<std::array<double, 3>> feed_pos_disp_m;
     std::vector<double> coelev_disp_deg;
     std::vector<DishType> type;
     std::vector<std::string> label;
 };
 
-
+/**
+ * @class dishGrid
+ * @brief 2D logical grid mapping dish indices to grid coordinates.
+ *
+ * This class represents a regular grid of dish positions with
+ * dimensions @c _num_dishes_x by @c _num_dishes_y. The grid is stored
+ * as a flat array where the x index is the fast index and the y index
+ * is the slow index:
+ *
+ *   index = x + _num_dishes_x * y
+ *
+ * Each cell stores a @c dish_index_t giving the dish index at that
+ * grid location, or @c -1 if the grid cell is unoccupied.
+ *
+ * The class provides bounds-checked access to entries via the
+ * @c dish_index(grid_x_idx, grid_y_idx) accessors and throws
+ * @c std::runtime_error on out-of-range indices or when constructed
+ * with an array of the wrong size.
+ */
 class dishGrid {
-    int _num_dishes_x, _num_dishes_y;
+    size_t _num_dishes_x, _num_dishes_y;
     // dish index, or -1 if unoccupied.
     // array layout has x as fast and y as slow index.
-    std::vector<int> _dish_index;
+    std::vector<dish_index_t> _dish_index;
 
 public:
     dishGrid(const dishGrid&) = default;
@@ -135,42 +159,188 @@ public:
 
     dishGrid() : dishGrid(0, 0) {}
 
-    dishGrid(int num_dishes_x, int num_dishes_y) :
+    dishGrid(size_t num_dishes_x, size_t num_dishes_y) :
         _num_dishes_x(num_dishes_x), _num_dishes_y(num_dishes_y),
         _dish_index(_num_dishes_x * _num_dishes_y, -1) {}
 
-    dishGrid(int num_dishes_x, int num_dishes_y, std::vector<int> dish_index) :
+    dishGrid(size_t num_dishes_x, size_t num_dishes_y, std::vector<dish_index_t> dish_index) :
         _num_dishes_x(num_dishes_x), _num_dishes_y(num_dishes_y),
         _dish_index(std::move(dish_index)) {
-        if (std::ptrdiff_t(_dish_index.size()) != _num_dishes_x * _num_dishes_y)
+        if (_dish_index.size() != _num_dishes_x * _num_dishes_y)
             throw std::runtime_error("wrong array size");
     }
 
-    int get_num_dishes_x() const {
+    size_t get_num_dishes_x() const {
         return _num_dishes_x;
     }
-    int get_num_dishes_y() const {
+    size_t get_num_dishes_y() const {
         return _num_dishes_y;
     }
 
-    int dish_index(int grid_x_idx, int grid_y_idx) const {
-        if (grid_x_idx < 0 || grid_x_idx >= _num_dishes_x)
+    dish_index_t dish_index(dish_index_t grid_x_idx, dish_index_t grid_y_idx) const {
+        if (grid_x_idx < 0 || size_t(grid_x_idx) >= _num_dishes_x)
             throw std::runtime_error("index error");
-        if (grid_y_idx < 0 || grid_y_idx >= _num_dishes_y)
-            throw std::runtime_error("index error");
-        return _dish_index.at(grid_x_idx + _num_dishes_x * grid_y_idx);
-    }
-    int& dish_index(int grid_x_idx, int grid_y_idx) {
-        if (grid_x_idx < 0 || grid_x_idx >= _num_dishes_x)
-            throw std::runtime_error("index error");
-        if (grid_y_idx < 0 || grid_y_idx >= _num_dishes_y)
+        if (grid_y_idx < 0 || size_t(grid_y_idx) >= _num_dishes_y)
             throw std::runtime_error("index error");
         return _dish_index.at(grid_x_idx + _num_dishes_x * grid_y_idx);
     }
 
-    const std::vector<int>& get_dish_indices() const {
+    dish_index_t& dish_index(dish_index_t grid_x_idx, dish_index_t grid_y_idx) {
+        if (grid_x_idx < 0 || size_t(grid_x_idx) >= _num_dishes_x)
+            throw std::runtime_error("index error");
+        if (grid_y_idx < 0 || size_t(grid_y_idx) >= _num_dishes_y)
+            throw std::runtime_error("index error");
+        return _dish_index.at(grid_x_idx + _num_dishes_x * grid_y_idx);
+    }
+
+    const std::vector<dish_index_t>& get_dish_indices() const {
         return _dish_index;
     }
+};
+
+/**
+ * @brief Struct containing dish parameters
+ **/
+struct DishParams {
+    /// Instument geographic coordinates in degrees.
+    double origin_itrs_lon_deg = 0.0;
+    double origin_itrs_lat_deg = 0.0;
+
+    /// Matrix to transform from local topocentric coordinates to the
+    /// grid (ie. dish position) coordinate system.
+    double R_topo_to_grid[3][3] = {};
+
+    /// Dish pointing angle.  Measured in degrees from vertical.
+    double dish_coelev_deg = 0.0;
+
+    /// Matrix to transform from local topocentric coordinates to the
+    /// dish (ie. z is dish zenith, x is elevation axis) coordinate system.
+    double R_topo_to_dish[3][3] = {};
+
+    /// Matrix to transform vectors from ITRS geocentric coordinates (ECEF) to
+    /// local topocentric coordinates
+    double R_itrs_to_topo[3][3] = {};
+
+    /// Total number of dishes in the telescope, each provides 2 polarizations,
+    /// so num_elements = 2 * num_dishes.
+    size_t num_dishes = 0;
+    size_t num_dishes_x = 0;
+    size_t num_dishes_y = 0;
+
+    /// Dish-dish grid spacing in the E/W (x) and N/S (y) directions in meters.
+    double dish_separation_x_m = 0.0;
+    double dish_separation_y_m = 0.0;
+
+    /// Dish positions in dish coordinate system.
+    std::vector<std::array<double, 3>> dish_positions;
+
+    /// Full dish info table (Fake + real dishes), used to build dish_positions.
+    std::vector<dishInfo> dish_info_table;
+
+    /// Description of the grid of dishes
+    dishGrid dish_grid;
+
+    /// Build full dish parameters (including rotation matrices and positions)
+    /// from the config for this telescope.
+    static DishParams from_config(const kotekan::Config& config, const std::string& path);
+
+    /**
+     * @brief   Load information about dish inputs from the config.
+     *
+     * @param   config  The config.
+     * @param   path    This telescope's path in the config.
+     **/
+    void set_dish_info(const kotekan::Config& config, const std::string& path);
+};
+
+
+/**
+ * @brief   Struct containing "frequency" data fields.
+ **/
+struct FreqParams {
+
+    // basic config values
+    double sampling_rate_MHz;
+    size_t fft_length;
+    nyquist_zone_t nyquist_zone; // CHORD is 1, CHIME is 2
+
+    // derived timing/frequency quantities
+    uint64_t dt_ns;   /// time in nanoseconds between fpga_seq_nums (ie. the time between
+                      /// fft_length raw ADC samples)
+    double freq0_MHz; /// the freq0 mode jumps in frequency every 2 nyquist zones. The first
+                      /// zone (zone = 1) is the textbook FFT and has freq0 = 0.
+    double df_MHz;    /// Odd zones count up from freq0, even zones count down.
+    size_t num_freqs; /// Total number of frequency channels (input data is Real)
+
+    // telescope science use limits (in MHz, physical band of interest)
+    double min_science_freq_MHz;
+    double max_science_freq_MHz;
+
+    // Build from kotekan::Config
+    static FreqParams from_config(const kotekan::Config& config, const std::string& path);
+
+    // Some getter methods for frequency
+    freq_id_t max_science_freq_id() const;
+    freq_id_t min_science_freq_id() const;
+    size_t num_science_freqs() const;
+
+private:
+    // Constructor using primitive values
+    FreqParams(double sampling_rate_MHz_, size_t fft_length_, nyquist_zone_t nyquist_zone_,
+               double min_science_freq_MHz_, double max_science_freq_MHz_);
+
+    /// Find the time in nanoseconds between fpga_seq_nums (ie. the time between fft_length raw ADC
+    /// samples)
+    static uint64_t compute_dt_ns(size_t fft_length, double sampling_rate_MHz) noexcept;
+
+    /// Set the physical frequency of id=0, and the spacing, taking into account
+    /// the aliasing of each Nyquist zone.
+    // the freq0 mode jumps in frequency every 2 nyquist zones. The first zone (zone = 1) is the
+    // textbook FFT and has freq0 = 0.
+    static double compute_freq0_MHz(nyquist_zone_t nz, double sampling_rate_MHz) noexcept;
+
+
+    // Odd nyquist zones count up from freq0, even zones count down.
+    static double compute_df_MHz(nyquist_zone_t nz, double sampling_rate_MHz,
+                                 size_t fft_length) noexcept;
+};
+
+/**
+ * @brief   Struct containing "GPS" data fields.
+ **/
+struct GPSParams {
+    /// Should we require GPS time to be available
+    bool require_gps = false;
+
+    /// Should we try to get the GPS time from remote server
+    bool query_gps = false;
+
+    /// The GPS server IP address
+    std::string gps_host;
+
+    /// The port number on the GPS server
+    uint32_t gps_port = 0;
+
+    /// The endpoint with the GPS time
+    std::string gps_endpoint;
+
+    /// The time of FPGA frame=0, and the time length of each frame (in ns)
+    /// time0_ns is a UNIX timestamp, in nanoseconds. It does not include
+    /// leap seconds.
+    bool gps_enabled = false;
+    uint64_t time0_ns = 0;
+
+    /// Build GPS parameters from config, including (optionally) querying
+    /// a remote server and enforcing _require_gps.
+    static GPSParams from_config(const kotekan::Config& config, const std::string& path);
+
+private:
+    /// Set the GPS time parameters (gps_enabled, time0_ns) from the config.
+    static void set_gps_params_from_config(GPSParams& gps, const kotekan::Config& config);
+
+    /// Set the GPS time parameters (gps_enabled, time0_ns) from a remote server (fpga_master)
+    static void set_gps_params_from_remote(GPSParams& gps, const std::string& host,
+                                           const uint32_t port, const std::string& path);
 };
 
 
@@ -186,13 +356,18 @@ public:
  * @conf    gps_host            string. The GPS server IP address.
  * @conf    gps_port            uint.   The port number on the GPS server.
  * @conf    gps_endpoint        string. The enpoint with the GPS time.
+ * @conf    sampling_rate_MHz   double. ADC Sampling Rate (default: 3.2 GHz for CHORD)
+ * @conf    fft_length          size_t. F-engine FFT length (default: 16384 for CHORD)
+ * @conf    nyquist_zone        nyquist_zone_t.  Nyquist Zone we're operating in (default: 1 for
+ *CHORD)
+ * @conf    max_science_freq_MHz double. Maximum frequency used for science, in MHz (default:
+ *1500.0)
+ * @conf    min_science_freq_MHz double. Minimum frequency used for science, in MHz (default:
+ *300.0)
  * @conf    origin_itrs_lon_deg double. Instrument longitude in degrees.
  * @conf    origin_itrs_lat_deg double. Instrument latitude in degrees.
  * @conf    dish_coelev_deg     double. Instrument pointing co-elevation, in
  *                                      degrees from zenith. Positive is North.
- * @conf    sampling_rate_MHz   double. ADC Sampling Rate (default: 3.2 GHz for CHORD)
- * @conf    fft_lenth           double. F-engine FFT length (default: 16384 for CHORD)
- * @conf    nyquist_zone        uint8.  Nyquist Zone we're operating in (default: 1 for CHORD)
  * @conf    origin_itrs_lon_deg double. ITRS longitude of the topocentric coordinate origin.
  * @conf    origin_itrs_lat_deg double. ITRS latitude of the topocentric coordinate origin.
  * @conf    grid_x_axis         [double, 3].    The basis vector, measured in
@@ -212,19 +387,19 @@ public:
  *                                      vertical direction. Up-pointing, 0 deg
  *                                      co-elevation. Must be:
  *                                      normalized, orthogonal to the elev-axis.
- * @conf    num_dishes          int     Total number of dishes in the kotekan data
+ * @conf    num_dishes          size_t  Total number of dishes in the kotekan data
  *                                      pipeline, each providing 2 polarizations. Equal to
  *                                      the total number of configured dishes, plus possibly
  *                                      some "fake" dishes to keep the number a multiple of
  *                                      32.
- * @conf    num_dishes_x        int
- * @conf    num_dishes_y        int
  * @conf    dish_separation_x_m    double.     The separation in meters between dish grid
  *                                      locations in the Telescope x-axis direction
  *                                      (generally, East/West).
  * @conf    dish_separation_y_m    double.     The separation in meters between dish grid
  *                                      locations in the Telescope y-axis direction
  *                                      (generally, North/South).
+ * @conf    num_dishes_x        size_t
+ * @conf    num_dishes_y        size_t
  * @conf    dish_inputs         [dishInfo, N]   List of dishInfo structs, each represented
  *                                      by a map with the following keys:
  *                                      - dishIdx   int     Position of this dish in the
@@ -249,6 +424,8 @@ public:
  *              stripped out. GR
  * 2025/11/10: Required frequency logic re-added (no stream_t behaviour). Dish input table
  *              introduced with per-dish grid placement, positioning, pointing, and labels. GR
+ * 2025/12/04: Factor telescope members into logical groups: frequency parameters,
+ *              gps parameters, dish parameters. JM
  */
 
 
@@ -344,10 +521,10 @@ public:
     /**
      * @brief   Return the number of dishes.
      **/
-    int get_num_dishes() const;
+    size_t get_num_dishes() const;
 
-    int get_num_dishes_x() const;
-    int get_num_dishes_y() const;
+    size_t get_num_dishes_x() const;
+    size_t get_num_dishes_y() const;
 
     double get_dish_separation_x_m() const;
     double get_dish_separation_y_m() const;
@@ -355,7 +532,7 @@ public:
     /**
      * @brief   Return the number of entries in the EOP table.
      **/
-    int get_EOP_table_len() const;
+    size_t get_EOP_table_len() const;
 
     /**
      * @brief   Return the EOP table entry at an index.
@@ -382,6 +559,9 @@ public:
      **/
     EOP get_EOP_at_UT1(int64_t ut1) const;
 
+    /**
+     * @brief get information about a specific dish.
+     **/
     const dishInfo& get_dish_at_idx(int64_t idx) const;
 
     const dishGrid& get_dish_grid() const;
@@ -394,6 +574,7 @@ public:
      * @param   eop EOP for the time of observation.
      **/
     std::array<double, 3> get_sky_vec_in_grid_coords(double ra, double dec, const EOP& eop) const;
+
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the
      *          phase center), in Dish coordinates (x is elevation axis (~East),
@@ -510,12 +691,12 @@ public:
      *                  will reallocate the internal vectors if they are not the
      *                  correct size.
      **/
-    void get_input_maps(dishInputFields& input) const;
+    void fill_input_maps(dishInputFields& input) const;
 
     /**
      * @brief Get the number of unique baselines in the array
      */
-    uint64_t get_num_stacks() const;
+    size_t get_num_stacks() const;
 
     /**
      * Get the physical frequency in MHz of the specified freq ID.
@@ -525,15 +706,6 @@ public:
      * @returns         The central frequency in MHz.
      **/
     double to_freq_MHz(freq_id_t freq_id) const override;
-
-    /**
-     * @brief Get the total number of frequencies channels.
-     *
-     * This is the upper bound for freq_id.
-     *
-     * @return  The total number of frequency channels.
-     **/
-    uint32_t num_freq() const override;
 
     /**
      * @brief Get the frequency width of a given channel.  When the frequency spacing is constant,
@@ -548,19 +720,48 @@ public:
      *
      * @return  The Nyquist zone.
      **/
-    uint8_t nyquist_zone() const override;
+    nyquist_zone_t nyquist_zone() const override;
+
+    /**
+     * @brief Get the total number of possible FPGA frequencies channels.
+     * This does not correspond to frequency channels that are processed,
+     * which is given by num_science_freqs().
+     *
+     * @return  The total number of frequency channels.
+     **/
+    size_t num_freq() const override;
+
+    /**
+     * @brief Get the maximum FPGA frequency ID that will be processed (downstream of FPGA).
+     * @returns The maximum frequency ID.
+     **/
+    freq_id_t max_science_freq_id() const;
+
+    /**
+     * @brief Get the minimum FPGA frequency ID that will be processed (downstream of FPGA).
+     * @returns The minimum frequency ID.
+     **/
+    freq_id_t min_science_freq_id() const;
+
+    /**
+     * @brief Get the number of frequency channels that will be processed (downstream of FPGA).
+     * @returns Number of frequency channels.
+     **/
+    size_t num_science_freqs() const;
 
     /**
      * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
-     * dpdk.
+     * dpdk. This stub remains to satisfy inheritance and will likely be removed in the future, it
+     * will abort if called.
      */
     freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
 
     /**
      * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
-     * dpdk.
+     * dpdk. This stub remains to satisfy inheritance and will likely be removed in the future, it
+     * will abort if called.
      */
-    uint32_t num_freq_per_stream() const override;
+    size_t num_freq_per_stream() const override;
 
     // A forwarding constructor, such that derived classes can skip the main
     // CHORDTelescope constructor but still construct the Telescope class
@@ -570,31 +771,6 @@ public:
     ~CHORDTelescope();
 
 protected:
-    /**
-     * @brief Set the internal parameters `dt_ns`, `freq0_MHz`, `df_MHz`, `nfreq_total`, and
-     * `ny_zone` which set the basic time and frequency sampling behaviour.  Reads the
-     * `sampling_rate_MHz`, `fft_length`, and `nyquist_zone` Config fields.
-     * @param config    The config.
-     * @param path      This telescope object's path.
-     */
-    void set_sampling_params(const kotekan::Config& config, const std::string& path);
-
-    /**
-     * @brief Set the GPS time parameters from the config.
-     *
-     * @param   config  Kotekan config
-     **/
-    void set_gps(const kotekan::Config& config);
-
-    /**
-     * @brief Set the GPS time from a remote server (fpga_master)
-     *
-     * @param host  The host name of the server with the GPS time information
-     * @param port  The port of the server with the GPS time information
-     * @param path  The endpoint resource name (e.g. /get-frame0-time)
-     **/
-    void set_gps(const std::string& host, const uint32_t port, const std::string& path);
-
     /**
      * @brief Callback to update EOP data
      *
@@ -627,81 +803,21 @@ protected:
     EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
                               double yp_as) const;
 
-    /**
-     * @brief   Load information about dish inputs from the config.
-     *
-     * @param   config  The config.
-     * @param   path    This telescope's path in the config.
-     **/
-    void set_dish_info(const kotekan::Config& config, const std::string& path);
-
     // The telescope's name in the config
-    std::string _unique_name;
+    const std::string _unique_name;
 
-    /// Should we try to get the GPS time from remote server
-    bool _query_gps;
+    // Frequency parameters
+    const FreqParams _freq_params;
 
-    /// The GPS server IP address
-    std::string _gps_host;
+    // GPS parameters
+    const GPSParams _gps_params;
 
-    /// The port number on the GPS server
-    uint32_t _gps_port;
-
-    /// The endpoint with the GPS time
-    std::string _gps_endpoint;
-
-    /// Instument geographic coordinates in degrees.
-    double _origin_itrs_lon_deg;
-    double _origin_itrs_lat_deg;
-
-    /// Matrix to transform from local topocentric coordinates to the
-    /// grid (ie. dish position) coordinate system.
-    double _R_topo_to_grid[3][3];
-
-    /// Dish pointing angle.  Measured in degrees from vertical.
-    double _dish_coelev_deg;
-
-    /// Matrix to transform from local topocentric coordinates to the
-    /// dish (ie. z is dish zenith, x is elevation axis) coordinate system.
-    double _R_topo_to_dish[3][3];
-
-    /// Matrix to transform vectors from ITRS geocentric coordinates (ECEF) to
-    /// local topocentric coordinates
-    double _R_itrs_to_topo[3][3];
-
-    /// Total number of dishes in the telescope, each provides 2 polarizations,
-    /// so num_elements = 2 * num_dishes.
-    int32_t _num_dishes;
-
-    int32_t _num_dishes_x;
-    int32_t _num_dishes_y;
-
-    /// Dish-dish grid spacing in the E/W (x) and N/S (y) directions in meters.
-    double _dish_separation_x_m;
-    double _dish_separation_y_m;
-
-    /// Dish positions in dish coordinate system.
-    std::vector<std::array<double, 3>> _dish_positions;
-
-    /// The time of FPGA frame=0, and the time length of each frame (in ns)
-    /// time0_ns is a UNIX timestamp, in nanoseconds. It does not include
-    /// leap seconds.
-    bool gps_enabled = false;
-    uint64_t time0_ns = 0;
-    uint64_t dt_ns;
-    uint8_t ny_zone;
-    uint64_t nfreq_total;
-    double freq0_MHz;
-    double df_MHz;
+    /// Dish / array geometry and coordinate transforms.
+    const DishParams _dish_params;
 
     /// Earth Orientation Parameters
     mutable std::shared_mutex _eop_lock;
     std::vector<EOP> _eop_table;
-
-    /// Dish Properties
-    std::vector<dishInfo> _dish_info_table;
-
-    dishGrid _dish_grid;
 };
 
 /*
