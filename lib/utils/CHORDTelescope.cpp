@@ -396,9 +396,10 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
         }
 
         if (tmp_eop_table.empty()) {
-            FATAL_ERROR_NON_OO(
+            ERROR_NON_OO(
                 "CHORDTelescope {}: earth_orientation_parameter_table update contained no entries.",
                 _unique_name);
+            return false;
         }
 
         // Sort chronologically
