@@ -90,15 +90,7 @@ class FEngine : public kotekan::Stage {
     const CHORDTelescope& chord_telescope;
 
     // Dishes
-    // TODO const int num_dish_locations_ew;
-    // TODO const int num_dish_locations_ns;
-    // TODO const int num_dish_locations;
-    // TODO const float dish_separation_ew;
-    // TODO const float dish_separation_ns;
     const int num_dishes;
-    // TODO const std::vector<int> dish_indices;
-    // TODO std::vector<int> dish_locations; // (ew, ns)
-    // TODO int* dish_indices_ptr;
     const dishGrid& dish_grid;
 
     // ADC
@@ -152,7 +144,6 @@ class FEngine : public kotekan::Stage {
     const int repeat_count;
 
     // Kotekan
-    // TODO const std::int64_t dish_positions_frame_size;
     const std::int64_t bf_mask_frame_size;
     const std::int64_t pl_mask_frame_size;
     const std::int64_t E_frame_size;
@@ -166,7 +157,6 @@ class FEngine : public kotekan::Stage {
     const std::int64_t W2_frame_size;
     [[maybe_unused]] const std::int64_t I1_frame_size;
 
-    // TODO Buffer* const dish_positions_buffer;
     // int8 bf_mask[dish][polr]
     Buffer* const bf_mask_buffer; // 0=bad, 1=good
     // bool pl_mask[time / 2 % 64][dish][polr][freq / 4][time / 2 / 64]

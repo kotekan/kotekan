@@ -85,16 +85,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     chord_telescope(Telescope::instance().cast<CHORDTelescope>()),
 
     // Dishes
-    // TODO num_dish_locations_ew(config.get<int>(unique_name, "num_dish_locations_ew")),
-    // TODO num_dish_locations_ns(config.get<int>(unique_name, "num_dish_locations_ns")),
-    // TODO num_dish_locations(num_dish_locations_ew * num_dish_locations_ns),
-    // TODO dish_separation_ew(config.get<float>(unique_name, "dish_separation_ew")),
-    // TODO dish_separation_ns(config.get<float>(unique_name, "dish_separation_ns")),
-    // TODO num_dishes(config.get<int>(unique_name, "num_dishes")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
-    // TODO dish_indices(config.get<std::vector<int>>(unique_name, "dish_indices")),
-    // TODO dish_locations(2 * num_dishes, -1),
-    // TODO dish_indices_ptr(new int[num_dish_locations_ew * num_dish_locations_ns]),
     dish_grid(chord_telescope.get_dish_grid()),
 
     // ADC
@@ -178,7 +169,6 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     repeat_count(config.get_default<int>(unique_name, "repeat_count", 1)),
 
     // Frame sizes
-    // TODO dish_positions_frame_size(sizeof(float) * 2 * num_dishes),
     bf_mask_frame_size(sizeof(int8_t) * num_dishes * num_polarizations),
     pl_mask_frame_size(sizeof(uint8_t) * (64 / 8) * (num_dishes / 8) * num_polarizations
                        * (num_frequencies / 4) * (num_times / 2 / 64)),
@@ -229,7 +219,6 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
                   * upchan_all_max_num_output_channels * frb_num_times),
 
     // Buffers
-    // TODO dish_positions_buffer(get_buffer("dish_positions_buffer")),
     bf_mask_buffer(get_buffer("bf_mask_buffer")), pl_mask_buffer(get_buffer("pl_mask_buffer")),
     E_buffer_chord(!receive_chime ? get_buffer("E_buffer") : nullptr), E_buffers_chime([&]() {
         std::vector<Buffer*> buffers;
@@ -262,28 +251,6 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
 {
     assert(source_channels.size() == source_amplitudes.size());
-
-    // TODO assert(num_dishes >= 0 && num_dishes <= num_dish_locations);
-    // TODO assert(std::ptrdiff_t(dish_indices.size()) == dish_grid.get_num_dishes_x() *
-    // dish_grid.get_num_dishes_y());
-    // TODO int num_dishes_seen = 0;
-    // TODO for (int loc_ns = 0; loc_ns < dish_grid.get_num_dishes_y(); ++loc_ns) {
-    // TODO     for (int loc_ew = 0; loc_ew < dish_grid.get_num_dishes_x(); ++loc_ew) {
-    // TODO         int loc = loc_ew + dish_grid.get_num_dishes_x() * loc_ns;
-    // TODO         int dish = dish_indices.at(loc);
-    // TODO         assert(dish == -1 || (dish >= 0 && dish < num_dishes));
-    // TODO         if (dish >= 0) {
-    // TODO             ++num_dishes_seen;
-    // TODO             // check for duplicate dish indices
-    // TODO             assert(dish_locations.at(2 * dish + 0) == -1);
-    // TODO             dish_locations.at(2 * dish + 0) = loc_ew;
-    // TODO             dish_locations.at(2 * dish + 1) = loc_ns;
-    // TODO         }
-    // TODO         assert(loc >= 0 && loc < num_dish_locations);
-    // TODO         dish_indices_ptr[loc] = dish;
-    // TODO     }
-    // TODO }
-    // TODO assert(num_dishes_seen == num_dishes);
 
     // for pl_mask consistency:
     assert(num_frequencies % 4 == 0);
@@ -319,7 +286,6 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
             assert(int(upchan_gainss.at(Uindex).size()) == upchan_factor(upchan_factor_t(Uindex)));
     }
 
-    // TODO assert(dish_positions_buffer);
     assert(bf_mask_buffer);
     assert(pl_mask_buffer);
     if (!receive_chime)
@@ -341,7 +307,6 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         assert(W1_buffer);
     assert(W2_buffer);
     // assert(I1_buffer);
-    // TODO dish_positions_buffer->register_producer(unique_name);
     bf_mask_buffer->register_producer(unique_name);
     pl_mask_buffer->register_producer(unique_name);
     if (!receive_chime)
@@ -363,9 +328,6 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     W2_buffer->register_producer(unique_name);
     // I1_buffer->register_producer(unique_name);
 
-    // TODO dish_positions_buffer->allocate_new_frame_desc<kotekan::gettype<kotekan::float32>::type,
-    // 2>(
-    // TODO     "dish_positions", {num_dishes, 2}, {"D", "EW/NS"});
     if (scatter_indices_buffer)
         scatter_indices_buffer->allocate_new_frame_desc<std::int32_t, 2>(
             "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"});
@@ -378,6 +340,16 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         {"F", "P", "B", "D", "C"});
     s_buffer->allocate_new_frame_desc<std::int32_t, 3>(
         "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"});
+    // CHORD and CHIME use different conventions for the (M,N) dish indices and (P,Q) beam
+    // indices
+    // For CHORD: M = P = x = east-west
+    // For CHIME: M = P = y = north-south
+    const int num_dishes_M =
+        receive_chime ? chord_telescope.get_num_dishes_y() : chord_telescope.get_num_dishes_x();
+    const int num_dishes_N =
+        receive_chime ? chord_telescope.get_num_dishes_x() : chord_telescope.get_num_dishes_y();
+    const int num_beams_P = 2 * num_dishes_M;
+    const int num_beams_Q = 2 * num_dishes_N;
     for (int Uindex = 0; Uindex < Usize; ++Uindex) {
         const upchan_factor_t Ufactor = upchan_factor_t(Uindex);
         const int U = upchan_factor(Ufactor);
@@ -386,18 +358,16 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
             G_buffer->allocate_new_frame_desc<float16_t, 1>(
                 "G", {upchan_max_num_channelss[Ufactor] * U}, {"Fbar"});
         Buffer* const W1_buffer = W1_buffers.at(Ufactor);
-        W1_buffer->allocate_new_frame_desc<float16_t, 5>(
-            "W",
-            {upchan_max_num_channelss[Ufactor] * U, num_polarizations,
-             chord_telescope.get_num_dishes_x(), chord_telescope.get_num_dishes_y(),
-             num_components},
-            {"F", "P", "dishN", "dishM", "C"});
+        W1_buffer->allocate_new_frame_desc<float16_t, 5>("W",
+                                                         {upchan_max_num_channelss[Ufactor] * U,
+                                                          num_polarizations, num_dishes_N,
+                                                          num_dishes_M, num_components},
+                                                         {"F", "P", "dishN", "dishM", "C"});
     }
     W2_buffer->allocate_new_frame_desc<float16_t, 4>(
         "W2",
         {upchan_all_max_output_channel - upchan_all_min_output_channel,
-         frb2_num_beams_ns * frb2_num_beams_ew, 2 * chord_telescope.get_num_dishes_x(),
-         2 * chord_telescope.get_num_dishes_y()},
+         frb2_num_beams_ns * frb2_num_beams_ew, num_beams_Q, num_beams_P},
         {"Fbar", "R", "beamQ", "beamP"});
     if (receive_chime) {
         // Use the CHIME input buffer layout (one buffer per frequency)
@@ -1138,9 +1108,9 @@ void FEngine::main_thread() {
                     JL_GC_PUSHARGS(args, nargs);
                     args[0] = jl_box_uint8pointer(W1_frame);
                     args[1] = jl_box_int64(W1_frame_sizes.at(Ufactor));
-                    args[2] =
-                        jl_box_int64(chord_telescope.get_num_dishes_y()); // Note ns/ew is reversed!
-                    args[3] = jl_box_int64(chord_telescope.get_num_dishes_x());
+                    // Note ns/ew is reversed!
+                    args[2] = jl_box_int64(chord_telescope.get_num_dishes_x());
+                    args[3] = jl_box_int64(chord_telescope.get_num_dishes_y());
                     args[4] = jl_box_int64(num_polarizations);
                     args[5] = jl_box_int64(num_local_channels * U);
                     args[6] = jl_box_int64(W1_frame_index + 1);
@@ -1179,8 +1149,10 @@ void FEngine::main_thread() {
             std::strncpy(W1_metadata->dim_name[4], "C", sizeof W1_metadata->dim_name[4]);
             W1_metadata->dim[0] = upchan_max_num_channelss.at(Ufactor) * U;
             W1_metadata->dim[1] = num_polarizations;
-            W1_metadata->dim[2] = chord_telescope.get_num_dishes_x();
-            W1_metadata->dim[3] = chord_telescope.get_num_dishes_y();
+            W1_metadata->dim[2] = receive_chime ? chord_telescope.get_num_dishes_x()
+                                                : chord_telescope.get_num_dishes_y();
+            W1_metadata->dim[3] = receive_chime ? chord_telescope.get_num_dishes_y()
+                                                : chord_telescope.get_num_dishes_x();
             W1_metadata->dim[4] = num_components;
             for (int d = W1_metadata->dims - 1; d >= 0; --d)
                 if (d == W1_metadata->dims - 1)
@@ -1230,9 +1202,9 @@ void FEngine::main_thread() {
         float16_t* __restrict__ const W2 = (float16_t*)W2_frame;
         constexpr std::ptrdiff_t beamIn_ns_stride = 1;
         const std::ptrdiff_t beamIn_ew_stride =
-            beamIn_ns_stride * 2 * chord_telescope.get_num_dishes_y();
+            beamIn_ns_stride * 2 * chord_telescope.get_num_dishes_x();
         const std::ptrdiff_t beamOut_ns_stride =
-            beamIn_ew_stride * 2 * chord_telescope.get_num_dishes_x();
+            beamIn_ew_stride * 2 * chord_telescope.get_num_dishes_y();
         const std::ptrdiff_t beamOut_ew_stride = beamOut_ns_stride * frb2_num_beams_ns;
         const std::ptrdiff_t freq_stride = beamOut_ew_stride * frb2_num_beams_ew;
         const std::ptrdiff_t npoints =
@@ -1362,8 +1334,10 @@ void FEngine::main_thread() {
         std::strncpy(W2_metadata->dim_name[3], "beamP", sizeof W2_metadata->dim_name[3]);
         W2_metadata->dim[0] = upchan_all_max_output_channel - upchan_all_min_output_channel;
         W2_metadata->dim[1] = frb2_num_beams_ns * frb2_num_beams_ew;
-        W2_metadata->dim[2] = 2 * chord_telescope.get_num_dishes_x();
-        W2_metadata->dim[3] = 2 * chord_telescope.get_num_dishes_y();
+        W2_metadata->dim[2] = receive_chime ? 2 * chord_telescope.get_num_dishes_x()
+                                            : 2 * chord_telescope.get_num_dishes_y();
+        W2_metadata->dim[3] = receive_chime ? 2 * chord_telescope.get_num_dishes_y()
+                                            : 2 * chord_telescope.get_num_dishes_x();
         for (int d = W2_metadata->dims - 1; d >= 0; --d)
             if (d == W2_metadata->dims - 1)
                 W2_metadata->stride[d] = 1;
