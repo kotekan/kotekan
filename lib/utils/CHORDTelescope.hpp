@@ -199,7 +199,10 @@ public:
 };
 
 /**
- * @brief Struct containing dish parameters
+ * @brief Struct containing dish parameters.
+ * @details This struct contains all the necessary parameters to describe the dish
+ * positions and orientations in a CHORD-like telescope. Generally, this is constructed
+ * from configuration parameters using the from_config() static method.
  **/
 struct DishParams {
     /// Instument geographic coordinates in degrees.
@@ -240,12 +243,39 @@ struct DishParams {
     /// Description of the grid of dishes
     dishGrid dish_grid;
 
-    /// Build full dish parameters (including rotation matrices and positions)
-    /// from the config for this telescope.
+    /**
+     * @brief Build full dish parameters (including rotation matrices and positions)
+     * from the config for this telescope.
+     *
+     * @conf   origin_itrs_lon_deg  double. Longitude of the telescope origin in ITRS coords.
+     * @conf   origin_itrs_lat_deg  double. Latitude of the telescope origin in ITRS coords.
+     * @conf   dish_coelev_deg      double. Dish pointing co-elevation angle.
+     * @conf   dish_separation_x_m  double. Dish separation in the E/W (x) direction, meters.
+     * @conf   dish_separation_y_m  double. Dish separation in the N/S (y) direction, meters.
+     * @conf   grid_x_axis          array<double,3>. Unit vector giving the grid x axis in
+     *                              topocentric coords.
+     * @conf   grid_y_axis          array<double,3>. Unit vector giving the grid y axis in
+     *                              topocentric coords.
+     * @conf   dish_elev_axis       array<double,3>. Unit vector giving the dish elevation axis in
+     *                              topocentric coords.
+     * @conf   dish_vert_axis       array<double,3>. Unit vector giving the dish vertical axis in
+     *                              topocentric coords.
+     * @conf   dish_inputs          array<dishInfo>. List of dish inputs, with all fields populated.
+     *                              See struct dishInfo for field descriptions.
+     * @conf   num_dishes           size_t. Total number of dishes.
+     * @conf   num_dishes_x         size_t. Number of dishes in the E/W (x) direction.
+     * @conf   num_dishes_y         size_t. Number of dishes in the N/S (y) direction.
+     *
+     * @param   config  The config.
+     * @param   path    This telescope's path in the config.
+     *
+     * @return  The built DishParams.
+     **/
     static DishParams from_config(const kotekan::Config& config, const std::string& path);
 
     /**
-     * @brief   Load information about dish inputs from the config.
+     * @brief   Set dish information about dish inputs from the config.
+     * See from_config() for configuration options.
      *
      * @param   config  The config.
      * @param   path    This telescope's path in the config.
@@ -276,13 +306,31 @@ struct FreqParams {
     double min_science_freq_MHz;
     double max_science_freq_MHz;
 
-    // Build from kotekan::Config
+    /**
+     * @brief Build from kotekan::Config
+     *
+     * @conf   sampling_rate_MHz   double. ADC Sampling Rate (default: 3.2 GHz for CHORD)
+     * @conf   fft_length          size_t. F-engine FFT length (default: 16384 for CHORD)
+     * @conf   nyquist_zone        nyquist_zone_t.  Nyquist Zone we're operating in (default: 1 for
+     *CHORD)
+     * @conf   max_science_freq_MHz double. Maximum frequency used for science, in MHz (default:
+     *1500.0)
+     * @conf   min_science_freq_MHz double. Minimum frequency used for science, in MHz (default:
+     *300.0)
+     *
+     * @param   config  The config.
+     * @param   path    This telescope's path in the config.
+     *
+     * @return  The built FreqParams.
+     **/
     static FreqParams from_config(const kotekan::Config& config, const std::string& path);
 
-    // Some getter methods for frequency
-    freq_id_t max_science_freq_id() const;
-    freq_id_t min_science_freq_id() const;
-    size_t num_science_freqs() const;
+    freq_id_t max_science_freq_id() const; /// Get the maximum science frequency ID accounting for
+                                           /// nyquist zones. Called by telescope object.
+    freq_id_t min_science_freq_id() const; /// Get the minimum science frequency ID accounting for
+                                           /// nyquist zones. Called by telescope object.
+    size_t num_science_freqs()
+        const; /// Get the number of science frequencies between min and max science freq IDs.
 
 private:
     // Constructor using primitive values
@@ -307,6 +355,9 @@ private:
 
 /**
  * @brief   Struct containing "GPS" data fields.
+ * @details This struct contains all the necessary parameters to describe the GPS
+ * time configuration in a CHORD-like telescope. Generally, this is constructed
+ * from configuration parameters using the from_config() static method.
  **/
 struct GPSParams {
     /// Should we require GPS time to be available
@@ -330,8 +381,20 @@ struct GPSParams {
     bool gps_enabled = false;
     uint64_t time0_ns = 0;
 
-    /// Build GPS parameters from config, including (optionally) querying
-    /// a remote server and enforcing _require_gps.
+    /**
+     * @brief Build GPS parameters from config, including (optionally) querying
+     * a remote server and enforcing _require_gps.
+     *
+     * @conf    require_gps         bool.   If true, exception is thrown if GPS
+     *                                      unavailable.
+     * @conf    query_gps           bool.   Should the telescope object get the GPS
+     *                                      from a remote source. If not available,
+     *                                      or false, will try to retrieve from
+     *                                      config.
+     * @conf    gps_host            string. The GPS server IP address.
+     * @conf    gps_port            uint.   The port number on the GPS server.
+     * @conf    gps_endpoint        string. The enpoint with the GPS time.
+     **/
     static GPSParams from_config(const kotekan::Config& config, const std::string& path);
 
 private:
@@ -347,74 +410,13 @@ private:
 /**
  * @brief Implementation for a CHORD-like telescope.
  *
- * @conf    require_gps         bool.   If true, exception is thrown if GPS
- *                                      unavailable.
- * @conf    query_gps           bool.   Should the telescope object get the GPS
- *                                      from a remote source. If not available,
- *                                      or false, will try to retrieve from
- *                                      config.
- * @conf    gps_host            string. The GPS server IP address.
- * @conf    gps_port            uint.   The port number on the GPS server.
- * @conf    gps_endpoint        string. The enpoint with the GPS time.
- * @conf    sampling_rate_MHz   double. ADC Sampling Rate (default: 3.2 GHz for CHORD)
- * @conf    fft_length          size_t. F-engine FFT length (default: 16384 for CHORD)
- * @conf    nyquist_zone        nyquist_zone_t.  Nyquist Zone we're operating in (default: 1 for
- *CHORD)
- * @conf    max_science_freq_MHz double. Maximum frequency used for science, in MHz (default:
- *1500.0)
- * @conf    min_science_freq_MHz double. Minimum frequency used for science, in MHz (default:
- *300.0)
- * @conf    origin_itrs_lon_deg double. Instrument longitude in degrees.
- * @conf    origin_itrs_lat_deg double. Instrument latitude in degrees.
- * @conf    dish_coelev_deg     double. Instrument pointing co-elevation, in
- *                                      degrees from zenith. Positive is North.
- * @conf    origin_itrs_lon_deg double. ITRS longitude of the topocentric coordinate origin.
- * @conf    origin_itrs_lat_deg double. ITRS latitude of the topocentric coordinate origin.
- * @conf    grid_x_axis         [double, 3].    The basis vector, measured in
- *                                      the topocentric frame, of the dish-dish
- *                                      E/W separation.  Must be:
- *                                      normalized, orthogonal to the y-axis.
- * @conf    grid_y_axis         [double, 3].    The basis vector, measured in
- *                                      the topocentric frame, of the dish-dish
- *                                      N/S separation.  Must be:
- *                                      normalized, orthogonal to the x-axis.
- * @conf    dish_elev_axis      [double, 3].    The basis vector, measured in
- *                                      the topocentric frame, of the dish
- *                                      elevation axis. East-pointing. Must be:
- *                                      normalized, orthogonal to the vert-axis.
- * @conf    dish_vert_axis      [double, 3].    The basis vector, measured in
- *                                      the topocentric frame, of the dish
- *                                      vertical direction. Up-pointing, 0 deg
- *                                      co-elevation. Must be:
- *                                      normalized, orthogonal to the elev-axis.
- * @conf    num_dishes          size_t  Total number of dishes in the kotekan data
- *                                      pipeline, each providing 2 polarizations. Equal to
- *                                      the total number of configured dishes, plus possibly
- *                                      some "fake" dishes to keep the number a multiple of
- *                                      32.
- * @conf    dish_separation_x_m    double.     The separation in meters between dish grid
- *                                      locations in the Telescope x-axis direction
- *                                      (generally, East/West).
- * @conf    dish_separation_y_m    double.     The separation in meters between dish grid
- *                                      locations in the Telescope y-axis direction
- *                                      (generally, North/South).
- * @conf    num_dishes_x        size_t
- * @conf    num_dishes_y        size_t
- * @conf    dish_inputs         [dishInfo, N]   List of dishInfo structs, each represented
- *                                      by a map with the following keys:
- *                                      - dishIdx   int     Position of this dish in the
- *                                          standard visibility matrix
- *                                      - grid_x_idx    int     E/W (x) grid position in the
- *                                          main array.
- *                                      - grid_y_idx    int     N/S (y) grid position in the
- *                                          main array.
- *                                      - feed_pos_disp_m [double, 3]    Displacement of feed from
- *grid position in meters, Telescope frame.
- *                                      - coelev_disp_deg   double  Displacement from
- *                                          target co-elevation, degrees.
- *                                      - type      int64_t     Integer code for type of input,
- *                                          -1: fake "NULL" dish, 0: standard dish.
- *                                      - label     String  Label for input.
+ * Configuration is split across dedicated helper structs:
+ * @see GPSParams::from_config (GPS requirements and time source)
+ * @see FreqParams::from_config (frequency sampling)
+ * @see DishParams::from_config (dish and array geometry)
+ *
+ * @conf    updatable_config    string. ConfigUpdater path for dynamic EOP updates.
+ * @conf    log_level           string. Optional log level for this telescope instance.
  *
  * @author Geoffrey Ryan
  **/
