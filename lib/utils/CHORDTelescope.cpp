@@ -255,15 +255,17 @@ inline FreqParams FreqParams::from_config(const kotekan::Config& config, const s
     const double min_science_freq_MHz =
         config.get_default<double>(path, "min_science_freq_MHz", 300.0);
 
-    if (min_science_freq_id() >= max_science_freq_id()) {
+    FreqParams freq_params{sampling_rate_MHz, fft_length, nyquist_zone, min_science_freq_MHz,
+                           max_science_freq_MHz};
+
+    if (freq_params.min_science_freq_id() >= freq_params.max_science_freq_id()) {
         FATAL_ERROR_NON_OO(
             "Telescope minimum used science frequency ({:f} MHz) is greater than or equal to "
             "maximum used science frequency ({:f} MHz)!",
-            _freq_params.min_science_freq_MHz, _freq_params.max_science_freq_MHz);
+            freq_params.min_science_freq_MHz, freq_params.max_science_freq_MHz);
     }
 
-    return FreqParams{sampling_rate_MHz, fft_length, nyquist_zone, min_science_freq_MHz,
-                      max_science_freq_MHz};
+    return freq_params;
 }
 
 
