@@ -558,7 +558,7 @@ public:
     /**
      * @brief Allocates a new frame description object holding a D dimensional
      *        array of type T
-     * @param[in] value_type the kotekan type enomerator of the values stored
+     * @param[in] value_type the kotekan type enumerator of the values stored
      * @param[in] rank dimensionality of the data array
      * @param[in] extents Array extentds in the D dimensions
      * @param[in] dimnames Array axis labels in the D dimensions

@@ -14,9 +14,10 @@
 #include <assert.h>   // for assert
 #include <exception>  // for exception
 #include <functional> // for bind, _1, function
-#include <math.h>     // for sin, cos, M_PI
-#include <stdexcept>  // for runtime_error
-#include <vector>     // for vector
+#include <limits>
+#include <math.h>    // for sin, cos, M_PI
+#include <stdexcept> // for runtime_error
+#include <vector>    // for vector
 
 
 REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
@@ -31,37 +32,21 @@ using kotekan::connectionInstance;
 using kotekan::restServer;
 
 CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string& path) :
-    Telescope(config.get<std::string>(path, "log_level")), _unique_name(path),
-    // GPS time configuration parameters
-    _require_gps(config.get_default<uint32_t>(path, "require_gps", false)),
-    _query_gps(config.get_default<bool>(path, "query_gps", false)),
-    _gps_host(config.get_default<std::string>(path, "gps_host", "127.0.0.1")),
-    _gps_port(config.get_default<uint32_t>(path, "gps_port", 54321)),
-    _gps_endpoint(config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time")),
-    // Time and frequency sampling parameters
-    _sampling_rate_MHz(config.get_default<double>(path, "sampling_rate_MHz", 3.2e3)),
-    _fft_length(config.get_default<uint64_t>(path, "fft_length", 16384)),
-    _nyquist_zone(config.get_default<uint8_t>(path, "nyquist_zone", 1)),
-    _dt_ns(uint64_t(double(_fft_length) / (_sampling_rate_MHz * 1.0e6) * 1.0e9)),
-    _freq0_MHz((_nyquist_zone / 2) * _sampling_rate_MHz),
-    _df_MHz((_nyquist_zone % 2 == 1 ? 1 : -1) * _sampling_rate_MHz
-            / _fft_length), // Odd zones count up from freq0, even zones count down.
-    _nfreq_total(_fft_length / 2),
-    _max_output_freq_MHz(config.get_default<double>(path, "max_output_freq_MHz", 1500.0)),
-    _min_output_freq_MHz(config.get_default<double>(path, "min_output_freq_MHz", 300.0)),
-    // Instrument geographic coordinates
-    _origin_itrs_lon_deg(config.get_default<double>(path, "origin_itrs_lon_deg", 0.0)),
-    _origin_itrs_lat_deg(config.get_default<double>(path, "origin_itrs_lat_deg", 0.0)),
-    _dish_coelev_deg(config.get_default<double>(path, "dish_coelev_deg", 0.0)),
-    _dish_separation_x_m(config.get_default<double>(path, "dish_separation_x_m", 6.3)),
-    _dish_separation_y_m(config.get_default<double>(path, "dish_separation_y_m", 8.5)) {
+    Telescope(config.get<std::string>(path, "log_level")) {
 
+    _unique_name = path;
+    bool require_gps = config.get_default<uint32_t>(path, "require_gps", false);
+    _query_gps = config.get_default<bool>(path, "query_gps", false);
+    _gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
+    _gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
+    _gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
     if (_query_gps)
-        set_gps_params(_gps_host, _gps_port, _gps_endpoint); // sets gps_enabled, time0_ns
+        set_gps(_gps_host, _gps_port, _gps_endpoint);
     if (!gps_enabled)
-        set_gps_params(config); // sets gps_enabled, time0_ns
-    if (_require_gps && !gps_enabled) {
-        FATAL_ERROR("The system requires a GPS time, but none was found.");
+        set_gps(config);
+
+    if (require_gps && !gps_enabled) {
+        throw std::runtime_error("The system requires a GPS time, but none was found.");
     }
 
     if (gps_enabled)
@@ -70,17 +55,11 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
         INFO("Telescope GPS time not enabled.");
 
     // Set the time- and frequency-sampling parameters from the config.
-    INFO("Telescope configured with {} frequency channels total", _nfreq_total);
-    INFO("Telescope configured with {} MHz channel width", _df_MHz);
-    INFO("Telescope configured with {} MHz starting frequency", _freq0_MHz);
-    INFO("Telescope configured with {} ns sequence length", _dt_ns);
-    INFO("Telescope configured so min_output_freq_id is {}", min_output_freq_id());
-    INFO("Telescope configured so max_output_freq_id is {}", max_output_freq_id());
-    if (min_output_freq_id() >= max_output_freq_id()) {
-        FATAL_ERROR("Telescope minimum output frequency ({:f} MHz) is greater than or equal to "
-                    "maximum output frequency ({:f} MHz)!",
-                    _min_output_freq_MHz, _max_output_freq_MHz);
-    }
+    set_sampling_params(config, path);
+
+    _origin_itrs_lon_deg = config.get_default<double>(path, "origin_itrs_lon_deg", 0.0);
+    _origin_itrs_lat_deg = config.get_default<double>(path, "origin_itrs_lat_deg", 0.0);
+    _dish_coelev_deg = config.get_default<double>(path, "dish_coelev_deg", 0.0);
 
     INFO("Telescope configured with longitude:    {:f} deg", _origin_itrs_lon_deg);
     INFO("Telescope configured with latitude:     {:f} deg", _origin_itrs_lat_deg);
@@ -170,7 +149,29 @@ CHORDTelescope::~CHORDTelescope() {
     rest_server.remove_get_callback(_unique_name + "/eop_table");
 }
 
-void CHORDTelescope::set_gps_params(const kotekan::Config& config) {
+void CHORDTelescope::set_sampling_params(const kotekan::Config& config, const std::string& path) {
+
+    double sampling_rate_MHz = config.get_default<double>(path, "sampling_rate_MHz", 3.2e3);
+    uint64_t fft_length = config.get_default<uint64_t>(path, "fft_length", 16384);
+    ny_zone = config.get_default<uint8_t>(path, "nyquist_zone", 1);
+
+    // Find the time in nanoseconds between fpga_seq_nums (ie. the time between fft_length raw ADC
+    // samples)
+    dt_ns = (GIGA * fft_length) / (1.0e6 * sampling_rate_MHz);
+
+    // Set the physical frequency of id=0, and the spacing, taking into account
+    // the aliasing of each Nyquist zone
+
+    // the freq0 mode jumps in frequency every 2 nyquist zones. The first zone (zone = 1) is the
+    // textbook FFT and has freq0 = 0.
+    freq0_MHz = (ny_zone / 2) * sampling_rate_MHz;
+    // Odd zones count up from freq0, even zones count down.
+    df_MHz = (ny_zone % 2 == 1 ? 1 : -1) * sampling_rate_MHz / fft_length;
+    // Total number of frequency channels (input data is Real)
+    nfreq_total = fft_length / 2;
+}
+
+void CHORDTelescope::set_gps(const kotekan::Config& config) {
     if (!config.exists("/", "gps_time")) {
         WARN("No GPS time section found. Ignoring.");
         return;
@@ -191,8 +192,8 @@ void CHORDTelescope::set_gps_params(const kotekan::Config& config) {
     gps_enabled = true;
 }
 
-void CHORDTelescope::set_gps_params(const std::string& host, const uint32_t port,
-                                    const std::string& path) {
+void CHORDTelescope::set_gps(const std::string& host, const uint32_t port,
+                             const std::string& path) {
 
     INFO("Requesting GPS time from server: {:s}.{:d}{:s} This might take some time...", host, port,
          path);
@@ -279,11 +280,11 @@ timespec CHORDTelescope::to_time(uint64_t seq) const {
 }
 
 int64_t CHORDTelescope::to_time_ns(uint64_t seq) const {
-    return time0_ns + seq * _dt_ns;
+    return time0_ns + seq * dt_ns;
 }
 
 uint64_t CHORDTelescope::to_seq(timespec time) const {
-    return (time.tv_sec * GIGA + time.tv_nsec - time0_ns) / _dt_ns;
+    return (time.tv_sec * GIGA + time.tv_nsec - time0_ns) / dt_ns;
 }
 
 bool CHORDTelescope::gps_time_enabled() const {
@@ -291,7 +292,7 @@ bool CHORDTelescope::gps_time_enabled() const {
 }
 
 uint64_t CHORDTelescope::seq_length_nsec() const {
-    return _dt_ns;
+    return dt_ns;
 }
 
 double CHORDTelescope::get_origin_itrs_lon_deg() const {
@@ -551,7 +552,7 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const
     }
 }
 
-void CHORDTelescope::fill_input_maps(dishInputFields& input) const {
+void CHORDTelescope::get_input_maps(dishInputFields& input) const {
 
     // Ensure fields have the correct size
     input.grid_x_idx.reserve(_num_dishes);
@@ -598,6 +599,20 @@ std::array<double, 3> CHORDTelescope::get_dish_position_in_grid_coords(int i) co
 
 int CHORDTelescope::get_num_dishes() const {
     return _num_dishes;
+}
+
+int CHORDTelescope::get_num_dishes_x() const {
+    return _num_dishes_x;
+}
+int CHORDTelescope::get_num_dishes_y() const {
+    return _num_dishes_y;
+}
+
+double CHORDTelescope::get_dish_separation_x_m() const {
+    return _dish_separation_x_m;
+}
+double CHORDTelescope::get_dish_separation_y_m() const {
+    return _dish_separation_y_m;
 }
 
 int CHORDTelescope::get_EOP_table_len() const {
@@ -768,58 +783,37 @@ EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
     return eop;
 }
 
-const struct dishInfo& CHORDTelescope::get_dish_at_idx(int64_t idx) const {
-    return _dish_info_table[idx];
+const dishInfo& CHORDTelescope::get_dish_at_idx(int64_t idx) const {
+    return _dish_info_table.at(idx);
+}
+
+const dishGrid& CHORDTelescope::get_dish_grid() const {
+    return _dish_grid;
 }
 
 // Get the frequency in MHz corresponding to the given freq_id.
 double CHORDTelescope::to_freq_MHz(freq_id_t freq_id) const {
-    if (freq_id >= _nfreq_total) {
-        FATAL_ERROR("Invalid frequency ID={:d}, accepted range [0, {:d})", freq_id, _nfreq_total);
+    if (freq_id >= nfreq_total) {
+        FATAL_ERROR("Invalid frequency ID={:d}, accepted range [0, {:d})", freq_id, nfreq_total);
     }
-    // In even Nyquist zones _df_MHz < 0 so the freq_ids count down from freq0.
-    return _freq0_MHz + freq_id * _df_MHz;
+    // In even Nyquist zones df_MHz < 0 so the freq_ids count down from freq0.
+    return freq0_MHz + freq_id * df_MHz;
 }
 
 // Get the configured frequency spacing
 double CHORDTelescope::freq_width_MHz(freq_id_t) const {
-    // In even Nyquist zones _df_MHz < 0, so need to take absolute value.
-    return std::abs(_df_MHz);
+    // In even Nyquist zones df_MHz < 0, so need to take absolute value.
+    return std::abs(df_MHz);
 }
 
 // Return the configured Nyquist Zone
 uint8_t CHORDTelescope::nyquist_zone() const {
-    return _nyquist_zone;
+    return ny_zone;
 }
 
 // Return the total number of frequency channels
 uint32_t CHORDTelescope::num_freq() const {
-    return _nfreq_total;
-}
-
-size_t CHORDTelescope::max_output_freq_id() const {
-    return (_max_output_freq_MHz - _freq0_MHz) / _df_MHz;
-}
-
-size_t CHORDTelescope::min_output_freq_id() const {
-    return (_min_output_freq_MHz - _freq0_MHz) / _df_MHz;
-}
-
-size_t CHORDTelescope::get_output_freq_idx(freq_id_t freq_id) const {
-    size_t output_freq_idx = freq_id - min_output_freq_id();
-
-    // Non-fatal error check.
-    if (freq_id < min_output_freq_id() || freq_id > max_output_freq_id()) {
-        ERROR_NON_OO(
-            "Requested freq_id {:d} is outside of file output frequency range [{:d}, {:d}]",
-            freq_id, min_output_freq_id(), max_output_freq_id());
-    }
-
-    return output_freq_idx;
-}
-
-size_t CHORDTelescope::num_output_freq() const {
-    return max_output_freq_id() - min_output_freq_id() + 1;
+    return nfreq_total;
 }
 
 // Stream logic has been moved to the packet capture code in dpdk
@@ -827,6 +821,7 @@ size_t CHORDTelescope::num_output_freq() const {
 // in the future, it will abort if called.
 freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
     FATAL_ERROR("CHORDTelesope does not support to_freq_id(stream_t)");
+    std::abort();
     return 0;
 }
 
@@ -835,6 +830,7 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
 // in the future, it will abort if called.
 uint32_t CHORDTelescope::num_freq_per_stream() const {
     FATAL_ERROR("CHORDTelesope does not support num_freq_per_stream()");
+    std::abort();
     return 0;
 }
 
@@ -854,6 +850,7 @@ EOP CHORDTelescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst
 
     return eop;
 }
+
 void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::string& path) {
 
     // Get the number of dishes, make sure its positive.
@@ -863,6 +860,26 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
         std::abort();
     }
     assert(_num_dishes > 0);
+
+    _num_dishes_x = config.get<int32_t>(path, "num_dishes_x");
+    if (_num_dishes_x <= 0) {
+        FATAL_ERROR("CHORDTelescope: num_dishes_x must be > 0, got: {:d}", _num_dishes_x);
+        std::abort();
+    }
+    assert(_num_dishes_x > 0);
+
+    _num_dishes_y = config.get<int32_t>(path, "num_dishes_y");
+    if (_num_dishes_y <= 0) {
+        FATAL_ERROR("CHORDTelescope: num_dishes_y must be > 0, got: {:d}", _num_dishes_y);
+        std::abort();
+    }
+    assert(_num_dishes_y > 0);
+
+    assert(_num_dishes <= _num_dishes_x * _num_dishes_y);
+
+    // Get the grid separation distances.
+    _dish_separation_x_m = config.get_default<double>(path, "dish_separation_x_m", 6.3);
+    _dish_separation_y_m = config.get_default<double>(path, "dish_separation_y_m", 8.5);
 
     // Load the dish_inputs table into temporary storage
     std::vector<dishInfo> cfg_tab =
@@ -892,12 +909,17 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
         }
         assert(idx < _num_dishes);
 
-        if (_dish_info_table[idx].type != DishType::Fake) {
+        if (dish.type != DishType::Fake) {
+            assert(dish.grid_x_idx >= 0 && dish.grid_x_idx < _num_dishes_x);
+            assert(dish.grid_y_idx >= 0 && dish.grid_y_idx < _num_dishes_y);
+        }
+
+        if (_dish_info_table.at(idx).type != DishType::Fake) {
             FATAL_ERROR("dish {:s} has dish_idx {:d}, which is duplicated in `dish_inputs`",
                         dish.label, dish.idx);
         }
 
-        _dish_info_table[dish.idx] = dish;
+        _dish_info_table.at(dish.idx) = dish;
     }
 
     INFO("CHORDTelescope configured with {:d} dishes.  Loaded {:d} from 'dish_inputs'.",
@@ -908,12 +930,27 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
 
     // Calculate and fill the dish positions table.
     for (const dishInfo& d : _dish_info_table) {
-        _dish_positions.push_back({_dish_separation_x_m * d.grid_x_idx + d.feed_pos_disp_m[0],
-                                   _dish_separation_y_m * d.grid_y_idx + d.feed_pos_disp_m[1],
-                                   d.feed_pos_disp_m[2]});
+        _dish_positions.push_back({_dish_separation_x_m * d.grid_x_idx + d.feed_pos_disp_m.at(0),
+                                   _dish_separation_y_m * d.grid_y_idx + d.feed_pos_disp_m.at(1),
+                                   d.feed_pos_disp_m.at(2)});
+    }
+
+    using std::max;
+
+    // Create and fill dish grid
+    _dish_grid = dishGrid(_num_dishes_x, _num_dishes_y);
+    for (int dish = 0; dish < _num_dishes; ++dish) {
+        const dishInfo& dish_info = get_dish_at_idx(dish);
+        if (dish_info.type == DishType::Fake)
+            continue;
+        // Catch inconsistencies
+        assert(dish_info.idx == dish);
+        int& dish_index = _dish_grid.dish_index(dish_info.grid_x_idx, dish_info.grid_y_idx);
+        // Catch inconsistencies
+        assert(dish_index == -1);
+        dish_index = dish;
     }
 }
-
 
 bool EOP_comp_time(const EOP& eop1, const EOP& eop2) {
     return eop1.t_inst < eop2.t_inst;

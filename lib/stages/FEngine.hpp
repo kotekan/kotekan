@@ -1,6 +1,7 @@
 #ifndef F_ENGINE_STAGE_H
 #define F_ENGINE_STAGE_H
 
+#include "CHORDTelescope.hpp"
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
@@ -85,16 +86,12 @@ class FEngine : public kotekan::Stage {
     const float source_position_ew;
     const float source_position_ns;
 
+    // Telescope
+    const CHORDTelescope& chord_telescope;
+
     // Dishes
-    const int num_dish_locations_ew;
-    const int num_dish_locations_ns;
-    const int num_dish_locations;
-    const float dish_separation_ew;
-    const float dish_separation_ns;
     const int num_dishes;
-    const std::vector<int> dish_indices;
-    std::vector<int> dish_locations; // (ew, ns)
-    int* dish_indices_ptr;
+    const dishGrid& dish_grid;
 
     // ADC
     const float adc_frequency;
@@ -147,7 +144,6 @@ class FEngine : public kotekan::Stage {
     const int repeat_count;
 
     // Kotekan
-    const std::int64_t dish_positions_frame_size;
     const std::int64_t bf_mask_frame_size;
     const std::int64_t pl_mask_frame_size;
     const std::int64_t E_frame_size;
@@ -161,7 +157,6 @@ class FEngine : public kotekan::Stage {
     const std::int64_t W2_frame_size;
     [[maybe_unused]] const std::int64_t I1_frame_size;
 
-    Buffer* const dish_positions_buffer;
     // int8 bf_mask[dish][polr]
     Buffer* const bf_mask_buffer; // 0=bad, 1=good
     // bool pl_mask[time / 2 % 64][dish][polr][freq / 4][time / 2 / 64]

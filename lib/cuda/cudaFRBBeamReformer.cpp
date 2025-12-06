@@ -37,9 +37,9 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     // Number of output beams
     _num_beams = config.get<int>(unique_name, "num_beams");
     // Number of input beams
-    _beam_grid_size_ns = config.get<int>(unique_name, "beam_grid_size_ns");
-    _beam_grid_size_ew = config.get<int>(unique_name, "beam_grid_size_ew");
-    num_input_beams = _beam_grid_size_ew * _beam_grid_size_ns;
+    _beam_grid_size_P = config.get<int>(unique_name, "beam_grid_size_P");
+    _beam_grid_size_Q = config.get<int>(unique_name, "beam_grid_size_Q");
+    num_input_beams = _beam_grid_size_P * _beam_grid_size_Q;
     // Number of frequencies
     _max_num_local_freq = config.get<int>(unique_name, "max_num_local_freq");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
@@ -200,8 +200,8 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
             ERROR("in dim=[{},{},{},{}] max_num_local_freq={}", in_meta->dim[0], in_meta->dim[1],
                   in_meta->dim[2], in_meta->dim[3], _max_num_local_freq);
         assert(in_meta->dim[1] == _max_num_local_freq);
-        assert(in_meta->dim[2] == _beam_grid_size_ew);
-        assert(in_meta->dim[3] == _beam_grid_size_ns);
+        assert(in_meta->dim[2] == _beam_grid_size_Q);
+        assert(in_meta->dim[3] == _beam_grid_size_P);
         for (int d = in_meta->dims - 1; d >= 0; --d)
             if (d == in_meta->dims - 1)
                 assert(in_meta->stride[d] == 1);
