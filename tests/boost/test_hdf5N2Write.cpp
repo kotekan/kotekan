@@ -44,9 +44,9 @@ using std::string;
 
 using HighFive::File;
 
-static size_t get_abs_freq_id(size_t f_index) {
+static freq_id_t get_abs_freq_id(size_t f_index) {
     const auto& tel = Telescope::instance().cast<CHORDTelescope>();
-    return tel.min_output_freq_id() + f_index;
+    return tel.min_science_freq_id() + f_index;
 }
 
 static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_input, size_t num_ev,
@@ -58,6 +58,9 @@ static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_in
     auto meta = get_N2_metadata(buf, frame_id);
     BOOST_REQUIRE(meta);
     meta->freq_id = get_abs_freq_id(f_index);
+    // Keep LAST within the valid bounds enforced by add_frame bounds checks
+    meta->bin_start_LAST = 1.23 + double(t_index);
+    meta->bin_end_LAST = 4.56 + double(t_index);
 }
 
 
@@ -222,8 +225,8 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
         std::vector<int64_t> tcen, bin;
         file.getDataSet("/fpga_start_tick").read(s0);
         file.getDataSet("/frame_length_fpga_ticks").read(s2);
-        file.getDataSet("/time_center_ut1").read(tcen);
-        file.getDataSet("/bin_ut1").read(bin);
+        file.getDataSet("/time_center_ut1_ns").read(tcen);
+        file.getDataSet("/bin_ut1_ns").read(bin);
         BOOST_CHECK(!s0.empty() && !s2.empty());
         BOOST_CHECK(!tcen.empty() && tcen.size() == bin.size());
     }
@@ -750,18 +753,16 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     buf.send_shutdown_signal();
     stage.join();
 
-    // Both datasets should exist and have different names
-    const std::string d1 = get_dataset_name(base_dir, abs_base_a, baseA, suffix);
-    const std::string d2 = get_dataset_name(base_dir, abs_base_b, baseB, suffix);
-    bool h1 = path_exists(d1);
-    bool h2 = path_exists(d2);
-    BOOST_CHECK(h1 && h2);
-    if (h1 && h2)
-        BOOST_CHECK(d1 != d2);
-    if (h1)
-        rm_tree_if_exists(d1);
-    if (h2)
-        rm_tree_if_exists(d2);
+    // Both datasets should exist in base_dir and have different names
+    std::vector<std::string> datasets;
+    for (auto& e : list_dir_entries(base_dir)) {
+        if (e.find(suffix) != std::string::npos)
+            datasets.push_back(join_path(base_dir, e));
+    }
+    BOOST_REQUIRE_MESSAGE(datasets.size() == 2, "Expected 2 datasets, found " << datasets.size());
+    BOOST_CHECK(datasets[0] != datasets[1]);
+    for (auto& d : datasets)
+        rm_tree_if_exists(d);
     rm_tree_if_exists(base_dir);
 }
 

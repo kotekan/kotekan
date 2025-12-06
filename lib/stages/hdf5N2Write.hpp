@@ -24,7 +24,6 @@
 #include <optional>
 #include <string>
 #include <vector>
-#include <visUtil.hpp>
 
 /**
  * @class N2FileData
@@ -92,8 +91,8 @@ protected:
     std::vector<int64_t> bin_ut1;                  // (t)
     std::vector<double> bin_start_ERA_deg;         // (t)
     std::vector<double> bin_end_ERA_deg;           // (t)
-    std::vector<int64_t> bin_start_LAST;           // (t)
-    std::vector<int64_t> bin_end_LAST;             // (t)
+    std::vector<double> bin_start_LAST;            // (t)
+    std::vector<double> bin_end_LAST;              // (t)
 
     // Tracking what (f, t) pairs have been added
     std::vector<uint8_t> added_ft; // size = num_file_f * num_file_t
@@ -135,7 +134,7 @@ public:
      */
     bool add_frame(const N2FrameView& fv, size_t t_index);
 
-    /// Get the final filename for this file based on earliest frame time
+    /// Get the final filename for this file based on earliest fpga tick in the frame.
     /// May return std::nullopt if no frames have been added yet,
     /// so earliest time is unknown. If earlier frames are later added,
     /// this method may return a different filename.
@@ -181,8 +180,9 @@ public:
  * @class hdf5N2Write
  * @brief Buffered-transpose writer: buffers sequential time frames and writes HDF5 files.
  *
- * This stage groups frames into UTC-midnight-aligned windows of length
- * `file_seconds`, buffers a complete (num_file_f * file_nt) block per output file in
+ * This stage groups frames into windows of fixed-number-of-frames `num_file_t` based on
+ * their absolute time index, and writes one HDF5 file per window. It
+ * buffers a complete (num_file_f * num_file_t) block per output file in
  * memory (via N2FileData), and when the block is full, writes all arrays to
  * disk in large contiguous slabs. If the block is not full, it is nevertheless finalized
  * after `late_frame_grace_seconds` of inactivity once frames for later file windows begin to
@@ -249,7 +249,7 @@ private:
      * @brief Finalize a file: close and rename from .partial to final name.
      * @param filedata  File to finalize
      */
-    void _finalize_file(N2FileData& filedata);
+    bool _finalize_file(N2FileData& filedata);
 
     /**
      * @brief Finalize N2FileData objects that have been inactive for too long.
@@ -259,6 +259,12 @@ private:
     void _grace_finalize_files(std::map<size_t, std::unique_ptr<N2FileData>>& files,
                                const size_t* exclude_abs_file_idx = nullptr);
 
+    /**
+     * @brief Check if the final file (of the form vis_<abs_file_idx>_*.h5) already exists on disk.
+     * @param abs_file_idx  Absolute file index to check
+     * @param search_dir    Directory to search in
+     * @return              True if the final file exists, false otherwise
+     */
     bool _finalfile_exists(std::uint64_t abs_file_idx, const std::string& search_dir) const;
 };
 

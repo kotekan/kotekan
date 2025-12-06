@@ -223,7 +223,7 @@ void testDataGen::main_thread() {
             if (_manual_freq_ids.size() > 0)
                 coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
             else if (telescope_type == "CHORDTelescope")
-                coarse_freq[f] = telescope.cast<CHORDTelescope>().min_output_freq_id() + f;
+                coarse_freq[f] = telescope.cast<CHORDTelescope>().min_science_freq_id() + f;
             else
                 coarse_freq[f] = f;
             freq_upchan_factor[f] = 1;

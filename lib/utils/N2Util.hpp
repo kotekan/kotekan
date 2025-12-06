@@ -93,9 +93,13 @@ inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
  */
 struct input_ctype {
     input_ctype(uint16_t idx, std::string input_id) {
+        // Check input_id length
+        if (input_id.size() >= 32) {
+            ERROR_NON_OO("input_id {} length exceeds 31 characters", input_id);
+        }
         element_idx = idx;
         std::memset(input_id_str, 0, 32);
-        input_id.copy(input_id_str, 32);
+        input_id.copy(input_id_str, 31); // Ensure null termination
     }
 
     /// element index

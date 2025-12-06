@@ -236,6 +236,8 @@ struct CompareCTypes {
     telescope["grid_y_axis"] = {0.0, 1.0, 0.0};
     telescope["dish_elev_axis"] = {1.0, 0.0, 0.0};
     telescope["dish_vert_axis"] = {0.0, 0.0, 1.0};
+    telescope["num_dishes_x"] = 8;
+    telescope["num_dishes_y"] = 8;
 
     nlohmann::json eop_update;
     eop_update["kotekan_update_endpoint"] = "json";
