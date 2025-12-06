@@ -118,6 +118,8 @@ private:
                                                          const FileMode file_mode) const;
 
 public:
+    enum class AddFrameStatus { Success, OutOfBounds, Duplicate, MetadataMismatch };
+
     N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameView& fv,
                const double open_wall_s_, const uint64_t abs_file_idx_, const size_t blocksize_f_,
                const size_t blocksize_p_, const size_t blocksize_t_, const std::string compression_,
@@ -130,9 +132,9 @@ public:
      * @param meta    N2 metadata for the frame.
      * @param t_index Time index within this file block (0..num_file_t-1).
      *
-     * @returns success status (false if frame could not be added).
+     * @returns status describing whether the frame was accepted.
      */
-    bool add_frame(const N2FrameView& fv, size_t t_index);
+    AddFrameStatus add_frame(const N2FrameView& fv, size_t t_index);
 
     /// Get the final filename for this file based on earliest fpga tick in the frame.
     /// May return std::nullopt if no frames have been added yet,
@@ -151,6 +153,12 @@ public:
     /// Check if all (f, t) pairs have been added
     bool full() const {
         return added_count == num_file_f * num_file_t;
+    }
+
+    double completion_fraction() const {
+        const size_t expected = num_file_f * num_file_t;
+        return expected > 0 ? static_cast<double>(added_count) / static_cast<double>(expected)
+                            : 0.0;
     }
 
     // Accessors for internal storage (index calculation)
@@ -201,8 +209,15 @@ public:
  * @conf max_frames                Int.  Stop writing after this many frames (-1 = unlimited)
  *
  * @par Metrics
- * @metric kotekan_N2write_write_time_seconds  Duration to write the last flush
- * @metric kotekan_N2write_n_datasets          Number of datasets currently open
+ * @metric kotekan_hdf5N2Write_write_time_seconds        Duration to write the last flush
+ * @metric kotekan_hdf5N2Write_n_datasets                Number of datasets currently open
+ * @metric kotekan_hdf5N2Write_open_file_info            Gauge=1 for each open file {abs_file_idx, partial_path, file_mode}
+ * @metric kotekan_hdf5N2Write_open_file_age_seconds     Wall time since file open {abs_file_idx}
+ * @metric kotekan_hdf5N2Write_file_completion_fraction  Added (f,t) pairs / expected per file {abs_file_idx}
+ * @metric kotekan_hdf5N2Write_add_frame_errors_total    Counter of add_frame failures {reason}
+ * @metric kotekan_hdf5N2Write_last_add_frame_error_seconds Timestamp of last add_frame failure {reason, abs_file_idx, freq_id, t_index}
+ * @metric kotekan_hdf5N2Write_finalize_failures_total   Counter of finalize failures {reason}
+ * @metric kotekan_hdf5N2Write_unfinalized_file          Gauge=1 for files left partial/quarantined {abs_file_idx, partial_path}
  *
  * @note User-level documentation lives in docs/sphinx/user/processes/hdf5N2Write.rst.
  **/
@@ -234,6 +249,14 @@ private:
 
     kotekan::prometheus::Gauge& write_time_metric;
     kotekan::prometheus::Gauge& n_datasets_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& open_file_info_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& open_file_age_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
+        file_completion_fraction_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& add_frame_errors_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& last_add_frame_error_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& finalize_failures_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& unfinalized_file_metric;
 
     /**
      * @brief Get an absolute file number (index) for given metadata.
@@ -266,6 +289,13 @@ private:
      * @return              True if the final file exists, false otherwise
      */
     bool _finalfile_exists(std::uint64_t abs_file_idx, const std::string& search_dir) const;
+
+    void _record_file_open(const N2FileData& filedata) const;
+    void _update_file_metrics(const N2FileData& filedata) const;
+    void _clear_open_file_metrics(const N2FileData& filedata) const;
+    void _mark_unfinalized(const N2FileData& filedata) const;
+    void _record_add_frame_error(const std::string& reason, std::uint64_t abs_file_idx,
+                                 int32_t freq_id, std::uint64_t t_index) const;
 };
 
 #endif // KOTEKAN_STAGES_HDF5_N2_WRITE_HPP

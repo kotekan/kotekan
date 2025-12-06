@@ -373,7 +373,7 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     TestVisFileData data(fv1, num_file_t, 100.0, 0, base_dir);
 
     // First write
-    BOOST_REQUIRE(data.add_frame(fv1, t));
+    BOOST_REQUIRE(data.add_frame(fv1, t) == N2FileData::AddFrameStatus::Success);
     // Verify fractions computed directly from metadata values
     BOOST_CHECK_CLOSE_FRACTION(data.get_frac_lost(f_index, t), 0.2f, 1e-6f);
     BOOST_CHECK_CLOSE_FRACTION(data.get_frac_rfi(f_index, t), 0.3f, 1e-6f);
@@ -381,8 +381,11 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     BOOST_CHECK_EQUAL(data.get_bin_ut1(t), int64_t(10'000));
 
     // Second write to same (f,t) with different UT1 values should be rejected gracefully.
-    bool accepted = data.add_frame(fv2, t);
-    BOOST_CHECK(!accepted);
+    N2FileData::AddFrameStatus accepted = data.add_frame(fv2, t);
+    BOOST_CHECK(accepted == N2FileData::AddFrameStatus::Duplicate);
+    // Stored fractions should remain from the first write, unaffected by 2nd input
+    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_lost(f_index, t), 0.2f, 1e-6f);
+    BOOST_CHECK_CLOSE_FRACTION(data.get_frac_rfi(f_index, t), 0.3f, 1e-6f);
     // Stored values remain the originals.
     BOOST_CHECK_EQUAL(data.get_time_center_ut1(t), int64_t(10'000));
     BOOST_CHECK_EQUAL(data.get_bin_ut1(t), int64_t(10'000));
