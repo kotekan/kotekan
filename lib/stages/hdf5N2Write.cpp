@@ -235,16 +235,28 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         {
             const int eop_len = telescope.get_EOP_table_len();
             if (eop_len > 0) {
-                std::vector<double> eop_deg(eop_len);
+                std::vector<int64_t> eop_t_inst(eop_len);
                 std::vector<int64_t> eop_t_ut1(eop_len);
+                std::vector<int64_t> eop_delta_UT1_inst(eop_len);
+                std::vector<double> eop_ERA_deg(eop_len);
+                std::vector<double> eop_xp_as(eop_len);
+                std::vector<double> eop_yp_as(eop_len);
 
                 for (int i = 0; i < eop_len; i++) {
                     EOP eop = telescope.get_EOP_at_idx(i);
-                    eop_deg[i] = eop.ERA_deg;
+                    eop_t_inst[i] = eop.t_inst;
                     eop_t_ut1[i] = eop.t_ut1;
+                    eop_delta_UT1_inst[i] = eop.delta_UT1_inst;
+                    eop_ERA_deg[i] = eop.ERA_deg;
+                    eop_xp_as[i] = eop.xp_as;
+                    eop_yp_as[i] = eop.yp_as;
                 }
-                _check_create_attribute(*file, "EOP_ERA_deg", eop_deg);
+                _check_create_attribute(*file, "EOP_t_inst", eop_t_inst);
                 _check_create_attribute(*file, "EOP_t_ut1", eop_t_ut1);
+                _check_create_attribute(*file, "EOP_delta_UT1_inst", eop_delta_UT1_inst);
+                _check_create_attribute(*file, "EOP_ERA_deg", eop_ERA_deg);
+                _check_create_attribute(*file, "EOP_xp_as", eop_xp_as);
+                _check_create_attribute(*file, "EOP_yp_as", eop_yp_as);
             }
         }
 
@@ -492,9 +504,10 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
             && time_center_ut1[t_index] != fv.time_center_eop.t_ut1)      // TODO: relax a bit?
         || (bin_ut1[t_index] > 0 && bin_ut1[t_index] != fv.bin_eop.t_ut1) // TODO: relax a bit?
         || (bin_start_ERA_deg[t_index] < 0) || (bin_start_ERA_deg[t_index] > 360)
-        || (bin_end_ERA_deg[t_index] < 0) || (bin_end_ERA_deg[t_index] > 360)
-        || (bin_start_LAST[t_index] < 0) || (bin_start_LAST[t_index] > 360)
-        || (bin_end_LAST[t_index] < 0) || (bin_end_LAST[t_index] > 360)) {
+        || (bin_end_ERA_deg[t_index] < 0) || (bin_end_ERA_deg[t_index] > 360)) {
+        // Don't check these yet, but do when we have LAST values
+        // || (bin_start_LAST[t_index] < 0) || (bin_start_LAST[t_index] > 360)
+        // || (bin_end_LAST[t_index] < 0) || (bin_end_LAST[t_index] > 360)
         ERROR_NON_OO(
             "N2FileData: frame information mismatch or invalid at (f={}, t={}): "
             "fv.vis.size()={}, fv.weight.size()={}, fv.eval.size()={}, fv.evec.size()={}, "
