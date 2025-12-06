@@ -960,18 +960,18 @@ void hdf5N2Write::main_thread() {
         if (add_status != N2FileData::AddFrameStatus::Success) {
             std::string reason = "unknown";
             switch (add_status) {
-            case N2FileData::AddFrameStatus::OutOfBounds:
-                reason = "out_of_bounds";
-                break;
-            case N2FileData::AddFrameStatus::Duplicate:
-                reason = "duplicate";
-                break;
-            case N2FileData::AddFrameStatus::MetadataMismatch:
-                reason = "metadata_mismatch";
-                break;
-            case N2FileData::AddFrameStatus::Success:
-                reason = "success";
-                break;
+                case N2FileData::AddFrameStatus::OutOfBounds:
+                    reason = "out_of_bounds";
+                    break;
+                case N2FileData::AddFrameStatus::Duplicate:
+                    reason = "duplicate";
+                    break;
+                case N2FileData::AddFrameStatus::MetadataMismatch:
+                    reason = "metadata_mismatch";
+                    break;
+                case N2FileData::AddFrameStatus::Success:
+                    reason = "success";
+                    break;
             }
             // Mark frame as done, finalize, and continue
             ERROR("Failed to add frame to dataset (f={}, t={}), reason={}", fv.freq_id, t_in_file,

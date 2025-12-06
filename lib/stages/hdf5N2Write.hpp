@@ -211,13 +211,17 @@ public:
  * @par Metrics
  * @metric kotekan_hdf5N2Write_write_time_seconds        Duration to write the last flush
  * @metric kotekan_hdf5N2Write_n_datasets                Number of datasets currently open
- * @metric kotekan_hdf5N2Write_open_file_info            Gauge=1 for each open file {abs_file_idx, partial_path, file_mode}
+ * @metric kotekan_hdf5N2Write_open_file_info            Gauge=1 for each open file {abs_file_idx,
+ *partial_path, file_mode}
  * @metric kotekan_hdf5N2Write_open_file_age_seconds     Wall time since file open {abs_file_idx}
- * @metric kotekan_hdf5N2Write_file_completion_fraction  Added (f,t) pairs / expected per file {abs_file_idx}
+ * @metric kotekan_hdf5N2Write_file_completion_fraction  Added (f,t) pairs / expected per file
+ *{abs_file_idx}
  * @metric kotekan_hdf5N2Write_add_frame_errors_total    Counter of add_frame failures {reason}
- * @metric kotekan_hdf5N2Write_last_add_frame_error_seconds Timestamp of last add_frame failure {reason, abs_file_idx, freq_id, t_index}
+ * @metric kotekan_hdf5N2Write_last_add_frame_error_seconds Timestamp of last add_frame failure
+ *{reason, abs_file_idx, freq_id, t_index}
  * @metric kotekan_hdf5N2Write_finalize_failures_total   Counter of finalize failures {reason}
- * @metric kotekan_hdf5N2Write_unfinalized_file          Gauge=1 for files left partial/quarantined {abs_file_idx, partial_path}
+ * @metric kotekan_hdf5N2Write_unfinalized_file          Gauge=1 for files left partial/quarantined
+ *{abs_file_idx, partial_path}
  *
  * @note User-level documentation lives in docs/sphinx/user/processes/hdf5N2Write.rst.
  **/
@@ -251,8 +255,7 @@ private:
     kotekan::prometheus::Gauge& n_datasets_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& open_file_info_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& open_file_age_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
-        file_completion_fraction_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& file_completion_fraction_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& add_frame_errors_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& last_add_frame_error_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& finalize_failures_metric;
