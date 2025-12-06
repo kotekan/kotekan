@@ -203,16 +203,17 @@ void DishParams::set_dish_info(const kotekan::Config& config, const std::string&
 // Frequency params calculation / initialization
 
 freq_id_t FreqParams::max_science_freq_id() const {
-    // In even Nyquist zones df_MHz is negative, so increasing freq_id moves to lower frequencies.
-    if (df_MHz > 0)
-        return (max_science_freq_MHz - freq0_MHz) / df_MHz;
-    return (min_science_freq_MHz - freq0_MHz) / df_MHz;
+    double id = (df_MHz > 0) ? floor((max_science_freq_MHz - freq0_MHz) / df_MHz)
+                             : floor((min_science_freq_MHz - freq0_MHz) / df_MHz);
+
+    return static_cast<freq_id_t>(id);
 }
 
 freq_id_t FreqParams::min_science_freq_id() const {
-    if (df_MHz > 0)
-        return (min_science_freq_MHz - freq0_MHz) / df_MHz;
-    return (max_science_freq_MHz - freq0_MHz) / df_MHz;
+    double id = (df_MHz > 0) ? ceil((min_science_freq_MHz - freq0_MHz) / df_MHz)
+                             : ceil((max_science_freq_MHz - freq0_MHz) / df_MHz);
+
+    return static_cast<freq_id_t>(id);
 }
 
 size_t FreqParams::num_science_freqs() const {
@@ -225,6 +226,7 @@ inline uint64_t FreqParams::compute_dt_ns(size_t fft_length, double sampling_rat
 }
 
 inline double FreqParams::compute_freq0_MHz(nyquist_zone_t nz, double sampling_rate_MHz) noexcept {
+    // freq0 = floor(nz / 2) * fs (zone 1 => 0, zones 2–3 => fs, 4–5 => 2fs)
     return static_cast<unsigned>(nz / 2u) * sampling_rate_MHz;
 }
 
@@ -250,13 +252,37 @@ inline FreqParams FreqParams::from_config(const kotekan::Config& config, const s
     const size_t fft_length = config.get_default<size_t>(path, "fft_length", 16384);
     const nyquist_zone_t nyquist_zone = config.get_default<nyquist_zone_t>(path, "nyquist_zone", 1);
 
-    const double max_science_freq_MHz =
-        config.get_default<double>(path, "max_science_freq_MHz", 1500.0);
-    const double min_science_freq_MHz =
-        config.get_default<double>(path, "min_science_freq_MHz", 300.0);
+    double max_science_freq_MHz = config.get_default<double>(path, "max_science_freq_MHz", 1500.0);
+    double min_science_freq_MHz = config.get_default<double>(path, "min_science_freq_MHz", 300.0);
+
+    if (min_science_freq_MHz > max_science_freq_MHz) {
+        FATAL_ERROR_NON_OO(
+            "Requested science band has min_science_freq_MHz ({:f}) > max_science_freq_MHz "
+            "({:f}).",
+            min_science_freq_MHz, max_science_freq_MHz);
+    }
 
     FreqParams freq_params{sampling_rate_MHz, fft_length, nyquist_zone, min_science_freq_MHz,
                            max_science_freq_MHz};
+
+    // Clamp requested science band to the physical band covered by this FFT.
+    const double freq_end =
+        freq_params.freq0_MHz + freq_params.df_MHz * double(freq_params.num_freqs - 1);
+    const double physical_low = std::min(freq_params.freq0_MHz, freq_end);
+    const double physical_high = std::max(freq_params.freq0_MHz, freq_end);
+
+    if (freq_params.min_science_freq_MHz < physical_low
+        || freq_params.max_science_freq_MHz > physical_high) {
+        ERROR_NON_OO("Requested science band [{:f} MHz, {:f} MHz] exceeds physical band [{:f} MHz, "
+                     "{:f} MHz]. "
+                     "Clamping to physical band edges.",
+                     freq_params.min_science_freq_MHz, freq_params.max_science_freq_MHz,
+                     physical_low, physical_high);
+
+        freq_params.min_science_freq_MHz = std::max(freq_params.min_science_freq_MHz, physical_low);
+        freq_params.max_science_freq_MHz =
+            std::min(freq_params.max_science_freq_MHz, physical_high);
+    }
 
     if (freq_params.min_science_freq_id() >= freq_params.max_science_freq_id()) {
         FATAL_ERROR_NON_OO(

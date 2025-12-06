@@ -297,14 +297,16 @@ struct FreqParams {
     // derived timing/frequency quantities
     uint64_t dt_ns;   /// time in nanoseconds between fpga_seq_nums (ie. the time between
                       /// fft_length raw ADC samples)
-    double freq0_MHz; /// the freq0 mode jumps in frequency every 2 nyquist zones. The first
-                      /// zone (zone = 1) is the textbook FFT and has freq0 = 0.
+    double freq0_MHz; /// freq0 = floor(nyquist_zone / 2) * sampling_rate_MHz (matches ICETelescope
+                      /// convention: zone 1 => 0, zones 2–3 => fs, zones 4–5 => 2fs, ...).
     double df_MHz;    /// Odd zones count up from freq0, even zones count down.
     size_t num_freqs; /// Total number of frequency channels (input data is Real)
 
     // telescope science use limits (in MHz, physical band of interest)
-    double min_science_freq_MHz;
-    double max_science_freq_MHz;
+    double min_science_freq_MHz; /// Minimum frequency used for science, in MHz (clamped in
+                                 /// from_config to be inside the physical band)
+    double max_science_freq_MHz; /// Maximum frequency used for science, in MHz (clamped in
+                                 /// from_config to be inside the physical band)
 
     /**
      * @brief Build from kotekan::Config
@@ -314,9 +316,9 @@ struct FreqParams {
      * @conf   nyquist_zone        nyquist_zone_t.  Nyquist Zone we're operating in (default: 1 for
      *CHORD)
      * @conf   max_science_freq_MHz double. Maximum frequency used for science, in MHz (default:
-     *1500.0)
+     *1500.0). Will be clamped to be inside the physical band.
      * @conf   min_science_freq_MHz double. Minimum frequency used for science, in MHz (default:
-     *300.0)
+     *300.0). Will be clamped to be inside the physical band.
      *
      * @param   config  The config.
      * @param   path    This telescope's path in the config.
@@ -343,10 +345,8 @@ private:
 
     /// Set the physical frequency of id=0, and the spacing, taking into account
     /// the aliasing of each Nyquist zone.
-    // the freq0 mode jumps in frequency every 2 nyquist zones. The first zone (zone = 1) is the
-    // textbook FFT and has freq0 = 0.
+    // freq0 = floor(nz / 2) * fs (zone 1 => 0, zones 2–3 => fs, 4–5 => 2fs)
     static double compute_freq0_MHz(nyquist_zone_t nz, double sampling_rate_MHz) noexcept;
-
 
     // Odd nyquist zones count up from freq0, even zones count down.
     static double compute_df_MHz(nyquist_zone_t nz, double sampling_rate_MHz,
