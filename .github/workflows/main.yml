@@ -225,7 +225,7 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=ON
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: ""   # Any OpenCL-specific commands to test?
-            runs_on: ubuntu-latest # github
+            runs_on: self-hosted
 
           # run yamls in config/ci-tests/gpu_batch
           - id: test-gcc-gpu-yaml

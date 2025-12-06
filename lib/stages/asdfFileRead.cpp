@@ -378,11 +378,12 @@ public:
                     assert(meta->n_dish_locations_ns >= 0);
                     assert(meta->n_dish_locations_ew >= 0);
                     meta->dish_index =
-                        new int[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
+                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
                     const auto data = dish_index->get_data();
-                    assert(data->nbytes()
-                           == sizeof(int) * meta->n_dish_locations_ns * meta->n_dish_locations_ew);
-                    std::memcpy(meta->dish_index, data->ptr(), data->nbytes());
+                    const size_t bytes = sizeof(dish_index_t) * meta->n_dish_locations_ns
+                                         * meta->n_dish_locations_ew;
+                    assert(data->nbytes() == bytes);
+                    std::memcpy(meta->dish_index, data->ptr(), bytes);
                 } else {
                     meta->dish_index = nullptr;
                 }

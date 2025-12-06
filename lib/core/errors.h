@@ -164,16 +164,6 @@ void set_error_message_f(const char* format, ...);
         }                                                                                          \
     } while (0)
 
-// Use this for fatal errors that kotekan can't recover from.
-// Prints an error message and raises a SIGTERM.
-// Since ReturnCode is defined as a C++ enum, we have to hard code the exit code to 1 here.
-#define FATAL_ERROR_F(m, a...)                                                                     \
-    do {                                                                                           \
-        ERROR_F(m, ##a);                                                                           \
-        set_error_message_f(m, ##a);                                                               \
-        exit_kotekan(ReturnCode::FATAL_ERROR);                                                     \
-    } while (0)
-
 // Exit kotekan after a successful test.
 #define TEST_PASSED() exit_kotekan(ReturnCode::TEST_PASSED)
 #define TEST_FAILED() exit_kotekan(ReturnCode::TEST_FAILED)
