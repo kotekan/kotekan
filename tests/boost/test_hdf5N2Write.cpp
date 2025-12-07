@@ -29,6 +29,7 @@
 #include <cstring>
 #include <dirent.h> // for opendir, readdir
 #include <highfive/H5File.hpp>
+#include <iomanip>
 #include <memory>
 #include <optional>
 #include <set>
@@ -135,7 +136,7 @@ static std::string get_dataset_name(const std::string& base_dir, uint64_t abs_fi
     buf << base_dir;
     if (!base_dir.empty() && base_dir.back() != '/')
         buf << '/';
-    buf << "vis_" << abs_file_idx << "_";
+    buf << "vis_" << std::setw(10) << std::setfill('0') << abs_file_idx << "_";
     std::time_t tsec = file_start_time_ns / 1'000'000'000ULL;
     const uint64_t nsec = file_start_time_ns % 1'000'000'000ULL;
     buf << std::put_time(std::gmtime(&tsec), "%Y%m%dT%H%M%S") << "_" << std::setw(9)

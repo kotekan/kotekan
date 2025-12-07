@@ -191,8 +191,8 @@ public:
             case N2Layout::FullUpperTri:
                 num_prod_in = (num_elements_in * (num_elements_in + 1)) / 2;
                 break;
-            case N2Layout::RedundantBaselineAvg:
-                num_prod_in = Telescope::instance().cast<CHORDTelescope>().get_num_stacks();
+            case N2Layout::Autocorrelations:
+                num_prod_in = num_elements_in;
                 break;
             default:
                 std::string msg =
@@ -230,6 +230,27 @@ public:
                 prods[p] = {.input_a = i, .input_b = j};
                 p++;
             }
+        }
+    }
+
+    /**
+     * @brief Fill the product maps vector for each product in the visibility matrix in the
+     * Autocorrelations-only (diagonal) layout.
+     *
+     * See N2FrameView::fill_prod_maps() for full details.
+     *
+     * @param   prods           Vector to fill.
+     * @param   num_elements_in Number of elements (dishes x polarizations) in the pipeline
+     */
+    static void fill_prod_maps_Autocorrelations(std::vector<N2::prod_ctype>& prods,
+                                                uint32_t num_elements_in) {
+        size_t num_prod_in = num_elements_in;
+
+        prods.resize(num_prod_in);
+
+        // Loop over all elements
+        for (uint16_t i = 0; i < num_elements_in; i++) {
+            prods[i] = {.input_a = i, .input_b = i};
         }
     }
 

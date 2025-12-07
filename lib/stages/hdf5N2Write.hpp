@@ -2,6 +2,7 @@
 #define KOTEKAN_STAGES_HDF5_N2_WRITE_HPP
 
 #include "Config.hpp"
+#include "N2Metadata.hpp"
 #include "Stage.hpp"
 #include "Telescope.hpp"
 #include "buffer.hpp"
@@ -57,18 +58,20 @@ public:
     const size_t num_file_t;   // frames ("time" dimension)
 
     // file bookkeeping owned by this object
-    FileMode file_mode;                      // CHORD or CHIME (or other?)-type file
-    const size_t blocksize_f;                // frequency block size for chunking
-    const size_t blocksize_p;                // product/element block size for chunking
-    const size_t blocksize_t;                // time block size for chunking
-    const std::string compression;           // compression type
-    const size_t compression_level;          // gzip compression level
-    const bool use_bitshuffle;               // whether to use bitshuffle filter
-    const double open_wall_s;                // time opened
+    const FileMode file_mode;           // CHORD or CHIME (or other?)-type file
+    const size_t blocksize_f;           // frequency block size for chunking
+    const size_t blocksize_p;           // product/element block size for chunking
+    const size_t blocksize_t;           // time block size for chunking
+    const std::string compression;      // compression type
+    const size_t compression_level;     // gzip compression level
+    const bool use_bitshuffle;          // whether to use bitshuffle filter
+    const double open_wall_s;           // time opened
+    const uint64_t abs_file_idx;        // absolute file index (abs_time_idx / num_file_t)
+    const std::string base_dir;         // base output directory (without /.partial)
+    const std::string partial_filepath; // working on-disk location
+    const N2Layout vis_layout;          // visibility layout
+
     double last_update_wall_s;               // last frame receipt
-    const uint64_t abs_file_idx;             // absolute file index (abs_time_idx / num_file_t)
-    const std::string base_dir;              // base output directory (without /.partial)
-    const std::string partial_filepath;      // working on-disk location
     std::unique_ptr<HighFive::File> h5_file; // Working on-disk HDF5 file handle
 
 protected:

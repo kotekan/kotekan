@@ -24,8 +24,8 @@ target_link_libraries(test_updatequeue PRIVATE libexternal kotekan_libs kotekan_
 
 # test_dataset_manager_rest needs fmt
 add_executable(test_dataset_manager_rest test_dataset_manager_rest.cpp)
-target_link_libraries(test_dataset_manager_rest PRIVATE libexternal kotekan_libs kotekan_core
-                                                        kotekan_utils)
+target_link_libraries(test_dataset_manager_rest PRIVATE libexternal kotekan_libs kotekan_utils
+                                                        kotekan_core)
 
 # test_dataset_manager needs fmt
 add_executable(test_dataset_manager test_dataset_manager.cpp)
@@ -34,7 +34,7 @@ target_link_libraries(test_dataset_manager PRIVATE libexternal kotekan_libs kote
 
 # test_ringbuffer
 add_executable(test_ringbuffer test_ringbuffer.cpp)
-target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_core kotekan_libs kotekan_utils)
+target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
 # test_fmt
 add_executable(test_fmt test_fmt.cpp)
@@ -43,7 +43,7 @@ target_link_libraries(test_fmt PRIVATE kotekan_libs kotekan_utils)
 
 # test_restclient needs fmt
 add_executable(test_restclient test_restclient.cpp)
-target_link_libraries(test_restclient PRIVATE libexternal kotekan_core kotekan_libs kotekan_utils)
+target_link_libraries(test_restclient PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
 # test_bip_buffer needs fmt
 add_executable(test_bip_buffer test_bip_buffer.cpp)

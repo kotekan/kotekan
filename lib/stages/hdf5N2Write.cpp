@@ -18,6 +18,7 @@
 #include <configTracker.hpp>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <errno.h>
@@ -211,10 +212,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "num_ev", fv.num_ev);
         _check_create_attribute(*file, "num_freq",
                                 fv.nfreq); // telescope frequencies (not file freqs)
-        _check_create_attribute(*file, "vis_layout",
-                                std::string(fv.vis_layout == N2Layout::FullUpperTri
-                                                ? "FullUpperTri"
-                                                : "RedundantBaselineAvg"));
+        _check_create_attribute(*file, "vis_layout", N2Layout_to_string(fv.vis_layout));
 
         // Telescope info
         const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
@@ -282,12 +280,12 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
             telescope.fill_input_maps(dish_inputs);
 
             _check_create_dataset(*file, "/index_map/grid_x_idx", {dish_inputs.grid_x_idx.size()},
-                                  {"element"}, HighFive::create_datatype<int64_t>(), props_empty);
+                                  {"dish"}, HighFive::create_datatype<int64_t>(), props_empty);
             auto dataset_x = file->getDataSet("/index_map/grid_x_idx");
             dataset_x.write(dish_inputs.grid_x_idx);
 
             _check_create_dataset(*file, "/index_map/grid_y_idx", {dish_inputs.grid_y_idx.size()},
-                                  {"element"}, HighFive::create_datatype<int64_t>(), props_empty);
+                                  {"dish"}, HighFive::create_datatype<int64_t>(), props_empty);
             auto dataset_y = file->getDataSet("/index_map/grid_y_idx");
             dataset_y.write(dish_inputs.grid_y_idx);
 
@@ -303,7 +301,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
             auto dataset_coelev = file->getDataSet("/index_map/coelev_disp_deg");
             dataset_coelev.write(dish_inputs.coelev_disp_deg);
 
-            _check_create_dataset(*file, "/index_map/type", {dish_inputs.type.size()}, {"element"},
+            _check_create_dataset(*file, "/index_map/type", {dish_inputs.type.size()}, {"dish"},
                                   HighFive::create_datatype<int32_t>(), props_empty);
             auto dataset_type = file->getDataSet("/index_map/type");
             // Cast DishType enum to int32_t for storage
@@ -437,9 +435,9 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     num_file_t(num_file_t_), file_mode(file_mode_), blocksize_f(blocksize_f_),
     blocksize_p(blocksize_p_), blocksize_t(blocksize_t_), compression(compression_),
     compression_level(compression_level_), use_bitshuffle(use_bitshuffle_),
-    open_wall_s(open_wall_s_), last_update_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_),
-    base_dir(std::move(base_dir_)),
+    open_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_), base_dir(std::move(base_dir_)),
     partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(abs_file_idx_) + ".h5"),
+    vis_layout(fv.vis_layout), last_update_wall_s(open_wall_s_),
     h5_file(_open_or_create_file(partial_filepath, num_file_t_, fv, file_mode)) {
 
     if (!h5_file) {
@@ -489,10 +487,15 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
         return AddFrameStatus::Duplicate;
     }
 
+    // Accept timing differences up to 2 ns (e.g. fuzz on EOP table updates)
+    auto ns_close = [](int64_t a, int64_t b, int64_t tol_ns = 2) {
+        return std::llabs(a - b) <= tol_ns;
+    };
+
     // Structural data consistency checks
-    // TODO: time ints might be off by a bit? Use appx. comparison instead?
-    if (fv.vis.size() != N2FrameView::get_num_prod(fv.num_elements, N2Layout::FullUpperTri)
-        || fv.weight.size() != N2FrameView::get_num_prod(fv.num_elements, N2Layout::FullUpperTri)
+    if (vis_layout != fv.vis_layout
+        || fv.vis.size() != N2FrameView::get_num_prod(fv.num_elements, fv.vis_layout)
+        || fv.weight.size() != N2FrameView::get_num_prod(fv.num_elements, fv.vis_layout)
         || fv.eval.size() != fv.num_ev || fv.evec.size() != fv.num_ev * fv.num_elements
         || fv.gain.size() != fv.num_elements || fv.flags.size() != fv.num_elements
         || fv.num_elements != num_elements || fv.num_prod != num_prod || fv.num_ev != num_ev
@@ -501,11 +504,11 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
         || (frame_length_fpga_ticks[t_index] > 0
             && frame_length_fpga_ticks[t_index] != fv.frame_length_fpga_ticks)
         || (time_center_ut1[t_index] > 0
-            && time_center_ut1[t_index] != fv.time_center_eop.t_ut1)      // TODO: relax a bit?
-        || (bin_ut1[t_index] > 0 && bin_ut1[t_index] != fv.bin_eop.t_ut1) // TODO: relax a bit?
+            && !ns_close(time_center_ut1[t_index], fv.time_center_eop.t_ut1))
+        || (bin_ut1[t_index] > 0 && !ns_close(bin_ut1[t_index], fv.bin_eop.t_ut1))
         || (bin_start_ERA_deg[t_index] < 0) || (bin_start_ERA_deg[t_index] > 360)
         || (bin_end_ERA_deg[t_index] < 0) || (bin_end_ERA_deg[t_index] > 360)) {
-        // Don't check these yet, but do when we have LAST values
+        // TODO: Don't check these yet, but do when we have LAST values
         // || (bin_start_LAST[t_index] < 0) || (bin_start_LAST[t_index] > 360)
         // || (bin_end_LAST[t_index] < 0) || (bin_end_LAST[t_index] > 360)
         ERROR_NON_OO(
@@ -596,7 +599,8 @@ std::optional<std::string> N2FileData::_get_final_filename() {
     std::ostringstream buf;
     std::time_t time_t_format = earliest_fpga_tick_time.tv_sec;    // seconds
     const std::uint64_t ns_part = earliest_fpga_tick_time.tv_nsec; // sub-second
-    buf << "vis_" << std::to_string(abs_file_idx) << "_"
+    const std::string abs_idx_str = fmt::format("{:010}", abs_file_idx);
+    buf << "vis_" << abs_idx_str << "_"
         << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S");
     // Include nanosecond suffix to avoid collisions for sub-second file windows
     buf << "_" << std::setw(9) << std::setfill('0') << ns_part;
@@ -824,13 +828,18 @@ void hdf5N2Write::_grace_finalize_files(std::map<size_t, std::unique_ptr<N2FileD
 
 bool hdf5N2Write::_finalfile_exists(std::uint64_t abs_file_idx,
                                     const std::string& search_dir) const {
-    const std::string prefix = "vis_" + std::to_string(abs_file_idx) + "_";
+    // Check for both padded and legacy unpadded prefixes to avoid duplicating existing files.
+    const std::string abs_idx_str_padded = fmt::format("{:010}", abs_file_idx);
+    const std::string abs_idx_str_unpadded = std::to_string(abs_file_idx);
+    const std::string prefix_padded = "vis_" + abs_idx_str_padded + "_";
+    const std::string prefix_unpadded = "vis_" + abs_idx_str_unpadded + "_";
     try {
         for (const auto& entry : std::filesystem::directory_iterator(search_dir)) {
             if (entry.is_regular_file()) {
                 const std::string filename = entry.path().filename().string();
                 if (std::filesystem::path(filename).extension() == ".h5"
-                    && filename.rfind(prefix, 0) == 0) {
+                    && (filename.rfind(prefix_padded, 0) == 0
+                        || filename.rfind(prefix_unpadded, 0) == 0)) {
                     return true;
                 }
             }

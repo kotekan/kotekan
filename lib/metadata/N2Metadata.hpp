@@ -20,17 +20,14 @@ using kotekan::Config;
 #include <string>   // for operator==, char_traits, basic_string
 #include <vector>   // for vector
 
-enum class N2Layout : int32_t {
-    FullUpperTri = 0,
-    RedundantBaselineAvg = 1,
-};
+enum class N2Layout : int32_t { FullUpperTri = 0, RedundantBaselineAvg = 1, Autocorrelations = 2 };
 
 void to_json(nlohmann::json& j, const N2Layout& t);
 void from_json(const nlohmann::json& j, N2Layout& t);
 
 inline std::string N2Layout_to_string(N2Layout l) {
-    nlohmann::json j{l};
-    return j.dump();
+    nlohmann::json j = l;
+    return j.get<std::string>();
 }
 
 // Struct containing metadata fields for an N2 frame
