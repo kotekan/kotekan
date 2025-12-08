@@ -204,7 +204,7 @@ public:
  * positions and orientations in a CHORD-like telescope. Generally, this is constructed
  * from configuration parameters using the from_config() static method.
  **/
-struct DishParams {
+struct GeographicParams {
     /// Instument geographic coordinates in degrees.
     double origin_itrs_lon_deg = 0.0;
     double origin_itrs_lat_deg = 0.0;
@@ -269,9 +269,9 @@ struct DishParams {
      * @param   config  The config.
      * @param   path    This telescope's path in the config.
      *
-     * @return  The built DishParams.
+     * @return  The built GeographicParams.
      **/
-    static DishParams from_config(const kotekan::Config& config, const std::string& path);
+    static GeographicParams from_config(const kotekan::Config& config, const std::string& path);
 
     /**
      * @brief   Set dish information about dish inputs from the config.
@@ -303,10 +303,12 @@ struct FreqParams {
     size_t num_freqs; /// Total number of frequency channels (input data is Real)
 
     // telescope science use limits (in MHz, physical band of interest)
-    double min_science_freq_MHz; /// Minimum frequency used for science, in MHz (clamped in
-                                 /// from_config to be inside the physical band)
-    double max_science_freq_MHz; /// Maximum frequency used for science, in MHz (clamped in
-                                 /// from_config to be inside the physical band)
+    double min_science_freq_MHz; /// Minimum frequency used for science, in MHz (setting this using
+                                 /// from_config will clamp the value to be inside the physical band
+                                 /// allowed by fpga frequencies)
+    double max_science_freq_MHz; /// Maximum frequency used for science, in MHz (setting this using
+                                 /// from_config will clamp the value to be inside the physical band
+                                 /// allowed by fpga frequencies)
 
     /**
      * @brief Build from kotekan::Config
@@ -316,9 +318,9 @@ struct FreqParams {
      * @conf   nyquist_zone        nyquist_zone_t.  Nyquist Zone we're operating in (default: 1 for
      *CHORD)
      * @conf   max_science_freq_MHz double. Maximum frequency used for science, in MHz (default:
-     *1500.0). Will be clamped to be inside the physical band.
+     *1500.0). Values exceeding the physical band allowed by fpga frequencies will be clamped.
      * @conf   min_science_freq_MHz double. Minimum frequency used for science, in MHz (default:
-     *300.0). Will be clamped to be inside the physical band.
+     *300.0). Values exceeding the physical band allowed by fpga frequencies will be clamped.
      *
      * @param   config  The config.
      * @param   path    This telescope's path in the config.
@@ -359,7 +361,7 @@ private:
  * time configuration in a CHORD-like telescope. Generally, this is constructed
  * from configuration parameters using the from_config() static method.
  **/
-struct GPSParams {
+struct GPSTimeParams {
     /// Should we require GPS time to be available
     bool require_gps = false;
 
@@ -395,15 +397,15 @@ struct GPSParams {
      * @conf    gps_port            uint.   The port number on the GPS server.
      * @conf    gps_endpoint        string. The enpoint with the GPS time.
      **/
-    static GPSParams from_config(const kotekan::Config& config, const std::string& path);
+    static GPSTimeParams from_config(const kotekan::Config& config, const std::string& path);
 
 private:
     /// Set the GPS time parameters (gps_enabled, time0_ns) from the config.
-    static void set_gps_params_from_config(GPSParams& gps, const kotekan::Config& config);
+    static void set_gps_time_params_from_config(GPSTimeParams& gps, const kotekan::Config& config);
 
     /// Set the GPS time parameters (gps_enabled, time0_ns) from a remote server (fpga_master)
-    static void set_gps_params_from_remote(GPSParams& gps, const std::string& host,
-                                           const uint32_t port, const std::string& path);
+    static void set_gps_time_params_from_remote(GPSTimeParams& gps, const std::string& host,
+                                                const uint32_t port, const std::string& path);
 };
 
 
@@ -411,9 +413,9 @@ private:
  * @brief Implementation for a CHORD-like telescope.
  *
  * Configuration is split across dedicated helper structs:
- * @see GPSParams::from_config (GPS requirements and time source)
+ * @see GPSTimeParams::from_config (GPS requirements and time source)
  * @see FreqParams::from_config (frequency sampling)
- * @see DishParams::from_config (dish and array geometry)
+ * @see GeographicParams::from_config (dish and array geometry)
  *
  * @conf    updatable_config    string. ConfigUpdater path for dynamic EOP updates.
  * @conf    log_level           string. Optional log level for this telescope instance.
@@ -427,9 +429,8 @@ private:
  * 2025/11/10: Required frequency logic re-added (no stream_t behaviour). Dish input table
  *              introduced with per-dish grid placement, positioning, pointing, and labels. GR
  * 2025/12/04: Factor telescope members into logical groups: frequency parameters,
- *              gps parameters, dish parameters. JM
+ *              gps time parameters, geographic/dish parameters. JM (PR #1373)
  */
-
 
 class CHORDTelescope : public Telescope {
 public:
@@ -812,17 +813,17 @@ protected:
     const FreqParams _freq_params;
 
     // GPS parameters
-    const GPSParams _gps_params;
+    const GPSTimeParams _gps_time_params;
 
     /// Dish / array geometry and coordinate transforms.
-    const DishParams _dish_params;
+    const GeographicParams _geographic_params;
 
     /// Earth Orientation Parameters
     mutable std::shared_mutex _eop_lock;
     std::vector<EOP> _eop_table;
 };
 
-/*
+/**
  * @brief   Comparison function for searching/sorting the EOP table. Compares
  *          EOP based on t_inst, orders chronologically.
  *
@@ -831,7 +832,7 @@ protected:
  **/
 bool EOP_comp_time(const EOP& eop1, const EOP& eop2);
 
-/*
+/**
  * @brief   Comparison function for searching/sorting the EOP table. Compares
  *          EOP based on t_ut1, orders by increasing rotation. Will produce the
  *          same order as t_inst, unless something is apocalyptically wrong.
