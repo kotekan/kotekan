@@ -281,7 +281,7 @@ public:
                     const auto datatype =
                         GDALExtendedDataType::Create(get_gdal_datatype(*meta->dish_index));
                     meta->dish_index =
-                        new int[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
+                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
                     const auto success =
                         dish_index->Read(arrayStartIdx.data(), count.data(), nullptr, nullptr,
                                          datatype, meta->dish_index, meta->dish_index,

@@ -109,7 +109,7 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
     int nt_inner = _sub_integration_ntime;
     int nt_outer = _samples_per_data_set / nt_inner;
     output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
-        "correlation",
+        "n2k_correlation",
         {nt_outer, _num_local_freq, (_num_elements / 16) * (_num_elements / 16 + 1) / 2, 16, 16, 2},
         {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
 }
