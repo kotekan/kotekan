@@ -15,6 +15,17 @@
 {% set num_local_freq = 4 %}
 {% set freq_ids_list = range(4000, 4000 + num_local_freq) %}
 
+# CHORD telescope sampling setup (matches CHORDTelescope defaults)
+{% set sampling_rate_MHz = 3.2e3 %}
+{% set fft_length = 16384 %}
+{% set nyquist_zone = 1 %}
+{% set df_MHz = (sampling_rate_MHz / fft_length) * (1 if (nyquist_zone % 2) == 1 else -1) %}
+{% set freq0_MHz = (nyquist_zone // 2) * sampling_rate_MHz %}
+
+# Science band narrowed to just the simulated freq_ids above
+{% set science_min_freq_MHz = freq0_MHz + df_MHz * (freq_ids_list | first) %}
+{% set science_max_freq_MHz = freq0_MHz + df_MHz * (freq_ids_list | last) %}
+
 # num_dishes: dishes/antennas to simulate.
 # With 2 polarizations, num_elements = 2 * num_dishes, which the n2k correlator requires to be a multiple of 128
 # (CorrelatorParams::ns_divisor). That means num_dishes must be a multiple of 64. This also satisfies the counts
@@ -88,6 +99,11 @@ start_time_s: 1760000000 # ~ 2025-10-09
 
 telescope:
   name: CHORDTelescope
+  sampling_rate_MHz: {{ sampling_rate_MHz }}
+  fft_length: {{ fft_length }}
+  nyquist_zone: {{ nyquist_zone }}
+  min_science_freq_MHz: {{ science_min_freq_MHz }}
+  max_science_freq_MHz: {{ science_max_freq_MHz }}
   inst_lat_deg: 50.0
   inst_long_deg: -120.0
   inst_alt_deg: 90.0
@@ -473,11 +489,32 @@ buffer_merge_n2:
 
 # Write out the visibilities using HDF5
 
-hdf5_vis_write:
+# Visibilities immediately after accumulation (for comparison)
+hdf5_N2_write_accum:
+    log_level: DEBUG
+    kotekan_stage: hdf5N2Write
+    in_buf: n2_buffer
+    base_dir: ./vis_data/post_N2Accum/
+    file_name: pipeline_test
+    prefix_hostname: false
+    use_bitshuffle: true
+    compression: "lz4"
+    compression_level: 3
+    zip_compression: 0
+    # Chunking: ensure positive chunk sizes
+    blocksize_f: {{ num_frequencies }}
+    blocksize_t: 5
+    late_frame_grace_seconds: 30
+    num_ev: 0
+    vis_layout: "FullUpperTri"
+    num_file_t: 10
+
+# Final visibilities after post-accumulate stages
+hdf5_N2_write_final:
     log_level: DEBUG
     kotekan_stage: hdf5N2Write
     in_buf: n2_merge_buffer
-    base_dir: ./vis_data
+    base_dir: ./vis_data/final/
     file_name: pipeline_test
     prefix_hostname: false
     use_bitshuffle: true
