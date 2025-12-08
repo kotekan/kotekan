@@ -7,11 +7,6 @@
 # Stages
 
 read_data:
-    read_dish_positions:
-        do_once: true
-        kotekan_stage: hdf5FileRead
-        file_name: dish_positions
-        out_buf: host_dish_positions_buffer
     read_bf_mask:
         do_once: true
         kotekan_stage: hdf5FileRead

@@ -397,8 +397,7 @@ RawReader<T>::RawReader(Config& config, const std::string& unique_name,
 template<typename T>
 RawReader<T>::~RawReader() {
     if (munmap(mapped_file, ntime * nfreq * file_frame_size) == -1) {
-        // Make sure kotekan is exiting...
-        FATAL_ERROR("Failed to unmap file {:s}.data: {:s}.", filename, strerror(errno));
+        ERROR("Failed to unmap file {:s}.data: {:s}.", filename, strerror(errno));
     }
 
     close(fd);

@@ -102,52 +102,26 @@ void bufferSend::main_thread() {
             auto meta = buf->get_metadata(frame_id);
             auto metadata_size = meta->get_serialized_size();
             auto frame_size = buf->frame_size;
-            size_t header_len;
+            bufferFrameHeader header;
+            header.metadata_size = static_cast<uint32_t>(meta->get_serialized_size());
+            header.frame_size = static_cast<uint32_t>(buf->frame_size);
+            header.config_tracker_update =
+                config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
+            // for legacy CHIME, do not send laast field (config_tracker_update)
+            size_t header_len = use_config_tracker ? sizeof(bufferFrameHeader)
+                                                   : sizeof(bufferFrameHeaderNoConfigTracker);
 
-            // Send header
-            // Use NoConfigTracker header version if there is a config setting to enable it.
-            if (use_config_tracker) {
-                bufferFrameHeader header{}; // zero-initialize
-                header_len = sizeof(bufferFrameHeader);
+            if (header.config_tracker_update)
+                DEBUG("Config tracker data has been updated, sending new config tracker data.");
+            DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}",
+                   header.frame_size, header.metadata_size, header.config_tracker_update);
 
-                header.frame_size = buf->frame_size;
-                header.metadata_size = meta->get_serialized_size();
-                // Check if config tracker data has been updated since last transmission
-                if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
-                    DEBUG("Config tracker data has been updated, sending new config tracker data.");
-                    header.config_tracker_update = 1u;
-                } else {
-                    header.config_tracker_update = 0u;
-                }
-
-                DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}",
-                       header.frame_size, header.metadata_size, header.config_tracker_update);
-
-                // Recover from partial sends
-                DEBUG2("Sending header");
-                while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
-                                 MSG_NOSIGNAL))
-                       > 0) {
-                    n_sent += n;
-                }
-
-            } else {
-                bufferFrameHeaderNoConfigTracker header;
-                const size_t header_len = sizeof(bufferFrameHeaderNoConfigTracker);
-
-                header.frame_size = buf->frame_size;
-                header.metadata_size = meta->get_serialized_size();
-
-                DEBUG2("frame_size: {:d}, metadata_size: {:d}", header.frame_size,
-                       header.metadata_size);
-
-                // Recover from partial sends
-                DEBUG2("Sending header");
-                while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
-                                 MSG_NOSIGNAL))
-                       >= 0) {
-                    n_sent += n;
-                }
+            // Recover from partial sends
+            DEBUG2("Sending header");
+            while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
+                             MSG_NOSIGNAL))
+                   > 0) {
+                n_sent += n;
             }
 
             // Handle errors

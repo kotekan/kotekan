@@ -139,10 +139,12 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
                                         strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
                     }
 
-                    output_buffer->allocate_new_frame_desc(out_id, chord->type, chord->get_name(),
+                    // difficult to move to constructor since it depends on frame_desc in the
+                    // signal_buffer which may not be set at contructor time
+                    output_buffer->allocate_new_frame_desc(chord->type, chord->get_name(),
                                                            dimensions, dimnames);
                     /* test that things are consistent */
-                    chord->check_frame_desc(output_buffer->get_frame_desc(out_id));
+                    chord->check_frame_desc(output_buffer->get_frame_desc());
                 }
             }
         }

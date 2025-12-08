@@ -14,9 +14,10 @@
 #include <assert.h>   // for assert
 #include <exception>  // for exception
 #include <functional> // for bind, _1, function
-#include <math.h>     // for sin, cos, M_PI
-#include <stdexcept>  // for runtime_error
-#include <vector>     // for vector
+#include <limits>
+#include <math.h>    // for sin, cos, M_PI
+#include <stdexcept> // for runtime_error
+#include <vector>    // for vector
 
 
 REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
@@ -222,7 +223,6 @@ void CHORDTelescope::set_gps(const std::string& host, const uint32_t port,
 }
 
 bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
-    // Make sure no one is using the EOP table while we're updating it.
     try {
         // Fill a temporary table with the updated values.
         std::vector<EOP> tmp_eop_table;
@@ -246,6 +246,7 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
 
         // Replace old table with new.
         {
+            // Make sure no one is using the EOP table while we're updating it.
             std::unique_lock lock(_eop_lock);
             _eop_table = tmp_eop_table;
             INFO("Updated EOP Table with {:d} entries", _eop_table.size());
@@ -600,6 +601,20 @@ int CHORDTelescope::get_num_dishes() const {
     return _num_dishes;
 }
 
+int CHORDTelescope::get_num_dishes_x() const {
+    return _num_dishes_x;
+}
+int CHORDTelescope::get_num_dishes_y() const {
+    return _num_dishes_y;
+}
+
+double CHORDTelescope::get_dish_separation_x_m() const {
+    return _dish_separation_x_m;
+}
+double CHORDTelescope::get_dish_separation_y_m() const {
+    return _dish_separation_y_m;
+}
+
 int CHORDTelescope::get_EOP_table_len() const {
     std::shared_lock lock(_eop_lock);
     return _eop_table.size();
@@ -626,6 +641,13 @@ EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
 
     {
         std::shared_lock lock(_eop_lock);
+
+        if (_eop_table.empty()) {
+            WARN("EOP table is empty, cannot interpolate EOP at UT1 time {:d} s + {:d} ns.",
+                 t_target / GIGA, t_target % GIGA);
+            return eop_null;
+        }
+
         // _eop_table is always sorted by instrument time. Do a quick search
         // for the first table entry with larger time than the target.
         auto eop_b = std::lower_bound(_eop_table.begin(), _eop_table.end(), eop, EOP_comp_time);
@@ -692,6 +714,13 @@ EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
 
     {
         std::shared_lock lock(_eop_lock);
+
+        if (_eop_table.empty()) {
+            WARN("EOP table is empty, cannot interpolate EOP at UT1 time {:d} s + {:d} ns.",
+                 t_ut1 / GIGA, t_ut1 % GIGA);
+            return eop_null;
+        }
+
         // _eop_table is always sorted by instrument time. UT1 is monotonic
         // with instrument time, unless the Earth has been met with catastrophe.
         // Do a quick search for the first table entry with larger UT1 time than
@@ -754,8 +783,12 @@ EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
     return eop;
 }
 
-const struct dishInfo& CHORDTelescope::get_dish_at_idx(int64_t idx) const {
-    return _dish_info_table[idx];
+const dishInfo& CHORDTelescope::get_dish_at_idx(int64_t idx) const {
+    return _dish_info_table.at(idx);
+}
+
+const dishGrid& CHORDTelescope::get_dish_grid() const {
+    return _dish_grid;
 }
 
 // Get the frequency in MHz corresponding to the given freq_id.
@@ -817,6 +850,7 @@ EOP CHORDTelescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst
 
     return eop;
 }
+
 void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::string& path) {
 
     // Get the number of dishes, make sure its positive.
@@ -826,6 +860,22 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
         std::abort();
     }
     assert(_num_dishes > 0);
+
+    _num_dishes_x = config.get<int32_t>(path, "num_dishes_x");
+    if (_num_dishes_x <= 0) {
+        FATAL_ERROR("CHORDTelescope: num_dishes_x must be > 0, got: {:d}", _num_dishes_x);
+        std::abort();
+    }
+    assert(_num_dishes_x > 0);
+
+    _num_dishes_y = config.get<int32_t>(path, "num_dishes_y");
+    if (_num_dishes_y <= 0) {
+        FATAL_ERROR("CHORDTelescope: num_dishes_y must be > 0, got: {:d}", _num_dishes_y);
+        std::abort();
+    }
+    assert(_num_dishes_y > 0);
+
+    assert(_num_dishes <= _num_dishes_x * _num_dishes_y);
 
     // Get the grid separation distances.
     _dish_separation_x_m = config.get_default<double>(path, "dish_separation_x_m", 6.3);
@@ -859,12 +909,17 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
         }
         assert(idx < _num_dishes);
 
-        if (_dish_info_table[idx].type != DishType::Fake) {
+        if (dish.type != DishType::Fake) {
+            assert(dish.grid_x_idx >= 0 && dish.grid_x_idx < _num_dishes_x);
+            assert(dish.grid_y_idx >= 0 && dish.grid_y_idx < _num_dishes_y);
+        }
+
+        if (_dish_info_table.at(idx).type != DishType::Fake) {
             FATAL_ERROR("dish {:s} has dish_idx {:d}, which is duplicated in `dish_inputs`",
                         dish.label, dish.idx);
         }
 
-        _dish_info_table[dish.idx] = dish;
+        _dish_info_table.at(dish.idx) = dish;
     }
 
     INFO("CHORDTelescope configured with {:d} dishes.  Loaded {:d} from 'dish_inputs'.",
@@ -875,12 +930,27 @@ void CHORDTelescope::set_dish_info(const kotekan::Config& config, const std::str
 
     // Calculate and fill the dish positions table.
     for (const dishInfo& d : _dish_info_table) {
-        _dish_positions.push_back({_dish_separation_x_m * d.grid_x_idx + d.feed_pos_disp_m[0],
-                                   _dish_separation_y_m * d.grid_y_idx + d.feed_pos_disp_m[1],
-                                   d.feed_pos_disp_m[2]});
+        _dish_positions.push_back({_dish_separation_x_m * d.grid_x_idx + d.feed_pos_disp_m.at(0),
+                                   _dish_separation_y_m * d.grid_y_idx + d.feed_pos_disp_m.at(1),
+                                   d.feed_pos_disp_m.at(2)});
+    }
+
+    using std::max;
+
+    // Create and fill dish grid
+    _dish_grid = dishGrid(_num_dishes_x, _num_dishes_y);
+    for (int dish = 0; dish < _num_dishes; ++dish) {
+        const dishInfo& dish_info = get_dish_at_idx(dish);
+        if (dish_info.type == DishType::Fake)
+            continue;
+        // Catch inconsistencies
+        assert(dish_info.idx == dish);
+        int& dish_index = _dish_grid.dish_index(dish_info.grid_x_idx, dish_info.grid_y_idx);
+        // Catch inconsistencies
+        assert(dish_index == -1);
+        dish_index = dish;
     }
 }
-
 
 bool EOP_comp_time(const EOP& eop1, const EOP& eop2) {
     return eop1.t_inst < eop2.t_inst;

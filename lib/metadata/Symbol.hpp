@@ -41,14 +41,15 @@ class Symbol {
 
     // Look up a string in the known symbols. If it is not known,
     // insert it.
-    const char* lookup_or_insert(const char* str);
+    const char* lookup_or_insert(const std::string_view& str);
 
 public:
     // Default constructure, returning an invalid symbol. Think null
     // pointer.
     Symbol() : value() {}
 
-    // Create a symbol from a string
+    // Create a symbol from a string, an empty string or a NULL pointer return
+    // an invalid symbol
     Symbol(const std::string_view& str);
     Symbol(const std::string& str);
     Symbol(const char* str);
@@ -142,15 +143,13 @@ struct hash<kotekan::Symbol> {
 };
 } // namespace std
 
-namespace fmt {
 // Formatter
 template<>
-struct formatter<kotekan::Symbol> : fmt::formatter<std::string> {
+struct fmt::formatter<kotekan::Symbol> : fmt::formatter<std::string> {
     template<typename FormatContext>
-    auto format(const kotekan::Symbol& sym, FormatContext& ctx) {
-        return formatter<std::string>::format(sym.get_string(), ctx);
+    auto format(const kotekan::Symbol& sym, FormatContext& ctx) const {
+        return fmt::formatter<std::string>::format(sym.get_string(), ctx);
     }
 };
-} // namespace fmt
 
 #endif // #ifndef SYMBOL_HPP

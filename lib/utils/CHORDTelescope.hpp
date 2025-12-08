@@ -121,6 +121,59 @@ struct dishInputFields {
 };
 
 
+class dishGrid {
+    int _num_dishes_x, _num_dishes_y;
+    // dish index, or -1 if unoccupied.
+    // array layout has x as fast and y as slow index.
+    std::vector<int> _dish_index;
+
+public:
+    dishGrid(const dishGrid&) = default;
+    dishGrid(dishGrid&&) = default;
+    dishGrid& operator=(const dishGrid&) = default;
+    dishGrid& operator=(dishGrid&&) = default;
+
+    dishGrid() : dishGrid(0, 0) {}
+
+    dishGrid(int num_dishes_x, int num_dishes_y) :
+        _num_dishes_x(num_dishes_x), _num_dishes_y(num_dishes_y),
+        _dish_index(_num_dishes_x * _num_dishes_y, -1) {}
+
+    dishGrid(int num_dishes_x, int num_dishes_y, std::vector<int> dish_index) :
+        _num_dishes_x(num_dishes_x), _num_dishes_y(num_dishes_y),
+        _dish_index(std::move(dish_index)) {
+        if (std::ptrdiff_t(_dish_index.size()) != _num_dishes_x * _num_dishes_y)
+            throw std::runtime_error("wrong array size");
+    }
+
+    int get_num_dishes_x() const {
+        return _num_dishes_x;
+    }
+    int get_num_dishes_y() const {
+        return _num_dishes_y;
+    }
+
+    int dish_index(int grid_x_idx, int grid_y_idx) const {
+        if (grid_x_idx < 0 || grid_x_idx >= _num_dishes_x)
+            throw std::runtime_error("index error");
+        if (grid_y_idx < 0 || grid_y_idx >= _num_dishes_y)
+            throw std::runtime_error("index error");
+        return _dish_index.at(grid_x_idx + _num_dishes_x * grid_y_idx);
+    }
+    int& dish_index(int grid_x_idx, int grid_y_idx) {
+        if (grid_x_idx < 0 || grid_x_idx >= _num_dishes_x)
+            throw std::runtime_error("index error");
+        if (grid_y_idx < 0 || grid_y_idx >= _num_dishes_y)
+            throw std::runtime_error("index error");
+        return _dish_index.at(grid_x_idx + _num_dishes_x * grid_y_idx);
+    }
+
+    const std::vector<int>& get_dish_indices() const {
+        return _dish_index;
+    }
+};
+
+
 /**
  * @brief Implementation for a CHORD-like telescope.
  *
@@ -164,6 +217,8 @@ struct dishInputFields {
  *                                      the total number of configured dishes, plus possibly
  *                                      some "fake" dishes to keep the number a multiple of
  *                                      32.
+ * @conf    num_dishes_x        int
+ * @conf    num_dishes_y        int
  * @conf    dish_separation_x_m    double.     The separation in meters between dish grid
  *                                      locations in the Telescope x-axis direction
  *                                      (generally, East/West).
@@ -209,19 +264,19 @@ public:
     bool gps_time_enabled() const override;
 
     /**
-     * Convert a sequence number into an instrument time (UNIX epoch time at start plus TAI time
-     *elapsed since start).
+     * Convert an FPGA sequence number into an instrument time (UNIX epoch time at start plus TAI
+     *time elapsed since start).
      *
-     * @param  seq  The sequence number.
+     * @param  seq  The FPGA sequence number.
      *
      * @return  The corresponding instrument time (UNIX epoch time at start plus TAI time elapsed
-     *since start).
+     * since start).
      **/
     timespec to_time(uint64_t seq) const override;
 
     /**
      * @brief Convert an instrument time (UNIX epoch time at start plus TAI time elapsed since
-     *start) into the nearest sequence number.
+     * start) into the nearest sequence number.
      *
      * @note When there is not an exact correspondence between the given time
      *       and FPGA sequence numbers, this routine will return the latest valid
@@ -229,7 +284,7 @@ public:
      *
      * @param  time  The instrument time.
      *
-     * @return  The corresponding sequence number.
+     * @return  The corresponding FPGA sequence number.
      **/
     uint64_t to_seq(timespec time) const override;
 
@@ -291,6 +346,12 @@ public:
      **/
     int get_num_dishes() const;
 
+    int get_num_dishes_x() const;
+    int get_num_dishes_y() const;
+
+    double get_dish_separation_x_m() const;
+    double get_dish_separation_y_m() const;
+
     /**
      * @brief   Return the number of entries in the EOP table.
      **/
@@ -321,7 +382,9 @@ public:
      **/
     EOP get_EOP_at_UT1(int64_t ut1) const;
 
-    const struct dishInfo& get_dish_at_idx(int64_t idx) const;
+    const dishInfo& get_dish_at_idx(int64_t idx) const;
+
+    const dishGrid& get_dish_grid() const;
 
     /**
      * @brief   Return an observing vector (normalized vec3) in grid
@@ -610,6 +673,9 @@ protected:
     /// so num_elements = 2 * num_dishes.
     int32_t _num_dishes;
 
+    int32_t _num_dishes_x;
+    int32_t _num_dishes_y;
+
     /// Dish-dish grid spacing in the E/W (x) and N/S (y) directions in meters.
     double _dish_separation_x_m;
     double _dish_separation_y_m;
@@ -633,7 +699,9 @@ protected:
     std::vector<EOP> _eop_table;
 
     /// Dish Properties
-    std::vector<struct dishInfo> _dish_info_table;
+    std::vector<dishInfo> _dish_info_table;
+
+    dishGrid _dish_grid;
 };
 
 /*

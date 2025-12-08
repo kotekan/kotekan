@@ -53,6 +53,8 @@ telescope:
   dish_vert_axis: [0.0, 0.0, 1.0]
   require_gps: False
   updatable_config: /earth_rotation_data
+  num_dishes_x: 22
+  num_dishes_y: 24
   dish_inputs: []
 
 gps_time:
@@ -104,7 +106,7 @@ fake_rfimask_buffer:
 
 n2_buffer:
     kotekan_buffer: N2
-    layout: "FullUpperTri"
+    vis_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 

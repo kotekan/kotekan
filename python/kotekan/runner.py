@@ -513,7 +513,7 @@ class FakeVisBuffer(InputBuffer):
 
 
 class FakeN2Buffer(InputBuffer):
-    """Create an input visBuffer format buffer and fill it using `FakeVis`.
+    """Create an input N2Buffer format buffer and fill it using `FakeN2`.
 
     Parameters
     ----------
@@ -532,7 +532,7 @@ class FakeN2Buffer(InputBuffer):
         self.buffer_block = {
             self.name: {
                 "kotekan_buffer": "N2",
-                "layout": "FullUpperTri",
+                "vis_layout": "FullUpperTri",
                 "metadata_pool": "N2_pool",
                 "num_frames": "buffer_depth",
             }
@@ -770,7 +770,7 @@ class DumpN2Buffer(OutputBuffer):
         self.buffer_block = {
             self.name: {
                 "kotekan_buffer": "N2",
-                "layout": "FullUpperTri",
+                "vis_layout": "FullUpperTri",
                 "metadata_pool": "N2_pool",
                 "num_frames": "buffer_depth",
             }
