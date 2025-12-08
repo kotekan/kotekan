@@ -78,7 +78,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         // accumulation setup
         if (_num_n2k_samples_to_accumulate <= 0 || _num_n2k_samples_to_accumulate % 2 != 0)
             FATAL_ERROR(
-                "N2Accumulate configured to use non-positive or odd (should be positive even!) "
+                "N2Accumulate configured to use non-positive or odd (should be positive and even!) "
                 "num_n2k_samples_to_accumulate: {:d}",
                 _num_n2k_samples_to_accumulate);
 

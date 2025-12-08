@@ -12,6 +12,7 @@ from kotekan import runner
 
 t_start_s = 1_760_000_000
 GIGA = 1_000_000_000
+start_frame_idx = 1
 
 nfreq = 3
 freq_ids = [0, 1024, 8191]
@@ -149,13 +150,15 @@ def accumulate_data(tmpdir_factory):
         global_params["samples_per_data_set"],
         global_params["num_local_freq"],
         {
+            "first_frame_index": start_frame_idx,
             "correlation_type": "f_times_ee_plus_t",
             "counts_type": "const_scalar",
             "counts_values": count_vals,
             "freq_ids": freq_ids,
             "num_frames": global_params["total_frames"],
         },
-        {"type": "const", "values": rfi_vals},
+        {"type": "const", "values": rfi_vals,
+         "first_frame_index": start_frame_idx},
     )
 
     # Number of accumulated frames expected at the output (per freq).
@@ -200,6 +203,7 @@ def gen_vis_data(t_idx, f_idx):
         t_idx
         * global_params["sub_integration_ntime"]
         * accumulate_params["num_n2k_samples_to_accumulate"]
+        + start_frame_idx * global_params["samples_per_data_set"]
     )
 
     t_n2k_0 = t_idx * accumulate_params["num_n2k_samples_to_accumulate"]
@@ -308,6 +312,7 @@ def test_time(accumulate_data):
             == t_idx
             * accumulate_params["num_n2k_samples_to_accumulate"]
             * global_params["sub_integration_ntime"]
+            + start_frame_idx * global_params["samples_per_data_set"]
         )
         assert (
             frame.metadata.frame_start_time_ns
@@ -335,7 +340,7 @@ def test_EOP(accumulate_data):
             accumulate_params["num_n2k_samples_to_accumulate"]
             * global_params["sub_integration_ntime"]
         )
-        seq0 = t_idx * seq_len
+        seq0 = t_idx * seq_len + start_frame_idx * global_params["samples_per_data_set"]
         seq = seq0 + seq_len // 2
 
         t_inst_ns = seq * dt_ns + t0_ns
