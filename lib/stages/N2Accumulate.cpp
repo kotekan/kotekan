@@ -36,13 +36,22 @@ using N2::frameID;
 
 REGISTER_KOTEKAN_STAGE(N2Accumulate);
 
+enum class Mode {
+    START,
+    WAITING_FOR_ALIGNMENT,
+    READY,
+    ACCUMULATING,
+};
+
 
 N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&N2Accumulate::main_thread, this)),
     _num_freq_per_n2k_frame(config.get<int64_t>(unique_name, "num_freq_per_n2k_frame")),
+    _bin_in_ERA(config.get_default<bool>(unique_name, "bin_in_ERA", false)),
     _num_n2k_samples_to_accumulate(
-        config.get<int64_t>(unique_name, "num_n2k_samples_to_accumulate")),
+        config.get_default<int64_t>(unique_name, "num_n2k_samples_to_accumulate", 0)),
+    _num_bins_per_rotation(config.get_default<uint32_t>(unique_name, "num_bins_per_rotation", 0)),
     _packet_loss_is_scalar(config.get<bool>(unique_name, "packet_loss_is_scalar")),
     _n_fpga_samples_per_n2k_frame(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _n_fpga_samples_per_n2k_correlation(config.get<int64_t>(unique_name, "sub_integration_ntime")),
@@ -76,10 +85,11 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
             FATAL_ERROR("num_freq_per_n2k_frame is not positive: {:d}", _num_freq_per_n2k_frame);
 
         // accumulation setup
-        if (_num_n2k_samples_to_accumulate <= 0 || _num_n2k_samples_to_accumulate % 2 != 0)
+        if (!_bin_in_ERA && (_num_n2k_samples_to_accumulate <= 0 || _num_n2k_samples_to_accumulate % 2 != 0))
             FATAL_ERROR(
-                "N2Accumulate configured to use non-positive or odd (should be positive and even!) "
-                "num_n2k_samples_to_accumulate: {:d}",
+                "N2Accumulate configured to use fixed-sample accumulation "
+                "(bin_in_ERA is false) with non-positive or odd (should be "
+                "positive and even!) num_n2k_samples_to_accumulate: {:d}",
                 _num_n2k_samples_to_accumulate);
 
         if (!_packet_loss_is_scalar)
@@ -250,6 +260,7 @@ void N2Accumulate::main_thread() {
     // since fpga_seq_num does not have to start from 0, in which case we skip
     // it.
     int32_t const* vis_even = nullptr;
+    Mode mode = Mode::START;
 
     while (!stop_thread) {
 
@@ -302,6 +313,11 @@ void N2Accumulate::main_thread() {
 
         // Record the current frame time being processed.
         comp_time_seconds_metric.set(_tel.to_time_ns(frame_metadata->get_fpga_seq_num()) / 1e9);
+
+        // Do some first-time initialization
+        if (mode == Mode::START) {
+            mode = Mode::WAITING_FOR_ALIGNMENT;
+        }
 
         // Accumulate each visibility sample in the in_frame
         // t_outer
@@ -446,6 +462,20 @@ void N2Accumulate::main_thread() {
             } // f
 
             _vis_samples_in_out_frame++;
+
+            // Finalize accumulation if we've hit the number of sub-frames
+            // to accumulate.
+            if (_vis_samples_in_out_frame >= _num_n2k_samples_to_accumulate) {
+
+                INFO("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
+                     _vis_samples_in_out_frame);
+                samples_in_out_frame.set(_vis_samples_in_out_frame);
+                output_and_reset(in_frame_id, out_frame_id);
+
+                _vis_samples_in_out_frame = 0;
+                _accum_fpga_start_tick = frame_metadata->get_fpga_seq_num()
+                                         + (vis_samp_n + 1) * _n_fpga_samples_per_n2k_correlation;
+            }
 
         } // t (vis samples in frame)
 

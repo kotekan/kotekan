@@ -68,18 +68,20 @@ private:
     Buffer* out_buf;        /// Output for the main vis dataset only
 
     // Parameters saved from the config files
-    int64_t _num_freq_per_n2k_frame;
-    int64_t _num_n2k_samples_to_accumulate;
+    const int64_t _num_freq_per_n2k_frame;
+    const bool _bin_in_ERA;
+    const int64_t _num_n2k_samples_to_accumulate;
+    const uint32_t _num_bins_per_rotation;
 
-    bool _packet_loss_is_scalar;
+    const bool _packet_loss_is_scalar;
 
-    int64_t _n_fpga_samples_per_n2k_frame;
-    int64_t _n_fpga_samples_per_n2k_correlation;
+    const int64_t _n_fpga_samples_per_n2k_frame;
+    const int64_t _n_fpga_samples_per_n2k_correlation;
     int64_t _n_integrations_per_n2k_frame;
 
-    int64_t _rfi_downsampling_factor; ///< Downsampling factor for RFI mask
+    const int64_t _rfi_downsampling_factor; ///< Downsampling factor for RFI mask
 
-    int64_t _num_elements; ///< Total number of telescope elements (~2 * num dishes)
+    const int64_t _num_elements; ///< Total number of telescope elements (~2 * num dishes)
 
     const int _num_workers; ///< number of OpenMP threads to use to process data
 

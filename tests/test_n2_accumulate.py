@@ -12,11 +12,13 @@ from kotekan import runner
 
 t_start_s = 1_760_000_000
 GIGA = 1_000_000_000
-start_frame_idx = 1
+start_frame_idx = 1  # Make sure this is non-zero to test correct stage initialization.
 
+# Must test with > 1 freq.  3 is good.
 nfreq = 3
 freq_ids = [0, 1024, 8191]
 
+# count_vals and rfi_vals lengths are mutually prime so all combinations get used with eachother.
 count_vals = [0, 8192, 8191, 20, 5000]
 rfi_vals = [255, 0, 255, 255]
 
@@ -27,7 +29,7 @@ global_params = {
     "num_elements": 64,
     "num_dishes": 32,
     "num_ev": 0,
-    "samples_per_data_set": 16384,
+    "samples_per_data_set": 16384,   # Must be at least 2x sub_integration_ntime
     "sub_integration_ntime": 4096,
     "rfi_downsampling_factor": 256,
     "num_local_freq": nfreq,
