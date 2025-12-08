@@ -33,8 +33,9 @@ using kotekan::restServer;
 
 // Dish parameters calculation/initialization
 
-DishParams DishParams::from_config(const kotekan::Config& config, const std::string& path) {
-    DishParams dish;
+GeographicParams GeographicParams::from_config(const kotekan::Config& config,
+                                               const std::string& path) {
+    GeographicParams dish;
 
     // Instrument geographic coordinates
     dish.origin_itrs_lon_deg = config.get_default<double>(path, "origin_itrs_lon_deg", 0.0);
@@ -109,7 +110,7 @@ DishParams DishParams::from_config(const kotekan::Config& config, const std::str
     return dish;
 }
 
-void DishParams::set_dish_info(const kotekan::Config& config, const std::string& path) {
+void GeographicParams::set_dish_info(const kotekan::Config& config, const std::string& path) {
     // Get the number of dishes, make sure its positive.
     num_dishes = config.get<size_t>(path, "num_dishes");
     num_dishes_x = config.get<size_t>(path, "num_dishes_x");
@@ -265,7 +266,7 @@ inline FreqParams FreqParams::from_config(const kotekan::Config& config, const s
     FreqParams freq_params{sampling_rate_MHz, fft_length, nyquist_zone, min_science_freq_MHz,
                            max_science_freq_MHz};
 
-    // Clamp requested science band to the physical band covered by this FFT.
+    // Force the requested science band to be inside the physical band covered by the FPGA's FFT.
     const double freq_end =
         freq_params.freq0_MHz + freq_params.df_MHz * double(freq_params.num_freqs - 1);
     const double physical_low = std::min(freq_params.freq0_MHz, freq_end);
@@ -297,8 +298,8 @@ inline FreqParams FreqParams::from_config(const kotekan::Config& config, const s
 
 // GPS params initialization
 
-GPSParams GPSParams::from_config(const kotekan::Config& config, const std::string& path) {
-    GPSParams gps;
+GPSTimeParams GPSTimeParams::from_config(const kotekan::Config& config, const std::string& path) {
+    GPSTimeParams gps;
 
     gps.require_gps = config.get_default<bool>(path, "require_gps", false);
     gps.query_gps = config.get_default<bool>(path, "query_gps", false);
@@ -307,10 +308,10 @@ GPSParams GPSParams::from_config(const kotekan::Config& config, const std::strin
     gps.gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
 
     if (gps.query_gps)
-        set_gps_params_from_remote(gps, gps.gps_host, gps.gps_port,
-                                   gps.gps_endpoint); // sets gps_enabled, time0_ns
+        set_gps_time_params_from_remote(gps, gps.gps_host, gps.gps_port,
+                                        gps.gps_endpoint); // sets gps_enabled, time0_ns
     if (!gps.gps_enabled)
-        set_gps_params_from_config(gps, config); // sets gps_enabled, time0_ns
+        set_gps_time_params_from_config(gps, config); // sets gps_enabled, time0_ns
     if (gps.require_gps && !gps.gps_enabled)
         FATAL_ERROR_NON_OO("The system requires a GPS time, but none was found.");
 
@@ -322,7 +323,8 @@ GPSParams GPSParams::from_config(const kotekan::Config& config, const std::strin
     return gps;
 }
 
-void GPSParams::set_gps_params_from_config(GPSParams& gps, const kotekan::Config& config) {
+void GPSTimeParams::set_gps_time_params_from_config(GPSTimeParams& gps,
+                                                    const kotekan::Config& config) {
     if (!config.exists("/", "gps_time")) {
         WARN_NON_OO("No GPS time section found. Ignoring.");
         return;
@@ -344,8 +346,8 @@ void GPSParams::set_gps_params_from_config(GPSParams& gps, const kotekan::Config
 }
 
 // static
-void GPSParams::set_gps_params_from_remote(GPSParams& gps, const std::string& host,
-                                           const uint32_t port, const std::string& path) {
+void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps, const std::string& host,
+                                                    const uint32_t port, const std::string& path) {
     INFO_NON_OO("Requesting GPS time from server: {:s}.{:d}{:s} This might take some time...", host,
                 port, path);
 
@@ -384,9 +386,9 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     // Frequency sampling parameters
     _freq_params(FreqParams::from_config(config, path)),
     // GPS time configuration parameters
-    _gps_params(GPSParams::from_config(config, path)),
+    _gps_time_params(GPSTimeParams::from_config(config, path)),
     // Instrument geographic coordinates
-    _dish_params(DishParams::from_config(config, path)) {
+    _geographic_params(GeographicParams::from_config(config, path)) {
 
     // Set up callbacks for updating EOP and sending time0_ns
     using namespace std::placeholders;
@@ -424,7 +426,7 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
         }
 
         if (tmp_eop_table.empty()) {
-            ERROR_NON_OO(
+            ERROR(
                 "CHORDTelescope {}: earth_orientation_parameter_table update contained no entries.",
                 _unique_name);
             return false;
@@ -460,7 +462,7 @@ void CHORDTelescope::send_eop_table(connectionInstance& conn) {
 
 void CHORDTelescope::send_time0_ns(connectionInstance& conn) {
     nlohmann::json reply;
-    reply["time0_ns"] = _gps_params.time0_ns;
+    reply["time0_ns"] = _gps_time_params.time0_ns;
     conn.send_json_reply(reply);
 }
 
@@ -469,15 +471,15 @@ timespec CHORDTelescope::to_time(uint64_t seq) const {
 }
 
 int64_t CHORDTelescope::to_time_ns(uint64_t seq) const {
-    return _gps_params.time0_ns + seq * _freq_params.dt_ns;
+    return _gps_time_params.time0_ns + seq * _freq_params.dt_ns;
 }
 
 uint64_t CHORDTelescope::to_seq(timespec time) const {
-    return (time.tv_sec * GIGA + time.tv_nsec - _gps_params.time0_ns) / _freq_params.dt_ns;
+    return (time.tv_sec * GIGA + time.tv_nsec - _gps_time_params.time0_ns) / _freq_params.dt_ns;
 }
 
 bool CHORDTelescope::gps_time_enabled() const {
-    return _gps_params.gps_enabled;
+    return _gps_time_params.gps_enabled;
 }
 
 uint64_t CHORDTelescope::seq_length_nsec() const {
@@ -485,15 +487,15 @@ uint64_t CHORDTelescope::seq_length_nsec() const {
 }
 
 double CHORDTelescope::get_origin_itrs_lon_deg() const {
-    return _dish_params.origin_itrs_lon_deg;
+    return _geographic_params.origin_itrs_lon_deg;
 }
 
 double CHORDTelescope::get_origin_itrs_lat_deg() const {
-    return _dish_params.origin_itrs_lat_deg;
+    return _geographic_params.origin_itrs_lat_deg;
 }
 
 double CHORDTelescope::get_dish_coelev_deg() const {
-    return _dish_params.dish_coelev_deg;
+    return _geographic_params.dish_coelev_deg;
 }
 
 std::array<double, 3> CHORDTelescope::get_sky_vec_in_grid_coords(double ra, double dec,
@@ -523,7 +525,7 @@ std::array<double, 3> CHORDTelescope::get_pointing_vec_in_dish_coords() const {
     // along the elevation axis of the dish mount.  In this frame the pointing
     // vector is just given by the current elevation.
 
-    double coelev = deg2rad * _dish_params.dish_coelev_deg;
+    double coelev = deg2rad * _geographic_params.dish_coelev_deg;
 
     // coelev=90 ==> North (y), coelev=0 => Up (z), coelev=-90 -> South (-y)
     std::array<double, 3> n_point = {0.0, sin(coelev), cos(coelev)};
@@ -538,7 +540,7 @@ CHORDTelescope::vec_topocen_to_dish(const std::array<double, 3>& v_topocen) cons
     std::array<double, 3> v_dish = {0, 0, 0};
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++)
-            v_dish[i] += _dish_params.R_topo_to_dish[i][j] * v_topocen[j];
+            v_dish[i] += _geographic_params.R_topo_to_dish[i][j] * v_topocen[j];
 
     return v_dish;
 }
@@ -550,7 +552,7 @@ CHORDTelescope::vec_dish_to_topocen(const std::array<double, 3>& v_dish) const {
     std::array<double, 3> v_topo = {0, 0, 0};
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++)
-            v_topo[i] += _dish_params.R_topo_to_dish[j][i] * v_dish[j];
+            v_topo[i] += _geographic_params.R_topo_to_dish[j][i] * v_dish[j];
 
     return v_topo;
 }
@@ -562,7 +564,7 @@ CHORDTelescope::vec_topocen_to_grid(const std::array<double, 3>& v_topocen) cons
     std::array<double, 3> v_grid = {0, 0, 0};
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++)
-            v_grid[i] += _dish_params.R_topo_to_grid[i][j] * v_topocen[j];
+            v_grid[i] += _geographic_params.R_topo_to_grid[i][j] * v_topocen[j];
 
     return v_grid;
 }
@@ -574,7 +576,7 @@ CHORDTelescope::vec_grid_to_topocen(const std::array<double, 3>& v_grid) const {
     std::array<double, 3> v_topocen = {0, 0, 0};
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++)
-            v_topocen[i] += _dish_params.R_topo_to_grid[j][i] * v_grid[j];
+            v_topocen[i] += _geographic_params.R_topo_to_grid[j][i] * v_grid[j];
 
     return v_topocen;
 }
@@ -626,7 +628,7 @@ CHORDTelescope::vec_itrs_to_topocen(const std::array<double, 3>& v_itrs) const {
     std::array<double, 3> v_topo = {0, 0, 0};
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++)
-            v_topo[i] += _dish_params.R_itrs_to_topo[i][j] * v_itrs[j];
+            v_topo[i] += _geographic_params.R_itrs_to_topo[i][j] * v_itrs[j];
 
     return v_topo;
 }
@@ -638,7 +640,7 @@ CHORDTelescope::vec_topocen_to_itrs(const std::array<double, 3>& v_topo) const {
     std::array<double, 3> v_itrs = {0, 0, 0};
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++)
-            v_itrs[i] += _dish_params.R_itrs_to_topo[j][i] * v_topo[j];
+            v_itrs[i] += _geographic_params.R_itrs_to_topo[j][i] * v_topo[j];
 
     return v_itrs;
 }
@@ -731,11 +733,11 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const
     // wavenumber for this frequency
     double k = 2 * M_PI * 1e6 * freq_MHz / C;
 
-    for (uint64_t i = 0; i < _dish_params.dish_positions.size(); i++) {
+    for (uint64_t i = 0; i < _geographic_params.dish_positions.size(); i++) {
         double phase = -k
-                       * (_dish_params.dish_positions[i][0] * (n_grid[0] - n_grid0[0])
-                          + _dish_params.dish_positions[i][1] * (n_grid[1] - n_grid0[1])
-                          + _dish_params.dish_positions[i][2] * (n_grid[2] - n_grid0[2]));
+                       * (_geographic_params.dish_positions[i][0] * (n_grid[0] - n_grid0[0])
+                          + _geographic_params.dish_positions[i][1] * (n_grid[1] - n_grid0[1])
+                          + _geographic_params.dish_positions[i][2] * (n_grid[2] - n_grid0[2]));
 
         phases[i] = {cos(phase), sin(phase)};
     }
@@ -743,8 +745,8 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const
 
 void CHORDTelescope::fill_input_maps(dishInputFields& input) const {
 
-    auto& num_dishes = _dish_params.num_dishes;
-    auto& dish_info_table = _dish_params.dish_info_table;
+    auto& num_dishes = _geographic_params.num_dishes;
+    auto& dish_info_table = _geographic_params.dish_info_table;
 
     // Ensure fields have the correct size
     input.grid_x_idx.reserve(num_dishes);
@@ -778,33 +780,33 @@ uint64_t CHORDTelescope::get_num_stacks() const {
 }
 
 double CHORDTelescope::get_grid_orientation_el(int i, int j) const {
-    return _dish_params.R_topo_to_grid[i][j];
+    return _geographic_params.R_topo_to_grid[i][j];
 }
 
 double CHORDTelescope::get_dish_orientation_el(int i, int j) const {
-    return _dish_params.R_topo_to_dish[i][j];
+    return _geographic_params.R_topo_to_dish[i][j];
 }
 
 std::array<double, 3> CHORDTelescope::get_dish_position_in_grid_coords(int i) const {
-    return _dish_params.dish_positions[i];
+    return _geographic_params.dish_positions[i];
 }
 
 size_t CHORDTelescope::get_num_dishes() const {
-    return _dish_params.num_dishes;
+    return _geographic_params.num_dishes;
 }
 
 size_t CHORDTelescope::get_num_dishes_x() const {
-    return _dish_params.num_dishes_x;
+    return _geographic_params.num_dishes_x;
 }
 size_t CHORDTelescope::get_num_dishes_y() const {
-    return _dish_params.num_dishes_y;
+    return _geographic_params.num_dishes_y;
 }
 
 double CHORDTelescope::get_dish_separation_x_m() const {
-    return _dish_params.dish_separation_x_m;
+    return _geographic_params.dish_separation_x_m;
 }
 double CHORDTelescope::get_dish_separation_y_m() const {
-    return _dish_params.dish_separation_y_m;
+    return _geographic_params.dish_separation_y_m;
 }
 
 size_t CHORDTelescope::get_EOP_table_len() const {
@@ -976,11 +978,11 @@ EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
 }
 
 const dishInfo& CHORDTelescope::get_dish_at_idx(dish_index_t idx) const {
-    return _dish_params.dish_info_table.at(idx);
+    return _geographic_params.dish_info_table.at(idx);
 }
 
 const dishGrid& CHORDTelescope::get_dish_grid() const {
-    return _dish_params.dish_grid;
+    return _geographic_params.dish_grid;
 }
 
 // Get the frequency in MHz corresponding to the given freq_id.

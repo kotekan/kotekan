@@ -383,7 +383,7 @@ public:
                     const size_t bytes = sizeof(dish_index_t) * meta->n_dish_locations_ns
                                          * meta->n_dish_locations_ew;
                     assert(data->nbytes() == bytes);
-                    std::memcpy(meta->dish_index, data->ptr(), bytes);
+                    std::memcpy(meta->dish_index, data->ptr(), data->nbytes());
                 } else {
                     meta->dish_index = nullptr;
                 }
