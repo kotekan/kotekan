@@ -1,3 +1,283 @@
+Precompiling CUDA...
+    LLVMLoopInfo Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/LLVMLoopInfo/X7sqD_S6IrE.ji.pidfile)
+    AbstractFFTs Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/AbstractFFTs/Di3HZ_S6IrE.ji.pidfile)
+    LaTeXStrings Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/LaTeXStrings/H4HGh_S6IrE.ji.pidfile)
+    ExprTools Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/ExprTools/eM8wu_S6IrE.ji.pidfile)
+    IteratorInterfaceExtensions Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/IteratorInterfaceExtensions/N0h8q_S6IrE.ji.pidfile)
+    UnsafeAtomics Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/UnsafeAtomics/OuhNJ_S6IrE.ji.pidfile)
+    CEnum Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/CEnum/0gyUJ_S6IrE.ji.pidfile)
+    Statistics Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/Statistics/ERcPL_S6IrE.ji.pidfile)
+    MacroTools Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/MacroTools/38lnR_S6IrE.ji.pidfile)
+    RandomNumbers Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/RandomNumbers/pgCpR_S6IrE.ji.pidfile)
+    OrderedCollections Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/OrderedCollections/LtT3J_S6IrE.ji.pidfile)
+    Requires Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/Requires/IyxeS_S6IrE.ji.pidfile)
+    DataValueInterfaces Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/DataValueInterfaces/9Lpkp_S6IrE.ji.pidfile)
+    Reexport Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/Reexport/bTpYr_S6IrE.ji.pidfile)
+    InlineStrings Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/InlineStrings/prmY3_S6IrE.ji.pidfile)
+    CUDA_Runtime_Discovery Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/CUDA_Runtime_Discovery/T9PTO_S6IrE.ji.pidfile)
+    HashArrayMappedTries Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/HashArrayMappedTries/HsHT3_S6IrE.ji.pidfile)
+    InvertedIndices Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/InvertedIndices/0P8C6_S6IrE.ji.pidfile)
+    DataAPI Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/DataAPI/3a8mN_S6IrE.ji.pidfile)
+    Crayons Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/Crayons/TXPcU_S6IrE.ji.pidfile)
+    StaticArraysCore Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/StaticArraysCore/Tzw28_S6IrE.ji.pidfile)
+    BFloat16s Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/BFloat16s/iiZ8G_S6IrE.ji.pidfile)
+    SentinelArrays Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/SentinelArrays/uMYVe_S6IrE.ji.pidfile)
+    Scratch Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/Scratch/ICI1U_S6IrE.ji.pidfile)
+    Preferences Being precompiled by another process (pid: 613570, pidfile: /home/jmertens/.julia/compiled/v1.11/Preferences/pWSk8_S6IrE.ji.pidfile)
+    Compat Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/Compat/GSFWK_S6IrE.ji.pidfile)
+  10076.3 ms  ✓ IteratorInterfaceExtensions
+  10080.5 ms  ✓ ExprTools
+  10089.2 ms  ✓ LaTeXStrings
+  10112.4 ms  ✓ AbstractFFTs
+  10480.9 ms  ✓ LLVMLoopInfo
+  10111.8 ms  ✓ UnsafeAtomics
+  10256.5 ms  ✓ Statistics
+  10276.5 ms  ✓ CEnum
+  10242.1 ms  ✓ InlineStrings
+  10246.2 ms  ✓ Reexport
+  10249.7 ms  ✓ DataValueInterfaces
+  10253.5 ms  ✓ Requires
+  10258.1 ms  ✓ OrderedCollections
+  10261.9 ms  ✓ RandomNumbers
+  10265.9 ms  ✓ MacroTools
+  10234.3 ms  ✓ Scratch
+  10250.5 ms  ✓ SentinelArrays
+  10253.2 ms  ✓ BFloat16s
+  10255.5 ms  ✓ StaticArraysCore
+  10257.6 ms  ✓ Crayons
+  10259.8 ms  ✓ DataAPI
+  10261.8 ms  ✓ InvertedIndices
+  10264.4 ms  ✓ HashArrayMappedTries
+  10268.0 ms  ✓ CUDA_Runtime_Discovery
+  10247.4 ms  ✓ Compat
+  10249.8 ms  ✓ Preferences
+    TableTraits Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/TableTraits/I6SaN_S6IrE.ji.pidfile)
+    Atomix Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/Atomix/3LdQ4_S6IrE.ji.pidfile)
+    SparseArraysExt Being precompiled by another process (pid: 613570, pidfile: /home/jmertens/.julia/compiled/v1.11/SparseArraysExt/k0lPI_S6IrE.ji.pidfile)
+    Adapt Being precompiled by another process (pid: 613555, pidfile: /home/jmertens/.julia/compiled/v1.11/Adapt/rUIgN_S6IrE.ji.pidfile)
+    Random123 Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/Random123/1imiM_S6IrE.ji.pidfile)
+    Missings Being precompiled by another process (pid: 613564, pidfile: /home/jmertens/.julia/compiled/v1.11/Missings/wLfgT_S6IrE.ji.pidfile)
+    PooledArrays Being precompiled by another process (pid: 613561, pidfile: /home/jmertens/.julia/compiled/v1.11/PooledArrays/vi11X_S6IrE.ji.pidfile)
+    ScopedValues Being precompiled by another process (pid: 613574, pidfile: /home/jmertens/.julia/compiled/v1.11/ScopedValues/fN9Bp_S6IrE.ji.pidfile)
+    CompatLinearAlgebraExt Being precompiled by another process (pid: 613570, pidfile: /home/jmertens/.julia/compiled/v1.11/CompatLinearAlgebraExt/Zxpzq_S6IrE.ji.pidfile)
+    JLLWrappers Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/JLLWrappers/7Zgw7_S6IrE.ji.pidfile)
+    PrecompileTools Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/PrecompileTools/AQ9Mk_S6IrE.ji.pidfile)
+   2913.7 ms  ✓ FixedPointNumbers
+   2026.5 ms  ✓ ColorTypes
+    811.8 ms  ✓ ColorTypes → StyledStringsExt
+   4374.3 ms  ✓ Colors
+  20086.7 ms  ✓ Atomix
+  20045.1 ms  ✓ Compat → CompatLinearAlgebraExt
+  20032.0 ms  ✓ ScopedValues
+  20035.5 ms  ✓ PooledArrays
+  20039.7 ms  ✓ Missings
+    DataStructures Being precompiled by another process (pid: 613574, pidfile: /home/jmertens/.julia/compiled/v1.11/DataStructures/xKiwJ_S6IrE.ji.pidfile)
+  30055.7 ms  ✓ Adapt
+    AdaptSparseArraysExt Being precompiled by another process (pid: 613564, pidfile: /home/jmertens/.julia/compiled/v1.11/AdaptSparseArraysExt/7qfxl_S6IrE.ji.pidfile)
+    GPUArraysCore Being precompiled by another process (pid: 613564, pidfile: /home/jmertens/.julia/compiled/v1.11/GPUArraysCore/qiYUe_S6IrE.ji.pidfile)
+  40053.7 ms  ✓ TableTraits
+  40051.4 ms  ✓ Statistics → SparseArraysExt
+  40077.0 ms  ✓ JLLWrappers
+  20084.9 ms  ✓ DataStructures
+    JuliaNVTXCallbacks_jll Being precompiled by another process (pid: 613561, pidfile: /home/jmertens/.julia/compiled/v1.11/JuliaNVTXCallbacks_jll/EQzo6_S6IrE.ji.pidfile)
+    732.0 ms  ✓ demumble_jll
+    752.9 ms  ✓ NVTX_jll
+    755.6 ms  ✓ LibTracyClient_jll
+    737.5 ms  ✓ SortingAlgorithms
+    Tracy Being precompiled by another process (pid: 613555, pidfile: /home/jmertens/.julia/compiled/v1.11/Tracy/QvZG9_S6IrE.ji.pidfile)
+    996.9 ms  ✓ Tables
+   1731.9 ms  ✓ LLVMExtra_jll
+    LLVM Being precompiled by another process (pid: 613570, pidfile: /home/jmertens/.julia/compiled/v1.11/LLVM/e8NBy_S6IrE.ji.pidfile)
+   2615.7 ms  ✓ CUDA_Driver_jll
+CUDA_Runtime_jll Waiting for background task / IO / timer.
+[pid 627070] waiting for IO to finish:
+ Handle type        uv_handle_t->data
+ pipe[20]           0xd56d830->0x753a33e2be40
+ process[627076]    0xdac1600->0x753a33f86c90
+This means that a package has started a background task or event source that has not finished running. For precompilation to complete successfully, the event source needs to be closed explicitly. See the developer documentation on fixing precompilation hangs for more help.
+   2618.2 ms  ✓ CUDA_Runtime_jll
+   2225.2 ms  ✓ CUDA_Compiler_jll
+  50112.8 ms  ✓ Random123
+  50131.5 ms  ✓ PrecompileTools
+  20122.3 ms  ✓ Adapt → AdaptSparseArraysExt
+  20117.4 ms  ✓ GPUArraysCore
+  10041.9 ms  ✓ JuliaNVTXCallbacks_jll
+   1660.1 ms  ✓ NVTX
+   1779.0 ms  ✓ StringManipulation
+    PrettyTables Being precompiled by another process (pid: 613574, pidfile: /home/jmertens/.julia/compiled/v1.11/PrettyTables/kRdcL_S6IrE.ji.pidfile)
+   5913.8 ms  ✓ StaticArrays
+    AdaptStaticArraysExt Being precompiled by another process (pid: 613570, pidfile: /home/jmertens/.julia/compiled/v1.11/AdaptStaticArraysExt/9bCdf_S6IrE.ji.pidfile)
+    929.1 ms  ✓ StaticArrays → StaticArraysStatisticsExt
+  20044.8 ms  ✓ Tracy
+  48330.1 ms  ✓ LLVM
+    GPUCompiler Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/GPUCompiler/yPwef_S6IrE.ji.pidfile)
+   1856.5 ms  ✓ GPUToolbox
+   1855.1 ms  ✓ LLVM → BFloat16sExt
+   2421.0 ms  ✓ UnsafeAtomics → UnsafeAtomicsLLVM
+  54146.4 ms  ✓ PrettyTables
+  28471.3 ms  ✓ DataFrames
+  79648.7 ms  ✓ Adapt → AdaptStaticArraysExt
+   2461.0 ms  ✓ KernelAbstractions
+    703.0 ms  ✓ KernelAbstractions → LinearAlgebraExt
+    858.4 ms  ✓ KernelAbstractions → SparseArraysExt
+  50369.4 ms  ✓ GPUCompiler
+   3301.2 ms  ✓ GPUArrays
+  41220.5 ms  ✓ CUDA
+  44575.7 ms  ✓ Atomix → AtomixCUDAExt
+  73 dependencies successfully precompiled in 240 seconds. 32 already precompiled.
+  1 dependency had output during precompilation:
+┌ CUDA_Runtime_jll
+│  [pid 627070] waiting for IO to finish:
+│   Handle type        uv_handle_t->data
+│   pipe[20]           0xd56d830->0x753a33e2be40
+│   process[627076]    0xdac1600->0x753a33f86c90
+│  This means that a package has started a background task or event source that has not finished running. For precompilation to complete successfully, the event source needs to be closed explicitly. See the developer documentation on fixing precompilation hangs for more help.
+└  
+Precompiling CUDASIMDTypes...
+Info Given CUDASIMDTypes was explicitly requested, output will be shown live [0K
+[0K┌ Warning: Module AtomixCUDAExt with build ID fafbfcfd-0b96-571c-1af0-6da8f6520ac0 is missing from the cache.
+[0K│ This may mean AtomixCUDAExt [13011619-4c7c-5ef0-948f-5fc81565cd05] does not support precompilation but is imported by a module that does.
+[0K└ @ Base loading.jl:2541
+[0K┌ Error: Error during loading of extension AtomixCUDAExt of Atomix, use `Base.retry_load_extensions()` to retry.
+[0K│   exception =
+[0K│    1-element ExceptionStack:
+[0K│    Error when precompiling module, potentially caused by a __precompile__(false) declaration in the module.
+[0K│    Stacktrace:
+[0K│      [1] _require(pkg::Base.PkgId, env::Nothing)
+[0K│        @ Base ./loading.jl:2545
+[0K│      [2] __require_prelocked(uuidkey::Base.PkgId, env::Nothing)
+[0K│        @ Base ./loading.jl:2388
+[0K│      [3] #invoke_in_world#3
+[0K│        @ ./essentials.jl:1089 [inlined]
+[0K│      [4] invoke_in_world
+[0K│        @ ./essentials.jl:1086 [inlined]
+[0K│      [5] _require_prelocked
+[0K│        @ ./loading.jl:2375 [inlined]
+[0K│      [6] _require_prelocked
+[0K│        @ ./loading.jl:2374 [inlined]
+[0K│      [7] run_extension_callbacks(extid::Base.ExtensionId)
+[0K│        @ Base ./loading.jl:1544
+[0K│      [8] run_extension_callbacks(pkgid::Base.PkgId)
+[0K│        @ Base ./loading.jl:1576
+[0K│      [9] run_package_callbacks(modkey::Base.PkgId)
+[0K│        @ Base ./loading.jl:1396
+[0K│     [10] __require_prelocked(uuidkey::Base.PkgId, env::String)
+[0K│        @ Base ./loading.jl:2399
+[0K│     [11] #invoke_in_world#3
+[0K│        @ ./essentials.jl:1089 [inlined]
+[0K│     [12] invoke_in_world
+[0K│        @ ./essentials.jl:1086 [inlined]
+[0K│     [13] _require_prelocked(uuidkey::Base.PkgId, env::String)
+[0K│        @ Base ./loading.jl:2375
+[0K│     [14] macro expansion
+[0K│        @ ./loading.jl:2314 [inlined]
+[0K│     [15] macro expansion
+[0K│        @ ./lock.jl:273 [inlined]
+[0K│     [16] __require(into::Module, mod::Symbol)
+[0K│        @ Base ./loading.jl:2271
+[0K│     [17] #invoke_in_world#3
+[0K│        @ ./essentials.jl:1089 [inlined]
+[0K│     [18] invoke_in_world
+[0K│        @ ./essentials.jl:1086 [inlined]
+[0K│     [19] require(into::Module, mod::Symbol)
+[0K│        @ Base ./loading.jl:2260
+[0K│     [20] include
+[0K│        @ ./Base.jl:562 [inlined]
+[0K│     [21] include_package_for_output(pkg::Base.PkgId, input::String, depot_path::Vector{String}, dl_load_path::Vector{String}, load_path::Vector{String}, concrete_deps::Vector{Pair{Base.PkgId, UInt128}}, source::Nothing)
+[0K│        @ Base ./loading.jl:2881
+[0K│     [22] top-level scope
+[0K│        @ stdin:6
+[0K│     [23] eval
+[0K│        @ ./boot.jl:430 [inlined]
+[0K│     [24] include_string(mapexpr::typeof(identity), mod::Module, code::String, filename::String)
+[0K│        @ Base ./loading.jl:2734
+[0K│     [25] include_string
+[0K│        @ ./loading.jl:2744 [inlined]
+[0K│     [26] exec_options(opts::Base.JLOptions)
+[0K│        @ Base ./client.jl:321
+[0K│     [27] _start()
+[0K│        @ Base ./client.jl:531
+[0K└ @ Base loading.jl:1550
+   7449.9 ms  ✓ CUDASIMDTypes
+  1 dependency successfully precompiled in 9 seconds. 105 already precompiled.
+  1 dependency had output during precompilation:
+┌ CUDASIMDTypes
+│  [Output was shown above]
+└  
+Precompiling IndexSpaces...
+Info Given IndexSpaces was explicitly requested, output will be shown live [0K
+[0K┌ Warning: Module AtomixCUDAExt with build ID fafbfcfd-0b96-571c-1af0-6da8f6520ac0 is missing from the cache.
+[0K│ This may mean AtomixCUDAExt [13011619-4c7c-5ef0-948f-5fc81565cd05] does not support precompilation but is imported by a module that does.
+[0K└ @ Base loading.jl:2541
+[0K┌ Error: Error during loading of extension AtomixCUDAExt of Atomix, use `Base.retry_load_extensions()` to retry.
+[0K│   exception =
+[0K│    1-element ExceptionStack:
+[0K│    Error when precompiling module, potentially caused by a __precompile__(false) declaration in the module.
+[0K│    Stacktrace:
+[0K│      [1] _require(pkg::Base.PkgId, env::Nothing)
+[0K│        @ Base ./loading.jl:2545
+[0K│      [2] __require_prelocked(uuidkey::Base.PkgId, env::Nothing)
+[0K│        @ Base ./loading.jl:2388
+[0K│      [3] #invoke_in_world#3
+[0K│        @ ./essentials.jl:1089 [inlined]
+[0K│      [4] invoke_in_world
+[0K│        @ ./essentials.jl:1086 [inlined]
+[0K│      [5] _require_prelocked
+[0K│        @ ./loading.jl:2375 [inlined]
+[0K│      [6] _require_prelocked
+[0K│        @ ./loading.jl:2374 [inlined]
+[0K│      [7] run_extension_callbacks(extid::Base.ExtensionId)
+[0K│        @ Base ./loading.jl:1544
+[0K│      [8] run_extension_callbacks(pkgid::Base.PkgId)
+[0K│        @ Base ./loading.jl:1576
+[0K│      [9] run_package_callbacks(modkey::Base.PkgId)
+[0K│        @ Base ./loading.jl:1396
+[0K│     [10] __require_prelocked(uuidkey::Base.PkgId, env::String)
+[0K│        @ Base ./loading.jl:2399
+[0K│     [11] #invoke_in_world#3
+[0K│        @ ./essentials.jl:1089 [inlined]
+[0K│     [12] invoke_in_world
+[0K│        @ ./essentials.jl:1086 [inlined]
+[0K│     [13] _require_prelocked(uuidkey::Base.PkgId, env::String)
+[0K│        @ Base ./loading.jl:2375
+[0K│     [14] macro expansion
+[0K│        @ ./loading.jl:2314 [inlined]
+[0K│     [15] macro expansion
+[0K│        @ ./lock.jl:273 [inlined]
+[0K│     [16] __require(into::Module, mod::Symbol)
+[0K│        @ Base ./loading.jl:2271
+[0K│     [17] #invoke_in_world#3
+[0K│        @ ./essentials.jl:1089 [inlined]
+[0K│     [18] invoke_in_world
+[0K│        @ ./essentials.jl:1086 [inlined]
+[0K│     [19] require(into::Module, mod::Symbol)
+[0K│        @ Base ./loading.jl:2260
+[0K│     [20] include
+[0K│        @ ./Base.jl:562 [inlined]
+[0K│     [21] include_package_for_output(pkg::Base.PkgId, input::String, depot_path::Vector{String}, dl_load_path::Vector{String}, load_path::Vector{String}, concrete_deps::Vector{Pair{Base.PkgId, UInt128}}, source::Nothing)
+[0K│        @ Base ./loading.jl:2881
+[0K│     [22] top-level scope
+[0K│        @ stdin:6
+[0K│     [23] eval
+[0K│        @ ./boot.jl:430 [inlined]
+[0K│     [24] include_string(mapexpr::typeof(identity), mod::Module, code::String, filename::String)
+[0K│        @ Base ./loading.jl:2734
+[0K│     [25] include_string
+[0K│        @ ./loading.jl:2744 [inlined]
+[0K│     [26] exec_options(opts::Base.JLOptions)
+[0K│        @ Base ./client.jl:321
+[0K│     [27] _start()
+[0K│        @ Base ./client.jl:531
+[0K└ @ Base loading.jl:1550
+   5996.9 ms  ✓ IndexSpaces
+  1 dependency successfully precompiled in 7 seconds. 106 already precompiled.
+  1 dependency had output during precompilation:
+┌ IndexSpaces
+│  [Output was shown above]
+└  
+Precompiling Mustache...
+    530.0 ms  ✓ Mustache
+  1 dependency successfully precompiled in 1 seconds. 8 already precompiled.
 [Choosing CUDA device...]
 NVIDIA A40
 [Creating frb kernel...]

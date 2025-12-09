@@ -1,3 +1,147 @@
+Precompiling CUDA...
+    LLVMLoopInfo Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/LLVMLoopInfo/X7sqD_S6IrE.ji.pidfile)
+    AbstractFFTs Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/AbstractFFTs/Di3HZ_S6IrE.ji.pidfile)
+    LaTeXStrings Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/LaTeXStrings/H4HGh_S6IrE.ji.pidfile)
+    ExprTools Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/ExprTools/eM8wu_S6IrE.ji.pidfile)
+    IteratorInterfaceExtensions Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/IteratorInterfaceExtensions/N0h8q_S6IrE.ji.pidfile)
+    UnsafeAtomics Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/UnsafeAtomics/OuhNJ_S6IrE.ji.pidfile)
+    CEnum Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/CEnum/0gyUJ_S6IrE.ji.pidfile)
+    Statistics Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/Statistics/ERcPL_S6IrE.ji.pidfile)
+    MacroTools Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/MacroTools/38lnR_S6IrE.ji.pidfile)
+    RandomNumbers Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/RandomNumbers/pgCpR_S6IrE.ji.pidfile)
+    OrderedCollections Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/OrderedCollections/LtT3J_S6IrE.ji.pidfile)
+    Requires Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/Requires/IyxeS_S6IrE.ji.pidfile)
+    DataValueInterfaces Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/DataValueInterfaces/9Lpkp_S6IrE.ji.pidfile)
+    Reexport Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/Reexport/bTpYr_S6IrE.ji.pidfile)
+    InlineStrings Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/InlineStrings/prmY3_S6IrE.ji.pidfile)
+    CUDA_Runtime_Discovery Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/CUDA_Runtime_Discovery/T9PTO_S6IrE.ji.pidfile)
+    HashArrayMappedTries Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/HashArrayMappedTries/HsHT3_S6IrE.ji.pidfile)
+    InvertedIndices Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/InvertedIndices/0P8C6_S6IrE.ji.pidfile)
+    DataAPI Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/DataAPI/3a8mN_S6IrE.ji.pidfile)
+    Crayons Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/Crayons/TXPcU_S6IrE.ji.pidfile)
+    StaticArraysCore Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/StaticArraysCore/Tzw28_S6IrE.ji.pidfile)
+    BFloat16s Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/BFloat16s/iiZ8G_S6IrE.ji.pidfile)
+    SentinelArrays Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/SentinelArrays/uMYVe_S6IrE.ji.pidfile)
+    Scratch Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/Scratch/ICI1U_S6IrE.ji.pidfile)
+    Compat Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/Compat/GSFWK_S6IrE.ji.pidfile)
+   1091.7 ms  ✓ Preferences
+    679.5 ms  ✓ PrecompileTools
+    770.5 ms  ✓ JLLWrappers
+    711.1 ms  ✓ NVTX_jll
+    739.1 ms  ✓ JuliaNVTXCallbacks_jll
+    770.3 ms  ✓ demumble_jll
+    787.8 ms  ✓ LibTracyClient_jll
+   1899.0 ms  ✓ StringManipulation
+   1906.2 ms  ✓ LLVMExtra_jll
+   2813.5 ms  ✓ CUDA_Driver_jll
+   3204.2 ms  ✓ CUDA_Runtime_jll
+  10058.8 ms  ✓ AbstractFFTs
+  10388.4 ms  ✓ LLVMLoopInfo
+  10073.2 ms  ✓ Compat
+  10148.6 ms  ✓ Scratch
+  10048.1 ms  ✓ IteratorInterfaceExtensions
+  10081.0 ms  ✓ Statistics
+  10101.5 ms  ✓ CEnum
+  10105.2 ms  ✓ UnsafeAtomics
+  10139.7 ms  ✓ HashArrayMappedTries
+  10123.8 ms  ✓ SentinelArrays
+  10127.6 ms  ✓ BFloat16s
+    TableTraits Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/TableTraits/I6SaN_S6IrE.ji.pidfile)
+    FixedPointNumbers Being precompiled by another process (pid: 613572, pidfile: /home/jmertens/.julia/compiled/v1.11/FixedPointNumbers/Ple2W_S6IrE.ji.pidfile)
+    Atomix Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/Atomix/3LdQ4_S6IrE.ji.pidfile)
+    ScopedValues Being precompiled by another process (pid: 613574, pidfile: /home/jmertens/.julia/compiled/v1.11/ScopedValues/fN9Bp_S6IrE.ji.pidfile)
+   2810.9 ms  ✓ CUDA_Compiler_jll
+    683.6 ms  ✓ Compat → CompatLinearAlgebraExt
+    683.7 ms  ✓ Statistics → SparseArraysExt
+  20061.5 ms  ✓ LaTeXStrings
+  20113.2 ms  ✓ ExprTools
+  20102.0 ms  ✓ Reexport
+  20096.4 ms  ✓ Requires
+  20101.1 ms  ✓ OrderedCollections
+  20138.0 ms  ✓ StaticArraysCore
+  20169.8 ms  ✓ InvertedIndices
+  20168.5 ms  ✓ DataAPI
+  20167.0 ms  ✓ Crayons
+    Missings Being precompiled by another process (pid: 613574, pidfile: /home/jmertens/.julia/compiled/v1.11/Missings/wLfgT_S6IrE.ji.pidfile)
+    PooledArrays Being precompiled by another process (pid: 613574, pidfile: /home/jmertens/.julia/compiled/v1.11/PooledArrays/vi11X_S6IrE.ji.pidfile)
+    573.5 ms  ✓ Adapt
+    482.0 ms  ✓ GPUArraysCore
+   1196.4 ms  ✓ Tracy
+    739.3 ms  ✓ Adapt → AdaptSparseArraysExt
+   2247.6 ms  ✓ DataStructures
+   2472.6 ms  ✓ SortingAlgorithms
+   5866.2 ms  ✓ StaticArrays
+  30111.2 ms  ✓ RandomNumbers
+  30112.3 ms  ✓ InlineStrings
+  30115.0 ms  ✓ MacroTools
+  30115.5 ms  ✓ DataValueInterfaces
+    Random123 Being precompiled by another process (pid: 613561, pidfile: /home/jmertens/.julia/compiled/v1.11/Random123/1imiM_S6IrE.ji.pidfile)
+  30187.4 ms  ✓ CUDA_Runtime_Discovery
+  10018.1 ms  ✓ Missings
+  10034.6 ms  ✓ PooledArrays
+   7928.0 ms  ? StaticArrays → StaticArraysStatisticsExt
+  10201.0 ms  ✓ Random123
+  30071.8 ms  ✓ FixedPointNumbers
+  30080.7 ms  ✓ Atomix
+  30080.4 ms  ✓ ScopedValues
+    ColorTypes Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/ColorTypes/db21U_S6IrE.ji.pidfile)
+  50080.9 ms  ✓ TableTraits
+  20029.8 ms  ✓ ColorTypes
+    638.8 ms  ✓ ColorTypes → StyledStringsExt
+   1096.4 ms  ✓ Tables
+    PrettyTables Being precompiled by another process (pid: 613574, pidfile: /home/jmertens/.julia/compiled/v1.11/PrettyTables/kRdcL_S6IrE.ji.pidfile)
+   3767.9 ms  ✓ Colors
+LLVM Waiting for background task / IO / timer.
+[pid 617592] waiting for IO to finish:
+ Handle type        uv_handle_t->data
+ fs_event           0x38d3bad0->0x71e707fb0550
+ timer              0x38f16840->0x71e707fb0580
+This means that a package has started a background task or event source that has not finished running. For precompilation to complete successfully, the event source needs to be closed explicitly. See the developer documentation on fixing precompilation hangs for more help.
+   1824.7 ms  ✓ NVTX
+  62081.3 ms  ✓ LLVM
+   1600.5 ms  ✓ LLVM → BFloat16sExt
+   1692.4 ms  ✓ GPUToolbox
+   2316.4 ms  ✓ UnsafeAtomics → UnsafeAtomicsLLVM
+  13337.5 ms  ✓ GPUCompiler
+AdaptStaticArraysExt Waiting for background task / IO / timer.
+[pid 622194] waiting for IO to finish:
+ Handle type        uv_handle_t->data
+ fs_event           0xc55c360->0x7e24ed4df640
+ timer              0xc541c70->0x7e24ed4df670
+This means that a package has started a background task or event source that has not finished running. For precompilation to complete successfully, the event source needs to be closed explicitly. See the developer documentation on fixing precompilation hangs for more help.
+  80064.2 ms  ✓ Adapt → AdaptStaticArraysExt
+   3074.3 ms  ✓ KernelAbstractions
+    937.7 ms  ✓ KernelAbstractions → LinearAlgebraExt
+   1229.2 ms  ✓ KernelAbstractions → SparseArraysExt
+   6131.8 ms  ✓ GPUArrays
+  94975.9 ms  ✓ PrettyTables
+    DataFrames Being precompiled by another process (pid: 613555, pidfile: /home/jmertens/.julia/compiled/v1.11/DataFrames/AR9oZ_S6IrE.ji.pidfile)
+  45568.8 ms  ✓ DataFrames
+    CUDA Being precompiled by another process (pid: 633743, pidfile: /home/jmertens/.julia/compiled/v1.11/CUDA/oWw5k_S6IrE.ji.pidfile)
+  79031.7 ms  ✓ CUDA
+   5564.4 ms  ✓ Atomix → AtomixCUDAExt
+  72 dependencies successfully precompiled in 288 seconds. 32 already precompiled.
+  1 dependencies failed but may be precompilable after restarting julia
+  3 dependencies had output during precompilation:
+┌ StaticArrays → StaticArraysStatisticsExt
+│  ┌ Warning: The call to compilecache failed to create a usable precompiled cache file for StaticArrays [90137ffa-7385-5640-81b9-e52037218182]
+│  │   exception = Required dependency Base.PkgId(Base.UUID("aea7be01-6a6a-4083-8856-8a6e6704d82a"), "PrecompileTools") failed to load from a cache file.
+│  └ @ Base loading.jl:2596
+└  
+┌ LLVM
+│  [pid 617592] waiting for IO to finish:
+│   Handle type        uv_handle_t->data
+│   fs_event           0x38d3bad0->0x71e707fb0550
+│   timer              0x38f16840->0x71e707fb0580
+│  This means that a package has started a background task or event source that has not finished running. For precompilation to complete successfully, the event source needs to be closed explicitly. See the developer documentation on fixing precompilation hangs for more help.
+└  
+┌ Adapt → AdaptStaticArraysExt
+│  [pid 622194] waiting for IO to finish:
+│   Handle type        uv_handle_t->data
+│   fs_event           0xc55c360->0x7e24ed4df640
+│   timer              0xc541c70->0x7e24ed4df670
+│  This means that a package has started a background task or event source that has not finished running. For precompilation to complete successfully, the event source needs to be closed explicitly. See the developer documentation on fixing precompilation hangs for more help.
+└  
 [Choosing CUDA device...]
 NVIDIA A40
 [Creating frb kernel...]
