@@ -19,3 +19,4 @@ docs/sphinx/html/*
 scratch/*
 Manifest*.toml
 *.log
+data/*
