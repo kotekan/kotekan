@@ -1,10 +1,11 @@
 #ifndef CHORD_METADATA
 #define CHORD_METADATA
 
-#include "DataType.hpp"  // for type_to_string, type_total_bytes, DataType
-#include "NDArray.hpp"   // for GenericNDArray
-#include "Telescope.hpp" // for Telescope, stream_t
-#include "buffer.hpp"    // for Buffer
+#include "CHORDTelescope.hpp" // for dish_index_t
+#include "DataType.hpp"       // for type_to_string, type_total_bytes, DataType
+#include "NDArray.hpp"        // for GenericNDArray
+#include "Telescope.hpp"      // for Telescope, stream_t
+#include "buffer.hpp"         // for Buffer
 
 #include <cassert>    // for assert
 #include <cstddef>    // for size_t, ptrdiff_t
@@ -101,8 +102,8 @@ public:
     // Dish layout
     int ndishes;                                  // number of dishes
     int n_dish_locations_ew, n_dish_locations_ns; // number of possible dish locations
-    int* dish_index; // [non-owning pointer] dish index for a possible dish location, or -1
-    int get_dish_index(int dish_loc_ew, int dish_loc_ns) const {
+    dish_index_t* dish_index; // [non-owning pointer] dish index for a possible dish location, or -1
+    dish_index_t get_dish_index(int dish_loc_ew, int dish_loc_ns) const {
         // The east-west dish index runs faster because this is the
         // convenient way to specify dish indices in a YAML file
         assert(dish_loc_ew >= 0 && dish_loc_ew < n_dish_locations_ew);

@@ -188,7 +188,7 @@ public:
                     assert(std::ptrdiff_t(dish_index.size())
                            == meta->n_dish_locations_ns * meta->n_dish_locations_ew);
                     meta->dish_index =
-                        new int[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
+                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
                     std::copy(dish_index.begin(), dish_index.end(), meta->dish_index);
 
                 } else {

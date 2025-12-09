@@ -147,11 +147,11 @@ double ICETelescope::to_freq_MHz(freq_id_t freq_id) const {
 }
 
 
-uint32_t ICETelescope::num_freq_per_stream() const {
+size_t ICETelescope::num_freq_per_stream() const {
     return _num_freq_per_stream;
 }
 
-uint32_t ICETelescope::num_freq() const {
+size_t ICETelescope::num_freq() const {
     return nfreq;
 }
 
