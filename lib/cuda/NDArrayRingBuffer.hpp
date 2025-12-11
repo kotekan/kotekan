@@ -385,6 +385,19 @@ private:
         return ndarray.get_size() * ndarray.value_type_size;
     }
 
+    template<typename val_type>
+    static const val_type out_conv(const val_type val) {
+        return val;
+    }
+
+    static int out_conv(const char val) {
+        return val;
+    }
+
+    static int out_conv(const unsigned char val) {
+        return val;
+    }
+
 public:
     // Metadata:
 
@@ -592,8 +605,9 @@ public:
                                 using kotekan::operator<<;
                                 std::cerr << "    [t=" << t << ",f=" << f << ",n=" << n
                                           << "]=" << val << " (0x" << std::hex
-                                          << std::setw(2 * sizeof(T)) << std::setfill('0') << bits
-                                          << std::setfill(' ') << std::dec << ")" << "\n";
+                                          << std::setw(2 * sizeof(T)) << std::setfill('0')
+                                          << out_conv(bits) << std::setfill(' ') << std::dec << ")"
+                                          << "\n";
                             }
                         }
                         any_error |= check(val);
