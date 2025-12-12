@@ -54,37 +54,54 @@ bool chordMetadata::operator==(const chordMetadata& other) const {
 
 void chordMetadata::check_frame_desc(
     const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) const {
-    (void)frame_desc;
+
+    bool failed = false;
+
     if (strncmp(this->name, frame_desc->get_quantity_name().get_c_string(), sizeof(this->name))
-        != 0)
+        != 0) {
         ERROR("Names differ: {:s} != {:s}",
               std::string(this->name, strnlen(this->name, sizeof(this->name))),
               frame_desc->get_quantity_name());
-    if (this->type != frame_desc->get_value_datatype())
+        failed = true;
+    }
+    if (this->type != frame_desc->get_value_datatype()) {
         ERROR("Types differ for {:s}: {:s} != {:s}", frame_desc->get_quantity_name(),
               kotekan::type_to_string(this->type),
               kotekan::type_to_string(frame_desc->get_value_datatype()));
-    if (size_t(this->dims) != frame_desc->get_rank())
+        failed = true;
+    }
+    if (size_t(this->dims) != frame_desc->get_rank()) {
         ERROR("Ranks differ for {:s}: {:d} != {:d}", frame_desc->get_quantity_name(), this->dims,
               frame_desc->get_rank());
+        failed = true;
+    }
     for (int d = this->dims - 1; d >= 0; --d) {
 
         if (strncmp(this->dim_name[d], frame_desc->get_dimname(d).get_c_string(),
                     sizeof this->dim_name[d])
-            != 0)
+            != 0) {
             ERROR("Dim_name[{:d}] differs for {:s}: {:s} != {:s}", d,
                   frame_desc->get_quantity_name(),
                   std::string(this->dim_name[d],
                               strnlen(this->dim_name[d], sizeof(this->dim_name[d]))),
                   frame_desc->get_dimname(d));
+            failed = true;
+        }
 
-        if (this->dim[d] != frame_desc->get_extent(d))
+        if (this->dim[d] != frame_desc->get_extent(d)) {
             ERROR("Dim[{:d}] differs for {:s}: {:d} != {:d}", d, frame_desc->get_quantity_name(),
                   this->dim[d], frame_desc->get_extent(d));
-        if (this->stride[d] != frame_desc->get_stride(d))
+            failed = true;
+        }
+        if (this->stride[d] != frame_desc->get_stride(d)) {
             ERROR("Stride[{:d}] differs for {:s}: {:d} != {:d}", d, frame_desc->get_quantity_name(),
                   this->stride[d], frame_desc->get_stride(d));
+            failed = true;
+        }
     }
+
+    if (failed)
+        FATAL_ERROR("Incosistent array description between CHORDMetadata and FrameDesc");
 }
 
 void chordMetadata::set_from_frame_desc(
