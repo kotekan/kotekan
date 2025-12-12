@@ -52,6 +52,7 @@ private:
     size_t _ring_buffer_size;
 
     size_t input_cursor;
+    int64_t initial_sample0_offset; // sample0_offset of first frame, used for consitency checking
 
     /// GPU side memory name for the time-stream input
     std::string _gpu_mem_input;

@@ -30,7 +30,7 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
                                                cudaDeviceInterface& device, int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "cudaCopyFromRingbuffer", ""),
-    input_cursor(0) {
+    input_cursor(0), initial_sample0_offset(-1) {
     _output_size = config.get<size_t>(unique_name, "output_size");
     _ring_buffer_size = config.get<size_t>(unique_name, "ring_buffer_size");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
@@ -126,7 +126,10 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
     auto tmp = std::make_shared<chordMetadata>();
     tmp->deepCopy(meta);
     meta = tmp;
-    assert(meta->get_sample0_offset() == 0);
+    if (initial_sample0_offset == -1)
+        initial_sample0_offset = meta->get_sample0_offset();
+    else
+        assert(meta->get_sample0_offset() == initial_sample0_offset);
     assert(input_cursor % meta->sample_bytes() == 0);
     meta->set_sample0_offset(meta->get_sample0_offset() + input_cursor / meta->sample_bytes());
     assert(meta->dims > 0);
