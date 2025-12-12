@@ -95,7 +95,7 @@ if(${USE_HDF5} STREQUAL "AUTO" OR "${USE_HDF5}" STREQUAL "ON")
         endif()
         
         if(${USE_HDF5} STREQUAL "AUTO")
-            set(HDF5_REASON "auto-detected")
+            set(HDF5_REASON "disabled, missing: ${_missing_hdf5}")
             kmsg_warn("HDF5 not fully found (missing: ${_missing_hdf5}); HDF5 stages disabled.")
         else()
             set(HDF5_REASON "enabled, not found")
