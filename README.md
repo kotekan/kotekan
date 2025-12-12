@@ -51,7 +51,7 @@ Cmake build options (defaults shown in parentheses; most feature toggles accept 
 * `-DUSE_AIRSPY=<AUTO|ON|OFF>` (`AUTO`) - Build the Airspy capture stages when `libairspy` is available.
 * `-DUSE_ASDF=<AUTO|ON|OFF>` (`AUTO`) - Enable ASDF output stages when `asdf-cxx` is found; defines `-DWITH_ASDF_CXX`.
 * `-DUSE_GDAL=<AUTO|ON|OFF>` (`AUTO`) - Enable GDAL output stages when GDAL is detected; defines `-DWITH_GDAL`.
-* `-DUSE_HDF5=<AUTO|ON|OFF>` (`AUTO`) - Enable HDF5 output stages when HDF5, HighFive, and the runtime plugin directory are all available. Populates `KOTEKAN_HDF5_PLUGIN_DIR` for runtime use.
+* `-DUSE_HDF5=<AUTO|ON|OFF>` (`AUTO`) - Enable HDF5 output stages when HDF5, HighFive, and the runtime plugin directory are *all* available. Populates `KOTEKAN_HDF5_PLUGIN_DIR` for runtime use.
 * `-DUSE_FFTW=<AUTO|ON|OFF>` (`AUTO`) - Enable the FFTW F-engine when FFTW is found; adds `-DWITH_FFTW`.
 * `-DUSE_LAPACK_BLAZE=<AUTO|ON|OFF>` (`AUTO`) - Enable LAPACKE/OpenBLAS + Blaze linear algebra stages when both dependencies are present. Adds the required Blaze/OpenBLAS compile definitions.
 * `-DUSE_JULIA=<AUTO|ON|OFF>` (`AUTO`) - Enable Julia-based components when the Julia executable and C API are available.
