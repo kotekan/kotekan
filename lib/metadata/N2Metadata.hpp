@@ -20,17 +20,14 @@ using kotekan::Config;
 #include <string>   // for operator==, char_traits, basic_string
 #include <vector>   // for vector
 
-enum class N2Layout : int32_t {
-    FullUpperTri = 0,
-    RedundantBaselineAvg = 1,
-};
+enum class N2Layout : int32_t { FullUpperTri = 0, RedundantBaselineAvg = 1, Autocorrelations = 2 };
 
 void to_json(nlohmann::json& j, const N2Layout& t);
 void from_json(const nlohmann::json& j, N2Layout& t);
 
 inline std::string N2Layout_to_string(N2Layout l) {
-    nlohmann::json j{l};
-    return j.dump();
+    nlohmann::json j = l;
+    return j.get<std::string>();
 }
 
 // Struct containing metadata fields for an N2 frame
@@ -64,8 +61,8 @@ struct N2MetadataFormat {
     // bin start/end info for convenience
     double bin_start_ERA_deg; /// Earth Rotation Angle at start of bin
     double bin_end_ERA_deg;   /// Earth Rotation Angle at end of bin
-    int64_t bin_start_LAST;   /// local apparent sidereal time (nanoseconds) at start of bin
-    int64_t bin_end_LAST;     /// local apparent sidereal time (nanoseconds) at end of bin
+    double bin_start_LAST;    /// local apparent sidereal time (nanoseconds) at start of bin
+    double bin_end_LAST;      /// local apparent sidereal time (nanoseconds) at end of bin
 
     /// The sequence number of the first FPGA frame integrated into this visibility frame
     uint64_t fpga_start_tick;

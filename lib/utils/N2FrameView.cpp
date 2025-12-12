@@ -96,18 +96,20 @@ void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Fie
         std::copy(frame_to_copy_from.gain.begin(), frame_to_copy_from.gain.end(), gain.begin());
 }
 
-void N2FrameView::get_prod_maps(std::vector<N2::prod_ctype>& prods) {
+void N2FrameView::fill_prod_maps(std::vector<N2::prod_ctype>& prods) const {
 
     switch (vis_layout) {
         case N2Layout::FullUpperTri:
-            get_prod_maps_FullUpperTri(prods, num_elements);
+            fill_prod_maps_FullUpperTri(prods, num_elements);
+            break;
+        case N2Layout::Autocorrelations:
+            fill_prod_maps_Autocorrelations(prods, num_elements);
             break;
         default:
-            std::string msg =
-                fmt::format("N2FrameView::get_prod_maps has not been implemented for N2Layout {:s}",
-                            N2Layout_to_string(vis_layout));
-            ERROR_NON_OO("{:s}", msg);
-            throw std::runtime_error(msg);
+            std::string msg = fmt::format(
+                "N2FrameView::fill_prod_maps has not been implemented for N2Layout {:s}",
+                N2Layout_to_string(vis_layout));
+            FATAL_ERROR_NON_OO("{:s}", msg);
             break;
     }
 }

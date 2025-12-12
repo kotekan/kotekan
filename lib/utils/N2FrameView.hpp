@@ -81,8 +81,8 @@ public:
     struct EOP& bin_eop;
     double& bin_start_ERA_deg;
     double& bin_end_ERA_deg;
-    int64_t& bin_start_LAST;
-    int64_t& bin_end_LAST;
+    double& bin_start_LAST;
+    double& bin_end_LAST;
 
     /// The sequence number of the first FPGA frame integrated into this
     /// visibility frame (time<0> in VisFrameView)
@@ -191,8 +191,8 @@ public:
             case N2Layout::FullUpperTri:
                 num_prod_in = (num_elements_in * (num_elements_in + 1)) / 2;
                 break;
-            case N2Layout::RedundantBaselineAvg:
-                num_prod_in = Telescope::instance().cast<CHORDTelescope>().get_num_stacks();
+            case N2Layout::Autocorrelations:
+                num_prod_in = num_elements_in;
                 break;
             default:
                 std::string msg =
@@ -207,16 +207,16 @@ public:
     }
 
     /**
-     * @brief Get the product maps for each product in the visibility matrix in the FullUpperTri
-     * layout.
+     * @brief Fill the product maps vector for each product in the visibility matrix in the
+     * FullUpperTri layout.
      *
-     * See N2FrameView::get_prod_maps() for full details.
+     * See N2FrameView::fill_prod_maps() for full details.
      *
      * @param   prods           Vector to fill.
      * @param   num_elements_in Number of elements (dishes x polarizations) in the pipeline
      */
-    static void get_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods,
-                                           uint32_t num_elements_in) {
+    static void fill_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods,
+                                            uint32_t num_elements_in) {
 
         size_t num_prod_in = (num_elements_in * (num_elements_in + 1)) / 2;
 
@@ -230,6 +230,27 @@ public:
                 prods[p] = {.input_a = i, .input_b = j};
                 p++;
             }
+        }
+    }
+
+    /**
+     * @brief Fill the product maps vector for each product in the visibility matrix in the
+     * Autocorrelations-only (diagonal) layout.
+     *
+     * See N2FrameView::fill_prod_maps() for full details.
+     *
+     * @param   prods           Vector to fill.
+     * @param   num_elements_in Number of elements (dishes x polarizations) in the pipeline
+     */
+    static void fill_prod_maps_Autocorrelations(std::vector<N2::prod_ctype>& prods,
+                                                uint32_t num_elements_in) {
+        size_t num_prod_in = num_elements_in;
+
+        prods.resize(num_prod_in);
+
+        // Loop over all elements
+        for (uint16_t i = 0; i < num_elements_in; i++) {
+            prods[i] = {.input_a = i, .input_b = i};
         }
     }
 
@@ -285,7 +306,7 @@ public:
     void copy_data(N2FrameView frame_to_copy_from, const std::set<N2Field>& skip_members);
 
     /**
-     * @brief Get the product maps for each product in the visibility matrix.
+     * @brief Fill the product maps vector for each product in the visibility matrix.
      *
      * Every product in the frame view is a visibility matrix V_{ab} that was formed from two input
      * elements: a (first, the full vis matrix row index) and b (second, the full vis matrix column
@@ -301,7 +322,7 @@ public:
      *
      * @throws  std::runtime_error  If this N2FrameView has an unknown layout.
      */
-    void get_prod_maps(std::vector<N2::prod_ctype>& prods);
+    void fill_prod_maps(std::vector<N2::prod_ctype>& prods) const;
 };
 
 #endif

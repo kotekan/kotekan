@@ -19,6 +19,16 @@ namespace N2 {
 using cfloat = typename std::complex<float>;
 
 /**
+ * @brief Frequency index map type for the N2 pipeline.
+ */
+struct freq_ctype {
+    /// Centre of frequency channel in MHz
+    double centre;
+    /// Width of frequency channel in MHz
+    double width;
+};
+
+/**
  * @brief Index into a flattened upper matrix triangle.
  * @param  i Row index.
  * @param  j Column index.
@@ -77,6 +87,27 @@ inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
 
     return block * block * b_ix + (i % block) * block + (j % block);
 }
+
+/**
+ * @brief Correlator input type
+ */
+struct input_ctype {
+    input_ctype(uint16_t idx, std::string input_id) {
+        // Check input_id length
+        if (input_id.size() >= 32) {
+            ERROR_NON_OO("input_id {} length exceeds 31 characters", input_id);
+        }
+        element_idx = idx;
+        std::memset(input_id_str, 0, 32);
+        input_id.copy(input_id_str, 31); // Ensure null termination
+    }
+
+    /// element index
+    uint16_t element_idx;
+    /// input identifier
+    char input_id_str[32];
+};
+
 
 /**
  * @brief A class for modular arithmetic. Used for holding ring buffer indices.
