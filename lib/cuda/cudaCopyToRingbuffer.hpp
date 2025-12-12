@@ -53,6 +53,7 @@ private:
     size_t _ring_buffer_size;
 
     size_t output_cursor;
+    int64_t initial_sample0_offset; // sample0_offset of first frame, used for consitency checking
 
     // One of these will be set:
     /// GPU side memory name for the frame-based input
