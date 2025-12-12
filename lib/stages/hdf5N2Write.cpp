@@ -576,7 +576,7 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
 
 std::optional<std::string> N2FileData::_get_final_filename() {
 
-    // Get the earliest (non-zero) time in the bin ut1 array
+    // Check we have at least one valid time
     if (num_file_t == 0)
         return std::nullopt;
 
@@ -595,16 +595,28 @@ std::optional<std::string> N2FileData::_get_final_filename() {
 
     timespec earliest_fpga_tick_time = Telescope::instance().to_time(fpga_start_tick_min.value());
 
-    // Construct final filename based on earliest_ut1_ns
     std::ostringstream buf;
-    std::time_t time_t_format = earliest_fpga_tick_time.tv_sec;    // seconds
-    const std::uint64_t ns_part = earliest_fpga_tick_time.tv_nsec; // sub-second
-    const std::string abs_idx_str = fmt::format("{:010}", abs_file_idx);
-    buf << "vis_" << abs_idx_str << "_"
-        << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S");
-    // Include nanosecond suffix to avoid collisions for sub-second file windows
-    buf << "_" << std::setw(9) << std::setfill('0') << ns_part;
-    buf << ".h5";
+    if (file_mode == CHIME) {
+        // TODO: This isn't tested, and is a modification of the original CHIME naming scheme.
+        // CHIME files are named by an integer indicating the start time of the chunk, relative
+        // to the start of the acquisition. Here we modify that slightly, to 9 digits, and
+        // set it to be seconds since the start of the instrument.
+        timespec instrument_start_time = Telescope::instance().to_time(0);
+        auto elapsed_sec = earliest_fpga_tick_time.tv_sec - instrument_start_time.tv_sec;
+        buf << std::setw(9) << elapsed_sec; // Raw seconds since , buffered by 9 0's
+        // Include frequency info (0000 for full band)
+        buf << "_0000.h5";
+    } else {
+        // Construct final filename based on earliest time and abs_file_idx
+        std::time_t time_t_format = earliest_fpga_tick_time.tv_sec;    // seconds
+        const std::uint64_t ns_part = earliest_fpga_tick_time.tv_nsec; // sub-second
+        const std::string abs_idx_str = fmt::format("{:010}", abs_file_idx);
+        buf << "vis_" << abs_idx_str << "_"
+            << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT_%H%M%S");
+        // Include nanosecond suffix to avoid collisions for sub-second file windows
+        buf << "_" << std::setw(9) << std::setfill('0') << ns_part;
+        buf << ".h5";
+    }
 
     const std::string basename = buf.str();
     std::filesystem::path final_path = std::filesystem::path(base_dir) / basename;

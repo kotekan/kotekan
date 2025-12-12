@@ -19,8 +19,8 @@
 {% set sampling_rate_MHz = 3.2e3 %}
 {% set fft_length = 16384 %}
 {% set nyquist_zone = 1 %}
-{% set df_MHz = (sampling_rate_MHz / fft_length) * (1 if (nyquist_zone % 2) == 1 else -1) %}
-{% set freq0_MHz = (nyquist_zone // 2) * sampling_rate_MHz %}
+{% set df_MHz = (sampling_rate_MHz / fft_length) %}
+{% set freq0_MHz = 0 %}
 
 # Science band narrowed to just the simulated freq_ids above
 {% set science_min_freq_MHz = freq0_MHz + df_MHz * (freq_ids_list | first) %}
@@ -92,7 +92,7 @@ num_polarizations: 2
 num_dishes: {{ num_dishes }}
 num_elements: num_polarizations * {{ num_dishes }}
 num_local_freq: {{ num_local_freq }}
-
+num_ev_to_calculate: 2
 
 GIGA: 1000000000
 start_time_s: 1760000000 # ~ 2025-10-09
@@ -111,14 +111,6 @@ telescope:
   inst_grid_y_axis: [0.0, 1.0, 0.0]
   inst_dish_alt_axis: [1.0, 0.0, 0.0]
   inst_dish_vert_axis: [0.0, 0.0, 1.0]
-  dish_positions: [
-    [0.0, 0.0, 0.0],
-    [6.3, 0.0, 0.0],
-    [0.0, 8.4, 0.0],
-    [6.3, 8.4, 0.0],
-    [151.0, 0.0, 0.0],
-    [0.0, 204.0, 0.0],
-    [151.0, 204.0, 0.0]]
   dish_inputs: []
   num_dishes_x: 10
   num_dishes_y: 10
@@ -199,42 +191,42 @@ n2_buffer:
 
 n2_eigen_buffer:
     kotekan_buffer: N2
-    num_ev: 2
+    num_ev: num_ev_to_calculate
     vis_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_split_1:
     kotekan_buffer: N2
-    num_ev: 2
+    num_ev: num_ev_to_calculate
     vis_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_split_2:
     kotekan_buffer: N2
-    num_ev: 2
+    num_ev: num_ev_to_calculate
     vis_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_recv_buffer_1:
     kotekan_buffer: N2
-    num_ev: 2
+    num_ev: num_ev_to_calculate
     vis_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_recv_buffer_2:
     kotekan_buffer: N2
-    num_ev: 2
+    num_ev: num_ev_to_calculate
     vis_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_merge_buffer:
     kotekan_buffer: N2
-    num_ev: 2
+    num_ev: num_ev_to_calculate
     vis_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
@@ -426,7 +418,7 @@ n2_accumulate:
 # Add eigen calculation
 
 eigencalc:
-  num_ev: 2
+  num_ev: num_ev_to_calculate
   kotekan_stage: EigenVisIter
   cpu_affinity: [4]
   log_level: debug
@@ -525,7 +517,7 @@ hdf5_N2_write_final:
     blocksize_f: {{ num_frequencies }}
     blocksize_t: 5
     late_frame_grace_seconds: 30
-    num_ev: 2
+    num_ev: num_ev_to_calculate
     vis_layout: "FullUpperTri"
     num_file_t: 10
 

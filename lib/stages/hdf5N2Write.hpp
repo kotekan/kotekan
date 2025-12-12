@@ -200,6 +200,11 @@ public:
  * arrive. Flushes always write the full time range for the file; any missing frames
  * remain default/zero-valued in the output arrays.
  *
+ * File naming is based on the earliest timestamp of any frame in the file, combined with the
+ * absolute file index, vis_<abs_file_idx>_YYYYMMDDHHMMSS_Nanoseconds.h5. Partial files are
+ * initially written with a .partial suffix in the partial directory, then renamed to their
+ * final name once finalized.
+ *
  * @par Buffers
  * @buffer in_buf  Input visibility buffer
  *     @buffer_format VisBuffer
