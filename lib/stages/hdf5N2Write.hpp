@@ -203,6 +203,16 @@ public:
     inline size_t idx_ft(size_t f, size_t t) const {
         return num_file_t * f + t; // (f, t)
     }
+
+    /// Get the number of added frames (ie. (f, t) pairs)
+    inline size_t get_added_count() const {
+        return added_count;
+    }
+
+    /// Get the number of added frames (ie. (f, t) pairs)
+    inline size_t get_expected_count() const {
+        return num_file_t * num_file_f;
+    }
 };
 
 /**

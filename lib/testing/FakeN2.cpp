@@ -165,8 +165,10 @@ void FakeN2::main_thread() {
             meta->nfreq = freq.size();
             // Set the frequency index
             meta->freq_id = f;
+            // Set the physical frequency
+            meta->freq_MHz = tel.to_freq_MHz(f);
             // Set the time index
-            meta->abs_time_idx = t;
+            meta->abs_time_idx = frame_count + t;
             // Set the vis matrix layout
             meta->vis_layout = n2_layout;
 
@@ -176,6 +178,10 @@ void FakeN2::main_thread() {
             meta->frame_length_fpga_ticks = delta_seq;
             // Set the time
             meta->frame_start_time_ns = time_ns + t * delta_ns;
+            // Set number of valid ticks (default to all)
+            meta->n_valid_fpga_ticks = delta_seq;
+            // Set number of rfi ticks (default to 0)
+            meta->n_rfi_fpga_ticks = 0;
 
             DEBUG("Output frame seq={:d} time_ns={:d}", meta->fpga_start_tick,
                   meta->frame_start_time_ns);
@@ -262,6 +268,7 @@ void FakeN2::fill_non_vis(N2FrameView& frame) {
         frame.eval[i] = i;
     }
     frame.erms = 1.0;
+    frame.emethod = N2EigenMethod::none;
 
     // Set weights
     int ind = 0;

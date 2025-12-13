@@ -48,6 +48,7 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
+#include <waitingForMaxFrames.hpp>     // for waiting_for_max_frames
 
 using namespace HighFive;
 
@@ -627,6 +628,8 @@ bool N2FileData::flush_to_disk() {
     if (!h5_file)
         return false;
 
+    DEBUG_NON_OO("hdf5N2Write: Writing to {}", partial_filepath);
+
     std::string flags_group_prefix = file_mode == CHIME ? "/flags" : "";
 
     // Add and write configs in configTracker
@@ -739,6 +742,9 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     if (_buffer->buffer_type != "N2") {
         FATAL_ERROR("Input buffer must be a N2-type buffer.");
     }
+
+    if (max_frames >= 0)
+        ++waiting_for_max_frames;
 }
 
 hdf5N2Write::~hdf5N2Write() {}
@@ -815,6 +821,9 @@ bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
     }
     _clear_open_file_metrics(filedata);
     _unfinalized_file_metric.labels({abs_idx, filedata.partial_filepath}).set(0.0);
+
+    INFO_NON_OO("hdf5N2Write: Wrote final file {}: {}", abs_idx, *ds_filename);
+
     return true;
 }
 
@@ -906,7 +915,7 @@ void hdf5N2Write::main_thread() {
     const double start_time = mono_time_s(); // for logging elapsed time
     N2::frameID in_frame_id(_buffer);        // Input frame ID tracker
     int frame_counter = 0;                   // Count of frames written
-
+                                             
     /// file data for writing (multiple may be open simultaneously)
     /// Keyed by absolute file id = absolute frame index / _num_file_t
     std::map<size_t, std::unique_ptr<N2FileData>> filedata;
@@ -938,7 +947,7 @@ void hdf5N2Write::main_thread() {
         // Start timer
         const double frame_recv_time = mono_time_s();
         const double total_elapsed_time = frame_recv_time - start_time;
-        INFO("Received buffer {} frame {} (duration_s {})", unique_name, in_frame_id,
+        INFO("Received buffer {} frame {} (duration_s {})", buffer->buffer_name, in_frame_id,
              total_elapsed_time);
 
         const std::uint64_t file_t_index = fv.abs_time_idx % _num_file_t;
@@ -990,6 +999,8 @@ void hdf5N2Write::main_thread() {
         }
 
         // Attempt to add frame to dataset
+        DEBUG("Adding frame (t_idx={}, freq_id={}) to file {} slot (t={})",
+                fv.abs_time_idx, fv.freq_id, abs_file_idx, t_in_file);
         auto add_status =
             N2FileData_ptr->add_frame(fv, file_t_index); // performs error checking internally.
         if (add_status != N2FileData::AddFrameStatus::Success) {
@@ -1017,6 +1028,8 @@ void hdf5N2Write::main_thread() {
             _grace_finalize_files(filedata, nullptr);
             continue;
         }
+        DEBUG("File {} has {} of {} slots full.", abs_file_idx,
+                N2FileData_ptr->get_added_count(), N2FileData_ptr->get_expected_count());
         N2FileData_ptr->last_update_wall_s = frame_recv_time;
         _update_file_metrics(*N2FileData_ptr);
 
@@ -1048,7 +1061,6 @@ void hdf5N2Write::main_thread() {
         if (_max_frames >= 0 && frame_counter + 1 >= _max_frames) {
             WARN("Processed {} frames with average write time {}, shutting down Kotekan",
                  frame_counter + 1, avg_write_time);
-            exit_kotekan(CLEAN_EXIT);
             break;
         }
         frame_counter++;
@@ -1066,5 +1078,16 @@ void hdf5N2Write::main_thread() {
     }
     filedata.clear();
 
+    // Not quite thread-safe
+    if (buffer->get_num_consumers() > 1)
+        buffer->unregister_consumer(unique_name);
+    
+    if (max_frames >= 0) {
+        if (--waiting_for_max_frames == 0) {
+            WARN("Shutting down Kotekan");
+            exit_kotekan(CLEAN_EXIT);
+        }
+    }
+    
     DEBUG("exiting");
 }

@@ -25,6 +25,7 @@
 #include <deque>      // for deque
 #include <functional> // for function
 #include <optional>   // for optional
+#include <random>     // for mt19937
 #include <stddef.h>   // for size_t
 #include <stdint.h>   // for uint32_t
 #include <string>     // for string
@@ -303,8 +304,11 @@ private:
     double stokes_Q;
     double stokes_U;
     double stokes_V;
+    double spectral_index;
     double noise_var;
+    double beam_fwhm_300MHz_deg;
     uint32_t n_rfi_ticks;
     uint32_t n_lost_ticks;
+    std::mt19937 rng;
 };
 #endif // FAKE_VIS_PATTERN

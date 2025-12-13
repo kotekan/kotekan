@@ -158,6 +158,10 @@ void rawFileWrite::main_thread() {
 
         frame_id = (frame_id + 1) % buf->num_frames;
     }
+   
+    // Not quite thread-safe
+    if (buf->get_num_consumers() > 1)
+        buf->unregister_consumer(unique_name);
 
     DEBUG("Exiting");
 }

@@ -22,6 +22,7 @@
 
 #include <map>       // for map
 #include <memory>    // for shared_ptr, __shared_ptr_access, weak_ptr
+#include <random>     // for mt19937
 #include <stdexcept> // for invalid_argument
 #include <tuple>     // for get
 #include <vector>    // for vector
@@ -474,9 +475,16 @@ PointSourceVisPattern::PointSourceVisPattern(kotekan::Config& config, const std:
     stokes_Q = config.get_default<double>(path, "stokes_Q", 0.0);
     stokes_U = config.get_default<double>(path, "stokes_U", 0.0);
     stokes_V = config.get_default<double>(path, "stokes_V", 0.0);
+
     noise_var = config.get_default<double>(path, "noise_var", 0.01);
+    beam_fwhm_300MHz_deg = config.get_default<double>(path, "beam_FWHM_300MHz_deg", 10.0);
     n_rfi_ticks = config.get_default<uint32_t>(path, "n_rfi_ticks", 0);
     n_lost_ticks = config.get_default<uint32_t>(path, "n_lost_ticks", 0);
+    int seed = config.get_default<int>(path, "seed", 12345);
+    spectral_index = config.get_default<double>(path, "spectral_index", 0.0);
+
+    rng = std::mt19937(seed);
+    rng();
 }
 
 void PointSourceVisPattern::fill(VisFrameView& frame) {
@@ -498,22 +506,17 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
     double f = 1e6 * tel.to_freq_MHz(frame.freq_id);
     double lambda = C / f;
 
-    /*
-    n[0] = 0.0;
-    n[1] = 0.0;
-    n[2] = 1.0;
-    */
 
     INFO("Making fake vis at t: {:d} s + {:d} ns", time.tv_sec, time.tv_nsec);
-    INFO("     telescope dt_ns: {}", tel.seq_length_nsec());
     INFO("          start tick: {}", std::get<0>(frame.time));
-    INFO("          Frame time: {:d} ns",
+    DEBUG("     telescope dt_ns: {}", tel.seq_length_nsec());
+    DEBUG("          Frame time: {:d} ns",
          std::get<1>(frame.time).tv_sec * 1000000000 + std::get<1>(frame.time).tv_nsec);
-    INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
-    INFO("                   ERA: {:.10f} deg", eop.ERA_deg);
-    INFO("                   xp: {:.10f} arcsec", eop.xp_as);
-    INFO("                   yp: {:.10f} arcsec", eop.yp_as);
-    INFO("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
+    DEBUG("                   f: {:d} = {:e} Hz", frame.freq_id, f);
+    DEBUG("                   ERA: {:.10f} deg", eop.ERA_deg);
+    DEBUG("                   xp: {:.10f} arcsec", eop.xp_as);
+    DEBUG("                   yp: {:.10f} arcsec", eop.yp_as);
+    DEBUG("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
 
     int ind = 0;
     for (uint32_t el_i = 0; el_i < num_elements; el_i++) {
@@ -577,42 +580,31 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     std::array<double, 3> n_point_topo = tel.vec_dish_to_topocen(n_point_dish);
     std::array<double, 3> n_point_grid = tel.vec_topocen_to_grid(n_point_topo);
 
-    double theta_sep =
-        acos(n_point_grid[0] * n[0] + n_point_grid[1] * n[1] + n_point_grid[2] * n[2]);
-    double beam_width = 2.0 * M_PI / 180.0;
-    double beam_fac = exp(-0.5 * (theta_sep * theta_sep) / (beam_width * beam_width));
-
     double f = tel.to_freq_MHz(frame.freq_id);
     double lambda = C / (1e6 * f);
 
-    frame._metadata->freq_MHz = f;
+    double theta_sep =
+        acos(n_point_grid[0] * n[0] + n_point_grid[1] * n[1] + n_point_grid[2] * n[2]);
+    double beam_fwhm = (beam_fwhm_300MHz_deg * M_PI/180) * 300.0/f;
+    double beam_width = (beam_fwhm) / sqrt(8 * log(2));
+    double beam_fac = exp(-0.5 * (theta_sep * theta_sep) / (beam_width * beam_width));
+
+    double spec_fac = pow(f/300.0, spectral_index);
+
     frame._metadata->time_center_eop = eop;
-    frame._metadata->bin_eop = eop;
 
-    struct EOP bin_start_eop = tel.get_EOP_at_time(tel.to_time(frame.fpga_start_tick));
-    frame._metadata->bin_start_ERA_deg = bin_start_eop.ERA_deg;
-    frame._metadata->bin_start_LAST = -1;
+    std::normal_distribution<double> std_norm(0.0, 1.0);
 
-    struct EOP bin_end_eop =
-        tel.get_EOP_at_time(tel.to_time(frame.fpga_start_tick + frame.frame_length_fpga_ticks));
-    frame._metadata->bin_end_ERA_deg = bin_end_eop.ERA_deg;
-    frame._metadata->bin_end_LAST = -1;
-
-    /*
-    n[0] = 0.0;
-    n[1] = 0.0;
-    n[2] = 1.0;
-    */
 
     INFO("Making fake vis at t: {:d} s + {:d} ns", time.tv_sec, time.tv_nsec);
-    INFO("     telescope dt_ns: {}", tel.seq_length_nsec());
     INFO("          start tick: {}", frame.fpga_start_tick);
-    INFO("          Frame time: {:d} ns", frame.frame_start_time_ns);
-    INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
-    INFO("                   ERA: {:.10f} deg", eop.ERA_deg);
-    INFO("                   xp: {:.10f} arcsec", eop.xp_as);
-    INFO("                   yp: {:.10f} arcsec", eop.yp_as);
-    INFO("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
+    DEBUG("     telescope dt_ns: {}", tel.seq_length_nsec());
+    DEBUG("          Frame time: {:d} ns", frame.frame_start_time_ns);
+    DEBUG("                   f: {:d} = {:e} Hz", frame.freq_id, f);
+    DEBUG("                   ERA: {:.10f} deg", eop.ERA_deg);
+    DEBUG("                   xp: {:.10f} arcsec", eop.xp_as);
+    DEBUG("                   yp: {:.10f} arcsec", eop.yp_as);
+    DEBUG("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
 
     int ind = 0;
     for (uint32_t el_i = 0; el_i < num_elements; el_i++) {
@@ -630,7 +622,6 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
                            * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]
                               + (pos_i[2] - pos_j[2]) * n[2])
                            / lambda;
-
             double cp = cos(phase);
             double sp = sin(phase);
 
@@ -647,11 +638,17 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
                 power_r = stokes_U;
                 power_i = -stokes_V;
             }
-            power_r *= beam_fac;
-            power_i *= beam_fac;
+            power_r *= beam_fac * spec_fac;
+            power_i *= beam_fac * spec_fac;
+
+            // want variance of each = noise_var / 2
+            power_r += sqrt(0.5 * noise_var) * std_norm(rng);
+            power_i += sqrt(0.5 * noise_var) * std_norm(rng);
+
 
             frame.vis[ind] = {(float)(power_r * cp - power_i * sp),
                               (float)(power_r * sp + power_i * cp)};
+            frame.weight[ind] = 1.0 / noise_var;
             ind++;
         }
     }

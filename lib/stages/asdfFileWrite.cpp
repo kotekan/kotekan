@@ -461,10 +461,16 @@ public:
                 break;
             }
         } // for
+    
+        // Not quite thread-safe
+        if (buffer->get_num_consumers() > 1)
+            buffer->unregister_consumer(unique_name);
 
-        if (--waiting_for_max_frames == 0) {
-            WARN("Shutting down Kotekan");
-            exit_kotekan(CLEAN_EXIT);
+        if (max_frames >= 0) {
+            if (--waiting_for_max_frames == 0) {
+                WARN("Shutting down Kotekan");
+                exit_kotekan(CLEAN_EXIT);
+            }
         }
 
         DEBUG("exiting");
