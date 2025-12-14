@@ -31,7 +31,8 @@
  * @conf   out_buf                 String. Output buffer.
  * @conf   err_sq_lim              Float. Error limit for absorber truncation.
  * @conf   weight_fixed_precision  Float. Fixed precision for weight truncation.
- * @conf   data_fixed_precision    Float. Fixed precision for absorber truncation (if weights are zero).
+ * @conf   data_fixed_precision    Float. Fixed precision for absorber truncation (if weights are
+ * zero).
  *
  * @par Example
  * @code

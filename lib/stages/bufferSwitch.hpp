@@ -33,7 +33,8 @@
  * See bufferMerge for more docs.  Requires internal names.
  *
  * @par Buffers
- * @buffer in_bufs Array of named input buffers (internal_name: buffer_name), all same format/metadata.
+ * @buffer in_bufs Array of named input buffers (internal_name: buffer_name), all same
+ * format/metadata.
  * @buffer out_buf Output buffer receiving merged frames (producer).
  *
  * @conf in_bufs           Array. Input buffers with internal names (required).

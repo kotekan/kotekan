@@ -40,7 +40,8 @@
  * @conf out_buf  String. Output vis buffer (frames are copied through).
  *
  * @par Dataset states
- * Requires `inputs`, `products`, and `stack` to remain constant; exits if a `stackState` is present.
+ * Requires `inputs`, `products`, and `stack` to remain constant; exits if a `stackState` is
+ * present.
  *
  * @par Metrics
  * @metric kotekan_badinputflag_frames_total

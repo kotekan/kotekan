@@ -31,7 +31,8 @@
  * @conf prefix_host_rank      Bool. Default false. Prefix with host pool rank.
  * @conf frequency_pool_rank   Int. Default 0. Rank index for pool layouts.
  * @conf frequency_pool_size   Int. Default 1. Pool size for frequency distribution.
- * @conf max_frames            Int. Default -1. Stop after this many frames (per writer), -1 = unlimited.
+ * @conf max_frames            Int. Default -1. Stop after this many frames (per writer), -1 =
+ * unlimited.
  * @conf skip_writing          Bool. Default false. If true, skip actual file writes.
  * @conf exit_after_n_frames   Int. Deprecated alias for max_frames (may be present in code).
  * @conf exit_with_n_writers   Int. Default 0. Exit after this many writers finish.

@@ -49,7 +49,8 @@
  * @conf   num_elements     Int.    The number of elements (i.e. inputs) in the
  *                                 correlator data.
  * @conf   updatable_block  String. The full name of the updatable_block that
- *                                 will provide new flagging values (e.g. "/dynamic_block/flagging").
+ *                                 will provide new flagging values (e.g.
+ * "/dynamic_block/flagging").
  * @conf   num_kept_updates UInt.   Number of flag updates to retain in FIFO.
  *
  * @par Metrics
