@@ -46,6 +46,8 @@
  *         @buffer_format VisBuffer structured.
  *         @buffer_metadata VisMetadata
  *
+ * @conf  in_buf               String. Input GPU buffer name.
+ * @conf  out_buf              String. Output VisBuffer name (main vis dataset).
  * @conf  samples_per_data_set  Int. The number of samples each GPU buffer has
  *                              been integrated for.
  * @conf  num_gpu_frames        Int. The number of GPU frames to accumulate over.
@@ -71,11 +73,38 @@
  *                              Default 0..1023.
  * @conf  max_age               Float. Drop frames later than this number of seconds.
  *                              Default is 60.0
+ * @conf  gating                Object. Optional map of gate name -> {mode, buf} to create
+ *                              additional gated outputs.
  *
  * @par Metrics
  * @metric  kotekan_visaccumulate_skipped_frame_total
  *      The number of frames skipped entirely because they were under the
  *      low_sample_fraction, or too old.
+ *
+ * @par Dataset states
+ * Registers @c timeState, @c freqState, @c inputState, @c prodState, and gateState/output
+ * dataset IDs; requires GPU metadata (chimeMetadata) on input.
+ *
+ * @par Example
+ * @code
+ * visAccumulate:
+ *   in_buf: gpu_vis
+ *   out_buf: vis_int
+ *   samples_per_data_set: 49152
+ *   num_gpu_frames: 4
+ *   num_elements: 2048
+ *   num_freq_in_frame: 16
+ *   block_size: 16
+ *   input_reorder: [[0,0,"ant0"], [1,1,"ant1"]]
+ *   low_sample_fraction: 0.01
+ *   instrument_name: chime
+ *   freq_ids: [0,1,2,3]
+ *   max_age: 60.0
+ *   gating:
+ *     cal0:
+ *       mode: simple
+ *       buf: vis_gate0
+ * @endcode
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte
  */

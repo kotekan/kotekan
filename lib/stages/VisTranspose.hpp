@@ -26,6 +26,30 @@
  * @brief Stage to transpose raw visibility data
  *
  * This class inherits from the Transpose base class and transposes raw visibility data.
+ *
+ * @par Buffers
+ * @buffer in_buf  Input vis buffer.
+ *     @buffer_format VisBuffer structured
+ *     @buffer_metadata VisMetadata
+ * @buffer out_buf Output buffer for transposed chunks (handled by Transpose base).
+ *     @buffer_format VisBuffer structured
+ *     @buffer_metadata VisMetadata
+ *
+ * @conf in_buf           String. Input buffer.
+ * @conf out_buf          String. Output buffer.
+ * @conf base_dir         String. Output directory for HDF5.
+ * @conf file_name        String. Base filename.
+ * @conf frames_per_file  Int. Frames per file.
+ *
+ * @par Example
+ * @code
+ * VisTranspose:
+ *   in_buf: vis_raw
+ *   out_buf: vis_transposed
+ *   base_dir: /data/vis
+ *   file_name: vis
+ *   frames_per_file: 100
+ * @endcode
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
 class VisTranspose : public Transpose {

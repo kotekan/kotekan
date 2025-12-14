@@ -32,9 +32,20 @@
  * @buffer in_buf Input kotekan buffer
  *     @buffer_format Any
  *     @buffer_metadata Any
- * @conf   len   Int. the amount of bindary data in bytes to return from the
- *               front of the latest frame. Default the frame size of @c in_buf
- *               Note if set to zero, this will be set to frame size of @c in_buf
+ *
+ * @conf   in_buf String. Buffer to inspect.
+ * @conf   len    Int. Bytes to return from the start of the latest frame (0 = full frame).
+ *
+ * @par REST
+ * @restendpoint GET /inspect_frame/<in_buf>  Returns cached binary data from latest frame copy.
+ *
+ * @par Example
+ * @code
+ * restInspectFrame:
+ *   in_buf: vis_in
+ *   len: 1024
+ * # GET /inspect_frame/vis_in
+ * @endcode
  *
  * @warning This stage makes a copy of the data in each and every frame ( upto @c len ).
  *          So it should not be used in places where this extra memory copy would be

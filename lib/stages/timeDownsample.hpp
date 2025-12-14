@@ -34,12 +34,22 @@
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
- * @conf  num_samples  Int. The number of time frames to average.
- * @conf  max_age      Float. How old can a frame be in seconds before it is dropped.
- *                     Default is 120 (i.e. two minutes).
+ * @conf  in_buf      String. Input visibility buffer (single frequency).
+ * @conf  out_buf     String. Output downsampled buffer.
+ * @conf  num_samples Int. Number of time frames to average together.
+ * @conf  max_age     Float (default 120). Max age in seconds before a frame is dropped.
  *
  * @metric  kotekan_timedownsample_skipped_frame_total
  *      The number of frames skipped entirely because they were too old.
+ *
+ * @par Example
+ * @code
+ * timeDownsample:
+ *   in_buf: vis_in
+ *   out_buf: vis_slow
+ *   num_samples: 4
+ *   max_age: 120
+ * @endcode
  *
  * @author  Tristan Pinsonneault-Marotte
  *

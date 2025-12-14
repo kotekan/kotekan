@@ -56,6 +56,29 @@
  * @metric kotekan_baselinecompression_frame_total
  *      Number of frames seen by each thread.
  *
+ * @par Buffers
+ * @buffer in_buf  Input visibility buffer (VisBuffer with VisMetadata), consumer.
+ * @buffer out_buf Output compressed visibility buffer (VisBuffer), producer.
+ *
+ * @conf in_buf          String. Input buffer.
+ * @conf out_buf         String. Output buffer.
+ * @conf stack_type      String. Stacking definition name (registered in stack_type_defs).
+ * @conf exclude_inputs  Array[uint]. Inputs to exclude from compression.
+ * @conf num_threads     Int. Default 1. Number of compression threads.
+ *
+ * @par Dataset states
+ * Requires @c inputState and @c prodState on input; adds @c stackState on output.
+ *
+ * @par Example
+ * @code
+ * baselineCompression:
+ *   in_buf: vis_uncompressed
+ *   out_buf: vis_compressed
+ *   stack_type: default
+ *   exclude_inputs: [0,1]
+ *   num_threads: 2
+ * @endcode
+ *
  * @author Richard Shaw
  */
 class baselineCompression : public kotekan::Stage {

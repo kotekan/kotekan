@@ -1,0 +1,5 @@
+*******************
+configTrackerWriter
+*******************
+
+.. doxygenclass:: configTrackerWriter

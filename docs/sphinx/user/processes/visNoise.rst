@@ -1,0 +1,5 @@
+********
+visNoise
+********
+
+.. doxygenclass:: visNoise

@@ -27,11 +27,21 @@
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf   num_freq               Int. Number of time samples to sum.
- * @conf   dest_port              Int. Number of time samples to sum.
- * @conf   dest_server_ip         Int. Number of time samples to sum.
+ * @conf   in_buf           String. Input buffer.
+ * @conf   num_freq         Int. Number of frequencies in each VDIF packet.
+ * @conf   dest_port        Int. Destination UDP port.
+ * @conf   dest_server_ip   String. Destination IP.
  *
  * @note    Hasn't been tested lately, should confirm this still works!
+ *
+ * @par Example
+ * @code
+ * streamSingleDishVDIF:
+ *   in_buf: vdif_in
+ *   num_freq: 1024
+ *   dest_port: 12001
+ *   dest_server_ip: 239.0.0.1
+ * @endcode
  *
  * @author Andre Renard
  *

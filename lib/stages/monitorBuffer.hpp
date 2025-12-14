@@ -39,6 +39,18 @@
  * @conf clean_exit_after_frames Int, default -1. If > 0 the stage registers as a lightweight
  *                          consumer, counts frames on each buffer, and triggers a clean exit
  *                          once every monitored buffer has seen at least this many frames.
+ * @conf wait_for_first_frame Bool, default true. Start monitoring only after first frame arrives.
+ *
+ * @par Example
+ * @code
+ * monitorBuffer:
+ *   bufs: [vis_in, flags_in]
+ *   timeout: 60
+ *   fill_threshold: 0.9
+ *   graceful_shutdown: true
+ *   clean_exit_after_frames: -1
+ *   wait_for_first_frame: true
+ * @endcode
  */
 class monitorBuffer : public kotekan::Stage {
 public:

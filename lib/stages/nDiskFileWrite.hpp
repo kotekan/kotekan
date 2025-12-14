@@ -32,13 +32,13 @@
  *  @buffer_format Array of VDIF frames.
  *  @buffer_metadata none
  *
- * @conf num_disks      Int , the number of drives to read from
- * @conf disk_base      String, the path to the mounted drives
- * @conf disk_set       String, the disk name.
- * @conf write_to_disk  Bool, whether to actually save, alternately operating in dummy mode
- * @conf instrument_name String, used in filenames and stored to metadata text file.
- * @conf write_metadata_and_gains  Bool, Default true.  Flag to control if VDIF/ARO style gains
- *                                 and metadata are copied to the acquisition folder.
+ * @conf in_buf                 String. Input buffer with VDIF frames.
+ * @conf num_disks              Int. Number of drives to write to.
+ * @conf disk_base              String. Path to the mounted drives (e.g. `/drives/`).
+ * @conf disk_set               String. Disk set prefix (e.g. `D`).
+ * @conf write_to_disk          Bool. If false, run in dummy mode without writing.
+ * @conf instrument_name        String. Used in filenames and metadata text file.
+ * @conf write_metadata_and_gains Bool (default true). Copy metadata/gains into acquisition folder.
  *
  * @todo    Make more general, to support more than just ICEboard-generated data.
  *
@@ -73,6 +73,18 @@
  * - /drives/D/2/20170805T155218Z_aro_vdif/0000002.vdif
  * - /drives/D/2/20170805T155218Z_aro_vdif/0000005.vdif
  * - /drives/D/2/20170805T155218Z_aro_vdif/0000008.vdif
+ *
+ * @par Example
+ * @code
+ * nDiskFileWrite:
+ *   in_buf: vdif_in
+ *   num_disks: 3
+ *   disk_base: /drives/
+ *   disk_set: D
+ *   instrument_name: aro
+ *   write_to_disk: true
+ *   write_metadata_and_gains: true
+ * @endcode
  *
  * @author Andre Renard
  */

@@ -13,6 +13,44 @@
 #include <stdint.h> // for uint8_t
 #include <string>   // for string, basic_string
 
+/**
+ * @class fullPacketDump
+ * @brief Captures raw UDP packets from a network buffer and either writes them to disk or exposes
+ * them over REST.
+ *
+ * Reads frames from `network_in_buf` (typically raw packet captures). If `dump_to_disk` is true it
+ * writes each frame to `file_base/data_set/<host>_<link_id>_<seq>.pkt`. When `dump_to_disk` is
+ * false, the most recent frame (up to 100 packets) is cached and retrievable via
+ * POST `/unique_name/packet_grab/<link_id>` with JSON `{"num_packets": N}`; the endpoint returns
+ * the first N packets of the cached frame. No output buffers are produced.
+ *
+ * @par Buffers
+ * @buffer network_in_buf Raw network packet buffer.
+ *     @buffer_format uint8_t payload (UDP packets concatenated)
+ *     @buffer_metadata none
+ *
+ * @conf network_in_buf  String. Input buffer name.
+ * @conf link_id         Int. Logical link index (used in REST path and filename).
+ * @conf udp_packet_size Int. Size of each UDP packet in bytes.
+ * @conf dump_to_disk    Bool. If true write frames to disk; otherwise cache for REST.
+ * @conf file_base       String. Base directory for output files (if dumping).
+ * @conf data_set        String. Subdirectory name under file_base (if dumping).
+ *
+ * @par REST
+ * @restendpoint POST /<unique_name>/packet_grab/<link_id> Body: `{"num_packets": N}`; returns
+ *              N packets from the latest frame when `dump_to_disk` is false.
+ *
+ * @par Example
+ * @code
+ * fullPacketDump:
+ *   network_in_buf: raw_net
+ *   link_id: 0
+ *   udp_packet_size: 4928
+ *   dump_to_disk: true
+ *   file_base: /data/packets
+ *   data_set: test_run
+ * @endcode
+ */
 class fullPacketDump : public kotekan::Stage {
 public:
     fullPacketDump(kotekan::Config& config, const std::string& unique_name,

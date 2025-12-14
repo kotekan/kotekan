@@ -1,0 +1,5 @@
+*************
+visAccumulate
+*************
+
+.. doxygenclass:: visAccumulate

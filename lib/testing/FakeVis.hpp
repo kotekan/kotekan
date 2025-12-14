@@ -67,9 +67,30 @@
  * @conf  sleep_after   Float. Sleep for this number of seconds after running
  *                      and before shutting down. Useful for allowing other
  *                      processes to finish. Default is 1s.
+ * @conf  in_buf        String. (ReplaceVis only) Input buffer to copy.
+ * @conf  out_buf       String. Output buffer name.
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.
+ *
+ * @par Dataset states
+ * If @c dataset_id is not provided, registers freq/input/prod states via datasetManager.
+ *
+ * @par Example
+ * @code
+ * FakeVis:
+ *   out_buf: vis_fake
+ *   num_elements: 2048
+ *   block_size: 16
+ *   num_ev: 0
+ *   freq_ids: [0,1,2,3]
+ *   mode: default
+ *   start_time: 0.0
+ *   cadence: 1.0
+ *   num_frames: -1
+ *   wait: true
+ *   zero_weight: false
+ * @endcode
  *
  * @author  Tristan Pinsonneault-Marotte
  *

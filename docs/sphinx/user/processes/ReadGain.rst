@@ -1,0 +1,5 @@
+********
+ReadGain
+********
+
+.. doxygenclass:: ReadGain

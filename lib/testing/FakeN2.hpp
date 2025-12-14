@@ -64,6 +64,29 @@
  * @conf  sleep_after   Float. Sleep for this number of seconds after running
  *                      and before shutting down. Useful for allowing other
  *                      processes to finish. Default is 1s.
+ * @conf  dataset_id    Int. Optional fixed dataset ID (skip registering states).
+ * @conf  randomize     Bool. Default false. Randomize frame values in chunks.
+ * @conf  randomize_chunksize Int. Chunk size for randomization (default 5).
+ *
+ * @par Dataset states
+ * If @c dataset_id is not provided, registers freq/input/prod states via datasetManager.
+ *
+ * @par Example
+ * @code
+ * FakeN2:
+ *   out_buf: vis_fake
+ *   num_elements: 2048
+ *   num_ev: 0
+ *   freq_ids: [0,1,2,3]
+ *   num_total_freq: 1024
+ *   mode: default
+ *   start_time: 0.0
+ *   cadence: 1.0
+ *   num_frames: -1
+ *   wait: true
+ *   randomize: false
+ *   zero_weight: false
+ * @endcode
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.

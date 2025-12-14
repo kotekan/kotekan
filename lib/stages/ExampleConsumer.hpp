@@ -17,6 +17,14 @@
  *      @buffer_format any
  *      @buffer_metadata any
  *
+ * @conf in_buf String. Input buffer to print.
+ *
+ * @par Example
+ * @code
+ * ExampleConsumer:
+ *   in_buf: test_out
+ * @endcode
+ *
  */
 class ExampleConsumer : public kotekan::Stage {
 public:

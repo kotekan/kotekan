@@ -32,12 +32,12 @@
  * 	@buffer_format Array of unsigned char, just copies the file.
  * 	@buffer_metadata none
  *
- * @conf num_disks		Int , the number of drives to read from (Example: 10)
- * @conf disk_base		String, the path to the mounted drives (Example: '/drives/')
- * @conf disk_set		String, the disk name (Example: 'D')
- * @conf capture		String, the subfolder of the current data set (Example:
- * 20170805T155218Z_aro_vdif)
- * @conf starting_file_index 	Int, an offset for where to start in the data set (Example: 10232)
+ * @conf out_buf              String. Output buffer name.
+ * @conf num_disks            Int. Number of drives to read from.
+ * @conf disk_base            String. Path to mounted drives (e.g. `/drives/`).
+ * @conf disk_set             String. Disk set prefix (e.g. `D`).
+ * @conf capture              String. Subfolder of current data set.
+ * @conf starting_file_index  Int. Starting file index offset.
  *
  * @warning 	Not getting the file format correct will usually result in a segmentation fault. It
  * can be hard to figure out what is happening, so be extra cautious.
@@ -73,6 +73,17 @@
  * - /drives/D/2/20170805T155218Z_aro_vdif/0000002.vdif
  * - /drives/D/2/20170805T155218Z_aro_vdif/0000005.vdif
  * - /drives/D/2/20170805T155218Z_aro_vdif/0000008.vdif
+ *
+ * @par Example
+ * @code
+ * nDiskFileRead:
+ *   out_buf: vdif_in
+ *   num_disks: 3
+ *   disk_base: /drives/
+ *   disk_set: D
+ *   capture: 20170805T155218Z_aro_vdif
+ *   starting_file_index: 0
+ * @endcode
  *
  * @author Jacob Taylor
  */

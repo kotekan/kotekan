@@ -42,6 +42,9 @@
  *
  * @conf rfi_combined   Bool (default true). A flag indicating whether or not to combine data inputs
  * @conf sk_step        Int (default 256). The number of timesteps per kurtosis estimate
+ * @conf num_elements   Int. Number of elements.
+ * @conf num_local_freq Int. Number of local frequencies.
+ * @conf samples_per_data_set Int. Samples per frame.
  *
  * @author Jacob Taylor
  */

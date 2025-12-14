@@ -10,6 +10,12 @@
  *
  * @conf base_dir  String. Directory to write JSON files into. If it doesn't
  *                 exist, it will be created. Logs the absolute path.
+ *
+ * @par Example
+ * @code
+ * configTrackerWriter:
+ *   base_dir: /data/config_history
+ * @endcode
  */
 #ifndef CONFIG_TRACKER_WRITER_HPP
 #define CONFIG_TRACKER_WRITER_HPP

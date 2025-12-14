@@ -32,8 +32,16 @@
  *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
- * @conf  start_time_tolerance  int. Tolerance for the start time error in
- *                                   seconds. Default is 3.
+ * @conf  in_buf                String. Input buffer.
+ * @conf  start_time_tolerance  Int (default 3). Allowed change in derived start time (seconds)
+ *                              before exiting.
+ *
+ * @par Example
+ * @code
+ * countCheck:
+ *   in_buf: vis_in
+ *   start_time_tolerance: 3
+ * @endcode
  *
  * @author Mateus A Fandino
  */

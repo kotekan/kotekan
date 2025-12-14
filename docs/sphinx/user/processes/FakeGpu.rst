@@ -1,0 +1,5 @@
+*******
+FakeGpu
+*******
+
+.. doxygenclass:: FakeGpu

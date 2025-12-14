@@ -34,7 +34,17 @@
  *     @buffer_format Array of @c fftwf_complex
  *     @buffer_metadata none
  *
- * @conf   spectrum_length Int. Number of samples in the input spectrum. Defaults to 1024.
+ * @conf   in_buf          String. Input buffer name.
+ * @conf   out_buf         String. Output buffer name.
+ * @conf   spectrum_length Int. Number of samples in the input spectrum (default 1024).
+ *
+ * @par Example
+ * @code
+ * fftwEngine:
+ *   in_buf: volt_in
+ *   out_buf: fft_out
+ *   spectrum_length: 1024
+ * @endcode
  *
  * @todo    Add checking to make sure the input and output buffers' frames are
  *          appropriately sized, i.e. integer multiples of spectrum_length.

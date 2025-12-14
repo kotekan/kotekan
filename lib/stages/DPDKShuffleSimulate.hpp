@@ -14,6 +14,10 @@
  * @brief Simulates the 4-way DPDK shuffle for ICEBoard data
  *
  * Note this currently only simulates the data rate, not the actual data the ICEBoards generate
+ * and fills voltage/lost-sample buffers with zeros. Four voltage buffers are produced
+ * (`voltage_data_buf_0`..`3`) along with a lost-samples flag buffer; metadata (FPGA sequence and
+ * first packet time) are populated to look like live data. Frame timing is throttled to match
+ * the configured samples-per-frame and telescope sequence length.
  *
  * @par Buffers
  * @buffer voltage_data_buf_N The buffers to store the voltage data from the FPGAs
@@ -25,7 +29,20 @@
  *     @buffer_format uint8_t flags
  *     @buffer_metadata chimeMetadata
  *
- * @conf    samples_per_data_set  The number of samples in each frame.
+ * @conf    samples_per_data_set  Int. The number of samples in each frame.
+ * @conf    voltage_data_buf_<N>  String. Output voltage buffers for links N=0..3.
+ * @conf    lost_samples_buf      String. Output buffer for lost-sample flags.
+ *
+ * @par Example
+ * @code
+ * DPDKShuffleSimulate:
+ *   samples_per_data_set: 49152
+ *   voltage_data_buf_0: vol0
+ *   voltage_data_buf_1: vol1
+ *   voltage_data_buf_2: vol2
+ *   voltage_data_buf_3: vol3
+ *   lost_samples_buf: lost_samples
+ * @endcode
  *
  * @todo Add an option to generate actual simulated voltage data
  *

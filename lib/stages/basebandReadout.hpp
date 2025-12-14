@@ -52,6 +52,8 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  * @conf  num_frames_buffer     Int. Number of buffer frames to simultaneously keep
  *                              full of data. Should be few less than in_buf length.
  * @conf  num_local_freq        UInt. Number of frequencies in each GPU frame.
+ * @conf  in_buf                String. Input baseband buffer (ring).
+ * @conf  out_buf               String. Output buffer for dumps.
  *
  * @par Metrics
  * @metric kotekan_baseband_readout_total
@@ -65,6 +67,21 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  *         Indicator set to 1 when a per-frequency writeout is in progress, 0 otherwise
  * @metric kotekan_baseband_readout_sent_frames_total
  *         The count of baseband frames sent to the output buffer for transmission
+ *
+ * @par Files / Output
+ * Emits triggered baseband frames to @c out_buf (BasebandMetadata); data copied from ring buffer.
+ *
+ * @par Example
+ * @code
+ * basebandReadout:
+ *   in_buf: bb_ring
+ *   out_buf: bb_out
+ *   num_elements: 2048
+ *   samples_per_data_set: 49152
+ *   num_local_freq: 16
+ *   num_frames_buffer: 8
+ *   max_dump_samples: 1073741824
+ * @endcode
  *
  * @author Kiyoshi Masui, Davor Cubranic
  */

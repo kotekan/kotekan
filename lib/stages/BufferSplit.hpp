@@ -14,6 +14,9 @@
  *
  * Uses zero copy operations if this stage is the only consumer, if not it uses a deep copy.
  * This stage must be the only producer of the output buffers
+ * Frames are pulled from `in_buf` sequentially and pushed to each buffer in `out_bufs` in order,
+ * wrapping around until stop is requested. Metadata is passed through unchanged. If the input has
+ * multiple consumers, the swap falls back to a copy so downstream readers remain consistent.
  *
  * @par Buffers
  * @buffer in_buf The source buffer
@@ -23,6 +26,16 @@
  * @buffer out_bufs Array of buffers to fill with frames from in_buf
  *        @buffer_format any, but all must be the same type and match in_buf
  *        @buffer_metadata any, but all must be the same type match in_buf
+ *
+ * @conf in_buf   String. Input buffer to split.
+ * @conf out_bufs Array<String>. Output buffers to receive frames round-robin.
+ *
+ * @par Example
+ * @code
+ * BufferSplit:
+ *   in_buf: vis_in
+ *   out_bufs: [vis_copy0, vis_copy1, vis_copy2]
+ * @endcode
  *
  * @author Andre Renard
  */

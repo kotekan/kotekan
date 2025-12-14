@@ -32,6 +32,14 @@
  * @conf  array_shape  Vector of int.  Shape of the matrix in the buffer.  When given,
  *               we will convert the flat index back into the N-dimensional matrix index.
  *
+ * @par Example
+ * @code
+ * printSparse:
+ *   input_buf: sparse_flags
+ *   max_to_print: 20
+ *   array_shape: [4, 1024]
+ * @endcode
+ *
  * @author Dustin Lang
  */
 template<typename A_Type>

@@ -53,6 +53,17 @@
  * @conf samples_per_data_set  Int.  Number of samples per frame.
  * @conf sub_integration_ntime Int.  Number of samples to sum over for each N^2
  *      correlation matrix.
+ *
+ * @par Example
+ * @code
+ * gpuSimulateN2kCorr:
+ *   in_buf: volt_in
+ *   corr_out_buf: corr_out
+ *   num_elements: 2048
+ *   num_local_freq: 16
+ *   samples_per_data_set: 49152
+ *   sub_integration_ntime: 256
+ * @endcode
  */
 class gpuSimulateN2kCorr : public kotekan::Stage {
 public:

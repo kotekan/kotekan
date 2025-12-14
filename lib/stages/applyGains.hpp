@@ -64,6 +64,9 @@
  *                                  prevent discontinuities. Default is 5 minutes.
  * @conf   num_kept_updates Int.    The number of gain updates stored in a FIFO.
  * @conf   num_threads      Int.    Number of threads to run. Default is 1.
+ * @conf   in_buf           String. Input buffer name.
+ * @conf   out_buf          String. Output buffer name.
+ * @conf   broker_timeout   Double. Optional timeout for broker requests (seconds).
  *
  * @par Metrics
  * @metric kotekan_applygains_late_update_count The number of updates received
@@ -75,6 +78,28 @@
  * @metric kotekan_applygains_update_age_seconds The time difference in
  *     seconds between the current frame being processed and the time stamp of
  *     the gains update being applied.
+ *
+ * @par Updatable config
+ * @updatable_path updatable_block  JSON payload of gains keyed by frequency.
+ *
+ * @par Dataset states
+ * Requires @c freqState and @c inputState on input; updates dataset to include gainState.
+ *
+ * @par Example
+ * @code
+ * applyGains:
+ *   in_buf: vis_in
+ *   out_buf: vis_out
+ *   num_elements: 2048
+ *   updatable_block: "/dynamic/gains"
+ *   gains_dir: /data/gains
+ *   broker_host: calib.example.com
+ *   broker_port: 8090
+ *   read_from_file: false
+ *   tcombine: 300.0
+ *   num_kept_updates: 4
+ *   num_threads: 1
+ * @endcode
  *
  * @author Mateus Fandino, Tristan Pinsonneault-Marotte and Richard Shaw
  */

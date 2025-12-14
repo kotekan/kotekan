@@ -40,13 +40,25 @@
  *     @buffer_format Array of @c shorts
  *     @buffer_metadata none
  *
+ * @conf   out_buf     String. Output buffer to fill.
  * @conf   freq        Float (default 1420.0). LO tuning frequency, in MHz.
  * @conf   sample_bw   Float (default 2.5). Bandwidth to sample from the airspy, in MHz.
  * @conf   gain_lna    Int (default 5). Gain setting of the LNA, in the range 0-14.
  * @conf   gain_mix    Int (default 5). Gain setting of the mixer amplifier, from 0-15.
  * @conf   gain_if     Int (default 5). Gain setting of the IF amplifier, from 0-15.
- * @conf   biast_power Bool (default false). Whether or not to enable the 4.5V DC bias on the AirSpy
- * RF input.
+ * @conf   biast_power Bool (default false). Enable 4.5V DC bias on RF input if true.
+ *
+ * @par Example
+ * @code
+ * airspyInput:
+ *   out_buf: sdr_out
+ *   freq: 1420.0
+ *   sample_bw: 2.5
+ *   gain_lna: 5
+ *   gain_mix: 5
+ *   gain_if: 5
+ *   biast_power: false
+ * @endcode
  *
  * @warning Just realized that if things bog down and new 2 callbacks come while one is active,
  *          the order of the others will be undefined. This stage may produce out-of-order

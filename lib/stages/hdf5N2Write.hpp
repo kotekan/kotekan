@@ -211,10 +211,16 @@ public:
  *     @buffer_metadata N2Metadata
  *
  * @par Config
- * @conf base_dir           String. Directory to write into
- * @conf num_file_t         UInt. Number of time frames per file
- * @conf late_frame_grace_seconds  UInt. Grace period in seconds for late frames (default: 60)
- * @conf max_frames                Int.  Stop writing after this many frames (-1 = unlimited)
+ * @conf base_dir           String. Directory to write into.
+ * @conf num_file_t         UInt. Number of time frames per file.
+ * @conf late_frame_grace_seconds  UInt (default 60). Grace period for late frames.
+ * @conf max_frames                Int (default -1). Stop after this many frames (-1 = unlimited).
+ * @conf compression               String (default "none"). HDF5 compression filter.
+ * @conf compression_level         UInt (default 0). Compression level.
+ * @conf use_bitshuffle            Bool (default false). Enable bitshuffle filter.
+ * @conf blocksize_f               UInt. Frequency chunk size.
+ * @conf blocksize_p               UInt. Product chunk size.
+ * @conf blocksize_t               UInt. Time chunk size.
  *
  * @par Metrics
  * @metric kotekan_hdf5N2Write_write_time_seconds        Duration to write the last flush
@@ -230,6 +236,22 @@ public:
  * @metric kotekan_hdf5N2Write_finalize_failures_total   Counter of finalize failures {reason}
  * @metric kotekan_hdf5N2Write_unfinalized_file          Gauge=1 for files left partial/quarantined
  *{abs_file_idx, partial_path}
+ *
+ * @par Example
+ * @code
+ * hdf5N2Write:
+ *   in_buf: vis_n2
+ *   base_dir: /data/hdf5
+ *   num_file_t: 16
+ *   late_frame_grace_seconds: 60
+ *   max_frames: -1
+ *   compression: gzip
+ *   compression_level: 4
+ *   use_bitshuffle: false
+ *   blocksize_f: 1
+ *   blocksize_p: 64
+ *   blocksize_t: 16
+ * @endcode
  *
  * @note User-level documentation lives in docs/sphinx/user/processes/hdf5N2Write.rst.
  **/

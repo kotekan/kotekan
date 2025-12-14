@@ -34,8 +34,16 @@
  *  @buffer_format Array of complex uint32_t values.
  *  @buffer_metadata none
  *
- * @conf gpu_id         Int, used to generate the REST endpoint,
- *                      needed in case of multiple streams in a single kotekan stage.
+ * @conf in_buf         String. Input buffer to plot.
+ * @conf gpu_id         Int. Used to generate the REST endpoint (disambiguate multiple streams).
+ *
+ * @par Example
+ * @code
+ * pyPlotN2:
+ *   in_buf: vis_gpu0
+ *   gpu_id: 0
+ * # Trigger: POST /plot_corr_matrix/0
+ * @endcode
  *
  * @todo    Make the location of the python plotting script more robust / permanent.
  * @todo    Move config parsing to the constructor.

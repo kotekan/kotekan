@@ -1,0 +1,5 @@
+***********
+cudaProcess
+***********
+
+.. doxygenclass:: cudaProcess

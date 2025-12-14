@@ -1,0 +1,5 @@
+***********
+bufferDelay
+***********
+
+.. doxygenclass:: bufferDelay

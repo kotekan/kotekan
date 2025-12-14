@@ -27,20 +27,23 @@
  *     @buffer_format Array of flags uint8_t flags which are either 0 (unset) or 1 (set)
  *     @buffer_metadata chimeMetadata
  *
- * @conf  sample_size               Int. Default 2048.  The size of the time samples in @c out_buf
+ * @conf  out_buf                  String. Voltage/DPDK data buffer name (producer).
+ * @conf  lost_samples_buf         String. Lost-sample flags buffer (consumer).
+ * @conf  sample_size              Int. Default 2048.  Size in bytes of one time-sample block.
+ * @conf  duplicate_ls_buffer      Bool. Default false. Duplicate lost-sample buffer to outputs.
+ * @conf  out_lost_sample_buffers  Array[String]. Optional extra lost-sample buffers to fill.
+ * @conf  zero_value               Int. Default 0x88. 8-bit fill value for bad data.
  *
- * @conf  duplicate_ls_buffer       Bool. Default False. Whether or not to dupliate the lost
- * samples buf
- *
- * @conf  out_lost_sample_buffers   Buffers to hold the duplicated lost samples buffer. For
- * example: out_lost_sample_buffers:
- *                                        - lost_samples_buffer_0
- *                                        - lost_samples_buffer_1
- *                                        - lost_samples_buffer_2
- *                                        - lost_samples_buffer_3
- *
- * @conf  zero_value                Int Default 0x88  The 8-bit value to write overtop of bad data
- *                                    For offset encoded post PFB data this is 0x88
+ * @par Example
+ * @code
+ * zeroSamples:
+ *   out_buf: voltage_out
+ *   lost_samples_buf: lost_samples
+ *   sample_size: 2048
+ *   duplicate_ls_buffer: true
+ *   out_lost_sample_buffers: [ls_copy0, ls_copy1]
+ *   zero_value: 0x88
+ * @endcode
  *
  * @author Andre Renard
  */

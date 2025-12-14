@@ -572,6 +572,33 @@ int RawReader<T>::position_map(int ind) {
  * @class ensureOrdered
  * @brief Check frames are coming through in order and reorder them otherwise.
  *        Not used presently.
+ *
+ * Frames are buffered until time/freq indices are monotonic, using dataset
+ * timeState/freqState to map indices. Can optionally use chunk sizes to map
+ * chunked reads. Drops an error if required dataset states are missing.
+ *
+ * @par Buffers
+ * @buffer in_buf  Input visibility buffer (consumer)
+ *         @buffer_format VisBuffer
+ *         @buffer_metadata VisMetadata
+ * @buffer out_buf Output visibility buffer (producer), same format/metadata.
+ *
+ * @conf in_buf       String. Input buffer name.
+ * @conf out_buf      String. Output buffer name.
+ * @conf max_waiting  Int. Default 100. Maximum out-of-order frames to hold.
+ * @conf chunk_size   Array[int,int,int], optional. Chunk dims [freq, ev, time] for mapping.
+ *
+ * @par Dataset states
+ * Requires @c timeState and @c freqState on input dataset.
+ *
+ * @par Example
+ * @code
+ * ensureOrdered:
+ *   in_buf: vis_in
+ *   out_buf: vis_ordered
+ *   max_waiting: 200
+ *   chunk_size: [16,1,8]
+ * @endcode
  */
 class ensureOrdered : public kotekan::Stage {
 

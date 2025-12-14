@@ -1,0 +1,5 @@
+***********
+simVdifData
+***********
+
+.. doxygenclass:: simVdifData

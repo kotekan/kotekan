@@ -23,14 +23,31 @@
  * @brief Buffers updates to the bad input list.
  *
  * This engine reorders, inverts and generates a mask of bad inputs then stores the mask in a buffer
+ * whenever an update arrives via configUpdater.
  *
  * @par Buffers
  * @buffer out_buf Kotekan buffer of bad inputs.
- *     @buffer_format Array of @c uint8_t
+ *     @buffer_format Array of @c uint8_t, length = num_elements, 1 = good, 0 = bad
+ *     @buffer_metadata chordMetadata (used to set @c rfi_num_bad_inputs)
  *
- * @conf   updatable_config/bad_inputs  String.  String pointing to the location of the
- *                                      config block containing the following properties:
- *                                      "bad_inputs"  An array of bad inputs in cylinder order.
+ * @conf   num_elements                Int. Number of inputs (length of mask).
+ * @conf   input_reorder               Array. Optional cylinder->correlator mapping
+ *                                     (see @ref visUtil::parse_reorder_default).
+ * @conf   updatable_config/bad_inputs String. Path for configUpdater updates containing
+ *                                     {"bad_inputs":[...]} in cylinder order.
+ *
+ * @par REST/Updatable config
+ * @updatable_path updatable_config/bad_inputs
+ *
+ * @par Example
+ * @code
+ * bufferBadInputs:
+ *   num_elements: 2048
+ *   input_reorder: [[0]]
+ *   updatable_config:
+ *     bad_inputs: "/updatable_config/bad_inputs"
+ *   out_buf: bad_inputs_buf
+ * @endcode
  *
  * @author James Willis
  *

@@ -1,0 +1,5 @@
+*********
+HFBWriter
+*********
+
+.. doxygenclass:: HFBWriter

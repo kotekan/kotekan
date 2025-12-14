@@ -60,6 +60,7 @@ static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 b
  *        @buffer_format any
  *        @buffer_metadata any
  *
+ * @conf buf            String. Input buffer name.
  * @conf server_ip       String, the IP address of the server to send data too.
  * @conf server_port     Int, default 11024. The port number on the remote server.
  * @conf send_timeout    Int, default 20. The number of seconds
@@ -71,6 +72,7 @@ static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 b
  *                         to empty frames exceeds this value.  A value of 1.0 means only drop
  *                         frames if the connection is down, otherwise generate back-pressure
  *                         This setting has no effect if drop_frames is false
+ * @conf use_config_tracker Bool, default true. Include config-tracker header and hash updates.
  *
  * @par Metrics
  * @metric kotekan_buffer_send_dropped_frame_count

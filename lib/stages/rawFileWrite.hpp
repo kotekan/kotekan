@@ -18,15 +18,29 @@
  *     @buffer_format Any
  *     @buffer_metadata Any
  *
- * @conf base_dir  String. Directory to write into.
- * @conf file_name String. Base filename to write.
- * @conf file_ext  String. File extension.
- * @conf num_frames_per_file Int. No of frames to write into a single file.
- * @conf exit_after_n_files  Int. Stop writing after this many files, Default 0 = unlimited files.
+ * @conf in_buf              String. Input buffer.
+ * @conf base_dir            String. Directory to write into.
+ * @conf file_name           String. Base filename to write (numeric index appended).
+ * @conf file_ext            String. File extension.
+ * @conf num_frames_per_file Int. Number of frames per file.
+ * @conf exit_after_n_files  Int (default 0). Stop after this many files; 0 = unlimited.
+ * @conf prefix_hostname     Bool (default false). Prefix filename with hostname.
  *
  * @par Metrics
  * @metric kotekan_rawfilewrite_write_time_seconds
  *         The write time to write out the last frame.
+ *
+ * @par Example
+ * @code
+ * rawFileWrite:
+ *   in_buf: vis_in
+ *   base_dir: /data/raw
+ *   file_name: vis_dump
+ *   file_ext: raw
+ *   num_frames_per_file: 8
+ *   exit_after_n_files: 0
+ *   prefix_hostname: false
+ * @endcode
  *
  * @author Andre Renard
  **/

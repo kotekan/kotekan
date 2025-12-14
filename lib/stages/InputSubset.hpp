@@ -35,7 +35,21 @@
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
+ * @conf  in_buf  String. Input buffer.
+ * @conf  out_buf String. Output buffer.
  * @conf  inputs  List of ints. The channel IDs for the inputs to extract.
+ *
+ * @par Dataset states
+ * Requires @c inputState/prodState on input; registers new inputState/prodState and updates
+ * dataset IDs to match subsetted inputs/products (also subsets gains/eigenvectors).
+ *
+ * @par Example
+ * @code
+ * InputSubset:
+ *   in_buf: vis_in
+ *   out_buf: vis_inputs_subset
+ *   inputs: [0,2,5,9]
+ * @endcode
  *
  * @author Richard Shaw
  */

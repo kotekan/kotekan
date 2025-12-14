@@ -34,6 +34,20 @@
  * @conf  upchan_factor         Int.  Upchannelization factor.
  * @conf  zero_output           Bool. Zero out the array before filling it?  Useful when doing
  * one-hot sparse outputs.
+ * @conf  freq_gains            Float or Array[float]. Optional per-freq gains (default 1.0).
+ *
+ * @par Example
+ * @code
+ * gpuSimulateCudaUpchannelize:
+ *   in_buf: volt_in
+ *   out_buf: upch_out
+ *   num_dishes: 2048
+ *   num_local_freq: 16
+ *   samples_per_data_set: 49152
+ *   upchan_factor: 4
+ *   freq_gains: 1.0
+ *   zero_output: false
+ * @endcode
  */
 class gpuSimulateCudaUpchannelize : public kotekan::Stage {
 public:

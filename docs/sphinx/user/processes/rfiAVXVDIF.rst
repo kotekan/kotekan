@@ -1,0 +1,5 @@
+**********
+rfiAVXVDIF
+**********
+
+.. doxygenclass:: rfiAVXVDIF

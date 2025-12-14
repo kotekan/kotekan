@@ -32,12 +32,21 @@
  *
  * See bufferMerge for more docs.  Requires internal names.
  *
+ * @par Buffers
+ * @buffer in_bufs Array of named input buffers (internal_name: buffer_name), all same format/metadata.
+ * @buffer out_buf Output buffer receiving merged frames (producer).
+ *
+ * @conf in_bufs           Array. Input buffers with internal names (required).
+ * @conf out_buf           String. Output buffer name.
  * @conf updatable_config  String.  JSON pointer to the updatable config block.
  *                                  An example block would be:
  *                                  switch_config:
  *                                      updatable_config: "json"
  *                                      internal_buffer_name_0: true
  *                                      internal_buffer_name_1: false
+ *
+ * @par Updatable config
+ * @updatable_path updatable_config   Keys must match @c internal_name entries from @conf in_bufs.
  *
  * @author Andre Renard
  */

@@ -40,6 +40,7 @@
  * @conf   frames_per_packet    Int The Number of frames to average over before sending each UDP
  * packet.
  * @conf   rfi_combined         Bool Whether or not the kurtosis measurements include an input sum.
+ * @conf   cpu_affinity         Array[Int], optional. CPU cores to pin worker threads.
  *
  * @author Jacob Taylor
  */

@@ -1,0 +1,5 @@
+***********
+BufferSplit
+***********
+
+.. doxygenclass:: BufferSplit

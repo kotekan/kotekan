@@ -27,9 +27,11 @@ using std::vector;
  *
  * @par Buffers
  * @buffer in_buf Kotekan buffer of lost samples.
- *     @buffer_format Array of @c chars
+ *     @buffer_format Array of @c chars (@c uint8_t flags per sample)
+ *     @buffer_metadata chordMetadata (propagated)
  * @buffer out_buf Kotekan buffer of compressed lost samples.
  *     @buffer_format Array of @c uint32_t
+ *     @buffer_metadata chordMetadata (copies metadata; sets @c lost_timesamples)
  *
  * @conf   samples_per_data_set  Int.    No. of samples.
  * @conf   compression_factor    Int.    Number of samples to group.
@@ -37,6 +39,16 @@ using std::vector;
  *                                       a @c compression_factor group, then consider that to be
  *                                       a total of @c compression_factor lost samples for the
  *                                       metadata lost_samples value.
+ *
+ * @par Example
+ * @code
+ * compressLostSamples:
+ *   in_buf: lost_samples_in
+ *   out_buf: lost_samples_out
+ *   samples_per_data_set: 49152
+ *   compression_factor: 16
+ *   zero_all_in_group: true
+ * @endcode
  *
  * @author James Willis, Andre Renard
  *

@@ -25,6 +25,25 @@
  * single radio source), producing data useful for end-to-end testing of our kernels.
  * (The actual computational core is implemented in Julia, in FEngine.jl)
  *
+ * @par Buffers
+ * @buffer E_buffer_chord / E_buffers_chime Input voltage buffers (CHORD single / CHIME per freq).
+ *     @buffer_format Depends on mode (complex voltages)
+ *     @buffer_metadata chordMetadata
+ * @buffer bf_mask_buffer Input beamforming mask buffer.
+ *     @buffer_format int8 mask
+ * @buffer pl_mask_buffer Input RFI/packet-loss mask buffer.
+ *     @buffer_format bool mask
+ * @buffer scatter_indices_buffer Scatter index buffer.
+ * @buffer bb_beam_positions_buffer Beam position buffer.
+ * @buffer A_buffer/s_buffer/G/W1/W2 Buffer set used by kernels (see code for shapes).
+ *
+ * @conf receive_chime Bool. If true use CHIME layout; else CHORD.
+ * @conf num_frames    Int. Number of frames to produce.
+ * @conf num_components Int (=2). Complex components.
+ * @conf num_polations  Int (=2). Polarizations.
+ * @conf source_amplitude Float. Simulated source amplitude.
+ * ... (many simulation/beamformer parameters as in class members).
+ *
  * @conf num_components Int (=2) complex components
  * @conf num_polations  Int (=2) polarizations
  * @conf source_amplitude  Float  simulated radio source amplitude
@@ -51,6 +70,20 @@
  * @conf bb_beam_separation_y Float Baseband beamformer: output beam spacing north-south (radians?)
  * @conf upchannelization_factor Int Upchan
  * @conf num_frames              Int how many frames of data to produce
+ *
+ * @par Example
+ * @code
+ * FEngine:
+ *   receive_chime: true
+ *   num_frames: 10
+ *   num_components: 2
+ *   num_polations: 2
+ *   num_frequencies: 1024
+ *   num_times: 16384
+ *   adc_frequency: 800e6
+ *   num_taps: 8
+ *   # ... other telescope/beam parameters ...
+ * @endcode
  */
 class FEngine : public kotekan::Stage {
     const std::string unique_name;

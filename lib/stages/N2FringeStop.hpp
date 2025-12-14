@@ -35,12 +35,26 @@
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
- * @conf  num_samples  Int. The number of time frames to average.
- * @conf  max_age      Float. How old can a frame be in seconds before it is dropped.
- *                     Default is 120 (i.e. two minutes).
+ * @conf  in_buf           String. Input buffer.
+ * @conf  out_buf          String. Output buffer.
+ * @conf  fringestop_mode  Int (default 1). 0=no fringestop, 1=multiply vis, 2=overwrite with
+ *                         pure phase term.
+ * @conf  num_rot_target   Int (default 9000). Target ERA rotation count for fringestopping.
+ * @conf  era_target_deg   Double (default 0.0). Target ERA in degrees.
+ * @conf  xp_target_as     Double (default 0.0). Target x polar motion (arcsec).
+ * @conf  yp_target_as     Double (default 0.0). Target y polar motion (arcsec).
  *
- * @metric  kotekan_timedownsample_skipped_frame_total
- *      The number of frames skipped entirely because they were too old.
+ * @par Example
+ * @code
+ * N2FringeStop:
+ *   in_buf: vis_in
+ *   out_buf: vis_fs
+ *   fringestop_mode: 1
+ *   num_rot_target: 9000
+ *   era_target_deg: 0.0
+ *   xp_target_as: 0.0
+ *   yp_target_as: 0.0
+ * @endcode
  *
  * @author  Tristan Pinsonneault-Marotte
  *

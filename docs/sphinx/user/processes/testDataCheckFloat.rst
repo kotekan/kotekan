@@ -1,0 +1,5 @@
+******************
+testDataCheckFloat
+******************
+
+.. doxygenclass:: testDataCheckFloat

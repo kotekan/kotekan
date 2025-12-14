@@ -1,0 +1,5 @@
+*************
+VisFreqSubset
+*************
+
+.. doxygenclass:: VisFreqSubset

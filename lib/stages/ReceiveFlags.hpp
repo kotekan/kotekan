@@ -44,10 +44,13 @@
  *         @buffer_format VisBuffer.
  *         @buffer_metadata VisMetadata
  *
+ * @conf   in_buf           String. Input buffer.
+ * @conf   out_buf          String. Output buffer.
  * @conf   num_elements     Int.    The number of elements (i.e. inputs) in the
- *   correlator data.
+ *                                 correlator data.
  * @conf   updatable_block  String. The full name of the updatable_block that
- *   will provide new flagging values (e.g. "/dynamic_block/flagging").
+ *                                 will provide new flagging values (e.g. "/dynamic_block/flagging").
+ * @conf   num_kept_updates UInt.   Number of flag updates to retain in FIFO.
  *
  * @par Metrics
  * @metric kotekan_receiveflags_late_update_count The number of updates received
@@ -59,6 +62,22 @@
  * @metric kotekan_receiveflags_update_age_seconds The time difference in
  *   seconds between the current frame being processed and the time stamp of
  *   the flag update being applied.
+ *
+ * @par Updatable config
+ * @updatable_path updatable_block  JSON payload of flags keyed by input/time.
+ *
+ * @par Dataset states
+ * Requires @c inputState on input; applies flagState updates and updates dataset IDs.
+ *
+ * @par Example
+ * @code
+ * ReceiveFlags:
+ *   in_buf: vis_in
+ *   out_buf: vis_flagged
+ *   num_elements: 2048
+ *   updatable_block: "/dynamic/flags"
+ *   num_kept_updates: 8
+ * @endcode
  *
  * @author Rick Nitsche
  */

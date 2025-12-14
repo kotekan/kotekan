@@ -39,6 +39,13 @@
  * @conf feed_sep       Float, default 0.3048. The separation between feeds (in m)
  * @conf apodization    String, default nuttall. The type of window to use for apodization.
  * @conf exclude_autos  Bool, default true. Exclude the autos from the maps.
+ * @conf in_buf         String. Input buffer.
+ *
+ * @par Dataset states
+ * Requires @c stackState on input; reads freq/input/product maps from dataset.
+ *
+ * @par REST
+ * @restendpoint GET/POST /<unique_name>/map   Request a map (see source for JSON shape).
  *
  *
  * @author Tristan Pinsonneault-Marotte
@@ -132,6 +139,19 @@ private:
  * @buffer out_buf The buffer to write to.
  *        @buffer_format VisBuffer
  *        @buffer_metadata VisMetadata
+ *
+ * @conf   in_buf   String. Input buffer.
+ * @conf   out_buf  String. Output buffer.
+ *
+ * @par Dataset states
+ * Requires @c stackState on input; completes stacking and updates dataset ID.
+ *
+ * @par Example
+ * @code
+ * RedundantStack:
+ *   in_buf: vis_stacked
+ *   out_buf: vis_redundant
+ * @endcode
  *
  *
  * @author Tristan Pinsonneault-Marotte

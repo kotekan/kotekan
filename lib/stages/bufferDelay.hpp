@@ -22,8 +22,19 @@
  *        @buffer_format Matches the input buffer
  *        @buffer_metadata Matches the input buffer
  *
- * @conf   copy_frame Bool. Flag to copy or swap frames
- * @conf   num_frames_to_hold Int. No. of frames to hold in buffer before releasing one
+ * @conf   in_buf            String. Input buffer name.
+ * @conf   out_buf           String. Output buffer name.
+ * @conf   copy_frame        Bool. Flag to copy or swap frames (default: false).
+ * @conf   num_frames_to_hold Int. No. of frames to hold in input buffer before releasing one.
+ *
+ * @par Example
+ * @code
+ * bufferDelay:
+ *   in_buf: voltage_in
+ *   out_buf: voltage_delayed
+ *   num_frames_to_hold: 8
+ *   copy_frame: false
+ * @endcode
  *
  * @author James Willis
  */

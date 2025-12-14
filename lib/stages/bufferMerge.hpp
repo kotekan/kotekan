@@ -46,9 +46,18 @@
  *        @buffer_format Matches the input buffers
  *        @buffer_metadata Matches the input buffers
  *
- * @conf timeout       Double. Default -1.0   Timeout in seconds for waiting
- *                       for a frame on any of the input buffers.
- *                       Set to a negative number for no timeout.
+ * @conf in_bufs Array. Input buffer names (optionally keyed with internal names).
+ * @conf out_buf String. Output buffer name.
+ * @conf timeout Double. Default -1.0. Timeout in seconds waiting for a frame on any input;
+ *               negative disables timeout.
+ *
+ * @par Example
+ * @code
+ * bufferMerge:
+ *   in_bufs: [vis_a, vis_b]
+ *   out_buf: vis_merged
+ *   timeout: 0.5
+ * @endcode
  *
  * @author Andre Renard
  */

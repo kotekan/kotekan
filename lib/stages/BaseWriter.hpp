@@ -44,6 +44,11 @@
  * metadataState) matches the current version. Depending on the value of
  * `ignore_version` a mismatch will either generate a warning, or cause the
  * mismatched data to be dropped.
+ * The stage fingerprints the incoming dataset on structural states (`inputs`,
+ * `frequencies`, `products`, `stack`, `metadata`, `eigenvalues` plus any
+ * `critical_states`) and starts a new acquisition when that fingerprint changes.
+ * Each acquisition writes a bundle of output files to `root_path` in the selected
+ * format (`hdf5`, `hdf5fast`, or `raw`) with dataset IDs recorded per sample.
  *
  * The output files will write out the dataset ID of every piece of data
  * written. This allows the dataset ID to change on the incoming stream without
@@ -64,6 +69,11 @@
  *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
+ * @par Dataset states
+ * Reads `metadataState` for version checking and fingerprints critical states
+ * (`inputs`, `frequencies`, `products`, `stack`, `metadata`, `eigenvalues`, and
+ * any `critical_states` overrides) to gate acquisitions.
+ *
  * @conf   file_type        String. Type of file to write. One of 'hdf5',
  *                          'hdf5fast' or 'raw'.
  * @conf   root_path        String. Location in filesystem to write to.
@@ -83,6 +93,7 @@
  * @conf   critical_states  List of strings. A list of state types to consider
  *                          critical. That is, if they change in the incoming
  *                          data stream then a new acquisition will be started.
+ * @conf   in_buf           String. Input buffer name.
  *
  * @par Metrics
  * @metric kotekan_writer_write_time_seconds
@@ -92,6 +103,21 @@
  *         The number of frames dropped while attempting to write as they are too late.
  * @metric kotekan_writer_bad_dataset_frame_total
  *         The number of frames dropped as they belong to a bad dataset.
+ *
+ * @par Example
+ * @code
+ * VisWriter:
+ *   kotekan_stage: VisWriter
+ *   in_buf: vis_in
+ *   file_type: hdf5fast
+ *   root_path: /data/vis
+ *   instrument_name: chime
+ *   file_length: 1024
+ *   window: 20
+ *   acq_timeout: 300
+ *   ignore_version: false
+ *   critical_states: []
+ * @endcode
  *
  * @author Richard Shaw and James Willis
  **/

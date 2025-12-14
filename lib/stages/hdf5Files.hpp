@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Helper utilities for HDF5 dtype mapping and CHORD metadata version.
+ *
+ * @note This is not a Stage; it provides low-level helpers used by hdf5 readers/writers.
+ */
 #ifndef HDF5FILES_HPP
 #define HDF5FILES_HPP
 

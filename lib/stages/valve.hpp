@@ -30,9 +30,19 @@
  *         @buffer_format GPU packed upper triangle
  *         @buffer_metadata chimeMetadata
  *
+ * @conf in_buf  String. Input buffer name.
+ * @conf out_buf String. Output buffer name.
+ *
  * @par Metrics
  * @metric kotekan_valve_dropped_frames_total
  *        The number of frames dropped.
+ *
+ * @par Example
+ * @code
+ * Valve:
+ *   in_buf: vis_in
+ *   out_buf: vis_out
+ * @endcode
  *
  *
  * @author  Rick Nitsche

@@ -21,6 +21,29 @@
  * @brief Stage to read raw visibility data.
  *
  * This class inherits from the RawReader base class and reads raw visibility data
+ *
+ * @par Buffers
+ * @buffer out_buf Output buffer to receive raw vis frames.
+ *     @buffer_format VisBuffer structured
+ *     @buffer_metadata VisMetadata
+ *
+ * @conf out_buf     String. Output buffer name.
+ * @conf base_dir    String. Directory of raw files.
+ * @conf file_name   String. Base filename stem.
+ * @conf file_ext    String. File extension.
+ * @conf prefix_hostname Bool. Prefix filenames with hostname.
+ * @conf end_interrupt Bool. Stop pipeline when files exhausted.
+ *
+ * @par Example
+ * @code
+ * VisRawReader:
+ *   out_buf: vis_out
+ *   base_dir: /data/vis
+ *   file_name: vis
+ *   file_ext: raw
+ *   prefix_hostname: false
+ *   end_interrupt: true
+ * @endcode
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
 class VisRawReader : public RawReader<VisFrameView> {

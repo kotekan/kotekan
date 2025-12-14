@@ -1,0 +1,5 @@
+**************
+TestDropFrames
+**************
+
+.. doxygenclass:: TestDropFrames

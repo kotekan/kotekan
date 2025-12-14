@@ -36,9 +36,7 @@
  * address is derived by parsing the hostname.
  *
  * @par REST Endpoints
- * @endpoint /frb/update_gains/``gpu_id`` Any contact here triggers a re-parse of the gains file.
- * @endpoint /frb/update_destination Set the active status of param ``host`` to value of param
- * ``active``. Data is sent only to active hosts.
+ * @endpoint POST /frb/update_beam_offset {"beam_offset": <int>} to adjust the beam index offset.
  *
  * @par Buffers
  * @buffer in_buf The kotkean buffer to hold the packets to be transmitted to L1 nodes
@@ -46,23 +44,43 @@
  * 	@buffer_metadata none
  *
  *
- * @conf   udp_frb_packet_size  Int (default 4264). packet size including header
- * @conf   udp_frb_port_number  Int (default 1313). udp Port number for frb streams
- * @conf   number_of_nodes      Int (default 256). Number of L0 nodes
- * @conf   number_of_subnets    Int (default 4). Number of subnets or VLANS used for transmission of
- * FRB data
- * @conf   packets_per_stream   Int (default 8). Number of packets for each stream within each frame
- * @conf   L1_node_ips          Array of Strings. List of IPs to send to. (?)
- * @conf   beam_offset          Int (default 0). Offset the beam_id going to L1 Process
+ * @conf   in_buf               String. Input packet buffer.
+ * @conf   udp_frb_packet_size  Int (default 4272). Packet size including header.
+ * @conf   udp_frb_port_number  Int (default 1313). UDP port number for FRB streams.
+ * @conf   number_of_nodes      Int (default 256). Number of L0/L1 destinations.
+ * @conf   number_of_subnets    Int (default 4). Number of VLANS/subnets to shard traffic across.
+ * @conf   packets_per_stream   Int (default 8). Packets per stream within each frame.
+ * @conf   beam_offset          Int (default 0). Offset applied to beam IDs going to L1.
  * @conf   time_interval        Unsigned long (default 125829120). Time per buffer in ns.
- * @conf   column_mode          bool (default false) Send beams in a single CHIME cylinder.
- * @conf   ping_interval        Uint32 (default 6 min) Time in seconds between sending a ping to
- * check destination is live
- * @conf   quick_ping_interval  Uint32 (default 5 sec) Time in seconds for sending pings when a live
- * node stops responding
- * @conf   ping_dead_threshold  Uint32 (default 30 sec) Duration in seconds of quick-checking state
- * after which a node is declared dead if it still hasn't responded. If 0, disable the checks
- * entirely.
+ * @conf   column_mode          Bool (default false). Send beams in a single CHIME cylinder.
+ * @conf   timesamples_per_frb_packet Int (default 16). Samples per packet.
+ * @conf   cpu_affinity         Array<Int>. CPU cores to pin ping threads (if pinging enabled).
+ * @conf   L1_node_ips          Array<String>. List of destination IPs (one per stream).
+ * @conf   ping_interval        UInt32 (default 360). Seconds between pings when live.
+ * @conf   quick_ping_interval  UInt32 (default 5). Seconds between pings when a node stops
+ * responding.
+ * @conf   ping_dead_threshold  UInt32 (default 30). Seconds of quick checking before declaring
+ * dead; 0 disables ping checks.
+ *
+ * @par Example
+ * @code
+ * frbNetworkProcess:
+ *   in_buf: frb_packets
+ *   udp_frb_packet_size: 4272
+ *   udp_frb_port_number: 1313
+ *   number_of_nodes: 256
+ *   number_of_subnets: 4
+ *   packets_per_stream: 8
+ *   beam_offset: 0
+ *   time_interval: 125829120
+ *   column_mode: false
+ *   timesamples_per_frb_packet: 16
+ *   cpu_affinity: [0,1]
+ *   L1_node_ips: ["10.6.0.1", "10.6.0.2"]
+ *   ping_interval: 360
+ *   quick_ping_interval: 5
+ *   ping_dead_threshold: 30
+ * @endcode
  *
  * @todo   Resolve the issue of NTP clock vs Monotonic clock.
  *

@@ -1,0 +1,5 @@
+***************
+ExampleProducer
+***************
+
+.. doxygenclass:: ExampleProducer

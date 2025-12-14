@@ -1,0 +1,5 @@
+****************
+restInspectFrame
+****************
+
+.. doxygenclass:: restInspectFrame

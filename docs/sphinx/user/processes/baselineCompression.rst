@@ -1,0 +1,5 @@
+*******************
+baselineCompression
+*******************
+
+.. doxygenclass:: baselineCompression

@@ -27,12 +27,20 @@
  *
  * @conf    output_period    Int. Print output every `output_period` frames.
  *                           Default is every 1000 frames.
+ * @conf    in_buf           String. Input buffer name.
  *
  * @par Metrics
  * @metric kotekan_visdebug_frames_by_freq_total
  *         The total frames seen per frequency.
  * @metric kotekan_visdebug_frames_by_dataset_total
  *         The total frames seen per dataset.
+ *
+ * @par Example
+ * @code
+ * visDebug:
+ *   in_buf: vis_in
+ *   output_period: 1000
+ * @endcode
  *
  * @author Richard Shaw
  */

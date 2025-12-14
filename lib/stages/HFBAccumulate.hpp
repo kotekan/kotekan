@@ -45,13 +45,27 @@
  * @buffer hfb_out_buf Kotekan buffer that will be populated with integrated data.
  *     @buffer_format Array of @c floats
  *
- * @conf   num_frames_to_integrate  Int. No. of frames to integrate over.
- * @conf   num_frb_total_beams      Int. No. of total FRB beams (should be 1024).
- * @conf   factor_upchan            Int. Upchannelise factor (should be 128).
- * @conf   samples_per_data_set     Int. The number of samples each GPU buffer has
- *                                  been integrated for.
- * @conf   good_samples_threshold   Float. Required fraction of good samples in
- *                                  integration before it is recorded.
+ * @conf   hfb_input_buffer       String. Input buffer.
+ * @conf   cls_buffer             String. Input compressed-lost-samples buffer.
+ * @conf   hfb_out_buf            String. Output integrated buffer.
+ * @conf   num_frames_to_integrate Int. Frames to integrate over.
+ * @conf   num_frb_total_beams     Int. Total FRB beams (typically 1024).
+ * @conf   factor_upchan           Int. Upchannelise factor (e.g., 128).
+ * @conf   samples_per_data_set    Int. Samples per GPU frame.
+ * @conf   good_samples_threshold  Float. Minimum good-sample fraction to keep integration.
+ *
+ * @par Example
+ * @code
+ * HFBAccumulate:
+ *   hfb_input_buffer: hfb_in
+ *   cls_buffer: cls_in
+ *   hfb_out_buf: hfb_int
+ *   num_frames_to_integrate: 80
+ *   num_frb_total_beams: 1024
+ *   factor_upchan: 128
+ *   samples_per_data_set: 49152
+ *   good_samples_threshold: 0.9
+ * @endcode
  *
  * @author James Willis
  *

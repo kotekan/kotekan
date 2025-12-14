@@ -27,10 +27,21 @@
  *         @buffer_format HFBBuffer.
  *         @buffer_metadata HFBMetadata
  *
- * @conf   err_sq_lim               Limit for the error of absorber truncation.
- * @conf   weight_fixed_precision   Fixed precision for weight truncation.
- * @conf   data_fixed_precision     Fixed precision for absorber truncation (if
- *                                  weights are zero).
+ * @conf   in_buf                  String. Input buffer.
+ * @conf   out_buf                 String. Output buffer.
+ * @conf   err_sq_lim              Float. Error limit for absorber truncation.
+ * @conf   weight_fixed_precision  Float. Fixed precision for weight truncation.
+ * @conf   data_fixed_precision    Float. Fixed precision for absorber truncation (if weights are zero).
+ *
+ * @par Example
+ * @code
+ * HFBTruncate:
+ *   in_buf: hfb_in
+ *   out_buf: hfb_trunc
+ *   err_sq_lim: 1e-4
+ *   weight_fixed_precision: 1e-5
+ *   data_fixed_precision: 1e-5
+ * @endcode
  *
  * @author James Willis
  */

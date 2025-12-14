@@ -30,7 +30,17 @@
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf   integration   Int. Number of time samples to sum.
+ * @conf   in_buf       String. Input buffer name.
+ * @conf   out_buf      String. Output buffer name.
+ * @conf   integration  Int. Number of time samples to sum.
+ *
+ * @par Example
+ * @code
+ * integratePowerStream:
+ *   in_buf: power_in
+ *   out_buf: power_out
+ *   integration: 16
+ * @endcode
  *
  * @todo    Update once we have a formal radioPowerStream buffer format.
  * @todo    Add metadata to allow different data types for in/out.

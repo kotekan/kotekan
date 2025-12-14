@@ -42,11 +42,11 @@
  *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
- * @conf  num_elements     Int. The number of elements (i.e. inputs) in the
- *                         correlator data.
- * @conf  block_size       Int. The block size of the packed data.
- * @conf  num_ev           UInt. The number of eigenvectors to be calculated as
- *                         an approximation to the visibilities.
+ * @conf  in_buf          String. Input buffer.
+ * @conf  out_buf         String. Output buffer.
+ * @conf  num_elements    Int. The number of elements (i.e. inputs) in the correlator data.
+ * @conf  block_size      Int. The block size of the packed data.
+ * @conf  num_ev          UInt. The number of eigenvectors to be calculated as an approximation.
  * @conf  bands_filled     List of pairs of ints, default empty. Ranges of diagonal
  *                         bands to mask out before the factorization. These are
  *                         iteratively filled within the eigen decomposition code.
@@ -62,6 +62,29 @@
  * @conf  num_ev_conv      UInt. Test only the top `num_ev_conv` eigenpairs for convergence.
  * @conf  krylov           UInt, default 2. Size of the Krylov basis to use.
  * @conf  subspace         UInt, default 3. Number of subspace iteration substeps.
+ *
+ * @par Dataset states
+ * Requires @c freqState, @c inputState, @c prodState on input; writes eigenpairs into VisBuffer
+ * reserved fields (no new state).
+ *
+ * @par Example
+ * @code
+ * EigenVisIter:
+ *   in_buf: vis_in
+ *   out_buf: vis_out
+ *   num_elements: 2048
+ *   block_size: 16
+ *   num_ev: 8
+ *   bands_filled: [[-1,1]]
+ *   block_fill_size: 0
+ *   exclude_inputs: []
+ *   tol_eval: 1e-6
+ *   tol_evec: 1e-5
+ *   max_iterations: 50
+ *   num_ev_conv: 4
+ *   krylov: 2
+ *   subspace: 3
+ * @endcode
  *
  * @par Metrics
  * @metric kotekan_eigenvisiter_comp_time_seconds
