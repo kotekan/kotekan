@@ -563,17 +563,12 @@ function f_engine(pfb::PFB, adcframe::ADCFrame{T}) where {T<:Real}
 
     window = T[sinc_hanning(sample - 1, ntaps, nsamples) for sample in 1:(ntaps * nsamples)]
 
-    indatas = [Array{T}(undef, ntaps * nsamples) for thread in 1:Threads.nthreads()]
-    outdatas = [Array{Complex{T}}(undef, ntaps * nsamples ÷ 2 + 1) for thread in 1:Threads.nthreads()]
-    FFTs = [plan_rfft(indatas[thread], 1) for thread in 1:Threads.nthreads()]
+    indata = Array{T}(undef, ntaps * nsamples)
+    outdata = Array{Complex{T}}(undef, ntaps * nsamples ÷ 2 + 1)
+    FFT = plan_rfft(indata, 1)
 
     fdata = Array{Complex{T}}(undef, length(frequency_channels), ntimes′, ndishes, npolrs)
     for time′_dish_polr in CartesianIndices((ntimes′, ndishes, npolrs))
-        thread = Threads.threadid()
-        FFT = FFTs[thread]
-        indata = indatas[thread]
-        outdata = outdatas[thread]
-
         time′, dish, polr = Tuple(time′_dish_polr)
 
         time0 = (time′ - 1) * nsamples + 1
@@ -619,18 +614,13 @@ function f_engine_16(pfb::PFB, adcframe::ADCFrame{T}) where {T<:Real}
     groupsize = 16
     @assert ndishes % groupsize == 0
 
-    indatas = [Array{T}(undef, groupsize, ntaps * nsamples) for thread in 1:Threads.nthreads()]
-    outdatas = [Array{Complex{T}}(undef, groupsize, ntaps * nsamples ÷ 2 + 1) for thread in 1:Threads.nthreads()]
-    FFTs = [plan_rfft(indatas[thread], 2) for thread in 1:Threads.nthreads()]
+    indata = Array{T}(undef, groupsize, ntaps * nsamples)
+    outdata = Array{Complex{T}}(undef, groupsize, ntaps * nsamples ÷ 2 + 1)
+    FFT = plan_rfft(indatas[thread], 2)
 
     fdata = Array{Complex{T}}(undef, length(frequency_channels), ntimes′, ndishes, npolrs)
     # @showprogress desc = "PFB" dt = 1 @threads for time′_dish_polr in CartesianIndices((ntimes′, ndishes ÷ groupsize, npolrs))
     for time′_dish_polr in CartesianIndices((ntimes′, ndishes ÷ groupsize, npolrs))
-        thread = Threads.threadid()
-        FFT = FFTs[thread]
-        indata = indatas[thread]
-        outdata = outdatas[thread]
-
         time′, group, polr = Tuple(time′_dish_polr)
         dish0 = (group - 1) * groupsize
         dish1 = dish0 + groupsize
@@ -696,16 +686,11 @@ function f_engine_cuda(pfb::PFB, adcframe::ADCFrame{T}) where {T<:Real}
     indata = CuArray{T}(undef, ntaps * nsamples, ntimes′, ndishes, npolrs)
     prepare_fft_input(indata, adcdata)
 
-    outdatas = [Array{Complex{T}}(undef, ntaps * nsamples ÷ 2 + 1) for thread in 1:Threads.nthreads()]
-    FFTs = [plan_rfft(indatas[thread], 1) for thread in 1:Threads.nthreads()]
+    outdata = Array{Complex{T}}(undef, ntaps * nsamples ÷ 2 + 1)
+    FFT = plan_rfft(indata, 1)
 
     fdata = Array{Complex{T}}(undef, length(frequency_channels), ntimes′, ndishes, npolrs)
     for time′_dish_polr in CartesianIndices((ntimes′, ndishes, npolrs))
-        thread = Threads.threadid()
-        FFT = FFTs[thread]
-        indata = indatas[thread]
-        outdata = outdatas[thread]
-
         time′, dish, polr = Tuple(time′_dish_polr)
 
         time0 = (time′ - 1) * nsamples
