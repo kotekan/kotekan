@@ -414,19 +414,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         julia_source.at(julia_source_length) = '\0';
         kotekan::juliaCall([&]() {
             jl_value_t* const res = jl_eval_string(julia_source.data());
-            jl_value_t* exc = jl_exception_occurred();
-            if (exc) {
-                FATAL_ERROR("Caught Julia exception");
-
-                // Get Base.showerror
-                jl_function_t* showerror = jl_get_function(jl_base_module, "showerror");
-
-                // Call showerror(io, exc)
-                jl_call2(showerror, jl_stderr_obj(), exc);
-
-                // jl_flush_cstdio()
-                // jl_print_backtrace()
-            }
+            kotekan::juliaHandleExceptions();
             assert(res);
         });
         INFO("Defined Julia code.");
@@ -441,7 +429,8 @@ FEngine::~FEngine() {
 
 void FEngine::main_thread() {
     static bool stale = false;
-    assert(!stale);
+    if (stale)
+        std::abort();
     stale = true;
 
     // This functions shall be executed only once, during the initialization.
@@ -515,8 +504,7 @@ void FEngine::main_thread() {
             assert(iargc == nargs);
             FEngine_setup = jl_call(setup, args, nargs);
             JL_GC_POP();
-            if (jl_exception_occurred())
-                FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
+            kotekan::juliaHandleExceptions();
             if (!FEngine_setup)
                 FATAL_ERROR("Could not initialize F-Engine");
             assert(FEngine_setup);
@@ -563,10 +551,9 @@ void FEngine::main_thread() {
                 args[2] = jl_box_int64(num_dishes);
                 args[3] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_dish_positions, args, nargs);
-                if (jl_exception_occurred())
-                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                assert(res);
                 JL_GC_POP();
+                kotekan::juliaHandleExceptions();
+                assert(res);
             });
         } else {
             // Find centre
@@ -782,10 +769,9 @@ void FEngine::main_thread() {
                 args[2] = jl_box_int64(bb_num_beams);
                 args[3] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_bb_beam_positions, args, nargs);
-                if (jl_exception_occurred())
-                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                assert(res);
                 JL_GC_POP();
+                kotekan::juliaHandleExceptions();
+                assert(res);
             });
         } else {
             // Find centre
@@ -876,10 +862,9 @@ void FEngine::main_thread() {
                 args[5] = jl_box_int64(num_frequencies);
                 args[6] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_A, args, nargs);
-                if (jl_exception_occurred())
-                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                assert(res);
                 JL_GC_POP();
+                kotekan::juliaHandleExceptions();
+                assert(res);
             });
         } else {
             for (int n = 0; n < num_components * num_dishes * bb_num_beams * num_polarizations
@@ -1123,11 +1108,9 @@ void FEngine::main_thread() {
                     args[5] = jl_box_int64(num_local_channels * U);
                     args[6] = jl_box_int64(W1_frame_index + 1);
                     jl_value_t* const res = jl_call(set_W1, args, nargs);
-                    if (jl_exception_occurred())
-                        FATAL_ERROR("Julia exception:\n{:s}",
-                                    jl_typeof_str(jl_exception_occurred()));
-                    assert(res);
                     JL_GC_POP();
+                    kotekan::juliaHandleExceptions();
+                    assert(res);
                 });
             } else {
                 for (int n = 0; n < int(chord_telescope.get_num_dishes_y()
@@ -1451,11 +1434,9 @@ void FEngine::main_thread() {
                             args[6] = FEngine_setup;
                             args[7] = jl_box_int64(E_frame_index % num_frames + 1);
                             jl_value_t* const res = jl_call(set_E, args, nargs);
-                            if (jl_exception_occurred())
-                                FATAL_ERROR("Julia exception:\n{:s}",
-                                            jl_typeof_str(jl_exception_occurred()));
-                            assert(res);
                             JL_GC_POP();
+                            kotekan::juliaHandleExceptions();
+                            assert(res);
                         });
                         for (int t = 0; t < num_times; ++t) {
                             for (int f = 0; f < num_frequencies; ++f) {
@@ -1740,10 +1721,9 @@ void FEngine::main_thread() {
                     args[5] = jl_box_int64(bb_num_beams);
                     args[6] = jl_box_int64(J_frame_index + 1);
                     jl_value_t* const res = jl_call(set_J, args, nargs);
-                    if (jl_exception_occurred())
-                        FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                    assert(res);
                     JL_GC_POP();
+                    kotekan::juliaHandleExceptions();
+                    assert(res);
                 });
                 DEBUG("[{:d}] Done filling J buffer.", J_frame_index);
             }
@@ -1826,10 +1806,9 @@ void FEngine::main_thread() {
                         args[5] = jl_box_int64(num_frequencies * U);
                         args[6] = jl_box_int64(I1_frame_index + 1);
                         jl_value_t* const res = jl_call(set_I, args, nargs);
-                        if (jl_exception_occurred())
-                            FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                        assert(res);
                         JL_GC_POP();
+                        kotekan::juliaHandleExceptions();
+                        assert(res);
                     });
 #else
                 std::memset(I1_frame, 0, I1_frame_size);
