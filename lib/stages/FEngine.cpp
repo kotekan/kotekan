@@ -446,6 +446,9 @@ void FEngine::main_thread() {
     jl_value_t* FEngine_setup = nullptr;
     if (!skip_julia) {
         INFO("Initializing F-Engine...");
+        const std::vector<int> dish_indices(dish_grid.get_dish_indices().begin(),
+                                            dish_grid.get_dish_indices().end());
+        // Make a copy to convert to `int`
         kotekan::juliaCall([&]() {
             jl_module_t* const f_engine_module =
                 (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
@@ -484,8 +487,7 @@ void FEngine::main_thread() {
             args[iargc++] = jl_box_float32(source_position_ns);
             args[iargc++] = jl_box_int64(dish_grid.get_num_dishes_x());
             args[iargc++] = jl_box_int64(dish_grid.get_num_dishes_y());
-            args[iargc++] =
-                jl_box_voidpointer(const_cast<int64_t*>(dish_grid.get_dish_indices().data()));
+            args[iargc++] = jl_box_voidpointer(const_cast<int*>(dish_indices.data()));
             // TODO: Pass dish positions instead
             args[iargc++] = jl_box_float32(chord_telescope.get_dish_separation_x_m());
             args[iargc++] = jl_box_float32(chord_telescope.get_dish_separation_y_m());
