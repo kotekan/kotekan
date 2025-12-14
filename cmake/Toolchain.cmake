@@ -143,6 +143,10 @@ if(CMAKE_BUILD_TYPE MATCHES Debug OR CMAKE_BUILD_TYPE MATCHES Test)
     kmsg_status("Asserts enabled")
 endif()
 
+# Do not test for unused parameters
+# (The Julia header files define some functions with unused parameters.)
+add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wno-unused-parameter>)
+
 # Do not test for unused values in Release builds
 if(CMAKE_BUILD_TYPE MATCHES Release)
     add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wno-unused-variable>)
