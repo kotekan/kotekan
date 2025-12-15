@@ -57,7 +57,6 @@
  *         @buffer_format Buffer.
  *         @buffer_metadata Metadata
  *
- * @conf   in_buf               String. Input buffer.
  * @conf   chunk_size           Array of [int, int, int]. Chunk size of the data
  *                              (freq, prod, time).
  * @conf   outfile              String. Path to the (data-meta-pair of) files to
@@ -71,7 +70,8 @@
  *
  * @par Example
  * @code
- * Transpose:
+ * transpose_example:
+ *   kotekan_stage: Transpose
  *   in_buf: vis_raw
  *   chunk_size: [1, 64, 16]
  *   outfile: /data/vis/0000_000

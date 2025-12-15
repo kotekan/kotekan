@@ -29,8 +29,6 @@
  *     @buffer_format uint power values laid out [time][element][freq + count] (see source)
  *     @buffer_metadata none
  *
- * @conf vdif_in_buf              String. Input VDIF buffer.
- * @conf power_out_buf            String. Output buffer for power integrals.
  * @conf samples_per_data_set     Int. Time samples per input frame.
  * @conf power_integration_length Int. Samples to integrate per output time.
  * @conf num_freq                 Int. Number of frequencies per element.
@@ -39,14 +37,15 @@
  *
  * @par Example
  * @code
- * computeDualpolPower:
+ * compute_dualpol_power:
+ *   kotekan_stage: computeDualpolPower
  *   vdif_in_buf: vdif_raw
  *   power_out_buf: vdif_power
  *   samples_per_data_set: 8000
  *   power_integration_length: 10
  *   num_freq: 1024
  *   num_elements: 2048
- *   cpu_affinity: [0,1]
+ *   cpu_affinity: [0, 1]
  * @endcode
  */
 

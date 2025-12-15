@@ -40,7 +40,6 @@
  *     @buffer_format Array of @c shorts
  *     @buffer_metadata none
  *
- * @conf   out_buf     String. Output buffer to fill.
  * @conf   freq        Float (default 1420.0). LO tuning frequency, in MHz.
  * @conf   sample_bw   Float (default 2.5). Bandwidth to sample from the airspy, in MHz.
  * @conf   gain_lna    Int (default 5). Gain setting of the LNA, in the range 0-14.
@@ -50,7 +49,8 @@
  *
  * @par Example
  * @code
- * airspyInput:
+ * airspy_input:
+ *   kotekan_stage: airspyInput
  *   out_buf: sdr_out
  *   freq: 1420.0
  *   sample_bw: 2.5

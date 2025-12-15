@@ -1,3 +1,22 @@
+/**
+ * @file
+ * @brief Read frames from GDAL-backed files into a kotekan buffer.
+ *  - gdalFileRead : public kotekan::Stage
+ *
+ * @par Buffers
+ * @buffer out_buf Buffer to write frames into.
+ *     @buffer_format Matches file contents (CHORD metadata + payload)
+ *     @buffer_metadata chordMetadata
+ *
+ * @conf input_dir       String. Directory containing GDAL-friendly files.
+ * @conf file_name       String. Base filename stem (numeric index appended).
+ * @conf prefix_hostname Bool (default true). Prefix hostname to filename.
+ * @conf do_once         Bool (default false). After first frame, pause instead of exiting.
+ *
+ * @par Metrics
+ * @metric kotekan_gdalfileread_read_time_seconds  Time to read the last frame.
+ */
+
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for string_to_type, type_to_string, DataType
 #include "buffer.hpp"          // for Buffer

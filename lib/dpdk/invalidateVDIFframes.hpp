@@ -33,16 +33,14 @@
  *     @buffer_format Array of flags uint8_t flags which are either 0 (unset) or 1 (set)
  *     @buffer_metadata chimeMetadata
  *
- * @conf  out_buf            String. VDIF data buffer (producer).
- * @conf  lost_samples_buf   String. Lost-sample flags buffer (consumer).
- *
  * @par Metrics
  * @metric kotekan_vdif_lost_frames_total
  *        The number of VDIF frames invalidated because of lost packets.
  *
  * @par Example
  * @code
- * invalidateVDIFframes:
+ * invalidate_vdif_frames:
+ *   kotekan_stage: invalidateVDIFframes
  *   out_buf: vdif_out
  *   lost_samples_buf: lost_samples
  * @endcode

@@ -57,8 +57,6 @@
  *     @buffer_format Array of @c uint
  *     @buffer_metadata chimeMetadata
  *
- * @conf   network_input_buffer_0..3 String. Input buffers from GPUs.
- * @conf   pulsar_out_buf            String. Output packet buffer.
  * @conf   num_gpus                  Int. Number of GPUs.
  * @conf   samples_per_data_set      Int. Number of baseband samples per input frame.
  * @conf   num_pulsar                Int. Total pulsar beams (typically 10).
@@ -68,7 +66,8 @@
  *
  * @par Example
  * @code
- * pulsarPostProcess:
+ * pulsar_post_process:
+ *   kotekan_stage: pulsarPostProcess
  *   network_input_buffer_0: psr_gpu0
  *   network_input_buffer_1: psr_gpu1
  *   network_input_buffer_2: psr_gpu2

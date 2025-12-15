@@ -34,8 +34,6 @@
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
- * @conf in_buf String. Input visibility buffer to analyse.
- *
  * @par Dataset states
  * Requires `stackState` on input to determine per-product stack multiplicities.
  *
@@ -45,7 +43,8 @@
  *
  * @par Example
  * @code
- * DataQuality:
+ * data_quality:
+ *   kotekan_stage: DataQuality
  *   in_buf: vis_in
  * @endcode
  *

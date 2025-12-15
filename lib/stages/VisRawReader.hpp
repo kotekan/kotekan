@@ -27,7 +27,6 @@
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
- * @conf out_buf     String. Output buffer name.
  * @conf base_dir    String. Directory of raw files.
  * @conf file_name   String. Base filename stem.
  * @conf file_ext    String. File extension.
@@ -36,7 +35,8 @@
  *
  * @par Example
  * @code
- * VisRawReader:
+ * vis_raw_reader:
+ *   kotekan_stage: VisRawReader
  *   out_buf: vis_out
  *   base_dir: /data/vis
  *   file_name: vis

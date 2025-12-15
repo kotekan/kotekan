@@ -31,7 +31,6 @@
  * 	@buffer_format Array of unsigned char.
  * 	@buffer_metadata none
  *
- * @conf in_buf                   String. Input packet buffer.
  * @conf udp_pulsar_packet_size   Int (default 6288). Packet size including header.
  * @conf udp_pulsar_port_number   Int (default 1414). UDP port number for pulsar streams.
  * @conf number_of_nodes          Int (default 256). Number of destination nodes.
@@ -43,7 +42,8 @@
  *
  * @par Example
  * @code
- * pulsarNetworkProcess:
+ * pulsar_network_process:
+ *   kotekan_stage: pulsarNetworkProcess
  *   in_buf: pulsar_packets
  *   udp_pulsar_packet_size: 6288
  *   udp_pulsar_port_number: 1414

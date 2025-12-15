@@ -73,11 +73,6 @@ using nlohmann::json;
  *         @buffer_format Buffer structured
  *         @buffer_metadata Metadata
  *
- * @conf    readahead_blocks       Int. Number of blocks to advise OS to read ahead
- *                                 of current read.
- * @conf    chunk_size             Array of [int, int, int]. Read chunk size (freq,
- *                                 prod, time). If not specified will read file
- *                                 contiguously.
  * @conf    infile                 String. Path to the (data-meta-pair of) files to
  *                                 read (e.g. "/path/to/0000_000", without .data or
  *                                 .meta).
@@ -88,13 +83,19 @@ using nlohmann::json;
  *                                 seconds before sending shutdown. If < 0, never
  *                                 send a shutdown signal. Default is -1.
  * @conf    update_dataset_id      Bool. Update the dataset ID with information about the
-                                   file, for example which time samples does it contain.
+ *                                 file, for example which time samples does it contain.
  * @conf    use_dataset_broker     Bool. Restore dataset ID from dataset broker (i.e. comet).
  *                                 Should be disabled only for testing. Default is true.
  * @conf    use_local_dataset_man  Bool. Instead of using comet, register metadata on top
  *                                 of dataset ID in the file. Should only be used for
  *                                 testing or if original dataset IDs can be lost.
  *                                 Default is False.
+ *
+ * @conf    readahead_blocks       Int. Number of blocks to advise OS to read ahead
+ *                                 of current read.
+ * @conf    chunk_size             Array of [int, int, int]. Read chunk size (freq,
+ *                                 prod, time). If not specified will read file
+ *                                 contiguously.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche, James Willis
  */
@@ -583,8 +584,6 @@ int RawReader<T>::position_map(int ind) {
  *         @buffer_metadata VisMetadata
  * @buffer out_buf Output visibility buffer (producer), same format/metadata.
  *
- * @conf in_buf       String. Input buffer name.
- * @conf out_buf      String. Output buffer name.
  * @conf max_waiting  Int. Default 100. Maximum out-of-order frames to hold.
  * @conf chunk_size   Array[int,int,int], optional. Chunk dims [freq, ev, time] for mapping.
  *
@@ -594,6 +593,7 @@ int RawReader<T>::position_map(int ind) {
  * @par Example
  * @code
  * ensureOrdered:
+ *   kotekan_stage: ensureOrdered
  *   in_buf: vis_in
  *   out_buf: vis_ordered
  *   max_waiting: 200

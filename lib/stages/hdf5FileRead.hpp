@@ -21,7 +21,6 @@
  *     @buffer_format Matches file contents (Vis/HFB/N2/CHORD)
  *     @buffer_metadata Matches file contents (VisMetadata/HFBMetadata/N2Metadata/chordMetadata)
  *
- * @conf out_buf              String. Output buffer.
  * @conf input_dir            String. Directory containing the file.
  * @conf file_name            String. File name stem (without numeric index/extension).
  * @conf prefix_hostname      Bool, default true. Prefix file name with hostname.
@@ -37,7 +36,8 @@
  *
  * @par Example
  * @code
- * hdf5FileRead:
+ * hdf5_file_read:
+ *   kotekan_stage: hdf5FileRead
  *   out_buf: vis_in
  *   input_dir: /data/h5
  *   file_name: vis_dump

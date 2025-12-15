@@ -27,14 +27,14 @@
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf   out_buf          String. Output buffer name.
  * @conf   num_freq         Int. Number of frequencies in each VDIF packet.
  * @conf   orig_port        Int. UDP port to listen on.
  * @conf   orig_server_ip   String. Source IP to bind to (optional).
  *
  * @par Example
  * @code
- * recvSingleDishVDIF:
+ * recv_single_dish_vdif:
+ *   kotekan_stage: recvSingleDishVDIF
  *   out_buf: vdif_in
  *   num_freq: 1024
  *   orig_port: 12000

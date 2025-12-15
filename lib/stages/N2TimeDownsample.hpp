@@ -40,15 +40,14 @@
  * @conf  max_age      Float. How old can a frame be in seconds before it is dropped.
  *                     Default is 120 (i.e. two minutes).
  * @conf  do_fringestop  Bool. Whether to apply fringestopping phases before averaging.
- * @conf  in_buf       String. Input buffer.
- * @conf  out_buf      String. Output buffer.
  *
  * @metric  kotekan_timedownsample_skipped_frame_total
  *      The number of frames skipped entirely because they were too old.
  *
  * @par Example
  * @code
- * N2TimeDownsample:
+ * n2_time_downsample:
+ *   kotekan_stage: N2TimeDownsample
  *   in_buf: vis_in
  *   out_buf: vis_slow
  *   num_samples: 8

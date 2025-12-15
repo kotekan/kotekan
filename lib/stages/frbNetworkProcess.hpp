@@ -44,7 +44,6 @@
  * 	@buffer_metadata none
  *
  *
- * @conf   in_buf               String. Input packet buffer.
  * @conf   udp_frb_packet_size  Int (default 4272). Packet size including header.
  * @conf   udp_frb_port_number  Int (default 1313). UDP port number for FRB streams.
  * @conf   number_of_nodes      Int (default 256). Number of L0/L1 destinations.
@@ -64,7 +63,8 @@
  *
  * @par Example
  * @code
- * frbNetworkProcess:
+ * frb_network_process:
+ *   kotekan_stage: frbNetworkProcess
  *   in_buf: frb_packets
  *   udp_frb_packet_size: 4272
  *   udp_frb_port_number: 1313
@@ -75,7 +75,7 @@
  *   time_interval: 125829120
  *   column_mode: false
  *   timesamples_per_frb_packet: 16
- *   cpu_affinity: [0,1]
+ *   cpu_affinity: [0, 1]
  *   L1_node_ips: ["10.6.0.1", "10.6.0.2"]
  *   ping_interval: 360
  *   quick_ping_interval: 5

@@ -16,12 +16,12 @@
  *      @buffer_format any
  *      @buffer_metadata any
  *
- * @conf out_buf    String. Output buffer name.
  * @conf init_value Float (default 0). The value to set each element to.
  *
  * @par Example
  * @code
- * ExampleProducer:
+ * example_producer:
+ *   kotekan_stage: ExampleProducer
  *   out_buf: test_out
  *   init_value: 1.0
  * @endcode

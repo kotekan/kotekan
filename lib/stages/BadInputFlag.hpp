@@ -36,9 +36,6 @@
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
- * @conf in_buf   String. Input vis buffer.
- * @conf out_buf  String. Output vis buffer (frames are copied through).
- *
  * @par Dataset states
  * Requires `inputs`, `products`, and `stack` to remain constant; exits if a `stackState` is
  * present.
@@ -50,7 +47,8 @@
  *
  * @par Example
  * @code
- * BadInputFlag:
+ * bad_input_flag:
+ *   kotekan_stage: BadInputFlag
  *   in_buf: vis_in
  *   out_buf: vis_checked
  * @endcode

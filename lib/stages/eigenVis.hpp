@@ -43,8 +43,6 @@
  * @conf  exclude_inputs        List of UInts, optional. Inputs to exclude (rows and
  *                              columns to set to zero) in visibilities prior to
  *                              factorization.
- * @conf  in_buf                String. Input buffer.
- * @conf  out_buf               String. Output buffer.
  *
  * @par Metrics
  * @metric kotekan_eigenvis_comp_time_seconds
@@ -62,7 +60,8 @@
  *
  * @par Example
  * @code
- * eigenVis:
+ * eigen_vis:
+ *   kotekan_stage: eigenVis
  *   in_buf: vis_in
  *   out_buf: vis_out
  *   num_elements: 2048

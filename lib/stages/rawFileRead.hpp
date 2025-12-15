@@ -23,7 +23,6 @@
  *         @buffer_format   Any
  *         @buffer_metadata Any
  *
- * @conf   buf              String. Output buffer name.
  * @conf   base_dir         String. Directory to read from.
  * @conf   file_name        String. Base filename to read (numeric index appended).
  * @conf   file_ext         String. File extension.
@@ -32,7 +31,8 @@
  *
  * @par Example
  * @code
- * rawFileRead:
+ * raw_file_read:
+ *   kotekan_stage: rawFileRead
  *   buf: vis_in
  *   base_dir: /data/raw
  *   file_name: vis_dump

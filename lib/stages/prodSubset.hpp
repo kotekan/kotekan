@@ -51,8 +51,6 @@
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
- * @conf  in_buf                String. Input buffer.
- * @conf  out_buf               String. Output buffer.
  * @conf  prod_subset_type      string. Type of product subset to perform.
  * @conf  num_elements          int. The number of elements (i.e. inputs) in the correlator data.
  * @conf  num_ev                int. The number of eigenvectors to be stored
@@ -69,13 +67,14 @@
  *
  * @par Example
  * @code
- * prodSubset:
+ * prod_subset:
+ *   kotekan_stage: prodSubset
  *   in_buf: vis_full
  *   out_buf: vis_subset
  *   prod_subset_type: baseline
  *   max_ew_baseline: 16
  *   max_ns_baseline: 16
- *   input_list: [0,1,2,3]
+ *   input_list: [0, 1, 2, 3]
  *   num_elements: 2048
  *   num_ev: 0
  * @endcode

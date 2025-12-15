@@ -35,8 +35,6 @@
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
- * @conf  in_buf           String. Input buffer.
- * @conf  out_buf          String. Output buffer.
  * @conf  fringestop_mode  Int (default 1). 0=no fringestop, 1=multiply vis, 2=overwrite with
  *                         pure phase term.
  * @conf  num_rot_target   Int (default 9000). Target ERA rotation count for fringestopping.
@@ -46,7 +44,8 @@
  *
  * @par Example
  * @code
- * N2FringeStop:
+ * n2_fringe_stop:
+ *   kotekan_stage: N2FringeStop
  *   in_buf: vis_in
  *   out_buf: vis_fs
  *   fringestop_mode: 1

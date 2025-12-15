@@ -35,15 +35,14 @@
  *     @buffer_format HFBBuffer structured
  *     @buffer_metadata HFBMetadata
  *
- * @conf in_buf           String. Input buffer.
- * @conf out_buf          String. Output buffer.
  * @conf base_dir         String. Output directory for HDF5.
  * @conf file_name        String. Base filename.
  * @conf frames_per_file  Int. Frames per file.
  *
  * @par Example
  * @code
- * HFBTranspose:
+ * hfb_transpose:
+ *   kotekan_stage: HFBTranspose
  *   in_buf: hfb_raw
  *   out_buf: hfb_transposed
  *   base_dir: /data/hfb

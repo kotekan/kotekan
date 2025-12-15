@@ -27,12 +27,10 @@
  *        @buffer_format any, but all must be the same type and match in_buf
  *        @buffer_metadata any, but all must be the same type match in_buf
  *
- * @conf in_buf   String. Input buffer to split.
- * @conf out_bufs Array<String>. Output buffers to receive frames round-robin.
- *
  * @par Example
  * @code
- * BufferSplit:
+ * buffer_split:
+ *   kotekan_stage: BufferSplit
  *   in_buf: vis_in
  *   out_bufs: [vis_copy0, vis_copy1, vis_copy2]
  * @endcode

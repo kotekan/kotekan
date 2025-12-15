@@ -42,9 +42,6 @@ using std::vector;
  *     @buffer_format VisBuffer metadata only
  *     @buffer_metadata VisMetadata
  *
- * @conf   in_buf                String. Metadata buffer (to read frequency).
- * @conf   gain_frb_buf          String. Output buffer for FRB gains.
- * @conf   gain_tracking_buf     String. Output buffer for tracking beam gains.
  * @conf   num_elements          Int (default 2048). Number of elements.
  * @conf   num_beams             Int (default 10). Number of pulsar beams.
  * @conf   frb_scaling           Float (default 1.0). Scaling factor on FRB gains.
@@ -73,7 +70,8 @@ using std::vector;
  *
  * @par Example
  * @code
- * ReadGain:
+ * read_gain:
+ *   kotekan_stage: ReadGain
  *   in_buf: vis_in
  *   gain_frb_buf: gains_frb
  *   gain_tracking_buf: gains_tracking

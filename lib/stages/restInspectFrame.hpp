@@ -33,7 +33,6 @@
  *     @buffer_format Any
  *     @buffer_metadata Any
  *
- * @conf   in_buf String. Buffer to inspect.
  * @conf   len    Int. Bytes to return from the start of the latest frame (0 = full frame).
  *
  * @par REST
@@ -41,7 +40,8 @@
  *
  * @par Example
  * @code
- * restInspectFrame:
+ * rest_inspect_frame:
+ *   kotekan_stage: restInspectFrame
  *   in_buf: vis_in
  *   len: 1024
  * # GET /inspect_frame/vis_in

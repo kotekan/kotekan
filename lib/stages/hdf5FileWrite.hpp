@@ -24,7 +24,6 @@
  *     @buffer_format Any
  *     @buffer_metadata Any (Vis/N2/HFB/CHORD)
  *
- * @conf in_buf                String. Input buffer.
  * @conf base_dir              String. Directory to write into.
  * @conf file_name             String. Base filename stem.
  * @conf prefix_hostname       Bool. Default true. Prefix with hostname.
@@ -46,7 +45,8 @@
  *
  * @par Example
  * @code
- * hdf5FileWrite:
+ * hdf5_file_write:
+ *   kotekan_stage: hdf5FileWrite
  *   in_buf: vis_out
  *   base_dir: /data/h5_out
  *   file_name: vis

@@ -27,7 +27,6 @@
  *     @buffer_format HFBBuffer structured
  *     @buffer_metadata HFBMetadata
  *
- * @conf out_buf     String. Output buffer name.
  * @conf base_dir    String. Directory of raw files.
  * @conf file_name   String. Base filename stem.
  * @conf file_ext    String. File extension.
@@ -36,7 +35,8 @@
  *
  * @par Example
  * @code
- * HFBRawReader:
+ * hfb_raw_reader:
+ *   kotekan_stage: HFBRawReader
  *   out_buf: hfb_out
  *   base_dir: /data/hfb
  *   file_name: hfb

@@ -28,8 +28,6 @@
  *         @buffer_format VisBuffer.
  *         @buffer_metadata VisMetadata
  *
- * @conf   in_buf                  String. Input buffer.
- * @conf   out_buf                 String. Output buffer.
  * @conf   err_sq_lim              Float. Limit for the error of visibility truncation.
  * @conf   weight_fixed_precision  Float. Fixed precision for weight truncation.
  * @conf   data_fixed_precision    Float. Fixed precision for eigenvector and visibility truncation
@@ -37,7 +35,8 @@
  *
  * @par Example
  * @code
- * VisTruncate:
+ * vis_truncate:
+ *   kotekan_stage: VisTruncate
  *   in_buf: vis_in
  *   out_buf: vis_trunc
  *   err_sq_lim: 1e-6

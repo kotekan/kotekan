@@ -18,13 +18,13 @@
  *     @buffer_format any
  *     @buffer_metadata any
  *
- * @conf in_buf String. Input buffer to inspect.
  * @conf len    Int (default 128). Number of bytes to print.
  * @conf offset Int (default 0). Byte offset into the frame.
  *
  * @par Example
  * @code
- * hexDump:
+ * hex_dump:
+ *   kotekan_stage: hexDump
  *   in_buf: raw_in
  *   len: 256
  *   offset: 0

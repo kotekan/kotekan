@@ -32,13 +32,13 @@
  *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
- * @conf  in_buf                String. Input buffer.
  * @conf  start_time_tolerance  Int (default 3). Allowed change in derived start time (seconds)
  *                              before exiting.
  *
  * @par Example
  * @code
- * countCheck:
+ * count_check:
+ *   kotekan_stage: countCheck
  *   in_buf: vis_in
  *   start_time_tolerance: 3
  * @endcode

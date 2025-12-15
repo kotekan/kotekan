@@ -27,7 +27,6 @@
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf   in_buf           String. Input buffer.
  * @conf   num_freq         Int. Number of frequencies in each VDIF packet.
  * @conf   dest_port        Int. Destination UDP port.
  * @conf   dest_server_ip   String. Destination IP.
@@ -36,7 +35,8 @@
  *
  * @par Example
  * @code
- * streamSingleDishVDIF:
+ * stream_single_dish_vdif:
+ *   kotekan_stage: streamSingleDishVDIF
  *   in_buf: vdif_in
  *   num_freq: 1024
  *   dest_port: 12001

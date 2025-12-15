@@ -35,15 +35,14 @@
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
- * @conf in_buf           String. Input buffer.
- * @conf out_buf          String. Output buffer.
  * @conf base_dir         String. Output directory for HDF5.
  * @conf file_name        String. Base filename.
  * @conf frames_per_file  Int. Frames per file.
  *
  * @par Example
  * @code
- * VisTranspose:
+ * vis_transpose:
+ *   kotekan_stage: VisTranspose
  *   in_buf: vis_raw
  *   out_buf: vis_transposed
  *   base_dir: /data/vis

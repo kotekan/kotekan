@@ -30,13 +30,12 @@
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf   in_buf       String. Input buffer name.
- * @conf   out_buf      String. Output buffer name.
  * @conf   integration  Int. Number of time samples to sum.
  *
  * @par Example
  * @code
- * integratePowerStream:
+ * integrate_power_stream:
+ *   kotekan_stage: integratePowerStream
  *   in_buf: power_in
  *   out_buf: power_out
  *   integration: 16

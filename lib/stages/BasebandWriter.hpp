@@ -36,7 +36,6 @@
  *         @buffer_format BasebandBuffer structured
  *         @buffer_metadata BasebandMetadata
  *
- * @conf in_buf                String. Input baseband buffer.
  * @conf root_path             String, default ".". Base directory for output.
  * @conf samples_per_data_set  UInt. Samples in each frame (used to size payload).
  * @conf num_elements          UInt. Number of elements (used to size payload).
@@ -59,7 +58,8 @@
  *
  * @par Example
  * @code
- * BasebandWriter:
+ * baseband_writer:
+ *   kotekan_stage: BasebandWriter
  *   in_buf: baseband_in
  *   root_path: /data/baseband
  *   samples_per_data_set: 49152

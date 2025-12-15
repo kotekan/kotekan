@@ -42,8 +42,6 @@
  *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
- * @conf  in_buf          String. Input buffer.
- * @conf  out_buf         String. Output buffer.
  * @conf  num_elements    Int. The number of elements (i.e. inputs) in the correlator data.
  * @conf  block_size      Int. The block size of the packed data.
  * @conf  num_ev          UInt. The number of eigenvectors to be calculated as an approximation.
@@ -69,7 +67,8 @@
  *
  * @par Example
  * @code
- * EigenVisIter:
+ * eigen_vis_iter:
+ *   kotekan_stage: EigenVisIter
  *   in_buf: vis_in
  *   out_buf: vis_out
  *   num_elements: 2048

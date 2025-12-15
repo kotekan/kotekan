@@ -30,7 +30,6 @@
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf out_buf             String. Input power buffer to stream.
  * @conf samples_per_data_set Int. Number of time samples in each frame.
  * @conf integration_length  Int. Integration length used upstream (metadata only).
  * @conf num_freq            Int. Number of frequencies per frame.
@@ -41,7 +40,8 @@
  *
  * @par Example
  * @code
- * networkInputPowerStream:
+ * network_input_power_stream:
+ *   kotekan_stage: networkInputPowerStream
  *   out_buf: power_out
  *   samples_per_data_set: 1024
  *   integration_length: 1

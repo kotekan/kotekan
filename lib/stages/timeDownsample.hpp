@@ -34,8 +34,6 @@
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
- * @conf  in_buf      String. Input visibility buffer (single frequency).
- * @conf  out_buf     String. Output downsampled buffer.
  * @conf  num_samples Int. Number of time frames to average together.
  * @conf  max_age     Float (default 120). Max age in seconds before a frame is dropped.
  *
@@ -44,7 +42,8 @@
  *
  * @par Example
  * @code
- * timeDownsample:
+ * time_downsample:
+ *   kotekan_stage: timeDownsample
  *   in_buf: vis_in
  *   out_buf: vis_slow
  *   num_samples: 4

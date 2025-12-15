@@ -64,8 +64,6 @@
  *                                  prevent discontinuities. Default is 5 minutes.
  * @conf   num_kept_updates Int.    The number of gain updates stored in a FIFO.
  * @conf   num_threads      Int.    Number of threads to run. Default is 1.
- * @conf   in_buf           String. Input buffer name.
- * @conf   out_buf          String. Output buffer name.
  * @conf   broker_timeout   Double. Optional timeout for broker requests (seconds).
  *
  * @par Metrics
@@ -87,7 +85,8 @@
  *
  * @par Example
  * @code
- * applyGains:
+ * apply_gains:
+ *   kotekan_stage: applyGains
  *   in_buf: vis_in
  *   out_buf: vis_out
  *   num_elements: 2048

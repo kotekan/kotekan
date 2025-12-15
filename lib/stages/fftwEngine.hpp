@@ -34,13 +34,12 @@
  *     @buffer_format Array of @c fftwf_complex
  *     @buffer_metadata none
  *
- * @conf   in_buf          String. Input buffer name.
- * @conf   out_buf         String. Output buffer name.
  * @conf   spectrum_length Int. Number of samples in the input spectrum (default 1024).
  *
  * @par Example
  * @code
- * fftwEngine:
+ * fftw_engine:
+ *   kotekan_stage: fftwEngine
  *   in_buf: volt_in
  *   out_buf: fft_out
  *   spectrum_length: 1024

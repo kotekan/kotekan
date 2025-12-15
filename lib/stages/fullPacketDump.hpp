@@ -29,7 +29,6 @@
  *     @buffer_format uint8_t payload (UDP packets concatenated)
  *     @buffer_metadata none
  *
- * @conf network_in_buf  String. Input buffer name.
  * @conf link_id         Int. Logical link index (used in REST path and filename).
  * @conf udp_packet_size Int. Size of each UDP packet in bytes.
  * @conf dump_to_disk    Bool. If true write frames to disk; otherwise cache for REST.
@@ -42,7 +41,8 @@
  *
  * @par Example
  * @code
- * fullPacketDump:
+ * full_packet_dump:
+ *   kotekan_stage: fullPacketDump
  *   network_in_buf: raw_net
  *   link_id: 0
  *   udp_packet_size: 4928

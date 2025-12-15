@@ -27,15 +27,13 @@
  *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
- * @conf in_buf   String. Input buffer.
- * @conf out_buf  String. Output buffer.
- *
  * @par Dataset states
  * Removes `eigenvalue`/`eigenvector` dataset states; produces a dataset ID without those states.
  *
  * @par Example
  * @code
- * removeEv:
+ * remove_ev:
+ *   kotekan_stage: removeEv
  *   in_buf: vis_with_ev
  *   out_buf: vis_no_ev
  * @endcode

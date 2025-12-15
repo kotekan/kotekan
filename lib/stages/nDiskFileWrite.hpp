@@ -32,7 +32,6 @@
  *  @buffer_format Array of VDIF frames.
  *  @buffer_metadata none
  *
- * @conf in_buf                 String. Input buffer with VDIF frames.
  * @conf num_disks              Int. Number of drives to write to.
  * @conf disk_base              String. Path to the mounted drives (e.g. `/drives/`).
  * @conf disk_set               String. Disk set prefix (e.g. `D`).
@@ -76,7 +75,8 @@
  *
  * @par Example
  * @code
- * nDiskFileWrite:
+ * n_disk_file_write:
+ *   kotekan_stage: nDiskFileWrite
  *   in_buf: vdif_in
  *   num_disks: 3
  *   disk_base: /drives/

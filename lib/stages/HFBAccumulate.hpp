@@ -38,33 +38,43 @@
  * HDF5 format by gossec.
  *
  * @par Buffers
- * @buffer hfb_input_buffer Kotekan buffer feeding data from any GPU.
+ * @buffer hfb_input_buf Kotekan buffer feeding data from any GPU.
  *     @buffer_format Array of @c floats
- * @buffer cls_buffer Kotekan buffer that contains the compressed lost samples.
+ *     @buffer_metadata chordMetadata
+ * @buffer compressed_lost_samples_buf Kotekan buffer that contains the compressed lost samples.
  *     @buffer_format Array of @c uint32_t
- * @buffer hfb_out_buf Kotekan buffer that will be populated with integrated data.
+ *     @buffer_metadata chordMetadata
+ * @buffer hfb_output_buf Kotekan buffer populated with integrated data.
  *     @buffer_format Array of @c floats
+ *     @buffer_metadata HFBMetadata
  *
- * @conf   hfb_input_buffer       String. Input buffer.
- * @conf   cls_buffer             String. Input compressed-lost-samples buffer.
- * @conf   hfb_out_buf            String. Output integrated buffer.
- * @conf   num_frames_to_integrate Int. Frames to integrate over.
+ * @conf   num_frames_to_integrate Int. Frames to integrate over (default 80).
  * @conf   num_frb_total_beams     Int. Total FRB beams (typically 1024).
  * @conf   factor_upchan           Int. Upchannelise factor (e.g., 128).
  * @conf   samples_per_data_set    Int. Samples per GPU frame.
  * @conf   good_samples_threshold  Float. Minimum good-sample fraction to keep integration.
+ * @conf   instrument_name         String. Name of instrument for metadata (default `chime`).
+ * @conf   freq_ids                Array of UInts, optional. Frequency IDs to include; defaults to
+ *                                 all telescope coarse channels.
+ *
+ * @par Dataset states
+ * Seeds a dataset with `freqState`, `beamState`, `subfreqState`, and `metadataState` describing
+ * the HFB layout and metadata, then registers that as the base dataset for outputs.
  *
  * @par Example
  * @code
- * HFBAccumulate:
- *   hfb_input_buffer: hfb_in
- *   cls_buffer: cls_in
- *   hfb_out_buf: hfb_int
+ * hfb_accumulate:
+ *   kotekan_stage: HFBAccumulate
+ *   hfb_input_buf: hfb_in
+ *   compressed_lost_samples_buf: cls_in
+ *   hfb_output_buf: hfb_int
  *   num_frames_to_integrate: 80
  *   num_frb_total_beams: 1024
  *   factor_upchan: 128
  *   samples_per_data_set: 49152
  *   good_samples_threshold: 0.9
+ *   instrument_name: chime
+ *   freq_ids: [0, 1, 2, 3]
  * @endcode
  *
  * @author James Willis

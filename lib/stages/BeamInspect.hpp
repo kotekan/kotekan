@@ -23,11 +23,10 @@
  *     @buffer_format 4+4-bit complex voltage (beam) data
  *     @buffer_metadata BeamMetadata
  *
- * @conf in_buf String. Input beam buffer.
- *
  * @par Example
  * @code
- * BeamInspect:
+ * beam_inspect:
+ *   kotekan_stage: BeamInspect
  *   in_buf: beam_gpu0
  * @endcode
  *

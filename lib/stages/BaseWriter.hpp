@@ -93,7 +93,6 @@
  * @conf   critical_states  List of strings. A list of state types to consider
  *                          critical. That is, if they change in the incoming
  *                          data stream then a new acquisition will be started.
- * @conf   in_buf           String. Input buffer name.
  *
  * @par Metrics
  * @metric kotekan_writer_write_time_seconds
@@ -106,7 +105,7 @@
  *
  * @par Example
  * @code
- * VisWriter:
+ * vis_writer:
  *   kotekan_stage: VisWriter
  *   in_buf: vis_in
  *   file_type: hdf5fast

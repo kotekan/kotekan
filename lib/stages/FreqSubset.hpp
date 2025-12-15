@@ -32,8 +32,6 @@
  *         @buffer_format Vis/HFBBuffer structured
  *         @buffer_metadata Vis/HFBMetadata
  *
- * @conf  in_buf                String. Input buffer.
- * @conf  out_buf               String. Output buffer.
  * @conf  subset_list           Vector<Int>. Frequencies (coarse IDs) to keep in the subset.
  *
  * @par Dataset states
@@ -41,7 +39,8 @@
  *
  * @par Example
  * @code
- * FreqSubset:
+ * freq_subset:
+ *   kotekan_stage: FreqSubset
  *   in_buf: vis_in
  *   out_buf: vis_freq_subset
  *   subset_list: [150, 151, 152, 153]

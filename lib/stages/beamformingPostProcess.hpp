@@ -41,12 +41,11 @@
  * @conf num_data_sets        UInt. Number of FPGA frames per GPU frame.
  * @conf link_map             Array<Int>. Maps link index -> GPU buffer index.
  * @conf num_local_freq       UInt. Number of coarse frequencies per link (used to size payload).
- * @conf vdif_out_buf         String. Output VDIF buffer name.
- * @conf beam_in_buf_<N>      String. Input buffers for each GPU (N from 0 to num_gpus-1).
  *
  * @par Example
  * @code
- * beamformingPostProcess:
+ * beamforming_post_process:
+ *   kotekan_stage: beamformingPostProcess
  *   num_links: 4
  *   num_gpus: 2
  *   samples_per_data_set: 49152

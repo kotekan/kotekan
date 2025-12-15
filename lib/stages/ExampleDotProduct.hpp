@@ -24,13 +24,10 @@
  *      @buffer_format Array of floats
  *      @buffer_metadata any
  *
- * @conf in_a_buf String. Input buffer representing vector A.
- * @conf in_b_buf String. Input buffer representing vector B.
- * @conf out_buf  String. Output buffer for dot-product result.
- *
  * @par Example
  * @code
- * ExampleDotProduct:
+ * example_dot_product:
+ *   kotekan_stage: ExampleDotProduct
  *   in_a_buf: vec_a
  *   in_b_buf: vec_b
  *   out_buf: vec_dot

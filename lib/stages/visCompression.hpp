@@ -60,8 +60,6 @@
  * @buffer in_buf  Input visibility buffer (VisBuffer with VisMetadata), consumer.
  * @buffer out_buf Output compressed visibility buffer (VisBuffer), producer.
  *
- * @conf in_buf          String. Input buffer.
- * @conf out_buf         String. Output buffer.
  * @conf stack_type      String. Stacking definition name (registered in stack_type_defs).
  * @conf exclude_inputs  Array[uint]. Inputs to exclude from compression.
  * @conf num_threads     Int. Default 1. Number of compression threads.
@@ -71,11 +69,12 @@
  *
  * @par Example
  * @code
- * baselineCompression:
+ * baseline_compression:
+ *   kotekan_stage: baselineCompression
  *   in_buf: vis_uncompressed
  *   out_buf: vis_compressed
  *   stack_type: default
- *   exclude_inputs: [0,1]
+ *   exclude_inputs: [0, 1]
  *   num_threads: 2
  * @endcode
  *

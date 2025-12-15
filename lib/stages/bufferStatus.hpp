@@ -39,7 +39,8 @@
  *
  * @par Example
  * @code
- * bufferStatus:
+ * buffer_status:
+ *   kotekan_stage: bufferStatus
  *   time_delay: 500000
  *   print_status: true
  *   print_full_status: false

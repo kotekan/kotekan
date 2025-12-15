@@ -30,12 +30,11 @@
  *     @buffer_metadata chimeMetadata
  *
  * @conf    samples_per_data_set  Int. The number of samples in each frame.
- * @conf    voltage_data_buf_<N>  String. Output voltage buffers for links N=0..3.
- * @conf    lost_samples_buf      String. Output buffer for lost-sample flags.
  *
  * @par Example
  * @code
- * DPDKShuffleSimulate:
+ * dpdk_shuffle_simulate:
+ *   kotekan_stage: DPDKShuffleSimulate
  *   samples_per_data_set: 49152
  *   voltage_data_buf_0: vol0
  *   voltage_data_buf_1: vol1

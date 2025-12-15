@@ -82,14 +82,12 @@
  * @conf    critical_states List of strings. A list of state types to consider
  *                          critical. That is, if they change in the incoming
  *                          data stream then Kotekan will shut down.
- * @conf    in_buf          String. Input buffer name.
  *
  * @par Metrics
- * @metric dropped_frame_counter
- *          The number of times a frame was dropped because it arrived too late.
- * @metric  access_record_wait_time_seconds
- *          The amount of time the writer spent, in seconds waiting to
- *          access the access record.
+ * @metric kotekan_vissharedmemwriter_dropped_frame_total
+ *          Number of frames dropped because they arrived too late.
+ * @metric kotekan_access_record_wait_time_seconds
+ *          Time spent waiting to access the shared-memory access record.
  *
  * @par Dataset states
  * Requires frequency/input/product/eigenvalue/metadata states on input; checks critical_states
@@ -97,7 +95,8 @@
  *
  * @par Example
  * @code
- * VisSharedMemWriter:
+ * vis_shared_mem_writer:
+ *   kotekan_stage: VisSharedMemWriter
  *   in_buf: vis_out
  *   root_path: /dev/shm/
  *   name: vis_shm

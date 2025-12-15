@@ -56,9 +56,6 @@
  *     @buffer_metadata chimeMetadata
  *     @buffer_format Array of @c uint8
  *
- * @conf   in_buf_0..3                String. Input buffers from each GPU.
- * @conf   out_buf                    String. Output packet buffer.
- * @conf   lost_samples_buf           String. Input lost-sample flags buffer.
  * @conf   num_gpus                   Int. Number of GPUs (buffers) to read.
  * @conf   samples_per_data_set       Int. Baseband samples per input frame.
  * @conf   downsample_time            Int. Time downsampling applied in FRB kernels.
@@ -75,7 +72,8 @@
  *
  * @par Example
  * @code
- * frbPostProcess:
+ * frb_post_process:
+ *   kotekan_stage: frbPostProcess
  *   in_buf_0: frb_gpu0
  *   in_buf_1: frb_gpu1
  *   in_buf_2: frb_gpu2

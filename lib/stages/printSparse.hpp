@@ -27,14 +27,14 @@
  *         @buffer_format (templated: uint8, uint32, float16)
  *         @buffer_metadata chimeMetadata or oneHotMetadata
  *
- * @conf  input_buf    String.  Input buffer name.
  * @conf  max_to_print Int.  Maximum number of array elements to print.
  * @conf  array_shape  Vector of int.  Shape of the matrix in the buffer.  When given,
  *               we will convert the flat index back into the N-dimensional matrix index.
  *
  * @par Example
  * @code
- * printSparse:
+ * print_sparse:
+ *   kotekan_stage: printSparse
  *   input_buf: sparse_flags
  *   max_to_print: 20
  *   array_shape: [4, 1024]

@@ -30,29 +30,28 @@ private:
      * multiple links interleaving frames.
      *
      * @par Buffers
-     * @buffer network_out_buf Output buffer to fill.
-     *     @buffer_format 4+4-bit complex voltages [time][freq][elem]
-     *     @buffer_metadata chordMetadata
-     *
-     * @conf network_out_buf     String. Output buffer name.
-     * @conf num_links_in_group  Int. Number of interleaved link buffers (frame_id stride).
-     * @conf link_id             Int. This link index (initial frame offset).
-     * @conf pattern             Int. One of 0=constant, 1=full-range ramp, 2=complex sine.
-     * @conf samples_per_data_set Int. Samples per frame.
-     * @conf num_local_freq      Int. Number of coarse frequencies per frame.
-     * @conf num_elements        Int. Number of elements.
-     *
-     * @par Example
-     * @code
-     * networkOutputSim:
-     *   network_out_buf: net_out
-     *   num_links_in_group: 4
-     *   link_id: 0
-     *   pattern: 1   # full range
-     *   samples_per_data_set: 49152
-     *   num_local_freq: 4
-     *   num_elements: 2048
-     * @endcode
+ * @buffer network_out_buf Output buffer to fill.
+ *     @buffer_format 4+4-bit complex voltages [time][freq][elem]
+ *     @buffer_metadata chordMetadata
+ *
+ * @conf num_links_in_group  Int. Number of interleaved link buffers (frame_id stride).
+ * @conf link_id             Int. This link index (initial frame offset).
+ * @conf pattern             Int. One of 0=constant, 1=full-range ramp, 2=complex sine.
+ * @conf samples_per_data_set Int. Samples per frame.
+ * @conf num_local_freq      Int. Number of coarse frequencies per frame.
+ * @conf num_elements        Int. Number of elements.
+ * @par Example
+ * @code
+ * network_output_sim:
+ *   kotekan_stage: networkOutputSim
+ *   network_out_buf: net_out
+ *   num_links_in_group: 4
+ *   link_id: 0
+ *   pattern: 1   # full range
+ *   samples_per_data_set: 49152
+ *   num_local_freq: 4
+ *   num_elements: 2048
+ * @endcode
      */
     Buffer* buf;
     int num_links_in_group;

@@ -17,8 +17,6 @@
  * @buffer input_buf  Input voltage buffer (consumer).
  * @buffer output_buf Output correlation buffer (producer).
  *
- * @conf network_in_buf     String. Input buffer name.
- * @conf corr_out_buf       String. Output buffer name.
  * @conf num_elements       Int. Number of elements.
  * @conf num_local_freq     Int. Number of local frequencies.
  * @conf samples_per_data_set Int. Samples per frame.
@@ -28,7 +26,8 @@
  *
  * @par Example
  * @code
- * gpuSimulate:
+ * gpu_simulate:
+ *   kotekan_stage: gpuSimulate
  *   network_in_buf: volt_in
  *   corr_out_buf: corr_out
  *   num_elements: 2048

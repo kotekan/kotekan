@@ -18,7 +18,6 @@
  *     @buffer_format Any
  *     @buffer_metadata Any
  *
- * @conf in_buf              String. Input buffer.
  * @conf base_dir            String. Directory to write into.
  * @conf file_name           String. Base filename to write (numeric index appended).
  * @conf file_ext            String. File extension.
@@ -32,7 +31,8 @@
  *
  * @par Example
  * @code
- * rawFileWrite:
+ * raw_file_write:
+ *   kotekan_stage: rawFileWrite
  *   in_buf: vis_in
  *   base_dir: /data/raw
  *   file_name: vis_dump

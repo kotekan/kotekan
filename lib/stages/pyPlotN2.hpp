@@ -34,12 +34,12 @@
  *  @buffer_format Array of complex uint32_t values.
  *  @buffer_metadata none
  *
- * @conf in_buf         String. Input buffer to plot.
  * @conf gpu_id         Int. Used to generate the REST endpoint (disambiguate multiple streams).
  *
  * @par Example
  * @code
- * pyPlotN2:
+ * py_plot_n2:
+ *   kotekan_stage: pyPlotN2
  *   in_buf: vis_gpu0
  *   gpu_id: 0
  * # Trigger: POST /plot_corr_matrix/0

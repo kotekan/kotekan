@@ -39,12 +39,11 @@
  * @conf    extract_beam          Int.   The beam number to extract from the input set of beams;
  *                                       zero based.
  * @conf    samples_per_data_set  Int.   Number of time samples in a data set
- * @conf    in_buf                String. Input beamformer buffer.
- * @conf    out_buf               String. Output single-beam buffer.
  *
  * @par Example
  * @code
- * BeamExtract:
+ * beam_extract:
+ *   kotekan_stage: BeamExtract
  *   in_buf: beamform_out
  *   out_buf: beam0_buf
  *   num_beams: 256

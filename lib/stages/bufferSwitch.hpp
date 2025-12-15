@@ -16,19 +16,20 @@
 /**
  * @brief Selects buffers based on the values in an updatable config endpoint.
  *
- * An example config:
- *
+ * @par Example
+ * @code
  * buffer_switch:
- * kotekan_stage: bufferSwitch
- * in_bufs:
- *   - network_data_0: gpu_data_buffer_0
- *   - network_data_1: gpu_data_buffer_1
- * out_buf: network_buffer
- * updatable_config: "/buffer_switch/switch_status"
+ *   kotekan_stage: bufferSwitch
+ *   in_bufs:
+ *     - network_data_0: gpu_data_buffer_0
+ *     - network_data_1: gpu_data_buffer_1
+ *   out_buf: network_buffer
+ *   updatable_config: "/buffer_switch/switch_status"
  * switch_status:
  *   kotekan_update_endpoint: "json"
  *   network_data_0: false # Don't merge frames from gpu_data_buffer_0
  *   network_data_1: true  # Merge frames from gpu_data_buffer_1
+ * @endcode
  *
  * See bufferMerge for more docs.  Requires internal names.
  *
@@ -37,8 +38,6 @@
  * format/metadata.
  * @buffer out_buf Output buffer receiving merged frames (producer).
  *
- * @conf in_bufs           Array. Input buffers with internal names (required).
- * @conf out_buf           String. Output buffer name.
  * @conf updatable_config  String.  JSON pointer to the updatable config block.
  *                                  An example block would be:
  *                                  switch_config:
@@ -47,7 +46,7 @@
  *                                      internal_buffer_name_1: false
  *
  * @par Updatable config
- * @updatable_path updatable_config   Keys must match @c internal_name entries from @conf in_bufs.
+ * @updatable_path updatable_config   Keys must match @c internal_name entries from @c in_bufs.
  *
  * @author Andre Renard
  */

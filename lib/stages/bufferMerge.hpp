@@ -46,14 +46,13 @@
  *        @buffer_format Matches the input buffers
  *        @buffer_metadata Matches the input buffers
  *
- * @conf in_bufs Array. Input buffer names (optionally keyed with internal names).
- * @conf out_buf String. Output buffer name.
  * @conf timeout Double. Default -1.0. Timeout in seconds waiting for a frame on any input;
  *               negative disables timeout.
  *
  * @par Example
  * @code
- * bufferMerge:
+ * buffer_merge:
+ *   kotekan_stage: bufferMerge
  *   in_bufs: [vis_a, vis_b]
  *   out_buf: vis_merged
  *   timeout: 0.5

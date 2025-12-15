@@ -17,11 +17,10 @@
  *      @buffer_format any
  *      @buffer_metadata any
  *
- * @conf in_buf String. Input buffer to print.
- *
  * @par Example
  * @code
- * ExampleConsumer:
+ * example_consumer:
+ *   kotekan_stage: ExampleConsumer
  *   in_buf: test_out
  * @endcode
  *

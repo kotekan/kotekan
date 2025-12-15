@@ -31,13 +31,12 @@
  *        @buffer_format any, but all must be the same type.
  *        @buffer_metadata any, but all must be the same type.
  *
- * @conf in_buf           String. Input buffer name.
- * @conf out_bufs         Array. Output buffer names (optionally keyed with internal names).
  * @conf copy_metadata    Bool. Default false. If true deep-copies metadata; otherwise passes it.
  *
  * @par Example
  * @code
  * bufferCopy:
+ *   kotekan_stage: bufferCopy
  *   in_buf: vis_in
  *   copy_metadata: true
  *   out_bufs: [vis_a, vis_b]

@@ -44,8 +44,6 @@
  *         @buffer_format VisBuffer.
  *         @buffer_metadata VisMetadata
  *
- * @conf   in_buf           String. Input buffer.
- * @conf   out_buf          String. Output buffer.
  * @conf   num_elements     Int.    The number of elements (i.e. inputs) in the
  *                                 correlator data.
  * @conf   updatable_block  String. The full name of the updatable_block that
@@ -72,7 +70,8 @@
  *
  * @par Example
  * @code
- * ReceiveFlags:
+ * receive_flags:
+ *   kotekan_stage: ReceiveFlags
  *   in_buf: vis_in
  *   out_buf: vis_flagged
  *   num_elements: 2048

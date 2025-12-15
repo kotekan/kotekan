@@ -45,11 +45,13 @@
  * @buffer out_buf The accumulated and tagged data.
  *         @buffer_format VisBuffer structured.
  *         @buffer_metadata VisMetadata
+ * @buffer gated_out_bufs Optional gated visibility buffers created per entry in the @c gating
+ *         config (one per gate name).
+ *         @buffer_format VisBuffer structured.
+ *         @buffer_metadata VisMetadata
  *
- * @conf  in_buf               String. Input GPU buffer name.
- * @conf  out_buf              String. Output VisBuffer name (main vis dataset).
  * @conf  samples_per_data_set  Int. The number of samples each GPU buffer has
- *                              been integrated for.
+  *                              been integrated for.
  * @conf  num_gpu_frames        Int. The number of GPU frames to accumulate over.
  * @conf  integration_time      Float. Requested integration time in seconds.
  *                              This can be used as an alterative to
@@ -74,7 +76,7 @@
  * @conf  max_age               Float. Drop frames later than this number of seconds.
  *                              Default is 60.0
  * @conf  gating                Object. Optional map of gate name -> {mode, buf} to create
- *                              additional gated outputs.
+ *                              additional gated outputs (see @par Buffers for the gated buffers).
  *
  * @par Metrics
  * @metric  kotekan_visaccumulate_skipped_frame_total
@@ -88,6 +90,7 @@
  * @par Example
  * @code
  * visAccumulate:
+ *   kotekan_stage: visAccumulate
  *   in_buf: gpu_vis
  *   out_buf: vis_int
  *   samples_per_data_set: 49152

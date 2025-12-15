@@ -32,7 +32,6 @@
  * 	@buffer_format Array of unsigned char, just copies the file.
  * 	@buffer_metadata none
  *
- * @conf out_buf              String. Output buffer name.
  * @conf num_disks            Int. Number of drives to read from.
  * @conf disk_base            String. Path to mounted drives (e.g. `/drives/`).
  * @conf disk_set             String. Disk set prefix (e.g. `D`).
@@ -76,7 +75,8 @@
  *
  * @par Example
  * @code
- * nDiskFileRead:
+ * n_disk_file_read:
+ *   kotekan_stage: nDiskFileRead
  *   out_buf: vdif_in
  *   num_disks: 3
  *   disk_base: /drives/

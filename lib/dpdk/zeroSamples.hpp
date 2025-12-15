@@ -26,17 +26,19 @@
  * @buffer lost_samples_buf Array of flags which indicate if a sample in a given location is lost
  *     @buffer_format Array of flags uint8_t flags which are either 0 (unset) or 1 (set)
  *     @buffer_metadata chimeMetadata
+ * @buffer out_lost_sample_buffers Optional duplicate lost-sample buffers populated when
+ *     @c duplicate_ls_buffer is true.
+ *     @buffer_format Array of uint8_t flags matching @c lost_samples_buf
+ *     @buffer_metadata chimeMetadata
  *
- * @conf  out_buf                  String. Voltage/DPDK data buffer name (producer).
- * @conf  lost_samples_buf         String. Lost-sample flags buffer (consumer).
  * @conf  sample_size              Int. Default 2048.  Size in bytes of one time-sample block.
  * @conf  duplicate_ls_buffer      Bool. Default false. Duplicate lost-sample buffer to outputs.
- * @conf  out_lost_sample_buffers  Array[String]. Optional extra lost-sample buffers to fill.
  * @conf  zero_value               Int. Default 0x88. 8-bit fill value for bad data.
  *
  * @par Example
  * @code
- * zeroSamples:
+ * zero_samples:
+ *   kotekan_stage: zeroSamples
  *   out_buf: voltage_out
  *   lost_samples_buf: lost_samples
  *   sample_size: 2048

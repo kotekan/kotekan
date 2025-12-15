@@ -52,8 +52,6 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  * @conf  num_frames_buffer     Int. Number of buffer frames to simultaneously keep
  *                              full of data. Should be few less than in_buf length.
  * @conf  num_local_freq        UInt. Number of frequencies in each GPU frame.
- * @conf  in_buf                String. Input baseband buffer (ring).
- * @conf  out_buf               String. Output buffer for dumps.
  *
  * @par Metrics
  * @metric kotekan_baseband_readout_total
@@ -73,7 +71,8 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  *
  * @par Example
  * @code
- * basebandReadout:
+ * baseband_readout:
+ *   kotekan_stage: basebandReadout
  *   in_buf: bb_ring
  *   out_buf: bb_out
  *   num_elements: 2048

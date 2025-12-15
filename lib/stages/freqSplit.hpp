@@ -37,8 +37,6 @@
  *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
- * @conf in_buf                 String. Input buffer.
- * @conf out_bufs               Array[String]. Two output buffers (low, high).
  * @conf split_freq             Double. Frequency (MHz) to split at. Lower freqs go to first output,
  *                              equal/higher to second. Default 512.
  *
@@ -47,7 +45,8 @@
  *
  * @par Example
  * @code
- * freqSplit:
+ * freq_split:
+ *   kotekan_stage: freqSplit
  *   in_buf: vis_fullband
  *   out_bufs: [vis_low, vis_high]
  *   split_freq: 512.0

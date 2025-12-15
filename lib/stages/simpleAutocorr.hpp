@@ -33,12 +33,11 @@
  *
  * @conf   spectrum_length      Int (default 1024). Number of samples in the spectrum.
  * @conf   integration_length   Int (default 1024). Number of time samples to sum.
- * @conf   in_buf               String. Input buffer name.
- * @conf   out_buf              String. Output buffer name.
  *
  * @par Example
  * @code
- * simpleAutocorr:
+ * simple_autocorr:
+ *   kotekan_stage: simpleAutocorr
  *   in_buf: volt_in
  *   out_buf: autocorr_out
  *   spectrum_length: 1024

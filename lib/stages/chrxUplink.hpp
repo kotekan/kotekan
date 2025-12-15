@@ -17,15 +17,14 @@
  * @buffer chrx_in_buf Input visibilities (consumer), any format/metadata expected by receiver.
  * @buffer gate_in_buf Optional gating buffer (consumer), sent if enabled.
  *
- * @conf chrx_in_buf            String. Input visibility buffer.
- * @conf gate_in_buf            String. Input gating buffer.
  * @conf collection_server_ip   String. Destination IP.
  * @conf collection_server_port Int. Optional; derived from hostname suffix if omitted.
  * @conf enable_gating          Bool. Send gate buffer alongside visibilities.
  *
  * @par Example
  * @code
- * chrxUplink:
+ * chrx_uplink:
+ *   kotekan_stage: chrxUplink
  *   chrx_in_buf: vis_tx
  *   gate_in_buf: gate_tx
  *   collection_server_ip: 10.10.0.12

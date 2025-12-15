@@ -26,7 +26,6 @@
  *     @buffer_format HFBBuffer structured
  *     @buffer_metadata HFBMetadata
  *
- * @conf in_buf          String. Input buffer.
  * @conf file_type       String. See BaseWriter (hdf5/hdf5fast/raw).
  * @conf root_path       String. Output directory.
  * @conf file_length     Int. Samples per file.
@@ -38,7 +37,8 @@
  *
  * @par Example
  * @code
- * HFBWriter:
+ * hfb_writer:
+ *   kotekan_stage: HFBWriter
  *   in_buf: hfb_in
  *   file_type: hdf5fast
  *   root_path: /data/hfb
