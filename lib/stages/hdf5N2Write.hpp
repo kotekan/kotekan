@@ -31,20 +31,38 @@
  * @brief Buffer a full file worth of arrays in memory, then flush to disk
  * all at once.
  *
- * A file contains `num_file_t` time frames across `num_file_f` freqs.
- * This class holds all relevant arrays in their target on-disk layout,
- * "transposed" so the time-axis is fastest-varying, to facilitate large
- * contiguous writes, rather than writing as individual frames arrive.
+ * A file contains `num_file_t` time frames across `num_file_f` freqs. This class
+ * holds all relevant arrays in their target on-disk layout, "transposed" so the
+ * time-axis is fastest-varying, to facilitate large contiguous writes, rather
+ * than writing as individual frames arrive. Additional bookkeeping regarding
+ * the file (HDF5 handle, paths, open time) is also stored here. The file start
+ * time (and therefore final file name) is determined by the timestamp of the
+ * earliest frame in the file, so it cannot be set until all frames have arrived,
+ * since frames of different frequencies may arrive out of temporal order.
  *
- * (Note that num_file_f and num_file_t are not necessarily the same as the actual
- * frequency or time BLOCKSIZEs when written to file, which is configurable via the
- * stage parameters, but it may be beneficial to have them match.)
+ * @par File layout
+ * - Attributes: version, file_mode (CHORD/CHIME), abs_file_idx,
+ *   num_file_t, num_elements, num_prod, num_ev, num_freq, vis_layout, telescope
+ *   geometry (origin, orientations, dish maps), EOP tables, num_file_f.
+ * - Index maps: /index_map/freq (MHz + width per file frequency), /index_map/prod,
+ *   /index_map/grid_x_idx, /index_map/grid_y_idx, /index_map/feed_pos_disp_m,
+ *   /index_map/coelev_disp_deg, /index_map/type, /index_map/dish_positions_in_grid_coords.
+ * - Per-(f, p, t)/(f, t) datasets: /vis, /eval, /evec, /erms, /gain, /frames_added;
+ *   vis_weight, flags, frac_lost, and frac_rfi live at the root (CHORD) or under
+ *   /flags/{vis_weight, flags, frac_lost, frac_rfi} when file_mode == CHIME.
+ * - Per-time metadata: /fpga_start_tick, /frame_length_fpga_ticks,
+ *   /time_center_ut1_ns, /bin_ut1_ns, /bin_start_ERA_deg, /bin_end_ERA_deg,
+ *   /bin_start_LAST, /bin_end_LAST.
+ * - /config_json grows on flush with snapshots from configTracker.
  *
- * Additional bookkeeping regarding the file (HDF5 handle, paths, open time) is
- * also stored here. The file start time (and therefore final file name) is determined
- * by the timestamp of the earliest frame in the file, so it cannot be set until
- * all frames have arrived, since frames of different frequencies may arrive out
- * of temporal order.
+ * @par Chunking and compression
+ * - Chunk caps: blocksize_f (frequency), blocksize_p (product/element),
+ *   blocksize_t (time). A value of 0 leaves the dimension size unchanged.
+ * - Compression: compression="none" (default) or "deflate" (zlib; default level 4
+ *   when compression_level=0).
+ * - use_bitshuffle=true adds the bitshuffle filter and uses compression as the
+ *   backend ("none", "zstd", "lz4"); compression_level=0 maps to level 9.
+ *   Required HDF5 plugins must be available at runtime.
  */
 class N2FileData {
 public:
@@ -191,46 +209,71 @@ public:
  * @class hdf5N2Write
  * @brief Buffered-transpose writer: buffers sequential time frames and writes HDF5 files.
  *
- * This stage groups frames into windows of fixed-number-of-frames `num_file_t` based on
- * their absolute time index, and writes one HDF5 file per window. It
- * buffers a complete (num_file_f * num_file_t) block per output file in
- * memory (via N2FileData), and when the block is full, writes all arrays to
- * disk in large contiguous slabs. If the block is not full, it is nevertheless finalized
- * after `late_frame_grace_seconds` of inactivity once frames for later file windows begin to
- * arrive. Flushes always write the full time range for the file; any missing frames
- * remain default/zero-valued in the output arrays.
- *
- * File naming is based on the earliest timestamp of any frame in the file, combined with the
- * absolute file index, vis_<abs_file_idx>_YYYYMMDDHHMMSS_Nanoseconds.h5. Partial files are
- * initially written with a .partial suffix in the partial directory, then renamed to their
- * final name once finalized.
+ * This stage groups frames into windows of fixed-number-of-frames `num_file_t`
+ * based on their absolute time index, buffers a complete (num_file_f *
+ * num_file_t) block per output file in memory (via N2FileData), and writes all
+ * arrays to disk in large contiguous slabs. Missing frames stay zero-filled in
+ * the output; /frames_added records which (f, t) pairs were present and
+ * frac_lost remains 1.0 where frames were absent. Files are first written to
+ * `<base_dir>/.partial/vis_<abs_idx>.h5` and renamed to
+ * `vis_<abs_idx>_<YYYYMMDDThhmmss>_<nsec>.h5` based on the earliest
+ * fpga_start_tick in the file; if that finalized name already exists when a new
+ * window is opened, late frames are dropped. Partial files are finalized when
+ * full, after `late_frame_grace_seconds` of inactivity once later windows
+ * arrive, or during shutdown.
  *
  * @par Buffers
  * @buffer in_buf  Input visibility buffer
  *     @buffer_format VisBuffer
  *     @buffer_metadata N2Metadata
  *
- * @par Config
- * @conf base_dir           String. Directory to write into
- * @conf num_file_t         UInt. Number of time frames per file
- * @conf late_frame_grace_seconds  UInt. Grace period in seconds for late frames (default: 60)
- * @conf max_frames                Int.  Stop writing after this many frames (-1 = unlimited)
+ * @par Configuration
+ * @conf in_buf                   String. N2 buffer supplying frames (`buffer_type` must be "N2").
+ * @conf base_dir                 String. Output directory; `<base_dir>` and `<base_dir>/.partial`
+ *                                are created.
+ * @conf num_file_t               UInt. Number of time frames per file (`t_index = abs_time_idx %
+ *num_file_t`).
+ * @conf blocksize_f              UInt. Chunk cap for the frequency dimension (default: 16).
+ * @conf blocksize_p              UInt. Chunk cap for product/element dimensions (default: 16).
+ * @conf blocksize_t              UInt. Chunk cap for the time dimension (default: num_file_t).
+ * @conf compression              String. "none" (default) or "deflate" for zlib; also "zstd" or
+ *                                "lz4" when paired with bitshuffle.
+ * @conf compression_level        UInt. Codec level (0 picks 4 for deflate, 9 for bitshuffle).
+ * @conf use_bitshuffle           Bool. Enable bitshuffle with the selected backend codec (default:
+ *                                false).
+ * @conf late_frame_grace_seconds UInt. Grace period in seconds for late frames (default: 60).
+ * @conf max_frames               Int. Stop writing after this many frames (-1 = unlimited).
  *
  * @par Metrics
  * @metric kotekan_hdf5N2Write_write_time_seconds        Duration to write the last flush
  * @metric kotekan_hdf5N2Write_n_datasets                Number of datasets currently open
  * @metric kotekan_hdf5N2Write_open_file_info            Gauge=1 for each open file {abs_file_idx,
- *partial_path, file_mode}
+ *                                partial_path, file_mode}
  * @metric kotekan_hdf5N2Write_open_file_age_seconds     Wall time since file open {abs_file_idx}
  * @metric kotekan_hdf5N2Write_file_completion_fraction  Added (f,t) pairs / expected per file
- *{abs_file_idx}
+ *                                {abs_file_idx}
  * @metric kotekan_hdf5N2Write_add_frame_errors_total    Counter of add_frame failures {reason}
  * @metric kotekan_hdf5N2Write_last_add_frame_error_seconds Timestamp of last add_frame failure
- *{reason, abs_file_idx, freq_id, t_index}
+ *                                {reason, abs_file_idx, freq_id, t_index}
  * @metric kotekan_hdf5N2Write_finalize_failures_total   Counter of finalize failures {reason}
  * @metric kotekan_hdf5N2Write_unfinalized_file          Gauge=1 for files left partial/quarantined
- *{abs_file_idx, partial_path}
+ *                                {abs_file_idx, partial_path}
  *
+ * @par Example
+ * @code{.yaml}
+ * hdf5_vis_write:
+ *     kotekan_stage: hdf5N2Write
+ *     in_buf: n2_merge_buffer
+ *     base_dir: ./vis_data
+ *     num_file_t: 10
+ *     blocksize_f: 4
+ *     blocksize_t: 5
+ *     compression: deflate
+ *     compression_level: 4
+ *     late_frame_grace_seconds: 30
+ * @endcode
+ *
+ * @note N2FileData documents the per-file layout, chunking, and compression details.
  * @note User-level documentation lives in docs/sphinx/user/processes/hdf5N2Write.rst.
  **/
 class hdf5N2Write : public kotekan::Stage {
@@ -244,30 +287,30 @@ public:
 
 private:
     // Config settings (initialized from Config in constructor)
-    const std::string base_dir;     /// Base directory to write files into
-    const std::uint64_t num_file_t; /// Number of incoming time frames per file, as indexed by the
-                                    /// absolute frame index
-    const std::string compression;
-    const std::uint64_t compression_level;
-    const bool use_bitshuffle;
-    const std::uint64_t blocksize_f;
-    const std::uint64_t blocksize_p;
-    const std::uint64_t blocksize_t;
+    const std::string _base_dir;     /// Base directory to write files into
+    const std::uint64_t _num_file_t; /// Number of incoming time frames per file, as indexed by the
+                                     /// absolute frame index
+    const std::string _compression;
+    const std::uint64_t _compression_level;
+    const bool _use_bitshuffle;
+    const std::uint64_t _blocksize_f;
+    const std::uint64_t _blocksize_p;
+    const std::uint64_t _blocksize_t;
     const std::uint64_t
-        late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
-    const int max_frames;         /// Stop writing after this many frames (-1 = unlimited)
+        _late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
+    const int _max_frames;         /// Stop writing after this many frames (-1 = unlimited)
 
-    Buffer* const buffer;
+    Buffer* const _buffer;
 
-    kotekan::prometheus::Gauge& write_time_metric;
-    kotekan::prometheus::Gauge& n_datasets_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& open_file_info_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& open_file_age_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& file_completion_fraction_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& add_frame_errors_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& last_add_frame_error_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& finalize_failures_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& unfinalized_file_metric;
+    kotekan::prometheus::Gauge& _write_time_metric;
+    kotekan::prometheus::Gauge& _n_datasets_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& _open_file_info_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& _open_file_age_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& _file_completion_fraction_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _add_frame_errors_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& _last_add_frame_error_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _finalize_failures_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& _unfinalized_file_metric;
 
     /**
      * @brief Get an absolute file number (index) for given metadata.

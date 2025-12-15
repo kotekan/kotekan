@@ -696,47 +696,47 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
           [](const kotekan::Stage& stage) {
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
-    base_dir(config.get<std::string>(unique_name, "base_dir")),
-    num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),
-    compression(config.get_default<std::string>(unique_name, "compression", "none")),
-    compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),
-    use_bitshuffle(config.get_default<bool>(unique_name, "use_bitshuffle", false)),
-    blocksize_f(config.get_default<std::uint64_t>(unique_name, "blocksize_f", 16)),
-    blocksize_p(config.get_default<std::uint64_t>(unique_name, "blocksize_p", 16)),
-    blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", num_file_t)),
-    late_frame_grace_seconds(
+    _base_dir(config.get<std::string>(unique_name, "base_dir")),
+    _num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),
+    _compression(config.get_default<std::string>(unique_name, "compression", "none")),
+    _compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),
+    _use_bitshuffle(config.get_default<bool>(unique_name, "use_bitshuffle", false)),
+    _blocksize_f(config.get_default<std::uint64_t>(unique_name, "blocksize_f", 16)),
+    _blocksize_p(config.get_default<std::uint64_t>(unique_name, "blocksize_p", 16)),
+    _blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", _num_file_t)),
+    _late_frame_grace_seconds(
         config.get_default<std::uint64_t>(unique_name, "late_frame_grace_seconds", 60)),
-    max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
-    buffer(get_buffer("in_buf")),
-    write_time_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+    _max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
+    _buffer(get_buffer("in_buf")),
+    _write_time_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_write_time_seconds", unique_name)),
-    n_datasets_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+    _n_datasets_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_n_datasets", unique_name)),
-    open_file_info_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+    _open_file_info_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_open_file_info", unique_name,
         {"abs_file_idx", "partial_path", "file_mode"})),
-    open_file_age_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+    _open_file_age_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_open_file_age_seconds", unique_name, {"abs_file_idx"})),
-    file_completion_fraction_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+    _file_completion_fraction_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_file_completion_fraction", unique_name, {"abs_file_idx"})),
-    add_frame_errors_metric(kotekan::prometheus::Metrics::instance().add_counter(
+    _add_frame_errors_metric(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_hdf5N2Write_add_frame_errors_total", unique_name, {"reason"})),
-    last_add_frame_error_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+    _last_add_frame_error_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_last_add_frame_error_seconds", unique_name,
         {"reason", "abs_file_idx", "freq_id", "t_index"})),
-    finalize_failures_metric(kotekan::prometheus::Metrics::instance().add_counter(
+    _finalize_failures_metric(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_hdf5N2Write_finalize_failures_total", unique_name, {"reason"})),
-    unfinalized_file_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+    _unfinalized_file_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_unfinalized_file", unique_name, {"abs_file_idx", "partial_path"})) {
 
-    buffer->register_consumer(unique_name);
+    _buffer->register_consumer(unique_name);
 
     // Validate file window configuration
-    if (num_file_t == 0) {
+    if (_num_file_t == 0) {
         FATAL_ERROR("num_file_t must be > 0 for hdf5N2Write");
     }
     // Ensure the input buffer is an N2Buffer
-    if (buffer->buffer_type != "N2") {
+    if (_buffer->buffer_type != "N2") {
         FATAL_ERROR("Input buffer must be a N2-type buffer.");
     }
 }
@@ -748,7 +748,7 @@ std::uint64_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
     // configured number of time frames per file.
 
     // Just truncate towards zero
-    return fv.abs_time_idx / num_file_t;
+    return fv.abs_time_idx / _num_file_t;
 }
 
 bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
@@ -757,7 +757,7 @@ bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
         filedata.flush_to_disk();
     } catch (const HighFive::Exception& e) {
         ERROR("Failed to flush dataset {} to disk: {}", filedata.partial_filepath, e.what());
-        finalize_failures_metric.labels({"flush"}).inc();
+        _finalize_failures_metric.labels({"flush"}).inc();
         _mark_unfinalized(filedata);
         _clear_open_file_metrics(filedata);
         try {
@@ -767,7 +767,7 @@ bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
         return false;
     } catch (const std::exception& e) {
         ERROR("Failed to flush dataset {} to disk: {}", filedata.partial_filepath, e.what());
-        finalize_failures_metric.labels({"flush"}).inc();
+        _finalize_failures_metric.labels({"flush"}).inc();
         _mark_unfinalized(filedata);
         _clear_open_file_metrics(filedata);
         try {
@@ -784,7 +784,7 @@ bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
     if (!ds_filename) {
         WARN("Could not determine final filename for {} (no UT1 found); leaving partial in place.",
              filedata.partial_filepath);
-        finalize_failures_metric.labels({"missing_final_name"}).inc();
+        _finalize_failures_metric.labels({"missing_final_name"}).inc();
         _mark_unfinalized(filedata);
         _clear_open_file_metrics(filedata);
         return false;
@@ -795,7 +795,7 @@ bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
         const char* msg = strerror(errno);
         ERROR("Failed to rename partial dataset to final: {} -> {}: {}", filedata.partial_filepath,
               *ds_filename, msg);
-        finalize_failures_metric.labels({"rename"}).inc();
+        _finalize_failures_metric.labels({"rename"}).inc();
         _mark_unfinalized(filedata);
         _clear_open_file_metrics(filedata);
         // Attempt to quarantine the partial file to avoid repeated collisions
@@ -814,7 +814,7 @@ bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
         return false;
     }
     _clear_open_file_metrics(filedata);
-    unfinalized_file_metric.labels({abs_idx, filedata.partial_filepath}).set(0.0);
+    _unfinalized_file_metric.labels({abs_idx, filedata.partial_filepath}).set(0.0);
     return true;
 }
 
@@ -828,7 +828,7 @@ void hdf5N2Write::_grace_finalize_files(std::map<size_t, std::unique_ptr<N2FileD
             continue;
         }
         _update_file_metrics(obj);
-        if (now_s - obj.last_update_wall_s >= double(late_frame_grace_seconds)) {
+        if (now_s - obj.last_update_wall_s >= double(_late_frame_grace_seconds)) {
             bool finalized = _finalize_file(*file_it->second);
             (void)finalized;
             file_it = files.erase(file_it);
@@ -866,35 +866,35 @@ void hdf5N2Write::_record_file_open(const N2FileData& filedata) const {
     const std::string abs_idx = std::to_string(filedata.abs_file_idx);
     const std::string mode =
         filedata.file_mode == N2FileData::CHIME ? std::string("CHIME") : std::string("CHORD");
-    open_file_info_metric.labels({abs_idx, filedata.partial_filepath, mode}).set(1.0);
-    open_file_age_metric.labels({abs_idx}).set(mono_time_s() - filedata.open_wall_s);
-    file_completion_fraction_metric.labels({abs_idx}).set(filedata.completion_fraction());
-    unfinalized_file_metric.labels({abs_idx, filedata.partial_filepath}).set(0.0);
+    _open_file_info_metric.labels({abs_idx, filedata.partial_filepath, mode}).set(1.0);
+    _open_file_age_metric.labels({abs_idx}).set(mono_time_s() - filedata.open_wall_s);
+    _file_completion_fraction_metric.labels({abs_idx}).set(filedata.completion_fraction());
+    _unfinalized_file_metric.labels({abs_idx, filedata.partial_filepath}).set(0.0);
 }
 
 void hdf5N2Write::_update_file_metrics(const N2FileData& filedata) const {
     const std::string abs_idx = std::to_string(filedata.abs_file_idx);
-    open_file_age_metric.labels({abs_idx}).set(mono_time_s() - filedata.open_wall_s);
-    file_completion_fraction_metric.labels({abs_idx}).set(filedata.completion_fraction());
+    _open_file_age_metric.labels({abs_idx}).set(mono_time_s() - filedata.open_wall_s);
+    _file_completion_fraction_metric.labels({abs_idx}).set(filedata.completion_fraction());
 }
 
 void hdf5N2Write::_clear_open_file_metrics(const N2FileData& filedata) const {
     const std::string abs_idx = std::to_string(filedata.abs_file_idx);
     const std::string mode =
         filedata.file_mode == N2FileData::CHIME ? std::string("CHIME") : std::string("CHORD");
-    open_file_info_metric.labels({abs_idx, filedata.partial_filepath, mode}).set(0.0);
-    open_file_age_metric.labels({abs_idx}).set(0.0);
+    _open_file_info_metric.labels({abs_idx, filedata.partial_filepath, mode}).set(0.0);
+    _open_file_age_metric.labels({abs_idx}).set(0.0);
 }
 
 void hdf5N2Write::_mark_unfinalized(const N2FileData& filedata) const {
     const std::string abs_idx = std::to_string(filedata.abs_file_idx);
-    unfinalized_file_metric.labels({abs_idx, filedata.partial_filepath}).set(1.0);
+    _unfinalized_file_metric.labels({abs_idx, filedata.partial_filepath}).set(1.0);
 }
 
 void hdf5N2Write::_record_add_frame_error(const std::string& reason, std::uint64_t abs_file_idx,
                                           int32_t freq_id, std::uint64_t t_index) const {
-    add_frame_errors_metric.labels({reason}).inc();
-    last_add_frame_error_metric
+    _add_frame_errors_metric.labels({reason}).inc();
+    _last_add_frame_error_metric
         .labels({reason, std::to_string(abs_file_idx), std::to_string(freq_id),
                  std::to_string(t_index)})
         .set(mono_time_s());
@@ -904,20 +904,20 @@ void hdf5N2Write::main_thread() {
     double avg_write_time = 0.0;
 
     const double start_time = mono_time_s(); // for logging elapsed time
-    N2::frameID in_frame_id(buffer);         // Input frame ID tracker
+    N2::frameID in_frame_id(_buffer);        // Input frame ID tracker
     int frame_counter = 0;                   // Count of frames written
 
     /// file data for writing (multiple may be open simultaneously)
-    /// Keyed by absolute file id = absolute frame index / num_file_t
+    /// Keyed by absolute file id = absolute frame index / _num_file_t
     std::map<size_t, std::unique_ptr<N2FileData>> filedata;
 
     // Create base_dir and partial dir if necessary (recursively)
     {
-        if (mkdir_p(base_dir.c_str(), 0777) != 0) {
+        if (mkdir_p(_base_dir.c_str(), 0777) != 0) {
             const char* const msg = strerror(errno);
-            FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(), msg);
+            FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", _base_dir.c_str(), msg);
         }
-        std::string partial_dir = base_dir + "/.partial";
+        std::string partial_dir = _base_dir + "/.partial";
         if (mkdir_p(partial_dir.c_str(), 0777) != 0) {
             const char* const msg = strerror(errno);
             FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", partial_dir.c_str(), msg);
@@ -928,12 +928,12 @@ void hdf5N2Write::main_thread() {
     while (!stop_thread) {
 
         // Wait for the next frame
-        const std::uint8_t* const frame = buffer->wait_for_full_frame(unique_name, in_frame_id);
+        const std::uint8_t* const frame = _buffer->wait_for_full_frame(unique_name, in_frame_id);
         if (!frame)
             break;
 
         // Fetch metadata and create N2 frame view
-        N2FrameView fv(buffer, in_frame_id);
+        N2FrameView fv(_buffer, in_frame_id);
 
         // Start timer
         const double frame_recv_time = mono_time_s();
@@ -941,7 +941,7 @@ void hdf5N2Write::main_thread() {
         INFO("Received buffer {} frame {} (duration_s {})", unique_name, in_frame_id,
              total_elapsed_time);
 
-        const std::uint64_t t_in_file = fv.abs_time_idx % num_file_t;
+        const std::uint64_t file_t_index = fv.abs_time_idx % _num_file_t;
         auto abs_file_idx = _get_abs_file_idx(fv);
 
         // Ensure dataset exists/open
@@ -951,23 +951,24 @@ void hdf5N2Write::main_thread() {
         if (fd != filedata.end()) {
             // Dataset already open
             N2FileData_ptr = fd->second.get();
-        } else if (_finalfile_exists(abs_file_idx, base_dir)) {
+        } else if (_finalfile_exists(abs_file_idx, _base_dir)) {
             // If final file already exists, drop/ignore this frame (late arrival)
             WARN("Finalized file already exists for this frame's file window, dropping frame: "
                  "abs_file_idx={}, frame_id={}",
                  abs_file_idx, in_frame_id);
-            _record_add_frame_error("final_exists", abs_file_idx, fv.freq_id, t_in_file);
+            _record_add_frame_error("final_exists", abs_file_idx, fv.freq_id, file_t_index);
 
             // Mark frame as done, finalize, and continue
-            buffer->mark_frame_empty(unique_name, in_frame_id);
+            _buffer->mark_frame_empty(unique_name, in_frame_id);
             in_frame_id++;
             _grace_finalize_files(filedata, nullptr);
             continue;
         } else {
             // Create N2FileData for file (also looks for .partial)
             auto N2FileData_obj = std::make_unique<N2FileData>(
-                N2FileData::CHORD, num_file_t, fv, frame_recv_time, abs_file_idx, blocksize_f,
-                blocksize_p, blocksize_t, compression, compression_level, use_bitshuffle, base_dir);
+                N2FileData::CHORD, _num_file_t, fv, frame_recv_time, abs_file_idx, _blocksize_f,
+                _blocksize_p, _blocksize_t, _compression, _compression_level, _use_bitshuffle,
+                _base_dir);
 
             filedata.emplace(abs_file_idx, std::move(N2FileData_obj));
             N2FileData_ptr = filedata.find(abs_file_idx)->second.get();
@@ -977,8 +978,8 @@ void hdf5N2Write::main_thread() {
         if (!N2FileData_ptr || !N2FileData_ptr->h5_file) {
             // Mark frame as done, finalize, and continue
             ERROR("Dataset is null. Failed to open dataset.");
-            _record_add_frame_error("dataset_null", abs_file_idx, fv.freq_id, t_in_file);
-            buffer->mark_frame_empty(unique_name, in_frame_id);
+            _record_add_frame_error("dataset_null", abs_file_idx, fv.freq_id, file_t_index);
+            _buffer->mark_frame_empty(unique_name, in_frame_id);
             in_frame_id++;
             _grace_finalize_files(filedata, nullptr);
             continue;
@@ -990,7 +991,7 @@ void hdf5N2Write::main_thread() {
 
         // Attempt to add frame to dataset
         auto add_status =
-            N2FileData_ptr->add_frame(fv, t_in_file); // performs error checking internally.
+            N2FileData_ptr->add_frame(fv, file_t_index); // performs error checking internally.
         if (add_status != N2FileData::AddFrameStatus::Success) {
             std::string reason = "unknown";
             switch (add_status) {
@@ -1008,10 +1009,10 @@ void hdf5N2Write::main_thread() {
                     break;
             }
             // Mark frame as done, finalize, and continue
-            ERROR("Failed to add frame to dataset (f={}, t={}), reason={}", fv.freq_id, t_in_file,
-                  reason);
-            _record_add_frame_error(reason, abs_file_idx, fv.freq_id, t_in_file);
-            buffer->mark_frame_empty(unique_name, in_frame_id);
+            ERROR("Failed to add frame to dataset (f={}, t={}), reason={}", fv.freq_id,
+                  file_t_index, reason);
+            _record_add_frame_error(reason, abs_file_idx, fv.freq_id, file_t_index);
+            _buffer->mark_frame_empty(unique_name, in_frame_id);
             in_frame_id++;
             _grace_finalize_files(filedata, nullptr);
             continue;
@@ -1036,15 +1037,15 @@ void hdf5N2Write::main_thread() {
         const double currt = mono_time_s();
         if (elapsed_writing_frame <= 0.0)
             elapsed_writing_frame = currt - frame_recv_time;
-        write_time_metric.set(elapsed_writing_frame);
+        _write_time_metric.set(elapsed_writing_frame);
         avg_write_time =
             (avg_write_time * frame_counter + elapsed_writing_frame) / double(frame_counter + 1);
-        n_datasets_metric.set(filedata.size());
+        _n_datasets_metric.set(filedata.size());
 
         // Mark frame as done
-        buffer->mark_frame_empty(unique_name, in_frame_id);
+        _buffer->mark_frame_empty(unique_name, in_frame_id);
 
-        if (max_frames >= 0 && frame_counter + 1 >= max_frames) {
+        if (_max_frames >= 0 && frame_counter + 1 >= _max_frames) {
             WARN("Processed {} frames with average write time {}, shutting down Kotekan",
                  frame_counter + 1, avg_write_time);
             exit_kotekan(CLEAN_EXIT);
