@@ -51,7 +51,7 @@
  *         @buffer_metadata VisMetadata
  *
  * @conf  samples_per_data_set  Int. The number of samples each GPU buffer has
-  *                              been integrated for.
+ *                              been integrated for.
  * @conf  num_gpu_frames        Int. The number of GPU frames to accumulate over.
  * @conf  integration_time      Float. Requested integration time in seconds.
  *                              This can be used as an alterative to

@@ -28,14 +28,14 @@ private:
      * @buffer vdif_in_buf Input VDIF packet buffer.
      *     @buffer_format Raw VDIF packets (5032-byte) concatenated
      *     @buffer_metadata none
- * @par Example
- * @code
+     * @par Example
+     * @code
      * vdif_stream:
      *   kotekan_stage: vdifStream
      *   vdif_in_buf: vdif_out
      *   vdif_port: 14002
      *   vdif_server_ip: 192.168.1.10
- * @endcode
+     * @endcode
      */
     Buffer* buf;
 
