@@ -23,7 +23,7 @@
 #ifndef CONFIGTRACKER_H
 #define CONFIGTRACKER_H
 
-#include "kotekanLogging.hpp"    // for FATAL_ERROR_NON_OO, ERROR_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, ERROR_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO
 #include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily, Metrics
 #include "restClient.hpp"        // for restClient
 #include "restServer.hpp"        // for connectionInstance, restServer
@@ -816,7 +816,8 @@ private:
     static prometheus::MetricFamily<prometheus::Gauge>& _config_present_metric() {
         static prometheus::MetricFamily<prometheus::Gauge>& metric =
             prometheus::Metrics::instance().add_gauge("kotekan_config_tracker_config_present",
-                                                      _metrics_stage_name, {"host", "port", "hash"});
+                                                      _metrics_stage_name,
+                                                      {"host", "port", "hash"});
         return metric;
     }
 
@@ -834,9 +835,9 @@ private:
 
     static prometheus::MetricFamily<prometheus::Counter>& _upstream_fetch_total() {
         static prometheus::MetricFamily<prometheus::Counter>& metric =
-            prometheus::Metrics::instance().add_counter("kotekan_config_tracker_upstream_fetch_total",
-                                                        _metrics_stage_name,
-                                                        {"host", "port", "result"});
+            prometheus::Metrics::instance().add_counter(
+                "kotekan_config_tracker_upstream_fetch_total", _metrics_stage_name,
+                {"host", "port", "result"});
         return metric;
     }
 
