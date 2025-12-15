@@ -1,7 +1,10 @@
 #include "juliaManager.hpp"
 
-#include "errors.h"        // for INFO_F, DEBUG_F
-#include "julia_fasttls.h" // for JULIA_DEFINE_FAST_TLS
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include <julia.h>         // for jl_atexit_hook, jl_init
+#include <julia_fasttls.h> // for JULIA_DEFINE_FAST_TLS
+#pragma GCC diagnostic pop
 
 #include <algorithm>     // for copy
 #include <any>           // for any
@@ -9,8 +12,8 @@
 #include <cassert>       // for assert
 #include <cstdio>        // for fflush
 #include <cstdlib>       // for abort
+#include <errors.h>      // for INFO_F, DEBUG_F
 #include <future>        // for promise, future
-#include <julia.h>       // for jl_atexit_hook, jl_init
 #include <mutex>         // for unique_lock, mutex
 #include <queue>         // for queue
 #include <thread>        // for thread, sleep_for
