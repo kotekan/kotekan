@@ -641,13 +641,22 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
             power_r *= beam_fac * spec_fac;
             power_i *= beam_fac * spec_fac;
 
-            // want variance of each = noise_var / 2
-            power_r += sqrt(0.5 * noise_var) * std_norm(rng);
-            power_i += sqrt(0.5 * noise_var) * std_norm(rng);
+            double vis_var = noise_var * noise_var + 2 * noise_var * (power_r + power_i);
 
+            // want variance of each = vis_var / 2
+            double vis_noise_r = 0.0;
+            double vis_noise_i = 0.0;
+            if (noise_var > 0.0) {
+                vis_noise_r += sqrt(0.5 * vis_var) * std_norm(rng);
+                vis_noise_i += sqrt(0.5 * vis_var) * std_norm(rng);
 
-            frame.vis[ind] = {(float)(power_r * cp - power_i * sp),
-                              (float)(power_r * sp + power_i * cp)};
+                if (el_i == el_j) {
+                    vis_noise_r += noise_var;
+                }
+            }
+
+            frame.vis[ind] = {(float)(power_r * cp - power_i * sp + vis_noise_r),
+                              (float)(power_r * sp + power_i * cp + vis_noise_i)};
             frame.weight[ind] = 1.0 / noise_var;
             ind++;
         }
