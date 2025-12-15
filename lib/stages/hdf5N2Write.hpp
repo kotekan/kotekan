@@ -229,8 +229,9 @@ public:
  *
  * @par Configuration
  * @conf in_buf                   String. N2 buffer supplying frames (`buffer_type` must be "N2").
- * @conf base_dir                 String. Output directory; `<base_dir>` and `<base_dir>/.partial`
- *                                are created.
+ * @conf base_dir                 String. Output directory (absolute or relative to the process
+ *                                working directory where kotekan was invoked); `<base_dir>` and
+ *                                `<base_dir>/.partial` are created.
  * @conf num_file_t               UInt. Number of time frames per file (`t_index = abs_time_idx %
  *num_file_t`).
  * @conf blocksize_f              UInt. Chunk cap for the frequency dimension (default: 16).
@@ -263,14 +264,17 @@ public:
  * @code{.yaml}
  * hdf5_vis_write:
  *     kotekan_stage: hdf5N2Write
- *     in_buf: n2_merge_buffer
- *     base_dir: ./vis_data
- *     num_file_t: 10
- *     blocksize_f: 4
- *     blocksize_t: 5
- *     compression: deflate
- *     compression_level: 4
- *     late_frame_grace_seconds: 30
+ *     in_buf: n2_merge_buffer      # Input N2-type buffer
+ *     base_dir: ./vis_data         # Output directory root
+ *     num_file_t: 10               # Frames per file window
+ *     blocksize_f: 4               # Chunk cap (frequency)
+ *     blocksize_p: 8               # Chunk cap (products/elements)
+ *     blocksize_t: 5               # Chunk cap (time)
+ *     compression: deflate         # none|deflate|zstd|lz4 (with bitshuffle)
+ *     compression_level: 4         # Codec level (0=stage default)
+ *     use_bitshuffle: true         # Enable bitshuffle filter
+ *     late_frame_grace_seconds: 30 # Grace before finalizing partials
+ *     max_frames: -1               # Stop after N frames (-1 disables)
  * @endcode
  *
  * @note N2FileData documents the per-file layout, chunking, and compression details.
