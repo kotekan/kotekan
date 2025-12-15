@@ -1,9 +1,3 @@
-/**
- * @file
- * @brief Helper utilities for GDAL dtype mapping and CHORD metadata version.
- *
- * @note This is not a Stage; it provides low-level helpers used by GDAL readers/writers.
- */
 #ifndef GDALFILES_HPP
 #define GDALFILES_HPP
 

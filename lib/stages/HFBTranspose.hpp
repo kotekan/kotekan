@@ -26,29 +26,6 @@
  * @brief Stage to transpose raw HFB data
  *
  * This class inherits from the Transpose base class and transposes raw HFB data.
- *
- * @par Buffers
- * @buffer in_buf  Input HFB buffer.
- *     @buffer_format HFBBuffer structured
- *     @buffer_metadata HFBMetadata
- * @buffer out_buf Output HDF5-chunk buffer (handled by Transpose base).
- *     @buffer_format HFBBuffer structured
- *     @buffer_metadata HFBMetadata
- *
- * @conf base_dir         String. Output directory for HDF5.
- * @conf file_name        String. Base filename.
- * @conf frames_per_file  Int. Frames per file.
- *
- * @par Example
- * @code
- * hfb_transpose:
- *   kotekan_stage: HFBTranspose
- *   in_buf: hfb_raw
- *   out_buf: hfb_transposed
- *   base_dir: /data/hfb
- *   file_name: hfb
- *   frames_per_file: 100
- * @endcode
  * @author James Willis
  */
 class HFBTranspose : public Transpose {

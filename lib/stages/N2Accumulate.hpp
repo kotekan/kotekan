@@ -34,36 +34,6 @@ using N2::frameID;
  * @buffer out_buf The accumulated and tagged data.
  *         @buffer_format VisBuffer structured.
  *         @buffer_metadata VisMetadata
- * @buffer in_counts_buf Buffer containing counts per product.
- *         @buffer_format n2k counts layout
- *         @buffer_metadata chordMetadata
- * @buffer in_rfimask_buf Buffer containing high-rate RFI masks.
- *         @buffer_format RFI mask layout matching GPU output
- *         @buffer_metadata chordMetadata
- *
- * @conf num_freq_per_n2k_frame        Int. Frequencies per GPU frame.
- * @conf num_n2k_samples_to_accumulate Int. Number of GPU frames to accumulate.
- * @conf packet_loss_is_scalar         Bool. If true, packet loss counts are scalar per frame.
- * @conf rfi_downsampling_factor       Int. Downsampling factor applied to RFI mask.
- *
- * @par Metrics
- * @metric kotekan_n2accumulate_skipped_frame_total Frames skipped/dropped (per frequency).
- * @metric kotekan_N2_accum_time                    Time spent accumulating each frame (seconds).
- * @metric kotekan_samples_in_accumulated_out_frame Samples included in each accumulated frame.
- *
- * @par Example
- * @code
- * n2_accumulate:
- *   kotekan_stage: N2Accumulate
- *   in_buf: n2_gpu
- *   in_counts_buf: n2_counts
- *   in_rfimask_buf: n2_rfi
- *   out_buf: vis_out
- *   num_freq_per_n2k_frame: 4
- *   num_n2k_samples_to_accumulate: 8
- *   packet_loss_is_scalar: true
- *   rfi_downsampling_factor: 1
- * @endcode
  */
 class N2Accumulate : public kotekan::Stage {
 public:

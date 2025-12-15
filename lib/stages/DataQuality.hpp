@@ -23,30 +23,14 @@
  * @brief Compute data quality metric for the visbility data, which is effectively
  *        the total amount of "data weight" per time and frequency."
  *
- * Computes a weighted sensitivity estimate per frequency using the stacked dataset weights:
- * it derives an "alpha" coefficient from the `stackState` (counts of visibilities contributing
- * to each stack) and accumulates `alpha * variance` over products for each frame. The resulting
- * scalar is exported as a Prometheus gauge labelled by `freq_id`. Only reads the input buffer and
- * does not modify frames.
- *
  * @par Buffers
  * @buffer in_buf Visibility data.
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
- * @par Dataset states
- * Requires `stackState` on input to determine per-product stack multiplicities.
- *
  * @par Metrics
  * @metric kotekan_dataquality_dataquality
  *      The data quality of the visibility data.
- *
- * @par Example
- * @code
- * data_quality:
- *   kotekan_stage: DataQuality
- *   in_buf: vis_in
- * @endcode
  *
  * @author James Willis
  *

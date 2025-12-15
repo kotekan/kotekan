@@ -46,25 +46,6 @@
  *                          new location. The remaining elements of the subarray
  *                          are for correctly labelling the input in
  *                          ``VisWriter``.
- * @conf  instrument_name   String. Instrument label.
- * @conf  freq_ids          Array[uint32_t]. Frequency IDs on stream.
- *
- * @par Dataset states
- * Registers @c metadataState, @c freqState, @c inputState, @c prodState on output.
- *
- * @par Example
- * @code
- * vis_transform:
- *   kotekan_stage: visTransform
- *   in_bufs: [gpu_vis0, gpu_vis1]
- *   out_buf: vis_out
- *   num_elements: 2048
- *   block_size: 16
- *   num_ev: 0
- *   input_reorder: [[0, 0, "ant0"], [1, 1, "ant1"]]
- *   instrument_name: chime
- *   freq_ids: [0, 1, 2, 3]
- * @endcode
  *
  * @author Richard Shaw
  */

@@ -21,29 +21,6 @@
  * @brief Read and stream a raw 21cm absorber file.
  *
  * This class inherits from the RawReader base class and reads raw 21cm absorber data
- *
- * @par Buffers
- * @buffer out_buf Output buffer to receive raw HFB frames.
- *     @buffer_format HFBBuffer structured
- *     @buffer_metadata HFBMetadata
- *
- * @conf base_dir    String. Directory of raw files.
- * @conf file_name   String. Base filename stem.
- * @conf file_ext    String. File extension.
- * @conf prefix_hostname Bool. Prefix filenames with hostname.
- * @conf end_interrupt Bool. Stop pipeline when files exhausted.
- *
- * @par Example
- * @code
- * hfb_raw_reader:
- *   kotekan_stage: HFBRawReader
- *   out_buf: hfb_out
- *   base_dir: /data/hfb
- *   file_name: hfb
- *   file_ext: raw
- *   prefix_hostname: false
- *   end_interrupt: true
- * @endcode
  * @author James Willis
  */
 class HFBRawReader : public RawReader<HFBFrameView> {

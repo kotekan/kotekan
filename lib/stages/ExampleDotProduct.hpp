@@ -23,15 +23,6 @@
  * @buffer out_buf The output buffer to hold the result.
  *      @buffer_format Array of floats
  *      @buffer_metadata any
- *
- * @par Example
- * @code
- * example_dot_product:
- *   kotekan_stage: ExampleDotProduct
- *   in_a_buf: vec_a
- *   in_b_buf: vec_b
- *   out_buf: vec_dot
- * @endcode
  */
 class ExampleDotProduct : public kotekan::Stage {
 public:

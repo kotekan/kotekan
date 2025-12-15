@@ -37,19 +37,6 @@
  *
  * @conf  inputs  List of ints. The channel IDs for the inputs to extract.
  *
- * @par Dataset states
- * Requires @c inputState/prodState on input; registers new inputState/prodState and updates
- * dataset IDs to match subsetted inputs/products (also subsets gains/eigenvectors).
- *
- * @par Example
- * @code
- * input_subset:
- *   kotekan_stage: InputSubset
- *   in_buf: vis_in
- *   out_buf: vis_inputs_subset
- *   inputs: [0, 2, 5, 9]
- * @endcode
- *
  * @author Richard Shaw
  */
 class InputSubset : public kotekan::Stage {

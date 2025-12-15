@@ -57,29 +57,12 @@
  *     @buffer_format Array of @c uint
  *     @buffer_metadata chimeMetadata
  *
- * @conf   num_gpus                  Int. Number of GPUs.
- * @conf   samples_per_data_set      Int. Number of baseband samples per input frame.
- * @conf   num_pulsar                Int. Total pulsar beams (typically 10).
- * @conf   num_beams                 Int. Total beams in system (for metadata).
- * @conf   num_pol                   Int. Number of polarizations (should be 2).
- * @conf   timesamples_per_pulsar_packet Int. Time samples per packet (3125 or 625).
- *
- * @par Example
- * @code
- * pulsar_post_process:
- *   kotekan_stage: pulsarPostProcess
- *   network_input_buffer_0: psr_gpu0
- *   network_input_buffer_1: psr_gpu1
- *   network_input_buffer_2: psr_gpu2
- *   network_input_buffer_3: psr_gpu3
- *   pulsar_out_buf: psr_packets
- *   num_gpus: 4
- *   samples_per_data_set: 49152
- *   num_pulsar: 10
- *   num_beams: 256
- *   num_pol: 2
- *   timesamples_per_pulsar_packet: 625
- * @endcode
+ * @conf   num_gpus             Int. No. of GPUs.
+ * @conf   samples_per_data_set Int. No. of baseband samples corresponding to each buffer.
+ * @conf   num_pulsar           Int. No. of total pulsar beams (should be 10).
+ * @conf   num_pol              Int. No. of polarization (should be 2).
+ * @conf   timesamples_per_pulsar_packet    Int. Number of times that will go into each packet.
+ * (should be 3125 or 625)
  *
  * @author Cherry Ng
  *

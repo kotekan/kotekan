@@ -62,7 +62,7 @@ struct uint1x8_t {
 
     friend std::ostream& operator<<(std::ostream& os, const uint1x8_t x) {
         for (int n = 0; n < 8; ++n)
-            os << x[n];
+            os << int(x[n]);
         return os;
     }
 };
@@ -87,7 +87,8 @@ struct uint4x2_t {
     }
 
     friend std::ostream& operator<<(std::ostream& os, const uint4x2_t x) {
-        return os << x[0] << "," << x[1];
+        // don't output char to ostream, since it shows up as characters,not numbers
+        return os << int(x[0]) << "," << int(x[1]);
     }
 };
 
@@ -112,7 +113,8 @@ struct int4x2_t {
     }
 
     friend std::ostream& operator<<(std::ostream& os, const int4x2_t x) {
-        return os << x[0] << "," << x[1];
+        // don't output char to ostream, since it shows up as characters,not numbers
+        return os << int(x[0]) << "," << int(x[1]);
     }
 };
 
@@ -137,7 +139,8 @@ struct int4x2_swapped_withoffset_t {
     }
 
     friend std::ostream& operator<<(std::ostream& os, const int4x2_swapped_withoffset_t x) {
-        return os << x[0] << "," << x[1];
+        // don't output char to ostream, since it shows up as characters,not numbers
+        return os << int(x[0]) << "," << int(x[1]);
     }
 };
 

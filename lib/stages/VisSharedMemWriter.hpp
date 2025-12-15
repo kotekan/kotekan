@@ -84,26 +84,11 @@
  *                          data stream then Kotekan will shut down.
  *
  * @par Metrics
- * @metric kotekan_vissharedmemwriter_dropped_frame_total
- *          Number of frames dropped because they arrived too late.
- * @metric kotekan_access_record_wait_time_seconds
- *          Time spent waiting to access the shared-memory access record.
- *
- * @par Dataset states
- * Requires frequency/input/product/eigenvalue/metadata states on input; checks critical_states
- * list for structural changes and errors out if they change.
- *
- * @par Example
- * @code
- * vis_shared_mem_writer:
- *   kotekan_stage: VisSharedMemWriter
- *   in_buf: vis_out
- *   root_path: /dev/shm/
- *   name: vis_shm
- *   num_samples: 512
- *   wait_time: 120
- *   critical_states: []
- * @endcode
+ * @metric dropped_frame_counter
+ *          The number of times a frame was dropped because it arrived too late.
+ * @metric  access_record_wait_time_seconds
+ *          The amount of time the writer spent, in seconds waiting to
+ *          access the access record.
  *
  * @author Anja Boskovic
  */

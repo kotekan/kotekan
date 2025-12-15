@@ -17,13 +17,6 @@
  *      @buffer_format any
  *      @buffer_metadata any
  *
- * @par Example
- * @code
- * example_consumer:
- *   kotekan_stage: ExampleConsumer
- *   in_buf: test_out
- * @endcode
- *
  */
 class ExampleConsumer : public kotekan::Stage {
 public:

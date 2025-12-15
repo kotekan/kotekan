@@ -27,19 +27,9 @@
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf   num_freq         Int. Number of frequencies in each VDIF packet.
- * @conf   orig_port        Int. UDP port to listen on.
- * @conf   orig_server_ip   String. Source IP to bind to (optional).
- *
- * @par Example
- * @code
- * recv_single_dish_vdif:
- *   kotekan_stage: recvSingleDishVDIF
- *   out_buf: vdif_in
- *   num_freq: 1024
- *   orig_port: 12000
- *   orig_server_ip: 0.0.0.0
- * @endcode
+ * @conf   num_freq               Int. Number of time samples to sum.
+ * @conf   orig_port              Int. Number of time samples to sum.
+ * @conf   orig_server_ip         Int. Number of time samples to sum.
  *
  * @bug    Currently broken, just returns empty frames!
  *

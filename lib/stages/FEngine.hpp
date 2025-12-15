@@ -25,119 +25,32 @@
  * single radio source), producing data useful for end-to-end testing of our kernels.
  * (The actual computational core is implemented in Julia, in FEngine.jl)
  *
- * @par Buffers
- * @buffer E_buffer_chord / E_buffers_chime Input voltage buffers (CHORD single / CHIME per freq).
- *     @buffer_format Depends on mode (complex voltages)
- *     @buffer_metadata chordMetadata
- * @buffer bf_mask_buffer Input beamforming mask buffer.
- *     @buffer_format int8 mask
- * @buffer pl_mask_buffer Input RFI/packet-loss mask buffer.
- *     @buffer_format bool mask
- * @buffer scatter_indices_buffer Scatter index buffer.
- * @buffer bb_beam_positions_buffer Beam position buffer.
- * @buffer A_buffer/s_buffer/G/W1/W2 Buffer set used by kernels (see code for shapes).
- *
- * @conf skip_julia             Bool. Default false. If true, skip Julia setup.
- * @conf receive_chime          Bool. Default false. Use CHIME buffer layout (one per freq) instead
- *                              of CHORD layout.
- * @conf repeat_count           Int. Default 1. Number of times to loop the generated frames.
- *
- * @conf num_frames             Int. Number of frames to produce.
- * @conf num_components         Int. Complex components per sample.
- * @conf num_polarizations      Int. Number of polarizations.
- * @conf num_dishes             Int. Number of dishes.
- * @conf num_samples_per_frame  Int. Samples per input frame.
- * @conf num_taps               Int. Polyphase filter taps.
- * @conf num_frequencies        Int. Number of coarse channels.
- * @conf num_times              Int. Time samples per chunk.
- * @conf frequency_channels     Array<Int>. Channel indices for each coarse channel.
- * @conf scatter_indices        Array<Int>. Optional remapping of dish/pol order (length
- *                              num_dishes*num_polarizations).
- *
- * @conf source_channels        Array<Float>. Channel indices for simulated sources.
- * @conf source_amplitudes      Array<Float>. Amplitudes per source channel.
- * @conf noise_amplitude        Float. Default 0. Additive noise amplitude.
- * @conf dispersed_source_start_time       Float. Default 0.
- * @conf dispersed_source_end_time         Float. Default 1.
- * @conf dispersed_source_start_frequency  Float. Default 2.
- * @conf dispersed_source_stop_frequency   Float. Default 1.
- * @conf dispersed_source_linewidth        Float. Default 1.
- * @conf dispersed_source_amplitude        Float. Default 0.
- * @conf frb_source_start_time             Float. Default 0.
- * @conf frb_source_stop_time              Float. Default 0.
- * @conf frb_source_start_frequency        Float. Default 0.
- * @conf frb_source_stop_frequency         Float. Default 0.
- * @conf frb_source_scale                  Float. Default 0. Scaling applied to FRB pulse.
- * @conf frb_source_time_envelope_centre   Float. Default 0.
- * @conf frb_source_time_envelope_width    Float. Default 0.
- * @conf frb_source_frequency_envelope_lo_centre Float. Default 0.
- * @conf frb_source_frequency_envelope_lo_width  Float. Default 0.
- * @conf frb_source_frequency_envelope_hi_centre Float. Default 0.
- * @conf frb_source_frequency_envelope_hi_width  Float. Default 0.
- * @conf frb_source_amplitude              Float. Default 0.
- * @conf source_position_ew                Float. Source position east-west angle (radians).
- * @conf source_position_ns                Float. Source position north-south angle (radians).
- *
- * @conf adc_frequency         Float. ADC sampling rate (Hz).
- * @conf bb_num_beams_ew       Int. Baseband beams in east-west.
- * @conf bb_num_beams_ns       Int. Baseband beams in north-south.
- * @conf bb_beam_separation_ew Float. Baseband beam spacing east-west.
- * @conf bb_beam_separation_ns Float. Baseband beam spacing north-south.
- * @conf bb_scale              Int. Baseband amplitude scaling.
- *
- * @conf upchannelization_factor          Int. Upchannelisation factor (power of 2).
- * @conf upchan_U1_max_num_channels       Int. Max local channels for U1.
- * @conf upchan_U2_max_num_channels       Int. Max local channels for U2.
- * @conf upchan_U4_max_num_channels       Int. Max local channels for U4.
- * @conf upchan_U8_max_num_channels       Int. Max local channels for U8.
- * @conf upchan_U16_max_num_channels      Int. Max local channels for U16.
- * @conf upchan_U32_max_num_channels      Int. Max local channels for U32.
- * @conf upchan_U64_max_num_channels      Int. Max local channels for U64.
- * @conf upchan_U1_min_channel            Int. First channel for U1.
- * @conf upchan_U2_min_channel            Int. First channel for U2.
- * @conf upchan_U4_min_channel            Int. First channel for U4.
- * @conf upchan_U8_min_channel            Int. First channel for U8.
- * @conf upchan_U16_min_channel           Int. First channel for U16.
- * @conf upchan_U32_min_channel           Int. First channel for U32.
- * @conf upchan_U64_min_channel           Int. First channel for U64.
- * @conf upchan_U1_max_channel            Int. Last channel (exclusive) for U1.
- * @conf upchan_U2_max_channel            Int. Last channel (exclusive) for U2.
- * @conf upchan_U4_max_channel            Int. Last channel (exclusive) for U4.
- * @conf upchan_U8_max_channel            Int. Last channel (exclusive) for U8.
- * @conf upchan_U16_max_channel           Int. Last channel (exclusive) for U16.
- * @conf upchan_U32_max_channel           Int. Last channel (exclusive) for U32.
- * @conf upchan_U64_max_channel           Int. Last channel (exclusive) for U64.
- * @conf upchan_all_max_num_output_channels Int. Total output channels available.
- * @conf upchan_all_min_output_channel      Int. First global output channel.
- * @conf upchan_all_max_output_channel      Int. Last global output channel.
- * @conf upchan_U2_gains                  Array<Float>. Complex gain factors for U2 (interleaved).
- * @conf upchan_U4_gains                  Array<Float>. Complex gain factors for U4 (interleaved).
- * @conf upchan_U8_gains                  Array<Float>. Complex gain factors for U8 (interleaved).
- * @conf upchan_U16_gains                 Array<Float>. Complex gain factors for U16 (interleaved).
- * @conf upchan_U32_gains                 Array<Float>. Complex gain factors for U32 (interleaved).
- * @conf upchan_U64_gains                 Array<Float>. Complex gain factors for U64 (interleaved).
- *
- * @conf frb1_input_scale    Float. Scale for FRB stage 1 input.
- * @conf frb_num_beams_ew    Int. FRB beamformer beams east-west.
- * @conf frb_num_beams_ns    Int. FRB beamformer beams north-south.
- * @conf frb_bore_z          Float. FRB bore-sight z position.
- * @conf frb_opening_angle_ew Float. FRB east-west opening angle.
- * @conf frb_opening_angle_ns Float. FRB north-south opening angle.
- *
- * @par Example
- * @code
- * f_engine:
- *   kotekan_stage: FEngine
- *   receive_chime: true
- *   num_frames: 10
- *   num_components: 2
- *   num_polarizations: 2
- *   num_frequencies: 1024
- *   num_times: 16384
- *   adc_frequency: 800e6
- *   num_taps: 8
- *   # ... other telescope/beam parameters ...
- * @endcode
+ * @conf num_components Int (=2) complex components
+ * @conf num_polations  Int (=2) polarizations
+ * @conf source_amplitude  Float  simulated radio source amplitude
+ * @conf source_frequency  Float  simulated radio source frequency (in Hz)
+ * @conf source_position_x  Float  simulated radio source position (east-west angle in radians)
+ * @conf source_position_y  Float  simulated radio source position (north-south angle in radians)
+ * @conf num_dish_locations_M Int  east-west dish grid size
+ * @conf num_dish_locations_N Int  north-south dish grid size
+ * @conf dish_separation_x  Float east-west dish separation (in meters)
+ * @conf dish_separation_y  Float north-south dish separation (in meters)
+ * @conf num_dishes         Int   number of dishes
+ * @conf dish_locations     vector of Int  A pair of integers for each dish, giving its position in
+ * the M,N grid.
+ * @conf adc_frequency      Float  how many samples per second does the ADC perform?
+ * @conf num_taps           Int    how many taps in the F-engine's polyphase filter bank?
+ * @conf num_frequencies    Int    how many frequencies are produced by the F-engine?
+ * @conf num_times          Int    how many time samples per chunk?
+ * @conf receive_chime      Bool   input buffer layout (CHIME or CHORD)
+ * @conf bb_num_dishes_M    Int    Baseband beamformer: input dish grid size
+ * @conf bb_num_dishes_N    Int    Baseband beamformer: input dish grid size
+ * @conf bb_num_beams_P    Int    Baseband beamformer: output beam grid size
+ * @conf bb_num_beams_Q    Int    Baseband beamformer: output beam grid size
+ * @conf bb_beam_separation_x Float Baseband beamformer: output beam spacing east-west (radians?)
+ * @conf bb_beam_separation_y Float Baseband beamformer: output beam spacing north-south (radians?)
+ * @conf upchannelization_factor Int Upchan
+ * @conf num_frames              Int how many frames of data to produce
  */
 class FEngine : public kotekan::Stage {
     const std::string unique_name;

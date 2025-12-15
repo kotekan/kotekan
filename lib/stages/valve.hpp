@@ -34,14 +34,6 @@
  * @metric kotekan_valve_dropped_frames_total
  *        The number of frames dropped.
  *
- * @par Example
- * @code
- * valve:
- *   kotekan_stage: Valve
- *   in_buf: vis_in
- *   out_buf: vis_out
- * @endcode
- *
  *
  * @author  Rick Nitsche
  *

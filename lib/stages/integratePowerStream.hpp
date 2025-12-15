@@ -30,16 +30,7 @@
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf   integration  Int. Number of time samples to sum.
- *
- * @par Example
- * @code
- * integrate_power_stream:
- *   kotekan_stage: integratePowerStream
- *   in_buf: power_in
- *   out_buf: power_out
- *   integration: 16
- * @endcode
+ * @conf   integration   Int. Number of time samples to sum.
  *
  * @todo    Update once we have a formal radioPowerStream buffer format.
  * @todo    Add metadata to allow different data types for in/out.

@@ -23,6 +23,7 @@ add_library(
     testDataCheck.cpp
     testDataGenQuad.cpp
     testDataGenFloat.cpp
+    testLostSamplesToPLMask.cpp
     testN2kGen.cpp
     TestDropFrames.cpp
     testCHORDTelescope.cpp

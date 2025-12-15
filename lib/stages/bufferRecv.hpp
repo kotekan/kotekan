@@ -54,15 +54,12 @@ class connInstance;
  * @par buffers
  * @buffer buf The buffer which accepts new frames (producer)
  *        @buffer_format any
- *        @buffer_metadata any (metadata size must match sender)
+ *        @buffer_metadata any
  *
  * @conf listen_port         Int, default 11024.  The port to listen for new connections
  * @conf num_threads         Int, default 1.  The number of worker threads to use
  * @conf connection_timeout  Int, default 60.  Number of seconds before timeout on transfer
  * @conf drop_frames         Bool, default true.  Whether to drop frames when buffer fills.
- * @conf cpu_affinity        Array[Int]. Optional CPU core IDs to pin worker threads.
- * @conf use_config_tracker  Bool, default true. Senders/receivers exchange config tracker hashes.
- * @conf instance_log_level  String. Optional log level for connection instances.
  * @conf upstream_rest_endpoints  List[str], default empty. Optional list of
  *        "host:port" entries specifying non-standard upstream REST ports to use for
  *        particular senders. If the client IP (as seen by bufferRecv) matches a host in this

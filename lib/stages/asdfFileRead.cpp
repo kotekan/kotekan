@@ -1,22 +1,3 @@
-/**
- * @file
- * @brief Read frames from ASDF files into a kotekan buffer.
- *  - asdfFileRead : public kotekan::Stage
- *
- * @par Buffers
- * @buffer out_buf Buffer to write frames into.
- *     @buffer_format Matches file contents (CHORD metadata + payload)
- *     @buffer_metadata chordMetadata
- *
- * @conf input_dir       String. Directory containing ASDF files.
- * @conf file_name       String. Base filename stem (numeric index appended).
- * @conf prefix_hostname Bool (default true). Prefix hostname to filename.
- * @conf do_once         Bool (default false). After first frame, pause instead of exiting.
- *
- * @par Metrics
- * @metric kotekan_asdffileread_read_time_seconds  Time to read the last frame.
- */
-
 #include "Config.hpp"          // for Config
 #include "Symbol.hpp"          // for Symbol
 #include "asdfFiles.hpp"       // for beautify_buffer_name, chord_metadata_version

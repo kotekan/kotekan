@@ -54,22 +54,6 @@
  *         The number of frames skipped due to LAPACK failing (because of bad input data
  *         or other reasons).
  *
- * @par Dataset states
- * Requires @c freqState, @c inputState, @c prodState on input; writes eigenvalues/vectors into
- * reserved fields of N2Buffer (no new states).
- *
- * @par Example
- * @code
- * eigen_vis:
- *   kotekan_stage: eigenVis
- *   in_buf: vis_in
- *   out_buf: vis_out
- *   num_elements: 2048
- *   block_size: 16
- *   num_diagonals_filled: 1
- *   exclude_inputs: []
- * @endcode
- *
  * @author Kiyoshi Masui
  */
 class eigenVis : public kotekan::Stage {

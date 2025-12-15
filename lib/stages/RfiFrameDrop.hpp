@@ -51,32 +51,6 @@
  *                              values that must exceed the *threshold* for the frame
  *                              to get dropped.
  *
- * @par Dataset states
- * Adds/updates an `RFIFrameDropState` capturing the thresholds/fractions; downstream stages can
- * use the updated dataset ID to track drops.
- *
- * @par REST
- * @restendpoint POST /<unique_name>/enable {"value":true|false} Toggle frame dropping.
- * @restendpoint POST /<unique_name>/thresholds {"thresholds":[{"fraction":0.1,"threshold":5.0}]}
- *              Update drop criteria and dataset state.
- *
- * @par Example
- * @code
- * RfiFrameDrop:
- *   in_buf_vis: gpu_vis
- *   in_buf_sk: sk_in
- *   out_buf: vis_clean
- *   num_elements: 2048
- *   num_sub_frames: 4
- *   samples_per_data_set: 49152
- *   sk_step: 256
- *   thresholds:
- *     - fraction: 0.1
- *       threshold: 5.0
- * # POST /RfiFrameDrop/enable {"value": true}
- * # POST /RfiFrameDrop/thresholds {"thresholds":[{"fraction":0.1,"threshold":5.0}]}
- * @endcode
- *
  * @par Metrics
  * @metric  kotekan_rfiframedrop_failing_frame_total
  *          The number of frames failing each criteria per frequency.

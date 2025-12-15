@@ -10,26 +10,6 @@
 #include <string>   // for string
 
 
-/**
- * @brief Accumulates a fixed number of GPU frames into a summed output frame.
- *
- * @par Buffers
- * @buffer in_buf  Input GPU buffer (consumer), int32 CHORD frames with chordMetadata.
- * @buffer out_buf Output buffer (producer), same format/metadata.
- *
- * @conf samples_per_data_set Int. Samples per GPU frame.
- * @conf num_gpu_frames       Int. Number of frames to accumulate per output.
- *
- * @par Example
- * @code
- * accumulate:
- *   kotekan_stage: accumulate
- *   in_buf: gpu_sum_in
- *   out_buf: gpu_sum_out
- *   samples_per_data_set: 49152
- *   num_gpu_frames: 4
- * @endcode
- */
 class accumulate : public kotekan::Stage {
 public:
     accumulate(kotekan::Config& config, const std::string& unique_name,

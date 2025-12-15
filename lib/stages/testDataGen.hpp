@@ -45,10 +45,6 @@
  *                              data production.
  * @conf  num_links             Int.  How many links are being simulated, impacts
  *                              the rate of data generated in the wait = true mode.
- * @conf  array_shape           Array<Int>. Shape to interpret generated data (optional).
- * @conf  dim_name              Array<String>. Dimension names for metadata (optional).
- * @conf  manual_freq_ids       Array<Int>. Override frequency IDs (optional).
- * @conf  meta_time_downsample_factor Int (default 1). Downsample factor for metadata timestamps.
  *
  * @par REST Endpoints
  * @endpoint /\<unique_name\>/generate_test_data
@@ -59,19 +55,6 @@
  * but will wait for a rest trigger providing `num_frames`. In "start" mode this
  * will initiate the stream of data. In "step" mode this will trigger `num_frames`
  * frames to be generated.
- *
- * @par Example
- * @code
- * testDataGen:
- *   out_buf: test_out
- *   type: ramp
- *   value: 1
- *   wait: true
- *   samples_per_data_set: 8192
- *   num_frames: 100
- *   rest_mode: none
- *   num_links: 4
- * @endcode
  *
  * @author Andre Renard, Kiyoshi Masui
  */

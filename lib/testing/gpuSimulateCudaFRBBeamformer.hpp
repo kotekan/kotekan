@@ -38,22 +38,6 @@
  * @conf  num_beams             Int.  Number of beams being formed.
  * @conf  zero_output           Bool. Zero out the array before filling it?  Useful when doing
  * one-hot sparse outputs.
- * @conf  time_downsampling     Int. Time downsampling factor.
- * @conf  frb_beamformer_dish_layout Array[int]. Dish layout vector.
- *
- * @par Example
- * @code
- * gpuSimulateCudaFRBBeamformer:
- *   in_buf: volt_in
- *   out_buf: frb_out
- *   num_dishes: 2048
- *   dish_grid_size: 32
- *   num_local_freq: 16
- *   samples_per_data_set: 49152
- *   time_downsampling: 1
- *   frb_beamformer_dish_layout: [0,1,2,3]
- *   zero_output: false
- * @endcode
  */
 class gpuSimulateCudaFRBBeamformer : public kotekan::Stage {
 public:

@@ -52,32 +52,20 @@
  *     @buffer_metadata VisMetadata
  *
  * @conf  prod_subset_type      string. Type of product subset to perform.
- * @conf  num_elements          int. The number of elements (i.e. inputs) in the correlator data.
+ * @conf  num_elements          int. The number of elements (i.e. inputs) in the
+ *                              correlator data
  * @conf  num_ev                int. The number of eigenvectors to be stored
- * @conf  max_ew_baseline       int. Maximum EW baseline length to include (in units of shortest).
- * @conf  max_ns_baseline       int. Maximum NS baseline length to include (in units of shortest).
- * @conf  input_list            vector of int. Inputs to include (used by have_inputs/only_inputs).
+ * @conf  max_ew_baseline       int. The maximum baseline length along the EW
+ *                              direction to include in subset (in units of the
+ *                              shortest EW baseline)
+ * @conf  max_ns_baseline       int. The maximum baseline length along the NS
+ *                              direction to include in subset (in units of the
+ *                              shortest NS baseline)
+ * @conf  input_list            vector of int. The list of inputs to include.
  *
  *
  * @warning This will only work correctly if the full correlation triangle is
  * passed in as input.
- *
- * @par Dataset states
- * Requires @c freqState/inputState/prodState on input; registers new prodState for subset.
- *
- * @par Example
- * @code
- * prod_subset:
- *   kotekan_stage: prodSubset
- *   in_buf: vis_full
- *   out_buf: vis_subset
- *   prod_subset_type: baseline
- *   max_ew_baseline: 16
- *   max_ns_baseline: 16
- *   input_list: [0, 1, 2, 3]
- *   num_elements: 2048
- *   num_ev: 0
- * @endcode
  *
  * @author  Tristan Pinsonneault-Marotte and Mateus Fandino
  *

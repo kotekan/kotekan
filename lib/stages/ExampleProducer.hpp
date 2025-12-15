@@ -16,15 +16,7 @@
  *      @buffer_format any
  *      @buffer_metadata any
  *
- * @conf init_value Float (default 0). The value to set each element to.
- *
- * @par Example
- * @code
- * example_producer:
- *   kotekan_stage: ExampleProducer
- *   out_buf: test_out
- *   init_value: 1.0
- * @endcode
+ * @conf    init_value  Default 0.  The value to set each element to.
  */
 class ExampleProducer : public kotekan::Stage {
 public:

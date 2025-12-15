@@ -37,14 +37,6 @@
  * @metric kotekan_vdif_lost_frames_total
  *        The number of VDIF frames invalidated because of lost packets.
  *
- * @par Example
- * @code
- * invalidate_vdif_frames:
- *   kotekan_stage: invalidateVDIFframes
- *   out_buf: vdif_out
- *   lost_samples_buf: lost_samples
- * @endcode
- *
  * @author Andre Renard
  */
 class invalidateVDIFframes : public kotekan::Stage {

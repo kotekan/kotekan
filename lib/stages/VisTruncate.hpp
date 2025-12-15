@@ -28,21 +28,10 @@
  *         @buffer_format VisBuffer.
  *         @buffer_metadata VisMetadata
  *
- * @conf   err_sq_lim              Float. Limit for the error of visibility truncation.
- * @conf   weight_fixed_precision  Float. Fixed precision for weight truncation.
- * @conf   data_fixed_precision    Float. Fixed precision for eigenvector and visibility truncation
- *                                 (if weights are zero).
- *
- * @par Example
- * @code
- * vis_truncate:
- *   kotekan_stage: VisTruncate
- *   in_buf: vis_in
- *   out_buf: vis_trunc
- *   err_sq_lim: 1e-6
- *   weight_fixed_precision: 1e-6
- *   data_fixed_precision: 1e-6
- * @endcode
+ * @conf   err_sq_lim               Limit for the error of visibility truncation.
+ * @conf   weight_fixed_precision   Fixed precision for weight truncation.
+ * @conf   data_fixed_precision     Fixed precision for eigenvector and visibility truncation (if
+ * weights are zero).
  *
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */

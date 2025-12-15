@@ -27,17 +27,6 @@
  *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
- * @par Dataset states
- * Removes `eigenvalue`/`eigenvector` dataset states; produces a dataset ID without those states.
- *
- * @par Example
- * @code
- * remove_ev:
- *   kotekan_stage: removeEv
- *   in_buf: vis_with_ev
- *   out_buf: vis_no_ev
- * @endcode
- *
  * @author Richard Shaw
  */
 class removeEv : public kotekan::Stage {

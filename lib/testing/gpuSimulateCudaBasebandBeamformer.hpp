@@ -37,18 +37,6 @@
  * @conf  num_beams             Int.  Number of beams being formed.
  * @conf  zero_output           Bool. Zero out the array before filling it?  Useful when doing
  * one-hot sparse outputs.
- *
- * @par Example
- * @code
- * gpuSimulateCudaBasebandBeamformer:
- *   in_buf: volt_in
- *   out_buf: beam_out
- *   num_elements: 2048
- *   num_local_freq: 16
- *   samples_per_data_set: 49152
- *   num_beams: 4
- *   zero_output: false
- * @endcode
  */
 class gpuSimulateCudaBasebandBeamformer : public kotekan::Stage {
 public:

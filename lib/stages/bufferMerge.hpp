@@ -46,17 +46,9 @@
  *        @buffer_format Matches the input buffers
  *        @buffer_metadata Matches the input buffers
  *
- * @conf timeout Double. Default -1.0. Timeout in seconds waiting for a frame on any input;
- *               negative disables timeout.
- *
- * @par Example
- * @code
- * buffer_merge:
- *   kotekan_stage: bufferMerge
- *   in_bufs: [vis_a, vis_b]
- *   out_buf: vis_merged
- *   timeout: 0.5
- * @endcode
+ * @conf timeout       Double. Default -1.0   Timeout in seconds for waiting
+ *                       for a frame on any of the input buffers.
+ *                       Set to a negative number for no timeout.
  *
  * @author Andre Renard
  */

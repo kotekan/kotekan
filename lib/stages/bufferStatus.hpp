@@ -21,30 +21,17 @@
  * Note at the moment this class requires the global log_level to be
  * set to INFO or highter for the buffer metrics to be output to the logs.
  *
- * @par Buffers
- * None (inspects all registered buffers; no producer/consumer registration).
- *
  * @conf time_delay    Int. Microseconds, default 1000000 (1 second)
  *                       The number of micro seconds between buffer print outs.
  *                       Will not output more frequently than 100ms.
  * @conf print_status  Bool. Default true.
  *                       If true buffer stats are send to the logs/stderr
- * @conf print_full_status Bool. Default false. Print full buffer status.
  *
  * @par Metrics
  * @metric kotekan_bufferstatus_full_frames_total
  *         The number of full frames for a given buffer
  * @metric kotekan_bufferstatus_frames_total
  *         The total number of frames in a given buffer (buffer depth)
- *
- * @par Example
- * @code
- * buffer_status:
- *   kotekan_stage: bufferStatus
- *   time_delay: 500000
- *   print_status: true
- *   print_full_status: false
- * @endcode
  *
  * @author Jacob Taylor, Andre Renard
  */

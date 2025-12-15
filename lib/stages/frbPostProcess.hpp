@@ -56,40 +56,24 @@
  *     @buffer_metadata chimeMetadata
  *     @buffer_format Array of @c uint8
  *
- * @conf   num_gpus                   Int. Number of GPUs (buffers) to read.
- * @conf   samples_per_data_set       Int. Baseband samples per input frame.
- * @conf   downsample_time            Int. Time downsampling applied in FRB kernels.
- * @conf   factor_upchan              Int. Total upchannelization in FRB kernels.
- * @conf   factor_upchan_out          Int. Upchannelization at kernel output (= freqs per packet).
- * @conf   num_beams_per_frb_packet   Int. Beams per output stream.
- * @conf   timesamples_per_frb_packet Int. Time samples per packet.
- * @conf   incoherent_beam            Bool (default=false). If true, emit incoherent beam in slot 0.
- * @conf   incoherent_truncate        Float (default=1e10). Clip magnitude before incoherent sum.
+ * @conf   num_gpus                   Int. Number of GPUs.
+ * @conf   samples_per_data_set       Int. Number of baseband samples corresponding to each buffer.
+ * @conf   downsample_time            Int. Number of time samples summed in the FRB kernels.
+ * @conf   factor_upchan              Int. Total upchannelization in the FRB kernels.
+ * @conf   factor_upchan_out          Int. Upchannelization that exits the FRB kernels,
+ *                                        also number of freqs that will go into each output packet
+ * @conf   num_beams_per_frb_packet   Int. Number of FRB beam in each output stream. (?) Should be
+ * 4?
+ * @conf   timesamples_per_frb_packet Int. Number of times that will go into each packet.
+ * @conf   incoherent_beam            Bool (default=false). Form the incoherent beam or not.
+ *                                        If true, will stuff incoherent beam in position 0.
+ * @conf   incoherent_truncate        Float (default=1e10). To deal with inputs / times /freqs with
+ *                                        anomalously high values, this limits values used prior to
+ * summing into the incoherent beam.
  *
  * @par Metrics
  * @metric kotekan_frb_masked_packets_total
  *         Count of masked packets
- *
- * @par Example
- * @code
- * frb_post_process:
- *   kotekan_stage: frbPostProcess
- *   in_buf_0: frb_gpu0
- *   in_buf_1: frb_gpu1
- *   in_buf_2: frb_gpu2
- *   in_buf_3: frb_gpu3
- *   out_buf: frb_packets
- *   lost_samples_buf: frb_lost
- *   num_gpus: 4
- *   samples_per_data_set: 49152
- *   downsample_time: 1
- *   factor_upchan: 128
- *   factor_upchan_out: 16
- *   num_beams_per_frb_packet: 4
- *   timesamples_per_frb_packet: 16
- *   incoherent_beam: false
- *   incoherent_truncate: 1e10
- * @endcode
  *
  * @author Keith Vanderlinde, Cherry Ng
  *

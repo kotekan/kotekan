@@ -18,17 +18,8 @@
  *     @buffer_format any
  *     @buffer_metadata any
  *
- * @conf len    Int (default 128). Number of bytes to print.
- * @conf offset Int (default 0). Byte offset into the frame.
- *
- * @par Example
- * @code
- * hex_dump:
- *   kotekan_stage: hexDump
- *   in_buf: raw_in
- *   len: 256
- *   offset: 0
- * @endcode
+ * @conf    len     Default 128.  The number of bytes to print.
+ * @conf    offset  Default 0.    The offset into the frame.
  */
 class hexDump : public kotekan::Stage {
 public:

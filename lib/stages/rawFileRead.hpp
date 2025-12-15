@@ -24,22 +24,9 @@
  *         @buffer_metadata Any
  *
  * @conf   base_dir         String. Directory to read from.
- * @conf   file_name        String. Base filename to read (numeric index appended).
+ * @conf   file_name        String. Base filename to read.
  * @conf   file_ext         String. File extension.
- * @conf   prefix_hostname  Bool (default false). Prefix filename with hostname.
- * @conf   end_interrupt    Bool (default false). Interrupt kotekan when files are exhausted.
- *
- * @par Example
- * @code
- * raw_file_read:
- *   kotekan_stage: rawFileRead
- *   buf: vis_in
- *   base_dir: /data/raw
- *   file_name: vis_dump
- *   file_ext: raw
- *   prefix_hostname: false
- *   end_interrupt: true
- * @endcode
+ * @conf   end_interrupt    Bool. Interrupt Kotekan if run out of files to read
  */
 class rawFileRead : public kotekan::Stage {
 public:

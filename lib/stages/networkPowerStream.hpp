@@ -24,40 +24,25 @@
  * @brief Stage to take an intensity stream and stream to a remote client.
  *
  * This is a consumer stage which takes intensity data from a buffer and streams
- * it via TCP (and some day UDP) to a remote client, primarily for visualization purposes. It
- * maintains a background thread to establish/restore the TCP connection, sends a handshake header,
- * and then transmits frames as they become available. UDP mode is stubbed and not functional.
+ * it via TCP (and some day UDP) to a remote client, primarily for visualization purposes.
+ *
+ * In TCP mode, the stage should continually attempt to establish a TCP connection,
+ * then transmit data once successful.
  *
  * @par Buffers
  * @buffer in_buf Input kotekan buffer containing power data to be sent.
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf samples_per_data_set    Int. Number of time samples per frame.
- * @conf power_integration_length Int. Integration length used upstream (metadata only).
- * @conf num_freq                Int. Number of frequencies per frame.
- * @conf num_elements            Int. Number of elements per frame.
- * @conf freq0                   Float (default 1420.0). Center frequency (for header).
- * @conf sample_bw               Float (default 10.0). Bandwidth (for header).
- * @conf dest_port               Int. Destination port.
- * @conf dest_server_ip          String. Destination IP address.
- * @conf dest_protocol           String. Should be @c "TCP" or @c "UDP" (only TCP works).
- *
- * @par Example
- * @code
- * network_power_stream:
- *   kotekan_stage: networkPowerStream
- *   in_buf: power_out
- *   samples_per_data_set: 1024
- *   power_integration_length: 1
- *   num_freq: 1024
- *   num_elements: 2048
- *   freq0: 1420.0
- *   sample_bw: 10.0
- *   dest_server_ip: 127.0.0.1
- *   dest_port: 14001
- *   dest_protocol: TCP
- * @endcode
+ * @conf   samples_per_data_set   Int. Number of time samples to sum.
+ * @conf   power_integration_length     Int. Number of time samples to sum.
+ * @conf   num_freq               Int. Number of time samples to sum.
+ * @conf   num_elements           Int. Number of time samples to sum.
+ * @conf   freq0                  Float (default 1420.0).
+ * @conf   sample_bw              Float (default 10.0).
+ * @conf   dest_port               Int. Number of time samples to sum.
+ * @conf   dest_server_ip           Int. Number of time samples to sum.
+ * @conf   dest_protocol          String. Should be @c "TCP" or @c "UDP"
  *
  * @warning UDP stream doesn't work at the moment.
  * @note    Lots of updating required once buffers are typed...

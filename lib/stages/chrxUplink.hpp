@@ -10,27 +10,6 @@
 #include <string>   // for string, basic_string
 
 
-/**
- * @brief TCP uplink for visibilities (and optional gating data) to CHIME/CHORD collection server.
- *
- * @par Buffers
- * @buffer chrx_in_buf Input visibilities (consumer), any format/metadata expected by receiver.
- * @buffer gate_in_buf Optional gating buffer (consumer), sent if enabled.
- *
- * @conf collection_server_ip   String. Destination IP.
- * @conf collection_server_port Int. Optional; derived from hostname suffix if omitted.
- * @conf enable_gating          Bool. Send gate buffer alongside visibilities.
- *
- * @par Example
- * @code
- * chrx_uplink:
- *   kotekan_stage: chrxUplink
- *   chrx_in_buf: vis_tx
- *   gate_in_buf: gate_tx
- *   collection_server_ip: 10.10.0.12
- *   enable_gating: true
- * @endcode
- */
 class chrxUplink : public kotekan::Stage {
 public:
     chrxUplink(kotekan::Config& config, const std::string& unique_name,

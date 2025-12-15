@@ -37,20 +37,10 @@
  *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
- * @conf split_freq             Double. Frequency (MHz) to split at. Lower freqs go to first output,
- *                              equal/higher to second. Default 512.
- *
- * @par Dataset states
- * Requires @c freqState on input; registers new freqState for each branch and updates dataset IDs.
- *
- * @par Example
- * @code
- * freq_split:
- *   kotekan_stage: freqSplit
- *   in_buf: vis_fullband
- *   out_bufs: [vis_low, vis_high]
- *   split_freq: 512.0
- * @endcode
+ * @conf split_freq             Double. Frequency to split the incoming buffer
+ *                              at. Lower frequencies got to the first output
+ *                              buffer, equal and higher frequencies go to the
+ *                              second. Default 512.
  *
  * @todo Generalise to arbitary frequency splits.
  * @author Mateus Fandino

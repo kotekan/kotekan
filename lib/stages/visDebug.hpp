@@ -34,14 +34,6 @@
  * @metric kotekan_visdebug_frames_by_dataset_total
  *         The total frames seen per dataset.
  *
- * @par Example
- * @code
- * vis_debug:
- *   kotekan_stage: visDebug
- *   in_buf: vis_in
- *   output_period: 1000
- * @endcode
- *
  * @author Richard Shaw
  */
 class visDebug : public kotekan::Stage {

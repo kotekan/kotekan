@@ -34,16 +34,6 @@
  * @conf   spectrum_length      Int (default 1024). Number of samples in the spectrum.
  * @conf   integration_length   Int (default 1024). Number of time samples to sum.
  *
- * @par Example
- * @code
- * simple_autocorr:
- *   kotekan_stage: simpleAutocorr
- *   in_buf: volt_in
- *   out_buf: autocorr_out
- *   spectrum_length: 1024
- *   integration_length: 1024
- * @endcode
- *
  * @todo    Convert input buffer to VDIF format?
  * @todo    Add some metadata to allow different data types for in/out.
  *

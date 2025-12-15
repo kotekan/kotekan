@@ -66,22 +66,6 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  * @metric kotekan_baseband_readout_sent_frames_total
  *         The count of baseband frames sent to the output buffer for transmission
  *
- * @par Files / Output
- * Emits triggered baseband frames to @c out_buf (BasebandMetadata); data copied from ring buffer.
- *
- * @par Example
- * @code
- * baseband_readout:
- *   kotekan_stage: basebandReadout
- *   in_buf: bb_ring
- *   out_buf: bb_out
- *   num_elements: 2048
- *   samples_per_data_set: 49152
- *   num_local_freq: 16
- *   num_frames_buffer: 8
- *   max_dump_samples: 1073741824
- * @endcode
- *
  * @author Kiyoshi Masui, Davor Cubranic
  */
 class basebandReadout : public kotekan::Stage {

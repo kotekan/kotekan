@@ -60,10 +60,12 @@ using namespace HighFive;
  *
  * @conf base_dir  String. Directory to write into.
  * @conf file_name String. Base filename to write.
- * @conf exit_after_n_frames  Int. Stop writing after this many frames, Default 0 = unlimited
+ * @conf prefix_hostname  Bool. Prepend hostname to output file names. Default:
+ *       true.
+ * @conf max_frames  Int. Stop writing after this many frames, Default 0 = unlimited
  *       frames.
- * @conf exit_with_n_writers  Int. Exit after this many HDF5 writers finished writing, Default 0 =
- *       unlimited writers.
+ * @conf skip_writing  Bool. Do not actually write anything. Default:
+ *       false.
  *
  * @par Metrics
  * @metric kotekan_hdf5filewrite_write_time_seconds

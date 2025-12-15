@@ -21,13 +21,6 @@
  * @class BadInputFlag
  * @brief searches for bad inputs that aren't marked in the `flags` field.
  *
- * Walks the full visibility triangle and checks autocorrelation weights for infinities or NaNs,
- * incrementing per-input metrics when a bad value is found. Frames are copied to the output
- * unmodified (flags are not changed yet) but dataset changes are blocked if any stacking state is
- * present, since that would hide individual autos. The stage fingerprints the incoming dataset on
- * `inputs`, `products`, and `stack` to guarantee the topology doesn't change mid-run. Use this for
- * quick data-quality monitoring at the cost of scanning every frame.
- *
  * @par Buffers
  * @buffer in_buf The buffer from which the visibilities are checked, must be a full triangle.
  *     @buffer_format VisBuffer structured
@@ -36,22 +29,10 @@
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
- * @par Dataset states
- * Requires `inputs`, `products`, and `stack` to remain constant; exits if a `stackState` is
- * present.
- *
  * @par Metrics
  * @metric kotekan_badinputflag_frames_total
  *      The number of frames found with unmarked bad inputs. The metrics are labelled with
  *      which `input` is bad, and why (Infinite weight, NaN weight).
- *
- * @par Example
- * @code
- * bad_input_flag:
- *   kotekan_stage: BadInputFlag
- *   in_buf: vis_in
- *   out_buf: vis_checked
- * @endcode
  *
  * @warning  This will only work correctly if the full correlation triangle is
  *           passed in as input.

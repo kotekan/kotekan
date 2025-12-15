@@ -20,37 +20,24 @@
  * @class networkInputPowerStream
  * @brief Stage to take an intensity stream and stream to a remote client.
  *
- * This is a consumer stage which reads power/intensity frames and sends them to a remote client
- * over TCP (UDP is stubbed). It opens a socket to the configured `ip:port` and writes each frame
- * sequentially; if the connection drops it reconnects and continues. The stage does not alter
- * data or metadata; it simply forwards raw buffer contents.
+ * This is a consumer stage which takes intensity data from a buffer and streams
+ * it via TCP (and some day UDP) to a remote client, primarily for visualization purposes.
+ *
+ * In TCP mode, the stage should continually attempt to establish a TCP connection,
+ * then transmit data once successful.
  *
  * @par Buffers
  * @buffer out_buf Input kotekan buffer containing power data to be sent.
  *     @buffer_format Array of @c uint
  *     @buffer_metadata none
  *
- * @conf samples_per_data_set Int. Number of time samples in each frame.
- * @conf integration_length  Int. Integration length used upstream (metadata only).
- * @conf num_freq            Int. Number of frequencies per frame.
- * @conf num_elements        Int. Number of elements per frame.
- * @conf port                Int. Destination port.
- * @conf ip                  String. Destination IP address.
- * @conf protocol            String. "TCP" or "UDP" (only TCP supported).
- *
- * @par Example
- * @code
- * network_input_power_stream:
- *   kotekan_stage: networkInputPowerStream
- *   out_buf: power_out
- *   samples_per_data_set: 1024
- *   integration_length: 1
- *   num_freq: 1024
- *   num_elements: 2048
- *   ip: 127.0.0.1
- *   port: 14000
- *   protocol: TCP
- * @endcode
+ * @conf   samples_per_data_set   Int. Number of time samples to sum.
+ * @conf   integration_length     Int. Number of time samples to sum.
+ * @conf   num_freq               Int. Number of time samples to sum.
+ * @conf   num_elements           Int. Number of time samples to sum.
+ * @conf   port                   Int. Number of time samples to sum.
+ * @conf   ip                     Int. Number of time samples to sum.
+ * @conf   protocol               String. Should be @c "TCP" or @c "UDP"
  *
  * @warning UDP stream receiption doesn't work at the moment.
  * @note    Lots of updating required once buffers are typed...

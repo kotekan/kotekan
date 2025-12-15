@@ -36,26 +36,10 @@
  *       @buffer_metadata none
  *
  * @par Metrics
- * @metric kotekan_dpdk_shuffle_fpga_second_stage_shuffle_errors_total
- *         Total second-stage (within-crate) shuffle errors observed.
- * @metric kotekan_dpdk_shuffle_fpga_second_stage_crc_errors_total
- *         CRC errors on any second-stage input lane.
- * @metric kotekan_dpdk_shuffle_fpga_second_stage_missing_short_errors_total
- *         Missing or short packets on any second-stage input lane.
- * @metric kotekan_dpdk_shuffle_fpga_second_stage_long_errors_total
- *         Over-length packets on any second-stage input lane.
- * @metric kotekan_dpdk_shuffle_fpga_second_stage_fifo_overflow_errors_total
- *         FIFO overflows on any second-stage input lane.
  * @metric kotekan_dpdk_shuffle_fpga_third_stage_shuffle_errors_total
- *         Total third-stage (between-crate) shuffle errors observed.
- * @metric kotekan_dpdk_shuffle_fpga_third_stage_crc_errors_total
- *         CRC errors on any third-stage input lane.
- * @metric kotekan_dpdk_shuffle_fpga_third_stage_missing_short_errors_total
- *         Missing or short packets on any third-stage input lane.
- * @metric kotekan_dpdk_shuffle_fpga_third_stage_long_errors_total
- *         Over-length packets on any third-stage input lane.
- * @metric kotekan_dpdk_shuffle_fpga_third_stage_fifo_overflow_errors_total
- *         FIFO overflows on any third-stage input lane.
+ *         The total number of FPGA thrid stage shuffle errors seen
+ * @metric kotekan_dpdk_shuffle_fpga_second_stage_shuffle_errors_total
+ *         The total number of FPGA second stage shuffle errors seen
  *
  * @conf  fpga_dataset          String. The dataset ID for the data being received from
  *                              the F-engine.

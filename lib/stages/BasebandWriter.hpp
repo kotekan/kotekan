@@ -22,25 +22,21 @@
 
 /**
  * @class BasebandWriter
- * @brief Writes raw baseband event frames to disk.
- *
- * Streams `BasebandBuffer` frames from a single input buffer and spools per-event, per-frequency
- * raw files on disk. Each file is named `baseband_<event>_<freq>` inside a directory
- * `baseband_raw_<event>` under `root_path`, and stale files are closed after `dump_timeout`
- * seconds of inactivity. Frame rate can optionally be throttled by `max_frames_per_second`; when
- * set the stage will sleep to keep the moving throughput under that cap. A background thread
- * periodically cleans up old events while the main thread writes frames and updates metrics.
+ * @brief
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
  *         @buffer_format BasebandBuffer structured
  *         @buffer_metadata BasebandMetadata
  *
- * @conf root_path             String, default ".". Base directory for output.
- * @conf samples_per_data_set  UInt. Samples in each frame (used to size payload).
- * @conf num_elements          UInt. Number of elements (used to size payload).
- * @conf dump_timeout          Double, default 60. Seconds of inactivity before closing a file.
- * @conf max_frames_per_second Double, default 0. If >0 limit read/write rate to this FPS.
+ * @conf   root_path        String. Location in filesystem to write to.
+ *
+ * @conf   dump_timeout     Double (default 60). Close dump files when they
+ *                          have been inactive this long (in seconds).
+ *
+ * @conf   max_frames_per_second Double (default 0) Maximum throughput in
+ *                          frames/s at which data is taken out of the input
+ *                          buffer. Value of 0 or less disabled the throttling.
  *
  * @par Metrics
  * @metric kotekan_baseband_writeout_in_progress
@@ -55,18 +51,6 @@
  *
  * @metric kotekan_writer_bytes_total
  *         Number of bytes written to files since the start of this stage
- *
- * @par Example
- * @code
- * baseband_writer:
- *   kotekan_stage: BasebandWriter
- *   in_buf: baseband_in
- *   root_path: /data/baseband
- *   samples_per_data_set: 49152
- *   num_elements: 2048
- *   dump_timeout: 120
- *   max_frames_per_second: 0   # no throttling
- * @endcode
  *
  */
 class BasebandWriter : public kotekan::Stage {

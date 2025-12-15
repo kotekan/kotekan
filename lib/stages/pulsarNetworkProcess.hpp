@@ -31,29 +31,13 @@
  * 	@buffer_format Array of unsigned char.
  * 	@buffer_metadata none
  *
- * @conf udp_pulsar_packet_size   Int (default 6288). Packet size including header.
- * @conf udp_pulsar_port_number   Int (default 1414). UDP port number for pulsar streams.
- * @conf number_of_nodes          Int (default 256). Number of destination nodes.
- * @conf number_of_subnets        Int (default 2). Number of VLANS/subnets to shard traffic across.
- * @conf timesamples_per_pulsar_packet Int (default 16). Samples per packet.
- * @conf num_packet_per_stream    Int (default 8). Packets per stream within a frame.
- * @conf num_pulsar_beams         Int (default 10). Number of tracking beams to send.
- * @conf my_node_id               Int (parsed from hostname if absent). Node index.
- *
- * @par Example
- * @code
- * pulsar_network_process:
- *   kotekan_stage: pulsarNetworkProcess
- *   in_buf: pulsar_packets
- *   udp_pulsar_packet_size: 6288
- *   udp_pulsar_port_number: 1414
- *   number_of_nodes: 256
- *   number_of_subnets: 2
- *   timesamples_per_pulsar_packet: 16
- *   num_packet_per_stream: 8
- *   num_pulsar_beams: 10
- *   my_node_id: 0
- * @endcode
+ * @conf   udp_pulsar_packet_size  Int (default 6288). packet size including header
+ * @conf   udp_pulsar_port_number  Int (default 1414). udp Port number for pulsar streams
+ * @conf   number_of_nodes      Int (default 256). Number of L0 nodes
+ * @conf   number_of_subnets    Int (default 2). Number of subnets or VLANS used for transmission of
+ *PULSAR data
+ * @conf   my_node_id           Int (parsed from the hostname) esimated from the location of node
+ *from node location.
  *
  * @todo   Resolve the issue of NTP clock vs Monotonic clock.
  * @todo   Should run further tests

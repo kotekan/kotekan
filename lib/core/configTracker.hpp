@@ -23,14 +23,16 @@
 #ifndef CONFIGTRACKER_H
 #define CONFIGTRACKER_H
 
-#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, ERROR_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO
-#include "restClient.hpp"     // for restClient
-#include "restServer.hpp"     // for connectionInstance, restServer
+#include "kotekanLogging.hpp"    // for FATAL_ERROR_NON_OO, ERROR_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO
+#include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily, Metrics
+#include "restClient.hpp"        // for restClient
+#include "restServer.hpp"        // for connectionInstance, restServer
 
 #include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for iter_impl, json, json_ref, iteration_proxy_value, basic_json
 
 #include <arpa/inet.h>   // for inet_pton
+#include <chrono>        // for duration, duration_cast, system_clock
 #include <cstdio>        // for remove, rename, size_t
 #include <errno.h>       // for errno
 #include <exception>     // for exception
@@ -49,6 +51,7 @@
 #include <sys/stat.h>    // for stat, S_ISDIR
 #include <tuple>         // for tie, operator<, tuple
 #include <utility>       // for pair
+#include <vector>        // for vector
 
 namespace kotekan {
 
@@ -351,6 +354,7 @@ public:
             ERROR_NON_OO(
                 "ConfigTracker: Failed to get config hashes from upstream host: {}, port: {}", host,
                 port);
+            _record_upstream_fetch(host, port, false);
             return;
         }
 
@@ -358,6 +362,7 @@ public:
         if (reply.second.empty()) {
             ERROR_NON_OO("ConfigTracker: No configs found at upstream host: {}, port: {}", host,
                          port);
+            _record_upstream_fetch(host, port, false);
             return;
         }
 
@@ -371,8 +376,10 @@ public:
                          "port: {}. Error: {}",
                          host, port, e.what());
             DEBUG2_NON_OO("Response was: {}", reply.second);
+            _record_upstream_fetch(host, port, false);
             return;
         }
+        _record_upstream_fetch(host, port, true);
 
         // Iterate over the hashes and fetch each config
         for (const auto& item : response_json.items()) {
@@ -409,6 +416,7 @@ public:
                              "{}, port: {}",
                              hash, upstream_host, upstream_port);
                 DEBUG2_NON_OO("Response was: {}", reply.second);
+                _record_upstream_fetch(upstream_host, upstream_port, false);
                 continue;
             }
             // Parse the response JSON
@@ -419,6 +427,7 @@ public:
                 ERROR_NON_OO("ConfigTracker: Failed to parse JSON response for hash: {} from "
                              "upstream host: {}, port: {}. Error: {}",
                              hash, upstream_host, upstream_port, e.what());
+                _record_upstream_fetch(upstream_host, upstream_port, false);
                 continue;
             }
 
@@ -433,9 +442,11 @@ public:
                         "ConfigTracker: Returned hash or config is inconsistent with hash {}!",
                         hash);
                 _insertConfig(upstream_host, upstream_port, info);
+                _record_upstream_fetch(upstream_host, upstream_port, true);
             } else {
                 // If the config was not found, log a non-fatal error.
                 ERROR_NON_OO("ConfigTracker: Config not found for hash: {}", hash);
+                _record_upstream_fetch(upstream_host, upstream_port, false);
             }
         }
         // Sanity check to ensure that the number of configs is consistent
@@ -530,10 +541,24 @@ public:
      * primarily for tests or controlled re-initialization.
      */
     void reset() {
-        std::lock_guard<std::mutex> lock(_lock);
-        _configs.clear();
-        _config_hashes.clear();
-        _tracker_hash.clear();
+        std::vector<std::tuple<std::string, uint16_t, std::string>> cleared_configs;
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+            for (const auto& [host_port, info] : _configs) {
+                cleared_configs.emplace_back(host_port.host, host_port.port, info.json_hash);
+            }
+            _configs.clear();
+            _config_hashes.clear();
+            _tracker_hash.clear();
+            _configs_total_metric().set(0.0);
+        }
+
+        for (const auto& [host, port, hash] : cleared_configs) {
+            _config_present_metric().labels({host, std::to_string(port), hash}).set(0.0);
+        }
+
+        _hash_changes_total().inc();
+        _last_change_timestamp().set(_now_seconds());
     }
 
 private:
@@ -550,6 +575,8 @@ private:
     std::string _tracker_hash;
 
     mutable std::mutex _lock;
+
+    static constexpr const char* _metrics_stage_name = "config_tracker";
 
     /**
      * @brief Get the md5 hash of a (json) config.
@@ -660,6 +687,7 @@ private:
 
             _configs.emplace(host_port, config_info);
             _config_hashes.emplace(config_info.json_hash, host_port);
+            _refresh_metrics_locked();
         }
         // Sanity check to ensure that the number of configs is consistent
         check_num_configs_consistent();
@@ -706,11 +734,18 @@ private:
         for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
             md5_ss << static_cast<int>(md5_result[i]);
 
+        const std::string new_hash = md5_ss.str();
+        bool changed = false;
         {
             std::lock_guard<std::mutex> lock(_lock);
+            changed = (_tracker_hash != new_hash);
             // Store the combined hash
-            _tracker_hash = md5_ss.str();
+            _tracker_hash = new_hash;
             DEBUG_NON_OO("ConfigTracker: Combined hash set to: {}", _tracker_hash);
+        }
+        if (changed) {
+            _hash_changes_total().inc();
+            _last_change_timestamp().set(_now_seconds());
         }
     }
 
@@ -749,6 +784,60 @@ private:
                     return true;
         }
         return false;
+    }
+
+    void _refresh_metrics_locked() {
+        _configs_total_metric().set(static_cast<double>(_configs.size()));
+        for (const auto& [host_port, info] : _configs) {
+            _config_present_metric()
+                .labels({host_port.host, std::to_string(host_port.port), info.json_hash})
+                .set(1.0);
+        }
+    }
+
+    void _record_upstream_fetch(const std::string& host, uint16_t port, bool success) {
+        _upstream_fetch_total()
+            .labels({host, std::to_string(port), success ? "success" : "fail"})
+            .inc();
+    }
+
+    double _now_seconds() const {
+        using clock = std::chrono::system_clock;
+        using seconds_double = std::chrono::duration<double>;
+        return std::chrono::duration_cast<seconds_double>(clock::now().time_since_epoch()).count();
+    }
+
+    static prometheus::Gauge& _configs_total_metric() {
+        static prometheus::Gauge& metric = prometheus::Metrics::instance().add_gauge(
+            "kotekan_config_tracker_configs_total", _metrics_stage_name);
+        return metric;
+    }
+
+    static prometheus::MetricFamily<prometheus::Gauge>& _config_present_metric() {
+        static prometheus::MetricFamily<prometheus::Gauge>& metric =
+            prometheus::Metrics::instance().add_gauge("kotekan_config_tracker_config_present",
+                                                      _metrics_stage_name, {"host", "port", "hash"});
+        return metric;
+    }
+
+    static prometheus::Counter& _hash_changes_total() {
+        static prometheus::Counter& metric = prometheus::Metrics::instance().add_counter(
+            "kotekan_config_tracker_hash_changes_total", _metrics_stage_name);
+        return metric;
+    }
+
+    static prometheus::Gauge& _last_change_timestamp() {
+        static prometheus::Gauge& metric = prometheus::Metrics::instance().add_gauge(
+            "kotekan_config_tracker_last_change_timestamp_seconds", _metrics_stage_name);
+        return metric;
+    }
+
+    static prometheus::MetricFamily<prometheus::Counter>& _upstream_fetch_total() {
+        static prometheus::MetricFamily<prometheus::Counter>& metric =
+            prometheus::Metrics::instance().add_counter("kotekan_config_tracker_upstream_fetch_total",
+                                                        _metrics_stage_name,
+                                                        {"host", "port", "result"});
+        return metric;
     }
 
 }; // class ConfigTracker

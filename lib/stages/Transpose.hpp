@@ -68,16 +68,6 @@
  * @metric kotekan_transpose_data_transposed_bytes
  *         The total amount of data processed in bytes.
  *
- * @par Example
- * @code
- * transpose_example:
- *   kotekan_stage: Transpose
- *   in_buf: vis_raw
- *   chunk_size: [1, 64, 16]
- *   outfile: /data/vis/0000_000
- *   comet_timeout: 60
- * @endcode
- *
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
 class Transpose : public kotekan::Stage {
