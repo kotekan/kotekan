@@ -708,38 +708,35 @@ private:
      * i.e. a hash representing the current tracker state.
      */
     void _setTrackerHash() {
-
-        std::stringstream ss;
-        {
-            std::lock_guard<std::mutex> lock(_lock);
-            for (const auto& [hash, _] : _config_hashes) {
-                ss << hash;
-            }
-        }
-
-        // Get hash of the concatenated hashes
-
-        unsigned char md5_result[MD5_DIGEST_LENGTH];
-
-        // The MD5 function is deprecated in openssl 3.0, but we want to
-        // maintain compatibility.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-        MD5(reinterpret_cast<const unsigned char*>(ss.str().c_str()), ss.str().size(), md5_result);
-#pragma GCC diagnostic pop
-
-        // Convert the MD5 result to a hex string
-        std::stringstream md5_ss;
-        md5_ss << std::hex << std::setw(2) << std::setfill('0');
-        for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
-            md5_ss << static_cast<int>(md5_result[i]);
-
-        const std::string new_hash = md5_ss.str();
         bool changed = false;
         {
             std::lock_guard<std::mutex> lock(_lock);
+            std::stringstream ss;
+            for (const auto& [hash, _] : _config_hashes) {
+                ss << hash;
+            }
+
+            const std::string concatenated = ss.str();
+
+            // Get hash of the concatenated hashes
+            unsigned char md5_result[MD5_DIGEST_LENGTH];
+
+            // The MD5 function is deprecated in openssl 3.0, but we want to
+            // maintain compatibility.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+            MD5(reinterpret_cast<const unsigned char*>(concatenated.c_str()), concatenated.size(),
+                md5_result);
+#pragma GCC diagnostic pop
+
+            // Convert the MD5 result to a hex string
+            std::stringstream md5_ss;
+            md5_ss << std::hex << std::setw(2) << std::setfill('0');
+            for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
+                md5_ss << static_cast<int>(md5_result[i]);
+
+            const std::string new_hash = md5_ss.str();
             changed = (_tracker_hash != new_hash);
-            // Store the combined hash
             _tracker_hash = new_hash;
             DEBUG_NON_OO("ConfigTracker: Combined hash set to: {}", _tracker_hash);
         }
