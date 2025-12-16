@@ -657,7 +657,7 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
 
             frame.vis[ind] = {(float)(power_r * cp - power_i * sp + vis_noise_r),
                               (float)(power_r * sp + power_i * cp + vis_noise_i)};
-            frame.weight[ind] = 1.0 / noise_var;
+            frame.weight[ind] = 1.0 / vis_var;
             ind++;
         }
     }
