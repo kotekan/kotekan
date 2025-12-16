@@ -799,7 +799,7 @@ private:
     }
 
     double _now_seconds() const {
-        using clock = std::chrono::system_clock;
+        using clock = std::chrono::steady_clock;
         using seconds_double = std::chrono::duration<double>;
         return std::chrono::duration_cast<seconds_double>(clock::now().time_since_epoch()).count();
     }
