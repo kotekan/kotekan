@@ -1,27 +1,30 @@
-#include "DataType.hpp"       // for float16_t, DataType, GetType, KOTEKAN_FLOAT16
-#include "kotekanLogging.hpp" // for DEBUG, FATAL_ERROR, INFO
+#include "FEngine.hpp"
 
-#include "fmt.hpp" // for compile_string_to_view
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include <julia.h> // for jl_box_int64, jl_box_float32, jl_exception_occurred, jl_ty...
+#pragma GCC diagnostic pop
 
-#include <Config.hpp> // for Config
-#include <FEngine.hpp>
-#include <Stage.hpp>         // for Stage
-#include <StageFactory.hpp>  // for REGISTER_KOTEKAN_STAGE
-#include <algorithm>         // for fill_n, max
-#include <cassert>           // for assert
-#include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
-#include <cmath>             // for cos, sin, M_PI
-#include <complex>           // for complex
-#include <cstddef>           // for ptrdiff_t, size_t
-#include <cstdint>           // for int64_t, uint8_t, int8_t, int32_t, uint64_t
-#include <cstring>           // for strncpy, memset
-#include <fstream>           // for basic_ifstream, basic_istream::seekg, basic_istream::read
-#include <functional>        // for function
-#include <julia.h>           // for jl_box_int64, jl_box_float32, jl_exception_occurred, jl_ty...
-#include <juliaManager.hpp>  // for juliaCall, juliaShutdown, juliaStartup
-#include <memory>            // for shared_ptr, __shared_ptr_access
-#include <string>            // for allocator, basic_string, operator+, to_string, string
-#include <vector>            // for vector
+#include <Config.hpp>         // for Config
+#include <DataType.hpp>       // for float16_t, DataType, GetType, KOTEKAN_FLOAT16
+#include <Stage.hpp>          // for Stage
+#include <StageFactory.hpp>   // for REGISTER_KOTEKAN_STAGE
+#include <algorithm>          // for fill_n, max
+#include <cassert>            // for assert
+#include <chordMetadata.hpp>  // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
+#include <cmath>              // for cos, sin, M_PI
+#include <complex>            // for complex
+#include <cstddef>            // for ptrdiff_t, size_t
+#include <cstdint>            // for int64_t, uint8_t, int8_t, int32_t, uint64_t
+#include <cstring>            // for strncpy, memset
+#include <fmt.hpp>            // for compile_string_to_view
+#include <fstream>            // for basic_ifstream, basic_istream::seekg, basic_istream::read
+#include <functional>         // for function
+#include <juliaManager.hpp>   // for juliaCall, juliaShutdown, juliaStartup
+#include <kotekanLogging.hpp> // for DEBUG, FATAL_ERROR, INFO
+#include <memory>             // for shared_ptr, __shared_ptr_access
+#include <string>             // for allocator, basic_string, operator+, to_string, string
+#include <vector>             // for vector
 
 #if !KOTEKAN_FLOAT16
 #warning "The F-Engine simulator requires float16 support"
@@ -414,19 +417,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         julia_source.at(julia_source_length) = '\0';
         kotekan::juliaCall([&]() {
             jl_value_t* const res = jl_eval_string(julia_source.data());
-            jl_value_t* exc = jl_exception_occurred();
-            if (exc) {
-                FATAL_ERROR("Caught Julia exception");
-
-                // Get Base.showerror
-                jl_function_t* showerror = jl_get_function(jl_base_module, "showerror");
-
-                // Call showerror(io, exc)
-                jl_call2(showerror, jl_stderr_obj(), exc);
-
-                // jl_flush_cstdio()
-                // jl_print_backtrace()
-            }
+            kotekan::juliaHandlePossibleExceptions();
             assert(res);
         });
         INFO("Defined Julia code.");
@@ -440,10 +431,6 @@ FEngine::~FEngine() {
 }
 
 void FEngine::main_thread() {
-    static bool stale = false;
-    assert(!stale);
-    stale = true;
-
     // This functions shall be executed only once, during the initialization.
     jl_value_t* refs = nullptr;
     jl_function_t* setindex = nullptr;
@@ -457,6 +444,9 @@ void FEngine::main_thread() {
     jl_value_t* FEngine_setup = nullptr;
     if (!skip_julia) {
         INFO("Initializing F-Engine...");
+        const std::vector<int> dish_indices(dish_grid.get_dish_indices().begin(),
+                                            dish_grid.get_dish_indices().end());
+        // Make a copy to convert to `int`
         kotekan::juliaCall([&]() {
             jl_module_t* const f_engine_module =
                 (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
@@ -495,8 +485,7 @@ void FEngine::main_thread() {
             args[iargc++] = jl_box_float32(source_position_ns);
             args[iargc++] = jl_box_int64(dish_grid.get_num_dishes_x());
             args[iargc++] = jl_box_int64(dish_grid.get_num_dishes_y());
-            args[iargc++] =
-                jl_box_voidpointer(const_cast<int64_t*>(dish_grid.get_dish_indices().data()));
+            args[iargc++] = jl_box_voidpointer(const_cast<int*>(dish_indices.data()));
             // TODO: Pass dish positions instead
             args[iargc++] = jl_box_float32(chord_telescope.get_dish_separation_x_m());
             args[iargc++] = jl_box_float32(chord_telescope.get_dish_separation_y_m());
@@ -515,8 +504,7 @@ void FEngine::main_thread() {
             assert(iargc == nargs);
             FEngine_setup = jl_call(setup, args, nargs);
             JL_GC_POP();
-            if (jl_exception_occurred())
-                FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
+            kotekan::juliaHandlePossibleExceptions();
             if (!FEngine_setup)
                 FATAL_ERROR("Could not initialize F-Engine");
             assert(FEngine_setup);
@@ -563,10 +551,9 @@ void FEngine::main_thread() {
                 args[2] = jl_box_int64(num_dishes);
                 args[3] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_dish_positions, args, nargs);
-                if (jl_exception_occurred())
-                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                assert(res);
                 JL_GC_POP();
+                kotekan::juliaHandlePossibleExceptions();
+                assert(res);
             });
         } else {
             // Find centre
@@ -782,10 +769,9 @@ void FEngine::main_thread() {
                 args[2] = jl_box_int64(bb_num_beams);
                 args[3] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_bb_beam_positions, args, nargs);
-                if (jl_exception_occurred())
-                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                assert(res);
                 JL_GC_POP();
+                kotekan::juliaHandlePossibleExceptions();
+                assert(res);
             });
         } else {
             // Find centre
@@ -876,10 +862,9 @@ void FEngine::main_thread() {
                 args[5] = jl_box_int64(num_frequencies);
                 args[6] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_A, args, nargs);
-                if (jl_exception_occurred())
-                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                assert(res);
                 JL_GC_POP();
+                kotekan::juliaHandlePossibleExceptions();
+                assert(res);
             });
         } else {
             for (int n = 0; n < num_components * num_dishes * bb_num_beams * num_polarizations
@@ -1123,11 +1108,9 @@ void FEngine::main_thread() {
                     args[5] = jl_box_int64(num_local_channels * U);
                     args[6] = jl_box_int64(W1_frame_index + 1);
                     jl_value_t* const res = jl_call(set_W1, args, nargs);
-                    if (jl_exception_occurred())
-                        FATAL_ERROR("Julia exception:\n{:s}",
-                                    jl_typeof_str(jl_exception_occurred()));
-                    assert(res);
                     JL_GC_POP();
+                    kotekan::juliaHandlePossibleExceptions();
+                    assert(res);
                 });
             } else {
                 for (int n = 0; n < int(chord_telescope.get_num_dishes_y()
@@ -1451,11 +1434,9 @@ void FEngine::main_thread() {
                             args[6] = FEngine_setup;
                             args[7] = jl_box_int64(E_frame_index % num_frames + 1);
                             jl_value_t* const res = jl_call(set_E, args, nargs);
-                            if (jl_exception_occurred())
-                                FATAL_ERROR("Julia exception:\n{:s}",
-                                            jl_typeof_str(jl_exception_occurred()));
-                            assert(res);
                             JL_GC_POP();
+                            kotekan::juliaHandlePossibleExceptions();
+                            assert(res);
                         });
                         for (int t = 0; t < num_times; ++t) {
                             for (int f = 0; f < num_frequencies; ++f) {
@@ -1740,10 +1721,9 @@ void FEngine::main_thread() {
                     args[5] = jl_box_int64(bb_num_beams);
                     args[6] = jl_box_int64(J_frame_index + 1);
                     jl_value_t* const res = jl_call(set_J, args, nargs);
-                    if (jl_exception_occurred())
-                        FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                    assert(res);
                     JL_GC_POP();
+                    kotekan::juliaHandlePossibleExceptions();
+                    assert(res);
                 });
                 DEBUG("[{:d}] Done filling J buffer.", J_frame_index);
             }
@@ -1826,10 +1806,9 @@ void FEngine::main_thread() {
                         args[5] = jl_box_int64(num_frequencies * U);
                         args[6] = jl_box_int64(I1_frame_index + 1);
                         jl_value_t* const res = jl_call(set_I, args, nargs);
-                        if (jl_exception_occurred())
-                            FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                        assert(res);
                         JL_GC_POP();
+                        kotekan::juliaHandlePossibleExceptions();
+                        assert(res);
                     });
 #else
                 std::memset(I1_frame, 0, I1_frame_size);

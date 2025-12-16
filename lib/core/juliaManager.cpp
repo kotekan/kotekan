@@ -1,14 +1,19 @@
 #include "juliaManager.hpp"
 
-#include "errors.h"        // for INFO_F, DEBUG_F
-#include "julia_fasttls.h" // for JULIA_DEFINE_FAST_TLS
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include <julia.h>         // for jl_atexit_hook, jl_init
+#include <julia_fasttls.h> // for JULIA_DEFINE_FAST_TLS
+#pragma GCC diagnostic pop
 
 #include <algorithm>     // for copy
 #include <any>           // for any
-#include <assert.h>      // for assert
 #include <bits/chrono.h> // for operator""ms
+#include <cassert>       // for assert
+#include <cstdio>        // for fflush
+#include <cstdlib>       // for abort
+#include <errors.h>      // for INFO_F, DEBUG_F
 #include <future>        // for promise, future
-#include <julia.h>       // for jl_atexit_hook, jl_init
 #include <mutex>         // for unique_lock, mutex
 #include <queue>         // for queue
 #include <thread>        // for thread, sleep_for
@@ -166,6 +171,23 @@ std::any juliaCallAny(const std::function<std::any()>& fun) {
 
     DEBUG_F("juliaManager: Returning result.");
     return res;
+}
+
+void juliaHandlePossibleExceptions() {
+    jl_value_t* exc = jl_exception_occurred();
+    if (exc) {
+        ERROR_F("Caught Julia exception");
+
+        // Call showerror(io, exc)
+        jl_function_t* showerror = jl_get_function(jl_base_module, "showerror");
+        jl_call2(showerror, jl_stderr_obj(), exc);
+        // jl_flush_cstdio();
+        jl_print_backtrace();
+
+        std::fflush(stdout);
+        std::fflush(stderr);
+        std::abort();
+    }
 }
 
 } // namespace kotekan
