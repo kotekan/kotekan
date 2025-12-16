@@ -262,12 +262,23 @@ jobs:
               bash $GITHUB_WORKSPACE/config/ci-tests/run_tests.sh $GITHUB_WORKSPACE/build-2404/kotekan/kotekan 2m $GITHUB_WORKSPACE/config/ci-tests/gpu_batch
             runs_on: self-hosted
 
-          # /data dir test"
-          - id: data-test
-            cmake_defs: ""
+          - id: smallfinder-test
+            ccache_key: kotekan-smallfinder-yaml
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=ON -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_ASDF=OFF -DUSE_HDF5=ON -DUSE_GDAL=OFF
+              -DUSE_AIRSPY=OFF -DUSE_LAPACK_BLAZE=OFF -DUSE_FFTW=OFF -DUSE_JULIA=OFF -DUSE_DPDK=OFF
+              -DWITH_TESTS=OFF -DWITH_BOOST_TESTS=OFF
             post_build: |
-              # Try something with the persistent /data directory.
-              touch /data/tmp
-              ls /data
-              rm /data/tmp
+              # TODO: Try something with the persistent /data directory.
+              pwd
+              ls -l
+              git clone --depth 1 https://github.com/chord-observatory/kotekan_testing_inputs
+              ln -s kotekan_testing_inputs data
+              #TODO timeout 2m ./build-2404/kotekan/kotekan --bind-address 0:23000 --config config/fengine/test_smallfinder.j2 2>&1 | tee test_smallfinder.out
+              timeout 2m ./build-2404/kotekan/kotekan --config config/fengine/test_smallfinder.j2 2>&1 | tee test_smallfinder.out
+              grep -q CLEAN_EXIT test_smallfinder.out
             runs_on: self-hosted
