@@ -1,0 +1,5 @@
+**********
+accumulate
+**********
+
+.. doxygenclass:: accumulate

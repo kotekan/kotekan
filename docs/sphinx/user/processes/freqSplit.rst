@@ -1,0 +1,5 @@
+*********
+freqSplit
+*********
+
+.. doxygenclass:: freqSplit

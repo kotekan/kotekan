@@ -1,0 +1,5 @@
+**********
+bufferCopy
+**********
+
+.. doxygenclass:: bufferCopy

@@ -1,0 +1,5 @@
+************
+HFBRawReader
+************
+
+.. doxygenclass:: HFBRawReader

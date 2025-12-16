@@ -1,0 +1,5 @@
+************
+RingMapMaker
+************
+
+.. doxygenclass:: RingMapMaker

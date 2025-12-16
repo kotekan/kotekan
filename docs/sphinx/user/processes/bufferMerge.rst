@@ -1,0 +1,5 @@
+***********
+bufferMerge
+***********
+
+.. doxygenclass:: bufferMerge

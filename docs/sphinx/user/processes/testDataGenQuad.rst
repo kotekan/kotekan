@@ -1,0 +1,5 @@
+***************
+testDataGenQuad
+***************
+
+.. doxygenclass:: testDataGenQuad

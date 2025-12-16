@@ -1,0 +1,5 @@
+**********
+bufferRecv
+**********
+
+.. doxygenclass:: bufferRecv

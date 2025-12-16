@@ -1,0 +1,5 @@
+*************
+ensureOrdered
+*************
+
+.. doxygenclass:: ensureOrdered

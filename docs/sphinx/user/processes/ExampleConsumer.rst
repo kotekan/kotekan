@@ -1,0 +1,5 @@
+***************
+ExampleConsumer
+***************
+
+.. doxygenclass:: ExampleConsumer

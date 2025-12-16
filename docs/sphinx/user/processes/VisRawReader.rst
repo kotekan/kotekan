@@ -1,0 +1,5 @@
+************
+VisRawReader
+************
+
+.. doxygenclass:: VisRawReader

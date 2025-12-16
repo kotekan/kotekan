@@ -1,0 +1,5 @@
+************
+rawFileWrite
+************
+
+.. doxygenclass:: rawFileWrite

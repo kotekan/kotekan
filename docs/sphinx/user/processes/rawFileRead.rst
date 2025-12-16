@@ -1,0 +1,5 @@
+***********
+rawFileRead
+***********
+
+.. doxygenclass:: rawFileRead
