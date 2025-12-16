@@ -148,8 +148,8 @@ jobs:
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
             post_build: ""  # Any clang tests to run?
 
-          # Release clang build
-          - id: release_clang
+          # Release clang build and install
+          - id: release_clang_install
             ccache_key: kotekan-release-clang-cpu
             cmake_defs: >-
               -DCMAKE_BUILD_TYPE=Release -DWERROR=ON
@@ -159,7 +159,12 @@ jobs:
               -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=ON -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
-            post_build: ""  # Any clang tests to run?
+            post_build: |
+              # Attempt install
+              (cd $GITHUB_WORKSPACE/build-2404 && make install)
+              # Just try executing the installed kotekan
+              which kotekan
+              /usr/local/bin/kotekan -v
 
           # run yamls in config/ci-tests/cpu_batch
           - id: test-gcc-cpu-yaml
