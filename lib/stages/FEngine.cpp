@@ -431,11 +431,6 @@ FEngine::~FEngine() {
 }
 
 void FEngine::main_thread() {
-    static bool stale = false;
-    if (stale)
-        std::abort();
-    stale = true;
-
     // This functions shall be executed only once, during the initialization.
     jl_value_t* refs = nullptr;
     jl_function_t* setindex = nullptr;
