@@ -1,3 +1,116 @@
+Precompiling CUDA...
+    LLVMLoopInfo Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/LLVMLoopInfo/X7sqD_S6IrE.ji.pidfile)
+    AbstractFFTs Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/AbstractFFTs/Di3HZ_S6IrE.ji.pidfile)
+    LaTeXStrings Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/LaTeXStrings/H4HGh_S6IrE.ji.pidfile)
+    ExprTools Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/ExprTools/eM8wu_S6IrE.ji.pidfile)
+    IteratorInterfaceExtensions Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/IteratorInterfaceExtensions/N0h8q_S6IrE.ji.pidfile)
+    UnsafeAtomics Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/UnsafeAtomics/OuhNJ_S6IrE.ji.pidfile)
+    CEnum Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/CEnum/0gyUJ_S6IrE.ji.pidfile)
+    Statistics Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/Statistics/ERcPL_S6IrE.ji.pidfile)
+    MacroTools Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/MacroTools/38lnR_S6IrE.ji.pidfile)
+    RandomNumbers Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/RandomNumbers/pgCpR_S6IrE.ji.pidfile)
+    OrderedCollections Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/OrderedCollections/LtT3J_S6IrE.ji.pidfile)
+    Requires Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/Requires/IyxeS_S6IrE.ji.pidfile)
+    DataValueInterfaces Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/DataValueInterfaces/9Lpkp_S6IrE.ji.pidfile)
+    Reexport Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/Reexport/bTpYr_S6IrE.ji.pidfile)
+    InlineStrings Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/InlineStrings/prmY3_S6IrE.ji.pidfile)
+    CUDA_Runtime_Discovery Being precompiled by another process (pid: 613558, pidfile: /home/jmertens/.julia/compiled/v1.11/CUDA_Runtime_Discovery/T9PTO_S6IrE.ji.pidfile)
+    HashArrayMappedTries Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/HashArrayMappedTries/HsHT3_S6IrE.ji.pidfile)
+    InvertedIndices Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/InvertedIndices/0P8C6_S6IrE.ji.pidfile)
+    DataAPI Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/DataAPI/3a8mN_S6IrE.ji.pidfile)
+    Crayons Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/Crayons/TXPcU_S6IrE.ji.pidfile)
+    StaticArraysCore Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/StaticArraysCore/Tzw28_S6IrE.ji.pidfile)
+    BFloat16s Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/BFloat16s/iiZ8G_S6IrE.ji.pidfile)
+    SentinelArrays Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/SentinelArrays/uMYVe_S6IrE.ji.pidfile)
+    Scratch Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/Scratch/ICI1U_S6IrE.ji.pidfile)
+    Preferences Being precompiled by another process (pid: 613570, pidfile: /home/jmertens/.julia/compiled/v1.11/Preferences/pWSk8_S6IrE.ji.pidfile)
+    Compat Being precompiled by another process (pid: 613567, pidfile: /home/jmertens/.julia/compiled/v1.11/Compat/GSFWK_S6IrE.ji.pidfile)
+  10060.7 ms  ✓ CEnum
+  10057.4 ms  ✓ DataAPI
+  10065.0 ms  ✓ InvertedIndices
+  10092.7 ms  ✓ OrderedCollections
+  10098.9 ms  ✓ BFloat16s
+    PooledArrays Being precompiled by another process (pid: 613561, pidfile: /home/jmertens/.julia/compiled/v1.11/PooledArrays/vi11X_S6IrE.ji.pidfile)
+    678.2 ms  ✓ Missings
+  20414.6 ms  ✓ LLVMLoopInfo
+  20076.8 ms  ✓ UnsafeAtomics
+  20074.4 ms  ✓ HashArrayMappedTries
+  20085.8 ms  ✓ InlineStrings
+  20128.4 ms  ✓ Scratch
+  20125.7 ms  ✓ Compat
+  20110.0 ms  ✓ Requires
+  20108.8 ms  ✓ DataValueInterfaces
+  20107.4 ms  ✓ Crayons
+  20106.6 ms  ✓ StaticArraysCore
+    Adapt Being precompiled by another process (pid: 613570, pidfile: /home/jmertens/.julia/compiled/v1.11/Adapt/rUIgN_S6IrE.ji.pidfile)
+    463.4 ms  ✓ ScopedValues
+    732.7 ms  ✓ Atomix
+    773.0 ms  ✓ Compat → CompatLinearAlgebraExt
+    DataStructures Being precompiled by another process (pid: 613570, pidfile: /home/jmertens/.julia/compiled/v1.11/DataStructures/xKiwJ_S6IrE.ji.pidfile)
+  30103.3 ms  ✓ AbstractFFTs
+  30089.4 ms  ✓ LaTeXStrings
+  30089.5 ms  ✓ IteratorInterfaceExtensions
+  30082.2 ms  ✓ Statistics
+  30079.4 ms  ✓ MacroTools
+    TableTraits Being precompiled by another process (pid: 613574, pidfile: /home/jmertens/.julia/compiled/v1.11/TableTraits/I6SaN_S6IrE.ji.pidfile)
+  30114.4 ms  ✓ CUDA_Runtime_Discovery
+  30121.0 ms  ✓ Reexport
+  30149.1 ms  ✓ Preferences
+  20133.0 ms  ✓ PooledArrays
+    587.6 ms  ✓ Statistics → SparseArraysExt
+    568.2 ms  ✓ PrecompileTools
+    StaticArrays Being precompiled by another process (pid: 622144, pidfile: /home/jmertens/.julia/compiled/v1.11/StaticArrays/yY9vm_S6IrE.ji.pidfile)
+    648.2 ms  ✓ JLLWrappers
+    746.8 ms  ✓ JuliaNVTXCallbacks_jll
+    776.8 ms  ✓ NVTX_jll
+    772.5 ms  ✓ LibTracyClient_jll
+    768.0 ms  ✓ demumble_jll
+   1980.4 ms  ✓ FixedPointNumbers
+   2117.1 ms  ✓ LLVMExtra_jll
+    LLVM Being precompiled by another process (pid: 613570, pidfile: /home/jmertens/.julia/compiled/v1.11/LLVM/e8NBy_S6IrE.ji.pidfile)
+   2469.9 ms  ✓ StringManipulation
+   2509.6 ms  ✓ CUDA_Driver_jll
+   2108.4 ms  ✓ ColorTypes
+    665.0 ms  ✓ ColorTypes → StyledStringsExt
+   3282.5 ms  ✓ CUDA_Runtime_jll
+   3469.2 ms  ✓ Colors
+   2638.7 ms  ✓ CUDA_Compiler_jll
+   1747.5 ms  ✓ NVTX
+  40142.6 ms  ✓ ExprTools
+  40206.3 ms  ✓ RandomNumbers
+  10236.1 ms  ✓ TableTraits
+  40323.0 ms  ✓ SentinelArrays
+  20046.4 ms  ✓ Adapt
+  20063.0 ms  ✓ DataStructures
+    SortingAlgorithms Being precompiled by another process (pid: 613555, pidfile: /home/jmertens/.julia/compiled/v1.11/SortingAlgorithms/6dCmw_S6IrE.ji.pidfile)
+    617.9 ms  ✓ GPUArraysCore
+    728.0 ms  ✓ Adapt → AdaptSparseArraysExt
+    829.0 ms  ✓ Tables
+    PrettyTables Being precompiled by another process (pid: 613574, pidfile: /home/jmertens/.julia/compiled/v1.11/PrettyTables/kRdcL_S6IrE.ji.pidfile)
+   1252.2 ms  ✓ Random123
+   1281.3 ms  ✓ Tracy
+  20054.5 ms  ✓ SortingAlgorithms
+  55009.0 ms  ✓ StaticArrays
+    AdaptStaticArraysExt Being precompiled by another process (pid: 613570, pidfile: /home/jmertens/.julia/compiled/v1.11/AdaptStaticArraysExt/9bCdf_S6IrE.ji.pidfile)
+    574.6 ms  ✓ StaticArrays → StaticArraysStatisticsExt
+  55206.7 ms  ✓ PrettyTables
+    DataFrames Being precompiled by another process (pid: 613574, pidfile: /home/jmertens/.julia/compiled/v1.11/DataFrames/AR9oZ_S6IrE.ji.pidfile)
+  87644.0 ms  ✓ LLVM
+    GPUCompiler Being precompiled by another process (pid: 613555, pidfile: /home/jmertens/.julia/compiled/v1.11/GPUCompiler/yPwef_S6IrE.ji.pidfile)
+   1420.8 ms  ✓ LLVM → BFloat16sExt
+   1505.0 ms  ✓ GPUToolbox
+   2311.0 ms  ✓ UnsafeAtomics → UnsafeAtomicsLLVM
+  50371.9 ms  ✓ Adapt → AdaptStaticArraysExt
+   2610.7 ms  ✓ KernelAbstractions
+    669.2 ms  ✓ KernelAbstractions → LinearAlgebraExt
+   1369.6 ms  ✓ KernelAbstractions → SparseArraysExt
+   5172.5 ms  ✓ GPUArrays
+  40190.4 ms  ✓ GPUCompiler
+  96967.1 ms  ✓ DataFrames
+    CUDA Being precompiled by another process (pid: 613572, pidfile: /home/jmertens/.julia/compiled/v1.11/CUDA/oWw5k_S6IrE.ji.pidfile)
+  57635.8 ms  ✓ CUDA
+   6237.5 ms  ✓ Atomix → AtomixCUDAExt
+  73 dependencies successfully precompiled in 259 seconds. 32 already precompiled.
 [Choosing CUDA device...]
 NVIDIA A40
 [Creating frb kernel...]

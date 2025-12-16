@@ -41,6 +41,8 @@ const std::string default_config_str = R"config_str({
     "require_gps":        false,
     "updatable_config":   "/earth_rotation_data"
     },
+    "num_dishes_x" : 22,
+    "num_dishes_y" : 24,
     "dish_ew_separation_m": 6.3,
     "dish_ns_separation_m": 8.5,
     "dish_inputs" : [
@@ -243,7 +245,7 @@ BOOST_AUTO_TEST_CASE(_dish_num) {
     dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
     dishInfo d3 = dishInfo(3);
     dishInfo d4 = dishInfo(4);
-    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
+    dishInfo d5 = dishInfo(5, 21, 23, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
 
@@ -267,7 +269,7 @@ BOOST_AUTO_TEST_CASE(_dish_info) {
     dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
     dishInfo d3 = dishInfo(3);
     dishInfo d4 = dishInfo(4);
-    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
+    dishInfo d5 = dishInfo(5, 21, 23, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
 
@@ -298,7 +300,7 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
     dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
     dishInfo d3 = dishInfo(3);
     dishInfo d4 = dishInfo(4);
-    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
+    dishInfo d5 = dishInfo(5, 21, 23, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
 
@@ -322,7 +324,7 @@ BOOST_AUTO_TEST_CASE(_dish_position) {
     check_equal_vec3d(tel.get_dish_position_in_grid_coords(4),
                       std::array<double, 3>({0.0, 0.0, 0.0}));
     check_equal_vec3d(tel.get_dish_position_in_grid_coords(5),
-                      std::array<double, 3>({-5.0 - 0.3, 814 * 2.0 + 1.0, 0.5}));
+                      std::array<double, 3>({21.0 - 0.3, 23.0 * 2.0 + 1.0, 0.5}));
     check_equal_vec3d(tel.get_dish_position_in_grid_coords(6),
                       std::array<double, 3>({0.0, 0.0, 0.0}));
     check_equal_vec3d(tel.get_dish_position_in_grid_coords(7),
@@ -338,12 +340,14 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
     dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
     dishInfo d3 = dishInfo(3);
     dishInfo d4 = dishInfo(4);
-    dishInfo d5 = dishInfo(5, -5, 814, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
+    dishInfo d5 = dishInfo(5, 21, 23, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
     dishInfo d6 = dishInfo(6);
     dishInfo d7 = dishInfo(7);
 
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
+    json_config["num_dishes_x"] = 22;
+    json_config["num_dishes_y"] = 24;
     json_config["dish_separation_x_m"] = 1.0;
     json_config["dish_separation_y_m"] = 2.0;
     json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
@@ -354,9 +358,9 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
     // Set up an object to receive the dish input info.
     dishInputFields buf;
     // Fill the object with the info.
-    tel.get_input_maps(buf);
+    tel.fill_input_maps(buf);
 
-    // Make sure its correct.
+    // Make sure it's correct.
     for (int i = 0; i < 8; i++) {
         BOOST_CHECK_EQUAL(buf.grid_x_idx[i], d[i].grid_x_idx);
         BOOST_CHECK_EQUAL(buf.grid_y_idx[i], d[i].grid_y_idx);
@@ -365,6 +369,35 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
         BOOST_CHECK_EQUAL(static_cast<int32_t>(buf.type[i]), static_cast<int32_t>(d[i].type));
         BOOST_CHECK_EQUAL(buf.label[i], d[i].label);
     }
+}
+
+/*
+ * @brief   Test dish_grid population
+ */
+BOOST_AUTO_TEST_CASE(_dish_grid_population) {
+    dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D1");
+    dishInfo d1 = dishInfo(1, 0, 1, {0.0, 0.0, 0.0}, 35.0, DishType::ArrayDish, "D2");
+    dishInfo d2 = dishInfo(2, 1, 0, {0.1, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D3");
+    dishInfo d3 = dishInfo(3);
+    dishInfo d4 = dishInfo(4);
+    dishInfo d5 = dishInfo(5, 21, 23, {-0.3, 1.0, 0.5}, -9.0, DishType::ArrayDish, "D4");
+    dishInfo d6 = dishInfo(6);
+    dishInfo d7 = dishInfo(7);
+
+    json json_config = json::parse(default_config_str);
+    json_config["num_dishes"] = 8;
+    json_config["num_dishes_x"] = 22;
+    json_config["num_dishes_y"] = 24;
+    json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    const dishGrid& grid = tel.get_dish_grid();
+    BOOST_CHECK_EQUAL(grid.dish_index(0, 0), 0);
+    BOOST_CHECK_EQUAL(grid.dish_index(1, 0), 2);
+    BOOST_CHECK_EQUAL(grid.dish_index(0, 1), 1);
+    BOOST_CHECK_EQUAL(grid.dish_index(21, 23), 5);
+    BOOST_CHECK_EQUAL(grid.dish_index(2, 0), -1);
+    BOOST_CHECK_EQUAL(grid.dish_index(0, 2), -1);
 }
 
 /*
@@ -516,6 +549,50 @@ BOOST_AUTO_TEST_CASE(_vec_grid_to_topocen) {
     check_close_vec3d(tel.vec_grid_to_topocen(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x");
     check_close_vec3d(tel.vec_grid_to_topocen(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y");
     check_close_vec3d(tel.vec_grid_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z");
+}
+
+/*
+ * @brief   Test frequency ID clamping across Nyquist zones
+ */
+BOOST_AUTO_TEST_CASE(_freq_ids_clamping_nyquist_zones) {
+    struct Case {
+        nyquist_zone_t nz;
+        double min_freq;
+        double max_freq;
+        freq_id_t expected_min_id;
+        freq_id_t expected_max_id;
+    };
+
+    // fft_length=16384, fs=3200 MHz -> df=0.1953125 MHz, num_freqs=8192 (Nyquist bin excluded)
+    const std::vector<Case> cases = {
+        {1, 300.0, 1500.0, 1536, 7680},  // df>0
+        {2, 1800.0, 2500.0, 3584, 7168}, // df<0
+        {3, 3800.0, 4500.0, 3072, 6656}, // df>0
+    };
+
+    for (const auto& c : cases) {
+        json json_config = json::parse(default_config_str);
+        json_config["telescope"]["nyquist_zone"] = c.nz;
+        json_config["telescope"]["min_science_freq_MHz"] = c.min_freq;
+        json_config["telescope"]["max_science_freq_MHz"] = c.max_freq;
+
+        const CHORDTelescope& tel = get_telescope(json_config);
+
+        auto min_id = tel.min_science_freq_id();
+        auto max_id = tel.max_science_freq_id();
+
+        BOOST_CHECK_EQUAL(min_id, c.expected_min_id);
+        BOOST_CHECK_EQUAL(max_id, c.expected_max_id);
+
+        double f_min_id = tel.to_freq_MHz(min_id);
+        double f_max_id = tel.to_freq_MHz(max_id);
+
+        double expected_low = (c.nz % 2u == 1u) ? c.min_freq : c.max_freq;
+        double expected_high = (c.nz % 2u == 1u) ? c.max_freq : c.min_freq;
+
+        check_close_double(f_min_id, expected_low, 1.0e-12, 1.0e-12, "f_min_id", "expected_low");
+        check_close_double(f_max_id, expected_high, 1.0e-12, 1.0e-12, "f_max_id", "expected_high");
+    }
 }
 
 /*
@@ -961,7 +1038,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     dishInfo d0 = dishInfo(0, 0, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D00");
     dishInfo d1 = dishInfo(1, 1, 0, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D01");
     dishInfo d2 = dishInfo(2, 0, 1, {0.0, 0.0, 0.0}, 0.0, DishType::ArrayDish, "D10");
-    dishInfo d3 = dishInfo(3, 0, 0, {lambda, lambda, 0.0}, 0.0, DishType::ArrayDish, "D11");
+    dishInfo d3 = dishInfo(3, 2, 2, {-lambda, -lambda, 0.0}, 0.0, DishType::ArrayDish, "D11");
 
     double t = 1.0; // A short time to get only 1st order effects
     EOP eop0 = {.t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0, .xp_as = 0, .yp_as = 0};
@@ -971,6 +1048,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     json json_config = json::parse(default_config_str);
     json_config["num_elements"] = 8;
     json_config["num_dishes"] = 4;
+    json_config["num_dishes_x"] = 3;
+    json_config["num_dishes_y"] = 3;
     json_config["telescope"]["origin_itrs_lat_deg"] = tel_lat_deg;
     json_config["telescope"]["origin_itrs_lon_deg"] = 0.0;
     json_config["telescope"]["dish_separation_x_m"] = lambda;

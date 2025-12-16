@@ -155,15 +155,16 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
 
         out_buffer->set_metadata(out_id, meta);
         /* new style array description */
+        // difficult to move to constructor since it depends on frame_desc in the
+        // signal_buffer which may not be set at contructor time
         std::vector<std::ptrdiff_t> extents(meta->dim, meta->dim + meta->dims);
         std::vector<kotekan::Symbol> dimnames;
         for (int d = 0; d < meta->dims; ++d)
             dimnames.push_back(std::string(meta->dim_name[d],
                                            strnlen(meta->dim_name[d], sizeof(meta->dim_name[d]))));
-        out_buffer->allocate_new_frame_desc(out_id, meta->type, meta->get_name(), extents,
-                                            dimnames);
+        out_buffer->allocate_new_frame_desc(meta->type, meta->get_name(), extents, dimnames);
         /* test that things are consistent */
-        meta->check_frame_desc(out_buffer->get_frame_desc(out_id));
+        meta->check_frame_desc(out_buffer->get_frame_desc());
 
     } else {
         int out_id = gpu_frame_id % _gpu_buffer_depth;

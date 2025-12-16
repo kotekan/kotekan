@@ -1,7 +1,8 @@
 #include "errors.h"
 
-#include <signal.h> // for raise, SIGTERM
-#include <stdarg.h> // for va_end, va_list, va_start
+#include <pthread.h> // for pthread_mutex_t, pthread_mutex_lock, pthread_mutex_unlock
+#include <signal.h>  // for raise, SIGTERM
+#include <stdarg.h>  // for va_end, va_list, va_start
 
 // Default values for log levels.
 int _global_log_level = 3;
@@ -10,6 +11,8 @@ const int __max_log_msg_len = 1024;
 
 enum ReturnCode __status_code = CLEAN_EXIT;
 char __err_msg[1024] = "not set";
+
+static pthread_mutex_t status_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void internal_logging_f(int log, const char* format, ...) {
     va_list args;
@@ -25,16 +28,28 @@ void internal_logging_f(int log, const char* format, ...) {
 }
 
 // Starts kotekan shutdown and sets a status code.
+// If multiple calls to exit_kotekan are made, the one with the highest
+// priority will be used.
 void exit_kotekan(enum ReturnCode code) {
-    __status_code = code;
+    pthread_mutex_lock(&status_mutex);
+    if (return_code_priority(code) >= return_code_priority(__status_code)) {
+        __status_code = code;
+    }
+    pthread_mutex_unlock(&status_mutex);
     raise(SIGTERM);
 }
 
 enum ReturnCode get_exit_code() {
-    return __status_code;
+    pthread_mutex_lock(&status_mutex);
+    enum ReturnCode code = __status_code;
+    pthread_mutex_unlock(&status_mutex);
+    return code;
 }
 char* get_error_message() {
-    return __err_msg;
+    pthread_mutex_lock(&status_mutex);
+    char* msg = __err_msg;
+    pthread_mutex_unlock(&status_mutex);
+    return msg;
 }
 
 // Return log level as string
@@ -82,6 +97,8 @@ char* get_exit_code_string(enum ReturnCode code) {
 void set_error_message_f(const char* format, ...) {
     va_list args;
     va_start(args, format);
+    pthread_mutex_lock(&status_mutex);
     (void)vsnprintf(__err_msg, __max_log_msg_len, format, args);
+    pthread_mutex_unlock(&status_mutex);
     va_end(args);
 }

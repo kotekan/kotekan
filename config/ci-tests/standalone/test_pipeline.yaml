@@ -364,7 +364,7 @@ eigencalc:
 
 hdf5_vis_write:
     log_level: DEBUG
-    kotekan_stage: hdf5VisWrite
+    kotekan_stage: hdf5N2Write
     in_buf: n2_eigen_buffer
     base_dir: ./vis_data
     file_name: pipeline_test

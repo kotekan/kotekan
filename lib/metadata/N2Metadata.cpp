@@ -7,7 +7,9 @@
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, N2Metadata);
 N2Metadata::N2Metadata() :
-    N2MetadataFormat{0, 0, 0, 0, N2Layout::FullUpperTri, 0, 0.0, 0, eop_null, 0, 0, 0, 0, 0} {
+    N2MetadataFormat{
+        0, 0, 0, 0, N2Layout::FullUpperTri, 0, 0.0, 0, eop_null, eop_null, 0, 0, 0, 0, 0,
+        0, 0, 0, 0} {
     ;
 }
 
@@ -36,14 +38,20 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
     abs_time_idx = fmt->abs_time_idx;
     freq_id = fmt->freq_id; // this is an int in chordMetadata, maybe change later
     freq_MHz = fmt->freq_MHz;
-    eop = fmt->eop;
+
+    time_center_eop = fmt->time_center_eop;
+    bin_eop = fmt->bin_eop;
+    bin_start_ERA_deg = fmt->bin_start_ERA_deg;
+    bin_end_ERA_deg = fmt->bin_end_ERA_deg;
+    bin_start_LAST = fmt->bin_start_LAST;
+    bin_end_LAST = fmt->bin_end_LAST;
 
     num_elements = fmt->num_elements;
     num_prod = fmt->num_prod;
     num_ev = fmt->num_ev;
     nfreq = fmt->nfreq;
 
-    layout = fmt->layout;
+    vis_layout = fmt->vis_layout;
 
     return sizeof(N2MetadataFormat);
 }
@@ -62,14 +70,19 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->abs_time_idx = abs_time_idx;
     fmt->freq_id = freq_id; // this is an int in chordMetadata, maybe change later
     fmt->freq_MHz = freq_MHz;
-    fmt->eop = eop;
+    fmt->time_center_eop = time_center_eop;
+    fmt->bin_eop = bin_eop;
+    fmt->bin_start_ERA_deg = bin_start_ERA_deg;
+    fmt->bin_end_ERA_deg = bin_end_ERA_deg;
+    fmt->bin_start_LAST = bin_start_LAST;
+    fmt->bin_end_LAST = bin_end_LAST;
 
     fmt->num_elements = num_elements;
     fmt->num_prod = num_prod;
     fmt->num_ev = num_ev;
     fmt->nfreq = nfreq;
 
-    fmt->layout = layout;
+    fmt->vis_layout = vis_layout;
 
     return sizeof(N2MetadataFormat);
 }
@@ -93,13 +106,19 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
     j.emplace("abs_time_idx", m.abs_time_idx);
     j.emplace("freq_id", m.freq_id); // this is an int in chordMetadata, maybe change later
     j.emplace("freq_MHz", m.freq_MHz);
-    j.emplace("eop", m.eop);
+
+    j.emplace("time_center_eop", m.time_center_eop);
+    j.emplace("bin_eop", m.bin_eop);
+    j.emplace("bin_start_ERA_deg", m.bin_start_ERA_deg);
+    j.emplace("bin_end_ERA_deg", m.bin_end_ERA_deg);
+    j.emplace("bin_start_LAST", m.bin_start_LAST);
+    j.emplace("bin_end_LAST", m.bin_end_LAST);
 
     j.emplace("num_elements", m.num_elements);
     j.emplace("num_prod", m.num_prod);
     j.emplace("num_ev", m.num_ev);
     j.emplace("nfreq", m.nfreq);
-    j.emplace("layout", m.layout);
+    j.emplace("vis_layout", m.vis_layout);
 }
 
 void from_json(const nlohmann::json& j, N2Metadata& m) {
@@ -113,13 +132,19 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.abs_time_idx = j.at("abs_time_idx");
     m.freq_id = j.at("freq_id"); // this is an int in chordMetadata, maybe change later
     m.freq_MHz = j.at("freq_MHz");
-    m.eop = j.at("eop");
+
+    m.time_center_eop = j.at("time_center_eop");
+    m.bin_eop = j.at("bin_eop");
+    m.bin_start_ERA_deg = j.at("bin_start_ERA_deg");
+    m.bin_end_ERA_deg = j.at("bin_end_ERA_deg");
+    m.bin_start_LAST = j.at("bin_start_LAST");
+    m.bin_end_LAST = j.at("bin_end_LAST");
 
     m.num_elements = j.at("num_elements");
     m.num_prod = j.at("num_prod");
     m.num_ev = j.at("num_ev");
     m.nfreq = j.at("nfreq");
-    m.layout = j.at("layout");
+    m.vis_layout = j.at("vis_layout");
 }
 
 void to_json(nlohmann::json& j, const N2Layout& l) {

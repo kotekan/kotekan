@@ -226,10 +226,9 @@ public:
                         const std::string dim_name = dim_names->at(d)->get_maybe_string().value();
                         dimnames.push_back(dim_name);
                     }
-                    buffer->allocate_new_frame_desc(frame_id, value_type, name, dimensions,
-                                                    dimnames);
+                    buffer->allocate_new_frame_desc(value_type, name, dimensions, dimnames);
                     /* test that things are consistent */
-                    meta->check_frame_desc(buffer->get_frame_desc(frame_id));
+                    meta->check_frame_desc(buffer->get_frame_desc());
                 }
 
 
@@ -379,10 +378,11 @@ public:
                     assert(meta->n_dish_locations_ns >= 0);
                     assert(meta->n_dish_locations_ew >= 0);
                     meta->dish_index =
-                        new int[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
+                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
                     const auto data = dish_index->get_data();
-                    assert(data->nbytes()
-                           == sizeof(int) * meta->n_dish_locations_ns * meta->n_dish_locations_ew);
+                    const size_t bytes = sizeof(dish_index_t) * meta->n_dish_locations_ns
+                                         * meta->n_dish_locations_ew;
+                    assert(data->nbytes() == bytes);
                     std::memcpy(meta->dish_index, data->ptr(), data->nbytes());
                 } else {
                     meta->dish_index = nullptr;

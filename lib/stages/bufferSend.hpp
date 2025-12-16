@@ -20,22 +20,6 @@
 #include <string>             // for string, basic_string
 
 /**
- * @struct bufferFrameHeader
- * @brief Stable wire header for transfer details.
- *
- * Uses fixed-width types and explicit padding to (hopefully) make the layout
- * consistent across compilers/ABIs without relying on packing pragmas.
- */
-struct bufferFrameHeader {
-    uint32_t metadata_size;
-    uint32_t frame_size;
-    /// 0 = no update, 1 = update
-    uint32_t config_tracker_update;
-    // TODO: use other bits for versioning info, other features?
-};
-static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 bytes");
-
-/**
  * @struct bufferFrameHeaderNoConfigTracker
  * @brief Wire header without the config tracker flag.
  */
@@ -45,6 +29,20 @@ struct bufferFrameHeaderNoConfigTracker {
 };
 static_assert(sizeof(bufferFrameHeaderNoConfigTracker) == 8,
               "bufferFrameHeaderNoConfigTracker should be 8 bytes");
+
+/**
+ * @struct bufferFrameHeader
+ * @brief Stable wire header for transfer details.
+ *
+ * Uses fixed-width types and explicit padding to (hopefully) make the layout
+ * consistent across compilers/ABIs without relying on packing pragmas.
+ */
+struct bufferFrameHeader : public bufferFrameHeaderNoConfigTracker {
+    /// 0 = no update, 1 = update
+    uint32_t config_tracker_update;
+    // TODO: use other bits for versioning info, other features?
+};
+static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 bytes");
 
 /**
  * @brief Sends a buffer, metadata, and flag for whether config data was updated over TCP.
