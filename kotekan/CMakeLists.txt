@@ -35,14 +35,26 @@ endif()
 
 if(Julia_FOUND)
     # Keep libjulia on the runtime search path when Julia is installed outside standard locations.
-    set_property(TARGET kotekan APPEND PROPERTY BUILD_RPATH "${JULIA_LIBRARY_DIR}")
-    set_property(TARGET kotekan APPEND PROPERTY INSTALL_RPATH "${JULIA_LIBRARY_DIR}")
+    set_property(
+        TARGET kotekan
+        APPEND
+        PROPERTY BUILD_RPATH "${JULIA_LIBRARY_DIR}")
+    set_property(
+        TARGET kotekan
+        APPEND
+        PROPERTY INSTALL_RPATH "${JULIA_LIBRARY_DIR}")
 endif()
 
 if(TARGET n2k)
     # Keep vendor libn2k discoverable from build and install locations.
-    set_property(TARGET kotekan APPEND PROPERTY BUILD_RPATH "$<TARGET_FILE_DIR:n2k>")
-    set_property(TARGET kotekan APPEND PROPERTY INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+    set_property(
+        TARGET kotekan
+        APPEND
+        PROPERTY BUILD_RPATH "$<TARGET_FILE_DIR:n2k>")
+    set_property(
+        TARGET kotekan
+        APPEND
+        PROPERTY INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 endif()
 
 install(
