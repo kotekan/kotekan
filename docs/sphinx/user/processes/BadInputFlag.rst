@@ -1,0 +1,5 @@
+************
+BadInputFlag
+************
+
+.. doxygenclass:: BadInputFlag

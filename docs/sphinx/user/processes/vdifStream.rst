@@ -1,0 +1,5 @@
+**********
+vdifStream
+**********
+
+.. doxygenclass:: vdifStream

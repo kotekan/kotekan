@@ -19,12 +19,30 @@ Downstream writers can persist the configuration that produced their data.
 Instead of shipping full configs with every frame, the sender only flags changes.
 The receiver then pulls missing configs via REST and caches them locally using the tracker.
 
+Config key
+----------
+The tracker is enabled by default. To disable it globally, set ``config_tracker: false`` in the
+*top-level* of your config (not inside a stage block). Stages that support it (e.g. ``bufferSend``,
+``bufferRecv``) respect this global setting unless explicitly overridden with a stage-local
+``use_config_tracker``.
+
 Tracker-combined-hash
 ---------------------
 The tracker also maintains a **combined MD5** over all stored ``json_hash`` values.
 This summarizes the *set* of known configurations on a node. It is inexpensive to compute
 and is used by the streaming stages to signal whether configuration state has changed
 since the last transmission.
+
+Prometheus metrics
+------------------
+- ``kotekan_config_tracker_configs_total`` — current number of stored configs.
+- ``kotekan_config_tracker_config_present{host,port,hash}`` — labels identify each stored
+  ``host:port`` + hash; value is ``1`` while present.
+- ``kotekan_config_tracker_hash_changes_total`` and
+  ``kotekan_config_tracker_last_change_timestamp_seconds`` — change counter and last-change time
+  when the combined tracker hash updates or the tracker is reset.
+- ``kotekan_config_tracker_upstream_fetch_total{host,port,result="success|fail"}`` — upstream REST
+  fetch attempts when pulling configs from peers.
 
 Operational Flow
 ----------------
@@ -73,3 +91,22 @@ Example::
 Notes
 - This setting is only meaningful when ``use_config_tracker: true``.
 - If a client IP:port is not listed, the default port ``12048`` is used for the IP.
+
+Enabling or disabling the tracker
+---------------------------------
+The config tracker rides along with the streaming stages:
+
+- On the sender, set ``use_config_tracker`` in ``bufferSend`` (default ``true``) to include the
+  tracker header and hash updates; set it to ``false`` to omit them.
+- On the receiver, set ``use_config_tracker`` in ``bufferRecv`` (default ``true``) to request/
+  honour tracker updates; set it to ``false`` if the upstream does not expose the tracker.
+
+Example disabling it on both ends::
+
+  buffer_send:
+    type: bufferSend
+    use_config_tracker: false
+
+  buffer_recv:
+    type: bufferRecv
+    use_config_tracker: false

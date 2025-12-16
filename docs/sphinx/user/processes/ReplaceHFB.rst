@@ -1,0 +1,5 @@
+**********
+ReplaceHFB
+**********
+
+.. doxygenclass:: ReplaceHFB

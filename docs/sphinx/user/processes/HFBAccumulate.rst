@@ -1,0 +1,5 @@
+*************
+HFBAccumulate
+*************
+
+.. doxygenclass:: HFBAccumulate

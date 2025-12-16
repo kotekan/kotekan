@@ -1,0 +1,5 @@
+****************************
+gpuSimulateCudaFRBBeamformer
+****************************
+
+.. doxygenclass:: gpuSimulateCudaFRBBeamformer

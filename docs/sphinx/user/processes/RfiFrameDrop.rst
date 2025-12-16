@@ -1,0 +1,5 @@
+************
+RfiFrameDrop
+************
+
+.. doxygenclass:: RfiFrameDrop

@@ -1,0 +1,5 @@
+**************
+constDataCheck
+**************
+
+.. doxygenclass:: constDataCheck

@@ -1,0 +1,5 @@
+************
+ReceiveFlags
+************
+
+.. doxygenclass:: ReceiveFlags

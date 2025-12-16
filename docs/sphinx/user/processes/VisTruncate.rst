@@ -1,0 +1,5 @@
+***********
+VisTruncate
+***********
+
+.. doxygenclass:: VisTruncate

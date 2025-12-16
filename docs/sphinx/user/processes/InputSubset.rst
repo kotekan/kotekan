@@ -1,0 +1,5 @@
+***********
+InputSubset
+***********
+
+.. doxygenclass:: InputSubset

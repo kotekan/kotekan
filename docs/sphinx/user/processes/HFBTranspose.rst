@@ -1,0 +1,5 @@
+************
+HFBTranspose
+************
+
+.. doxygenclass:: HFBTranspose

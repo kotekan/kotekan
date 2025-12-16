@@ -1,0 +1,5 @@
+***********
+HFBTruncate
+***********
+
+.. doxygenclass:: HFBTruncate

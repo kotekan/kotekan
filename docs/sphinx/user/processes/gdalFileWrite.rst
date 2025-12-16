@@ -1,0 +1,5 @@
+*************
+gdalFileWrite
+*************
+
+.. doxygenclass:: gdalFileWrite
