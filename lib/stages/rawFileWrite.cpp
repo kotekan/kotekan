@@ -151,6 +151,11 @@ void rawFileWrite::main_thread() {
         // may be replaced by frames which can contain a "final" signal or some other
         // mechanism.
         if (_exit_after_n_files > 0 && file_num >= _exit_after_n_files) {
+  
+            // Unregister to allow the pipeline to continue, unless I'm the last
+            // consumer on this buffer.
+            buf->unregister_consumer(unique_name, true);
+
             if (--waiting_for_max_frames == 0)
                 exit_kotekan(ReturnCode::CLEAN_EXIT);
             break;
@@ -158,10 +163,6 @@ void rawFileWrite::main_thread() {
 
         frame_id = (frame_id + 1) % buf->num_frames;
     }
-   
-    // Not quite thread-safe
-    if (buf->get_num_consumers() > 1)
-        buf->unregister_consumer(unique_name);
 
     DEBUG("Exiting");
 }
