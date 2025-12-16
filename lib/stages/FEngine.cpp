@@ -417,7 +417,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         julia_source.at(julia_source_length) = '\0';
         kotekan::juliaCall([&]() {
             jl_value_t* const res = jl_eval_string(julia_source.data());
-            kotekan::juliaHandleExceptions();
+            kotekan::juliaHandlePossibleExceptions();
             assert(res);
         });
         INFO("Defined Julia code.");
@@ -504,7 +504,7 @@ void FEngine::main_thread() {
             assert(iargc == nargs);
             FEngine_setup = jl_call(setup, args, nargs);
             JL_GC_POP();
-            kotekan::juliaHandleExceptions();
+            kotekan::juliaHandlePossibleExceptions();
             if (!FEngine_setup)
                 FATAL_ERROR("Could not initialize F-Engine");
             assert(FEngine_setup);
@@ -552,7 +552,7 @@ void FEngine::main_thread() {
                 args[3] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_dish_positions, args, nargs);
                 JL_GC_POP();
-                kotekan::juliaHandleExceptions();
+                kotekan::juliaHandlePossibleExceptions();
                 assert(res);
             });
         } else {
@@ -770,7 +770,7 @@ void FEngine::main_thread() {
                 args[3] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_bb_beam_positions, args, nargs);
                 JL_GC_POP();
-                kotekan::juliaHandleExceptions();
+                kotekan::juliaHandlePossibleExceptions();
                 assert(res);
             });
         } else {
@@ -863,7 +863,7 @@ void FEngine::main_thread() {
                 args[6] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_A, args, nargs);
                 JL_GC_POP();
-                kotekan::juliaHandleExceptions();
+                kotekan::juliaHandlePossibleExceptions();
                 assert(res);
             });
         } else {
@@ -1109,7 +1109,7 @@ void FEngine::main_thread() {
                     args[6] = jl_box_int64(W1_frame_index + 1);
                     jl_value_t* const res = jl_call(set_W1, args, nargs);
                     JL_GC_POP();
-                    kotekan::juliaHandleExceptions();
+                    kotekan::juliaHandlePossibleExceptions();
                     assert(res);
                 });
             } else {
@@ -1435,7 +1435,7 @@ void FEngine::main_thread() {
                             args[7] = jl_box_int64(E_frame_index % num_frames + 1);
                             jl_value_t* const res = jl_call(set_E, args, nargs);
                             JL_GC_POP();
-                            kotekan::juliaHandleExceptions();
+                            kotekan::juliaHandlePossibleExceptions();
                             assert(res);
                         });
                         for (int t = 0; t < num_times; ++t) {
@@ -1722,7 +1722,7 @@ void FEngine::main_thread() {
                     args[6] = jl_box_int64(J_frame_index + 1);
                     jl_value_t* const res = jl_call(set_J, args, nargs);
                     JL_GC_POP();
-                    kotekan::juliaHandleExceptions();
+                    kotekan::juliaHandlePossibleExceptions();
                     assert(res);
                 });
                 DEBUG("[{:d}] Done filling J buffer.", J_frame_index);
@@ -1807,7 +1807,7 @@ void FEngine::main_thread() {
                         args[6] = jl_box_int64(I1_frame_index + 1);
                         jl_value_t* const res = jl_call(set_I, args, nargs);
                         JL_GC_POP();
-                        kotekan::juliaHandleExceptions();
+                        kotekan::juliaHandlePossibleExceptions();
                         assert(res);
                     });
 #else

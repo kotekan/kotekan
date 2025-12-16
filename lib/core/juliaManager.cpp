@@ -173,7 +173,7 @@ std::any juliaCallAny(const std::function<std::any()>& fun) {
     return res;
 }
 
-void juliaHandleExceptions() {
+void juliaHandlePossibleExceptions() {
     jl_value_t* exc = jl_exception_occurred();
     if (exc) {
         ERROR_F("Caught Julia exception");

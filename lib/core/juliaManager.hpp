@@ -74,7 +74,7 @@ std::enable_if_t<!std::is_void_v<R>, R> juliaCall(const F& fun) {
  * Call this function after calling any Julia function to check for
  * and handle (i.e. output) any possible exceptions.
  */
-void juliaHandleExceptions();
+void juliaHandlePossibleExceptions();
 
 } // namespace kotekan
 
