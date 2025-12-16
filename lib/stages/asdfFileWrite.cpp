@@ -461,7 +461,7 @@ public:
                 break;
             }
         } // for
-    
+
         if (max_frames >= 0) {
             // Unregister to allow the pipeline to continue, unless I'm the last
             // consumer on this buffer.

@@ -473,7 +473,7 @@ public:
                 exit_kotekan(CLEAN_EXIT);
             }
         }
-    
+
         DEBUG("exiting");
     }
 };

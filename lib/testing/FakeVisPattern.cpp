@@ -22,7 +22,7 @@
 
 #include <map>       // for map
 #include <memory>    // for shared_ptr, __shared_ptr_access, weak_ptr
-#include <random>     // for mt19937
+#include <random>    // for mt19937
 #include <stdexcept> // for invalid_argument
 #include <tuple>     // for get
 #include <vector>    // for vector
@@ -511,7 +511,7 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
     INFO("          start tick: {}", std::get<0>(frame.time));
     DEBUG("     telescope dt_ns: {}", tel.seq_length_nsec());
     DEBUG("          Frame time: {:d} ns",
-         std::get<1>(frame.time).tv_sec * 1000000000 + std::get<1>(frame.time).tv_nsec);
+          std::get<1>(frame.time).tv_sec * 1000000000 + std::get<1>(frame.time).tv_nsec);
     DEBUG("                   f: {:d} = {:e} Hz", frame.freq_id, f);
     DEBUG("                   ERA: {:.10f} deg", eop.ERA_deg);
     DEBUG("                   xp: {:.10f} arcsec", eop.xp_as);
@@ -585,11 +585,11 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
 
     double theta_sep =
         acos(n_point_grid[0] * n[0] + n_point_grid[1] * n[1] + n_point_grid[2] * n[2]);
-    double beam_fwhm = (beam_fwhm_300MHz_deg * M_PI/180) * 300.0/f;
+    double beam_fwhm = (beam_fwhm_300MHz_deg * M_PI / 180) * 300.0 / f;
     double beam_width = (beam_fwhm) / sqrt(8 * log(2));
     double beam_fac = exp(-0.5 * (theta_sep * theta_sep) / (beam_width * beam_width));
 
-    double spec_fac = pow(f/300.0, spectral_index);
+    double spec_fac = pow(f / 300.0, spectral_index);
 
     frame._metadata->time_center_eop = eop;
 

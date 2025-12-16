@@ -294,7 +294,7 @@ private:
  * @conf    stokes_V    double, Stokes V parameter for the source at 300 MHz,
  *                      arbitrary units. Defaults to 0.0.
  * @conf    spectral_index  double, power law index to apply to source spectrum,
- *                      F_nu ~ F_300 * (nu / 300 Mhz)^spectral_index.  Defaults 
+ *                      F_nu ~ F_300 * (nu / 300 Mhz)^spectral_index.  Defaults
  *                      to 0.0.
  * @conf    noise_var double, Variance of the voltage noise, proportional to system
  *                      temperature. Same units as stokes_I. Defaults to 0.0.

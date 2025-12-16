@@ -48,7 +48,7 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
-#include <waitingForMaxFrames.hpp>     // for waiting_for_max_frames
+#include <waitingForMaxFrames.hpp> // for waiting_for_max_frames
 
 using namespace HighFive;
 
@@ -915,7 +915,7 @@ void hdf5N2Write::main_thread() {
     const double start_time = mono_time_s(); // for logging elapsed time
     N2::frameID in_frame_id(_buffer);        // Input frame ID tracker
     int frame_counter = 0;                   // Count of frames written
-                                             
+
     /// file data for writing (multiple may be open simultaneously)
     /// Keyed by absolute file id = absolute frame index / _num_file_t
     std::map<size_t, std::unique_ptr<N2FileData>> filedata;
@@ -999,8 +999,8 @@ void hdf5N2Write::main_thread() {
         }
 
         // Attempt to add frame to dataset
-        DEBUG("Adding frame (t_idx={}, freq_id={}) to file {} slot (t={})",
-                fv.abs_time_idx, fv.freq_id, abs_file_idx, t_in_file);
+        DEBUG("Adding frame (t_idx={}, freq_id={}) to file {} slot (t={})", fv.abs_time_idx,
+              fv.freq_id, abs_file_idx, t_in_file);
         auto add_status =
             N2FileData_ptr->add_frame(fv, file_t_index); // performs error checking internally.
         if (add_status != N2FileData::AddFrameStatus::Success) {
@@ -1028,8 +1028,8 @@ void hdf5N2Write::main_thread() {
             _grace_finalize_files(filedata, nullptr);
             continue;
         }
-        DEBUG("File {} has {} of {} slots full.", abs_file_idx,
-                N2FileData_ptr->get_added_count(), N2FileData_ptr->get_expected_count());
+        DEBUG("File {} has {} of {} slots full.", abs_file_idx, N2FileData_ptr->get_added_count(),
+              N2FileData_ptr->get_expected_count());
         N2FileData_ptr->last_update_wall_s = frame_recv_time;
         _update_file_metrics(*N2FileData_ptr);
 
@@ -1083,12 +1083,12 @@ void hdf5N2Write::main_thread() {
         // Unregister to allow the pipeline to continue, unless I'm the last
         // consumer on this buffer.
         buffer->unregister_consumer(unique_name, true);
-    
+
         if (--waiting_for_max_frames == 0) {
             WARN("Shutting down Kotekan");
             exit_kotekan(CLEAN_EXIT);
         }
     }
-    
+
     DEBUG("exiting");
 }

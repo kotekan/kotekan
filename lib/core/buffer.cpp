@@ -71,10 +71,11 @@ void GenericBuffer::register_consumer(const std::string& name) {
 void GenericBuffer::unregister_consumer(const std::string& name, bool leave_last) {
     {
         buffer_lock lock(mutex);
-        
+
         // Optional: do not unregister if this is the last consumer.
         if (leave_last && consumers.size() == 1) {
-            DEBUG("Not unregistering consumer {:s} for buffer {:s}, it is the last consumer.", name, buffer_name);
+            DEBUG("Not unregistering consumer {:s} for buffer {:s}, it is the last consumer.", name,
+                  buffer_name);
             return;
         }
 
@@ -625,10 +626,11 @@ void Buffer::unregister_consumer(const std::string& name, bool leave_last) {
     int broadcast = 0;
     {
         buffer_lock lock(mutex);
-        
+
         // Optional: do not unregister if this is the last consumer.
         if (leave_last && consumers.size() == 1) {
-            DEBUG("Not unregistering consumer {:s} for buffer {:s}, it is the last consumer.", name, buffer_name);
+            DEBUG("Not unregistering consumer {:s} for buffer {:s}, it is the last consumer.", name,
+                  buffer_name);
             return;
         }
 
