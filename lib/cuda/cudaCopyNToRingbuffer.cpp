@@ -168,9 +168,6 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
         meta_ring->type = kotekan::int4x2_swapped_withoffset;
 
         // Set the FPGA seq number of the first sample
-        // NB that interpretation of time is a little confused with the array layout
-        // above.  So the transpose kernel will need specal attention to calculating
-        // the actualy time.  It does not follow the usual T_actual pattern.
         meta_ring->set_fpga_seq_num(meta_in0->get_fpga_seq_num());
         meta_ring->set_sample0_offset(meta_in0->get_sample0_offset());
 

@@ -129,8 +129,12 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
     assert(meta->get_fpga_seq_num() == 0);
     assert(meta->get_sample0_offset() == 0);
     assert(input_cursor % meta->sample_bytes() == 0);
-    meta->set_fpga_seq_num(meta->get_fpga_seq_num() + input_cursor / meta->sample_bytes());
-    meta->set_sample0_offset(meta->get_sample0_offset() + input_cursor / meta->sample_bytes());
+    meta->set_fpga_seq_num(meta->get_fpga_seq_num()
+                           + meta->get_time_downsampling_fpga().at(0)
+                                 * (input_cursor / meta->sample_bytes()));
+    meta->set_sample0_offset(meta->get_sample0_offset()
+                             + meta->get_time_downsampling_fpga().at(0)
+                                   * (input_cursor / meta->sample_bytes()));
     assert(meta->dims > 0);
     assert(out_buffer->frame_size % meta->sample_bytes() == 0);
     meta->dim[0] = out_buffer->frame_size / meta->sample_bytes();
