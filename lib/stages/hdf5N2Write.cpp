@@ -743,8 +743,13 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
         FATAL_ERROR("Input buffer must be a N2-type buffer.");
     }
 
-    if (max_frames >= 0)
+    if (_max_frames >= 0) {
+        if (_max_frames % _num_file_t != 0)
+            WARN("max_frames ({}) is not a multiple of num_file_t ({}). An output file will only "
+                 "be partially filled.",
+                 _max_frames, _num_file_t);
         ++waiting_for_max_frames;
+    }
 }
 
 hdf5N2Write::~hdf5N2Write() {}
@@ -947,7 +952,7 @@ void hdf5N2Write::main_thread() {
         // Start timer
         const double frame_recv_time = mono_time_s();
         const double total_elapsed_time = frame_recv_time - start_time;
-        INFO("Received buffer {} frame {} (duration_s {})", buffer->buffer_name, in_frame_id,
+        INFO("Received buffer {} frame {} (duration_s {})", _buffer->buffer_name, in_frame_id,
              total_elapsed_time);
 
         const std::uint64_t file_t_index = fv.abs_time_idx % _num_file_t;
@@ -1000,7 +1005,7 @@ void hdf5N2Write::main_thread() {
 
         // Attempt to add frame to dataset
         DEBUG("Adding frame (t_idx={}, freq_id={}) to file {} slot (t={})", fv.abs_time_idx,
-              fv.freq_id, abs_file_idx, t_in_file);
+              fv.freq_id, abs_file_idx, file_t_index);
         auto add_status =
             N2FileData_ptr->add_frame(fv, file_t_index); // performs error checking internally.
         if (add_status != N2FileData::AddFrameStatus::Success) {
@@ -1078,11 +1083,11 @@ void hdf5N2Write::main_thread() {
     }
     filedata.clear();
 
-    if (max_frames >= 0) {
+    if (_max_frames >= 0) {
 
         // Unregister to allow the pipeline to continue, unless I'm the last
         // consumer on this buffer.
-        buffer->unregister_consumer(unique_name, true);
+        _buffer->unregister_consumer(unique_name, true);
 
         if (--waiting_for_max_frames == 0) {
             WARN("Shutting down Kotekan");
