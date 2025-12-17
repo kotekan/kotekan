@@ -1549,6 +1549,7 @@ void FEngine::main_thread() {
             /* test that things are consistent */
             E_metadata->check_frame_desc(E_buffer->get_frame_desc());
 
+            E_metadata->set_fpga_seq_num(seq_num);
             E_metadata->set_sample0_offset(seq_num);
             E_metadata->set_offset_downsampling(1);
             std::vector<int> coarse_freq(num_frequencies);
@@ -1645,6 +1646,7 @@ void FEngine::main_thread() {
             /* test that things are consistent */
             pl_mask_metadata->check_frame_desc(pl_mask_buffer->get_frame_desc());
 
+            pl_mask_metadata->set_fpga_seq_num(seq_num);
             pl_mask_metadata->set_sample0_offset(seq_num);
             // This pl mask:
             // - is downsampled by 2 in time
@@ -1749,6 +1751,7 @@ void FEngine::main_thread() {
                     J_metadata->stride[d] = 1;
                 else
                     J_metadata->stride[d] = J_metadata->stride[d + 1] * J_metadata->dim[d + 1];
+            J_metadata->fpga_seq_num = seq_num;
             J_metadata->sample0_offset = seq_num;
             J_metadata->offset_downsampling = 1;
             J_metadata->nfreq = num_frequencies;
@@ -1836,6 +1839,7 @@ void FEngine::main_thread() {
                     I1_metadata->stride[d] = 1;
                 else
                     I1_metadata->stride[d] = I1_metadata->stride[d + 1] * I1_metadata->dim[d + 1];
+            I1_metadata->fpga_seq_num = seq_num;
             I1_metadata->sample0_offset = seq_num;
             I1_metadata->offset_downsampling = 1;
             I1_metadata->nfreq = num_frequencies;

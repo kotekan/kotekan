@@ -129,6 +129,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     // TODO: do this automatically in `NDArrayRingBuffer`
 
     // Assuming the voltage is coming in at the raw sample rate.
+#warning "THIS IS INCONSISTENT"
     out_meta->set_fpga_seq_num(voltage.get_read_valid().begin());
     out_meta->set_sample0_offset(out_meta->get_fpga_seq_num() / _sub_integration_ntime);
 

@@ -297,6 +297,16 @@ public:
             }
 
             {
+                if (group->count("fpga_seq_num")) {
+                    DEBUG("[{:s}/{:d}] group0->at(\"fpga_seq_num\")", buffer->buffer_name,
+                          frame_counter);
+                    const auto fpga_seq_num = group->at("fpga_seq_num")->get_maybe_int().value();
+                    meta->set_fpga_seq_num(fpga_seq_num);
+                    assert(meta->get_fpga_seq_num() >= 0);
+                }
+            }
+
+            {
                 if (group->count("sample0_offset")) {
                     DEBUG("[{:s}/{:d}] group0->at(\"sample0_offset\")", buffer->buffer_name,
                           frame_counter);

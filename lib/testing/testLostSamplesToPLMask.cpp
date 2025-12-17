@@ -124,6 +124,7 @@ void testLostSamplesToPLMask::main_thread() {
 
         // physics metadata
         // TODO: add more that dpdk adds
+#warning "THIS IS INCONSISTENT"
         pl_mask_meta->set_fpga_seq_num(seq_num);
         pl_mask_meta->set_sample0_offset(seq_num);
         pl_mask_meta->set_offset_downsampling(PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT);
@@ -199,6 +200,7 @@ void testLostSamplesToPLMask::main_thread() {
 
             // physics metadata
             // TODO: add more that dpdk adds
+#warning "THIS IS INCONSISTENT"
             lost_samples_meta->set_fpga_seq_num(seq_num);
             lost_samples_meta->set_sample0_offset(seq_num);
 

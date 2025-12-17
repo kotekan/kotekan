@@ -205,6 +205,7 @@ void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& 
     meta->set_array_dimension(5, 2, "C");
     meta->set_strides_simple();
 
+#warning "THIS IS INCONSISTENT"
     meta->set_fpga_seq_num(seq_num);
     meta->set_sample0_offset(seq_num / sub_integration_ntime);
     meta->set_offset_downsampling(1);
@@ -240,6 +241,7 @@ void testN2kGen::set_counts_metadata(const std::shared_ptr<chordMetadata>& meta,
     meta->set_array_dimension(4, count_blocksize, "D8Plo2");
     meta->set_strides_simple();
 
+#warning "THIS IS INCONSISTENT"
     meta->set_fpga_seq_num(seq_num);
     meta->set_sample0_offset(seq_num / sub_integration_ntime);
     meta->set_offset_downsampling(1);

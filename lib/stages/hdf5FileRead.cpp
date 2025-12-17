@@ -156,8 +156,12 @@ public:
                 }
                 meta->offset = 0;
 
+                if (dataset.hasAttribute("fpga_seq_num"))
+                    meta->set_fpga_seq_num(
+                        dataset.getAttribute("fpga_seq_num").read<std::int64_t>());
                 if (dataset.hasAttribute("sample0_offset"))
-                    meta->set_sample0_offset(dataset.getAttribute("sample0_offset").read<int>());
+                    meta->set_sample0_offset(
+                        dataset.getAttribute("sample0_offset").read<std::int64_t>());
                 if (dataset.hasAttribute("offset_downsampling"))
                     meta->set_offset_downsampling(
                         dataset.getAttribute("offset_downsampling").read<int>());

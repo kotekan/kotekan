@@ -171,6 +171,7 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
         // NB that interpretation of time is a little confused with the array layout
         // above.  So the transpose kernel will need specal attention to calculating
         // the actualy time.  It does not follow the usual T_actual pattern.
+        meta_ring->set_fpga_seq_num(meta_in0->get_fpga_seq_num());
         meta_ring->set_sample0_offset(meta_in0->get_sample0_offset());
 
         // Merge metadata from all input buffers
@@ -184,7 +185,8 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
                     "cudaCopyNToRingbuffer: input buffer has no chordMetadata");
             // Set the frequency for each of the input buffers
             coarse_freq.at(i) = meta_in->get_coarse_freq()[0];
-            // Check that the sample0 matches for all input buffers
+            // Check that the seq_num and sample0 matches for all input buffers
+            assert(meta_ring->get_fpga_seq_num() == meta_in->get_fpga_seq_num());
             assert(meta_ring->get_sample0_offset() == meta_in->get_sample0_offset());
         }
         meta_ring->set_coarse_freq(coarse_freq);

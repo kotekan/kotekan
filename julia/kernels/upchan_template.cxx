@@ -336,7 +336,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/hasbuffer}}
     {{/kernel_arguments}}
 
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
+    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num` nor `meta->sample0_offset`
 
     const char* exc_arg = "exception";
     {{#kernel_arguments}}

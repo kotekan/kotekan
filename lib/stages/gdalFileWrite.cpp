@@ -238,6 +238,16 @@ public:
                     assert(success);
                 }
 
+                if (meta->get_fpga_seq_num() >= 0) {
+                    const auto fpga_seq_num_value = meta->get_fpga_seq_num();
+                    const auto fpga_seq_num = group->CreateAttribute(
+                        "fpga_seq_num", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(fpga_seq_num_value)));
+                    const bool success =
+                        fpga_seq_num->Write(&fpga_seq_num_value, sizeof fpga_seq_num_value);
+                    assert(success);
+                }
+
                 if (meta->get_sample0_offset() >= 0) {
                     const auto sample0_offset_value = meta->get_sample0_offset();
                     const auto sample0_offset = group->CreateAttribute(

@@ -288,6 +288,10 @@ public:
                         group->emplace("freq_upchan_factor", freq_upchan_factor);
                     }
 
+                    if (meta->has_fpga_seq_num())
+                        group->emplace("fpga_seq_num",
+                                       std::make_shared<ASDF::int_entry>(meta->get_fpga_seq_num()));
+
                     if (meta->has_sample0_offset())
                         group->emplace("sample0_offset", std::make_shared<ASDF::int_entry>(
                                                              meta->get_sample0_offset()));

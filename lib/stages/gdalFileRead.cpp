@@ -198,6 +198,17 @@ public:
             }
 
             {
+                const auto fpga_seq_num = group->GetAttribute("fpga_seq_num");
+                if (fpga_seq_num) {
+                    const auto fpga_seq_num_shape = fpga_seq_num->GetDimensionsSize();
+                    assert(fpga_seq_num_shape.empty());
+                    // Cannot read int64_t directly yet...
+                    meta->set_fpga_seq_num(fpga_seq_num->ReadAsDouble());
+                    assert(meta->get_fpga_seq_num() >= 0);
+                }
+            }
+
+            {
                 const auto sample0_offset = group->GetAttribute("sample0_offset");
                 if (sample0_offset) {
                     const auto sample0_offset_shape = sample0_offset->GetDimensionsSize();

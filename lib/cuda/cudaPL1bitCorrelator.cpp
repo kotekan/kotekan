@@ -207,6 +207,7 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
     // The RFI mask has a fast time index of size 1024, so has an apparent
     // time downsampling of 1024. To get the needed outgoing fpga_seq_num,
     // we need to undo that.
+#warning "THIS IS INCONSISTENT"
     out_meta->set_fpga_seq_num(1024 * rfi_RFImask.get_read_valid().begin());
     out_meta->set_sample0_offset(
         div_noremainder(out_meta->get_fpga_seq_num(), n2k_sub_integration_ntime));

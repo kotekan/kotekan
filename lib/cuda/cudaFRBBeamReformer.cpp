@@ -227,8 +227,10 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         DEBUG("Set output metadata: array shape {:s}, array type {:s}",
               out_meta->get_dimensions_string(), out_meta->get_type_string());
 
-        // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+        // Since we do not use a ring buffer we need to set `meta->fpga_seq_num` and
+        // `meta->sample0_offset`
         assert(input_cursor % in_meta->sample_bytes() == 0);
+        out_meta->set_fpga_seq_num(div_noremainder(input_cursor, in_meta->sample_bytes()));
         out_meta->set_sample0_offset(div_noremainder(input_cursor, in_meta->sample_bytes()));
     }
 
