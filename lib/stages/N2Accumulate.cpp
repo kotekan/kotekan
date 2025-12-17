@@ -255,6 +255,8 @@ void N2Accumulate::main_thread() {
 
     uint64_t rfi_stride_f = 128; // = rfimask_fast_time_len / bits_per_entry = 1024 / 8;
     uint64_t rfi_stride_thi = rfi_stride_f * _num_freq_per_n2k_frame;
+    
+    int64_t next_accum_start_tick = 0;
 
     // vis_even may be an odd frame if the first frame eencountered is odd,
     // since fpga_seq_num does not have to start from 0, in which case we skip
@@ -313,17 +315,31 @@ void N2Accumulate::main_thread() {
 
         // Record the current frame time being processed.
         comp_time_seconds_metric.set(_tel.to_time_ns(frame_metadata->get_fpga_seq_num()) / 1e9);
+            
+        int64_t seq0 = frame_metadata->get_fpga_seq_num();
 
         // Do some first-time initialization
         if (mode == Mode::START) {
+            int64_t fpga_samples_per_accumulation = _num_n2k_samples_to_accumulate
+                * _n_fpga_samples_per_n2k_correlation;
+            if (seq0 % fpga_samples_per_accumulation == 0)
+                next_accum_start_tick = seq0;
+            else {
+                next_accum_start_tick = (seq0 / fpga_samples_per_accumulation + 1) * fpga_samples_per_accumulation;
+            }
+
             mode = Mode::WAITING_FOR_ALIGNMENT;
         }
 
         // Accumulate each visibility sample in the in_frame
         // t_outer
         for (int64_t vis_samp_n = 0; vis_samp_n < _n_integrations_per_n2k_frame; ++vis_samp_n) {
+            
             // "absolute" vis sample number
             int64_t vis_sample_num_abs = in_frame_num * _n_integrations_per_n2k_frame + vis_samp_n;
+            
+            // sequence number of this sample in the frame.
+            int64_t seq = seq0 + vis_samp_n * _n_fpga_samples_per_n2k_correlation;
 
             if (vis_even == nullptr) { // first time
                 // this will skip all of the vis_samp_n loop, but is easier to
@@ -366,6 +382,15 @@ void N2Accumulate::main_thread() {
                 _vis_samples_in_out_frame = 0;
                 _accum_fpga_start_tick = frame_metadata->get_fpga_seq_num()
                                          + vis_samp_n * _n_fpga_samples_per_n2k_correlation;
+            }
+
+            if (mode == Mode::WAITING_FOR_ALIGNMENT) {
+                if (seq >= next_accum_start_tick)
+                    mode = Mode::ACCUMULATING;
+            }
+
+            if (mode != Mode::ACCUMULATING) {
+                continue;
             }
 
             uint64_t corr_offset_t = vis_samp_n * corr_stride_t;
