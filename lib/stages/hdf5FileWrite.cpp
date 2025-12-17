@@ -290,6 +290,7 @@ public:
         file.createAttribute("nfreq", frame.nfreq);
         file.createAttribute("freq_id", frame.freq_id);
         file.createAttribute("freq_MHz", frame.freq_MHz);
+        file.createAttribute("abs_time_idx", frame.abs_time_idx);
         file.createAttribute("time_center_eop.t_inst", frame.time_center_eop.t_inst);
         file.createAttribute("time_center_eop.t_ut1", frame.time_center_eop.t_ut1);
         file.createAttribute("time_center_eop.delta_UT1_inst",
@@ -462,9 +463,15 @@ public:
             }
         } // for
 
-        if (--waiting_for_max_frames == 0) {
-            WARN("Shutting down Kotekan");
-            exit_kotekan(CLEAN_EXIT);
+        if (max_frames >= 0) {
+            // Unregister to allow the pipeline to continue, unless I'm the last
+            // consumer on this buffer.
+            buffer->unregister_consumer(unique_name, true);
+
+            if (--waiting_for_max_frames == 0) {
+                WARN("Shutting down Kotekan");
+                exit_kotekan(CLEAN_EXIT);
+            }
         }
 
         DEBUG("exiting");

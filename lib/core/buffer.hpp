@@ -146,8 +146,9 @@ public:
      * to unregister when they close.
      *
      * @param name The name of the consumer to unregister
+     * @param leave_last Optional, do not unregister if you are the last consumer.
      */
-    virtual void unregister_consumer(const std::string& name);
+    virtual void unregister_consumer(const std::string& name, bool leave_last = false);
 
     /**
      * @brief Register a producer with a given name.
@@ -372,8 +373,11 @@ public:
      * @brief Unregisters the named consumer from this buffer.
      * Signals producers if this causes the buffer to become free for
      * writing.
+     *
+     * @param name unique name of consumer to unregister
+     * @param leave_last if true, do not unregister the last consumer.
      */
-    void unregister_consumer(const std::string& name) override;
+    void unregister_consumer(const std::string& name, bool leave_last = false) override;
 
     /**
      * @brief Prints a summary the frames and state of the producers and consumers.

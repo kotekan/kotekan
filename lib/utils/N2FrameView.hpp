@@ -40,7 +40,7 @@ enum class N2Field { vis, weight, flags, eval, evec, emethod, erms, gain };
  *
  * Use this enum to refer to the method used to compute Eigenvalues and Eigenvectors.
  **/
-enum class N2EigenMethod { cheevr, iterative };
+enum class N2EigenMethod : int32_t { none, cheevr, iterative };
 
 /**
  * @class N2FrameView
