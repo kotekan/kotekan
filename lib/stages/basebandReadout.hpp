@@ -27,7 +27,7 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
 
 /**
  * @class basebandReadout
- * @brief Stage for extracting one frequency from the baseband buffer and putting it into a new
+ * @brief Stage for extracting one frequency from the baseband buffer, beamforming it, and putting it into a new
  * frame.
  *
  * This task manages a kotekan buffer, keeping it mostly full such that it subsets
@@ -41,7 +41,7 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  *
  * @buffer out_buf The extracted single frequency baseband output
  *         @buffer_format DPDK baseband ``samples_per_data_set x num_elements`` bytes
- *         @buffer_metadata BasebandMetadata
+ *         @buffer_metadata BeamMetadata
  *
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
@@ -79,6 +79,7 @@ private:
     // settings from the config file
     int _num_frames_buffer;
     int _num_elements;
+    int _num_beams;
     uint32_t _num_freq_per_stream;
     int _samples_per_data_set;
     int64_t _max_dump_samples;
@@ -93,6 +94,9 @@ private:
 
     Buffer* out_buf;
     frameID out_frame_id;
+
+    Buffer* outmb_buf;
+    frameID outmb_frame_id;
 
     std::mutex manager_lock;
 

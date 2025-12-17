@@ -24,7 +24,7 @@ num_elements: 2048
 num_freq_host_buf: 1
 num_freq_gpu_buf: 16
 samples_per_frame: 16384
-buffer_depth: 3*272 # == baseband_buffer_depth
+buffer_depth: 1*272 # == baseband_buffer_depth
 gpu_buffer_depth: 4
 num_gpus: 2
 cpu_affinity: [0, 10, 11, 12, 13, 14, 15, 16, 16, 18, 19]
@@ -207,7 +207,7 @@ run_send_voltage:
 # RH: merged in CHIME science pipeline stuff
 samples_per_data_set: samples_per_frame # 1/3 of CHIME number
 num_data_sets: 1
-baseband_buffer_depth: 3*272 # 3*272 = ~33 seconds after accounting for active frames
+baseband_buffer_depth: 1*272 # 3*272 = ~33 seconds after accounting for active frames
 
 # Baseband metadata pool
 baseband_pool:
@@ -228,8 +228,9 @@ baseband_output_buffers:
     num_frames: 12
 
 baseband:
-  max_dump_samples: 300000 # 768ms
+  max_dump_samples: 30000 # 768ms
   num_frames_buffer: baseband_buffer_depth - 10
+  num_beams: 64
 {%- for id in range(16) %}
   baseband{{ id }}:
     kotekan_stage: basebandReadout
@@ -246,8 +247,9 @@ baseband_merge:
 {%- endfor %}
   out_buf: baseband_output_buffer_merged
 
+# No writing for now...
 write_baseband:
-  root_path: ./
+  root_path: /home/calvin/baseband_mb
   dump_timeout: 1200 # 20 Minutes
   write_0:
     samples_per_data_set: 512 # matches production CHIME's recv_baseband yaml file

@@ -47,12 +47,14 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&basebandReadout::main_thread, this)),
     _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
+    _num_beams(config.get<int>(unique_name, "num_beams")),
     // TODO: rename this parameter to `num_freq_per_stream` in the config
     _num_freq_per_stream(config.get_default<uint32_t>(unique_name, "num_local_freq", 1)),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     _max_dump_samples(config.get_default<uint64_t>(unique_name, "max_dump_samples", 1 << 30)),
     in_buf(get_buffer("in_buf")), next_frame(0), oldest_frame(-1), frame_locks(_num_frames_buffer),
     out_buf(get_buffer("out_buf")), out_frame_id(out_buf),
+    outmb_buf(get_buffer("outmb_buf")), outmb_frame_id(outmb_buf),
     readout_counter(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_baseband_readout_total", unique_name, {"freq_id", "status"})),
     readout_sent_frame_counter(kotekan::prometheus::Metrics::instance().add_counter(
@@ -326,6 +328,7 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
             dump_end_frame = frame_index + 1;
         }
         lock_range(dump_start_frame, dump_end_frame);
+	DEBUG("Frames locked. Finding {:d} calibrators using start of lock_range = {:d}", num_beams, dump_start_frame,);
 
         // Now that the relevant frames are locked, we can unlock the rest of the buffer so
         // it can continue to operate.
@@ -371,7 +374,7 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
 }
 
 basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
-    DEBUG("Ready to copy samples into the baseband readout buffer");
+    DEBUG("Ready to copy samples into the baseband readout buffer and beamform into baseband_mb readout buffer");
     assert(data.dump_start_frame < data.dump_end_frame);
 
     auto& tel = Telescope::instance();
@@ -412,13 +415,19 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     const int out_frame_samples = out_buf->frame_size / _num_elements;
 
     // Current frame & metadata in the output buffer
+    // Also create pointers to MB readout
     uint8_t* out_frame = nullptr;
     BasebandMetadata* out_metadata = nullptr;
+    uint8_t* outmb_frame = nullptr;
+    chordMetadata* outmb_metadata = nullptr;
 
     // Available space in the `out_frame` (as interval of length `out_remaining`
     // time_samples, starting at `out_start`)
+    // Also keep track of MB readout
     int64_t out_start = 0;
     int64_t out_remaining = 0;
+    int64_t outmb_start = 0;
+    int64_t outmb_remaining = 0;
 
     // If the output buffer is full, or we get a shutdown signal (null frame),
     // then instead of continuing to try and get a new output frame for each input frame
@@ -442,8 +451,10 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
         int64_t in_end = std::min(data_end_fpga - frame_fpga_seq, (int64_t)_samples_per_data_set);
         DEBUG("Next input frame: {},  samples {}-{}", frame_index, in_start, in_end);
         while (in_start < in_end) {
-            // Do we need a new output frame?
-            if (out_remaining == 0) {
+	    // Copy frame from input buffer to output buffer.
+	    // Track progress by incrementing in_start.
+            // Populate metadata for the full-array data
+	    if (out_remaining == 0) {
                 // Is there an available output frame?
                 if (!out_buf->is_frame_empty(out_frame_id)) {
                     // No, skip this frame
@@ -454,7 +465,17 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                     break;
                 }
                 // Get a pointer to the new out frame (cannot block because of the check above)
+		// CL: ignore checks for outmb buffer...hopefully does not make a difference?
                 out_frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
+                outmb_frame = outmb_buf->wait_for_empty_frame(unique_name, outmb_frame_id);
+                if (outmb_frame == nullptr) {
+                    // Skip this frame
+                    WARN("Cannot get an MB output frame ({:d}). Dropping frame {:d}/{:d}",
+                         outmb_frame_id, event_id, frame_index);
+                    frame_dropped_counter.inc();
+                    stop_extract = true;
+                    break;
+                }
                 if (out_frame == nullptr) {
                     // Skip this frame
                     WARN("Cannot get an output frame ({:d}). Dropping frame {:d}/{:d}",
@@ -463,6 +484,47 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                     stop_extract = true;
                     break;
                 }
+		// Metadata for this frame, standard path
+                out_start = 0;
+                out_remaining = out_frame_samples;
+
+                out_buf->allocate_new_metadata_object(out_frame_id);
+                out_metadata = (BasebandMetadata*)(out_buf->get_metadata(out_frame_id).get());
+
+                out_metadata->event_id = event_id;
+                out_metadata->freq_id = freq_id;
+                out_metadata->event_start_fpga = data.trigger_start_fpga;
+                out_metadata->event_end_fpga = data.trigger_start_fpga + data.trigger_length_fpga;
+
+                out_metadata->time0_fpga = data_start_fpga;
+                out_metadata->time0_ctime = ftime0;
+                out_metadata->time0_ctime_offset = ftime0_offset;
+
+                out_metadata->first_packet_recv_time = ts_to_double(packet_time0);
+                out_metadata->fpga0_ns = fpga0_ns;
+                out_metadata->frame_fpga_seq = frame_fpga_seq + in_start;
+                out_metadata->valid_to = 0; // gets adjusted as we copy the data
+                out_metadata->num_elements = _num_elements;
+                out_metadata->reserved = -1;
+                
+		outmb_buf->allocate_new_metadata_object(outmb_frame_id);
+                outmb_metadata = (chordMetadata*)(outmb_buf->get_metadata(outmb_frame_id).get());
+
+                outmb_metadata->event_id = event_id;
+                outmb_metadata->freq_id = freq_id;
+                outmb_metadata->event_start_fpga = data.trigger_start_fpga;
+                outmb_metadata->event_end_fpga = data.trigger_start_fpga + data.trigger_length_fpga;
+
+                outmb_metadata->time0_fpga = data_start_fpga;
+                outmb_metadata->time0_ctime = ftime0;
+                outmb_metadata->time0_ctime_offset = ftime0_offset;
+
+                outmb_metadata->first_packet_recv_time = ts_to_double(packet_time0);
+                outmb_metadata->fpga0_ns = fpga0_ns;
+                outmb_metadata->frame_fpga_seq = frame_fpga_seq + in_start;
+                outmb_metadata->valid_to = 0; // gets adjusted as we copy the data
+                outmb_metadata->num_beams = _num_beams;
+                outmb_metadata->reserved = -1;
 
                 out_start = 0;
                 out_remaining = out_frame_samples;
@@ -496,6 +558,9 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                       copy_len * _num_elements);
                 memcpy(out_frame + (out_start * _num_elements),
                        in_buf_data + (in_start * _num_elements), copy_len * _num_elements);
+		// CL: no beamforming for now: just grab first N elements.
+                memcpy(outmb_frame + (out_start * _num_beams),
+                       in_buf_data + (in_start * _num_beams), copy_len * _num_beams);
             } else {
                 copy_len = std::min((int64_t)1, out_remaining);
                 DEBUG("Copy samples {}/{}-{} for in-frame frequency {} to {}/{} ({} bytes, "
@@ -507,13 +572,24 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                        in_buf_data
                            + (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements,
                        copy_len * _num_elements);
+                memcpy(outmb_frame + (out_start * _num_beams),
+                       in_buf_data
+                           + (in_start * _num_freq_per_stream + stream_freq_idx) * _num_beams,
+                       copy_len * _num_beams);
             }
             in_start += copy_len;
             out_start += copy_len;
+            outmb_start += copy_len;
             out_metadata->valid_to = out_start;
+            outmb_metadata->valid_to = out_start;
             out_remaining -= copy_len;
+            outmb_remaining -= copy_len;
             if (out_remaining == 0) {
                 out_buf->mark_frame_full(unique_name, out_frame_id++);
+                frame_sent_counter.inc();
+            }
+            if (outmb_remaining == 0) {
+                outmb_buf->mark_frame_full(unique_name, outmb_frame_id++);
                 frame_sent_counter.inc();
             }
         }
@@ -527,7 +603,9 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
         DEBUG("Clearing out the remaining {} samples of the frame: {}/{} ({} bytes)", out_remaining,
               out_frame_id, out_start, (out_remaining * _num_elements));
         memset(out_frame + (out_start * _num_elements), 0, out_remaining * _num_elements);
+        memset(outmb_frame + (outmb_start * _num_beams), 0, out_remaining * _num_beams);
         out_buf->mark_frame_full(unique_name, out_frame_id++);
+	outmb_frame_id++;
         frame_sent_counter.inc();
     }
 
