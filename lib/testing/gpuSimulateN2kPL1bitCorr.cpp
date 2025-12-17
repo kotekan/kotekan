@@ -274,7 +274,7 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         //
         //  sample0_offset(out) = sample0_offset(in) * 64 / sub_integration_ntime
 
-#warning "THIS IS INCONSISTENT"
+        // This looks inconsistent
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->set_sample0_offset(
             div_noremainder(64 * meta_in->get_sample0_offset(), _sub_integration_ntime));

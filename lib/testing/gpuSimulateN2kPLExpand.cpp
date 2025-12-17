@@ -184,7 +184,7 @@ void gpuSimulateN2kPLExpand::main_thread() {
         /* test that things are consistent */
         meta_out->check_frame_desc(output_buf->get_frame_desc());
 
-#warning "THIS IS INCONSISTENT"
+        // This looks inconsistent
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->set_sample0_offset(2 * meta_in->get_sample0_offset());
         meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
