@@ -178,7 +178,7 @@ RUN mkdir src && \
     rm -rf src
 
 # Install Julia 1.12.3 directly (no juliaup for no automatic update checks)
-RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.12.3-linux-x86_64.tar.gz && \
+RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.12/julia-1.12.3-linux-x86_64.tar.gz && \
     tar -xzf julia-1.12.3-linux-x86_64.tar.gz -C /opt && \
     ln -s /opt/julia-1.12.3/bin/julia /usr/local/bin/julia && \
     rm julia-1.12.3-linux-x86_64.tar.gz
