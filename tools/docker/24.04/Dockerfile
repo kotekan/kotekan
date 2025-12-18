@@ -72,61 +72,12 @@ RUN apt-get update && \
         libyaml-cpp-dev \
         make \
         pkg-config \
-        python3 \
-        python3-dev \
         software-properties-common \
         valgrind \
         wget \
         xtensor-dev \
         && \
     apt-get clean && apt-get autoclean && rm -rf /var/lib/apt/lists/*
-
-# Install pip and python packages
-# Disable pip caching (keep docker image size smaller)
-ENV PIP_NO_CACHE_DIR=1
-# Overwrite system install of python/pip if needed
-RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
-    wget https://bootstrap.pypa.io/get-pip.py && \
-    python3 get-pip.py && \
-    python3 -m pip install --upgrade \
-        astropy \
-        bitshuffle \
-        black==19.10b0 \
-        breathe==4.35.* \
-        click==8.0.2 \
-        cmake_format \
-        cython \
-        distro-info \
-        flask \
-        future \
-        gmpy2 \
-        h5py \
-        hdf5plugin \
-        mpmath \
-        msgpack \
-        numpy \
-        pip \
-        pkgconfig \
-        posix_ipc \
-        pytest \
-        pytest-cpp \
-        pytest-localserver \
-        pytest-timeout \
-        pytest-xdist \
-        requests \
-        setuptools \
-        sphinx==6.2.* \
-        sphinx_rtd_theme==2.0.* \
-        sphinxcontrib-plantuml==0.25 \
-        tabulate \
-        wheel
-
-# Uncomment this to check what version got installed
-# RUN python3 -m pip show <package>
-# RUN apt-cache policy <package>
-
-# We want the `python` command to point to python3
-RUN ln -sf /usr/bin/python3 /usr/bin/python
 
 # Install Blaze for the eigenvalue processes
 RUN mkdir src && \
@@ -190,17 +141,11 @@ ENV CCACHE_DIR=/code/kotekan/.ccache/
 ENV CCACHE_COMPRESS=1
 ENV CCACHE_MAXSIZE=1G
 
-# Set the plugin path so kotekan can find bitshuffle
-# Ideally this would be determined dynamically, but for now...
-ENV HDF5_PLUGIN_PATH=/usr/local/lib/python3.12/dist-packages/hdf5plugin/plugins
-
 ENV KOTEKAN_BUILD_DIRNAME=build-2404
 
 # Code is often cloned into /code/kotekan
 # Don't worry about permission issues in here
 RUN git config --global --add safe.directory /code/kotekan
-# Add this to pythonpath
-ENV PYTHONPATH=/code/kotekan/python/
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]

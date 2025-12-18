@@ -8,6 +8,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 import pytest
 import numpy as np
 import h5py
+import hdf5plugin
 from kotekan import runner
 from kotekan import visutil
 from kotekan import visbuffer

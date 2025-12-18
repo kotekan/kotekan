@@ -4,6 +4,10 @@ project(
     KOTEKAN
     DESCRIPTION "A high performance radio data processing pipeline"
     LANGUAGES C CXX)
+
+# Require uv to build
+find_program(UV uv REQUIRED)
+
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake ${KOTEKAN_SOURCE_DIR}/cmake/Modules)
 include(cmake/Color.cmake)
 include(cmake/Options.cmake)

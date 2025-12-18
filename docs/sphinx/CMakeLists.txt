@@ -39,7 +39,9 @@ file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/_static")
 
 add_custom_target(
     sphinx ALL
-    ${SPHINX_EXECUTABLE}
+    uv
+    run
+    sphinx-build
     -q
     -b
     html
