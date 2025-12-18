@@ -257,6 +257,7 @@ void N2Accumulate::main_thread() {
     uint64_t rfi_stride_thi = rfi_stride_f * _num_freq_per_n2k_frame;
     
     int64_t next_accum_start_tick = 0;
+    int64_t fpga_ticks_per_accum = _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
 
     // vis_even may be an odd frame if the first frame eencountered is odd,
     // since fpga_seq_num does not have to start from 0, in which case we skip
@@ -316,16 +317,19 @@ void N2Accumulate::main_thread() {
         // Record the current frame time being processed.
         comp_time_seconds_metric.set(_tel.to_time_ns(frame_metadata->get_fpga_seq_num()) / 1e9);
             
+        
+        // Sequence number for the start of this frame.
         int64_t seq0 = frame_metadata->get_fpga_seq_num();
+
 
         // Do some first-time initialization
         if (mode == Mode::START) {
-            int64_t fpga_samples_per_accumulation = _num_n2k_samples_to_accumulate
-                * _n_fpga_samples_per_n2k_correlation;
-            if (seq0 % fpga_samples_per_accumulation == 0)
+            if (seq0 % fpga_ticks_per_accum == 0)
+                // if we're aligned with a bin edge, start now.
                 next_accum_start_tick = seq0;
             else {
-                next_accum_start_tick = (seq0 / fpga_samples_per_accumulation + 1) * fpga_samples_per_accumulation;
+                // otherwise, start accumulating at the next edge.
+                next_accum_start_tick = (seq0 / fpga_ticks_per_accum + 1) * fpga_ticks_per_accum;
             }
 
             mode = Mode::WAITING_FOR_ALIGNMENT;
@@ -361,6 +365,24 @@ void N2Accumulate::main_thread() {
                 _accum_fpga_start_tick = frame_metadata->get_fpga_seq_num();
             }
 
+            // Startup - wait to be at the beginning of an accumulation bin.
+            if (mode == Mode::WAITING_FOR_ALIGNMENT) {
+                if (seq == next_accum_start_tick) {
+                    // Away we go!
+                    _vis_samples_in_out_frame = 0;
+                    _accum_fpga_start_tick = seq;
+                    next_accum_start_tick += fpga_ticks_per_accum;
+                    mode = Mode::ACCUMULATING;
+                }
+            }
+
+            // If we're not ready to accumulate, keep on spinning until we reach the 
+            if (mode != Mode::ACCUMULATING) {
+                DEBUG("Waiting for accumulation bin to start at seq {:d}, skipping visibility sample {:d} of {:d} in frame with seq {:d}.",
+                        next_accum_start_tick, vis_samp_n, _n_integrations_per_n2k_frame, seq);
+                continue;
+            }
+            
             DEBUG("Accumulating new visibility sample ({:d} of {:d} in frame).", vis_samp_n,
                   _n_integrations_per_n2k_frame);
             // DEBUG("   Times are [start, end, out, num] = [{:d}, {:d}, {:d}, {:d}]",
@@ -500,6 +522,7 @@ void N2Accumulate::main_thread() {
                 _vis_samples_in_out_frame = 0;
                 _accum_fpga_start_tick = frame_metadata->get_fpga_seq_num()
                                          + (vis_samp_n + 1) * _n_fpga_samples_per_n2k_correlation;
+                next_accum_start_tick += fpga_ticks_per_accum;
             }
 
         } // t (vis samples in frame)
@@ -626,12 +649,25 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
                         N2::cfloat v{(float)_vis[2 * idx], (float)_vis[2 * idx + 1]};
                         out_vis.vis[n2_idx] = ins * std::conj(v);
 
+                        float bias = std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
+
+                        /*
+                        DEBUG("{} {} w1: {:.12f} v2: {:.12f} |v|^2: {:.12f}, dN^2: {:.12f} |v|^2 dN^2: {:.12f} diff: {:.12e} ==: {}",
+                                    i, j,
+                                    _weights[idx], std::norm(v), std::norm(v)*ins*ins, _n_valid_sample_diff_sq_sum[f],
+                                    bias,
+                                    _weights[idx] - bias,
+                                    _weights[idx] == bias);
+                        */
+
                         if (ns > 0) {
-                            _weights[idx] -=
-                                std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
+                            _weights[idx] -= bias;
                         }
+                        
+                        //DEBUG("{} {} w2: {}", i, j, _weights[idx]);
 
                         out_vis.weight[n2_idx] = (ns > 0) ? ns * (ns / _weights[idx]) : 0;
+                        //DEBUG("{} {} w3: {}", i, j, out_vis.weight[n2_idx]);
                     } // jlo
                 } // ilo
 

@@ -12,28 +12,28 @@ from kotekan import runner
 
 t_start_s = 1_760_000_000
 GIGA = 1_000_000_000
-start_frame_idx = 1  # Make sure this is non-zero to test correct stage initialization.
+start_frame_idx = 0  # Make sure this is non-zero to test correct stage initialization.
 
 # Must test with > 1 freq.  3 is good.
 nfreq = 3
 freq_ids = [0, 1024, 8191]
 
 # count_vals and rfi_vals lengths are mutually prime so all combinations get used with eachother.
-count_vals = [0, 8192, 8191, 20, 5000]
+count_vals = [0, 4096, 4095, 20, 3000]
 rfi_vals = [255, 0, 255, 255]
 
 global_params = {
-    "logging": "DEBUG",
+    "log_level": "DEBUG",
     "fft_length": 16384,
     "sampling_rate_MHz": 3.2e3,
     "num_elements": 64,
     "num_dishes": 32,
     "num_ev": 0,
-    "samples_per_data_set": 16384,   # Must be at least 2x sub_integration_ntime
+    "samples_per_data_set": 4096,   # Must be at least 2x sub_integration_ntime
     "sub_integration_ntime": 4096,
     "rfi_downsampling_factor": 256,
     "num_local_freq": nfreq,
-    "total_frames": 32,
+    "total_frames": 4,
     "telescope": {
         "name": "CHORDTelescope",
         "origin_itrs_lat_deg": 50.0,
@@ -137,10 +137,29 @@ global_params = {
 
 accumulate_params = {
     "num_freq_per_n2k_frame": "num_local_freq",
-    "num_n2k_samples_to_accumulate": 8,
+    "num_n2k_samples_to_accumulate": 2,
     "packet_loss_is_scalar": True,
     "vis_layout": "FullUpperTri",
+    "log_level": "DEBUG"
 }
+
+def get_accum_start_idx(glob_params, accum_params):
+    seq_per_accum = accumulate_params['num_n2k_samples_to_accumulate'] * glob_params['sub_integration_ntime']
+
+    seq_start = start_frame_idx * glob_params['samples_per_data_set']
+
+    accum_seq0 = seq_start if seq_start % seq_per_accum == 0 else seq_per_accum * (seq_start // seq_per_accum + 1)
+
+    accum_idx0 = accum_seq0 // seq_per_accum
+
+    return accum_idx0
+
+
+def get_var_from_weight(weight):
+    var = np.zeros_like(weight)
+    good = weight != 0.0
+    var[good] = np.ones(1, dtype=weight.dtype) / weight[good]
+    return var
 
 
 @pytest.fixture(scope="module")
@@ -201,21 +220,22 @@ def gen_vis_data(t_idx, f_idx):
     row, col = np.triu_indices(n)
     pat0 = (col - 1.0j * row).astype(np.complex64)
 
+    t_idx_start = get_accum_start_idx(global_params, accumulate_params)
+
     seq0 = (
-        t_idx
+        (t_idx + t_idx_start)
         * global_params["sub_integration_ntime"]
         * accumulate_params["num_n2k_samples_to_accumulate"]
-        + start_frame_idx * global_params["samples_per_data_set"]
     )
 
-    t_n2k_0 = t_idx * accumulate_params["num_n2k_samples_to_accumulate"]
+    t_n2k_0 = (t_idx + t_idx_start) * accumulate_params["num_n2k_samples_to_accumulate"]
 
     vis = np.zeros(n_prod, dtype=np.complex64)
-    weights = np.zeros(n_prod, dtype=np.float64)
+    weights = np.zeros(n_prod, dtype=np.float32)
     total_counts = 0
 
-    diff_vis_sq = np.zeros(n_prod, dtype=np.float64)
-    diff_N_sq = np.zeros(n_prod, dtype=np.float64)
+    diff_vis_sq = np.zeros(n_prod, dtype=np.float32)
+    diff_N_sq = np.zeros(1, dtype=np.float32)
 
     even_vis = np.zeros(n_prod, dtype=np.complex64)
     even_counts = 0
@@ -232,19 +252,27 @@ def gen_vis_data(t_idx, f_idx):
         vis += vis_pat * counts
         total_counts += counts
 
+        # print(t, vis_pat[-3:], counts, vis[-3:], total_counts)
+
         if (t - t_n2k_0) % 2 == 0:
             even_vis[:] = vis_pat * counts
             even_counts = counts
         else:
             diff_vis = vis_pat * counts - even_vis
-            diff_vis_sq += np.absolute(diff_vis) ** 2
+            diff_vis_sq += diff_vis.real ** 2 + diff_vis.imag ** 2
             diff_N_sq += (counts - even_counts) ** 2
+            # print(t, diff_vis[-3:], diff_vis_sq[-3:], diff_N_sq[-3:])
 
     if total_counts > 0:
+        # print(vis[-3:], total_counts)
         vis /= total_counts
-        print(diff_vis_sq, diff_N_sq * np.absolute(vis) ** 2)
-        weights[:] = total_counts ** 2 / (
-            diff_vis_sq - diff_N_sq * np.absolute(vis) ** 2
+
+        bias = diff_N_sq * (vis.real ** 2 + vis.imag ** 2)
+        # print(vis[-3:], diff_N_sq[-3:], vis[-3:].real**2 + vis[-3:].imag**2)
+        # print(diff_vis_sq[-3:], bias[-3:], diff_vis_sq[-3:] - bias[-3:])
+        good = diff_vis_sq != bias
+        weights[good] = total_counts ** 2 / (
+            (diff_vis_sq - bias)[good]
         )
     else:
         vis[:] = 0.0
@@ -304,17 +332,18 @@ def test_time(accumulate_data):
         / (1.0e6 * global_params["sampling_rate_MHz"])
     )
 
+    t_idx_start = get_accum_start_idx(global_params, accumulate_params)
+
     for idx, frame in enumerate(accumulate_data):
 
         t_idx = idx // len(freq_ids)
 
-        assert frame.metadata.abs_time_idx == t_idx
+        assert frame.metadata.abs_time_idx == t_idx + t_idx_start
         assert (
             frame.metadata.fpga_start_tick
-            == t_idx
+            == (t_idx + t_idx_start)
             * accumulate_params["num_n2k_samples_to_accumulate"]
             * global_params["sub_integration_ntime"]
-            + start_frame_idx * global_params["samples_per_data_set"]
         )
         assert (
             frame.metadata.frame_start_time_ns
@@ -335,6 +364,8 @@ def test_EOP(accumulate_data):
     eopA = global_params["earth_rotation_data"]["earth_orientation_parameter_table"][0]
     eopB = global_params["earth_rotation_data"]["earth_orientation_parameter_table"][1]
 
+    t_idx_start = get_accum_start_idx(global_params, accumulate_params)
+
     for idx, frame in enumerate(accumulate_data):
 
         t_idx = idx // len(freq_ids)
@@ -342,7 +373,7 @@ def test_EOP(accumulate_data):
             accumulate_params["num_n2k_samples_to_accumulate"]
             * global_params["sub_integration_ntime"]
         )
-        seq0 = t_idx * seq_len + start_frame_idx * global_params["samples_per_data_set"]
+        seq0 = (t_idx + t_idx_start) * seq_len
         seq = seq0 + seq_len // 2
 
         t_inst_ns = seq * dt_ns + t0_ns
@@ -384,12 +415,19 @@ def test_accumulate(accumulate_data):
 
         vis_pat, weights, counts = gen_vis_data(t, f)
 
+        var = get_var_from_weight(weights)
+        frame_var = get_var_from_weight(frame.weight)
+
+        # Estimate the tolerance needed for loss of precision in the weights
+        # debiasing.  var ~ bias / N^2, bias ~ v^2 N^2 ==> var ~ v^2
+        # float32 has prec ~ 1e-7
+        # add squishy factor of 10 just in case
+        var_atol = 10 * 1.0e-7 * (vis_pat.real**2 + vis_pat.imag**2 + 1/counts**2)
+        var_rtol = 1.0e-4
+
         assert np.isclose(frame.vis, vis_pat, rtol=1.0e-6).all()
         assert frame.metadata.n_valid_fpga_ticks == counts
-        # TODO: The tolerance on the weights here has to be set really high, this is either
-        # because the weight calculation in kotekan has a TON of round-off error, or there is
-        # something slightly wrong with the test and/or kotekan calculations
-        assert np.isclose(frame.weight, weights, rtol=1.0e-2).all()
+        assert np.isclose(frame_var, var, rtol=var_rtol, atol=var_atol).all()
         assert (frame.flags == 0.0).all()
         assert (frame.gain == -1.0).all()
 
