@@ -181,7 +181,7 @@ void testDataGen::rest_callback(connectionInstance& conn, nlohmann::json& reques
 void testDataGen::main_thread() {
 
     int frame_id = 0;
-    int frame_id_abs = 0;
+    uint32_t frame_id_abs = _first_frame_index;
     uint8_t* frame = nullptr;
     int8_t* frame8 = nullptr;
     int16_t* frame16 = nullptr;
@@ -540,14 +540,14 @@ void testDataGen::main_thread() {
         buf->mark_frame_full(unique_name, frame_id);
 
         frame_id_abs += 1;
-        if (num_frames >= 0 && frame_id_abs >= num_frames) {
+        if (num_frames >= 0 && frame_id_abs >= num_frames + _first_frame_index) {
             INFO("Generated the requested number of frames ({:d}) - exiting", num_frames);
             if (_end_interrupt) {
                 raise(SIGINT);
             }
             break;
         };
-        frame_id = frame_id_abs % buf->num_frames;
+        frame_id = (frame_id_abs - _first_frame_index) % buf->num_frames;
 
         if (_pathfinder_test_mode) {
             // Test PF seq_num increment.

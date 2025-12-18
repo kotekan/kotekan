@@ -268,7 +268,7 @@ void N2Accumulate::main_thread() {
     while (!stop_thread) {
 
         // Fetch a new frame and get its sequence id
-        DEBUG("Waiting for new input frame {:s}[{:d}].", in_buf->buffer_name, in_frame_id);
+        DEBUG("Waiting for new correlation frame {:s}[{:d}].", in_buf->buffer_name, in_frame_id);
         int32_t* corr = (int32_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (corr == nullptr)
             break;
@@ -282,7 +282,7 @@ void N2Accumulate::main_thread() {
             break;
 
         // Fetch a new rfimask frame and get its sequence id
-        DEBUG("Waiting for new input counts frame {:s}[{:d}].", in_rfimask_buf->buffer_name,
+        DEBUG("Waiting for new input RFImask frame {:s}[{:d}].", in_rfimask_buf->buffer_name,
               in_rfimask_frame_id);
         uint8_t* rfimask =
             (uint8_t*)in_rfimask_buf->wait_for_full_frame(unique_name, in_rfimask_frame_id);

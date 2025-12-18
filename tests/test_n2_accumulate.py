@@ -12,7 +12,7 @@ from kotekan import runner
 
 t_start_s = 1_760_000_000
 GIGA = 1_000_000_000
-start_frame_idx = 0  # Make sure this is non-zero to test correct stage initialization.
+start_frame_idx = 1  # Make sure this is non-zero to test correct stage initialization.
 
 # Must test with > 1 freq.  3 is good.
 nfreq = 3
@@ -29,11 +29,11 @@ global_params = {
     "num_elements": 64,
     "num_dishes": 32,
     "num_ev": 0,
-    "samples_per_data_set": 4096,   # Must be at least 2x sub_integration_ntime
+    "samples_per_data_set": 16384,   # Must be at least 4x sub_integration_ntime
     "sub_integration_ntime": 4096,
     "rfi_downsampling_factor": 256,
     "num_local_freq": nfreq,
-    "total_frames": 4,
+    "total_frames": 48,
     "telescope": {
         "name": "CHORDTelescope",
         "origin_itrs_lat_deg": 50.0,
@@ -137,7 +137,7 @@ global_params = {
 
 accumulate_params = {
     "num_freq_per_n2k_frame": "num_local_freq",
-    "num_n2k_samples_to_accumulate": 2,
+    "num_n2k_samples_to_accumulate": 6,
     "packet_loss_is_scalar": True,
     "vis_layout": "FullUpperTri",
     "log_level": "DEBUG"
@@ -425,8 +425,8 @@ def test_accumulate(accumulate_data):
         var_atol = 10 * 1.0e-7 * (vis_pat.real**2 + vis_pat.imag**2 + 1/counts**2)
         var_rtol = 1.0e-4
 
-        assert np.isclose(frame.vis, vis_pat, rtol=1.0e-6).all()
         assert frame.metadata.n_valid_fpga_ticks == counts
+        assert np.isclose(frame.vis, vis_pat, rtol=1.0e-6).all()
         assert np.isclose(frame_var, var, rtol=var_rtol, atol=var_atol).all()
         assert (frame.flags == 0.0).all()
         assert (frame.gain == -1.0).all()

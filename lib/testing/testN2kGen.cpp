@@ -299,14 +299,20 @@ void testN2kGen::main_thread() {
     frameID rfi_frame_id(rfi_buf);
     int num_frames_generated = 0;
     uint64_t seq_num = first_frame_index * samples_per_data_set;
+    int t_idx_start = seq_num / sub_integration_ntime;
 
     std::mt19937 rng(seed);
     std::uniform_int_distribution<int32_t> count_dist(count_min, count_max);
     std::uniform_int_distribution<int32_t> corr_real_dist(corr_min[0], corr_max[0]);
     std::uniform_int_distribution<int32_t> corr_imag_dist(corr_min[1], corr_max[1]);
+   
+    int count_val_idx = 0;
+    if (count_type == "const_scalar")
+        count_val_idx = t_idx_start * num_local_freq;
 
     int corr_val_idx = 0;
-    int count_val_idx = 0;
+    if (corr_type == "const_scalar")
+        corr_val_idx = t_idx_start * num_local_freq;
 
     while (!stop_thread) {
 
@@ -344,7 +350,7 @@ void testN2kGen::main_thread() {
         int dt_count = df_count * num_local_freq;
 
         for (int t = 0; t < num_integrations; t++) {
-            int t_glob = num_frames_generated * num_integrations + t;
+            int t_glob = num_frames_generated * num_integrations + t + t_idx_start;
 
             for (int f = 0; f < num_local_freq; f++) {
 
@@ -468,10 +474,10 @@ void testN2kGen::main_thread() {
             } // f
         } // t
 
-        DEBUG("Generated a {:s} test correlation data set in {:s}[{:d}]", corr_type,
-              corr_buf->buffer_name, corr_frame_id);
-        DEBUG("Generated a {:s} test counts data set in {:s}[{:d}]", count_type,
-              count_buf->buffer_name, count_frame_id);
+        DEBUG("Generated a {:s} test correlation data set in {:s}[{:d}] at seq {:d}", corr_type,
+              corr_buf->buffer_name, corr_frame_id, seq_num);
+        DEBUG("Generated a {:s} test counts data set in {:s}[{:d}] at seq {:d}", count_type,
+              count_buf->buffer_name, count_frame_id, seq_num);
         DEBUG("Corr sample size is: {:d}", corr_meta->sample_bytes());
         DEBUG("Counts sample size is: {:d}", count_meta->sample_bytes());
 
