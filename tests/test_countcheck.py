@@ -94,10 +94,6 @@ def test_countcheck_norestart(kotekan_output):
     assert msg not in output
 
 
-# =============================
-# N2 buffer tests
-# =============================
-
 
 @pytest.fixture(scope="module")
 def kotekan_output_n2(tmpdir_factory):

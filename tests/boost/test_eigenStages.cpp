@@ -127,7 +127,7 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
         cfg[fake_name]["block_size"] = 1;
     } else {
         cfg[fake_name]["kotekan_stage"] = "FakeN2";
-    }    
+    }
 
     // Add telescope config, initialize telescope and dataset manager singletons.
     add_test_telescope_config(cfg);

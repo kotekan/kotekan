@@ -52,16 +52,12 @@ public:
     void main_thread() override;
 
 private:
-    enum class InputMode { Vis, N2 };
-
     // Store the unix time at start of correlation (nanoseconds):
     int64_t start_time_ns;
     // Length of a single FPGA tick in nanoseconds (from Telescope)
     uint64_t tick_len_ns;
     // Tolerance converted to nanoseconds
     int64_t tolerance_ns;
-    // Input buffer type selector
-    InputMode input_mode;
     Buffer* in_buf;
     // Tolerance for start time variability
     int start_time_tolerance;

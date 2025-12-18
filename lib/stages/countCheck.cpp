@@ -45,11 +45,7 @@ countCheck::countCheck(Config& config, const std::string& unique_name,
 
     tolerance_ns = (int64_t)start_time_tolerance * 1000000000LL;
 
-    if (in_buf->buffer_type == "vis") {
-        input_mode = InputMode::Vis;
-    } else if (in_buf->buffer_type == "N2") {
-        input_mode = InputMode::N2;
-    } else {
+    if (in_buf->buffer_type != "vis" && in_buf->buffer_type != "N2") {
         FATAL_ERROR("countCheck input buffer {:s} must be of type vis or N2, got {:s}",
                     in_buf->buffer_name, in_buf->buffer_type);
     }
@@ -68,7 +64,7 @@ void countCheck::main_thread() {
 
         int64_t new_start_time = 0;
 
-        if (input_mode == InputMode::Vis) {
+        if (in_buf->buffer_type == "vis") {
             // Create view to input frame
             auto input_frame = VisFrameView(in_buf, input_frame_id);
 
