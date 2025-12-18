@@ -160,7 +160,7 @@ void to_json(nlohmann::json& j, const N2Layout& l) {
             break;
         default:
             throw std::runtime_error(
-                fmt::format("to_json - unknown N2Layout value: {:s}", static_cast<int32_t>(l)));
+                fmt::format("to_json - unknown N2Layout value: {:d}", static_cast<int32_t>(l)));
             break;
     }
 }

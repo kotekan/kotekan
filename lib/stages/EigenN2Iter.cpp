@@ -1,15 +1,14 @@
-#include "EigenVisIter.hpp"
+#include "EigenN2Iter.hpp"
 
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for operator!=, operator<
 #include "LinearAlgebra.hpp"     // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
+#include "N2FrameView.hpp"       // for N2FrameView
+#include "N2Util.hpp"            // for cfloat, frameID
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"            // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
-#include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::erms, VisField::eval
-#include "visUtil.hpp"           // for cfloat, frameID, current_time, modulo, movingAverage
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
@@ -34,64 +33,66 @@ using kotekan::Config;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 
-REGISTER_KOTEKAN_STAGE(EigenVisIter);
+REGISTER_KOTEKAN_STAGE(EigenN2Iter);
 
-EigenVisIter::EigenVisIter(Config& config, const std::string& unique_name,
-                           bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&EigenVisIter::main_thread, this)),
-    comp_time_seconds_metric(
-        Metrics::instance().add_gauge("kotekan_eigenvisiter_comp_time_seconds", unique_name)),
-    eigenvalue_metric(Metrics::instance().add_gauge("kotekan_eigenvisiter_eigenvalue", unique_name,
-                                                    {"eigenvalue", "freq_id"})),
-    iterations_metric(
-        Metrics::instance().add_gauge("kotekan_eigenvisiter_iterations", unique_name, {"freq_id"})),
-    eigenvalue_convergence_metric(Metrics::instance().add_gauge(
-        "kotekan_eigenvisiter_eigenvalue_convergence", unique_name, {"freq_id"})),
-    eigenvector_convergence_metric(Metrics::instance().add_gauge(
-        "kotekan_eigenvisiter_eigenvector_convergence", unique_name, {"freq_id"})) {
+EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
+                         bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&EigenN2Iter::main_thread, this)),
 
-    in_buf = get_buffer("in_buf");
-    in_buf->register_consumer(unique_name);
-    out_buf = get_buffer("out_buf");
-    out_buf->register_producer(unique_name);
+    in_buf(get_buffer("in_buf")), out_buf(get_buffer("out_buf")),
 
-    if (in_buf->buffer_type != "vis" || out_buf->buffer_type != "vis")
-        FATAL_ERROR("EigenVisIter stage requires 'vis' buffers as input and output.");
-
-    _num_eigenvectors = config.get<uint32_t>(unique_name, "num_ev");
-
-    // Masking params
-    _bands_filled = config.get_default<std::vector<std::pair<int32_t, int32_t>>>(
-        unique_name, "bands_filled", {});
-    _block_fill_size = config.get_default<uint32_t>(unique_name, "block_fill_size", 0);
-    _exclude_inputs = config.get_default<std::vector<uint32_t>>(unique_name, "exclude_inputs", {});
+    _num_eigenvectors(config.get<size_t>(unique_name, "num_ev")),
 
     // Convergence params
-    _num_ev_conv = config.get<uint32_t>(unique_name, "num_ev_conv");
-    _tol_eval = config.get_default<double>(unique_name, "tol_eval", 1e-6);
-    _tol_evec = config.get_default<double>(unique_name, "tol_evec", 1e-5);
-    _max_iterations = config.get_default<uint32_t>(unique_name, "max_iterations", 15);
-    _krylov = config.get_default<uint32_t>(unique_name, "krylov", 2);
-    _subspace = config.get_default<uint32_t>(unique_name, "subspace", 3);
+    _tol_eval(config.get_default<double>(unique_name, "tol_eval", 1e-6)),
+    _tol_evec(config.get_default<double>(unique_name, "tol_evec", 1e-5)),
+    _num_ev_conv(config.get_default<size_t>(unique_name, "num_ev_conv", 0)),
+    _max_iterations(config.get_default<size_t>(unique_name, "max_iterations", 15)),
+    _krylov(config.get_default<size_t>(unique_name, "krylov", 2)),
+    _subspace(config.get_default<size_t>(unique_name, "subspace", 3)),
 
-    // Create the state describing the eigenvalues
-    auto& dm = datasetManager::instance();
-    // TODO: add a state parameter describing the method used
-    state_uptr ev_state = std::make_unique<eigenvalueState>(_num_eigenvectors);
-    ev_state_id = dm.add_state(std::move(ev_state)).first;
+    // Masking params
+    _exclude_inputs(config.get_default<std::vector<size_t>>(unique_name, "exclude_inputs", {})),
+    _block_fill_size(config.get_default<size_t>(unique_name, "block_fill_size", 0)),
+    _diagonal_bands_filled(config.get_default<std::vector<std::pair<size_t, size_t>>>(
+        unique_name, "diagonal_bands_filled", {})),
+
+    comp_time_seconds_metric(
+        Metrics::instance().add_gauge("kotekan_eigenN2iter_comp_time_seconds", unique_name)),
+    eigenvalue_metric(Metrics::instance().add_gauge("kotekan_eigenN2iter_eigenvalue", unique_name,
+                                                    {"eigenvalue", "freq_id"})),
+    iterations_metric(
+        Metrics::instance().add_gauge("kotekan_eigenN2iter_iterations", unique_name, {"freq_id"})),
+    eigenvalue_convergence_metric(Metrics::instance().add_gauge(
+        "kotekan_eigenN2iter_eigenvalue_convergence", unique_name, {"freq_id"})),
+    eigenvector_convergence_metric(Metrics::instance().add_gauge(
+        "kotekan_eigenN2iter_eigenvector_convergence", unique_name, {"freq_id"})) {
+
+    in_buf->register_consumer(unique_name);
+    out_buf->register_producer(unique_name);
+
+    if (in_buf->buffer_type != "N2" || out_buf->buffer_type != "N2")
+        FATAL_ERROR("EigenN2Iter stage requires 'N2' buffers as input and output.");
+
+
+    if (_num_ev_conv > _num_eigenvectors)
+        FATAL_ERROR("The `num_ev_conv` config parameter ({:d}) must be less than or equal to "
+                    "`num_ev` ({:d}).",
+                    _num_ev_conv, _num_eigenvectors);
+    if (_num_eigenvectors <= 0)
+        FATAL_ERROR("The `num_ev` config parameter must be greater than zero.");
+    if (_tol_eval <= 0)
+        FATAL_ERROR("The `tol_eval` config parameter must be greater than zero.");
+    if (_tol_evec <= 0)
+        FATAL_ERROR("The `tol_evec` config parameter must be greater than zero.");
+    if (_max_iterations == 0)
+        FATAL_ERROR("The `max_iterations` config parameter must be greater than zero.");
 }
 
-dset_id_t EigenVisIter::change_dataset_state(dset_id_t input_dset_id) const {
-    auto& dm = datasetManager::instance();
-    return dm.add_dataset(ev_state_id, input_dset_id);
-}
-
-void EigenVisIter::main_thread() {
+void EigenN2Iter::main_thread() {
 
     frameID input_frame_id(in_buf);
     frameID output_frame_id(out_buf);
-
-    dset_id_t _output_dset_id = dset_id_t::null;
 
     DynamicHermitian<float> mask;
     uint32_t num_elements = 0;
@@ -106,26 +107,22 @@ void EigenVisIter::main_thread() {
         EigConvergenceStats stats;
 
         // Get input visibilities. We assume the shape of these doesn't change.
+        INFO("EigenN2Iter waiting for input frame...");
         if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
-        auto input_frame = VisFrameView(in_buf, input_frame_id);
-
-        // check if the input dataset has changed
-        if (input_dset_id != input_frame.dataset_id) {
-            input_dset_id = input_frame.dataset_id;
-            _output_dset_id = change_dataset_state(input_dset_id);
-        }
+        INFO("EigenN2Iter got input frame.");
+        N2FrameView input_frame(in_buf, input_frame_id);
 
         // Check that we have the full triangle
-        uint32_t num_prod_full = input_frame.num_elements * (input_frame.num_elements + 1) / 2;
-        if (input_frame.num_prod != num_prod_full) {
-            throw std::runtime_error("Eigenvectors require full correlation"
-                                     " triangle");
+        if (input_frame.vis_layout != N2Layout::FullUpperTri) {
+            FATAL_ERROR(
+                "Eigenvector calculations require full correlation triangle. Got layout {:d}.",
+                static_cast<int>(input_frame.vis_layout));
         }
 
         // Start the calculation clock.
-        double start_time = current_time();
+        uint64_t start_time = current_time();
 
         // Initialise the mask
         if (!initialized) {
@@ -146,19 +143,19 @@ void EigenVisIter::main_thread() {
 
         // Stop the calculation clock. This doesn't include time to copy stuff into
         // the buffers, but that has to wait for one to be available.
-        double elapsed_time = current_time() - start_time;
+        uint64_t elapsed_time = current_time() - start_time;
 
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
         for (uint32_t i = 0; i < _num_eigenvectors; i++) {
             str_evals = fmt::format("{} {}", str_evals, evals[i]);
         }
-        DEBUG("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:4.2f} s. Took {:d}/{:d} "
+        DEBUG("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:d} s. Took {:d}/{:d} "
               "iterations.",
               str_evals, stats.rms, elapsed_time, stats.iterations, _max_iterations);
 
         // Update Prometheus metrics
-        update_metrics(input_frame.freq_id, input_frame.dataset_id, elapsed_time, eigpair, stats);
+        update_metrics(input_frame.freq_id, elapsed_time, eigpair, stats);
 
         /* Write out new frame */
         // Get output buffer for visibilities. Essentially identical to input buffers.
@@ -167,15 +164,17 @@ void EigenVisIter::main_thread() {
         }
 
         // Create view to output frame
-        auto output_frame =
-            VisFrameView::create_frame_view(out_buf, output_frame_id, input_frame.num_elements,
-                                            input_frame.num_prod, _num_eigenvectors);
+        in_buf->pass_metadata(input_frame_id, out_buf, output_frame_id);
 
-        // Copy over metadata and data, but skip all ev members which may not be
-        // defined
-        output_frame.copy_metadata(input_frame);
-        output_frame.dataset_id = _output_dset_id;
-        output_frame.copy_data(input_frame, {VisField::eval, VisField::evec, VisField::erms});
+        // Ensure metadata reflects the number of eigenvectors so the frame layout matches the
+        // buffer's frame size (which is sized for the eigen data).
+        auto out_meta = get_N2_metadata(out_buf, output_frame_id);
+        if (out_meta)
+            out_meta->num_ev = _num_eigenvectors;
+
+        N2FrameView output_frame(out_buf, output_frame_id);
+        // Copy over data, but skip all ev members which may not be defined
+        output_frame.copy_data(input_frame, {N2Field::eval, N2Field::evec, N2Field::erms});
 
         // Copy in eigenvectors and eigenvalues.
         for (uint32_t i = 0; i < _num_eigenvectors; i++) {
@@ -189,6 +188,7 @@ void EigenVisIter::main_thread() {
         // HACK: return the convergence state in the RMS field (negative == not
         // converged)
         output_frame.erms = stats.converged ? stats.rms : -stats.eps_eval;
+        output_frame.emethod = N2EigenMethod::iterative;
 
         // Finish up interation.
         in_buf->mark_frame_empty(unique_name, input_frame_id++);
@@ -197,11 +197,10 @@ void EigenVisIter::main_thread() {
 }
 
 
-void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double elapsed_time,
-                                  const eig_t<cfloat>& eigpair, const EigConvergenceStats& stats) {
+void EigenN2Iter::update_metrics(int freq_id, u_int64_t elapsed_time, const eig_t<cfloat>& eigpair,
+                                 const EigConvergenceStats& stats) {
     // Update average write time in prometheus
-    auto key = std::make_pair(freq_id, dset_id);
-    auto& calc_time = calc_time_map[key];
+    auto& calc_time = calc_time_map[freq_id];
     calc_time.add_sample(elapsed_time);
     comp_time_seconds_metric.set(calc_time.average());
 
@@ -222,7 +221,7 @@ void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double el
 }
 
 
-DynamicHermitian<float> EigenVisIter::calculate_mask(uint32_t num_elements) const {
+DynamicHermitian<float> EigenN2Iter::calculate_mask(size_t num_elements) const {
     blaze::DynamicMatrix<float, blaze::columnMajor> M;
     M.resize(num_elements, num_elements);
 
@@ -230,16 +229,16 @@ DynamicHermitian<float> EigenVisIter::calculate_mask(uint32_t num_elements) cons
     // Go through and zero out data in excluded rows and columns.
     M = 1.0f;
     for (auto iexclude : _exclude_inputs) {
-        for (uint32_t j = 0; j < num_elements; j++) {
+        for (size_t j = 0; j < num_elements; j++) {
             M(iexclude, j) = 0.0;
             M(j, iexclude) = 0.0;
         }
     }
 
-    // Remove specified bands
-    for (const auto& br : _bands_filled) {
+    // Remove specified diagonal bands
+    for (const auto& br : _diagonal_bands_filled) {
         std::cout << br.first << " " << br.second << std::endl;
-        for (int32_t i = br.first; i < br.second; i++) {
+        for (size_t i = br.first; i < br.second; i++) {
             blaze::band(M, i) = 0.0;
             blaze::band(M, -i) = 0.0;
         }

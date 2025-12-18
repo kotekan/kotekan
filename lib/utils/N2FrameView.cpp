@@ -40,7 +40,11 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     erms(bind_scalar<float>(_frame, frame_layout[N2Field::erms])),
     gain(bind_span<N2::cfloat>(_frame, frame_layout[N2Field::gain])) {
 
-    assert(data_size() == buf->frame_size);
+    // User-facing error if frame size does not match size required by N2FrameView
+    if (buf->frame_size != data_size()) {
+        FATAL_ERROR_NON_OO("N2FrameView frame size {} does not match buffer frame size {}.",
+                           data_size(), buf->frame_size);
+    }
 }
 
 size_t N2FrameView::data_size() const {

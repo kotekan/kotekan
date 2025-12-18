@@ -21,16 +21,20 @@
  * @brief Stage that checks for acquisition re-start.
  *
  * This stage finds the unix time at the start of the acquisition from
- * the FPGA counts and the current unix time, assuming 390625 FPGA
- * counts per second.
- * It stores this value and checks each frame to look for changes.
+ * the FPGA counts and the current unix time, using the telescope tick
+ * length (seq_length_nsec). It stores this value and checks each frame
+ * to look for changes.
  * If the initial time changes by more than 'start_time_tolerance' (default=3)
  * seconds, the stage raises SIGTERM.
  *
  * @par Buffers
- * @buffer in_buf The buffer whose fpga count will be checked
+ * @buffer in_buf The buffer whose fpga count will be checked.
+ *         Supports both @c vis and @c N2 buffer types. For @c vis buffers,
  *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
+ *         For @c N2 buffers,
+ *         @buffer_format N2Buffer structured
+ *         @buffer_metadata N2Metadata
  *
  * @conf  start_time_tolerance  int. Tolerance for the start time error in
  *                                   seconds. Default is 3.
@@ -48,8 +52,16 @@ public:
     void main_thread() override;
 
 private:
-    // Store the unix time at start of correlation:
-    int64_t start_time;
+    enum class InputMode { Vis, N2 };
+
+    // Store the unix time at start of correlation (nanoseconds):
+    int64_t start_time_ns;
+    // Length of a single FPGA tick in nanoseconds (from Telescope)
+    uint64_t tick_len_ns;
+    // Tolerance converted to nanoseconds
+    int64_t tolerance_ns;
+    // Input buffer type selector
+    InputMode input_mode;
     Buffer* in_buf;
     // Tolerance for start time variability
     int start_time_tolerance;
