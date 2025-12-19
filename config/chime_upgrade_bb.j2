@@ -230,7 +230,7 @@ baseband_output_buffers:
 baseband:
   max_dump_samples: 30000 # 768ms
   num_frames_buffer: baseband_buffer_depth - 10
-  num_beams: 64
+  num_frames_min: 64 # this number x samples_per_data_set x 2.56 us is the duration of the continuum integration
 {%- for id in range(16) %}
   baseband{{ id }}:
     kotekan_stage: basebandReadout

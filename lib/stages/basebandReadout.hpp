@@ -80,6 +80,7 @@ private:
     int _num_frames_buffer;
     int _num_elements;
     int _num_beams;
+    int32_t int_frames;
     uint32_t _num_freq_per_stream;
     int _samples_per_data_set;
     int64_t _max_dump_samples;

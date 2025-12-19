@@ -6,7 +6,7 @@
 #include "Telescope.hpp"          // for Telescope
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "buffer.hpp"             // for Buffer
-#include "chordMetadata.hpp"
+#include "chordMetadata.hpp"             // for chordMetadata
 #include "kotekanLogging.hpp"    // for INFO, DEBUG, WARN
 #include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily, Metrics
 #include "visUtil.hpp"           // for input_ctype, frameID, ts_to_double, modulo, parse_reor...
@@ -47,7 +47,7 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&basebandReadout::main_thread, this)),
     _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
-    _num_beams(config.get<int>(unique_name, "num_beams")),
+    int_frames(config.get<int>(unique_name, "num_frames_min")),
     // TODO: rename this parameter to `num_freq_per_stream` in the config
     _num_freq_per_stream(config.get_default<uint32_t>(unique_name, "num_local_freq", 1)),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
@@ -327,8 +327,10 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
             }
             dump_end_frame = frame_index + 1;
         }
-        lock_range(dump_start_frame, dump_end_frame);
-	DEBUG("Frames locked. Finding {:d} calibrators using start of lock_range = {:d}", num_beams, dump_start_frame,);
+	int lock_start = std::max(oldest_frame, dump_start_frame - int_frames);
+	int lock_end = dump_end_frame + 2 * int_frames;
+        lock_range(lock_start, lock_end);
+	DEBUG("Frames locked. Finding {:d} calibrators using start of lock_range = {:d} - {:d}", num_beams, lock_start, lock_end);
 
         // Now that the relevant frames are locked, we can unlock the rest of the buffer so
         // it can continue to operate.
@@ -419,7 +421,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     uint8_t* out_frame = nullptr;
     BasebandMetadata* out_metadata = nullptr;
     uint8_t* outmb_frame = nullptr;
-    chordMetadata* outmb_metadata = nullptr;
+    BasebandMetadata* outmb_metadata = nullptr;
 
     // Available space in the `out_frame` (as interval of length `out_remaining`
     // time_samples, starting at `out_start`)
@@ -507,8 +509,9 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 out_metadata->num_elements = _num_elements;
                 out_metadata->reserved = -1;
                 
+		// Metadata for the beamformed frame, nonstandard path
 		outmb_buf->allocate_new_metadata_object(outmb_frame_id);
-                outmb_metadata = (chordMetadata*)(outmb_buf->get_metadata(outmb_frame_id).get());
+                outmb_metadata = (BasebandMetadata*)(outmb_buf->get_metadata(outmb_frame_id).get());
 
                 outmb_metadata->event_id = event_id;
                 outmb_metadata->freq_id = freq_id;
@@ -523,30 +526,8 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 outmb_metadata->fpga0_ns = fpga0_ns;
                 outmb_metadata->frame_fpga_seq = frame_fpga_seq + in_start;
                 outmb_metadata->valid_to = 0; // gets adjusted as we copy the data
-                outmb_metadata->num_beams = _num_beams;
+                outmb_metadata->num_elements = _num_elements;
                 outmb_metadata->reserved = -1;
-
-                out_start = 0;
-                out_remaining = out_frame_samples;
-
-                out_buf->allocate_new_metadata_object(out_frame_id);
-                out_metadata = (BasebandMetadata*)(out_buf->get_metadata(out_frame_id).get());
-
-                out_metadata->event_id = event_id;
-                out_metadata->freq_id = freq_id;
-                out_metadata->event_start_fpga = data.trigger_start_fpga;
-                out_metadata->event_end_fpga = data.trigger_start_fpga + data.trigger_length_fpga;
-
-                out_metadata->time0_fpga = data_start_fpga;
-                out_metadata->time0_ctime = ftime0;
-                out_metadata->time0_ctime_offset = ftime0_offset;
-
-                out_metadata->first_packet_recv_time = ts_to_double(packet_time0);
-                out_metadata->fpga0_ns = fpga0_ns;
-                out_metadata->frame_fpga_seq = frame_fpga_seq + in_start;
-                out_metadata->valid_to = 0; // gets adjusted as we copy the data
-                out_metadata->num_elements = _num_elements;
-                out_metadata->reserved = -1;
             }
 
             // copy the data
@@ -559,8 +540,8 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 memcpy(out_frame + (out_start * _num_elements),
                        in_buf_data + (in_start * _num_elements), copy_len * _num_elements);
 		// CL: no beamforming for now: just grab first N elements.
-                memcpy(outmb_frame + (out_start * _num_beams),
-                       in_buf_data + (in_start * _num_beams), copy_len * _num_beams);
+                memcpy(outmb_frame + (out_start * NUM_BEAMS),
+                       in_buf_data + (in_start * NUM_BEAMS), copy_len * NUM_BEAMS);
             } else {
                 copy_len = std::min((int64_t)1, out_remaining);
                 DEBUG("Copy samples {}/{}-{} for in-frame frequency {} to {}/{} ({} bytes, "
@@ -572,10 +553,10 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                        in_buf_data
                            + (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements,
                        copy_len * _num_elements);
-                memcpy(outmb_frame + (out_start * _num_beams),
+                memcpy(outmb_frame + (out_start * NUM_BEAMS),
                        in_buf_data
-                           + (in_start * _num_freq_per_stream + stream_freq_idx) * _num_beams,
-                       copy_len * _num_beams);
+                           + (in_start * _num_freq_per_stream + stream_freq_idx) * NUM_BEAMS,
+                       copy_len * NUM_BEAMS);
             }
             in_start += copy_len;
             out_start += copy_len;
@@ -603,7 +584,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
         DEBUG("Clearing out the remaining {} samples of the frame: {}/{} ({} bytes)", out_remaining,
               out_frame_id, out_start, (out_remaining * _num_elements));
         memset(out_frame + (out_start * _num_elements), 0, out_remaining * _num_elements);
-        memset(outmb_frame + (outmb_start * _num_beams), 0, out_remaining * _num_beams);
+        memset(outmb_frame + (outmb_start * NUM_BEAMS), 0, out_remaining * NUM_BEAMS);
         out_buf->mark_frame_full(unique_name, out_frame_id++);
 	outmb_frame_id++;
         frame_sent_counter.inc();
