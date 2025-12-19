@@ -175,9 +175,13 @@ public:
                 if (dataset.hasAttribute("half_fpga_sample0"))
                     meta->set_half_fpga_sample0(dataset.getAttribute("half_fpga_sample0")
                                                     .read<std::vector<std::int64_t>>());
+                if (dataset.hasAttribute("time_downsampling_fpga_per_frequency"))
+                    meta->set_time_downsampling_fpga_per_frequency(
+                        dataset.getAttribute("time_downsampling_fpga_per_frequency")
+                            .read<std::vector<int>>());
                 if (dataset.hasAttribute("time_downsampling_fpga"))
                     meta->set_time_downsampling_fpga(
-                        dataset.getAttribute("time_downsampling_fpga").read<std::vector<int>>());
+                        dataset.getAttribute("time_downsampling_fpga").read<int>());
 
                 if (dataset.hasAttribute("ndishes")) {
                     meta->ndishes = dataset.getAttribute("ndishes").read<int>();

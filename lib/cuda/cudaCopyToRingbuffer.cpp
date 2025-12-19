@@ -156,7 +156,7 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
         // in the beginning only.
         assert(output_cursor % meta->sample_bytes() == 0);
         meta->set_fpga_seq_num(meta->get_fpga_seq_num()
-                               - meta->get_time_downsampling_fpga().at(0)
+                               - meta->get_time_downsampling_fpga()
                                      * (output_cursor / meta->sample_bytes()));
         // This should hold most of the time. It will be wrong when we start Kotean with a non-zero
         // `fpga_seq_num`.

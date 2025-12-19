@@ -291,21 +291,25 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
 
         std::vector<int> coarse_freq(_num_local_freq);
-        std::vector<int> time_downsampling_fpga(_num_local_freq);
+        std::vector<int> time_downsampling_fpga_per_frequency(_num_local_freq);
         std::vector<int64_t> half_fpga_sample0(_num_local_freq);
         const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
-        const std::vector<int> time_downsampling_fpga_in = meta_in->get_time_downsampling_fpga();
+        const std::vector<int> time_downsampling_fpga_per_frequency_in =
+            meta_in->get_time_downsampling_fpga_per_frequency();
         const std::vector<int64_t> half_fpga_sample0_in = meta_in->get_half_fpga_sample0();
 
         for (int f = 0; f < _num_local_freq; f++) {
             coarse_freq[f] = coarse_freq_in[f];
-            time_downsampling_fpga[f] = time_downsampling_fpga_in[f] * _sub_integration_ntime;
-            half_fpga_sample0[f] =
-                half_fpga_sample0_in[f] + time_downsampling_fpga[f] - time_downsampling_fpga_in[f];
+            time_downsampling_fpga_per_frequency[f] =
+                time_downsampling_fpga_per_frequency_in[f] * _sub_integration_ntime;
+            half_fpga_sample0[f] = half_fpga_sample0_in[f] + time_downsampling_fpga_per_frequency[f]
+                                   - time_downsampling_fpga_per_frequency_in[f];
         }
 
         meta_out->set_coarse_freq(coarse_freq);
-        meta_out->set_time_downsampling_fpga(time_downsampling_fpga);
+        meta_out->set_time_downsampling_fpga_per_frequency(time_downsampling_fpga_per_frequency);
+        meta_out->set_time_downsampling_fpga(meta_in->get_time_downsampling_fpga()
+                                             * _sub_integration_ntime);
         meta_out->set_half_fpga_sample0(half_fpga_sample0);
         assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
 

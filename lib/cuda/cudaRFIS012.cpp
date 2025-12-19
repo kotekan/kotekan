@@ -192,16 +192,20 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     rfi_S012.set_metadata(voltage.get_metadata());
     const auto& rfi_S012_meta = rfi_S012.get_metadata();
     auto freq_upchan_factor = rfi_S012_meta->get_freq_upchan_factor();
-    auto time_downsampling_fpga = rfi_S012_meta->get_time_downsampling_fpga();
+    auto time_downsampling_fpga_per_frequency =
+        rfi_S012_meta->get_time_downsampling_fpga_per_frequency();
     assert(freq_upchan_factor.size() == static_cast<size_t>(rfi_S012_meta->get_nfreq()));
-    assert(time_downsampling_fpga.size() == static_cast<size_t>(rfi_S012_meta->get_nfreq()));
+    assert(time_downsampling_fpga_per_frequency.size()
+           == static_cast<size_t>(rfi_S012_meta->get_nfreq()));
     assert(rfi_S012_meta->get_nfreq() >= 0);
     for (int freq = 0; freq < rfi_S012_meta->get_nfreq(); ++freq) {
         freq_upchan_factor[freq] *= rfi_downsampling_factor;
-        time_downsampling_fpga[freq] *= rfi_downsampling_factor;
+        time_downsampling_fpga_per_frequency[freq] *= rfi_downsampling_factor;
     }
     rfi_S012_meta->set_freq_upchan_factor(freq_upchan_factor);
-    rfi_S012_meta->set_time_downsampling_fpga(time_downsampling_fpga);
+    rfi_S012_meta->set_time_downsampling_fpga_per_frequency(time_downsampling_fpga_per_frequency);
+    rfi_S012_meta->set_time_downsampling_fpga(rfi_S012_meta->get_time_downsampling_fpga()
+                                              * rfi_downsampling_factor);
 
     // There is no poison value
     // rfi_S012.set_to_poison(0xff);

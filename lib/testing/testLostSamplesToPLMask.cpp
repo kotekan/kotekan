@@ -143,10 +143,12 @@ void testLostSamplesToPLMask::main_thread() {
                                                          * PL_MASK_HILO_SPLIT / 2);
         pl_mask_meta->set_half_fpga_sample0(half_fpga_sample0);
 
-        const std::vector<int> time_downsampling_fpga(num_freq_bins * PL_MASK_FREQS_PER_BIN,
-                                                      PL_MASK_DOWNSAMPLING_FACTOR
-                                                          * PL_MASK_HILO_SPLIT);
-        pl_mask_meta->set_time_downsampling_fpga(time_downsampling_fpga);
+        const std::vector<int> time_downsampling_fpga_per_frequency(
+            num_freq_bins * PL_MASK_FREQS_PER_BIN,
+            PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT);
+        pl_mask_meta->set_time_downsampling_fpga_per_frequency(
+            time_downsampling_fpga_per_frequency);
+        pl_mask_meta->set_time_downsampling_fpga(PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT);
 
         // array description
         std::strncpy(pl_mask_meta->name, "pl_mask", sizeof pl_mask_meta->name);

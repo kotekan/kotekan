@@ -196,6 +196,10 @@ public:
         if (meta->has_half_fpga_sample0())
             dataset.createAttribute("half_fpga_sample0", meta->get_half_fpga_sample0());
 
+        if (meta->has_time_downsampling_fpga_per_frequency())
+            dataset.createAttribute("time_downsampling_fpga_per_frequency",
+                                    meta->get_time_downsampling_fpga_per_frequency());
+
         if (meta->has_time_downsampling_fpga())
             dataset.createAttribute("time_downsampling_fpga", meta->get_time_downsampling_fpga());
 

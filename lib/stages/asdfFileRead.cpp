@@ -346,20 +346,33 @@ public:
             }
 
             {
-                if (group->count("time_downsampling_fpga")) {
+                if (group->count("time_downsampling_fpga_per_frequency")) {
                     assert(meta->get_nfreq() >= 0);
+                    DEBUG("[{:s}/{:d}] group0->at(\"time_downsampling_fpga_per_frequency\")",
+                          buffer->buffer_name, frame_counter);
+                    const auto time_downsampling_fpga_per_frequency =
+                        group->at("time_downsampling_fpga")->get_maybe_sequence();
+                    assert(time_downsampling_fpga_per_frequency);
+                    assert(std::ptrdiff_t(time_downsampling_fpga_per_frequency->size())
+                           == meta->get_nfreq());
+                    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+                    std::vector<int> O_time_downsampling_fpga_per_frequency(meta->get_nfreq());
+                    for (int n = 0; n < meta->get_nfreq(); ++n)
+                        O_time_downsampling_fpga_per_frequency[n] =
+                            time_downsampling_fpga_per_frequency->at(n)->get_maybe_int().value();
+                    meta->set_time_downsampling_fpga_per_frequency(
+                        O_time_downsampling_fpga_per_frequency);
+                }
+            }
+
+            {
+                if (group->count("time_downsampling_fpga")) {
                     DEBUG("[{:s}/{:d}] group0->at(\"time_downsampling_fpga\")", buffer->buffer_name,
                           frame_counter);
                     const auto time_downsampling_fpga =
-                        group->at("time_downsampling_fpga")->get_maybe_sequence();
-                    assert(time_downsampling_fpga);
-                    assert(std::ptrdiff_t(time_downsampling_fpga->size()) == meta->get_nfreq());
-                    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
-                    std::vector<int> O_time_downsampling_fpga(meta->get_nfreq());
-                    for (int n = 0; n < meta->get_nfreq(); ++n)
-                        O_time_downsampling_fpga[n] =
-                            time_downsampling_fpga->at(n)->get_maybe_int().value();
-                    meta->set_time_downsampling_fpga(O_time_downsampling_fpga);
+                        group->at("time_downsampling_fpga")->get_maybe_int().value();
+                    meta->set_time_downsampling_fpga(time_downsampling_fpga);
+                    assert(meta->get_time_downsampling_fpga() > 0);
                 }
             }
 

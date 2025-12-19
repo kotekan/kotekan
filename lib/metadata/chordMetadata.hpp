@@ -334,7 +334,7 @@ public:
     //
     // The actual (possibly fractional) time sample index is calculated as follows:
     //     T_actual = (sample0_offset + T / offset_downsampling + half_fpga_sample0[F] / 2) /
-    //                time_downsampling_fpga[F]
+    //                time_downsampling_fpga_per_frequency[F]
     // where `T` is the time sample index (the slowest varying index)
     // and `F` is the coarse frequency index.
     void set_sample0_offset(const int64_t sample0_offset) {
@@ -413,9 +413,26 @@ public:
     // Time sampling -- for each coarse frequency channel, the factor
     // by which the time samples have been downsampled relative to
     // FPGA samples.
-    void set_time_downsampling_fpga(const std::vector<int>& time_downsampling_fpga) {
+    void set_time_downsampling_fpga_per_frequency(
+        const std::vector<int>& time_downsampling_fpga_per_frequency) {
         std::lock_guard<std::mutex> lock(this->lock);
-        assert(time_downsampling_fpga.size() <= CHORD_META_MAX_FREQ);
+        assert(time_downsampling_fpga_per_frequency.size() <= CHORD_META_MAX_FREQ);
+        metadata[jsonMetadata::TIME_DOWNSAMPLING_FPGA_PER_FREQUENCY] =
+            time_downsampling_fpga_per_frequency;
+    }
+
+    bool has_time_downsampling_fpga_per_frequency() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::TIME_DOWNSAMPLING_FPGA_PER_FREQUENCY);
+    }
+
+    std::vector<int> get_time_downsampling_fpga_per_frequency() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::TIME_DOWNSAMPLING_FPGA_PER_FREQUENCY);
+    }
+
+    void set_time_downsampling_fpga(const int time_downsampling_fpga) {
+        std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::TIME_DOWNSAMPLING_FPGA] = time_downsampling_fpga;
     }
 
@@ -424,7 +441,7 @@ public:
         return metadata.contains(jsonMetadata::TIME_DOWNSAMPLING_FPGA);
     }
 
-    std::vector<int> get_time_downsampling_fpga() const {
+    int get_time_downsampling_fpga() const {
         std::lock_guard<std::mutex> lock(this->lock);
         return metadata.at(jsonMetadata::TIME_DOWNSAMPLING_FPGA);
     }

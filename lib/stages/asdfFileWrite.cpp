@@ -310,15 +310,23 @@ public:
                         group->emplace("half_fpga_sample0", half_fpga_sample0);
                     }
 
-                    if (meta->has_time_downsampling_fpga()) {
-                        auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
-                        const std::vector<int> I_time_downsampling_fpga =
-                            meta->get_time_downsampling_fpga();
+                    if (meta->has_time_downsampling_fpga_per_frequency()) {
+                        auto time_downsampling_fpga_per_frequency =
+                            std::make_shared<ASDF::sequence>();
+                        const std::vector<int> I_time_downsampling_fpga_per_frequency =
+                            meta->get_time_downsampling_fpga_per_frequency();
                         for (int freq = 0; freq < meta->get_nfreq(); ++freq)
-                            time_downsampling_fpga->push_back(
-                                std::make_shared<ASDF::int_entry>(I_time_downsampling_fpga[freq]));
-                        group->emplace("time_downsampling_fpga", time_downsampling_fpga);
+                            time_downsampling_fpga_per_frequency->push_back(
+                                std::make_shared<ASDF::int_entry>(
+                                    I_time_downsampling_fpga_per_frequency[freq]));
+                        group->emplace("time_downsampling_fpga_per_frequency",
+                                       time_downsampling_fpga_per_frequency);
                     }
+
+                    if (meta->has_time_downsampling_fpga())
+                        group->emplace(
+                            "time_downsampling_fpga",
+                            std::make_shared<ASDF::int_entry>(meta->get_time_downsampling_fpga()));
 
                     auto chord_metadata_version_attribute = std::make_shared<ASDF::sequence>();
                     for (std::size_t n = 0; n < chord_metadata_version.size(); ++n)

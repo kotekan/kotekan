@@ -173,9 +173,12 @@ void lostSamplesToPLMask::main_thread() {
                     PL_MASK_FREQS_PER_BIN, PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT / 2);
                 pl_mask_meta->set_half_fpga_sample0(half_fpga_sample0);
 
-                const std::vector<int> time_downsampling_fpga(
+                const std::vector<int> time_downsampling_fpga_per_frequency(
                     PL_MASK_FREQS_PER_BIN, PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT);
-                pl_mask_meta->set_time_downsampling_fpga(time_downsampling_fpga);
+                pl_mask_meta->set_time_downsampling_fpga_per_frequency(
+                    time_downsampling_fpga_per_frequency);
+                pl_mask_meta->set_time_downsampling_fpga(PL_MASK_DOWNSAMPLING_FACTOR
+                                                         * PL_MASK_HILO_SPLIT);
 
                 // TODO: do I need to set frame_counter? The FEngine does.
                 // pl_mask_meta->set_frame_counter(E_frame_index);
@@ -205,13 +208,18 @@ void lostSamplesToPLMask::main_thread() {
                                                  half_fpga_sample0.end());
                 pl_mask_meta->set_half_fpga_sample0(pl_mask_half_fpga_sample0);
 
-                const std::vector<int> time_downsampling_fpga(
+                const std::vector<int> time_downsampling_fpga_per_frequency(
                     PL_MASK_FREQS_PER_BIN, PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT);
-                auto pl_mask_time_downsampling_fpga = pl_mask_meta->get_time_downsampling_fpga();
-                pl_mask_time_downsampling_fpga.insert(pl_mask_time_downsampling_fpga.end(),
-                                                      time_downsampling_fpga.begin(),
-                                                      time_downsampling_fpga.end());
-                pl_mask_meta->set_time_downsampling_fpga(pl_mask_time_downsampling_fpga);
+                auto pl_mask_time_downsampling_fpga_per_frequency =
+                    pl_mask_meta->get_time_downsampling_fpga_per_frequency();
+                pl_mask_time_downsampling_fpga_per_frequency.insert(
+                    pl_mask_time_downsampling_fpga_per_frequency.end(),
+                    time_downsampling_fpga_per_frequency.begin(),
+                    time_downsampling_fpga_per_frequency.end());
+                pl_mask_meta->set_time_downsampling_fpga_per_frequency(
+                    pl_mask_time_downsampling_fpga_per_frequency);
+                pl_mask_meta->set_time_downsampling_fpga(PL_MASK_DOWNSAMPLING_FACTOR
+                                                         * PL_MASK_HILO_SPLIT / 2);
             }
 
             lost_samples_buf->mark_frame_empty(unique_name, lost_samples_buf_frame_id);

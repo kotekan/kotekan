@@ -193,13 +193,14 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     // Correct RFImask metadata
     const std::shared_ptr<chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
     std::vector<int64_t> half_fpga_sample0(rfi_meta->get_nfreq());
-    std::vector<int> time_downsampling_fpga(rfi_meta->get_nfreq());
+    std::vector<int> time_downsampling_fpga_per_frequency(rfi_meta->get_nfreq());
     for (int freq = 0; freq < rfi_meta->get_nfreq(); ++freq) {
         half_fpga_sample0[freq] = 128 * 8;
-        time_downsampling_fpga[freq] = 128 * 8;
+        time_downsampling_fpga_per_frequency[freq] = 128 * 8;
     }
     rfi_meta->set_half_fpga_sample0(half_fpga_sample0);
-    rfi_meta->set_time_downsampling_fpga(time_downsampling_fpga);
+    rfi_meta->set_time_downsampling_fpga_per_frequency(time_downsampling_fpga_per_frequency);
+    rfi_meta->set_time_downsampling_fpga(128 * 8);
 
     rfi_SKtilde.set_to_poison(0xff);
     // There is no poison value
