@@ -23,7 +23,6 @@ count_vals = [0, 4096, 4095, 20, 3000]
 rfi_vals = [255, 0, 255, 255]
 
 global_params = {
-    "log_level": "DEBUG",
     "fft_length": 16384,
     "sampling_rate_MHz": 3.2e3,
     "num_elements": 64,
@@ -137,7 +136,9 @@ global_params = {
 
 accumulate_params = {
     "num_freq_per_n2k_frame": "num_local_freq",
-    "num_n2k_samples_to_accumulate": 6,
+    "num_n2k_samples_to_accumulate": 6,   # Must be even, and not a multiple of
+                                          # (samples_per_dataset /
+                                          #  sub_integration_ntime)
     "packet_loss_is_scalar": True,
     "vis_layout": "FullUpperTri",
     "log_level": "DEBUG"
@@ -434,22 +435,19 @@ def test_accumulate(accumulate_data):
 
 def test_rfi(accumulate_data):
 
-    num_full_frames_per_accumulation = accumulate_params[
-        "num_n2k_samples_to_accumulate"
-    ] // (
-        global_params["samples_per_data_set"] // global_params["sub_integration_ntime"]
-    )
+    num_integrations = global_params["samples_per_data_set"] // global_params["sub_integration_ntime"]
 
     for idx, frame in enumerate(accumulate_data):
 
         start_tick = frame.metadata.fpga_start_tick
 
-        dset_idx = start_tick // global_params["samples_per_data_set"]
+        subframe_idx = start_tick // global_params["sub_integration_ntime"]
 
         n_rfi = 0
-        for _ in range(num_full_frames_per_accumulation):
+        for _ in range(accumulate_params['num_n2k_samples_to_accumulate']):
+            dset_idx = subframe_idx // num_integrations
             mask_val = 0 if rfi_vals[dset_idx % len(rfi_vals)] == 0 else 1
-            n_rfi += (1 - mask_val) * global_params["samples_per_data_set"]
-            dset_idx += 1
+            n_rfi += (1 - mask_val) * global_params["sub_integration_ntime"]
+            subframe_idx += 1
 
         assert frame.metadata.n_rfi_fpga_ticks == n_rfi

@@ -345,34 +345,20 @@ void N2Accumulate::main_thread() {
             // sequence number of this sample in the frame.
             int64_t seq = seq0 + vis_samp_n * _n_fpga_samples_per_n2k_correlation;
 
-            if (vis_even == nullptr) { // first time
-                // this will skip all of the vis_samp_n loop, but is easier to
-                // do here than outside due to the frame advance at the end of
-                // the outer loop
-                // if starting n2k frame fragment is not even numbered, skip whole frame
-                // if starting n2k fragment is not a multiple of the number of
-                // n2k samples to accumulate, skip whole frame
-                if (vis_sample_num_abs % 2 != 0
-                    || vis_sample_num_abs % _num_n2k_samples_to_accumulate != 0) {
-                    // NOTE: since we enforce that
-                    // _n_fpga_samples_per_n2k_frame % _n_fpga_samples_per_n2k_correlation == 0
-                    // holds we can ony get here if
-                    // _n_fpga_samples_per_n2k_frame == _n_fpga_samples_per_n2k_correlation
-                    // and the initial fpga_seq_num corresponds to an odd frame
-                    break;
-                }
-                assert(_accum_fpga_start_tick == -1);
-                _accum_fpga_start_tick = frame_metadata->get_fpga_seq_num();
-            }
+            DEBUG("Frame: {0:d}  Sample {1:d}: {2:d} seq: {3:d}",
+                    in_frame_num, vis_samp_n, vis_sample_num_abs, seq);
 
             // Startup - wait to be at the beginning of an accumulation bin.
             if (mode == Mode::WAITING_FOR_ALIGNMENT) {
+                
                 if (seq == next_accum_start_tick) {
                     // Away we go!
+                    assert(vis_sample_num_abs % 2 == 0);
                     _vis_samples_in_out_frame = 0;
                     _accum_fpga_start_tick = seq;
                     next_accum_start_tick += fpga_ticks_per_accum;
                     mode = Mode::ACCUMULATING;
+                    DEBUG("MODE: Setting accum_fpga_start_tick: {0:d}", _accum_fpga_start_tick);
                 }
             }
 
