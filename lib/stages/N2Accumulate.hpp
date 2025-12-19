@@ -22,18 +22,50 @@ using N2::frameID;
 
 /**
  * @class N2Accumulate
- * @brief Accumulate the high rate GPU output into integrated VisBuffers.
+ * @brief Accumulate the high rate GPU output into integrated N2Buffers.
  *
  * This stage accumulates output from the N2k GPU correlator into integrated
  * visibility buffers.
  *
+ * num_integrations := samples_per_dataset / sub_integration_ntime
+ * num_freq := num_freq_per_n2k_frame
+ *
+ *
+ *
  * @par Buffers
- * @buffer in_buf
- *         @buffer_format GPU packed information
+ * @buffer  in_buf          Correlation buffer from n2k.
+ *      @buffer_format      NDArray int32 [num_integrations, num_freq, num_corr_blocks, 16, 16, 2]
+ *      @buffer_metadata    chordMetadata
+ * @buffer  in_counts_buf   Counts buffer from n2k.
+ *      @buffer_format      NDArray int32 [num_integrations, num_freq, num_count_blocks, 8, 8]
+ *      @buffer_metadata    chordMetadata
+ * @buffer  in_rfimask_buf  RFImask buffer from n2k, the same mask used to compute
+ *                          the correlation.
+ *         @buffer_format   NDArray uint1x8 [samples_per_dataset / 128 / 8, num_freq, 128]
  *         @buffer_metadata chordMetadata
- * @buffer out_buf The accumulated and tagged data.
- *         @buffer_format VisBuffer structured.
- *         @buffer_metadata VisMetadata
+ * @buffer  out_buf         The accumulated and tagged data.
+ *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
+ *      @buffer_metadata N2Metadata
+ * 
+ * @conf    num_freq_per_n2k_frame          int64_t Number of frequencies in
+ *                                          buffers, required.
+ * @conf    num_n2k_samples_to_accumulate   int64_t Number of samples (subintegrations)
+ *                                          to accumulate in each output frame. Default: 0.
+ * @conf    packet_loss_is_scalar           bool    Whether the packet loss (ie. the counts
+ *                                          matrix) is a scalar in dish element or not.  If so,
+ *                                          all baselines use the same value from `counts`, the
+ *                                          first element in the buffer. The `false` case has
+ *                                          not been implemented.
+ * @conf    samples_per_data_set            int64_t Total number of time samples covered by each
+ *                                          input frame. nt_outer in n2k.
+ * @conf    sub_integration_ntime           int64_t Number of time samples integrated in each
+ *                                          entry in correlation and counts buffers.  n2_inner
+ *                                          in n2k.
+ * @conf    rfi_downsampling_factor         int64_t Number of time samples used to compute
+ *                                          RFImask.  The values in the RFIMask buffer are
+ *                                          repeated this many times.
+ * @conf    num_elements                    int64_t Number of elements (num_dish x num_pol) in
+ *                                          the buffers.
  */
 class N2Accumulate : public kotekan::Stage {
 public:
@@ -47,6 +79,15 @@ public:
      * This function is responsible for the main logic of the N2Accumulate class.
      */
     void main_thread() override;
+
+    /**
+     * @brief Accumulate the rfimask over the given n2k integration into _n_rfi_samples_in_vis
+     *
+     * @param   rfimask The raw rfimask used in n2k to compute the correlation.
+     * @param   t_vis   Time index denoting the current sample being accumulated,
+     *                  in [0, samples_per_dataset / sub_integration_ntime)
+     */
+    void accumulate_rfimask_in_sample(const uint8_t *rfimask, int64_t t_vis);
 
     /**
      * @brief Copy accumulated visibility matrix and weights to the output buffer,

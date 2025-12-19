@@ -253,9 +253,6 @@ void N2Accumulate::main_thread() {
     uint64_t counts_stride_f = _n2k_counts_num_products;
     uint64_t counts_stride_t = _n2k_counts_num_products * _num_freq_per_n2k_frame;
 
-    uint64_t rfi_stride_f = 128; // = rfimask_fast_time_len / bits_per_entry = 1024 / 8;
-    uint64_t rfi_stride_thi = rfi_stride_f * _num_freq_per_n2k_frame;
-    
     int64_t next_accum_start_tick = 0;
     int64_t fpga_ticks_per_accum = _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
 
@@ -269,14 +266,14 @@ void N2Accumulate::main_thread() {
 
         // Fetch a new frame and get its sequence id
         DEBUG("Waiting for new correlation frame {:s}[{:d}].", in_buf->buffer_name, in_frame_id);
-        int32_t* corr = (int32_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
+        const int32_t* corr = (int32_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (corr == nullptr)
             break;
 
         // Fetch a new counts frame and get its sequence id
         DEBUG("Waiting for new input counts frame {:s}[{:d}].", in_counts_buf->buffer_name,
               in_counts_frame_id);
-        int32_t* counts =
+        const int32_t* counts =
             (int32_t*)in_counts_buf->wait_for_full_frame(unique_name, in_counts_frame_id);
         if (counts == nullptr)
             break;
@@ -284,7 +281,7 @@ void N2Accumulate::main_thread() {
         // Fetch a new rfimask frame and get its sequence id
         DEBUG("Waiting for new input RFImask frame {:s}[{:d}].", in_rfimask_buf->buffer_name,
               in_rfimask_frame_id);
-        uint8_t* rfimask =
+        const uint8_t* rfimask =
             (uint8_t*)in_rfimask_buf->wait_for_full_frame(unique_name, in_rfimask_frame_id);
         if (rfimask == nullptr)
             break;
@@ -448,51 +445,7 @@ void N2Accumulate::main_thread() {
                 } // if even/odd
             } // f
 
-            // Sum the RFI mask
-            //
-            // Each RFI mask frame has structure:
-            //
-            //      rfimask[Thi/1024, F, Tlo]
-            //
-            // In particular:
-            //
-            //      int1 rfimask[n_fpga_samples_per_n2k_frame / 1024, _num_freq_per_n2k_frame, 1024]
-            //      int8 rfimask[n_fpga_samples_per_n2k_frame / 1024, _num_freq_per_n2k_frame, 128]
-            //
-            // Raw time sample index at start of vis sample (n2k integration):
-            //
-            //      t = vis_samp_n * n_fpga_samples_per_n2k_correlation
-            //
-            // For an int8 rfimask, for a raw index t:
-            //
-            //      thi = t / 1024
-            //      tlo = (t % 1024) / 8
-            //      tbit = t % 8
-            //
-            //      t = tbit + 8*tlo + 1024*thi
-            //
-            // Furthermore, the RFI mask is only computed every rfi_downsampling_factor
-            // samples, so t can be incremented by rfi_downsampling_factor.
-            // rfi_downsampling factor itself must be divisible by 32, so we know
-            // tbit will always be 0.
-            for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
-                for (int64_t t = vis_samp_n * _n_fpga_samples_per_n2k_correlation;
-                     t < (vis_samp_n + 1) * _n_fpga_samples_per_n2k_correlation;
-                     t += _rfi_downsampling_factor) {
-
-                    // Casting to a uint64_t here is a micro-optimization,
-                    // the assembly is slighty simpler if the compliler knows
-                    // the numerator is non-negative.
-                    int64_t thi = ((uint64_t)t) / 1024;
-                    int64_t tlo = (((uint64_t)t) % 1024) / 8;
-
-                    int64_t idx = thi * rfi_stride_thi + f * rfi_stride_f + tlo;
-
-                    _n_rfi_samples_in_vis[f] +=
-                        (1 - (rfimask[idx] & 0x1)) * _rfi_downsampling_factor;
-                }
-
-            } // f
+            accumulate_rfimask_in_sample(rfimask, vis_samp_n);
 
             _vis_samples_in_out_frame++;
 
@@ -520,6 +473,58 @@ void N2Accumulate::main_thread() {
         in_counts_buf->mark_frame_empty(unique_name, in_counts_frame_id++);
         in_rfimask_buf->mark_frame_empty(unique_name, in_rfimask_frame_id++);
     }
+}
+
+void N2Accumulate::accumulate_rfimask_in_sample(const uint8_t *rfimask, int64_t t_vis) {
+    // Sum the RFI mask
+    //
+    // Each RFI mask frame has structure:
+    //
+    //      rfimask[Thi/1024, F, Tlo]
+    //
+    // In particular:
+    //
+    //      int1 rfimask[n_fpga_samples_per_n2k_frame / 1024, _num_freq_per_n2k_frame, 1024]
+    //      int8 rfimask[n_fpga_samples_per_n2k_frame / 1024, _num_freq_per_n2k_frame, 128]
+    //
+    // Raw time sample index at start of vis sample (n2k integration):
+    //
+    //      t = vis_samp_n * n_fpga_samples_per_n2k_correlation
+    //
+    // For an int8 rfimask, for a raw index t:
+    //
+    //      thi = t / 1024
+    //      tlo = (t % 1024) / 8
+    //      tbit = t % 8
+    //
+    //      t = tbit + 8*tlo + 1024*thi
+    //
+    // Furthermore, the RFI mask is only computed every rfi_downsampling_factor
+    // samples, so t can be incremented by rfi_downsampling_factor.
+    // rfi_downsampling factor itself must be divisible by 32, so we know
+    // tbit will always be 0.
+
+    uint64_t rfi_stride_f = 128; // = rfimask_fast_time_len / bits_per_entry = 1024 / 8;
+    uint64_t rfi_stride_thi = rfi_stride_f * _num_freq_per_n2k_frame;
+
+    for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+        for (int64_t t = t_vis * _n_fpga_samples_per_n2k_correlation;
+             t < (t_vis + 1) * _n_fpga_samples_per_n2k_correlation;
+             t += _rfi_downsampling_factor) {
+
+            // Casting to a uint64_t here is a micro-optimization,
+            // the assembly is slighty simpler if the compliler knows
+            // the numerator is non-negative.
+            int64_t thi = ((uint64_t)t) / 1024;
+            int64_t tlo = (((uint64_t)t) % 1024) / 8;
+
+            int64_t idx = thi * rfi_stride_thi + f * rfi_stride_f + tlo;
+
+            _n_rfi_samples_in_vis[f] +=
+                (1 - (rfimask[idx] & 0x1)) * _rfi_downsampling_factor;
+        }
+
+    } // f
 }
 
 bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id) {
