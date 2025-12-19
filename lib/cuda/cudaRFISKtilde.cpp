@@ -193,11 +193,6 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     // Correct RFImask metadata
     // TODO: Set these metadata only once
     const std::shared_ptr<chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
-    std::vector<int64_t> half_fpga_sample0(rfi_meta->get_nfreq());
-    for (int freq = 0; freq < rfi_meta->get_nfreq(); ++freq) {
-        half_fpga_sample0[freq] = 128 * 8;
-    }
-    rfi_meta->set_half_fpga_sample0(half_fpga_sample0);
     rfi_meta->set_time_downsampling_fpga(rfi_meta->get_time_downsampling_fpga()
                                          * div_noremainder(128 * 8, rfi_downsampling_factor));
 

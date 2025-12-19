@@ -207,21 +207,11 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
                   + rfi_RFImask.get_read_valid().begin() * rfi_meta->get_time_downsampling_fpga());
 
     // The input ringbuffers do not contain time-dependent metadata,
-    // so we must reconstruct it here. (fpga_seq_num and sample0_offset)
+    // so we must reconstruct it here. (fpga_seq_num)
     n2k_counts_meta->set_fpga_seq_num(rfi_meta->get_fpga_seq_num()
                                       + rfi_RFImask.get_read_valid().begin()
                                             * rfi_meta->get_time_downsampling_fpga());
-    n2k_counts_meta->set_sample0_offset(
-        div_noremainder(n2k_counts_meta->get_fpga_seq_num(), n2k_sub_integration_ntime));
 
-    const std::vector<int64_t> in_half_fpga_sample0 = pl_meta->get_half_fpga_sample0();
-    std::vector<int64_t> out_half_fpga_sample0(n2k_counts_meta->get_nfreq());
-    for (int f = 0; f < n2k_counts_meta->get_nfreq(); f++) {
-        out_half_fpga_sample0.at(f) = in_half_fpga_sample0.at(f)
-                                      + n2k_counts_meta->get_time_downsampling_fpga()
-                                      - pl_meta->get_time_downsampling_fpga();
-    }
-    n2k_counts_meta->set_half_fpga_sample0(out_half_fpga_sample0);
     // The PL mask time_downsampling_factor includes a factor of 64 from
     // the fast time axis which is eaten up by the correlator.
     n2k_counts_meta->set_time_downsampling_fpga(

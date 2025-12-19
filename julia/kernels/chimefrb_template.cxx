@@ -358,7 +358,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     auto time_downsampling_fpga = I_meta->get_time_downsampling_fpga();
     time_downsampling_fpga *= cuda_downsampling_factor;
     I_meta->set_time_downsampling_fpga(time_downsampling_fpga);
-    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num` nor `meta->sample0_offset`
+    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
 
     const char* exc_arg = "exception";
     {{#kernel_arguments}}

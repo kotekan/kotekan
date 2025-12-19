@@ -450,8 +450,8 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
         get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_first_packet_recv_time(now);
         get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_fpga_seq_num(new_seq);
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_time_downsampling_fpga(1);
         get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_gps_time(gps_time);
-        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_sample0_offset(new_seq);
         get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_dataset_id(fpga_dataset);
 
         ice_stream_id_t tmp_stream_id = port_stream_id;
@@ -486,7 +486,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
         // Print out the chordMetadata
         DEBUG("chordMetadata: seq: {:d} freq_id: {:d} dim[0]: {:d} dim[1]: {:d}",
-              meta->get_sample0_offset(), meta->get_coarse_freq()[0], meta->dim[0], meta->dim[1]);
+              meta->get_fpga_seq_num(), meta->get_coarse_freq()[0], meta->dim[0], meta->dim[1]);
     }
 
     if (!first_time) {
@@ -499,10 +499,10 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
     // Add metadata to the lost samples buffer
     lost_samples_buf->allocate_new_metadata_object(lost_samples_frame_id);
-    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_sample0_offset(new_seq);
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_fpga_seq_num(new_seq);
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_time_downsampling_fpga(1);
     // TODO: are these required for the lost_samples buffer? or is having them
     // in the corresponding data buffer sufficient?
-    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_fpga_seq_num(new_seq);
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_first_packet_recv_time(now);
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_gps_time(gps_time);
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_dataset_id(fpga_dataset);
@@ -547,7 +547,7 @@ inline bool iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
     if (out_bufs[0]->metadata_pool->type_name == "chordMetadata") {
         lost_sample_location =
             last_seq + samples_per_packet
-            - get_chord_metadata(out_bufs[0], out_buf_frame_ids[0])->get_sample0_offset();
+            - get_chord_metadata(out_bufs[0], out_buf_frame_ids[0])->get_fpga_seq_num();
     } else {
         FATAL_ERROR("Unsupported metadata type: {:s}", out_bufs[0]->metadata_pool->type_name);
         return false;
@@ -600,7 +600,7 @@ inline void iceBoardShuffle::copy_packet_shuffle(struct rte_mbuf* mbuf) {
 
     if (out_bufs[0]->metadata_pool->type_name == "chordMetadata") {
         sample_location =
-            cur_seq - get_chord_metadata(out_bufs[0], out_buf_frame_ids[0])->get_sample0_offset();
+            cur_seq - get_chord_metadata(out_bufs[0], out_buf_frame_ids[0])->get_fpga_seq_num();
     } else {
         FATAL_ERROR("Unsupported metadata type: {:s}", out_bufs[0]->metadata_pool->type_name);
         return;

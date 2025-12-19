@@ -163,7 +163,8 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
         // `fpga_seq_num`.
         if (!(meta->get_fpga_seq_num() == 0)) {
             DEBUG("in_meta->get_fpga_seq_num()={}", in_meta->get_fpga_seq_num());
-            DEBUG("in_meta->get_time_downsampling_fpga()={}", in_meta->get_time_downsampling_fpga());
+            DEBUG("in_meta->get_time_downsampling_fpga()={}",
+                  in_meta->get_time_downsampling_fpga());
             DEBUG("in_meta->sample_bytes()={}", in_meta->sample_bytes());
             DEBUG("meta->get_fpga_seq_num()={}", meta->get_fpga_seq_num());
             DEBUG("meta->get_time_downsampling_fpga()={}", meta->get_time_downsampling_fpga());
@@ -171,12 +172,8 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
             DEBUG("meta->sample_bytes()={}", meta->sample_bytes());
         }
         assert(meta->get_fpga_seq_num() == 0);
-        assert(meta->get_offset_downsampling() > 0);
-        assert(output_cursor * meta->get_offset_downsampling() % meta->sample_bytes() == 0);
-        meta->set_sample0_offset(meta->get_sample0_offset()
-                                 - output_cursor * meta->get_offset_downsampling()
-                                       / meta->sample_bytes());
-        assert(meta->get_sample0_offset() == 0);
+        assert(meta->get_time_downsampling_fpga() > 0);
+        assert(output_cursor * meta->get_time_downsampling_fpga() % meta->sample_bytes() == 0);
         assert(meta->dims > 0);
         assert(in_buffer->frame_size % meta->sample_bytes() == 0);
         assert(meta->dim[0] == std::ptrdiff_t(in_buffer->frame_size / meta->sample_bytes()));

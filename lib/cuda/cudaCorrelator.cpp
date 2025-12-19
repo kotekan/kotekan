@@ -131,24 +131,12 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
                   + rfi_RFImask.get_read_valid().begin() * rfi_meta->get_time_downsampling_fpga());
 
     // The input ringbuffer metadata do not contain time-dependent metadata,
-    // so we must reconstruct it here. (fpga_seq_num and sample0_offset)
+    // so we must reconstruct it here. (fpga_seq_num)
     n2k_corr_meta->set_fpga_seq_num(voltage_meta->get_fpga_seq_num()
                                     + voltage.get_read_valid().begin()
                                           * voltage_meta->get_time_downsampling_fpga());
-    n2k_corr_meta->set_sample0_offset(n2k_corr_meta->get_fpga_seq_num() / _sub_integration_ntime);
-
-    std::vector<int64_t> out_half_fpga_sample0(n2k_corr_meta->get_nfreq());
-    const std::vector<int64_t> in_half_fpga_sample0 = voltage_meta->get_half_fpga_sample0();
-
-    for (int freq = 0; freq < n2k_corr_meta->get_nfreq(); ++freq) {
-        out_half_fpga_sample0[freq] = in_half_fpga_sample0[freq]
-                                      + n2k_corr_meta->get_time_downsampling_fpga()
-                                      - voltage_meta->get_time_downsampling_fpga();
-    }
-
     n2k_corr_meta->set_time_downsampling_fpga(_sub_integration_ntime
                                               * voltage_meta->get_time_downsampling_fpga());
-    n2k_corr_meta->set_half_fpga_sample0(out_half_fpga_sample0);
 
     // Set poison for debug checks.
     n2k_correlation.set_to_poison(0x80);

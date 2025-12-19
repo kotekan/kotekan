@@ -169,7 +169,6 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
 
         // Set the FPGA seq number of the first sample
         meta_ring->set_fpga_seq_num(meta_in0->get_fpga_seq_num());
-        meta_ring->set_sample0_offset(meta_in0->get_sample0_offset());
 
         // Merge metadata from all input buffers
         // NB This is highly specific to CHIME.
@@ -184,7 +183,6 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
             coarse_freq.at(i) = meta_in->get_coarse_freq()[0];
             // Check that the seq_num and sample0 matches for all input buffers
             assert(meta_ring->get_fpga_seq_num() == meta_in->get_fpga_seq_num());
-            assert(meta_ring->get_sample0_offset() == meta_in->get_sample0_offset());
         }
         meta_ring->set_coarse_freq(coarse_freq);
         signal_buffer->set_metadata(0, meta_ring);
@@ -212,15 +210,15 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
                   meta_in->get_coarse_freq().at(0));
             throw std::runtime_error("cudaCopyNToRingbuffer: metadata frequency mismatch");
         }
-        // Check that the sample0_offset + the output_cursor matches the input frame sample0_offset
+        // Check that the fpga_seq_num + the output_cursor matches the input frame fpga_seq_num
         // This ensures that the time in the ring buffer metadata matches the data we just copied
-        if (meta_ring->get_sample0_offset()
+        if (meta_ring->get_fpga_seq_num()
                 + (int64_t)output_cursor / (meta_ring->dim[1] * meta_ring->dim[3])
-            != meta_in->get_sample0_offset()) {
-            ERROR("cudaCopyNToRingbuffer: Mismatch in sample0_offset for input buffer {}: "
+            != meta_in->get_fpga_seq_num()) {
+            ERROR("cudaCopyNToRingbuffer: Mismatch in fpga_seq_num for input buffer {}: "
                   "metadata has {}, frame has {} (output_cursor {})",
-                  in_buffers.at(i)->buffer_name, meta_ring->get_sample0_offset(),
-                  meta_in->get_sample0_offset(), output_cursor);
+                  in_buffers.at(i)->buffer_name, meta_ring->get_fpga_seq_num(),
+                  meta_in->get_fpga_seq_num(), output_cursor);
             throw std::runtime_error("cudaCopyNToRingbuffer: metadata time code mismatch");
         }
     }

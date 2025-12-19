@@ -124,10 +124,8 @@ void testLostSamplesToPLMask::main_thread() {
 
         // physics metadata
         // TODO: add more that dpdk adds
-        // This looks inconsistent
         pl_mask_meta->set_fpga_seq_num(seq_num);
-        pl_mask_meta->set_sample0_offset(seq_num);
-        pl_mask_meta->set_offset_downsampling(PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT);
+        pl_mask_meta->set_time_downsampling_fpga(PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT);
 
         std::vector<int> coarse_freq(num_freq_bins * PL_MASK_FREQS_PER_BIN);
         for (size_t f = 0; f < coarse_freq.size(); ++f)
@@ -137,13 +135,6 @@ void testLostSamplesToPLMask::main_thread() {
         const std::vector<int> freq_upchan_factor(num_freq_bins * PL_MASK_FREQS_PER_BIN,
                                                   1); // we want 1/4 but we cannot
         pl_mask_meta->set_freq_upchan_factor(freq_upchan_factor);
-
-        const std::vector<int64_t> half_fpga_sample0(num_freq_bins * PL_MASK_FREQS_PER_BIN,
-                                                     PL_MASK_DOWNSAMPLING_FACTOR
-                                                         * PL_MASK_HILO_SPLIT / 2);
-        pl_mask_meta->set_half_fpga_sample0(half_fpga_sample0);
-
-        pl_mask_meta->set_time_downsampling_fpga(PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT);
 
         // array description
         std::strncpy(pl_mask_meta->name, "pl_mask", sizeof pl_mask_meta->name);
@@ -197,9 +188,8 @@ void testLostSamplesToPLMask::main_thread() {
 
             // physics metadata
             // TODO: add more that dpdk adds
-            // This looks inconsistent
             lost_samples_meta->set_fpga_seq_num(seq_num);
-            lost_samples_meta->set_sample0_offset(seq_num);
+            lost_samples_meta->set_time_downsampling_fpga(1);
 
             lost_samples_meta->set_coarse_freq(
                 std::vector<int>(&coarse_freq[fbin * PL_MASK_FREQS_PER_BIN],

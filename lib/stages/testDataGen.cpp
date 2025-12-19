@@ -202,6 +202,7 @@ void testDataGen::main_thread() {
         std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
 
         chordmeta->set_fpga_seq_num(seq_num);
+        chordmeta->set_time_downsampling_fpga(_meta_time_downsample_factor);
 
         // TODO: Fix this, cannot change from frame to frame (and should not be "now")
         gettimeofday(&now, nullptr);
@@ -217,7 +218,6 @@ void testDataGen::main_thread() {
         assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
         std::vector<int> coarse_freq(_num_freq_in_frame);
         std::vector<int> freq_upchan_factor(coarse_freq.size());
-        std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             if (_manual_freq_ids.size() > 0)
                 coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
@@ -226,17 +226,11 @@ void testDataGen::main_thread() {
             else
                 coarse_freq[f] = f;
             freq_upchan_factor[f] = 1;
-            half_fpga_sample0[f] = _meta_time_downsample_factor - 1;
         }
 
         chordmeta->set_coarse_freq(coarse_freq);
         chordmeta->set_freq_upchan_factor(freq_upchan_factor);
-        chordmeta->set_half_fpga_sample0(half_fpga_sample0);
-        chordmeta->set_time_downsampling_fpga(_meta_time_downsample_factor);
 
-        chordmeta->set_sample0_offset(frame_id_abs * samples_per_data_set
-                                      / _meta_time_downsample_factor);
-        chordmeta->set_offset_downsampling(1);
         chordmeta->set_frame_counter(frame_id_abs);
 
         unsigned char temp_output;

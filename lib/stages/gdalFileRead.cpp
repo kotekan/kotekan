@@ -209,46 +209,6 @@ public:
             }
 
             {
-                const auto sample0_offset = group->GetAttribute("sample0_offset");
-                if (sample0_offset) {
-                    const auto sample0_offset_shape = sample0_offset->GetDimensionsSize();
-                    assert(sample0_offset_shape.empty());
-                    // Cannot read int64_t directly yet...
-                    meta->set_sample0_offset(sample0_offset->ReadAsDouble());
-                    assert(meta->get_sample0_offset() >= 0);
-                }
-            }
-
-            {
-                const auto offset_downsampling = group->GetAttribute("offset_downsampling");
-                if (offset_downsampling) {
-                    const auto offset_downsampling_shape = offset_downsampling->GetDimensionsSize();
-                    assert(offset_downsampling_shape.empty());
-                    meta->set_offset_downsampling(offset_downsampling->ReadAsInt());
-                    assert(meta->get_offset_downsampling() > 0);
-                }
-            }
-
-            {
-                const auto half_fpga_sample0 = group->GetAttribute("half_fpga_sample0");
-                assert((meta->get_nfreq() >= 0) == bool(half_fpga_sample0));
-                if (half_fpga_sample0) {
-                    const auto coarse_nfreqs_shape = half_fpga_sample0->GetDimensionsSize();
-                    assert(coarse_nfreqs_shape.size() == 1);
-                    assert(std::ptrdiff_t(coarse_nfreqs_shape.at(0)) == meta->get_nfreq());
-                    // Cannot read int64_t directly yet...
-                    const auto half_fpga_sample0_data = half_fpga_sample0->ReadAsDoubleArray();
-                    assert(std::ptrdiff_t(half_fpga_sample0_data.size()) == meta->get_nfreq());
-                    std::vector<int64_t> half_fpga_sample0_int64_data(
-                        half_fpga_sample0_data.size());
-                    for (size_t i = 0; i < half_fpga_sample0_data.size(); ++i) {
-                        half_fpga_sample0_int64_data[i] = half_fpga_sample0_data[i];
-                    }
-                    meta->set_half_fpga_sample0(half_fpga_sample0_int64_data);
-                }
-            }
-
-            {
                 const auto time_downsampling_fpga = group->GetAttribute("time_downsampling_fpga");
                 if (time_downsampling_fpga) {
                     const auto time_downsampling_fpga_shape =

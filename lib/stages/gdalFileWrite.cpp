@@ -128,7 +128,7 @@ public:
             const double elapsed_time = this_time - start_time;
 
             INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
-                 frame_counter, meta->get_sample0_offset(), elapsed_time);
+                 frame_counter, meta->get_fpga_seq_num(), elapsed_time);
 
             if (!skip_writing) {
 
@@ -245,37 +245,6 @@ public:
                         GDALExtendedDataType::Create(get_gdal_datatype(fpga_seq_num_value)));
                     const bool success =
                         fpga_seq_num->Write(&fpga_seq_num_value, sizeof fpga_seq_num_value);
-                    assert(success);
-                }
-
-                if (meta->get_sample0_offset() >= 0) {
-                    const auto sample0_offset_value = meta->get_sample0_offset();
-                    const auto sample0_offset = group->CreateAttribute(
-                        "sample0_offset", std::vector<GUInt64>{},
-                        GDALExtendedDataType::Create(get_gdal_datatype(sample0_offset_value)));
-                    const bool success =
-                        sample0_offset->Write(&sample0_offset_value, sizeof sample0_offset_value);
-                    assert(success);
-                }
-
-                if (meta->get_offset_downsampling() >= 0) {
-                    const auto offset_downsampling_value = meta->get_offset_downsampling();
-                    const auto offset_downsampling = group->CreateAttribute(
-                        "offset_downsampling", std::vector<GUInt64>{},
-                        GDALExtendedDataType::Create(get_gdal_datatype(offset_downsampling_value)));
-                    const bool success = offset_downsampling->Write(
-                        &offset_downsampling_value, sizeof offset_downsampling_value);
-                    assert(success);
-                }
-
-                if (meta->get_nfreq() >= 0) {
-                    const auto half_fpga_sample0 = group->CreateAttribute(
-                        "half_fpga_sample0", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
-                        GDALExtendedDataType::Create(
-                            get_gdal_datatype(*meta->get_half_fpga_sample0().data())));
-                    const bool success = half_fpga_sample0->Write(
-                        meta->get_half_fpga_sample0().data(),
-                        meta->get_nfreq() * sizeof *meta->get_half_fpga_sample0().data());
                     assert(success);
                 }
 

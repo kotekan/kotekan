@@ -380,7 +380,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     T_min_arg = mod(T_min, T_ringbuf);
     T_max_arg = mod(T_min, T_ringbuf) + T_length;
 
-    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num` nor `meta->sample0_offset`
+    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
 
     // Copy inputs to device memory
     {{#kernel_arguments}}

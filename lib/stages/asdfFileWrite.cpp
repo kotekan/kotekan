@@ -142,7 +142,7 @@ public:
             const double elapsed_time = this_time - start_time;
 
             INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
-                 frame_counter, meta->get_sample0_offset(), elapsed_time);
+                 frame_counter, meta->get_fpga_seq_num(), elapsed_time);
 
             if (!skip_writing) {
 
@@ -291,24 +291,6 @@ public:
                     if (meta->has_fpga_seq_num())
                         group->emplace("fpga_seq_num",
                                        std::make_shared<ASDF::int_entry>(meta->get_fpga_seq_num()));
-
-                    if (meta->has_sample0_offset())
-                        group->emplace("sample0_offset", std::make_shared<ASDF::int_entry>(
-                                                             meta->get_sample0_offset()));
-
-                    if (meta->has_offset_downsampling())
-                        group->emplace("offset_downsampling", std::make_shared<ASDF::int_entry>(
-                                                                  meta->get_offset_downsampling()));
-
-                    if (meta->has_half_fpga_sample0()) {
-                        auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
-                        const std::vector<int64_t> I_half_fpga_sample0 =
-                            meta->get_half_fpga_sample0();
-                        for (int freq = 0; freq < meta->get_nfreq(); ++freq)
-                            half_fpga_sample0->push_back(
-                                std::make_shared<ASDF::int_entry>(I_half_fpga_sample0[freq]));
-                        group->emplace("half_fpga_sample0", half_fpga_sample0);
-                    }
 
                     if (meta->has_time_downsampling_fpga())
                         group->emplace(

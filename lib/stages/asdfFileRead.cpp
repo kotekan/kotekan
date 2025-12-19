@@ -307,45 +307,6 @@ public:
             }
 
             {
-                if (group->count("sample0_offset")) {
-                    DEBUG("[{:s}/{:d}] group0->at(\"sample0_offset\")", buffer->buffer_name,
-                          frame_counter);
-                    const auto sample0_offset =
-                        group->at("sample0_offset")->get_maybe_int().value();
-                    meta->set_sample0_offset(sample0_offset);
-                    assert(meta->get_sample0_offset() >= 0);
-                }
-            }
-
-            {
-                if (group->count("offset_downsampling")) {
-                    DEBUG("[{:s}/{:d}] group0->at(\"offset_downsampling\")", buffer->buffer_name,
-                          frame_counter);
-                    const auto offset_downsampling =
-                        group->at("offset_downsampling")->get_maybe_int().value();
-                    meta->set_offset_downsampling(offset_downsampling);
-                    assert(meta->get_offset_downsampling() > 0);
-                }
-            }
-
-            {
-                if (group->count("half_fpga_sample0")) {
-                    assert(meta->get_nfreq() >= 0);
-                    DEBUG("[{:s}/{:d}] group0->at(\"half_fpga_sample0\")", buffer->buffer_name,
-                          frame_counter);
-                    const auto half_fpga_sample0 =
-                        group->at("half_fpga_sample0")->get_maybe_sequence();
-                    assert(half_fpga_sample0);
-                    assert(std::ptrdiff_t(half_fpga_sample0->size()) == meta->get_nfreq());
-                    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
-                    std::vector<int64_t> O_half_fpga_sample0(meta->get_nfreq());
-                    for (int n = 0; n < meta->get_nfreq(); ++n)
-                        O_half_fpga_sample0[n] = half_fpga_sample0->at(n)->get_maybe_int().value();
-                    meta->set_half_fpga_sample0(O_half_fpga_sample0);
-                }
-            }
-
-            {
                 if (group->count("time_downsampling_fpga")) {
                     DEBUG("[{:s}/{:d}] group0->at(\"time_downsampling_fpga\")", buffer->buffer_name,
                           frame_counter);
