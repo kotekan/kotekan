@@ -8,7 +8,8 @@
 #include <memory>   // for shared_ptr
 #include <stddef.h> // for size_t
 #include <stdint.h> // for uint64_t, int32_t, int64_t
-
+		    //
+#define NUM_BEAMS 64//
 class BasebandMetadata : public metadataObject {
 public:
     /// deep copy operator
@@ -61,6 +62,9 @@ public:
 
     /// Future expansion+padding
     int32_t reserved;
+    float ra[NUM_BEAMS];
+    float dec[NUM_BEAMS];
+    std::string beam_names[NUM_BEAMS];
 };
 
 void to_json(nlohmann::json& j, const BasebandMetadata& m);

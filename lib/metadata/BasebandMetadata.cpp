@@ -3,6 +3,7 @@
 #include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
 
 #include <assert.h> // for assert
+#include <string> // for std::string 
 #include <memory>   // for allocator, shared_ptr, dynamic_pointer_cast, __shared_ptr_access
 #include <string>   // for basic_string
 
@@ -22,6 +23,9 @@ struct BasebandMetadataFormat {
     uint64_t fpga0_ns;
     int32_t num_elements;
     int32_t reserved;
+    float ra[NUM_BEAMS]; // added
+    float dec[NUM_BEAMS]; // added
+    std::string beam_names[NUM_BEAMS]; // added
 };
 
 void BasebandMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
@@ -50,6 +54,11 @@ size_t BasebandMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size
     valid_to = fmt->valid_to;
     fpga0_ns = fmt->fpga0_ns;
     num_elements = fmt->num_elements;
+    memcpy(ra, fmt->ra, sizeof(ra));
+    memcpy(dec, fmt->dec, sizeof(dec));
+    for (int32_t i = 0; i < NUM_BEAMS; i++) {
+	    beam_names[i] = fmt->beam_names[i];
+    }
     return sz;
 }
 
@@ -68,6 +77,11 @@ size_t BasebandMetadata::serialize(char* bytes) {
     fmt->valid_to = valid_to;
     fmt->fpga0_ns = fpga0_ns;
     fmt->num_elements = num_elements;
+    memcpy(fmt->ra, ra, sizeof(ra));
+    memcpy(fmt->dec, dec, sizeof(dec));
+    for (size_t i = 0; i < NUM_BEAMS; i++) {
+	    fmt->beam_names[i] = beam_names[i];
+    }
     return sz;
 }
 
@@ -92,6 +106,11 @@ void to_json(nlohmann::json& j, const BasebandMetadata& m) {
     j.emplace("valid_to", m.valid_to);
     j.emplace("fpga0_ns", m.fpga0_ns);
     j.emplace("num_elements", m.num_elements);
+    for (uint32_t i = 0; i < NUM_BEAMS; i++){
+        j["ra"].push_back(m.ra[i]);
+        j["dec"].push_back(m.dec[i]);
+        j["beam_names"].push_back(m.beam_names[i]);
+    }
 }
 
 void from_json(const nlohmann::json& j, BasebandMetadata& m) {
@@ -107,4 +126,9 @@ void from_json(const nlohmann::json& j, BasebandMetadata& m) {
     m.valid_to = j.at("valid_to");
     m.fpga0_ns = j.at("fpga0_ns");
     m.num_elements = j.at("num_elements");
+    for (uint32_t i = 0; i < NUM_BEAMS; i++){
+        m.ra[i] = j["ra"][i];
+        m.dec[i] = j["dec"][i];
+        m.beam_names[i] = j["beam_names"][i];
+    }
 }
