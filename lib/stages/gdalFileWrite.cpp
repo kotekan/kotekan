@@ -279,19 +279,6 @@ public:
                     assert(success);
                 }
 
-                if (meta->get_nfreq() >= 0) {
-                    const auto time_downsampling_fpga_per_frequency = group->CreateAttribute(
-                        "time_downsampling_fpga_per_frequency",
-                        std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
-                        GDALExtendedDataType::Create(get_gdal_datatype(
-                            *meta->get_time_downsampling_fpga_per_frequency().data())));
-                    const bool success = time_downsampling_fpga_per_frequency->Write(
-                        meta->get_time_downsampling_fpga_per_frequency().data(),
-                        meta->get_nfreq()
-                            * sizeof *meta->get_time_downsampling_fpga_per_frequency().data());
-                    assert(success);
-                }
-
                 if (meta->get_time_downsampling_fpga() >= 0) {
                     const auto time_downsampling_fpga_value = meta->get_time_downsampling_fpga();
                     const auto time_downsampling_fpga =

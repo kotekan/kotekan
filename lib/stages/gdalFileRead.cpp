@@ -249,24 +249,6 @@ public:
             }
 
             {
-                const auto time_downsampling_fpga_per_frequency =
-                    group->GetAttribute("time_downsampling_fpga_per_frequency");
-                assert((meta->get_nfreq() >= 0) == bool(time_downsampling_fpga_per_frequency));
-                if (time_downsampling_fpga_per_frequency) {
-                    const auto coarse_nfreqs_shape =
-                        time_downsampling_fpga_per_frequency->GetDimensionsSize();
-                    assert(coarse_nfreqs_shape.size() == 1);
-                    assert(std::ptrdiff_t(coarse_nfreqs_shape.at(0)) == meta->get_nfreq());
-                    const auto time_downsampling_fpga_per_frequency_data =
-                        time_downsampling_fpga_per_frequency->ReadAsIntArray();
-                    assert(std::ptrdiff_t(time_downsampling_fpga_per_frequency_data.size())
-                           == meta->get_nfreq());
-                    meta->set_time_downsampling_fpga_per_frequency(
-                        time_downsampling_fpga_per_frequency_data);
-                }
-            }
-
-            {
                 const auto time_downsampling_fpga = group->GetAttribute("time_downsampling_fpga");
                 if (time_downsampling_fpga) {
                     const auto time_downsampling_fpga_shape =

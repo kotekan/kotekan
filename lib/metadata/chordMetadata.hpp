@@ -190,6 +190,25 @@ public:
         metadata[jsonMetadata::BEAM_COORD] = beam_coord;
     }
 
+    // The FPGA sequence number of the first time sample in the buffer.
+    // With time downsampling, this is the first FPGA sequence number
+    // of the range of FPGA samples that correspond to the first time
+    // sample in the buffer.
+    //
+    // Specifically, the FPGA sequence number defines an instant in
+    // time. Each time sample in a buffer corresponds to a certain
+    // time duration. Time downsampling affects the duration of each
+    // sample, but it does not affect the instance in time at which
+    // this buffer begins.
+    //
+    // For ring buffers things are slightly different. Formally, ring
+    // buffers are infinitely large, they just reuse storage. The FPGA
+    // sequence number describes the logical beginning of the buffer.
+    // This information does not change during the life time of a ring
+    // buffer. Since ring buffers reuse storage, the FPGA sequence
+    // number of the time sample that happens to be stored at index 0
+    // of the ring buffer will change over time, but the buffer's FPGA
+    // sequence number will not.
     void set_fpga_seq_num(const int64_t fpga_seq_num) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::FPGA_SEQ_NUM] = fpga_seq_num;
@@ -334,7 +353,7 @@ public:
     //
     // The actual (possibly fractional) time sample index is calculated as follows:
     //     T_actual = (sample0_offset + T / offset_downsampling + half_fpga_sample0[F] / 2) /
-    //                time_downsampling_fpga_per_frequency[F]
+    //                time_downsampling_fpga
     // where `T` is the time sample index (the slowest varying index)
     // and `F` is the coarse frequency index.
     void set_sample0_offset(const int64_t sample0_offset) {
@@ -410,27 +429,8 @@ public:
         return metadata.at(jsonMetadata::HALF_FPGA_SAMPLE0).template get<std::vector<int64_t>>();
     }
 
-    // Time sampling -- for each coarse frequency channel, the factor
-    // by which the time samples have been downsampled relative to
-    // FPGA samples.
-    void set_time_downsampling_fpga_per_frequency(
-        const std::vector<int>& time_downsampling_fpga_per_frequency) {
-        std::lock_guard<std::mutex> lock(this->lock);
-        assert(time_downsampling_fpga_per_frequency.size() <= CHORD_META_MAX_FREQ);
-        metadata[jsonMetadata::TIME_DOWNSAMPLING_FPGA_PER_FREQUENCY] =
-            time_downsampling_fpga_per_frequency;
-    }
-
-    bool has_time_downsampling_fpga_per_frequency() const {
-        std::lock_guard<std::mutex> lock(this->lock);
-        return metadata.contains(jsonMetadata::TIME_DOWNSAMPLING_FPGA_PER_FREQUENCY);
-    }
-
-    std::vector<int> get_time_downsampling_fpga_per_frequency() const {
-        std::lock_guard<std::mutex> lock(this->lock);
-        return metadata.at(jsonMetadata::TIME_DOWNSAMPLING_FPGA_PER_FREQUENCY);
-    }
-
+    // Time sampling -- the factor by which the time samples have been
+    // downsampled relative to FPGA samples.
     void set_time_downsampling_fpga(const int time_downsampling_fpga) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::TIME_DOWNSAMPLING_FPGA] = time_downsampling_fpga;

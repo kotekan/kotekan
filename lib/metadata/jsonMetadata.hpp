@@ -55,8 +55,6 @@ const std::string OFFSET_DOWNSAMPLING("OFFSET_DOWNSAMPLING"); // an int, used wi
 
 const std::string
     HALF_FPGA_SAMPLE0("HALF_FPGA_SAMPLE0"); // an array of int of size CHORD_META_MAX_FREQ
-const std::string TIME_DOWNSAMPLING_FPGA_PER_FREQUENCY(
-    "TIME_DOWNSAMPLING_FPGA_PER_FREQUENCY"); // an array of int64_t of size CHORD_META_MAX_FREQ
 const std::string TIME_DOWNSAMPLING_FPGA("TIME_DOWNSAMPLING_FPGA"); // an int
 const std::string
     FREQ_UPCHAN_FACTOR("FREQ_UPCHAN_FACTOR"); // an array of int of size CHORD_META_MAX_FREQ

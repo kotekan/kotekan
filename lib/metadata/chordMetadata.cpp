@@ -139,7 +139,7 @@ struct chordMetadataFormat {
     //
     // The actual (possibly fractional) time sample index is calculated as follows:
     //     T_actual = (sample0_offset + T / offset_downsampling + half_fpga_sample0[F]) /
-    //                time_downsampling_fpga_per_frequency[F]
+    //                time_downsampling_fpga
     // where `T` is the time sample index (the slowest varying index)
     // and `F` is the coarse frequency index.
     int64_t sample0_offset;
@@ -161,11 +161,8 @@ struct chordMetadataFormat {
     // between them, ie, at a half-FPGAsample time.
     int64_t half_fpga_sample0[CHORD_META_MAX_FREQ];
 
-    // Time sampling -- for each coarse frequency channel, the factor
-    // by which the time samples have been downsampled relative to
-    // FPGA samples.
-    int32_t time_downsampling_fpga_per_frequency[CHORD_META_MAX_FREQ];
-
+    // Time sampling -- the factor by which the time samples have been
+    // downsampled relative to FPGA samples.
     int32_t time_downsampling_fpga;
 
     uint32_t rfi_num_bad_inputs;
@@ -231,10 +228,6 @@ size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t 
         this->set_half_fpga_sample0(
             std::vector<int64_t>(fmt->half_fpga_sample0, fmt->half_fpga_sample0 + nfreq));
     }
-    if (fmt->time_downsampling_fpga_per_frequency[0] != 0) // 0 should be an invalid value
-        this->set_time_downsampling_fpga_per_frequency(
-            std::vector<int>(fmt->time_downsampling_fpga_per_frequency,
-                             fmt->time_downsampling_fpga_per_frequency + nfreq));
     if (fmt->time_downsampling_fpga != -1) // -1 should be an invalid value
         this->set_time_downsampling_fpga(fmt->time_downsampling_fpga);
     if (fmt->coarse_freq[0] != -1) // -1 is an invalid frequency index
@@ -312,9 +305,6 @@ size_t chordMetadata::serialize(char* bytes) {
         // Use -1 as a placeholder for "absent"
         std::fill_n(fmt->half_fpga_sample0, this->get_nfreq(), int64_t(-1));
     }
-    if (this->has_time_downsampling_fpga_per_frequency())
-        std::copy_n(this->get_time_downsampling_fpga_per_frequency().data(), this->get_nfreq(),
-                    fmt->time_downsampling_fpga_per_frequency);
     if (this->has_time_downsampling_fpga())
         fmt->time_downsampling_fpga = this->get_time_downsampling_fpga();
     else
@@ -429,9 +419,6 @@ void from_json(const nlohmann::json& j, chordMetadata& m) {
 
     if (j.contains(jsonMetadata::HALF_FPGA_SAMPLE0))
         m.metadata.emplace(jsonMetadata::HALF_FPGA_SAMPLE0, j.at(jsonMetadata::HALF_FPGA_SAMPLE0));
-    if (j.contains(jsonMetadata::TIME_DOWNSAMPLING_FPGA_PER_FREQUENCY))
-        m.metadata.emplace(jsonMetadata::TIME_DOWNSAMPLING_FPGA_PER_FREQUENCY,
-                           j.at(jsonMetadata::TIME_DOWNSAMPLING_FPGA_PER_FREQUENCY));
     if (j.contains(jsonMetadata::TIME_DOWNSAMPLING_FPGA))
         m.metadata.emplace(jsonMetadata::TIME_DOWNSAMPLING_FPGA,
                            j.at(jsonMetadata::TIME_DOWNSAMPLING_FPGA));

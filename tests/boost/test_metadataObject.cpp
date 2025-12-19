@@ -53,10 +53,7 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata) {
     };
     meta0.set_half_fpga_sample0(half_fpga_sample0);
 
-    std::vector<int> time_downsampling_fpga = {
-        47, 32, 42, 33, 45, 8, 9, 14, 5, 18, 19, 10, 49, 21, 39, 30, 41, 35, 1, 12, 21, 33,
-    };
-    meta0.set_time_downsampling_fpga(time_downsampling_fpga);
+    meta0.set_time_downsampling_fpga(47);
 
     timeval tv = {17863, 341};
     meta0.set_first_packet_recv_time(tv);

@@ -456,11 +456,6 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
                         first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
                         second_buf_id);
 
-    // int time_downsampling_fpga_per_frequency[CHORD_META_MAX_FREQ];
-    CHECK_META_ARR1_INT(time_downsampling_fpga_per_frequency, num_freq, meta1, meta2, num_errors,
-                        first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
-                        second_buf_id);
-
     // int time_downsampling_fpga;
     CHECK_META_SCALAR_INT(time_downsampling_fpga, meta1, meta2, num_errors, first_buf->buffer_name,
                           first_buf_id, second_buf->buffer_name, second_buf_id);

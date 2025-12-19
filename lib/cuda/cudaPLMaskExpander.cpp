@@ -169,27 +169,22 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
     pl_expanded_mask.set_metadata(pl_mask.get_metadata());
     const auto& pl_mask_meta = pl_mask.get_metadata();
     const auto& pl_expanded_mask_meta = pl_expanded_mask.get_metadata();
-    assert(pl_expanded_mask_meta->get_nfreq() >= 0);
 
-    const std::vector<int> in_time_downsampling_fpga_per_frequency =
-        pl_mask_meta->get_time_downsampling_fpga_per_frequency();
+    // TODO: Set these metadata only once
+    pl_expanded_mask_meta->set_time_downsampling_fpga(
+        div_noremainder(pl_mask_meta->get_time_downsampling_fpga(), 2));
+
+    assert(pl_expanded_mask_meta->get_nfreq() >= 0);
     const std::vector<int64_t> in_half_fpga_sample0 = pl_mask_meta->get_half_fpga_sample0();
-    std::vector<int> out_time_downsampling_fpga_per_frequency(pl_expanded_mask_meta->get_nfreq());
     std::vector<int64_t> out_half_fpga_sample0(pl_expanded_mask_meta->get_nfreq());
 
     for (int freq = 0; freq < pl_expanded_mask_meta->get_nfreq(); ++freq) {
         // We would do this if we could start out with 1/4 but we cannot
         // pl_expanded_mask_meta->freq_upchan_factor[freq] *= 4;
-        out_time_downsampling_fpga_per_frequency[freq] =
-            div_noremainder(in_time_downsampling_fpga_per_frequency[freq], 2);
         out_half_fpga_sample0[freq] = in_half_fpga_sample0[freq]
-                                      + out_time_downsampling_fpga_per_frequency[freq]
-                                      - in_time_downsampling_fpga_per_frequency[freq];
+                                      + pl_expanded_mask_meta->get_time_downsampling_fpga()
+                                      - pl_mask_meta->get_time_downsampling_fpga();
     }
-    pl_expanded_mask_meta->set_time_downsampling_fpga_per_frequency(
-        out_time_downsampling_fpga_per_frequency);
-    pl_expanded_mask_meta->set_time_downsampling_fpga(
-        div_noremainder(pl_mask_meta->get_time_downsampling_fpga(), 2));
     pl_expanded_mask_meta->set_half_fpga_sample0(out_half_fpga_sample0);
 
     // There is no poison value

@@ -1558,19 +1558,14 @@ void FEngine::main_thread() {
             assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
             std::vector<int64_t> half_fpga_sample0(num_frequencies);
             assert(half_fpga_sample0.size() <= CHORD_META_MAX_FREQ);
-            std::vector<int> time_downsampling_fpga_per_frequency(num_frequencies);
-            assert(time_downsampling_fpga_per_frequency.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
                 coarse_freq.at(freq) = frequency_channels.at(freq);
                 freq_upchan_factor.at(freq) = 1;
                 half_fpga_sample0.at(freq) = 0;
-                time_downsampling_fpga_per_frequency.at(freq) = 1;
             }
             E_metadata->set_coarse_freq(coarse_freq);
             E_metadata->set_freq_upchan_factor(freq_upchan_factor);
             E_metadata->set_half_fpga_sample0(half_fpga_sample0);
-            E_metadata->set_time_downsampling_fpga_per_frequency(
-                time_downsampling_fpga_per_frequency);
             E_metadata->set_time_downsampling_fpga(1);
             E_metadata->ndishes = num_dishes;
             E_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
@@ -1663,19 +1658,14 @@ void FEngine::main_thread() {
             assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
             std::vector<int64_t> half_fpga_sample0(num_frequencies);
             assert(half_fpga_sample0.size() <= CHORD_META_MAX_FREQ);
-            std::vector<int> time_downsampling_fpga_per_frequency(num_frequencies);
-            assert(time_downsampling_fpga_per_frequency.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
                 coarse_freq.at(freq) = frequency_channels.at(freq);
                 freq_upchan_factor.at(freq) = 1; // we want 1/4 but we cannot
                 half_fpga_sample0.at(freq) = 64;
-                time_downsampling_fpga_per_frequency.at(freq) = 2 * 64;
             }
             pl_mask_metadata->set_coarse_freq(coarse_freq);
             pl_mask_metadata->set_freq_upchan_factor(freq_upchan_factor);
             pl_mask_metadata->set_half_fpga_sample0(half_fpga_sample0);
-            pl_mask_metadata->set_time_downsampling_fpga_per_frequency(
-                time_downsampling_fpga_per_frequency);
             pl_mask_metadata->set_time_downsampling_fpga(2 * 64);
             pl_mask_metadata->ndishes = num_dishes;
             pl_mask_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
@@ -1764,7 +1754,6 @@ void FEngine::main_thread() {
                 J_metadata->coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
                 J_metadata->freq_upchan_factor.at(freq) = 1;
                 J_metadata->half_fpga_sample0.at(freq) = 0;
-                J_metadata->time_downsampling_fpga_per_frequency.at(freq) = 1;
             }
             J_metadata->time_downsampling_fpga = 1;
             J_metadata->ndishes = num_dishes;
@@ -1853,7 +1842,6 @@ void FEngine::main_thread() {
                 I1_metadata->coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
                 I1_metadata->freq_upchan_factor.at(freq) = U;
                 I1_metadata->half_fpga_sample0.at(freq) = 2 * Tds - 1;
-                I1_metadata->time_downsampling_fpga_per_frequency.at(freq) = U * Tds;
             }
             I1_metadata->time_downsampling_fpga = U * Tds;
             I1_metadata->ndishes = num_dishes;

@@ -212,19 +212,16 @@ void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& 
 
     std::vector<int> coarse_freq(num_local_freq);
     std::vector<int> freq_upchan_factor(num_local_freq);
-    std::vector<int> time_downsampling_fpga_per_frequency(num_local_freq);
     std::vector<int64_t> half_fpga_sample0(num_local_freq);
 
     for (int f = 0; f < num_local_freq; f++) {
         coarse_freq[f] = freq_ids[f % freq_ids.size()];
         freq_upchan_factor[f] = 1;
-        time_downsampling_fpga_per_frequency[f] = sub_integration_ntime;
         half_fpga_sample0[f] = sub_integration_ntime - 1;
     }
 
     meta->set_coarse_freq(coarse_freq);
     meta->set_freq_upchan_factor(freq_upchan_factor);
-    meta->set_time_downsampling_fpga_per_frequency(time_downsampling_fpga_per_frequency);
     meta->set_time_downsampling_fpga(sub_integration_ntime);
     meta->set_half_fpga_sample0(half_fpga_sample0);
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
@@ -249,19 +246,16 @@ void testN2kGen::set_counts_metadata(const std::shared_ptr<chordMetadata>& meta,
 
     std::vector<int> coarse_freq(num_local_freq);
     std::vector<int> freq_upchan_factor(num_local_freq);
-    std::vector<int> time_downsampling_fpga_per_frequency(num_local_freq);
     std::vector<int64_t> half_fpga_sample0(num_local_freq);
 
     for (int f = 0; f < num_local_freq; f++) {
         coarse_freq[f] = freq_ids[f % freq_ids.size()];
         freq_upchan_factor[f] = 1;
-        time_downsampling_fpga_per_frequency[f] = sub_integration_ntime;
         half_fpga_sample0[f] = sub_integration_ntime - 1;
     }
 
     meta->set_coarse_freq(coarse_freq);
     meta->set_freq_upchan_factor(freq_upchan_factor);
-    meta->set_time_downsampling_fpga_per_frequency(time_downsampling_fpga_per_frequency);
     meta->set_time_downsampling_fpga(sub_integration_ntime);
     meta->set_half_fpga_sample0(half_fpga_sample0);
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);

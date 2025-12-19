@@ -150,6 +150,7 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
         // Copy metadata (because we modify it)
         auto tmp = std::make_shared<chordMetadata>();
         tmp->deepCopy(meta);
+        auto in_meta = meta;
         meta = tmp;
 
         // TODO: Don't set the metadata every time (to, hopefully, the same values). Set them once
@@ -160,6 +161,15 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
                                      * (output_cursor / meta->sample_bytes()));
         // This should hold most of the time. It will be wrong when we start Kotean with a non-zero
         // `fpga_seq_num`.
+        if (!(meta->get_fpga_seq_num() == 0)) {
+            DEBUG("in_meta->get_fpga_seq_num()={}", in_meta->get_fpga_seq_num());
+            DEBUG("in_meta->get_time_downsampling_fpga()={}", in_meta->get_time_downsampling_fpga());
+            DEBUG("in_meta->sample_bytes()={}", in_meta->sample_bytes());
+            DEBUG("meta->get_fpga_seq_num()={}", meta->get_fpga_seq_num());
+            DEBUG("meta->get_time_downsampling_fpga()={}", meta->get_time_downsampling_fpga());
+            DEBUG("output_cursor={}", output_cursor);
+            DEBUG("meta->sample_bytes()={}", meta->sample_bytes());
+        }
         assert(meta->get_fpga_seq_num() == 0);
         assert(meta->get_offset_downsampling() > 0);
         assert(output_cursor * meta->get_offset_downsampling() % meta->sample_bytes() == 0);

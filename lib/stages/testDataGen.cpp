@@ -218,7 +218,6 @@ void testDataGen::main_thread() {
         std::vector<int> coarse_freq(_num_freq_in_frame);
         std::vector<int> freq_upchan_factor(coarse_freq.size());
         std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
-        std::vector<int> time_downsampling_fpga_per_frequency(coarse_freq.size());
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             if (_manual_freq_ids.size() > 0)
                 coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
@@ -228,13 +227,11 @@ void testDataGen::main_thread() {
                 coarse_freq[f] = f;
             freq_upchan_factor[f] = 1;
             half_fpga_sample0[f] = _meta_time_downsample_factor - 1;
-            time_downsampling_fpga_per_frequency[f] = _meta_time_downsample_factor;
         }
 
         chordmeta->set_coarse_freq(coarse_freq);
         chordmeta->set_freq_upchan_factor(freq_upchan_factor);
         chordmeta->set_half_fpga_sample0(half_fpga_sample0);
-        chordmeta->set_time_downsampling_fpga_per_frequency(time_downsampling_fpga_per_frequency);
         chordmeta->set_time_downsampling_fpga(_meta_time_downsample_factor);
 
         chordmeta->set_sample0_offset(frame_id_abs * samples_per_data_set
