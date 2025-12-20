@@ -27,16 +27,26 @@ using N2::frameID;
  * This stage accumulates output from the N2k GPU correlator into integrated
  * visibility buffers.
  *
+ * TODO:    - ERA binning
+ *          - fringestopping
+ *          - radiometer_chi2
+ *          - improved variance estimator
+ *
  * num_integrations := samples_per_dataset / sub_integration_ntime
  * num_freq := num_freq_per_n2k_frame
  *
- *
+ * num_corr_blocks_lin := num_elements / 16
+ * num_corr_blocks := num_corr_blocks_lin * (num_corr_blocks_lin + 1) / 2
+ * 
+ * num_count_blocks_lin := num_elements / 8 / 8     # 8 for blocksize,
+ *                                                  # 8 for downsampling
+ * num_count_blocks := num_count_blocks_lin * (num_count_blocks_lin + 1) / 2
  *
  * @par Buffers
- * @buffer  in_buf          Correlation buffer from n2k.
+ * @buffer  in_buf          Correlation buffer from n2k. Blocked Lower Triangular.
  *      @buffer_format      NDArray int32 [num_integrations, num_freq, num_corr_blocks, 16, 16, 2]
  *      @buffer_metadata    chordMetadata
- * @buffer  in_counts_buf   Counts buffer from n2k.
+ * @buffer  in_counts_buf   Counts buffer from n2k. Blocked Lower Triangular
  *      @buffer_format      NDArray int32 [num_integrations, num_freq, num_count_blocks, 8, 8]
  *      @buffer_metadata    chordMetadata
  * @buffer  in_rfimask_buf  RFImask buffer from n2k, the same mask used to compute
@@ -66,6 +76,8 @@ using N2::frameID;
  *                                          repeated this many times.
  * @conf    num_elements                    int64_t Number of elements (num_dish x num_pol) in
  *                                          the buffers.
+ * @conf    do_fringestop                   bool    Whether to fringestop incoming correlations.
+ *                                          Default: False
  */
 class N2Accumulate : public kotekan::Stage {
 public:
@@ -128,6 +140,7 @@ private:
 
     // Absolute frame counter (TODO: determine this another way)
     uint64_t _abs_frame_count;
+    const bool _do_fringestop;
 
     // Some derived parameters
 
