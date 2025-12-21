@@ -87,12 +87,12 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
             FATAL_ERROR("num_freq_per_n2k_frame is not positive: {:d}", _num_freq_per_n2k_frame);
 
         // accumulation setup
-        if (!_bin_in_ERA && (_num_n2k_samples_to_accumulate <= 0 || _num_n2k_samples_to_accumulate % 2 != 0))
-            FATAL_ERROR(
-                "N2Accumulate configured to use fixed-sample accumulation "
-                "(bin_in_ERA is false) with non-positive or odd (should be "
-                "positive and even!) num_n2k_samples_to_accumulate: {:d}",
-                _num_n2k_samples_to_accumulate);
+        if (!_bin_in_ERA
+            && (_num_n2k_samples_to_accumulate <= 0 || _num_n2k_samples_to_accumulate % 2 != 0))
+            FATAL_ERROR("N2Accumulate configured to use fixed-sample accumulation "
+                        "(bin_in_ERA is false) with non-positive or odd (should be "
+                        "positive and even!) num_n2k_samples_to_accumulate: {:d}",
+                        _num_n2k_samples_to_accumulate);
 
         if (!_packet_loss_is_scalar)
             FATAL_ERROR(
@@ -262,7 +262,8 @@ void N2Accumulate::main_thread() {
     std::vector<int32_t> vis_even(corr_stride_t, 0);
 
     int64_t next_accum_start_tick = 0;
-    int64_t fpga_ticks_per_accum = _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
+    int64_t fpga_ticks_per_accum =
+        _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
 
     // vis_even may be an odd frame if the first frame eencountered is odd,
     // since fpga_seq_num does not have to start from 0, in which case we skip
@@ -273,12 +274,16 @@ void N2Accumulate::main_thread() {
     EOP target_eop = eop_null;
 
     int num_dishes = _tel.cast<CHORDTelescope>().get_num_dishes();
+    // storage for a single frequency's fringe phases, declared here so it is only
+    // allocated once.
     std::vector<std::complex<double>> fringe_phase(num_dishes, 1.0);
 
     if (_num_elements % num_dishes != 0)
-        FATAL_ERROR("num_dishes {:d} (from telescope) is not a multiple of num_elements {:d}", num_dishes, _num_elements);
+        FATAL_ERROR("num_dishes {:d} (from telescope) is not a multiple of num_elements {:d}",
+                    num_dishes, _num_elements);
     assert(_num_elements % num_dishes == 0);
 
+    // We start with START.
     Mode mode = Mode::START;
 
     while (!stop_thread) {
@@ -354,10 +359,10 @@ void N2Accumulate::main_thread() {
         // Accumulate each visibility sample in the in_frame
         // t_outer
         for (int64_t vis_samp_n = 0; vis_samp_n < _n_integrations_per_n2k_frame; ++vis_samp_n) {
-            
+
             // "absolute" vis sample number
             int64_t vis_sample_num_abs = in_frame_num * _n_integrations_per_n2k_frame + vis_samp_n;
-            
+
             // sequence number of this sample in the frame.
             int64_t seq = seq0 + vis_samp_n * _n_fpga_samples_per_n2k_correlation;
 
@@ -373,8 +378,7 @@ void N2Accumulate::main_thread() {
                     _vis_samples_in_out_frame = 0;
                     _accum_fpga_start_tick = seq;
                     next_accum_start_tick += fpga_ticks_per_accum;
-                    target_eop = _tel.get_EOP_at_time(
-                            _tel.to_time(seq + fpga_ticks_per_accum/2));
+                    target_eop = _tel.get_EOP_at_time(_tel.to_time(seq + fpga_ticks_per_accum / 2));
 
                     mode = Mode::ACCUMULATING;
                     DEBUG("MODE: Setting accum_fpga_start_tick: {0:d}", _accum_fpga_start_tick);
@@ -383,11 +387,12 @@ void N2Accumulate::main_thread() {
 
             // If we're not ready to accumulate, keep on spinning until we reach the correct frame.
             if (mode != Mode::ACCUMULATING) {
-                DEBUG("Waiting for accumulation bin to start at seq {:d}, skipping visibility sample {:d} of {:d} in frame with seq {:d}.",
-                        next_accum_start_tick, vis_samp_n, _n_integrations_per_n2k_frame, seq);
+                DEBUG("Waiting for accumulation bin to start at seq {:d}, skipping visibility "
+                      "sample {:d} of {:d} in frame with seq {:d}.",
+                      next_accum_start_tick, vis_samp_n, _n_integrations_per_n2k_frame, seq);
                 continue;
             }
-            
+
             DEBUG("Accumulating new visibility sample ({:d} of {:d} in frame).", vis_samp_n,
                   _n_integrations_per_n2k_frame);
             // DEBUG("   Times are [start, end, out, num] = [{:d}, {:d}, {:d}, {:d}]",
@@ -444,14 +449,13 @@ void N2Accumulate::main_thread() {
                 // out of the correlation array into vis_tf.
                 if (!_do_fringestop) {
                     // Very easy without fringestopping!
-                    std::copy(corr + corr_offset_tf,
-                              corr + corr_offset_tf + corr_stride_f,
+                    std::copy(corr + corr_offset_tf, corr + corr_offset_tf + corr_stride_f,
                               vis_tf.begin());
                 } else {
                     // EOP in the middle of this sample.
                     EOP eop = _tel.get_EOP_at_time(
-                            _tel.to_time(seq + _n_fpga_samples_per_n2k_correlation / 2));
-                    
+                        _tel.to_time(seq + _n_fpga_samples_per_n2k_correlation / 2));
+
                     // Physical frequency for this f
                     double freq_MHz = _tel.to_freq_MHz(static_cast<freq_id_t>(frame_metadata->get_coarse_freq()[f]));
 
@@ -460,7 +464,7 @@ void N2Accumulate::main_thread() {
 
                     // Compute the fringestopped visibility and store it in vis_tf
                     uint64_t block_idx = 0;
-                    for(int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
+                    for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
                         for (int64_t jhi = 0; jhi <= ihi; jhi++) {
                             // For this stage to run, _num_elements must be a multiple of 64.
                             // Since correlation blocksize is 16, there will always be a muliple
@@ -474,15 +478,19 @@ void N2Accumulate::main_thread() {
                                 for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
                                     uint64_t di = di0 + ilo;
                                     uint64_t dj = dj0 + jlo;
-                                    uint64_t idx = idx0 + 2 * (ilo * _n2k_correlation_blocksize + jlo);
+                                    uint64_t idx =
+                                        idx0 + 2 * (ilo * _n2k_correlation_blocksize + jlo);
                                     // To apply phases:
                                     //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
                                     //                   = V_ij * Phase_i * conj(Phase_j)
-                                    std::complex<double> phase = fringe_phase[di] * std::conj(fringe_phase[dj]);
-                                    vis_tf[idx + 0] += phase.real() * corr[corr_offset_tf + idx]
-                                                     - phase.imag() * corr[corr_offset_tf + idx + 1];
-                                    vis_tf[idx + 1] += phase.imag() * corr[corr_offset_tf + idx]
-                                                     + phase.real() * corr[corr_offset_tf + idx + 1];
+                                    std::complex<double> phase =
+                                        fringe_phase[di] * std::conj(fringe_phase[dj]);
+                                    vis_tf[idx + 0] +=
+                                        phase.real() * corr[corr_offset_tf + idx]
+                                        - phase.imag() * corr[corr_offset_tf + idx + 1];
+                                    vis_tf[idx + 1] +=
+                                        phase.imag() * corr[corr_offset_tf + idx]
+                                        + phase.real() * corr[corr_offset_tf + idx + 1];
                                 } // jlo
                             } // ilo
                             block_idx++;
@@ -501,12 +509,11 @@ void N2Accumulate::main_thread() {
                 // with an odd sample. If odd, difference and add squares to the
                 // _weights matrix.
                 if (_vis_samples_in_out_frame % 2 == 0) {
-                    std::copy(vis_tf.begin(), vis_tf.end(),
-                              vis_even.begin() + vis_offset_f);
+                    std::copy(vis_tf.begin(), vis_tf.end(), _vis_even.begin() + vis_offset_f);
                 } else {
                     for (uint64_t d = 0; d < corr_stride_f / 2; d++) {
-                        float dr = vis_tf[2*d + 0] - vis_even[vis_offset_f + 2*d + 0];
-                        float di = vis_tf[2*d + 1] - vis_even[vis_offset_f + 2*d + 1];
+                        float dr = vis_tf[2 * d + 0] - _vis_even[vis_offset_f + 2 * d + 0];
+                        float di = vis_tf[2 * d + 1] - _vis_even[vis_offset_f + 2 * d + 1];
                         _weights[weight_offset_f + d] += dr * dr + di * di;
                     } // d
                 } // if even/odd
@@ -548,8 +555,8 @@ void N2Accumulate::main_thread() {
 
                 _vis_samples_in_out_frame = 0;
                 _accum_fpga_start_tick = seq + _n_fpga_samples_per_n2k_correlation;
-                target_eop = _tel.get_EOP_at_time(
-                        _tel.to_time(seq + _n_fpga_samples_per_n2k_correlation + fpga_ticks_per_accum/2));
+                target_eop = _tel.get_EOP_at_time(_tel.to_time(
+                    seq + _n_fpga_samples_per_n2k_correlation + fpga_ticks_per_accum / 2));
                 next_accum_start_tick += fpga_ticks_per_accum;
             }
 
@@ -564,7 +571,7 @@ void N2Accumulate::main_thread() {
     }
 }
 
-void N2Accumulate::accumulate_rfimask_in_sample(const uint8_t *rfimask, int64_t t_vis) {
+void N2Accumulate::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_vis) {
     // Sum the RFI mask
     //
     // Each RFI mask frame has structure:
@@ -598,8 +605,7 @@ void N2Accumulate::accumulate_rfimask_in_sample(const uint8_t *rfimask, int64_t 
 
     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
         for (int64_t t = t_vis * _n_fpga_samples_per_n2k_correlation;
-             t < (t_vis + 1) * _n_fpga_samples_per_n2k_correlation;
-             t += _rfi_downsampling_factor) {
+             t < (t_vis + 1) * _n_fpga_samples_per_n2k_correlation; t += _rfi_downsampling_factor) {
 
             // Casting to a uint64_t here is a micro-optimization,
             // the assembly is slighty simpler if the compliler knows
@@ -609,8 +615,7 @@ void N2Accumulate::accumulate_rfimask_in_sample(const uint8_t *rfimask, int64_t 
 
             int64_t idx = thi * rfi_stride_thi + f * rfi_stride_f + tlo;
 
-            _n_rfi_samples_in_vis[f] +=
-                (1 - (rfimask[idx] & 0x1)) * _rfi_downsampling_factor;
+            _n_rfi_samples_in_vis[f] += (1 - (rfimask[idx] & 0x1)) * _rfi_downsampling_factor;
         }
 
     } // f
@@ -732,22 +737,20 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
                         float bias = std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
 
                         /*
-                        DEBUG("{} {} w1: {:.12f} v2: {:.12f} |v|^2: {:.12f}, dN^2: {:.12f} |v|^2 dN^2: {:.12f} diff: {:.12e} ==: {}",
-                                    i, j,
-                                    _weights[idx], std::norm(v), std::norm(v)*ins*ins, _n_valid_sample_diff_sq_sum[f],
-                                    bias,
-                                    _weights[idx] - bias,
-                                    _weights[idx] == bias);
+                        DEBUG("{} {} w1: {:.12f} v2: {:.12f} |v|^2: {:.12f}, dN^2: {:.12f} |v|^2
+                        dN^2: {:.12f} diff: {:.12e} ==: {}", i, j, _weights[idx], std::norm(v),
+                        std::norm(v)*ins*ins, _n_valid_sample_diff_sq_sum[f], bias, _weights[idx] -
+                        bias, _weights[idx] == bias);
                         */
 
                         if (ns > 0) {
                             _weights[idx] -= bias;
                         }
-                        
-                        //DEBUG("{} {} w2: {}", i, j, _weights[idx]);
+
+                        // DEBUG("{} {} w2: {}", i, j, _weights[idx]);
 
                         out_vis.weight[n2_idx] = (ns > 0) ? ns * (ns / _weights[idx]) : 0;
-                        //DEBUG("{} {} w3: {}", i, j, out_vis.weight[n2_idx]);
+                        // DEBUG("{} {} w3: {}", i, j, out_vis.weight[n2_idx]);
                     } // jlo
                 } // ilo
 

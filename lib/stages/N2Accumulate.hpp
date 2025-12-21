@@ -37,7 +37,7 @@ using N2::frameID;
  *
  * num_corr_blocks_lin := num_elements / 16
  * num_corr_blocks := num_corr_blocks_lin * (num_corr_blocks_lin + 1) / 2
- * 
+ *
  * num_count_blocks_lin := num_elements / 8 / 8     # 8 for blocksize,
  *                                                  # 8 for downsampling
  * num_count_blocks := num_count_blocks_lin * (num_count_blocks_lin + 1) / 2
@@ -56,7 +56,7 @@ using N2::frameID;
  * @buffer  out_buf         The accumulated and tagged data.
  *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
  *      @buffer_metadata N2Metadata
- * 
+ *
  * @conf    num_freq_per_n2k_frame          int64_t Number of frequencies in
  *                                          buffers, required.
  * @conf    num_n2k_samples_to_accumulate   int64_t Number of samples (subintegrations)
@@ -99,7 +99,7 @@ public:
      * @param   t_vis   Time index denoting the current sample being accumulated,
      *                  in [0, samples_per_dataset / sub_integration_ntime)
      */
-    void accumulate_rfimask_in_sample(const uint8_t *rfimask, int64_t t_vis);
+    void accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_vis);
 
     /**
      * @brief Copy accumulated visibility matrix and weights to the output buffer,

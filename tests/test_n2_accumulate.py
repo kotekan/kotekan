@@ -28,7 +28,7 @@ global_params = {
     "num_elements": 64,
     "num_dishes": 32,
     "num_ev": 0,
-    "samples_per_data_set": 16384,   # Must be at least 4x sub_integration_ntime
+    "samples_per_data_set": 16384,  # Must be at least 4x sub_integration_ntime
     "sub_integration_ntime": 4096,
     "rfi_downsampling_factor": 256,
     "num_local_freq": nfreq,
@@ -136,20 +136,28 @@ global_params = {
 
 accumulate_params = {
     "num_freq_per_n2k_frame": "num_local_freq",
-    "num_n2k_samples_to_accumulate": 6,   # Must be even, and not a multiple of
-                                          # (samples_per_dataset /
-                                          #  sub_integration_ntime)
+    "num_n2k_samples_to_accumulate": 6,  # Must be even, and not a multiple of
+    # (samples_per_dataset /
+    #  sub_integration_ntime)
     "packet_loss_is_scalar": True,
     "vis_layout": "FullUpperTri",
     "log_level": "DEBUG"
 }
 
+
 def get_accum_start_idx(glob_params, accum_params):
-    seq_per_accum = accumulate_params['num_n2k_samples_to_accumulate'] * glob_params['sub_integration_ntime']
+    seq_per_accum = (
+        accumulate_params["num_n2k_samples_to_accumulate"]
+        * glob_params["sub_integration_ntime"]
+    )
 
-    seq_start = start_frame_idx * glob_params['samples_per_data_set']
+    seq_start = start_frame_idx * glob_params["samples_per_data_set"]
 
-    accum_seq0 = seq_start if seq_start % seq_per_accum == 0 else seq_per_accum * (seq_start // seq_per_accum + 1)
+    accum_seq0 = (
+        seq_start
+        if seq_start % seq_per_accum == 0
+        else seq_per_accum * (seq_start // seq_per_accum + 1)
+    )
 
     accum_idx0 = accum_seq0 // seq_per_accum
 
@@ -179,8 +187,7 @@ def accumulate_data(tmpdir_factory):
             "freq_ids": freq_ids,
             "num_frames": global_params["total_frames"],
         },
-        {"type": "const", "values": rfi_vals,
-         "first_frame_index": start_frame_idx},
+        {"type": "const", "values": rfi_vals, "first_frame_index": start_frame_idx},
     )
 
     # Number of accumulated frames expected at the output (per freq).
@@ -272,9 +279,7 @@ def gen_vis_data(t_idx, f_idx):
         # print(vis[-3:], diff_N_sq[-3:], vis[-3:].real**2 + vis[-3:].imag**2)
         # print(diff_vis_sq[-3:], bias[-3:], diff_vis_sq[-3:] - bias[-3:])
         good = diff_vis_sq != bias
-        weights[good] = total_counts ** 2 / (
-            (diff_vis_sq - bias)[good]
-        )
+        weights[good] = total_counts ** 2 / ((diff_vis_sq - bias)[good])
     else:
         vis[:] = 0.0
         weights[:] = 0.0
@@ -423,7 +428,9 @@ def test_accumulate(accumulate_data):
         # debiasing.  var ~ bias / N^2, bias ~ v^2 N^2 ==> var ~ v^2
         # float32 has prec ~ 1e-7
         # add squishy factor of 10 just in case
-        var_atol = 10 * 1.0e-7 * (vis_pat.real**2 + vis_pat.imag**2 + 1/counts**2)
+        var_atol = (
+            10 * 1.0e-7 * (vis_pat.real ** 2 + vis_pat.imag ** 2 + 1 / counts ** 2)
+        )
         var_rtol = 1.0e-4
 
         assert frame.metadata.n_valid_fpga_ticks == counts
@@ -435,7 +442,9 @@ def test_accumulate(accumulate_data):
 
 def test_rfi(accumulate_data):
 
-    num_integrations = global_params["samples_per_data_set"] // global_params["sub_integration_ntime"]
+    num_integrations = (
+        global_params["samples_per_data_set"] // global_params["sub_integration_ntime"]
+    )
 
     for idx, frame in enumerate(accumulate_data):
 
@@ -444,7 +453,7 @@ def test_rfi(accumulate_data):
         subframe_idx = start_tick // global_params["sub_integration_ntime"]
 
         n_rfi = 0
-        for _ in range(accumulate_params['num_n2k_samples_to_accumulate']):
+        for _ in range(accumulate_params["num_n2k_samples_to_accumulate"]):
             dset_idx = subframe_idx // num_integrations
             mask_val = 0 if rfi_vals[dset_idx % len(rfi_vals)] == 0 else 1
             n_rfi += (1 - mask_val) * global_params["sub_integration_ntime"]

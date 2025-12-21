@@ -305,7 +305,7 @@ void testN2kGen::main_thread() {
     std::uniform_int_distribution<int32_t> count_dist(count_min, count_max);
     std::uniform_int_distribution<int32_t> corr_real_dist(corr_min[0], corr_max[0]);
     std::uniform_int_distribution<int32_t> corr_imag_dist(corr_min[1], corr_max[1]);
-   
+
     int count_val_idx = 0;
     if (count_type == "const_scalar")
         count_val_idx = t_idx_start * num_local_freq;
