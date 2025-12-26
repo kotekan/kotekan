@@ -19,6 +19,7 @@
 
 #include <algorithm>          // for equal
 #include <array>              // for array
+#include <atomic>             // for atomic
 #include <condition_variable> // for condition_variable_any
 #include <cstddef>            // for size_t, ptrdiff_t
 #include <map>                // for map
@@ -297,6 +298,24 @@ protected:
     std::condition_variable_any empty_cond;
 
     void private_copy_metadata(int dest_frame_id, GenericBuffer* src, int src_frame_id);
+
+private:
+    static std::atomic<bool>& access_stall_flag() {
+        static std::atomic<bool> stall(false); // for debugging, stop all processing
+        return stall;
+    }
+    void wait_while_stalled() {
+        while (access_stall_flag())
+            ;
+    }
+
+public:
+    static void block_processing() {
+        access_stall_flag() = true;
+    }
+    static void unblock_processing() {
+        access_stall_flag() = false;
+    }
 };
 
 /**
