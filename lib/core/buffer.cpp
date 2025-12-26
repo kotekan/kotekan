@@ -439,7 +439,7 @@ void Buffer::print_full_status() {
 
     DEBUG2("{:<40} : {:}", "Full Frames (X)", std::string(status_string));
 
-    DEBUG2("---- Producers ----");
+    DEBUG2("---- Producers ({:d}) ----", producers.size());
     for (auto& xit : producers) {
         auto& x = xit.second;
         for (int i = 0; i < num_frames; ++i) {
@@ -452,7 +452,7 @@ void Buffer::print_full_status() {
                x.last_frame_acquired, x.last_frame_released);
     }
 
-    DEBUG2("---- Consumers ----");
+    DEBUG2("---- Consumers ({:d}) ----", consumers.size());
     for (auto& xit : consumers) {
         auto& x = xit.second;
         for (int i = 0; i < num_frames; ++i) {
