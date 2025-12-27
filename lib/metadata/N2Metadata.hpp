@@ -1,7 +1,8 @@
 #ifndef N2_METADATA
 #define N2_METADATA
 
-#include "Config.hpp" // for Config
+#include "Config.hpp"   // for Config
+#include "N2Layout.hpp" // for N2Layout
 #include "N2Metadata.hpp"
 #include "buffer.hpp"         // for Buffer
 #include "kotekanLogging.hpp" // for WARN_NON_OO
@@ -20,30 +21,11 @@ using kotekan::Config;
 #include <string>   // for operator==, char_traits, basic_string
 #include <vector>   // for vector
 
-enum class N2Layout : int32_t { FullUpperTri = 0, RedundantBaselineAvg = 1, Autocorrelations = 2 };
-
-void to_json(nlohmann::json& j, const N2Layout& t);
-void from_json(const nlohmann::json& j, N2Layout& t);
-
-inline std::string N2Layout_to_string(N2Layout l) {
-    nlohmann::json j = l;
-    return j.get<std::string>();
-}
-
 // Struct containing metadata fields for an N2 frame
 struct N2MetadataFormat {
 
-    /// Number of elements for data in buffer
-    uint32_t num_elements;
-    /// Number of products in the data
-    uint32_t num_prod;
-    /// Number of eigenvectors and values calculated
-    uint32_t num_ev;
     /// Total number of frequencies in pipeline
     uint32_t nfreq;
-
-    /// enum specifying the layout type of the visibility matrix.
-    N2Layout vis_layout;
 
     /// ID of the frequency bin
     uint32_t freq_id; // this is an int in chordMetadata, maybe change later
@@ -98,6 +80,9 @@ public:
     size_t serialize(char* bytes) override;
 
     nlohmann::json to_json() override;
+
+    // Verify that this metadata object is compatible with the given frame description
+    void check_frame_desc(const std::shared_ptr<const kotekan::FrameDesc>& frame_desc) const;
 };
 
 void to_json(nlohmann::json& j, const N2Metadata& m);

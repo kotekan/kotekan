@@ -1,5 +1,6 @@
 #include "N2Metadata.hpp"
 
+#include "N2FrameDesc.hpp"
 #include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
 #include "timeUtil.hpp" // for EOP()
 
@@ -7,9 +8,7 @@
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, N2Metadata);
 N2Metadata::N2Metadata() :
-    N2MetadataFormat{
-        0, 0, 0, 0, N2Layout::FullUpperTri, 0, 0.0, 0, eop_null, eop_null, 0, 0, 0, 0, 0,
-        0, 0, 0, 0} {
+    N2MetadataFormat{0, 0, 0.0, 0, eop_null, eop_null, 0, 0, 0, 0, 0, 0, 0, 0, 0} {
     ;
 }
 
@@ -46,12 +45,7 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
     bin_start_LAST = fmt->bin_start_LAST;
     bin_end_LAST = fmt->bin_end_LAST;
 
-    num_elements = fmt->num_elements;
-    num_prod = fmt->num_prod;
-    num_ev = fmt->num_ev;
     nfreq = fmt->nfreq;
-
-    vis_layout = fmt->vis_layout;
 
     return sizeof(N2MetadataFormat);
 }
@@ -77,12 +71,7 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->bin_start_LAST = bin_start_LAST;
     fmt->bin_end_LAST = bin_end_LAST;
 
-    fmt->num_elements = num_elements;
-    fmt->num_prod = num_prod;
-    fmt->num_ev = num_ev;
     fmt->nfreq = nfreq;
-
-    fmt->vis_layout = vis_layout;
 
     return sizeof(N2MetadataFormat);
 }
@@ -91,6 +80,15 @@ nlohmann::json N2Metadata::to_json() {
     nlohmann::json rtn = {};
     ::to_json(rtn, *this);
     return rtn;
+}
+
+void N2Metadata::check_frame_desc(
+    const std::shared_ptr<const kotekan::FrameDesc>& frame_desc) const {
+    auto n2_desc = frame_desc->as<kotekan::N2FrameDesc>();
+    if (!n2_desc) {
+        WARN_NON_OO("Frame description is not an N2FrameDesc!");
+        return;
+    }
 }
 
 void to_json(nlohmann::json& j, const N2Metadata& m) {
@@ -114,11 +112,7 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
     j.emplace("bin_start_LAST", m.bin_start_LAST);
     j.emplace("bin_end_LAST", m.bin_end_LAST);
 
-    j.emplace("num_elements", m.num_elements);
-    j.emplace("num_prod", m.num_prod);
-    j.emplace("num_ev", m.num_ev);
     j.emplace("nfreq", m.nfreq);
-    j.emplace("vis_layout", m.vis_layout);
 }
 
 void from_json(const nlohmann::json& j, N2Metadata& m) {
@@ -140,38 +134,5 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.bin_start_LAST = j.at("bin_start_LAST");
     m.bin_end_LAST = j.at("bin_end_LAST");
 
-    m.num_elements = j.at("num_elements");
-    m.num_prod = j.at("num_prod");
-    m.num_ev = j.at("num_ev");
     m.nfreq = j.at("nfreq");
-    m.vis_layout = j.at("vis_layout");
-}
-
-void to_json(nlohmann::json& j, const N2Layout& l) {
-    switch (l) {
-        case N2Layout::FullUpperTri:
-            j = "FullUpperTri";
-            break;
-        case N2Layout::RedundantBaselineAvg:
-            j = "RedundantBaselineAvg";
-            break;
-        case N2Layout::Autocorrelations:
-            j = "Autocorrelations";
-            break;
-        default:
-            throw std::runtime_error(
-                fmt::format("to_json - unknown N2Layout value: {:s}", static_cast<int32_t>(l)));
-            break;
-    }
-}
-
-void from_json(const nlohmann::json& j, N2Layout& l) {
-    if (j == "FullUpperTri")
-        l = N2Layout::FullUpperTri;
-    else if (j == "RedundantBaselineAvg")
-        l = N2Layout::RedundantBaselineAvg;
-    else if (j == "Autocorrelations")
-        l = N2Layout::Autocorrelations;
-    else
-        throw std::runtime_error(fmt::format("from_json - unknown N2Layout: {}", j.dump()));
 }

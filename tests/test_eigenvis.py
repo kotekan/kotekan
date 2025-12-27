@@ -10,11 +10,9 @@ import numpy as np
 
 from kotekan import runner
 
-
 # Fail if run when the eigenVis stage is not built
 if not runner.has_eigenvis():
     pytest.fail("eigenVis stage not available; unable to run tests!")
-
 
 default_params = {
     "num_elements": 200,
@@ -27,35 +25,6 @@ default_params = {
     "buffer_depth": 5,
     "num_diagonals_filled": 0,
     "dataset_manager": {"use_dataset_broker": False},
-    "earth_rotation_data": {
-        "kotekan_update_endpoint": "json",
-        "earth_orientation_parameter_table": [
-            {"time_inst_ns": 0, "delta_UT1_inst": 0.0, "x_pm": 0.0, "y_pm": 0.0,},
-            {
-                "time_inst_ns": 3_000_000_000 * 1_000_000_000,
-                "delta_UT1_inst": 0.0,
-                "x_pm": 0.0,
-                "y_pm": 0.0,
-            },
-        ],
-    },
-    "telescope": {
-        "name": "CHORDTelescope",
-        "require_gps": False,
-        "origin_itrs_lon_deg": -119.62081125,
-        "origin_itrs_lat_deg": 49.32075144444,
-        "grid_x_axis": [1, 0, 0],
-        "grid_y_axis": [0, 1, 0],
-        "dish_elev_axis": [1, 0, 0],
-        "dish_vert_axis": [0, 0, 1],
-        "dish_coelev_deg": 0.0,
-        "num_dishes_x": 22,
-        "num_dishes_y": 24,
-        "updatable_config": "/earth_rotation_data",
-        "dish_inputs": [],
-    },
-    "num_dishes": 100,
-    "gps_time": {"frame0_nano": 0},
 }
 
 
@@ -66,13 +35,11 @@ def run_eigenvis(tdir_factory, params=None):
 
     tmpdir = tdir_factory.mktemp("eigenvis")
 
-    fakevis_buffer = runner.FakeN2Buffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=params["freq"], num_frames=params["total_frames"], mode=params["mode"]
     )
 
-    dump_buffer = runner.DumpN2Buffer(
-        str(tmpdir), exit_after_n_files=params["total_frames"]
-    )
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
         "eigenVis", {}, fakevis_buffer, dump_buffer, params

@@ -77,6 +77,10 @@ void N2FringeStop::main_thread() {
             break;
         }
 
+        // Propagate descriptor
+        out_buf->set_frame_desc(
+            std::const_pointer_cast<kotekan::FrameDesc>(in_buf->get_frame_description()));
+
         N2FrameView in_frame(in_buf, frame_id);
 
         DEBUG("Input frame - num_elements: {:d}", in_frame.num_elements);

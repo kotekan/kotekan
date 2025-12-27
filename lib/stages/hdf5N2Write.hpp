@@ -42,7 +42,7 @@
  *
  * @par File layout
  * - Attributes: version, file_mode (CHORD/CHIME), abs_file_idx,
- *   num_file_t, num_elements, num_prod, num_ev, num_freq, vis_layout, telescope
+ *   num_file_t, num_elements, num_prod, num_ev, num_freq, n2_layout, telescope
  *   geometry (origin, orientations, dish maps), EOP tables, num_file_f.
  * - Index maps: /index_map/freq (MHz + width per file frequency), /index_map/prod,
  *   /index_map/grid_x_idx, /index_map/grid_y_idx, /index_map/feed_pos_disp_m,
@@ -87,7 +87,7 @@ public:
     const uint64_t abs_file_idx;        // absolute file index (abs_time_idx / num_file_t)
     const std::string base_dir;         // base output directory (without /.partial)
     const std::string partial_filepath; // working on-disk location
-    const N2Layout vis_layout;          // visibility layout
+    const N2Layout n2_layout;           // visibility (N2) layout
 
     double last_update_wall_s;               // last frame receipt
     std::unique_ptr<HighFive::File> h5_file; // Working on-disk HDF5 file handle

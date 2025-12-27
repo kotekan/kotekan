@@ -2,6 +2,7 @@
 #define TEST_UTILS_HPP
 
 #include "Config.hpp"
+#include "N2FrameDesc.hpp"
 #include "N2FrameView.hpp"
 #include "N2Metadata.hpp"
 #include "buffer.hpp"
@@ -301,10 +302,10 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     auto meta = get_N2_metadata(buf, frame_id);
     BOOST_REQUIRE(meta);
 
-    const size_t num_prod = N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri);
-    meta->num_elements = num_input;
-    meta->num_prod = num_prod;
-    meta->num_ev = num_ev;
+    const size_t num_prod = kotekan::N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
+    // meta->num_elements = num_input;
+    // meta->num_prod = num_prod;
+    // meta->num_ev = num_ev;
     meta->nfreq = nfreq;
     meta->freq_id = f_index;
     meta->fpga_start_tick = 100 + t_index;

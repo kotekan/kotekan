@@ -43,7 +43,7 @@ gpuSimulateN2kPLExpand::gpuSimulateN2kPLExpand(Config& config, const std::string
     int nt = _samples_per_data_set / 64;
     int nf = _num_local_freq;
     int ne = _num_elements / 8;
-    output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::uint1x8>::type, 5>(
+    output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::uint1x8>::type, 5>(
         "pl_mask", {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"});
 }
 

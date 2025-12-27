@@ -339,16 +339,16 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     // I1_buffer->register_producer(unique_name);
 
     if (scatter_indices_buffer)
-        scatter_indices_buffer->allocate_new_frame_desc<std::int32_t, 2>(
+        scatter_indices_buffer->allocate_ndarray_frame_desc<std::int32_t, 2>(
             "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"});
-    bf_mask_buffer->allocate_new_frame_desc<std::int8_t, 2>(
+    bf_mask_buffer->allocate_ndarray_frame_desc<std::int8_t, 2>(
         "bf_mask", {num_polarizations, num_dishes}, {"P", "D"});
-    bb_beam_positions_buffer->allocate_new_frame_desc<float, 2>("bb_beam_positions",
-                                                                {bb_num_beams, 2}, {"B", "EW/NS"});
-    A_buffer->allocate_new_frame_desc<std::int8_t, 5>(
+    bb_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
+        "bb_beam_positions", {bb_num_beams, 2}, {"B", "EW/NS"});
+    A_buffer->allocate_ndarray_frame_desc<std::int8_t, 5>(
         "A", {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
         {"F", "P", "B", "D", "C"});
-    s_buffer->allocate_new_frame_desc<std::int32_t, 3>(
+    s_buffer->allocate_ndarray_frame_desc<std::int32_t, 3>(
         "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"});
     // CHORD and CHIME use different conventions for the (M,N) dish indices and (P,Q) beam
     // indices
@@ -365,16 +365,16 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         const int U = upchan_factor(Ufactor);
         Buffer* const G_buffer = G_buffers.at(Ufactor);
         if (G_buffer)
-            G_buffer->allocate_new_frame_desc<float16_t, 1>(
+            G_buffer->allocate_ndarray_frame_desc<float16_t, 1>(
                 "G", {upchan_max_num_channelss[Ufactor] * U}, {"Fbar"});
         Buffer* const W1_buffer = W1_buffers.at(Ufactor);
-        W1_buffer->allocate_new_frame_desc<float16_t, 5>("W",
-                                                         {upchan_max_num_channelss[Ufactor] * U,
-                                                          num_polarizations, num_dishes_N,
-                                                          num_dishes_M, num_components},
-                                                         {"F", "P", "dishN", "dishM", "C"});
+        W1_buffer->allocate_ndarray_frame_desc<float16_t, 5>("W",
+                                                             {upchan_max_num_channelss[Ufactor] * U,
+                                                              num_polarizations, num_dishes_N,
+                                                              num_dishes_M, num_components},
+                                                             {"F", "P", "dishN", "dishM", "C"});
     }
-    W2_buffer->allocate_new_frame_desc<float16_t, 4>(
+    W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>(
         "W2",
         {upchan_all_max_output_channel - upchan_all_min_output_channel,
          frb2_num_beams_ns * frb2_num_beams_ew, num_beams_Q, num_beams_P},
@@ -382,16 +382,16 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     if (receive_chime) {
         // Use the CHIME input buffer layout (one buffer per frequency)
         for (auto E_buffer_chime : E_buffers_chime)
-            E_buffer_chime->allocate_new_frame_desc<
+            E_buffer_chime->allocate_ndarray_frame_desc<
                 kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 2>(
                 "E", {num_times, num_dishes * num_polarizations}, {"T", "E"});
     } else {
         // Use CHORDs input buffer layout
-        E_buffer_chord->allocate_new_frame_desc<
+        E_buffer_chord->allocate_ndarray_frame_desc<
             kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 4>(
             "E", {num_times, num_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"});
     }
-    pl_mask_buffer->allocate_new_frame_desc<kotekan::uint1x8_t, 5>(
+    pl_mask_buffer->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 5>(
         "pl_mask",
         {num_times / 2 / 64, num_frequencies / 4, num_polarizations, num_dishes / 8, 64 / 8},
         {"T2hi64", "F4", "P", "D8", "T2lo64"});

@@ -219,7 +219,7 @@ void lostSamplesToPLMask::main_thread() {
         lost_samples_buf_frame_id =
             (lost_samples_buf_frame_id + 1) % lost_samples_bufs.at(0)->num_frames;
 
-        pl_mask_buf->allocate_new_frame_desc<kotekan::GetType_t<kotekan::uint1x8>, 5>(
+        pl_mask_buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::uint1x8>, 5>(
             "pl_mask",
             {ptrdiff_t(lost_samples_bufs.at(0)->frame_size / PL_MASK_DOWNSAMPLING_FACTOR
                        / PL_MASK_HILO_SPLIT),

@@ -71,13 +71,13 @@ recv_buffer_noCT:
 send_N2_buffer:
     kotekan_buffer: N2
     metadata_pool: N2_pool
-    vis_layout: "FullUpperTri"
+    n2_layout: "FullUpperTri"
     num_frames: buffer_depth
 
 recv_N2_buffer:
     kotekan_buffer: N2
     metadata_pool: N2_pool
-    vis_layout: "FullUpperTri"
+    n2_layout: "FullUpperTri"
     num_frames: buffer_depth
 
 

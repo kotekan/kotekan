@@ -213,7 +213,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "num_ev", fv.num_ev);
         _check_create_attribute(*file, "num_freq",
                                 fv.nfreq); // telescope frequencies (not file freqs)
-        _check_create_attribute(*file, "vis_layout", N2Layout_to_string(fv.vis_layout));
+        _check_create_attribute(*file, "n2_layout", N2Layout_to_string(fv.n2_layout));
 
         // Telescope info
         const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
@@ -438,7 +438,7 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     compression_level(compression_level_), use_bitshuffle(use_bitshuffle_),
     open_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_), base_dir(std::move(base_dir_)),
     partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(abs_file_idx_) + ".h5"),
-    vis_layout(fv.vis_layout), last_update_wall_s(open_wall_s_),
+    n2_layout(fv.n2_layout), last_update_wall_s(open_wall_s_),
     h5_file(_open_or_create_file(partial_filepath, num_file_t_, fv, file_mode)) {
 
     if (!h5_file) {
@@ -494,9 +494,9 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     };
 
     // Structural data consistency checks
-    if (vis_layout != fv.vis_layout
-        || fv.vis.size() != N2FrameView::get_num_prod(fv.num_elements, fv.vis_layout)
-        || fv.weight.size() != N2FrameView::get_num_prod(fv.num_elements, fv.vis_layout)
+    if (n2_layout != fv.n2_layout
+        || fv.vis.size() != kotekan::N2FrameDesc::get_num_prod(fv.num_elements, fv.n2_layout)
+        || fv.weight.size() != kotekan::N2FrameDesc::get_num_prod(fv.num_elements, fv.n2_layout)
         || fv.eval.size() != fv.num_ev || fv.evec.size() != fv.num_ev * fv.num_elements
         || fv.gain.size() != fv.num_elements || fv.flags.size() != fv.num_elements
         || fv.num_elements != num_elements || fv.num_prod != num_prod || fv.num_ev != num_ev

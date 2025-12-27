@@ -106,7 +106,7 @@ fake_rfimask_buffer:
 
 n2_buffer:
     kotekan_buffer: N2
-    vis_layout: "FullUpperTri"
+    n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 

@@ -485,12 +485,6 @@ int testDataCheck<A_Type>::check_N2_metadata(const std::shared_ptr<const N2Metad
     int num_errors = 0;
 
     // Basic dimensionality and indexing
-    CHECK_META_SCALAR_INT_DIRECT(num_elements, meta1, meta2, num_errors, first_buf->buffer_name,
-                                 first_buf_id, second_buf->buffer_name, second_buf_id);
-    CHECK_META_SCALAR_INT_DIRECT(num_prod, meta1, meta2, num_errors, first_buf->buffer_name,
-                                 first_buf_id, second_buf->buffer_name, second_buf_id);
-    CHECK_META_SCALAR_INT_DIRECT(num_ev, meta1, meta2, num_errors, first_buf->buffer_name,
-                                 first_buf_id, second_buf->buffer_name, second_buf_id);
     CHECK_META_SCALAR_INT_DIRECT(nfreq, meta1, meta2, num_errors, first_buf->buffer_name,
                                  first_buf_id, second_buf->buffer_name, second_buf_id);
 

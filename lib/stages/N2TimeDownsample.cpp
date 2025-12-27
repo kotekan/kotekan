@@ -115,6 +115,10 @@ void N2TimeDownsample::main_thread() {
             num_elements = frame.num_elements;
             num_eigenvectors = frame.num_ev;
 
+            // Set output buffer descriptor
+            out_buf->set_frame_desc(
+                std::const_pointer_cast<kotekan::FrameDesc>(in_buf->get_frame_description()));
+
             era_bin_idx = (uint32_t)(frame.bin_eop.ERA_deg / era_bin_width);
             era_deg_lo = era_bin_idx * era_bin_width;
             era_deg_hi = (era_bin_idx + 1) * era_bin_width;

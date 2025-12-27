@@ -188,11 +188,11 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         FATAL_ERROR("N2Accumulate in_rfimask_buf ({:s}) has frame size {:d}. Expected {:d}.",
                     in_rfimask_buf->buffer_name, in_rfimask_buf->frame_size, in_rfimask_frame_size);
 
-    size_t out_n2_frame_size =
-        N2FrameView::calculate_frame_size(_num_elements, 0, _N2_num_products); // Enforce 0 ev
-    if (out_buf->frame_size != out_n2_frame_size)
-        FATAL_ERROR("N2Accumulate out_buf ({:s}) has frame size {:d}. Expected {:d}.",
-                    out_buf->buffer_name, out_buf->frame_size, out_n2_frame_size);
+    // Set the frame description for the output buffer
+    // Done in the constructor, since we know frame properties definitively
+    auto out_desc = std::make_shared<kotekan::N2FrameDesc>(_num_elements, 0, _N2_num_products,
+                                                           N2Layout::FullUpperTri);
+    out_buf->set_frame_desc(out_desc);
 
     // TODO... Should we ensure output buffer has enough frames (>= # frequencies) to take the
     // output without filling completely?
@@ -434,10 +434,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
         meta->fpga_start_tick = _accum_fpga_start_tick;
         meta->frame_length_fpga_ticks =
             _vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation;
-        meta->num_elements = _num_elements;
-        meta->num_prod = _N2_num_products;
-        meta->num_ev = 0;
-        meta->vis_layout = N2Layout::FullUpperTri;
+
         meta->abs_time_idx = _accum_fpga_start_tick
                              / (_vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation);
         meta->nfreq = _num_freq_per_n2k_frame;

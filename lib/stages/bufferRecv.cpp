@@ -557,8 +557,8 @@ void connInstance::internal_read_callback() {
                                         strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
                     }
 
-                    buf->allocate_new_frame_desc(chord->type, chord->get_name(), dimensions,
-                                                 dimnames);
+                    buf->allocate_ndarray_frame_desc(chord->type, chord->get_name(), dimensions,
+                                                     dimnames);
                     /* test that things are consistent */
                     chord->check_frame_desc(buf->get_frame_desc());
                 }

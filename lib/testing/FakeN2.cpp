@@ -2,6 +2,7 @@
 
 #include "CHORDTelescope.hpp"  // for CHORDTelescope, EOP
 #include "Config.hpp"          // for Config
+#include "N2FrameDesc.hpp"     // for N2FrameDesc
 #include "N2FrameView.hpp"     // for N2FrameView
 #include "N2Metadata.hpp"      // for N2Metadata, get_N2_metadata
 #include "N2Util.hpp"          // for get_num_prod
@@ -31,8 +32,8 @@ using namespace std::placeholders;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::N2FrameDesc;
 using kotekan::Stage;
-
 
 REGISTER_KOTEKAN_STAGE(FakeN2);
 REGISTER_KOTEKAN_STAGE(ReplaceN2);
@@ -77,13 +78,16 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
 
-    size_t num_prod = N2FrameView::get_num_prod(num_elements, N2Layout::FullUpperTri);
-    size_t frame_size = N2FrameView::calculate_frame_size(num_elements, num_eigenvectors, num_prod);
+    size_t num_prod = N2FrameDesc::get_num_prod(num_elements, N2Layout::FullUpperTri);
+    size_t frame_size = N2FrameDesc::calculate_frame_size(num_elements, num_eigenvectors, num_prod);
     if (out_buf->frame_size != frame_size) {
         FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d}", out_buf->buffer_name,
                     out_buf->frame_size, frame_size);
     }
     assert(frame_size == out_buf->frame_size);
+
+    out_buf->set_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_eigenvectors, num_prod,
+                                                          N2Layout::FullUpperTri));
 }
 
 void FakeN2::main_thread() {
@@ -156,12 +160,6 @@ void FakeN2::main_thread() {
             std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, output_frame_id);
             assert(meta);
 
-            meta->num_elements = num_elements;
-            /// Number of products in the data
-            meta->num_prod = N2FrameView::get_num_prod(num_elements, n2_layout);
-            /// Number of eigenvectors and values calculated
-            meta->num_ev = num_eigenvectors;
-            // Total number of frequencies in pipeline
             meta->nfreq = freq.size();
             // Set the frequency index
             meta->freq_id = f;
@@ -169,8 +167,6 @@ void FakeN2::main_thread() {
             meta->freq_MHz = tel.to_freq_MHz(f);
             // Set the time index
             meta->abs_time_idx = frame_count + t;
-            // Set the vis matrix layout
-            meta->vis_layout = n2_layout;
 
             // The sequence number of the first FPGA frame integrated into this visibility frame
             meta->fpga_start_tick = fpga_seq + t * delta_seq;
@@ -201,8 +197,9 @@ void FakeN2::main_thread() {
             meta->bin_end_LAST = -1;
 
             DEBUG("Creating N2FrameView.");
-            DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}", meta->num_elements,
-                  meta->num_prod, meta->num_ev, meta->nfreq);
+            DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}", num_elements,
+                  N2FrameDesc::get_num_prod(num_elements, n2_layout), num_eigenvectors,
+                  meta->nfreq);
             N2FrameView output_frame(out_buf, output_frame_id);
             DEBUG("Created.");
 
@@ -214,7 +211,7 @@ void FakeN2::main_thread() {
 
             // Fill out the frame with the selected pattern
             pattern->fill(output_frame);
-            if (meta->num_ev > 0)
+            if (num_eigenvectors > 0)
                 INFO("First eval is: {}", output_frame.eval[0]);
 
             // gains
@@ -310,6 +307,10 @@ void ReplaceN2::main_thread() {
         if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
+
+        // Propagate frame descriptor
+        out_buf->set_frame_desc(
+            std::const_pointer_cast<kotekan::FrameDesc>(in_buf->get_frame_description()));
 
         // Wait for the output buffer to be empty of data
         if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {

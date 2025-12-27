@@ -532,7 +532,7 @@ class FakeN2Buffer(InputBuffer):
         self.buffer_block = {
             self.name: {
                 "kotekan_buffer": "N2",
-                "vis_layout": "FullUpperTri",
+                "n2_layout": "FullUpperTri",
                 "metadata_pool": "N2_pool",
                 "num_frames": "buffer_depth",
             }
@@ -748,6 +748,7 @@ class ReadN2Buffer(InputBuffer):
 
 class DumpN2Buffer(OutputBuffer):
     """Consume an N2Buffer and provide its contents as `N2Buffer` objects.
+       Assumes FullUpperTri layout. (TODO: Maybe generalize later.)
 
     Parameters
     ----------
@@ -759,18 +760,27 @@ class DumpN2Buffer(OutputBuffer):
 
     name = None
 
-    def __init__(self, output_dir, exit_after_n_files=0):
+    def __init__(
+        self, output_dir, exit_after_n_files=0, num_elements=None, num_ev=None
+    ):
 
         self.name = "dumpn2_buf%i" % self._buf_ind
         stage_name = "dump%i" % self._buf_ind
         self.__class__._buf_ind += 1
 
         self.output_dir = output_dir
+        self.num_elements = num_elements
+        if num_elements is not None:
+            # Assume FullUpperTri layout
+            self.num_prod = (num_elements * (num_elements + 1)) // 2
+        else:
+            self.num_prod = None
+        self.num_ev = num_ev
 
         self.buffer_block = {
             self.name: {
                 "kotekan_buffer": "N2",
-                "vis_layout": "FullUpperTri",
+                "n2_layout": "FullUpperTri",
                 "metadata_pool": "N2_pool",
                 "num_frames": "buffer_depth",
             }
@@ -796,7 +806,10 @@ class DumpN2Buffer(OutputBuffer):
             The buffer output.
         """
         return n2buffer.N2Buffer.load_files(
-            "%s/*%s*.dump" % (self.output_dir, self.name)
+            "%s/*%s*.dump" % (self.output_dir, self.name),
+            num_elements=self.num_elements,
+            num_prod=self.num_prod,
+            num_ev=self.num_ev,
         )
 
 
