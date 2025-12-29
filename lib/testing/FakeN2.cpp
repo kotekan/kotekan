@@ -40,7 +40,8 @@ REGISTER_KOTEKAN_STAGE(ReplaceN2);
 
 
 FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&FakeN2::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&FakeN2::main_thread, this)),
+    n2_layout(N2Layout::FullUpperTri) {
 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
@@ -78,7 +79,7 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
 
-    size_t num_prod = N2FrameDesc::get_num_prod(num_elements, N2Layout::FullUpperTri);
+    size_t num_prod = N2FrameDesc::get_num_prod(num_elements, n2_layout);
     size_t frame_size = N2FrameDesc::calculate_frame_size(num_elements, num_eigenvectors, num_prod);
     if (out_buf->frame_size != frame_size) {
         FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d}", out_buf->buffer_name,
@@ -86,8 +87,8 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     }
     assert(frame_size == out_buf->frame_size);
 
-    out_buf->set_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_eigenvectors, num_prod,
-                                                          N2Layout::FullUpperTri));
+    out_buf->set_frame_desc(
+        std::make_shared<N2FrameDesc>(num_elements, num_eigenvectors, num_prod, n2_layout));
 }
 
 void FakeN2::main_thread() {
