@@ -20,13 +20,12 @@ type: config
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
-num_elements: 2048
+num_dishes: 1024
+num_pols: 2
 num_freq_host_buf: 1
-num_freq_gpu_buf: 16
-samples_per_frame: 16384
+samples_per_frame: 512
 buffer_depth: 1*272 # == baseband_buffer_depth
 gpu_buffer_depth: 4
-num_gpus: 2
 cpu_affinity: [0, 10, 11, 12, 13, 14, 15, 16, 16, 18, 19]
 
 # Constants
@@ -49,9 +48,23 @@ main_pool:
   kotekan_metadata_pool: chordMetadata
   num_metadata_objects: 30 * buffer_depth
 
+gen_data:
+{%- for id in range(16) %}
+   test_data_gen_{{ id }}:
+     type: "const"
+     name: "E"
+     dim_name: ["T", "F", "P", "D" ]
+     array_shape: [ samples_per_frame, num_freq_host_buf, num_pols, num_dishes] # [ samples_per_data_set, num_local_freq, num_polarizations, num_dishes ]
+     num_frames: 64*buffer_depth
+     value: 42
+     kotekan_stage: testDataGen
+     out_buf: host_voltage_buffer_{{ id }}
+     num_local_freq: num_freq_host_buf
+{%- endfor %}
+
 host_voltage_buffers:
   num_frames: buffer_depth
-  frame_size: samples_per_frame * num_elements * num_freq_host_buf
+  frame_size: samples_per_frame * num_dishes * num_pols * num_freq_host_buf
   metadata_pool: main_pool
   numa_0:
     numa_node: 0
@@ -84,17 +97,10 @@ lost_samples_buffer_3:
   frame_size: samples_per_frame
   metadata_pool: main_pool
 
-gpu_voltage_ringbuffer:
-  log_level: INFO  # DEBUG
-  kotekan_buffer: ring
-  ring_buffer_size: gpu_buffer_depth * samples_per_frame * num_elements * num_freq_gpu_buf
-  metadata_pool: main_pool
-
-
-# This configuration assumes that the system ports are ordered in as 4x10G
-# links for each QSFP+, and that each QSFP+ port comes from exactly one iceBoard
-# and that each iceBoard is in a _different_ crate pair, but also in the same
-# location in terms of slot, crate (within the crate pair), and link (on the board).
+## This configuration assumes that the system ports are ordered in as 4x10G
+## links for each QSFP+, and that each QSFP+ port comes from exactly one iceBoard
+## and that each iceBoard is in a _different_ crate pair, but also in the same
+## location in terms of slot, crate (within the crate pair), and link (on the board).
 dpdk:
   kotekan_stage: dpdkCore
   # Format is index = lcore, value = cpu core
@@ -169,106 +175,95 @@ dpdk:
         - host_voltage_buffer_15
       lost_samples_buf: lost_samples_buffer_3
 {%- endfor %}
-
-# Zero out lost samples recorded at the DPDK stage
-zero_samples:
-  duplicate_ls_buffer: False
-{%- for id in range(16) %}
-  zero_{{ id }}:
-    kotekan_stage: zeroSamples
-    lost_samples_buf: lost_samples_buffer_{{ id // 4 }}
-    out_buf: host_voltage_buffer_{{ id }}
-{%- endfor %}
-
-
-run_send_voltage:
-  gpu_0:
-    kotekan_stage: cudaProcess
-    gpu_id: 0
-    buffer_depth: gpu_buffer_depth
-    # 390625 is the number of F-engine time samples per second. e.g. 1/2.56us. 
-    frame_arrival_period: 390625/samples_per_frame
-    in_buffers:
-{%- for id in range(16) %}
-      host_voltage_buffer_{{ id }}: host_voltage_buffer_{{ id }}
-{%- endfor %}
-    out_buffers:
-      gpu_voltage_ringbuffer: gpu_voltage_ringbuffer
-    commands:
-    - name: cudaCopyNToRingbuffer
-      ring_buffer_size: gpu_buffer_depth * samples_per_frame * num_elements * num_freq_gpu_buf
-      in_bufs: 
-{%- for id in range(16) %}
-        - host_voltage_buffer_{{ id }}
-{%- endfor %}
-      signal_buf: gpu_voltage_ringbuffer
-      gpu_mem_output: blocked_voltage_buffer
-
-# RH: merged in CHIME science pipeline stuff
-samples_per_data_set: samples_per_frame # 1/3 of CHIME number
-num_data_sets: 1
-baseband_buffer_depth: 1*272 # 3*272 = ~33 seconds after accounting for active frames
-
-# Baseband metadata pool
-baseband_pool:
-  kotekan_metadata_pool: BasebandMetadata
-  num_metadata_objects: 30 * baseband_buffer_depth * 96
-
-# Baseband capture and dump system
-baseband_output_buffers:
-  num_frames: 3 * 11 * 32 # baseband_buffer_depth
-  frame_size: samples_per_data_set * num_elements * num_freq_host_buf * num_data_sets / 32
-  metadata_pool: baseband_pool
-{%- for id in range(16) %}
-  baseband_output_buffer_{{ id }}:
-    kotekan_buffer: standard
-{%- endfor %}
-  baseband_output_buffer_merged:
-    kotekan_buffer: standard
-    num_frames: 12
-
-baseband:
-  max_dump_samples: 30000 # 768ms
-  num_frames_buffer: baseband_buffer_depth - 10
-  num_frames_min: 64 # this number x samples_per_data_set x 2.56 us is the duration of the continuum integration
-{%- for id in range(16) %}
-  baseband{{ id }}:
-    kotekan_stage: basebandReadout
-    in_buf: host_voltage_buffer_{{ id }}
-    out_buf: baseband_output_buffer_{{ id }}
-{%- endfor %}
-
-baseband_merge:
-  kotekan_stage: bufferMerge
-  timeout: 0.1
-  in_bufs:
-{%- for id in range(16) %}
-    - baseband_output_buffer_{{ id }}
-{%- endfor %}
-  out_buf: baseband_output_buffer_merged
-
-# No writing for now...
-write_baseband:
-  root_path: /home/calvin/baseband_mb
-  dump_timeout: 1200 # 20 Minutes
-  write_0:
-    samples_per_data_set: 512 # matches production CHIME's recv_baseband yaml file
-    kotekan_stage: BasebandWriter
-    in_buf: baseband_output_buffer_merged
-
-## Transmit baseband data to the baseband receiver
-## Make sure that this does not create datasets in the live system by changing
-## the receiver's "site" setting away from CHIME
-#baseband_send:
-#  server_ip: 10.5.60.2
-#  reconnect_time: 60
-#  send_timeout: 600 # 10 minutes
-#  log_level: warn
-#  # Keep data in memory even if the receiver node is down
-#  # Baseband readout handles back pressure management
-#  drop_frames: false
-#  use_config_tracker: false # not used by legacy CHIME kotekan code
-#  baseband_send_0:
-#    kotekan_stage: bufferSend
-#    server_port: 11027
-#    buf: baseband_output_buffer_merged
+#
+## Zero out lost samples recorded at the DPDK stage
+#zero_samples:
+#  duplicate_ls_buffer: False
+#{%- for id in range(16) %}
+#  zero_{{ id }}:
+#    kotekan_stage: zeroSamples
+#    lost_samples_buf: lost_samples_buffer_{{ id // 4 }}
+#    out_buf: host_voltage_buffer_{{ id }}
+#{%- endfor %}
+#
+#
+#
+## RH: merged in CHIME science pipeline stuff
+#samples_per_data_set: samples_per_frame # 1/3 of CHIME number
+#num_data_sets: 1
+#baseband_buffer_depth: 1*272 # 3*272 = ~33 seconds after accounting for active frames
+#
+## Baseband metadata pool
+#baseband_pool:
+#  kotekan_metadata_pool: BasebandMetadata
+#  num_metadata_objects: 30 * baseband_buffer_depth * 96
+#
+## Baseband capture and dump system
+#baseband_output_buffers:
+#  num_frames: 3 * 11 * 32 # baseband_buffer_depth
+#  frame_size: samples_per_data_set * num_elements * num_freq_host_buf * num_data_sets / 32
+#  metadata_pool: baseband_pool
+#{%- for id in range(16) %}
+#  baseband_output_buffer_{{ id }}:
+#    kotekan_buffer: standard
+#{%- endfor %}
+#  baseband_output_buffer_merged:
+#    kotekan_buffer: standard
+#    num_frames: 12
+#baseband_mboutput_buffers:
+#  num_frames: 3 * 11 * 32 # baseband_buffer_depth
+#  frame_size: samples_per_data_set * 64 * num_freq_host_buf * num_data_sets / 32
+#  metadata_pool: baseband_pool
+#{%- for id in range(16) %}
+#  baseband_mboutput_buffer_{{ id }}:
+#    kotekan_buffer: standard
+#{%- endfor %}
+#  baseband_mboutput_buffer_merged:
+#    kotekan_buffer: standard
+#    num_frames: 12
+#
+#baseband:
+#  max_dump_samples: 30000 # 768ms
+#  num_frames_buffer: baseband_buffer_depth - 10
+#  num_frames_min: 64 # this number x samples_per_data_set x 2.56 us is the duration of the continuum integration
+#{%- for id in range(16) %}
+#  baseband{{ id }}:
+#    kotekan_stage: basebandReadout
+#    in_buf: host_voltage_buffer_{{ id }}
+#    out_buf: baseband_output_buffer_{{ id }}
+#    outmb_buf: baseband_mboutput_buffer_{{ id }}
+#{%- endfor %}
+#
+#baseband_mbmerge:
+#  kotekan_stage: bufferMerge
+#  timeout: 0.1
+#  in_bufs:
+#{%- for id in range(16) %}
+#    - baseband_mboutput_buffer_{{ id }}
+#{%- endfor %}
+#  out_buf: baseband_mboutput_buffer_merged
+#
+#baseband_merge:
+#  kotekan_stage: bufferMerge
+#  timeout: 0.1
+#  in_bufs:
+#{%- for id in range(16) %}
+#    - baseband_output_buffer_{{ id }}
+#{%- endfor %}
+#  out_buf: baseband_output_buffer_merged
+#
+## No writing for now...
+#write_baseband:
+#  root_path: /home/calvin/baseband_test/bb
+#  dump_timeout: 1200 # 20 Minutes
+#  write_0:
+#    samples_per_data_set: 512 # matches production CHIME's recv_baseband yaml file
+#    kotekan_stage: BasebandWriter
+#    in_buf: baseband_output_buffer_merged
+#write_mb:
+#  root_path: /home/calvin/baseband_test/mb
+#  dump_timeout: 1200 # 20 Minutes
+#  write_0:
+#    samples_per_data_set: 512 # matches production CHIME's recv_baseband yaml file
+#    kotekan_stage: BasebandWriter
+#    in_buf: baseband_mboutput_buffer_merged
