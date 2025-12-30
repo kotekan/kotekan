@@ -47,7 +47,7 @@ class StageInfo {
 public:
     StageInfo(const std::string& _name, int _num_frames) :
         name(_name), num_frames(_num_frames), last_frame_acquired(-1), last_frame_released(-1),
-        is_done(_num_frames) {}
+        is_done(_num_frames), waiting(false) {}
     // No copies or moves allowed
     StageInfo(StageInfo&&) = delete;
     StageInfo& operator=(StageInfo&&) = delete;
@@ -68,6 +68,9 @@ public:
 
     // Is this producer/consumer done with each frame?
     std::vector<bool> is_done;
+
+    /// currently waiting
+    bool waiting;
 };
 
 /**

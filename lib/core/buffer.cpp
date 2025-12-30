@@ -338,8 +338,11 @@ uint8_t* Buffer::wait_for_full_frame(const std::string& consumer_name, const int
     DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting...", consumer_name, ID);
     print_full_status();
     // This wait exits when is_full == 1 (i.e. a full buffer) AND
-    // when this producer hasn't already marked this buffer as done
+    // when this consumer hasn't already marked this buffer as done
+    assert(!con.waiting);
+    con.waiting = true;
     full_cond.wait(lock, [&]() { return (is_full[ID] && !con.is_done[ID]) || shutdown_signal; });
+    con.waiting = false;
     DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting done.", consumer_name, ID);
     assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
     lock.unlock();
@@ -610,7 +613,10 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
     // and forces a wait until that buffer has been marked as empty.
     DEBUG2("wait_for_empty_frame({:s}[{:d}]): waiting...", producer_name, ID);
     print_full_status();
+    assert(!pro->waiting);
+    pro->waiting = true;
     empty_cond.wait(lock, [&]() { return (!is_full[ID] && !pro->is_done[ID]) || shutdown_signal; });
+    pro->waiting = false;
     DEBUG2("wait_for_empty_frame({:s}[{:d}]): waiting done.", producer_name, ID);
     assert((!is_full[ID] && !pro->is_done[ID]) || shutdown_signal);
     assert(!((is_full[ID] || pro->is_done[ID]) && !shutdown_signal));
