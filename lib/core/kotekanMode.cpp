@@ -231,4 +231,16 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
     conn.send_text_reply(dot);
 }
 
+void kotekanMode::dump_waiting_stages() {
+    for (const auto& buf : buffers) {
+        std::cerr << "buffer " << buf.second->buffer_name << " has waiting consumers:";
+        for (const auto& con : buf.second->consumers) {
+            if (con.second.waiting) {
+                std::cerr << " " << con.second.name;
+            }
+        }
+        std::cerr << std::endl;
+    }
+}
+
 } // namespace kotekan

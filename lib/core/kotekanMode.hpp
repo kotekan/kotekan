@@ -58,6 +58,8 @@ public:
     /// HTTP callback that dumps the current pipeline graph in `dot` format.
     void pipeline_dot_graph_callback(connectionInstance& conn);
 
+    void dump_waiting_stages();
+
 private:
     Config& config;
     bufferContainer buffer_container;
