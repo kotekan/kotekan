@@ -103,13 +103,20 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::str
     assert(sz > 0);
     // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
+    if (!consumers.count(name)) {
+        ERROR("wait_and_claim_readable: Consumer \"{:s}\" not found", name);
+    }
+    StageInfo* con = &consumers.at(name);
     const std::ptrdiff_t read_head = read_heads[name];
     DEBUG2("wait_and_claim_readable({:s}[{:d}]): "
            "requested bytes: {}, initial bytes available: {}",
            name, inst, group_digits(sz), group_digits(first_write_head - read_head));
     DEBUG2("wait_and_claim_readable({:s}[{:d}]): waiting...", name, inst);
     print_full_status();
+    assert(!con->waiting);
+    con->waiting = true;
     full_cond.wait(lock, [&]() { return shutdown_signal || first_write_head - read_head >= sz; });
+    con->waiting = false;
     DEBUG2("wait_and_claim_readable({:s}[{:d}]): waiting done.", name, inst);
     if (shutdown_signal) {
         return std::optional<std::ptrdiff_t>();
@@ -192,13 +199,20 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_for_writable(const std::string& n
                                                             const std::ptrdiff_t sz) {
     assert(sz > 0);
     std::unique_lock<std::recursive_mutex> lock(mutex);
+    if (!producers.count(name)) {
+        ERROR("wait_for_writable: Producer \"{:s}\" not found", name);
+    }
+    StageInfo* pro = &producers.at(name);
     DEBUG2("wait_for_writable({:s}[{:d}]): "
            "requested bytes: {}, initial bytes available: {}",
            name, inst, group_digits(sz), group_digits(size - (write_next[name] - last_read_tail)));
     DEBUG2("wait_for_writable({:s}[{:d}]): waiting...", name, inst);
     print_full_status();
+    assert(!pro->waiting);
+    pro->waiting = true;
     empty_cond.wait(
         lock, [&]() { return shutdown_signal || write_next[name] - last_read_tail + sz <= size; });
+    pro->waiting = false;
     DEBUG2("wait_for_writable({:s}[{:d}]): waiting done.", name, inst);
     assert(write_next[name] >= last_read_tail);
     if (shutdown_signal) {
