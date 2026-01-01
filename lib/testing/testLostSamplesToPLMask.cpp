@@ -189,6 +189,7 @@ void testLostSamplesToPLMask::main_thread() {
             // physics metadata
             // TODO: add more that dpdk adds
             lost_samples_meta->set_fpga_seq_num(seq_num);
+            lost_samples_meta->set_freq_upchan_factor(std::vector<int>(PL_MASK_FREQS_PER_BIN, 1));
             lost_samples_meta->set_time_downsampling_fpga(1);
 
             lost_samples_meta->set_coarse_freq(
