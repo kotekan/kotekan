@@ -216,7 +216,7 @@ public:
                     assert(success);
                 }
 
-                if (meta->get_nfreq() >= 0) {
+                if (meta->has_coarse_freq()) {
                     const auto coarse_freq = group->CreateAttribute(
                         "coarse_freq", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
                         GDALExtendedDataType::Create(
@@ -227,7 +227,7 @@ public:
                     assert(success);
                 }
 
-                if (meta->get_nfreq() >= 0) {
+                if (meta->has_freq_upchan_factor()) {
                     const auto freq_upchan_factor = group->CreateAttribute(
                         "freq_upchan_factor", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
                         GDALExtendedDataType::Create(
@@ -238,7 +238,7 @@ public:
                     assert(success);
                 }
 
-                if (meta->get_fpga_seq_num() >= 0) {
+                if (meta->has_fpga_seq_num()) {
                     const auto fpga_seq_num_value = meta->get_fpga_seq_num();
                     const auto fpga_seq_num = group->CreateAttribute(
                         "fpga_seq_num", std::vector<GUInt64>{},
@@ -248,7 +248,7 @@ public:
                     assert(success);
                 }
 
-                if (meta->get_time_downsampling_fpga() >= 0) {
+                if (meta->has_time_downsampling_fpga()) {
                     const auto time_downsampling_fpga_value = meta->get_time_downsampling_fpga();
                     const auto time_downsampling_fpga =
                         group->CreateAttribute("time_downsampling_fpga", std::vector<GUInt64>{},
