@@ -28,7 +28,7 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
                                            cudaDeviceInterface& device, int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "cudaCopyToRingbuffer", ""),
-    output_cursor(0) {
+    output_cursor(0), initial_fpga_seq_num(-1) {
     _input_size = config.get<size_t>(unique_name, "input_size");
     _ring_buffer_size = config.get<size_t>(unique_name, "ring_buffer_size");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
@@ -80,6 +80,7 @@ int cudaCopyToRingbuffer::wait_on_precondition() {
         DEBUG("Waiting for input data frame {:d}", gpu_frame_id);
         uint8_t* frame =
             in_buffer->wait_for_full_frame(unique_name, gpu_frame_id % in_buffer->num_frames);
+        assert(instance_num == gpu_frame_id % _gpu_buffer_depth);
         if (frame == nullptr)
             return -1;
         DEBUG("Input data frame {:d} is now available", gpu_frame_id);
@@ -113,7 +114,7 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
 
     record_start_event();
 
-    std::shared_ptr<chordMetadata> meta;
+    std::shared_ptr<chordMetadata> in_meta;
     if (!in_buffer) {
         void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id,
                                                          _gpu_buffer_depth, _input_size);
@@ -127,11 +128,13 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
                                              cudaMemcpyDeviceToDevice,
                                              device.getStream(cuda_stream_id)));
         // Copy (reference to) metadata also
-        meta = std::dynamic_pointer_cast<chordMetadata>(
+        in_meta = std::dynamic_pointer_cast<chordMetadata>(
             device.get_gpu_memory_array_metadata(_gpu_mem_input, gpu_frame_id));
     } else {
         int buf_index = gpu_frame_id % in_buffer->num_frames;
         void* host_memory_frame = (void*)in_buffer->frames[buf_index];
+        // a frame is either full or empty, so we can check for ull using is_frame_empty
+        assert(!in_buffer->is_frame_empty(buf_index) && "waited for in predondition");
 
         DEBUG("Copying from host memory into ringbuffer: {:d} to copy + {:d} wrapping around",
               ncopy, nwrap);
@@ -142,29 +145,45 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
                                           cuda_stream_id, nullptr, nullptr, nullptr);
 
         // Copy (reference to) metadata also
-        meta = std::dynamic_pointer_cast<chordMetadata>(in_buffer->metadata[buf_index]);
-        DEBUG("Metadata from input buffer frame: {:p}", static_cast<void*>(meta.get()));
+        in_meta = std::dynamic_pointer_cast<chordMetadata>(in_buffer->metadata[buf_index]);
+        DEBUG("Metadata from input buffer frame: {:p}", static_cast<void*>(in_meta.get()));
     }
-    if (meta) {
-        DEBUG("Copying metadata for frame {:d} to GPU array {:s}", gpu_frame_id, _gpu_mem_output);
-        // Copy metadata (because we modify it)
-        auto tmp = std::make_shared<chordMetadata>();
-        tmp->deepCopy(meta);
-        auto in_meta = meta;
-        meta = tmp;
+    if (in_meta) {
+        if (initial_fpga_seq_num == -1) { // first time
+            if (instance_num == 0) {      // we handle frame 0 of the buffer depth
+                DEBUG("Copying metadata for frame {:d} to GPU array {:s}", gpu_frame_id,
+                      _gpu_mem_output);
+                // Copy metadata (because we modify it)
+                auto out_meta = std::make_shared<chordMetadata>();
+                out_meta->deepCopy(in_meta);
 
-        // TODO: Don't set the metadata every time (to, hopefully, the same values). Set them once
-        // in the beginning only.
-        assert(output_cursor % meta->sample_bytes() == 0);
-        meta->set_fpga_seq_num(meta->get_fpga_seq_num()
-                               - meta->get_time_downsampling_fpga()
-                                     * (output_cursor / meta->sample_bytes()));
-        assert(meta->get_time_downsampling_fpga() > 0);
-        assert(output_cursor * meta->get_time_downsampling_fpga() % meta->sample_bytes() == 0);
-        assert(meta->dims > 0);
-        assert(in_buffer->frame_size % meta->sample_bytes() == 0);
-        assert(meta->dim[0] == std::ptrdiff_t(in_buffer->frame_size / meta->sample_bytes()));
-        signal_buffer->set_metadata(0, meta);
+                assert(output_cursor % out_meta->sample_bytes() == 0);
+                out_meta->set_fpga_seq_num(in_meta->get_fpga_seq_num()
+                                           - in_meta->get_time_downsampling_fpga()
+                                                 * (output_cursor / in_meta->sample_bytes()));
+                assert(output_cursor == 0);
+                initial_fpga_seq_num = in_meta->get_fpga_seq_num();
+
+                assert(out_meta->get_time_downsampling_fpga() > 0);
+                assert(output_cursor * out_meta->get_time_downsampling_fpga()
+                           % out_meta->sample_bytes()
+                       == 0);
+                assert(out_meta->dims > 0);
+                assert(in_buffer->frame_size % in_meta->sample_bytes() == 0);
+                assert(out_meta->dim[0]
+                       == std::ptrdiff_t(in_buffer->frame_size / in_meta->sample_bytes()));
+
+                signal_buffer->set_metadata(0, out_meta);
+            } else { // handle one of the later frames, frame 0 handler has set metadata
+                auto const signal_meta =
+                    std::dynamic_pointer_cast<chordMetadata>(signal_buffer->get_metadata(0));
+                initial_fpga_seq_num = signal_meta->get_fpga_seq_num();
+            }
+        } else { // not first time
+            auto const signal_meta =
+                std::dynamic_pointer_cast<chordMetadata>(signal_buffer->get_metadata(0));
+            assert(signal_meta->get_fpga_seq_num() == initial_fpga_seq_num);
+        }
     }
 
     return record_end_event();
