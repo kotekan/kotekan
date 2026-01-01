@@ -168,6 +168,7 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
         meta_ring->type = kotekan::int4x2_swapped_withoffset;
 
         // Set the FPGA seq number of the first sample
+        assert(output_cursor == 0);
         meta_ring->set_fpga_seq_num(meta_in0->get_fpga_seq_num());
 
         // Merge metadata from all input buffers
