@@ -166,7 +166,8 @@ void lostSamplesToPLMask::main_thread() {
                                                           1); // we want 1/4 but we cannot
                 pl_mask_meta->set_freq_upchan_factor(freq_upchan_factor);
 
-                pl_mask_meta->set_time_downsampling_fpga(PL_MASK_DOWNSAMPLING_FACTOR
+                pl_mask_meta->set_time_downsampling_fpga(pl_mask_meta->get_time_downsampling_fpga()
+                                                         * PL_MASK_DOWNSAMPLING_FACTOR
                                                          * PL_MASK_HILO_SPLIT);
 
                 // TODO: do I need to set frame_counter? The FEngine does.
@@ -179,16 +180,13 @@ void lostSamplesToPLMask::main_thread() {
                                            lost_samples_coarse_freq.end());
                 pl_mask_meta->set_coarse_freq(pl_mask_coarse_freq);
 
-                const std::vector<int> freq_upchan_factor(PL_MASK_FREQS_PER_BIN,
-                                                          1); // we want 1/4 but we cannot
+                const auto lost_samples_freq_upchan_factor =
+                    lost_samples_meta->get_freq_upchan_factor();
                 auto pl_mask_freq_upchan_factor = pl_mask_meta->get_freq_upchan_factor();
                 pl_mask_freq_upchan_factor.insert(pl_mask_freq_upchan_factor.end(),
-                                                  freq_upchan_factor.begin(),
-                                                  freq_upchan_factor.end());
+                                                  lost_samples_freq_upchan_factor.begin(),
+                                                  lost_samples_freq_upchan_factor.end());
                 pl_mask_meta->set_freq_upchan_factor(pl_mask_freq_upchan_factor);
-
-                pl_mask_meta->set_time_downsampling_fpga(PL_MASK_DOWNSAMPLING_FACTOR
-                                                         * PL_MASK_HILO_SPLIT / 2);
             }
 
             lost_samples_buf->mark_frame_empty(unique_name, lost_samples_buf_frame_id);
