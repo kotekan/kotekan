@@ -6,6 +6,7 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata, CHO...
+#include "div.hpp"             // for div_noremainder
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
 #include "metadata.hpp"        // for metadataObject
 
@@ -19,6 +20,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::div_noremainder;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(gpuSimulateN2kPLExpand);
@@ -185,7 +187,8 @@ void gpuSimulateN2kPLExpand::main_thread() {
         meta_out->check_frame_desc(output_buf->get_frame_desc());
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->set_time_downsampling_fpga(meta_in->get_time_downsampling_fpga());
+        meta_out->set_time_downsampling_fpga(
+            div_noremainder(meta_in->get_time_downsampling_fpga(), 2));
 
         const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
         const std::vector<int> freq_upchan_factor_in = meta_in->get_freq_upchan_factor();
