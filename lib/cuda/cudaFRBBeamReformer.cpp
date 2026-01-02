@@ -224,7 +224,8 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`
         assert(input_cursor % in_meta->sample_bytes() == 0);
         out_meta->set_fpga_seq_num(in_meta->get_fpga_seq_num()
-                                   + div_noremainder(input_cursor, in_meta->sample_bytes()));
+                                   + in_meta->get_time_downsampling_fpga()
+                                         * div_noremainder(input_cursor, in_meta->sample_bytes()));
     }
 
     return record_end_event();
