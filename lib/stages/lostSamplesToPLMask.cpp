@@ -160,12 +160,7 @@ void lostSamplesToPLMask::main_thread() {
                         pl_mask_meta->stride[d] =
                             pl_mask_meta->stride[d + 1] * pl_mask_meta->dim[d + 1];
 
-                // add metadata that DPDK does not add
-
-                const std::vector<int> freq_upchan_factor(PL_MASK_FREQS_PER_BIN,
-                                                          1); // we want 1/4 but we cannot
-                pl_mask_meta->set_freq_upchan_factor(freq_upchan_factor);
-
+                // update metadata
                 pl_mask_meta->set_time_downsampling_fpga(pl_mask_meta->get_time_downsampling_fpga()
                                                          * PL_MASK_DOWNSAMPLING_FACTOR
                                                          * PL_MASK_HILO_SPLIT);
