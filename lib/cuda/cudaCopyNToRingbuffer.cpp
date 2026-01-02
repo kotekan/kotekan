@@ -182,7 +182,7 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
                     "cudaCopyNToRingbuffer: input buffer has no chordMetadata");
             // Set the frequency for each of the input buffers
             coarse_freq.at(i) = meta_in->get_coarse_freq()[0];
-            // Check that the seq_num and sample0 matches for all input buffers
+            // Check that the seq_num matches for all input buffers
             assert(meta_ring->get_fpga_seq_num() == meta_in->get_fpga_seq_num());
         }
         meta_ring->set_coarse_freq(coarse_freq);
