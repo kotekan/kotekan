@@ -544,7 +544,6 @@ public:
             frames_desc =
                 std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
         else {
-#if 0
             if(D != frames_desc->get_rank())
                 ERROR("Rank mismatch: {:d} != {:d}", D, frames_desc->get_rank());
             if(kotekan::GetDataType_v<T> != frames_desc->get_value_datatype())
@@ -555,7 +554,6 @@ public:
                 ERROR("Extents do not match: [{:s}] != [{:s}]", fmt::join(extents, ", "), fmt::join(frames_desc->get_extents(), ", "));
             if(!std::equal(dimnames.begin(), dimnames.end(), frames_desc->get_dimnames().begin()))
                 ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "), fmt::join(frames_desc->get_dimnames(), ", "));
-#endif
         }
     }
 
