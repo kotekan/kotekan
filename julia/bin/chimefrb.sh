@@ -21,10 +21,10 @@ for setup in ${setups}; do
     rm -f output-A40/chimefrb_${setup}.ptx
     rm -f output-A40/chimefrb_${setup}.sass
     rm -f output-A40/chimefrb_${setup}.yaml
-    rm -f ../lib/cuda/cudaCHIMEFRBBeamformer_${setup}.cpp
-    rm -f ../lib/cuda/kernels/CHIMEFRBBeamformer_${setup}.jl
-    rm -f ../lib/cuda/kernels/CHIMEFRBBeamformer_${setup}.ptx
-    rm -f ../lib/cuda/kernels/CHIMEFRBBeamformer_${setup}.yaml
+    rm -f ../lib/cuda/generated/cudaCHIMEFRBBeamformer_${setup}.cpp
+    rm -f ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.jl
+    rm -f ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.ptx
+    rm -f ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.yaml
 done
 
 # Generate kernel
@@ -44,7 +44,7 @@ done
 
 # Format generated C++ code
 for setup in ${setups}; do
-    clang-format-14 -i output-A40/chimefrb_${setup}.cxx &
+    clang-format-18 -i output-A40/chimefrb_${setup}.cxx &
 done
 
 # Format generated Julia code
@@ -53,8 +53,8 @@ wait
 
 # Copy kernels into Kotekan
 for setup in ${setups}; do
-    cp output-A40/chimefrb_${setup}.cxx ../lib/cuda/cudaCHIMEFRBBeamformer_${setup}.cpp
-    cp output-A40/chimefrb_${setup}.jl ../lib/cuda/kernels/CHIMEFRBBeamformer_${setup}.jl
-    cp output-A40/chimefrb_${setup}.ptx ../lib/cuda/kernels/CHIMEFRBBeamformer_${setup}.ptx
-    cp output-A40/chimefrb_${setup}.yaml ../lib/cuda/kernels/CHIMEFRBBeamformer_${setup}.yaml
+    cp output-A40/chimefrb_${setup}.cxx ../lib/cuda/generated/cudaCHIMEFRBBeamformer_${setup}.cpp
+    cp output-A40/chimefrb_${setup}.jl ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.jl
+    cp output-A40/chimefrb_${setup}.ptx ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.ptx
+    cp output-A40/chimefrb_${setup}.yaml ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.yaml
 done

@@ -7,7 +7,7 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "Telescope.hpp"       // for stream_t
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
 #include <stdint.h> // for int32_t
@@ -25,7 +25,6 @@ private:
     int num_links_in_group;
     int link_id;
     int pattern;
-    stream_t stream_id;
 
     // Config variables.
     int32_t _samples_per_data_set;

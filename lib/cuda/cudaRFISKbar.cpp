@@ -2,7 +2,9 @@
 #include "NDArray.hpp"             // for NDArray
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "driver_types.h"          // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h"      // for cudaStreamSynchronize
+#include "driver_types.h"          // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG
 #include "n2k/rfi_kernels.hpp"     // for SkKernel
@@ -218,6 +220,9 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
                     F, S, S012_Tmin, S012_Tsize, sk_feed_averaged_Tmin, sk_feed_averaged_Tsize,
                     sk_single_feed_Tmin, sk_single_feed_Tsize, rfimask_T1024min, rfimask_T1024size,
                     stream);
+#ifdef DEBUGGING
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+#endif
 
     rfi_SKbar.check_for_poison(0xff);
     rfi_SKbartilde.check_for_poison(0xff);

@@ -2,12 +2,11 @@
 
 #include "BranchPrediction.hpp" // for likely, unlikely
 #include "Config.hpp"           // for Config
-#include "ICETelescope.hpp"     // for ice_stream_id_t, ice_get_stream_id_t
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"        // for Telescope
 #include "buffer.hpp"           // for Buffer
 #include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.hpp"    // for beamCoord, get_fpga_seq_num, get_beam_coord
+#include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
 #include "kotekanLogging.hpp"   // for DEBUG, ERROR
 #include "pulsar_functions.hpp" // for PSRHeader
 
@@ -17,9 +16,11 @@
 #include <assert.h>   // for assert
 #include <cmath>      // for round
 #include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <stdexcept>  // for runtime_error
 #include <string.h>   // for memcpy
 #include <string>     // for allocator, basic_string, operator+, string, to_string
+#include <vector>     // for vector
 
 using std::string;
 
@@ -71,7 +72,7 @@ pulsarPostProcess::~pulsarPostProcess() {
 
 void pulsarPostProcess::fill_headers(unsigned char* out_buf, PSRHeader* psr_header,
                                      const uint64_t fpga_seq_num, timespec* time_now,
-                                     beamCoord* beam_coord, uint16_t* thread_ids) {
+                                     chordMetadata::beamCoord* beam_coord, uint16_t* thread_ids) {
 
     // Get the Telescope instance and pre-calc the length of an FPGA frame
     auto& tel = Telescope::instance();
@@ -98,8 +99,8 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, PSRHeader* psr_head
             for (uint32_t beam_id = 0; beam_id < _num_pulsar_beams; ++beam_id) {
                 psr_header->eud1 = beam_id; // beam id
                 psr_header->eud2 = beam_coord[f].scaling[beam_id];
-                uint16_t ra_part = (uint16_t)(beam_coord[f].ra[beam_id] * 100);
-                uint16_t dec_part = (uint16_t)((beam_coord[f].dec[beam_id] + 90) * 100);
+                uint16_t ra_part = (uint16_t)(beam_coord[f].right_ascension[beam_id] * 100);
+                uint16_t dec_part = (uint16_t)((beam_coord[f].declination[beam_id] + 90) * 100);
                 psr_header->eud4 = (ra_part << 16) + (dec_part & 0xFFFF);
                 timespec time_now_from_compute = tel.to_time(fpga_now);
                 if (time_now->tv_sec != time_now_from_compute.tv_sec) {
@@ -178,7 +179,7 @@ void pulsarPostProcess::main_thread() {
     uint in_frame_location = 0; // goes from 0 to 3125 or 625
     uint64_t fpga_seq_num = 0;
 
-    beamCoord beam_coord[_num_gpus];
+    chordMetadata::beamCoord beam_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = pulsar_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
     if (out_frame == nullptr)
@@ -192,14 +193,20 @@ void pulsarPostProcess::main_thread() {
 
         // Initialize data for header info, namely position and frequency labels.
         for (uint32_t i = 0; i < _num_gpus; ++i) {
-            beam_coord[i] = get_beam_coord(in_buf[i], in_buffer_ID[i]);
-            thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
+            beam_coord[i] = get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_beam_coord();
+            thread_ids[i] =
+                get_chord_metadata(in_buf[i], in_buffer_ID[i])
+                    ->get_coarse_freq()[0]; // TODO: handle multiple frequencies per buffer
         }
 
         // Define station_id as a node identifer in terms of F-engine slot/crate/link data.
-        ice_stream_id_t stream_id = ice_get_stream_id_t(in_buf[0], in_buffer_ID[0]);
+#if 0 // station id is strange since more than one F-engine would have contributed anyway, so for
+      // now, just make up something
+        ice_stream_id_t stream_id = ice_extract_stream_id_t(get_chord_metadata(in_buf[0], in_buffer_ID[0])->get_stream_id());
         psr_header.station_id =
             (uint16_t)(stream_id.crate_id * 16 + stream_id.slot_id + stream_id.link_id * 32);
+#endif
+        psr_header.station_id = 0;
 
         bool skipped_frames =
             (new_frame_fpga_seq_num.value() - frame_fpga_seq_num) > _samples_per_data_set;
@@ -350,20 +357,23 @@ std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
         // furthest along, and keep advancing others until they all match. (Keep in
         // mind that advancing one of the others may put it ahead of the current
         // largest fpga_seq_no, in which case we have to repeat the process.)
-        auto max_fpga_count = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
+        int64_t max_fpga_count = get_chord_metadata(in_buf[0], in_buffer_ID[0])->get_fpga_seq_num();
         for (unsigned i = 1; i < _num_gpus; i++) {
-            max_fpga_count = std::max(max_fpga_count, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
+            max_fpga_count = std::max(
+                max_fpga_count, get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num());
         }
         bool fpga_seq_in_sync = true;
         for (unsigned i = 0; i < _num_gpus; ++i) {
-            while (max_fpga_count > get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
+            while (max_fpga_count
+                   > get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
                 in_buf[i]->mark_frame_empty(unique_name, in_buffer_ID[i]);
                 in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
                 in_frame[i] = in_buf[i]->wait_for_full_frame(unique_name, in_buffer_ID[i]);
                 if (in_frame[i] == nullptr)
                     return std::nullopt;
             }
-            if (max_fpga_count != get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
+            if (max_fpga_count
+                != get_chord_metadata(in_buf[i], in_buffer_ID[i])->get_fpga_seq_num()) {
                 fpga_seq_in_sync = false;
             }
         }
@@ -374,5 +384,5 @@ std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
     if (stop_thread)
         return std::nullopt;
 
-    return get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
+    return get_chord_metadata(in_buf[0], in_buffer_ID[0])->get_fpga_seq_num();
 }

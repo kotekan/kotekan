@@ -1,12 +1,12 @@
 #include "visAccumulate.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for operator!=, Hash
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chimeMetadata.hpp"     // for chimeMetadata, get_dataset_id, get_fpga_seq_num, get_lo...
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator!=, Hash
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
 #include "datasetState.hpp"      // for eigenvalueState, freqState, gatingState, inputState
@@ -113,7 +113,7 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     std::vector<std::pair<uint32_t, freq_ctype>> freqs;
     std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(freqs),
                    [&tel](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
-                       return {id, {tel.to_freq(id), tel.freq_width(id)}};
+                       return {id, {tel.to_freq_MHz(id), tel.freq_width_MHz(id)}};
                    });
 
     // The input specification from the config
@@ -285,7 +285,7 @@ void visAccumulate::main_thread() {
             break;
 
         // Check if dataset ID changed
-        dset_id_t ds_id_in_new = get_dataset_id(in_buf, in_frame_id);
+        dset_id_t ds_id_in_new = get_chord_metadata(in_buf, in_frame_id)->get_dataset_id();
         if (!ds_id_in || ds_id_in_new != *ds_id_in) {
             ds_id_in = ds_id_in_new;
 
@@ -302,17 +302,17 @@ void visAccumulate::main_thread() {
         }
 
         int32_t* input = (int32_t*)in_frame;
-        uint64_t frame_count = (get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set);
+        uint64_t frame_count =
+            (get_chord_metadata(in_buf, in_frame_id)->get_fpga_seq_num() / samples_per_data_set);
 
         // Start and end times of this frame
         timespec t_s;
         if (gps_time_enabled) {
-            t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id].get())->gps_time;
+            t_s = get_chord_metadata(in_buf, in_frame_id)->get_gps_time();
         } else {
             // If GPS time is not set, fall back to system time.
-            TIMEVAL_TO_TIMESPEC(
-                &((chimeMetadata*)in_buf->metadata[in_frame_id].get())->first_packet_recv_time,
-                &t_s);
+            timeval t_v = get_chord_metadata(in_buf, in_frame_id)->get_first_packet_recv_time();
+            TIMEVAL_TO_TIMESPEC(&t_v, &t_s);
         }
         timespec t_e = add_nsec(t_s, samples_per_data_set * tel.seq_length_nsec());
 
@@ -377,8 +377,9 @@ void visAccumulate::main_thread() {
             // Get the amount of data in the frame
             // TODO: for the multifrequency support this probably needs to become frequency
             // dependent
-            int32_t lost_in_frame = get_lost_timesamples(in_buf, in_frame_id);
-            int32_t rfi_in_frame = get_rfi_flagged_samples(in_buf, in_frame_id);
+            int32_t lost_in_frame = get_chord_metadata(in_buf, in_frame_id)->get_lost_timesamples();
+            int32_t rfi_in_frame =
+                get_chord_metadata(in_buf, in_frame_id)->get_rfi_flagged_samples();
 
             // Assert that we haven't got an issue calculating the lost data
             // This did happen when the RFI system was messing up.
@@ -393,7 +394,7 @@ void visAccumulate::main_thread() {
             // doesn't really work if there are multiple frequencies in the same buffer..
             for (internalState& dset : enabled_gated_datasets) {
 
-                float freq_in_MHz = tel.to_freq(dset.frames[0].freq_id);
+                float freq_in_MHz = tel.to_freq_MHz(dset.frames[0].freq_id);
                 float w = dset.calculate_weight(t_s, t_e, freq_in_MHz);
 
                 // Don't bother to accumulate if weight is zero
@@ -456,7 +457,7 @@ void visAccumulate::main_thread() {
 
 bool visAccumulate::initialise_output(visAccumulate::internalState& state, int in_frame_id) {
 
-    std::shared_ptr<chimeMetadata> metadata = get_chime_metadata(in_buf, in_frame_id);
+    auto metadata = get_chord_metadata(in_buf, in_frame_id).get();
 
     for (size_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
 
@@ -472,7 +473,7 @@ bool visAccumulate::initialise_output(visAccumulate::internalState& state, int i
         auto& frame = state.frames[freq_ind];
 
         // Copy over the metadata
-        frame.fill_metadata<chimeMetadata>(metadata, freq_ind);
+        frame.fill_metadata(metadata, freq_ind);
 
         // Set dataset ID produced by the dM
         frame.dataset_id = state.output_dataset_id;

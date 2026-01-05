@@ -13,6 +13,7 @@ setups='
     chord_U2 chord_U4 chord_U8 chord_U16 chord_U32 chord_U64 chord_U128
     hirax_U8 hirax_U16 hirax_U32 hirax_U64 hirax_U128
     pathfinder_U2 pathfinder_U4 pathfinder_U8 pathfinder_U16 pathfinder_U32 pathfinder_U64
+    smallfinder_U2 smallfinder_U4 smallfinder_U8 smallfinder_U16 smallfinder_U32 smallfinder_U64
 '
 
 mkdir -p output-A40
@@ -24,10 +25,10 @@ for setup in ${setups}; do
     rm -f output-A40/upchan_${setup}.ptx
     rm -f output-A40/upchan_${setup}.sass
     rm -f output-A40/upchan_${setup}.yaml
-    rm -f ../lib/cuda/cudaUpchannelizer_${setup}.cpp
-    rm -f ../lib/cuda/kernels/Upchannelizer_${setup}.jl
-    rm -f ../lib/cuda/kernels/Upchannelizer_${setup}.ptx
-    rm -f ../lib/cuda/kernels/Upchannelizer_${setup}.yaml
+    rm -f ../lib/cuda/generated/cudaUpchannelizer_${setup}.cpp
+    rm -f ../lib/cuda/generated/Upchannelizer_${setup}.jl
+    rm -f ../lib/cuda/generated/Upchannelizer_${setup}.ptx
+    rm -f ../lib/cuda/generated/Upchannelizer_${setup}.yaml
 done
 
 # Generate kernels
@@ -47,7 +48,7 @@ done
 
 # Format generated C++ code
 for setup in ${setups}; do
-    clang-format-14 -i output-A40/upchan_${setup}.cxx &
+    clang-format-18 -i output-A40/upchan_${setup}.cxx &
 done
 
 # Format generated Julia code
@@ -56,8 +57,8 @@ wait
 
 # Copy kernels into Kotekan
 for setup in ${setups}; do
-    cp output-A40/upchan_${setup}.cxx ../lib/cuda/cudaUpchannelizer_${setup}.cpp
-    cp output-A40/upchan_${setup}.jl ../lib/cuda/kernels/Upchannelizer_${setup}.jl
-    cp output-A40/upchan_${setup}.ptx ../lib/cuda/kernels/Upchannelizer_${setup}.ptx
-    cp output-A40/upchan_${setup}.yaml ../lib/cuda/kernels/Upchannelizer_${setup}.yaml
+    cp output-A40/upchan_${setup}.cxx ../lib/cuda/generated/cudaUpchannelizer_${setup}.cpp
+    cp output-A40/upchan_${setup}.jl ../lib/cuda/generated/Upchannelizer_${setup}.jl
+    cp output-A40/upchan_${setup}.ptx ../lib/cuda/generated/Upchannelizer_${setup}.ptx
+    cp output-A40/upchan_${setup}.yaml ../lib/cuda/generated/Upchannelizer_${setup}.yaml
 done

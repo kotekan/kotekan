@@ -62,6 +62,7 @@ This section maps common CMake options (see :doc:`cmake_options`) to the package
 
 - ``USE_ASDF`` (ASDF output)
   - Requires ``asdf-cxx`` and dependencies. On Ubuntu:
+  
     * System packages: ``libbz2-dev``, ``liblz4-dev``, ``libssl-dev``
     * Libraries from source: ``c-blosc2`` (v2.14+) and ``asdf-cxx``
     * Note: On some systems, the pkg-config file name for lz4 is ``liblz4.pc``; ensure ``lz4.pc`` is visible to pkg-config or add a symlink.
@@ -189,6 +190,24 @@ Documentation:
 * Breathe::
 
     sudo pip install breathe
+
+Building documentation
+----------------------
+
+After configuring with ``-DCOMPILE_DOCS=ON``, build both the API (Doxygen) and
+user docs (Sphinx) with the aggregate target:
+
+.. code:: bash
+
+   mkdir -p build-docs
+   cd build-docs
+   cmake -DCOMPILE_DOCS=ON ..
+   make docs
+
+To build only one part of the documentation:
+
+- ``make doxygen`` – generate API reference only
+- ``make sphinx`` – build Sphinx HTML site only
 
 * Black::
 

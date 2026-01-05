@@ -1,32 +1,33 @@
 #include "buffer.hpp"
 
-// IWYU pragma: no_include <asm/mman-common.h>
-// IWYU pragma: no_include <asm/mman.h>
-#include "errors.h"           // for INFO_F, CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F, FAT...
-#include "kotekanLogging.hpp" // for DEBUG, ERROR, WARN, FATAL_ERROR, INFO
-#include "metadata.hpp"       // for metadataObject, metadataPool
-#include "nt_memset.h"        // for nt_memset
-#include "util.h"             // for e_time
-
-#include "fmt.hpp" // for compile_string_to_view, format, fmt
-
 #include <assert.h>      // for assert
 #include <bits/chrono.h> // for duration, operator+, nanoseconds, seconds, system_clock
 #include <errno.h>       // for errno
 #include <pthread.h>     // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
-#include <sched.h>       // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <sched.h>       // for CPU_SET, CPU_ZERO, cpu_set_t
 #include <stdexcept>     // for runtime_error
 #include <stdlib.h>      // for free, malloc
 #include <string.h>      // for strerror, memset, memcpy
-#include <sys/mman.h>    // for mlock, mmap, munmap, MAP_FAILED
+#include <sys/mman.h>    // for mmap, munmap, MAP_FAILED
 #include <utility>       // for pair
+
+// IWYU pragma: no_include <asm/mman-common.h>
+// IWYU pragma: no_include <asm/mman.h>
+#include "errors.h"           // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F
+#include "kotekanLogging.hpp" // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
+#include "metadata.hpp"       // for metadataObject, metadataPool
+#include "nt_memset.h"        // for nt_memset
+#include "util.h"             // for e_time
+
+#include "fmt.hpp"      // for format, fmt
+#include "fmt/format.h" // for compile_string_to_view
 #ifndef MAC_OSX
 #include <linux/mman.h> // for MAP_HUGE_2MB, MAP_PRIVATE
 #endif
-#include <time.h> // for size_t, timespec, NULL
+#include <time.h> // for timespec
 #ifdef WITH_NUMA
-#include <numa.h>   // for bitmask, numa_allocate_nodemask, numa_bitmask_free, numa_b...
-#include <numaif.h> // for set_mempolicy, MPOL_BIND, mbind, MPOL_DEFAULT, MPOL_MF_STRICT
+#include <numa.h>   // for bitmask, numa_alloc_onnode, numa_allocate_nodemask, numa_b...
+#include <numaif.h> // for mbind, MPOL_BIND, MPOL_MF_STRICT
 #endif
 
 // It is assumed this is a power of two in the code.
@@ -36,8 +37,6 @@ struct zero_frames_thread_args {
     Buffer* buf;
     int ID;
 };
-
-typedef std::lock_guard<std::recursive_mutex> buffer_lock;
 
 GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
                              std::shared_ptr<metadataPool> pool, int _num_frames) :
@@ -69,9 +68,17 @@ void GenericBuffer::register_consumer(const std::string& name) {
     }
 }
 
-void GenericBuffer::unregister_consumer(const std::string& name) {
+void GenericBuffer::unregister_consumer(const std::string& name, bool leave_last) {
     {
         buffer_lock lock(mutex);
+
+        // Optional: do not unregister if this is the last consumer.
+        if (leave_last && consumers.size() == 1) {
+            DEBUG("Not unregistering consumer {:s} for buffer {:s}, it is the last consumer.", name,
+                  buffer_name);
+            return;
+        }
+
         DEBUG("Unregistering consumer {:s} for buffer {:s}", name, buffer_name);
         size_t nrem = consumers.erase(name);
         if (nrem == 0) {
@@ -137,7 +144,7 @@ void GenericBuffer::private_copy_metadata(int dest_frame_id, GenericBuffer* src,
         WARN("Metadata sizes don't match, cannot copy metadata!!");
         return;
     }
-    *to_metadata_container = *from_metadata_container;
+    to_metadata_container->deepCopy(from_metadata_container);
 }
 
 void GenericBuffer::allocate_new_metadata_object(int ID) {
@@ -146,8 +153,8 @@ void GenericBuffer::allocate_new_metadata_object(int ID) {
 
     buffer_lock lock(mutex);
     if (metadata_pool == nullptr) {
-        FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer",
-                      buffer_name.c_str());
+        FATAL_ERROR("No metadata pool on %s but metadata was needed by a producer",
+                    buffer_name.c_str());
     }
     DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", this, ID);
 
@@ -209,9 +216,9 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                bool zero_new_frames) :
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
-    _zero_frames(false), frames(num_frames, nullptr), is_full(num_frames, false),
-    last_arrival_time(0), use_hugepages(_use_hugepages), mlock_frames(_mlock_frames),
-    numa_node(_numa_node) {
+    _zero_frames(false), frames(num_frames, nullptr), frames_desc(nullptr),
+    is_full(num_frames, false), last_arrival_time(0), use_hugepages(_use_hugepages),
+    mlock_frames(_mlock_frames), numa_node(_numa_node) {
     assert(num_frames > 0);
 
     // Get the CPU affinity for the zeroing threads from the config
@@ -413,15 +420,15 @@ void Buffer::print_buffer_status() {
 void Buffer::print_full_status() {
 
     // Don't compute a lot of strings if we aren't going to output the result
-    if (get_log_level() < kotekan::logLevel::DEBUG)
+    if (get_log_level() < kotekan::logLevel::DEBUG2)
         return;
 
     buffer_lock lock(mutex);
 
-    char status_string[num_frames + 1];
+    [[maybe_unused]] char status_string[num_frames + 1];
     status_string[num_frames] = '\0';
 
-    DEBUG("--------------------- {:} ---------------------", buffer_name);
+    DEBUG2("--------------------- {:} ---------------------", buffer_name);
 
     for (int i = 0; i < num_frames; ++i) {
         if (is_full[i])
@@ -430,9 +437,9 @@ void Buffer::print_full_status() {
             status_string[i] = '_';
     }
 
-    DEBUG("{:<40} : {:}", "Full Frames (X)", std::string(status_string));
+    DEBUG2("{:<40} : {:}", "Full Frames (X)", std::string(status_string));
 
-    DEBUG("---- Producers ----");
+    DEBUG2("---- Producers ----");
     for (auto& xit : producers) {
         auto& x = xit.second;
         for (int i = 0; i < num_frames; ++i) {
@@ -441,11 +448,11 @@ void Buffer::print_full_status() {
             else
                 status_string[i] = '_';
         }
-        DEBUG("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string),
-              x.last_frame_acquired, x.last_frame_released);
+        DEBUG2("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string),
+               x.last_frame_acquired, x.last_frame_released);
     }
 
-    DEBUG("---- Consumers ----");
+    DEBUG2("---- Consumers ----");
     for (auto& xit : consumers) {
         auto& x = xit.second;
         for (int i = 0; i < num_frames; ++i) {
@@ -454,8 +461,8 @@ void Buffer::print_full_status() {
             else
                 status_string[i] = '_';
         }
-        DEBUG("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string),
-              x.last_frame_acquired, x.last_frame_released);
+        DEBUG2("{:<40} : {:} ({:d}, {:d})", x.name, std::string(status_string),
+               x.last_frame_acquired, x.last_frame_released);
     }
 }
 
@@ -580,8 +587,9 @@ bool Buffer::private_mark_frame_empty(const int ID) {
         private_reset_consumers(ID);
         broadcast = true;
     }
-    if (metadata[ID])
+    if (metadata[ID]) {
         metadata[ID].reset();
+    }
     return broadcast;
 }
 
@@ -614,10 +622,18 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
     return frames[ID];
 }
 
-void Buffer::unregister_consumer(const std::string& name) {
+void Buffer::unregister_consumer(const std::string& name, bool leave_last) {
     int broadcast = 0;
     {
         buffer_lock lock(mutex);
+
+        // Optional: do not unregister if this is the last consumer.
+        if (leave_last && consumers.size() == 1) {
+            DEBUG("Not unregistering consumer {:s} for buffer {:s}, it is the last consumer.", name,
+                  buffer_name);
+            return;
+        }
+
         DEBUG("Unregistering consumer {:s} for buffer {:s}", name, buffer_name);
         size_t nrem = consumers.erase(name);
         if (nrem == 0) {
@@ -712,7 +728,7 @@ void Buffer::private_copy_frame(int dest_frame_id, Buffer* src, int src_frame_id
 }
 
 bool is_frame_buffer(GenericBuffer* buf) {
-    // See also bufferFactor::new_buffer()
+    // See also bufferFactory::new_buffer()
     return (buf->buffer_type == "standard") || (buf->buffer_type == "vis")
            || (buf->buffer_type == "hfb") || (buf->buffer_type == "N2");
 }

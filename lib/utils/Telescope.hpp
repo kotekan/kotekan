@@ -2,7 +2,6 @@
 #define TELESCOPE_HPP
 
 #include "Config.hpp"         // for Config
-#include "buffer.hpp"         // for Buffer
 #include "factory.hpp"        // for FACTORY, CREATE_FACTORY, REGISTER_NAMED_TYPE_WITH_FACTORY
 #include "kotekanLogging.hpp" // for ERROR, kotekanLogging
 
@@ -22,7 +21,8 @@ CREATE_FACTORY(Telescope, const kotekan::Config&, const std::string&);
     REGISTER_NAMED_TYPE_WITH_FACTORY(Telescope, TelescopeType, name)
 
 
-using freq_id_t = uint32_t;
+using nyquist_zone_t = std::uint8_t;
+using freq_id_t = std::uint32_t; // logical ID, not necessarily an index
 #define FREQ_ID_NOT_SET UINT32_MAX
 
 
@@ -112,26 +112,6 @@ public:
      **/
     virtual freq_id_t to_freq_id(stream_t stream, uint32_t ind) const = 0;
 
-    /**
-     * Get the frequency ID from the FPGA stream ID.
-     *
-     * @param  buf  The buffer object.
-     * @param  ID   Index of the frame in the buffer.
-     *
-     * @returns     The integer frequency ID.
-     **/
-    virtual freq_id_t to_freq_id(const Buffer* buf, int ID) const;
-
-    /**
-     * Get the frequency ID from the FPGA stream ID.
-     *
-     * @param  buf  The buffer object.
-     * @param  ID   Index of the frame in the buffer.
-     * @param  ind  The index for the multifrequency stream.
-     *
-     * @returns     The integer frequency ID.
-     **/
-    virtual freq_id_t to_freq_id(const Buffer* buf, int ID, uint32_t ind) const;
 
     /**
      * Get the physical frequency in MHz of the specified freq ID.
@@ -140,14 +120,14 @@ public:
      *
      * @returns         The central frequency in MHz.
      **/
-    virtual double to_freq(freq_id_t freq_id) const = 0;
+    virtual double to_freq_MHz(freq_id_t freq_id) const = 0;
 
 
     /**
      * Get the physical frequency in MHz of the specified channel.
      *
      * The baseclass implementation just calls
-     * `to_freq(to_freq_id(args))`, override with a custom implementation
+     * `to_freq_MHz(to_freq_id(args))`, override with a custom implementation
      * to save a function call.
      *
      * @param  args  Any arguments accepted by `to_freq_id`.
@@ -155,8 +135,8 @@ public:
      * @returns      The central frequency in MHz.
      **/
     template<typename... Args>
-    double to_freq(Args... args) const {
-        return to_freq(to_freq_id(args...));
+    double to_freq_MHz(Args... args) const {
+        return to_freq_MHz(to_freq_id(args...));
     }
 
 
@@ -165,7 +145,7 @@ public:
      *
      * @return  The number of frequencies on a stream.
      **/
-    virtual uint32_t num_freq_per_stream() const = 0;
+    virtual size_t num_freq_per_stream() const = 0;
 
 
     /**
@@ -175,21 +155,21 @@ public:
      *
      * @return  The total number of frequency channels.
      **/
-    virtual uint32_t num_freq() const = 0;
+    virtual size_t num_freq() const = 0;
 
     /**
      * @brief Get the frequency width of a given channel.
      *
      * @return  The width of the frequency channel in MHz.
      **/
-    virtual double freq_width(freq_id_t freq_id) const = 0;
+    virtual double freq_width_MHz(freq_id_t freq_id) const = 0;
 
     /**
      * @brief Get which Nyquist zone we are in.
      *
      * @return  The Nyquist zone.
      **/
-    virtual uint8_t nyquist_zone() const = 0;
+    virtual nyquist_zone_t nyquist_zone() const = 0;
 
     /**
      * Convert a sequence number into a UNIX epoch time.
@@ -238,7 +218,7 @@ public:
     virtual uint64_t seq_length_nsec() const = 0;
 
 private:
-    static inline std::unique_ptr<Telescope> tel_instance = nullptr;
+    static std::unique_ptr<Telescope>& tel_instance();
 
 protected:
     /**

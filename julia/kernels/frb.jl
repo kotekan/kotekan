@@ -95,7 +95,7 @@ elseif setup ≡ :hirax
     const W = 16                # number of warps
     const B = 1                 # number of blocks per SM
 
-elseif setup ≡ :pathfinder
+elseif setup ≡ :pathfinder || setup ≡ :smallfinder
 
     # CHORD pathfinder (case 2)
 
@@ -509,7 +509,7 @@ function copy_global_memory_to_Fsh1!(emitter)
         permute!(emitter, :E, :E, Cplx(:cplx, 1, C), Dish(:dish, 2, 2))
         store!(emitter, :Fsh1_shared => layout_Fsh1_shared, :E)
 
-    elseif setup === :pathfinder
+    elseif setup === :pathfinder || setup === :smallfinder
 
         # Eqn. (83)
         @assert D == 64
@@ -1133,7 +1133,7 @@ function do_first_fft!(emitter)
             mma_row_col_m16n8k16_f16!(emitter, :Y, :aΓ³ => (mma_is, mma_js), :V => (mma_js, mma_ks), :Y => (mma_is, mma_ks))
         else
             # TODO: Fbar_Wd a better set of conditions
-            if setup === :pathfinder
+            if setup === :pathfinder || setup === :smallfinder
                 # We can't handle partial index ranges in symbols. If there is
                 # a `dishM` spectator index then the whole `dishM` index range
                 # needs to be present. This should be corrected in

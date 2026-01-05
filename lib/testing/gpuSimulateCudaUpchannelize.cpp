@@ -1,22 +1,23 @@
 #include "gpuSimulateCudaUpchannelize.hpp"
 
 #include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "DataType.hpp"        // for float16_t, KOTEKAN_FLOAT16, IWYU pragma: keep
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
-#include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_indices, get_onehot_frame_...
+#include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_frame_counter, get_onehot_...
+#include "visUtil.hpp"         // for get4, set4, int4x2_t
+
+#include "fmt.hpp" // for compile_string_to_view, format, format_string
 
 #include <algorithm>  // for max, min
 #include <array>      // for array
 #include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
-#include <complex>    // for complex
-#include <cstdint>    // for int8_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <iosfwd>     // for size_t
-#include <regex>      // for match_results<>::_Base_type
+#include <cmath>      // for pow, M_PI, cos, floor
+#include <complex>    // for complex, operator*, polar, abs, sin
+#include <cstddef>    // for size_t
+#include <functional> // for bind, function
 #include <stdexcept>  // for runtime_error
 #include <utility>    // for pair
 #include <vector>     // for vector
@@ -159,7 +160,8 @@ constexpr T sinc(const T x) {
 
 // array indexing
 
-constexpr int Eidx(int c, int d, int f, int p, int t) {
+constexpr int Eidx([[maybe_unused]] int c, int d, int f, int p, int t) {
+    // The "c" parameter is only used in the assert, is it needed at all?
     assert(c >= 0 && c < C);
     assert(d >= 0 && d < D);
     assert(f >= 0 && f < F);
@@ -168,7 +170,8 @@ constexpr int Eidx(int c, int d, int f, int p, int t) {
     return d + D * f + D * F * p + D * F * P * t;
 }
 
-constexpr int Ebaridx(int c, int d, int fbar, int p, int tbar) {
+constexpr int Ebaridx([[maybe_unused]] int c, int d, int fbar, int p, int tbar) {
+    // The "c" parameter is only used in the assert, is it needed at all?
     assert(c >= 0 && c < C);
     assert(d >= 0 && d < D);
     assert(fbar >= 0 && fbar < F * U);

@@ -6,6 +6,7 @@
 #define N2_UTIL_HPP
 
 #include "buffer.hpp"
+#include "timeUtil.hpp"
 
 #include <complex> // for complex, imag, real
 #include <cstdint> // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
@@ -18,11 +19,14 @@ namespace N2 {
 using cfloat = typename std::complex<float>;
 
 /**
- * @brief Get the number of products for a given number of elements.
+ * @brief Frequency index map type for the N2 pipeline.
  */
-inline size_t get_num_prod(size_t num_elements) {
-    return num_elements * (num_elements + 1) / 2;
-}
+struct freq_ctype {
+    /// Centre of frequency channel in MHz
+    double centre;
+    /// Width of frequency channel in MHz
+    double width;
+};
 
 /**
  * @brief Index into a flattened upper matrix triangle.
@@ -37,6 +41,10 @@ inline uint32_t cmap(uint32_t i, uint32_t j, uint32_t n) {
 
 /**
  * @brief Product index map type.
+ *
+ * input_a is the row index into the full visibility matrix, and input_b is the column index into
+ * the full visibility matrix.  That is, for visibility matrix entry V_{ij}, input_a = i and input_b
+ * = j.
  */
 struct prod_ctype {
     /// Index of input A
@@ -80,15 +88,26 @@ inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
     return block * block * b_ix + (i % block) * block + (j % block);
 }
 
-
 /**
- * @brief Convert timespec type into total nanoseconds as an uint64.
- * @param  ts Time as timespec.
- * @return    Time as an uint64.
+ * @brief Correlator input type
  */
-inline uint64_t ts_to_uint64(const timespec& ts) {
-    return 1000000000L * (uint64_t)ts.tv_sec + (uint64_t)ts.tv_nsec;
-}
+struct input_ctype {
+    input_ctype(uint16_t idx, std::string input_id) {
+        // Check input_id length
+        if (input_id.size() >= 32) {
+            ERROR_NON_OO("input_id {} length exceeds 31 characters", input_id);
+        }
+        element_idx = idx;
+        std::memset(input_id_str, 0, 32);
+        input_id.copy(input_id_str, 31); // Ensure null termination
+    }
+
+    /// element index
+    uint16_t element_idx;
+    /// input identifier
+    char input_id_str[32];
+};
+
 
 /**
  * @brief A class for modular arithmetic. Used for holding ring buffer indices.
@@ -299,10 +318,10 @@ private:
  *
  * @returns  The current time in nanoseconds.
  **/
-inline uint64_t current_time() {
+inline int64_t current_system_time_ns() {
     timespec output_ts;
     timespec_get(&output_ts, TIME_UTC);
-    return N2::ts_to_uint64(output_ts);
+    return timespec_to_nanosec_i64(output_ts);
 }
 
 } // namespace N2

@@ -1,26 +1,24 @@
 #include "testDataGenFloat.hpp"
 
 #include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for allocate_new_metadata_object, mark_frame_full, register_p...
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
 #include "kotekanLogging.hpp"  // for DEBUG
 
-#include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
-#include <cmath>      // for fmod
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <random>
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for runtime_error
-#include <stdint.h>    // for uint64_t
-#include <stdlib.h>    // for rand, srand
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <assert.h>    // for assert
+#include <cmath>       // for fmod
+#include <functional>  // for bind, function
+#include <memory>      // for __shared_ptr_access, shared_ptr
+#include <random>      // for uniform_real_distribution, mt19937
+#include <stdint.h>    // for uint32_t, uint64_t
+#include <stdlib.h>    // for srand
 #include <sys/time.h>  // for gettimeofday, timeval
 #include <sys/types.h> // for uint
 #include <unistd.h>    // for usleep
-#include <vector>      // for vector
 
 
 using kotekan::bufferContainer;
@@ -68,12 +66,10 @@ void testDataGenFloat::main_thread() {
             break;
 
         buf->allocate_new_metadata_object(frame_id);
-        set_fpga_seq_num(buf, frame_id, seq_num);
-        // TODO This should be dynamic/config controlled.
-        set_stream_id(buf, frame_id, {0});
+        get_chord_metadata(buf, frame_id)->set_fpga_seq_num(seq_num);
 
         gettimeofday(&now, nullptr);
-        set_first_packet_recv_time(buf, frame_id, now);
+        get_chord_metadata(buf, frame_id)->set_first_packet_recv_time(now);
 
         // std::random_device rd;
         // std::mt19937 gen(rd());

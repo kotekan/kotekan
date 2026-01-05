@@ -1,0 +1,5 @@
+*************
+HFBFreqSubset
+*************
+
+.. doxygenclass:: HFBFreqSubset

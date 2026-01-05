@@ -1,17 +1,15 @@
 #include "fakeGpuPattern.hpp"
 
 #include "Config.hpp"        // for Config
-#include "chimeMetadata.hpp" // for chimeMetadata
+#include "chordMetadata.hpp" // for chordMetadata
 #include "visUtil.hpp"       // for prod_index
 
-#include "gsl-lite.hpp" // for span, span<>::iterator
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
 
 #include <algorithm> // for fill
-#include <cmath>     // for lroundf, pow
-#include <exception> // for exception
-#include <regex>     // for match_results<>::_Base_type
-#include <stdexcept> // for runtime_error
-#include <time.h>    // for timespec  // IWYU pragma: keep
+#include <cmath>     // for pow, lroundf
+#include <time.h>    // for timespec
 #include <vector>    // for vector
 
 // Register test patterns
@@ -38,12 +36,11 @@ BlockGpuPattern::BlockGpuPattern(kotekan::Config& config, const std::string& pat
     FakeGpuPattern(config, path) {}
 
 
-void BlockGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
+void BlockGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata, int frame_number,
                            freq_id_t freq_id) {
 
-    (void)metadata;
-    (void)frame_number;
     (void)freq_id;
+    (void)frame_number;
 
     unsigned int nb1 = _num_elements / _block_size;
     unsigned int num_blocks = nb1 * (nb1 + 1) / 2;
@@ -59,16 +56,18 @@ void BlockGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadat
             }
         }
     }
+
+    metadata->set_lost_timesamples(0);
+    metadata->set_rfi_flagged_samples(0);
 }
 
 
 LostSamplesGpuPattern::LostSamplesGpuPattern(kotekan::Config& config, const std::string& path) :
     FakeGpuPattern(config, path) {}
 
-void LostSamplesGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata,
+void LostSamplesGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                  int frame_number, freq_id_t freq_id) {
     (void)freq_id;
-
     uint32_t norm = _samples_per_data_set - frame_number;
 
     // Every frame has one more lost packet than the last
@@ -83,14 +82,17 @@ void LostSamplesGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* m
         }
     }
 
-    metadata->lost_timesamples = frame_number;
+    metadata->set_lost_timesamples(frame_number);
+    metadata->set_rfi_flagged_samples(0);
+    // cannot set frequencies since I don't know which element of the data slice
+    // I am at
 }
 
 
 LostWeightsGpuPattern::LostWeightsGpuPattern(kotekan::Config& config, const std::string& path) :
     FakeGpuPattern(config, path), _b(config.get_default<uint32_t>(path, "b", 1)) {}
 
-void LostWeightsGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata,
+void LostWeightsGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                  int frame_number, freq_id_t freq_id) {
     (void)freq_id;
 
@@ -110,18 +112,18 @@ void LostWeightsGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* m
         }
     }
 
-    metadata->lost_timesamples = lost;
-    metadata->rfi_flagged_samples = lost;
+    metadata->set_lost_timesamples(lost);
+    metadata->set_rfi_flagged_samples(lost);
+    // cannot set frequencies since I don't know which element of the data slice
+    // I am at
 }
 
 AccumulateGpuPattern::AccumulateGpuPattern(kotekan::Config& config, const std::string& path) :
     FakeGpuPattern(config, path) {}
 
 
-void AccumulateGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata,
+void AccumulateGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                 int frame_number, freq_id_t freq_id) {
-
-    (void)metadata;
     (void)freq_id;
 
     for (size_t i = 0; i < _num_elements; i++) {
@@ -141,6 +143,11 @@ void AccumulateGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* me
                 (i - 4 * ((frame_number + 1) % 4 == 0) + 1) * _samples_per_data_set;
         }
     }
+
+    metadata->set_lost_timesamples(0);
+    metadata->set_rfi_flagged_samples(0);
+    // cannot set frequencies since I don't know which element of the data slice
+    // I am at
 }
 
 
@@ -148,12 +155,10 @@ GaussianGpuPattern::GaussianGpuPattern(kotekan::Config& config, const std::strin
     FakeGpuPattern(config, path), rd(), gen(rd()), gaussian(0, 1) {}
 
 
-void GaussianGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata,
+void GaussianGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                               int frame_number, freq_id_t freq_id) {
-
-    (void)metadata;
-    (void)frame_number;
     (void)freq_id;
+    (void)frame_number;
 
     float f_auto = pow(_samples_per_data_set, 0.5);
     float f_cross = pow(_samples_per_data_set / 2, 0.5);
@@ -171,6 +176,11 @@ void GaussianGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* meta
             }
         }
     }
+
+    metadata->set_lost_timesamples(0);
+    metadata->set_rfi_flagged_samples(0);
+    // cannot set frequencies since I don't know which element of the data slice
+    // I am at
 }
 
 
@@ -187,8 +197,9 @@ PulsarGpuPattern::PulsarGpuPattern(kotekan::Config& config, const std::string& p
 }
 
 
-void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata,
+void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                             int frame_number, freq_id_t freq_id) {
+    (void)freq_id;
     (void)frame_number;
 
     auto& tel = Telescope::instance();
@@ -196,10 +207,10 @@ void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metada
     // Fill frame with zeros
     std::fill(data.begin(), data.end(), 0);
 
-    DEBUG2("GPS time %ds%dns", metadata->gps_time.tv_sec, metadata->gps_time.tv_nsec);
+    DEBUG2("GPS time %ds%dns", metadata->get_gps_time().tv_sec, metadata->get_gps_time().tv_nsec);
 
     // Figure out if we are in a pulse
-    double toa = _polyco.next_toa(metadata->gps_time, tel.to_freq(freq_id));
+    double toa = _polyco.next_toa(metadata->get_gps_time(), tel.to_freq_MHz(freq_id));
     double last_toa = toa - 1. / _rot_freq;
     DEBUG2("TOA: %f, last TOA: %f", toa, last_toa);
 
@@ -213,16 +224,21 @@ void PulsarGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metada
             }
         }
     }
+
+    metadata->set_lost_timesamples(0);
+    metadata->set_rfi_flagged_samples(0);
+    // cannot set frequencies since I don't know which element of the data slice
+    // I am at
 }
 
 
 MultiFreqGpuPattern::MultiFreqGpuPattern(kotekan::Config& config, const std::string& path) :
     FakeGpuPattern(config, path) {}
 
-void MultiFreqGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* metadata,
+void MultiFreqGpuPattern::fill(gsl_lite::span<int32_t>& data, chordMetadata* metadata,
                                int frame_number, freq_id_t freq_id) {
+    (void)freq_id;
     (void)frame_number;
-    (void)metadata;
 
     // Label the real with the freq_id and the imag with the product id.
     uint32_t prod_id = 0;
@@ -234,4 +250,9 @@ void MultiFreqGpuPattern::fill(gsl_lite::span<int32_t>& data, chimeMetadata* met
             prod_id++;
         }
     }
+
+    metadata->set_lost_timesamples(0);
+    metadata->set_rfi_flagged_samples(0);
+    // cannot set frequencies since I don't know which element of the data slice
+    // I am at
 }

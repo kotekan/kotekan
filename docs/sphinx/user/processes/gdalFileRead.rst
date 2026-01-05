@@ -1,0 +1,5 @@
+************
+gdalFileRead
+************
+
+.. doxygenclass:: gdalFileRead

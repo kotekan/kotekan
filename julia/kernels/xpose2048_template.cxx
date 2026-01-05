@@ -9,17 +9,20 @@
 #include <DataType.hpp>
 #include <NDArrayBuffer.hpp>
 #include <NDArrayRingBuffer.hpp>
-#include <algorithm>
-#include <array>
 #include <bufferContainer.hpp>
-#include <cassert>
 #include <chordMetadata.hpp>
-#include <cstring>
 #include <cudaCommand.hpp>
 #include <cudaDeviceInterface.hpp>
 #include <div.hpp>
+
 #include <fmt.hpp>
+
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstring>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -249,7 +252,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "{{{kernel_name}}}_");
+        device.build_ptx("lib/cuda/generated/{{{kernel_name}}}.ptx", {kernel_symbol}, opts, "{{{kernel_name}}}_");
     }
 }
 
@@ -263,21 +266,21 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
     }
 
     // Wait for data to be available in input ringbuffer
-    const std::ptrdiff_t Tin_ringbuf = Ein_buffer.get_ndarray().extent(0);
-    const std::ptrdiff_t Tin_read_max = Tin_ringbuf / 4;
-    std::ptrdiff_t Tin_read = -1;
+    const std::ptrdiff_t Tin_read = 1;
     {
-        const int errcode = Ein_buffer.wait_and_claim_readable([&](const std::ptrdiff_t Tin_available) {
-            using std::min;
-            Tin_read = round_down(min(Tin_available, Tin_read_max), cuda_granularity_number_of_timesamples);
+        const int errcode =
+            Ein_buffer.wait_and_claim_readable([&](const std::ptrdiff_t Tin_available) {
+                using std::min;
+                if (Tin_available < Tin_read)
+                    return read_descriptor_t{.claimed = 0, .read = 0};
                 return read_descriptor_t{.claimed = Tin_read, .read = Tin_read};
-        });
+            });
         if (errcode < 0)
             return errcode;
     }
 
     // Wait for space to be available in output ringbuffer
-    const std::ptrdiff_t T_written = Tin_read;
+    const std::ptrdiff_t T_written = 16384 * Tin_read;
     {
         const int errcode = E_buffer.wait_for_writable(T_written);
         if (errcode < 0)
@@ -304,7 +307,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                     // Replace "Ein" with "E" etc.
                     // {{{name}}}_buffer.check_metadata();
                     const std::string quantity = "E";
-                    const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
+                    const std::array<std::string, 4> dimname = {"Thi16384", "F", "Tlo16384", "E"};
                     const std::shared_ptr<const chordMetadata> metadata = Ein_buffer.get_metadata();
                     if (!(metadata->get_name() == quantity))
                         ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}", Ein_buffer.get_buffer_name(), quantity,
@@ -314,10 +317,16 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                     assert(metadata->type == ndarray.value_datatype);
                     assert(metadata->dims == ndarray.rank);
                     for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                        assert(metadata->get_dimension_name(d) == dimname[d]);
+                        if (!(metadata->get_dimension_name(d) == dimname.at(d)))
+                            ERROR("buffer name: {:s}, dimension: {:d}: dimension name: {:s}, metadata name: {:s}",
+                                  Ein_buffer.get_buffer_name(), d, dimname.at(d), metadata->get_dimension_name(d));
+                        assert(metadata->get_dimension_name(d) == dimname.at(d));
                         // The ring buffer direction is special
                         if (d > 0)
                             assert(metadata->dim[d] == int(ndarray.extent(d)));
+                        if (!(metadata->stride[d] == ndarray.stride(d)))
+                            ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, ndarray stride: {:d}",
+                                  Ein_buffer.get_buffer_name(), d, metadata->stride[d], ndarray.stride(d));
                         assert(metadata->stride[d] == ndarray.stride(d));
                     }
                 } else {
@@ -366,8 +375,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    Tin_min_arg = mod(Tin_min, Tin_ringbuf);
-    Tin_max_arg = mod(Tin_min, Tin_ringbuf) + Tin_length;
+    Tin_min_arg = 16384 * mod(Tin_min, Tin_ringbuf);
+    Tin_max_arg = 16384 * (mod(Tin_min, Tin_ringbuf) + Tin_length);
     T_min_arg = mod(T_min, T_ringbuf);
     T_max_arg = mod(T_min, T_ringbuf) + T_length;
 

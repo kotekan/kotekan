@@ -1,36 +1,30 @@
 #include "FakeN2.hpp"
 
-#include "CHORDTelescope.hpp"  // for struct EOP, eop_null, CHORDTelescope
+#include "CHORDTelescope.hpp"  // for CHORDTelescope, EOP
 #include "Config.hpp"          // for Config
 #include "N2FrameView.hpp"     // for N2FrameView
-#include "N2Util.hpp"          // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for allocate_new_metadata_object, mark_frame_full, register_p...
+#include "N2Metadata.hpp"      // for N2Metadata, get_N2_metadata
+#include "N2Util.hpp"          // for get_num_prod
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "errors.h"            // for ReturnCode, exit_kotekan
 #include "factory.hpp"         // for FACTORY
-#include "kotekanLogging.hpp"  // for INFO, DEBUG
-#include "version.h"           // for get_git_commit_hash
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span<>::iterator, span
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
 
-#include <algorithm>   // for max, fill, transform
-#include <atomic>      // for atomic_bool
-#include <complex>     // for complex
-#include <cstdint>     // for uint32_t, int32_t
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function, placeholders
-#include <iterator>    // for back_insert_iterator, back_inserter, begin, end
-#include <memory>      // for allocator, unique_ptr
-#include <numeric>     // for iota
-#include <random>      // for random_device, mt19937
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for runtime_error
-#include <time.h>      // for nanosleep, timespec
-#include <tuple>       // for get, make_tuple, tuple
-#include <type_traits> // for __decay_and_strip<>::__type
-#include <utility>     // for pair
+#include <algorithm>  // for fill, max, shuffle
+#include <assert.h>   // for assert
+#include <complex>    // for complex
+#include <functional> // for bind, function, placeholders
+#include <memory>     // for allocator, shared_ptr, __shared_ptr_access, unique_ptr
+#include <numeric>    // for iota
+#include <random>     // for random_device, uniform_real_distribution, mt19937
+#include <time.h>     // for nanosleep, timespec
+#include <utility>    // for pair
 
 
 using namespace std::placeholders;
@@ -61,7 +55,7 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     out_buf->register_producer(unique_name);
 
     // Get frequency IDs from config
-    freq = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
+    freq = config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids", {});
     if (freq.size() == 0) {
         size_t n = config.get<size_t>(unique_name, "num_total_freq");
         freq.resize(n);
@@ -82,6 +76,14 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
+
+    size_t num_prod = N2FrameView::get_num_prod(num_elements, N2Layout::FullUpperTri);
+    size_t frame_size = N2FrameView::calculate_frame_size(num_elements, num_eigenvectors, num_prod);
+    if (out_buf->frame_size != frame_size) {
+        FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d}", out_buf->buffer_name,
+                    out_buf->frame_size, frame_size);
+    }
+    assert(frame_size == out_buf->frame_size);
 }
 
 void FakeN2::main_thread() {
@@ -91,20 +93,25 @@ void FakeN2::main_thread() {
 
     int64_t time_ns = (uint64_t)start_time * 1000000000;
 
-    // Calculate the time increments in seq and ctime
-    // int64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
-    int64_t delta_seq = (uint64_t)(cadence * 3.2e9 / 16384);
-    // calculate delta_ns from delta_seq (instead of cadence) in case rounding occured.
-    int64_t delta_ns = delta_seq * ((int64_t)(16384 / 3.2));
-    DEBUG("delta_seq = {:d}, delta_ns = {:d}", delta_seq, delta_ns);
-
     // Sleep before starting up
     timespec ts_sleep = double_to_ts(sleep_before);
     nanosleep(&ts_sleep, nullptr);
 
     double start = current_time();
 
+    // Check if we are using a CHORD telescope
+    if (Telescope::instance().get_name() != "CHORDTelescope") {
+        FATAL_ERROR("FakeN2 only works with the CHORDTelescope telescope type, got {:s}",
+                    Telescope::instance().get_name());
+    }
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
+
+    // Calculate the time increments using the telescope tick length
+    const int64_t tick_len_ns = (int64_t)tel.seq_length_nsec();
+    int64_t delta_seq = (int64_t)(cadence * 1e9 / (double)tick_len_ns);
+    int64_t delta_ns = delta_seq * tick_len_ns;
+    DEBUG("delta_seq = {:d}, delta_ns = {:d} (tick_len_ns = {:d})", delta_seq, delta_ns,
+          tick_len_ns);
 
     // random number generators in case we randomize things
     std::random_device rd;
@@ -151,27 +158,47 @@ void FakeN2::main_thread() {
 
             meta->num_elements = num_elements;
             /// Number of products in the data
-            meta->num_prod = N2::get_num_prod(num_elements);
+            meta->num_prod = N2FrameView::get_num_prod(num_elements, n2_layout);
             /// Number of eigenvectors and values calculated
             meta->num_ev = num_eigenvectors;
-            /// Total number of frequencies in pipeline
+            // Total number of frequencies in pipeline
             meta->nfreq = freq.size();
             // Set the frequency index
             meta->freq_id = f;
+            // Set the physical frequency
+            meta->freq_MHz = tel.to_freq_MHz(f);
+            // Set the time index
+            meta->abs_time_idx = frame_count + t;
+            // Set the vis matrix layout
+            meta->vis_layout = n2_layout;
 
-            /// The sequence number of the first FPGA frame integrated into this visibility frame
+            // The sequence number of the first FPGA frame integrated into this visibility frame
             meta->fpga_start_tick = fpga_seq + t * delta_seq;
             // Set the length and total data
             meta->frame_length_fpga_ticks = delta_seq;
             // Set the time
             meta->frame_start_time_ns = time_ns + t * delta_ns;
+            // Set number of valid ticks (default to all)
+            meta->n_valid_fpga_ticks = delta_seq;
+            // Set number of rfi ticks (default to 0)
+            meta->n_rfi_fpga_ticks = 0;
 
             DEBUG("Output frame seq={:d} time_ns={:d}", meta->fpga_start_tick,
                   meta->frame_start_time_ns);
 
             // Set EOP
             timespec time_cen = tel.to_time(fpga_seq + t * delta_seq + delta_seq / 2);
-            meta->eop = tel.get_EOP_at_time(time_cen);
+            meta->time_center_eop = tel.get_EOP_at_time(time_cen);
+            meta->bin_eop = tel.get_EOP_at_time(time_cen);
+
+            struct EOP bin_start_eop = tel.get_EOP_at_time(tel.to_time(fpga_seq + t * delta_seq));
+            meta->bin_start_ERA_deg = bin_start_eop.ERA_deg;
+            meta->bin_start_LAST = -1;
+
+            struct EOP bin_end_eop =
+                tel.get_EOP_at_time(tel.to_time(fpga_seq + t * delta_seq + delta_seq));
+            meta->bin_end_ERA_deg = bin_end_eop.ERA_deg;
+            meta->bin_end_LAST = -1;
 
             DEBUG("Creating N2FrameView.");
             DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}", meta->num_elements,
@@ -187,7 +214,8 @@ void FakeN2::main_thread() {
 
             // Fill out the frame with the selected pattern
             pattern->fill(output_frame);
-            INFO("First eval is: {}", output_frame.eval[0]);
+            if (meta->num_ev > 0)
+                INFO("First eval is: {}", output_frame.eval[0]);
 
             // gains
             for (uint32_t i = 0; i < num_elements; i++) {
@@ -209,14 +237,12 @@ void FakeN2::main_thread() {
         // Increment the timespec
         time_ns += curr_n_frames * delta_ns;
 
-        // Cause kotekan to exit if we've hit the maximum number of frames
+        // Stop generating if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count >= num_frames) {
-            INFO("Reached frame limit [{:d} frames]. Sleeping and then exiting kotekan...",
-                 num_frames);
+            INFO("Reached frame limit [{:d} frames]. Stopping generation.", num_frames);
             timespec ts = double_to_ts(sleep_after);
             nanosleep(&ts, nullptr);
-            exit_kotekan(ReturnCode::CLEAN_EXIT);
-            return;
+            break;
         }
 
         // If requested sleep for the extra time required to produce a fake vis
@@ -242,6 +268,7 @@ void FakeN2::fill_non_vis(N2FrameView& frame) {
         frame.eval[i] = i;
     }
     frame.erms = 1.0;
+    frame.emethod = N2EigenMethod::none;
 
     // Set weights
     int ind = 0;

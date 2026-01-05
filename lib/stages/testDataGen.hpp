@@ -90,6 +90,7 @@ private:
     std::string _name;
     std::vector<int> _array_shape;
     std::vector<std::string> _dim_name;
+    std::vector<uint32_t> _manual_freq_ids;
     int _meta_time_downsample_factor;
 
     // kotekan trackers example

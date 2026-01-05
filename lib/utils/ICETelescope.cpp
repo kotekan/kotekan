@@ -136,7 +136,7 @@ freq_id_t ICETelescope::to_freq_id(stream_t stream, uint32_t ind) const {
 }
 
 
-double ICETelescope::to_freq(freq_id_t freq_id) const {
+double ICETelescope::to_freq_MHz(freq_id_t freq_id) const {
 
     if (freq_id >= nfreq) {
         throw std::invalid_argument(
@@ -147,15 +147,15 @@ double ICETelescope::to_freq(freq_id_t freq_id) const {
 }
 
 
-uint32_t ICETelescope::num_freq_per_stream() const {
+size_t ICETelescope::num_freq_per_stream() const {
     return _num_freq_per_stream;
 }
 
-uint32_t ICETelescope::num_freq() const {
+size_t ICETelescope::num_freq() const {
     return nfreq;
 }
 
-double ICETelescope::freq_width(freq_id_t freq_id) const {
+double ICETelescope::freq_width_MHz(freq_id_t freq_id) const {
 
     if (freq_id >= nfreq) {
         throw std::invalid_argument(

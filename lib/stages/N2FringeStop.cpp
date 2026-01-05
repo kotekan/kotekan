@@ -77,30 +77,34 @@ void N2FringeStop::main_thread() {
             break;
         }
 
-        N2FrameView frame(in_buf, frame_id);
+        N2FrameView in_frame(in_buf, frame_id);
 
-        DEBUG("Input frame - num_elements: {:d}", frame.num_elements);
+        DEBUG("Input frame - num_elements: {:d}", in_frame.num_elements);
 
-        size_t num_elements = frame.num_elements;
+        size_t num_elements = in_frame.num_elements;
 
-        DEBUG("ERA: {:f}; ERA_target: {:f}", frame.eop.ERA_deg, era_target_deg);
+        DEBUG("ERA: {:f}; ERA_target: {:f}", in_frame.bin_eop.ERA_deg, era_target_deg);
 
-        struct EOP eop = frame.eop;
+        struct EOP eop = in_frame.bin_eop;
 
         // Wait for an empty frame
         if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
             break;
         }
 
-        // Copy frame into output buffer
+        // Copy frame (and metadata) to output buffer
         auto output_frame = N2FrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
 
-
         // Set the target EOP.
-        output_frame.eop = eop_target;
+        output_frame.time_center_eop = eop_null; // TODO: update
+        output_frame.bin_eop = eop_target;
+        output_frame.bin_start_ERA_deg = -1; // TODO: update
+        output_frame.bin_end_ERA_deg = -1;   // TODO: update
+        output_frame.bin_start_LAST = -1;    // TODO: update
+        output_frame.bin_end_LAST = -1;      // TODO: update
 
         if (fringestop_mode > 0)
-            tel.fringestop_phases_1d(frame.freq_Hz, eop, eop_target, fringe_phase);
+            tel.fringestop_phases_1d(in_frame.freq_MHz, eop, eop_target, fringe_phase);
 
         size_t idx = 0;
         for (size_t i = 0; i < num_elements; i++) {

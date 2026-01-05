@@ -4,6 +4,7 @@
 #include "visUtil.hpp" // Needed for timespec conversion  // IWYU pragma: keep
 
 #include <assert.h> // for assert
+#include <string>   // for basic_string
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, HFBMetadata);
 
@@ -18,11 +19,17 @@ struct HFBMetadataFormat {
     dset_id_t dataset_id;
 };
 
+void HFBMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
+    auto hfb_other = std::dynamic_pointer_cast<const HFBMetadata>(other);
+    assert(hfb_other);
+    *this = *hfb_other;
+}
+
 size_t HFBMetadata::get_serialized_size() {
     return sizeof(HFBMetadataFormat);
 }
 
-size_t HFBMetadata::set_from_bytes(const char* bytes, size_t length) {
+size_t HFBMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t length) {
     size_t sz = get_serialized_size();
     assert(length >= sz);
     const HFBMetadataFormat* fmt = reinterpret_cast<const HFBMetadataFormat*>(bytes);
@@ -58,23 +65,25 @@ nlohmann::json HFBMetadata::to_json() {
 }
 
 void to_json(nlohmann::json& j, const HFBMetadata& m) {
-    j["fpga_seq_start"] = m.fpga_seq_start;
-    j["ctime"] = m.ctime;
-    j["freq_id"] = m.freq_id;
-    j["fpga_seq_length"] = m.fpga_seq_length;
-    j["fpga_seq_total"] = m.fpga_seq_total;
-    j["num_beams"] = m.num_beams;
-    j["num_subfreq"] = m.num_subfreq;
-    j["dataset_id"] = m.dataset_id;
+    assert(j.empty());
+
+    j.emplace("fpga_seq_start", m.fpga_seq_start);
+    j.emplace("ctime", m.ctime);
+    j.emplace("freq_id", m.freq_id);
+    j.emplace("fpga_seq_length", m.fpga_seq_length);
+    j.emplace("fpga_seq_total", m.fpga_seq_total);
+    j.emplace("num_beams", m.num_beams);
+    j.emplace("num_subfreq", m.num_subfreq);
+    j.emplace("dataset_id", m.dataset_id);
 }
 
 void from_json(const nlohmann::json& j, HFBMetadata& m) {
-    m.fpga_seq_start = j["fpga_seq_start"];
-    m.ctime = j["ctime"];
-    m.freq_id = j["freq_id"];
-    m.fpga_seq_length = j["fpga_seq_length"];
-    m.fpga_seq_total = j["fpga_seq_total"];
-    m.num_beams = j["num_beams"];
-    m.num_subfreq = j["num_subfreq"];
-    m.dataset_id = j["dataset_id"];
+    m.fpga_seq_start = j.at("fpga_seq_start");
+    m.ctime = j.at("ctime");
+    m.freq_id = j.at("freq_id");
+    m.fpga_seq_length = j.at("fpga_seq_length");
+    m.fpga_seq_total = j.at("fpga_seq_total");
+    m.num_beams = j.at("num_beams");
+    m.num_subfreq = j.at("num_subfreq");
+    m.dataset_id = j.at("dataset_id");
 }

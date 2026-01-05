@@ -128,7 +128,7 @@ public:
             const double elapsed_time = this_time - start_time;
 
             INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
-                 frame_counter, meta->sample0_offset, elapsed_time);
+                 frame_counter, meta->get_sample0_offset(), elapsed_time);
 
             if (!skip_writing) {
 
@@ -216,67 +216,67 @@ public:
                     assert(success);
                 }
 
-                if (meta->nfreq >= 0) {
-                    const auto nfreq = group->CreateAttribute(
-                        "nfreq", std::vector<GUInt64>{},
-                        GDALExtendedDataType::Create(get_gdal_datatype(meta->nfreq)));
-                    const bool success = nfreq->Write(&meta->nfreq, sizeof meta->nfreq);
-                    assert(success);
-                }
-
-                if (meta->nfreq >= 0) {
+                if (meta->get_nfreq() >= 0) {
                     const auto coarse_freq = group->CreateAttribute(
-                        "coarse_freq", std::vector<GUInt64>{GUInt64(meta->nfreq)},
-                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->coarse_freq)));
+                        "coarse_freq", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
+                        GDALExtendedDataType::Create(
+                            get_gdal_datatype(*meta->get_coarse_freq().data())));
                     const bool success = coarse_freq->Write(
-                        meta->coarse_freq, meta->nfreq * sizeof *meta->coarse_freq);
+                        meta->get_coarse_freq().data(),
+                        meta->get_nfreq() * sizeof *meta->get_coarse_freq().data());
                     assert(success);
                 }
 
-                if (meta->nfreq >= 0) {
+                if (meta->get_nfreq() >= 0) {
                     const auto freq_upchan_factor = group->CreateAttribute(
-                        "freq_upchan_factor", std::vector<GUInt64>{GUInt64(meta->nfreq)},
-                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->freq_upchan_factor)));
+                        "freq_upchan_factor", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
+                        GDALExtendedDataType::Create(
+                            get_gdal_datatype(*meta->get_freq_upchan_factor().data())));
                     const bool success = freq_upchan_factor->Write(
-                        meta->freq_upchan_factor, meta->nfreq * sizeof *meta->freq_upchan_factor);
+                        meta->get_freq_upchan_factor().data(),
+                        meta->get_nfreq() * sizeof *meta->get_freq_upchan_factor().data());
                     assert(success);
                 }
 
-                if (meta->sample0_offset >= 0) {
+                if (meta->get_sample0_offset() >= 0) {
+                    const auto sample0_offset_value = meta->get_sample0_offset();
                     const auto sample0_offset = group->CreateAttribute(
                         "sample0_offset", std::vector<GUInt64>{},
-                        GDALExtendedDataType::Create(get_gdal_datatype(meta->sample0_offset)));
+                        GDALExtendedDataType::Create(get_gdal_datatype(sample0_offset_value)));
                     const bool success =
-                        sample0_offset->Write(&meta->sample0_offset, sizeof meta->sample0_offset);
+                        sample0_offset->Write(&sample0_offset_value, sizeof sample0_offset_value);
                     assert(success);
                 }
 
-                if (meta->offset_downsampling >= 0) {
+                if (meta->get_offset_downsampling() >= 0) {
+                    const auto offset_downsampling_value = meta->get_offset_downsampling();
                     const auto offset_downsampling = group->CreateAttribute(
                         "offset_downsampling", std::vector<GUInt64>{},
-                        GDALExtendedDataType::Create(get_gdal_datatype(meta->offset_downsampling)));
+                        GDALExtendedDataType::Create(get_gdal_datatype(offset_downsampling_value)));
                     const bool success = offset_downsampling->Write(
-                        &meta->offset_downsampling, sizeof meta->offset_downsampling);
+                        &offset_downsampling_value, sizeof offset_downsampling_value);
                     assert(success);
                 }
 
-                if (meta->nfreq >= 0) {
+                if (meta->get_nfreq() >= 0) {
                     const auto half_fpga_sample0 = group->CreateAttribute(
-                        "half_fpga_sample0", std::vector<GUInt64>{GUInt64(meta->nfreq)},
-                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->half_fpga_sample0)));
+                        "half_fpga_sample0", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
+                        GDALExtendedDataType::Create(
+                            get_gdal_datatype(*meta->get_half_fpga_sample0().data())));
                     const bool success = half_fpga_sample0->Write(
-                        meta->half_fpga_sample0, meta->nfreq * sizeof *meta->half_fpga_sample0);
+                        meta->get_half_fpga_sample0().data(),
+                        meta->get_nfreq() * sizeof *meta->get_half_fpga_sample0().data());
                     assert(success);
                 }
 
-                if (meta->nfreq >= 0) {
+                if (meta->get_nfreq() >= 0) {
                     const auto time_downsampling_fpga = group->CreateAttribute(
-                        "time_downsampling_fpga", std::vector<GUInt64>{GUInt64(meta->nfreq)},
+                        "time_downsampling_fpga", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
                         GDALExtendedDataType::Create(
-                            get_gdal_datatype(*meta->time_downsampling_fpga)));
+                            get_gdal_datatype(*meta->get_time_downsampling_fpga().data())));
                     const bool success = time_downsampling_fpga->Write(
-                        meta->time_downsampling_fpga,
-                        meta->nfreq * sizeof *meta->time_downsampling_fpga);
+                        meta->get_time_downsampling_fpga().data(),
+                        meta->get_nfreq() * sizeof *meta->get_time_downsampling_fpga().data());
                     assert(success);
                 }
 
@@ -412,9 +412,15 @@ public:
             }
         } // for
 
-        if (--waiting_for_max_frames == 0) {
-            WARN("Shutting down Kotekan");
-            exit_kotekan(CLEAN_EXIT);
+        if (max_frames >= 0) {
+            // Unregister to allow the pipeline to continue, unless I'm the last
+            // consumer on this buffer.
+            buffer->unregister_consumer(unique_name, true);
+
+            if (--waiting_for_max_frames == 0) {
+                WARN("Shutting down Kotekan");
+                exit_kotekan(CLEAN_EXIT);
+            }
         }
 
         DEBUG("exiting");

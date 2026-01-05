@@ -20,6 +20,7 @@
 #include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
+#include <memory>
 #include <ringbuffer.hpp>
 #include <stdexcept>
 #include <string>
@@ -37,7 +38,7 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
         result[d] = values[D - 1 - d];
     return result;
 }
-} // namespace
+}
 
 /**
  * @class cudaFRBBeamformer_chord_U1
@@ -433,7 +434,8 @@ cudaFRBBeamformer_chord_U1::cudaFRBBeamformer_chord_U1(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "FRBBeamformer_chord_U1_");
+        device.build_ptx("lib/cuda/generated/FRBBeamformer_chord_U1.ptx", {kernel_symbol}, opts,
+                         "FRBBeamformer_chord_U1_");
     }
 }
 
@@ -548,17 +550,23 @@ cudaEvent_t cudaFRBBeamformer_chord_U1::execute(cudaPipelineState& /*pipestate*/
 
     const auto Ebar_meta = Ebar_buffer.get_metadata();
     assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-    assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
-    assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
+    assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_M);
+    assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_N);
     assert(Ebar_meta->dish_index);
 
     auto I_meta = I_buffer.get_metadata();
-    assert(I_meta->nfreq >= 0);
-    assert(I_meta->nfreq == Ebar_meta->nfreq);
-    for (int freq = 0; freq < I_meta->nfreq; ++freq) {
-        I_meta->freq_upchan_factor[freq] *= cuda_downsampling_factor;
-        I_meta->time_downsampling_fpga[freq] *= cuda_downsampling_factor;
+    assert(I_meta->get_nfreq() >= 0);
+    assert(I_meta->get_nfreq() == Ebar_meta->get_nfreq());
+    auto freq_upchan_factor = I_meta->get_freq_upchan_factor();
+    auto time_downsampling_fpga = I_meta->get_time_downsampling_fpga();
+    assert(freq_upchan_factor.size() == static_cast<size_t>(I_meta->get_nfreq()));
+    assert(time_downsampling_fpga.size() == static_cast<size_t>(I_meta->get_nfreq()));
+    for (int freq = 0; freq < I_meta->get_nfreq(); ++freq) {
+        freq_upchan_factor[freq] *= cuda_downsampling_factor;
+        time_downsampling_fpga[freq] *= cuda_downsampling_factor;
     }
+    I_meta->set_freq_upchan_factor(freq_upchan_factor);
+    I_meta->set_time_downsampling_fpga(time_downsampling_fpga);
     // Since we use a ring buffer we do not need to update `meta->sample0_offset`
 
     const char* exc_arg = "exception";
@@ -638,7 +646,7 @@ cudaEvent_t cudaFRBBeamformer_chord_U1::execute(cudaPipelineState& /*pipestate*/
         int surplus_dish_index = cuda_number_of_dishes;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                int dish_index = Ebar_meta->get_dish_index(locN, locM);
+                int dish_index = Ebar_meta->get_dish_index(locM, locN);
                 if (dish_index >= 0) {
                     // This location holds a real dish, record its location
                     S[2 * dish_index + 0] = locM;

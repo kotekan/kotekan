@@ -1,0 +1,5 @@
+**************
+RedundantStack
+**************
+
+.. doxygenclass:: RedundantStack

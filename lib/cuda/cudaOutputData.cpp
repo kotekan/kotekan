@@ -6,6 +6,8 @@
 
 #include "cudaOutputData.hpp"
 
+#include "Symbol.hpp"         // for Symbol
+#include "chordMetadata.hpp"  // for chordMetadata
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaHostRegister, cudaHostUnregister
 #include "gpuCommand.hpp"     // for gpuCommandType
@@ -15,9 +17,11 @@
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
 
 #include <algorithm>   // for max
-#include <memory>      // for allocator, shared_ptr
+#include <memory>      // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
+#include <stddef.h>    // for ptrdiff_t
 #include <stdint.h>    // for uint8_t
-#include <sys/types.h> // for uint, size_t
+#include <string.h>    // for strnlen
+#include <sys/types.h> // for size_t, uint
 #include <tuple>       // for tuple, make_tuple
 
 using kotekan::bufferContainer;
@@ -121,6 +125,27 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
                 if (passed)
                     DEBUG("Passing metadata from GPU array {:s}[{:d}] to output buffer {:s}[{:d}]",
                           _gpu_mem, gpu_frame_id, output_buffer->buffer_name, out_id);
+
+                // TODO: actuall get the NDArray information that was set up by
+                // the CPU commands
+                auto chord = std::dynamic_pointer_cast<chordMetadata>(meta);
+                if (chord) {
+                    /* new style array description */
+                    std::vector<ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
+                    std::vector<kotekan::Symbol> dimnames(chord->dims);
+                    for (size_t d = 0; d < dimnames.size(); ++d) {
+                        dimnames.at(d) =
+                            std::string(chord->dim_name[d],
+                                        strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
+                    }
+
+                    // difficult to move to constructor since it depends on frame_desc in the
+                    // signal_buffer which may not be set at contructor time
+                    output_buffer->allocate_new_frame_desc(chord->type, chord->get_name(),
+                                                           dimensions, dimnames);
+                    /* test that things are consistent */
+                    chord->check_frame_desc(output_buffer->get_frame_desc());
+                }
             }
         }
     }

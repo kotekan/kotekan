@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for atomic_add_lost_timesamples
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
 #include "nt_memset.h"         // for nt_memset
 
 #include "json.hpp" // for basic_json, json, iter_impl
@@ -12,6 +12,7 @@
 #include <algorithm>  // for max
 #include <assert.h>   // for assert
 #include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <string.h>   // for memcpy, size_t
 #include <vector>     // for vector
 
@@ -86,7 +87,7 @@ void zeroSamples::main_thread() {
                 out_lost_sample_bufs[i]->mark_frame_full(unique_name, lost_samples_buf_frame_id);
             }
         }
-        atomic_add_lost_timesamples(out_buf, out_buf_frame_id, lost_samples);
+        get_chord_metadata(out_buf, out_buf_frame_id)->atomic_add_lost_timesamples(lost_samples);
 
         lost_samples_buf->mark_frame_empty(unique_name, lost_samples_buf_frame_id);
         lost_samples_buf_frame_id = (lost_samples_buf_frame_id + 1) % lost_samples_buf->num_frames;

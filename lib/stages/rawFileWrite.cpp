@@ -1,17 +1,19 @@
 #include "rawFileWrite.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "errors.h"              // for ReturnCode, exit_kotekan
-#include "kotekanLogging.hpp"    // for ERROR, INFO
-#include "metadata.hpp"          // for metadataObject
-#include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "visUtil.hpp"           // for current_time
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"              // for Buffer
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "errors.h"                // for ReturnCode, exit_kotekan
+#include "kotekanLogging.hpp"      // for ERROR, DEBUG, INFO
+#include "metadata.hpp"            // for metadataObject
+#include "prometheusMetrics.hpp"   // for Metrics, Gauge
+#include "visUtil.hpp"             // for current_time
+#include "waitingForMaxFrames.hpp" // for waiting_for_max_frames
 
 #include "fmt.hpp" // for compile_string_to_view
 
+#include <atomic>     // for __atomic_base, atomic
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
 #include <functional> // for bind, function
@@ -41,7 +43,9 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     _num_frames_per_file = config.get_default<uint32_t>(unique_name, "num_frames_per_file", 1);
     _prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     _exit_after_n_files = config.get_default<uint32_t>(unique_name, "exit_after_n_files", 0);
-    _include_metadata = config.get_default<bool>(unique_name, "include_metadata", true);
+
+    if (_exit_after_n_files > 0)
+        waiting_for_max_frames++;
 }
 
 rawFileWrite::~rawFileWrite() {}
@@ -95,26 +99,25 @@ void rawFileWrite::main_thread() {
 
         // Write the meta data to disk
         uint32_t metadata_size = 0;
-        if (_include_metadata) {
-            std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
-            if (mc)
-                metadata_size = mc->get_serialized_size();
-            // Write metadata size to disk, if there is no metadata in the frame, then
-            // just save 0 to the first word.
-            if (write(fd, (void*)&metadata_size, sizeof(metadata_size))
-                != (int32_t)sizeof(metadata_size)) {
-                ERROR("Failed to write metadata_size to disk for file {:s}", full_path);
+        std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
+        if (mc)
+            metadata_size = mc->get_serialized_size();
+        // Write metadata size to disk, if there is no metadata in the frame, then
+        // just save 0 to the first word.
+        if (write(fd, (void*)&metadata_size, sizeof(metadata_size))
+            != (int32_t)sizeof(metadata_size)) {
+            ERROR("Failed to write metadata_size to disk for file {:s}", full_path);
+            exit(-1);
+        }
+        if (mc) {
+            char metabuf[metadata_size];
+            mc->serialize(metabuf);
+            if (write(fd, metabuf, metadata_size) != (int32_t)metadata_size) {
+                ERROR("Failed to write metadata to disk for file {:s}", full_path);
                 exit(-1);
             }
-            if (mc) {
-                char metabuf[metadata_size];
-                mc->serialize(metabuf);
-                if (write(fd, metabuf, metadata_size) != (int32_t)metadata_size) {
-                    ERROR("Failed to write metadata to disk for file {:s}", full_path);
-                    exit(-1);
-                }
-            }
         }
+        DEBUG("Wrote {:d} metadata bytes to {:s}.", metadata_size, full_path);
 
         // Write the contents of the buffer frame to disk.
         ssize_t bytes_writen = write(fd, frame, buf->frame_size);
@@ -123,6 +126,7 @@ void rawFileWrite::main_thread() {
             ERROR("Failed to write buffer to disk for file {:s}", full_path);
             exit(-1);
         }
+        DEBUG("Wrote {:d} data bytes to {:s}.", bytes_writen, full_path);
 
         INFO("Data file write done for {:s}", full_path);
 
@@ -143,12 +147,22 @@ void rawFileWrite::main_thread() {
         buf->mark_frame_empty(unique_name, frame_id);
 
         // Check if we should exit after writing out a fixed number of files.
-        // Useful for some tests and burst modes.  Will hopefully be replaced by frames
-        // which can contain a "final" signal.
-        if (_exit_after_n_files != 0 && file_num >= _exit_after_n_files) {
-            exit_kotekan(ReturnCode::CLEAN_EXIT);
+        // Useful for some tests and burst modes.  Uses the atomic "waiting_for_max_frames",
+        // may be replaced by frames which can contain a "final" signal or some other
+        // mechanism.
+        if (_exit_after_n_files > 0 && file_num >= _exit_after_n_files) {
+
+            // Unregister to allow the pipeline to continue, unless I'm the last
+            // consumer on this buffer.
+            buf->unregister_consumer(unique_name, true);
+
+            if (--waiting_for_max_frames == 0)
+                exit_kotekan(ReturnCode::CLEAN_EXIT);
+            break;
         }
 
         frame_id = (frame_id + 1) % buf->num_frames;
     }
+
+    DEBUG("Exiting");
 }

@@ -1,0 +1,5 @@
+********
+eigenVis
+********
+
+.. doxygenclass:: eigenVis

@@ -29,7 +29,7 @@
  * @par Buffers
  * @buffer out_buf The buffer of fake data.
  *         @buffer_format N2 GPU buffer format
- *         @buffer_metadata chimeMetadata
+ *         @buffer_metadata chordMetadata
  *
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in
  *                              the correlator data
@@ -103,11 +103,11 @@ public:
 
     // Dummy freq map implementations
     freq_id_t to_freq_id(stream_t stream_id, uint32_t ind) const override;
-    double to_freq(freq_id_t freq_id) const override;
-    double freq_width(freq_id_t freq_id) const override;
-    uint32_t num_freq_per_stream() const override;
-    uint32_t num_freq() const override;
-    uint8_t nyquist_zone() const override;
+    double to_freq_MHz(freq_id_t freq_id) const override;
+    double freq_width_MHz(freq_id_t freq_id) const override;
+    size_t num_freq_per_stream() const override;
+    size_t num_freq() const override;
+    nyquist_zone_t nyquist_zone() const override;
 
     // Dummy time map implementations
     timespec to_time(uint64_t seq) const override;
@@ -116,7 +116,7 @@ public:
     bool gps_time_enabled() const override;
 
 private:
-    uint32_t _num_local_freq;
+    size_t _num_local_freq;
 };
 
 

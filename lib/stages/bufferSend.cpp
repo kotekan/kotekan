@@ -4,13 +4,14 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
+#include "configTracker.hpp"     // for ConfigTracker
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
 #include "metadata.hpp"          // for metadataObject
 #include "prometheusMetrics.hpp" // for Counter, Metrics
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
 
-#include <arpa/inet.h>   // for inet_addr, htons
+#include <arpa/inet.h>   // for htons, inet_addr
 #include <bits/chrono.h> // for seconds
 #include <cerrno>        // for errno
 #include <cstring>       // for strerror, size_t
@@ -30,6 +31,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::ConfigTracker;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 
@@ -61,6 +63,9 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
     server_addr.sin_port = htons(server_port);
 
     socket_fd = -1;
+
+    use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
+    config_tracker_combined_hash = "";
 }
 
 bufferSend::~bufferSend() {}
@@ -91,19 +96,25 @@ void bufferSend::main_thread() {
                  buf->buffer_name, frame_id, server_ip, server_port);
             dropped_frame_counter.inc();
         } else if (connected) {
-            // Send header
-            struct bufferFrameHeader header;
-            const size_t header_len = sizeof(struct bufferFrameHeader);
             int32_t n = 0;
             int32_t n_sent = 0;
 
             auto meta = buf->get_metadata(frame_id);
+            auto metadata_size = meta->get_serialized_size();
+            auto frame_size = buf->frame_size;
+            bufferFrameHeader header;
+            header.metadata_size = static_cast<uint32_t>(meta->get_serialized_size());
+            header.frame_size = static_cast<uint32_t>(buf->frame_size);
+            header.config_tracker_update =
+                config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
+            // for legacy CHIME, do not send laast field (config_tracker_update)
+            size_t header_len = use_config_tracker ? sizeof(bufferFrameHeader)
+                                                   : sizeof(bufferFrameHeaderNoConfigTracker);
 
-            header.frame_size = buf->frame_size;
-            header.metadata_size = meta->get_serialized_size();
-
-            DEBUG2("frame_size: {:d}, metadata_size: {:d}", header.frame_size,
-                   header.metadata_size);
+            if (header.config_tracker_update)
+                DEBUG("Config tracker data has been updated, sending new config tracker data.");
+            DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}",
+                   header.frame_size, header.metadata_size, header.config_tracker_update);
 
             // Recover from partial sends
             DEBUG2("Sending header");
@@ -112,6 +123,7 @@ void bufferSend::main_thread() {
                    > 0) {
                 n_sent += n;
             }
+
             // Handle errors
             if (n < 0) {
                 ERROR("Error {:s}, failed to send header to {:s}:{:d}", strerror(errno), server_ip,
@@ -119,16 +131,21 @@ void bufferSend::main_thread() {
                 close_connection();
                 continue;
             }
+
+
+            // If the frame sent successfully,
+            if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
+                config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
+            }
             DEBUG2("Sent header: {:d}", n_sent);
 
             // Send metadata
             DEBUG2("Sending metadata");
             n_sent = 0;
             {
-                char metabuf[header.metadata_size];
+                char metabuf[metadata_size];
                 meta->serialize(metabuf);
-                while ((n = send(socket_fd, &metabuf + n_sent, header.metadata_size - n_sent,
-                                 MSG_NOSIGNAL))
+                while ((n = send(socket_fd, metabuf + n_sent, metadata_size - n_sent, MSG_NOSIGNAL))
                        > 0) {
                     n_sent += n;
                 }
@@ -142,10 +159,9 @@ void bufferSend::main_thread() {
             DEBUG2("Sent metadata: {:d}", n_sent);
 
             // Send buffer frame.
-            DEBUG2("Sending frame with {:d} bytes", header.frame_size);
+            DEBUG2("Sending frame with {:d} bytes", frame_size);
             n_sent = 0;
-            while ((n = send(socket_fd, &frame[n_sent], (int32_t)header.frame_size - n_sent,
-                             MSG_NOSIGNAL))
+            while ((n = send(socket_fd, &frame[n_sent], (int32_t)frame_size - n_sent, MSG_NOSIGNAL))
                    > 0) {
                 n_sent += n;
                 // DEBUG("Total sent: {:d}", n_sent);
@@ -159,6 +175,9 @@ void bufferSend::main_thread() {
             DEBUG2("Sent frame: {:d}", n_sent);
             DEBUG("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id, server_ip,
                   server_port);
+
+            // Set to true since we've sent a transmission.
+            first_transmission_sent = true;
 
         } else {
             // Wait for connection and block
@@ -238,6 +257,7 @@ void bufferSend::connect_to_server() {
         {
             std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
             connected = true;
+            first_transmission_sent = false; // Reset first transmission flag
         }
 
         // Notify that connection is established

@@ -1,17 +1,23 @@
 #ifndef BEAMMETADATA_HPP
 #define BEAMMETADATA_HPP
 
-#include "Telescope.hpp"      // for stream_t
+#include "Hash.hpp"           // for Hash
 #include "datasetManager.hpp" // for dset_id_t
 #include "metadata.hpp"       // for metadataObject
 
 #include "json.hpp" // for json
 
-#include <stdint.h> // for uint32_t, int64_t
-#include <time.h>   // for size_t, timespec
+#include <algorithm> // for copy
+#include <memory>    // for shared_ptr
+#include <stdint.h>  // for uint32_t, int64_t
+#include <time.h>    // for size_t, timespec
+#include <vector>    // for vector
 
 class BeamMetadata : public metadataObject {
 public:
+    /// deep copy operator
+    void deepCopy(std::shared_ptr<const metadataObject> other) override;
+
     /// Returns the size of objects of this type when serialized into bytes.
     size_t get_serialized_size() override;
 
@@ -29,8 +35,8 @@ public:
     int64_t fpga_seq_start;
     /// The GPS time of @c fpga_seq_start.
     timespec ctime;
-    /// Stream identifier
-    stream_t stream_id;
+    /// Frequency indices in frame
+    std::vector<int> coarse_freq;
     /// ID of the dataset
     dset_id_t dataset_id;
     /// Beam number (e.g. which of the tracking beams is in this stream)

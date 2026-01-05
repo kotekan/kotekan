@@ -1,0 +1,47 @@
+# configTracker test 2
+
+# use the config tracker
+config_tracker: true
+
+type: config
+log_level: debug
+
+cpu_affinity: [1,2,3,4]
+
+num_frame_samples: 2048
+buffer_depth: 2
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 2 * buffer_depth
+
+# Buffers
+recv_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_frame_samples
+    metadata_pool: main_pool
+
+buffer_recv:
+  log_level: debug
+  recv:
+    kotekan_stage: bufferRecv
+    buf: recv_buffer
+    listen_port: 11024
+    cpu_affinity: [5, 6]
+    num_threads: 2
+
+# Consume frames without optional dependencies
+hex_dump:
+    log_level: DEBUG
+    kotekan_stage: hexDump
+    in_buf: recv_buffer
+    len: 64
+    offset: 0
+
+# Write tracked configs to disk when tracker hash changes
+config_writer:
+    log_level: DEBUG
+    kotekan_stage: configTrackerWriter
+    base_dir: config_writes

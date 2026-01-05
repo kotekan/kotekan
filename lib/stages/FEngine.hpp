@@ -1,6 +1,7 @@
 #ifndef F_ENGINE_STAGE_H
 #define F_ENGINE_STAGE_H
 
+#include "CHORDTelescope.hpp"
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
@@ -10,11 +11,21 @@
 // IWYU pragma: no_include "nvtx3/nvtxDetail/nvtxImplCore.h"
 // IWYU pragma: no_include <nvtx3/nvtxDetail/nvtxImplCore.h>
 
+<<<<<<< HEAD
 #include <array>              // for array
 #include <cstdint>            // for int64_t
 // #include <nvtx3/nvToolsExt.h> // IWYU pragma: keep
 #include <string>             // for string, basic_string
 #include <vector>             // for vector
+=======
+#include <array>   // for array
+#include <cstdint> // for int64_t
+#ifdef WITH_CUDA
+#include <nvtx3/nvToolsExt.h> // IWYU pragma: keep
+#endif
+#include <string> // for string, basic_string
+#include <vector> // for vector
+>>>>>>> b302fee784ec8561e6eac1f847ebf648288d22b8
 
 /**
  * @class FEngine
@@ -39,6 +50,7 @@
  * @conf num_taps           Int    how many taps in the F-engine's polyphase filter bank?
  * @conf num_frequencies    Int    how many frequencies are produced by the F-engine?
  * @conf num_times          Int    how many time samples per chunk?
+ * @conf receive_chime      Bool   input buffer layout (CHIME or CHORD)
  * @conf bb_num_dishes_M    Int    Baseband beamformer: input dish grid size
  * @conf bb_num_dishes_N    Int    Baseband beamformer: input dish grid size
  * @conf bb_num_beams_P    Int    Baseband beamformer: output beam grid size
@@ -82,16 +94,12 @@ class FEngine : public kotekan::Stage {
     const float source_position_ew;
     const float source_position_ns;
 
+    // Telescope
+    const CHORDTelescope& chord_telescope;
+
     // Dishes
-    const int num_dish_locations_ew;
-    const int num_dish_locations_ns;
-    const int num_dish_locations;
-    const float dish_separation_ew;
-    const float dish_separation_ns;
     const int num_dishes;
-    const std::vector<int> dish_indices;
-    std::vector<int> dish_locations; // (ew, ns)
-    int* dish_indices_ptr;
+    const dishGrid& dish_grid;
 
     // ADC
     const float adc_frequency;
@@ -103,6 +111,9 @@ class FEngine : public kotekan::Stage {
 
     // Dish reordering
     const std::vector<int> scatter_indices;
+
+    // Input buffer layout (CHIME or CHORD)
+    const bool receive_chime;
 
     // Baseband beamformer setup
     const int bb_num_beams_ew;
@@ -141,7 +152,6 @@ class FEngine : public kotekan::Stage {
     const int repeat_count;
 
     // Kotekan
-    const std::int64_t dish_positions_frame_size;
     const std::int64_t bf_mask_frame_size;
     const std::int64_t pl_mask_frame_size;
     const std::int64_t E_frame_size;
@@ -155,12 +165,12 @@ class FEngine : public kotekan::Stage {
     const std::int64_t W2_frame_size;
     [[maybe_unused]] const std::int64_t I1_frame_size;
 
-    Buffer* const dish_positions_buffer;
     // int8 bf_mask[dish][polr]
     Buffer* const bf_mask_buffer; // 0=bad, 1=good
     // bool pl_mask[time / 2 % 64][dish][polr][freq / 4][time / 2 / 64]
-    Buffer* const pl_mask_buffer; // 0=bad, 1=good
-    Buffer* const E_buffer;
+    Buffer* const pl_mask_buffer;               // 0=bad, 1=good
+    Buffer* const E_buffer_chord;               // CHORD uses a single input buffer
+    std::vector<Buffer*> const E_buffers_chime; // CHIME uses one input buffer per frequency
     Buffer* const scatter_indices_buffer;
     Buffer* const bb_beam_positions_buffer;
     Buffer* const A_buffer;

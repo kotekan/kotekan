@@ -1,7 +1,8 @@
 #include "Config.hpp"             // for Config
 #include "StageFactory.hpp"       // for StageFactoryRegistry, StageMaker
+#include "backtrace.hpp"          // for request_backtraces
 #include "basebandApiManager.hpp" // for basebandApiManager
-#include "errors.h"               // for get_error_message, __enable_syslog, get_exit_code, Ret...
+#include "errors.h"               // for ReturnCode, get_error_message, __enable_syslog, exit_k...
 #include "kotekanLogging.hpp"     // for logLevel, INFO_NON_OO, ERROR_NON_OO, FATAL_ERROR_NON_OO
 #include "kotekanMode.hpp"        // for kotekanMode
 #include "kotekanTrackers.hpp"    // for KotekanTrackers
@@ -34,12 +35,15 @@
 #include <strings.h>   // for strcasecmp
 #include <sys/wait.h>  // for waitpid
 #include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
+#include <thread>      // for thread, get_id
 #include <type_traits> // for underlying_type
 #include <unistd.h>    // for close, optarg, dup2, execvp, fork, pipe, sleep, STDOUT...
 #include <utility>     // for pair
 #include <vector>      // for vector
 #ifdef WITH_HDF5
-#include "hdf5.h"
+#include "hdf5.h" // IWYU pragma: keep, export
+// IWYU pragma: no_include <H5PLpublic.h>
+// IWYU pragma: no_include <H5public.h>
 #endif
 
 
@@ -415,6 +419,8 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
         config.dump_config();
     update_log_levels(config);
 
+    request_backtraces(config.get_default<std::vector<std::string>>("/", "trap_signals", {}));
+
     kotekan_mode = new kotekanMode(config);
 
     kotekan_mode->initalize_stages();
@@ -539,7 +545,11 @@ int main(int argc, char** argv) {
 
     restServer& rest_server = restServer::instance();
     std::vector<std::string> address_parts = regex_split(bind_address, ":");
-    // TODO validate IP and port
+    if (address_parts.at(0) == "" || address_parts.size() != 2) {
+        ERROR_NON_OO("The bind address {:s} is not valid, it should be in the form ipv4:port",
+                     bind_address.c_str());
+        exit(-1);
+    }
     rest_server.start(address_parts.at(0), std::stoi(address_parts.at(1)));
 
     if (string(config_file_name) != "none") {

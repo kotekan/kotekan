@@ -7,11 +7,6 @@
 # Stages
 
 read_data:
-    read_dish_positions:
-        do_once: true
-        kotekan_stage: hdf5FileRead
-        file_name: dish_positions
-        out_buf: host_dish_positions_buffer
     read_bf_mask:
         do_once: true
         kotekan_stage: hdf5FileRead
@@ -21,10 +16,12 @@ read_data:
         kotekan_stage: hdf5FileRead
         file_name: pl_mask
         out_buf: host_pl_mask_buffer
-    read_voltage:
+    {%- for id in range(16) %}
+    read_voltage_{{ id }}:
         kotekan_stage: hdf5FileRead
-        file_name: voltage
-        out_buf: host_voltage_buffer
+        file_name: voltage_{{ id }}
+        out_buf: host_voltage_buffer_{{ id }}
+    {%- endfor %}
     read_scatter_indices:
         do_once: true
         kotekan_stage: hdf5FileRead

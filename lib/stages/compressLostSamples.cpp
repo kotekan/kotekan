@@ -2,9 +2,10 @@
 
 #include "StageFactory.hpp"  // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"        // for Buffer
-#include "chimeMetadata.hpp" // for atomic_add_lost_timesamples, zero_lost_samples
+#include "chordMetadata.hpp" // for get_chord_metadata, chordMetadata
 
 #include <functional>  // for bind, function
+#include <memory>      // for __shared_ptr_access, shared_ptr
 #include <stdexcept>   // for runtime_error
 #include <string>      // for allocator, basic_string, string
 #include <visUtil.hpp> // for frameID, modulo
@@ -85,8 +86,7 @@ void compressLostSamples::main_thread() {
         // Create new metadata
         out_buf->allocate_new_metadata_object(out_buffer_ID);
         in_buf->copy_metadata(in_buffer_ID, out_buf, out_buffer_ID);
-        zero_lost_samples(out_buf, out_buffer_ID);
-        atomic_add_lost_timesamples(out_buf, out_buffer_ID, total_lost_samples);
+        get_chord_metadata(out_buf, out_buffer_ID)->set_lost_timesamples(total_lost_samples);
 
         out_buf->mark_frame_full(unique_name, out_buffer_ID);
         in_buf->mark_frame_empty(unique_name, in_buffer_ID);

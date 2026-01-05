@@ -1,35 +1,29 @@
 #include "FakeVis.hpp"
 
 #include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for allocate_new_metadata_object, mark_frame_full, register_p...
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t, state_id_t
 #include "datasetState.hpp"    // for eigenvalueState, freqState, inputState, metadataState
-#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "errors.h"            // for ReturnCode, exit_kotekan
 #include "factory.hpp"         // for FACTORY
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "version.h"           // for get_git_commit_hash
 #include "visBuffer.hpp"       // for VisFrameView
-#include "visUtil.hpp"         // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
+#include "visUtil.hpp"         // for input_ctype, prod_ctype, freq_ctype, double_to_ts, curren...
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span<>::iterator, span
+#include "fmt.hpp"      // for compile_string_to_view, format, fmt
+#include "gsl-lite.hpp" // for span
 
-#include <algorithm>   // for max, fill, transform
-#include <atomic>      // for atomic_bool
-#include <complex>     // for complex
-#include <cstdint>     // for uint32_t, int32_t
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function, placeholders
-#include <iterator>    // for back_insert_iterator, back_inserter, begin, end
-#include <memory>      // for allocator, unique_ptr
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for runtime_error
-#include <time.h>      // for nanosleep, timespec
-#include <tuple>       // for get, make_tuple, tuple
-#include <type_traits> // for __decay_and_strip<>::__type
-#include <utility>     // for pair
+#include <algorithm>  // for max, fill, transform
+#include <complex>    // for complex
+#include <functional> // for bind, function, placeholders
+#include <iterator>   // for back_insert_iterator, back_inserter, begin, end
+#include <memory>     // for allocator, unique_ptr
+#include <time.h>     // for timespec, nanosleep
+#include <tuple>      // for get, make_tuple, tuple
+#include <utility>    // for pair
 
 
 using namespace std::placeholders;

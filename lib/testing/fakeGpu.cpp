@@ -2,29 +2,25 @@
 
 #include "Config.hpp"         // for Config
 #include "Stage.hpp"          // for Stage
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"         // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "chimeMetadata.hpp"  // for set_first_packet_recv_time, set_fpga_seq_num, set_gps...
-#include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
+#include "errors.h"           // for ReturnCode, exit_kotekan
 #include "factory.hpp"        // for FACTORY
 #include "fakeGpuPattern.hpp" // for FakeGpuPattern, _factory_aliasFakeGpuPattern
 #include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
-#include "metadata.hpp"       // for metadataContainer
 #include "visUtil.hpp"        // for frameID, gpu_N2_size, modulo, operator+
 
+#include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <atomic>     // for atomic_bool
+#include <assert.h>   // for assert
 #include <csignal>    // for raise, SIGTERM
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <random>     // for mt19937, random_device, uniform_real_distribution
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <string>     // for string
-#include <sys/time.h> // for CLOCK_REALTIME, TIMESPEC_TO_TIMEVAL, timeval
-#include <time.h>     // for timespec, clock_gettime, nanosleep
+#include <functional> // for bind, function
+#include <random>     // for random_device, uniform_real_distribution, mt19937
+#include <string>     // for basic_string, string
+#include <sys/time.h> // for TIMESPEC_TO_TIMEVAL, timeval
+#include <time.h>     // for timespec, time_t, nanosleep
 #include <vector>     // for vector
 
 
@@ -91,7 +87,7 @@ void FakeGpu::main_thread() {
     const auto nprod_gpu = gpu_N2_size(num_elements, block_size);
 
     // Set the start time
-    clock_gettime(CLOCK_REALTIME, &ts);
+    ts = tel.to_time(fpga_seq);
 
     // Calculate the increment in time between samples
     if (pre_accumulate) {
@@ -128,22 +124,28 @@ void FakeGpu::main_thread() {
             DEBUG("Simulating GPU buffer in {}[{}]", out_buf->buffer_name, frame_id);
 
             out_buf->allocate_new_metadata_object(frame_id);
-            set_fpga_seq_num(out_buf, frame_id, fpga_seq);
-            set_stream_id(out_buf, frame_id, {(uint64_t)freq});
+            stream_t stream_id = {.id = static_cast<decltype(stream_id.id)>(freq)};
+            get_chord_metadata(out_buf, frame_id)->set_stream_id(stream_id);
+            get_chord_metadata(out_buf, frame_id)->set_fpga_seq_num(fpga_seq);
 
             // Set the two times
             TIMESPEC_TO_TIMEVAL(&tv, &ts);
-            set_first_packet_recv_time(out_buf, frame_id, tv);
-            set_gps_time(out_buf, frame_id, ts);
-            set_dataset_id(out_buf, frame_id, dataset_id);
+            get_chord_metadata(out_buf, frame_id)->set_first_packet_recv_time(tv);
+            get_chord_metadata(out_buf, frame_id)->set_gps_time(ts);
+            get_chord_metadata(out_buf, frame_id)->set_dataset_id(dataset_id);
 
             // Fill the buffer with the specified mode
-            chimeMetadata* metadata = (chimeMetadata*)out_buf->metadata[frame_id].get();
+            auto metadata = get_chord_metadata(out_buf, frame_id).get();
+            // have to set frequencies here since the patterns don't have all
+            // information
+            std::vector<int> freqs(num_freq_in_frame);
             for (int freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
                 gsl_lite::span<int32_t> data(output + 2 * freq_ind * nprod_gpu,
                                              output + 2 * (freq_ind + 1) * nprod_gpu);
                 pattern->fill(data, metadata, frame_count, freq + freq_ind);
+                freqs[freq_ind] = freq + freq_ind;
             }
+            metadata->set_coarse_freq(freqs);
 
             // Mark full and move onto next frame...
             out_buf->mark_frame_full(unique_name, frame_id++);
@@ -175,44 +177,47 @@ void FakeGpu::main_thread() {
 
 FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(config.get<std::string>(path, "log_level")) {
-    _num_local_freq = config.get_default<uint32_t>(path, "num_local_freq", 1);
+    _num_local_freq = config.get_default<size_t>(path, "num_local_freq", 1);
 }
 
 freq_id_t FakeTelescope::to_freq_id(stream_t stream_id, uint32_t ind) const {
     return stream_id.id + ind;
 }
 
-double FakeTelescope::to_freq(freq_id_t freq_id) const {
+double FakeTelescope::to_freq_MHz(freq_id_t freq_id) const {
     // Use CHIME frequencies
     return 800.0 - 400.0 / 1024 * freq_id;
 }
 
-double FakeTelescope::freq_width(freq_id_t /*freq_id*/) const {
+double FakeTelescope::freq_width_MHz(freq_id_t /*freq_id*/) const {
     // Use CHIME frequencies
     return 400.0 / 1024;
 }
 
-uint32_t FakeTelescope::num_freq_per_stream() const {
+size_t FakeTelescope::num_freq_per_stream() const {
     return _num_local_freq;
 }
 
-uint32_t FakeTelescope::num_freq() const {
+size_t FakeTelescope::num_freq() const {
     return 1024;
 }
 
-uint8_t FakeTelescope::nyquist_zone() const {
+nyquist_zone_t FakeTelescope::nyquist_zone() const {
     return 2;
 }
 
-timespec FakeTelescope::to_time(uint64_t /*seq*/) const {
-    return {0, 0};
+timespec FakeTelescope::to_time(uint64_t seq) const {
+    uint64_t ns = seq_length_nsec() * seq;
+    return {time_t(ns / 1000000000ULL), time_t(ns % 1000000000ULL)};
 }
 
-uint64_t FakeTelescope::to_seq(timespec /*time*/) const {
-    return 0;
+uint64_t FakeTelescope::to_seq(timespec time) const {
+    uint64_t ns = time.tv_sec * time_t(1000000000ULL) + time.tv_nsec;
+    assert(ns % seq_length_nsec() == 0);
+    return ns / seq_length_nsec();
 }
 
-uint64_t FakeTelescope::seq_length_nsec() const {
+size_t FakeTelescope::seq_length_nsec() const {
     return 2560;
 }
 

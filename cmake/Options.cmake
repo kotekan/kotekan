@@ -23,58 +23,58 @@
 #   FALSE NO  N 0 AUTO: AUTO
 # * Canonicalizes the cache entry to one of: AUTO / ON / OFF
 #
-function(ktk_tristate_option FLAG DESC DEFAULT)
+function(ktk_tristate_option flag desc default)
     set(options EXPORTS)
     set(oneValueArgs PREFIX)
     cmake_parse_arguments(KTK "${options}" "${oneValueArgs}" "" ${ARGN})
 
     # Normalization helper
-    function(_ktk_norm IN OUTVAR)
-        string(STRIP "${IN}" _s)
-        string(TOUPPER "${_s}" _u)
-        set(_on "ON;TRUE;YES;Y;1")
-        set(_off "OFF;FALSE;NO;N;0")
-        if(_u STREQUAL "AUTO")
-            set(${OUTVAR}
+    function(_ktk_norm in outvar)
+        string(STRIP "${in}" s_)
+        string(TOUPPER "${s_}" u_)
+        set(on_ "ON;TRUE;YES;Y;1")
+        set(off_ "OFF;FALSE;NO;N;0")
+        if(u_ STREQUAL "AUTO")
+            set(${outvar}
                 "AUTO"
                 PARENT_SCOPE)
-        elseif(_u IN_LIST _on)
-            set(${OUTVAR}
+        elseif(u_ IN_LIST on_)
+            set(${outvar}
                 "ON"
                 PARENT_SCOPE)
-        elseif(_u IN_LIST _off)
-            set(${OUTVAR}
+        elseif(u_ IN_LIST off_)
+            set(${outvar}
                 "OFF"
                 PARENT_SCOPE)
         else()
-            message(FATAL_ERROR "Invalid value '${IN}' for ${FLAG}. Use one of: AUTO, ON, OFF "
+            message(FATAL_ERROR "Invalid value '${in}' for ${flag}. Use one of: AUTO, ON, OFF "
                                 "(ON aliases: ON/TRUE/YES/Y/1; OFF aliases: OFF/FALSE/NO/N/0).")
         endif()
     endfunction()
 
     # Normalize default and ensure cache entry exists
-    _ktk_norm("${DEFAULT}" _def)
-    if(NOT DEFINED CACHE{${FLAG}})
-        set(${FLAG}
+    _ktk_norm("${default}" _def)
+    if(NOT DEFINED CACHE{${flag}})
+        set(${flag}
             "${_def}"
-            CACHE STRING "${DESC} (AUTO/ON/OFF)")
+            CACHE STRING "${desc} (AUTO/ON/OFF)")
     endif()
 
     # Validate/normalize existing user-provided value, then canonicalize in cache
     get_property(
         _cur
-        CACHE ${FLAG}
+        CACHE ${flag}
         PROPERTY VALUE)
     _ktk_norm("${_cur}" _canon)
     if(NOT _canon STREQUAL "${_cur}")
         # Canonicalize to AUTO/ON/OFF in cache so GUIs and scripts see the clean form
-        set(${FLAG}
+        set(${flag}
             "${_canon}"
-            CACHE STRING "${DESC} (AUTO/ON/OFF)" FORCE)
+            CACHE STRING "${desc} (AUTO/ON/OFF)" FORCE)
     endif()
 
     # Present choices in GUIs
-    set_property(CACHE ${FLAG} PROPERTY STRINGS AUTO ON OFF)
+    set_property(CACHE ${flag} PROPERTY STRINGS AUTO ON OFF)
 endfunction()
 
 # AUTO by default (most "Features")

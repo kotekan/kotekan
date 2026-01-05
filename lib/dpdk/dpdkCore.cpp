@@ -14,17 +14,17 @@
 #include <rte_mbuf.h>              // for rte_pktmbuf_free, rte_pktmbuf_init, rte_pktmbuf_pool_...
 #include <rte_mbuf_core.h>         // for rte_mbuf
 #include <rte_mempool.h>           // for rte_mempool_create, rte_mempool_free
+#include <rte_memzone.h>           // for rte_memzone_max_set
 #include <stdexcept>               // for runtime_error
 #include <stdio.h>                 // for fprintf, size_t, stderr
 #include <stdlib.h>                // for malloc, free
-#include <string.h>                // for strncpy, memset
+#include <string.h>                // for memset
 #include <sys/types.h>             // for uint
 #include <unistd.h>                // for sleep
 #include <vector>                  // for vector
 
 // cinttypes needed by some CentOS systems.
 #include "Config.hpp"           // for Config
-#include "ICETelescope.hpp"     // for ice_stream_id_t
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
 #include "captureHandler.hpp"   // for captureHandler
 #include "iceBoardShuffle.hpp"  // for iceBoardShuffle

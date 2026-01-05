@@ -21,8 +21,8 @@
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
 
-void VisMetadata::deepCopy(std::shared_ptr<metadataObject> other) {
-    std::shared_ptr<VisMetadata> o = std::dynamic_pointer_cast<VisMetadata>(other);
+void VisMetadata::deepCopy(std::shared_ptr<const metadataObject> other) {
+    std::shared_ptr<const VisMetadata> o = std::dynamic_pointer_cast<const VisMetadata>(other);
     *this = *o;
 }
 
@@ -43,7 +43,7 @@ size_t VisMetadata::get_serialized_size() {
     return sizeof(VisMetadataFormat);
 }
 
-size_t VisMetadata::set_from_bytes(const char* bytes, size_t length) {
+size_t VisMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t length) {
     size_t sz = get_serialized_size();
     assert(length >= sz);
     const VisMetadataFormat* fmt = reinterpret_cast<const VisMetadataFormat*>(bytes);

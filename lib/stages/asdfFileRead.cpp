@@ -1,4 +1,5 @@
 #include "Config.hpp"          // for Config
+#include "Symbol.hpp"          // for Symbol
 #include "asdfFiles.hpp"       // for beautify_buffer_name, chord_metadata_version
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -10,6 +11,7 @@
 #include <DataType.hpp>          // for string_to_type, type_to_string, DataType
 #include <Stage.hpp>             // for Stage
 #include <StageFactory.hpp>      // for REGISTER_KOTEKAN_STAGE
+#include <algorithm>             // for max
 #include <array>                 // for array
 #include <asdf/asdf.hxx>         // for asdf
 #include <asdf/config.hxx>       // for ASDF_CHECK_VERSION
@@ -19,7 +21,7 @@
 #include <asdf/ndarray.hxx>      // for ndarray, block_t
 #include <cassert>               // for assert
 #include <chordMetadata.hpp>     // for chordMetadata, CHORD_META_MAX_FREQ, metadata_is_chord
-#include <cstddef>               // for ptrdiff_t
+#include <cstddef>               // for ptrdiff_t, size_t
 #include <cstdint>               // for int64_t, uint32_t, uint8_t
 #include <cstring>               // for memcpy, strncpy
 #include <fstream>               // for basic_ostream, basic_ifstream, operator<<, ostringstream
@@ -203,6 +205,33 @@ public:
                     assert(meta->stride[d] == npoints);
                     npoints *= meta->dim[d];
                 }
+
+                {
+                    /* new style array description */
+                    DEBUG("[{:s}/{:d}] group0->at(\"type\")", buffer->buffer_name, frame_counter);
+                    const std::string type = group->at("type")->get_maybe_string().value();
+                    const kotekan::DataType value_type = kotekan::string_to_type(type);
+                    DEBUG("[{:s}/{:d}] value_type={}", buffer->buffer_name, frame_counter,
+                          type_to_string(value_type));
+                    assert(value_type != kotekan::unknown_type);
+                    const std::string name = group->at("name")->get_maybe_string().value();
+                    DEBUG("[{:s}/{:d}] meta->name={}", buffer->buffer_name, frame_counter, name);
+
+                    DEBUG("[{:s}/{:d}] group0->at(\"dim_names\")", buffer->buffer_name,
+                          frame_counter);
+                    const auto dim_names = group->at("dim_names")->get_maybe_sequence();
+                    assert(dim_names);
+                    std::vector<kotekan::Symbol> dimnames;
+                    for (size_t d = 0; d < dimensions.size(); ++d) {
+                        const std::string dim_name = dim_names->at(d)->get_maybe_string().value();
+                        dimnames.push_back(dim_name);
+                    }
+                    buffer->allocate_new_frame_desc(value_type, name, dimensions, dimnames);
+                    /* test that things are consistent */
+                    meta->check_frame_desc(buffer->get_frame_desc());
+                }
+
+
                 const std::ptrdiff_t data_size = npoints * datatype_size;
                 DEBUG("[{:s}/{:d}] data_size={} datatype->type_size={} meta->stride[0]={} "
                       "meta->dim[0]={} buffer->frame_size={}",
@@ -236,34 +265,34 @@ public:
                           frame_counter);
                     const auto coarse_freq = group->at("coarse_freq")->get_maybe_sequence();
                     assert(coarse_freq);
-                    meta->nfreq = coarse_freq->size();
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-                    assert(meta->nfreq >= 0);
-                    assert(std::ptrdiff_t(coarse_freq->size()) == meta->nfreq);
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-                    for (int n = 0; n < meta->nfreq; ++n)
-                        meta->coarse_freq[n] = coarse_freq->at(n)->get_maybe_int().value();
-                } else {
-                    meta->nfreq = -1;
-                    assert(meta->nfreq < 0);
+                    const int nfreq = coarse_freq->size();
+                    assert(nfreq <= CHORD_META_MAX_FREQ);
+                    assert(nfreq >= 0);
+                    assert(std::ptrdiff_t(coarse_freq->size()) == nfreq);
+                    assert(nfreq <= CHORD_META_MAX_FREQ);
+                    std::vector<int> O_coarse_freq(nfreq);
+                    for (int n = 0; n < nfreq; ++n) {
+                        O_coarse_freq[n] = coarse_freq->at(n)->get_maybe_int().value();
+                    }
+                    meta->set_coarse_freq(O_coarse_freq);
                 }
             }
 
             {
                 if (group->count("freq_upchan_factor")) {
-                    assert(meta->nfreq >= 0);
+                    assert(meta->get_nfreq() >= 0);
                     DEBUG("[{:s}/{:d}] group0->at(\"freq_upchan_factor\")", buffer->buffer_name,
                           frame_counter);
                     const auto freq_upchan_factor =
                         group->at("freq_upchan_factor")->get_maybe_sequence();
                     assert(freq_upchan_factor);
-                    assert(std::ptrdiff_t(freq_upchan_factor->size()) == meta->nfreq);
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-                    for (int n = 0; n < meta->nfreq; ++n)
-                        meta->freq_upchan_factor[n] =
+                    assert(std::ptrdiff_t(freq_upchan_factor->size()) == meta->get_nfreq());
+                    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+                    std::vector<int> O_freq_upchan_factor(meta->get_nfreq());
+                    for (int n = 0; n < meta->get_nfreq(); ++n)
+                        O_freq_upchan_factor[n] =
                             freq_upchan_factor->at(n)->get_maybe_int().value();
-                } else {
-                    assert(meta->nfreq < 0);
+                    meta->set_freq_upchan_factor(O_freq_upchan_factor);
                 }
             }
 
@@ -273,10 +302,8 @@ public:
                           frame_counter);
                     const auto sample0_offset =
                         group->at("sample0_offset")->get_maybe_int().value();
-                    meta->sample0_offset = sample0_offset;
-                    assert(meta->sample0_offset >= 0);
-                } else {
-                    meta->sample0_offset = -1;
+                    meta->set_sample0_offset(sample0_offset);
+                    assert(meta->get_sample0_offset() >= 0);
                 }
             }
 
@@ -286,46 +313,43 @@ public:
                           frame_counter);
                     const auto offset_downsampling =
                         group->at("offset_downsampling")->get_maybe_int().value();
-                    meta->offset_downsampling = offset_downsampling;
-                    assert(meta->offset_downsampling > 0);
-                } else {
-                    meta->offset_downsampling = -1;
+                    meta->set_offset_downsampling(offset_downsampling);
+                    assert(meta->get_offset_downsampling() > 0);
                 }
             }
 
             {
                 if (group->count("half_fpga_sample0")) {
-                    assert(meta->nfreq >= 0);
+                    assert(meta->get_nfreq() >= 0);
                     DEBUG("[{:s}/{:d}] group0->at(\"half_fpga_sample0\")", buffer->buffer_name,
                           frame_counter);
                     const auto half_fpga_sample0 =
                         group->at("half_fpga_sample0")->get_maybe_sequence();
                     assert(half_fpga_sample0);
-                    assert(std::ptrdiff_t(half_fpga_sample0->size()) == meta->nfreq);
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-                    for (int n = 0; n < meta->nfreq; ++n)
-                        meta->half_fpga_sample0[n] =
-                            half_fpga_sample0->at(n)->get_maybe_int().value();
-                } else {
-                    assert(meta->nfreq < 0);
+                    assert(std::ptrdiff_t(half_fpga_sample0->size()) == meta->get_nfreq());
+                    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+                    std::vector<int64_t> O_half_fpga_sample0(meta->get_nfreq());
+                    for (int n = 0; n < meta->get_nfreq(); ++n)
+                        O_half_fpga_sample0[n] = half_fpga_sample0->at(n)->get_maybe_int().value();
+                    meta->set_half_fpga_sample0(O_half_fpga_sample0);
                 }
             }
 
             {
                 if (group->count("time_downsampling_fpga")) {
-                    assert(meta->nfreq >= 0);
+                    assert(meta->get_nfreq() >= 0);
                     DEBUG("[{:s}/{:d}] group0->at(\"time_downsampling_fpga\")", buffer->buffer_name,
                           frame_counter);
                     const auto time_downsampling_fpga =
                         group->at("time_downsampling_fpga")->get_maybe_sequence();
                     assert(time_downsampling_fpga);
-                    assert(std::ptrdiff_t(time_downsampling_fpga->size()) == meta->nfreq);
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-                    for (int n = 0; n < meta->nfreq; ++n)
-                        meta->time_downsampling_fpga[n] =
+                    assert(std::ptrdiff_t(time_downsampling_fpga->size()) == meta->get_nfreq());
+                    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+                    std::vector<int> O_time_downsampling_fpga(meta->get_nfreq());
+                    for (int n = 0; n < meta->get_nfreq(); ++n)
+                        O_time_downsampling_fpga[n] =
                             time_downsampling_fpga->at(n)->get_maybe_int().value();
-                } else {
-                    assert(meta->nfreq < 0);
+                    meta->set_time_downsampling_fpga(O_time_downsampling_fpga);
                 }
             }
 
@@ -354,10 +378,11 @@ public:
                     assert(meta->n_dish_locations_ns >= 0);
                     assert(meta->n_dish_locations_ew >= 0);
                     meta->dish_index =
-                        new int[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
+                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
                     const auto data = dish_index->get_data();
-                    assert(data->nbytes()
-                           == sizeof(int) * meta->n_dish_locations_ns * meta->n_dish_locations_ew);
+                    const size_t bytes = sizeof(dish_index_t) * meta->n_dish_locations_ns
+                                         * meta->n_dish_locations_ew;
+                    assert(data->nbytes() == bytes);
                     std::memcpy(meta->dish_index, data->ptr(), data->nbytes());
                 } else {
                     meta->dish_index = nullptr;

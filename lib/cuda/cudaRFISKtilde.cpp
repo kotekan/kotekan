@@ -1,8 +1,11 @@
 #include "Config.hpp"              // for Config
 #include "NDArray.hpp"             // for NDArray
 #include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "driver_types.h"          // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h"      // for cudaStreamSynchronize
+#include "driver_types.h"          // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG
 #include "n2k/rfi_kernels.hpp"     // for SkKernel
@@ -15,11 +18,11 @@
 #include <algorithm>             // for min
 #include <array>                 // for array
 #include <cstddef>               // for ptrdiff_t
-#include <cstdint>               // for int8_t, uint64_t, uint8_t
+#include <cstdint>               // for int8_t, uint64_t, uint8_t, int64_t
 #include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include <div.hpp>               // for div_noremainder, round_down
 #include <functional>            // for function
-#include <memory>                // for allocator, shared_ptr
+#include <memory>                // for allocator, shared_ptr, __shared_ptr_access
 #include <string>                // for basic_string, string
 #include <sys/types.h>           // for uint, ulong
 #include <vector>                // for vector
@@ -189,10 +192,14 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     rfi_RFImask.set_metadata(rfi_S012.get_metadata());
     // Correct RFImask metadata
     const std::shared_ptr<chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
-    for (int freq = 0; freq < rfi_meta->nfreq; ++freq) {
-        rfi_meta->half_fpga_sample0[freq] = 128 * 8;
-        rfi_meta->time_downsampling_fpga[freq] = 128 * 8;
+    std::vector<int64_t> half_fpga_sample0(rfi_meta->get_nfreq());
+    std::vector<int> time_downsampling_fpga(rfi_meta->get_nfreq());
+    for (int freq = 0; freq < rfi_meta->get_nfreq(); ++freq) {
+        half_fpga_sample0[freq] = 128 * 8;
+        time_downsampling_fpga[freq] = 128 * 8;
     }
+    rfi_meta->set_half_fpga_sample0(half_fpga_sample0);
+    rfi_meta->set_time_downsampling_fpga(time_downsampling_fpga);
 
     rfi_SKtilde.set_to_poison(0xff);
     // There is no poison value
@@ -225,6 +232,9 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
                     F, S, S012_Tmin, S012_Tsize, sk_feed_averaged_Tmin, sk_feed_averaged_Tsize,
                     sk_single_feed_Tmin, sk_single_feed_Tsize, rfimask_T512min, rfimask_T512size,
                     stream);
+#ifdef DEBUGGING
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+#endif
 
     rfi_SKtilde.check_for_poison(0xff);
     // There is no poison value

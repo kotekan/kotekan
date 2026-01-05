@@ -8,18 +8,24 @@
 #ifndef KOTEKAN_BUFFER_HPP
 #define KOTEKAN_BUFFER_HPP
 
+#include "DataType.hpp"       // for DataType
+#include "NDArray.hpp"        // for GenericNDArray, NDArray
+#include "Symbol.hpp"         // for Symbol
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "metadata.hpp"       // for metadataObject, metadataPool
 
 #include "json.hpp" // for json
 
+#include <algorithm>          // for equal
+#include <array>              // for array
 #include <condition_variable> // for condition_variable_any
+#include <cstddef>            // for size_t, ptrdiff_t
 #include <map>                // for map
-#include <memory>             // for shared_ptr
+#include <memory>             // for shared_ptr, make_shared
 #include <mutex>              // for recursive_mutex
+#include <sched.h>            // for cpu_set_t
 #include <stdint.h>           // for uint8_t
 #include <string>             // for string, basic_string
-#include <time.h>             // for size_t
 #include <vector>             // for vector
 
 #ifdef MAC_OSX
@@ -93,7 +99,7 @@ public:
      * @brief Common-core buffer class.
      *
      * @param buffer_name Unique name for this buffer based on location in config file
-     * @param buffer_type Type name, eg "standard", "vis", "hfb", "ring"
+     * @param buffer_type Type name, eg "standard", "hfb", "vis", "N2", "ring"
      * @param num_frames The buffer depth (for subclasses that have that concept)
      * @param metadata_pool The name of the metadata pool to associate with the buffer
      */
@@ -140,8 +146,9 @@ public:
      * to unregister when they close.
      *
      * @param name The name of the consumer to unregister
+     * @param leave_last Optional, do not unregister if you are the last consumer.
      */
-    virtual void unregister_consumer(const std::string& name);
+    virtual void unregister_consumer(const std::string& name, bool leave_last = false);
 
     /**
      * @brief Register a producer with a given name.
@@ -278,6 +285,7 @@ public:
     std::vector<std::shared_ptr<metadataObject>> metadata;
 
 protected:
+    typedef std::lock_guard<std::recursive_mutex> buffer_lock;
     /// The main lock for frame state management
     std::recursive_mutex mutex;
 
@@ -348,7 +356,7 @@ public:
      * @param len - length in bytes of each frame
      * @param metadata_pool The name of the metadata pool to associate with the buffer
      * @param buffer_name: unique name for this buffer, from the config file declaration
-     * @param buffer_type: "standard", "vis", "hfb"
+     * @param buffer_type: "standard", "vis", "hfb", "N2", "ring"
      * @param numa_node The NUMA domain to mbind the memory into
      * @param use_hugepages Allocate 2MB huge pages for the frames
      * @param mlock_frames Lock the frame pages with mlock
@@ -365,8 +373,11 @@ public:
      * @brief Unregisters the named consumer from this buffer.
      * Signals producers if this causes the buffer to become free for
      * writing.
+     *
+     * @param name unique name of consumer to unregister
+     * @param leave_last if true, do not unregister the last consumer.
      */
-    void unregister_consumer(const std::string& name) override;
+    void unregister_consumer(const std::string& name, bool leave_last = false) override;
 
     /**
      * @brief Prints a summary the frames and state of the producers and consumers.
@@ -519,6 +530,80 @@ public:
     void safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_id);
 
     /**
+     * @brief Allocates a new frame description object holding a D dimensional
+     *        array of type T
+     * @param[in] extents Array extentds in the D dimensions
+     * @param[in] dimnames Array axis labels in the D dimensions
+     */
+    template<typename T, std::size_t D>
+    void allocate_new_frame_desc(kotekan::Symbol quantity_name,
+                                 const std::array<std::ptrdiff_t, D>& extents,
+                                 const std::array<kotekan::Symbol, D>& dimnames) {
+        buffer_lock lock(mutex);
+        if (!frames_desc)
+            frames_desc =
+                std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
+        else {
+#if 0
+            if(D != frames_desc->get_rank())
+                ERROR("Rank mismatch: {:d} != {:d}", D, frames_desc->get_rank());
+            if(kotekan::GetDataType_v<T> != frames_desc->get_value_datatype())
+                ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(kotekan::GetDataType_v<T>), kotekan::type_to_string(frames_desc->get_value_datatype()));
+            if(quantity_name != frames_desc->get_quantity_name())
+                ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name, frames_desc->get_quantity_name());
+            if(!std::equal(extents.begin(), extents.end(), frames_desc->get_extents().begin()))
+                ERROR("Extents do not match: [{:s}] != [{:s}]", fmt::join(extents, ", "), fmt::join(frames_desc->get_extents(), ", "));
+            if(!std::equal(dimnames.begin(), dimnames.end(), frames_desc->get_dimnames().begin()))
+                ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "), fmt::join(frames_desc->get_dimnames(), ", "));
+#endif
+        }
+    }
+
+    /**
+     * @brief Allocates a new frame description object holding a D dimensional
+     *        array of type T
+     * @param[in] value_type the kotekan type enumerator of the values stored
+     * @param[in] rank dimensionality of the data array
+     * @param[in] extents Array extentds in the D dimensions
+     * @param[in] dimnames Array axis labels in the D dimensions
+     */
+    void allocate_new_frame_desc(kotekan::DataType value_type, kotekan::Symbol quantity_name,
+                                 const std::vector<std::ptrdiff_t>& extents,
+                                 const std::vector<kotekan::Symbol>& dimnames) {
+        buffer_lock lock(mutex);
+        if (!frames_desc)
+            frames_desc = kotekan::GenericNDArray::create(value_type, quantity_name, extents,
+                                                          dimnames, nullptr);
+        else {
+            if (extents.size() != frames_desc->get_rank())
+                ERROR("Rank mismatch: {:d} != {:d}", extents.size(), frames_desc->get_rank());
+            if (value_type != frames_desc->get_value_datatype())
+                ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(value_type),
+                      kotekan::type_to_string(frames_desc->get_value_datatype()));
+            if (quantity_name != frames_desc->get_quantity_name())
+                ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
+                      frames_desc->get_quantity_name());
+            if (extents != frames_desc->get_extents())
+                ERROR("Extents do not match: [{:s}] != [{:s}]",
+                      fmt::format("{:s}", fmt::join(extents, ", ")),
+                      fmt::format("{:s}", fmt::join(frames_desc->get_extents(), ", ")));
+            if (dimnames != frames_desc->get_dimnames())
+                ERROR("Dimnames do not match: [{:s}] != [{:s}]",
+                      fmt::format("{:s}", fmt::join(dimnames, ", ")),
+                      fmt::format("{:s}", fmt::join(frames_desc->get_dimnames(), ", ")));
+        }
+    }
+
+    /**
+     * @brief provides read access to the array description
+     * @return The NDArray data structure describing the array
+     */
+    std::shared_ptr<const kotekan::GenericNDArray> get_frame_desc() {
+        // TODO: use a get/set pair instead?
+        return frames_desc;
+    }
+
+    /**
      * @brief Returns the last time a frame was marked as full
      * @param buf The buffer to get the last arrival time for.
      * @return A double (with units: seconds) containing the unix time of the last frame arrival
@@ -558,6 +643,9 @@ public:
 
     /// The array of frames (the actual data we are carrying)
     std::vector<uint8_t*> frames;
+
+    /// Metdata describing the shape of the data stored in frames
+    std::shared_ptr<kotekan::GenericNDArray> frames_desc;
 
     /**
      * @brief Flag variables to say which frames are full

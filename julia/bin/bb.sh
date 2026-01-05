@@ -11,7 +11,7 @@ cd "$scriptdir/.."
 card='A40'
 # card='GeForce_RTX_4090'
 # card='L40S'
-setups='chime chord hirax pathfinder'
+setups='chime chord hirax pathfinder smallfinder'
 
 mkdir -p output-${card}
 
@@ -22,10 +22,10 @@ for setup in ${setups}; do
     rm -f output-${card}/bb_${setup}.ptx
     rm -f output-${card}/bb_${setup}.sass
     rm -f output-${card}/bb_${setup}.yaml
-    rm -f ../lib/cuda/cudaBasebandBeamformer_${setup}.cpp
-    rm -f ../lib/cuda/kernels/BasebandBeamformer_${setup}.jl
-    rm -f ../lib/cuda/kernels/BasebandBeamformer_${setup}.ptx
-    rm -f ../lib/cuda/kernels/BasebandBeamformer_${setup}.yaml
+    rm -f ../lib/cuda/generated/cudaBasebandBeamformer_${setup}.cpp
+    rm -f ../lib/cuda/generated/BasebandBeamformer_${setup}.jl
+    rm -f ../lib/cuda/generated/BasebandBeamformer_${setup}.ptx
+    rm -f ../lib/cuda/generated/BasebandBeamformer_${setup}.yaml
 done
 
 # Generate kernel
@@ -45,7 +45,7 @@ done
 
 # Format generated C++ code
 for setup in ${setups}; do
-    clang-format-14 -i output-${card}/bb_${setup}.cxx &
+    clang-format-18 -i output-${card}/bb_${setup}.cxx &
 done
 
 # Format generated Julia code
@@ -54,8 +54,8 @@ wait
 
 # Copy kernels into Kotekan
 for setup in ${setups}; do
-    cp output-${card}/bb_${setup}.cxx ../lib/cuda/cudaBasebandBeamformer_${setup}.cpp
-    cp output-${card}/bb_${setup}.jl ../lib/cuda/kernels/BasebandBeamformer_${setup}.jl
-    cp output-${card}/bb_${setup}.ptx ../lib/cuda/kernels/BasebandBeamformer_${setup}.ptx
-    cp output-${card}/bb_${setup}.yaml ../lib/cuda/kernels/BasebandBeamformer_${setup}.yaml
+    cp output-${card}/bb_${setup}.cxx ../lib/cuda/generated/cudaBasebandBeamformer_${setup}.cpp
+    cp output-${card}/bb_${setup}.jl ../lib/cuda/generated/BasebandBeamformer_${setup}.jl
+    cp output-${card}/bb_${setup}.ptx ../lib/cuda/generated/BasebandBeamformer_${setup}.ptx
+    cp output-${card}/bb_${setup}.yaml ../lib/cuda/generated/BasebandBeamformer_${setup}.yaml
 done

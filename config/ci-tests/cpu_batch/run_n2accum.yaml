@@ -1,0 +1,182 @@
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: INFO
+
+buffer_depth: 4
+cpu_affinity: [2]  # [2,3,4,5,8,9,10,11]
+sizeof_float: 4
+frame_arrival_period: 5.12e-6 * samples_per_data_set
+sizeof_int: 4
+
+# For faster CHORD testing, we're using...
+sub_integration_ntime: 2048
+samples_per_data_set: 4096
+rfi_downsampling_factor: 256
+# sub_integration_ntime: 8192  # ~40 ms for chord
+# samples_per_data_set: 8192   # 
+num_times: samples_per_data_set
+num_polarizations: 2
+num_dishes: 64
+num_elements: num_polarizations * num_dishes
+num_local_freq: 16
+num_ev: 0
+
+num_n2k_samples_to_accumulate: 4
+
+#counts matrix size
+counts_blocksize: 8
+counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
+counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
+
+# vis matrix size
+vis_blocksize: 16
+vis_num_blocks_lin: num_elements / vis_blocksize
+vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
+
+frames_to_generate: 8 * buffer_depth  # must be at least n2_frames_to_write * num_n2k_samples_to_accumulate
+n2_frames_to_write: 2 * buffer_depth
+
+GIGA: 1000000000
+start_time_s: 1760000000
+
+telescope:
+  name: CHORDTelescope
+  origin_itrs_lat_deg: 50.0
+  origin_itrs_lon_deg: -120.0
+  dish_coelev_deg: 90.0
+  grid_x_axis: [1.0, 0.0, 0.0]
+  grid_y_axis: [0.0, 1.0, 0.0]
+  dish_elev_axis: [1.0, 0.0, 0.0]
+  dish_vert_axis: [0.0, 0.0, 1.0]
+  require_gps: False
+  updatable_config: /earth_rotation_data
+  num_dishes_x: 22
+  num_dishes_y: 24
+  dish_inputs: []
+
+gps_time:
+  frame0_nano: start_time_s * GIGA
+
+earth_rotation_data:
+  kotekan_update_endpoint: json
+  earth_orientation_parameter_table: [
+    {
+      time_inst_ns: 1750000000000000000,
+      delta_UT1_inst: 0.5,
+      x_pm: 0.1,
+      y_pm: 0.2
+    }, {
+      time_inst_ns: 1770000000000000000,
+      delta_UT1_inst: -0.5,
+      x_pm: 0.3,
+      y_pm: 0.4
+    }]
+
+  
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 3 * buffer_depth
+
+n2_pool:
+    kotekan_metadata_pool: N2Metadata
+    num_metadata_objects: 16 * buffer_depth
+
+fake_correlation_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
+    metadata_pool: main_pool
+
+fake_counts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    metadata_pool: main_pool
+
+fake_rfimask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set * num_local_freq) / 8
+    metadata_pool: main_pool
+
+n2_buffer:
+    kotekan_buffer: N2
+    vis_layout: "FullUpperTri"
+    num_frames: buffer_depth * num_local_freq
+    metadata_pool: n2_pool
+
+gen_fake_rfi_RFImask:
+    type: random1x8
+    value: 255
+    kotekan_stage: testDataGen
+    out_buf: fake_rfimask_buffer
+    name: "RFImask"
+    array_shape: [ 4, 16, 128 ]  # [samples_per_data_set / 1024, num_local_freq, 128]
+    dim_name: ["T8hi128", "F", "T8lo128"]
+    num_frames: frames_to_generate
+    meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
+
+gen_fake_corr_counts:
+    kotekan_stage: testN2kGen
+    out_buf: fake_correlation_buffer
+    out_counts_buf: fake_counts_buffer
+    in_rfimask_buf: fake_rfimask_buffer
+    correlation_type: "f_times_ee"
+    counts_type: "random_scalar"
+    correlation_value: [ 1, -1 ]
+    counts_value: sub_integration_ntime
+    counts_min: 0
+    counts_max: sub_integration_ntime
+    mul_correlation_by_counts: True
+    num_frames: frames_to_generate
+    freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+vis_accumulate:
+    kotekan_stage: N2Accumulate
+    in_buf: fake_correlation_buffer
+    in_counts_buf: fake_counts_buffer
+    in_rfimask_buf: fake_rfimask_buffer
+    out_buf: n2_buffer
+    num_freq_per_n2k_frame: num_local_freq
+    packet_loss_is_scalar: True
+
+write_fake_correlation:
+  kotekan_stage: hdf5FileWrite
+  base_dir: fake_data
+  file_name: n2k_corr
+  prefix_hostname: false
+  max_frames: -1  # buffer_depth
+  skip_writing: false
+  in_buf: fake_correlation_buffer
+
+write_fake_counts:
+   kotekan_stage: hdf5FileWrite
+   base_dir: fake_data
+   file_name: n2k_counts
+   prefix_hostname: false
+   max_frames: -1  # buffer_depth # Will trigger exit after writing this many frames
+   skip_writing: false
+   in_buf: fake_counts_buffer
+
+write_fake_rfimask:
+   kotekan_stage: hdf5FileWrite
+   base_dir: fake_data
+   file_name: n2k_rfimask
+   prefix_hostname: false
+   max_frames: -1  # buffer_depth # Will trigger exit after writing this many frames
+   skip_writing: false
+   in_buf: fake_rfimask_buffer
+
+write_N2:
+   kotekan_stage: hdf5FileWrite
+   base_dir: fake_data
+   file_name: n2_vis
+   prefix_hostname: false
+   max_frames: num_local_freq * n2_frames_to_write  # Will trigger exit after writing this many frames
+   skip_writing: false
+   in_buf: n2_buffer

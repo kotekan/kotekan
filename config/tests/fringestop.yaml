@@ -1,69 +1,38 @@
 ---
-fringestop_01:
+fringestop_001:
   in_buf: fakevis_buf0
   kotekan_stage: N2TimeDownsample
   max_age: 100
   num_bins_per_rotation: 86400 * rate0
-  out_buf: dumpvis_fs01_buf
-fringestop_02:
-  in_buf: fakevis_buf0
-  kotekan_stage: N2TimeDownsample
-  max_age: 100
-  num_bins_per_rotation: 86400 * rate0 / 2
-  out_buf: dumpvis_fs02_buf
-fringestop_04:
-  in_buf: fakevis_buf0
-  kotekan_stage: N2TimeDownsample
-  max_age: 100
-  num_bins_per_rotation: 86400 * rate0 / 4
-  out_buf: dumpvis_fs04_buf
-fringestop_08:
-  in_buf: fakevis_buf0
-  kotekan_stage: N2TimeDownsample
-  max_age: 100
-  num_bins_per_rotation: 86400 * rate0 / 8
-  out_buf: dumpvis_fs08_buf
-fringestop_16:
-  in_buf: fakevis_buf0
-  kotekan_stage: N2TimeDownsample
-  max_age: 100
-  num_bins_per_rotation: 86400 * rate0 / 16
-  out_buf: dumpvis_fs16_buf
-fringestop_32:
+  out_buf: dumpvis_fs001_buf
+fringestop_032:
   in_buf: fakevis_buf0
   kotekan_stage: N2TimeDownsample
   max_age: 100
   num_bins_per_rotation: 86400 * rate0 / 32
-  out_buf: dumpvis_fs32_buf
+  out_buf: dumpvis_fs032_buf
+fringestop_128:
+  in_buf: fakevis_buf0
+  kotekan_stage: N2TimeDownsample
+  max_age: 100
+  num_bins_per_rotation: 86400 * rate0 / 128
+  out_buf: dumpvis_fs128_buf
 
-no_fringestop_32:
+no_fringestop_032:
   in_buf: fakevis_buf0
   kotekan_stage: N2TimeDownsample
   max_age: 100
   num_bins_per_rotation: 86400 * rate0 / 32
-  out_buf: dumpvis_nfs32_buf
+  out_buf: dumpvis_nfs032_buf
   do_fringestop: false
 
-
-    # direct_no_fringestop_0:
-    #   in_buf: fakevis_buf0
-    #   kotekan_stage: N2FringeStop
-    #   out_buf: dumpvis_direct_nfs0_buf
-    #   fringestop_mode: 0
-    #   era_target_deg: 81.0
-    # 
-    # direct_fringestop_0:
-    #   in_buf: fakevis_buf0
-    #   kotekan_stage: N2FringeStop
-    #   out_buf: dumpvis_direct_fs0_buf
-    #   fringestop_mode: 1
-    #   era_target_deg: 81.0
-    # direct_phase_fringestop_0:
-    #   in_buf: fakevis_buf0
-    #   kotekan_stage: N2FringeStop
-    #   out_buf: dumpvis_direct_pfs0_buf
-    #   fringestop_mode: 2
-    #   era_target_deg: 81.0
+no_fringestop_128:
+  in_buf: fakevis_buf0
+  kotekan_stage: N2TimeDownsample
+  max_age: 100
+  num_bins_per_rotation: 86400 * rate0 / 128
+  out_buf: dumpvis_nfs128_buf
+  do_fringestop: false
 
 raw_rate: 1
 rate0: raw_rate
@@ -85,54 +54,40 @@ cpu_affinity: [4, 5, 6, 7]
 #   kotekan_stage: rawFileWrite
 #   in_buf: dumpvis_fs0_buf
 
-dump_fs01:
+dump_fs001:
   base_dir: ./data_out
   file_ext: dump
-  file_name: dumpvis_fs01_buf
+  file_name: dumpvis_fs001_buf
   kotekan_stage: rawFileWrite
-  in_buf: dumpvis_fs01_buf
+  in_buf: dumpvis_fs001_buf
 
-dump_fs02:
+dump_fs032:
   base_dir: ./data_out
   file_ext: dump
-  file_name: dumpvis_fs02_buf
+  file_name: dumpvis_fs032_buf
   kotekan_stage: rawFileWrite
-  in_buf: dumpvis_fs02_buf
+  in_buf: dumpvis_fs032_buf
 
-dump_fs04:
+dump_fs128:
   base_dir: ./data_out
   file_ext: dump
-  file_name: dumpvis_fs04_buf
+  file_name: dumpvis_fs128_buf
   kotekan_stage: rawFileWrite
-  in_buf: dumpvis_fs04_buf
+  in_buf: dumpvis_fs128_buf
 
-dump_fs08:
+dump_nfs032:
   base_dir: ./data_out
   file_ext: dump
-  file_name: dumpvis_fs08_buf
+  file_name: dumpvis_nfs032_buf
   kotekan_stage: rawFileWrite
-  in_buf: dumpvis_fs08_buf
+  in_buf: dumpvis_nfs032_buf
 
-dump_fs16:
+dump_nfs128:
   base_dir: ./data_out
   file_ext: dump
-  file_name: dumpvis_fs16_buf
+  file_name: dumpvis_nfs128_buf
   kotekan_stage: rawFileWrite
-  in_buf: dumpvis_fs16_buf
-
-dump_fs32:
-  base_dir: ./data_out
-  file_ext: dump
-  file_name: dumpvis_fs32_buf
-  kotekan_stage: rawFileWrite
-  in_buf: dumpvis_fs32_buf
-
-dump_nfs32:
-  base_dir: ./data_out
-  file_ext: dump
-  file_name: dumpvis_nfs32_buf
-  kotekan_stage: rawFileWrite
-  in_buf: dumpvis_nfs32_buf
+  in_buf: dumpvis_nfs128_buf
 
 dump_raw:
   base_dir: ./data_out
@@ -141,81 +96,36 @@ dump_raw:
   kotekan_stage: rawFileWrite
   in_buf: fakevis_buf0
 
-    # dump_direct_nfs0:
-    #   base_dir: ./data_out
-    #   file_ext: dump
-    #   file_name: dumpvis_direct_nfs0_buf
-    #   kotekan_stage: rawFileWrite
-    #   in_buf: dumpvis_direct_nfs0_buf
-    # 
-    # dump_direct_fs0:
-    #   base_dir: ./data_out
-    #   file_ext: dump
-    #   file_name: dumpvis_direct_fs0_buf
-    #   kotekan_stage: rawFileWrite
-    #   in_buf: dumpvis_direct_fs0_buf
-    # 
-    # dump_direct_pfs0:
-    #   base_dir: ./data_out
-    #   file_ext: dump
-    #   file_name: dumpvis_direct_pfs0_buf
-    #   kotekan_stage: rawFileWrite
-    #   in_buf: dumpvis_direct_pfs0_buf
-
-# dumpvis_fs0_buf:
-#   kotekan_buffer: N2
-#   metadata_pool: N2_pool
-#   num_frames: buffer_depth
-
-dumpvis_fs01_buf:
+dumpvis_fs001_buf:
   kotekan_buffer: N2
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
-dumpvis_fs02_buf:
+dumpvis_fs032_buf:
   kotekan_buffer: N2
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
-dumpvis_fs04_buf:
+dumpvis_nfs032_buf:
   kotekan_buffer: N2
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
-dumpvis_fs08_buf:
+dumpvis_fs128_buf:
   kotekan_buffer: N2
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
-dumpvis_fs16_buf:
+dumpvis_nfs128_buf:
   kotekan_buffer: N2
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
-dumpvis_fs32_buf:
-  kotekan_buffer: N2
-  metadata_pool: N2_pool
-  num_frames: buffer_depth
-
-dumpvis_nfs32_buf:
-  kotekan_buffer: N2
-  metadata_pool: N2_pool
-  num_frames: buffer_depth
-
-    # dumpvis_direct_nfs0_buf:
-    #   kotekan_buffer: N2
-    #   metadata_pool: N2_pool
-    #   num_frames: buffer_depth
-    # 
-    # dumpvis_direct_fs0_buf:
-    #   kotekan_buffer: N2
-    #   metadata_pool: N2_pool
-    #   num_frames: buffer_depth
-    # 
-    # dumpvis_direct_pfs0_buf:
-    #   kotekan_buffer: N2
-    #   metadata_pool: N2_pool
-    #   num_frames: buffer_depth
 
 giga: 1000000000
 start_time_s: 1417910418
@@ -240,12 +150,12 @@ fakevis0:
   dec: 49.32
   ra: -37.0
   freq_ids: [8000]
-  kotekan_stage: FakeVis
+  kotekan_stage: FakeN2
   mode: point_source
   n_lost_ticks: 0
   n_rfi_ticks: 0
   noise_var: 0.1
-  num_frames: 86400 * raw_rate + 1
+  num_frames: 3600 * raw_rate + 1  # 86400 * raw_rate + 1
   out_buf: fakevis_buf0
   sleep_after: 1.0
   start_time: start_time_s
@@ -257,6 +167,7 @@ fakevis0:
 
 fakevis_buf0:
   kotekan_buffer: N2
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
@@ -267,30 +178,34 @@ log_level: debug
 
 num_data_sets: 1
 num_elements: 14
+num_dishes: 7
 num_ev: 4
 num_freq_in_frame: 1
-num_gpu_frames: 64
 num_local_freq: 1
-samples_per_dataset: 32768
+samples_per_dataset: 16384
 
 telescope:
   name: CHORDTelescope
-  dish_positions: [
-    [0.0, 0.0, 0.0],
-    [6.3, 0.0, 0.0],
-    [0.0, 8.4, 0.0],
-    [6.3, 8.4, 0.0],
-    [151.0, 0.0, 0.0],
-    [0.0, 204.0, 0.0],
-    [151.0, 204.0, 0.0]]
-  inst_lat_deg: 49.32075144444
-  inst_long_deg: -119.62081125
-  inst_grid_x_axis: [1.0, 0.0, 0.0]
-  inst_grid_y_axis: [0.0, 1.0, 0.0]
-  inst_alt_deg: 90.0
-  inst_dish_alt_axis: [1.0, 0.0, 0.0]
-  inst_dish_vert_axis: [0.0, 0.0, 1.0]
+  origin_itrs_lat_deg: 49.32075144444
+  origin_itrs_lon_deg: -119.62081125
+  grid_x_axis: [1.0, 0.0, 0.0]
+  grid_y_axis: [0.0, 1.0, 0.0]
+  dish_elev_axis: [1.0, 0.0, 0.0]
+  dish_vert_axis: [0.0, 0.0, 1.0]
+  dish_coelev_deg: 0.0
   require_gps: false
   updatable_config: /earth_rotation_data
+
+  dish_separation_x_m: 6.3
+  dish_separation_y_m: 8.5
+  dish_inputs: [
+    {dish_idx: 0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01},
+    {dish_idx: 1, grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A02},
+    {dish_idx: 2, grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B01},
+    {dish_idx: 3, grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B02},
+    {dish_idx: 4, grid_x_idx: 24, grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A25},
+    {dish_idx: 5, grid_x_idx: 0,  grid_y_idx: 24, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: Y01},
+    {dish_idx: 6, grid_x_idx: 24, grid_y_idx: 24, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: Y25}
+]
 
 type: config

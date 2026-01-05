@@ -1,21 +1,23 @@
 #include "gpuSimulateCudaFRBBeamformer.hpp"
 
 #include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "DataType.hpp"        // for float16_t, KOTEKAN_FLOAT16, IWYU pragma: keep
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for INFO, DEBUG
-#include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_indices, get_onehot_frame_...
-#include "visUtil.hpp"
+#include "kotekanLogging.hpp"  // for DEBUG, INFO, WARN
+#include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_frame_counter, get_onehot_...
+#include "visUtil.hpp"         // for get4, int4x2_t
 
-#include <assert.h>
-#include <atomic>     // for atomic_bool
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <stdlib.h>
-#include <vector> // for vector
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <array>      // for array
+#include <assert.h>   // for assert
+#include <complex>    // for complex, operator*, norm, polar, complex_literals
+#include <functional> // for bind, function
+#include <math.h>     // for M_PI
+#include <stdlib.h>   // for free, malloc, size_t
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

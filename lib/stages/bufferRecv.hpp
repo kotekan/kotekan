@@ -13,7 +13,7 @@
 #include "Stage.hpp"             // for Stage
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "bufferSend.hpp"        // for bufferFrameHeader
+#include "bufferSend.hpp"        // for bufferFrameHeader, bufferFrameHeaderNoConfigTracker
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, kotekanLogging
 #include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily
 
@@ -23,8 +23,9 @@
 #include <deque>              // for deque
 #include <event2/event.h>     // for event_add
 #include <event2/util.h>      // for evutil_socket_t
+#include <map>                // for map
 #include <mutex>              // for mutex
-#include <stdint.h>           // for uint32_t, uint8_t
+#include <stdint.h>           // for uint16_t, uint32_t, uint8_t
 #include <stdio.h>            // for size_t
 #include <string.h>           // for strerror
 #include <string>             // for string, basic_string
@@ -59,6 +60,10 @@ class connInstance;
  * @conf num_threads         Int, default 1.  The number of worker threads to use
  * @conf connection_timeout  Int, default 60.  Number of seconds before timeout on transfer
  * @conf drop_frames         Bool, default true.  Whether to drop frames when buffer fills.
+ * @conf upstream_rest_endpoints  List[str], default empty. Optional list of
+ *        "host:port" entries specifying non-standard upstream REST ports to use for
+ *        particular senders. If the client IP (as seen by bufferRecv) matches a host in this
+ *        list, that port overrides the default REST port (PORT_REST_SERVER) for that connection.
  *
  * @par Metrics
  * @metric kotekan_buffer_recv_transfer_time_seconds
@@ -128,8 +133,14 @@ private:
     /// Whether to drop frames when buffer starts filling up
     bool drop_frames;
 
+    /// Optional per-host overrides for upstream REST ports
+    std::map<std::string, uint16_t> upstream_rest_port_overrides;
+
     /// A lock on the current frame, since many systems may ask for the next frame
     std::mutex next_frame_lock;
+
+    /// Whether to use the config tracker
+    const bool use_config_tracker;
 
     static void read_callback(evutil_socket_t fd, short what, void* arg);
     static void accept_connection(evutil_socket_t listener, short event, void* arg);
@@ -237,7 +248,8 @@ class connInstance : public kotekan::kotekanLogging {
 public:
     /// Constructor
     connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
-                 const std::string& client_ip, int port, struct timeval read_timeout);
+                 const std::string& client_ip, int port, struct timeval read_timeout,
+                 bool use_config_tracker, uint16_t upstream_rest_port);
 
     /// Destructor
     ~connInstance();
@@ -301,15 +313,25 @@ public:
     /// The start time of a new frame read
     double start_time;
 
-    /// The buffer transfer header
-    struct bufferFrameHeader buf_frame_header;
+    /// Whether to use the config tracker
+    const bool use_config_tracker;
+
+    /// Upstream REST port for this connection (may override stage default)
+    uint16_t upstream_rest_port;
 
     /// Pointer to the local memory space which matching the size of the incoming frame.
     uint8_t* frame_space;
 
+    /// The expected size of the metadata, used to allocate @c metadata_space
+    size_t expected_metadata_size;
+
     /// Pointer to local memory for storing the metadata of the incoming frame.
     uint8_t* metadata_space;
-    size_t metadata_size;
+
+    /// Local memory to store the header of the incoming frame.
+    /// This will be used as either a bufferFrameHeader or a
+    /// bufferFrameHeaderNoConfigTracker depending on use_config_tracker
+    bufferFrameHeader buf_frame_header;
 
     /// Lock to make sure only one instance of this jobs call backs is run at any one time.
     std::mutex instance_lock;
@@ -338,7 +360,7 @@ public:
     inline void handle_error(const std::string& msg, int err_num, ssize_t bytes_read) {
         // Resource temporarily unavailable, no need to close connection
         // The two error codes cover MacOS and Linux
-        if ((err_num == 35 || err_num == 11) && bytes_read != 0) {
+        if (bytes_read < 0 && (err_num == EDEADLK || err_num == EAGAIN)) {
             DEBUG2("Got resource unavailable error, {:d}, read return {:d}", err_num, bytes_read);
             decrement_ref_count();
             // Add the event back to the libevent queue, so we are notified

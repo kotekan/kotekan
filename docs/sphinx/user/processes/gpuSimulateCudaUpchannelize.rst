@@ -1,0 +1,5 @@
+***************************
+gpuSimulateCudaUpchannelize
+***************************
+
+.. doxygenclass:: gpuSimulateCudaUpchannelize

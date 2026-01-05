@@ -1,14 +1,15 @@
 #include "testDataGen.hpp"
 
+#include "CHORDTelescope.hpp"  // for CHORDTelescope
 #include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for KOTEKAN_FLOAT16, float16_t
+#include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Symbol.hpp"          // for Symbol
 #include "Telescope.hpp"       // for Telescope, stream_t
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
-#include "chordMetadata.hpp"   // for chordMetadata, chordDataType, get_chord_metadata, metadat...
-#include "kotekanLogging.hpp"  // for DEBUG, INFO, ERROR
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
+#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
 #include "kotekanTrackers.hpp" // for KotekanTrackers
 #include "oneHotMetadata.hpp"  // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
 #include "restServer.hpp"      // for HTTP_RESPONSE, restServer, connectionInstance
@@ -20,9 +21,9 @@
 #include <assert.h>    // for assert
 #include <cmath>       // for fmod
 #include <functional>  // for bind, function, _1, _2
+#include <random>      // for mt19937
 #include <stdexcept>   // for invalid_argument
-#include <stdint.h>    // for int8_t, int16_t, int32_t, uint8_t, uint32_t, uint64_t
-#include <stdlib.h>    // for rand, srand
+#include <stdint.h>    // for int8_t, uint32_t, uint8_t, int16_t, int32_t, uint64_t
 #include <strings.h>   // for bzero
 #include <sys/time.h>  // for gettimeofday, timeval
 #include <sys/types.h> // for uint
@@ -82,9 +83,9 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _seed = config.get_default<int>(unique_name, "seed", 0);
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
     _name = config.get_default<std::string>(unique_name, "name", "E");
-    _array_shape =
-        config.get_default<std::vector<int>>(unique_name, "array_shape", std::vector<int>());
-    if (_array_shape.size()) {
+    _array_shape = config.get_default<std::vector<int>>(
+        unique_name, "array_shape", std::vector<int>({int(buf->frame_size) / type_size}));
+    {
         size_t sz = type_size;
         for (int s : _array_shape)
             sz *= s;
@@ -94,14 +95,10 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         // clang-format on
     }
     _dim_name = config.get_default<std::vector<std::string>>(unique_name, "dim_name",
-                                                             std::vector<std::string>());
-    if (_dim_name.size()) {
-        if (_array_shape.size()) {
-            if (_array_shape.size() != _dim_name.size()) {
-                throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_name' config "
-                                            "settings must be the same length!");
-            }
-        }
+                                                             std::vector<std::string>({"D"}));
+    if (_array_shape.size() != _dim_name.size()) {
+        throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_name' config "
+                                    "settings must be the same length!");
     }
 
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
@@ -121,6 +118,9 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _first_frame_index = config.get_default<uint32_t>(unique_name, "first_frame_index", 0);
     _meta_time_downsample_factor =
         config.get_default<int>(unique_name, "meta_time_downsample_factor", 1);
+
+    _manual_freq_ids = config.get_default<std::vector<uint32_t>>(unique_name, "manual_freq_ids",
+                                                                 std::vector<uint32_t>());
 
     endpoint = unique_name + "/generate_test_data";
     using namespace std::placeholders;
@@ -179,13 +179,12 @@ void testDataGen::main_thread() {
 
     int link_id = 0;
 
-    double frame_length =
-        samples_per_data_set * ts_to_double(Telescope::instance().seq_length()) / num_links;
+    auto& telescope = Telescope::instance();
+    std::string telescope_type = telescope.get_name();
 
-    if (((type == "random") || (type == "random_signed")
-         || (type == "random_signed_offset" || type == "random1x8") || (type == "onehot"))
-        && _seed)
-        srand(_seed);
+    double frame_length = samples_per_data_set * ts_to_double(telescope.seq_length()) / num_links;
+
+    std::mt19937 rng(_seed);
 
     while (!stop_thread) {
         double start_time = current_time();
@@ -200,35 +199,47 @@ void testDataGen::main_thread() {
             break;
 
         buf->allocate_new_metadata_object(frame_id);
-        set_fpga_seq_num(buf, frame_id, seq_num);
-        set_stream_id(buf, frame_id, stream_id);
+        std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
 
+        chordmeta->set_fpga_seq_num(seq_num);
+
+        // TODO: Fix this, cannot change from frame to frame (and should not be "now")
         gettimeofday(&now, nullptr);
-        set_first_packet_recv_time(buf, frame_id, now);
+        chordmeta->set_first_packet_recv_time(now);
 
-        std::shared_ptr<chordMetadata> chordmeta;
-        if (metadata_is_chord(buf, frame_id)) {
-            chordmeta = get_chord_metadata(buf, frame_id);
-            chordmeta->set_name(_name);
-            chordmeta->dims = (int)_array_shape.size();
-            for (int d = 0; d < chordmeta->dims; ++d)
-                chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
-            chordmeta->set_strides_simple();
-            assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
-            chordmeta->nfreq = _num_freq_in_frame;
+        chordmeta->set_name(_name);
+        chordmeta->dims = (int)_array_shape.size();
+        for (int d = 0; d < chordmeta->dims; ++d)
+            chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
+        chordmeta->set_strides_simple();
+        // frame_desc is set only after "type" has been decoded below
 
-            for (int f = 0; f < chordmeta->nfreq; f++) {
-                chordmeta->coarse_freq[f] = f;
-                chordmeta->freq_upchan_factor[f] = 1;
-                chordmeta->half_fpga_sample0[f] = 0;
-                chordmeta->time_downsampling_fpga[f] = _meta_time_downsample_factor;
-            }
-
-            chordmeta->fpga_seq_num = seq_num;
-            chordmeta->sample0_offset =
-                frame_id_abs * samples_per_data_set / _meta_time_downsample_factor;
-            chordmeta->offset_downsampling = 1;
+        assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
+        std::vector<int> coarse_freq(_num_freq_in_frame);
+        std::vector<int> freq_upchan_factor(coarse_freq.size());
+        std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
+        std::vector<int> time_downsampling_fpga(coarse_freq.size());
+        for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
+            if (_manual_freq_ids.size() > 0)
+                coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
+            else if (telescope_type == "CHORDTelescope")
+                coarse_freq[f] = telescope.cast<CHORDTelescope>().min_science_freq_id() + f;
+            else
+                coarse_freq[f] = f;
+            freq_upchan_factor[f] = 1;
+            half_fpga_sample0[f] = _meta_time_downsample_factor - 1;
+            time_downsampling_fpga[f] = _meta_time_downsample_factor;
         }
+
+        chordmeta->set_coarse_freq(coarse_freq);
+        chordmeta->set_freq_upchan_factor(freq_upchan_factor);
+        chordmeta->set_half_fpga_sample0(half_fpga_sample0);
+        chordmeta->set_time_downsampling_fpga(time_downsampling_fpga);
+
+        chordmeta->set_sample0_offset(frame_id_abs * samples_per_data_set
+                                      / _meta_time_downsample_factor);
+        chordmeta->set_offset_downsampling(1);
+        chordmeta->set_frame_counter(frame_id_abs);
 
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
@@ -280,86 +291,62 @@ void testDataGen::main_thread() {
         } else if (type == "random1x8") {
             if (chordmeta)
                 chordmeta->type = kotekan::uint1x8;
+        } else if (type == "tpluse") {
+            if (chordmeta)
+                chordmeta->type = kotekan::uint1x8;
+        } else if (type == "tpluseplusf") {
+            if (chordmeta)
+                chordmeta->type = kotekan::uint1x8;
+        } else if (type == "tpluseplusfprime") {
+            if (chordmeta)
+                chordmeta->type = kotekan::uint1x8;
+        } else if (type == "square") {
+            if (chordmeta)
+                chordmeta->type = kotekan::int4x2;
+        } else {
+            ERROR("unexpected type: {s}", type);
+            throw std::runtime_error("unexpected type: " + type);
         }
+
+        // this needs the decoded type
+        // could be moved into constructor, but need the bit of code above
+        /* new style array description */
+        const std::vector<ptrdiff_t> extents(_array_shape.begin(), _array_shape.end());
+        const std::vector<kotekan::Symbol> dimnames(_dim_name.begin(), _dim_name.end());
+
+        buf->allocate_new_frame_desc(chordmeta->type, _name, extents, dimnames);
+        /* test that things are consistent */
+        chordmeta->check_frame_desc(buf->get_frame_desc());
 
         if (type == "onehot") {
             int val = value;
             if (_value_array.size())
                 val = _value_array[frame_id_abs % _value_array.size()];
             bzero(frame, n_to_set);
-            if (_array_shape.size()) {
-                std::string istring = "";
-                size_t j = 0;
-                std::vector<int> indices;
-                for (size_t i = 0; i < _array_shape.size(); i++) {
-                    int n = _array_shape[i];
-                    int k = rand() % n;
-                    j = j * n + k;
-                    if (i)
-                        istring += ", ";
-                    istring += std::to_string(k);
-                    indices.push_back(k);
-                }
-                frame[j] = val;
-                INFO("Set {:s}[{:d}] index [{:s}] (flat: {:d} = 0x{:x}) to 0x{:x} ({:d})",
-                     buf->buffer_name, frame_id, istring, j, j, val, val);
-                if (metadata_is_onehot(buf, frame_id)) {
-                    DEBUG("One-hot metadata; setting indices");
-                    set_onehot_indices(buf, frame_id, indices);
-                    set_onehot_frame_counter(buf, frame_id, frame_id_abs);
-                    INFO("Set {:s}[{:d}] frame counter {:d}", buf->buffer_name, frame_id,
-                         frame_id_abs);
-                } else if (chordmeta) {
-                    DEBUG("CHORD metadata; setting array sizes and one-hot indices");
-                    int nfreq = 0;
-                    int ntime = 0;
-                    for (size_t i = 0; i < _array_shape.size(); i++) {
-                        int n = _array_shape[i];
-                        std::string name = "";
-                        if (_dim_name.size() && _dim_name[i].size())
-                            name = _dim_name[i];
-
-                        chordmeta->set_array_dimension(i, n, name);
-                        chordmeta->set_onehot_dimension(i, indices[i], name);
-                        // INFO("Chord metadata: set one-hot index {:c} = {:d} (of {:d})", name,
-                        // indices[i], n);
-                        //  HACK -- look for dimension named "F", assume that's = nfreq
-                        if (name == "F")
-                            nfreq = n;
-                        // HACK -- look for dimension named "T", assume that's a fine time sample
-                        if (name == "T")
-                            ntime = n;
-                    }
-                    chordmeta->dims = (int)_array_shape.size();
-                    chordmeta->n_one_hot = chordmeta->dims;
-                    chordmeta->type = kotekan::int4x2;
-                    // DEBUG("one-hot: nfreq = {:d}, ntime = {:d}", nfreq, ntime);
-                    if (nfreq) {
-                        assert(nfreq <= CHORD_META_MAX_FREQ);
-                        chordmeta->nfreq = nfreq;
-                        for (int i = 0; i < nfreq; i++) {
-                            // Arbitrarily number the frequency channels...
-                            chordmeta->coarse_freq[i] = i;
-                            chordmeta->freq_upchan_factor[i] = 1;
-                            int64_t fpgacount = frame_id_abs * ntime;
-                            chordmeta->half_fpga_sample0[i] = 2 * fpgacount;
-                            chordmeta->time_downsampling_fpga[i] = 1;
-                        }
-                    }
-
-                    DEBUG("Chord metadata: array shape {:s}", chordmeta->get_dimensions_string());
-                    DEBUG("Chord metadata: one-hot: {:s}", chordmeta->get_onehot_string());
-
-                } else {
-                    ERROR("Metadata type is not one-hot, not recording one-hot indices anywhere!");
-                }
-                DEBUG("PY onehot[{:d}] = (({:s}), 0x{:x})", frame_id_abs, istring, val);
-            } else {
-                int j = rand() % n_to_set;
-                INFO("Set {:s}[{:d}] flat index {:d} = 0x{:x} to 0x{:x} ({:d})", buf->buffer_name,
-                     frame_id, j, j, val, val);
-                frame[j] = val;
+            std::string istring = "";
+            size_t j = 0;
+            std::vector<int> indices;
+            for (size_t i = 0; i < _array_shape.size(); i++) {
+                int n = _array_shape[i];
+                int k = rng() % n;
+                j = j * n + k;
+                if (i)
+                    istring += ", ";
+                istring += std::to_string(k);
+                indices.push_back(k);
             }
+            frame[j] = val;
+            INFO("Set {:s}[{:d}] index [{:s}] (flat: {:d} = 0x{:x}) to 0x{:x} ({:d})",
+                 buf->buffer_name, frame_id, istring, j, j, val, val);
+            if (metadata_is_onehot(buf, frame_id)) {
+                DEBUG("One-hot metadata; setting indices");
+                set_onehot_indices(buf, frame_id, indices);
+                set_onehot_frame_counter(buf, frame_id, frame_id_abs);
+                INFO("Set {:s}[{:d}] frame counter {:d}", buf->buffer_name, frame_id, frame_id_abs);
+            } else {
+                ERROR("Metadata type is not one-hot, not recording one-hot indices anywhere!");
+            }
+            DEBUG("PY onehot[{:d}] = (({:s}), 0x{:x})", frame_id_abs, istring, val);
             n_to_set = 0;
         }
 
@@ -403,8 +390,8 @@ void testDataGen::main_thread() {
                 char new_imaginary;
                 if (_reuse_random && finished_seeding_constant)
                     break;
-                new_real = (rand() % 15) + 1;      // Limit to [-7, 7]
-                new_imaginary = (rand() % 15) + 1; // Limit to [-7, 7]
+                new_real = (rng() % 15) + 1;      // Limit to [-7, 7]
+                new_imaginary = (rng() % 15) + 1; // Limit to [-7, 7]
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
             } else if (type == "random_signed") {
@@ -412,7 +399,7 @@ void testDataGen::main_thread() {
                 char new_imaginary;
                 if (_reuse_random && finished_seeding_constant)
                     break;
-                int r = rand();
+                uint32_t r = rng();
                 new_real = (r % 15) + 1; // Limit to [-7, 7]
                 r >>= 4;
                 new_imaginary = (r % 15) + 1; // Limit to [-7, 7]
@@ -423,7 +410,7 @@ void testDataGen::main_thread() {
                 char new_imaginary;
                 if (_reuse_random && finished_seeding_constant)
                     break;
-                int r = rand();
+                uint32_t r = rng();
                 new_real = (r % 15) + 1; // Limit to [-7, 7]
                 r >>= 4;
                 new_imaginary = (r % 15) + 1; // Limit to [-7, 7]
@@ -431,7 +418,7 @@ void testDataGen::main_thread() {
             } else if (type == "random1x8") {
                 if (_reuse_random && finished_seeding_constant)
                     break;
-                uint8_t rand_val = rand() & 0xFF;
+                uint8_t rand_val = rng() & 0xFFu;
                 frame[j] = rand_val;
             } else if (type == "tpluse") {
                 int time_idx = j / num_elements;
@@ -467,9 +454,13 @@ void testDataGen::main_thread() {
                 }
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
+            } else {
+                ERROR("unexpected type: {s}", type);
+                throw std::runtime_error("unexpected type: " + type);
             }
         }
-        DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
+        DEBUG("Generated a {:s} test data set in {:s}[{:d}] at seq {:d}", type, buf->buffer_name,
+              frame_id, seq_num);
 
         buf->mark_frame_full(unique_name, frame_id);
 

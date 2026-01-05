@@ -23,33 +23,9 @@ std::shared_ptr<metadataObject> metadataPool::request_metadata_object() {
 
 metadataObject::metadataObject() {}
 
-void metadataObject::deepCopy(std::shared_ptr<metadataObject> other) {
-    *this = *other;
-}
-
 size_t metadataObject::get_object_size() {
     std::shared_ptr<metadataPool> pool = parent_pool.lock();
     if (!pool)
         FATAL_ERROR("metadataObject::get_object_size(): pool is null");
     return pool->metadata_object_size;
-}
-
-nlohmann::json metadataObject::to_json() {
-    nlohmann::json rtn = {};
-    ::to_json(rtn, *this);
-    return rtn;
-}
-
-void to_json(nlohmann::json& j, const metadataObject& m) {
-    std::shared_ptr<metadataPool> pool = m.parent_pool.lock();
-    if (pool) {
-        j["metadata_type"] = pool->type_name;
-        j["metadata_pool"] = pool->unique_name;
-        j["metadata_mem_size"] = pool->metadata_object_size;
-    }
-}
-
-void from_json(const nlohmann::json& j, metadataObject& m) {
-    (void)j;
-    (void)m;
 }

@@ -7,10 +7,10 @@
 #include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for time_ctype, cfloat, freq_ctype, input_c...
 
-#include "fmt.hpp"      // for compile_string_to_view, format, fmt
+#include "fmt.hpp"      // for format, fmt
+#include "fmt/format.h" // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>                             // for max
 #include <complex>                               // for complex
 #include <cstdio>                                // for remove
 #include <errno.h>                               // for errno

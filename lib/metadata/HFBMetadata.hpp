@@ -1,6 +1,7 @@
 #ifndef HFB_METADATA
 #define HFB_METADATA
 
+#include "Hash.hpp"      // for Hash
 #include "Telescope.hpp" // for freq_id_t
 #include "buffer.hpp"    // for Buffer
 #include "dataset.hpp"   // for dset_id_t
@@ -10,11 +11,14 @@
 
 #include <memory>   // for shared_ptr
 #include <stdint.h> // for uint32_t, uint64_t, int64_t
-#include <time.h>   // for size_t, timespec
+#include <time.h>   // for timespec, size_t
 #include <vector>   // for vector
 
 class HFBMetadata : public metadataObject {
 public:
+    /// deep copy operator
+    void deepCopy(std::shared_ptr<const metadataObject> other) override;
+
     /// Returns the size of objects of this type when serialized into bytes.
     size_t get_serialized_size() override;
 

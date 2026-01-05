@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for get_lost_timesamples
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 #include "util.h"              // for cp, make_raw_dirs
 
@@ -14,6 +14,7 @@
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for open, posix_fadvise, O_CREAT, O_WRONLY, POSIX_FADV_DONTNEED
 #include <functional> // for bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <pthread.h>  // for pthread_setaffinity_np
 #include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdio.h>    // for fprintf, snprintf, fclose, fopen, size_t, FILE
@@ -217,11 +218,11 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
             }
 
             INFO("Data file write done for {:s}, lost_packets {:d}", file_name,
-                 get_lost_timesamples(buf, frame_id));
+                 get_chord_metadata(buf, frame_id)->get_lost_timesamples());
         } else {
             // usleep(0.070 * 1e6);
             INFO("Disk id {:d}, Lost Packets {:d}, buffer id {:d}", disk_id,
-                 get_lost_timesamples(buf, frame_id), frame_id);
+                 get_chord_metadata(buf, frame_id)->get_lost_timesamples(), frame_id);
         }
 
         // TODO make release_info_object work for nConsumers.

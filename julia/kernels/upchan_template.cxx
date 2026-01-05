@@ -9,16 +9,18 @@
 #include <DataType.hpp>
 #include <NDArrayBuffer.hpp>
 #include <NDArrayRingBuffer.hpp>
-#include <algorithm>
-#include <array>
 #include <bufferContainer.hpp>
-#include <cassert>
 #include <chordMetadata.hpp>
-#include <cstring>
 #include <cudaCommand.hpp>
 #include <cudaDeviceInterface.hpp>
 #include <div.hpp>
+
 #include <fmt.hpp>
+
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -261,7 +263,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "{{{kernel_name}}}_");
+        device.build_ptx("lib/cuda/generated/{{{kernel_name}}}.ptx", {kernel_symbol}, opts, "{{{kernel_name}}}_");
     }
 }
 

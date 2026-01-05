@@ -12,10 +12,9 @@
 
 #include <Stage.hpp>             // for Stage
 #include <StageFactory.hpp>      // for REGISTER_KOTEKAN_STAGE
-#include <algorithm>             // for copy
 #include <array>                 // for array
 #include <cassert>               // for assert
-#include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, CHORD_META_MAX_FREQ
+#include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, get_chord_metadata
 #include <cstddef>               // for ptrdiff_t, size_t
 #include <cstdint>               // for int64_t, uint8_t
 #include <cstring>               // for strncpy
@@ -177,45 +176,24 @@ public:
             }
 
             {
-                const auto nfreq = group->GetAttribute("nfreq");
-                if (nfreq) {
-                    const auto nfreq_shape = nfreq->GetDimensionsSize();
-                    assert(nfreq_shape.empty());
-                    meta->nfreq = nfreq->ReadAsInt();
-                    DEBUG("[{:s}/{:d}] meta->nfreq={}", buffer->buffer_name, frame_index,
-                          meta->nfreq);
-                    assert(meta->nfreq >= 0);
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-                } else {
-                    meta->nfreq = -1;
-                    DEBUG("[{:s}/{:d}] meta->nfreq", buffer->buffer_name, frame_index);
-                }
-            }
-
-            {
                 const auto coarse_freq = group->GetAttribute("coarse_freq");
-                assert((meta->nfreq >= 0) == bool(coarse_freq));
                 if (coarse_freq) {
                     const auto coarse_nfreqs_shape = coarse_freq->GetDimensionsSize();
                     assert(coarse_nfreqs_shape.size() == 1);
-                    assert(std::ptrdiff_t(coarse_nfreqs_shape.at(0)) == meta->nfreq);
-                    const auto coarse_freq_data = coarse_freq->ReadAsIntArray();
-                    assert(std::ptrdiff_t(coarse_freq_data.size()) == meta->nfreq);
-                    std::copy(coarse_freq_data.begin(), coarse_freq_data.end(), meta->coarse_freq);
+                    meta->set_coarse_freq(coarse_freq->ReadAsIntArray());
                 }
             }
 
             {
                 const auto freq_upchan_factor = group->GetAttribute("freq_upchan_factor");
-                assert((meta->nfreq >= 0) == bool(freq_upchan_factor));
+                assert((meta->get_nfreq() >= 0) == bool(freq_upchan_factor));
                 if (freq_upchan_factor) {
                     const auto freq_upchan_factor_shape = freq_upchan_factor->GetDimensionsSize();
                     assert(freq_upchan_factor_shape.size() == 1);
-                    assert(std::ptrdiff_t(freq_upchan_factor_shape.at(0)) == meta->nfreq);
+                    assert(std::ptrdiff_t(freq_upchan_factor_shape.at(0)) == meta->get_nfreq());
                     const auto freq_upchan_factor_data = freq_upchan_factor->ReadAsIntArray();
-                    assert(std::ptrdiff_t(freq_upchan_factor_data.size()) == meta->nfreq);
-                    std::copy(freq_upchan_factor_data.begin(), freq_upchan_factor_data.end(),
-                              meta->freq_upchan_factor);
+                    assert(std::ptrdiff_t(freq_upchan_factor_data.size()) == meta->get_nfreq());
+                    meta->set_freq_upchan_factor(freq_upchan_factor_data);
                 }
             }
 
@@ -225,10 +203,8 @@ public:
                     const auto sample0_offset_shape = sample0_offset->GetDimensionsSize();
                     assert(sample0_offset_shape.empty());
                     // Cannot read int64_t directly yet...
-                    meta->sample0_offset = sample0_offset->ReadAsDouble();
-                    assert(meta->sample0_offset >= 0);
-                } else {
-                    meta->sample0_offset = -1;
+                    meta->set_sample0_offset(sample0_offset->ReadAsDouble());
+                    assert(meta->get_sample0_offset() >= 0);
                 }
             }
 
@@ -237,40 +213,41 @@ public:
                 if (offset_downsampling) {
                     const auto offset_downsampling_shape = offset_downsampling->GetDimensionsSize();
                     assert(offset_downsampling_shape.empty());
-                    meta->offset_downsampling = offset_downsampling->ReadAsInt();
-                    assert(meta->offset_downsampling > 0);
-                } else {
-                    meta->offset_downsampling = -1;
+                    meta->set_offset_downsampling(offset_downsampling->ReadAsInt());
+                    assert(meta->get_offset_downsampling() > 0);
                 }
             }
 
             {
                 const auto half_fpga_sample0 = group->GetAttribute("half_fpga_sample0");
-                assert((meta->nfreq >= 0) == bool(half_fpga_sample0));
+                assert((meta->get_nfreq() >= 0) == bool(half_fpga_sample0));
                 if (half_fpga_sample0) {
                     const auto coarse_nfreqs_shape = half_fpga_sample0->GetDimensionsSize();
                     assert(coarse_nfreqs_shape.size() == 1);
-                    assert(std::ptrdiff_t(coarse_nfreqs_shape.at(0)) == meta->nfreq);
+                    assert(std::ptrdiff_t(coarse_nfreqs_shape.at(0)) == meta->get_nfreq());
                     // Cannot read int64_t directly yet...
                     const auto half_fpga_sample0_data = half_fpga_sample0->ReadAsDoubleArray();
-                    assert(std::ptrdiff_t(half_fpga_sample0_data.size()) == meta->nfreq);
-                    std::copy(half_fpga_sample0_data.begin(), half_fpga_sample0_data.end(),
-                              meta->half_fpga_sample0);
+                    assert(std::ptrdiff_t(half_fpga_sample0_data.size()) == meta->get_nfreq());
+                    std::vector<int64_t> half_fpga_sample0_int64_data(
+                        half_fpga_sample0_data.size());
+                    for (size_t i = 0; i < half_fpga_sample0_data.size(); ++i) {
+                        half_fpga_sample0_int64_data[i] = half_fpga_sample0_data[i];
+                    }
+                    meta->set_half_fpga_sample0(half_fpga_sample0_int64_data);
                 }
             }
 
             {
                 const auto time_downsampling_fpga = group->GetAttribute("time_downsampling_fpga");
-                assert((meta->nfreq >= 0) == bool(time_downsampling_fpga));
+                assert((meta->get_nfreq() >= 0) == bool(time_downsampling_fpga));
                 if (time_downsampling_fpga) {
                     const auto coarse_nfreqs_shape = time_downsampling_fpga->GetDimensionsSize();
                     assert(coarse_nfreqs_shape.size() == 1);
-                    assert(std::ptrdiff_t(coarse_nfreqs_shape.at(0)) == meta->nfreq);
+                    assert(std::ptrdiff_t(coarse_nfreqs_shape.at(0)) == meta->get_nfreq());
                     const auto time_downsampling_fpga_data =
                         time_downsampling_fpga->ReadAsIntArray();
-                    assert(std::ptrdiff_t(time_downsampling_fpga_data.size()) == meta->nfreq);
-                    std::copy(time_downsampling_fpga_data.begin(),
-                              time_downsampling_fpga_data.end(), meta->time_downsampling_fpga);
+                    assert(std::ptrdiff_t(time_downsampling_fpga_data.size()) == meta->get_nfreq());
+                    meta->set_time_downsampling_fpga(time_downsampling_fpga_data);
                 }
             }
 
@@ -304,7 +281,7 @@ public:
                     const auto datatype =
                         GDALExtendedDataType::Create(get_gdal_datatype(*meta->dish_index));
                     meta->dish_index =
-                        new int[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
+                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
                     const auto success =
                         dish_index->Read(arrayStartIdx.data(), count.data(), nullptr, nullptr,
                                          datatype, meta->dish_index, meta->dish_index,

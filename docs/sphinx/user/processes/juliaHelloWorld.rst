@@ -1,0 +1,5 @@
+***************
+juliaHelloWorld
+***************
+
+.. doxygenclass:: juliaHelloWorld

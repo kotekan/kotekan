@@ -208,7 +208,20 @@ void from_json(const nlohmann::json& j, std::complex<T>& p) {
  * @param value A JSON value.
  * @return Type name.
  */
-std::string json_type_name(nlohmann::json& value);
+// Make this header-only to avoid static link-order issues between
+// kotekan_core (caller) and kotekan_utils (provider).
+inline std::string json_type_name(nlohmann::json& value) {
+    switch (value.type()) {
+        case nlohmann::json::value_t::number_integer:
+            return "integer";
+        case nlohmann::json::value_t::number_unsigned:
+            return "integer";
+        case nlohmann::json::value_t::number_float:
+            return "float";
+        default:
+            return value.type_name();
+    }
+}
 
 /**
  * @brief Index into a flattened upper matrix triangle.

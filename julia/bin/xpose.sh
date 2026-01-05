@@ -8,7 +8,7 @@ set -euxo pipefail
 scriptdir=$(dirname "$0")
 cd "$scriptdir/.."
 
-setups='chord hirax pathfinder'
+setups='chord hirax pathfinder smallfinder'
 
 mkdir -p output-A40
 
@@ -19,10 +19,10 @@ for setup in ${setups}; do
     rm -f output-A40/xpose_${setup}.ptx
     rm -f output-A40/xpose_${setup}.sass
     rm -f output-A40/xpose_${setup}.yaml
-    rm -f ../lib/cuda/cudaTransposeKernel_${setup}.cpp
-    rm -f ../lib/cuda/kernels/TransposeKernel_${setup}.jl
-    rm -f ../lib/cuda/kernels/TransposeKernel_${setup}.ptx
-    rm -f ../lib/cuda/kernels/TransposeKernel_${setup}.yaml
+    rm -f ../lib/cuda/generated/cudaTransposeKernel_${setup}.cpp
+    rm -f ../lib/cuda/generated/TransposeKernel_${setup}.jl
+    rm -f ../lib/cuda/generated/TransposeKernel_${setup}.ptx
+    rm -f ../lib/cuda/generated/TransposeKernel_${setup}.yaml
 done
 
 # Generate kernel
@@ -42,7 +42,7 @@ done
 
 # Format generated C++ code
 for setup in ${setups}; do
-    clang-format-14 -i output-A40/xpose_${setup}.cxx &
+    clang-format-18 -i output-A40/xpose_${setup}.cxx &
 done
 
 # Format generated Julia code
@@ -51,8 +51,8 @@ wait
 
 # Copy kernels into Kotekan
 for setup in ${setups}; do
-    cp output-A40/xpose_${setup}.cxx ../lib/cuda/cudaTransposeKernel_${setup}.cpp
-    cp output-A40/xpose_${setup}.jl ../lib/cuda/kernels/TransposeKernel_${setup}.jl
-    cp output-A40/xpose_${setup}.ptx ../lib/cuda/kernels/TransposeKernel_${setup}.ptx
-    cp output-A40/xpose_${setup}.yaml ../lib/cuda/kernels/TransposeKernel_${setup}.yaml
+    cp output-A40/xpose_${setup}.cxx ../lib/cuda/generated/cudaTransposeKernel_${setup}.cpp
+    cp output-A40/xpose_${setup}.jl ../lib/cuda/generated/TransposeKernel_${setup}.jl
+    cp output-A40/xpose_${setup}.ptx ../lib/cuda/generated/TransposeKernel_${setup}.ptx
+    cp output-A40/xpose_${setup}.yaml ../lib/cuda/generated/TransposeKernel_${setup}.yaml
 done

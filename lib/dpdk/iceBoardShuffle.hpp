@@ -12,7 +12,6 @@
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
-#include "chimeMetadata.hpp"
 #include "chordMetadata.hpp"
 #include "iceBoardHandler.hpp"
 #include "kotekanLogging.hpp"
@@ -31,7 +30,7 @@
  * @par Buffers
  * @buffer out_bufs  Array of kotekan buffers of lenght shuffle_size
  *       @buffer_format unit8_t array of FPGA packet contents
- *       @buffer_metadata chimeMetadata
+ *       @buffer_metadata chordMetadata
  * @buffer lost_samples_buf Kotekan buffer of flags (one per time sample)
  *       @buffer_format unit8_t array of flags
  *       @buffer_metadata none
@@ -274,6 +273,11 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
     for (uint32_t i = 0; i < shuffle_size; ++i) {
         out_bufs[i] = buffer_container.get_buffer(buffer_names[i]);
         out_bufs[i]->register_producer(unique_name);
+        /* new style array description */
+        out_bufs[i]
+            ->allocate_new_frame_desc<kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type,
+                                      2>(
+                "E", {ptrdiff_t(out_bufs[i]->frame_size) / sample_size, sample_size}, {"T", "E"});
     }
 
     lost_samples_buf =
@@ -444,56 +448,45 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
         // Add metadata to the output buffer
 
-        // If the metadata type is chimeMetadata set the CHIME fields
-        // TODO we can likely remove this, but keeping it here for reference
-        if (out_bufs[i]->metadata_pool->type_name == "chimeMetadata") {
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_first_packet_recv_time(now);
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_fpga_seq_num(new_seq);
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_gps_time(gps_time);
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_sample0_offset(new_seq);
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_dataset_id(fpga_dataset);
 
-            set_first_packet_recv_time(out_bufs[i], out_buf_frame_ids[i], now);
-            set_gps_time(out_bufs[i], out_buf_frame_ids[i], gps_time);
+        ice_stream_id_t tmp_stream_id = port_stream_id;
+        // Set the unused flag to store the post shuffle freq bin number.
+        tmp_stream_id.unused = i;
+        tmp_stream_id.crate_id = tmp_stream_id.crate_id % 2;
+        std::vector<int> coarse_freq(1);
+        coarse_freq[0] = tel.to_freq_id(ice_encode_stream_id(tmp_stream_id));
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_coarse_freq(coarse_freq);
 
-            // We take the stream ID only from the first pair of crates,
-            // to avoid overwriting it on different ports.
-            // This makes the stream ID unique for down stream stages.
-            if (port_stream_id.crate_id / 2 == 0) {
-                ice_stream_id_t tmp_stream_id = port_stream_id;
-                // Set the unused flag to store the post shuffle freq bin number.
-                tmp_stream_id.unused = i;
-                ice_set_stream_id_t(out_bufs[i], out_buf_frame_ids[i], tmp_stream_id);
-            }
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_lost_timesamples(0);
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])->set_rfi_flagged_samples(0);
 
-            set_fpga_seq_num(out_bufs[i], out_buf_frame_ids[i], new_seq);
+        auto meta = get_chord_metadata(out_bufs[i], out_buf_frame_ids[i]);
 
-            set_dataset_id(out_bufs[i], out_buf_frame_ids[i], fpga_dataset);
-        } else if (out_bufs[i]->metadata_pool->type_name == "chordMetadata") {
-            // If the metadata type is chordMetadata set the CHORD fields
-            auto meta = get_chord_metadata(out_bufs[i], out_buf_frame_ids[i]);
+        // The dimensions are time (T) and "element" (E) which is the "correlator ordered"
+        // feed and polarization.  Note that off the F-engine polarization is _not_ a defined
+        // axis.
+        /* old style array description */
+        std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
+        std::strncpy(meta->dim_name[1], "E", sizeof meta->dim_name[1]);
+        meta->dims = 2;
+        meta->type = kotekan::int4x2_swapped_withoffset;
+        // Somewhat confusingly E in this context is the electric field...
+        std::strncpy(meta->name, "E", sizeof meta->name);
+        meta->dim[0] = out_bufs[i]->frame_size / sample_size;
+        meta->dim[1] = sample_size;
+        meta->set_strides_simple();
+        // frame_desc set in constructor
+        /* test that things are consistent */
+        meta->check_frame_desc(out_bufs[i]->get_frame_desc());
 
-            // TODO: We may also need to store the gps_time in the metadata for the baseband system.
-            meta->sample0_offset = new_seq;
-            meta->nfreq = 1;
-
-            ice_stream_id_t tmp_stream_id = port_stream_id;
-            // Set the unused flag to store the post shuffle freq bin number.
-            tmp_stream_id.unused = i;
-            tmp_stream_id.crate_id = tmp_stream_id.crate_id % 2;
-            meta->coarse_freq[0] = tel.to_freq_id(ice_encode_stream_id(tmp_stream_id));
-
-            // The dimensions are time (T) and "element" (E) which is the "correlator ordered"
-            // feed and polarization.  Note that off the F-engine polarization is _not_ a defined
-            // axis.
-            std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
-            std::strncpy(meta->dim_name[1], "E", sizeof meta->dim_name[1]);
-            meta->dims = 2;
-            meta->type = kotekan::int4x2_swapped_withoffset;
-            // Somewhat confusingly E in this context is the electric field...
-            std::strncpy(meta->name, "E", sizeof meta->name);
-            meta->dim[0] = out_bufs[i]->frame_size / sample_size;
-            meta->dim[1] = sample_size;
-
-            // Print out the chordMetadata
-            DEBUG("chordMetadata: seq: {:d} freq_id: {:d} dim[0]: {:d} dim[1]: {:d}",
-                  meta->sample0_offset, meta->coarse_freq[0], meta->dim[0], meta->dim[1]);
-        }
+        // Print out the chordMetadata
+        DEBUG("chordMetadata: seq: {:d} freq_id: {:d} dim[0]: {:d} dim[1]: {:d}",
+              meta->get_sample0_offset(), meta->get_coarse_freq()[0], meta->dim[0], meta->dim[1]);
     }
 
     if (!first_time) {
@@ -506,44 +499,42 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
     // Add metadata to the lost samples buffer
     lost_samples_buf->allocate_new_metadata_object(lost_samples_frame_id);
-    if (lost_samples_buf->metadata_pool->type_name == "chimeMetadata") {
-        // If the metadata type is chimeMetadata set the CHIME fields
-        // TODO we can likely remove this, but keeping it here for reference
-        set_first_packet_recv_time(lost_samples_buf, lost_samples_frame_id, now);
-        set_gps_time(lost_samples_buf, lost_samples_frame_id, gps_time);
-        set_fpga_seq_num(lost_samples_buf, lost_samples_frame_id, new_seq);
-        set_dataset_id(lost_samples_buf, lost_samples_frame_id, fpga_dataset);
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_sample0_offset(new_seq);
+    // TODO: are these required for the lost_samples buffer? or is having them
+    // in the corresponding data buffer sufficient?
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_fpga_seq_num(new_seq);
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_first_packet_recv_time(now);
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_gps_time(gps_time);
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_dataset_id(fpga_dataset);
 
-        // The lost samples buffer is the same for all 4 frequencies,
-        // so the stream ID actually covers all 4 possible `unused` freq values.
-        if (port_stream_id.crate_id / 2 == 0) {
-            ice_stream_id_t tmp_stream_id = port_stream_id;
-            tmp_stream_id.unused = 0;
-            ice_set_stream_id_t(lost_samples_buf, lost_samples_frame_id, tmp_stream_id);
-        }
-    } else if (lost_samples_buf->metadata_pool->type_name == "chordMetadata") {
-        // If the metadata type is chordMetadata set the CHORD fields
-        auto meta = get_chord_metadata(lost_samples_buf, lost_samples_frame_id);
-        meta->sample0_offset = new_seq;
+    // Set the frequency bins
+    // Note that there are 4 frequencies assoicated with this packet loss buffer
+    // because of the final stage shuffle, but that dimension is collapsed.
+    ice_stream_id_t tmp_stream_id = port_stream_id;
 
-        // Set the frequency bins
-        // Note that there are 4 frequencies assoicated with this packet loss buffer
-        // because of the final stage shuffle, but that dimension is collapsed.
-        ice_stream_id_t tmp_stream_id = port_stream_id;
-
-        for (int i = 0; i < 4; i++) {
-            tmp_stream_id.unused = i;
-            tmp_stream_id.crate_id = tmp_stream_id.crate_id % 2;
-            meta->coarse_freq[i] = tel.to_freq_id(ice_encode_stream_id(tmp_stream_id));
-        }
-
-        meta->type = kotekan::uint8;
-
-        std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
-        meta->dim[0] = lost_samples_buf->frame_size; // One byte per time sample
-        meta->dims = 1;
-        std::strncpy(meta->name, "lost_samples", sizeof meta->name);
+    std::vector<int> coarse_freq(4);
+    for (int i = 0; i < 4; i++) {
+        tmp_stream_id.unused = i;
+        tmp_stream_id.crate_id = tmp_stream_id.crate_id % 2;
+        coarse_freq[i] = tel.to_freq_id(ice_encode_stream_id(tmp_stream_id));
     }
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_coarse_freq(coarse_freq);
+
+    auto meta = get_chord_metadata(lost_samples_buf, lost_samples_frame_id);
+
+    meta->type = kotekan::uint8;
+
+    std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
+    meta->dim[0] = lost_samples_buf->frame_size; // One byte per time sample
+    meta->dims = 1;
+    std::strncpy(meta->name, "lost_samples", sizeof meta->name);
+    meta->set_strides_simple();
+    /* new style array description */
+    lost_samples_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::uint8>::type, 1>(
+        "lost_samples", {ptrdiff_t(lost_samples_buf->frame_size)}, {"T"});
+    /* test that things are consistent */
+    meta->check_frame_desc(lost_samples_buf->get_frame_desc());
+
 
     return true;
 }
@@ -553,12 +544,10 @@ inline bool iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
     // By design all the seq numbers for all frames should be the same here.
     int64_t lost_sample_location;
 
-    if (out_bufs[0]->metadata_pool->type_name == "chimeMetadata") {
+    if (out_bufs[0]->metadata_pool->type_name == "chordMetadata") {
         lost_sample_location =
-            last_seq + samples_per_packet - get_fpga_seq_num(out_bufs[0], out_buf_frame_ids[0]);
-    } else if (out_bufs[0]->metadata_pool->type_name == "chordMetadata") {
-        auto meta = get_chord_metadata(out_bufs[0], out_buf_frame_ids[0]);
-        lost_sample_location = last_seq + samples_per_packet - meta->sample0_offset;
+            last_seq + samples_per_packet
+            - get_chord_metadata(out_bufs[0], out_buf_frame_ids[0])->get_sample0_offset();
     } else {
         FATAL_ERROR("Unsupported metadata type: {:s}", out_bufs[0]->metadata_pool->type_name);
         return false;
@@ -609,11 +598,9 @@ inline void iceBoardShuffle::copy_packet_shuffle(struct rte_mbuf* mbuf) {
     // frames, but that should be proven carefully...
     int64_t sample_location;
 
-    if (out_bufs[0]->metadata_pool->type_name == "chimeMetadata") {
-        sample_location = cur_seq - get_fpga_seq_num(out_bufs[0], out_buf_frame_ids[0]);
-    } else if (out_bufs[0]->metadata_pool->type_name == "chordMetadata") {
-        auto meta = get_chord_metadata(out_bufs[0], out_buf_frame_ids[0]);
-        sample_location = cur_seq - meta->sample0_offset;
+    if (out_bufs[0]->metadata_pool->type_name == "chordMetadata") {
+        sample_location =
+            cur_seq - get_chord_metadata(out_bufs[0], out_buf_frame_ids[0])->get_sample0_offset();
     } else {
         FATAL_ERROR("Unsupported metadata type: {:s}", out_bufs[0]->metadata_pool->type_name);
         return;

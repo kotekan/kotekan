@@ -20,25 +20,39 @@
 #include <string>             // for string, basic_string
 
 /**
- * @struct bufferFrameHeader
- * @brief Internal struct for sending the transfer details.
+ * @struct bufferFrameHeaderNoConfigTracker
+ * @brief Wire header without the config tracker flag.
  */
-#pragma pack()
-struct bufferFrameHeader {
+struct bufferFrameHeaderNoConfigTracker {
     uint32_t metadata_size;
     uint32_t frame_size;
 };
+static_assert(sizeof(bufferFrameHeaderNoConfigTracker) == 8,
+              "bufferFrameHeaderNoConfigTracker should be 8 bytes");
 
 /**
- * @brief Sends a buffer and metadata over TCP.
+ * @struct bufferFrameHeader
+ * @brief Stable wire header for transfer details.
+ *
+ * Uses fixed-width types and explicit padding to (hopefully) make the layout
+ * consistent across compilers/ABIs without relying on packing pragmas.
+ */
+struct bufferFrameHeader : public bufferFrameHeaderNoConfigTracker {
+    /// 0 = no update, 1 = update
+    uint32_t config_tracker_update;
+    // TODO: use other bits for versioning info, other features?
+};
+static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 bytes");
+
+/**
+ * @brief Sends a buffer, metadata, and flag for whether config data was updated over TCP.
  *
  * Will attempt to connect to a remote server (likely another kotekan instance)
- * and send frames and metadata as they arrive.
+ * and send frames, metadata, and config status as it arrives.
  *
  * If the remote server is down, or the connection breaks, this stage will
  * drop incoming frames, and try to reconnect to the server after @c reconnect_time
  * seconds.
- *
  *
  *
  * @par buffers
@@ -105,6 +119,12 @@ private:
     /// Threshold to drop frames
     float drop_threshold;
 
+    /// Flag to indicate if config tracker header data should be sent
+    bool use_config_tracker;
+
+    /// Serialized list of current config tracker hashes
+    std::string config_tracker_combined_hash;
+
     /**
      * @brief Number of frame dropped because the send is too slow.
      * Only counts dropped data from caused by the send being too slow,
@@ -114,6 +134,9 @@ private:
 
     /// Set to true if there is an active connection
     std::atomic<bool> connected;
+
+    /// Set to true if this is the first transmission
+    std::atomic<bool> first_transmission_sent;
 
     /// Internal server address struct
     struct sockaddr_in server_addr;

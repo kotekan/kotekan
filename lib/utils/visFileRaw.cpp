@@ -5,8 +5,9 @@
 #include "datasetState.hpp"   // for stackState, eigenvalueState, freqState, gatingState, input...
 #include "visBuffer.hpp"      // for VisFrameView, VisMetadata
 
-#include "fmt.hpp"  // for compile_string_to_view, format, fmt
-#include "json.hpp" // for basic_json, json
+#include "fmt.hpp"      // for format, fmt
+#include "fmt/format.h" // for compile_string_to_view
+#include "json.hpp"     // for basic_json, json
 
 #include <algorithm>  // for max
 #include <assert.h>   // for assert

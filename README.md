@@ -1,17 +1,20 @@
 
 # Documentation
 
-Compiled docs are available at https://kotekan.readthedocs.io/en/latest/.
+Compiled docs are available at https://kotekan.readthedocs.io/.
 
-[![Documentation Status](https://readthedocs.org/projects/kotekan/badge/?version=latest)](https://kotekan.readthedocs.io/en/latest/?badge=latest)
+[![Documentation Status](https://app.readthedocs.org/projects/kotekan/badge/)](https://kotekan.readthedocs.io/)
 
 
 # Build Instructions
 
-[![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yml/badge.svg)](https://github.com/kotekan/kotekan/actions/workflows/main.yml)
+| `develop` | `chord` |
+|------|------|
+| [![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yml/badge.svg)](https://github.com/kotekan/kotekan/actions/workflows/main.yml) | [![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yml/badge.svg?branch=chord)](https://github.com/kotekan/kotekan/actions/workflows/main.yml) |
 
-Detailed instructions at https://kotekan.readthedocs.io/en/latest/.
-Full list of CMake options: https://kotekan.readthedocs.io/en/latest/compiling/cmake_options.html
+
+Detailed instructions are available at https://kotekan.readthedocs.io/latest/compiling/general.html
+Full list of CMake options: https://kotekan.readthedocs.io/latest/compiling/cmake_options.html
 
 This project is built using cmake, so you will need to install cmake
 before starting a build.
@@ -21,6 +24,21 @@ To build just the base framework:
 	cd build
 	cmake <options> ..
 	make
+
+Building documentation
+----------------------
+
+To build both the API (Doxygen) and user docs (Sphinx):
+
+    mkdir -p build-docs
+    cd build-docs
+    cmake -DCOMPILE_DOCS=ON ..
+    make docs
+
+Individual doc targets are also available:
+
+- `make doxygen` – generate API reference only
+- `make sphinx` – build Sphinx HTML only
 
 Cmake build options (defaults shown in parentheses; most feature toggles accept `AUTO`, `ON`, or `OFF`, with `AUTO` probing for dependencies and falling back gracefully):
 
@@ -33,7 +51,7 @@ Cmake build options (defaults shown in parentheses; most feature toggles accept 
 * `-DUSE_AIRSPY=<AUTO|ON|OFF>` (`AUTO`) - Build the Airspy capture stages when `libairspy` is available.
 * `-DUSE_ASDF=<AUTO|ON|OFF>` (`AUTO`) - Enable ASDF output stages when `asdf-cxx` is found; defines `-DWITH_ASDF_CXX`.
 * `-DUSE_GDAL=<AUTO|ON|OFF>` (`AUTO`) - Enable GDAL output stages when GDAL is detected; defines `-DWITH_GDAL`.
-* `-DUSE_HDF5=<AUTO|ON|OFF>` (`AUTO`) - Enable HDF5 output stages when HDF5, HighFive, and the runtime plugin directory are all available. Populates `KOTEKAN_HDF5_PLUGIN_DIR` for runtime use.
+* `-DUSE_HDF5=<AUTO|ON|OFF>` (`AUTO`) - Enable HDF5 output stages when HDF5, HighFive, and the runtime plugin directory are *all* available. Populates `KOTEKAN_HDF5_PLUGIN_DIR` for runtime use.
 * `-DUSE_FFTW=<AUTO|ON|OFF>` (`AUTO`) - Enable the FFTW F-engine when FFTW is found; adds `-DWITH_FFTW`.
 * `-DUSE_LAPACK_BLAZE=<AUTO|ON|OFF>` (`AUTO`) - Enable LAPACKE/OpenBLAS + Blaze linear algebra stages when both dependencies are present. Adds the required Blaze/OpenBLAS compile definitions.
 * `-DUSE_JULIA=<AUTO|ON|OFF>` (`AUTO`) - Enable Julia-based components when the Julia executable and C API are available.

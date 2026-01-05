@@ -1,0 +1,5 @@
+***********
+BeamInspect
+***********
+
+.. doxygenclass:: BeamInspect

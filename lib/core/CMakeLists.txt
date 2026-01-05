@@ -2,6 +2,7 @@ project(kotekan_core)
 
 add_library(
     kotekan_core
+    backtrace.cpp
     basebandReadoutManager.cpp
     basebandApiManager.cpp
     buffer.cpp
@@ -9,6 +10,7 @@ add_library(
     bufferContainer.cpp
     bufferFactory.cpp
     Config.cpp
+    configTracker.cpp
     configUpdater.cpp
     cpuMonitor.cpp
     errors.c

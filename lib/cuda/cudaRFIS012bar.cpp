@@ -2,19 +2,21 @@
 #include "NDArray.hpp"             // for NDArray
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "driver_types.h"          // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h"      // for cudaStreamSynchronize
+#include "driver_types.h"          // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG
 #include "n2k/rfi_kernels.hpp"     // for launch_s012_time_downsample_kernel
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt/format.h" // for compile_string_to_view
 
 #include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, extent_t, read_descriptor_t
 #include <algorithm>             // for min
 #include <array>                 // for array
 #include <cassert>               // for assert
 #include <chordMetadata.hpp>     // for chordMetadata
-#include <cstddef>               // for ptrdiff_t
+#include <cstddef>               // for ptrdiff_t, size_t
 #include <cstdint>               // for uint64_t
 #include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include <div.hpp>               // for div_noremainder, round_down
@@ -155,11 +157,17 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
 
     rfi_S012bar.set_metadata(rfi_S012.get_metadata());
     const auto& rfi_S012bar_meta = rfi_S012bar.get_metadata();
-    assert(rfi_S012bar_meta->nfreq >= 0);
-    for (int freq = 0; freq < rfi_S012bar_meta->nfreq; ++freq) {
-        rfi_S012bar_meta->freq_upchan_factor[freq] *= rfi_second_downsampling_factor;
-        rfi_S012bar_meta->time_downsampling_fpga[freq] *= rfi_second_downsampling_factor;
+    auto freq_upchan_factor = rfi_S012bar_meta->get_freq_upchan_factor();
+    auto time_downsampling_fpga = rfi_S012bar_meta->get_time_downsampling_fpga();
+    assert(freq_upchan_factor.size() == static_cast<size_t>(rfi_S012bar_meta->get_nfreq()));
+    assert(time_downsampling_fpga.size() == static_cast<size_t>(rfi_S012bar_meta->get_nfreq()));
+    assert(rfi_S012bar_meta->get_nfreq() >= 0);
+    for (int freq = 0; freq < rfi_S012bar_meta->get_nfreq(); ++freq) {
+        freq_upchan_factor[freq] *= rfi_second_downsampling_factor;
+        time_downsampling_fpga[freq] *= rfi_second_downsampling_factor;
     }
+    rfi_S012bar_meta->set_freq_upchan_factor(freq_upchan_factor);
+    rfi_S012bar_meta->set_time_downsampling_fpga(time_downsampling_fpga);
 
     // There is no poison value
     // rfi_S012bar.set_to_poison(0xff);
@@ -187,6 +195,9 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
 
     n2k::launch_s012_time_downsample_kernel(Sout, Sin, T, M, Nds, Trfi_min, Trfi_size, Trfibar_min,
                                             Trfibar_size, stream);
+#ifdef DEBUGGING
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+#endif
 
     // There is no poison value
     // rfi_S012bar.check_for_poison(0xff);

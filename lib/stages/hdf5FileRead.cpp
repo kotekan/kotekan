@@ -1,5 +1,6 @@
 #include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for string_to_type
+#include "DataType.hpp"        // for string_to_type, DataType
+#include "Symbol.hpp"          // for Symbol
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "hdf5Files.hpp"       // for chord_metadata_version
@@ -24,7 +25,7 @@
 #include <highfive/H5File.hpp>                   // for File, File::File, NodeTraits::getDataSet
 #include <highfive/bits/H5Slice_traits_misc.hpp> // for SliceTraits::read_raw
 #include <iomanip>                               // for operator<<, setfill, setw
-#include <memory>                                // for shared_ptr, allocator, __shared_ptr_access
+#include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
 #include <prometheusMetrics.hpp>                 // for Metrics, Gauge
 #include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
 #include <string>                                // for basic_string, char_traits, string, oper...
@@ -39,6 +40,9 @@ class hdf5FileRead : public kotekan::Stage {
     const std::string input_dir = config.get<std::string>(unique_name, "input_dir");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
+    const bool prefix_host_rank = config.get_default<bool>(unique_name, "prefix_host_rank", false);
+    const int host_pool_rank = config.get_default<int>(unique_name, "frequency_pool_rank", 0);
+    const int host_pool_size = config.get_default<int>(unique_name, "frequency_pool_size", 1);
     const bool do_once = config.get_default<bool>(unique_name, "do_once", false);
 
     Buffer* const buffer;
@@ -84,6 +88,9 @@ public:
                 char hostname[256];
                 gethostname(hostname, sizeof hostname);
                 buf << hostname << "_";
+            }
+            if (prefix_host_rank) {
+                buf << "x" << std::setw(4) << std::setfill('0') << host_pool_rank << "_";
             }
             buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_index << ".h5";
             const std::string full_path = buf.str();
@@ -150,46 +157,23 @@ public:
                 meta->offset = 0;
 
                 if (dataset.hasAttribute("sample0_offset"))
-                    meta->sample0_offset = dataset.getAttribute("sample0_offset").read<int>();
-                else
-                    meta->sample0_offset = -1;
+                    meta->set_sample0_offset(dataset.getAttribute("sample0_offset").read<int>());
                 if (dataset.hasAttribute("offset_downsampling"))
-                    meta->offset_downsampling =
-                        dataset.getAttribute("offset_downsampling").read<int>();
-                else
-                    meta->offset_downsampling = -1;
+                    meta->set_offset_downsampling(
+                        dataset.getAttribute("offset_downsampling").read<int>());
 
-                if (dataset.hasAttribute("nfreq")) {
-                    meta->nfreq = dataset.getAttribute("nfreq").read<int>();
-                    assert(meta->nfreq <= CHORD_META_MAX_FREQ);
-
-                    const auto coarse_freq =
-                        dataset.getAttribute("coarse_freq").read<std::vector<int>>();
-                    assert(std::ptrdiff_t(coarse_freq.size()) == meta->nfreq);
-                    std::copy(coarse_freq.begin(), coarse_freq.end(), meta->coarse_freq);
-
-                    const auto freq_upchan_factor =
-                        dataset.getAttribute("freq_upchan_factor").read<std::vector<int>>();
-                    assert(std::ptrdiff_t(freq_upchan_factor.size()) == meta->nfreq);
-                    std::copy(freq_upchan_factor.begin(), freq_upchan_factor.end(),
-                              meta->freq_upchan_factor);
-
-                    const auto half_fpga_sample0 =
-                        dataset.getAttribute("half_fpga_sample0").read<std::vector<std::int64_t>>();
-                    assert(std::ptrdiff_t(half_fpga_sample0.size()) == meta->nfreq);
-                    std::copy(half_fpga_sample0.begin(), half_fpga_sample0.end(),
-                              meta->half_fpga_sample0);
-
-                    const auto time_downsampling_fpga =
-                        dataset.getAttribute("time_downsampling_fpga").read<std::vector<int>>();
-                    assert(std::ptrdiff_t(time_downsampling_fpga.size()) == meta->nfreq);
-                    std::copy(time_downsampling_fpga.begin(), time_downsampling_fpga.end(),
-                              meta->time_downsampling_fpga);
-
-                } else {
-                    meta->nfreq = -1;
-                }
-
+                if (dataset.hasAttribute("coarse_freq"))
+                    meta->set_coarse_freq(
+                        dataset.getAttribute("coarse_freq").read<std::vector<int>>());
+                if (dataset.hasAttribute("freq_upchan_factor"))
+                    meta->set_freq_upchan_factor(
+                        dataset.getAttribute("freq_upchan_factor").read<std::vector<int>>());
+                if (dataset.hasAttribute("half_fpga_sample0"))
+                    meta->set_half_fpga_sample0(dataset.getAttribute("half_fpga_sample0")
+                                                    .read<std::vector<std::int64_t>>());
+                if (dataset.hasAttribute("time_downsampling_fpga"))
+                    meta->set_time_downsampling_fpga(
+                        dataset.getAttribute("time_downsampling_fpga").read<std::vector<int>>());
 
                 if (dataset.hasAttribute("ndishes")) {
                     meta->ndishes = dataset.getAttribute("ndishes").read<int>();
@@ -204,12 +188,27 @@ public:
                     assert(std::ptrdiff_t(dish_index.size())
                            == meta->n_dish_locations_ns * meta->n_dish_locations_ew);
                     meta->dish_index =
-                        new int[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
+                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
                     std::copy(dish_index.begin(), dish_index.end(), meta->dish_index);
 
                 } else {
                     meta->ndishes = -1;
                     meta->dish_index = nullptr;
+                }
+
+                {
+                    /* new style array description */
+                    const kotekan::DataType value_type =
+                        kotekan::string_to_type(dataset.getAttribute("type").read<std::string>());
+                    assert(value_type != kotekan::unknown_type);
+                    const std::string name = dataset.getAttribute("name").read<std::string>();
+
+                    std::vector<ptrdiff_t> dimensions(dims.begin(), dims.end());
+                    std::vector<kotekan::Symbol> dimnames(dim_names.begin(), dim_names.end());
+
+                    buffer->allocate_new_frame_desc(value_type, name, dimensions, dimnames);
+                    /* test that things are consistent */
+                    meta->check_frame_desc(buffer->get_frame_desc());
                 }
 
                 // Read buffer

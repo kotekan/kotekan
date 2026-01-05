@@ -42,6 +42,8 @@ __global__ void s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, int T
     ulong tout = (blockIdx.y * blockDim.y) + threadIdx.y;
     ulong tin = Nds*tout;
     bool valid = (m < M) && (tout < Tds);
+    if (!valid)
+        return;
 
     // Ring buffer
     tout = (tout + Trfibar_min) & (Trfibar_size-1);
@@ -50,14 +52,13 @@ __global__ void s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, int T
     // Per-thread base indices and pointer shift.
     ulong in_base = M*tin + m;
     ulong out_base = M*tout + m;
-    Sin += (valid ? in_base : 0);
+    Sin += in_base;
     
     ulong s = 0;
     for (int n = 0; n < Nds; n++)
 	s += Sin[n*M];
     
-    if (valid)
-	Sout[out_base] = s;
+    Sout[out_base] = s;
 }
 
 // launch_s012_time_downsample_kernel(): ringbuffer interface.

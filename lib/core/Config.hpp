@@ -103,11 +103,9 @@ public:
                 value = checked_conversion<T>(json_value.get<LargeType<T>>());
             }
         } catch (std::exception const& ex) {
-            int status;
             throw std::runtime_error(fmt::format(
                 fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist: {:s}"),
-                name, base_path, abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status),
-                ex.what()));
+                name, base_path, demangle<T>(), ex.what()));
         }
 
         return value;
@@ -128,10 +126,9 @@ public:
         try {
             value = json_value.get<T>();
         } catch (std::exception const& ex) {
-            int status;
             throw std::runtime_error(fmt::format(
                 fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist"), name,
-                base_path, abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status)));
+                base_path, demangle<T>()));
         }
 
         return value;
@@ -265,6 +262,16 @@ private:
      **/
     void get_value_recursive(const nlohmann::json& j, const std::string& name,
                              std::vector<nlohmann::json>& results) const;
+
+    /// get demangled type name string
+    template<typename T>
+    static std::string demangle() {
+        int status;
+        char* c_typename = abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status);
+        std::string demangled_typename(c_typename);
+        free(c_typename);
+        return demangled_typename;
+    }
 
     /**
      * @brief Helper class, gets an arithmetic expression from the config.

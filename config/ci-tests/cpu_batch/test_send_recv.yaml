@@ -1,0 +1,207 @@
+#
+# Just a simple test pipeline that generates random data, does a send/recieve, for different buffer types.
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [0,1]
+
+num_frame_samples: 2048
+buffer_depth: 10
+
+telescope:
+    log_level: ERROR
+    name: CHORDTelescope
+    origin_itrs_lat_deg: 50.0
+    origin_itrs_lon_deg: -120.0
+    dish_coelev_deg: 90.0
+    grid_x_axis: [1.0, 0.0, 0.0]
+    grid_y_axis: [0.0, 1.0, 0.0]
+    dish_elev_axis: [1.0, 0.0, 0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
+    require_gps: False
+    updatable_config: /earth_rotation_data
+    num_dishes_x: 22
+    num_dishes_y: 24
+    num_dishes: 64
+    dish_inputs: []
+
+earth_rotation_data:
+    kotekan_update_endpoint: json
+    earth_orientation_parameter_table:
+      - time_inst_ns: 0
+        delta_UT1_inst: 0.0
+        x_pm: 0.0
+        y_pm: 0.0
+
+# Pools
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 4 * buffer_depth
+
+N2_pool:
+    kotekan_metadata_pool: N2Metadata
+    num_metadata_objects: 2 * buffer_depth
+
+# Buffers
+send_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_frame_samples
+    metadata_pool: main_pool
+
+recv_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_frame_samples
+    metadata_pool: main_pool
+
+send_buffer_noCT:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_frame_samples
+    metadata_pool: main_pool
+
+recv_buffer_noCT:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_frame_samples
+    metadata_pool: main_pool
+
+send_N2_buffer:
+    kotekan_buffer: N2
+    metadata_pool: N2_pool
+    vis_layout: "FullUpperTri"
+    num_frames: buffer_depth
+
+recv_N2_buffer:
+    kotekan_buffer: N2
+    metadata_pool: N2_pool
+    vis_layout: "FullUpperTri"
+    num_frames: buffer_depth
+
+
+# Kotekan stages
+
+# standard buffer: generate and send/recv some random data
+
+gen_buffer_data:
+    log_level: WARN
+    # type: const
+    # value: 34 # 1i # 34 # = 2 + 2i
+    type: random_signed
+    value: 1532
+    kotekan_stage: testDataGen
+    out_buf: send_buffer
+    array_shape: [ 2048 ]
+    dim_name: ["S"]
+    num_frames: 6
+
+buffer_send_standard:
+    kotekan_stage: bufferSend
+    buf: send_buffer
+    server_ip: 127.0.0.1
+    server_port: 11024
+    retry_time: 1.0
+    drop_frames: false
+
+buffer_recv_standard:
+    kotekan_stage: bufferRecv
+    buf: recv_buffer
+    listen_port: 11024
+
+# standard buffer, no config tracker: generate and send/recv some random data
+
+gen_buffer_data_noCT:
+    log_level: WARN
+    # type: const
+    # value: 34 # 1i # 34 # = 2 + 2i
+    type: random_signed
+    value: 1532
+    kotekan_stage: testDataGen
+    out_buf: send_buffer_noCT
+    array_shape: [ 2048 ]
+    dim_name: ["S"]
+    num_frames: 6
+
+buffer_send_standard_noCT:
+    kotekan_stage: bufferSend
+    use_config_tracker: false
+    buf: send_buffer_noCT
+    server_ip: 127.0.0.1
+    server_port: 11026
+    retry_time: 1.0
+    drop_frames: false
+
+buffer_recv_standard_NoCT:
+    kotekan_stage: bufferRecv
+    use_config_tracker: false
+    buf: recv_buffer_noCT
+    listen_port: 11026
+
+# N2 buffer: generate and send/recv some random data
+
+num_elements: 16
+num_ev: 4
+freq_ids: [0,1,2,3,4]
+fake_n2:
+    log_level: WARN
+    kotekan_stage: FakeN2
+    out_buf: send_N2_buffer
+    num_total_freq: 3
+    cadence: 0.2
+    wait: false
+    mode: default
+    num_frames: 2 # per frequency
+
+buffer_send_n2:
+    kotekan_stage: bufferSend
+    buf: send_N2_buffer
+    server_ip: 127.0.0.1
+    server_port: 11025
+    retry_time: 1.0
+    drop_frames: false
+
+buffer_recv_n2:
+    kotekan_stage: bufferRecv
+    buf: recv_N2_buffer
+    listen_port: 11025
+
+# Verify buffers are the same.
+
+check_standard_send_recv:
+    kotekan_stage: testDataCheckUchar
+    first_buf: send_buffer
+    second_buf: recv_buffer
+    num_frames_to_test: buffer_depth
+    trigger_exit_on_pass: false
+    check_metadata: true
+
+check_standard_send_recv_noCT:
+    kotekan_stage: testDataCheckUchar
+    first_buf: send_buffer_noCT
+    second_buf: recv_buffer_noCT
+    num_frames_to_test: buffer_depth
+    trigger_exit_on_pass: false
+    check_metadata: true
+
+check_n2_send_recv:
+    kotekan_stage: testDataCheckUchar
+    first_buf: send_N2_buffer
+    second_buf: recv_N2_buffer
+    num_frames_to_test: buffer_depth
+    trigger_exit_on_pass: false
+    check_metadata: true
+
+# Monitor recv buffers for completion, shutdown after some inactivity if none.
+
+buffer_monitor:
+    kotekan_stage: monitorBuffer
+    timeout: 10.0 # If no activity in this buffer for this many seconds,
+    graceful_shutdown: false # trigger failure
+    wait_for_first_frame: true
+    bufs:
+      - recv_buffer
+      - recv_buffer_noCT
+      - recv_N2_buffer
+    clean_exit_after_frames: 6 # Trigger success after this many frames have been seen

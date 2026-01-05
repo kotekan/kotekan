@@ -1,5 +1,6 @@
 #include "cudaCopyFromRingbuffer.hpp"
 
+#include "Symbol.hpp"         // for Symbol
 #include "chordMetadata.hpp"  // for chordMetadata
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaMemcpyAsync, cudaHostRegister, cudaH...
@@ -10,11 +11,13 @@
 
 #include <algorithm>   // for max
 #include <assert.h>    // for assert
-#include <memory>      // for allocator, shared_ptr, __shared_ptr_access, dynamic_pointe...
+#include <cstddef>     // for ptrdiff_t
+#include <memory>      // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
 #include <optional>    // for optional
 #include <stdexcept>   // for runtime_error
 #include <stdint.h>    // for uint8_t
-#include <sys/types.h> // for size_t, uint
+#include <string.h>    // for strnlen
+#include <sys/types.h> // for uint
 #include <tuple>       // for tuple, make_tuple
 
 using kotekan::bufferContainer;
@@ -120,10 +123,12 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
     auto meta = std::dynamic_pointer_cast<chordMetadata>(signal_buffer->get_metadata(0));
     assert(meta);
     // Copy metadata (because we modify it)
-    meta = std::make_shared<chordMetadata>(*meta);
-    assert(meta->sample0_offset == 0);
+    auto tmp = std::make_shared<chordMetadata>();
+    tmp->deepCopy(meta);
+    meta = tmp;
+    assert(meta->get_sample0_offset() == 0);
     assert(input_cursor % meta->sample_bytes() == 0);
-    meta->sample0_offset += input_cursor / meta->sample_bytes();
+    meta->set_sample0_offset(meta->get_sample0_offset() + input_cursor / meta->sample_bytes());
     assert(meta->dims > 0);
     assert(out_buffer->frame_size % meta->sample_bytes() == 0);
     meta->dim[0] = out_buffer->frame_size / meta->sample_bytes();
@@ -148,8 +153,18 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
             device.async_copy_gpu_to_host((char*)host_output_frame + ncopy, rb_memory, nwrap,
                                           cuda_stream_id, nullptr, nullptr, nullptr);
 
-        if (meta)
-            out_buffer->set_metadata(out_id, meta);
+        out_buffer->set_metadata(out_id, meta);
+        /* new style array description */
+        // difficult to move to constructor since it depends on frame_desc in the
+        // signal_buffer which may not be set at contructor time
+        std::vector<std::ptrdiff_t> extents(meta->dim, meta->dim + meta->dims);
+        std::vector<kotekan::Symbol> dimnames;
+        for (int d = 0; d < meta->dims; ++d)
+            dimnames.push_back(std::string(meta->dim_name[d],
+                                           strnlen(meta->dim_name[d], sizeof(meta->dim_name[d]))));
+        out_buffer->allocate_new_frame_desc(meta->type, meta->get_name(), extents, dimnames);
+        /* test that things are consistent */
+        meta->check_frame_desc(out_buffer->get_frame_desc());
 
     } else {
         int out_id = gpu_frame_id % _gpu_buffer_depth;
@@ -164,8 +179,7 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
                                              cudaMemcpyDeviceToDevice,
                                              device.getStream(cuda_stream_id)));
 
-        if (meta)
-            device.claim_gpu_memory_array_metadata(_gpu_mem_output, out_id, meta);
+        device.claim_gpu_memory_array_metadata(_gpu_mem_output, out_id, meta);
     }
     return record_end_event();
 }

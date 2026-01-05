@@ -56,7 +56,6 @@
  * @conf  num_times              Int.     Number of time samples per frame.
  * @conf  num_elements           Int.     Number of dish times number of polarizations (2).
  * @conf  num_local_freq         Int.     Number of frequencies handled by this X-Engine node.
- * @conf  samples_per_data_set   Int.     Number of time samples per Kotekan block.
  * @conf  sub_integration_ntime  Int.     Number of time samples that will be summed into the
  *                                        correlation matrix.
  * @conf  voltage_name           String.  Base name for the voltage buffers.
@@ -88,8 +87,6 @@ private:
     const std::int32_t _num_elements;
     /// Number of frequencies per data stream sent to each node.
     const std::int32_t _num_local_freq;
-    /// Total time samples in each dataset. Must be a power of 2.
-    const std::int32_t _samples_per_data_set;
     // Number of time samples into each of the output correlation
     // triangles.  The number of output correlation triangles is the
     // length of the input frame divided by this value.

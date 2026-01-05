@@ -5,13 +5,13 @@
 #include "Telescope.hpp"       // for Telescope
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for chimeMetadata
-#include "datasetManager.hpp"  // for datasetManager, dset_id_t, state_id_t
-#include "datasetState.hpp"    // for freqState, inputState, metadataState, prodState
-#include "kotekanLogging.hpp"  // for INFO
-#include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for VisFrameView
-#include "visUtil.hpp"         // for input_ctype, prod_ctype, freq_ctype, copy_vis_triangle
+#include "chordMetadata.hpp"
+#include "datasetManager.hpp" // for datasetManager, dset_id_t, state_id_t
+#include "datasetState.hpp"   // for freqState, inputState, metadataState, prodState
+#include "kotekanLogging.hpp" // for INFO
+#include "version.h"          // for get_git_commit_hash
+#include "visBuffer.hpp"      // for VisFrameView
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype, copy_vis_triangle
 
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
@@ -80,7 +80,7 @@ visTransform::visTransform(Config& config, const std::string& unique_name,
     // Create the frequency specification
     std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(_freqs),
                    [&tel](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
-                       return {id, {tel.to_freq(id), tel.freq_width(id)}};
+                       return {id, {tel.to_freq_MHz(id), tel.freq_width_MHz(id)}};
                    });
 
     // The input specification from the config
@@ -141,8 +141,7 @@ void visTransform::main_thread() {
 
             // TODO: multifrequency support
             // Copy over the metadata
-            std::shared_ptr<chimeMetadata> metadata = get_chime_metadata(buf, frame_id);
-            output_frame.fill_metadata<chimeMetadata>(metadata, 0);
+            output_frame.fill_metadata(get_chord_metadata(buf, frame_id).get(), 0);
 
             // Copy the visibility data into a proper triangle and write into
             // the file

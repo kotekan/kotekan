@@ -10,12 +10,12 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for float16_t
 #include "bufferContainer.hpp" // for bufferContainer
-#include "driver_types.h"      // for cudaEvent_t
+#include "cublas_api.h"        // for cublasContext, cublasHandle_t
 
 #include <cstddef>                 // for size_t, ptrdiff_t
-#include <cublas_v2.h>             // for cublasContext, cublasHandle_t
 #include <cudaCommand.hpp>         // for cudaCommand, cudaPipelineState
 #include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
+#include <driver_types.h>          // for cudaEvent_t
 #include <ringbuffer.hpp>          // for RingBuffer
 #include <stdint.h>                // for int32_t
 #include <string>                  // for string, basic_string
@@ -50,7 +50,7 @@ private:
     /// Number of output beams
     int32_t _num_beams;
     /// Beam-grid size produced by cudaFRBBeamformer
-    int32_t _beam_grid_size_ns, _beam_grid_size_ew;
+    int32_t _beam_grid_size_P, _beam_grid_size_Q;
     /// Maximum number of frequencies per data stream sent to each node (determines the buffer
     /// size).
     int32_t _max_num_local_freq;

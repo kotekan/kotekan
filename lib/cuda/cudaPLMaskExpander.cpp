@@ -1,18 +1,29 @@
-#include <DataType.hpp>
-#include <NDArrayRingBuffer.hpp>
-#include <cassert>
-#include <chordMetadata.hpp>
-#include <cstddef>
-#include <cstring>
-#include <cudaCommand.hpp>
-#include <div.hpp>
-#include <memory>
-#include <metadata.hpp>
-#include <n2k.hpp>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <vector>
+#include "Config.hpp"              // for Config
+#include "NDArray.hpp"             // for NDArray
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for cudaEvent_t, CUevent_st, CUstream_st
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
+#include "n2k/pl_kernels.hpp"      // for launch_pl_mask_expander
+
+#include "fmt/format.h" // for compile_string_to_view
+
+#include <DataType.hpp>          // for uint1x8_t
+#include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include <algorithm>             // for fill_n, min
+#include <array>                 // for array
+#include <cassert>               // for assert
+#include <chordMetadata.hpp>     // for chordMetadata
+#include <cstddef>               // for ptrdiff_t
+#include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include <div.hpp>               // for div_noremainder, round_down
+#include <functional>            // for function
+#include <memory>                // for allocator, shared_ptr, __shared_ptr_access
+#include <stdint.h>              // for int64_t
+#include <string>                // for basic_string, string
+#include <sys/types.h>           // for ulong
+#include <vector>                // for vector
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -156,14 +167,24 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
     pl_mask.check_metadata();
 
     pl_expanded_mask.set_metadata(pl_mask.get_metadata());
+    const auto& pl_mask_meta = pl_mask.get_metadata();
     const auto& pl_expanded_mask_meta = pl_expanded_mask.get_metadata();
-    assert(pl_expanded_mask_meta->nfreq >= 0);
-    for (int freq = 0; freq < pl_expanded_mask_meta->nfreq; ++freq) {
+    assert(pl_expanded_mask_meta->get_nfreq() >= 0);
+
+    const std::vector<int> in_time_downsampling_fpga = pl_mask_meta->get_time_downsampling_fpga();
+    const std::vector<int64_t> in_half_fpga_sample0 = pl_mask_meta->get_half_fpga_sample0();
+    std::vector<int> out_time_downsampling_fpga(pl_expanded_mask_meta->get_nfreq());
+    std::vector<int64_t> out_half_fpga_sample0(pl_expanded_mask_meta->get_nfreq());
+
+    for (int freq = 0; freq < pl_expanded_mask_meta->get_nfreq(); ++freq) {
         // We would do this if we could start out with 1/4 but we cannot
         // pl_expanded_mask_meta->freq_upchan_factor[freq] *= 4;
-        pl_expanded_mask_meta->time_downsampling_fpga[freq] =
-            div_noremainder(pl_expanded_mask_meta->time_downsampling_fpga[freq], 2);
+        out_time_downsampling_fpga[freq] = div_noremainder(in_time_downsampling_fpga[freq], 2);
+        out_half_fpga_sample0[freq] = in_half_fpga_sample0[freq] + out_time_downsampling_fpga[freq]
+                                      - in_time_downsampling_fpga[freq];
     }
+    pl_expanded_mask_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
+    pl_expanded_mask_meta->set_half_fpga_sample0(out_half_fpga_sample0);
 
     // There is no poison value
     // pl_expanded_mask.set_to_poison(0xff);

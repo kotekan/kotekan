@@ -1,0 +1,5 @@
+**********
+hipProcess
+**********
+
+.. doxygenclass:: hipProcess

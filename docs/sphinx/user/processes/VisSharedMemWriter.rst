@@ -1,0 +1,5 @@
+******************
+VisSharedMemWriter
+******************
+
+.. doxygenclass:: VisSharedMemWriter

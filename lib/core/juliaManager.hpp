@@ -68,6 +68,14 @@ std::enable_if_t<!std::is_void_v<R>, R> juliaCall(const F& fun) {
     return std::any_cast<R>(juliaCallAny([&]() { return std::any(fun()); }));
 }
 
+/**
+ * @brief Handle Julia exceptions
+ *
+ * Call this function after calling any Julia function to check for
+ * and handle (i.e. output) any possible exceptions.
+ */
+void juliaHandlePossibleExceptions();
+
 } // namespace kotekan
 
 #endif // #ifdef JULIA_MANAGER_HPP

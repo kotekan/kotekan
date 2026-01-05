@@ -1,9 +1,9 @@
 #include "ringbuffer.hpp"
 
-#include "errors.h"           // for INFO_F
-#include "kotekanLogging.hpp" // for DEBUG2, DEBUG_NON_OO
+#include "kotekanLogging.hpp" // for DEBUG2, logLevel, DEBUG_NON_OO
 
-#include "fmt.hpp" // for compile_string_to_view, group_digits, format, format_string
+#include "fmt.hpp"      // for format, format_string
+#include "fmt/format.h" // for compile_string_to_view, group_digits
 
 #include <algorithm>          // for min
 #include <cassert>            // for assert
@@ -18,7 +18,7 @@ using fmt::group_digits;
 
 // This prints out a Python literal used for making plots in post-processing, for debugging
 // and illustration purposes.
-__attribute__((unused)) static void print_py_status(const RingBuffer* const rb) {
+[[maybe_unused]] static void print_py_status(const RingBuffer* const rb) {
     std::ostringstream write_heads("{");
     for (const auto& [key, value] : rb->write_heads)
         write_heads << "\"" << key << "\": " << value << ", ";
@@ -73,7 +73,7 @@ void RingBuffer::register_consumer(const std::string& name) {
 }
 
 std::optional<std::ptrdiff_t> RingBuffer::wait_without_claiming(const std::string& name,
-                                                                const int inst,
+                                                                [[maybe_unused]] const int inst,
                                                                 const std::ptrdiff_t sz) {
     // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
@@ -99,7 +99,7 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_without_claiming(const std::strin
 }
 
 std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::string& name,
-                                                                  const int inst,
+                                                                  [[maybe_unused]] const int inst,
                                                                   const std::ptrdiff_t sz) {
     assert(sz > 0);
     // Wait until we can advance the read_head for this consumer
@@ -124,7 +124,7 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::str
 }
 
 std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>
-RingBuffer::wait_and_claim_all_readable(const std::string& name, const int inst) {
+RingBuffer::wait_and_claim_all_readable(const std::string& name, [[maybe_unused]] const int inst) {
     // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
     const std::ptrdiff_t read_head = read_heads[name];
@@ -150,7 +150,7 @@ RingBuffer::wait_and_claim_all_readable(const std::string& name, const int inst)
 }
 
 std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>
-RingBuffer::peek_readable(const std::string& name, const int inst) {
+RingBuffer::peek_readable(const std::string& name, [[maybe_unused]] const int inst) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     if (shutdown_signal) {
         return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>();
@@ -163,7 +163,8 @@ RingBuffer::peek_readable(const std::string& name, const int inst) {
     return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>(std::make_pair(read_head, sz));
 }
 
-void RingBuffer::finish_read(const std::string& name, const int inst, const std::ptrdiff_t sz) {
+void RingBuffer::finish_read(const std::string& name, [[maybe_unused]] const int inst,
+                             const std::ptrdiff_t sz) {
     DEBUG2("finish_read({:s}[{:d}]): "
            "consumed bytes: {}",
            name, inst, group_digits(sz));
@@ -187,7 +188,8 @@ void RingBuffer::finish_read(const std::string& name, const int inst, const std:
     empty_cond.notify_all();
 }
 
-std::optional<std::ptrdiff_t> RingBuffer::wait_for_writable(const std::string& name, const int inst,
+std::optional<std::ptrdiff_t> RingBuffer::wait_for_writable(const std::string& name,
+                                                            [[maybe_unused]] const int inst,
                                                             const std::ptrdiff_t sz) {
     assert(sz > 0);
     std::unique_lock<std::recursive_mutex> lock(mutex);
@@ -213,7 +215,7 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_for_writable(const std::string& n
 }
 
 std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>
-RingBuffer::get_writable(const std::string& name, const int inst) {
+RingBuffer::get_writable(const std::string& name, [[maybe_unused]] const int inst) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     if (shutdown_signal) {
         return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>();
@@ -227,7 +229,8 @@ RingBuffer::get_writable(const std::string& name, const int inst) {
         std::make_pair(write_next[name], n));
 }
 
-void RingBuffer::finish_write(const std::string& name, const int inst, const std::ptrdiff_t sz) {
+void RingBuffer::finish_write(const std::string& name, [[maybe_unused]] const int inst,
+                              const std::ptrdiff_t sz) {
     assert(sz > 0);
     std::unique_lock<std::recursive_mutex> lock(mutex);
     DEBUG2("finish_write({:s}[{:d}]): "
@@ -260,32 +263,32 @@ void RingBuffer::finish_write(const std::string& name, const int inst, const std
 void RingBuffer::print_full_status() {
 
     // Don't compute a lot of strings if we aren't going to output the result
-    if (get_log_level() < kotekan::logLevel::DEBUG)
+    if (get_log_level() < kotekan::logLevel::DEBUG2)
         return;
 
     std::unique_lock<std::recursive_mutex> lock(mutex);
     static std::recursive_mutex print_mutex;
     std::lock_guard<std::recursive_mutex> print_lock(print_mutex);
-    DEBUG("--------------------- %s ---------------------", buffer_name.c_str());
-    DEBUG("{:<40} : {:13.6f} MB", "size", size / 1.0e+6);
-    DEBUG("{:<40} : {:13.6f} MB", "last_read_tail", last_read_tail / 1.0e+6);
-    DEBUG("{:<40} : {:13.6f} MB", "first_write_head", first_write_head / 1.0e+6);
-    DEBUG("{:<40} : {:13.6f} MB", "available to read",
-          (first_write_head - last_read_tail) / 1.0e+6);
-    DEBUG("{:<40} : {:13.6f} MB", "free space to write",
-          (size - (first_write_head - last_read_tail)) / 1.0e+6);
-    DEBUG("---- Producers ----");
+    DEBUG2("--------------------- %s ---------------------", buffer_name.c_str());
+    DEBUG2("{:<40} : {:13.6f} MB", "size", size / 1.0e+6);
+    DEBUG2("{:<40} : {:13.6f} MB", "last_read_tail", last_read_tail / 1.0e+6);
+    DEBUG2("{:<40} : {:13.6f} MB", "first_write_head", first_write_head / 1.0e+6);
+    DEBUG2("{:<40} : {:13.6f} MB", "available to read",
+           (first_write_head - last_read_tail) / 1.0e+6);
+    DEBUG2("{:<40} : {:13.6f} MB", "free space to write",
+           (size - (first_write_head - last_read_tail)) / 1.0e+6);
+    DEBUG2("---- Producers ----");
     for (auto& it : producers) {
         const auto& name = it.second.name;
-        DEBUG("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),
-              write_heads[name] / 1.0e+6, write_next[name] / 1.0e+6,
-              (write_next[name] - write_heads[name]) / 1.0e+6);
+        DEBUG2("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),
+               write_heads[name] / 1.0e+6, write_next[name] / 1.0e+6,
+               (write_next[name] - write_heads[name]) / 1.0e+6);
     }
-    DEBUG("---- Consumers ----");
+    DEBUG2("---- Consumers ----");
     for (auto& it : consumers) {
         const auto& name = it.second.name;
-        DEBUG("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),
-              read_tails[name] / 1.0e+6, read_heads[name] / 1.0e+6,
-              (read_heads[name] - read_tails[name]) / 1.0e+6);
+        DEBUG2("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),
+               read_tails[name] / 1.0e+6, read_heads[name] / 1.0e+6,
+               (read_heads[name] - read_tails[name]) / 1.0e+6);
     }
 }

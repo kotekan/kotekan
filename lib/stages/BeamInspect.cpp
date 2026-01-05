@@ -2,7 +2,6 @@
 
 #include "BeamMetadata.hpp"   // for BeamMetadata
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"      // for Telescope
 #include "buffer.hpp"         // for Buffer
 #include "kotekanLogging.hpp" // for INFO
 #include "visUtil.hpp"        // for frameID, modulo
@@ -10,7 +9,9 @@
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
 
 #include <memory>   // for shared_ptr
-#include <stdint.h> // for uint32_t, uint8_t
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint8_t
+#include <vector>   // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -37,13 +38,11 @@ void BeamInspect::main_thread() {
             break;
 
         BeamMetadata* metadata = (BeamMetadata*)(in_buf->get_metadata(frame_id).get());
-        const uint32_t num_freq_per_stream = Telescope::instance().num_freq_per_stream();
 
         std::string frequency_bins = "";
-        for (uint32_t f = 0; f < num_freq_per_stream; ++f) {
-            frequency_bins +=
-                fmt::format("{:d}", Telescope::instance().to_freq_id(metadata->stream_id, f));
-            if (f != num_freq_per_stream - 1)
+        for (size_t f = 0; f < metadata->coarse_freq.size(); ++f) {
+            frequency_bins += fmt::format("{:d}", metadata->coarse_freq[f]);
+            if (f != metadata->coarse_freq.size() - 1)
                 frequency_bins += ", ";
         }
 

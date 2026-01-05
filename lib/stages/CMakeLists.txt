@@ -1,5 +1,8 @@
 project(kotekan_libs)
 
+set(HDF5_CONDITION
+    $<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>)
+
 add_library(
     kotekan_stages
     beamformingPostProcess.cpp
@@ -22,11 +25,11 @@ add_library(
     $<$<BOOL:${ASDF_CXX_FOUND}>:asdfFileWrite.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFileRead.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFileWrite.cpp>
-    $<$<BOOL:${GDAL_FOUND}>:gdalVisWrite.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFiles.cpp>
-    $<$<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5FileRead.cpp>
-    $<$<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5FileWrite.cpp>
-    $<$<AND:$<BOOL:${HDF5_FOUND}>,$<BOOL:${HighFive_FOUND}>,$<BOOL:${HDF5Plugin_PLUGIN_DIR}>>:hdf5Files.cpp>
+    $<${HDF5_CONDITION}:hdf5N2Write.cpp>
+    $<${HDF5_CONDITION}:hdf5FileRead.cpp>
+    $<${HDF5_CONDITION}:hdf5FileWrite.cpp>
+    $<${HDF5_CONDITION}:hdf5Files.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
     streamSingleDishVDIF.cpp
@@ -46,10 +49,10 @@ add_library(
     basebandReadout.cpp
     BasebandWriter.cpp
     BaseWriter.cpp
-    VisWriter.cpp
     HFBWriter.cpp
     RawReader.cpp
     VisRawReader.cpp
+    VisWriter.cpp
     HFBRawReader.cpp
     restInspectFrame.cpp
     frbNetworkProcess.cpp
@@ -71,12 +74,14 @@ add_library(
     removeEv.cpp
     HFBAccumulate.cpp
     compressLostSamples.cpp
+    lostSamplesToPLMask.cpp
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
     DataQuality.cpp
     BeamExtract.cpp
     BeamInspect.cpp
+    configTrackerWriter.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
@@ -122,7 +127,8 @@ if(HDF5_FOUND
    AND HDF5Plugin_PLUGIN_DIR)
     target_sources(kotekan_stages PRIVATE applyGains.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
-    target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
+    target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES}
+                                                 HighFive::HighFive)
     # applyGains.cpp uses std::atomic<timespec>, which relies on libatomic on some platforms
     target_link_libraries(kotekan_stages PRIVATE atomic)
 endif()

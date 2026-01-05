@@ -1,0 +1,5 @@
+*******************
+compressLostSamples
+*******************
+
+.. doxygenclass:: compressLostSamples

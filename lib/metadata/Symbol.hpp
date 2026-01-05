@@ -1,16 +1,30 @@
 #ifndef SYMBOL_HPP
 #define SYMBOL_HPP
 
+#include "fmt.hpp" // for formatter
+
 #include <array>         // for array
 #include <cstring>       // for size_t
+#include <fmt/format.h>  // for formatter
 #include <functional>    // for equal_to, less
 #include <iostream>      // for ostream
 #include <mutex>         // for mutex
 #include <string>        // for string, basic_string
-#include <string_view>   // for string_view, hash
 #include <unordered_set> // for unordered_set
 
+
 namespace kotekan {
+
+template<typename T>
+struct owning_unordered_set;
+template<>
+struct owning_unordered_set<std::string_view> : public std::unordered_set<std::string_view> {
+    ~owning_unordered_set() {
+        for (auto s : *this) {
+            delete[] s.data();
+        }
+    }
+};
 
 // A symbol is similar to a string: A symbol can be created from a
 // string (this is expensive). As pay-off, comparing symbols to each
@@ -20,21 +34,22 @@ class Symbol {
     // We keep a set of all symbols that have been created
     // (`known_symbols). It is protected by a mutex.
     static std::mutex mutex;
-    static std::unordered_set<std::string_view> known_symbols;
+    static owning_unordered_set<std::string_view> known_symbols;
 
     // A symbol's value is a pointer to a C string.
     const char* value;
 
     // Look up a string in the known symbols. If it is not known,
     // insert it.
-    const char* lookup_or_insert(const char* str);
+    const char* lookup_or_insert(const std::string_view& str);
 
 public:
     // Default constructure, returning an invalid symbol. Think null
     // pointer.
     Symbol() : value() {}
 
-    // Create a symbol from a string
+    // Create a symbol from a string, an empty string or a NULL pointer return
+    // an invalid symbol
     Symbol(const std::string_view& str);
     Symbol(const std::string& str);
     Symbol(const char* str);
@@ -127,5 +142,14 @@ struct hash<kotekan::Symbol> {
     }
 };
 } // namespace std
+
+// Formatter
+template<>
+struct fmt::formatter<kotekan::Symbol> : fmt::formatter<std::string> {
+    template<typename FormatContext>
+    auto format(const kotekan::Symbol& sym, FormatContext& ctx) const {
+        return fmt::formatter<std::string>::format(sym.get_string(), ctx);
+    }
+};
 
 #endif // #ifndef SYMBOL_HPP

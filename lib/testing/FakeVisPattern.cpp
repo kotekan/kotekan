@@ -1,29 +1,31 @@
 #include "FakeVisPattern.hpp"
 
-#include "CHORDTelescope.hpp" // for CHORDTelescope
+#include <array>   // for array
+#include <complex> // for complex, conj, operator*
+#include <math.h>  // for cos, sin, cosf, sinf, M_PI
+#include <time.h>  // for timespec
+// #include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
+#include "CHORDTelescope.hpp" // for CHORDTelescope, EOP
 #include "Config.hpp"         // for Config
 #include "Hash.hpp"           // for Hash
-#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
-#include "datasetState.hpp"   // for flagState, inputState
-#include "timeUtil.hpp"       // for get_ERA_from_time
+#include "N2Metadata.hpp"     // for N2Metadata
+#include "Telescope.hpp"      // for Telescope
+#include "datasetManager.hpp" // for datasetManager, state_id_t
+#include "datasetState.hpp"   // for flagState, gainState, inputState
+#include "metadata.hpp"       // for metadataPool
 #include "visBuffer.hpp"      // for VisFrameView
-#include "visUtil.hpp"        // for cfloat, input_ctype, ts_to_double, cmap
+#include "visUtil.hpp"        // for input_ctype, cfloat, cmap, ts_to_double
 
-#include "fmt.hpp"      // for format
+#include "fmt.hpp"      // for compile_string_to_view, format, format_string
 #include "gsl-lite.hpp" // for span
-#include "json.hpp"     // for json, basic_json, basic_json<>::object_t
+#include "json.hpp"     // for basic_json, iter_impl, json
 
-#include <algorithm> // for copy, max, copy_backward
-#include <complex>   // for complex, operator*
-#include <cstdint>   // for uint32_t, uint16_t
-#include <exception> // for exception
-// #include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
-#include <map>       // for map, map<>::mapped_type
-#include <math.h>    // for cosf, sinf
-#include <regex>     // for match_results<>::_Base_type
-#include <stdexcept> // for invalid_argument, runtime_error
+#include <map>       // for map
+#include <memory>    // for shared_ptr, __shared_ptr_access, weak_ptr
+#include <random>    // for mt19937
+#include <stdexcept> // for invalid_argument
 #include <tuple>     // for get
-#include <vector>    // for vector, __alloc_traits<>::value_type
+#include <vector>    // for vector
 
 static constexpr double C = 299792458.0;
 
@@ -473,9 +475,16 @@ PointSourceVisPattern::PointSourceVisPattern(kotekan::Config& config, const std:
     stokes_Q = config.get_default<double>(path, "stokes_Q", 0.0);
     stokes_U = config.get_default<double>(path, "stokes_U", 0.0);
     stokes_V = config.get_default<double>(path, "stokes_V", 0.0);
+
     noise_var = config.get_default<double>(path, "noise_var", 0.01);
+    beam_fwhm_300MHz_deg = config.get_default<double>(path, "beam_FWHM_300MHz_deg", 10.0);
     n_rfi_ticks = config.get_default<uint32_t>(path, "n_rfi_ticks", 0);
     n_lost_ticks = config.get_default<uint32_t>(path, "n_lost_ticks", 0);
+    int seed = config.get_default<int>(path, "seed", 12345);
+    spectral_index = config.get_default<double>(path, "spectral_index", 0.0);
+
+    rng = std::mt19937(seed);
+    rng();
 }
 
 void PointSourceVisPattern::fill(VisFrameView& frame) {
@@ -492,27 +501,22 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
     timespec time = tel.to_time(std::get<0>(frame.time) + frame.fpga_seq_length / 2);
     struct EOP eop = tel.get_EOP_at_time(time);
 
-    std::array<double, 3> n = tel.get_sky_vec_in_tel_coords(ra, dec, eop);
+    std::array<double, 3> n = tel.get_sky_vec_in_grid_coords(ra, dec, eop);
 
-    double f = tel.to_freq(frame.freq_id);
+    double f = 1e6 * tel.to_freq_MHz(frame.freq_id);
     double lambda = C / f;
 
-    /*
-    n[0] = 0.0;
-    n[1] = 0.0;
-    n[2] = 1.0;
-    */
 
     INFO("Making fake vis at t: {:d} s + {:d} ns", time.tv_sec, time.tv_nsec);
-    INFO("     telescope dt_ns: {}", tel.seq_length_nsec());
     INFO("          start tick: {}", std::get<0>(frame.time));
-    INFO("          Frame time: {:d} ns",
-         std::get<1>(frame.time).tv_sec * 1000000000 + std::get<1>(frame.time).tv_nsec);
-    INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
-    INFO("                   ERA: {:.10f} deg", eop.ERA_deg);
-    INFO("                   xp: {:.10f} arcsec", eop.xp_as);
-    INFO("                   yp: {:.10f} arcsec", eop.yp_as);
-    INFO("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
+    DEBUG("     telescope dt_ns: {}", tel.seq_length_nsec());
+    DEBUG("          Frame time: {:d} ns",
+          std::get<1>(frame.time).tv_sec * 1000000000 + std::get<1>(frame.time).tv_nsec);
+    DEBUG("                   f: {:d} = {:e} Hz", frame.freq_id, f);
+    DEBUG("                   ERA: {:.10f} deg", eop.ERA_deg);
+    DEBUG("                   xp: {:.10f} arcsec", eop.xp_as);
+    DEBUG("                   yp: {:.10f} arcsec", eop.yp_as);
+    DEBUG("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
 
     int ind = 0;
     for (uint32_t el_i = 0; el_i < num_elements; el_i++) {
@@ -523,8 +527,8 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
             uint32_t pol_i = el_i / num_dishes;
             uint32_t pol_j = el_j / num_dishes;
 
-            std::array<double, 3> pos_i = tel.get_dish_position(dish_i);
-            std::array<double, 3> pos_j = tel.get_dish_position(dish_j);
+            std::array<double, 3> pos_i = tel.get_dish_position_in_grid_coords(dish_i);
+            std::array<double, 3> pos_j = tel.get_dish_position_in_grid_coords(dish_j);
 
             double phase = 2 * M_PI
                            * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]
@@ -570,29 +574,37 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
 
     struct EOP eop = tel.get_EOP_at_time(time);
 
-    std::array<double, 3> n = tel.get_sky_vec_in_tel_coords(ra, dec, eop);
+    std::array<double, 3> n = tel.get_sky_vec_in_grid_coords(ra, dec, eop);
 
-    double f = tel.to_freq(frame.freq_id);
-    double lambda = C / f;
+    std::array<double, 3> n_point_dish = tel.get_pointing_vec_in_dish_coords();
+    std::array<double, 3> n_point_topo = tel.vec_dish_to_topocen(n_point_dish);
+    std::array<double, 3> n_point_grid = tel.vec_topocen_to_grid(n_point_topo);
 
-    frame._metadata->freq_Hz = f;
-    frame._metadata->eop = eop;
+    double f = tel.to_freq_MHz(frame.freq_id);
+    double lambda = C / (1e6 * f);
 
-    /*
-    n[0] = 0.0;
-    n[1] = 0.0;
-    n[2] = 1.0;
-    */
+    double theta_sep =
+        acos(n_point_grid[0] * n[0] + n_point_grid[1] * n[1] + n_point_grid[2] * n[2]);
+    double beam_fwhm = (beam_fwhm_300MHz_deg * M_PI / 180) * 300.0 / f;
+    double beam_width = (beam_fwhm) / sqrt(8 * log(2));
+    double beam_fac = exp(-0.5 * (theta_sep * theta_sep) / (beam_width * beam_width));
+
+    double spec_fac = pow(f / 300.0, spectral_index);
+
+    frame._metadata->time_center_eop = eop;
+
+    std::normal_distribution<double> std_norm(0.0, 1.0);
+
 
     INFO("Making fake vis at t: {:d} s + {:d} ns", time.tv_sec, time.tv_nsec);
-    INFO("     telescope dt_ns: {}", tel.seq_length_nsec());
     INFO("          start tick: {}", frame.fpga_start_tick);
-    INFO("          Frame time: {:d} ns", frame.frame_start_time_ns);
-    INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
-    INFO("                   ERA: {:.10f} deg", eop.ERA_deg);
-    INFO("                   xp: {:.10f} arcsec", eop.xp_as);
-    INFO("                   yp: {:.10f} arcsec", eop.yp_as);
-    INFO("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
+    DEBUG("     telescope dt_ns: {}", tel.seq_length_nsec());
+    DEBUG("          Frame time: {:d} ns", frame.frame_start_time_ns);
+    DEBUG("                   f: {:d} = {:e} Hz", frame.freq_id, f);
+    DEBUG("                   ERA: {:.10f} deg", eop.ERA_deg);
+    DEBUG("                   xp: {:.10f} arcsec", eop.xp_as);
+    DEBUG("                   yp: {:.10f} arcsec", eop.yp_as);
+    DEBUG("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
 
     int ind = 0;
     for (uint32_t el_i = 0; el_i < num_elements; el_i++) {
@@ -603,14 +615,13 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
             uint32_t pol_i = el_i / num_dishes;
             uint32_t pol_j = el_j / num_dishes;
 
-            std::array<double, 3> pos_i = tel.get_dish_position(dish_i);
-            std::array<double, 3> pos_j = tel.get_dish_position(dish_j);
+            std::array<double, 3> pos_i = tel.get_dish_position_in_grid_coords(dish_i);
+            std::array<double, 3> pos_j = tel.get_dish_position_in_grid_coords(dish_j);
 
             double phase = 2 * M_PI
                            * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]
                               + (pos_i[2] - pos_j[2]) * n[2])
                            / lambda;
-
             double cp = cos(phase);
             double sp = sin(phase);
 
@@ -627,9 +638,26 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
                 power_r = stokes_U;
                 power_i = -stokes_V;
             }
+            power_r *= beam_fac * spec_fac;
+            power_i *= beam_fac * spec_fac;
 
-            frame.vis[ind] = {(float)(power_r * cp - power_i * sp),
-                              (float)(power_r * sp + power_i * cp)};
+            double vis_var = noise_var * noise_var + 2 * noise_var * (power_r + power_i);
+
+            // want variance of each = vis_var / 2
+            double vis_noise_r = 0.0;
+            double vis_noise_i = 0.0;
+            if (noise_var > 0.0) {
+                vis_noise_r += sqrt(0.5 * vis_var) * std_norm(rng);
+                vis_noise_i += sqrt(0.5 * vis_var) * std_norm(rng);
+
+                if (el_i == el_j) {
+                    vis_noise_r += noise_var;
+                }
+            }
+
+            frame.vis[ind] = {(float)(power_r * cp - power_i * sp + vis_noise_r),
+                              (float)(power_r * sp + power_i * cp + vis_noise_i)};
+            frame.weight[ind] = 1.0 / vis_var;
             ind++;
         }
     }

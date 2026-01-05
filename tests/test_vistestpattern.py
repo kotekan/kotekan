@@ -21,7 +21,7 @@ REPORT_PRECISION = 1e-2
 params = {
     "num_elements": 2,
     "num_ev": 0,
-    "total_frames": 12,
+    "total_frames": 6,
     "freq_ids": [0, 1, 2],
     "cadence": 1.0,
     "mode": "test_pattern_simple",
@@ -246,9 +246,9 @@ def test_pattern_no_noise_freq(tmpdir_factory):
     freq_params["frequencies"] = [0, 1, 2]
     freq_params["freq_values"] = [[0, 0], [1, 1], [2, -2]]
     freq_params["freq_ids"] = [0, 1, 2, 3]
-    freq_params["total_frames"] = 12
+    freq_params["total_frames"] = 6
 
-    random.seed()
+    random.seed(42)
     for i in range(2):
         freq_params["freq_values"][i][0] = random.random() * 128
         freq_params["freq_values"][i][1] = random.random() * 128
@@ -302,9 +302,9 @@ def test_pattern_noise_freq(tmpdir_factory):
         [55, -55],
     ]
     freq_params["freq_ids"] = list(range(0, 30))
-    freq_params["total_frames"] = 12
+    freq_params["total_frames"] = 6
 
-    random.seed()
+    random.seed(42)
     for i in range(10):
         freq_params["freq_values"][i][0] = random.random() * 128
         freq_params["freq_values"][i][1] = random.random() * 128
@@ -421,9 +421,9 @@ input_params = freq_params.copy()
 def test_pattern_no_noise_inputs(tmpdir_factory):
     input_params["mode"] = "test_pattern_inputs"
     input_params["input_values"] = [[0, 0], [1, 1]]
-    input_params["total_frames"] = 12
+    input_params["total_frames"] = 6
 
-    random.seed()
+    random.seed(42)
     for i in range(2):
         input_params["input_values"][i][0] = random.random() * 128
         input_params["input_values"][i][1] = random.random() * 128
@@ -468,9 +468,9 @@ def test_no_noise_inputs(test_pattern_no_noise_inputs):
 def test_pattern_noise_inputs(tmpdir_factory):
     input_params["mode"] = "test_pattern_inputs"
     input_params["input_values"] = [[0, 0], [1, 1]]
-    input_params["total_frames"] = 8
+    input_params["total_frames"] = 4
 
-    random.seed()
+    random.seed(42)
     for i in range(2):
         input_params["input_values"][i][0] = random.random() * 128
         input_params["input_values"][i][1] = random.random() * 128

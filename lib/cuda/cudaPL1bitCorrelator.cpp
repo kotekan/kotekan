@@ -1,20 +1,30 @@
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
-#include <NDArrayRingBuffer.hpp>
-#include <cassert>
-#include <chordMetadata.hpp>
-#include <cstddef>
-#include <cstring>
-#include <cudaCommand.hpp>
-#include <cudaMemsetInt.hpp>
-#include <div.hpp>
-#include <memory>
-#include <metadata.hpp>
-#include <n2k.hpp>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <vector>
+#include "Config.hpp"              // for Config
+#include "NDArray.hpp"             // for NDArray
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for cudaEvent_t, CUevent_st, CUstream_st
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for DEBUG, ERROR
+#include "n2k/pl_kernels.hpp"      // for launch_pl_1bit_correlator
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <DataType.hpp>          // for uint1x8_t
+#include <NDArrayBuffer.hpp>     // for NDArrayBuffer
+#include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include <array>                 // for array
+#include <cassert>               // for assert
+#include <chordMetadata.hpp>     // for chordMetadata
+#include <cstddef>               // for ptrdiff_t
+#include <cstdint>               // for int32_t
+#include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include <cudaMemsetInt.hpp>     // for cudaMemsetInt
+#include <div.hpp>               // for div_noremainder, round_down
+#include <functional>            // for function
+#include <memory>                // for allocator, shared_ptr, __shared_ptr_access
+#include <string>                // for basic_string, string
+#include <sys/types.h>           // for uint, ulong
+#include <vector>                // for vector
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -56,7 +66,6 @@ namespace {} // namespace
  * @conf  num_frequenciees       Int.     Number of frequencies handled by this X-Engine node.
  * @conf  num_polarizations      Int.     Number of polarizations (2)
  * @conf  num_dishes             Int.     Number of dishes
- * @conf  samples_per_data_set   Int.     Number of time samples per Kotekan block.
  * @conf  sub_integration_ntime  Int.     Number of time samples that will be summed into the
  * @conf  pl_expanded_mask_name  String.  Base name for the pl_expanded_mask buffers.
  * @conf  rfi_RFImask_name       String.  Base name for the RFI mask buffers.
@@ -81,7 +90,6 @@ private:
     const int num_frequencies;
     const int num_polarizations;
     const int num_dishes;
-    const int n2k_samples_per_data_set;
     const int n2k_sub_integration_ntime;
 
     // Kotekan buffer names
@@ -108,7 +116,6 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
-    n2k_samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     n2k_sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
     // Buffer names
     pl_expanded_mask_name(config.get<std::string>(unique_name, "pl_expanded_mask_name")),
@@ -126,8 +133,7 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
                 std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, *this),
     n2k_counts([&]() {
         // aka "nt_outer" in n2k.hpp
-        const int num_subintegrations =
-            div_noremainder(n2k_samples_per_data_set, n2k_sub_integration_ntime);
+        const int num_subintegrations = div_noremainder(num_times, n2k_sub_integration_ntime);
         const int blocksize = 8;
         const int linear_num_blocks = (num_polarizations * num_dishes / 8 + 1) / blocksize;
         const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
@@ -154,12 +160,11 @@ int cudaPL1bitCorrelator::wait_on_precondition() {
     const int pl_expanded_mask_errcode =
         pl_expanded_mask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
             // We measure the expanded pl mask in "coarse" time samples
-            const auto pl_samples_per_data_set = div_noremainder(n2k_samples_per_data_set, 64);
-            if (available_elements < pl_samples_per_data_set)
+            const auto pl_num_times = div_noremainder(num_times, 64);
+            if (available_elements < pl_num_times)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else
-                return read_descriptor_t{.claimed = pl_samples_per_data_set,
-                                         .read = pl_samples_per_data_set};
+                return read_descriptor_t{.claimed = pl_num_times, .read = pl_num_times};
         });
     if (pl_expanded_mask_errcode < 0)
         return pl_expanded_mask_errcode;
@@ -169,13 +174,11 @@ int cudaPL1bitCorrelator::wait_on_precondition() {
     const int rfi_RFImask_errcode =
         rfi_RFImask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
             // We measure the rfi mask in "coarse" time samples
-            const auto rfi_samples_per_data_set =
-                div_noremainder(n2k_samples_per_data_set, 8 * 128);
-            if (available_elements < rfi_samples_per_data_set)
+            const auto rfi_num_times = div_noremainder(num_times, 8 * 128);
+            if (available_elements < rfi_num_times)
                 return read_descriptor_t{.claimed = 0, .read = 0};
             else
-                return read_descriptor_t{.claimed = rfi_samples_per_data_set,
-                                         .read = rfi_samples_per_data_set};
+                return read_descriptor_t{.claimed = rfi_num_times, .read = rfi_num_times};
         });
     if (rfi_RFImask_errcode < 0)
         return rfi_RFImask_errcode;
@@ -197,36 +200,57 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
     const std::shared_ptr<const chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
     const std::shared_ptr<chordMetadata> out_meta = n2k_counts.get_metadata();
 
-    // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+    // The input ringbuffers do not contain time-dependent data,
+    // so we must reconstruct it here. (fpga_seq_num and sample0_offset)
     // TODO: do this automatically in `NDArrayRingBuffer`
-    out_meta->sample0_offset = rfi_RFImask.get_read_valid().begin();
+
+    // The RFI mask has a fast time index of size 1024, so has an apparent
+    // time downsampling of 1024. To get the needed outgoing fpga_seq_num,
+    // we need to undo that.
+    out_meta->set_fpga_seq_num(1024 * rfi_RFImask.get_read_valid().begin());
+    out_meta->set_sample0_offset(
+        div_noremainder(out_meta->get_fpga_seq_num(), n2k_sub_integration_ntime));
+
+    const std::vector<int> in_time_downsampling_fpga = pl_meta->get_time_downsampling_fpga();
+    const std::vector<int64_t> in_half_fpga_sample0 = pl_meta->get_half_fpga_sample0();
+    assert(in_time_downsampling_fpga.size() == static_cast<size_t>(out_meta->get_nfreq()));
+
+    std::vector<int> out_time_downsampling_fpga(out_meta->get_nfreq());
+    std::vector<int64_t> out_half_fpga_sample0(out_meta->get_nfreq());
 
     // The PL mask time_downsampling_factor includes a factor of 64 from
     // the fast time axis which is eaten up by the correlator.
-    for (int f = 0; f < out_meta->nfreq; f++) {
-        out_meta->time_downsampling_fpga[f] =
-            n2k_sub_integration_ntime * div_noremainder(pl_meta->time_downsampling_fpga[f], 64);
+    for (int f = 0; f < out_meta->get_nfreq(); f++) {
+        out_time_downsampling_fpga[f] =
+            n2k_sub_integration_ntime * div_noremainder(in_time_downsampling_fpga[f], 64);
+        out_half_fpga_sample0[f] =
+            in_half_fpga_sample0[f] + out_time_downsampling_fpga[f] - in_time_downsampling_fpga[f];
     }
+    out_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
+    out_meta->set_half_fpga_sample0(out_half_fpga_sample0);
 
+    // Set poison for debug checks.
     n2k_counts.set_to_poison(0xff);
 
     // The ringbuffering here is fishy. We should fix the kernel instead.
 
     // Ensure consistency
-    assert(pl_meta->nfreq == rfi_meta->nfreq);
-    if (!(pl_expanded_mask.get_read_valid().begin() * pl_meta->time_downsampling_fpga[0]
-          == rfi_RFImask.get_read_valid().begin() * rfi_meta->time_downsampling_fpga[0])) {
+    const std::vector<int> pl_time_downsampling_fpga = pl_meta->get_time_downsampling_fpga();
+    const std::vector<int> rfi_time_downsampling_fpga = rfi_meta->get_time_downsampling_fpga();
+    assert(pl_meta->get_nfreq() == rfi_meta->get_nfreq());
+    if (!(pl_expanded_mask.get_read_valid().begin() * pl_time_downsampling_fpga[0]
+          == rfi_RFImask.get_read_valid().begin() * rfi_time_downsampling_fpga[0])) {
         DEBUG("pl_expanded_mask.get_read_valid().begin()={}",
               pl_expanded_mask.get_read_valid().begin());
-        DEBUG("pl_meta->time_downsampling_fpga[0]={}", pl_meta->time_downsampling_fpga[0]);
+        DEBUG("pl_meta->time_downsampling_fpga[0]={}", pl_time_downsampling_fpga[0]);
         DEBUG("rfi_RFImask.get_read_valid().begin()={}", rfi_RFImask.get_read_valid().begin());
-        DEBUG("rfi_meta->time_downsampling_fpga[0]={}", rfi_meta->time_downsampling_fpga[0]);
+        DEBUG("rfi_meta->time_downsampling_fpga[0]={}", rfi_time_downsampling_fpga[0]);
     }
-    assert(pl_expanded_mask.get_read_valid().begin() * pl_meta->time_downsampling_fpga[0]
-           == rfi_RFImask.get_read_valid().begin() * rfi_meta->time_downsampling_fpga[0]);
-    for (int freq = 0; freq < pl_meta->nfreq; ++freq)
-        assert(pl_expanded_mask.get_read_valid().begin() * pl_meta->time_downsampling_fpga[freq]
-               == rfi_RFImask.get_read_valid().begin() * rfi_meta->time_downsampling_fpga[freq]);
+    assert(pl_expanded_mask.get_read_valid().begin() * pl_time_downsampling_fpga[0]
+           == rfi_RFImask.get_read_valid().begin() * rfi_time_downsampling_fpga[0]);
+    for (int freq = 0; freq < pl_meta->get_nfreq(); ++freq)
+        assert(pl_expanded_mask.get_read_valid().begin() * pl_time_downsampling_fpga[freq]
+               == rfi_RFImask.get_read_valid().begin() * rfi_time_downsampling_fpga[freq]);
 
     const std::ptrdiff_t pl_time_offset =
         pl_expanded_mask.get_read_valid().begin() % pl_expanded_mask.get_ndarray().extent(0);
@@ -250,8 +274,8 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
 
     // This is a "fake" stride, it just needs to be large enough to linearize array indices without
     // overlapping
-    const int rfimask_fstride = n2k_samples_per_data_set;
-    const int T = n2k_samples_per_data_set;
+    const int rfimask_fstride = num_times;
+    const int T = num_times;
     const int F = num_frequencies;
     const int Sds = num_dishes / 8 * num_polarizations;
     const int Nds = n2k_sub_integration_ntime;
