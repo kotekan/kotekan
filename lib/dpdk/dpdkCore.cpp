@@ -30,8 +30,10 @@
 #include "iceBoardShuffle.hpp"  // for iceBoardShuffle
 #include "iceBoardStandard.hpp" // for iceBoardStandard
 #include "iceBoardVDIF.hpp"     // for iceBoardVDIF
-#include "crsDistributor.hpp"   // for crsDistributor
-#include "crsCaptureWorker.hpp" // for crsCaptureWorker
+#include "crs1BoardDistributor.hpp"   // for crsDistributor
+#include "crs16BoardDistributor.hpp" // for crs16BoardDistributor
+#include "crs1BoardCaptureWorker.hpp" // for crsCaptureWorker
+#include "crs16BoardCaptureWorker.hpp" // for crs16BoardCaptureWorker
 
 #include "fmt.hpp"  // for compile_string_to_view, format, fmt, format_string
 #include "json.hpp" // for basic_json, iter_impl, json
@@ -84,8 +86,20 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
         RTE_ETH_RX_OFFLOAD_KEEP_CRC | RTE_ETH_RX_OFFLOAD_IPV4_CKSUM | RTE_ETH_RX_OFFLOAD_UDP_CKSUM;
 
 
-    // TODO reference why this needs to be 2048
-    const uint32_t max_data_size = 2048;
+    // Change hardcoded 2048 to support jumbo frames if configured
+    // We add RTE_PKTMBUF_HEADROOM to max_rx_pkt_len to ensure the payload fits comfortably
+    // or simply use a fixed large size like 9600 if max_rx_pkt_len is high.
+    uint32_t configured_mbuf_size = config.get_default<uint32_t>(unique_name, "mbuf_data_size", 2048);
+    
+    // If the user hasn't explicitly set mbuf_data_size, but has set a large max_rx_pkt_len, 
+    // we should probably default to the larger size to avoid scatter-gather.
+    if (configured_mbuf_size == 2048 && max_rx_pkt_len > 2048) {
+        configured_mbuf_size = max_rx_pkt_len + RTE_PKTMBUF_HEADROOM; 
+        // Align to 1024 for sanity, though not strictly required
+        configured_mbuf_size = ((configured_mbuf_size + 1023) / 1024) * 1024;
+    }
+
+    const uint32_t max_data_size = configured_mbuf_size;
     const uint32_t mbuf_size = max_data_size + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM;
 
     int lcore_id = 0;
@@ -209,9 +223,13 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
         } else if (handler_name == "captureHandler") {
             handlers[port] =
                 new captureHandler(config, handler_unique_name, buffer_container, port);
-        } else if (handler_name == "crsDistributor") {
+        } else if (handler_name == "crs1BoardDistributor") {
             handlers[port] =
-                new crsDistributor(config, handler_unique_name, buffer_container, port,
+                new crs1BoardDistributor(config, handler_unique_name, buffer_container, port,
+                                   worker_rings);
+        } else if (handler_name == "crs16BoardDistributor") {
+            handlers[port] =
+                new crs16BoardDistributor(config, handler_unique_name, buffer_container, port,
                                    worker_rings);
         } else if (handler_name == "none") {
             handlers[port] = nullptr;
@@ -235,9 +253,13 @@ void dpdkCore::create_workers(bufferContainer& buffer_container) {
         string worker_name = worker["dpdk_handler"];
         string worker_unique_name = fmt::format(fmt("{:s}/workers/{:d}"), unique_name, worker_id);
 
-        if (worker_name == "crsCaptureWorker") {
+        if (worker_name == "crs1BoardCaptureWorker") {
             workers[worker_id] =
-                new crsCaptureWorker(config, worker_unique_name, buffer_container, worker_id,
+                new crs1BoardCaptureWorker(config, worker_unique_name, buffer_container, worker_id,
+                                     worker_rings);
+        } else if (worker_name == "crs16BoardCaptureWorker") {
+            workers[worker_id] =
+                new crs16BoardCaptureWorker(config, worker_unique_name, buffer_container, worker_id,
                                      worker_rings);
         } else if (worker_name == "none") {
             workers[worker_id] = nullptr;
@@ -245,8 +267,10 @@ void dpdkCore::create_workers(bufferContainer& buffer_container) {
             throw std::runtime_error(
                 fmt::format(fmt("The dpdk worker type '{:s}' does not exist."), worker_name));
         }
-
-        INFO("Created DPDK worker '{:s}' with ID {:d}", worker_name, worker_id);
+        if (workers[worker_id] != nullptr)
+            INFO("Created DPDK worker '{:s}' with ID {:d}", worker_name, worker_id);
+        else
+            FATAL_ERROR("DPDK worker '{:s}' with ID {:d} is nullptr", worker_name, worker_id);
 
         worker_id++;
     }

@@ -17,10 +17,10 @@
 #include "json.hpp"
 
 
-class crsDistributor : public dpdkRXhandler {
+class crs1BoardDistributor : public dpdkRXhandler {
 public:
     /// Default constructor
-    crsDistributor(kotekan::Config& config, const std::string& unique_name,
+    crs1BoardDistributor(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container, int port,
                    const std::vector<rte_ring*>& worker_rings);
 
@@ -42,7 +42,7 @@ protected:
 
 };
 
-inline crsDistributor::crsDistributor(kotekan::Config& config, const std::string& unique_name,
+inline crs1BoardDistributor::crs1BoardDistributor(kotekan::Config& config, const std::string& unique_name,
                                       kotekan::bufferContainer& buffer_container, int port,
                                       const std::vector<rte_ring*>& worker_rings) :
     dpdkRXhandler(config, unique_name, buffer_container, port), worker_rings(worker_rings) {
@@ -51,23 +51,23 @@ inline crsDistributor::crsDistributor(kotekan::Config& config, const std::string
 
     if(worker_ring_ids.size() == 0) {
         throw std::runtime_error(
-            fmt::format(fmt("The crsDistributor handler must have at least one worker ring.")));
+            fmt::format(fmt("The crs1BoardDistributor handler must have at least one worker ring.")));
     }
 
     if (worker_ring_ids.size() % 2 != 0) {
         throw std::runtime_error(
-            fmt::format(fmt("The crsDistributor handler must have an even number of worker rings.")));
+            fmt::format(fmt("The crs1BoardDistributor handler must have an even number of worker rings.")));
     }
 
     num_crs_boards = config.get<uint32_t>(unique_name, "num_crs_boards");
 
-    if (num_crs_boards != 1 && num_crs_boards != 16 && num_crs_boards != 128) {
+    if (num_crs_boards != 1) {
         throw std::runtime_error(
-            fmt::format(fmt("num_crs_boards' parameter must be 1, 16, or 128.  Other configurations are not supported.")));
+            fmt::format(fmt("num_crs_boards' parameter must be 1. Other configurations are not supported.")));
     }
 }
 
-inline int crsDistributor::handle_packet(struct rte_mbuf* mbuf) {
+inline int crs1BoardDistributor::handle_packet(struct rte_mbuf* mbuf) {
 
     /*
     uint64_t seq_number = get_crs_packet_seq_num(mbuf);

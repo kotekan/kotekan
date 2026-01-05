@@ -17,10 +17,10 @@
 #include "visUtil.hpp"
 
 
-class crsCaptureWorker : public dpdkRXhandler {
+class crs1BoardCaptureWorker : public dpdkRXhandler {
 public:
     /// Default constructor
-    crsCaptureWorker(kotekan::Config& config, const std::string& unique_name,
+    crs1BoardCaptureWorker(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container, int port,
                    const std::vector<rte_ring*>& worker_rings);
 
@@ -62,7 +62,7 @@ protected:
     uint64_t last_seq = 0;
 };
 
-inline crsCaptureWorker::crsCaptureWorker(kotekan::Config& config, const std::string& unique_name,
+inline crs1BoardCaptureWorker::crs1BoardCaptureWorker(kotekan::Config& config, const std::string& unique_name,
                                       kotekan::bufferContainer& buffer_container, int port,
                                       const std::vector<rte_ring*>& worker_rings) :
     dpdkRXhandler(config, unique_name, buffer_container, port), worker_rings(worker_rings),
@@ -88,7 +88,7 @@ inline crsCaptureWorker::crsCaptureWorker(kotekan::Config& config, const std::st
     capture_n_frames = config.get_default<uint64_t>(unique_name, "capture_n_frames", 0);
 }
 
-inline int crsCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
+inline int crs1BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
 
     (void)mbuf;
     // Print the worker ID and stream ID

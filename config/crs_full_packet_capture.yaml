@@ -69,14 +69,14 @@ dpdk:
         - [0]
     # One handler must be given per port
     handlers:
-        - dpdk_handler: crsDistributor
+        - dpdk_handler: crs1BoardDistributor
           worker_rings: [0,1]
     # Exactly One worker must be given per worker ring
     workers:
-        - dpdk_handler: crsCaptureWorker
+        - dpdk_handler: crs1BoardCaptureWorker
           worker_ring: 0
           out_buf: network_input_buffer_0
-        - dpdk_handler: crsCaptureWorker
+        - dpdk_handler: crs1BoardCaptureWorker
           worker_ring: 1
           out_buf: network_input_buffer_1
 
