@@ -11,13 +11,6 @@
 // IWYU pragma: no_include "nvtx3/nvtxDetail/nvtxImplCore.h"
 // IWYU pragma: no_include <nvtx3/nvtxDetail/nvtxImplCore.h>
 
-<<<<<<< HEAD
-#include <array>              // for array
-#include <cstdint>            // for int64_t
-// #include <nvtx3/nvToolsExt.h> // IWYU pragma: keep
-#include <string>             // for string, basic_string
-#include <vector>             // for vector
-=======
 #include <array>   // for array
 #include <cstdint> // for int64_t
 #ifdef WITH_CUDA
@@ -25,7 +18,6 @@
 #endif
 #include <string> // for string, basic_string
 #include <vector> // for vector
->>>>>>> b302fee784ec8561e6eac1f847ebf648288d22b8
 
 /**
  * @class FEngine
