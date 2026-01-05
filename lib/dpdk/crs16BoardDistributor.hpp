@@ -84,9 +84,9 @@ inline int crs16BoardDistributor::handle_packet(struct rte_mbuf* mbuf) {
         total_packets++;
     }
 
-    if (total_packets % 1000000 == 0) {
-        INFO_NON_OO("Distributed {:d} packets so far", total_packets);
-    }
+    //if (total_packets % 1000000 == 0) {
+        //INFO_NON_OO("Distributed {:d} packets so far", total_packets);
+    //}
 
     //DEBUG_NON_OO("Distributed packet with Stream ID {:d} to worker ring {:d}", stream_id, ring_index);
 

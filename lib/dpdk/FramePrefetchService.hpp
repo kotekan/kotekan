@@ -103,6 +103,7 @@ void FramePrefetchService::start(uint64_t start_seq) {
 }
 
 inline void FramePrefetchService::advance() {
+    INFO("FramePrefetchService {} advancing from frame {}", unique_name, consumed_cursor.load(std::memory_order_acquire));
     consumed_cursor.fetch_add(1, std::memory_order_release);
 }
 
@@ -122,7 +123,7 @@ void FramePrefetchService::prefetcher_loop() {
     
     while (running) {
         if (!start_requested.load(std::memory_order_acquire)) {
-            std::this_thread::yield();
+            std::this_thread::sleep_for(std::chrono::microseconds(10000));
             continue;
         }
         
@@ -130,6 +131,7 @@ void FramePrefetchService::prefetcher_loop() {
         uint64_t consumed = consumed_cursor.load(std::memory_order_acquire);
         while (marked_full_cursor < consumed) {
             FrameInfo& info = frames[marked_full_cursor & mask];
+            INFO("FramePrefetchService {} marking frame {} full (seq {})", unique_name, info.frame_id, info.start_seq);
             buf->mark_frame_full(unique_name, info.frame_id);
             marked_full_cursor++;
             
@@ -151,14 +153,16 @@ void FramePrefetchService::prefetcher_loop() {
                 seq = initial_start_seq.load(std::memory_order_acquire) + produced * samples_per_frame;
             }
             
-            int frame_id = (seq / samples_per_frame) % buf->num_frames;
+            int frame_id = produced % buf->num_frames;
             
+            INFO("FramePrefetchService {} prefetching frame {} (seq {})", unique_name, frame_id, seq);
             uint8_t* ptr = buf->wait_for_empty_frame(unique_name, frame_id);
             if (ptr == nullptr) {
                 error_flag = true;
                 running = false;
                 return;
             }
+            INFO("FramePrefetchService {} obtained frame {}", unique_name, frame_id);
             
             buf->allocate_new_metadata_object(frame_id);
             //auto metadata = buf->get_metadata(frame_id);
@@ -192,6 +196,10 @@ inline void FramePrefetchService::apply_affinity() {
         CPU_SET(cpu, &cpuset);
 
     pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+
+    // Set name for easier identification in htop/top
+    std::string thread_name = "frame_prefetch";
+    pthread_setname_np(pthread_self(), thread_name.c_str());
 #endif
 }
 

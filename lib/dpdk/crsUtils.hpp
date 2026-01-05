@@ -3,7 +3,7 @@
 
 #include <rte_mbuf.h>
 
-#define CRS_PACKET_COOKIE 0xAB
+#define CRS_PACKET_COOKIE 0xCF
 #define NUM_FREQUENCY_BINS 48
 #define TIME_SHORT_LEN 16
 #define ELEMENT_SHORT_LEN 8

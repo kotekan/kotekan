@@ -17,10 +17,21 @@ type: config
 log_level: debug
 
 buffer_depth: 120
-packets_per_frame: 65536
-packet_size: 6208
-num_crs_boards: 1
-capture_n_frames: buffer_depth  # Total number of frames to capture, 0 = unlimited
+
+# The shape of the frame DPDK produces is:
+# E[time_long, num_local_freq, element_long, time_short, element_short]
+timesamples_per_frame: 8192
+time_long: timesamples_per_frame / time_short
+time_short: 16
+num_elements: 128
+num_local_freq: 384
+element_short: 8
+element_long: num_elements / element_short
+# Note this is about 384MB per frame (192 huge pages)
+dpdk_output_frame_size: time_long * num_local_freq * element_long * time_short * element_short
+
+num_crs_boards: 16
+capture_n_frames: 0  # Total number of frames to capture, 0 = unlimited
 numa_node: 0
 
 # Pool
@@ -32,13 +43,17 @@ main_pool:
 network_input_buffers:
     log_level: info
     num_frames: buffer_depth
-    frame_size: packets_per_frame * packet_size
+    frame_size: dpdk_output_frame_size
     metadata_pool: main_pool
     use_hugepages: true
+    # The workers share an output buffer
     network_input_buffer_0:
         kotekan_buffer: standard
-    network_input_buffer_1:
-        kotekan_buffer: standard
+    #network_input_buffer_1:
+    #    kotekan_buffer: standard
+
+packet_capture_mask:
+
 
 cpu_affinity: [2,3,8,9]
 dpdk:
@@ -46,9 +61,13 @@ dpdk:
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [5,6,7] # [5,6,7]
     main_lcore_cpu: 4
-    num_mbufs: 8192
+    num_mbufs: 4096
     mbuf_cache_size: 256
+    packet_size: 6208
+    payload_size: 6144
+    max_rx_pkt_len: 6208
     burst_size: 32
+    frame_service_cpu_affinity: [4]
     # List of PCIe addresses to block from DPDK use
     pcie_block_list:
         - "0000:37:00.0"
@@ -69,31 +88,18 @@ dpdk:
         - [0]
     # One handler must be given per port
     handlers:
-        - dpdk_handler: crs1BoardDistributor
+        - dpdk_handler: crs16BoardDistributor
           worker_rings: [0,1]
     # Exactly One worker must be given per worker ring
     workers:
-        - dpdk_handler: crs1BoardCaptureWorker
+        - dpdk_handler: crs16BoardCaptureWorker
           worker_ring: 0
           out_buf: network_input_buffer_0
-        - dpdk_handler: crs1BoardCaptureWorker
+        - dpdk_handler: crs16BoardCaptureWorker
           worker_ring: 1
-          out_buf: network_input_buffer_1
+          out_buf: network_input_buffer_0
 
-
-raw_file_writers:
-    ### UPDATE THIS PATH FOR EACH RUN ###
-    base_dir: /data/20251127_0325_packetdump
-    frames_per_file: 1
-    prefix_hostname: false
-    include_metadata: false
-    #exit_after_n_files: capture_n_frames
-    file_ext: raw
-    writer_0:
-        file_name: crs_0
-        #kotekan_stage: rawFileWrite
-        in_buf: network_input_buffer_0
-    writer_1:
-        file_name: crs_1
-        #kotekan_stage: rawFileWrite
-        in_buf: network_input_buffer_1
+hex_dump:
+    kotekan_stage: hexDump
+    in_buf: network_input_buffer_0
+    len: 128
