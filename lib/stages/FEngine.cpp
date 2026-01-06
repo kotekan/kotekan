@@ -596,7 +596,7 @@ void FEngine::main_thread() {
                     dish_positions_metadata->stride[d + 1] * dish_positions_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        dish_positions_metadata->check_frame_desc(dish_positions_buffer->get_frame_desc());
+        dish_positions_metadata->check_frame_desc(dish_positions_buffer->get_ndarray_frame_desc());
 
         dish_positions_metadata->ndishes = num_dishes;
         dish_positions_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
@@ -660,7 +660,8 @@ void FEngine::main_thread() {
                     scatter_indices_metadata->stride[d + 1] * scatter_indices_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        scatter_indices_metadata->check_frame_desc(scatter_indices_buffer->get_frame_desc());
+        scatter_indices_metadata->check_frame_desc(
+            scatter_indices_buffer->get_ndarray_frame_desc());
 
         scatter_indices_metadata->ndishes = num_dishes;
         scatter_indices_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
@@ -718,7 +719,7 @@ void FEngine::main_thread() {
                     bf_mask_metadata->stride[d + 1] * bf_mask_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        bf_mask_metadata->check_frame_desc(bf_mask_buffer->get_frame_desc());
+        bf_mask_metadata->check_frame_desc(bf_mask_buffer->get_ndarray_frame_desc());
 
         // This bf mask is not time-dependent
         bf_mask_metadata->ndishes = num_dishes;
@@ -816,7 +817,8 @@ void FEngine::main_thread() {
                                                         * bb_beam_positions_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        bb_beam_positions_metadata->check_frame_desc(bb_beam_positions_buffer->get_frame_desc());
+        bb_beam_positions_metadata->check_frame_desc(
+            bb_beam_positions_buffer->get_ndarray_frame_desc());
 
         bb_beam_positions_metadata->ndishes = num_dishes;
         bb_beam_positions_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
@@ -900,7 +902,7 @@ void FEngine::main_thread() {
                 A_metadata->stride[d] = A_metadata->stride[d + 1] * A_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        A_metadata->check_frame_desc(A_buffer->get_frame_desc());
+        A_metadata->check_frame_desc(A_buffer->get_ndarray_frame_desc());
 
         std::vector<int> coarse_freq(num_frequencies);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
@@ -966,7 +968,7 @@ void FEngine::main_thread() {
                 s_metadata->stride[d] = s_metadata->stride[d + 1] * s_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        s_metadata->check_frame_desc(s_buffer->get_frame_desc());
+        s_metadata->check_frame_desc(s_buffer->get_ndarray_frame_desc());
 
         std::vector<int> coarse_freq(num_frequencies);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
@@ -1039,7 +1041,7 @@ void FEngine::main_thread() {
             G_metadata->stride[0] = 1;
             // frame_desc set in constructor
             /* test that things are consistent */
-            G_metadata->check_frame_desc(G_buffer->get_frame_desc());
+            G_metadata->check_frame_desc(G_buffer->get_ndarray_frame_desc());
 
             std::vector<int> coarse_freq(U * num_local_channels);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
@@ -1152,7 +1154,7 @@ void FEngine::main_thread() {
                     W1_metadata->stride[d] = W1_metadata->stride[d + 1] * W1_metadata->dim[d + 1];
             // frame_desc set in constructor
             /* test that things are consistent */
-            W1_metadata->check_frame_desc(W1_buffers[Ufactor]->get_frame_desc());
+            W1_metadata->check_frame_desc(W1_buffers[Ufactor]->get_ndarray_frame_desc());
 
             std::vector<int> coarse_freq(U * num_local_channels);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
@@ -1337,7 +1339,7 @@ void FEngine::main_thread() {
                 W2_metadata->stride[d] = W2_metadata->stride[d + 1] * W2_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        W2_metadata->check_frame_desc(W2_buffer->get_frame_desc());
+        W2_metadata->check_frame_desc(W2_buffer->get_ndarray_frame_desc());
 
         // TODO: correct this
         // W2_metadata->nfreq = (upchan_all_max_output_channel - upchan_all_min_output_channel)
@@ -1547,7 +1549,7 @@ void FEngine::main_thread() {
                     E_metadata->stride[d] = E_metadata->stride[d + 1] * E_metadata->dim[d + 1];
             // frame_desc set in constructor
             /* test that things are consistent */
-            E_metadata->check_frame_desc(E_buffer->get_frame_desc());
+            E_metadata->check_frame_desc(E_buffer->get_ndarray_frame_desc());
 
             E_metadata->set_sample0_offset(seq_num);
             E_metadata->set_offset_downsampling(1);
@@ -1643,7 +1645,7 @@ void FEngine::main_thread() {
                         pl_mask_metadata->stride[d + 1] * pl_mask_metadata->dim[d + 1];
             // frame_desc set in constructor
             /* test that things are consistent */
-            pl_mask_metadata->check_frame_desc(pl_mask_buffer->get_frame_desc());
+            pl_mask_metadata->check_frame_desc(pl_mask_buffer->get_ndarray_frame_desc());
 
             pl_mask_metadata->set_sample0_offset(seq_num);
             // This pl mask:

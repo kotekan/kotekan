@@ -303,9 +303,6 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     BOOST_REQUIRE(meta);
 
     const size_t num_prod = kotekan::N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
-    // meta->num_elements = num_input;
-    // meta->num_prod = num_prod;
-    // meta->num_ev = num_ev;
     meta->nfreq = nfreq;
     meta->freq_id = f_index;
     meta->fpga_start_tick = 100 + t_index;

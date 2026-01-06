@@ -6,6 +6,7 @@
 #include "N2Layout.hpp"
 #include "N2Util.hpp" // for N2::prod_ctype, N2::cfloat
 
+#include <algorithm>
 #include <map>
 #include <utility>
 #include <vector>
@@ -18,6 +19,30 @@ namespace kotekan {
  * Use this enum to refer to the fields.
  **/
 enum class N2Field { vis, weight, flags, eval, evec, emethod, erms, gain };
+
+/**
+ * @brief Describes the byte range of a field within an N2 frame.
+ **/
+struct n2field_member_t {
+    size_t begin;
+    size_t end;
+    size_t size() const {
+        return end - begin;
+    }
+};
+
+/**
+ * @brief The complete layout of an N2 frame, including field positions and total size.
+ **/
+struct n2frame_layout_t {
+    std::map<N2Field, n2field_member_t> fields;
+    size_t total_size() const {
+        size_t max_end = 0;
+        for (const auto& [_, member] : fields)
+            max_end = std::max(max_end, member.end);
+        return max_end;
+    }
+};
 
 /**
  * @brief Eigenvalue and Eigenvector calculation method
@@ -73,10 +98,10 @@ public:
     /**
      * @brief The layout of data/fields within the frame.
      *
-     * @return A map of the field to the { start, end } of the field in the frame.
+     * @return The frame layout including field positions and total size.
      **/
-    static std::map<N2Field, std::pair<size_t, size_t>>
-    get_frame_layout(uint32_t num_elements_in, uint32_t num_ev_in, size_t num_prod_in);
+    static n2frame_layout_t get_frame_layout(uint32_t num_elements_in, uint32_t num_ev_in,
+                                             size_t num_prod_in);
 
     /**
      * @brief Fill the product maps vector for each product in the visibility matrix.
@@ -97,9 +122,7 @@ public:
      */
     void fill_prod_maps(std::vector<N2::prod_ctype>& prods) const;
 
-
-    // Static helpers for fill_prod_maps
-
+private:
     /**
      * @brief Fill the product maps vector for each product in the visibility matrix in the
      * FullUpperTri layout.
@@ -107,10 +130,9 @@ public:
      * See N2FrameDesc::fill_prod_maps() for full details.
      *
      * @param   prods           Vector to fill.
-     * @param   num_elements_in Number of elements (dishes x polarizations) in the pipeline
      */
-    static void fill_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods,
-                                            uint32_t num_elements_in);
+    void fill_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods) const;
+
     /**
      * @brief Fill the product maps vector for each product in the visibility matrix in the
      * Autocorrelations-only (diagonal) layout.
@@ -118,16 +140,13 @@ public:
      * See N2FrameDesc::fill_prod_maps() for full details.
      *
      * @param   prods           Vector to fill.
-     * @param   num_elements_in Number of elements (dishes x polarizations) in the pipeline
      */
-    static void fill_prod_maps_Autocorrelations(std::vector<N2::prod_ctype>& prods,
-                                                uint32_t num_elements_in);
+    void fill_prod_maps_Autocorrelations(std::vector<N2::prod_ctype>& prods) const;
 
-private:
-    uint32_t num_elements;
-    uint32_t num_ev;
-    uint32_t num_products;
-    N2Layout n2_layout;
+    const uint32_t num_elements;
+    const uint32_t num_ev;
+    const uint32_t num_products;
+    const N2Layout n2_layout;
 };
 
 } // namespace kotekan

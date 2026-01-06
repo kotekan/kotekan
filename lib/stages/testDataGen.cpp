@@ -316,7 +316,7 @@ void testDataGen::main_thread() {
 
         buf->allocate_ndarray_frame_desc(chordmeta->type, _name, extents, dimnames);
         /* test that things are consistent */
-        chordmeta->check_frame_desc(buf->get_frame_desc());
+        chordmeta->check_frame_desc(buf->get_ndarray_frame_desc());
 
         if (type == "onehot") {
             int val = value;

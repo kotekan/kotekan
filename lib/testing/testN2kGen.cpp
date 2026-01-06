@@ -330,8 +330,8 @@ void testN2kGen::main_thread() {
         set_counts_metadata(count_meta, seq_num);
 
         // check frame descriptors match metadata
-        corr_meta->check_frame_desc(corr_buf->get_frame_desc());
-        count_meta->check_frame_desc(count_buf->get_frame_desc());
+        corr_meta->check_frame_desc(corr_buf->get_ndarray_frame_desc());
+        count_meta->check_frame_desc(count_buf->get_ndarray_frame_desc());
 
         // block, freq, and time strides for access into the
         // correlation and counts buffers

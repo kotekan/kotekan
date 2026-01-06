@@ -208,7 +208,7 @@ public:
 
                     buffer->allocate_ndarray_frame_desc(value_type, name, dimensions, dimnames);
                     /* test that things are consistent */
-                    meta->check_frame_desc(buffer->get_frame_desc());
+                    meta->check_frame_desc(buffer->get_ndarray_frame_desc());
                 }
 
                 // Read buffer

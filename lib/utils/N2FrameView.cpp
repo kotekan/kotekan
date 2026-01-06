@@ -43,20 +43,20 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     n_valid_fpga_ticks(_metadata->n_valid_fpga_ticks),
     n_rfi_fpga_ticks(_metadata->n_rfi_fpga_ticks),
 
-    vis(bind_span<N2::cfloat>(_frame, frame_layout[N2Field::vis])),
-    weight(bind_span<float>(_frame, frame_layout[N2Field::weight])),
-    flags(bind_span<float>(_frame, frame_layout[N2Field::flags])),
-    eval(bind_span<float>(_frame, frame_layout[N2Field::eval])),
-    evec(bind_span<N2::cfloat>(_frame, frame_layout[N2Field::evec])),
-    emethod(bind_scalar<N2EigenMethod>(_frame, frame_layout[N2Field::emethod])),
-    erms(bind_scalar<float>(_frame, frame_layout[N2Field::erms])),
-    gain(bind_span<N2::cfloat>(_frame, frame_layout[N2Field::gain])) {
+    vis(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::vis])),
+    weight(bind_span<float>(_frame, frame_layout.fields[N2Field::weight])),
+    flags(bind_span<float>(_frame, frame_layout.fields[N2Field::flags])),
+    eval(bind_span<float>(_frame, frame_layout.fields[N2Field::eval])),
+    evec(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::evec])),
+    emethod(bind_scalar<N2EigenMethod>(_frame, frame_layout.fields[N2Field::emethod])),
+    erms(bind_scalar<float>(_frame, frame_layout.fields[N2Field::erms])),
+    gain(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::gain])) {
 
     assert(data_size() == buf->frame_size);
 }
 
 size_t N2FrameView::data_size() const {
-    return kotekan::N2FrameDesc::calculate_frame_size(num_elements, num_ev, num_prod);
+    return frame_layout.total_size();
 }
 
 void N2FrameView::zero_frame() {

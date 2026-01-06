@@ -7,10 +7,7 @@
 #include <string.h> // for size_t, memset
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, N2Metadata);
-N2Metadata::N2Metadata() :
-    N2MetadataFormat{0, 0, 0.0, 0, eop_null, eop_null, 0, 0, 0, 0, 0, 0, 0, 0, 0} {
-    ;
-}
+N2Metadata::N2Metadata() = default;
 
 void N2Metadata::deepCopy(std::shared_ptr<const metadataObject> other) {
     std::shared_ptr<const N2Metadata> o = std::dynamic_pointer_cast<const N2Metadata>(other);
@@ -52,7 +49,6 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
 
 size_t N2Metadata::serialize(char* bytes) {
     N2MetadataFormat* fmt = reinterpret_cast<N2MetadataFormat*>(bytes);
-    memset(fmt, 0, sizeof(N2MetadataFormat));
 
     fmt->fpga_start_tick = fpga_start_tick;
     fmt->frame_start_time_ns = frame_start_time_ns;

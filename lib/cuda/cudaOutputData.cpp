@@ -144,7 +144,7 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
                     output_buffer->allocate_ndarray_frame_desc(chord->type, chord->get_name(),
                                                                dimensions, dimnames);
                     /* test that things are consistent */
-                    chord->check_frame_desc(output_buffer->get_frame_desc());
+                    chord->check_frame_desc(output_buffer->get_ndarray_frame_desc());
                 }
             }
         }

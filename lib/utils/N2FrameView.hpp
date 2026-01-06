@@ -57,7 +57,7 @@ public:
     /// Total number of frequencies in the pipeline
     const uint32_t& nfreq;
 
-    std::map<N2Field, std::pair<size_t, size_t>> frame_layout;
+    kotekan::n2frame_layout_t frame_layout;
 
     /// ID of the frequency associated with this frame
     const uint32_t& freq_id;

@@ -288,7 +288,7 @@ public:
 protected:
     typedef std::lock_guard<std::recursive_mutex> buffer_lock;
     /// The main lock for frame state management
-    std::recursive_mutex mutex;
+    mutable std::recursive_mutex mutex;
 
     /// The condition variable for calls to @c wait_for_full_buffer
     std::condition_variable_any full_cond;
@@ -607,9 +607,11 @@ public:
 
     /**
      * @brief provides read access to the array description
-     * @return The NDArray data structure describing the array
+     * @return The NDArray data structure describing the array. If type of frames_desc is
+     * not GenericNDArray, this will return nullptr.
      */
-    std::shared_ptr<const kotekan::GenericNDArray> get_frame_desc() {
+    std::shared_ptr<const kotekan::GenericNDArray> get_ndarray_frame_desc() {
+        buffer_lock lock(mutex);
         return std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
     }
 
@@ -618,6 +620,7 @@ public:
      * @return The data structure describing the frame
      */
     std::shared_ptr<const kotekan::FrameDesc> get_frame_description() {
+        buffer_lock lock(mutex);
         return frames_desc;
     }
 
@@ -627,8 +630,8 @@ public:
     void set_frame_desc(std::shared_ptr<kotekan::FrameDesc> new_desc) {
         buffer_lock lock(mutex);
 
-        if (new_desc->get_byte_size() > aligned_frame_size) {
-            FATAL_ERROR("Frame description size ({:d}) exceeds buffer capacity ({:d})",
+        if (new_desc->get_byte_size() != aligned_frame_size) {
+            FATAL_ERROR("Frame description size ({:d}) is unexpected, buffer provides ({:d})",
                         new_desc->get_byte_size(), aligned_frame_size);
         }
 

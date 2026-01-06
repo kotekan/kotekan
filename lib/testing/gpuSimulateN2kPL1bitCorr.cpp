@@ -253,7 +253,7 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         meta_out->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */
-        meta_out->check_frame_desc(output_buf->get_frame_desc());
+        meta_out->check_frame_desc(output_buf->get_ndarray_frame_desc());
 
         //
         // In GPU:

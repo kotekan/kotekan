@@ -54,8 +54,8 @@ size_t N2FrameDesc::get_num_prod(uint32_t num_elements_in, N2Layout n2_layout_in
     return num_prod_in;
 }
 
-std::map<N2Field, std::pair<size_t, size_t>>
-N2FrameDesc::get_frame_layout(uint32_t num_elements_in, uint32_t num_ev_in, size_t num_prod_in) {
+n2frame_layout_t N2FrameDesc::get_frame_layout(uint32_t num_elements_in, uint32_t num_ev_in,
+                                               size_t num_prod_in) {
     std::vector<std::pair<N2Field, size_t>> field_sizes;
     field_sizes.push_back({N2Field::vis, sizeof(N2::cfloat) * num_prod_in});
     field_sizes.push_back({N2Field::weight, sizeof(float) * num_prod_in});
@@ -66,19 +66,18 @@ N2FrameDesc::get_frame_layout(uint32_t num_elements_in, uint32_t num_ev_in, size
     field_sizes.push_back({N2Field::erms, sizeof(float) * 1});
     field_sizes.push_back({N2Field::gain, sizeof(N2::cfloat) * num_elements_in});
 
-    std::map<N2Field, std::pair<size_t, size_t>> frame_layout;
+    n2frame_layout_t layout;
     size_t offset = 0;
     for (const auto& field : field_sizes) {
-        frame_layout[field.first] = std::make_pair(offset, offset + field.second);
+        layout.fields[field.first] = {offset, offset + field.second};
         offset += field.second;
     }
-    return frame_layout;
+    return layout;
 }
 
 size_t N2FrameDesc::calculate_frame_size(uint32_t num_elements_in, uint32_t num_ev_in,
                                          size_t num_prod_in) {
-    auto layout = get_frame_layout(num_elements_in, num_ev_in, num_prod_in);
-    return layout[N2Field::gain].second;
+    return get_frame_layout(num_elements_in, num_ev_in, num_prod_in).total_size();
 }
 
 size_t N2FrameDesc::calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
@@ -89,24 +88,21 @@ size_t N2FrameDesc::calculate_frame_size(kotekan::Config& config, const std::str
     return calculate_frame_size(num_elements_in, num_ev_in, num_prod_in);
 }
 
-void N2FrameDesc::fill_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods,
-                                              uint32_t num_elements_in) {
-    size_t num_prod_in = (size_t(num_elements_in) * (num_elements_in + 1)) / 2;
-    prods.resize(num_prod_in);
+void N2FrameDesc::fill_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods) const {
+    size_t num_prod = (size_t(num_elements) * (num_elements + 1)) / 2;
+    prods.resize(num_prod);
     size_t p = 0;
-    for (uint16_t i = 0; i < num_elements_in; i++) {
-        for (uint16_t j = i; j < num_elements_in; j++) {
+    for (uint16_t i = 0; i < num_elements; i++) {
+        for (uint16_t j = i; j < num_elements; j++) {
             prods[p] = {.input_a = i, .input_b = j};
             p++;
         }
     }
 }
 
-void N2FrameDesc::fill_prod_maps_Autocorrelations(std::vector<N2::prod_ctype>& prods,
-                                                  uint32_t num_elements_in) {
-    size_t num_prod_in = num_elements_in;
-    prods.resize(num_prod_in);
-    for (uint16_t i = 0; i < num_elements_in; i++) {
+void N2FrameDesc::fill_prod_maps_Autocorrelations(std::vector<N2::prod_ctype>& prods) const {
+    prods.resize(num_elements);
+    for (uint16_t i = 0; i < num_elements; i++) {
         prods[i] = {.input_a = i, .input_b = i};
     }
 }
@@ -114,10 +110,10 @@ void N2FrameDesc::fill_prod_maps_Autocorrelations(std::vector<N2::prod_ctype>& p
 void N2FrameDesc::fill_prod_maps(std::vector<N2::prod_ctype>& prods) const {
     switch (n2_layout) {
         case N2Layout::FullUpperTri:
-            fill_prod_maps_FullUpperTri(prods, num_elements);
+            fill_prod_maps_FullUpperTri(prods);
             break;
         case N2Layout::Autocorrelations:
-            fill_prod_maps_Autocorrelations(prods, num_elements);
+            fill_prod_maps_Autocorrelations(prods);
             break;
         default:
             std::string msg = fmt::format(
