@@ -198,59 +198,29 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
 
     const std::shared_ptr<const chordMetadata> pl_meta = pl_expanded_mask.get_metadata();
     const std::shared_ptr<const chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
-    const std::shared_ptr<chordMetadata> out_meta = n2k_counts.get_metadata();
+    const std::shared_ptr<chordMetadata> n2k_counts_meta = n2k_counts.get_metadata();
 
-    // The input ringbuffers do not contain time-dependent data,
-    // so we must reconstruct it here. (fpga_seq_num and sample0_offset)
-    // TODO: do this automatically in `NDArrayRingBuffer`
+    // Ensure consistency
+    assert(pl_meta->get_fpga_seq_num()
+               + pl_expanded_mask.get_read_valid().begin() * pl_meta->get_time_downsampling_fpga()
+           == rfi_meta->get_fpga_seq_num()
+                  + rfi_RFImask.get_read_valid().begin() * rfi_meta->get_time_downsampling_fpga());
 
-    // The RFI mask has a fast time index of size 1024, so has an apparent
-    // time downsampling of 1024. To get the needed outgoing fpga_seq_num,
-    // we need to undo that.
-    out_meta->set_fpga_seq_num(1024 * rfi_RFImask.get_read_valid().begin());
-    out_meta->set_sample0_offset(
-        div_noremainder(out_meta->get_fpga_seq_num(), n2k_sub_integration_ntime));
-
-    const std::vector<int> in_time_downsampling_fpga = pl_meta->get_time_downsampling_fpga();
-    const std::vector<int64_t> in_half_fpga_sample0 = pl_meta->get_half_fpga_sample0();
-    assert(in_time_downsampling_fpga.size() == static_cast<size_t>(out_meta->get_nfreq()));
-
-    std::vector<int> out_time_downsampling_fpga(out_meta->get_nfreq());
-    std::vector<int64_t> out_half_fpga_sample0(out_meta->get_nfreq());
+    // The input ringbuffers do not contain time-dependent metadata,
+    // so we must reconstruct it here. (fpga_seq_num)
+    n2k_counts_meta->set_fpga_seq_num(rfi_meta->get_fpga_seq_num()
+                                      + rfi_RFImask.get_read_valid().begin()
+                                            * rfi_meta->get_time_downsampling_fpga());
 
     // The PL mask time_downsampling_factor includes a factor of 64 from
     // the fast time axis which is eaten up by the correlator.
-    for (int f = 0; f < out_meta->get_nfreq(); f++) {
-        out_time_downsampling_fpga[f] =
-            n2k_sub_integration_ntime * div_noremainder(in_time_downsampling_fpga[f], 64);
-        out_half_fpga_sample0[f] =
-            in_half_fpga_sample0[f] + out_time_downsampling_fpga[f] - in_time_downsampling_fpga[f];
-    }
-    out_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
-    out_meta->set_half_fpga_sample0(out_half_fpga_sample0);
+    n2k_counts_meta->set_time_downsampling_fpga(
+        n2k_sub_integration_ntime * div_noremainder(pl_meta->get_time_downsampling_fpga(), 64));
 
     // Set poison for debug checks.
     n2k_counts.set_to_poison(0xff);
 
     // The ringbuffering here is fishy. We should fix the kernel instead.
-
-    // Ensure consistency
-    const std::vector<int> pl_time_downsampling_fpga = pl_meta->get_time_downsampling_fpga();
-    const std::vector<int> rfi_time_downsampling_fpga = rfi_meta->get_time_downsampling_fpga();
-    assert(pl_meta->get_nfreq() == rfi_meta->get_nfreq());
-    if (!(pl_expanded_mask.get_read_valid().begin() * pl_time_downsampling_fpga[0]
-          == rfi_RFImask.get_read_valid().begin() * rfi_time_downsampling_fpga[0])) {
-        DEBUG("pl_expanded_mask.get_read_valid().begin()={}",
-              pl_expanded_mask.get_read_valid().begin());
-        DEBUG("pl_meta->time_downsampling_fpga[0]={}", pl_time_downsampling_fpga[0]);
-        DEBUG("rfi_RFImask.get_read_valid().begin()={}", rfi_RFImask.get_read_valid().begin());
-        DEBUG("rfi_meta->time_downsampling_fpga[0]={}", rfi_time_downsampling_fpga[0]);
-    }
-    assert(pl_expanded_mask.get_read_valid().begin() * pl_time_downsampling_fpga[0]
-           == rfi_RFImask.get_read_valid().begin() * rfi_time_downsampling_fpga[0]);
-    for (int freq = 0; freq < pl_meta->get_nfreq(); ++freq)
-        assert(pl_expanded_mask.get_read_valid().begin() * pl_time_downsampling_fpga[freq]
-               == rfi_RFImask.get_read_valid().begin() * rfi_time_downsampling_fpga[freq]);
 
     const std::ptrdiff_t pl_time_offset =
         pl_expanded_mask.get_read_valid().begin() % pl_expanded_mask.get_ndarray().extent(0);

@@ -53,6 +53,7 @@ private:
     size_t _ring_buffer_size;
 
     size_t output_cursor;
+    int64_t initial_fpga_seq_num; // fpga_seq_num of first frame, used for consistency checking
 
     // One of these will be set:
     /// GPU side memory name for the frame-based input

@@ -373,6 +373,10 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
     CHECK_META_SCALAR_INT(fpga_seq_num, meta1, meta2, num_errors, first_buf->buffer_name,
                           first_buf_id, second_buf->buffer_name, second_buf_id);
 
+    // int time_downsampling_fpga;
+    CHECK_META_SCALAR_INT(time_downsampling_fpga, meta1, meta2, num_errors, first_buf->buffer_name,
+                          first_buf_id, second_buf->buffer_name, second_buf_id);
+
     // TODO: struct timeval first_packet_recv_time;
     // TODO: struct timespec gps_time;
 
@@ -431,13 +435,9 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
                                  first_buf_id, second_buf->buffer_name, second_buf_id);
 
 
-    // int64_t sample0_offset;
-    CHECK_META_SCALAR_INT(sample0_offset, meta1, meta2, num_errors, first_buf->buffer_name,
-                          first_buf_id, second_buf->buffer_name, second_buf_id);
-
-    // int offset_downsampling;
-    CHECK_META_SCALAR_INT(offset_downsampling, meta1, meta2, num_errors, first_buf->buffer_name,
-                          first_buf_id, second_buf->buffer_name, second_buf_id);
+    // int nfreq;
+    CHECK_META_SCALAR_INT(nfreq, meta1, meta2, num_errors, first_buf->buffer_name, first_buf_id,
+                          second_buf->buffer_name, second_buf_id);
 
     // int coarse_freq[CHORD_META_MAX_FREQ];
     CHECK_META_ARR1_INT(coarse_freq, num_freq, meta1, meta2, num_errors, first_buf->buffer_name,
@@ -445,16 +445,6 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
 
     // int freq_upchan_factor[CHORD_META_MAX_FREQ];
     CHECK_META_ARR1_INT(freq_upchan_factor, num_freq, meta1, meta2, num_errors,
-                        first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
-                        second_buf_id);
-
-    // int64_t half_fpga_sample0[CHORD_META_MAX_FREQ];
-    CHECK_META_ARR1_INT(half_fpga_sample0, num_freq, meta1, meta2, num_errors,
-                        first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
-                        second_buf_id);
-
-    // int time_downsampling_fpga[CHORD_META_MAX_FREQ];
-    CHECK_META_ARR1_INT(time_downsampling_fpga, num_freq, meta1, meta2, num_errors,
                         first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
                         second_buf_id);
 

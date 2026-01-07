@@ -181,23 +181,14 @@ public:
         if (meta->has_fpga_seq_num())
             dataset.createAttribute("fpga_seq_num", meta->get_fpga_seq_num());
 
-        if (meta->has_sample0_offset())
-            dataset.createAttribute("sample0_offset", meta->get_sample0_offset());
-
-        if (meta->has_offset_downsampling())
-            dataset.createAttribute("offset_downsampling", meta->get_offset_downsampling());
+        if (meta->has_time_downsampling_fpga())
+            dataset.createAttribute("time_downsampling_fpga", meta->get_time_downsampling_fpga());
 
         if (meta->has_coarse_freq())
             dataset.createAttribute("coarse_freq", meta->get_coarse_freq());
 
         if (meta->has_freq_upchan_factor())
             dataset.createAttribute("freq_upchan_factor", meta->get_freq_upchan_factor());
-
-        if (meta->has_half_fpga_sample0())
-            dataset.createAttribute("half_fpga_sample0", meta->get_half_fpga_sample0());
-
-        if (meta->has_time_downsampling_fpga())
-            dataset.createAttribute("time_downsampling_fpga", meta->get_time_downsampling_fpga());
 
         if (meta->ndishes >= 0) {
             dataset.createAttribute("ndishes", meta->ndishes);

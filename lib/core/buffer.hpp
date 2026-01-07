@@ -545,23 +545,26 @@ public:
             frames_desc =
                 std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
         else {
-#if 0
             auto nd_desc = std::dynamic_pointer_cast<kotekan::GenericNDArray>(frames_desc);
             if (!nd_desc) {
-                 ERROR("Frame desc mismatch: existing desc is not an NDArray");
-                 return;
+                ERROR("Frame desc mismatch: existing desc is not an NDArray");
+                return;
             }
-            if(D != nd_desc->get_rank())
+            if (D != nd_desc->get_rank())
                 ERROR("Rank mismatch: {:d} != {:d}", D, nd_desc->get_rank());
-            if(kotekan::GetDataType_v<T> != nd_desc->get_value_datatype())
-                ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(kotekan::GetDataType_v<T>), kotekan::type_to_string(nd_desc->get_value_datatype()));
-            if(quantity_name != nd_desc->get_quantity_name())
-                ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name, nd_desc->get_quantity_name());
-            if(!std::equal(extents.begin(), extents.end(), nd_desc->get_extents().begin()))
-                ERROR("Extents do not match: [{:s}] != [{:s}]", fmt::join(extents, ", "), fmt::join(nd_desc->get_extents(), ", "));
-            if(!std::equal(dimnames.begin(), dimnames.end(), nd_desc->get_dimnames().begin()))
-                ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "), fmt::join(nd_desc->get_dimnames(), ", "));
-#endif
+            if (kotekan::GetDataType_v<T> != nd_desc->get_value_datatype())
+                ERROR("Type mismatch: {:s} != {:s}",
+                      kotekan::type_to_string(kotekan::GetDataType_v<T>),
+                      kotekan::type_to_string(nd_desc->get_value_datatype()));
+            if (quantity_name != nd_desc->get_quantity_name())
+                ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
+                      nd_desc->get_quantity_name());
+            if (!std::equal(extents.begin(), extents.end(), nd_desc->get_extents().begin()))
+                ERROR("Extents do not match: [{:s}] != [{:s}]", fmt::join(extents, ", "),
+                      fmt::join(nd_desc->get_extents(), ", "));
+            if (!std::equal(dimnames.begin(), dimnames.end(), nd_desc->get_dimnames().begin()))
+                ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "),
+                      fmt::join(nd_desc->get_dimnames(), ", "));
         }
     }
 
