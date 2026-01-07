@@ -40,7 +40,6 @@ class N2Metadata(ctypes.Structure):
     """Wrap an N2Metadata struct."""
 
     _fields_ = [
-        ("nfreq", ctypes.c_uint32),
         ("freq_id", ctypes.c_uint32),
         ("freq_MHz", ctypes.c_double),
         ("abs_time_idx", ctypes.c_uint64),

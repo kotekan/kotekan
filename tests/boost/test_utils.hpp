@@ -295,15 +295,14 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
 
 // Fill one synthetic N2 frame with deterministic data for validators
 [[maybe_unused]] static void fill_n2_frame(Buffer* buf, int frame_id, size_t num_input,
-                                           size_t num_ev, size_t nfreq, size_t f_index,
-                                           size_t t_index, uint64_t frame_start_time_ns,
+                                           size_t num_ev, size_t f_index, size_t t_index,
+                                           uint64_t frame_start_time_ns,
                                            uint64_t frame_length_ticks) {
     buf->allocate_new_metadata_object(frame_id);
     auto meta = get_N2_metadata(buf, frame_id);
     BOOST_REQUIRE(meta);
 
     const size_t num_prod = kotekan::N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
-    meta->nfreq = nfreq;
     meta->freq_id = f_index;
     meta->fpga_start_tick = 100 + t_index;
     meta->frame_start_time_ns = frame_start_time_ns;
@@ -343,11 +342,11 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
 
 // Helper to fill an N2 frame and set abs_time_idx in metadata
 [[maybe_unused]] static void fill_n2_frame_with_abs(Buffer* buf, int frame_id, size_t num_input,
-                                                    size_t num_ev, size_t nfreq, size_t f_index,
-                                                    size_t t_index, uint64_t frame_start_time_ns,
+                                                    size_t num_ev, size_t f_index, size_t t_index,
+                                                    uint64_t frame_start_time_ns,
                                                     uint64_t frame_length_ticks,
                                                     uint64_t abs_time_idx) {
-    fill_n2_frame(buf, frame_id, num_input, num_ev, nfreq, f_index, t_index, frame_start_time_ns,
+    fill_n2_frame(buf, frame_id, num_input, num_ev, f_index, t_index, frame_start_time_ns,
                   frame_length_ticks);
     auto meta = get_N2_metadata(buf, frame_id);
     BOOST_REQUIRE(meta);

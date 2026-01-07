@@ -42,8 +42,6 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
     bin_start_LAST = fmt->bin_start_LAST;
     bin_end_LAST = fmt->bin_end_LAST;
 
-    nfreq = fmt->nfreq;
-
     return sizeof(N2MetadataFormat);
 }
 
@@ -67,8 +65,6 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->bin_start_LAST = bin_start_LAST;
     fmt->bin_end_LAST = bin_end_LAST;
 
-    fmt->nfreq = nfreq;
-
     return sizeof(N2MetadataFormat);
 }
 
@@ -86,9 +82,6 @@ void N2Metadata::check_frame_desc(
         return;
     }
     // Validate internal consistency
-    if (nfreq > 0 && freq_id >= nfreq) {
-        ERROR_NON_OO("freq_id ({:d}) is out of range for nfreq ({:d})", freq_id, nfreq);
-    }
     if (n_valid_fpga_ticks > frame_length_fpga_ticks) {
         ERROR_NON_OO("n_valid_fpga_ticks ({:d}) exceeds frame_length_fpga_ticks ({:d})",
                      n_valid_fpga_ticks, frame_length_fpga_ticks);
@@ -119,8 +112,6 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
     j.emplace("bin_end_ERA_deg", m.bin_end_ERA_deg);
     j.emplace("bin_start_LAST", m.bin_start_LAST);
     j.emplace("bin_end_LAST", m.bin_end_LAST);
-
-    j.emplace("nfreq", m.nfreq);
 }
 
 void from_json(const nlohmann::json& j, N2Metadata& m) {
@@ -141,6 +132,4 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.bin_end_ERA_deg = j.at("bin_end_ERA_deg");
     m.bin_start_LAST = j.at("bin_start_LAST");
     m.bin_end_LAST = j.at("bin_end_LAST");
-
-    m.nfreq = j.at("nfreq");
 }

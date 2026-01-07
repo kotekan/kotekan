@@ -24,9 +24,6 @@ using kotekan::Config;
 // Struct containing metadata fields for an N2 frame
 struct N2MetadataFormat {
 
-    /// Total number of frequencies in pipeline
-    uint32_t nfreq = 0;
-
     /// ID of the frequency bin
     uint32_t freq_id = 0; // this is an int in chordMetadata, maybe change later
     /// Physical frequency in Hz
@@ -82,7 +79,7 @@ public:
     nlohmann::json to_json() override;
 
     /// Validates that the frame descriptor is an N2FrameDesc and checks internal metadata
-    /// consistency (freq_id < nfreq, valid/RFI ticks <= frame length). Issues a non-fatal error
+    /// consistency (Currently, just valid/RFI ticks <= frame length). Issues a non-fatal error
     /// for any inconsistencies.
     void check_frame_desc(const std::shared_ptr<const kotekan::FrameDesc>& frame_desc) const;
 };

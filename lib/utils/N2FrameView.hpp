@@ -54,8 +54,6 @@ public:
     const uint32_t num_prod;
     /// Number of eigenvectors and values calculated
     const uint32_t num_ev;
-    /// Total number of frequencies in the pipeline
-    const uint32_t& nfreq;
 
     kotekan::n2frame_layout_t frame_layout;
 

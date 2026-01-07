@@ -287,7 +287,6 @@ public:
         file.createAttribute("num_elements", frame.num_elements);
         file.createAttribute("num_prod", frame.num_prod);
         file.createAttribute("num_ev", frame.num_ev);
-        file.createAttribute("nfreq", frame.nfreq);
         file.createAttribute("freq_id", frame.freq_id);
         file.createAttribute("freq_MHz", frame.freq_MHz);
         file.createAttribute("abs_time_idx", frame.abs_time_idx);

@@ -28,7 +28,7 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 
     // Set the const refs to the structural metadata
     n2_layout(_desc->get_n2_layout()), num_elements(_desc->get_num_elements()),
-    num_prod(_desc->get_num_products()), num_ev(_desc->get_num_ev()), nfreq(_metadata->nfreq),
+    num_prod(_desc->get_num_products()), num_ev(_desc->get_num_ev()),
     frame_layout(kotekan::N2FrameDesc::get_frame_layout(num_elements, num_ev, num_prod)),
 
     // Non-structural data
@@ -75,8 +75,6 @@ N2FrameView N2FrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* b
 
 void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Field>& skip_members) {
     auto copy_member = [&](N2Field member) { return (skip_members.count(member) == 0); };
-
-    assert(nfreq == frame_to_copy_from.nfreq);
 
     if (copy_member(N2Field::vis) || copy_member(N2Field::weight) || copy_member(N2Field::flags)
         || copy_member(N2Field::evec) || copy_member(N2Field::gain)) {

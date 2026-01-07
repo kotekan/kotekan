@@ -211,8 +211,6 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "num_elements", fv.num_elements);
         _check_create_attribute(*file, "num_prod", fv.num_prod);
         _check_create_attribute(*file, "num_ev", fv.num_ev);
-        _check_create_attribute(*file, "num_freq",
-                                fv.nfreq); // telescope frequencies (not file freqs)
         _check_create_attribute(*file, "n2_layout", N2Layout_to_string(fv.n2_layout));
 
         // Telescope info
@@ -229,6 +227,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "EOP_table_len", telescope.get_EOP_table_len());
         _check_create_attribute(*file, "num_file_f",
                                 telescope.num_science_freqs()); // "science-case" frequencies only
+        _check_create_attribute(*file, "num_telescope_f", telescope.num_freq());
 
         // Store EOP table ERA_deg and t_ut1 only
         {

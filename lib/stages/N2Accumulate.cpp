@@ -437,7 +437,6 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
 
         meta->abs_time_idx = _accum_fpga_start_tick
                              / (_vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation);
-        meta->nfreq = _num_freq_per_n2k_frame;
         meta->freq_id = chord_frame_metadata->get_coarse_freq()[f];
         meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
 

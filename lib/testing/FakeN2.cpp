@@ -161,7 +161,6 @@ void FakeN2::main_thread() {
             std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, output_frame_id);
             assert(meta);
 
-            meta->nfreq = freq.size();
             // Set the frequency index
             meta->freq_id = f;
             // Set the physical frequency
@@ -198,9 +197,8 @@ void FakeN2::main_thread() {
             meta->bin_end_LAST = -1;
 
             DEBUG("Creating N2FrameView.");
-            DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}", num_elements,
-                  N2FrameDesc::get_num_prod(num_elements, n2_layout), num_eigenvectors,
-                  meta->nfreq);
+            DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}", num_elements,
+                  N2FrameDesc::get_num_prod(num_elements, n2_layout), num_eigenvectors);
             N2FrameView output_frame(out_buf, output_frame_id);
             DEBUG("Created.");
 

@@ -53,11 +53,11 @@ static freq_id_t get_abs_freq_id(size_t f_index) {
 }
 
 static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_input, size_t num_ev,
-                                        size_t nfreq, size_t f_index, size_t t_index,
+                                        size_t f_index, size_t t_index,
                                         uint64_t frame_start_time_ns, uint64_t frame_length_ticks,
                                         uint64_t abs_time_idx) {
-    fill_n2_frame_with_abs(buf, frame_id, num_input, num_ev, nfreq, f_index, t_index,
-                           frame_start_time_ns, frame_length_ticks, abs_time_idx);
+    fill_n2_frame_with_abs(buf, frame_id, num_input, num_ev, f_index, t_index, frame_start_time_ns,
+                           frame_length_ticks, abs_time_idx);
     auto meta = get_N2_metadata(buf, frame_id);
     BOOST_REQUIRE(meta);
     meta->freq_id = get_abs_freq_id(f_index);
@@ -245,7 +245,6 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     const size_t num_input = 3;
     const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
     const size_t num_ev = 2;
-    const size_t num_freq = 3;
     const size_t num_file_t = 2;
 
     const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
@@ -257,7 +256,6 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     buf.allocate_new_metadata_object(0);
     auto meta = get_N2_metadata(&buf, 0);
     BOOST_REQUIRE(meta);
-    meta->nfreq = num_freq;
     const size_t f_index = 1;
     meta->freq_id = get_abs_freq_id(f_index);
     meta->fpga_start_tick = 111;
@@ -323,7 +321,6 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     const size_t num_input = 2;
     const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
     const size_t num_ev = 1;
-    const size_t num_freq = 2;
     const size_t num_file_t = 2;
 
     const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
@@ -342,7 +339,6 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     const size_t t = 1;
 
     // meta1
-    meta1->nfreq = num_freq;
     meta1->freq_id = get_abs_freq_id(f_index);
     meta1->fpga_start_tick = 1000;
     meta1->frame_start_time_ns = 2000;
@@ -476,7 +472,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, /*t*/ 1,
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, /*t*/ 1,
                                     base_time_ns + 1 * frame_len_ns, frame_len_ticks,
                                     abs_base_idx + 1);
         buf.mark_frame_full("test-producer", fid);
@@ -485,7 +481,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, /*t*/ 0, base_time_ns,
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, /*t*/ 0, base_time_ns,
                                     frame_len_ticks, abs_base_idx + 0);
         buf.mark_frame_full("test-producer", fid);
         fid++;
@@ -568,7 +564,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, /*t*/ 0, base_time_ns,
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, /*t*/ 0, base_time_ns,
                                     frame_len_ticks, 0);
         buf.mark_frame_full("test-producer", fid);
         fid++;
@@ -662,7 +658,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
         for (size_t f = 0; f < nfreq; ++f) {
             uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
             BOOST_REQUIRE(frame != nullptr);
-            fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, t,
+            fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, t,
                                         baseA + t * frame_len_ns, frame_len_ticks, abs_base_a + t);
             buf.mark_frame_full("test-producer", fid);
             fid++;
@@ -672,7 +668,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
         for (size_t f = 0; f < nfreq; ++f) {
             uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
             BOOST_REQUIRE(frame != nullptr);
-            fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, t,
+            fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, t,
                                         baseB + t * frame_len_ns, frame_len_ticks, abs_base_b + t);
             buf.mark_frame_full("test-producer", fid);
             fid++;
@@ -747,8 +743,8 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, baseA,
-                                    frame_len_ticks, abs_base_a);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, baseA, frame_len_ticks,
+                                    abs_base_a);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -756,8 +752,8 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, baseB,
-                                    frame_len_ticks, abs_base_b);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, baseB, frame_len_ticks,
+                                    abs_base_b);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -828,8 +824,8 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, baseA,
-                                    frame_len_ticks, abs_base_a);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, baseA, frame_len_ticks,
+                                    abs_base_a);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -839,8 +835,8 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, baseB,
-                                    frame_len_ticks, abs_base_b);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, baseB, frame_len_ticks,
+                                    abs_base_b);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -919,7 +915,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, base_time_ns,
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, base_time_ns,
                                     frame_len_ticks, abs_base_a);
         buf.mark_frame_full("test-producer", fid);
         fid++;
@@ -929,8 +925,8 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, next_time,
-                                    frame_len_ticks, abs_base_b);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, next_time, frame_len_ticks,
+                                    abs_base_b);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -957,8 +953,8 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 7: Geometry mismatch within dataset (nfreq) is dropped correctly
-BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
+/// Test 7: Basic geometry write test
+BOOST_AUTO_TEST_CASE(test_writer_geometry_basic) {
 
     kotekan_test_logging::configure();
 
@@ -992,9 +988,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     hdf5N2Write stage(conf, unique_name, bc);
     stage.start();
 
-    const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 1;
-    const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
     const uint64_t base_time_ns = 9'000'000'000ULL;
 
     N2::frameID fid(&buf);
@@ -1003,23 +997,11 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, base_time_ns,
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, base_time_ns,
                                     frame_len_ticks, abs_base);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
-    // Send one mismatching frame for same file window with nfreq+1 (should be dropped)
-    {
-        uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
-        BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, 0, 1,
-                                    base_time_ns + frame_len_ns, frame_len_ticks, abs_base + 1);
-        auto meta = get_N2_metadata(&buf, fid);
-        meta->nfreq = nfreq + 1; // Force mismatch
-        buf.mark_frame_full("test-producer", fid);
-        fid++;
-    }
-
     wait_until_frame_empty(&buf, fid - 1, 30.0);
     stage.stop();
     buf.send_shutdown_signal();
