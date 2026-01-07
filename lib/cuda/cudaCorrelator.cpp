@@ -120,45 +120,28 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     rfi_RFImask.check_metadata();
     n2k_correlation.set_metadata(voltage.get_metadata());
 
-    const std::shared_ptr<const chordMetadata> in_meta = voltage.get_metadata();
+    const std::shared_ptr<const chordMetadata> voltage_meta = voltage.get_metadata();
     const std::shared_ptr<const chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
-    const std::shared_ptr<chordMetadata> out_meta = n2k_correlation.get_metadata();
+    const std::shared_ptr<chordMetadata> n2k_corr_meta = n2k_correlation.get_metadata();
 
-    // The input ringbuffers do not contain time-dependent data,
-    // so we must reconstruct it here. (fpga_seq_num and sample0_offset)
-    // TODO: do this automatically in `NDArrayRingBuffer`
+    // Ensure consistency:
+    assert(voltage_meta->get_fpga_seq_num()
+               + voltage.get_read_valid().begin() * voltage_meta->get_time_downsampling_fpga()
+           == rfi_meta->get_fpga_seq_num()
+                  + rfi_RFImask.get_read_valid().begin() * rfi_meta->get_time_downsampling_fpga());
 
-    // Assuming the voltage is coming in at the raw sample rate.
-    out_meta->set_fpga_seq_num(voltage.get_read_valid().begin());
-    out_meta->set_sample0_offset(out_meta->get_fpga_seq_num() / _sub_integration_ntime);
-
-    std::vector<int> out_time_downsampling_fpga(out_meta->get_nfreq());
-    std::vector<int64_t> out_half_fpga_sample0(out_meta->get_nfreq());
-    const std::vector<int64_t> in_half_fpga_sample0 = in_meta->get_half_fpga_sample0();
-    const std::vector<int> in_time_downsampling_fpga = in_meta->get_time_downsampling_fpga();
-
-    for (int freq = 0; freq < out_meta->get_nfreq(); ++freq) {
-        out_time_downsampling_fpga[freq] = _sub_integration_ntime * in_time_downsampling_fpga[freq];
-        out_half_fpga_sample0[freq] = in_half_fpga_sample0[freq] + out_time_downsampling_fpga[freq]
-                                      - in_time_downsampling_fpga[freq];
-    }
-
-    out_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
-    out_meta->set_half_fpga_sample0(out_half_fpga_sample0);
+    // The input ringbuffer metadata do not contain time-dependent metadata,
+    // so we must reconstruct it here. (fpga_seq_num)
+    n2k_corr_meta->set_fpga_seq_num(voltage_meta->get_fpga_seq_num()
+                                    + voltage.get_read_valid().begin()
+                                          * voltage_meta->get_time_downsampling_fpga());
+    n2k_corr_meta->set_time_downsampling_fpga(_sub_integration_ntime
+                                              * voltage_meta->get_time_downsampling_fpga());
 
     // Set poison for debug checks.
     n2k_correlation.set_to_poison(0x80);
 
     // The ringbuffering here is fishy. We should fix the kernel instead.
-
-    // Ensure consistency:
-    assert(in_meta->get_nfreq() == rfi_meta->get_nfreq());
-    // set above already
-    // const std::vector<int> in_time_downsampling_fpga = in_meta->get_time_downsampling_fpga();
-    const std::vector<int> rfi_time_downsampling_fpga = rfi_meta->get_time_downsampling_fpga();
-    for (int freq = 0; freq < in_meta->get_nfreq(); ++freq)
-        assert(voltage.get_read_valid().begin() * in_time_downsampling_fpga[freq]
-               == rfi_RFImask.get_read_valid().begin() * rfi_time_downsampling_fpga[freq]);
 
     const std::ptrdiff_t time_offset =
         voltage.get_read_valid().begin() % voltage.get_ndarray().extent(0);

@@ -156,11 +156,12 @@ public:
                 }
                 meta->offset = 0;
 
-                if (dataset.hasAttribute("sample0_offset"))
-                    meta->set_sample0_offset(dataset.getAttribute("sample0_offset").read<int>());
-                if (dataset.hasAttribute("offset_downsampling"))
-                    meta->set_offset_downsampling(
-                        dataset.getAttribute("offset_downsampling").read<int>());
+                if (dataset.hasAttribute("fpga_seq_num"))
+                    meta->set_fpga_seq_num(
+                        dataset.getAttribute("fpga_seq_num").read<std::int64_t>());
+                if (dataset.hasAttribute("time_downsampling_fpga"))
+                    meta->set_time_downsampling_fpga(
+                        dataset.getAttribute("time_downsampling_fpga").read<int>());
 
                 if (dataset.hasAttribute("coarse_freq"))
                     meta->set_coarse_freq(
@@ -168,12 +169,6 @@ public:
                 if (dataset.hasAttribute("freq_upchan_factor"))
                     meta->set_freq_upchan_factor(
                         dataset.getAttribute("freq_upchan_factor").read<std::vector<int>>());
-                if (dataset.hasAttribute("half_fpga_sample0"))
-                    meta->set_half_fpga_sample0(dataset.getAttribute("half_fpga_sample0")
-                                                    .read<std::vector<std::int64_t>>());
-                if (dataset.hasAttribute("time_downsampling_fpga"))
-                    meta->set_time_downsampling_fpga(
-                        dataset.getAttribute("time_downsampling_fpga").read<std::vector<int>>());
 
                 if (dataset.hasAttribute("ndishes")) {
                     meta->ndishes = dataset.getAttribute("ndishes").read<int>();

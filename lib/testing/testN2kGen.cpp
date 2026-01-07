@@ -206,25 +206,18 @@ void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& 
     meta->set_strides_simple();
 
     meta->set_fpga_seq_num(seq_num);
-    meta->set_sample0_offset(seq_num / sub_integration_ntime);
-    meta->set_offset_downsampling(1);
+    meta->set_time_downsampling_fpga(sub_integration_ntime);
 
     std::vector<int> coarse_freq(num_local_freq);
     std::vector<int> freq_upchan_factor(num_local_freq);
-    std::vector<int> time_downsampling_fpga(num_local_freq);
-    std::vector<int64_t> half_fpga_sample0(num_local_freq);
 
     for (int f = 0; f < num_local_freq; f++) {
         coarse_freq[f] = freq_ids[f % freq_ids.size()];
         freq_upchan_factor[f] = 1;
-        time_downsampling_fpga[f] = sub_integration_ntime;
-        half_fpga_sample0[f] = sub_integration_ntime - 1;
     }
 
     meta->set_coarse_freq(coarse_freq);
     meta->set_freq_upchan_factor(freq_upchan_factor);
-    meta->set_time_downsampling_fpga(time_downsampling_fpga);
-    meta->set_half_fpga_sample0(half_fpga_sample0);
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
 
@@ -240,26 +233,20 @@ void testN2kGen::set_counts_metadata(const std::shared_ptr<chordMetadata>& meta,
     meta->set_array_dimension(4, count_blocksize, "D8Plo2");
     meta->set_strides_simple();
 
+    // This looks inconsistent
     meta->set_fpga_seq_num(seq_num);
-    meta->set_sample0_offset(seq_num / sub_integration_ntime);
-    meta->set_offset_downsampling(1);
+    meta->set_time_downsampling_fpga(sub_integration_ntime);
 
     std::vector<int> coarse_freq(num_local_freq);
     std::vector<int> freq_upchan_factor(num_local_freq);
-    std::vector<int> time_downsampling_fpga(num_local_freq);
-    std::vector<int64_t> half_fpga_sample0(num_local_freq);
 
     for (int f = 0; f < num_local_freq; f++) {
         coarse_freq[f] = freq_ids[f % freq_ids.size()];
         freq_upchan_factor[f] = 1;
-        time_downsampling_fpga[f] = sub_integration_ntime;
-        half_fpga_sample0[f] = sub_integration_ntime - 1;
     }
 
     meta->set_coarse_freq(coarse_freq);
     meta->set_freq_upchan_factor(freq_upchan_factor);
-    meta->set_time_downsampling_fpga(time_downsampling_fpga);
-    meta->set_half_fpga_sample0(half_fpga_sample0);
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
 

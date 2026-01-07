@@ -190,12 +190,6 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         assert(in_meta->type == kotekan::float16);
         // Assert Ttilde x Fbar x beamQ x beamP
         assert(in_meta->dims == 4);
-        // in_meta->dim[0] is in the ringbuffer
-        // in_meta->dim[1] is set wrong
-        // if (!(in_meta->dim[1] == _num_local_freq))
-        //     ERROR("in dim=[{},{},{},{}] num_local_freq={}", in_meta->dim[0], in_meta->dim[1],
-        //           in_meta->dim[2], in_meta->dim[3], _num_local_freq);
-        // assert(in_meta->dim[1] == _num_local_freq);
         if (!(in_meta->dim[1] == _max_num_local_freq))
             ERROR("in dim=[{},{},{},{}] max_num_local_freq={}", in_meta->dim[0], in_meta->dim[1],
                   in_meta->dim[2], in_meta->dim[3], _max_num_local_freq);
@@ -227,9 +221,11 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         DEBUG("Set output metadata: array shape {:s}, array type {:s}",
               out_meta->get_dimensions_string(), out_meta->get_type_string());
 
-        // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+        // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`
         assert(input_cursor % in_meta->sample_bytes() == 0);
-        out_meta->set_sample0_offset(div_noremainder(input_cursor, in_meta->sample_bytes()));
+        out_meta->set_fpga_seq_num(in_meta->get_fpga_seq_num()
+                                   + in_meta->get_time_downsampling_fpga()
+                                         * div_noremainder(input_cursor, in_meta->sample_bytes()));
     }
 
     return record_end_event();
