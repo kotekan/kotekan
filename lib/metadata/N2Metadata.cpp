@@ -82,8 +82,20 @@ void N2Metadata::check_frame_desc(
     const std::shared_ptr<const kotekan::FrameDesc>& frame_desc) const {
     auto n2_desc = frame_desc->as<kotekan::N2FrameDesc>();
     if (!n2_desc) {
-        WARN_NON_OO("Frame description is not an N2FrameDesc!");
+        ERROR_NON_OO("Frame description is not an N2FrameDesc!");
         return;
+    }
+    // Validate internal consistency
+    if (nfreq > 0 && freq_id >= nfreq) {
+        ERROR_NON_OO("freq_id ({:d}) is out of range for nfreq ({:d})", freq_id, nfreq);
+    }
+    if (n_valid_fpga_ticks > frame_length_fpga_ticks) {
+        ERROR_NON_OO("n_valid_fpga_ticks ({:d}) exceeds frame_length_fpga_ticks ({:d})",
+                     n_valid_fpga_ticks, frame_length_fpga_ticks);
+    }
+    if (n_rfi_fpga_ticks > frame_length_fpga_ticks) {
+        ERROR_NON_OO("n_rfi_fpga_ticks ({:d}) exceeds frame_length_fpga_ticks ({:d})",
+                     n_rfi_fpga_ticks, frame_length_fpga_ticks);
     }
 }
 

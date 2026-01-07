@@ -81,7 +81,9 @@ public:
 
     nlohmann::json to_json() override;
 
-    // Verify that this metadata object is compatible with the given frame description
+    /// Validates that the frame descriptor is an N2FrameDesc and checks internal metadata
+    /// consistency (freq_id < nfreq, valid/RFI ticks <= frame length). Issues a non-fatal error
+    /// for any inconsistencies.
     void check_frame_desc(const std::shared_ptr<const kotekan::FrameDesc>& frame_desc) const;
 };
 

@@ -8,8 +8,10 @@
 #include <cstring>  // for memset, size_t
 
 namespace {
+
+// Helper to ensure that the given FrameDesc is actually an N2FrameDesc
 std::shared_ptr<const kotekan::N2FrameDesc>
-validate_desc(std::shared_ptr<const kotekan::FrameDesc> desc) {
+validate_desc_type(std::shared_ptr<const kotekan::FrameDesc> desc) {
     auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(desc);
     if (!n2_desc) {
         throw std::runtime_error("N2FrameView: Buffer does not have a valid N2FrameDesc");
@@ -22,7 +24,7 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 
     FrameView(buf, frame_id),
     _metadata(std::static_pointer_cast<N2Metadata>(buf->metadata[frame_id])),
-    _desc(validate_desc(buf->get_frame_description())),
+    _desc(validate_desc_type(buf->get_frame_description())),
 
     // Set the const refs to the structural metadata
     n2_layout(_desc->get_n2_layout()), num_elements(_desc->get_num_elements()),

@@ -52,7 +52,6 @@ bool chordMetadata::operator==(const chordMetadata& other) const {
     return metadata == other.metadata;
 }
 
-/// Helper function to compare data during conversion to NDArray
 void chordMetadata::check_frame_desc(
     const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) const {
     (void)frame_desc;
@@ -88,7 +87,6 @@ void chordMetadata::check_frame_desc(
     }
 }
 
-/// Helper function to set CHORD metadata during conversion to NDArray
 void chordMetadata::set_from_frame_desc(
     const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) {
     this->type = frame_desc->get_value_datatype();
