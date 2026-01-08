@@ -136,6 +136,7 @@ accumulate_params = {
     "num_freq_per_n2k_frame": "num_local_freq",
     "num_n2k_samples_to_accumulate": 8,
     "packet_loss_is_scalar": True,
+    "vis_layout": "FullUpperTri",
 }
 
 
@@ -162,7 +163,13 @@ def accumulate_data(tmpdir_factory):
         global_params["total_frames"]
         // accumulate_params["num_n2k_samples_to_accumulate"]
     )
-    dump_buffer = runner.DumpN2Buffer(str(tmpdir), exit_after_n_files=expected_frames)
+
+    dump_buffer = runner.DumpN2Buffer(
+        str(tmpdir),
+        exit_after_n_files=expected_frames,
+        num_elements=global_params["num_elements"],
+        num_ev=global_params["num_ev"],
+    )
 
     accumulate_run_params = accumulate_params.copy()
     accumulate_run_params["in_counts_buf"] = input_buffers.counts_name
@@ -254,9 +261,6 @@ def test_structure(accumulate_data):
         assert frame.eval.shape == (n_ev,)
         assert frame.evec.shape == (n_ev * n,)
         assert frame.gain.shape == (n,)
-        assert frame.metadata.num_elements == n
-        assert frame.metadata.num_prod == n_prod
-        assert frame.metadata.num_ev == n_ev
 
     # Check that we have the expected number of samples
     nsamp = global_params["num_local_freq"] * (
@@ -284,7 +288,6 @@ def test_metadata(accumulate_data):
             * global_params["sampling_rate_MHz"]
             / global_params["fft_length"]
         )
-        assert frame.metadata.vis_layout == 0
 
 
 def test_time(accumulate_data):

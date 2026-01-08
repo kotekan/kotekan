@@ -37,7 +37,7 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
         result[d] = values[D - 1 - d];
     return result;
 }
-} // namespace
+}
 
 /**
  * @class cudaTranspose2048_chime
@@ -456,22 +456,14 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
     // Ringbuffer size
     const std::ptrdiff_t Tin_ringbuf = Ein_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
-    DEBUG("Tin_ringbuf: {:d}", Tin_ringbuf);
-    DEBUG("T_ringbuf:   {:d}", T_ringbuf);
 
     const std::ptrdiff_t Tin_min = Ein_buffer.get_read_valid().begin();
     const std::ptrdiff_t Tin_max = Ein_buffer.get_read_valid().end();
     const std::ptrdiff_t T_min = E_buffer.get_write_valid().begin();
     const std::ptrdiff_t T_max = E_buffer.get_write_valid().end();
-    DEBUG("Tin_min:     {:d}", Tin_min);
-    DEBUG("Tin_max:     {:d}", Tin_max);
-    DEBUG("T_min:       {:d}", T_min);
-    DEBUG("T_max:       {:d}", T_max);
 
     const std::ptrdiff_t Tin_length = Tin_max - Tin_min;
     const std::ptrdiff_t T_length = T_max - T_min;
-    DEBUG("Tin_length:  {:d}", Tin_length);
-    DEBUG("T_length:    {:d}", T_length);
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
@@ -480,7 +472,7 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
     T_min_arg = mod(T_min, T_ringbuf);
     T_max_arg = mod(T_min, T_ringbuf) + T_length;
 
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
+    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
 
     // Copy inputs to device memory
 

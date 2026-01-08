@@ -556,19 +556,18 @@ cudaFRBBeamformer_smallfinder_U4::execute(cudaPipelineState& /*pipestate*/,
     assert(Ebar_meta->dish_index);
 
     auto I_meta = I_buffer.get_metadata();
-    assert(I_meta->get_nfreq() >= 0);
-    assert(I_meta->get_nfreq() == Ebar_meta->get_nfreq());
+    const auto nfreq = I_meta->get_nfreq();
+    assert(nfreq >= 0);
+    assert(nfreq == Ebar_meta->get_nfreq());
     auto freq_upchan_factor = I_meta->get_freq_upchan_factor();
-    auto time_downsampling_fpga = I_meta->get_time_downsampling_fpga();
-    assert(freq_upchan_factor.size() == static_cast<size_t>(I_meta->get_nfreq()));
-    assert(time_downsampling_fpga.size() == static_cast<size_t>(I_meta->get_nfreq()));
-    for (int freq = 0; freq < I_meta->get_nfreq(); ++freq) {
-        freq_upchan_factor[freq] *= cuda_downsampling_factor;
-        time_downsampling_fpga[freq] *= cuda_downsampling_factor;
-    }
+    assert(freq_upchan_factor.size() == static_cast<size_t>(nfreq));
+    for (int freq = 0; freq < nfreq; ++freq)
+        freq_upchan_factor.at(freq) *= cuda_downsampling_factor;
     I_meta->set_freq_upchan_factor(freq_upchan_factor);
+    auto time_downsampling_fpga = I_meta->get_time_downsampling_fpga();
+    time_downsampling_fpga *= cuda_downsampling_factor;
     I_meta->set_time_downsampling_fpga(time_downsampling_fpga);
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
+    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
 
     const char* exc_arg = "exception";
     std::int32_t Tbar_min_arg;

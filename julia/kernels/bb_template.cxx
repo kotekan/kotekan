@@ -338,9 +338,9 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {
         const std::shared_ptr<chordMetadata> J_meta = J_buffer.get_metadata();
     
-        // Since we do not use a ring buffer we need to set `meta->sample0_offset`
-        J_meta->set_sample0_offset(T_min);
-        assert(J_meta->get_offset_downsampling() == 1);
+        // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`
+        J_meta->set_fpga_seq_num(T_min);
+        assert(J_meta->get_time_downsampling_fpga() == 1);
     }
 
     // Copy inputs to device memory

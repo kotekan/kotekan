@@ -135,14 +135,14 @@ public:
             assert(metadata_is_chord(mc) || metadata_is_N2(mc));
             const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
             const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
-                buffer->get_frame_desc();
+                buffer->get_ndarray_frame_desc();
             assert(frame_desc);
 
             const double this_time = current_time();
             const double elapsed_time = this_time - start_time;
 
             INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
-                 frame_counter, meta->get_sample0_offset(), elapsed_time);
+                 frame_counter, meta->get_fpga_seq_num(), elapsed_time);
 
             if (!skip_writing) {
 
@@ -288,33 +288,14 @@ public:
                         group->emplace("freq_upchan_factor", freq_upchan_factor);
                     }
 
-                    if (meta->has_sample0_offset())
-                        group->emplace("sample0_offset", std::make_shared<ASDF::int_entry>(
-                                                             meta->get_sample0_offset()));
+                    if (meta->has_fpga_seq_num())
+                        group->emplace("fpga_seq_num",
+                                       std::make_shared<ASDF::int_entry>(meta->get_fpga_seq_num()));
 
-                    if (meta->has_offset_downsampling())
-                        group->emplace("offset_downsampling", std::make_shared<ASDF::int_entry>(
-                                                                  meta->get_offset_downsampling()));
-
-                    if (meta->has_half_fpga_sample0()) {
-                        auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
-                        const std::vector<int64_t> I_half_fpga_sample0 =
-                            meta->get_half_fpga_sample0();
-                        for (int freq = 0; freq < meta->get_nfreq(); ++freq)
-                            half_fpga_sample0->push_back(
-                                std::make_shared<ASDF::int_entry>(I_half_fpga_sample0[freq]));
-                        group->emplace("half_fpga_sample0", half_fpga_sample0);
-                    }
-
-                    if (meta->has_time_downsampling_fpga()) {
-                        auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
-                        const std::vector<int> I_time_downsampling_fpga =
-                            meta->get_time_downsampling_fpga();
-                        for (int freq = 0; freq < meta->get_nfreq(); ++freq)
-                            time_downsampling_fpga->push_back(
-                                std::make_shared<ASDF::int_entry>(I_time_downsampling_fpga[freq]));
-                        group->emplace("time_downsampling_fpga", time_downsampling_fpga);
-                    }
+                    if (meta->has_time_downsampling_fpga())
+                        group->emplace(
+                            "time_downsampling_fpga",
+                            std::make_shared<ASDF::int_entry>(meta->get_time_downsampling_fpga()));
 
                     auto chord_metadata_version_attribute = std::make_shared<ASDF::sequence>();
                     for (std::size_t n = 0; n < chord_metadata_version.size(); ++n)
@@ -363,7 +344,7 @@ public:
                     auto vis_array = std::make_shared<ASDF::ndarray>(
                         vis_view, ASDF::block_format_t::inline_array, compression,
                         compression_level, std::vector<bool>(),
-                        std::vector<int64_t>{meta->num_prod});
+                        std::vector<int64_t>{frame_view.num_prod});
                     group->emplace("vis", vis_array);
 
                     std::vector<ASDF::float32_t> weights_view(frame_view.weight.begin(),
@@ -371,7 +352,7 @@ public:
                     auto weights_array = std::make_shared<ASDF::ndarray>(
                         weights_view, ASDF::block_format_t::inline_array, compression,
                         compression_level, std::vector<bool>(),
-                        std::vector<int64_t>{meta->num_prod});
+                        std::vector<int64_t>{frame_view.num_prod});
                     group->emplace("weights", weights_array);
 
                     std::vector<ASDF::float32_t> flags_view(frame_view.flags.begin(),
@@ -379,14 +360,15 @@ public:
                     auto flags_array = std::make_shared<ASDF::ndarray>(
                         flags_view, ASDF::block_format_t::inline_array, compression,
                         compression_level, std::vector<bool>(),
-                        std::vector<int64_t>{meta->num_elements});
+                        std::vector<int64_t>{frame_view.num_elements});
                     group->emplace("flags", flags_array);
 
                     std::vector<ASDF::float32_t> eval_view(frame_view.eval.begin(),
                                                            frame_view.eval.end());
                     auto eval_array = std::make_shared<ASDF::ndarray>(
                         eval_view, ASDF::block_format_t::inline_array, compression,
-                        compression_level, std::vector<bool>(), std::vector<int64_t>{meta->num_ev});
+                        compression_level, std::vector<bool>(),
+                        std::vector<int64_t>{frame_view.num_ev});
                     group->emplace("eval", eval_array);
 
                     std::vector<ASDF::complex64_t> evec_view(frame_view.evec.begin(),
@@ -394,7 +376,7 @@ public:
                     auto evec_array = std::make_shared<ASDF::ndarray>(
                         evec_view, ASDF::block_format_t::inline_array, compression,
                         compression_level, std::vector<bool>(),
-                        std::vector<int64_t>{meta->num_ev * meta->num_elements});
+                        std::vector<int64_t>{frame_view.num_ev * frame_view.num_elements});
                     group->emplace("evec", evec_array);
 
                     group->emplace("emethod",
@@ -406,14 +388,15 @@ public:
                     auto gain_array = std::make_shared<ASDF::ndarray>(
                         gain_view, ASDF::block_format_t::inline_array, compression,
                         compression_level, std::vector<bool>(),
-                        std::vector<int64_t>{meta->num_elements});
+                        std::vector<int64_t>{frame_view.num_elements});
                     group->emplace("gain", evec_array);
 
                     group->emplace("n_valid_fpga_ticks",
                                    std::make_shared<ASDF::int_entry>(meta->n_valid_fpga_ticks));
                     group->emplace("num_elements",
-                                   std::make_shared<ASDF::int_entry>(meta->num_elements));
-                    group->emplace("num_prod", std::make_shared<ASDF::int_entry>(meta->num_prod));
+                                   std::make_shared<ASDF::int_entry>(frame_view.num_elements));
+                    group->emplace("num_prod",
+                                   std::make_shared<ASDF::int_entry>(frame_view.num_prod));
                     group->emplace("freq_id", std::make_shared<ASDF::int_entry>(meta->freq_id));
                 }
 

@@ -10,6 +10,7 @@
 #include "CHORDTelescope.hpp" // for CHORDTelescope
 #include "Config.hpp"         // for Config
 #include "FrameView.hpp"      // for FrameView
+#include "N2FrameDesc.hpp"    // for N2FrameDesc
 #include "N2Metadata.hpp"     // for N2Metadata
 #include "N2Util.hpp"         // for cfloat, get_num_prod
 #include "buffer.hpp"         // for Buffer
@@ -28,19 +29,8 @@
 #include <utility>   // for pair, make_pair
 #include <vector>    // for vector
 
-/**
- * @brief The fields within the N2FrameView.
- *
- * Use this enum to refer to the fields.
- **/
-enum class N2Field { vis, weight, flags, eval, evec, emethod, erms, gain };
-
-/**
- * @brief Eigenvalue and Eigenvector calculation method
- *
- * Use this enum to refer to the method used to compute Eigenvalues and Eigenvectors.
- **/
-enum class N2EigenMethod : int32_t { none, cheevr, iterative };
+using kotekan::N2EigenMethod;
+using kotekan::N2Field;
 
 /**
  * @class N2FrameView
@@ -54,19 +44,18 @@ class N2FrameView : public FrameView {
 
 public:
     const std::shared_ptr<N2Metadata> _metadata;
+    const std::shared_ptr<const kotekan::N2FrameDesc> _desc;
+
+    /// Layout of the visibility matrix
+    const N2Layout n2_layout;
     /// Number of elements for data in buffer
-    const uint32_t& num_elements;
+    const uint32_t num_elements;
     /// Number of products for data in buffer
-    const uint32_t& num_prod;
+    const uint32_t num_prod;
     /// Number of eigenvectors and values calculated
-    const uint32_t& num_ev;
-    /// Total number of frequencies in the pipeline
-    const uint32_t& nfreq;
+    const uint32_t num_ev;
 
-    std::map<N2Field, std::pair<size_t, size_t>> frame_layout;
-
-    /// Vis Matrix Layout
-    const N2Layout& vis_layout;
+    kotekan::n2frame_layout_t frame_layout;
 
     /// ID of the frequency associated with this frame
     const uint32_t& freq_id;
@@ -147,7 +136,7 @@ public:
         size_t offset = 0;
         for (const std::pair<N2Field, size_t>& field : field_sizes) {
             frame_layout[field.first] = std::make_pair(offset, offset + field.second);
-            offset += field.second;
+            offset += size_t(field.second);
         }
 
         return frame_layout;
@@ -157,7 +146,7 @@ public:
      * @brief Calculate the size of the frame.
      */
     static size_t calculate_frame_size(uint32_t num_elements_in, uint32_t num_ev_in,
-                                       size_t num_prod_in) {
+                                       uint32_t num_prod_in) {
         size_t frame_size =
             get_frame_layout(num_elements_in, num_ev_in, num_prod_in)[N2Field::gain].second;
         return frame_size;
@@ -165,14 +154,27 @@ public:
 
     static size_t calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
 
-        const int num_elements_in = config.get<int>(unique_name, "num_elements");
-        const int num_ev_in = config.get<int>(unique_name, "num_ev");
+        const size_t num_elements_in = config.get<size_t>(unique_name, "num_elements");
+        const size_t num_ev_in = config.get<size_t>(unique_name, "num_ev");
 
         const N2Layout vis_layout = config.get<N2Layout>(unique_name, "vis_layout");
 
-        const uint64_t num_prod_in = get_num_prod(num_elements_in, vis_layout);
+        size_t num_prod_in;
+        if (vis_layout == N2Layout::GeneralSubset) {
+            // Require a list of (i,j) elements to be specified
+            num_prod_in = config.get<std::vector<N2::prod_ctype>>(unique_name, "products").size();
+        } else if (vis_layout == N2Layout::InputANDMasked
+                   || vis_layout == N2Layout::InputORMasked) {
+            // Require a list of inputs to be specified
+            std::vector<size_t> input_list =
+                config.get<std::vector<size_t>>(unique_name, "input_list");
+            num_prod_in = get_num_prod(num_elements_in, vis_layout, input_list);
+        } else {
+            num_prod_in = get_num_prod(num_elements_in, vis_layout);
+        }
 
-        return calculate_frame_size(num_elements_in, num_ev_in, num_prod_in);
+        return calculate_frame_size(uint32_t(num_elements_in), uint32_t(num_ev_in),
+                                    uint32_t(num_prod_in));
     }
 
     /**
@@ -184,7 +186,7 @@ public:
      *
      * @throws std::runtime_error    If vis_layout_in is unknown.
      */
-    static size_t get_num_prod(uint32_t num_elements_in, N2Layout vis_layout_in) {
+    static size_t get_num_prod(size_t num_elements_in, N2Layout vis_layout_in) {
         size_t num_prod_in;
 
         switch (vis_layout_in) {
@@ -195,12 +197,45 @@ public:
                 num_prod_in = num_elements_in;
                 break;
             default:
-                std::string msg =
+                throw std::runtime_error(
                     fmt::format("N2FrameView::get_num_prod given unknown N2Layout: {:s}",
-                                N2Layout_to_string(vis_layout_in));
-                ERROR_NON_OO("{:s}", msg);
-                throw std::runtime_error(msg);
+                                N2Layout_to_string(vis_layout_in)));
+        }
+
+        return num_prod_in;
+    }
+
+    /**
+     * @brief Get the number of products in the visibility matrix for the given number of elements,
+     * layout, and input list.
+     *
+     * @param   num_elemens_in  number of elements (dishes x polarizations) in the pipeline
+     * @param   vis_layout_in       the layout of the visibility matrix in the N2FrameView
+     * @param   input_list      list of inputs to consider for masked layouts
+     *
+     * @throws std::runtime_error    If vis_layout_in is unknown.
+     */
+    static size_t get_num_prod(size_t num_elements_in, N2Layout vis_layout,
+                               const std::vector<size_t>& input_list) {
+
+        size_t num_prod_in;
+
+        switch (vis_layout) {
+            case N2Layout::InputANDMasked:
+                // "AND" masking: only include products where *both* inputs are in the list.
+                // For this, we will effectively have a smaller upper triangular matrix with each
+                // dimension equal to the length of input_list.
+                num_prod_in = (input_list.size() * (input_list.size() + 1)) / 2;
                 break;
+            case N2Layout::InputORMasked:
+                // "OR" masking: include products where *either* input is in the list.
+                // For this, we need to count the number of products that meet this condition.
+                num_prod_in = input_list.size() * (2 * num_elements_in - input_list.size() + 1) / 2;
+                break;
+            default:
+                throw std::runtime_error(
+                    fmt::format("N2FrameView::get_num_prod given unknown N2Layout: {:s}",
+                                N2Layout_to_string(vis_layout)));
         }
 
         return num_prod_in;
@@ -216,7 +251,7 @@ public:
      * @param   num_elements_in Number of elements (dishes x polarizations) in the pipeline
      */
     static void fill_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods,
-                                            uint32_t num_elements_in) {
+                                            size_t num_elements_in) {
 
         size_t num_prod_in = (num_elements_in * (num_elements_in + 1)) / 2;
 
@@ -224,10 +259,11 @@ public:
 
         // Loop over all rows
         size_t p = 0;
-        for (uint16_t i = 0; i < num_elements_in; i++) {
+        for (size_t i = 0; i < num_elements_in; i++) {
             // Upper Triangular!  Loop over upper columns only;
-            for (uint16_t j = i; j < num_elements_in; j++) {
-                prods[p] = {.input_a = i, .input_b = j};
+            for (size_t j = i; j < num_elements_in; j++) {
+                prods[p] = {.input_a = static_cast<uint16_t>(i),
+                            .input_b = static_cast<uint16_t>(j)};
                 p++;
             }
         }
@@ -243,15 +279,91 @@ public:
      * @param   num_elements_in Number of elements (dishes x polarizations) in the pipeline
      */
     static void fill_prod_maps_Autocorrelations(std::vector<N2::prod_ctype>& prods,
-                                                uint32_t num_elements_in) {
+                                                size_t num_elements_in) {
         size_t num_prod_in = num_elements_in;
 
         prods.resize(num_prod_in);
 
         // Loop over all elements
-        for (uint16_t i = 0; i < num_elements_in; i++) {
-            prods[i] = {.input_a = i, .input_b = i};
+        for (size_t i = 0; i < num_elements_in; i++) {
+            prods[i] = {.input_a = static_cast<uint16_t>(i), .input_b = static_cast<uint16_t>(i)};
         }
+    }
+
+    /**
+     * @brief Fill the product maps vector for each product in the visibility matrix in the
+     * InputANDMasked layout. Requires a list of inputs to be provided.
+     */
+    static void fill_prod_maps_InputANDMasked(std::vector<N2::prod_ctype>& prods,
+                                              std::vector<size_t> input_list,
+                                              size_t num_elements_in) {
+
+        size_t num_prod_in = get_num_prod(num_elements_in, N2Layout::InputANDMasked, input_list);
+
+        prods.resize(num_prod_in);
+
+        // Loop over all rows
+        size_t p = 0;
+        for (size_t i_idx = 0; i_idx < input_list.size(); i_idx++) {
+            size_t i = input_list[i_idx];
+            // Upper Triangular!  Loop over upper columns only;
+            for (size_t j_idx = i_idx; j_idx < input_list.size(); j_idx++) {
+                size_t j = input_list[j_idx];
+                prods[p] = {.input_a = static_cast<uint16_t>(i),
+                            .input_b = static_cast<uint16_t>(j)};
+                p++;
+            }
+        }
+    }
+
+    /**
+     * @brief Fill the product maps vector for each product in the visibility matrix in the
+     * InputORMasked layout. Requires a list of inputs to be provided.
+     */
+    static void fill_prod_maps_InputORMasked(std::vector<N2::prod_ctype>& prods,
+                                             std::vector<size_t> input_list,
+                                             size_t num_elements_in) {
+
+        size_t num_prod_in = get_num_prod(num_elements_in, N2Layout::InputORMasked, input_list);
+
+        prods.resize(num_prod_in);
+
+        // Loop over all rows
+        size_t p = 0;
+        for (size_t i = 0; i < num_elements_in; i++) {
+            for (size_t j = i; j < num_elements_in; j++) {
+                // Check if either input is in the input list
+                bool in_list = false;
+                for (auto ipt : input_list) {
+                    if ((i == ipt) || (j == ipt)) {
+                        in_list = true;
+                        break;
+                    }
+                }
+                if (in_list) {
+                    prods[p] = {.input_a = static_cast<uint16_t>(i),
+                                .input_b = static_cast<uint16_t>(j)};
+                    p++;
+                }
+            }
+        }
+    }
+
+    /**
+     * @brief Fill the product maps vector for each product in the visibility matrix in the
+     * GeneralSubset layout. Requires a list of products to be specified in the config.
+     *
+     * See N2FrameView::fill_prod_maps() for full details.
+     *
+     * @param   prods           Vector to fill.
+     * @param   config         Kotekan configuration object.
+     * @param   unique_name    Unique name of this stage in the Kotekan config.
+     */
+    static void fill_prod_maps_GeneralSubset(std::vector<N2::prod_ctype>& prods,
+                                             kotekan::Config& config,
+                                             const std::string& unique_name) {
+        auto subset_prods = config.get<std::vector<N2::prod_ctype>>(unique_name, "products");
+        prods = subset_prods;
     }
 
     /**
@@ -305,23 +417,6 @@ public:
      **/
     void copy_data(N2FrameView frame_to_copy_from, const std::set<N2Field>& skip_members);
 
-    /**
-     * @brief Fill the product maps vector for each product in the visibility matrix.
-     *
-     * Every product in the frame view is a visibility matrix V_{ab} that was formed from two input
-     * elements: a (first, the full vis matrix row index) and b (second, the full vis matrix column
-     * index), where 0 <= a, b < num_elements. This function fills the given vector prods with
-     * num_prod entries, that is, one entry for each object in vis or weights. Each is a prod_ctype
-     * which has the 'a' element index for this product in prod.index_a, and the 'b' element index
-     * in prod.index_b.
-     *
-     * @note The given vector prods is reserved to num_prods size, which potentially performs an
-     * allocation of size num_prod * sizeof(prod_ctype).
-     *
-     * @param   prods   Vector of prod_ctype to fill.
-     *
-     * @throws  std::runtime_error  If this N2FrameView has an unknown layout.
-     */
     void fill_prod_maps(std::vector<N2::prod_ctype>& prods) const;
 };
 

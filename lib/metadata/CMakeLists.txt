@@ -7,6 +7,8 @@ add_library(
     BasebandMetadata.cpp
     BeamMetadata.cpp
     N2Metadata.cpp
+    N2Layout.cpp
+    N2FrameDesc.cpp
     DataType.cpp
     Metadata.cpp
     NDArray.cpp

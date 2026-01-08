@@ -41,6 +41,7 @@ add_library(
     freqSplit.cpp
     FreqSubset.cpp
     prodSubset.cpp
+    N2Subset.cpp
     countCheck.cpp
     visAccumulate.cpp
     visCompression.cpp

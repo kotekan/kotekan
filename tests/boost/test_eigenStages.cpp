@@ -5,7 +5,9 @@
 #include "EigenVisIter.hpp"
 #include "FakeN2.hpp"
 #include "FakeVis.hpp"
+#include "N2FrameDesc.hpp"
 #include "N2FrameView.hpp"
+#include "N2Metadata.hpp"
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
@@ -35,6 +37,17 @@ using std::string;
 static void ensure_fakevis_patterns_registered() {
     static const bool registered = []() {
         FACTORY(FakeVisPattern)::register_type<PhaseIJVisPattern>("phase_ij");
+        return true;
+    }();
+    (void)registered;
+}
+
+// Ensure N2Metadata.cpp is linked so the factory registration is available.
+static void ensure_n2metadata_registered() {
+    static const bool registered = []() {
+        // Creating an instance forces the linker to include N2Metadata.o
+        N2Metadata dummy;
+        (void)dummy;
         return true;
     }();
     (void)registered;
@@ -90,6 +103,7 @@ struct EigenResults {
 // Run FakeVis/FakeN2 -> eigenVis/eigenVisIter/eigenN2Iter and collect output frames.
 static EigenResults run_pipeline(const EigenStageTestParams& p, const string& stage_name) {
     ensure_fakevis_patterns_registered();
+    ensure_n2metadata_registered();
 
     static std::atomic<int> run_counter{0};
     int rc = run_counter++;
@@ -119,7 +133,7 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
     if (!p.exclude_inputs.empty())
         cfg[eigen_name]["exclude_inputs"] = p.exclude_inputs;
 
-    const bool is_vis = (stage_name == "EigenVisIter");
+    const bool is_vis = (stage_name == "EigenVisIter" || stage_name == "eigenVis");
     cfg["dataset_manager"]["enable_state_caching"] = false;
     cfg["dataset_manager"]["use_dataset_broker"] = false;
     if (is_vis) {
@@ -156,6 +170,15 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
                   std::vector<int>{}, true);
     Buffer out_buf(p.total_frames, frame_size, pool, "out_buf", buffer_type, 0, false, false,
                    std::vector<int>{}, true);
+
+    // Set up N2FrameDesc for N2 buffers
+    if (!is_vis) {
+        auto n2_desc = std::make_shared<kotekan::N2FrameDesc>(p.num_elements, p.num_ev, num_prod,
+                                                              N2Layout::FullUpperTri);
+        in_buf.set_frame_desc(n2_desc);
+        out_buf.set_frame_desc(n2_desc);
+    }
+
     kotekan::bufferContainer bc;
     bc.add_buffer("in_buf", &in_buf);
     bc.add_buffer("out_buf", &out_buf);

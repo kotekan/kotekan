@@ -36,7 +36,7 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
         result[d] = values[D - 1 - d];
     return result;
 }
-} // namespace
+}
 
 /**
  * @class cudaUpchannelizer_hirax_U8
@@ -403,7 +403,21 @@ cudaEvent_t cudaUpchannelizer_hirax_U8::execute(cudaPipelineState& /*pipestate*/
     E_buffer.check_metadata();
     Ebar_buffer.set_metadata(E_buffer.get_metadata());
 
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
+    const auto E_meta = E_buffer.get_metadata();
+    auto Ebar_meta = Ebar_buffer.get_metadata();
+    const auto nfreq = Ebar_meta->get_nfreq();
+    assert(nfreq >= 0);
+    assert(nfreq == E_meta->get_nfreq());
+    auto freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
+    assert(freq_upchan_factor.size() == static_cast<size_t>(nfreq));
+    for (int freq = 0; freq < nfreq; ++freq)
+        freq_upchan_factor.at(freq) *= cuda_upchannelization_factor;
+    Ebar_meta->set_freq_upchan_factor(freq_upchan_factor);
+    auto time_downsampling_fpga = Ebar_meta->get_time_downsampling_fpga();
+    time_downsampling_fpga *= cuda_upchannelization_factor;
+    Ebar_meta->set_time_downsampling_fpga(time_downsampling_fpga);
+
+    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
 
     const char* exc_arg = "exception";
     std::int32_t T_min_arg;

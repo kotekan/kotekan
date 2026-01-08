@@ -52,6 +52,7 @@ private:
     size_t _ring_buffer_size;
 
     size_t input_cursor;
+    int64_t initial_fpga_seq_num; // fpga_seq_num of first frame, used for consistency checking
 
     /// GPU side memory name for the time-stream input
     std::string _gpu_mem_input;

@@ -5,6 +5,7 @@
 #include "CHORDTelescope.hpp"
 #include "Config.hpp" // for Config
 #include "H5Support.hpp"
+#include "N2FrameDesc.hpp" // for N2FrameDesc
 #include "N2FrameView.hpp" // for N2FrameView
 #include "N2Metadata.hpp"  // for N2Metadata, get_N2_metadata
 #include "N2Util.hpp"      // for N2 helpers
@@ -44,6 +45,10 @@
 using std::string;
 
 using HighFive::File;
+using kotekan::N2FrameDesc;
+
+// Relative path to test gains directory (from build directory where tests run)
+static const std::string TEST_GAINS_DIR = "../tests/boost/testdata/baseband_gains";
 
 static freq_id_t get_abs_freq_id(size_t f_index) {
     const auto& tel = Telescope::instance().cast<CHORDTelescope>();
@@ -51,11 +56,11 @@ static freq_id_t get_abs_freq_id(size_t f_index) {
 }
 
 static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_input, size_t num_ev,
-                                        size_t nfreq, size_t f_index, size_t t_index,
+                                        size_t f_index, size_t t_index,
                                         uint64_t frame_start_time_ns, uint64_t frame_length_ticks,
                                         uint64_t abs_time_idx) {
-    fill_n2_frame_with_abs(buf, frame_id, num_input, num_ev, nfreq, f_index, t_index,
-                           frame_start_time_ns, frame_length_ticks, abs_time_idx);
+    fill_n2_frame_with_abs(buf, frame_id, num_input, num_ev, f_index, t_index, frame_start_time_ns,
+                           frame_length_ticks, abs_time_idx);
     auto meta = get_N2_metadata(buf, frame_id);
     BOOST_REQUIRE(meta);
     meta->freq_id = get_abs_freq_id(f_index);
@@ -76,7 +81,8 @@ public:
                    /*blocksize_t*/ num_file_t,
                    /*compression*/ "none",
                    /*compression_level*/ 0,
-                   /*use_bitshuffle*/ false, std::move(base_dir)) {}
+                   /*use_bitshuffle*/ false, std::move(base_dir),
+                   /*gains_base_directory*/ "") {}
 
     N2::cfloat get_vis(size_t f, size_t p, size_t t) const {
         return vis[idx_fpt(f, p, t)];
@@ -149,7 +155,7 @@ static std::string get_dataset_name(const std::string& base_dir, uint64_t abs_fi
 // This function assumes the fill_n2_frame function has been called
 static void validate_dataset_content(File& file, size_t num_input, size_t num_ev, size_t nfreq,
                                      size_t file_nt) {
-    const size_t num_prod = N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri);
+    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
 
     // Check one representative frequency (e.g., f=1) across time
     size_t f = std::min<size_t>(1, nfreq - 1);
@@ -241,22 +247,19 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
 BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     N2Metadata force_link_marker;
     const size_t num_input = 3;
-    const size_t num_prod = N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri);
+    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
     const size_t num_ev = 2;
-    const size_t num_freq = 3;
     const size_t num_file_t = 2;
 
-    const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev, num_prod);
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
     auto pool = metadataPool::create(1, sizeof(N2Metadata), "test_pool", "N2Metadata");
     Buffer buf(1, frame_size, pool, "n2buf", "N2", 1, false, false, std::vector<int>{}, true);
+    buf.set_frame_desc(std::make_shared<kotekan::N2FrameDesc>(num_input, num_ev, num_prod,
+                                                              N2Layout::FullUpperTri));
 
     buf.allocate_new_metadata_object(0);
     auto meta = get_N2_metadata(&buf, 0);
     BOOST_REQUIRE(meta);
-    meta->num_elements = num_input;
-    meta->num_prod = num_prod;
-    meta->num_ev = num_ev;
-    meta->nfreq = num_freq;
     const size_t f_index = 1;
     meta->freq_id = get_abs_freq_id(f_index);
     meta->fpga_start_tick = 111;
@@ -320,14 +323,15 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
 BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     N2Metadata force_link_marker;
     const size_t num_input = 2;
-    const size_t num_prod = N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri);
+    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
     const size_t num_ev = 1;
-    const size_t num_freq = 2;
     const size_t num_file_t = 2;
 
-    const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev, num_prod);
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_guard", "N2Metadata");
     Buffer buf(2, frame_size, pool, "n2buf_guard", "N2", 1, false, false, std::vector<int>{}, true);
+    buf.set_frame_desc(std::make_shared<kotekan::N2FrameDesc>(num_input, num_ev, num_prod,
+                                                              N2Layout::FullUpperTri));
 
     // Prepare frame view and two metadata instances for the same (f,t)
     for (int idx = 0; idx < 2; ++idx)
@@ -339,10 +343,6 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     const size_t t = 1;
 
     // meta1
-    meta1->num_elements = num_input;
-    meta1->num_prod = num_prod;
-    meta1->num_ev = num_ev;
-    meta1->nfreq = num_freq;
     meta1->freq_id = get_abs_freq_id(f_index);
     meta1->fpga_start_tick = 1000;
     meta1->frame_start_time_ns = 2000;
@@ -446,15 +446,17 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
                                    /*prefix_hostname*/ false, num_file_t,
                                    /*blocksize_f (0=all)*/ 0, /*blocksize_p*/ 0,
                                    /*blocksize_t*/ num_file_t, /*grace*/ 60,
-                                   /*seq_override*/ dt_ns);
+                                   /*seq_override*/ dt_ns, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
 
     // Buffer + container
-    const size_t num_prod = N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri);
-    const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev, num_prod);
+    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_full", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
                /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
+    buf.set_frame_desc(
+        std::make_shared<N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
@@ -474,7 +476,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, /*t*/ 1,
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, /*t*/ 1,
                                     base_time_ns + 1 * frame_len_ns, frame_len_ticks,
                                     abs_base_idx + 1);
         buf.mark_frame_full("test-producer", fid);
@@ -483,7 +485,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, /*t*/ 0, base_time_ns,
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, /*t*/ 0, base_time_ns,
                                     frame_len_ticks, abs_base_idx + 0);
         buf.mark_frame_full("test-producer", fid);
         fid++;
@@ -535,20 +537,22 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     const size_t nfreq = 3;
     // Use 2 time frames per file so file_nt=2 with 1s frames
     const uint64_t num_file_t = 2;
-    const size_t num_prod = N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri);
+    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
 
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name,
                                    /*prefix_hostname*/ false, num_file_t,
                                    /*blocksize_f (0=all)*/ 0, /*blocksize_p*/ 0, /*blocksize_t*/ 1,
                                    /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL);
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
 
     // Buffer + container
-    const size_t frame_size = N2FrameView::calculate_frame_size(num_input, num_ev, num_prod);
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_partial", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
                /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
+    buf.set_frame_desc(
+        std::make_shared<N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
@@ -564,7 +568,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, /*t*/ 0, base_time_ns,
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, /*t*/ 0, base_time_ns,
                                     frame_len_ticks, 0);
         buf.mark_frame_full("test-producer", fid);
         fid++;
@@ -626,13 +630,16 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const uint64_t num_file_t = 2;
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_p*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL);
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
 
-    const size_t frame_size = N2FrameView::calculate_frame_size(
-        num_input, num_ev, N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri));
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(
+        num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_roll", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
+    buf.set_frame_desc(std::make_shared<N2FrameDesc>(
+        num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri),
+        N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
@@ -655,7 +662,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
         for (size_t f = 0; f < nfreq; ++f) {
             uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
             BOOST_REQUIRE(frame != nullptr);
-            fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, t,
+            fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, t,
                                         baseA + t * frame_len_ns, frame_len_ticks, abs_base_a + t);
             buf.mark_frame_full("test-producer", fid);
             fid++;
@@ -665,7 +672,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
         for (size_t f = 0; f < nfreq; ++f) {
             uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
             BOOST_REQUIRE(frame != nullptr);
-            fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, t,
+            fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, t,
                                         baseB + t * frame_len_ns, frame_len_ticks, abs_base_b + t);
             buf.mark_frame_full("test-producer", fid);
             fid++;
@@ -713,12 +720,15 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     const uint64_t num_file_t = 1; // one frame per file
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_p*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                   /*seq_override*/ dt_ns);
+                                   /*seq_override*/ dt_ns, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
-    const size_t frame_size = N2FrameView::calculate_frame_size(
-        num_input, num_ev, N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri));
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(
+        num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_subsec", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
+    buf.set_frame_desc(std::make_shared<N2FrameDesc>(
+        num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri),
+        N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
@@ -737,8 +747,8 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, baseA,
-                                    frame_len_ticks, abs_base_a);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, baseA, frame_len_ticks,
+                                    abs_base_a);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -746,8 +756,8 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, baseB,
-                                    frame_len_ticks, abs_base_b);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, baseB, frame_len_ticks,
+                                    abs_base_b);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -786,15 +796,18 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const size_t num_ev = 2;
     const size_t nfreq = 3;
     const uint64_t num_file_t = 2;
-    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
-                                   0 /*bs_f*/, 0 /*bs_p*/, 0 /*bs_t*/,
-                                   0 /*late_frame_grace_seconds*/, 1'000'000'000ULL);
+    auto conf = make_writer_config(
+        unique_name, in_buf_name, base_dir, file_name, false, num_file_t, 0 /*bs_f*/, 0 /*bs_p*/,
+        0 /*bs_t*/, 0 /*late_frame_grace_seconds*/, 1'000'000'000ULL, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
 
-    const size_t frame_size = N2FrameView::calculate_frame_size(
-        num_input, num_ev, N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri));
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(
+        num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
     auto pool = metadataPool::create(8, sizeof(N2Metadata), "pool_timeout", "N2Metadata");
     Buffer buf(8, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
+    buf.set_frame_desc(std::make_shared<N2FrameDesc>(
+        num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri),
+        N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
@@ -815,8 +828,8 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, baseA,
-                                    frame_len_ticks, abs_base_a);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, baseA, frame_len_ticks,
+                                    abs_base_a);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -826,8 +839,8 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, baseB,
-                                    frame_len_ticks, abs_base_b);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, baseB, frame_len_ticks,
+                                    abs_base_b);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -867,13 +880,16 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const uint64_t num_file_t = 1;
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_p*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL);
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
     set_stage_log_level(conf, unique_name, "ERROR");
-    const size_t frame_size = N2FrameView::calculate_frame_size(
-        num_input, num_ev, N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri));
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(
+        num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_drop", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
+    buf.set_frame_desc(std::make_shared<N2FrameDesc>(
+        num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri),
+        N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
@@ -903,7 +919,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, base_time_ns,
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, base_time_ns,
                                     frame_len_ticks, abs_base_a);
         buf.mark_frame_full("test-producer", fid);
         fid++;
@@ -913,8 +929,8 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, next_time,
-                                    frame_len_ticks, abs_base_b);
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, next_time, frame_len_ticks,
+                                    abs_base_b);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
@@ -941,8 +957,8 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 7: Geometry mismatch within dataset (nfreq) is dropped correctly
-BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
+/// Test 7: Basic geometry write test
+BOOST_AUTO_TEST_CASE(test_writer_geometry_basic) {
 
     kotekan_test_logging::configure();
 
@@ -960,12 +976,15 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
 
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_p*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL);
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
-    const size_t frame_size = N2FrameView::calculate_frame_size(
-        num_input, num_ev, N2FrameView::get_num_prod(num_input, N2Layout::FullUpperTri));
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(
+        num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
     auto pool = metadataPool::create(4, sizeof(N2Metadata), "pool_geom", "N2Metadata");
     Buffer buf(4, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
+    buf.set_frame_desc(std::make_shared<N2FrameDesc>(
+        num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri),
+        N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
     bc.add_buffer(in_buf_name, &buf);
@@ -973,9 +992,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     hdf5N2Write stage(conf, unique_name, bc);
     stage.start();
 
-    const uint64_t dt_ns = 1'000'000'000ULL;
     const uint64_t frame_len_ticks = 1;
-    const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
     const uint64_t base_time_ns = 9'000'000'000ULL;
 
     N2::frameID fid(&buf);
@@ -984,23 +1001,11 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_mismatch_dropped) {
     for (size_t f = 0; f < nfreq; ++f) {
         uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
         BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, f, 0, base_time_ns,
+        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, f, 0, base_time_ns,
                                     frame_len_ticks, abs_base);
         buf.mark_frame_full("test-producer", fid);
         fid++;
     }
-    // Send one mismatching frame for same file window with nfreq+1 (should be dropped)
-    {
-        uint8_t* frame = buf.wait_for_empty_frame("test-producer", fid);
-        BOOST_REQUIRE(frame != nullptr);
-        fill_n2_frame_with_abs_freq(&buf, fid, num_input, num_ev, nfreq, 0, 1,
-                                    base_time_ns + frame_len_ns, frame_len_ticks, abs_base + 1);
-        auto meta = get_N2_metadata(&buf, fid);
-        meta->nfreq = nfreq + 1; // Force mismatch
-        buf.mark_frame_full("test-producer", fid);
-        fid++;
-    }
-
     wait_until_frame_empty(&buf, fid - 1, 30.0);
     stage.stop();
     buf.send_shutdown_signal();

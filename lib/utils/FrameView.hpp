@@ -103,4 +103,19 @@ T& bind_scalar(uint8_t* start, std::pair<size_t, size_t> range) {
     return *loc;
 }
 
+template<typename T, typename Range>
+gsl_lite::span<T> bind_span(uint8_t* start, Range range) {
+    T* span_start = (T*)(start + range.begin);
+    T* span_end = (T*)(start + range.end);
+
+    return gsl_lite::span<T>(span_start, span_end);
+}
+
+template<typename T, typename Range>
+T& bind_scalar(uint8_t* start, Range range) {
+    T* loc = (T*)(start + range.begin);
+
+    return *loc;
+}
+
 #endif

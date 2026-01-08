@@ -181,23 +181,14 @@ public:
         if (meta->has_fpga_seq_num())
             dataset.createAttribute("fpga_seq_num", meta->get_fpga_seq_num());
 
-        if (meta->has_sample0_offset())
-            dataset.createAttribute("sample0_offset", meta->get_sample0_offset());
-
-        if (meta->has_offset_downsampling())
-            dataset.createAttribute("offset_downsampling", meta->get_offset_downsampling());
+        if (meta->has_time_downsampling_fpga())
+            dataset.createAttribute("time_downsampling_fpga", meta->get_time_downsampling_fpga());
 
         if (meta->has_coarse_freq())
             dataset.createAttribute("coarse_freq", meta->get_coarse_freq());
 
         if (meta->has_freq_upchan_factor())
             dataset.createAttribute("freq_upchan_factor", meta->get_freq_upchan_factor());
-
-        if (meta->has_half_fpga_sample0())
-            dataset.createAttribute("half_fpga_sample0", meta->get_half_fpga_sample0());
-
-        if (meta->has_time_downsampling_fpga())
-            dataset.createAttribute("time_downsampling_fpga", meta->get_time_downsampling_fpga());
 
         if (meta->ndishes >= 0) {
             dataset.createAttribute("ndishes", meta->ndishes);
@@ -287,7 +278,6 @@ public:
         file.createAttribute("num_elements", frame.num_elements);
         file.createAttribute("num_prod", frame.num_prod);
         file.createAttribute("num_ev", frame.num_ev);
-        file.createAttribute("nfreq", frame.nfreq);
         file.createAttribute("freq_id", frame.freq_id);
         file.createAttribute("freq_MHz", frame.freq_MHz);
         file.createAttribute("abs_time_idx", frame.abs_time_idx);
@@ -435,7 +425,7 @@ public:
                     assert(metadata_is_chord(mc));
                     const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
                     const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
-                        buffer->get_frame_desc();
+                        buffer->get_ndarray_frame_desc();
                     assert(frame_desc);
                     write_chord(full_path, frame, meta, frame_desc);
                 } else if (metadata_is_N2(mc)) {

@@ -115,10 +115,10 @@ void EigenN2Iter::main_thread() {
         N2FrameView input_frame(in_buf, input_frame_id);
 
         // Check that we have the full triangle
-        if (input_frame.vis_layout != N2Layout::FullUpperTri) {
+        if (input_frame.n2_layout != N2Layout::FullUpperTri) {
             FATAL_ERROR(
-                "Eigenvector calculations require full correlation triangle. Got layout {:d}.",
-                static_cast<int>(input_frame.vis_layout));
+                "Eigenvector calculations require a full correlation triangle. Got layout {}.",
+                N2Layout_to_string(input_frame.n2_layout));
         }
 
         // Start the calculation clock.

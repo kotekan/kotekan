@@ -82,7 +82,12 @@ std::shared_ptr<GenericNDArray> GenericNDArray::create(const DataType value_data
                                                           dimnames, data);
 }
 
-bool GenericNDArray::operator==(const GenericNDArray& other) const {
+bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
+    const GenericNDArray* other_ptr = dynamic_cast<const GenericNDArray*>(&other_desc);
+    if (!other_ptr)
+        return false;
+    const GenericNDArray& other = *other_ptr;
+
     if (this->get_value_datatype() != other.get_value_datatype())
         return false;
     if (this->get_quantity_name() != other.get_quantity_name())

@@ -200,7 +200,7 @@ public:
             assert(metadata->dim[d] == int(ndarray.extent(d)));
             assert(metadata->stride[d] == ndarray.stride(d));
         }
-        // TODO: check `sample0_offset`
+        // TODO: check `fpgq_seq_num`
     }
 
     void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) const {
@@ -216,7 +216,7 @@ public:
             metadata->set_array_dimension(d, ndarray.extent(d), std::string(ndarray.dimname(d)));
             metadata->stride[d] = ndarray.stride(d);
         }
-        // TODO: set `sample0_offset`
+        // TODO: set `fpgq_seq_num`
     }
 
     // Poison

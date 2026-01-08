@@ -6,6 +6,7 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata, CHO...
+#include "div.hpp"             // for div_noremainder
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
 #include "metadata.hpp"        // for metadataObject
 
@@ -19,6 +20,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::div_noremainder;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(gpuSimulateN2kPLExpand);
@@ -43,7 +45,7 @@ gpuSimulateN2kPLExpand::gpuSimulateN2kPLExpand(Config& config, const std::string
     int nt = _samples_per_data_set / 64;
     int nf = _num_local_freq;
     int ne = _num_elements / 8;
-    output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::uint1x8>::type, 5>(
+    output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::uint1x8>::type, 5>(
         "pl_mask", {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"});
 }
 
@@ -182,33 +184,24 @@ void gpuSimulateN2kPLExpand::main_thread() {
         meta_out->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */
-        meta_out->check_frame_desc(output_buf->get_frame_desc());
+        meta_out->check_frame_desc(output_buf->get_ndarray_frame_desc());
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->set_sample0_offset(2 * meta_in->get_sample0_offset());
-        meta_out->set_offset_downsampling(meta_in->get_offset_downsampling());
+        meta_out->set_time_downsampling_fpga(
+            div_noremainder(meta_in->get_time_downsampling_fpga(), 2));
 
         const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
         const std::vector<int> freq_upchan_factor_in = meta_in->get_freq_upchan_factor();
-        const std::vector<int64_t> half_fpga_sample0_in = meta_in->get_half_fpga_sample0();
-        const std::vector<int> time_downsampling_fpga_in = meta_in->get_time_downsampling_fpga();
         std::vector<int> coarse_freq(_num_local_freq);
         std::vector<int> freq_upchan_factor(coarse_freq.size());
-        std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
-        std::vector<int> time_downsampling_fpga(coarse_freq.size());
 
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             coarse_freq[f] = coarse_freq_in[f];
             freq_upchan_factor[f] = freq_upchan_factor_in[f];
-            time_downsampling_fpga[f] = time_downsampling_fpga_in[f] / 2;
-            half_fpga_sample0[f] =
-                half_fpga_sample0_in[f] + time_downsampling_fpga[f] - time_downsampling_fpga_in[f];
         }
 
         meta_out->set_coarse_freq(coarse_freq);
         meta_out->set_freq_upchan_factor(freq_upchan_factor);
-        meta_out->set_half_fpga_sample0(half_fpga_sample0);
-        meta_out->set_time_downsampling_fpga(time_downsampling_fpga);
         assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
 
         input_buf->mark_frame_empty(unique_name, input_frame_id);
