@@ -42,11 +42,6 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
     bin_start_LAST = fmt->bin_start_LAST;
     bin_end_LAST = fmt->bin_end_LAST;
 
-    num_elements = fmt->num_elements;
-    num_prod = fmt->num_prod;
-    num_ev = fmt->num_ev;
-    vis_layout = fmt->vis_layout;
-
     return sizeof(N2MetadataFormat);
 }
 
@@ -69,11 +64,6 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->bin_end_ERA_deg = bin_end_ERA_deg;
     fmt->bin_start_LAST = bin_start_LAST;
     fmt->bin_end_LAST = bin_end_LAST;
-
-    fmt->num_elements = num_elements;
-    fmt->num_prod = num_prod;
-    fmt->num_ev = num_ev;
-    fmt->vis_layout = vis_layout;
 
     return sizeof(N2MetadataFormat);
 }
@@ -122,11 +112,6 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
     j.emplace("bin_end_ERA_deg", m.bin_end_ERA_deg);
     j.emplace("bin_start_LAST", m.bin_start_LAST);
     j.emplace("bin_end_LAST", m.bin_end_LAST);
-
-    j.emplace("num_elements", m.num_elements);
-    j.emplace("num_prod", m.num_prod);
-    j.emplace("num_ev", m.num_ev);
-    j.emplace("vis_layout", m.vis_layout);
 }
 
 void from_json(const nlohmann::json& j, N2Metadata& m) {
@@ -147,9 +132,4 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.bin_end_ERA_deg = j.at("bin_end_ERA_deg");
     m.bin_start_LAST = j.at("bin_start_LAST");
     m.bin_end_LAST = j.at("bin_end_LAST");
-
-    m.num_elements = j.at("num_elements");
-    m.num_prod = j.at("num_prod");
-    m.num_ev = j.at("num_ev");
-    m.vis_layout = j.at("vis_layout");
 }

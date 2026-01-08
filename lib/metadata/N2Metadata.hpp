@@ -23,18 +23,6 @@ using kotekan::Config;
 
 // Struct containing metadata fields for an N2 frame
 struct N2MetadataFormat {
-
-    /// Number of elements for data in buffer
-    uint32_t num_elements = 0;
-    /// Number of products in the data
-    uint32_t num_prod = 0;
-    /// Number of eigenvectors and values calculated
-    uint32_t num_ev = 0;
-
-    /// enum specifying the layout type of the visibility matrix.
-    N2Layout vis_layout = N2Layout::FullUpperTri;
-
-
     /// ID of the frequency bin
     uint32_t freq_id = 0; // this is an int in chordMetadata, maybe change later
     /// Physical frequency in Hz

@@ -1,5 +1,19 @@
-#include "EigenVisIter.hpp"
+/*****************************************
+@file
+@brief Stage for eigen-factoring the visibilities using an iterative method
+- EigenVisIter : public kotekan::Stage
+*****************************************/
+#ifndef EIGENVISITER_HPP
+#define EIGENVISITER_HPP
 
+#include <blaze/Blaze.h> // for HermitianMatrix
+#include <map>           // for map
+#include <stdint.h>      // for uint32_t, int32_t
+#include <string>        // for string
+#include <utility>       // for pair
+#include <vector>        // for vector
+
+// TODO: figure out how to forward declare eig_t
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for operator!=, operator<
 #include "LinearAlgebra.hpp"     // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
@@ -205,55 +219,52 @@ void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double el
     calc_time.add_sample(elapsed_time);
     comp_time_seconds_metric.set(calc_time.average());
 
-    // Output eigenvalues to prometheus
-    for (uint32_t i = 0; i < _num_eigenvectors; i++) {
-        eigenvalue_metric.labels({std::to_string(i), std::to_string(freq_id)})
-            .set(eigpair.first[_num_eigenvectors - 1 - i]);
-    }
+public:
+    EigenVisIter(kotekan::Config& config, const std::string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
+    virtual ~EigenVisIter() = default;
+    void main_thread() override;
 
-    // Output RMS to prometheus
-    eigenvalue_metric.labels({"rms", std::to_string(freq_id)}).set(stats.rms);
+private:
+    // Update the dataset ID when we receive a new input dataset
+    dset_id_t change_dataset_state(dset_id_t input_dset_id) const;
 
-    // Output convergence stats
-    std::vector<std::string> labels = {std::to_string(freq_id)};
-    iterations_metric.labels(labels).set(stats.iterations);
-    eigenvalue_convergence_metric.labels(labels).set(stats.eps_eval);
-    eigenvector_convergence_metric.labels(labels).set(stats.eps_evec);
-}
+    // Update the prometheus metrics
+    void update_metrics(uint32_t freq_id, dset_id_t dset_id, double elapsed_time,
+                        const eig_t<cfloat>& eigpair, const EigConvergenceStats& stats);
 
+    // Calculate the mask to apply from the object parameters
+    DynamicHermitian<float> calculate_mask(uint32_t num_elements) const;
 
-DynamicHermitian<float> EigenVisIter::calculate_mask(uint32_t num_elements) const {
-    blaze::DynamicMatrix<float, blaze::columnMajor> M;
-    M.resize(num_elements, num_elements);
+    Buffer* in_buf;
+    Buffer* out_buf;
 
-    // Construct the mask matrix ...
-    // Go through and zero out data in excluded rows and columns.
-    M = 1.0f;
-    for (auto iexclude : _exclude_inputs) {
-        for (uint32_t j = 0; j < num_elements; j++) {
-            M(iexclude, j) = 0.0;
-            M(j, iexclude) = 0.0;
-        }
-    }
+    uint32_t _num_eigenvectors;
 
-    // Remove specified bands
-    for (const auto& br : _bands_filled) {
-        std::cout << br.first << " " << br.second << std::endl;
-        for (int32_t i = br.first; i < br.second; i++) {
-            blaze::band(M, i) = 0.0;
-            blaze::band(M, -i) = 0.0;
-        }
-    }
+    // Parameters for convergence
+    double _tol_eval;
+    double _tol_evec;
+    uint32_t _num_ev_conv;
+    uint32_t _max_iterations;
+    uint32_t _krylov;
+    uint32_t _subspace;
 
-    // Zero out blocks on the diagonal if requested
-    if (_block_fill_size > 0) {
-        unsigned int nb = num_elements / _block_fill_size;
-        for (unsigned int ii = 0; ii < nb; ii++) {
-            unsigned int start = ii * _block_fill_size;
-            unsigned int width = std::min(num_elements - start, _block_fill_size);
-            blaze::submatrix(M, start, start, width, width) = 0.0;
-        }
-    }
+    /// Parameters for masking the matrix
+    std::vector<uint32_t> _exclude_inputs;
+    uint32_t _block_fill_size;
+    std::vector<std::pair<int32_t, int32_t>> _bands_filled;
 
-    return blaze::declherm(M);
-}
+    /// Keep track of the average write time, per frequency and dataset ID
+    std::map<std::pair<uint32_t, dset_id_t>, movingAverage> calc_time_map;
+
+    state_id_t ev_state_id;
+    dset_id_t input_dset_id = dset_id_t::null;
+
+    kotekan::prometheus::Gauge& comp_time_seconds_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvalue_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& iterations_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvalue_convergence_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvector_convergence_metric;
+};
+
+#endif

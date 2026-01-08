@@ -295,7 +295,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "num_elements", fv.num_elements);
         _check_create_attribute(*file, "num_prod", fv.num_prod);
         _check_create_attribute(*file, "num_ev", fv.num_ev);
-        _check_create_attribute(*file, "vis_layout", N2Layout_to_string(fv.n2_layout));
+        _check_create_attribute(*file, "n2_layout", N2Layout_to_string(fv.n2_layout));
 
         // Telescope info
         const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();

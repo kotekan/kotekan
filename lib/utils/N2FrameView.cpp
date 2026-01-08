@@ -14,7 +14,7 @@ std::shared_ptr<const kotekan::N2FrameDesc>
 validate_desc_type(std::shared_ptr<const kotekan::FrameDesc> desc) {
     auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(desc);
     if (!n2_desc) {
-        throw std::runtime_error("N2FrameView: Buffer does not have a valid N2FrameDesc");
+        FATAL_ERROR_NON_OO("N2FrameView: Buffer does not have a valid N2FrameDesc");
     }
     return n2_desc;
 }
@@ -113,19 +113,5 @@ void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Fie
 }
 
 void N2FrameView::fill_prod_maps(std::vector<N2::prod_ctype>& prods) const {
-
-    switch (n2_layout) {
-        case N2Layout::FullUpperTri:
-            fill_prod_maps_FullUpperTri(prods, size_t(num_elements));
-            break;
-        case N2Layout::Autocorrelations:
-            fill_prod_maps_Autocorrelations(prods, size_t(num_elements));
-            break;
-        default:
-            std::string msg = fmt::format(
-                "N2FrameView::fill_prod_maps has not been implemented for N2Layout {:s}",
-                N2Layout_to_string(n2_layout));
-            FATAL_ERROR_NON_OO("{:s}", msg);
-            break;
-    }
+    _desc->fill_prod_maps(prods);
 }

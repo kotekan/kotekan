@@ -40,12 +40,6 @@ class N2Metadata(ctypes.Structure):
     """Wrap an N2Metadata struct."""
 
     _fields_ = [
-        # Frame structure fields
-        ("num_elements", ctypes.c_uint32),
-        ("num_prod", ctypes.c_uint32),
-        ("num_ev", ctypes.c_uint32),
-        ("vis_layout", ctypes.c_int32),  # N2Layout enum
-        # Frequency info
         ("freq_id", ctypes.c_uint32),
         ("freq_MHz", ctypes.c_double),
         # Time index
