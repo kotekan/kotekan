@@ -156,8 +156,8 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
     std::shared_ptr<metadataPool> pool;
     std::string buffer_type;
     if (!is_vis) {
-        num_prod = N2FrameView::get_num_prod(p.num_elements, N2Layout::FullUpperTri);
-        frame_size = N2FrameView::calculate_frame_size(p.num_elements, p.num_ev, num_prod);
+        num_prod = kotekan::N2FrameDesc::get_num_prod(p.num_elements, N2Layout::FullUpperTri);
+        frame_size = kotekan::N2FrameDesc::calculate_frame_size(p.num_elements, p.num_ev, num_prod);
         pool = metadataPool::create(p.total_frames, sizeof(N2Metadata), "n2_pool", "N2Metadata");
         buffer_type = "N2";
     } else {

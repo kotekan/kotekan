@@ -89,6 +89,7 @@ void N2Subset::main_thread() {
 
         N2FrameView input_vis(in_buf, input_frame_id);
         if (input_vis.n2_layout != N2Layout::FullUpperTri) {
+            // TODO: Can probably relax this, any subset should be ok as long as the products exist
             FATAL_ERROR("N2Subset: in_buf must have FullUpperTri visibility layout");
         }
 
@@ -101,18 +102,10 @@ void N2Subset::main_thread() {
         std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, output_frame_id);
         N2FrameView output_vis(out_buf, output_frame_id);
 
-        // Make sure num_elements, ev matches
-        if (input_vis.num_elements != output_vis.num_elements
-            || input_vis.num_ev != output_vis.num_ev) {
-            FATAL_ERROR("N2Subset: in_buf and out_buf must have the same num_elements and num_ev");
-        }
+        // TODO: Set ouput buffer frame description based on input and subset choices
 
         // Copy over metadata
         meta->deepCopy(input_vis._metadata);
-        // Update metadata fields
-        meta->num_prod = static_cast<uint32_t>(_num_subset_prod);
-        // Set layout to GeneralSubset since we're extracting a subset of products
-        meta->vis_layout = N2Layout::GeneralSubset;
 
         // Copy over subset of visibilities
         for (size_t i = 0; i < _num_subset_prod; i++) {
