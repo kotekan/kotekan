@@ -1,7 +1,9 @@
 #include "countCheck.hpp"
 
 #include "Config.hpp"          // for Config
+#include "N2FrameView.hpp"     // for N2FrameView
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
@@ -34,13 +36,24 @@ countCheck::countCheck(Config& config, const std::string& unique_name,
     start_time_tolerance = config.get_default<int>(unique_name, "start_time_tolerance", 3);
 
     // Initialize the start_time to zero:
-    start_time = 0;
+    start_time_ns = 0;
+
+    tick_len_ns = Telescope::instance().seq_length_nsec();
+    if (tick_len_ns == 0) {
+        FATAL_ERROR("countCheck: telescope tick length must be > 0.");
+    }
+
+    tolerance_ns = (int64_t)start_time_tolerance * 1000000000LL;
+
+    if (in_buf->buffer_type != "vis" && in_buf->buffer_type != "N2") {
+        FATAL_ERROR("countCheck input buffer {:s} must be of type vis or N2, got {:s}",
+                    in_buf->buffer_name, in_buf->buffer_type);
+    }
 }
 
 void countCheck::main_thread() {
 
     unsigned int input_frame_id = 0;
-    uint64_t counts_per_second = 390625;
 
     while (!stop_thread) {
 
@@ -49,21 +62,39 @@ void countCheck::main_thread() {
             break;
         }
 
-        // Create view to input frame
-        auto input_frame = VisFrameView(in_buf, input_frame_id);
+        int64_t new_start_time = 0;
 
-        int64_t fpga_seq = std::get<0>(input_frame.time);
-        int64_t utime = std::get<1>(input_frame.time).tv_sec;
-        int64_t new_start_time = utime - fpga_seq / counts_per_second;
+        if (in_buf->buffer_type == "vis") {
+            // Create view to input frame
+            auto input_frame = VisFrameView(in_buf, input_frame_id);
 
-        DEBUG("Debugging: fpga_seq: {:d}, utime: {:d}, start_time: {:d}, time diff: {:d}", fpga_seq,
-              utime, start_time, llabs(start_time - new_start_time));
+            int64_t fpga_seq = std::get<0>(input_frame.time);
+            timespec ts = std::get<1>(input_frame.time);
+            new_start_time =
+                (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec - fpga_seq * (int64_t)tick_len_ns;
+
+            DEBUG("countCheck (vis): fpga_seq: {:d}, ctime_ns: {:d}, start_time_ns: {:d}, "
+                  "time diff: {:d}",
+                  fpga_seq, (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec, start_time_ns,
+                  llabs(start_time_ns - new_start_time));
+        } else {
+            // N2 frame view
+            auto input_frame = N2FrameView(in_buf, input_frame_id);
+
+            int64_t fpga_seq = (int64_t)input_frame.fpga_start_tick;
+            int64_t frame_start_ns = (int64_t)input_frame.frame_start_time_ns;
+            new_start_time = frame_start_ns - fpga_seq * (int64_t)tick_len_ns;
+
+            DEBUG("countCheck (N2): fpga_seq: {:d}, frame_start_ns: {:d}, start_time_ns: {:d}, "
+                  "time diff: {:d}",
+                  fpga_seq, frame_start_ns, start_time_ns, llabs(start_time_ns - new_start_time));
+        }
 
         // If this is the first frame, store start time
-        if (start_time == 0) {
-            start_time = new_start_time;
+        if (start_time_ns == 0) {
+            start_time_ns = new_start_time;
             // Else, test that start time is still the same
-        } else if (llabs(start_time - new_start_time) > start_time_tolerance) {
+        } else if (llabs(start_time_ns - new_start_time) > tolerance_ns) {
             // Shut Kotekan down
             FATAL_ERROR("Found wrong start time. Possible acquisition re-start occurred.");
             break;

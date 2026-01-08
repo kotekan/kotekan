@@ -109,6 +109,14 @@ if(HDF5_FOUND
                                                             ${CUDA_INCLUDE_DIRS})
 endif()
 
+if(LAPACKE_FOUND AND BLAZE_FOUND)
+    add_executable(test_eigenStages test_eigenStages.cpp)
+    target_link_libraries(test_eigenStages PRIVATE libexternal kotekan_stages kotekan_libs
+                                                   kotekan_utils kotekan_core)
+    target_include_directories(test_eigenStages PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                        ${KOTEKAN_SOURCE_DIR}/lib/testing)
+endif()
+
 add_executable(test_DataType test_DataType.cpp)
 target_link_libraries(test_DataType kotekan_metadata libexternal)
 

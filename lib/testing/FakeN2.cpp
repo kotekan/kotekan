@@ -46,6 +46,7 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
     num_eigenvectors = config.get<size_t>(unique_name, "num_ev");
+    n2_layout = config.get_default<N2Layout>(unique_name, "vis_layout", N2Layout::FullUpperTri);
     sleep_before = config.get_default<float>(unique_name, "sleep_before", 0.0);
     sleep_after = config.get_default<float>(unique_name, "sleep_after", 1.0);
 
@@ -79,8 +80,8 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
 
-    size_t num_prod = N2FrameDesc::get_num_prod(num_elements, n2_layout);
-    size_t frame_size = N2FrameDesc::calculate_frame_size(num_elements, num_eigenvectors, num_prod);
+    size_t num_prod = kotekan::N2FrameDesc::get_num_prod(num_elements, n2_layout);
+    size_t frame_size = kotekan::N2FrameDesc::calculate_frame_size(num_elements, num_eigenvectors, num_prod);
     if (out_buf->frame_size != frame_size) {
         FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d}", out_buf->buffer_name,
                     out_buf->frame_size, frame_size);
