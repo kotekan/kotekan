@@ -49,10 +49,21 @@ network_input_buffers:
     # The workers share an output buffer
     network_input_buffer_0:
         kotekan_buffer: standard
-    #network_input_buffer_1:
-    #    kotekan_buffer: standard
+    network_input_buffer_transpose:
+        kotekan_buffer: standard
 
-packet_capture_mask:
+packet_receipt_bitmap_buffers:
+    log_level: info
+    num_frames: buffer_depth
+    frame_size: (timesamples_per_frame / time_short) * num_crs_boards  # One bit per stream
+    metadata_pool: main_pool
+    use_hugepages: false
+    packet_receipt_bitmap_buffer_0:
+        kotekan_buffer: standard
+    packet_receipt_bitmap_buffer_1:
+        kotekan_buffer: standard
+    combined_receipt_bitmap_buffer:
+        kotekan_buffer: standard
 
 
 cpu_affinity: [2,3,8,9]
@@ -95,11 +106,50 @@ dpdk:
         - dpdk_handler: crs16BoardCaptureWorker
           worker_ring: 0
           out_buf: network_input_buffer_0
+          receipt_bitmap_buf: packet_receipt_bitmap_buffer_0
         - dpdk_handler: crs16BoardCaptureWorker
           worker_ring: 1
           out_buf: network_input_buffer_0
+          receipt_bitmap_buf: packet_receipt_bitmap_buffer_1
+
+process_packet_mask:
+    kotekan_stage: ProcessPacketMask
+    voltage_buf: network_input_buffer_0
+    receipt_bitmap_bufs:
+        - packet_receipt_bitmap_buffer_0
+        - packet_receipt_bitmap_buffer_1
+    combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer
+    num_frequency: num_local_freq
+    num_source_ids: num_crs_boards
+    missing_source_ids: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+
+
+transpose_voltage:
+    kotekan_stage: TransposeBasebandArray
+    in_buf: network_input_buffer_0
+    out_buf: network_input_buffer_transpose
 
 hex_dump:
     kotekan_stage: hexDump
-    in_buf: network_input_buffer_0
-    len: 128
+    in_buf: network_input_buffer_transpose
+    len: 49152
+
+raw_file_writers:
+    ### UPDATE THIS PATH FOR EACH RUN ###
+    base_dir: /data/transpose_test/
+    frames_per_file: 1
+    prefix_hostname: false
+    include_metadata: false
+    exit_after_n_files: 10
+    file_ext: raw
+    writer_0:
+        file_name: crs_0
+        #kotekan_stage: rawFileWrite
+        in_buf: network_input_buffer_transpose
+
+
+
+# 0x00000000000000ff
+# 0x000000000000ff00
+# 0x0000000000000000
+# 0xffffffffff00ff00

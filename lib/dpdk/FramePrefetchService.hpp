@@ -19,13 +19,14 @@ namespace kotekan {
 
 struct FrameInfo {
     uint8_t* frame_ptr = nullptr;
+    uint8_t* receipt_bitmap_ptr = nullptr;
     uint64_t start_seq = 0;
     int frame_id = -1;
 };
 
 class FramePrefetchService : public kotekanLogging {
 public:
-    FramePrefetchService(Buffer* buf, std::string name, uint64_t samples_per_frame, int depth, std::vector<int> cpu_affinity, uint64_t capture_n_frames = 0);
+    FramePrefetchService(Buffer* buf, Buffer* receipt_bitmap_buf, std::string name, uint64_t samples_per_frame, int depth, std::vector<int> cpu_affinity, uint64_t capture_n_frames = 0);
     ~FramePrefetchService();
 
     void start(uint64_t start_seq);
@@ -47,6 +48,7 @@ private:
     void apply_affinity();
 
     Buffer* buf;
+    Buffer* receipt_bitmap_buf;
     std::string unique_name;
     uint64_t samples_per_frame;
     int depth;
@@ -73,14 +75,22 @@ private:
     std::thread prefetcher_thread;
 };
 
-FramePrefetchService::FramePrefetchService(Buffer* buf, std::string name, uint64_t samples_per_frame, int depth, std::vector<int> cpu_affinity, uint64_t capture_n_frames)
-    : buf(buf), unique_name(name), samples_per_frame(samples_per_frame), depth(depth), cpu_affinity(cpu_affinity), capture_n_frames(capture_n_frames) {
+FramePrefetchService::FramePrefetchService(Buffer* buf, Buffer* receipt_bitmap_buf, std::string name, uint64_t samples_per_frame, int depth, std::vector<int> cpu_affinity, uint64_t capture_n_frames)
+    : buf(buf), receipt_bitmap_buf(receipt_bitmap_buf), unique_name(name), samples_per_frame(samples_per_frame), depth(depth), cpu_affinity(cpu_affinity), capture_n_frames(capture_n_frames) {
     
     size_t d = 1;
     while (d < (size_t)depth) d <<= 1;
     this->depth = d;
     this->mask = d - 1;
     frames.resize(d);
+
+    if (buf->num_frames != receipt_bitmap_buf->num_frames) {
+        throw std::runtime_error("FramePrefetchService: buf and receipt_bitmap_buf must have the same number of frames");
+    }
+
+    if (buf->num_frames < depth + 2) {
+        throw std::runtime_error("FramePrefetchService: Buffer does not have enough frames for the requested prefetch depth");
+    }
     
     running = true;
     prefetcher_thread = std::thread(&FramePrefetchService::prefetcher_loop, this);
@@ -133,6 +143,7 @@ void FramePrefetchService::prefetcher_loop() {
             FrameInfo& info = frames[marked_full_cursor & mask];
             INFO("FramePrefetchService {} marking frame {} full (seq {})", unique_name, info.frame_id, info.start_seq);
             buf->mark_frame_full(unique_name, info.frame_id);
+            receipt_bitmap_buf->mark_frame_full(unique_name, info.frame_id);
             marked_full_cursor++;
             
             if (capture_n_frames > 0 && marked_full_cursor >= capture_n_frames) {
@@ -162,14 +173,23 @@ void FramePrefetchService::prefetcher_loop() {
                 running = false;
                 return;
             }
+            uint8_t* receipt_bitmap_ptr = receipt_bitmap_buf->wait_for_empty_frame(unique_name, frame_id);
+            if (receipt_bitmap_ptr == nullptr) {
+                error_flag = true;
+                running = false;
+                return;
+            }
             INFO("FramePrefetchService {} obtained frame {}", unique_name, frame_id);
             
             buf->allocate_new_metadata_object(frame_id);
             //auto metadata = buf->get_metadata(frame_id);
             //metadata->set_time_sample_start_seq(seq);
+
+            receipt_bitmap_buf->allocate_new_metadata_object(frame_id);
             
             FrameInfo& info = frames[produced & mask];
             info.frame_ptr = ptr;
+            info.receipt_bitmap_ptr = receipt_bitmap_ptr;
             info.start_seq = seq;
             info.frame_id = frame_id;
             

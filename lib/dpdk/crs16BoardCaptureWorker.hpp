@@ -41,6 +41,8 @@ protected:
 
     /// The output buffer
     Buffer* out_buf;
+    /// The packet recepit bitmap buffer
+    Buffer* receipt_bitmap_buf;
 
     /// The packet size
     uint32_t packet_size;
@@ -71,10 +73,13 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(kotekan::Config& config,
                                       const std::vector<rte_ring*>& worker_rings) :
     dpdkRXhandler(config, unique_name, buffer_container, port), worker_rings(worker_rings),
     out_buf(buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"))),
+    receipt_bitmap_buf(
+        buffer_container.get_buffer(config.get<std::string>(unique_name, "receipt_bitmap_buf"))),
     packet_size(config.get<uint32_t>(unique_name, "packet_size")),
     payload_size(config.get<uint32_t>(unique_name, "payload_size")) {
 
     out_buf->register_producer(unique_name);
+    receipt_bitmap_buf->register_producer(unique_name);
 
     if ((out_buf->frame_size % (payload_size * num_source_ids * num_stream_ids)) != 0) {
         throw std::runtime_error("The buffer frame size must be a multiple of the combined payload size of all source and stream IDs for a given time sample.");
@@ -98,7 +103,7 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(kotekan::Config& config,
     int prefetch_depth = config.get_default<int>(unique_name, "prefetch_depth", 4);
     std::vector<int> cpu_affinity = config.get<std::vector<int>>(unique_name, "frame_service_cpu_affinity");
 
-    prefetch_service = std::make_unique<kotekan::FramePrefetchService>(out_buf, unique_name, time_samples_per_frame, prefetch_depth, cpu_affinity, capture_n_frames);
+    prefetch_service = std::make_unique<kotekan::FramePrefetchService>(out_buf, receipt_bitmap_buf, unique_name, time_samples_per_frame, prefetch_depth, cpu_affinity, capture_n_frames);
     prefetch_service->set_log_level(get_log_level());
     prefetch_service->set_log_prefix(unique_name + "_prefetch");
 }
@@ -219,9 +224,17 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     }
 
     packet_copy_to_frame(mbuf, frame_ptr, relative_seq_num, stream_id, source_id);
-    // Record which packets where received.
-    
 
+    // Record which packets were received.
+    // The layout of the packet receipt bitmap is:
+    // packet_receipt[time_long][source_id][stream_id]
+    // with the size (in bits) of:
+    // time_long = packets_per_frame / (num_source_ids * num_stream_ids)
+    // source_id = num_source_ids
+    // stream_id = num_stream_ids
+    // For the pathfinder this is [512][16][8] = 65536 bits = 8192 bytes
+    active_f0->receipt_bitmap_ptr[(relative_seq_num / time_samples_per_packet) * num_source_ids +
+                                   source_id] |= (1 << (stream_id / 16));
 
     return 0;
 }
