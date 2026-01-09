@@ -6,18 +6,19 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
-#include <NDArrayRingBuffer.hpp>
+#include "DataType.hpp"
+#include "NDArrayBuffer.hpp"
+#include "NDArrayRingBuffer.hpp"
+#include "bufferContainer.hpp"
+#include "chordMetadata.hpp"
+#include "cudaCommand.hpp"
+#include "cudaDeviceInterface.hpp"
+#include "div.hpp"
+
 #include <algorithm>
 #include <array>
-#include <bufferContainer.hpp>
 #include <cassert>
-#include <chordMetadata.hpp>
 #include <cstring>
-#include <cudaCommand.hpp>
-#include <cudaDeviceInterface.hpp>
-#include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
 #include <stdexcept>
@@ -269,6 +270,8 @@ private:
     static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
+    const bool poison_buffers;
+
     // Kotekan buffer names
     const std::string G_name;
     const std::string E_name;
@@ -296,6 +299,8 @@ cudaUpchannelizer_chime_U8::cudaUpchannelizer_chime_U8(Config& config,
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "Upchannelizer_chime_U8", "Upchannelizer_chime_U8.ptx"),
     Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")),
+
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
     G_name(config.get<std::string>(unique_name, "upchan_U8_gain_name")),
     E_name(config.get<std::string>(unique_name, "voltage_name")),
@@ -469,14 +474,14 @@ cudaEvent_t cudaUpchannelizer_chime_U8::execute(cudaPipelineState& /*pipestate*/
 
     // Copy inputs to device memory
 
-    Ebar_buffer.set_to_poison(0x00, 0, Fmax - Fmin);
-    info_buffer.set_to_poison(0xff);
+    if (poison_buffers) {
+        Ebar_buffer.set_to_poison(0x00, 0, Fmax - Fmin);
+        info_buffer.set_to_poison(0xff);
 
-#ifdef DEBUGGING
-    // Initialize host-side buffer arrays
-    CHECK_CUDA_ERROR(
-        cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes, device.getStream(cuda_stream_id)));
-#endif
+        // Initialize host-side buffer arrays
+        CHECK_CUDA_ERROR(cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes,
+                                         device.getStream(cuda_stream_id)));
+    } // if (poison_buffers)
 
     const std::string symname = "Upchannelizer_chime_U8_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
@@ -493,43 +498,43 @@ cudaEvent_t cudaUpchannelizer_chime_U8::execute(cudaPipelineState& /*pipestate*/
         ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
-#ifdef DEBUGGING
-    // Copy results back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
-                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+    if (poison_buffers) {
+        // Copy results back to host memory
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
+                                         cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+        CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 
-    // Check error codes
-    const std::uint32_t error_code = *std::max_element(
-        (const std::uint32_t*)&host_info_buffer[0],
-        (const std::uint32_t*)&host_info_buffer[blocks * info_lengths[info_index_warp]
-                                                * info_lengths[info_index_thread]]);
-    if (error_code != 0)
-        ERROR("CUDA kernel Upchannelizer_chime_U8 returned error code: {}", error_code);
+        // Check error codes
+        const std::uint32_t error_code = *std::max_element(
+            (const std::uint32_t*)&host_info_buffer[0],
+            (const std::uint32_t*)&host_info_buffer[blocks * info_lengths[info_index_warp]
+                                                    * info_lengths[info_index_thread]]);
+        if (error_code != 0)
+            ERROR("CUDA kernel Upchannelizer_chime_U8 returned error code: {}", error_code);
 
-    if (error_code != 0) {
-        // TODO: Introduce a new "unbuffered" buffer; do this there
-        // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
-        for (int block = 0; block < blocks; ++block) {
-            for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
-                for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
-                    const std::ptrdiff_t i = info_strides[info_index_thread] * thread
-                                             + info_strides[info_index_warp] * warp
-                                             + info_strides[info_index_block] * block;
-                    const std::uint32_t val = host_info_buffer.data()[i];
-                    if (val != 0)
-                        ERROR("CUDA kernel Upchannelizer_chime_U8 returned 'info' value {:d} "
-                              "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates "
-                              "no error)",
-                              val, thread, warp, block, i);
+        if (error_code != 0) {
+            // TODO: Introduce a new "unbuffered" buffer; do this there
+            // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
+            for (int block = 0; block < blocks; ++block) {
+                for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+                    for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                        const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                                 + info_strides[info_index_warp] * warp
+                                                 + info_strides[info_index_block] * block;
+                        const std::uint32_t val = host_info_buffer.data()[i];
+                        if (val != 0)
+                            ERROR("CUDA kernel Upchannelizer_chime_U8 returned 'info' value {:d} "
+                                  "for thread {:d} warp {:d} block {:d} at index {:d} (zero "
+                                  "indicates no error)",
+                                  val, thread, warp, block, i);
+                    }
                 }
             }
         }
-    }
-#endif
 
-    Ebar_buffer.check_for_poison(0x00, 0, Fmax - Fmin);
+        Ebar_buffer.check_for_poison(0x00, 0, Fmax - Fmin);
+    } // if (poison_buffers)
 
     return record_end_event();
 }
