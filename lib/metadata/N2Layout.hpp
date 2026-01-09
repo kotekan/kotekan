@@ -6,7 +6,14 @@
 #include <cstdint> // for int32_t
 #include <string>  // for string
 
-enum class N2Layout : int32_t { FullUpperTri = 0, RedundantBaselineAvg = 1, Autocorrelations = 2 };
+enum class N2Layout : int32_t {
+    FullUpperTri = 0,
+    RedundantBaselineAvg = 1,
+    Autocorrelations = 2,
+    InputANDMasked = 3,
+    InputORMasked = 4,
+    GeneralSubset = 5
+};
 
 void to_json(nlohmann::json& j, const N2Layout& t);
 void from_json(const nlohmann::json& j, N2Layout& t);

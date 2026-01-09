@@ -82,8 +82,8 @@ void eigenVis::main_thread() {
     std::vector<cfloat> evecs;
     std::vector<float> evals;
 
-    int info, ev_found;
-    int64_t nside, nev;
+    lapack_int info, ev_found;
+    lapack_int nside, nev;
 
     // Storage space for the last eigenvector calculated (scaled by sqrt
     // the eigenvalue) for each freq_id.
@@ -231,7 +231,7 @@ void eigenVis::main_thread() {
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
         for (uint32_t i = 0; i < num_eigenvectors; i++) {
-            str_evals = fmt::format(fmt("{:s} {}"), str_evals, evals[i]);
+            str_evals = fmt::format("{:s} {}", str_evals, evals[i]);
         }
         INFO("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:3.1f} s.", str_evals, rms,
              elapsed_time);

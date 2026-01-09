@@ -67,6 +67,11 @@
 class N2FileData {
 public:
     enum FileMode { CHORD, CHIME };
+    struct DigitalGains {
+        std::vector<std::uint16_t> gains_lin;
+        std::vector<std::uint16_t> gains_log;
+        std::string full_filepath;
+    };
 
     // Structural information and fixed sizes
     const size_t num_elements; // number of inputs / elements
@@ -76,18 +81,19 @@ public:
     const size_t num_file_t;   // frames ("time" dimension)
 
     // file bookkeeping owned by this object
-    const FileMode file_mode;           // CHORD or CHIME (or other?)-type file
-    const size_t blocksize_f;           // frequency block size for chunking
-    const size_t blocksize_p;           // product/element block size for chunking
-    const size_t blocksize_t;           // time block size for chunking
-    const std::string compression;      // compression type
-    const size_t compression_level;     // gzip compression level
-    const bool use_bitshuffle;          // whether to use bitshuffle filter
-    const double open_wall_s;           // time opened
-    const uint64_t abs_file_idx;        // absolute file index (abs_time_idx / num_file_t)
-    const std::string base_dir;         // base output directory (without /.partial)
-    const std::string partial_filepath; // working on-disk location
-    const N2Layout n2_layout;           // visibility (N2) layout
+    const FileMode file_mode;               // CHORD or CHIME (or other?)-type file
+    const size_t blocksize_f;               // frequency block size for chunking
+    const size_t blocksize_p;               // product/element block size for chunking
+    const size_t blocksize_t;               // time block size for chunking
+    const std::string compression;          // compression type
+    const size_t compression_level;         // gzip compression level
+    const bool use_bitshuffle;              // whether to use bitshuffle filter
+    const double open_wall_s;               // time opened
+    const uint64_t abs_file_idx;            // absolute file index (abs_time_idx / num_file_t)
+    const std::string base_dir;             // base output directory (without /.partial)
+    const std::string gains_base_directory; // Base directory for gains
+    const std::string partial_filepath;     // working on-disk location
+    const N2Layout n2_layout;               // visibility (N2) layout
 
     double last_update_wall_s;               // last frame receipt
     std::unique_ptr<HighFive::File> h5_file; // Working on-disk HDF5 file handle
@@ -132,6 +138,9 @@ private:
                                const HighFive::DataType& dtype,
                                HighFive::DataSetCreateProps props) const;
 
+    /// Load digital gains from files in given directory
+    std::optional<N2FileData::DigitalGains> _get_digital_gains() const;
+
     /// Open/create/init datasets in h5 file
     std::unique_ptr<HighFive::File> _open_or_create_file(const std::string& filepath,
                                                          const uint64_t num_file_t_,
@@ -145,7 +154,7 @@ public:
                const double open_wall_s_, const uint64_t abs_file_idx_, const size_t blocksize_f_,
                const size_t blocksize_p_, const size_t blocksize_t_, const std::string compression_,
                const size_t compression_level_, const bool use_bitshuffle_,
-               const std::string base_dir_);
+               const std::string base_dir_, const std::string gains_base_directory_);
 
     /**
      * @brief Add a frame of data at the computed time index.
@@ -165,7 +174,9 @@ public:
 
     /// Flush buffered data to the associated dataset, always writing the
     /// entire time range [0 .. num_file_t-1] regardless of which frames were
-    /// populated. Returns true if a write occurred.
+    /// populated. Returns true if a write occurred, false on error.
+    /// Although errors are logged, no further action is taken by this class, and
+    /// an attempt is made to write data regardless.
     bool flush_to_disk();
 
     /// Close the associated dataset handle if open.
@@ -301,7 +312,8 @@ public:
 
 private:
     // Config settings (initialized from Config in constructor)
-    const std::string _base_dir;     /// Base directory to write files into
+    const std::string _base_dir;             /// Base directory to write files into
+    const std::string _gains_base_directory; /// Base directory for digital gains files
     const std::uint64_t _num_file_t; /// Number of incoming time frames per file, as indexed by the
                                      /// absolute frame index
     const std::string _compression;

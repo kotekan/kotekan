@@ -64,6 +64,11 @@
  * @conf  sleep_after   Float. Sleep for this number of seconds after running
  *                      and before shutting down. Useful for allowing other
  *                      processes to finish. Default is 1s.
+ * @conf  simulate_fpga_restart_at_frame  Int. If >= 0, reset the fpga_seq to 0
+ *                      at this frame index to simulate an FPGA restart. This
+ *                      is useful for testing countCheck. Default is -1 (disabled).
+ * @conf  end_interrupt Bool. If true, call exit_kotekan(CLEAN_EXIT) after
+ *                      num_frames have been generated. Default is false.
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.
@@ -119,6 +124,12 @@ private:
 
     // How long to sleep before exiting.
     double sleep_after;
+
+    // Frame index at which to simulate an FPGA restart (-1 to disable)
+    int64_t simulate_fpga_restart_at_frame;
+
+    // If true, exit kotekan after generating num_frames
+    bool end_interrupt;
 
     /// Fill non vis components. A helper for the fill_mode functions.
     void fill_non_vis(N2FrameView& frame);

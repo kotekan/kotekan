@@ -724,7 +724,7 @@ class ReadN2Buffer(InputBuffer):
         self.buffer_block = {
             self.name: {
                 "kotekan_buffer": "N2",
-                "layout": "FullUpperTri",
+                "n2_layout": "FullUpperTri",
                 "metadata_pool": "N2_pool",
                 "num_frames": "buffer_depth",
             }

@@ -47,6 +47,9 @@ using std::string;
 using HighFive::File;
 using kotekan::N2FrameDesc;
 
+// Relative path to test gains directory (from build directory where tests run)
+static const std::string TEST_GAINS_DIR = "../tests/boost/testdata/baseband_gains";
+
 static freq_id_t get_abs_freq_id(size_t f_index) {
     const auto& tel = Telescope::instance().cast<CHORDTelescope>();
     return tel.min_science_freq_id() + f_index;
@@ -78,7 +81,8 @@ public:
                    /*blocksize_t*/ num_file_t,
                    /*compression*/ "none",
                    /*compression_level*/ 0,
-                   /*use_bitshuffle*/ false, std::move(base_dir)) {}
+                   /*use_bitshuffle*/ false, std::move(base_dir),
+                   /*gains_base_directory*/ "") {}
 
     N2::cfloat get_vis(size_t f, size_t p, size_t t) const {
         return vis[idx_fpt(f, p, t)];
@@ -442,7 +446,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
                                    /*prefix_hostname*/ false, num_file_t,
                                    /*blocksize_f (0=all)*/ 0, /*blocksize_p*/ 0,
                                    /*blocksize_t*/ num_file_t, /*grace*/ 60,
-                                   /*seq_override*/ dt_ns);
+                                   /*seq_override*/ dt_ns, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
 
     // Buffer + container
@@ -539,7 +543,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
                                    /*prefix_hostname*/ false, num_file_t,
                                    /*blocksize_f (0=all)*/ 0, /*blocksize_p*/ 0, /*blocksize_t*/ 1,
                                    /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL);
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
 
     // Buffer + container
@@ -626,7 +630,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const uint64_t num_file_t = 2;
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_p*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL);
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
 
     const size_t frame_size = N2FrameDesc::calculate_frame_size(
@@ -716,7 +720,7 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     const uint64_t num_file_t = 1; // one frame per file
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_p*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                   /*seq_override*/ dt_ns);
+                                   /*seq_override*/ dt_ns, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
     const size_t frame_size = N2FrameDesc::calculate_frame_size(
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
@@ -792,9 +796,9 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const size_t num_ev = 2;
     const size_t nfreq = 3;
     const uint64_t num_file_t = 2;
-    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
-                                   0 /*bs_f*/, 0 /*bs_p*/, 0 /*bs_t*/,
-                                   0 /*late_frame_grace_seconds*/, 1'000'000'000ULL);
+    auto conf = make_writer_config(
+        unique_name, in_buf_name, base_dir, file_name, false, num_file_t, 0 /*bs_f*/, 0 /*bs_p*/,
+        0 /*bs_t*/, 0 /*late_frame_grace_seconds*/, 1'000'000'000ULL, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
 
     const size_t frame_size = N2FrameDesc::calculate_frame_size(
@@ -876,7 +880,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const uint64_t num_file_t = 1;
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_p*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL);
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
     set_stage_log_level(conf, unique_name, "ERROR");
     const size_t frame_size = N2FrameDesc::calculate_frame_size(
@@ -972,7 +976,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_basic) {
 
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_p*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL);
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_DIR);
     set_file_num_t(conf, unique_name, num_file_t);
     const size_t frame_size = N2FrameDesc::calculate_frame_size(
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));

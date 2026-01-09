@@ -136,6 +136,7 @@ accumulate_params = {
     "num_freq_per_n2k_frame": "num_local_freq",
     "num_n2k_samples_to_accumulate": 8,
     "packet_loss_is_scalar": True,
+    "vis_layout": "FullUpperTri",
 }
 
 

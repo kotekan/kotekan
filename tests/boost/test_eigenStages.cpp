@@ -7,6 +7,7 @@
 #include "FakeVis.hpp"
 #include "N2FrameDesc.hpp"
 #include "N2FrameView.hpp"
+#include "N2Metadata.hpp"
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
@@ -36,6 +37,17 @@ using std::string;
 static void ensure_fakevis_patterns_registered() {
     static const bool registered = []() {
         FACTORY(FakeVisPattern)::register_type<PhaseIJVisPattern>("phase_ij");
+        return true;
+    }();
+    (void)registered;
+}
+
+// Ensure N2Metadata.cpp is linked so the factory registration is available.
+static void ensure_n2metadata_registered() {
+    static const bool registered = []() {
+        // Creating an instance forces the linker to include N2Metadata.o
+        N2Metadata dummy;
+        (void)dummy;
         return true;
     }();
     (void)registered;
@@ -91,6 +103,7 @@ struct EigenResults {
 // Run FakeVis/FakeN2 -> eigenVis/eigenVisIter/eigenN2Iter and collect output frames.
 static EigenResults run_pipeline(const EigenStageTestParams& p, const string& stage_name) {
     ensure_fakevis_patterns_registered();
+    ensure_n2metadata_registered();
 
     static std::atomic<int> run_counter{0};
     int rc = run_counter++;
@@ -120,7 +133,7 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
     if (!p.exclude_inputs.empty())
         cfg[eigen_name]["exclude_inputs"] = p.exclude_inputs;
 
-    const bool is_vis = (stage_name == "EigenVisIter");
+    const bool is_vis = (stage_name == "EigenVisIter" || stage_name == "eigenVis");
     cfg["dataset_manager"]["enable_state_caching"] = false;
     cfg["dataset_manager"]["use_dataset_broker"] = false;
     if (is_vis) {

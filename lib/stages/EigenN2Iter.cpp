@@ -138,8 +138,8 @@ void EigenN2Iter::main_thread() {
         // Check that we have the full triangle
         if (input_frame.n2_layout != N2Layout::FullUpperTri) {
             FATAL_ERROR(
-                "Eigenvector calculations require full correlation triangle. Got layout {:d}.",
-                static_cast<int>(input_frame.n2_layout));
+                "Eigenvector calculations require a full correlation triangle. Got layout {}.",
+                N2Layout_to_string(input_frame.n2_layout));
         }
 
         // Start the calculation clock.
@@ -187,9 +187,12 @@ void EigenN2Iter::main_thread() {
         // Create view to output frame
         in_buf->pass_metadata(input_frame_id, out_buf, output_frame_id);
 
+<<<<<<< HEAD
         // Note: num_ev is part of the N2FrameDesc (set by bufferFactory) and is validated
         // in the constructor to match _num_eigenvectors.
 
+=======
+>>>>>>> d89736d06d4df939c5325a277bb66043571a7319
         N2FrameView output_frame(out_buf, output_frame_id);
         // Copy over data, but skip all ev members which may not be defined
         output_frame.copy_data(input_frame, {N2Field::eval, N2Field::evec, N2Field::erms});

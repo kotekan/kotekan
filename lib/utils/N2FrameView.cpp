@@ -14,7 +14,7 @@ std::shared_ptr<const kotekan::N2FrameDesc>
 validate_desc_type(std::shared_ptr<const kotekan::FrameDesc> desc) {
     auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(desc);
     if (!n2_desc) {
-        throw std::runtime_error("N2FrameView: Buffer does not have a valid N2FrameDesc");
+        FATAL_ERROR_NON_OO("N2FrameView: Buffer does not have a valid N2FrameDesc");
     }
     return n2_desc;
 }

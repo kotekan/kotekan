@@ -23,7 +23,6 @@ using kotekan::Config;
 
 // Struct containing metadata fields for an N2 frame
 struct N2MetadataFormat {
-
     /// ID of the frequency bin
     uint32_t freq_id = 0; // this is an int in chordMetadata, maybe change later
     /// Physical frequency in Hz

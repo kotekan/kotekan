@@ -89,6 +89,21 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
+
+    // Get simulate_fpga_restart_at_frame option
+    simulate_fpga_restart_at_frame =
+        config.get_default<int64_t>(unique_name, "simulate_fpga_restart_at_frame", -1);
+
+    // Get end_interrupt option
+    end_interrupt = config.get_default<bool>(unique_name, "end_interrupt", false);
+
+    size_t num_prod = N2FrameDesc::get_num_prod(num_elements, n2_layout);
+    size_t frame_size = N2FrameDesc::calculate_frame_size(num_elements, num_eigenvectors, num_prod);
+    if (out_buf->frame_size != frame_size) {
+        FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d}", out_buf->buffer_name,
+                    out_buf->frame_size, frame_size);
+    }
+    assert(frame_size == out_buf->frame_size);
 }
 
 void FakeN2::main_thread() {
@@ -233,11 +248,22 @@ void FakeN2::main_thread() {
         // Increment the timespec
         time_ns += curr_n_frames * delta_ns;
 
+        // Simulate FPGA restart if requested
+        if (simulate_fpga_restart_at_frame >= 0 && frame_count == simulate_fpga_restart_at_frame) {
+            INFO("Simulating FPGA restart at frame {:d}: resetting fpga_seq from {:d} to 0",
+                 frame_count, fpga_seq);
+            fpga_seq = 0;
+        }
+
         // Stop generating if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count >= num_frames) {
             INFO("Reached frame limit [{:d} frames]. Stopping generation.", num_frames);
             timespec ts = double_to_ts(sleep_after);
             nanosleep(&ts, nullptr);
+            if (end_interrupt) {
+                INFO("end_interrupt is set. Shutting down Kotekan.");
+                exit_kotekan(ReturnCode::CLEAN_EXIT);
+            }
             break;
         }
 
