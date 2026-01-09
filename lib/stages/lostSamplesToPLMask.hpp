@@ -17,7 +17,7 @@
  *
  * @par Buffers
  * @buffer pl_mask_buf Kotekan buffer for package loss mask
- *     @buffer_format [time / 2 % 64][dish / 8][polr][freq / 4][time / 2 / 64]
+ *     @buffer_format [time / 2 / 64][freq / 4][polr][dish / 8][time / 2 % 64]
  *     @buffer_metadata chordMetadata
  * @buffer lost_samples_buf Array of flags which indicate if a sample in a given location is lost
  *     @buffer_format Array of flags uint8_t flags which are either 0 (unset) or 1 (set)
