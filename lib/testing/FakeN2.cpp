@@ -44,9 +44,6 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     n2_layout(N2Layout::FullUpperTri) {
 
     // Fetch any simple configuration
-    num_elements = config.get<size_t>(unique_name, "num_elements");
-    num_eigenvectors = config.get<size_t>(unique_name, "num_ev");
-    n2_layout = config.get_default<N2Layout>(unique_name, "vis_layout", N2Layout::FullUpperTri);
     sleep_before = config.get_default<float>(unique_name, "sleep_before", 0.0);
     sleep_after = config.get_default<float>(unique_name, "sleep_after", 1.0);
 
@@ -56,6 +53,19 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     // Fetch the buffer, register it
     out_buf = buffer_container.get_buffer(buffer_name);
     out_buf->register_producer(unique_name);
+
+    // Get N2 parameters from the buffer's frame descriptor (set by bufferFactory)
+    auto frame_desc = out_buf->get_frame_description();
+    if (!frame_desc) {
+        FATAL_ERROR("Buffer {:s} does not have a frame descriptor set", out_buf->buffer_name);
+    }
+    auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(frame_desc);
+    if (!n2_desc) {
+        FATAL_ERROR("Buffer {:s} does not have an N2FrameDesc", out_buf->buffer_name);
+    }
+    num_elements = n2_desc->get_num_elements();
+    num_eigenvectors = n2_desc->get_num_ev();
+    n2_layout = n2_desc->get_n2_layout();
 
     // Get frequency IDs from config
     freq = config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids", {});
@@ -79,17 +89,6 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
-
-    size_t num_prod = kotekan::N2FrameDesc::get_num_prod(num_elements, n2_layout);
-    size_t frame_size = kotekan::N2FrameDesc::calculate_frame_size(num_elements, num_eigenvectors, num_prod);
-    if (out_buf->frame_size != frame_size) {
-        FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d}", out_buf->buffer_name,
-                    out_buf->frame_size, frame_size);
-    }
-    assert(frame_size == out_buf->frame_size);
-
-    out_buf->set_frame_desc(
-        std::make_shared<N2FrameDesc>(num_elements, num_eigenvectors, num_prod, n2_layout));
 }
 
 void FakeN2::main_thread() {
@@ -294,6 +293,16 @@ ReplaceN2::ReplaceN2(Config& config, const std::string& unique_name,
     // Setup the output buffer
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
+
+    // Validate that input and output buffers have compatible N2 frame descriptors
+    auto in_desc = in_buf->get_frame_description();
+    auto out_desc = out_buf->get_frame_description();
+    if (!in_desc || !out_desc) {
+        FATAL_ERROR("ReplaceN2: Input and output buffers must have frame descriptors set");
+    }
+    if (*in_desc != *out_desc) {
+        FATAL_ERROR("ReplaceN2: Input and output buffer frame descriptors must match");
+    }
 }
 
 void ReplaceN2::main_thread() {
@@ -307,10 +316,6 @@ void ReplaceN2::main_thread() {
         if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
-
-        // Propagate frame descriptor
-        out_buf->set_frame_desc(
-            std::const_pointer_cast<kotekan::FrameDesc>(in_buf->get_frame_description()));
 
         // Wait for the output buffer to be empty of data
         if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {

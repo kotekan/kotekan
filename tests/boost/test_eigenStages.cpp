@@ -5,6 +5,7 @@
 #include "EigenVisIter.hpp"
 #include "FakeN2.hpp"
 #include "FakeVis.hpp"
+#include "N2FrameDesc.hpp"
 #include "N2FrameView.hpp"
 #include "Telescope.hpp"
 #include "buffer.hpp"
@@ -141,11 +142,14 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
     size_t num_prod = 0, frame_size = 0;
     std::shared_ptr<metadataPool> pool;
     std::string buffer_type;
+    std::shared_ptr<kotekan::N2FrameDesc> n2_desc;
     if (!is_vis) {
-        num_prod = N2FrameView::get_num_prod(p.num_elements, N2Layout::FullUpperTri);
-        frame_size = N2FrameView::calculate_frame_size(p.num_elements, p.num_ev, num_prod);
+        num_prod = kotekan::N2FrameDesc::get_num_prod(p.num_elements, N2Layout::FullUpperTri);
+        frame_size = kotekan::N2FrameDesc::calculate_frame_size(p.num_elements, p.num_ev, num_prod);
         pool = metadataPool::create(p.total_frames, sizeof(N2Metadata), "n2_pool", "N2Metadata");
         buffer_type = "N2";
+        n2_desc = std::make_shared<kotekan::N2FrameDesc>(p.num_elements, p.num_ev, num_prod,
+                                                         N2Layout::FullUpperTri);
     } else {
         num_prod = p.num_elements * (p.num_elements + 1) / 2;
         frame_size = VisFrameView::calculate_frame_size(p.num_elements, num_prod, p.num_ev);
@@ -156,6 +160,13 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
                   std::vector<int>{}, true);
     Buffer out_buf(p.total_frames, frame_size, pool, "out_buf", buffer_type, 0, false, false,
                    std::vector<int>{}, true);
+
+    // Set frame descriptors for N2 buffers (required by stages)
+    if (n2_desc) {
+        in_buf.set_frame_desc(n2_desc);
+        out_buf.set_frame_desc(n2_desc);
+    }
+
     kotekan::bufferContainer bc;
     bc.add_buffer("in_buf", &in_buf);
     bc.add_buffer("out_buf", &out_buf);

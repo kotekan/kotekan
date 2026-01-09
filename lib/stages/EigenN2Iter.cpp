@@ -3,6 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for operator!=, operator<
 #include "LinearAlgebra.hpp"     // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
+#include "N2FrameDesc.hpp"       // for N2FrameDesc
 #include "N2FrameView.hpp"       // for N2FrameView
 #include "N2Util.hpp"            // for cfloat, frameID
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
@@ -74,6 +75,26 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     if (in_buf->buffer_type != "N2" || out_buf->buffer_type != "N2")
         FATAL_ERROR("EigenN2Iter stage requires 'N2' buffers as input and output.");
 
+    // Validate that input and output buffers have N2 frame descriptors set
+    auto in_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(
+        in_buf->get_frame_description());
+    auto out_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(
+        out_buf->get_frame_description());
+    if (!in_desc || !out_desc) {
+        FATAL_ERROR("EigenN2Iter: Input and output buffers must have N2FrameDesc set");
+    }
+    // Validate num_elements and layout match
+    if (in_desc->get_num_elements() != out_desc->get_num_elements()) {
+        FATAL_ERROR("EigenN2Iter: Input and output buffer num_elements must match");
+    }
+    if (in_desc->get_n2_layout() != out_desc->get_n2_layout()) {
+        FATAL_ERROR("EigenN2Iter: Input and output buffer n2_layout must match");
+    }
+    // Validate output buffer has correct num_ev for this stage
+    if (out_desc->get_num_ev() != _num_eigenvectors) {
+        FATAL_ERROR("EigenN2Iter: Output buffer num_ev ({:d}) does not match stage config ({:d})",
+                    out_desc->get_num_ev(), _num_eigenvectors);
+    }
 
     if (_num_ev_conv > _num_eigenvectors)
         FATAL_ERROR("The `num_ev_conv` config parameter ({:d}) must be less than or equal to "
@@ -115,10 +136,10 @@ void EigenN2Iter::main_thread() {
         N2FrameView input_frame(in_buf, input_frame_id);
 
         // Check that we have the full triangle
-        if (input_frame.vis_layout != N2Layout::FullUpperTri) {
+        if (input_frame.n2_layout != N2Layout::FullUpperTri) {
             FATAL_ERROR(
                 "Eigenvector calculations require full correlation triangle. Got layout {:d}.",
-                static_cast<int>(input_frame.vis_layout));
+                static_cast<int>(input_frame.n2_layout));
         }
 
         // Start the calculation clock.
@@ -166,11 +187,8 @@ void EigenN2Iter::main_thread() {
         // Create view to output frame
         in_buf->pass_metadata(input_frame_id, out_buf, output_frame_id);
 
-        // Ensure metadata reflects the number of eigenvectors so the frame layout matches the
-        // buffer's frame size (which is sized for the eigen data).
-        auto out_meta = get_N2_metadata(out_buf, output_frame_id);
-        if (out_meta)
-            out_meta->num_ev = _num_eigenvectors;
+        // Note: num_ev is part of the N2FrameDesc (set by bufferFactory) and is validated
+        // in the constructor to match _num_eigenvectors.
 
         N2FrameView output_frame(out_buf, output_frame_id);
         // Copy over data, but skip all ev members which may not be defined
