@@ -47,8 +47,8 @@ using std::string;
 using HighFive::File;
 using kotekan::N2FrameDesc;
 
-// Relative path to test gains directory (from build directory where tests run)
-static const std::string TEST_GAINS_DIR = "../tests/boost/testdata/baseband_gains";
+// Absolute path to test gains directory (injected by CMake via TEST_DATA_DIR)
+static const std::string TEST_GAINS_DIR = std::string(TEST_DATA_DIR) + "/baseband_gains";
 
 static freq_id_t get_abs_freq_id(size_t f_index) {
     const auto& tel = Telescope::instance().cast<CHORDTelescope>();

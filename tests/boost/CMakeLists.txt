@@ -164,6 +164,8 @@ if(HDF5_FOUND AND HighFive_FOUND)
         test_hdf5N2Write PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages ${KOTEKAN_SOURCE_DIR}/lib/utils
                                  ${HDF5_INCLUDE_DIRS})
     target_include_directories(test_hdf5N2Write PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+    target_compile_definitions(test_hdf5N2Write PRIVATE
+        TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/testdata")
 endif()
 
 add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)
