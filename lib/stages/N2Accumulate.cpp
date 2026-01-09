@@ -70,11 +70,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     // Sanity checks on initialization
     {
-        // Check num_ev is zero (not using eigenvalues here, and this is now hardcoded.)
-        int num_ev = config.get_default<int>(unique_name, "num_ev", 0);
-        if (num_ev != 0)
-            FATAL_ERROR("N2Accumulate stage requires num_ev=0, got {:d}", num_ev);
-
         // number of frequencies in incoming frames from n2k
         if (_num_freq_per_n2k_frame <= 0)
             FATAL_ERROR("num_freq_per_n2k_frame is not positive: {:d}", _num_freq_per_n2k_frame);
@@ -124,7 +119,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                         _rfi_downsampling_factor);
     }
 
-    // Derived quantities
+    // Compute derived quantities
     {
         // number of "integrations" (coarse time samples) per n2k (gpu) frame
         _n_integrations_per_n2k_frame =
@@ -153,7 +148,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         _N2_num_products = (_num_elements * (_num_elements + 1)) / 2;
     }
 
-    // Initializing these here using the computed _n2k_correlation_num_products *
+    // Initialize these here using the computed _n2k_correlation_num_products *
     // _num_freq_per_n2k_frame (accumulate the full, blocked matrix x frequencies from the GPU)
     _vis = std::vector<int32_t>(2 * _num_freq_per_n2k_frame * _n2k_correlation_num_products,
                                 0); // vis with complex as 2 ints
@@ -188,33 +183,38 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         FATAL_ERROR("N2Accumulate in_rfimask_buf ({:s}) has frame size {:d}. Expected {:d}.",
                     in_rfimask_buf->buffer_name, in_rfimask_buf->frame_size, in_rfimask_frame_size);
 
+
     // Validate that the output buffer's frame descriptor (set by bufferFactory) matches
     // what this stage will produce
-    auto out_frame_desc = out_buf->get_frame_description();
-    if (!out_frame_desc) {
-        FATAL_ERROR("N2Accumulate: Output buffer {:s} does not have a frame descriptor set",
-                    out_buf->buffer_name);
-    }
-    auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(out_frame_desc);
-    if (!n2_desc) {
-        FATAL_ERROR("N2Accumulate: Output buffer {:s} does not have an N2FrameDesc",
-                    out_buf->buffer_name);
-    }
-    // Validate the descriptor matches what we expect to produce
-    if (n2_desc->get_num_elements() != (uint32_t)_num_elements) {
-        FATAL_ERROR("N2Accumulate: Output buffer num_elements ({:d}) does not match expected ({:d})",
-                    n2_desc->get_num_elements(), _num_elements);
-    }
-    if (n2_desc->get_num_ev() != 0) {
-        FATAL_ERROR("N2Accumulate: Output buffer num_ev ({:d}) must be 0",
-                    n2_desc->get_num_ev());
-    }
-    if (n2_desc->get_num_products() != (uint32_t)_N2_num_products) {
-        FATAL_ERROR("N2Accumulate: Output buffer num_products ({:d}) does not match expected ({:d})",
-                    n2_desc->get_num_products(), _N2_num_products);
-    }
-    if (n2_desc->get_n2_layout() != N2Layout::FullUpperTri) {
-        FATAL_ERROR("N2Accumulate: Output buffer n2_layout must be FullUpperTri");
+    {
+        auto out_frame_desc = out_buf->get_frame_description();
+        if (!out_frame_desc) {
+            FATAL_ERROR("N2Accumulate: Output buffer {:s} does not have a frame descriptor set",
+                        out_buf->buffer_name);
+        }
+        auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(out_frame_desc);
+        if (!n2_desc) {
+            FATAL_ERROR("N2Accumulate: Output buffer {:s} does not have an N2FrameDesc",
+                        out_buf->buffer_name);
+        }
+        // Validate the descriptor matches what we expect to produce
+        if (n2_desc->get_num_elements() != (uint32_t)_num_elements) {
+            FATAL_ERROR(
+                "N2Accumulate: Output buffer num_elements ({:d}) does not match expected ({:d})",
+                n2_desc->get_num_elements(), _num_elements);
+        }
+        if (n2_desc->get_num_ev() != 0) {
+            FATAL_ERROR("N2Accumulate: Output buffer num_ev ({:d}) must be 0",
+                        n2_desc->get_num_ev());
+        }
+        if (n2_desc->get_num_products() != (uint32_t)_N2_num_products) {
+            FATAL_ERROR(
+                "N2Accumulate: Output buffer num_products ({:d}) does not match expected ({:d})",
+                n2_desc->get_num_products(), _N2_num_products);
+        }
+        if (n2_desc->get_n2_layout() != N2Layout::FullUpperTri) {
+            FATAL_ERROR("N2Accumulate: Output buffer n2_layout must be FullUpperTri");
+        }
     }
 
     // TODO... Should we ensure output buffer has enough frames (>= # frequencies) to take the

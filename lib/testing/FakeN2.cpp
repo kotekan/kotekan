@@ -97,7 +97,8 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     // Get end_interrupt option
     end_interrupt = config.get_default<bool>(unique_name, "end_interrupt", false);
 
-    // Validate buffer frame size matches the descriptor (should always match if bufferFactory set it)
+    // Validate buffer frame size matches the descriptor (should always match if bufferFactory set
+    // it)
     if (out_buf->frame_size != n2_desc->get_byte_size()) {
         FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d} from N2FrameDesc",
                     out_buf->buffer_name, out_buf->frame_size, n2_desc->get_byte_size());

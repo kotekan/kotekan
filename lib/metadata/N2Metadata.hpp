@@ -79,7 +79,7 @@ public:
 
     /// Validates that the frame descriptor is an N2FrameDesc and checks internal metadata
     /// consistency (Currently, just valid/RFI ticks <= frame length). Issues a non-fatal error
-    /// for any inconsistencies.
+    /// for any inconsistencies, fatal if the frame desc is not an N2FrameDesc.
     void check_frame_desc(const std::shared_ptr<const kotekan::FrameDesc>& frame_desc) const;
 };
 

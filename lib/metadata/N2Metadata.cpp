@@ -78,9 +78,10 @@ void N2Metadata::check_frame_desc(
     const std::shared_ptr<const kotekan::FrameDesc>& frame_desc) const {
     auto n2_desc = frame_desc->as<kotekan::N2FrameDesc>();
     if (!n2_desc) {
-        ERROR_NON_OO("Frame description is not an N2FrameDesc!");
+        FATAL_ERROR_NON_OO("Frame description is not an N2FrameDesc!");
         return;
     }
+
     // Validate internal consistency
     if (n_valid_fpga_ticks > frame_length_fpga_ticks) {
         ERROR_NON_OO("n_valid_fpga_ticks ({:d}) exceeds frame_length_fpga_ticks ({:d})",
@@ -90,6 +91,8 @@ void N2Metadata::check_frame_desc(
         ERROR_NON_OO("n_rfi_fpga_ticks ({:d}) exceeds frame_length_fpga_ticks ({:d})",
                      n_rfi_fpga_ticks, frame_length_fpga_ticks);
     }
+
+    // TODO: Perhaps validate elements/products/layout combination
 }
 
 void to_json(nlohmann::json& j, const N2Metadata& m) {

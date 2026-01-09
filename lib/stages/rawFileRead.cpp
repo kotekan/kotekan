@@ -39,6 +39,7 @@ rawFileRead::rawFileRead(Config& config, const std::string& unique_name,
     buf->register_producer(unique_name);
 
     if (buf->buffer_type == "N2") {
+        // TODO: Add support
         FATAL_ERROR(
             "rawFileRead does not support N2 buffer types. Use a dedicated N2 file reader.");
     }

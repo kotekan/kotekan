@@ -136,7 +136,7 @@ gen_fake_corr_counts:
     num_frames: frames_to_generate
     freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
-vis_accumulate:
+N2_accumulate:
     kotekan_stage: N2Accumulate
     in_buf: fake_correlation_buffer
     in_counts_buf: fake_counts_buffer
@@ -144,7 +144,6 @@ vis_accumulate:
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
-    vis_layout: FullUpperTri
 
 write_fake_correlation:
   kotekan_stage: hdf5FileWrite
