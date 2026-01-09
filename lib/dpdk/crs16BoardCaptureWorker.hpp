@@ -288,6 +288,7 @@ inline void crs16BoardCaptureWorker::packet_copy_to_frame(struct rte_mbuf* mbuf,
             rem -= 128;
         } else {
             // Slow path: Handle split across mbuf segments
+            INFO("using slow path for packet copy");
             int copied = 0;
             while (copied < 128) {
                 if (rem == 0) {

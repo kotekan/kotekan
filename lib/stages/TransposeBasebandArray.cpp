@@ -104,6 +104,16 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
 TransposeBasebandArray::~TransposeBasebandArray() {}
 
 #ifdef __AVX512F__
+// Prefetch a 2048-byte block into L1 cache
+// Block layout: [element_long=16][time_short=16][element_short=8]
+// Each cache line is 64 bytes, so we need 32 prefetches
+static inline void prefetch_block(const uint8_t* block) {
+    // Prefetch all 32 cache lines (2048 bytes / 64 bytes per line)
+    for (int i = 0; i < 32; i++) {
+        _mm_prefetch((const char*)(block + i * 64), _MM_HINT_T0);
+    }
+}
+
 void TransposeBasebandArray::transpose_block_avx512(const uint8_t* in, uint8_t* out,
                                                      size_t out_stride) {
     // Input block layout: [element_long=16][time_short=16][element_short=8] = 2048 bytes
@@ -172,7 +182,23 @@ void TransposeBasebandArray::main_thread() {
             // Each block is 2048 bytes and produces 16 rows of 128 bytes
             for (uint32_t t_long = 0; t_long < time_long; t_long++) {
                 const uint32_t base_time = t_long * time_short;
+
+                // Prefetch the first block of this t_long iteration
+                const uint8_t* first_block = in_frame + t_long * in_tlong_stride;
+                prefetch_block(first_block);
+
                 for (uint32_t freq = 0; freq < num_local_freq; freq++) {
+                    // Prefetch next block while processing current one
+                    if (freq + 1 < num_local_freq) {
+                        const uint8_t* next_block = in_frame + t_long * in_tlong_stride
+                                                    + (freq + 1) * in_freq_stride;
+                        prefetch_block(next_block);
+                    } else if (t_long + 1 < time_long) {
+                        // Prefetch first block of next t_long
+                        const uint8_t* next_block = in_frame + (t_long + 1) * in_tlong_stride;
+                        prefetch_block(next_block);
+                    }
+
                     // Input block start
                     const uint8_t* in_block = in_frame + t_long * in_tlong_stride
                                               + freq * in_freq_stride;
