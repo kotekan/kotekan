@@ -99,7 +99,7 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
     rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
-    poison_buffers(config.get<bool>(unique_name, "poison_buffers")),
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
     pl_mask_name(config.get<std::string>(unique_name, "pl_mask_name")),
     voltage_name(config.get<std::string>(unique_name, "voltage_name")),

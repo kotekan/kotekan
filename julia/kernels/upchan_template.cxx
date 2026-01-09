@@ -190,7 +190,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     Fmin(config.get<int>(unique_name, "Fmin")),
     Fmax(config.get<int>(unique_name, "Fmax")),
 
-    poison_buffers(config.get<bool>(unique_name, "poison_buffers")),
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
     {{#kernel_arguments}}
         {{^isscalar}}

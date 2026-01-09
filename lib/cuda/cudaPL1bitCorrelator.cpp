@@ -118,7 +118,7 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     n2k_sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
-    poison_buffers(config.get<bool>(unique_name, "poison_buffers")),
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
     pl_expanded_mask_name(config.get<std::string>(unique_name, "pl_expanded_mask_name")),
     rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),

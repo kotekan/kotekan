@@ -96,7 +96,7 @@ cudaRFIS012bar::cudaRFIS012bar(kotekan::Config& config, const std::string& uniqu
     rfi_second_downsampling_factor(config.get<int>(unique_name, "rfi_second_downsampling_factor")),
     rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
     rfi_num_times_bar(config.get<int>(unique_name, "rfi_num_times_bar")),
-    poison_buffers(config.get<bool>(unique_name, "poison_buffers")),
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
     rfi_S012bar_name(config.get<std::string>(unique_name, "rfi_S012bar_name")),

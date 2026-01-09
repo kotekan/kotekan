@@ -197,7 +197,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
         "{{{kernel_name}}}", "{{{kernel_name}}}.ptx"),
 
-    poison_buffers(config.get<bool>(unique_name, "poison_buffers")),
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
     {{#kernel_arguments}}
         {{^isscalar}}
