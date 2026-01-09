@@ -217,7 +217,10 @@ public:
                 const double elapsed = t1 - t0;
                 read_time_metric.set(elapsed);
             } catch (const FileException& ex) {
-                INFO("Could not open HDF5 file {:s}, terminating reader", full_path);
+                if (frame_index == 0)
+                    FATAL_ERROR("Could not open HDF5 file {:s}: {:s}", full_path, ex.what());
+                else
+                    ERROR("Could not open HDF5 file {:s}, terminating reader", full_path);
                 break;
             }
 
