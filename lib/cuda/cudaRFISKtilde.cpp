@@ -71,6 +71,7 @@ private:
     const int num_dishes;
     const int rfi_downsampling_factor;
     const int rfi_num_times;
+    const bool poison_buffers;
 
     // Kotekan buffer names
     const std::string bf_mask_name;
@@ -103,6 +104,7 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
     rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
+    poison_buffers(config.get<bool>(unique_name, "poison_buffers")),
     // Buffer names
     bf_mask_name(config.get<std::string>(unique_name, "bf_mask_name")),
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
@@ -196,9 +198,11 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     rfi_meta->set_time_downsampling_fpga(rfi_meta->get_time_downsampling_fpga()
                                          * div_noremainder(128 * 8, rfi_downsampling_factor));
 
-    rfi_SKtilde.set_to_poison(0xff);
-    // There is no poison value
-    // rfi_RFImask.set_to_poison(0x55);
+    if (poison_buffers) {
+        rfi_SKtilde.set_to_poison(0xff);
+        // There is no poison value
+        // rfi_RFImask.set_to_poison(0x55);
+    }
 
     const std::int8_t* const bf_mask_memory = bf_mask.get_ndarray().data();
     const std::uint64_t* const rfi_S012_memory = rfi_S012.get_ndarray().data();
@@ -231,9 +235,11 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
 
-    rfi_SKtilde.check_for_poison(0xff);
-    // There is no poison value
-    // rfi_RFImask.check_for_poison(0x55);
+    if (poison_buffers) {
+        rfi_SKtilde.check_for_poison(0xff);
+        // There is no poison value
+        // rfi_RFImask.check_for_poison(0x55);
+    }
 
     return record_end_event();
 }

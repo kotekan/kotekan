@@ -69,6 +69,7 @@ private:
     const int rfi_downsampling_factor;
     const int rfi_second_downsampling_factor;
     const int rfi_num_times_bar;
+    const bool poison_buffers;
 
     // Kotekan buffer names
     const std::string bf_mask_name;
@@ -101,6 +102,7 @@ cudaRFISKbar::cudaRFISKbar(kotekan::Config& config, const std::string& unique_na
     rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
     rfi_second_downsampling_factor(config.get<int>(unique_name, "rfi_second_downsampling_factor")),
     rfi_num_times_bar(config.get<int>(unique_name, "rfi_num_times_bar")),
+    poison_buffers(config.get<bool>(unique_name, "poison_buffers")),
     // Buffer names
     bf_mask_name(config.get<std::string>(unique_name, "bf_mask_name")),
     rfi_S012bar_name(config.get<std::string>(unique_name, "rfi_S012bar_name")),
@@ -190,8 +192,10 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
     rfi_SKbar.set_metadata(rfi_S012bar.get_metadata());
     rfi_SKbartilde.set_metadata(rfi_S012bar.get_metadata());
 
-    rfi_SKbar.set_to_poison(0xff);
-    rfi_SKbartilde.set_to_poison(0xff);
+    if (poison_buffers) {
+        rfi_SKbar.set_to_poison(0xff);
+        rfi_SKbartilde.set_to_poison(0xff);
+    }
 
     const std::int8_t* const bf_mask_memory = bf_mask.get_ndarray().data();
     const std::uint64_t* const rfi_S012bar_memory = rfi_S012bar.get_ndarray().data();
@@ -224,8 +228,10 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
 
-    rfi_SKbar.check_for_poison(0xff);
-    rfi_SKbartilde.check_for_poison(0xff);
+    if (poison_buffers) {
+        rfi_SKbar.check_for_poison(0xff);
+        rfi_SKbartilde.check_for_poison(0xff);
+    }
 
     return record_end_event();
 }

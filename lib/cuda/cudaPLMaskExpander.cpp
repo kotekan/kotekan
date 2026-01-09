@@ -78,6 +78,7 @@ private:
     const int num_frequencies;
     const int num_polarizations;
     const int num_dishes;
+    const bool poison_buffers;
 
     // Kotekan buffer names
     const std::string pl_mask_name;
@@ -101,6 +102,7 @@ cudaPLMaskExpander::cudaPLMaskExpander(kotekan::Config& config, const std::strin
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
+    poison_buffers(config.get<bool>(unique_name, "poison_buffers")),
     // Buffer names
     pl_mask_name(config.get<std::string>(unique_name, "pl_mask_name")),
     pl_expanded_mask_name(config.get<std::string>(unique_name, "pl_expanded_mask_name")),
@@ -175,7 +177,8 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
         div_noremainder(pl_mask_meta->get_time_downsampling_fpga(), 2));
 
     // There is no poison value
-    // pl_expanded_mask.set_to_poison(0xff);
+    // if (poison_buffers)
+    //     pl_expanded_mask.set_to_poison(0xff);
 
     kotekan::uint1x8_t* const pl_mask_memory = pl_mask.get_ndarray().data();
     const kotekan::uint1x8_t* const pl_expanded_mask_memory = pl_expanded_mask.get_ndarray().data();
@@ -192,7 +195,8 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
                                  device.getStream(cuda_stream_id));
 
     // There is no poison value
-    // pl_expanded_mask.check_for_poison(0xff);
+    // if (poison_buffers)
+    //     pl_expanded_mask.check_for_poison(0xff);
 
     return record_end_event();
 }

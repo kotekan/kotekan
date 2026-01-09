@@ -46,6 +46,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     _voltage_name(config.get<std::string>(unique_name, "voltage_name")),
     _rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
     _n2k_correlation_name(config.get<std::string>(unique_name, "n2k_correlation_name")),
+    _poison_buffers(config.get<bool>(unique_name, "poison_buffers")),
     voltage(_voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{_buffer_depth * _num_times, _num_local_freq, 2,
                                           _num_elements / 2},
@@ -139,7 +140,8 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
                                               * voltage_meta->get_time_downsampling_fpga());
 
     // Set poison for debug checks.
-    n2k_correlation.set_to_poison(0x80);
+    if (_poison_buffers)
+        n2k_correlation.set_to_poison(0x80);
 
     // The ringbuffering here is fishy. We should fix the kernel instead.
 
@@ -170,7 +172,8 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     CHECK_CUDA_ERROR(cudaGetLastError());
 
     // Check if poison value made it through
-    n2k_correlation.check_for_poison(0x80);
+    if (_poison_buffers)
+        n2k_correlation.check_for_poison(0x80);
 
     return record_end_event();
 }
