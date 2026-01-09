@@ -1,34 +1,34 @@
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for type_total_bytes, type_to_string
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "cpl_error.h"         // for CPLErr
-#include "cpl_port.h"          // for GUInt64, GPtrDiff_t
-#include "gdalFiles.hpp"       // for get_gdal_datatype, convert_to_cstring_list, chord2gdal
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, WARN, INFO
-#include "metadata.hpp"        // for metadataObject
-
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <Stage.hpp>               // for Stage
-#include <StageFactory.hpp>        // for REGISTER_KOTEKAN_STAGE
-#include <array>                   // for array
-#include <atomic>                  // for __atomic_base, atomic
-#include <cassert>                 // for assert
-#include <chordMetadata.hpp>       // for chordMetadata, metadata_is_chord, get_chord_metadata
-#include <cstdint>                 // for int64_t, uint32_t, uint8_t
-#include <cstring>                 // for size_t, strerror
-#include <errno.h>                 // for errno, EEXIST, EISDIR
-#include <errors.h>                // for exit_kotekan, ReturnCode
-#include <functional>              // for function
-#include <gdal.h>                  // for GDALAllRegister, GDALGetDataTypeSizeBytes, GDT_Int32
-#include <gdal_priv.h>             // for GDALGroup, GDALExtendedDataType, GDALAttribute, GDALD...
-#include <iomanip>                 // for operator<<, setfill, setw
-#include <memory>                  // for shared_ptr, __shared_ptr_access, allocator, unique_ptr
-#include <prometheusMetrics.hpp>   // for Metrics, Gauge
-#include <sstream>                 // for basic_ostream, operator<<, basic_ostringstream, ostri...
-#include <string>                  // for basic_string, char_traits, string, operator<<, operat...
-#include <sys/stat.h>              // for mkdir
+#include <Config.hpp>       // for Config
+#include <DataType.hpp>     // for type_total_bytes, type_to_string
+#include <Stage.hpp>        // for Stage
+#include <StageFactory.hpp> // for REGISTER_KOTEKAN_STAGE
+#include <Telescope.hpp>
+#include <array>                 // for array
+#include <atomic>                // for __atomic_base, atomic
+#include <buffer.hpp>            // for Buffer
+#include <bufferContainer.hpp>   // for bufferContainer
+#include <cassert>               // for assert
+#include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, get_chord_metadata
+#include <cpl_error.h>           // for CPLErr
+#include <cpl_port.h>            // for GUInt64, GPtrDiff_t
+#include <cstdint>               // for int64_t, uint32_t, uint8_t
+#include <cstring>               // for size_t, strerror
+#include <errno.h>               // for errno, EEXIST, EISDIR
+#include <errors.h>              // for exit_kotekan, ReturnCode
+#include <fmt.hpp>               // for compile_string_to_view
+#include <functional>            // for function
+#include <gdal.h>                // for GDALAllRegister, GDALGetDataTypeSizeBytes, GDT_Int32
+#include <gdalFiles.hpp>         // for get_gdal_datatype, convert_to_cstring_list, chord2gdal
+#include <gdal_priv.h>           // for GDALGroup, GDALExtendedDataType, GDALAttribute, GDALD...
+#include <iomanip>               // for operator<<, setfill, setw
+#include <kotekanLogging.hpp>    // for DEBUG, FATAL_ERROR, WARN, INFO
+#include <memory>                // for shared_ptr, __shared_ptr_access, allocator, unique_ptr
+#include <metadata.hpp>          // for metadataObject
+#include <prometheusMetrics.hpp> // for Metrics, Gauge
+#include <sstream>               // for basic_ostream, operator<<, basic_ostringstream, ostri...
+#include <string>                // for basic_string, char_traits, string, operator<<, operat...
+#include <sys/stat.h>            // for mkdir
+#include <timeUtil.hpp>
 #include <unistd.h>                // for gethostname
 #include <vector>                  // for vector
 #include <visUtil.hpp>             // for current_time
@@ -93,6 +93,8 @@ public:
     void main_thread() override {
         auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
             "kotekan_gdalfilewrite_write_time_seconds", unique_name);
+
+        const auto& telescope = Telescope::instance();
 
         const double start_time = current_time();
 
@@ -186,6 +188,38 @@ public:
                 // Write metadata (attributes)
 
                 {
+                    const std::string telescope_name_value = telescope.get_name();
+                    const auto telescope_name_datatype =
+                        GDALExtendedDataType::CreateString(telescope_name_value.size());
+                    const auto telescope_name = group->CreateAttribute(
+                        "telescope_name", std::vector<GUInt64>{}, telescope_name_datatype);
+                    assert(telescope_name);
+                    const bool success = telescope_name->Write(telescope_name_value.c_str());
+                    assert(success);
+                }
+
+                {
+                    const auto seq_length_nsec_value = telescope.seq_length_nsec();
+                    const auto seq_length_nsec = group->CreateAttribute(
+                        "seq_length_nsec", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(seq_length_nsec_value)));
+                    const bool success = seq_length_nsec->Write(&seq_length_nsec_value,
+                                                                sizeof seq_length_nsec_value);
+                    assert(success);
+                }
+
+                {
+                    // Store bool as int
+                    const int gps_time_enabled_value = telescope.gps_time_enabled();
+                    const auto gps_time_enabled = group->CreateAttribute(
+                        "gps_time_enabled", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(gps_time_enabled_value)));
+                    const bool success = gps_time_enabled->Write(&gps_time_enabled_value,
+                                                                 sizeof gps_time_enabled_value);
+                    assert(success);
+                }
+
+                {
                     const std::string name_value = meta->get_name();
                     const auto name_datatype =
                         GDALExtendedDataType::CreateString(name_value.size());
@@ -245,6 +279,17 @@ public:
                         GDALExtendedDataType::Create(get_gdal_datatype(fpga_seq_num_value)));
                     const bool success =
                         fpga_seq_num->Write(&fpga_seq_num_value, sizeof fpga_seq_num_value);
+                    assert(success);
+                }
+
+                if (meta->has_fpga_seq_num()) {
+                    const auto fpga_seq_time_nsec_value =
+                        timespec_to_nanosec_i64(telescope.to_time(meta->get_fpga_seq_num()));
+                    const auto fpga_seq_time_nsec = group->CreateAttribute(
+                        "fpga_seq_time_nsec", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(fpga_seq_time_nsec_value)));
+                    const bool success = fpga_seq_time_nsec->Write(&fpga_seq_time_nsec_value,
+                                                                   sizeof fpga_seq_time_nsec_value);
                     assert(success);
                 }
 

@@ -1,28 +1,26 @@
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for string_to_type, type_to_string, DataType
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "cpl_error.h"         // for CPLErr
-#include "cpl_port.h"          // for GUInt64
-#include "gdalFiles.hpp"       // for get_gdal_datatype, chord_metadata_version
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
-#include "metadata.hpp"        // for metadataObject
-
-#include "fmt.hpp" // for compile_string_to_view
-
+#include <Config.hpp>            // for Config
+#include <DataType.hpp>          // for string_to_type, type_to_string, DataType
 #include <Stage.hpp>             // for Stage
 #include <StageFactory.hpp>      // for REGISTER_KOTEKAN_STAGE
 #include <array>                 // for array
+#include <buffer.hpp>            // for Buffer
+#include <bufferContainer.hpp>   // for bufferContainer
 #include <cassert>               // for assert
 #include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, get_chord_metadata
+#include <cpl_error.h>           // for CPLErr
+#include <cpl_port.h>            // for GUInt64
 #include <cstddef>               // for ptrdiff_t, size_t
 #include <cstdint>               // for int64_t, uint8_t
 #include <cstring>               // for strncpy
+#include <fmt.hpp>               // for compile_string_to_view
 #include <functional>            // for function
 #include <gdal.h>                // for GDALOpenEx, GEDTC_STRING, GDALAllRegister, GDAL_OF_MULT...
+#include <gdalFiles.hpp>         // for get_gdal_datatype, chord_metadata_version
 #include <gdal_priv.h>           // for GDALAttribute, GDALGroup, GDALMDArray, GDALDataset, GDA...
 #include <iomanip>               // for operator<<, setfill, setw
+#include <kotekanLogging.hpp>    // for DEBUG, FATAL_ERROR, INFO
 #include <memory>                // for shared_ptr, __shared_ptr_access, allocator, unique_ptr
+#include <metadata.hpp>          // for metadataObject
 #include <mutex>                 // for call_once, once_flag
 #include <prometheusMetrics.hpp> // for Metrics, Gauge
 #include <sstream>               // for basic_ostream, operator<<, basic_ostringstream, basic_o...

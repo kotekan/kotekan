@@ -4,6 +4,7 @@
 #include <DataType.hpp>
 #include <array>
 #include <asdf/asdf.hxx>
+#include <fmt.hpp> // for compile_string_to_view
 #include <regex>
 #include <string>
 
