@@ -38,8 +38,6 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata) {
     meta0.set_rfi_flagged_samples(10090);
     meta0.set_lost_timesamples(18427);
 
-    meta0.set_fpga_seq_num(1754);
-
     std::vector<int> freq_upchan_factor = {
         44, 58, 17, 27,  834, 74, 647, 195, 491, 772, 55,
         30, 55, 86, 867, 997, 89, 733, 493, 913, 602, 23,
