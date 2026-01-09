@@ -187,12 +187,9 @@ void EigenN2Iter::main_thread() {
         // Create view to output frame
         in_buf->pass_metadata(input_frame_id, out_buf, output_frame_id);
 
-<<<<<<< HEAD
         // Note: num_ev is part of the N2FrameDesc (set by bufferFactory) and is validated
         // in the constructor to match _num_eigenvectors.
 
-=======
->>>>>>> d89736d06d4df939c5325a277bb66043571a7319
         N2FrameView output_frame(out_buf, output_frame_id);
         // Copy over data, but skip all ev members which may not be defined
         output_frame.copy_data(input_frame, {N2Field::eval, N2Field::evec, N2Field::erms});

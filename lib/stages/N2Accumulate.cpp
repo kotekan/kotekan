@@ -55,11 +55,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    // Ensure outgoing buffer is of type N2 and sized correctly
+    // Ensure outgoing buffer is of type N2
     if (out_buf->buffer_type != "N2")
         FATAL_ERROR("N2Accumulate out_buf ({:s}) is not of type N2.", out_buf->buffer_name);
-    if (config.get<N2Layout>(unique_name, "vis_layout") != N2Layout::FullUpperTri)
-        FATAL_ERROR("N2Accumulate output buffer must have vis_layout: FullUpperTri.");
 
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);

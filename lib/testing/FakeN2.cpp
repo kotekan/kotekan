@@ -97,13 +97,11 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     // Get end_interrupt option
     end_interrupt = config.get_default<bool>(unique_name, "end_interrupt", false);
 
-    size_t num_prod = N2FrameDesc::get_num_prod(num_elements, n2_layout);
-    size_t frame_size = N2FrameDesc::calculate_frame_size(num_elements, num_eigenvectors, num_prod);
-    if (out_buf->frame_size != frame_size) {
-        FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d}", out_buf->buffer_name,
-                    out_buf->frame_size, frame_size);
+    // Validate buffer frame size matches the descriptor (should always match if bufferFactory set it)
+    if (out_buf->frame_size != n2_desc->get_byte_size()) {
+        FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d} from N2FrameDesc",
+                    out_buf->buffer_name, out_buf->frame_size, n2_desc->get_byte_size());
     }
-    assert(frame_size == out_buf->frame_size);
 }
 
 void FakeN2::main_thread() {
