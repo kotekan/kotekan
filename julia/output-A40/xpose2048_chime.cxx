@@ -6,18 +6,19 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
-#include <NDArrayRingBuffer.hpp>
+#include "DataType.hpp"
+#include "NDArrayBuffer.hpp"
+#include "NDArrayRingBuffer.hpp"
+#include "bufferContainer.hpp"
+#include "chordMetadata.hpp"
+#include "cudaCommand.hpp"
+#include "cudaDeviceInterface.hpp"
+#include "div.hpp"
+
 #include <algorithm>
 #include <array>
-#include <bufferContainer.hpp>
 #include <cassert>
-#include <chordMetadata.hpp>
 #include <cstring>
-#include <cudaCommand.hpp>
-#include <cudaDeviceInterface.hpp>
-#include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
 #include <memory>
@@ -255,6 +256,8 @@ private:
     static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
+    const bool poison_buffers;
+
     // Kotekan buffer names
     const std::string Ein_name;
     const std::string E_name;
@@ -281,6 +284,8 @@ cudaTranspose2048_chime::cudaTranspose2048_chime(Config& config, const std::stri
                                                  const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "Transpose2048_chime", "Transpose2048_chime.ptx"),
+
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
     Ein_name(config.get<std::string>(unique_name, "input_voltage_name")),
     E_name(config.get<std::string>(unique_name, "output_voltage_name")),
@@ -476,16 +481,16 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
 
     // Copy inputs to device memory
 
-    E_buffer.set_to_poison(0x00);
+    if (poison_buffers) {
+        E_buffer.set_to_poison(0x00);
 
-#ifdef DEBUGGING
-    // Initialize host-side buffer arrays
-    CHECK_CUDA_ERROR(
-        cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes, device.getStream(cuda_stream_id)));
-#endif
+        // Initialize host-side buffer arrays
+        CHECK_CUDA_ERROR(cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes,
+                                         device.getStream(cuda_stream_id)));
 
-    E_buffer.set_to_poison(0x00);
-    info_buffer.set_to_poison(0xff);
+        E_buffer.set_to_poison(0x00);
+        info_buffer.set_to_poison(0xff);
+    } // if (poison_buffers)
 
     const std::string symname = "Transpose2048_chime_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
@@ -502,39 +507,39 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
         ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
-#ifdef DEBUGGING
-    // Copy results back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
-                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+    if (poison_buffers) {
+        // Copy results back to host memory
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
+                                         cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+        CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 
-    // Check error codes
-    const std::int32_t error_code =
-        *std::max_element((const std::int32_t*)&*host_info_buffer.begin(),
-                          (const std::int32_t*)&*host_info_buffer.end());
-    if (error_code != 0)
-        ERROR("CUDA kernel Transpose2048_chime returned error code: {}", error_code);
+        // Check error codes
+        const std::int32_t error_code =
+            *std::max_element((const std::int32_t*)&*host_info_buffer.begin(),
+                              (const std::int32_t*)&*host_info_buffer.end());
+        if (error_code != 0)
+            ERROR("CUDA kernel Transpose2048_chime returned error code: {}", error_code);
 
-    // TODO: Introduce a new "unbuffered" buffer; do this there
-    for (int block = 0; block < info_lengths[info_index_block]; ++block) {
-        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
-            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
-                const std::ptrdiff_t i = info_strides[info_index_thread] * thread
-                                         + info_strides[info_index_warp] * warp
-                                         + info_strides[info_index_block] * block;
-                const std::uint32_t val = host_info_buffer.data()[i];
-                if (val != 0)
-                    ERROR("CUDA kernel Transpose2048_chime returned 'info' value {:d} "
-                          "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no "
-                          "error)",
-                          val, thread, warp, block, i);
+        // TODO: Introduce a new "unbuffered" buffer; do this there
+        for (int block = 0; block < info_lengths[info_index_block]; ++block) {
+            for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+                for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                    const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                             + info_strides[info_index_warp] * warp
+                                             + info_strides[info_index_block] * block;
+                    const std::uint32_t val = host_info_buffer.data()[i];
+                    if (val != 0)
+                        ERROR("CUDA kernel Transpose2048_chime returned 'info' value {:d} "
+                              "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates "
+                              "no error)",
+                              val, thread, warp, block, i);
+                }
             }
         }
-    }
-#endif
 
-    E_buffer.check_for_poison(0x00);
+        E_buffer.check_for_poison(0x00);
+    } // if (poison_buffers)
 
     return record_end_event();
 }

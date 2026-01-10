@@ -102,6 +102,9 @@ private:
     /// Name for the correlation output
     const std::string _n2k_correlation_name;
 
+    /// Whether to poison the output buffers
+    const bool _poison_buffers;
+
     /// Signaling ring buffer for the input (voltage) data.
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
     NDArrayRingBuffer<kotekan::uint1x8_t, 3> rfi_RFImask;

@@ -222,8 +222,7 @@ public:
     // Poison
 
     // Poison an NDArray buffer
-    void set_to_poison([[maybe_unused]] const std::uint8_t poison_value) {
-#ifdef DEBUGGING
+    void set_to_poison(const std::uint8_t poison_value) {
         const std::ptrdiff_t buffer_length = length_in_bytes();
         void* const buffer_device_ptr = ndarray.data();
         assert(buffer_device_ptr);
@@ -231,12 +230,10 @@ public:
             cuda_command.get_device().getStream(cuda_command.get_cuda_stream_id());
         CHECK_CUDA_ERROR(
             cudaMemsetAsync(buffer_device_ptr, poison_value, buffer_length, cuda_stream));
-#endif
     }
 
     // Check an NDArray buffer for poison
-    void check_for_poison([[maybe_unused]] const std::uint8_t poison_value) {
-#ifdef DEBUGGING
+    void check_for_poison(const std::uint8_t poison_value) {
         T poison;
         // The cast suppresses a bogus -Wclass-memaccess on GCC.
         std::memset(static_cast<void*>(&poison), poison_value, sizeof poison);
@@ -251,7 +248,6 @@ public:
             std::find_if(local_data.begin(), local_data.end(), check) != local_data.end();
         if (found_error)
             FATAL_ERROR("NDArray buffer {:s} contains poison", buffer_name);
-#endif
     }
 
     // I/O

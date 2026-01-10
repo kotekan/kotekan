@@ -138,6 +138,8 @@ private:
         //
     {{/kernel_arguments}}
 
+    const bool poison_buffers;
+
     // Kotekan buffer names
     {{#kernel_arguments}}
         {{^isscalar}}
@@ -176,6 +178,8 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                                              const int instance_num):
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
         "{{{kernel_name}}}", "{{{kernel_name}}}.ptx"),
+
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
     {{#kernel_arguments}}
         {{^isscalar}}
@@ -397,26 +401,26 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    E_buffer.set_to_poison(0x00);
+    if (poison_buffers) {
+        E_buffer.set_to_poison(0x00);
 
-#ifdef DEBUGGING
-    // Initialize host-side buffer arrays
-    {{#kernel_arguments}}
-        {{^isscalar}}
-            {{^hasbuffer}}
-                {{#isoutput}}
-                    CHECK_CUDA_ERROR(cudaMemsetAsync({{{name}}}_memory,
-                                                     0xff,
-                                                     {{{name}}}_length_in_bytes,
-                                                     device.getStream(cuda_stream_id)));
-                {{/isoutput}}
-            {{/hasbuffer}}
-        {{/isscalar}}
-    {{/kernel_arguments}}
-#endif
+        // Initialize host-side buffer arrays
+        {{#kernel_arguments}}
+            {{^isscalar}}
+                {{^hasbuffer}}
+                    {{#isoutput}}
+                        CHECK_CUDA_ERROR(cudaMemsetAsync({{{name}}}_memory,
+                                                         0xff,
+                                                         {{{name}}}_length_in_bytes,
+                                                         device.getStream(cuda_stream_id)));
+                    {{/isoutput}}
+                {{/hasbuffer}}
+            {{/isscalar}}
+        {{/kernel_arguments}}
 
-    E_buffer.set_to_poison(0x00);
-    info_buffer.set_to_poison(0xff);
+        E_buffer.set_to_poison(0x00);
+        info_buffer.set_to_poison(0xff);
+    } // if (poison_buffers)
 
     const std::string symname = "{{{kernel_name}}}_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
@@ -436,49 +440,49 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
-#ifdef DEBUGGING
-    // Copy results back to host memory
-    {{#kernel_arguments}}
-        {{^isscalar}}
-            {{^hasbuffer}}
-                {{#isoutput}}
-                    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_{{{name}}}_buffer.data(),
-                                                     {{{name}}}_memory,
-                                                     {{{name}}}_length_in_bytes,
-                                                     cudaMemcpyDeviceToHost,
-                                                     device.getStream(cuda_stream_id)));
-                {{/isoutput}}
-            {{/hasbuffer}}
-        {{/isscalar}}
-    {{/kernel_arguments}}
+    if (poison_buffers) {
+        // Copy results back to host memory
+        {{#kernel_arguments}}
+            {{^isscalar}}
+                {{^hasbuffer}}
+                    {{#isoutput}}
+                        CHECK_CUDA_ERROR(cudaMemcpyAsync(host_{{{name}}}_buffer.data(),
+                                                         {{{name}}}_memory,
+                                                         {{{name}}}_length_in_bytes,
+                                                         cudaMemcpyDeviceToHost,
+                                                         device.getStream(cuda_stream_id)));
+                    {{/isoutput}}
+                {{/hasbuffer}}
+            {{/isscalar}}
+        {{/kernel_arguments}}
 
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+        CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 
-    // Check error codes
-    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*host_info_buffer.begin(),
-                                                      (const std::int32_t*)&*host_info_buffer.end());
-    if (error_code != 0)
-        ERROR("CUDA kernel {{{kernel_name}}} returned error code: {}", error_code);
+        // Check error codes
+        const std::int32_t error_code = *std::max_element((const std::int32_t*)&*host_info_buffer.begin(),
+                                                          (const std::int32_t*)&*host_info_buffer.end());
+        if (error_code != 0)
+            ERROR("CUDA kernel {{{kernel_name}}} returned error code: {}", error_code);
 
-    // TODO: Introduce a new "unbuffered" buffer; do this there
-    for (int block = 0; block < info_lengths[info_index_block]; ++block) {
-        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
-            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
-                const std::ptrdiff_t i =
-                    info_strides[info_index_thread] * thread +
-                    info_strides[info_index_warp] * warp +
-                    info_strides[info_index_block] * block;
-                const std::uint32_t val = host_info_buffer.data()[i];
-                if (val != 0)
-                    ERROR("CUDA kernel {{{kernel_name}}} returned 'info' value {:d} "
-                          "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no error)",
-                          val, thread, warp, block, i);
+        // TODO: Introduce a new "unbuffered" buffer; do this there
+        for (int block = 0; block < info_lengths[info_index_block]; ++block) {
+            for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+                for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                    const std::ptrdiff_t i =
+                        info_strides[info_index_thread] * thread +
+                        info_strides[info_index_warp] * warp +
+                        info_strides[info_index_block] * block;
+                    const std::uint32_t val = host_info_buffer.data()[i];
+                    if (val != 0)
+                        ERROR("CUDA kernel {{{kernel_name}}} returned 'info' value {:d} "
+                              "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no error)",
+                              val, thread, warp, block, i);
+                }
             }
         }
-    }
-#endif
 
-    E_buffer.check_for_poison(0x00);
+        E_buffer.check_for_poison(0x00);
+    } // if (poison_buffers)
 
     return record_end_event();
 }

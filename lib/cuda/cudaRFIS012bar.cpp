@@ -70,6 +70,7 @@ private:
     const int rfi_second_downsampling_factor;
     const int rfi_num_times;
     const int rfi_num_times_bar;
+    const bool poison_buffers;
 
     // Kotekan buffer names
     const std::string rfi_S012_name;
@@ -95,6 +96,7 @@ cudaRFIS012bar::cudaRFIS012bar(kotekan::Config& config, const std::string& uniqu
     rfi_second_downsampling_factor(config.get<int>(unique_name, "rfi_second_downsampling_factor")),
     rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
     rfi_num_times_bar(config.get<int>(unique_name, "rfi_num_times_bar")),
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
     rfi_S012bar_name(config.get<std::string>(unique_name, "rfi_S012bar_name")),
@@ -162,7 +164,8 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
                                                  * rfi_second_downsampling_factor);
 
     // There is no poison value
-    // rfi_S012bar.set_to_poison(0xff);
+    // if (poison_buffers)
+    //     rfi_S012bar.set_to_poison(0xff);
 
     const std::uint64_t* const rfi_S012_memory = rfi_S012.get_ndarray().data();
     std::uint64_t* const rfi_S012bar_memory = rfi_S012bar.get_ndarray().data();
@@ -192,7 +195,8 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
 #endif
 
     // There is no poison value
-    // rfi_S012bar.check_for_poison(0xff);
+    // if (poison_buffers)
+    //     rfi_S012bar.check_for_poison(0xff);
 
     return record_end_event();
 }

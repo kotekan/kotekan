@@ -91,6 +91,7 @@ private:
     const int num_polarizations;
     const int num_dishes;
     const int n2k_sub_integration_ntime;
+    const bool poison_buffers;
 
     // Kotekan buffer names
     const std::string pl_expanded_mask_name;
@@ -117,6 +118,7 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     n2k_sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
     pl_expanded_mask_name(config.get<std::string>(unique_name, "pl_expanded_mask_name")),
     rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
@@ -218,7 +220,8 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
         n2k_sub_integration_ntime * div_noremainder(pl_meta->get_time_downsampling_fpga(), 64));
 
     // Set poison for debug checks.
-    n2k_counts.set_to_poison(0xff);
+    if (poison_buffers)
+        n2k_counts.set_to_poison(0xff);
 
     // The ringbuffering here is fishy. We should fix the kernel instead.
 
@@ -269,7 +272,8 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
         cudaMemsetInt(n2k_counts_memory, Nds, n2k_counts.get_ndarray().size());
     }
 
-    n2k_counts.check_for_poison(0xff);
+    if (poison_buffers)
+        n2k_counts.check_for_poison(0xff);
 
     return record_end_event();
 }

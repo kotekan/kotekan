@@ -464,10 +464,8 @@ public:
     // Poison
 
     // Poison an NDArray ring buffer
-    void set_to_poison([[maybe_unused]] const std::uint8_t poison_value,
-                       [[maybe_unused]] const std::ptrdiff_t F_min,
-                       [[maybe_unused]] const std::ptrdiff_t F_max) {
-#ifdef DEBUGGING
+    void set_to_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
+                       const std::ptrdiff_t F_max) {
         assert(get_write_valid().size() > 0);
 
         const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
@@ -512,7 +510,6 @@ public:
                                   T_stride * sizeof(T), poison_value,
                                   F_length * F_stride * sizeof(T), T_length, stream));
         } // for chunk
-#endif
     }
 
     void set_to_poison(const std::uint8_t poison_value) {
@@ -520,10 +517,8 @@ public:
     }
 
     // Check an NDArray ring buffer for poison
-    void check_for_poison([[maybe_unused]] const std::uint8_t poison_value,
-                          [[maybe_unused]] const std::ptrdiff_t F_min,
-                          [[maybe_unused]] const std::ptrdiff_t F_max) {
-#ifdef DEBUGGING
+    void check_for_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
+                          const std::ptrdiff_t F_max) {
         assert(get_write_valid().size() > 0);
 
         T poison;
@@ -620,7 +615,6 @@ public:
         if (found_error)
             FATAL_ERROR("NDArray ring buffer {:s} contains poison", buffer_name);
         assert(!found_error);
-#endif
     }
 
     void check_for_poison(const std::uint8_t poison_value) {

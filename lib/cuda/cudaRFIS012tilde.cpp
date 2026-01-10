@@ -68,6 +68,7 @@ private:
     const int num_polarizations;
     const int num_dishes;
     const int rfi_num_times;
+    const bool poison_buffers;
 
     // Kotekan buffer names
     const std::string bf_mask_name;
@@ -94,6 +95,7 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
     bf_mask_name(config.get<std::string>(unique_name, "bf_mask_name")),
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
@@ -157,7 +159,8 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
     rfi_S012tilde.set_metadata(rfi_S012.get_metadata());
 
     // There is no poison value
-    // rfi_S012tilde.set_to_poison(0xff);
+    // if (poison_buffers)
+    //     rfi_S012tilde.set_to_poison(0xff);
 
     const std::int8_t* const bf_mask_memory = bf_mask.get_ndarray().data();
     const std::uint64_t* const rfi_S012_memory = rfi_S012.get_ndarray().data();
@@ -177,7 +180,8 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
 #endif
 
     // There is no poison value
-    // rfi_S012tilde.check_for_poison(0xff);
+    // if (poison_buffers)
+    //     rfi_S012tilde.check_for_poison(0xff);
 
     return record_end_event();
 }
