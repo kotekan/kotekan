@@ -1,17 +1,17 @@
 #ifndef KOTEKAN_CUDA_QUANTIZE_HPP
 #define KOTEKAN_CUDA_QUANTIZE_HPP
 
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for float16_t, uint4x2_t
-#include "bufferContainer.hpp" // for bufferContainer
-#include "driver_types.h"      // for cudaEvent_t
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for float16_t, uint4x2_t
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 
-#include <NDArrayBuffer.hpp>       // for NDArrayBuffer
-#include <cudaCommand.hpp>         // for cudaCommand, cudaPipelineState
-#include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
-#include <stdint.h>                // for int64_t
-#include <string>                  // for string, basic_string
-#include <vector>                  // for vector
+#include <cstdint>        // for int64_t
+#include <driver_types.h> // for cudaEvent_t
+#include <string>         // for string, basic_string
+#include <vector>         // for vector
 
 /**
  * @class cudaQuantize
