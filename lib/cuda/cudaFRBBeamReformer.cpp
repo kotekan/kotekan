@@ -1,21 +1,21 @@
 #include "cudaFRBBeamReformer.hpp"
 
+#include "DataType.hpp"            // for float16_t, DataType
 #include "buffer.hpp"              // for GenericBuffer
-#include "cublas_v2.h"             // for cublasCreate, cublasDestroy, cublasSetStream
 #include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "div.hpp"                 // for div_noremainder, mod
 #include "driver_types.h"          // for CUevent_st, cudaEvent_t, CUstream_st
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG, ERROR
 #include "metadata.hpp"            // for metadataObject
 #include "ringbuffer.hpp"          // for RingBuffer
 
-#include <DataType.hpp>      // for float16_t, DataType
 #include <algorithm>         // for max
-#include <assert.h>          // for assert
+#include <cassert>           // for assert
 #include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, metadata_is_chord
 #include <cstdlib>           // for abort
-#include <div.hpp>           // for div_noremainder, mod
+#include <cublas_v2.h>       // for cublasCreate, cublasDestroy, cublasSetStream
 #include <fmt.hpp>           // for compile_string_to_view
 #include <memory>            // for shared_ptr, __shared_ptr_access
 #include <optional>          // for optional

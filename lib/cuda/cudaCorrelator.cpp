@@ -7,25 +7,24 @@
 #include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h"      // for cudaGetLastError
+#include "div.hpp"                 // for div_noremainder, mod
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG
 #include "n2k/Correlator.hpp"      // for Correlator
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <algorithm>         // for max
-#include <array>             // for array
-#include <cassert>           // for assert
-#include <chordMetadata.hpp> // for chordMetadata
-#include <cstddef>           // for ptrdiff_t
-#include <cstdint>           // for int32_t, int8_t, uint32_t
-#include <div.hpp>           // for div_noremainder, mod
-#include <functional>        // for function
-#include <memory>            // for shared_ptr, __shared_ptr_access
-#include <stdexcept>         // for runtime_error
-#include <string>            // for allocator, basic_string, string
-#include <tuple>             // for tuple, make_tuple
+#include <algorithm>          // for max
+#include <array>              // for array
+#include <cassert>            // for assert
+#include <chordMetadata.hpp>  // for chordMetadata
+#include <cstddef>            // for ptrdiff_t
+#include <cstdint>            // for int32_t, int8_t, uint32_t
+#include <cuda_runtime_api.h> // for cudaGetLastError
+#include <fmt.hpp>            // for compile_string_to_view
+#include <functional>         // for function
+#include <memory>             // for shared_ptr, __shared_ptr_access
+#include <stdexcept>          // for runtime_error
+#include <string>             // for allocator, basic_string, string
+#include <tuple>              // for tuple, make_tuple
 
 using kotekan::bufferContainer;
 using kotekan::Config;
