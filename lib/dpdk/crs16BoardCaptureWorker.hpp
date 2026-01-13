@@ -26,7 +26,7 @@ class crs16BoardCaptureWorker : public dpdkRXhandler {
 public:
     /// Default constructor
     crs16BoardCaptureWorker(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& buffer_container, int port,
+                   kotekan::bufferContainer& buffer_container, int worker_id,
                    const std::vector<rte_ring*>& worker_rings);
 
     /// Processes the incoming packets
@@ -44,16 +44,22 @@ protected:
     /// The packet recepit bitmap buffer
     Buffer* receipt_bitmap_buf;
 
+    int worker_id;
+
     /// The packet size
     uint32_t packet_size;
 
     uint32_t payload_size;
+
+    uint32_t num_expected_stream_ids;
 
     const uint32_t header_size = 64;
     // Each node processes data from 16 source IDs (16 CRS boards) and 8 stream IDs (1/16 of the total streams)
     const uint32_t num_source_ids = 16;
     const uint32_t num_stream_ids = 8;
     const uint32_t time_samples_per_packet = 16;
+
+    std::vector<uint32_t> stream_ids_expected;
 
     bool first_run = true;
 
@@ -69,14 +75,16 @@ protected:
 };
 
 inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(kotekan::Config& config, const std::string& unique_name,
-                                      kotekan::bufferContainer& buffer_container, int port,
+                                      kotekan::bufferContainer& buffer_container, int worker_id,
                                       const std::vector<rte_ring*>& worker_rings) :
-    dpdkRXhandler(config, unique_name, buffer_container, port), worker_rings(worker_rings),
+    dpdkRXhandler(config, unique_name, buffer_container, config.get<int>(unique_name, "port")), worker_rings(worker_rings),
     out_buf(buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"))),
     receipt_bitmap_buf(
         buffer_container.get_buffer(config.get<std::string>(unique_name, "receipt_bitmap_buf"))),
+    worker_id(worker_id),
     packet_size(config.get<uint32_t>(unique_name, "packet_size")),
-    payload_size(config.get<uint32_t>(unique_name, "payload_size")) {
+    payload_size(config.get<uint32_t>(unique_name, "payload_size")),
+    num_expected_stream_ids(config.get<uint32_t>(unique_name, "num_expected_stream_ids")) {
 
     out_buf->register_producer(unique_name);
     receipt_bitmap_buf->register_producer(unique_name);
@@ -102,8 +110,9 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(kotekan::Config& config,
 
     int prefetch_depth = config.get_default<int>(unique_name, "prefetch_depth", 4);
     std::vector<int> cpu_affinity = config.get<std::vector<int>>(unique_name, "frame_service_cpu_affinity");
+    bool allocate_metadata = config.get_default<bool>(unique_name, "allocate_metadata", false);
 
-    prefetch_service = std::make_unique<kotekan::FramePrefetchService>(out_buf, receipt_bitmap_buf, unique_name, time_samples_per_frame, prefetch_depth, cpu_affinity, capture_n_frames);
+    prefetch_service = std::make_unique<kotekan::FramePrefetchService>(out_buf, receipt_bitmap_buf, unique_name, port, time_samples_per_frame, prefetch_depth, cpu_affinity, capture_n_frames, allocate_metadata);
     prefetch_service->set_log_level(get_log_level());
     prefetch_service->set_log_prefix(unique_name + "_prefetch");
 }
@@ -113,7 +122,7 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
 
     // Check the packet size, checksum, and the packet cookie
     if (unlikely((mbuf->ol_flags & RTE_MBUF_F_RX_IP_CKSUM_MASK) == RTE_MBUF_F_RX_IP_CKSUM_BAD)) {
-        WARN("Port: {:d}; Got bad packet IP checksum", port);
+        WARN("Port: {:d}, Worker: {:d}; Got bad packet IP checksum", port, worker_id);
         return 0;
     }
 
@@ -124,7 +133,7 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     }
 
     if (unlikely(get_crs_packet_cookie(mbuf) != CRS_PACKET_COOKIE)) {
-        WARN("Port: {:d}; Got packet with invalid cookie {:08X}", port, get_crs_packet_cookie(mbuf));
+        WARN("Port: {:d}, Worker: {:d}; Got packet with invalid cookie {:08X}", port, worker_id, get_crs_packet_cookie(mbuf));
         return 0;
     }
 
@@ -135,6 +144,21 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     //INFO("Port: {:d}; Received packet with Stream ID {:d}, Source ID {:d}, Seq Num {:d}", port, stream_id, source_id, seq_num);
 
     if (unlikely(first_run)) {
+
+        // Establish the list of expected stream IDs for this port.
+        // Note that in most cases we expect all source ID at every port.
+        // In the 16 board configuration, each stream ID should be spaced by 16.
+        // Note that this is slightly slow, but only happens once at startup.
+        
+        // Check if the stream ID is already in the list, and if not add it.
+        if (std::find(stream_ids_expected.begin(), stream_ids_expected.end(), stream_id) == stream_ids_expected.end()) {
+            stream_ids_expected.push_back(stream_id);
+        }
+
+        if (stream_ids_expected.size() < num_expected_stream_ids) {
+            return 0; // Wait for more packets to establish the full list
+        }
+
         // Start capturing at a future frame to allow time for prefetching
         // Note the switch (even with port fast enabled) seems to reset the port
         // but only _after_ we start receiving packets. So we need to wait
@@ -143,23 +167,30 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         // but for now we just start well into the future.
         uint64_t future_seq = seq_num + 3000000; // About 15 second in the future.       
         uint64_t start_seq = future_seq - (future_seq % time_samples_per_frame);
-        prefetch_service->start(start_seq);
+        prefetch_service->start(start_seq, stream_ids_expected);
         first_run = false;
-        INFO("Port: {:d}; Starting prefetch service at sequence number {:d}", port, start_seq);
+        INFO("Port: {:d}, Worker: {:d}; Starting prefetch service at sequence number {:d}", port, worker_id, start_seq);
         return 0;
     }
 
-    // Print the seq number for each 10000 packets
-    //if ((seq_num / 16) % 10000 == 0) {
-        //INFO("Port: {:d}; Got packet with Stream ID {:d}, Source ID {:d}, Seq Num {:d}", port, stream_id, source_id, seq_num);
-    //}
+    // This should only ever happen if the switch or F-engine is misconfigured.
+    // Could possibly be removed at some point if we have other checks in place.
+    if (std::find(stream_ids_expected.begin(), stream_ids_expected.end(), stream_id) == stream_ids_expected.end()) {
+        WARN("Port: {:d}, Worker: {:d}; Got packet with unexpected Stream ID {:d}", port, worker_id, stream_id);
+        return 0;
+    }
+
+    // Print packet details for every 100,000 sequence numbers. 
+    if ((seq_num / 16) % 100000 == 0) {
+        INFO("Port: {:d}, Worker: {:d}; Got packet with Stream ID {:d}, Source ID {:d}, Seq Num {:d}", port, worker_id, stream_id, source_id, seq_num);
+    }
 
     if (unlikely(!prefetch_service->is_ready())) {
         if (prefetch_service->has_error() || prefetch_service->is_complete()) return -1;
         
         if (seq_num >= prefetch_service->get_start_seq()) {
-             WARN("Port: {:d}; Dropping packet with sequence number {:d} because prefetch service is not ready (start_seq: {:d})",
-                  port, seq_num, prefetch_service->get_start_seq());
+             WARN("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} because prefetch service is not ready (start_seq: {:d})",
+                  port, worker_id, seq_num, prefetch_service->get_start_seq());
         }
         return 0;
     }
@@ -170,7 +201,7 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
 
         if (unlikely(active_f0 == nullptr || active_f1 == nullptr)) {
             if (prefetch_service->has_error() || prefetch_service->is_complete()) return -1;
-            WARN("Port: {:d}; Dropping packet with sequence number {:d} because ran out of prefetched frames", port, seq_num);
+            WARN("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} because ran out of prefetched frames", port, worker_id, seq_num);
             active_f0 = nullptr;
             active_f1 = nullptr;
             return 0;
@@ -188,8 +219,8 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         }
 
         // Packet is outside the range of the two active frames, drop it
-        ERROR("Port: {:d}; Dropping packet with sequence number {:d} outside active frame range [{:d}, {:d}]",
-             port, seq_num, active_f0->start_seq, active_f1->start_seq + time_samples_per_frame);
+        ERROR("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} outside active frame range [{:d}, {:d}]",
+             port, worker_id, seq_num, active_f0->start_seq, active_f1->start_seq + time_samples_per_frame);
         return -1;
     }
 
@@ -197,13 +228,14 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     // then advance the frames. The 160 time sample margin ensures that we do not
     // miss any packets that are slightly out of order.
     if (seq_num >= active_f1->start_seq + 160) {
+        _mm_sfence(); // Ensure all NT stores are complete before advancing
         prefetch_service->advance();
         active_f0 = prefetch_service->get_frame(0);
         active_f1 = prefetch_service->get_frame(1);
         
         if (unlikely(active_f0 == nullptr || active_f1 == nullptr)) {
              if (prefetch_service->has_error() || prefetch_service->is_complete()) return -1;
-             WARN("Port: {:d}; Dropping packet with sequence number {:d} because ran out of prefetched frames", port, seq_num);
+             WARN("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} because ran out of prefetched frames", port, worker_id, seq_num);
              active_f0 = nullptr;
              active_f1 = nullptr;
              return 0;
@@ -288,7 +320,6 @@ inline void crs16BoardCaptureWorker::packet_copy_to_frame(struct rte_mbuf* mbuf,
             rem -= 128;
         } else {
             // Slow path: Handle split across mbuf segments
-            INFO("using slow path for packet copy");
             int copied = 0;
             while (copied < 128) {
                 if (rem == 0) {

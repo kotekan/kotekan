@@ -26,10 +26,10 @@ struct FrameInfo {
 
 class FramePrefetchService : public kotekanLogging {
 public:
-    FramePrefetchService(Buffer* buf, Buffer* receipt_bitmap_buf, std::string name, uint64_t samples_per_frame, int depth, std::vector<int> cpu_affinity, uint64_t capture_n_frames = 0);
+    FramePrefetchService(Buffer* buf, Buffer* receipt_bitmap_buf, std::string name, uint32_t port, uint64_t samples_per_frame, int depth, std::vector<int> cpu_affinity, uint64_t capture_n_frames = 0, bool allocate_metadata = true);
     ~FramePrefetchService();
 
-    void start(uint64_t start_seq);
+    void start(uint64_t start_seq, const std::vector<uint32_t>& expected_stream_ids);
     void stop();
     
     // Called by consumer to indicate it has finished with the current frame and moved to the next.
@@ -47,18 +47,31 @@ private:
     void prefetcher_loop();
     void apply_affinity();
 
+    // Adds expected stream IDs for this port
+    // This function also checks for duplicates across ports and calls to this function.
+    void add_expected_stream_ids(const std::vector<uint32_t>& ids);
+
     Buffer* buf;
     Buffer* receipt_bitmap_buf;
     std::string unique_name;
+    uint32_t port;
     uint64_t samples_per_frame;
     int depth;
     std::vector<int> cpu_affinity;
     uint64_t capture_n_frames;
+    bool allocate_metadata;
 
     std::vector<FrameInfo> frames;
     size_t mask;
 
     uint64_t marked_full_cursor = 0;
+
+    std::vector<uint32_t> expected_stream_ids;
+
+    // Global sorted list of expected stream IDs for all ports, format is [port][stream_id]
+    inline static std::vector<std::vector<uint32_t>> global_expected_stream_ids;
+    // Global mutex to protect access to the list of expected stream IDs.
+    inline static std::mutex global_stream_id_mutex;
 
     // Written by prefetcher, read by consumer
     alignas(64) std::atomic<uint64_t> produced_cursor{0};
@@ -75,8 +88,8 @@ private:
     std::thread prefetcher_thread;
 };
 
-FramePrefetchService::FramePrefetchService(Buffer* buf, Buffer* receipt_bitmap_buf, std::string name, uint64_t samples_per_frame, int depth, std::vector<int> cpu_affinity, uint64_t capture_n_frames)
-    : buf(buf), receipt_bitmap_buf(receipt_bitmap_buf), unique_name(name), samples_per_frame(samples_per_frame), depth(depth), cpu_affinity(cpu_affinity), capture_n_frames(capture_n_frames) {
+FramePrefetchService::FramePrefetchService(Buffer* buf, Buffer* receipt_bitmap_buf, std::string name, uint32_t port, uint64_t samples_per_frame, int depth, std::vector<int> cpu_affinity, uint64_t capture_n_frames, bool allocate_metadata)
+    : buf(buf), receipt_bitmap_buf(receipt_bitmap_buf), unique_name(name), port(port), samples_per_frame(samples_per_frame), depth(depth), cpu_affinity(cpu_affinity), capture_n_frames(capture_n_frames), allocate_metadata(allocate_metadata) {
     
     size_t d = 1;
     while (d < (size_t)depth) d <<= 1;
@@ -107,8 +120,9 @@ void FramePrefetchService::stop() {
     }
 }
 
-void FramePrefetchService::start(uint64_t start_seq) {
+void FramePrefetchService::start(uint64_t start_seq, const std::vector<uint32_t>& expected_stream_ids) {
     initial_start_seq = start_seq;
+    add_expected_stream_ids(expected_stream_ids);
     start_requested = true;
 }
 
@@ -181,10 +195,25 @@ void FramePrefetchService::prefetcher_loop() {
             }
             INFO("FramePrefetchService {} obtained frame {}", unique_name, frame_id);
             
-            buf->allocate_new_metadata_object(frame_id);
-            //auto metadata = buf->get_metadata(frame_id);
-            //metadata->set_time_sample_start_seq(seq);
+            // Only the worker assigned to allocate metadata does so, as the data buffer 
+            // is shared across all workers.
+            if (allocate_metadata) {
+                buf->allocate_new_metadata_object(frame_id);
+                //auto metadata = buf->get_metadata(frame_id);
+                //metadata->set_time_sample_start_seq(seq);
 
+                // Print the list of expected stream IDs for this port
+                std::string stream_id_list;
+                for (size_t i = 0; i < global_expected_stream_ids.at(port).size(); ++i) {
+                    stream_id_list += std::to_string(global_expected_stream_ids.at(port)[i]);  
+                    if (i < global_expected_stream_ids.at(port).size() - 1) {
+                        stream_id_list += ", ";
+                    }
+                }
+                INFO("FramePrefetchService {}: Setting expected stream IDs for port {}: {}", unique_name, port, stream_id_list); 
+            }
+
+            // The receipt bitmap metadata is always set.  One bitmap per worker.
             receipt_bitmap_buf->allocate_new_metadata_object(frame_id);
             
             FrameInfo& info = frames[produced & mask];
@@ -223,6 +252,30 @@ inline void FramePrefetchService::apply_affinity() {
 #endif
 }
 
+void FramePrefetchService::add_expected_stream_ids(const std::vector<uint32_t>& ids) {
+    std::lock_guard<std::mutex> lock(global_stream_id_mutex);
+    
+    // Check for duplicates across ports
+    for (const auto& existing_ids : global_expected_stream_ids) {
+        for (uint32_t id : ids) {
+            if (std::find(existing_ids.begin(), existing_ids.end(), id) != existing_ids.end()) {
+                throw std::runtime_error("FramePrefetchService: Duplicate stream ID " + std::to_string(id) + " found across ports");
+            }
+        }
+    }
+    
+    // Add the stream ids to the global list based on the local port number.
+    if (global_expected_stream_ids.size() <= port) {
+        global_expected_stream_ids.resize(port + 1);
+    }
+    for (uint32_t id : ids) {
+        global_expected_stream_ids[port].push_back(id);
+    }
+    // Sort the stream IDs for this port.
+    std::sort(global_expected_stream_ids[port].begin(), global_expected_stream_ids[port].end());
+    
 }
+
+} // namespace kotekan
 
 #endif
