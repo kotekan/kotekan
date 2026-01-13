@@ -12,17 +12,17 @@
 #include "dpdkCore.hpp"
 #include "packet_copy.h"
 #include "prometheusMetrics.hpp"
+#include "visUtil.hpp"
 
 #include "json.hpp"
-#include "visUtil.hpp"
 
 
 class crs1BoardCaptureWorker : public dpdkRXhandler {
 public:
     /// Default constructor
     crs1BoardCaptureWorker(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& buffer_container, int port,
-                   const std::vector<rte_ring*>& worker_rings);
+                           kotekan::bufferContainer& buffer_container, int port,
+                           const std::vector<rte_ring*>& worker_rings);
 
     /// Processes the incoming packets
     int handle_packet(struct rte_mbuf* mbuf) override;
@@ -31,7 +31,6 @@ public:
     virtual void update_stats() override {};
 
 protected:
-
     const std::vector<rte_ring*>& worker_rings;
 
     /// The output buffer
@@ -62,12 +61,14 @@ protected:
     uint64_t last_seq = 0;
 };
 
-inline crs1BoardCaptureWorker::crs1BoardCaptureWorker(kotekan::Config& config, const std::string& unique_name,
-                                      kotekan::bufferContainer& buffer_container, int port,
-                                      const std::vector<rte_ring*>& worker_rings) :
+inline crs1BoardCaptureWorker::crs1BoardCaptureWorker(kotekan::Config& config,
+                                                      const std::string& unique_name,
+                                                      kotekan::bufferContainer& buffer_container,
+                                                      int port,
+                                                      const std::vector<rte_ring*>& worker_rings) :
     dpdkRXhandler(config, unique_name, buffer_container, port), worker_rings(worker_rings),
     out_buf(buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"))),
-    
+
     packet_size(config.get<uint32_t>(unique_name, "packet_size")) {
 
     out_buf->register_producer(unique_name);
@@ -92,12 +93,12 @@ inline int crs1BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
 
     (void)mbuf;
     // Print the worker ID and stream ID
-    //uint16_t stream_id = get_crs_packet_stream_id(mbuf);
-    //uint16_t source_id = get_crs_packet_source_id(mbuf);
+    // uint16_t stream_id = get_crs_packet_stream_id(mbuf);
+    // uint16_t source_id = get_crs_packet_source_id(mbuf);
     uint64_t seq_num = get_crs_packet_seq_num(mbuf);
 
-    //INFO("Worker {:d} got packet from source ID {:d}, stream ID {:d}, seq num {:d}",
-    //     port, source_id, stream_id, seq_num);
+    // INFO("Worker {:d} got packet from source ID {:d}, stream ID {:d}, seq num {:d}",
+    //      port, source_id, stream_id, seq_num);
 
     // Get the first frame.
     if (first_run) {
@@ -127,14 +128,14 @@ inline int crs1BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     packet_location++;
     total_packets_received += 1;
 
-    // Log packet rates. 
+    // Log packet rates.
     if (total_packets_received % 390000 == 0) {
         double time_now = e_time();
-        INFO("Worker {:d} has received {:d} packets, seq num {:d}, packet rate: {:d} pps, data rate: {:f} Gbps, time elapsed: {:f} s",
-             port, total_packets_received, seq_num,
-             (int)(390000 / (time_now - previous_time)),
-            (double)packet_size * 390000 * 8 / (time_now - previous_time) / 1.0e9,
-            (time_now - previous_time));
+        INFO("Worker {:d} has received {:d} packets, seq num {:d}, packet rate: {:d} pps, data "
+             "rate: {:f} Gbps, time elapsed: {:f} s",
+             port, total_packets_received, seq_num, (int)(390000 / (time_now - previous_time)),
+             (double)packet_size * 390000 * 8 / (time_now - previous_time) / 1.0e9,
+             (time_now - previous_time));
         previous_time = time_now;
         last_seq = seq_num;
     }

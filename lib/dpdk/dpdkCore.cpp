@@ -24,16 +24,16 @@
 #include <vector>                  // for vector
 
 // cinttypes needed by some CentOS systems.
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "captureHandler.hpp"   // for captureHandler
-#include "iceBoardShuffle.hpp"  // for iceBoardShuffle
-#include "iceBoardStandard.hpp" // for iceBoardStandard
-#include "iceBoardVDIF.hpp"     // for iceBoardVDIF
-#include "crs1BoardDistributor.hpp"   // for crsDistributor
-#include "crs16BoardDistributor.hpp" // for crs16BoardDistributor
-#include "crs1BoardCaptureWorker.hpp" // for crsCaptureWorker
+#include "Config.hpp"                  // for Config
+#include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
+#include "captureHandler.hpp"          // for captureHandler
 #include "crs16BoardCaptureWorker.hpp" // for crs16BoardCaptureWorker
+#include "crs16BoardDistributor.hpp"   // for crs16BoardDistributor
+#include "crs1BoardCaptureWorker.hpp"  // for crsCaptureWorker
+#include "crs1BoardDistributor.hpp"    // for crsDistributor
+#include "iceBoardShuffle.hpp"         // for iceBoardShuffle
+#include "iceBoardStandard.hpp"        // for iceBoardStandard
+#include "iceBoardVDIF.hpp"            // for iceBoardVDIF
 
 #include "fmt.hpp"  // for compile_string_to_view, format, fmt, format_string
 #include "json.hpp" // for basic_json, iter_impl, json
@@ -89,12 +89,13 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     // Change hardcoded 2048 to support jumbo frames if configured
     // We add RTE_PKTMBUF_HEADROOM to max_rx_pkt_len to ensure the payload fits comfortably
     // or simply use a fixed large size like 9600 if max_rx_pkt_len is high.
-    uint32_t configured_mbuf_size = config.get_default<uint32_t>(unique_name, "mbuf_data_size", 2048);
-    
-    // If the user hasn't explicitly set mbuf_data_size, but has set a large max_rx_pkt_len, 
+    uint32_t configured_mbuf_size =
+        config.get_default<uint32_t>(unique_name, "mbuf_data_size", 2048);
+
+    // If the user hasn't explicitly set mbuf_data_size, but has set a large max_rx_pkt_len,
     // we should probably default to the larger size to avoid scatter-gather.
     if (configured_mbuf_size == 2048 && max_rx_pkt_len > 2048) {
-        configured_mbuf_size = max_rx_pkt_len + RTE_PKTMBUF_HEADROOM; 
+        configured_mbuf_size = max_rx_pkt_len + RTE_PKTMBUF_HEADROOM;
         // Align to 1024 for sanity, though not strictly required
         configured_mbuf_size = ((configured_mbuf_size + 1023) / 1024) * 1024;
     }
@@ -119,13 +120,13 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
         uint32_t num_slots = ring["num_slots"];
         int socket_id = ring["socket_id"];
 
-        DEBUG("Creating worker ring '{:s}' with {:d} slots on socket {:d}", ring_name,
-              num_slots, socket_id);
+        DEBUG("Creating worker ring '{:s}' with {:d} slots on socket {:d}", ring_name, num_slots,
+              socket_id);
 
         // TODO Possibly make the flags configurable?
         // We are assuming single producer single consumer for now.
-        struct rte_ring* r = rte_ring_create(ring_name.c_str(), num_slots,
-                                                socket_id, RING_F_SP_ENQ | RING_F_SC_DEQ);
+        struct rte_ring* r =
+            rte_ring_create(ring_name.c_str(), num_slots, socket_id, RING_F_SP_ENQ | RING_F_SC_DEQ);
         if (r == nullptr) {
             throw std::runtime_error("Cannot create worker ring: "
                                      + std::string(rte_strerror(rte_errno)));
@@ -226,13 +227,11 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
             handlers[port] =
                 new captureHandler(config, handler_unique_name, buffer_container, port);
         } else if (handler_name == "crs1BoardDistributor") {
-            handlers[port] =
-                new crs1BoardDistributor(config, handler_unique_name, buffer_container, port,
-                                   worker_rings);
+            handlers[port] = new crs1BoardDistributor(config, handler_unique_name, buffer_container,
+                                                      port, worker_rings);
         } else if (handler_name == "crs16BoardDistributor") {
-            handlers[port] =
-                new crs16BoardDistributor(config, handler_unique_name, buffer_container, port,
-                                   worker_rings);
+            handlers[port] = new crs16BoardDistributor(config, handler_unique_name,
+                                                       buffer_container, port, worker_rings);
         } else if (handler_name == "none") {
             handlers[port] = nullptr;
         } else {
@@ -246,7 +245,7 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
 
 void dpdkCore::create_workers(bufferContainer& buffer_container) {
     // Create the workers
-    // Does not use the factory model because this is header only. 
+    // Does not use the factory model because this is header only.
     vector<json> workers_block = config.get<std::vector<json>>(unique_name, "workers");
     workers.resize(workers_block.size());
     uint32_t worker_id = 0;
@@ -256,13 +255,11 @@ void dpdkCore::create_workers(bufferContainer& buffer_container) {
         string worker_unique_name = fmt::format(fmt("{:s}/workers/{:d}"), unique_name, worker_id);
 
         if (worker_name == "crs1BoardCaptureWorker") {
-            workers[worker_id] =
-                new crs1BoardCaptureWorker(config, worker_unique_name, buffer_container, worker_id,
-                                     worker_rings);
+            workers[worker_id] = new crs1BoardCaptureWorker(
+                config, worker_unique_name, buffer_container, worker_id, worker_rings);
         } else if (worker_name == "crs16BoardCaptureWorker") {
-            workers[worker_id] =
-                new crs16BoardCaptureWorker(config, worker_unique_name, buffer_container, worker_id,
-                                     worker_rings);
+            workers[worker_id] = new crs16BoardCaptureWorker(
+                config, worker_unique_name, buffer_container, worker_id, worker_rings);
         } else if (worker_name == "none") {
             workers[worker_id] = nullptr;
         } else {
@@ -461,8 +458,8 @@ int dpdkCore::lcore_rx(void* args) {
         uint32_t worker_id = lcore - core->lcore_port_list.size();
         INFO_NON_OO("Starting worker: worker_id {:d}, lcore {:d}", worker_id, lcore);
         while (!core->stop_thread) {
-            uint16_t num_rx =
-                rte_ring_dequeue_burst(core->worker_rings.at(worker_id), (void**)mbufs, core->burst_size, NULL);
+            uint16_t num_rx = rte_ring_dequeue_burst(core->worker_rings.at(worker_id),
+                                                     (void**)mbufs, core->burst_size, NULL);
 
             if (num_rx == 0)
                 continue;
@@ -472,12 +469,12 @@ int dpdkCore::lcore_rx(void* args) {
                     rte_pktmbuf_free(mbufs[j]);
                     goto exit_loop;
                 }
-                //INFO_NON_OO("Worker {:d} processed a packet, freeing the buffer", worker_id);
+                // INFO_NON_OO("Worker {:d} processed a packet, freeing the buffer", worker_id);
                 rte_pktmbuf_free(mbufs[j]);
             }
-            //rte_pktmbuf_free_bulk(mbufs, num_rx);
+            // rte_pktmbuf_free_bulk(mbufs, num_rx);
         }
-        exit_loop:
+    exit_loop:
 
         INFO_NON_OO("Exiting worker: worker_id {:d}, lcore {:d}", worker_id, lcore);
         core->active_workers--;
@@ -507,9 +504,9 @@ int dpdkCore::lcore_rx(void* args) {
         for (uint32_t i = 0; i < ports.size(); ++i) {
             uint32_t port = ports[i];
 
-            //INFO_NON_OO("Polling port {:d} for packets", port);
+            // INFO_NON_OO("Polling port {:d} for packets", port);
             const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
-            //INFO_NON_OO("Port {:d} received {:d} packets", port, num_rx);
+            // INFO_NON_OO("Port {:d} received {:d} packets", port, num_rx);
             for (uint16_t j = 0; j < num_rx; ++j) {
 
                 // Process the packet with the required handler
@@ -519,8 +516,8 @@ int dpdkCore::lcore_rx(void* args) {
                     goto exit_lcore;
                 }
 
-                // TODO, free the mbuf in the handler. 
-                //rte_pktmbuf_free(mbufs[j]);
+                // TODO, free the mbuf in the handler.
+                // rte_pktmbuf_free(mbufs[j]);
             }
         }
     }

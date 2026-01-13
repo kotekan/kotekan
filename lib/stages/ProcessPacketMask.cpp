@@ -22,8 +22,7 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
     voltage_buf = get_buffer("voltage_buf");
     voltage_buf->register_consumer(unique_name);
 
-    combined_receipt_bitmap_buf =
-        get_buffer("combined_receipt_bitmap_buf");
+    combined_receipt_bitmap_buf = get_buffer("combined_receipt_bitmap_buf");
     combined_receipt_bitmap_buf->register_producer(unique_name);
 
     // Get the array of receipt bitmap buffer names and register as consumer on each
@@ -57,9 +56,9 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
     missing_source_id_mask[1] = 0;
     for (const auto& src_id : missing_source_ids) {
         if (src_id >= num_source_ids) {
-            throw std::runtime_error(fmt::format(
-                fmt("ProcessPacketMask: missing source_id {:d} is out of range (num_source_ids={:d})"),
-                src_id, num_source_ids));
+            throw std::runtime_error(fmt::format(fmt("ProcessPacketMask: missing source_id {:d} is "
+                                                     "out of range (num_source_ids={:d})"),
+                                                 src_id, num_source_ids));
         }
         if (src_id < 8) {
             missing_source_id_mask[0] |= (0xffull << src_id * 8);
@@ -69,7 +68,8 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
     }
 
     // print the missing source ID mask
-    INFO("ProcessPacketMask: Missing source ID mask: 0x{:016x}{:016x}", missing_source_id_mask[1], missing_source_id_mask[0]);
+    INFO("ProcessPacketMask: Missing source ID mask: 0x{:016x}{:016x}", missing_source_id_mask[1],
+         missing_source_id_mask[0]);
 
     // Validate voltage buffer size
     size_t expected_voltage_size =
@@ -100,12 +100,14 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
         throw std::runtime_error(fmt::format(
             fmt("ProcessPacketMask: combined_receipt_bitmap_buf frame size ({:d}) does not match "
                 "expected size ({:d}) for shape [time_long={:d}][source_id={:d}]"),
-            combined_receipt_bitmap_buf->frame_size, expected_bitmap_size, time_long, num_source_ids));
+            combined_receipt_bitmap_buf->frame_size, expected_bitmap_size, time_long,
+            num_source_ids));
     }
 
-    INFO("ProcessPacketMask: Initialized with {:d} receipt bitmap buffers", receipt_bitmap_bufs.size());
-    INFO("ProcessPacketMask: Voltage frame shape: [{:d}][{:d}][{:d}][{:d}][{:d}]",
-         time_long, num_frequency, element_long, time_short, element_short);
+    INFO("ProcessPacketMask: Initialized with {:d} receipt bitmap buffers",
+         receipt_bitmap_bufs.size());
+    INFO("ProcessPacketMask: Voltage frame shape: [{:d}][{:d}][{:d}][{:d}][{:d}]", time_long,
+         num_frequency, element_long, time_short, element_short);
     INFO("ProcessPacketMask: Receipt bitmap shape: [{:d}][{:d}]", time_long, num_source_ids);
 }
 
@@ -126,8 +128,8 @@ void ProcessPacketMask::main_thread() {
             break;
 
         // Wait for combined receipt bitmap frame
-        uint8_t* combined_bitmap_frame =   
-            combined_receipt_bitmap_buf->wait_for_empty_frame(unique_name, combined_bitmap_frame_id);
+        uint8_t* combined_bitmap_frame = combined_receipt_bitmap_buf->wait_for_empty_frame(
+            unique_name, combined_bitmap_frame_id);
         if (combined_bitmap_frame == nullptr)
             break;
 
@@ -149,7 +151,7 @@ void ProcessPacketMask::main_thread() {
 
         DEBUG("ProcessPacketMask: Processing voltage frame {:d} with {:d} bitmap frames",
               (int)voltage_frame_id, bitmap_frames.size());
-        
+
         // Combine receipt bitmaps casting to uint64_t for faster processing
         uint64_t* combined_bitmap_ptr = (uint64_t*)combined_bitmap_frame;
         size_t num_bitmap_words = combined_receipt_bitmap_buf->frame_size / sizeof(uint64_t);
@@ -182,8 +184,10 @@ void ProcessPacketMask::main_thread() {
         assert(total_packets > 0);
         packet_loss_rate = (double)missing_packet_count / (double)total_packets;
         double packet_loss_percentage = packet_loss_rate * 100.0;
-        INFO("ProcessPacketMask: Voltage frame {:d} packet loss precentage = {:.4f}% ({:d} missing / {:d} total)",
-             (int)voltage_frame_id, packet_loss_percentage, (int)missing_packet_count, (int)total_packets);
+        INFO("ProcessPacketMask: Voltage frame {:d} packet loss precentage = {:.4f}% ({:d} missing "
+             "/ {:d} total)",
+             (int)voltage_frame_id, packet_loss_percentage, (int)missing_packet_count,
+             (int)total_packets);
 
 
         // Zero out the receipt bitmaps that were just processed

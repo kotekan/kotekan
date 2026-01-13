@@ -10,19 +10,19 @@
 
 #pragma pack(push, 1)
 struct ethernet_header {
-    uint8_t  dest_mac[6];
-    uint8_t  src_mac[6];
+    uint8_t dest_mac[6];
+    uint8_t src_mac[6];
     uint16_t ether_type;
 };
 
 struct ip_header {
-    uint8_t  version_ihl;
-    uint8_t  type_of_service;
+    uint8_t version_ihl;
+    uint8_t type_of_service;
     uint16_t total_length;
     uint16_t identification;
     uint16_t flags_fragment_offset;
-    uint8_t  ttl;
-    uint8_t  protocol;
+    uint8_t ttl;
+    uint8_t protocol;
     uint16_t header_checksum;
     uint32_t src_addr;
     uint32_t dest_addr;
