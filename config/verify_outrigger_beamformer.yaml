@@ -12,16 +12,17 @@ num_links: 16 //double check
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
 block_size: 32
-samples_per_data_set: 49152 #16384
+samples_per_data_set: 10 #49152 #16384
 num_beams: 1
 num_data_sets: 1
+num_pointings: 1
 num_gpus: 1
 buffer_depth: 12
 num_gpu_frames: 16
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
 num_elements: 256 #2048
-num_local_freq: 8
+num_local_freq: 1
 num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 sizeof_int: 4
 
@@ -37,6 +38,19 @@ gpu_input_buffers:
     metadata_pool: main_pool
     gpu_input_buffer:
         kotekan_buffer: standard
+
+gpu_phase_buffer: 
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size:  num_elements * num_local_freq * num_data_sets * num_pointings 
+    metadata_pool: main_pool
+
+# gpu_input_buffers_v2:
+#     num_frames: buffer_depth
+#     frame_size: num_elements * num_local_freq * num_data_sets * num_pointings
+#     metadata_pool: main_pool
+#     gpu_phase_buffer:
+#         kotekan_buffer: standard
 
 gpu_output_buffers:
     num_frames: buffer_depth * 4
@@ -65,13 +79,19 @@ gen_data:
   kotekan_stage: testDataGen
   out_buf: gpu_input_buffer
 
+gen_phases:
+  type: random #const
+  value: 1
+  kotekan_stage: testDataGen
+  out_buf: gpu_phase_buffer
+
 #data_format: dot4b
 data_format: "4+4b"
 #full_complicated: false #don't use the ISA-like kernel: intrinsics, extra packing, overflows, etc
 
 gpu:
   profiling: true
-  kernel_path: "/var/lib/kotekan/opencl/kernels/"
+  kernel_path: "/home/shiona/kotekan/lib/opencl/kernels"
   gain_dir: "/etc/kotekan/"
   log_level: debug2
   buffer_depth: 3
@@ -81,11 +101,12 @@ gpu:
     gpu_memory: input
     in_bufs:
       - network_buf
-  - name: clPresumZero
+  - name: clInputData
+    gpu_memory: phases
+    in_bufs:
+      - phases_buf
   - name: clOutputDataZero
-  - name: clPresumKernel
-  - name: clPreseedKernel
-  - name: clCorrelatorKernel
+  # - name: clBeamformKernel
   - name: clOutputData
     out_bufs:
       - output_buf
@@ -97,6 +118,7 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: gpu_input_buffer
+      phases_buf: gpu_phase_buffer
     out_buffers:
       output_buf: gpu_output_buffer
 
@@ -105,5 +127,4 @@ cpu:
   log_level: debug
   network_in_buf: gpu_input_buffer
   corr_out_buf: cpu_output_buffer
-
 
