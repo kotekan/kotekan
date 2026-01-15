@@ -100,29 +100,9 @@ __global__ void sk_kernel(
     int rfimask_T1024min,                // First (coarse) time sample in rfimask array
     int rfimask_T1024size)               // Number of (coarse) time samples in rfimask array
 {
-    // TODO: Disentangle all the index optimizations below, then use `&` instead of `%` for the ring buffer access
-
-    const auto ringbuffer_S012 = [=](const ulong& lval) -> const ulong& {
-        const int in_S012_min_in_elems = S012_Tmin * F * 3 * S;
-        const int in_S012_size_in_elems = S012_Tsize * F * 3 * S;
-        return *(in_S012 + (&lval - in_S012 + in_S012_min_in_elems) % in_S012_size_in_elems);
-    };
-
-    const auto ringbuffer_sk_feed_averaged = [=](float& lval) -> float& {
-        const int out_sk_feed_averaged_min_in_elems = sk_feed_averaged_Tmin * F * 3;
-        const int out_sk_feed_averaged_size_in_elems = sk_feed_averaged_Tsize * F * 3;
-        return *(out_sk_feed_averaged
-                 + (&lval - out_sk_feed_averaged + out_sk_feed_averaged_min_in_elems)
-                       % out_sk_feed_averaged_size_in_elems);
-    };
-
-    const auto ringbuffer_sk_single_feed = [=](float& lval) -> float& {
-        const int out_sk_single_feed_min_in_elems = sk_single_feed_Tmin * F * 3 * S;
-        const int out_sk_single_feed_size_in_elems = sk_single_feed_Tsize * F * 3 * S;
-        return *(out_sk_single_feed
-                 + (&lval - out_sk_single_feed + out_sk_single_feed_min_in_elems)
-                       % out_sk_single_feed_size_in_elems);
-    };
+    assert(S012_Tsize & (S012_Tsize - 1) == 0 && "S012_Tsize must be a power of two");
+    assert(sk_feed_averaged_Tsize & (sk_feed_averaged_Tsize - 1) == 0 && "sk_feed_averaged_Tsize must be a power of two");
+    assert(sk_single_feed_Tsize & (sk_single_feed_Tsize - 1) == 0 && "sk_single_feed_Tsize must be a power of two");
 
     constexpr uint rfimask_time_split = 1024;
     // The actual layout of out_rfimask is ((T*Nds)/1024, F, 1024/32).
@@ -177,11 +157,16 @@ __global__ void sk_kernel(
     int t1 = (t0 < T) ? t0 : (T-1);
     int f1 = (f0 < F) ? f0 : (F-1);
     
-    long in_ix = (t1*long(F) + f1) * (3*S);   // note (t1,f1) not (t0,f0)
+    // index into block in ring buffer, ring in T direction of size Tsize,
+    // offset by S012_Tmin
+    int const S012_Tsize_mask = S012_Tsize - 1;
+    long in_ix_S012 = (((S012_Tmin + t1) & S012_Tsize_mask) * long(F) + f1) * (3*S);   // note (t1,f1) not (t0,f0)
+    int const sk_single_feed_Tsize_mask = sk_single_feed_Tsize - 1;
+    long out_ix_sk_single_feed = (((sk_single_feed_Tmin + t1) & sk_single_feed_Tsize_mask) * long(F) + f1) * (3*S);   // note (t1,f1) not (t0,f0)
     bool write_sf = (out_sk_single_feed != NULL) && (t0 == t1) && (f0 == f1);
     
-    in_S012 += in_ix;
-    out_sk_single_feed = write_sf ? (out_sk_single_feed + in_ix) : NULL;
+    in_S012 += in_ix_S012;
+    out_sk_single_feed = write_sf ? (out_sk_single_feed + out_ix_sk_single_feed) : NULL;
 
     // Threshold for S0 validity, see below.
     ulong single_feed_S0_min = Nds * single_feed_min_good_frac + 0.999f;  // round up
@@ -202,9 +187,9 @@ __global__ void sk_kernel(
 
     // Loop over stations.
     for (int s = threadIdx.x; s < S; s += blockDim.x) {
-	ulong S0i = ringbuffer_S012(in_S012[s]);
-	ulong S1i = ringbuffer_S012(in_S012[s+S]);
-	ulong S2i = ringbuffer_S012(in_S012[s+2*S]);
+	ulong S0i = in_S012[s];
+	ulong S1i = in_S012[s+S];
+	ulong S2i = in_S012[s+2*S];
 
 	float S0f = float(S0i);
 	float S1f = float(S1i);
@@ -244,9 +229,9 @@ __global__ void sk_kernel(
 	// Note: invalid entry is reprsented by (sk,b,sigma) = (0,0,-1).
 
 	if (write_sf) {
-	    ringbuffer_sk_single_feed(out_sk_single_feed[s]) = sf_valid ? sk : 0.0f;
-	    ringbuffer_sk_single_feed(out_sk_single_feed[s+S]) = sf_valid ? b : 0.0f;
-	    ringbuffer_sk_single_feed(out_sk_single_feed[s+2*S]) = sf_valid ? sigma : -1.0f;
+	    out_sk_single_feed[s] = sf_valid ? sk : 0.0f;
+	    out_sk_single_feed[s+S] = sf_valid ? b : 0.0f;
+	    out_sk_single_feed[s+2*S] = sf_valid ? sigma : -1.0f;
 	}
 
 	// Accumulate single-feed contribution to feed-averaged SK statistics.
@@ -352,11 +337,12 @@ __global__ void sk_kernel(
 
 	t += (blockIdx.z * Wt);
 	f += (blockIdx.y * Wf);
-	long out_ix = t*long(3*F) + (3*f) + m;
+	int const sk_feed_averaged_Tsize_mask = sk_feed_averaged_Tsize - 1;
+	long out_ix = ((sk_feed_averaged_Tmin + t) & sk_feed_averaged_Tsize_mask) * long(3*F) + (3*f) + m;
 	bool write_fsum = (t < T) && (f < F) && (laneId < nred) && (laneId & 3);
 
 	if (write_fsum)
-	    ringbuffer_sk_feed_averaged(out_sk_feed_averaged[out_ix]) = y;
+	    out_sk_feed_averaged[out_ix] = y;
 
 	// Now compute RFI mask.
 	
