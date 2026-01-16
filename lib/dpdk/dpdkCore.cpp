@@ -15,6 +15,7 @@
 #include <rte_mbuf_core.h>         // for rte_mbuf
 #include <rte_mempool.h>           // for rte_mempool_create, rte_mempool_free
 #include <rte_memzone.h>           // for rte_memzone_max_set
+#include <set>                     // for set
 #include <stdexcept>               // for runtime_error
 #include <stdio.h>                 // for fprintf, size_t, stderr
 #include <stdlib.h>                // for malloc, free
@@ -105,13 +106,16 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
 
     int lcore_id = 0;
     json lcore_port_map = config.get_value(unique_name, "lcore_port_map");
+    std::set<uint32_t> unique_ports;
     for (vector<int> ports : lcore_port_map) {
         lcore_port_list.push_back(vector<uint32_t>());
         for (uint32_t port : ports) {
             lcore_port_list[lcore_id].push_back(port);
+            unique_ports.insert(port);
         }
         lcore_id++;
     }
+    num_ports = unique_ports.size();
 
     // Allocate worker rings
     json worker_ring_map = config.get_value(unique_name, "worker_ring_map");

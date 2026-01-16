@@ -3,6 +3,9 @@
 
 #include "buffer.hpp"
 #include "kotekanLogging.hpp"
+#include "Telescope.hpp"
+#include "CHORDTelescope.hpp"
+#include "chordMetadata.hpp"
 
 #include <atomic>
 #include <cmath>
@@ -83,6 +86,9 @@ private:
     inline static std::vector<std::vector<uint32_t>> global_expected_stream_ids;
     // Global mutex to protect access to the list of expected stream IDs.
     inline static std::mutex global_stream_id_mutex;
+
+    // Expected number of stream IDs per port (must wait for this many before processing)
+    static constexpr size_t expected_stream_ids_per_port = 8;
 
     // Written by prefetcher, read by consumer
     alignas(64) std::atomic<uint64_t> produced_cursor{0};
@@ -173,6 +179,19 @@ void FramePrefetchService::prefetcher_loop() {
             continue;
         }
 
+        // Wait for all workers to register their stream IDs before proceeding
+        // This avoids a race condition where we try to use global_expected_stream_ids
+        // before all workers have added their entries
+        {
+            std::lock_guard<std::mutex> lock(global_stream_id_mutex);
+            if (global_expected_stream_ids.size() <= port
+                || global_expected_stream_ids.at(port).size() < expected_stream_ids_per_port) {
+                // Not all stream IDs registered yet, wait and retry
+                std::this_thread::sleep_for(std::chrono::microseconds(1000));
+                continue;
+            }
+        }
+
         // Check if we need to mark frames full
         uint64_t consumed = consumed_cursor.load(std::memory_order_acquire);
         while (marked_full_cursor < consumed) {
@@ -225,19 +244,70 @@ void FramePrefetchService::prefetcher_loop() {
             // is shared across all workers.
             if (allocate_metadata) {
                 buf->allocate_new_metadata_object(frame_id);
-                // auto metadata = buf->get_metadata(frame_id);
-                // metadata->set_time_sample_start_seq(seq);
+
+                // Get reference to stream IDs for this port (safe to access without lock
+                // since we waited for all workers to register before reaching here)
+                const std::vector<uint32_t>& stream_ids_vec = global_expected_stream_ids.at(port);
 
                 // Print the list of expected stream IDs for this port
                 std::string stream_id_list;
-                for (size_t i = 0; i < global_expected_stream_ids.at(port).size(); ++i) {
-                    stream_id_list += std::to_string(global_expected_stream_ids.at(port)[i]);
-                    if (i < global_expected_stream_ids.at(port).size() - 1) {
+                for (size_t i = 0; i < stream_ids_vec.size(); ++i) {
+                    stream_id_list += std::to_string(stream_ids_vec[i]);
+                    if (i < stream_ids_vec.size() - 1) {
                         stream_id_list += ", ";
                     }
                 }
                 INFO("FramePrefetchService {}: Setting expected stream IDs for port {}: {}",
                      unique_name, port, stream_id_list);
+
+                // Add the list of stream IDs to the metadata
+                auto metadata = get_chord_metadata(buf, frame_id);
+                metadata->set_stream_ids(stream_ids_vec);
+
+                
+#ifdef DEBUG
+                // Print a list of the frequency IDs corresponding to the expected stream IDs
+                std::string freq_id_list;
+                for (size_t index = 0; index < CHORDTelescope::instance().num_freq_per_stream(); ++index) {
+                    for (size_t i = 0; i < stream_ids_vec.size(); ++i) {
+                        uint32_t stream_id = stream_ids_vec[i];
+                        freq_id_t freq_id = CHORDTelescope::instance().to_freq_id(stream_t{stream_id}, index);
+                        freq_id_list += std::to_string(freq_id);
+                        freq_id_list += " ";
+                    }
+                }
+                DEBUG("FramePrefetchService {}: Setting expected frequency IDs for port {}: {}",
+                     unique_name, port, freq_id_list);
+#endif
+
+                // Add the list of frequencies to the metadata
+                std::vector<int> coarse_freq;
+                for (size_t index = 0; index < CHORDTelescope::instance().num_freq_per_stream(); ++index) {
+                    for (size_t i = 0; i < stream_ids_vec.size(); ++i) {
+                        uint32_t stream_id = stream_ids_vec[i];
+                        freq_id_t freq_id = CHORDTelescope::instance().to_freq_id(stream_t{stream_id}, index);
+                        coarse_freq.push_back(static_cast<int>(freq_id));
+                    }
+                }
+                metadata->set_coarse_freq(coarse_freq);
+
+                // Set seq number
+                metadata->set_fpga_seq_num(seq);
+
+                // Set the array shape
+                metadata->dims = 5;
+                metadata->dim[0] = 512;
+                metadata->dim[1] = 384;
+                metadata->dim[2] = 16;
+                metadata->dim[3] = 16;
+                metadata->dim[4] = 8;
+
+                std::strncpy(metadata->dim_name[0], "T_long", CHORD_META_MAX_DIMNAME);
+                std::strncpy(metadata->dim_name[1], "F", CHORD_META_MAX_DIMNAME);
+                std::strncpy(metadata->dim_name[2], "E_long", CHORD_META_MAX_DIMNAME);
+                std::strncpy(metadata->dim_name[3], "T_short", CHORD_META_MAX_DIMNAME);
+                std::strncpy(metadata->dim_name[4], "E_short", CHORD_META_MAX_DIMNAME);
+
             }
 
             // The receipt bitmap metadata is always set.  One bitmap per worker.

@@ -6,6 +6,7 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -26,6 +27,9 @@
  *     @buffer_metadata chordMetadata
  * @buffer combined_receipt_bitmap_buf Output buffer for combined receipt bitmap
  *    @buffer_format combined_receipt_bitmap[time_long][source_id]
+ *    @buffer_metadata chordMetadata
+ * @buffer pl_mask_buf Output buffer for packet loss mask
+ *    @buffer_format uint64_t pl_mask[T/64][F][E/8] where T=time_long*time_short, F=num_frequency, E=element_long*element_short
  *    @buffer_metadata chordMetadata
  *
  * @conf time_long      Int. Number of long time samples per frame.
@@ -51,6 +55,9 @@ private:
     /// Combined receipt bitmap output buffer
     Buffer* combined_receipt_bitmap_buf;
 
+    /// Packet loss mask output buffer
+    Buffer* pl_mask_buf;
+
     /// Array of packet receipt bitmap buffers
     std::vector<Buffer*> receipt_bitmap_bufs;
 
@@ -63,6 +70,12 @@ private:
 
     /// Number of source IDs in receipt bitmap
     uint32_t num_source_ids;
+
+    /// Number of stream IDs (bits per source_id byte)
+    static constexpr uint32_t num_stream_ids = 8;
+
+    /// Number of frequencies per stream
+    static constexpr uint32_t num_freq_per_stream = 48;
 
     /// List of missing source IDs
     std::vector<uint32_t> missing_source_ids;

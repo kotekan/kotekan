@@ -34,6 +34,36 @@ num_crs_boards: 16
 capture_n_frames: 0  # Total number of frames to capture, 0 = unlimited
 numa_node: 0
 
+# Telescope object
+telescope:
+    name: CHORDTelescope
+    require_gps: false
+    num_dishes_x: 8
+    num_dishes_y: 12
+    num_dishes: 64
+    updatable_config: "/earth_rotation_data"
+
+    dish_inputs:
+    {% for y in range(0, 10) %}
+    {% for x in range(0, 7) %}
+    {% if x+7*y < 64 %}
+    - dish_idx: {{x+7*y}}
+      grid_x_idx: {{x}}
+      grid_y_idx: {{y}}
+      feed_pos_disp_m: [0.0, 0.0, 0.0]
+      coelev_disp_deg: 0.0
+      type: ArrayDish
+      label: CHORD-{{"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[y]}}{{"{:02d}".format(x+1)}}
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
+dummy_declaration_to_eat_jinja2_white_space_keep_this_right_after_the_telescope_definition:
+
+earth_rotation_data:
+    kotekan_update_endpoint: json
+    earth_orientation_parameter_table:
+    - {time_inst_ns: 0, delta_UT1_inst: 0.0, x_pm: 0.0, y_pm: 0.0}
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata
@@ -65,6 +95,19 @@ packet_receipt_bitmap_buffers:
     combined_receipt_bitmap_buffer:
         kotekan_buffer: standard
 
+# pl_mask shape: uint64_t [T/64][F][E/8] where T = timesamples_per_frame, F = num_local_freq, E = num_elements
+# Size in bytes = (T/64) * F * (E/8) * 8 = T/64 * F * E
+pl_mask_T_div_64: timesamples_per_frame / 64
+pl_mask_E_div_8: num_elements / 8
+pl_mask_frame_size: pl_mask_T_div_64 * num_local_freq * pl_mask_E_div_8 * 8
+
+pl_mask_buffer:
+    kotekan_buffer: standard
+    log_level: info
+    num_frames: buffer_depth
+    frame_size: pl_mask_frame_size
+    metadata_pool: main_pool
+    use_hugepages: false
 
 cpu_affinity: [2,3,8,9]
 dpdk:
@@ -124,9 +167,10 @@ process_packet_mask:
         - packet_receipt_bitmap_buffer_0
         - packet_receipt_bitmap_buffer_1
     combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer
+    pl_mask_buf: pl_mask_buffer
     num_frequency: num_local_freq
     num_source_ids: num_crs_boards
-    missing_source_ids: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+    missing_source_ids: [3, 4,5,6,7,8,9,10,11,12,13,14,15]
 
 
 transpose_voltage:
@@ -136,8 +180,8 @@ transpose_voltage:
 
 hex_dump:
     kotekan_stage: hexDump
-    in_buf: network_input_buffer_transpose
-    len: 128
+    in_buf: pl_mask_buffer
+    len: 4096
 
 raw_file_writers:
     ### UPDATE THIS PATH FOR EACH RUN ###

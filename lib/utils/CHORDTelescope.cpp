@@ -1023,20 +1023,15 @@ size_t CHORDTelescope::num_science_freqs() const {
     return _freq_params.num_science_freqs();
 }
 
-// Stream logic has been moved to the packet capture code in dpdk
-// This stub remains to satisfy inheritance and will likely be removed
-// in the future, it will abort if called.
-freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
-    FATAL_ERROR("CHORDTelesope does not support to_freq_id(stream_t)");
-    return 0;
+freq_id_t CHORDTelescope::to_freq_id(stream_t stream_id, uint32_t index) const {
+    // The frequency ID is currently defined by the following formula:
+    // freq_id = min_science_freq_id() + index * 128  + stream_id 
+    return min_science_freq_id() + index * 128 + stream_id.id;
 }
 
-// Stream logic has been moved to the packet capture code in dpdk
-// This stub remains to satisfy inheritance and will likely be removed
-// in the future, it will abort if called.
+// Currently hard coded in the F-engine packet format.
 size_t CHORDTelescope::num_freq_per_stream() const {
-    FATAL_ERROR("CHORDTelesope does not support num_freq_per_stream()");
-    return 0;
+    return 48;
 }
 
 EOP CHORDTelescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst, double xp_as,

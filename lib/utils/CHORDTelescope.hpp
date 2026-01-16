@@ -753,16 +753,12 @@ public:
     size_t num_science_freqs() const;
 
     /**
-     * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
-     * dpdk. This stub remains to satisfy inheritance and will likely be removed in the future, it
-     * will abort if called.
+     * @brief Convert a stream and index within that stream to a global frequency ID.
      */
     freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
 
     /**
-     * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
-     * dpdk. This stub remains to satisfy inheritance and will likely be removed in the future, it
-     * will abort if called.
+     * @brief Return the number of frequencies per F-engine stream. 
      */
     size_t num_freq_per_stream() const override;
 

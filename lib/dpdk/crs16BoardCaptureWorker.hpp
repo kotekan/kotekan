@@ -7,6 +7,8 @@
 #define CRS_16BOARD_CAPTURE_WORKER_HPP
 
 #include "Config.hpp"
+#include "crsUtils.hpp"
+#include "util.h"
 #include "FramePrefetchService.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
@@ -148,7 +150,7 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
 
     // Print the worker ID and stream ID
     uint16_t stream_id = get_crs_packet_stream_id(mbuf);
-    uint16_t source_id = get_crs_packet_source_id(mbuf);
+    uint16_t source_id = get_crs_packet_source_id(mbuf) / 16;
     uint64_t seq_num = get_crs_packet_seq_num(mbuf);
     // INFO("Port: {:d}; Received packet with Stream ID {:d}, Source ID {:d}, Seq Num {:d}", port,
     // stream_id, source_id, seq_num);
@@ -195,11 +197,11 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     }
 
     // Print packet details for every 100,000 sequence numbers.
-    if ((seq_num / 16) % 100000 == 0) {
-        INFO("Port: {:d}, Worker: {:d}; Got packet with Stream ID {:d}, Source ID {:d}, Seq Num "
-             "{:d}",
-             port, worker_id, stream_id, source_id, seq_num);
-    }
+    //if ((seq_num / 16) % 10000 == 0) {
+    //    INFO("Port: {:d}, Worker: {:d}; Got packet with Stream ID {:d}, Source ID {:d}, Seq Num "
+    //         "{:d}",
+    //         port, worker_id, stream_id, source_id, seq_num);
+    //}
 
     if (unlikely(!prefetch_service->is_ready())) {
         if (prefetch_service->has_error() || prefetch_service->is_complete())
@@ -210,6 +212,15 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
                  "prefetch service is not ready (start_seq: {:d})",
                  port, worker_id, seq_num, prefetch_service->get_start_seq());
         }
+        return 0;
+    }
+
+    // Drop every packet with a sequence number at the start of a frame, if the
+    // the stream_id == 20, and source_id == 0
+    if ((seq_num - 48) % time_samples_per_frame == 0 && stream_id == 116 && source_id == 1) {
+        WARN("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} at start of "
+             "frame",
+             port, worker_id, seq_num);
         return 0;
     }
 
