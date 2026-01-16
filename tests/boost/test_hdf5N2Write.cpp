@@ -25,6 +25,7 @@
 #include <boost/test/included/unit_test.hpp>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -41,6 +42,29 @@
 #include <unistd.h> // for gethostname
 #include <utility>
 #include <vector>
+
+// SIGTERM handler to allow tests to catch FATAL_ERROR_NON_OO exceptions
+// (which call exit_kotekan and raise SIGTERM before throwing FatalError)
+namespace {
+volatile sig_atomic_t g_sigterm_received = 0;
+void sigterm_handler(int /*sig*/) {
+    g_sigterm_received = 1;
+}
+struct SigtermGuard {
+    struct sigaction old_action;
+    SigtermGuard() {
+        struct sigaction new_action;
+        new_action.sa_handler = sigterm_handler;
+        sigemptyset(&new_action.sa_mask);
+        new_action.sa_flags = 0;
+        sigaction(SIGTERM, &new_action, &old_action);
+    }
+    ~SigtermGuard() {
+        sigaction(SIGTERM, &old_action, nullptr);
+    }
+};
+static SigtermGuard g_sigterm_guard;
+} // namespace
 
 using std::string;
 
@@ -74,7 +98,8 @@ static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_in
 class TestVisFileData : public N2FileData {
 public:
     TestVisFileData(const N2FrameView& fv, uint64_t num_file_t, double open_wall_s,
-                    uint64_t abs_file_idx, std::string base_dir) :
+                    uint64_t abs_file_idx, std::string base_dir,
+                    std::string gains_base_dir = TEST_GAINS_DIR) :
         N2FileData(N2FileData::CHORD, num_file_t, fv, open_wall_s, abs_file_idx,
                    /*blocksize_f*/ 0,
                    /*blocksize_p*/ 0,
@@ -82,7 +107,7 @@ public:
                    /*compression*/ "none",
                    /*compression_level*/ 0,
                    /*use_bitshuffle*/ false, std::move(base_dir),
-                   /*gains_base_directory*/ "") {}
+                   /*gains_base_directory*/ std::move(gains_base_dir)) {}
 
     N2::cfloat get_vis(size_t f, size_t p, size_t t) const {
         return vis[idx_fpt(f, p, t)];
@@ -381,9 +406,8 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     BOOST_CHECK_EQUAL(data.get_time_center_ut1(t), int64_t(10'000));
     BOOST_CHECK_EQUAL(data.get_bin_ut1(t), int64_t(10'000));
 
-    // Second write to same (f,t) with different UT1 values should be rejected gracefully.
-    N2FileData::AddFrameStatus accepted = data.add_frame(fv2, t);
-    BOOST_CHECK(accepted == N2FileData::AddFrameStatus::Duplicate);
+    // Second write to same (f,t) with different UT1 values should throw FatalError.
+    BOOST_CHECK_THROW(data.add_frame(fv2, t), std::runtime_error);
     // Stored fractions should remain from the first write, unaffected by 2nd input
     BOOST_CHECK_CLOSE_FRACTION(data.get_frac_lost(f_index, t), 0.2f, 1e-6f);
     BOOST_CHECK_CLOSE_FRACTION(data.get_frac_rfi(f_index, t), 0.3f, 1e-6f);
