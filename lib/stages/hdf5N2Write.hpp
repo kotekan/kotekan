@@ -139,6 +139,10 @@ private:
                                HighFive::DataSetCreateProps props) const;
 
     /// Load digital gains from files in given directory
+    ///
+    /// !TODO: switch to API when it exists.
+    /// Need to validate these gains are actualy what the F-engine is using, e.g. query fpga_master.
+    ///
     std::optional<N2FileData::DigitalGains> _get_digital_gains() const;
 
     /// Open/create/init datasets in h5 file

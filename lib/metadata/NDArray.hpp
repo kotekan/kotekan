@@ -120,8 +120,8 @@ public:
         return get_size() * get_value_type_size();
     }
 
-    // Output the array metadata, useful for logging or debugging
-    void output_metadata(std::ostream& os) const override;
+    // Output the array description (framedesc), useful for logging or debugging
+    void output_framedesc(std::ostream& os) const override;
 
     // Compare two NDArrays, useful to compare metadata
     bool operator==(const FrameDesc& other) const override;

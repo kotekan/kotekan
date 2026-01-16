@@ -22,6 +22,7 @@
 #include <cmath>       // for fmod
 #include <functional>  // for bind, function, _1, _2
 #include <random>      // for mt19937
+#include <signal.h>    // for raise, SIGINT
 #include <stdexcept>   // for invalid_argument
 #include <stdint.h>    // for int8_t, uint32_t, uint8_t, int16_t, int32_t, uint64_t
 #include <strings.h>   // for bzero
@@ -121,6 +122,13 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
 
     _manual_freq_ids = config.get_default<std::vector<uint32_t>>(unique_name, "manual_freq_ids",
                                                                  std::vector<uint32_t>());
+
+    // Get simulate_fpga_restart_at_frame option
+    _simulate_fpga_restart_at_frame =
+        config.get_default<int64_t>(unique_name, "simulate_fpga_restart_at_frame", -1);
+
+    // Get end_interrupt option
+    _end_interrupt = config.get_default<bool>(unique_name, "end_interrupt", false);
 
     endpoint = unique_name + "/generate_test_data";
     using namespace std::placeholders;
@@ -459,6 +467,9 @@ void testDataGen::main_thread() {
         frame_id_abs += 1;
         if (num_frames >= 0 && frame_id_abs >= num_frames) {
             INFO("Generated the requested number of frames ({:d}) - exiting", num_frames);
+            if (_end_interrupt) {
+                raise(SIGINT);
+            }
             break;
         };
         frame_id = frame_id_abs % buf->num_frames;
@@ -473,6 +484,14 @@ void testDataGen::main_thread() {
             }
         } else {
             seq_num += samples_per_data_set;
+        }
+
+        // Simulate FPGA restart if requested
+        if (_simulate_fpga_restart_at_frame >= 0
+            && frame_id_abs == _simulate_fpga_restart_at_frame) {
+            INFO("Simulating FPGA restart at frame {:d}: resetting seq_num from {:d} to 0",
+                 frame_id_abs, seq_num);
+            seq_num = 0;
         }
         if (frame_id == 0) {
             if (_value_array.size() && (_value_array.size() != (size_t)buf->num_frames)) {

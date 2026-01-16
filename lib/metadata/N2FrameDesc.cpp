@@ -14,7 +14,7 @@ Symbol N2FrameDesc::get_quantity_name() const {
     return Symbol("N2");
 }
 
-void N2FrameDesc::output_metadata(std::ostream& os) const {
+void N2FrameDesc::output_framedesc(std::ostream& os) const {
     os << "N2FrameDesc:\n"
        << "    num_elements: " << num_elements << "\n"
        << "    num_ev:       " << num_ev << "\n"

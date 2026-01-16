@@ -1,20 +1,26 @@
 #include "countCheck.hpp"
 
+#include "BeamMetadata.hpp"    // for BeamMetadata
 #include "Config.hpp"          // for Config
+#include "HFBFrameView.hpp"    // for HFBFrameView, HFBMetadata
 #include "N2FrameView.hpp"     // for N2FrameView
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"       // for Telescope
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, metadata_is_chord
 #include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
-#include "visBuffer.hpp"       // for VisFrameView
+#include "visBuffer.hpp"       // for VisFrameView, VisMetadata, metadata_is_vis
 
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <functional> // for bind, function
+#include <memory>     // for shared_ptr, dynamic_pointer_cast
 #include <stdlib.h>   // for llabs
+#include <sys/time.h> // for timeval
 #include <time.h>     // for timespec
 #include <tuple>      // for get
+#include <utility>    // for pair, make_pair
 
 
 using kotekan::bufferContainer;
@@ -44,11 +50,83 @@ countCheck::countCheck(Config& config, const std::string& unique_name,
     }
 
     tolerance_ns = (int64_t)start_time_tolerance * 1000000000LL;
+}
 
-    if (in_buf->buffer_type != "vis" && in_buf->buffer_type != "N2") {
-        FATAL_ERROR("countCheck input buffer {:s} must be of type vis or N2, got {:s}",
-                    in_buf->buffer_name, in_buf->buffer_type);
+std::pair<int64_t, int64_t> countCheck::extract_timing_info(int frame_id) {
+    auto meta = in_buf->metadata[frame_id];
+    if (!meta) {
+        FATAL_ERROR("countCheck: Frame {:d} has no metadata", frame_id);
+        return {0, 0};
     }
+
+    // Check metadata type and extract timing information accordingly
+    std::string pool_type = meta->parent_pool.lock()->type_name;
+
+    if (pool_type == "VisMetadata") {
+        auto vis_meta = std::dynamic_pointer_cast<VisMetadata>(meta);
+        int64_t fpga_seq = (int64_t)vis_meta->fpga_seq_start;
+        int64_t time_ns = (int64_t)vis_meta->ctime.tv_sec * 1000000000LL + vis_meta->ctime.tv_nsec;
+        DEBUG("countCheck: VisMetadata fpga_seq={:d}, time_ns={:d}", fpga_seq, time_ns);
+        return {fpga_seq, time_ns};
+    }
+
+    if (pool_type == "N2Metadata") {
+        auto n2_meta = std::dynamic_pointer_cast<N2Metadata>(meta);
+        int64_t fpga_seq = (int64_t)n2_meta->fpga_start_tick;
+        int64_t time_ns = (int64_t)n2_meta->frame_start_time_ns;
+        DEBUG("countCheck: N2Metadata fpga_seq={:d}, time_ns={:d}", fpga_seq, time_ns);
+        return {fpga_seq, time_ns};
+    }
+
+    if (pool_type == "HFBMetadata") {
+        auto hfb_meta = std::dynamic_pointer_cast<HFBMetadata>(meta);
+        int64_t fpga_seq = hfb_meta->fpga_seq_start;
+        int64_t time_ns = (int64_t)hfb_meta->ctime.tv_sec * 1000000000LL + hfb_meta->ctime.tv_nsec;
+        DEBUG("countCheck: HFBMetadata fpga_seq={:d}, time_ns={:d}", fpga_seq, time_ns);
+        return {fpga_seq, time_ns};
+    }
+
+    if (pool_type == "BeamMetadata") {
+        auto beam_meta = std::dynamic_pointer_cast<BeamMetadata>(meta);
+        int64_t fpga_seq = beam_meta->fpga_seq_start;
+        int64_t time_ns =
+            (int64_t)beam_meta->ctime.tv_sec * 1000000000LL + beam_meta->ctime.tv_nsec;
+        DEBUG("countCheck: BeamMetadata fpga_seq={:d}, time_ns={:d}", fpga_seq, time_ns);
+        return {fpga_seq, time_ns};
+    }
+
+    if (pool_type == "chordMetadata") {
+        auto chord_meta = get_chord_metadata(meta);
+        if (!chord_meta) {
+            FATAL_ERROR("countCheck: Failed to get chordMetadata from frame {:d}", frame_id);
+            return {0, 0};
+        }
+        if (!chord_meta->has_fpga_seq_num()) {
+            FATAL_ERROR("countCheck: chordMetadata on frame {:d} does not have fpga_seq_num set",
+                        frame_id);
+            return {0, 0};
+        }
+        if (!chord_meta->has_first_packet_recv_time()) {
+            FATAL_ERROR(
+                "countCheck: chordMetadata on frame {:d} does not have first_packet_recv_time set",
+                frame_id);
+            return {0, 0};
+        }
+        int64_t fpga_seq = chord_meta->get_fpga_seq_num();
+        // Use first_packet_recv_time (wall clock) rather than get_gps_time() which is
+        // computed from fpga_seq. This allows restart detection since first_packet_recv_time
+        // continues to advance even when fpga_seq resets.
+        timeval tv = chord_meta->get_first_packet_recv_time();
+        int64_t time_ns = (int64_t)tv.tv_sec * 1000000000LL + (int64_t)tv.tv_usec * 1000LL;
+        DEBUG("countCheck: chordMetadata fpga_seq={:d}, time_ns={:d}", fpga_seq, time_ns);
+        return {fpga_seq, time_ns};
+    }
+
+    FATAL_ERROR("countCheck: Metadata type '{:s}' does not support timing information. "
+                "Supported types: VisMetadata, N2Metadata, HFBMetadata, BeamMetadata, "
+                "chordMetadata.",
+                pool_type);
+    return {0, 0};
 }
 
 void countCheck::main_thread() {
@@ -62,33 +140,12 @@ void countCheck::main_thread() {
             break;
         }
 
-        int64_t new_start_time = 0;
+        // Extract timing from metadata (works with any supported metadata type)
+        auto [fpga_seq, time_ns] = extract_timing_info(input_frame_id);
+        int64_t new_start_time = time_ns - fpga_seq * (int64_t)tick_len_ns;
 
-        if (in_buf->buffer_type == "vis") {
-            // Create view to input frame
-            auto input_frame = VisFrameView(in_buf, input_frame_id);
-
-            int64_t fpga_seq = std::get<0>(input_frame.time);
-            timespec ts = std::get<1>(input_frame.time);
-            new_start_time =
-                (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec - fpga_seq * (int64_t)tick_len_ns;
-
-            DEBUG("countCheck (vis): fpga_seq: {:d}, ctime_ns: {:d}, start_time_ns: {:d}, "
-                  "time diff: {:d}",
-                  fpga_seq, (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec, start_time_ns,
-                  llabs(start_time_ns - new_start_time));
-        } else {
-            // N2 frame view
-            auto input_frame = N2FrameView(in_buf, input_frame_id);
-
-            int64_t fpga_seq = (int64_t)input_frame.fpga_start_tick;
-            int64_t frame_start_ns = (int64_t)input_frame.frame_start_time_ns;
-            new_start_time = frame_start_ns - fpga_seq * (int64_t)tick_len_ns;
-
-            DEBUG("countCheck (N2): fpga_seq: {:d}, frame_start_ns: {:d}, start_time_ns: {:d}, "
-                  "time diff: {:d}",
-                  fpga_seq, frame_start_ns, start_time_ns, llabs(start_time_ns - new_start_time));
-        }
+        DEBUG("countCheck: fpga_seq={:d}, time_ns={:d}, start_time_ns={:d}, time_diff={:d}",
+              fpga_seq, time_ns, start_time_ns, llabs(start_time_ns - new_start_time));
 
         // If this is the first frame, store start time
         if (start_time_ns == 0) {

@@ -28,7 +28,7 @@ std::string format_vector(const std::vector<T>& vec) {
 
 } // namespace
 
-void GenericNDArray::output_metadata(std::ostream& os) const {
+void GenericNDArray::output_framedesc(std::ostream& os) const {
     os << "NDArray:\n"
        << "    quantity name:   " << get_quantity_name() << "\n"
        << "    value datatype:  " << get_value_datatype() << "\n"

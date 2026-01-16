@@ -21,9 +21,11 @@ const Telescope& Telescope::instance() {
 const Telescope& Telescope::instance(const kotekan::Config& config) {
 
     auto telescope_name = config.get_default<std::string>("/telescope", "name", "ICETelescope");
+#if !defined(WITH_TESTS)
+    if (telescope_name == "fake")
+        WARN_NON_OO("To use the fake telescope, build with -DWITH_TESTS=ON");
+#endif
     if (!FACTORY(Telescope)::exists(telescope_name)) {
-        if (telescope_name == "fake")
-            WARN_NON_OO("Did you build with -DWITH_TESTS=ON?");
         FATAL_ERROR_NON_OO("Requested telescope type {} is not registered", telescope_name);
     }
 

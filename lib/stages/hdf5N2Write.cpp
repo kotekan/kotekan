@@ -76,8 +76,9 @@ void N2FileData::_check_create_attribute(HighFive::File& file, const std::string
         T existing_value;
         attr.read(existing_value);
         if (existing_value != value) {
-            ERROR_NON_OO("Attribute {} already exists with different value (existing={}, new={})",
-                         name, existing_value, value);
+            FATAL_ERROR_NON_OO(
+                "Attribute {} already exists with different value (existing={}, new={})", name,
+                existing_value, value);
         }
         return;
     }
@@ -163,7 +164,7 @@ std::optional<N2FileData::DigitalGains> N2FileData::_get_digital_gains() const {
     // Assume the most recent directory was used
     // (TODO: use API instead)
     if (dir_list.empty()) {
-        ERROR_NON_OO("No baseband directories found in {}, cannot read digital gains.",
+        ERROR_NON_OO("No baseband gains directories found in {}, cannot read digital gains.",
                      gains_base_directory);
         return std::nullopt;
     }
@@ -501,7 +502,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         // Digital gains
         std::optional<DigitalGains> gains_data = _get_digital_gains();
         if (!gains_data) {
-            ERROR_NON_OO("Failed to read digital gains! Will try again on file close.");
+            FATAL_ERROR_NON_OO("Failed to read digital gains! Will try again on file close.");
         } else {
             _check_create_attribute(*file, "digital_gains_source_file", gains_data->full_filepath);
 
@@ -515,9 +516,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         return file;
 
     } catch (const HighFive::Exception& e) {
-        ERROR_NON_OO("Failed to open or initialize HDF5 file {}: {}", filepath, e.what());
+        FATAL_ERROR_NON_OO("Failed to open or initialize HDF5 file {}: {}", filepath, e.what());
     } catch (const std::exception& e) {
-        ERROR_NON_OO("Failed to open or initialize HDF5 file {}: {}", filepath, e.what());
+        FATAL_ERROR_NON_OO("Failed to open or initialize HDF5 file {}: {}", filepath, e.what());
     }
 
     return nullptr;
@@ -541,7 +542,7 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     h5_file(_open_or_create_file(partial_filepath, num_file_t_, fv, file_mode)) {
 
     if (!h5_file) {
-        ERROR_NON_OO("N2FileData: failed to open or create HDF5 file {}", partial_filepath);
+        FATAL_ERROR_NON_OO("N2FileData: failed to open or create HDF5 file {}", partial_filepath);
     }
 
     // resize arrays to hold data across (freq, time) blocks
@@ -576,14 +577,16 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     // Make sure frame hasn't been added yet
     if (f_index >= num_file_f || t_index >= num_file_t
         || fv.freq_id < telescope.min_science_freq_id()) {
-        ERROR_NON_OO("N2FileData: index out of bounds: (f_index={}, t_index={}). "
-                     "Expected f_index < {}, t_index < {}, and freq_id >= {}",
-                     f_index, t_index, num_file_f, num_file_t, telescope.min_science_freq_id());
+        FATAL_ERROR_NON_OO("N2FileData: index out of bounds: (f_index={}, t_index={}). "
+                           "Expected f_index < {}, t_index < {}, and freq_id >= {}",
+                           f_index, t_index, num_file_f, num_file_t,
+                           telescope.min_science_freq_id());
         return AddFrameStatus::OutOfBounds;
     }
     size_t check_idx = idx_ft(f_index, t_index);
     if (added_ft[check_idx] != 0) {
-        ERROR_NON_OO("N2FileData: duplicate frame insertion at (f={}, t={})", f_index, t_index);
+        FATAL_ERROR_NON_OO("N2FileData: duplicate frame insertion at (f={}, t={})", f_index,
+                           t_index);
         return AddFrameStatus::Duplicate;
     }
 
@@ -611,7 +614,7 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
         // TODO: Don't check these yet, but do when we have LAST values
         // || (bin_start_LAST[t_index] < 0) || (bin_start_LAST[t_index] > 360)
         // || (bin_end_LAST[t_index] < 0) || (bin_end_LAST[t_index] > 360)
-        ERROR_NON_OO(
+        FATAL_ERROR_NON_OO(
             "N2FileData: frame information mismatch or invalid at (f={}, t={}): "
             "fv.vis.size()={}, fv.weight.size()={}, fv.eval.size()={}, fv.evec.size()={}, "
             "fv.gain.size()={}, fv.flags.size()={}, fv.num_elements={}, fv.num_prod={}, "
@@ -744,10 +747,12 @@ bool N2FileData::flush_to_disk() {
         json_dset.resize({old_n + extra_n});
         json_dset.select({old_n}, {extra_n}).write(json_objs);
     } catch (const HighFive::Exception& e) {
-        ERROR_NON_OO("Failed to write config JSON to HDF5 file {}: {}", partial_filepath, e.what());
+        FATAL_ERROR_NON_OO("Failed to write config JSON to HDF5 file {}: {}", partial_filepath,
+                           e.what());
         has_error = true;
     } catch (const std::exception& e) {
-        ERROR_NON_OO("Failed to write config JSON to HDF5 file {}: {}", partial_filepath, e.what());
+        FATAL_ERROR_NON_OO("Failed to write config JSON to HDF5 file {}: {}", partial_filepath,
+                           e.what());
         has_error = true;
     }
 
@@ -794,24 +799,24 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/bin_start_LAST").write(bin_start_LAST);
         h5_file->getDataSet("/bin_end_LAST").write(bin_end_LAST);
     } catch (const HighFive::Exception& e) {
-        ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
+        FATAL_ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
         has_error = true;
     } catch (const std::exception& e) {
-        ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
+        FATAL_ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
         has_error = true;
     }
 
     // Check and write digital gains
     std::optional<DigitalGains> gains_data = _get_digital_gains();
     if (!gains_data) {
-        ERROR_NON_OO("Failed to read digital gains! Gains datasets not updated.");
+        FATAL_ERROR_NON_OO("Failed to read digital gains! Gains datasets not updated.");
         has_error = true;
     } else {
         if (gains_data->full_filepath
             != h5_file->getAttribute("digital_gains_source_file").read<std::string>()) {
             // Digital gains source file has changed since file creation
-            ERROR_NON_OO("Digital gains source file has changed since file creation! "
-                         "Not writing gains datasets.");
+            FATAL_ERROR_NON_OO("Digital gains source file has changed since file creation! "
+                               "Not writing gains datasets.");
             has_error = true;
             // Add attribute to indicate conflict, don't write datasets
             _check_create_attribute(*h5_file, "digital_gains_source_file_conflict",
@@ -826,12 +831,12 @@ bool N2FileData::flush_to_disk() {
                     .select({0}, {gains_data->gains_log.size()})
                     .write(gains_data->gains_log);
             } catch (const HighFive::Exception& e) {
-                ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}", partial_filepath,
-                             e.what());
+                FATAL_ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}",
+                                   partial_filepath, e.what());
                 has_error = true;
             } catch (const std::exception& e) {
-                ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}", partial_filepath,
-                             e.what());
+                FATAL_ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}",
+                                   partial_filepath, e.what());
                 has_error = true;
             }
         }
@@ -924,7 +929,7 @@ bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
     try {
         filedata.flush_to_disk();
     } catch (const HighFive::Exception& e) {
-        ERROR("Failed to flush dataset {} to disk: {}", filedata.partial_filepath, e.what());
+        FATAL_ERROR("Failed to flush dataset {} to disk: {}", filedata.partial_filepath, e.what());
         _finalize_failures_metric.labels({"flush"}).inc();
         _mark_unfinalized(filedata);
         _clear_open_file_metrics(filedata);
@@ -934,7 +939,7 @@ bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
         }
         return false;
     } catch (const std::exception& e) {
-        ERROR("Failed to flush dataset {} to disk: {}", filedata.partial_filepath, e.what());
+        FATAL_ERROR("Failed to flush dataset {} to disk: {}", filedata.partial_filepath, e.what());
         _finalize_failures_metric.labels({"flush"}).inc();
         _mark_unfinalized(filedata);
         _clear_open_file_metrics(filedata);
@@ -961,8 +966,8 @@ bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
     int r = std::rename(filedata.partial_filepath.c_str(), ds_filename->c_str());
     if (r != 0) {
         const char* msg = strerror(errno);
-        ERROR("Failed to rename partial dataset to final: {} -> {}: {}", filedata.partial_filepath,
-              *ds_filename, msg);
+        FATAL_ERROR("Failed to rename partial dataset to final: {} -> {}: {}",
+                    filedata.partial_filepath, *ds_filename, msg);
         _finalize_failures_metric.labels({"rename"}).inc();
         _mark_unfinalized(filedata);
         _clear_open_file_metrics(filedata);
@@ -974,10 +979,10 @@ bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
         }
         try {
             std::filesystem::rename(filedata.partial_filepath, ignored);
-            WARN("Moved partial dataset to {} after failed rename", ignored.string());
+            FATAL_ERROR("Moved partial dataset to {} after failed rename", ignored.string());
         } catch (const std::exception& ex) {
-            ERROR("Failed to move partial dataset {} to ignored path {}: {}",
-                  filedata.partial_filepath, ignored.string(), ex.what());
+            FATAL_ERROR("Failed to move partial dataset {} to ignored path {}: {}",
+                        filedata.partial_filepath, ignored.string(), ex.what());
         }
         return false;
     }

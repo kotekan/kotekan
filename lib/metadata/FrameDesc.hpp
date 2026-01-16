@@ -14,8 +14,8 @@ public:
     // A stored name for the quantity represented by this frame description
     virtual Symbol get_quantity_name() const = 0;
 
-    // Output the array metadata, useful for logging or debugging
-    virtual void output_metadata(std::ostream& os) const = 0;
+    // Output the frame description, useful for logging or debugging
+    virtual void output_framedesc(std::ostream& os) const = 0;
 
     // Verify compatibility between descriptors
     virtual bool operator==(const FrameDesc& other) const = 0;

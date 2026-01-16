@@ -58,7 +58,7 @@ public:
 
     // FrameDesc overrides
     Symbol get_quantity_name() const override;
-    void output_metadata(std::ostream& os) const override;
+    void output_framedesc(std::ostream& os) const override;
     bool operator==(const FrameDesc& other) const override;
     size_t get_byte_size() const override;
 

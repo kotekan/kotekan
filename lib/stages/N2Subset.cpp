@@ -61,6 +61,10 @@ N2Subset::N2Subset(Config& config, const std::string& unique_name,
     _base_prod_ind(std::get<0>(_prod_subset_list)),
     _base_prod_subset(std::get<1>(_prod_subset_list)) {
 
+
+    // TODO: This stage isn't working yet, needs to be updated and tested.
+    FATAL_ERROR("This stage isn't working yet!");
+
     // Get buffers
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
