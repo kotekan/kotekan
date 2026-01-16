@@ -101,6 +101,9 @@ private:
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_expanded_mask;
     NDArrayRingBuffer<kotekan::uint1x8_t, 3> rfi_RFImask;
     NDArrayBuffer<std::int32_t, 5> n2k_counts;
+
+    // internals
+    bool warned_about_unsupported_Sds;
 };
 
 REGISTER_CUDA_COMMAND(cudaPL1bitCorrelator);
@@ -143,7 +146,9 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
         const std::array<std::string, 5> n2k_dimnames{"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"};
         return NDArrayBuffer<std::int32_t, 5>(n2k_counts_name, "n2k_counts", n2k_lengths,
                                               n2k_dimnames, *this);
-    }())
+    }()),
+    // internals
+    warned_about_unsupported_Sds(false)
 //
 {
     pl_expanded_mask.register_consumer();
@@ -263,11 +268,15 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
             Nds, // downsampling factor of counts array, relative to baseband
             device.getStream(cuda_stream_id));
     } else {
-        // These cases are not yet implemented in n2k. Pretend that there is no packet loss.
-        ERROR("The 1-bit correlator calculating the n2k counts is not yet implemented for {:d} "
-              "dishes. Pretending there was no packet loss. The n2k counts will be wrong if there "
-              "was packet loss.",
-              num_dishes);
+        if (!warned_about_unsupported_Sds) {
+            // These cases are not yet implemented in n2k. Pretend that there is no packet loss.
+            ERROR("The 1-bit correlator calculating the n2k counts is not yet implemented for {:d} "
+                  "dishes. Pretending there was no packet loss. The n2k counts will be wrong if "
+                  "there "
+                  "was packet loss.",
+                  num_dishes);
+            warned_about_unsupported_Sds = true;
+        }
         cudaMemsetInt(n2k_counts_memory, Nds, n2k_counts.get_ndarray().size());
     }
 
