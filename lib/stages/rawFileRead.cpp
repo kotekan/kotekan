@@ -38,12 +38,6 @@ rawFileRead::rawFileRead(Config& config, const std::string& unique_name,
     buf = get_buffer("buf");
     buf->register_producer(unique_name);
 
-    if (buf->buffer_type == "N2") {
-        // TODO: Add support
-        FATAL_ERROR(
-            "rawFileRead does not support N2 buffer types. Use a dedicated N2 file reader.");
-    }
-
     base_dir = config.get<std::string>(unique_name, "base_dir");
     file_name = config.get<std::string>(unique_name, "file_name");
     file_ext = config.get<std::string>(unique_name, "file_ext");
