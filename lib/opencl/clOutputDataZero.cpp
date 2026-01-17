@@ -11,12 +11,15 @@ clOutputDataZero::clOutputDataZero(Config& config, const std::string& unique_nam
     clCommand(config, unique_name, host_buffers, device, instance_num, no_cl_command_state, "clOutputDataZero", "") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
-    _block_size = config.get<int>(unique_name, "block_size");
+    //_block_size = config.get<int>(unique_name, "block_size");
     _num_data_sets = config.get<int>(unique_name, "num_data_sets");
-    _num_blocks = config.get<int>(unique_name, "num_blocks");
+    //_num_blocks = config.get<int>(unique_name, "num_blocks");
+    _num_pointings = config.get<int>(unique_name, "num_pointings");
+    _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
 
-    output_len = _num_local_freq * _num_blocks * (_block_size * _block_size) * 2 * _num_data_sets
-                 * sizeof(int32_t);
+    // output_len = _num_local_freq * _num_blocks * (_block_size * _block_size) * 2 * _num_data_sets
+    //              * sizeof(int32_t);
+    output_len = _samples_per_data_set * _num_data_sets * _num_local_freq * _num_pointings * 2  * sizeof(uint32_t);
 
 
     int err;

@@ -112,19 +112,20 @@ cl_event clBeamformKernel::execute(cl_event pre_event) {
 
     int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
     int64_t current_seq = get_fpga_seq_num(network_buf, gpu_frame_index);
-    int64_t bankID = (current_seq / phase_update_period) % 2;
+    int64_t bankID = 0; //(current_seq / phase_update_period) % 2;
 
     stream_t streamID = get_stream_id(network_buf, gpu_frame_index);
 
-    uint32_t input_frame_len = _num_elements * num_local_freq * _samples_per_data_set;
+    uint32_t input_frame_len = _num_elements * num_local_freq * _samples_per_data_set * _num_data_sets * sizeof(uint32_t);
 
     cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     cl_mem phase_memory =
-        device.get_gpu_memory_array("phases", bankID, _num_elements * num_local_freq * _num_pointings);
-
-    uint32_t output_len = _samples_per_data_set * _num_data_sets * num_local_freq * _num_pointings * 2;
+        device.get_gpu_memory_array("phases", gpu_frame_id, _num_elements * num_local_freq * _num_pointings * _num_data_sets * sizeof(uint32_t));
+    std::cout<< "test gpu allocate buffer size" << "\n";
+    std::cout<< sizeof(uint32_t) << "\n";
+    uint32_t output_len = _samples_per_data_set * _num_data_sets * num_local_freq * _num_pointings * 2  * sizeof(uint32_t);
     cl_mem output_memory_frame =
-        device.get_gpu_memory_array("beamform_output_buf", gpu_frame_id, output_len);
+        device.get_gpu_memory_array("output", gpu_frame_id, output_len);
 
     // HERE FIX
     setKernelArg(0, input_memory);

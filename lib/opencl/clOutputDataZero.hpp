@@ -34,6 +34,8 @@ private:
     /// This is a kernel tuning parameter for a global work space dimension that sets data sizes for
     /// GPU work items.
     int32_t _block_size;
+    int32_t _num_pointings;
+    int32_t _samples_per_data_set;
 };
 
 #endif // CL_OUTPUT_DATA_ZERO_H

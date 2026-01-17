@@ -11,7 +11,8 @@ clOutputData::clOutputData(Config& config, const std::string& unique_name,
     clCommand(config, unique_name, host_buffers, device, instance_num, no_cl_command_state, "clOutputData", "") {
 
     _gpu_memory = config.get_default<std::string>(unique_name, "gpu_memory", "output");
-
+    std::cout<<"clOutputData constructed"<<"\n";
+    std::cout<<unique_name<<"\n";
     // Get the output buffers and register as a producer if we are the first instance.
     out_bufs = get_buffer_array("out_bufs", instance_num == 0, true);
     // Get the input buffers and register as a consumer if we are the first instance.
