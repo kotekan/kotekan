@@ -362,11 +362,12 @@ public:
      * @param mlock_frames Lock the frame pages with mlock
      * @param cpu_affinity The CPU affinity for the zeroing threads
      * @param zero_new_frames Manually zero the frames when they are allocated
+     * @param zero_value The byte value to use when zeroing frames (default 0x00)
      */
     Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
            const std::string& buffer_name, const std::string& buffer_type, int numa_node,
            bool use_hugepages, bool mlock_frames, const std::vector<int>& cpu_affinity,
-           bool zero_new_frames);
+           bool zero_new_frames, uint8_t zero_value = 0x00);
     ~Buffer() override;
 
     /**
@@ -699,10 +700,11 @@ bool is_frame_buffer(GenericBuffer* buf);
  * @param use_huge_pages Use mmap to allocate huge pages for frames
  * @param memlock_frames Use mlock to lock frame pages
  * @param zero_new_frames If true, new frames are zeroed with memset
+ * @param zero_value The byte value to use when zeroing frames (default 0x00)
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
 uint8_t* buffer_malloc(size_t len, int numa_node, bool use_huge_pages, bool memlock_frames,
-                       bool zero_new_frames);
+                       bool zero_new_frames, uint8_t zero_value = 0x00);
 
 /**
  * @brief Deallocate a frame of memory with the required free method.

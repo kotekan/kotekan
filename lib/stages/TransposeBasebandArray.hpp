@@ -36,6 +36,9 @@
  * @buffer out_buf Output buffer for transposed electric field data
  *     @buffer_format E[time][frequency_local][element]
  *     @buffer_metadata chordMetadata
+ * @buffer pl_mask_buf Input buffer containing packet loss mask
+ *     @buffer_format uint64_t[T/64][F][E/8] where each bit indicates valid (1) or lost (0) data
+ *     @buffer_metadata none
  *
  * @conf timesamples_per_frame  Int. Total number of time samples per frame.
  * @conf num_local_freq         Int. Number of local frequency bins.
@@ -59,6 +62,9 @@ private:
     /// Output buffer for transposed data
     Buffer* out_buf;
 
+    /// Packet loss mask buffer
+    Buffer* pl_mask_buf;
+
     /// Frame dimensions
     uint32_t timesamples_per_frame;
     uint32_t num_local_freq;
@@ -78,6 +84,11 @@ private:
     /// Input: 2048 bytes [element_long=16][time_short=16][element_short=8]
     /// Output: 16 rows of 128 bytes each, written with stride out_stride
     void transpose_block_avx512(const uint8_t* in, uint8_t* out, size_t out_stride);
+
+    /// AVX512 optimized fill with 0x88 for a single (time_long, freq) block
+    /// Writes 0x88 to all output locations that transpose_block_avx512 would write
+    /// Output: 16 rows of 128 bytes each, written with stride out_stride
+    void fill_block_0x88_avx512(uint8_t* out, size_t out_stride);
 #endif
 };
 

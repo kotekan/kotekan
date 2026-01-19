@@ -217,12 +217,12 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
 
     // Drop every packet with a sequence number at the start of a frame, if the
     // the stream_id == 20, and source_id == 0
-    if ((seq_num - 48) % time_samples_per_frame == 0 && stream_id == 116 && source_id == 1) {
-        WARN("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} at start of "
-             "frame",
-             port, worker_id, seq_num);
-        return 0;
-    }
+    //if ((seq_num) % time_samples_per_frame == 0 && stream_id == 4 && source_id == 2) {
+    //    WARN("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} at start of "
+    //         "frame",
+    //         port, worker_id, seq_num);
+    //    return 0;
+    //}
 
     if (unlikely(active_f0 == nullptr)) {
         active_f0 = prefetch_service->get_frame(0);

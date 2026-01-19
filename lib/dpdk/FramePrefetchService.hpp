@@ -154,7 +154,7 @@ void FramePrefetchService::start(uint64_t start_seq,
 }
 
 inline void FramePrefetchService::advance() {
-    INFO("FramePrefetchService {} advancing from frame {}", unique_name,
+    DEBUG("FramePrefetchService {} advancing from frame {}", unique_name,
          consumed_cursor.load(std::memory_order_acquire));
     consumed_cursor.fetch_add(1, std::memory_order_release);
 }
@@ -196,7 +196,7 @@ void FramePrefetchService::prefetcher_loop() {
         uint64_t consumed = consumed_cursor.load(std::memory_order_acquire);
         while (marked_full_cursor < consumed) {
             FrameInfo& info = frames[marked_full_cursor & mask];
-            INFO("FramePrefetchService {} marking frame {} full (seq {})", unique_name,
+            DEBUG("FramePrefetchService {} marking frame {} full (seq {})", unique_name,
                  info.frame_id, info.start_seq);
             buf->mark_frame_full(unique_name, info.frame_id);
             receipt_bitmap_buf->mark_frame_full(unique_name, info.frame_id);
@@ -223,7 +223,7 @@ void FramePrefetchService::prefetcher_loop() {
 
             int frame_id = produced % buf->num_frames;
 
-            INFO("FramePrefetchService {} prefetching frame {} (seq {})", unique_name, frame_id,
+            DEBUG("FramePrefetchService {} prefetching frame {} (seq {})", unique_name, frame_id,
                  seq);
             uint8_t* ptr = buf->wait_for_empty_frame(unique_name, frame_id);
             if (ptr == nullptr) {
@@ -238,7 +238,7 @@ void FramePrefetchService::prefetcher_loop() {
                 running = false;
                 return;
             }
-            INFO("FramePrefetchService {} obtained frame {}", unique_name, frame_id);
+            DEBUG("FramePrefetchService {} obtained frame {}", unique_name, frame_id);
 
             // Only the worker assigned to allocate metadata does so, as the data buffer
             // is shared across all workers.
@@ -257,7 +257,7 @@ void FramePrefetchService::prefetcher_loop() {
                         stream_id_list += ", ";
                     }
                 }
-                INFO("FramePrefetchService {}: Setting expected stream IDs for port {}: {}",
+                DEBUG("FramePrefetchService {}: Setting expected stream IDs for port {}: {}",
                      unique_name, port, stream_id_list);
 
                 // Add the list of stream IDs to the metadata
@@ -276,7 +276,7 @@ void FramePrefetchService::prefetcher_loop() {
                         freq_id_list += " ";
                     }
                 }
-                DEBUG("FramePrefetchService {}: Setting expected frequency IDs for port {}: {}",
+                DEBUG2("FramePrefetchService {}: Setting expected frequency IDs for port {}: {}",
                      unique_name, port, freq_id_list);
 #endif
 
