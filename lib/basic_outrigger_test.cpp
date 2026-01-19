@@ -88,7 +88,7 @@ int main() {
     cl_context context = clCreateContext(nullptr, 1, &device, nullptr, nullptr, nullptr);
     cl_command_queue queue = clCreateCommandQueue(context, device, 0, nullptr);
 
-    std::string srcStr = loadKernel("opencl/kernels/outrigger_beamformer.cl");
+    std::string srcStr = loadKernel("/home/shiona/kotekan/lib/opencl/kernels/outrigger_beamformer.cl");
 
     if (srcStr.empty()) {
         std::cerr << "Kernel file is empty or not found!" << std::endl;

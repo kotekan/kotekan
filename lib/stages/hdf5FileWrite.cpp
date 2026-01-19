@@ -204,10 +204,17 @@ void hdf5FileWrite::main_thread() {
         } else {
             // We don't have proper CHORD metadata and don't know the buffer type and shape
 
-            type = H5T_NATIVE_UINT8;
+            // type = H5T_NATIVE_UINT8;
+            // const int rank = 1;
+            // hsize_t dims[1];
+            // dims[0] = buf->frame_size;
+            // space = H5Screate_simple(rank, dims, dims);
+
+            type = H5T_NATIVE_FLOAT;
+            type_size = 4;
             const int rank = 1;
             hsize_t dims[1];
-            dims[0] = buf->frame_size;
+            dims[0] = buf->frame_size / type_size;
             space = H5Screate_simple(rank, dims, dims);
         }
 

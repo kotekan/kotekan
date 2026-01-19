@@ -83,6 +83,8 @@ void rawFileWrite::main_thread() {
                          _file_name.c_str(), file_num, _file_ext.c_str());
             }
 
+
+            // POSIX write()
             fd = open(full_path, O_WRONLY | O_CREAT, 0666);
 
             if (fd == -1) {

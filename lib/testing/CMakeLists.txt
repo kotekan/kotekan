@@ -2,6 +2,7 @@ project(libkotekan_testing)
 
 add_library(
     kotekan_testing
+    bkCheck.cpp
     chimeMetadataDump.cpp
     constDataCheck.cpp
     fakeGpu.cpp

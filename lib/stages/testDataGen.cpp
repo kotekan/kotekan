@@ -49,7 +49,9 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "const8" || type == "const16" || type == "const32"
-           || type == "constf16" || type == "random" || type == "random_signed" || type == "ramp"
+           || type == "constf16" || type == "constf32" 
+           || type == "random" || type == "random_signed" 
+           || type == "ramp"
            || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
            || type == "square" || type == "onehot");
     assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
@@ -64,12 +66,14 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         type_size = 4;
     if (type == "constf16")
         type_size = 2;
+    if (type == "constf32")
+        type_size = 4;
     if (type == "const" || type == "const8" || type == "const16" || type == "const32"
         || type == "random" || type == "random_signed" || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
         _value_array =
             config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
-    } else if (type == "constf16") {
+    } else if (type == "constf16" || type == "constf32") {
         fvalue = config.get_default<float>(unique_name, "value", -1.0);
         _fvalue_array =
             config.get_default<std::vector<float>>(unique_name, "values", std::vector<float>());
@@ -169,6 +173,7 @@ void testDataGen::main_thread() {
 #if KOTEKAN_FLOAT16
     float16_t* framef16 = nullptr;
 #endif
+    float* framef32 = nullptr;
 
     int link_id = 0;
 
@@ -272,6 +277,20 @@ void testDataGen::main_thread() {
                                  sizeof chordmeta->dim_name[d]);
             }
 #endif
+        } else if (type == "constf32") {
+            n_to_set /= 4;
+            framef32 = (float*)frame;
+            if (metadata_is_chord(buf, frame_id)) {
+                chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                chord_metadata_init(chordmeta);
+                chordmeta->type = chordDataType::float32;
+                chordmeta->dims = (int)_array_shape.size();
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    chordmeta->dim[d] = _array_shape[d];
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
+                                 sizeof chordmeta->dim_name[d]);
+            }
         }
         if (type == "onehot") {
             int val = value;
@@ -379,6 +398,10 @@ void testDataGen::main_thread() {
                     break;
                 framef16[j] = fvalue;
 #endif
+            } else if (type == "constf32") {
+                if (finished_seeding_constant)
+                    break;
+                framef32[j] = fvalue;
             } else if (type == "ramp") {
                 frame[j] = fmod(j * value, 256 * value);
                 //                frame[j] = j*value;
