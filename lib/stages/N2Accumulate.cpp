@@ -512,6 +512,10 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
 
         meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];
 
+        if (chord_frame_metadata->has_dataset_id()) {
+            meta->dataset_id = chord_frame_metadata->get_dataset_id();
+        }
+
         DEBUG("Creating N2FrameView for freq f[{:d}] = {:d}", f,
               chord_frame_metadata->get_coarse_freq()[f]);
         N2FrameView out_vis(out_buf, out_frame_id);
