@@ -2,6 +2,7 @@
 #define NDARRAY_HPP
 
 #include <DataType.hpp>     // for DataType
+#include <FrameDesc.hpp>    // for FrameDesc
 #include <Symbol.hpp>       // for Symbol
 #include <algorithm>        // for fill_n
 #include <array>            // for array
@@ -80,7 +81,7 @@ make_arrays_from_pairs(std::initializer_list<std::pair<T, U>> values) {
 // nor the rank are known at compile time. This is convenient e.g.
 // when reading data from a file, but it prevents efficient operations
 // on array elements.
-class GenericNDArray {
+class GenericNDArray : public FrameDesc {
 public:
     // create an NDArray based on run-time type information
     static std::shared_ptr<GenericNDArray> create(const DataType value_datatype,
@@ -94,7 +95,7 @@ public:
     // The number of bytes for each value (element)
     virtual std::size_t get_value_type_size() const = 0;
     // The stored quantity_name
-    virtual Symbol get_quantity_name() const = 0;
+    Symbol get_quantity_name() const override = 0;
     // The rank (number of dimensions)
     virtual std::size_t get_rank() const = 0;
     // Pointer to the array data
@@ -114,11 +115,16 @@ public:
     virtual std::vector<std::ptrdiff_t> get_strides() const = 0;
     virtual std::ptrdiff_t get_stride(std::size_t d) const = 0;
 
-    // Output the array metadata, useful for logging or debugging
-    void output_metadata(std::ostream& os) const;
+    // FrameDesc override
+    size_t get_byte_size() const override {
+        return get_size() * get_value_type_size();
+    }
+
+    // Output the array description (framedesc), useful for logging or debugging
+    void output_framedesc(std::ostream& os) const override;
 
     // Compare two NDArrays, useful to compare metadata
-    bool operator==(const GenericNDArray& other) const;
+    bool operator==(const FrameDesc& other) const override;
 };
 
 // A `NDArray<T,D>` is a `D`-dimensional array of type `T`. Different

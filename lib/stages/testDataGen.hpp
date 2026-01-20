@@ -45,6 +45,10 @@
  *                              data production.
  * @conf  num_links             Int.  How many links are being simulated, impacts
  *                              the rate of data generated in the wait = true mode.
+ * @conf  simulate_fpga_restart_at_frame  Int. If >= 0, resets seq_num to 0
+ *                              at this frame index (for testing countCheck). Default is -1.
+ * @conf  end_interrupt         Bool. Interrupt the kotekan process after num_frames
+ *                              instead of exiting normally. Default is False.
  *
  * @par REST Endpoints
  * @endpoint /\<unique_name\>/generate_test_data
@@ -92,6 +96,11 @@ private:
     std::vector<std::string> _dim_name;
     std::vector<uint32_t> _manual_freq_ids;
     int _meta_time_downsample_factor;
+
+    // Frame index at which to simulate FPGA restart (-1 = disabled)
+    int64_t _simulate_fpga_restart_at_frame;
+    // Whether to interrupt kotekan instead of exiting normally
+    bool _end_interrupt;
 
     // kotekan trackers example
     std::shared_ptr<StatTracker> timer;

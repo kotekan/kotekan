@@ -21,6 +21,7 @@
 #include <functional> // for bind, function, placeholders
 #include <iterator>   // for back_insert_iterator, back_inserter, begin, end
 #include <memory>     // for shared_ptr
+#include <signal.h>   // for raise, SIGINT
 #include <time.h>     // for timespec, nanosleep
 #include <utility>    // for pair
 
@@ -75,6 +76,13 @@ FakeHFB::FakeHFB(Config& config, const std::string& unique_name,
 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
+
+    // Get simulate_fpga_restart_at_frame option
+    simulate_fpga_restart_at_frame =
+        config.get_default<int64_t>(unique_name, "simulate_fpga_restart_at_frame", -1);
+
+    // Get end_interrupt option
+    end_interrupt = config.get_default<bool>(unique_name, "end_interrupt", false);
 }
 
 void FakeHFB::main_thread() {
@@ -170,6 +178,14 @@ void FakeHFB::main_thread() {
         fpga_seq += delta_seq;
         frame_count++; // NOTE: frame count increase once for all freq
 
+        // Simulate FPGA restart if requested
+        if (simulate_fpga_restart_at_frame >= 0
+            && frame_count == (unsigned)simulate_fpga_restart_at_frame) {
+            INFO("Simulating FPGA restart at frame {:d}: resetting fpga_seq from {:d} to 0",
+                 frame_count, fpga_seq);
+            fpga_seq = 0;
+        }
+
         // Increment the timespec
         ts.tv_sec += ((ts.tv_nsec + delta_ns) / 1000000000);
         ts.tv_nsec = (ts.tv_nsec + delta_ns) % 1000000000;
@@ -178,9 +194,13 @@ void FakeHFB::main_thread() {
         if (num_frames > 0 && frame_count >= (unsigned)num_frames) {
             INFO("Reached frame limit [{:d} frames]. Sleeping and then exiting kotekan...",
                  num_frames);
-            timespec ts = double_to_ts(sleep_after);
-            nanosleep(&ts, nullptr);
-            exit_kotekan(ReturnCode::CLEAN_EXIT);
+            timespec ts_sleep = double_to_ts(sleep_after);
+            nanosleep(&ts_sleep, nullptr);
+            if (end_interrupt) {
+                raise(SIGINT);
+            } else {
+                exit_kotekan(ReturnCode::CLEAN_EXIT);
+            }
             return;
         }
 

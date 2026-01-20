@@ -40,20 +40,18 @@ class N2Metadata(ctypes.Structure):
     """Wrap an N2Metadata struct."""
 
     _fields_ = [
-        ("num_elements", ctypes.c_uint32),
-        ("num_prod", ctypes.c_uint32),
-        ("num_ev", ctypes.c_uint32),
-        ("nfreq", ctypes.c_uint32),
-        ("vis_layout", ctypes.c_int32),
         ("freq_id", ctypes.c_uint32),
         ("freq_MHz", ctypes.c_double),
+        # Time index
         ("abs_time_idx", ctypes.c_uint64),
+        # Earth orientation parameters
         ("time_center_eop", EOP),
         ("bin_eop", EOP),
         ("bin_start_ERA_deg", ctypes.c_double),
         ("bin_end_ERA_deg", ctypes.c_double),
-        ("bin_start_LAST", ctypes.c_int64),
-        ("bin_end_LAST", ctypes.c_int64),
+        ("bin_start_LAST", ctypes.c_double),
+        ("bin_end_LAST", ctypes.c_double),
+        # FPGA timing
         ("fpga_start_tick", ctypes.c_uint64),
         ("frame_start_time_ns", ctypes.c_uint64),
         ("frame_length_fpga_ticks", ctypes.c_uint64),
@@ -77,9 +75,12 @@ class N2Buffer(object):
         raw dumps when the metadata size is given in the first four bytes.
     """
 
-    def __init__(self, buffer, skip=4):
+    def __init__(self, buffer, skip=4, num_elements=None, num_prod=None, num_ev=None):
 
         self._buffer = buffer[skip:]
+        self._num_elements = num_elements
+        self._num_prod = num_prod
+        self._num_ev = num_ev
 
         meta_size = ctypes.sizeof(N2Metadata)
 
@@ -100,9 +101,20 @@ class N2Buffer(object):
 
         _data = self._buffer[ctypes.sizeof(N2Metadata) :]
 
-        layout = self.__class__.calculate_layout(
-            self.metadata.num_elements, self.metadata.num_prod, self.metadata.num_ev
-        )
+        if (
+            self._num_elements is not None
+            and self._num_ev is not None
+            and self._num_prod is not None
+        ):
+            num_elements = self._num_elements
+            num_prod = self._num_prod
+            num_ev = self._num_ev
+        else:
+            num_elements = self.metadata.num_elements
+            num_prod = self.metadata.num_prod
+            num_ev = self.metadata.num_ev
+
+        layout = self.__class__.calculate_layout(num_elements, num_prod, num_ev)
 
         for member in layout["members"]:
 
@@ -172,7 +184,7 @@ class N2Buffer(object):
         return layout
 
     @classmethod
-    def from_file(cls, filename):
+    def from_file(cls, filename, num_elements=None, num_prod=None, num_ev=None):
         """Load an N2Buffer from a kotekan dump file."""
         filesize = os.path.getsize(filename)
 
@@ -181,10 +193,10 @@ class N2Buffer(object):
         with io.FileIO(filename, "rb") as fh:
             fh.readinto(buf)
 
-        return cls(buf)
+        return cls(buf, num_elements=num_elements, num_prod=num_prod, num_ev=num_ev)
 
     @classmethod
-    def load_files(cls, pattern):
+    def load_files(cls, pattern, num_elements=None, num_prod=None, num_ev=None):
         """Read a set of dump files as N2Buffers.
 
         Parameters
@@ -198,7 +210,12 @@ class N2Buffer(object):
         """
         import glob
 
-        return [cls.from_file(fname) for fname in sorted(glob.glob(pattern))]
+        return [
+            cls.from_file(
+                fname, num_elements=num_elements, num_prod=num_prod, num_ev=num_ev
+            )
+            for fname in sorted(glob.glob(pattern))
+        ]
 
     @classmethod
     def to_files(cls, buffers, basename):

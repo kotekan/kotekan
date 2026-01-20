@@ -7,18 +7,32 @@
 #include <complex>  // for complex
 #include <cstring>  // for memset, size_t
 
+namespace {
+
+// Helper to ensure that the given FrameDesc is actually an N2FrameDesc
+std::shared_ptr<const kotekan::N2FrameDesc>
+validate_desc_type(std::shared_ptr<const kotekan::FrameDesc> desc) {
+    auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(desc);
+    if (!n2_desc) {
+        FATAL_ERROR_NON_OO("N2FrameView: Buffer does not have a valid N2FrameDesc");
+    }
+    return n2_desc;
+}
+} // namespace
+
 N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 
     FrameView(buf, frame_id),
     _metadata(std::static_pointer_cast<N2Metadata>(buf->metadata[frame_id])),
+    _desc(validate_desc_type(buf->get_frame_description())),
 
     // Set the const refs to the structural metadata
-    num_elements(_metadata->num_elements), num_prod(_metadata->num_prod), num_ev(_metadata->num_ev),
-    nfreq(_metadata->nfreq),
-    frame_layout(get_frame_layout(_metadata->num_elements, _metadata->num_ev, _metadata->num_prod)),
+    n2_layout(_desc->get_n2_layout()), num_elements(_desc->get_num_elements()),
+    num_prod(_desc->get_num_products()), num_ev(_desc->get_num_ev()),
+    frame_layout(kotekan::N2FrameDesc::get_frame_layout(num_elements, num_ev, num_prod)),
 
     // Non-structural data
-    vis_layout(_metadata->vis_layout), freq_id(_metadata->freq_id), freq_MHz(_metadata->freq_MHz),
+    freq_id(_metadata->freq_id), freq_MHz(_metadata->freq_MHz),
     abs_time_idx(_metadata->abs_time_idx),
 
     time_center_eop(_metadata->time_center_eop), bin_eop(_metadata->bin_eop),
@@ -31,20 +45,24 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     n_valid_fpga_ticks(_metadata->n_valid_fpga_ticks),
     n_rfi_fpga_ticks(_metadata->n_rfi_fpga_ticks),
 
-    vis(bind_span<N2::cfloat>(_frame, frame_layout[N2Field::vis])),
-    weight(bind_span<float>(_frame, frame_layout[N2Field::weight])),
-    flags(bind_span<float>(_frame, frame_layout[N2Field::flags])),
-    eval(bind_span<float>(_frame, frame_layout[N2Field::eval])),
-    evec(bind_span<N2::cfloat>(_frame, frame_layout[N2Field::evec])),
-    emethod(bind_scalar<N2EigenMethod>(_frame, frame_layout[N2Field::emethod])),
-    erms(bind_scalar<float>(_frame, frame_layout[N2Field::erms])),
-    gain(bind_span<N2::cfloat>(_frame, frame_layout[N2Field::gain])) {
+    vis(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::vis])),
+    weight(bind_span<float>(_frame, frame_layout.fields[N2Field::weight])),
+    flags(bind_span<float>(_frame, frame_layout.fields[N2Field::flags])),
+    eval(bind_span<float>(_frame, frame_layout.fields[N2Field::eval])),
+    evec(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::evec])),
+    emethod(bind_scalar<N2EigenMethod>(_frame, frame_layout.fields[N2Field::emethod])),
+    erms(bind_scalar<float>(_frame, frame_layout.fields[N2Field::erms])),
+    gain(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::gain])) {
 
-    assert(data_size() == buf->frame_size);
+    // User-facing error if frame size does not match size required by N2FrameView
+    if (buf->frame_size != data_size()) {
+        FATAL_ERROR_NON_OO("N2FrameView frame size {} does not match buffer frame size {}.",
+                           data_size(), buf->frame_size);
+    }
 }
 
 size_t N2FrameView::data_size() const {
-    return calculate_frame_size(_metadata->num_elements, _metadata->num_ev, _metadata->num_prod);
+    return frame_layout.total_size();
 }
 
 void N2FrameView::zero_frame() {
@@ -61,8 +79,6 @@ N2FrameView N2FrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* b
 
 void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Field>& skip_members) {
     auto copy_member = [&](N2Field member) { return (skip_members.count(member) == 0); };
-
-    assert(nfreq == frame_to_copy_from.nfreq);
 
     if (copy_member(N2Field::vis) || copy_member(N2Field::weight) || copy_member(N2Field::flags)
         || copy_member(N2Field::evec) || copy_member(N2Field::gain)) {
@@ -97,19 +113,5 @@ void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Fie
 }
 
 void N2FrameView::fill_prod_maps(std::vector<N2::prod_ctype>& prods) const {
-
-    switch (vis_layout) {
-        case N2Layout::FullUpperTri:
-            fill_prod_maps_FullUpperTri(prods, num_elements);
-            break;
-        case N2Layout::Autocorrelations:
-            fill_prod_maps_Autocorrelations(prods, num_elements);
-            break;
-        default:
-            std::string msg = fmt::format(
-                "N2FrameView::fill_prod_maps has not been implemented for N2Layout {:s}",
-                N2Layout_to_string(vis_layout));
-            FATAL_ERROR_NON_OO("{:s}", msg);
-            break;
-    }
+    _desc->fill_prod_maps(prods);
 }

@@ -28,7 +28,7 @@ std::string format_vector(const std::vector<T>& vec) {
 
 } // namespace
 
-void GenericNDArray::output_metadata(std::ostream& os) const {
+void GenericNDArray::output_framedesc(std::ostream& os) const {
     os << "NDArray:\n"
        << "    quantity name:   " << get_quantity_name() << "\n"
        << "    value datatype:  " << get_value_datatype() << "\n"
@@ -82,7 +82,12 @@ std::shared_ptr<GenericNDArray> GenericNDArray::create(const DataType value_data
                                                           dimnames, data);
 }
 
-bool GenericNDArray::operator==(const GenericNDArray& other) const {
+bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
+    const GenericNDArray* other_ptr = dynamic_cast<const GenericNDArray*>(&other_desc);
+    if (!other_ptr)
+        return false;
+    const GenericNDArray& other = *other_ptr;
+
     if (this->get_value_datatype() != other.get_value_datatype())
         return false;
     if (this->get_quantity_name() != other.get_quantity_name())

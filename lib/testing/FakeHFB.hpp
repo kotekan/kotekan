@@ -60,6 +60,10 @@
  * @conf  sleep_after   Float. Sleep for this number of seconds after running
  *                      and before shutting down. Useful for allowing other
  *                      processes to finish. Default is 1s.
+ * @conf  simulate_fpga_restart_at_frame  Int. If >= 0, resets fpga_seq to 0
+ *                      at this frame index (for testing countCheck). Default is -1.
+ * @conf  end_interrupt Bool. Interrupt the kotekan process after num_frames
+ *                      instead of calling exit. Default is False.
  *
  * @author  James Willis
  *
@@ -117,6 +121,12 @@ private:
     // Use a fixed (configured) dataset ID in the output frames
     bool _fixed_dset_id;
     dset_id_t _dset_id;
+
+    // Frame index at which to simulate FPGA restart (-1 = disabled)
+    int64_t simulate_fpga_restart_at_frame;
+
+    // Whether to interrupt kotekan instead of calling exit
+    bool end_interrupt;
 };
 
 

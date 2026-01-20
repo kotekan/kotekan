@@ -1,7 +1,8 @@
 #ifndef N2_METADATA
 #define N2_METADATA
 
-#include "Config.hpp" // for Config
+#include "Config.hpp"   // for Config
+#include "N2Layout.hpp" // for N2Layout
 #include "N2Metadata.hpp"
 #include "buffer.hpp"         // for Buffer
 #include "kotekanLogging.hpp" // for WARN_NON_OO
@@ -20,63 +21,40 @@ using kotekan::Config;
 #include <string>   // for operator==, char_traits, basic_string
 #include <vector>   // for vector
 
-enum class N2Layout : int32_t { FullUpperTri = 0, RedundantBaselineAvg = 1, Autocorrelations = 2 };
-
-void to_json(nlohmann::json& j, const N2Layout& t);
-void from_json(const nlohmann::json& j, N2Layout& t);
-
-inline std::string N2Layout_to_string(N2Layout l) {
-    nlohmann::json j = l;
-    return j.get<std::string>();
-}
-
 // Struct containing metadata fields for an N2 frame
 struct N2MetadataFormat {
-
-    /// Number of elements for data in buffer
-    uint32_t num_elements;
-    /// Number of products in the data
-    uint32_t num_prod;
-    /// Number of eigenvectors and values calculated
-    uint32_t num_ev;
-    /// Total number of frequencies in pipeline
-    uint32_t nfreq;
-
-    /// enum specifying the layout type of the visibility matrix.
-    N2Layout vis_layout;
-
     /// ID of the frequency bin
-    uint32_t freq_id; // this is an int in chordMetadata, maybe change later
+    uint32_t freq_id = 0; // this is an int in chordMetadata, maybe change later
     /// Physical frequency in Hz
-    double freq_MHz;
+    double freq_MHz = 0.0;
 
     /// absolute time index of this frame in its stream. Begins at 0 at instument start
     /// and counts monitonically afterwards.
-    uint64_t abs_time_idx;
+    uint64_t abs_time_idx = 0;
 
     /// Earth Orientation Parameters at the center of the integration/accumulation time
-    struct EOP time_center_eop;
+    struct EOP time_center_eop = eop_null;
     /// Earth Orientation Parameters within an integration/accumulation bin
-    struct EOP bin_eop;
+    struct EOP bin_eop = eop_null;
     // bin start/end info for convenience
-    double bin_start_ERA_deg; /// Earth Rotation Angle at start of bin
-    double bin_end_ERA_deg;   /// Earth Rotation Angle at end of bin
-    double bin_start_LAST;    /// local apparent sidereal time (nanoseconds) at start of bin
-    double bin_end_LAST;      /// local apparent sidereal time (nanoseconds) at end of bin
+    double bin_start_ERA_deg = 0.0; /// Earth Rotation Angle at start of bin
+    double bin_end_ERA_deg = 0.0;   /// Earth Rotation Angle at end of bin
+    double bin_start_LAST = 0.0;    /// local apparent sidereal time (nanoseconds) at start of bin
+    double bin_end_LAST = 0.0;      /// local apparent sidereal time (nanoseconds) at end of bin
 
     /// The sequence number of the first FPGA frame integrated into this visibility frame
-    uint64_t fpga_start_tick;
+    uint64_t fpga_start_tick = 0;
     /// The time of the start of the integration frame in nanosec
-    uint64_t frame_start_time_ns;
+    uint64_t frame_start_time_ns = 0;
     /// Nominal length of the frame in FPGA ticks
-    uint64_t frame_length_fpga_ticks;
+    uint64_t frame_length_fpga_ticks = 0;
     /// Amount of data that actually went into the frame (in FPGA ticks)
-    uint64_t n_valid_fpga_ticks;
+    uint64_t n_valid_fpga_ticks = 0;
     /// The number of FPGA frames flagged as containing RFI. NOTE: This value
     /// might contain overlap with lost samples, as that counts missing samples
     /// as well as RFI. For renormalization this value should NOT be used, use
     /// lost samples (= @c frame_length_fpga_ticks - @c n_valid_fpga_ticks) instead.
-    uint64_t n_rfi_fpga_ticks;
+    uint64_t n_rfi_fpga_ticks = 0;
 };
 
 class N2Metadata : public metadataObject, public N2MetadataFormat {
@@ -98,6 +76,11 @@ public:
     size_t serialize(char* bytes) override;
 
     nlohmann::json to_json() override;
+
+    /// Validates that the frame descriptor is an N2FrameDesc and checks internal metadata
+    /// consistency (Currently, just valid/RFI ticks <= frame length). Issues a non-fatal error
+    /// for any inconsistencies, fatal if the frame desc is not an N2FrameDesc.
+    void check_frame_desc(const std::shared_ptr<const kotekan::FrameDesc>& frame_desc) const;
 };
 
 void to_json(nlohmann::json& j, const N2Metadata& m);

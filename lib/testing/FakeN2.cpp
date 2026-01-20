@@ -2,6 +2,7 @@
 
 #include "CHORDTelescope.hpp"  // for CHORDTelescope, EOP
 #include "Config.hpp"          // for Config
+#include "N2FrameDesc.hpp"     // for N2FrameDesc
 #include "N2FrameView.hpp"     // for N2FrameView
 #include "N2Metadata.hpp"      // for N2Metadata, get_N2_metadata
 #include "N2Util.hpp"          // for get_num_prod
@@ -31,19 +32,18 @@ using namespace std::placeholders;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::N2FrameDesc;
 using kotekan::Stage;
-
 
 REGISTER_KOTEKAN_STAGE(FakeN2);
 REGISTER_KOTEKAN_STAGE(ReplaceN2);
 
 
 FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&FakeN2::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&FakeN2::main_thread, this)),
+    n2_layout(N2Layout::FullUpperTri) {
 
     // Fetch any simple configuration
-    num_elements = config.get<size_t>(unique_name, "num_elements");
-    num_eigenvectors = config.get<size_t>(unique_name, "num_ev");
     sleep_before = config.get_default<float>(unique_name, "sleep_before", 0.0);
     sleep_after = config.get_default<float>(unique_name, "sleep_after", 1.0);
 
@@ -53,6 +53,19 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     // Fetch the buffer, register it
     out_buf = buffer_container.get_buffer(buffer_name);
     out_buf->register_producer(unique_name);
+
+    // Get N2 parameters from the buffer's frame descriptor (set by bufferFactory)
+    auto frame_desc = out_buf->get_frame_description();
+    if (!frame_desc) {
+        FATAL_ERROR("Buffer {:s} does not have a frame descriptor set", out_buf->buffer_name);
+    }
+    auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(frame_desc);
+    if (!n2_desc) {
+        FATAL_ERROR("Buffer {:s} does not have an N2FrameDesc", out_buf->buffer_name);
+    }
+    num_elements = n2_desc->get_num_elements();
+    num_eigenvectors = n2_desc->get_num_ev();
+    n2_layout = n2_desc->get_n2_layout();
 
     // Get frequency IDs from config
     freq = config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids", {});
@@ -77,13 +90,19 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
 
-    size_t num_prod = N2FrameView::get_num_prod(num_elements, N2Layout::FullUpperTri);
-    size_t frame_size = N2FrameView::calculate_frame_size(num_elements, num_eigenvectors, num_prod);
-    if (out_buf->frame_size != frame_size) {
-        FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d}", out_buf->buffer_name,
-                    out_buf->frame_size, frame_size);
+    // Get simulate_fpga_restart_at_frame option
+    simulate_fpga_restart_at_frame =
+        config.get_default<int64_t>(unique_name, "simulate_fpga_restart_at_frame", -1);
+
+    // Get end_interrupt option
+    end_interrupt = config.get_default<bool>(unique_name, "end_interrupt", false);
+
+    // Validate buffer frame size matches the descriptor (should always match if bufferFactory set
+    // it)
+    if (out_buf->frame_size != n2_desc->get_byte_size()) {
+        FATAL_ERROR("Buffer {:s} has frame size {:d}, expected {:d} from N2FrameDesc",
+                    out_buf->buffer_name, out_buf->frame_size, n2_desc->get_byte_size());
     }
-    assert(frame_size == out_buf->frame_size);
 }
 
 void FakeN2::main_thread() {
@@ -156,21 +175,12 @@ void FakeN2::main_thread() {
             std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, output_frame_id);
             assert(meta);
 
-            meta->num_elements = num_elements;
-            /// Number of products in the data
-            meta->num_prod = N2FrameView::get_num_prod(num_elements, n2_layout);
-            /// Number of eigenvectors and values calculated
-            meta->num_ev = num_eigenvectors;
-            // Total number of frequencies in pipeline
-            meta->nfreq = freq.size();
             // Set the frequency index
             meta->freq_id = f;
             // Set the physical frequency
             meta->freq_MHz = tel.to_freq_MHz(f);
             // Set the time index
             meta->abs_time_idx = frame_count + t;
-            // Set the vis matrix layout
-            meta->vis_layout = n2_layout;
 
             // The sequence number of the first FPGA frame integrated into this visibility frame
             meta->fpga_start_tick = fpga_seq + t * delta_seq;
@@ -201,8 +211,8 @@ void FakeN2::main_thread() {
             meta->bin_end_LAST = -1;
 
             DEBUG("Creating N2FrameView.");
-            DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}", meta->num_elements,
-                  meta->num_prod, meta->num_ev, meta->nfreq);
+            DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}", num_elements,
+                  N2FrameDesc::get_num_prod(num_elements, n2_layout), num_eigenvectors);
             N2FrameView output_frame(out_buf, output_frame_id);
             DEBUG("Created.");
 
@@ -214,7 +224,7 @@ void FakeN2::main_thread() {
 
             // Fill out the frame with the selected pattern
             pattern->fill(output_frame);
-            if (meta->num_ev > 0)
+            if (num_eigenvectors > 0)
                 INFO("First eval is: {}", output_frame.eval[0]);
 
             // gains
@@ -237,11 +247,22 @@ void FakeN2::main_thread() {
         // Increment the timespec
         time_ns += curr_n_frames * delta_ns;
 
+        // Simulate FPGA restart if requested
+        if (simulate_fpga_restart_at_frame >= 0 && frame_count == simulate_fpga_restart_at_frame) {
+            INFO("Simulating FPGA restart at frame {:d}: resetting fpga_seq from {:d} to 0",
+                 frame_count, fpga_seq);
+            fpga_seq = 0;
+        }
+
         // Stop generating if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count >= num_frames) {
             INFO("Reached frame limit [{:d} frames]. Stopping generation.", num_frames);
             timespec ts = double_to_ts(sleep_after);
             nanosleep(&ts, nullptr);
+            if (end_interrupt) {
+                INFO("end_interrupt is set. Shutting down Kotekan.");
+                exit_kotekan(ReturnCode::CLEAN_EXIT);
+            }
             break;
         }
 
@@ -297,6 +318,16 @@ ReplaceN2::ReplaceN2(Config& config, const std::string& unique_name,
     // Setup the output buffer
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
+
+    // Validate that input and output buffers have compatible N2 frame descriptors
+    auto in_desc = in_buf->get_frame_description();
+    auto out_desc = out_buf->get_frame_description();
+    if (!in_desc || !out_desc) {
+        FATAL_ERROR("ReplaceN2: Input and output buffers must have frame descriptors set");
+    }
+    if (*in_desc != *out_desc) {
+        FATAL_ERROR("ReplaceN2: Input and output buffer frame descriptors must match");
+    }
 }
 
 void ReplaceN2::main_thread() {

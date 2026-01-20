@@ -48,10 +48,12 @@ public:
     chordMetadata();
     bool operator==(const chordMetadata& other) const;
 
-    /// Helper function to compare data during conversion to NDArray
+    /// Validates that this metadata's array structure (name, type, dimensions, strides) matches
+    /// the given frame descriptor, issuing a non-fatal error for any inconsistencies.
     void check_frame_desc(const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) const;
 
-    /// Helper function to set CHORD metadata during conversion to NDArray
+    /// Copies array structure information (type, dimensions, dimension names, extents, strides)
+    /// from the given frame descriptor into this metadata object. Does not copy the array name.
     void set_from_frame_desc(const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc);
 
     /// copy object

@@ -185,49 +185,49 @@ host_counts_buffer:
 n2_buffer:
     kotekan_buffer: N2
     num_ev: 0
-    vis_layout: "FullUpperTri"
+    n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_eigen_buffer:
     kotekan_buffer: N2
     num_ev: num_ev_to_calculate
-    vis_layout: "FullUpperTri"
+    n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_split_1:
     kotekan_buffer: N2
     num_ev: num_ev_to_calculate
-    vis_layout: "FullUpperTri"
+    n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_split_2:
     kotekan_buffer: N2
     num_ev: num_ev_to_calculate
-    vis_layout: "FullUpperTri"
+    n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_recv_buffer_1:
     kotekan_buffer: N2
     num_ev: num_ev_to_calculate
-    vis_layout: "FullUpperTri"
+    n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_recv_buffer_2:
     kotekan_buffer: N2
     num_ev: num_ev_to_calculate
-    vis_layout: "FullUpperTri"
+    n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_merge_buffer:
     kotekan_buffer: N2
     num_ev: num_ev_to_calculate
-    vis_layout: "FullUpperTri"
+    n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
@@ -419,7 +419,7 @@ n2_accumulate:
 
 eigencalc:
   num_ev: num_ev_to_calculate
-  kotekan_stage: EigenVisIter
+  kotekan_stage: EigenN2Iter
   cpu_affinity: [4]
   log_level: debug
 
@@ -520,6 +520,7 @@ hdf5_N2_write_final:
     num_ev: num_ev_to_calculate
     vis_layout: "FullUpperTri"
     num_file_t: 10
+    gains_base_directory: "" # "/mnt/cs00/data/baseband_gains/"
 
 # Monitor N2 buffer for activity
 

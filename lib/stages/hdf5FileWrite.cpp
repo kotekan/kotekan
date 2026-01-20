@@ -287,7 +287,6 @@ public:
         file.createAttribute("num_elements", frame.num_elements);
         file.createAttribute("num_prod", frame.num_prod);
         file.createAttribute("num_ev", frame.num_ev);
-        file.createAttribute("nfreq", frame.nfreq);
         file.createAttribute("freq_id", frame.freq_id);
         file.createAttribute("freq_MHz", frame.freq_MHz);
         file.createAttribute("abs_time_idx", frame.abs_time_idx);
@@ -435,7 +434,7 @@ public:
                     assert(metadata_is_chord(mc));
                     const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
                     const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
-                        buffer->get_frame_desc();
+                        buffer->get_ndarray_frame_desc();
                     assert(frame_desc);
                     write_chord(full_path, frame, meta, frame_desc);
                 } else if (metadata_is_N2(mc)) {
