@@ -145,7 +145,6 @@ void FramePrefetchService::stop() {
         prefetcher_thread.join();
     }
 }
-
 void FramePrefetchService::start(uint64_t start_seq,
                                  const std::vector<uint32_t>& expected_stream_ids) {
     initial_start_seq = start_seq;

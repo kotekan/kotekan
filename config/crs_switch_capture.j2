@@ -14,17 +14,20 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: debug
+log_level: info
 
 buffer_depth: 120
 
 # The shape of the frame DPDK produces is:
 # E[time_long, num_local_freq, element_long, time_short, element_short]
 timesamples_per_frame: 8192
+num_times: 8192
 time_long: timesamples_per_frame / time_short
 time_short: 16
 num_elements: 128
 num_local_freq: 384
+num_frequencies: 384
+num_dishes: 64
 element_short: 8
 element_long: num_elements / element_short
 # Note this is about 384MB per frame (192 huge pages)
@@ -33,6 +36,25 @@ dpdk_output_frame_size: time_long * num_local_freq * element_long * time_short *
 num_crs_boards: 16
 capture_n_frames: 0  # Total number of frames to capture, 0 = unlimited
 numa_node: 0
+
+# Type sizes
+
+sizeof_uint8: 1
+sizeof_uint16: 2
+sizeof_uint32: 4
+sizeof_uint64: 8
+sizeof_int8: 1
+sizeof_int16: 2
+sizeof_int32: 4
+sizeof_int64: 8
+sizeof_float16: 2
+sizeof_float32: 4
+sizeof_float64: 8
+
+# Basic constants
+
+num_components: 2
+num_polarizations: 2
 
 # Telescope object
 telescope:
@@ -78,6 +100,8 @@ network_input_buffers:
     use_hugepages: true
     # The workers share an output buffer
     network_input_buffer_0:
+        zero_new_frames: true
+        zero_value: 0x88
         kotekan_buffer: standard
     network_input_buffer_transpose:
         kotekan_buffer: standard
@@ -87,7 +111,7 @@ packet_receipt_bitmap_buffers:
     num_frames: buffer_depth
     frame_size: (timesamples_per_frame / time_short) * num_crs_boards  # One bit per stream
     metadata_pool: main_pool
-    use_hugepages: false
+    use_hugepages: true
     packet_receipt_bitmap_buffer_0:
         kotekan_buffer: standard
     packet_receipt_bitmap_buffer_1:
@@ -109,9 +133,10 @@ pl_mask_buffer:
     metadata_pool: main_pool
     use_hugepages: false
 
-cpu_affinity: [2,3,8,9]
+cpu_affinity: [2,3,8,9,10,11,12,13]
 dpdk:
     kotekan_stage: dpdkCore
+    log_level: info
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [5,6,7] # [5,6,7]
     main_lcore_cpu: 4
@@ -176,29 +201,175 @@ process_packet_mask:
 transpose_voltage:
     kotekan_stage: TransposeBasebandArray
     in_buf: network_input_buffer_0
+    pl_mask_buf: pl_mask_buffer
     out_buf: network_input_buffer_transpose
 
-hex_dump:
-    kotekan_stage: hexDump
-    in_buf: pl_mask_buffer
-    len: 4096
-
-raw_file_writers:
-    ### UPDATE THIS PATH FOR EACH RUN ###
-    base_dir: /data/transpose_test/
-    frames_per_file: 1
-    prefix_hostname: false
-    include_metadata: false
-    exit_after_n_files: 10
-    file_ext: raw
-    writer_0:
-        file_name: crs_0
-        #kotekan_stage: rawFileWrite
-        in_buf: network_input_buffer_transpose
 
 
 
-# 0x00000000000000ff
-# 0x000000000000ff00
-# 0x0000000000000000
-# 0xffffffffff00ff00
+
+#### GPU ####
+
+gpu_buffer_depth: 4
+
+host_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: gpu_buffer_depth * num_elements * num_local_freq * timesamples_per_frame
+    metadata_pool: main_pool
+
+host_pl_expanded_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: gpu_buffer_depth * pl_mask_T_div_64 * num_local_freq * pl_mask_E_div_8 * 8
+    metadata_pool: main_pool
+
+host_rfi_RFImask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_frequencies * num_times / 8
+    type: uint1x8
+    dimnames: ["T8hi128", "F", "T8lo128"]
+    shape: [num_times / 8 / 128, num_frequencies, 128]
+    metadata_pool: main_pool
+
+host_rfi_RFImask_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * num_frequencies * num_times / 8
+    type: uint1x8
+    dimnames: ["T8hi128", "F", "T8lo128"]
+    shape: [buffer_depth * num_times / 8 / 128, num_frequencies, 128]
+    metadata_pool: main_pool
+
+
+# Generate fake RFI mask for testing
+# RFImask is a bitmask where 1 = good data, 0 = RFI flagged
+# Using 0xFF means all data is good (no RFI)
+fake_rfi_mask:
+    kotekan_stage: testDataGen
+    out_buf: host_rfi_RFImask_buffer
+    type: const1x8
+    value: 0xFF
+    wait: false
+    samples_per_data_set: timesamples_per_frame
+    array_shape: [timesamples_per_frame / 8 / 128, num_local_freq, 128]
+    dim_name: ["T8hi128", "F", "T8lo128"]
+
+gpu_copy_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        buffer_depth: gpu_buffer_depth
+        gpu_id: 0
+        in_buffers:
+            host_voltage_buffer: network_input_buffer_transpose
+            host_pl_expanded_mask_buffer: pl_mask_buffer
+            host_rfi_RFImask_buffer: host_rfi_RFImask_buffer
+        out_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+        commands:
+        # Copy the voltage data to the GPU ring buffer "voltage_buffer"
+        - name: cudaCopyToRingbuffer
+          input_size: num_elements * num_local_freq * timesamples_per_frame
+          ring_buffer_size: gpu_buffer_depth * input_size
+          in_buf: host_voltage_buffer
+          signal_buf: host_voltage_ringbuffer
+          gpu_mem_output: voltage_buffer
+        # Copy the expanded pl mask to the GPU ring buffer "pl_expanded_mask_buffer"
+        - name: cudaCopyToRingbuffer
+          input_size: pl_mask_T_div_64 * num_local_freq * pl_mask_E_div_8 * 8
+          ring_buffer_size: gpu_buffer_depth * input_size
+          in_buf: host_pl_expanded_mask_buffer
+          signal_buf: host_pl_expanded_mask_ringbuffer
+          gpu_mem_output: pl_expanded_mask
+
+
+
+# Correlator setup
+n2k_sub_integration_ntime: 8192
+# n2k_samples_per_data_set = max(num_times, n2k_sub_integration_ntime)
+n2k_samples_per_data_set: 8192
+
+n2k_num_subintegrations: n2k_samples_per_data_set / n2k_sub_integration_ntime
+
+n2k_correlation_blocksize: 16
+n2k_correlation_num_elements: num_dishes * num_polarizations
+n2k_correlation_linear_num_blocks: (n2k_correlation_num_elements + 1) / n2k_correlation_blocksize
+n2k_correlation_triangle_num_blocks: n2k_correlation_linear_num_blocks * (n2k_correlation_linear_num_blocks + 1) / 2
+n2k_correlation_triangle_size: n2k_correlation_blocksize * n2k_correlation_blocksize * n2k_correlation_triangle_num_blocks
+
+n2k_counts_blocksize: 8
+n2k_counts_num_elements: num_dishes / 8 * num_polarizations
+n2k_counts_linear_num_blocks: (n2k_counts_num_elements + 1) / n2k_counts_blocksize
+n2k_counts_triangle_num_blocks: n2k_counts_linear_num_blocks * (n2k_counts_linear_num_blocks + 1) / 2
+n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_counts_triangle_num_blocks
+
+
+run_n2k_correlation:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+        out_buffers:
+            host_n2k_correlation_buffer: host_n2k_correlation_buffer
+        commands:
+        - name: cudaCorrelator
+          num_elements: num_dishes * num_polarizations
+          num_local_freq: num_frequencies
+          samples_per_data_set: n2k_samples_per_data_set
+          sub_integration_ntime: n2k_sub_integration_ntime
+          voltage_name: voltage
+          rfi_RFImask_name: rfi_RFImask
+          n2k_correlation_name: n2k_correlation
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: n2k_correlation_buffer
+          out_buf: host_n2k_correlation_buffer
+
+run_n2k_counts:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+        out_buffers:
+            host_n2k_counts_buffer: host_n2k_counts_buffer
+        commands:
+        - name: cudaPL1bitCorrelator
+          num_elements: num_dishes * num_polarizations
+          num_local_freq: num_frequencies
+          samples_per_data_set: n2k_samples_per_data_set
+          sub_integration_ntime: n2k_sub_integration_ntime
+          pl_expanded_mask_name: pl_expanded_mask
+          rfi_RFImask_name: rfi_RFImask
+          n2k_counts_name: n2k_counts
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: n2k_counts_buffer
+          out_buf: host_n2k_counts_buffer
+
+# Output buffers
+
+host_n2k_correlation_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_int32 * num_components * n2k_correlation_triangle_size * num_frequencies * n2k_num_subintegrations
+    metadata_pool: main_pool
+
+host_n2k_counts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_int32 * n2k_counts_triangle_size * num_frequencies * n2k_num_subintegrations
+    metadata_pool: main_pool
+
+
+#hex_dump:
+#    kotekan_stage: hexDump
+#    in_buf: network_input_buffer_transpose
+#    len: 128
+
+
+
