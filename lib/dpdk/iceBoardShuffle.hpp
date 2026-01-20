@@ -275,8 +275,8 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
         out_bufs[i]->register_producer(unique_name);
         /* new style array description */
         out_bufs[i]
-            ->allocate_new_frame_desc<kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type,
-                                      2>(
+            ->allocate_ndarray_frame_desc<
+                kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 2>(
                 "E", {ptrdiff_t(out_bufs[i]->frame_size) / sample_size, sample_size}, {"T", "E"});
     }
 
@@ -485,7 +485,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         meta->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */
-        meta->check_frame_desc(out_bufs[i]->get_frame_desc());
+        meta->check_frame_desc(out_bufs[i]->get_ndarray_frame_desc());
 
         // Print out the chordMetadata
         DEBUG("chordMetadata: seq: {:d} freq_id: {:d} dim[0]: {:d} dim[1]: {:d}",
@@ -535,10 +535,10 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     std::strncpy(meta->name, "lost_samples", sizeof meta->name);
     meta->set_strides_simple();
     /* new style array description */
-    lost_samples_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::uint8>::type, 1>(
+    lost_samples_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::uint8>::type, 1>(
         "lost_samples", {ptrdiff_t(lost_samples_buf->frame_size)}, {"T"});
     /* test that things are consistent */
-    meta->check_frame_desc(lost_samples_buf->get_frame_desc());
+    meta->check_frame_desc(lost_samples_buf->get_ndarray_frame_desc());
 
 
     return true;

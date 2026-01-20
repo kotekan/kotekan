@@ -47,6 +47,7 @@ FakeVis::FakeVis(Config& config, const std::string& unique_name,
     num_eigenvectors = config.get<size_t>(unique_name, "num_ev");
     sleep_before = config.get_default<float>(unique_name, "sleep_before", 0.0);
     sleep_after = config.get_default<float>(unique_name, "sleep_after", 1.0);
+    kill_on_complete = config.get_default<bool>(unique_name, "kill_on_complete", true);
 
     // Get the output buffer
     std::string buffer_name = config.get<std::string>(unique_name, "out_buf");
@@ -189,12 +190,14 @@ void FakeVis::main_thread() {
 
         // Cause kotekan to exit if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count >= (unsigned)num_frames) {
-            INFO("Reached frame limit [{:d} frames]. Sleeping and then exiting kotekan...",
-                 num_frames);
+            INFO("Reached frame limit [{:d} frames]. Sleeping and then {}...", num_frames,
+                 kill_on_complete ? "exiting kotekan" : "stopping FakeVis thread");
             timespec ts = double_to_ts(sleep_after);
             nanosleep(&ts, nullptr);
-            exit_kotekan(ReturnCode::CLEAN_EXIT);
-            return;
+            if (kill_on_complete) {
+                exit_kotekan(ReturnCode::CLEAN_EXIT);
+            }
+            break;
         }
 
         // If requested sleep for the extra time required to produce a fake vis

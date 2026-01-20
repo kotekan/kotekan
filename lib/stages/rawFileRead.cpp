@@ -37,6 +37,7 @@ rawFileRead::rawFileRead(Config& config, const std::string& unique_name,
 
     buf = get_buffer("buf");
     buf->register_producer(unique_name);
+
     base_dir = config.get<std::string>(unique_name, "base_dir");
     file_name = config.get<std::string>(unique_name, "file_name");
     file_ext = config.get<std::string>(unique_name, "file_ext");

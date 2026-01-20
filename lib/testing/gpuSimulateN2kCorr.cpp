@@ -108,7 +108,7 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
     // number of elements = number of dishes * polarizations
     int nt_inner = _sub_integration_ntime;
     int nt_outer = _samples_per_data_set / nt_inner;
-    output_buf->allocate_new_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
+    output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
         "n2k_correlation",
         {nt_outer, _num_local_freq, (_num_elements / 16) * (_num_elements / 16 + 1) / 2, 16, 16, 2},
         {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
@@ -283,7 +283,7 @@ void gpuSimulateN2kCorr::main_thread() {
 
         // frame_desc set in constructor
         /* test that things are consistent */
-        meta_out->check_frame_desc(output_buf->get_frame_desc());
+        meta_out->check_frame_desc(output_buf->get_ndarray_frame_desc());
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->set_time_downsampling_fpga(meta_in->get_time_downsampling_fpga()

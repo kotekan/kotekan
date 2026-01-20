@@ -41,6 +41,7 @@ add_library(
     freqSplit.cpp
     FreqSubset.cpp
     prodSubset.cpp
+    N2Subset.cpp
     countCheck.cpp
     visAccumulate.cpp
     visCompression.cpp
@@ -159,7 +160,8 @@ if(OpenMP_FOUND)
 endif()
 
 if(LAPACKE_FOUND AND BLAZE_FOUND)
-    target_sources(kotekan_stages PRIVATE eigenVis.cpp RingMapMaker.cpp EigenVisIter.cpp)
+    target_sources(kotekan_stages PRIVATE eigenVis.cpp RingMapMaker.cpp EigenVisIter.cpp
+                                          EigenN2Iter.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${LAPACKE_INCLUDE_DIRS} ${BLAZE_PATH})
     target_link_libraries(kotekan_stages PRIVATE ${LAPACKE_LIBRARIES})
     if(DEFINED OPENBLAS_EXTRA_LIB AND OPENBLAS_EXTRA_LIB)

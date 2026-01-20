@@ -67,6 +67,8 @@
  * @conf  sleep_after   Float. Sleep for this number of seconds after running
  *                      and before shutting down. Useful for allowing other
  *                      processes to finish. Default is 1s.
+ * @conf  kill_on_complete Bool. If true, call exit_kotekan when frame limit is reached.
+ *                         Defaults to true to preserve legacy behaviour.
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.
@@ -120,6 +122,9 @@ private:
 
     // How long to sleep before exiting.
     double sleep_after;
+
+    // Exit the whole process when the frame limit is reached.
+    bool kill_on_complete;
 
     /// Fill non vis components. A helper for the fill_mode functions.
     void fill_non_vis(VisFrameView& frame);

@@ -29,15 +29,15 @@
  * passes on a subset of products to an output ``VisBuffer``. The subset
  * extracted depends on the parameter 'prod_subset_type'. Here is a list of
  * values 'prod_subset_type' can take and the parameters they support:
- * - 'all': no extra arameters needed
+ * - 'all': no extra parameters needed
  *   - Default. All the products.
- * - 'autos': no extra arameters needed
+ * - 'autos': no extra parameters needed
  *   - The subset are all the auto-correlations.
  * - 'baseline': max_ew_baseline, max_ns_baseline
  *   - Selects a subset of products whose baseline length is smaller than the
  *   maximum values given by config parameters in the EW and NS directions.
  * - 'have_inputs': input_list
- *   - The subset are all the correlations containing at leat one of the
+ *   - The subset are all the correlations containing at least one of the
  *   inputs in the input_list.
  * - 'only_inputs': input_list
  *   - The subset are all the correlations containing only inputs from the

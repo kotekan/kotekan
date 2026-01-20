@@ -42,6 +42,16 @@ N2TimeDownsample::N2TimeDownsample(Config& config, const std::string& unique_nam
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
+    // Validate that input and output buffers have compatible N2 frame descriptors
+    auto in_desc = in_buf->get_frame_description();
+    auto out_desc = out_buf->get_frame_description();
+    if (!in_desc || !out_desc) {
+        FATAL_ERROR("N2TimeDownsample: Input and output buffers must have frame descriptors set");
+    }
+    if (*in_desc != *out_desc) {
+        FATAL_ERROR("N2TimeDownsample: Input and output buffer frame descriptors must match");
+    }
+
     // Get the number of bins per earth rotation (sidereal day)
     num_bins_per_rotation = config.get<uint32_t>(unique_name, "num_bins_per_rotation");
 

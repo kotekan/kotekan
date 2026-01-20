@@ -34,7 +34,7 @@ public:
     std::string get_unique_name() const;
 
     /**
-     * @brief Attempts to join the stage's @c main_thread with a tineout
+     * @brief Attempts to join the stage's @c main_thread with a timeout
      *
      * Should only be called after a call to @c stop()
      *

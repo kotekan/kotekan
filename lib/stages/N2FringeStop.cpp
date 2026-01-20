@@ -41,6 +41,16 @@ N2FringeStop::N2FringeStop(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
+    // Validate that input and output buffers have compatible N2 frame descriptors
+    auto in_desc = in_buf->get_frame_description();
+    auto out_desc = out_buf->get_frame_description();
+    if (!in_desc || !out_desc) {
+        FATAL_ERROR("N2FringeStop: Input and output buffers must have frame descriptors set");
+    }
+    if (*in_desc != *out_desc) {
+        FATAL_ERROR("N2FringeStop: Input and output buffer frame descriptors must match");
+    }
+
     fringestop_mode = config.get_default<int>(unique_name, "fringestop_mode", 1);
     num_rot_target = config.get_default<int>(unique_name, "num_rot_target", 9000);
     era_target_deg = config.get_default<double>(unique_name, "era_target_deg", 0.0);

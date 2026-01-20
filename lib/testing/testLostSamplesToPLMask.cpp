@@ -159,7 +159,7 @@ void testLostSamplesToPLMask::main_thread() {
             else
                 pl_mask_meta->stride[d] = pl_mask_meta->stride[d + 1] * pl_mask_meta->dim[d + 1];
 
-        pl_mask_buf->allocate_new_frame_desc<kotekan::GetType_t<kotekan::uint1x8>, 5>(
+        pl_mask_buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::uint1x8>, 5>(
             "pl_mask",
             {ptrdiff_t(lost_samples_bufs.at(0)->frame_size / PL_MASK_DOWNSAMPLING_FACTOR
                        / PL_MASK_HILO_SPLIT),
@@ -167,7 +167,7 @@ void testLostSamplesToPLMask::main_thread() {
              NUM_DISHES / PL_MASK_DISHES_PER_BIN,
              PL_MASK_HILO_SPLIT / BITS_PER_BYTE /* because we count uint1x8, not uint1 */},
             {"T2hi64", "F4", "P", "D8", "T2lo64"});
-        pl_mask_meta->check_frame_desc(pl_mask_buf->get_frame_desc());
+        pl_mask_meta->check_frame_desc(pl_mask_buf->get_ndarray_frame_desc());
 
         // done
         pl_mask_buf->mark_frame_full(unique_name, frame_id);
@@ -206,9 +206,9 @@ void testLostSamplesToPLMask::main_thread() {
             lost_samples_meta->dim[0] = lost_samples_bufs.at(0)->frame_size;
             lost_samples_meta->stride[0] = 1;
 
-            lost_samples_buf->allocate_new_frame_desc<kotekan::GetType_t<kotekan::uint8>, 1>(
+            lost_samples_buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::uint8>, 1>(
                 "lost_samples", {ptrdiff_t(lost_samples_bufs.at(0)->frame_size)}, {"T"});
-            lost_samples_meta->check_frame_desc(lost_samples_buf->get_frame_desc());
+            lost_samples_meta->check_frame_desc(lost_samples_buf->get_ndarray_frame_desc());
 
             // done
             lost_samples_buf->mark_frame_full(unique_name, frame_id);

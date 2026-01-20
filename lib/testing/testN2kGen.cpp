@@ -178,14 +178,14 @@ std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID
 }
 
 void testN2kGen::allocate_correlation_frame_desc(Buffer* buf) {
-    buf->allocate_new_frame_desc(
+    buf->allocate_ndarray_frame_desc(
         kotekan::int32, "n2k_correlation",
         {num_integrations, num_local_freq, corr_num_blocks, corr_blocksize, corr_blocksize, 2},
         {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
 }
 
 void testN2kGen::allocate_counts_frame_desc(Buffer* buf) {
-    buf->allocate_new_frame_desc(
+    buf->allocate_ndarray_frame_desc(
         kotekan::int32, "n2k_counts",
         {num_integrations, num_local_freq, count_num_blocks, count_blocksize, count_blocksize},
         {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
@@ -317,8 +317,8 @@ void testN2kGen::main_thread() {
         set_counts_metadata(count_meta, seq_num);
 
         // check frame descriptors match metadata
-        corr_meta->check_frame_desc(corr_buf->get_frame_desc());
-        count_meta->check_frame_desc(count_buf->get_frame_desc());
+        corr_meta->check_frame_desc(corr_buf->get_ndarray_frame_desc());
+        count_meta->check_frame_desc(count_buf->get_ndarray_frame_desc());
 
         // block, freq, and time strides for access into the
         // correlation and counts buffers
