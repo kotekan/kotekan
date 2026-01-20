@@ -78,7 +78,7 @@ void lostSamplesToPLMask::main_thread() {
         uint8_t* pl_mask_frame =
             pl_mask_buf->wait_for_empty_frame(unique_name, pl_mask_buf_frame_id);
         if (pl_mask_frame == nullptr)
-            break;
+            return;
         pl_mask_buf->allocate_new_metadata_object(pl_mask_buf_frame_id);
         auto pl_mask_meta = get_chord_metadata(pl_mask_buf, pl_mask_buf_frame_id);
 
@@ -87,7 +87,7 @@ void lostSamplesToPLMask::main_thread() {
             uint8_t* flag_frame =
                 lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_buf_frame_id);
             if (flag_frame == nullptr)
-                break;
+                return;
 
             // constant for all iterations but only set by the producer before
             // it marks the frame as full, so cannot be checked before the first
@@ -160,27 +160,13 @@ void lostSamplesToPLMask::main_thread() {
                         pl_mask_meta->stride[d] =
                             pl_mask_meta->stride[d + 1] * pl_mask_meta->dim[d + 1];
 
-                // add metadata that DPDK does not add
-
-                pl_mask_meta->set_offset_downsampling(PL_MASK_DOWNSAMPLING_FACTOR
-                                                      * PL_MASK_HILO_SPLIT);
-
-                const std::vector<int> freq_upchan_factor(PL_MASK_FREQS_PER_BIN,
-                                                          1); // we want 1/4 but we cannot
-                pl_mask_meta->set_freq_upchan_factor(freq_upchan_factor);
-
-                const std::vector<int64_t> half_fpga_sample0(
-                    PL_MASK_FREQS_PER_BIN, PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT / 2);
-                pl_mask_meta->set_half_fpga_sample0(half_fpga_sample0);
-
-                const std::vector<int> time_downsampling_fpga(
-                    PL_MASK_FREQS_PER_BIN, PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT);
-                pl_mask_meta->set_time_downsampling_fpga(time_downsampling_fpga);
+                // update metadata
+                pl_mask_meta->set_time_downsampling_fpga(pl_mask_meta->get_time_downsampling_fpga()
+                                                         * PL_MASK_DOWNSAMPLING_FACTOR
+                                                         * PL_MASK_HILO_SPLIT);
 
                 // TODO: do I need to set frame_counter? The FEngine does.
                 // pl_mask_meta->set_frame_counter(E_frame_index);
-                // one the other hand, FEngine does not set fpga_seq_num, but
-                // DPDK does
             } else {
                 const auto lost_samples_coarse_freq = lost_samples_meta->get_coarse_freq();
                 auto pl_mask_coarse_freq = pl_mask_meta->get_coarse_freq();
@@ -189,29 +175,13 @@ void lostSamplesToPLMask::main_thread() {
                                            lost_samples_coarse_freq.end());
                 pl_mask_meta->set_coarse_freq(pl_mask_coarse_freq);
 
-                const std::vector<int> freq_upchan_factor(PL_MASK_FREQS_PER_BIN,
-                                                          1); // we want 1/4 but we cannot
+                const auto lost_samples_freq_upchan_factor =
+                    lost_samples_meta->get_freq_upchan_factor();
                 auto pl_mask_freq_upchan_factor = pl_mask_meta->get_freq_upchan_factor();
                 pl_mask_freq_upchan_factor.insert(pl_mask_freq_upchan_factor.end(),
-                                                  freq_upchan_factor.begin(),
-                                                  freq_upchan_factor.end());
+                                                  lost_samples_freq_upchan_factor.begin(),
+                                                  lost_samples_freq_upchan_factor.end());
                 pl_mask_meta->set_freq_upchan_factor(pl_mask_freq_upchan_factor);
-
-                const std::vector<int64_t> half_fpga_sample0(
-                    PL_MASK_FREQS_PER_BIN, PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT / 2);
-                auto pl_mask_half_fpga_sample0 = pl_mask_meta->get_half_fpga_sample0();
-                pl_mask_half_fpga_sample0.insert(pl_mask_half_fpga_sample0.end(),
-                                                 half_fpga_sample0.begin(),
-                                                 half_fpga_sample0.end());
-                pl_mask_meta->set_half_fpga_sample0(pl_mask_half_fpga_sample0);
-
-                const std::vector<int> time_downsampling_fpga(
-                    PL_MASK_FREQS_PER_BIN, PL_MASK_DOWNSAMPLING_FACTOR * PL_MASK_HILO_SPLIT);
-                auto pl_mask_time_downsampling_fpga = pl_mask_meta->get_time_downsampling_fpga();
-                pl_mask_time_downsampling_fpga.insert(pl_mask_time_downsampling_fpga.end(),
-                                                      time_downsampling_fpga.begin(),
-                                                      time_downsampling_fpga.end());
-                pl_mask_meta->set_time_downsampling_fpga(pl_mask_time_downsampling_fpga);
             }
 
             lost_samples_buf->mark_frame_empty(unique_name, lost_samples_buf_frame_id);

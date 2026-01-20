@@ -1,28 +1,26 @@
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for string_to_type, type_to_string, DataType
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "cpl_error.h"         // for CPLErr
-#include "cpl_port.h"          // for GUInt64
-#include "gdalFiles.hpp"       // for get_gdal_datatype, chord_metadata_version
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
-#include "metadata.hpp"        // for metadataObject
-
-#include "fmt.hpp" // for compile_string_to_view
-
+#include <Config.hpp>            // for Config
+#include <DataType.hpp>          // for string_to_type, type_to_string, DataType
 #include <Stage.hpp>             // for Stage
 #include <StageFactory.hpp>      // for REGISTER_KOTEKAN_STAGE
 #include <array>                 // for array
+#include <buffer.hpp>            // for Buffer
+#include <bufferContainer.hpp>   // for bufferContainer
 #include <cassert>               // for assert
 #include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, get_chord_metadata
+#include <cpl_error.h>           // for CPLErr
+#include <cpl_port.h>            // for GUInt64
 #include <cstddef>               // for ptrdiff_t, size_t
 #include <cstdint>               // for int64_t, uint8_t
 #include <cstring>               // for strncpy
+#include <fmt.hpp>               // for compile_string_to_view
 #include <functional>            // for function
 #include <gdal.h>                // for GDALOpenEx, GEDTC_STRING, GDALAllRegister, GDAL_OF_MULT...
+#include <gdalFiles.hpp>         // for get_gdal_datatype, chord_metadata_version
 #include <gdal_priv.h>           // for GDALAttribute, GDALGroup, GDALMDArray, GDALDataset, GDA...
 #include <iomanip>               // for operator<<, setfill, setw
+#include <kotekanLogging.hpp>    // for DEBUG, FATAL_ERROR, INFO
 #include <memory>                // for shared_ptr, __shared_ptr_access, allocator, unique_ptr
+#include <metadata.hpp>          // for metadataObject
 #include <mutex>                 // for call_once, once_flag
 #include <prometheusMetrics.hpp> // for Metrics, Gauge
 #include <sstream>               // for basic_ostream, operator<<, basic_ostringstream, basic_o...
@@ -198,56 +196,24 @@ public:
             }
 
             {
-                const auto sample0_offset = group->GetAttribute("sample0_offset");
-                if (sample0_offset) {
-                    const auto sample0_offset_shape = sample0_offset->GetDimensionsSize();
-                    assert(sample0_offset_shape.empty());
+                const auto fpga_seq_num = group->GetAttribute("fpga_seq_num");
+                if (fpga_seq_num) {
+                    const auto fpga_seq_num_shape = fpga_seq_num->GetDimensionsSize();
+                    assert(fpga_seq_num_shape.empty());
                     // Cannot read int64_t directly yet...
-                    meta->set_sample0_offset(sample0_offset->ReadAsDouble());
-                    assert(meta->get_sample0_offset() >= 0);
-                }
-            }
-
-            {
-                const auto offset_downsampling = group->GetAttribute("offset_downsampling");
-                if (offset_downsampling) {
-                    const auto offset_downsampling_shape = offset_downsampling->GetDimensionsSize();
-                    assert(offset_downsampling_shape.empty());
-                    meta->set_offset_downsampling(offset_downsampling->ReadAsInt());
-                    assert(meta->get_offset_downsampling() > 0);
-                }
-            }
-
-            {
-                const auto half_fpga_sample0 = group->GetAttribute("half_fpga_sample0");
-                assert((meta->get_nfreq() >= 0) == bool(half_fpga_sample0));
-                if (half_fpga_sample0) {
-                    const auto coarse_nfreqs_shape = half_fpga_sample0->GetDimensionsSize();
-                    assert(coarse_nfreqs_shape.size() == 1);
-                    assert(std::ptrdiff_t(coarse_nfreqs_shape.at(0)) == meta->get_nfreq());
-                    // Cannot read int64_t directly yet...
-                    const auto half_fpga_sample0_data = half_fpga_sample0->ReadAsDoubleArray();
-                    assert(std::ptrdiff_t(half_fpga_sample0_data.size()) == meta->get_nfreq());
-                    std::vector<int64_t> half_fpga_sample0_int64_data(
-                        half_fpga_sample0_data.size());
-                    for (size_t i = 0; i < half_fpga_sample0_data.size(); ++i) {
-                        half_fpga_sample0_int64_data[i] = half_fpga_sample0_data[i];
-                    }
-                    meta->set_half_fpga_sample0(half_fpga_sample0_int64_data);
+                    meta->set_fpga_seq_num(fpga_seq_num->ReadAsDouble());
+                    assert(meta->get_fpga_seq_num() >= 0);
                 }
             }
 
             {
                 const auto time_downsampling_fpga = group->GetAttribute("time_downsampling_fpga");
-                assert((meta->get_nfreq() >= 0) == bool(time_downsampling_fpga));
                 if (time_downsampling_fpga) {
-                    const auto coarse_nfreqs_shape = time_downsampling_fpga->GetDimensionsSize();
-                    assert(coarse_nfreqs_shape.size() == 1);
-                    assert(std::ptrdiff_t(coarse_nfreqs_shape.at(0)) == meta->get_nfreq());
-                    const auto time_downsampling_fpga_data =
-                        time_downsampling_fpga->ReadAsIntArray();
-                    assert(std::ptrdiff_t(time_downsampling_fpga_data.size()) == meta->get_nfreq());
-                    meta->set_time_downsampling_fpga(time_downsampling_fpga_data);
+                    const auto time_downsampling_fpga_shape =
+                        time_downsampling_fpga->GetDimensionsSize();
+                    assert(time_downsampling_fpga_shape.empty());
+                    meta->set_time_downsampling_fpga(time_downsampling_fpga->ReadAsInt());
+                    assert(meta->get_time_downsampling_fpga() > 0);
                 }
             }
 

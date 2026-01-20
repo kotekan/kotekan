@@ -1,19 +1,19 @@
 #ifndef KOTEKAN_CUDA_CORRELATOR_H
 #define KOTEKAN_CUDA_CORRELATOR_H
 
-#include "Config.hpp"          // for Config
-#include "bufferContainer.hpp" // for bufferContainer
-#include "driver_types.h"      // for cudaEvent_t
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for int4x2_swapped_withoffset_t
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
+#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "driver_types.h"          // for cudaEvent_t
+#include "n2k/Correlator.hpp"      // for Correlator
 
-#include <DataType.hpp>            // for int4x2_swapped_withoffset_t
-#include <NDArrayBuffer.hpp>       // for NDArrayBuffer
-#include <NDArrayRingBuffer.hpp>   // for NDArrayRingBuffer
-#include <cstdint>                 // for int32_t, uint32_t
-#include <cudaCommand.hpp>         // for cudaCommand, cudaPipelineState
-#include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
-#include <n2k/Correlator.hpp>      // for Correlator
-#include <string>                  // for string, basic_string
-#include <vector>                  // for vector
+#include <cstdint> // for int32_t, uint32_t
+#include <string>  // for string, basic_string
+#include <vector>  // for vector
 
 /**
  * @class cudaCorrelator
@@ -101,6 +101,9 @@ private:
 
     /// Name for the correlation output
     const std::string _n2k_correlation_name;
+
+    /// Whether to poison the output buffers
+    const bool _poison_buffers;
 
     /// Signaling ring buffer for the input (voltage) data.
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;

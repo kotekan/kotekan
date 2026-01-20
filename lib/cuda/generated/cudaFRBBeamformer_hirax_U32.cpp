@@ -6,22 +6,23 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
-#include <NDArrayRingBuffer.hpp>
+#include "DataType.hpp"
+#include "NDArrayBuffer.hpp"
+#include "NDArrayRingBuffer.hpp"
+#include "bufferContainer.hpp"
+#include "chordMetadata.hpp"
+#include "cudaCommand.hpp"
+#include "cudaDeviceInterface.hpp"
+#include "div.hpp"
+#include "ringbuffer.hpp"
+
 #include <algorithm>
 #include <array>
-#include <bufferContainer.hpp>
 #include <cassert>
-#include <chordMetadata.hpp>
 #include <cstring>
-#include <cudaCommand.hpp>
-#include <cudaDeviceInterface.hpp>
-#include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
 #include <memory>
-#include <ringbuffer.hpp>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -38,7 +39,7 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
         result[d] = values[D - 1 - d];
     return result;
 }
-} // namespace
+}
 
 /**
  * @class cudaFRBBeamformer_hirax_U32
@@ -354,6 +355,8 @@ private:
                             <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
+    const bool poison_buffers;
+
     // Kotekan buffer names
     const std::string S_name;
     const std::string W_name;
@@ -390,6 +393,8 @@ cudaFRBBeamformer_hirax_U32::cudaFRBBeamformer_hirax_U32(Config& config,
     Fbar_in_max(config.get<int>(unique_name, "Fbar_in_max")),
     Fbar_out_min(config.get<int>(unique_name, "Fbar_out_min")),
     Fbar_out_max(config.get<int>(unique_name, "Fbar_out_max")),
+
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
     S_name(unique_name + "/frb_dishlayout_name"),
     W_name(config.get<std::string>(unique_name, "frb_phase_name")),
@@ -550,24 +555,23 @@ cudaEvent_t cudaFRBBeamformer_hirax_U32::execute(cudaPipelineState& /*pipestate*
 
     const auto Ebar_meta = Ebar_buffer.get_metadata();
     assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-    assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
-    assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
+    assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_M);
+    assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_N);
     assert(Ebar_meta->dish_index);
 
     auto I_meta = I_buffer.get_metadata();
-    assert(I_meta->get_nfreq() >= 0);
-    assert(I_meta->get_nfreq() == Ebar_meta->get_nfreq());
+    const auto nfreq = I_meta->get_nfreq();
+    assert(nfreq >= 0);
+    assert(nfreq == Ebar_meta->get_nfreq());
     auto freq_upchan_factor = I_meta->get_freq_upchan_factor();
-    auto time_downsampling_fpga = I_meta->get_time_downsampling_fpga();
-    assert(freq_upchan_factor.size() == static_cast<size_t>(I_meta->get_nfreq()));
-    assert(time_downsampling_fpga.size() == static_cast<size_t>(I_meta->get_nfreq()));
-    for (int freq = 0; freq < I_meta->get_nfreq(); ++freq) {
-        freq_upchan_factor[freq] *= cuda_downsampling_factor;
-        time_downsampling_fpga[freq] *= cuda_downsampling_factor;
-    }
+    assert(freq_upchan_factor.size() == static_cast<size_t>(nfreq));
+    for (int freq = 0; freq < nfreq; ++freq)
+        freq_upchan_factor.at(freq) *= cuda_downsampling_factor;
     I_meta->set_freq_upchan_factor(freq_upchan_factor);
+    auto time_downsampling_fpga = I_meta->get_time_downsampling_fpga();
+    time_downsampling_fpga *= cuda_downsampling_factor;
     I_meta->set_time_downsampling_fpga(time_downsampling_fpga);
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
+    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
 
     const char* exc_arg = "exception";
     std::int32_t Tbar_min_arg;
@@ -646,7 +650,7 @@ cudaEvent_t cudaFRBBeamformer_hirax_U32::execute(cudaPipelineState& /*pipestate*
         int surplus_dish_index = cuda_number_of_dishes;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                int dish_index = Ebar_meta->get_dish_index(locN, locM);
+                int dish_index = Ebar_meta->get_dish_index(locM, locN);
                 if (dish_index >= 0) {
                     // This location holds a real dish, record its location
                     S[2 * dish_index + 0] = locM;
@@ -672,15 +676,15 @@ cudaEvent_t cudaFRBBeamformer_hirax_U32::execute(cudaPipelineState& /*pipestate*
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, host_S_buffer.data(), S_length_in_bytes,
                                          cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 
-    // We do not write all frequencies
-    I_buffer.set_to_poison(0xff, Fbar_out_min, Fbar_out_max); // 0xffff is NaN16
-    info_buffer.set_to_poison(0xff);
+    if (poison_buffers) {
+        // We do not write all frequencies
+        I_buffer.set_to_poison(0xff, Fbar_out_min, Fbar_out_max); // 0xffff is NaN16
+        info_buffer.set_to_poison(0xff);
 
-#ifdef DEBUGGING
-    // Initialize host-side buffer arrays
-    CHECK_CUDA_ERROR(
-        cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes, device.getStream(cuda_stream_id)));
-#endif
+        // Initialize host-side buffer arrays
+        CHECK_CUDA_ERROR(cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes,
+                                         device.getStream(cuda_stream_id)));
+    } // if (poison_buffers)
 
     const std::string symname = "FRBBeamformer_hirax_U32_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
@@ -697,44 +701,44 @@ cudaEvent_t cudaFRBBeamformer_hirax_U32::execute(cudaPipelineState& /*pipestate*
         ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
-#ifdef DEBUGGING
-    // Copy results back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
-                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+    if (poison_buffers) {
+        // Copy results back to host memory
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
+                                         cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+        CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 
-    // Check error codes
-    const std::uint32_t error_code = *std::max_element(
-        (const std::uint32_t*)&host_info_buffer[0],
-        (const std::uint32_t*)&host_info_buffer[blocks * info_lengths[info_index_warp]
-                                                * info_lengths[info_index_thread]]);
-    if (error_code != 0)
-        ERROR("CUDA kernel FRBBeamformer_hirax_U32 returned error code: {}", error_code);
+        // Check error codes
+        const std::uint32_t error_code = *std::max_element(
+            (const std::uint32_t*)&host_info_buffer[0],
+            (const std::uint32_t*)&host_info_buffer[blocks * info_lengths[info_index_warp]
+                                                    * info_lengths[info_index_thread]]);
+        if (error_code != 0)
+            ERROR("CUDA kernel FRBBeamformer_hirax_U32 returned error code: {}", error_code);
 
-    if (error_code != 0) {
-        // TODO: Introduce a new "unbuffered" buffer; do this there
-        // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
-        for (int block = 0; block < blocks; ++block) {
-            for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
-                for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
-                    const std::ptrdiff_t i = info_strides[info_index_thread] * thread
-                                             + info_strides[info_index_warp] * warp
-                                             + info_strides[info_index_block] * block;
-                    const std::uint32_t val = host_info_buffer.data()[i];
-                    if (val != 0)
-                        ERROR("CUDA kernel FRBBeamformer_hirax_U32 returned 'info' value {:d} "
-                              "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates "
-                              "no error)",
-                              val, thread, warp, block, i);
+        if (error_code != 0) {
+            // TODO: Introduce a new "unbuffered" buffer; do this there
+            // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
+            for (int block = 0; block < blocks; ++block) {
+                for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+                    for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                        const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                                 + info_strides[info_index_warp] * warp
+                                                 + info_strides[info_index_block] * block;
+                        const std::uint32_t val = host_info_buffer.data()[i];
+                        if (val != 0)
+                            ERROR("CUDA kernel FRBBeamformer_hirax_U32 returned 'info' value {:d} "
+                                  "for thread {:d} warp {:d} block {:d} at index {:d} (zero "
+                                  "indicates no error)",
+                                  val, thread, warp, block, i);
+                    }
                 }
             }
         }
-    }
-#endif
 
-    // We do not write all frequencies
-    I_buffer.check_for_poison(0xff, Fbar_out_min, Fbar_out_max); // 0xffff is NaN16
+        // We do not write all frequencies
+        I_buffer.check_for_poison(0xff, Fbar_out_min, Fbar_out_max); // 0xffff is NaN16
+    } // if (poison_buffers)
 
     return record_end_event();
 }

@@ -143,10 +143,8 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState&, const std::vector<cuda
         DEBUG("cudaUpchannelize: output array shape: {:s}", meta_out->get_dimensions_string());
         for (int i = 0; i < meta_in->nfreq; i++) {
             meta_out->freq_upchan_factor[i] *= _upchan_factor;
-            // TODO -- compute this complicated quantity!!!
-            // meta_out->half_fpga_sample0[i] = ;
-            meta_out->time_downsampling_fpga[i] *= _upchan_factor;
         }
+        meta_out->time_downsampling_fpga *= _upchan_factor;
     }
 
     record_start_event();

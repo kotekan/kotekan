@@ -6,18 +6,19 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
-#include <NDArrayRingBuffer.hpp>
+#include "DataType.hpp"
+#include "NDArrayBuffer.hpp"
+#include "NDArrayRingBuffer.hpp"
+#include "bufferContainer.hpp"
+#include "chordMetadata.hpp"
+#include "cudaCommand.hpp"
+#include "cudaDeviceInterface.hpp"
+#include "div.hpp"
+
 #include <algorithm>
 #include <array>
-#include <bufferContainer.hpp>
 #include <cassert>
-#include <chordMetadata.hpp>
 #include <cstring>
-#include <cudaCommand.hpp>
-#include <cudaDeviceInterface.hpp>
-#include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
 #include <stdexcept>
@@ -36,7 +37,7 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
         result[d] = values[D - 1 - d];
     return result;
 }
-} // namespace
+}
 
 /**
  * @class cudaUpchannelizer_pathfinder_U2
@@ -269,6 +270,8 @@ private:
     static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
+    const bool poison_buffers;
+
     // Kotekan buffer names
     const std::string G_name;
     const std::string E_name;
@@ -296,6 +299,8 @@ cudaUpchannelizer_pathfinder_U2::cudaUpchannelizer_pathfinder_U2(Config& config,
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "Upchannelizer_pathfinder_U2", "Upchannelizer_pathfinder_U2.ptx"),
     Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")),
+
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
     G_name(config.get<std::string>(unique_name, "upchan_U2_gain_name")),
     E_name(config.get<std::string>(unique_name, "voltage_name")),
@@ -404,7 +409,21 @@ cudaUpchannelizer_pathfinder_U2::execute(cudaPipelineState& /*pipestate*/,
     E_buffer.check_metadata();
     Ebar_buffer.set_metadata(E_buffer.get_metadata());
 
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
+    const auto E_meta = E_buffer.get_metadata();
+    auto Ebar_meta = Ebar_buffer.get_metadata();
+    const auto nfreq = Ebar_meta->get_nfreq();
+    assert(nfreq >= 0);
+    assert(nfreq == E_meta->get_nfreq());
+    auto freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
+    assert(freq_upchan_factor.size() == static_cast<size_t>(nfreq));
+    for (int freq = 0; freq < nfreq; ++freq)
+        freq_upchan_factor.at(freq) *= cuda_upchannelization_factor;
+    Ebar_meta->set_freq_upchan_factor(freq_upchan_factor);
+    auto time_downsampling_fpga = Ebar_meta->get_time_downsampling_fpga();
+    time_downsampling_fpga *= cuda_upchannelization_factor;
+    Ebar_meta->set_time_downsampling_fpga(time_downsampling_fpga);
+
+    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
 
     const char* exc_arg = "exception";
     std::int32_t T_min_arg;
@@ -456,14 +475,14 @@ cudaUpchannelizer_pathfinder_U2::execute(cudaPipelineState& /*pipestate*/,
 
     // Copy inputs to device memory
 
-    Ebar_buffer.set_to_poison(0x00, 0, Fmax - Fmin);
-    info_buffer.set_to_poison(0xff);
+    if (poison_buffers) {
+        Ebar_buffer.set_to_poison(0x00, 0, Fmax - Fmin);
+        info_buffer.set_to_poison(0xff);
 
-#ifdef DEBUGGING
-    // Initialize host-side buffer arrays
-    CHECK_CUDA_ERROR(
-        cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes, device.getStream(cuda_stream_id)));
-#endif
+        // Initialize host-side buffer arrays
+        CHECK_CUDA_ERROR(cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes,
+                                         device.getStream(cuda_stream_id)));
+    } // if (poison_buffers)
 
     const std::string symname = "Upchannelizer_pathfinder_U2_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
@@ -480,43 +499,44 @@ cudaUpchannelizer_pathfinder_U2::execute(cudaPipelineState& /*pipestate*/,
         ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
-#ifdef DEBUGGING
-    // Copy results back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
-                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+    if (poison_buffers) {
+        // Copy results back to host memory
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
+                                         cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+        CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 
-    // Check error codes
-    const std::uint32_t error_code = *std::max_element(
-        (const std::uint32_t*)&host_info_buffer[0],
-        (const std::uint32_t*)&host_info_buffer[blocks * info_lengths[info_index_warp]
-                                                * info_lengths[info_index_thread]]);
-    if (error_code != 0)
-        ERROR("CUDA kernel Upchannelizer_pathfinder_U2 returned error code: {}", error_code);
+        // Check error codes
+        const std::uint32_t error_code = *std::max_element(
+            (const std::uint32_t*)&host_info_buffer[0],
+            (const std::uint32_t*)&host_info_buffer[blocks * info_lengths[info_index_warp]
+                                                    * info_lengths[info_index_thread]]);
+        if (error_code != 0)
+            ERROR("CUDA kernel Upchannelizer_pathfinder_U2 returned error code: {}", error_code);
 
-    if (error_code != 0) {
-        // TODO: Introduce a new "unbuffered" buffer; do this there
-        // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
-        for (int block = 0; block < blocks; ++block) {
-            for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
-                for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
-                    const std::ptrdiff_t i = info_strides[info_index_thread] * thread
-                                             + info_strides[info_index_warp] * warp
-                                             + info_strides[info_index_block] * block;
-                    const std::uint32_t val = host_info_buffer.data()[i];
-                    if (val != 0)
-                        ERROR("CUDA kernel Upchannelizer_pathfinder_U2 returned 'info' value {:d} "
-                              "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates "
-                              "no error)",
-                              val, thread, warp, block, i);
+        if (error_code != 0) {
+            // TODO: Introduce a new "unbuffered" buffer; do this there
+            // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
+            for (int block = 0; block < blocks; ++block) {
+                for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+                    for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                        const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                                 + info_strides[info_index_warp] * warp
+                                                 + info_strides[info_index_block] * block;
+                        const std::uint32_t val = host_info_buffer.data()[i];
+                        if (val != 0)
+                            ERROR("CUDA kernel Upchannelizer_pathfinder_U2 returned 'info' value "
+                                  "{:d} "
+                                  "for thread {:d} warp {:d} block {:d} at index {:d} (zero "
+                                  "indicates no error)",
+                                  val, thread, warp, block, i);
+                    }
                 }
             }
         }
-    }
-#endif
 
-    Ebar_buffer.check_for_poison(0x00, 0, Fmax - Fmin);
+        Ebar_buffer.check_for_poison(0x00, 0, Fmax - Fmin);
+    } // if (poison_buffers)
 
     return record_end_event();
 }

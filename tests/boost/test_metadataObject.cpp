@@ -38,25 +38,13 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata) {
     meta0.set_rfi_flagged_samples(10090);
     meta0.set_lost_timesamples(18427);
 
-    meta0.set_sample0_offset(1754);
-    meta0.set_offset_downsampling(25002);
-
     std::vector<int> freq_upchan_factor = {
         44, 58, 17, 27,  834, 74, 647, 195, 491, 772, 55,
         30, 55, 86, 867, 997, 89, 733, 493, 913, 602, 23,
     };
     meta0.set_freq_upchan_factor(freq_upchan_factor);
 
-    std::vector<int64_t> half_fpga_sample0 = {
-        11285, 21289, 32044, 6303,  8811,  14202, 27046, 27684, 12682, 28017, 23637,
-        10859, 12849, 24577, 26354, 13060, 24701, 25516, 8460,  5749,  30808, 11264,
-    };
-    meta0.set_half_fpga_sample0(half_fpga_sample0);
-
-    std::vector<int> time_downsampling_fpga = {
-        47, 32, 42, 33, 45, 8, 9, 14, 5, 18, 19, 10, 49, 21, 39, 30, 41, 35, 1, 12, 21, 33,
-    };
-    meta0.set_time_downsampling_fpga(time_downsampling_fpga);
+    meta0.set_time_downsampling_fpga(47);
 
     timeval tv = {17863, 341};
     meta0.set_first_packet_recv_time(tv);
