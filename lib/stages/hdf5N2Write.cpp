@@ -164,8 +164,8 @@ std::optional<N2FileData::DigitalGains> N2FileData::_get_digital_gains() const {
     // Assume the most recent directory was used
     // (TODO: use API instead)
     if (dir_list.empty()) {
-        ERROR_NON_OO("No baseband gains directories found in {}, cannot read digital gains.",
-                     gains_base_directory);
+        FATAL_ERROR_NON_OO("No baseband gains directories found in {}, cannot read digital gains.",
+                           gains_base_directory);
         return std::nullopt;
     }
     std::filesystem::path latest_dir = dir_list.back();
@@ -173,7 +173,7 @@ std::optional<N2FileData::DigitalGains> N2FileData::_get_digital_gains() const {
     // Gains file should be named "gains.hdf5" in this directory
     std::filesystem::path gains_path = latest_dir / "gains.hdf5";
     if (!std::filesystem::exists(gains_path)) {
-        ERROR_NON_OO("Digital gains file {} does not exist.", gains_path.string());
+        FATAL_ERROR_NON_OO("Digital gains file {} does not exist.", gains_path.string());
         return std::nullopt;
     }
 
@@ -183,21 +183,24 @@ std::optional<N2FileData::DigitalGains> N2FileData::_get_digital_gains() const {
         gains_file =
             std::make_unique<HighFive::File>(gains_path.string(), HighFive::File::ReadOnly);
     } catch (const HighFive::Exception& e) {
-        ERROR_NON_OO("Failed to open digital gains file {}: {}", gains_path.string(), e.what());
+        FATAL_ERROR_NON_OO("Failed to open digital gains file {}: {}", gains_path.string(),
+                           e.what());
         return std::nullopt;
     }
     // Verify two vectors named "gains_lin" and "gains_log" exist
     if (!gains_file->exist("gains_lin") || !gains_file->exist("gains_log")) {
-        ERROR_NON_OO("Digital gains file {} does not contain required datasets 'gains_lin' and "
-                     "'gains_log'.",
-                     gains_path.string());
+        FATAL_ERROR_NON_OO(
+            "Digital gains file {} does not contain required datasets 'gains_lin' and "
+            "'gains_log'.",
+            gains_path.string());
         return std::nullopt;
     }
     if (gains_file->getObjectType("gains_lin") != HighFive::ObjectType::Dataset
         || gains_file->getObjectType("gains_log") != HighFive::ObjectType::Dataset) {
-        ERROR_NON_OO("Digital gains file {} does not contain required datasets 'gains_lin' and "
-                     "'gains_log' as datasets.",
-                     gains_path.string());
+        FATAL_ERROR_NON_OO(
+            "Digital gains file {} does not contain required datasets 'gains_lin' and "
+            "'gains_log' as datasets.",
+            gains_path.string());
         return std::nullopt;
     }
     // Verify datasets are of type uint16_t
@@ -205,8 +208,8 @@ std::optional<N2FileData::DigitalGains> N2FileData::_get_digital_gains() const {
     auto ds_log_type = gains_file->getDataSet("gains_log").getDataType();
     HighFive::AtomicType<std::uint16_t> expected_uint16_type;
     if (ds_lin_type != expected_uint16_type || ds_log_type != expected_uint16_type) {
-        ERROR_NON_OO("Digital gains datasets in file {} are not of type uint16_t!",
-                     gains_path.string());
+        FATAL_ERROR_NON_OO("Digital gains datasets in file {} are not of type uint16_t!",
+                           gains_path.string());
         return std::nullopt;
     }
     // Read datasets into vectors
@@ -218,8 +221,8 @@ std::optional<N2FileData::DigitalGains> N2FileData::_get_digital_gains() const {
         auto ds_log = gains_file->getDataSet("gains_log");
         ds_log.read(gains_log);
     } catch (const HighFive::Exception& e) {
-        ERROR_NON_OO("Failed to read digital gains datasets from file {}: {}", gains_path.string(),
-                     e.what());
+        FATAL_ERROR_NON_OO("Failed to read digital gains datasets from file {}: {}",
+                           gains_path.string(), e.what());
         return std::nullopt;
     }
 
@@ -500,17 +503,24 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               HighFive::create_datatype<double>(), props_empty);
 
         // Digital gains
-        std::optional<DigitalGains> gains_data = _get_digital_gains();
-        if (!gains_data) {
-            FATAL_ERROR_NON_OO("Failed to read digital gains! Will try again on file close.");
+        if (!gains_base_directory.empty()) {
+            std::optional<DigitalGains> gains_data = _get_digital_gains();
+            if (!gains_data) {
+                FATAL_ERROR_NON_OO("Failed to read digital gains! Will try again on file close.");
+            } else {
+                _check_create_attribute(*file, "digital_gains_source_file",
+                                        gains_data->full_filepath);
+
+                _check_create_dataset(*file, "/digital_gains/gains_lin",
+                                      {gains_data->gains_lin.size()}, {"input"},
+                                      HighFive::create_datatype<uint16_t>(), props_empty);
+
+                _check_create_dataset(*file, "/digital_gains/gains_log",
+                                      {gains_data->gains_log.size()}, {"input"},
+                                      HighFive::create_datatype<uint16_t>(), props_empty);
+            }
         } else {
-            _check_create_attribute(*file, "digital_gains_source_file", gains_data->full_filepath);
-
-            _check_create_dataset(*file, "/digital_gains/gains_lin", {gains_data->gains_lin.size()},
-                                  {"input"}, HighFive::create_datatype<uint16_t>(), props_empty);
-
-            _check_create_dataset(*file, "/digital_gains/gains_log", {gains_data->gains_log.size()},
-                                  {"input"}, HighFive::create_datatype<uint16_t>(), props_empty);
+            DEBUG_NON_OO("No gains_base_directory specified, skipping digital gains.");
         }
 
         return file;
@@ -807,39 +817,43 @@ bool N2FileData::flush_to_disk() {
     }
 
     // Check and write digital gains
-    std::optional<DigitalGains> gains_data = _get_digital_gains();
-    if (!gains_data) {
-        FATAL_ERROR_NON_OO("Failed to read digital gains! Gains datasets not updated.");
-        has_error = true;
-    } else {
-        if (gains_data->full_filepath
-            != h5_file->getAttribute("digital_gains_source_file").read<std::string>()) {
-            // Digital gains source file has changed since file creation
-            FATAL_ERROR_NON_OO("Digital gains source file has changed since file creation! "
-                               "Not writing gains datasets.");
+    if (!gains_base_directory.empty()) {
+        std::optional<DigitalGains> gains_data = _get_digital_gains();
+        if (!gains_data) {
+            FATAL_ERROR_NON_OO("Failed to read digital gains! Gains datasets not updated.");
             has_error = true;
-            // Add attribute to indicate conflict, don't write datasets
-            _check_create_attribute(*h5_file, "digital_gains_source_file_conflict",
-                                    gains_data->full_filepath);
         } else {
-            // Write gains datasets
-            try {
-                h5_file->getDataSet("/digital_gains/gains_lin")
-                    .select({0}, {gains_data->gains_lin.size()})
-                    .write(gains_data->gains_lin);
-                h5_file->getDataSet("/digital_gains/gains_log")
-                    .select({0}, {gains_data->gains_log.size()})
-                    .write(gains_data->gains_log);
-            } catch (const HighFive::Exception& e) {
-                FATAL_ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}",
-                                   partial_filepath, e.what());
+            if (gains_data->full_filepath
+                != h5_file->getAttribute("digital_gains_source_file").read<std::string>()) {
+                // Digital gains source file has changed since file creation
+                FATAL_ERROR_NON_OO("Digital gains source file has changed since file creation! "
+                                   "Not writing gains datasets.");
                 has_error = true;
-            } catch (const std::exception& e) {
-                FATAL_ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}",
-                                   partial_filepath, e.what());
-                has_error = true;
+                // Add attribute to indicate conflict, don't write datasets
+                _check_create_attribute(*h5_file, "digital_gains_source_file_conflict",
+                                        gains_data->full_filepath);
+            } else {
+                // Write gains datasets
+                try {
+                    h5_file->getDataSet("/digital_gains/gains_lin")
+                        .select({0}, {gains_data->gains_lin.size()})
+                        .write(gains_data->gains_lin);
+                    h5_file->getDataSet("/digital_gains/gains_log")
+                        .select({0}, {gains_data->gains_log.size()})
+                        .write(gains_data->gains_log);
+                } catch (const HighFive::Exception& e) {
+                    FATAL_ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}",
+                                       partial_filepath, e.what());
+                    has_error = true;
+                } catch (const std::exception& e) {
+                    FATAL_ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}",
+                                       partial_filepath, e.what());
+                    has_error = true;
+                }
             }
         }
+    } else {
+        DEBUG_NON_OO("No gains_base_directory specified, skipping digital gains write.");
     }
 
     return !has_error;
@@ -860,8 +874,7 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
     _base_dir(config.get<std::string>(unique_name, "base_dir")),
-    _gains_base_directory(config.get_default<std::string>(unique_name, "gains_base_directory",
-                                                          "/mnt/cs00/data/baseband_gains/")),
+    _gains_base_directory(config.get_default<std::string>(unique_name, "gains_base_directory", "")),
     _num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),
     _compression(config.get_default<std::string>(unique_name, "compression", "none")),
     _compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),
