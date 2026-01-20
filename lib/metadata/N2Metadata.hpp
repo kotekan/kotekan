@@ -5,6 +5,7 @@
 #include "N2Layout.hpp" // for N2Layout
 #include "N2Metadata.hpp"
 #include "buffer.hpp"         // for Buffer
+#include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
 #include "timeUtil.hpp"       // for EOP
@@ -55,6 +56,8 @@ struct N2MetadataFormat {
     /// as well as RFI. For renormalization this value should NOT be used, use
     /// lost samples (= @c frame_length_fpga_ticks - @c n_valid_fpga_ticks) instead.
     uint64_t n_rfi_fpga_ticks = 0;
+    /// CHIME dataset id tracking updateable config item changes
+    dset_id_t dataset_id = dset_id_t::null;
 };
 
 class N2Metadata : public metadataObject, public N2MetadataFormat {
