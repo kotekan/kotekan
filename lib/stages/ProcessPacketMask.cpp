@@ -32,6 +32,9 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
     pl_mask_buf = get_buffer("pl_mask_buf");
     pl_mask_buf->register_producer(unique_name);
 
+    rfi_mask_buf = get_buffer("rfi_mask_buf");
+    rfi_mask_buf->register_producer(unique_name);
+
     // Get the array of receipt bitmap buffer names and register as consumer on each
     std::vector<std::string> receipt_bitmap_buf_names =
         config.get<std::vector<std::string>>(unique_name, "receipt_bitmap_bufs");
@@ -123,6 +126,24 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
             pl_mask_buf->frame_size, expected_pl_mask_size, T / 64, num_frequency, E / 8));
     }
 
+    pl_mask_buf->allocate_ndarray_frame_desc(kotekan::uint1x8, "pl_mask", 
+        {time_long * time_short / 64, num_frequency, 2, element_long * element_short / 8 / 2, 8}, 
+        {"Thi64", "F", "P", "D8", "Tlo64"});
+
+    // Validate rfi_mask buffer size
+    // rfi_mask shape: uint8_t [T/1024][F][128] where T = time_long * time_short
+    size_t expected_rfi_mask_size = (T / 1024) * num_frequency * 128 * sizeof(uint8_t);
+    if (rfi_mask_buf->frame_size != expected_rfi_mask_size) {
+        throw std::runtime_error(fmt::format(
+            fmt("ProcessPacketMask: rfi_mask_buf frame size ({:d}) does not match "
+                "expected size ({:d}) for shape [T/1024={:d}][F={:d}][128]"),
+            rfi_mask_buf->frame_size, expected_rfi_mask_size, T / 1024, num_frequency));
+    }
+
+    rfi_mask_buf->allocate_ndarray_frame_desc(kotekan::uint1x8, "RFImask",
+        {time_long * time_short / 1024, num_frequency, 128},
+        {"T8hi128", "F", "T8lo128"});
+    
     INFO("ProcessPacketMask: Initialized with {:d} receipt bitmap buffers",
          receipt_bitmap_bufs.size());
     INFO("ProcessPacketMask: Voltage frame shape: [{:d}][{:d}][{:d}][{:d}][{:d}]", time_long,
@@ -138,6 +159,7 @@ void ProcessPacketMask::main_thread() {
     frameID voltage_frame_id(voltage_buf);
     frameID combined_bitmap_frame_id(combined_receipt_bitmap_buf);
     frameID pl_mask_frame_id(pl_mask_buf);
+    frameID rfi_mask_frame_id(rfi_mask_buf);
     std::vector<frameID> bitmap_frame_ids;
     for (auto* buf : receipt_bitmap_bufs) {
         bitmap_frame_ids.emplace_back(buf);
@@ -162,6 +184,11 @@ void ProcessPacketMask::main_thread() {
         // Wait for pl_mask frame
         uint8_t* pl_mask_frame = pl_mask_buf->wait_for_empty_frame(unique_name, pl_mask_frame_id);
         if (pl_mask_frame == nullptr)
+            break;
+
+        // Wait for rfi_mask frame
+        uint8_t* rfi_mask_frame = rfi_mask_buf->wait_for_empty_frame(unique_name, rfi_mask_frame_id);
+        if (rfi_mask_frame == nullptr)
             break;
 
         // Wait for all receipt bitmap frames
@@ -204,21 +231,33 @@ void ProcessPacketMask::main_thread() {
                 missing_packet_count += __builtin_popcountll(word);
             }
         }
-        INFO("ProcessPacketMask: Voltage frame {:d} has {:d} missing packets in combined bitmap",
+        DEBUG("ProcessPacketMask: Voltage frame {:d} has {:d} missing packets in combined bitmap",
              (int)voltage_frame_id, missing_packet_count);
 
         // Calcuate a packet loss rate based on the missing packet count
         // and the number of working source IDs
         size_t working_source_ids = num_source_ids - missing_source_ids.size();
-        size_t total_packets = time_long * working_source_ids * 8; // num_stream_ids = 8
+        size_t frame_total_packets = time_long * working_source_ids * 8; // num_stream_ids = 8
         double packet_loss_rate = 0.0;
-        assert(total_packets > 0);
-        packet_loss_rate = (double)missing_packet_count / (double)total_packets;
+        assert(frame_total_packets > 0);
+        packet_loss_rate = (double)missing_packet_count / (double)frame_total_packets;
         double packet_loss_percentage = packet_loss_rate * 100.0;
-        INFO("ProcessPacketMask: Voltage frame {:d} packet loss precentage = {:.4f}% ({:d} missing "
-             "/ {:d} total)",
+
+        // Update long-term counters
+        total_packets_received += frame_total_packets;
+        total_packets_missing += missing_packet_count;
+        total_frames_processed++;
+
+        // Calculate cumulative packet loss rate
+        double cumulative_loss_percentage = 0.0;
+        if (total_packets_received > 0) {
+            cumulative_loss_percentage = (double)total_packets_missing / (double)total_packets_received * 100.0;
+        }
+
+        INFO("ProcessPacketMask: Voltage frame {:d} packet loss = {:.4f}% ({:d} missing "
+             "/ {:d} total) | Cumulative: {:.4f}%",
              (int)voltage_frame_id, packet_loss_percentage, (int)missing_packet_count,
-             (int)total_packets);
+             (int)frame_total_packets, cumulative_loss_percentage);
 
         // Generate the packet loss mask (pl_mask)
         // pl_mask shape: uint64_t [T/64][F][E/8]
@@ -296,6 +335,51 @@ void ProcessPacketMask::main_thread() {
             memset(bitmap_frames[i], 0, receipt_bitmap_bufs[i]->frame_size);
         }
 
+        // Set metadata for pl_mask_buf
+        pl_mask_buf->allocate_new_metadata_object(pl_mask_frame_id);
+        auto pl_mask_meta =
+            get_chord_metadata(pl_mask_buf, pl_mask_frame_id);
+
+        pl_mask_meta->set_fpga_seq_num(
+            get_chord_metadata(voltage_buf, voltage_frame_id)->get_fpga_seq_num());
+        pl_mask_meta->type = kotekan::uint1x8;
+        pl_mask_meta->dims = 5;
+        pl_mask_meta->set_array_dimension(0, time_long * time_short / 64, "Thi64");
+        pl_mask_meta->set_array_dimension(1, num_frequency, "F");
+        pl_mask_meta->set_array_dimension(2, 2, "P");
+        pl_mask_meta->set_array_dimension(3, E_DIV_8 / 2, "D8");
+        pl_mask_meta->set_array_dimension(4, 8, "Tlo64");
+        pl_mask_meta->set_name("pl_mask");
+
+        pl_mask_meta->set_strides_simple();
+
+        pl_mask_meta->set_coarse_freq(
+            get_chord_metadata(voltage_buf, voltage_frame_id)->get_coarse_freq());
+        pl_mask_meta->set_freq_upchan_factor(
+            get_chord_metadata(voltage_buf, voltage_frame_id)->get_freq_upchan_factor());
+        pl_mask_meta->set_time_downsampling_fpga(64);
+
+        // Set metadata for rfi_mask_buf
+        rfi_mask_buf->allocate_new_metadata_object(rfi_mask_frame_id);
+        auto rfi_mask_meta = get_chord_metadata(rfi_mask_buf, rfi_mask_frame_id);
+
+        rfi_mask_meta->set_fpga_seq_num(
+            get_chord_metadata(voltage_buf, voltage_frame_id)->get_fpga_seq_num());
+        rfi_mask_meta->type = kotekan::uint1x8;
+        rfi_mask_meta->dims = 3;
+        rfi_mask_meta->set_array_dimension(0, time_long * time_short / 1024, "T8hi128");
+        rfi_mask_meta->set_array_dimension(1, num_frequency, "F");
+        rfi_mask_meta->set_array_dimension(2, 128, "T8lo128");
+        rfi_mask_meta->set_name("RFImask");
+
+        rfi_mask_meta->set_strides_simple();
+
+        rfi_mask_meta->set_coarse_freq(
+            get_chord_metadata(voltage_buf, voltage_frame_id)->get_coarse_freq());
+        rfi_mask_meta->set_freq_upchan_factor(
+            get_chord_metadata(voltage_buf, voltage_frame_id)->get_freq_upchan_factor());
+        rfi_mask_meta->set_time_downsampling_fpga(1024);
+
         // Mark frames as empty
         voltage_buf->mark_frame_empty(unique_name, voltage_frame_id);
         voltage_frame_id++;
@@ -305,6 +389,9 @@ void ProcessPacketMask::main_thread() {
 
         pl_mask_buf->mark_frame_full(unique_name, pl_mask_frame_id);
         pl_mask_frame_id++;
+
+        rfi_mask_buf->mark_frame_full(unique_name, rfi_mask_frame_id);
+        rfi_mask_frame_id++;
 
         for (size_t i = 0; i < receipt_bitmap_bufs.size(); i++) {
             receipt_bitmap_bufs[i]->mark_frame_empty(unique_name, bitmap_frame_ids[i]);

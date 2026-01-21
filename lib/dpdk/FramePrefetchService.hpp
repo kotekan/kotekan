@@ -289,23 +289,23 @@ void FramePrefetchService::prefetcher_loop() {
                     }
                 }
                 metadata->set_coarse_freq(coarse_freq);
+                metadata->set_freq_upchan_factor(std::vector<int>(
+                    coarse_freq.size(), 1));
+                metadata->set_time_downsampling_fpga(1);
 
                 // Set seq number
                 metadata->set_fpga_seq_num(seq);
 
+                metadata->type = kotekan::int4x2_swapped_withoffset;
+
                 // Set the array shape
                 metadata->dims = 5;
-                metadata->dim[0] = 512;
-                metadata->dim[1] = 384;
-                metadata->dim[2] = 16;
-                metadata->dim[3] = 16;
-                metadata->dim[4] = 8;
-
-                std::strncpy(metadata->dim_name[0], "T_long", CHORD_META_MAX_DIMNAME);
-                std::strncpy(metadata->dim_name[1], "F", CHORD_META_MAX_DIMNAME);
-                std::strncpy(metadata->dim_name[2], "E_long", CHORD_META_MAX_DIMNAME);
-                std::strncpy(metadata->dim_name[3], "T_short", CHORD_META_MAX_DIMNAME);
-                std::strncpy(metadata->dim_name[4], "E_short", CHORD_META_MAX_DIMNAME);
+                // TODO Get these values via config
+                metadata->set_array_dimension(0, 512, "Thi16");
+                metadata->set_array_dimension(1, 384, "F");
+                metadata->set_array_dimension(2, 16, "Ehi8");
+                metadata->set_array_dimension(3, 16, "Tlo16");
+                metadata->set_array_dimension(4, 8, "Elo8");
 
             }
 

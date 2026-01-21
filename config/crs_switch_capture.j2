@@ -30,7 +30,7 @@ num_frequencies: 384
 num_dishes: 64
 element_short: 8
 element_long: num_elements / element_short
-# Note this is about 384MB per frame (192 huge pages)
+# Note this is 384MB per frame (192 huge pages)
 dpdk_output_frame_size: time_long * num_local_freq * element_long * time_short * element_short
 
 num_crs_boards: 16
@@ -131,7 +131,7 @@ pl_mask_buffer:
     num_frames: buffer_depth
     frame_size: pl_mask_frame_size
     metadata_pool: main_pool
-    use_hugepages: false
+    use_hugepages: true
 
 cpu_affinity: [2,3,8,9,10,11,12,13]
 dpdk:
@@ -245,7 +245,7 @@ host_rfi_RFImask_ringbuffer:
 # RFImask is a bitmask where 1 = good data, 0 = RFI flagged
 # Using 0xFF means all data is good (no RFI)
 fake_rfi_mask:
-    kotekan_stage: testDataGen
+    #kotekan_stage: testDataGen
     out_buf: host_rfi_RFImask_buffer
     type: const1x8
     value: 0xFF
@@ -256,7 +256,7 @@ fake_rfi_mask:
 
 gpu_copy_voltage:
     gpu_0:
-        kotekan_stage: cudaProcess
+        #kotekan_stage: cudaProcess
         buffer_depth: gpu_buffer_depth
         gpu_id: 0
         in_buffers:
@@ -307,7 +307,7 @@ n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_coun
 
 run_n2k_correlation:
     gpu_0:
-        kotekan_stage: cudaProcess
+        #kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
@@ -330,7 +330,7 @@ run_n2k_correlation:
 
 run_n2k_counts:
     gpu_0:
-        kotekan_stage: cudaProcess
+        #kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
             host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer

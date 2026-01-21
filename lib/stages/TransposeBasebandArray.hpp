@@ -65,16 +65,14 @@ private:
     /// Packet loss mask buffer
     Buffer* pl_mask_buf;
 
-    /// Frame dimensions
+    /// Configuration parameter (runtime)
     uint32_t timesamples_per_frame;
-    uint32_t num_local_freq;
-    uint32_t num_elements;
-    uint32_t time_short;
-    uint32_t element_short;
 
-    /// Derived dimensions
+    /// If true, only process even-numbered frames; if false, only process odd-numbered frames
+    bool process_even;
+
+    /// Derived dimension
     uint32_t time_long;
-    uint32_t element_long;
 
     /// Flag indicating if AVX512 fast path can be used
     bool use_avx512_fast_path;

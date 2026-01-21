@@ -58,6 +58,9 @@ private:
     /// Packet loss mask output buffer
     Buffer* pl_mask_buf;
 
+    /// RFI mask output buffer
+    Buffer* rfi_mask_buf;
+
     /// Array of packet receipt bitmap buffers
     std::vector<Buffer*> receipt_bitmap_bufs;
 
@@ -80,6 +83,11 @@ private:
     /// List of missing source IDs
     std::vector<uint32_t> missing_source_ids;
     uint64_t missing_source_id_mask[2];
+
+    /// Long-term packet loss counters
+    uint64_t total_packets_received = 0;
+    uint64_t total_packets_missing = 0;
+    uint64_t total_frames_processed = 0;
 };
 
 #endif // PROCESS_PACKET_MASK_HPP
