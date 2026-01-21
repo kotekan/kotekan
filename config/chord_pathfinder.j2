@@ -357,54 +357,7 @@ transpose_voltage_0:
     in_buf: network_input_buffer_0
     pl_mask_buf: host_pl_mask_buffer
     out_buf: host_voltage_buffer
-    process_even: true
-
-#transpose_voltage_1:
-#    kotekan_stage: TransposeBasebandArray
-#    cpu_affinity: [2]
-#    timesamples_per_frame: samples_per_data_set
-#    in_buf: network_input_buffer_0
-#    pl_mask_buf: host_pl_mask_buffer
-#    out_buf: host_voltage_buffer
-#    process_even: false
-
-
-## Generate fake RFI mask (no RFI) ##
-
-#gen_data_voltage:
-#    type: random_signed_offset
-#    value: 120
-#    kotekan_stage: testDataGen
-#    out_buf: host_voltage_buffer
-#    name: "E"
-#    array_shape: [ {{ samples_per_data_set }}, {{ num_local_freq }}, 2, {{ num_dishes }} ]
-#    dim_name: ["T", "F", "P", "D" ]
-#    num_frames: {{ frames_to_generate }}
-#    manual_freq_ids: {{ freq_ids_list | list }}
-
-#gen_data_rfi_RFImask:
-#    type: const1x8
-#    value: 255
-#    kotekan_stage: testDataGen
-#    out_buf: host_rfi_RFImask_buffer
-#    name: "RFImask"
-#    array_shape: [ {{ samples_per_data_set // 1024 }}, {{ num_local_freq }}, 128 ]
-#    dim_name: ["T8hi128", "F", "T8lo128"]
-#    num_frames: {{ frames_to_generate }}
-#    meta_time_downsample_factor: 1024
-#    manual_freq_ids: {{ freq_ids_list | list }}
-
-#gen_pl_mask:
-#    type: random1x8    
-#    value: 120
-#    kotekan_stage: testDataGen
-#    out_buf: host_pl_mask_buffer
-#    name: "pl_mask"
-#    array_shape: [ {{ samples_per_data_set // 128 }}, {{ num_local_freq // 4 }}, 2, {{ num_dishes // 8 }}, 8 ]
-#    dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
-#    num_frames: {{ frames_to_generate }}
-#    meta_time_downsample_factor: 128  # The number of time samples represented by each coarse time index.
-#    manual_freq_ids: {{ freq_ids_list | list }}
+    #process_even: true
 
 
 ## Send data to GPU ringbuffers ##
@@ -455,9 +408,7 @@ run_send_pl_mask:
           ring_buffer_size: buffer_depth * input_size
           in_buf: host_pl_mask_buffer_in
           signal_buf: host_pl_mask_exp_ringbuffer
-          gpu_mem_output: pl_mask_buffer
-          pl_mask_name: pl_mask
-          pl_expanded_mask_name: pl_mask_exp
+          gpu_mem_output: pl_mask_exp_buffer
 
 
 # Packet-loss correlator to produce counts for N2Accumulate
@@ -507,6 +458,12 @@ run_n2k:
 
 # Accumulate N2K visibilities on CPU
 
+hex_dump:
+    #kotekan_stage: hexDump
+    in_buf: n2_buffer
+    len: 4096
+
+
 n2_accumulate:
     kotekan_stage: N2Accumulate
     cpu_affinity: [9]
@@ -541,7 +498,7 @@ eigencalc:
 
 # Write out the visibilities using HDF5
 
-# Visibilities immediately after accumulation (for comparison)
+# Visibilities immediately after accumulation
 hdf5_N2_write_accum:
     log_level: DEBUG
     kotekan_stage: hdf5N2Write
@@ -560,34 +517,3 @@ hdf5_N2_write_accum:
     num_ev: 0
     n2_layout: "FullUpperTri"
     num_file_t: 10
-
-# Final visibilities after post-accumulate stages
-hdf5_N2_write_final:
-    log_level: DEBUG
-    #kotekan_stage: hdf5N2Write
-    in_buf: n2_merge_buffer
-    base_dir: ./vis_data/final/
-    file_name: pipeline_test
-    prefix_hostname: false
-    use_bitshuffle: true
-    compression: "lz4"
-    compression_level: 3
-    zip_compression: 0
-    # Chunking: ensure positive chunk sizes
-    blocksize_f: {{ num_frequencies }}
-    blocksize_t: 5
-    late_frame_grace_seconds: 30
-    num_ev: num_ev_to_calculate
-    n2_layout: "FullUpperTri"
-    num_file_t: 10
-    gains_base_directory: "" # "/mnt/cs00/data/baseband_gains/"
-
-# Monitor N2 buffer for activity
-
-buffer_monitor:
-    #kotekan_stage: monitorBuffer
-    timeout: 60.0 # If no activity in this buffer for this many seconds, trigger shutdown
-    bufs:
-      - n2_eigen_buffer
-    graceful_shutdown: true
-    wait_for_first_frame: true

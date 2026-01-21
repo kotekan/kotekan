@@ -43,6 +43,7 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
 
     // Get configuration parameters
     timesamples_per_frame = config.get<uint32_t>(unique_name, "timesamples_per_frame");
+    // TODO Remove this option.
     process_even = config.get<bool>(unique_name, "process_even");
 
     // Validate that config matches our constants
