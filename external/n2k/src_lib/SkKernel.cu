@@ -103,6 +103,7 @@ __global__ void sk_kernel(
     assert(S012_Tsize & (S012_Tsize - 1) == 0 && "S012_Tsize must be a power of two");
     assert(sk_feed_averaged_Tsize & (sk_feed_averaged_Tsize - 1) == 0 && "sk_feed_averaged_Tsize must be a power of two");
     assert(sk_single_feed_Tsize & (sk_single_feed_Tsize - 1) == 0 && "sk_single_feed_Tsize must be a power of two");
+    assert(rfimask_T1024size & (rfimask_T1024size - 1) == 0 && "rfimask_T1024size must be a power of two");
 
 #ifdef DEBUGGING
     const int64_t S012_size = S012_Tsize * F * 3 * S;
@@ -634,6 +635,16 @@ void SkKernel::launch(
     
     if ((S & 127) != 0)
 	throw runtime_error("SkKernel::launch: expected S to be a multiple of 128.");
+
+    // Check assumptions made for efficient wrapping of the ringbuffer data
+    if ((S012_Tsize & (S012_Tsize-1)) != 0)
+        throw runtime_error("SkKernel::launch: expected S012_Tsize to be a power of 2, but got " + std::to_string(S012_Tsize) + ".");
+    if ((sk_feed_averaged_Tsize & (sk_feed_averaged_Tsize-1)) != 0)
+        throw runtime_error("SkKernel::launch: expected sk_feed_averaged_Tsize to be a power of 2, but got " + std::to_string(sk_feed_averaged_Tsize) + ".");
+    if ((sk_single_feed_Tsize & (sk_single_feed_Tsize-1)) != 0)
+        throw runtime_error("SkKernel::launch: expected sk_single_feed_Tsize to be a power of 2, but got " + std::to_string(sk_single_feed_Tsize) + ".");
+    if ((rfimask_T1024size & (rfimask_T1024size-1)) != 0)
+        throw runtime_error("SkKernel::launch: expected rfimask_T1024size to be a power of 2, but got " + std::to_string(rfimask_T1024size) + ".");
 
     // If an RFI bitmask is being computed, check 'sk_rfimask_sigmas' argument.
     
