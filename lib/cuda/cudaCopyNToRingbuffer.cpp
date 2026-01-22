@@ -190,8 +190,8 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
             assert(meta_ring->get_fpga_seq_num() == meta_in->get_fpga_seq_num());
         }
         meta_ring->set_coarse_freq(coarse_freq);
-        meta_ring->set_freq_upchan_factor(coarse_freq);
-        meta_ring->set_freq_upchan_index(coarse_freq);
+        meta_ring->set_freq_upchan_factor(freq_upchan_factor);
+        meta_ring->set_freq_upchan_index(freq_upchan_index);
         signal_buffer->set_metadata(0, meta_ring);
 
         // Debug log the merged metadata with the data set above
