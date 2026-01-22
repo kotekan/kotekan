@@ -499,7 +499,7 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
             assert(I_nfreq == Ebar_nfreq);
 
         const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
-        assert(Ebar_freq_upchan_factor.size() == static_cast<size_t>(Ebar_nfreq));
+        assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
         std::vector<int> I_freq_upchan_factor;
         if (!I_has_metadata)
             I_freq_upchan_factor.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
@@ -510,7 +510,7 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
         I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
 
         const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
-        assert(Ebar_freq_upchan_index.size() == static_cast<size_t>(Ebar_nfreq));
+        assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
         std::vector<int> I_freq_upchan_index;
         if (!I_has_metadata)
             I_freq_upchan_index.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
@@ -521,7 +521,7 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
         I_meta->set_freq_upchan_index(I_freq_upchan_index);
 
         const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
-        assert(Ebar_coarse_freq.size() == static_cast<size_t>(Ebar_nfreq));
+        assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
         std::vector<int> I_coarse_freq;
         if (!I_has_metadata)
             I_coarse_freq.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);

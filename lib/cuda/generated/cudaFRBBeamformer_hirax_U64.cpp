@@ -589,43 +589,45 @@ cudaEvent_t cudaFRBBeamformer_hirax_U64::execute(cudaPipelineState& /*pipestate*
             assert(I_nfreq == Ebar_nfreq);
 
         const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
-        assert(Ebar_freq_upchan_factor.size() == static_cast<size_t>(Ebar_nfreq));
+        assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
         std::vector<int> I_freq_upchan_factor;
         if (!I_has_metadata)
             I_freq_upchan_factor.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
         else
             I_freq_upchan_factor = I_meta->get_freq_upchan_factor();
         for (int freq = 0; freq < I_nfreq; ++freq)
-            assert(Fbar_out_min + freq < I_freq_upchan_factor.size()),
-                assert(Fbar_in_min + freq < Ebar_freq_upchan_factor.size()),
+            assert(static_cast<std::size_t>(Fbar_out_min + freq) < I_freq_upchan_factor.size()),
+                assert(static_cast<std::size_t>(Fbar_in_min) + freq
+                       < Ebar_freq_upchan_factor.size()),
                 I_freq_upchan_factor.at(Fbar_out_min + freq) =
                     Ebar_freq_upchan_factor.at(Fbar_in_min + freq);
         I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
 
         const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
-        assert(Ebar_freq_upchan_index.size() == static_cast<size_t>(Ebar_nfreq));
+        assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
         std::vector<int> I_freq_upchan_index;
         if (!I_has_metadata)
             I_freq_upchan_index.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
         else
             I_freq_upchan_index = I_meta->get_freq_upchan_index();
         for (int freq = 0; freq < I_nfreq; ++freq)
-            assert(Fbar_out_min + freq < I_freq_upchan_index.size()),
-                assert(Fbar_in_min + freq < Ebar_freq_upchan_index.size()),
+            assert(static_cast<std::size_t>(Fbar_out_min) + freq < I_freq_upchan_index.size()),
+                assert(static_cast<std::size_t>(Fbar_in_min) + freq
+                       < Ebar_freq_upchan_index.size()),
                 I_freq_upchan_index.at(Fbar_out_min + freq) =
                     Ebar_freq_upchan_index.at(Fbar_in_min + freq);
         I_meta->set_freq_upchan_index(I_freq_upchan_index);
 
         const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
-        assert(Ebar_coarse_freq.size() == static_cast<size_t>(Ebar_nfreq));
+        assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
         std::vector<int> I_coarse_freq;
         if (!I_has_metadata)
             I_coarse_freq.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
         else
             I_coarse_freq = I_meta->get_coarse_freq();
         for (int freq = 0; freq < I_nfreq; ++freq)
-            assert(Fbar_out_min + freq < I_coarse_freq.size()),
-                assert(Fbar_in_min + freq < Ebar_coarse_freq.size()),
+            assert(static_cast<std::size_t>(Fbar_out_min + freq) < I_coarse_freq.size()),
+                assert(static_cast<std::size_t>(Fbar_in_min) + freq < Ebar_coarse_freq.size()),
                 I_coarse_freq.at(Fbar_out_min + freq) = Ebar_coarse_freq.at(Fbar_in_min + freq);
         I_meta->set_coarse_freq(I_coarse_freq);
 
@@ -642,7 +644,8 @@ cudaEvent_t cudaFRBBeamformer_hirax_U64::execute(cudaPipelineState& /*pipestate*
         assert(W_nfreq == I_nfreq);
         const auto W_coarse_freq = W_meta->get_coarse_freq();
         for (int freq = 0; freq < W_nfreq; ++freq)
-            assert(Fbar_out_min + freq < I_coarse_freq.size()), assert(freq < W_coarse_freq.size()),
+            assert(static_cast<std::size_t>(Fbar_out_min) + freq < I_coarse_freq.size()),
+                assert(static_cast<std::size_t>(freq) < W_coarse_freq.size()),
                 assert(I_coarse_freq.at(Fbar_out_min + freq) == W_coarse_freq.at(freq));
 
         // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
