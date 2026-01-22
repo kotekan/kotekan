@@ -217,6 +217,22 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
                   meta_in->get_coarse_freq().at(0));
             throw std::runtime_error("cudaCopyNToRingbuffer: metadata frequency mismatch");
         }
+        if (coarse_freq.at(i) != meta_in->get_freq_upchan_factor().at(0)) {
+            ERROR("cudaCopyNToRingbuffer: Mismatch in frequency for input buffer {}: "
+                  "metadata has {}, frame has {}",
+                  in_buffers.at(i)->buffer_name, freq_upchan_factor.at(i),
+                  meta_in->get_freq_upchan_factor().at(0));
+            throw std::runtime_error(
+                "cudaCopyNToRingbuffer: metadata upchannelization factor mismatch");
+        }
+        if (freq_upchan_index.at(i) != meta_in->get_freq_upchan_index().at(0)) {
+            ERROR("cudaCopyNToRingbuffer: Mismatch in frequency for input buffer {}: "
+                  "metadata has {}, frame has {}",
+                  in_buffers.at(i)->buffer_name, freq_upchan_index.at(i),
+                  meta_in->get_freq_upchan_index().at(0));
+            throw std::runtime_error(
+                "cudaCopyNToRingbuffer: metadata upchannelization index mismatch");
+        }
         // Check that the fpga_seq_num + the output_cursor matches the input frame fpga_seq_num
         // This ensures that the time in the ring buffer metadata matches the data we just copied
         if (meta_ring->get_fpga_seq_num()

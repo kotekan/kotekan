@@ -247,7 +247,7 @@ void testN2kGen::set_counts_metadata(const std::shared_ptr<chordMetadata>& meta,
     for (int f = 0; f < num_local_freq; f++) {
         coarse_freq[f] = freq_ids[f % freq_ids.size()];
         freq_upchan_factor[f] = 1;
-        freq_upchan_index[f] = 1;
+        freq_upchan_index[f] = 0;
     }
 
     meta->set_coarse_freq(coarse_freq);
