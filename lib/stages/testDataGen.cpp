@@ -240,6 +240,7 @@ void testDataGen::main_thread() {
 
         chordmeta->set_coarse_freq(coarse_freq);
         chordmeta->set_freq_upchan_factor(freq_upchan_factor);
+        chordmeta->set_freq_upchan_index(freq_upchan_index);
 
         chordmeta->set_frame_counter(frame_id_abs);
 
