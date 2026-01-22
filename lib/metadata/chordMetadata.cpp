@@ -272,6 +272,11 @@ size_t chordMetadata::serialize(char* bytes) {
     if (this->has_freq_upchan_index())
         std::copy_n(this->get_freq_upchan_index().data(), this->get_nfreq(),
                     fmt->freq_upchan_index);
+    else
+        std::memset(
+            fmt->freq_upchan_index, -1,
+            this->get_nfreq()
+                * sizeof(fmt->freq_upchan_index[0])); // set bytes not ints but is ok for now
     if (this->has_coarse_freq())
         std::copy_n(this->get_coarse_freq().data(), this->get_nfreq(), fmt->coarse_freq);
     else
