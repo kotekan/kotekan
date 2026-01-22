@@ -199,6 +199,9 @@ public:
         if (meta->has_freq_upchan_factor())
             dataset.createAttribute("freq_upchan_factor", meta->get_freq_upchan_factor());
 
+        if (meta->has_freq_upchan_index())
+            dataset.createAttribute("freq_upchan_index", meta->get_freq_upchan_index());
+
         if (meta->ndishes >= 0) {
             dataset.createAttribute("ndishes", meta->ndishes);
             // const DataSpace space{std::size_t(meta->n_dish_locations_ns),

@@ -196,6 +196,19 @@ public:
             }
 
             {
+                const auto freq_upchan_index = group->GetAttribute("freq_upchan_index");
+                assert((meta->get_nfreq() >= 0) == bool(freq_upchan_index));
+                if (freq_upchan_index) {
+                    const auto freq_upchan_index_shape = freq_upchan_index->GetDimensionsSize();
+                    assert(freq_upchan_index_shape.size() == 1);
+                    assert(std::ptrdiff_t(freq_upchan_index_shape.at(0)) == meta->get_nfreq());
+                    const auto freq_upchan_index_data = freq_upchan_index->ReadAsIntArray();
+                    assert(std::ptrdiff_t(freq_upchan_index_data.size()) == meta->get_nfreq());
+                    meta->set_freq_upchan_index(freq_upchan_index_data);
+                }
+            }
+
+            {
                 const auto fpga_seq_num = group->GetAttribute("fpga_seq_num");
                 if (fpga_seq_num) {
                     const auto fpga_seq_num_shape = fpga_seq_num->GetDimensionsSize();

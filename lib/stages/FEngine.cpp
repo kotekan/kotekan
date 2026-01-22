@@ -906,14 +906,10 @@ void FEngine::main_thread() {
 
         std::vector<int> coarse_freq(num_frequencies);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
-        std::vector<int> freq_upchan_factor(num_frequencies);
-        assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
             coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
-            freq_upchan_factor.at(freq) = 1;
         }
         A_metadata->set_coarse_freq(coarse_freq);
-        A_metadata->set_freq_upchan_factor(freq_upchan_factor);
         A_metadata->ndishes = num_dishes;
         A_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
         A_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
@@ -972,14 +968,9 @@ void FEngine::main_thread() {
 
         std::vector<int> coarse_freq(num_frequencies);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
-        std::vector<int> freq_upchan_factor(num_frequencies);
-        assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
-        for (int freq = 0; freq < num_frequencies; ++freq) {
+        for (int freq = 0; freq < num_frequencies; ++freq)
             coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
-            freq_upchan_factor.at(freq) = 1;
-        }
         s_metadata->set_coarse_freq(coarse_freq);
-        s_metadata->set_freq_upchan_factor(freq_upchan_factor);
         s_metadata->ndishes = num_dishes;
         s_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
         s_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
@@ -1046,14 +1037,17 @@ void FEngine::main_thread() {
             std::vector<int> coarse_freq(U * num_local_channels);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             std::vector<int> freq_upchan_factor(U * num_local_channels);
+            std::vector<int> freq_upchan_index(U * num_local_channels);
             assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < U * num_local_channels; ++freq) {
                 coarse_freq.at(freq) =
                     frequency_channels.at(upchan_min_channels.at(Ufactor) + freq / U);
                 freq_upchan_factor.at(freq) = U;
+                freq_upchan_index.at(freq) = freq % U;
             }
             G_metadata->set_coarse_freq(coarse_freq);
             G_metadata->set_freq_upchan_factor(freq_upchan_factor);
+            G_metadata->set_freq_upchan_index(freq_upchan_index);
             G_metadata->ndishes = num_dishes;
             G_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
             G_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
@@ -1159,14 +1153,17 @@ void FEngine::main_thread() {
             std::vector<int> coarse_freq(U * num_local_channels);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             std::vector<int> freq_upchan_factor(U * num_local_channels);
+            std::vector<int> freq_upchan_index(U * num_local_channels);
             assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < U * num_local_channels; ++freq) {
                 coarse_freq.at(freq) =
                     frequency_channels.at(upchan_min_channels.at(Ufactor) + freq / U);
                 freq_upchan_factor.at(freq) = U;
+                freq_upchan_index.at(freq) = freq % U;
             }
             W1_metadata->set_coarse_freq(coarse_freq);
             W1_metadata->set_freq_upchan_factor(freq_upchan_factor);
+            W1_metadata->set_freq_upchan_index(freq_upchan_index);
             W1_metadata->ndishes = num_dishes;
             W1_metadata->n_dish_locations_ew = chord_telescope.get_num_dishes_x();
             W1_metadata->n_dish_locations_ns = chord_telescope.get_num_dishes_y();
@@ -1347,13 +1344,17 @@ void FEngine::main_thread() {
         std::vector<int> coarse_freq(CHORD_META_MAX_FREQ);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
         std::vector<int> freq_upchan_factor(CHORD_META_MAX_FREQ);
+        std::vector<int> freq_upchan_index(CHORD_META_MAX_FREQ);
         assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
+        assert(freq_upchan_index.size() <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < ptrdiff_t(coarse_freq.size()); ++freq) {
             coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
-            freq_upchan_factor.at(freq) = upchannelization_factor;
+            freq_upchan_factor.at(freq) = 1; // upchannelization_factor;
+            freq_upchan_index.at(freq) = 0;
         }
         W2_metadata->set_coarse_freq(coarse_freq);
         W2_metadata->set_freq_upchan_factor(freq_upchan_factor);
+        W2_metadata->set_freq_upchan_index(freq_upchan_index);
         W2_metadata->ndishes = num_dishes;
         W2_metadata->n_dish_locations_ew = chord_telescope.get_num_dishes_x();
         W2_metadata->n_dish_locations_ns = chord_telescope.get_num_dishes_y();
@@ -1556,13 +1557,24 @@ void FEngine::main_thread() {
             std::vector<int> coarse_freq(num_frequencies);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             std::vector<int> freq_upchan_factor(num_frequencies);
+            std::vector<int> freq_upchan_index(num_frequencies);
             assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
-            for (int freq = 0; freq < num_frequencies; ++freq) {
-                coarse_freq.at(freq) = frequency_channels.at(freq);
-                freq_upchan_factor.at(freq) = 1;
+            assert(freq_upchan_index.size() <= CHORD_META_MAX_FREQ);
+            if (!receive_chime) {
+                for (int freq = 0; freq < num_frequencies; ++freq) {
+                    coarse_freq.at(freq) = frequency_channels.at(freq);
+                    freq_upchan_factor.at(freq) = 1;
+                    freq_upchan_index.at(freq) = 0;
+                }
+            } else {
+                // In the CHIME layout there is only a single frequency
+                coarse_freq.at(0) = frequency_channels.at(freq);
+                freq_upchan_factor.at(0) = 1;
+                freq_upchan_index.at(0) = 0;
             }
             E_metadata->set_coarse_freq(coarse_freq);
             E_metadata->set_freq_upchan_factor(freq_upchan_factor);
+            E_metadata->set_freq_upchan_index(freq_upchan_index);
             E_metadata->ndishes = num_dishes;
             E_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
             E_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
@@ -1647,16 +1659,6 @@ void FEngine::main_thread() {
             // Only the slowest-varying index counts as "time" for the
             // ring buffer mechanics.
             pl_mask_metadata->set_time_downsampling_fpga(2 * 64);
-            std::vector<int> coarse_freq(num_frequencies);
-            assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
-            std::vector<int> freq_upchan_factor(num_frequencies);
-            assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
-            for (int freq = 0; freq < num_frequencies; ++freq) {
-                coarse_freq.at(freq) = frequency_channels.at(freq);
-                freq_upchan_factor.at(freq) = 1; // we want 1/4 but we cannot
-            }
-            pl_mask_metadata->set_coarse_freq(coarse_freq);
-            pl_mask_metadata->set_freq_upchan_factor(freq_upchan_factor);
             pl_mask_metadata->ndishes = num_dishes;
             pl_mask_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
             pl_mask_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();

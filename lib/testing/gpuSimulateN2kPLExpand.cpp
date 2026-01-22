@@ -192,16 +192,20 @@ void gpuSimulateN2kPLExpand::main_thread() {
 
         const std::vector<int> coarse_freq_in = meta_in->get_coarse_freq();
         const std::vector<int> freq_upchan_factor_in = meta_in->get_freq_upchan_factor();
+        const std::vector<int> freq_upchan_index_in = meta_in->get_freq_upchan_index();
         std::vector<int> coarse_freq(_num_local_freq);
         std::vector<int> freq_upchan_factor(coarse_freq.size());
+        std::vector<int> freq_upchan_index(coarse_freq.size());
 
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             coarse_freq[f] = coarse_freq_in[f];
             freq_upchan_factor[f] = freq_upchan_factor_in[f];
+            freq_upchan_index[f] = freq_upchan_index_in[f];
         }
 
         meta_out->set_coarse_freq(coarse_freq);
         meta_out->set_freq_upchan_factor(freq_upchan_factor);
+        meta_out->set_freq_upchan_index(freq_upchan_index);
         assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
 
         input_buf->mark_frame_empty(unique_name, input_frame_id);

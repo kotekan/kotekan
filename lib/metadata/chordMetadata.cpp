@@ -143,6 +143,9 @@ struct chordMetadataFormat {
     // the upchannelization factor that each frequency has gone through (1 for = FPGA)
     int32_t freq_upchan_factor[CHORD_META_MAX_FREQ];
 
+    // the upchannelization index for each frequency (0 ... freq_upchan_factor - 1)
+    int32_t freq_upchan_index[CHORD_META_MAX_FREQ];
+
     uint32_t rfi_num_bad_inputs;
     int32_t rfi_flagged_samples;
     int32_t lost_timesamples;
@@ -199,6 +202,9 @@ size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t 
     if (fmt->freq_upchan_factor[0] != 0) // 0 should be an invalid value
         this->set_freq_upchan_factor(
             std::vector<int>(fmt->freq_upchan_factor, fmt->freq_upchan_factor + nfreq));
+    if (fmt->freq_upchan_index[0] != -1) // -1 should be an invalid value
+        this->set_freq_upchan_index(
+            std::vector<int>(fmt->freq_upchan_index, fmt->freq_upchan_index + nfreq));
     if (fmt->coarse_freq[0] != -1) // -1 is an invalid frequency index
         this->set_coarse_freq(std::vector<int>(fmt->coarse_freq, fmt->coarse_freq + nfreq));
 
@@ -263,6 +269,9 @@ size_t chordMetadata::serialize(char* bytes) {
     if (this->has_freq_upchan_factor())
         std::copy_n(this->get_freq_upchan_factor().data(), this->get_nfreq(),
                     fmt->freq_upchan_factor);
+    if (this->has_freq_upchan_index())
+        std::copy_n(this->get_freq_upchan_index().data(), this->get_nfreq(),
+                    fmt->freq_upchan_index);
     if (this->has_coarse_freq())
         std::copy_n(this->get_coarse_freq().data(), this->get_nfreq(), fmt->coarse_freq);
     else
@@ -370,6 +379,9 @@ void from_json(const nlohmann::json& j, chordMetadata& m) {
     if (j.contains(jsonMetadata::FREQ_UPCHAN_FACTOR))
         m.metadata.emplace(jsonMetadata::FREQ_UPCHAN_FACTOR,
                            j.at(jsonMetadata::FREQ_UPCHAN_FACTOR));
+    if (j.contains(jsonMetadata::FREQ_UPCHAN_INDEX))
+        m.metadata.emplace(jsonMetadata::FREQ_UPCHAN_INDEX,
+                           j.at(jsonMetadata::FREQ_UPCHAN_INDEX));
 
     assert(j.at("max_dim") == CHORD_META_MAX_DIM);
     assert(j.at("max_dimname") == CHORD_META_MAX_DIMNAME);

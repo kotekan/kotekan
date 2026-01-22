@@ -166,6 +166,18 @@ private:
 public:
     // Metadata:
 
+    bool has_metadata() const {
+        const std::shared_ptr<const metadataObject> mc =
+            cuda_command.get_device().get_gpu_memory_array_metadata(buffer_name_device,
+                                                                    get_instance_num());
+        if (!mc)
+            return false;
+        const std::shared_ptr<const chordMetadata> metadata = get_chord_metadata(mc);
+        if (!metadata)
+            return false;
+        return true;
+    }
+
     std::shared_ptr<const chordMetadata> get_metadata() const {
         const std::shared_ptr<const metadataObject> mc =
             cuda_command.get_device().get_gpu_memory_array_metadata(buffer_name_device,

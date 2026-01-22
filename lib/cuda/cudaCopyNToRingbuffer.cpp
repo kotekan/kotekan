@@ -174,6 +174,8 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
         // Merge metadata from all input buffers
         // NB This is highly specific to CHIME.
         std::vector<int> coarse_freq(in_buffers.size());
+        std::vector<int> freq_upchan_factor(in_buffers.size());
+        std::vector<int> freq_upchan_index(in_buffers.size());
         for (size_t i = 0; i < in_buffers.size(); ++i) {
             auto meta_in = std::dynamic_pointer_cast<chordMetadata>(
                 in_buffers.at(i)->get_metadata(gpu_frame_id % in_buffers.at(i)->num_frames));
@@ -181,11 +183,15 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
                 throw std::runtime_error(
                     "cudaCopyNToRingbuffer: input buffer has no chordMetadata");
             // Set the frequency for each of the input buffers
-            coarse_freq.at(i) = meta_in->get_coarse_freq()[0];
+            coarse_freq.at(i) = meta_in->get_coarse_freq().at(0);
+            freq_upchan_factor.at(i) = meta_in->get_freq_upchan_factor().at(0);
+            freq_upchan_index.at(i) = meta_in->get_freq_upchan_index().at(0);
             // Check that the seq_num matches for all input buffers
             assert(meta_ring->get_fpga_seq_num() == meta_in->get_fpga_seq_num());
         }
         meta_ring->set_coarse_freq(coarse_freq);
+        meta_ring->set_freq_upchan_factor(coarse_freq);
+        meta_ring->set_freq_upchan_index(coarse_freq);
         signal_buffer->set_metadata(0, meta_ring);
 
         // Debug log the merged metadata with the data set above

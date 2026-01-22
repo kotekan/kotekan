@@ -226,6 +226,7 @@ void testDataGen::main_thread() {
         assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
         std::vector<int> coarse_freq(_num_freq_in_frame);
         std::vector<int> freq_upchan_factor(coarse_freq.size());
+        std::vector<int> freq_upchan_index(coarse_freq.size());
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             if (_manual_freq_ids.size() > 0)
                 coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
@@ -234,6 +235,7 @@ void testDataGen::main_thread() {
             else
                 coarse_freq[f] = f;
             freq_upchan_factor[f] = 1;
+            freq_upchan_index[f] = 0;
         }
 
         chordmeta->set_coarse_freq(coarse_freq);
