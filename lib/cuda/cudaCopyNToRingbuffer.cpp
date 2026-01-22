@@ -204,6 +204,8 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
     auto meta_ring = std::dynamic_pointer_cast<chordMetadata>(signal_buffer->metadata[0]);
     assert(meta_ring); // By construction above, this should always exist.
     const std::vector<int> coarse_freq = meta_ring->get_coarse_freq();
+    const std::vector<int> freq_upchan_factor = meta_ring->get_freq_upchan_factor();
+    const std::vector<int> freq_upchan_index = meta_ring->get_freq_upchan_index();
     for (size_t i = 0; i < in_buffers.size(); ++i) {
         auto meta_in = std::dynamic_pointer_cast<chordMetadata>(
             in_buffers.at(i)->get_metadata(gpu_frame_id % in_buffers.at(i)->num_frames));
