@@ -135,7 +135,7 @@ void testLostSamplesToPLMask::main_thread() {
         const std::vector<int> freq_upchan_factor(num_freq_bins * PL_MASK_FREQS_PER_BIN,
                                                   1); // we want 1/4 but we cannot
         const std::vector<int> freq_upchan_index(num_freq_bins * PL_MASK_FREQS_PER_BIN,
-                                                  0); // we want 1/4 but we cannot
+                                                 0); // we want 1/4 but we cannot
         pl_mask_meta->set_freq_upchan_factor(freq_upchan_factor);
         pl_mask_meta->set_freq_upchan_index(freq_upchan_index);
 

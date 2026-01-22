@@ -380,8 +380,7 @@ void from_json(const nlohmann::json& j, chordMetadata& m) {
         m.metadata.emplace(jsonMetadata::FREQ_UPCHAN_FACTOR,
                            j.at(jsonMetadata::FREQ_UPCHAN_FACTOR));
     if (j.contains(jsonMetadata::FREQ_UPCHAN_INDEX))
-        m.metadata.emplace(jsonMetadata::FREQ_UPCHAN_INDEX,
-                           j.at(jsonMetadata::FREQ_UPCHAN_INDEX));
+        m.metadata.emplace(jsonMetadata::FREQ_UPCHAN_INDEX, j.at(jsonMetadata::FREQ_UPCHAN_INDEX));
 
     assert(j.at("max_dim") == CHORD_META_MAX_DIM);
     assert(j.at("max_dimname") == CHORD_META_MAX_DIMNAME);
