@@ -379,7 +379,14 @@ private:
     std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
 
     bool did_init_host_S_buffer;
+    bool did_set_metadata;
 };
+
+// Declare and define a single mutex that is used and shared by all
+// kernels writing into the `I` buffer (the output buffer of the first
+// FRB kernel). We need this lock to serialize metadata updates for
+// this buffer.
+inline std::mutex frb_I_lock;
 
 REGISTER_CUDA_COMMAND(cudaFRBBeamformer_pathfinder_U64);
 
@@ -411,7 +418,7 @@ cudaFRBBeamformer_pathfinder_U64::cudaFRBBeamformer_pathfinder_U64(Config& confi
     info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
     host_info_buffer(info_length),
 
-    did_init_host_S_buffer(false) {
+    did_init_host_S_buffer(false), did_set_metadata(false) {
     // Register host memory
     {
         const cudaError_t ierr = cudaHostRegister(
@@ -508,14 +515,12 @@ cudaFRBBeamformer_pathfinder_U64::execute(cudaPipelineState& /*pipestate*/,
     void* const info_memory = info_buffer.get_ndarray().data();
 
     // Since we use a ring buffer we need to set the metadata only once
-    static bool did_set_metadata = false;
-    static std::mutex set_metadata_mutex;
     if (instance_num == 0 && !did_set_metadata) {
         did_set_metadata = true;
 
         // Our output buffer I has multiple producers.
         // They must serialize setting their part of the metadata.
-        std::lock_guard<std::mutex> lock(set_metadata_mutex);
+        std::lock_guard<std::mutex> lock(frb_I_lock);
 
         if (args::W == args::Ebar && cuda_upchannelization_factor == 1) {
             // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
@@ -597,11 +602,8 @@ cudaFRBBeamformer_pathfinder_U64::execute(cudaPipelineState& /*pipestate*/,
         else
             I_freq_upchan_factor = I_meta->get_freq_upchan_factor();
         for (int freq = 0; freq < I_nfreq; ++freq)
-            assert(static_cast<std::size_t>(Fbar_out_min + freq) < I_freq_upchan_factor.size()),
-                assert(static_cast<std::size_t>(Fbar_in_min) + freq
-                       < Ebar_freq_upchan_factor.size()),
-                I_freq_upchan_factor.at(Fbar_out_min + freq) =
-                    Ebar_freq_upchan_factor.at(Fbar_in_min + freq);
+            I_freq_upchan_factor.at(Fbar_out_min + freq) =
+                Ebar_freq_upchan_factor.at(Fbar_in_min + freq);
         I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
 
         const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
@@ -612,11 +614,8 @@ cudaFRBBeamformer_pathfinder_U64::execute(cudaPipelineState& /*pipestate*/,
         else
             I_freq_upchan_index = I_meta->get_freq_upchan_index();
         for (int freq = 0; freq < I_nfreq; ++freq)
-            assert(static_cast<std::size_t>(Fbar_out_min) + freq < I_freq_upchan_index.size()),
-                assert(static_cast<std::size_t>(Fbar_in_min) + freq
-                       < Ebar_freq_upchan_index.size()),
-                I_freq_upchan_index.at(Fbar_out_min + freq) =
-                    Ebar_freq_upchan_index.at(Fbar_in_min + freq);
+            I_freq_upchan_index.at(Fbar_out_min + freq) =
+                Ebar_freq_upchan_index.at(Fbar_in_min + freq);
         I_meta->set_freq_upchan_index(I_freq_upchan_index);
 
         const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
@@ -627,9 +626,7 @@ cudaFRBBeamformer_pathfinder_U64::execute(cudaPipelineState& /*pipestate*/,
         else
             I_coarse_freq = I_meta->get_coarse_freq();
         for (int freq = 0; freq < I_nfreq; ++freq)
-            assert(static_cast<std::size_t>(Fbar_out_min + freq) < I_coarse_freq.size()),
-                assert(static_cast<std::size_t>(Fbar_in_min) + freq < Ebar_coarse_freq.size()),
-                I_coarse_freq.at(Fbar_out_min + freq) = Ebar_coarse_freq.at(Fbar_in_min + freq);
+            I_coarse_freq.at(Fbar_out_min + freq) = Ebar_coarse_freq.at(Fbar_in_min + freq);
         I_meta->set_coarse_freq(I_coarse_freq);
 
         const auto Ebar_time_downsampling_fpga = Ebar_meta->get_time_downsampling_fpga();
@@ -645,9 +642,7 @@ cudaFRBBeamformer_pathfinder_U64::execute(cudaPipelineState& /*pipestate*/,
         assert(W_nfreq == I_nfreq);
         const auto W_coarse_freq = W_meta->get_coarse_freq();
         for (int freq = 0; freq < W_nfreq; ++freq)
-            assert(static_cast<std::size_t>(Fbar_out_min) + freq < I_coarse_freq.size()),
-                assert(static_cast<std::size_t>(freq) < W_coarse_freq.size()),
-                assert(I_coarse_freq.at(Fbar_out_min + freq) == W_coarse_freq.at(freq));
+            assert(I_coarse_freq.at(Fbar_out_min + freq) == W_coarse_freq.at(freq));
 
         // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
     } // if !did_set_metadata

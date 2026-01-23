@@ -302,8 +302,7 @@ private:
     NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
     std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
 
-    // To avoid trailing comma below
-    int dummy;
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaCHIMEFRBBeamformer_chime_U128);
@@ -330,8 +329,7 @@ cudaCHIMEFRBBeamformer_chime_U128::cudaCHIMEFRBBeamformer_chime_U128(Config& con
     info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
     host_info_buffer(info_length),
 
-    dummy() // avoid trailing comma
-{
+    did_set_metadata(false) {
     // Register host memory
     {
         const cudaError_t ierr = cudaHostRegister(
@@ -420,14 +418,8 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
     void* const info_memory = info_buffer.get_ndarray().data();
 
     // Since we use a ring buffer we need to set the metadata only once
-    static bool did_set_metadata = false;
-    static std::mutex set_metadata_mutex;
     if (instance_num == 0 && !did_set_metadata) {
         did_set_metadata = true;
-
-        // Our output buffer I has multiple producers.
-        // They must serialize setting their part of the metadata.
-        std::lock_guard<std::mutex> lock(set_metadata_mutex);
 
         if (args::W == args::Ebar && cuda_upchannelization_factor == 1) {
             // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
@@ -486,8 +478,8 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
 
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();
-        if (!I_has_metadata)
-            I_buffer.set_metadata(Ebar_meta);
+        assert(!I_has_metadata);
+        I_buffer.set_metadata(Ebar_meta);
         auto I_meta = I_buffer.get_metadata();
 
         const auto Ebar_nfreq = Ebar_meta->get_nfreq();
@@ -495,49 +487,27 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
         assert(I_nfreq >= 0);
         // We are not using all the non-upchannelized frequencies.
         // But we are (should be!) using all the upchannelized ones.
-        if (cuda_upchannelization_factor > 1)
-            assert(I_nfreq == Ebar_nfreq);
+        assert(cuda_upchannelization_factor > 1);
 
         const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
         assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
-        std::vector<int> I_freq_upchan_factor;
-        if (!I_has_metadata)
-            I_freq_upchan_factor.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
-        else
-            I_freq_upchan_factor = I_meta->get_freq_upchan_factor();
-        for (int freq = 0; freq < I_nfreq; ++freq)
-            I_freq_upchan_factor.at(freq) = Ebar_freq_upchan_factor.at(freq);
+        const auto& I_freq_upchan_factor = Ebar_freq_upchan_factor;
         I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
 
         const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
         assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
-        std::vector<int> I_freq_upchan_index;
-        if (!I_has_metadata)
-            I_freq_upchan_index.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
-        else
-            I_freq_upchan_index = I_meta->get_freq_upchan_index();
-        for (int freq = 0; freq < I_nfreq; ++freq)
-            I_freq_upchan_index.at(freq) = Ebar_freq_upchan_index.at(freq);
+        const auto& I_freq_upchan_index = Ebar_freq_upchan_index;
         I_meta->set_freq_upchan_index(I_freq_upchan_index);
 
         const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
         assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
-        std::vector<int> I_coarse_freq;
-        if (!I_has_metadata)
-            I_coarse_freq.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
-        else
-            I_coarse_freq = I_meta->get_coarse_freq();
-        for (int freq = 0; freq < I_nfreq; ++freq)
-            I_coarse_freq.at(freq) = Ebar_coarse_freq.at(freq);
+        const auto& I_coarse_freq = Ebar_coarse_freq;
         I_meta->set_coarse_freq(I_coarse_freq);
 
         const auto Ebar_time_downsampling_fpga = Ebar_meta->get_time_downsampling_fpga();
         const auto I_time_downsampling_fpga =
             Ebar_time_downsampling_fpga * cuda_downsampling_factor;
-        if (!I_has_metadata)
-            I_meta->set_time_downsampling_fpga(I_time_downsampling_fpga);
-        else
-            assert(I_meta->get_time_downsampling_fpga() == I_time_downsampling_fpga);
+        I_meta->set_time_downsampling_fpga(I_time_downsampling_fpga);
 
         const auto W_meta = W_buffer.get_metadata();
         const auto W_nfreq = W_meta->get_nfreq();
