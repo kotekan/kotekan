@@ -105,7 +105,6 @@ private:
     // The below vectors are initialized in the constructor after _num_vis_products
     // and _num_freq_in_frame are known.
     std::vector<int32_t> _vis;
-    std::vector<int32_t> _vis_even;
     std::vector<float> _weights;
     // number of fpga samples, per frequency, in frame
     std::vector<int32_t> _n_valid_fpga_samples_in_vis;
