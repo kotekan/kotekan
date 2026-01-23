@@ -111,6 +111,8 @@ __device__ uint _cmask(int b)
 __global__ void s0_kernel(ulong4_16a *s0, const uint *pl, int T, int Tmin, int Tsize, int F, int S, int Nds, int out_fstride4)
 {
     static constexpr uint ALL_LANES = 0xffffffffU;
+
+    assert((Tsize >> 7) & ((Tsize >> 7) - 1) == 0 && "Tsize / 128 must be a power of 2");
     
     // Warp location within larger kerenl
     int tds = (blockIdx.z * blockDim.z + threadIdx.z);              // output time
@@ -225,6 +227,8 @@ void launch_s0_kernel(ulong* s0, const ulong* pl_mask, long T, long Tmin, long T
 	throw runtime_error("launch_s0_kernel: first sample Tmin must be >= 0");
     if (Tsize <= 0)
 	throw runtime_error("launch_s0_kernel: ringbuffer size Tsize be > 0");
+    if (Tsize & (Tsize - 1) != 0)
+        throw runtime_error("launch_s0_kernel: Tsize must be a power of 2");
     if (T & 127)
 	throw runtime_error("launch_s0_kernel: number of time samples T must be a multiple of 128");
     if (F <= 0)
