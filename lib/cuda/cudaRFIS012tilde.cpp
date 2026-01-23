@@ -166,7 +166,8 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
     std::uint64_t* const rfi_S012tilde_memory = rfi_S012tilde.get_ndarray().data();
 
     const std::ptrdiff_t Trfisize = rfi_S012.get_ndarray().extent(0);
-    const std::ptrdiff_t Trfimin = rfi_S012.get_read_valid().begin();
+    // Trfimin wraps around into actual array index to avoid overflows
+    const std::ptrdiff_t Trfimin = rfi_S012.get_read_valid().begin() % Trfisize;
     const std::ptrdiff_t Trfi = rfi_S012.get_read_valid().size();
     DEBUG("Trfisize={:d} Trfimin={:d} Trfi={:d}", Trfisize, Trfimin, Trfi);
 
