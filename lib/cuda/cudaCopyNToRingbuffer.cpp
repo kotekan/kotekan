@@ -219,7 +219,7 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
                   meta_in->get_coarse_freq().at(0));
             throw std::runtime_error("cudaCopyNToRingbuffer: metadata frequency mismatch");
         }
-        if (coarse_freq.at(i) != meta_in->get_freq_upchan_factor().at(0)) {
+        if (freq_upchan_factor.at(i) != meta_in->get_freq_upchan_factor().at(0)) {
             ERROR("cudaCopyNToRingbuffer: Mismatch in frequency for input buffer {}: "
                   "metadata has {}, frame has {}",
                   in_buffers.at(i)->buffer_name, freq_upchan_factor.at(i),
