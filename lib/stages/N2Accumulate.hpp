@@ -81,6 +81,8 @@ private:
 
     int64_t _num_elements; ///< Total number of telescope elements (~2 * num dishes)
 
+    const int _num_workers; ///< number of OpenMP threads to use to process data
+
     // Absolute frame counter (TODO: determine this another way)
     uint64_t _abs_frame_count;
 

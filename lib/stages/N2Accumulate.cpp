@@ -47,7 +47,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _n_fpga_samples_per_n2k_frame(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _n_fpga_samples_per_n2k_correlation(config.get<int64_t>(unique_name, "sub_integration_ntime")),
     _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")),
-    _num_elements(config.get<int64_t>(unique_name, "num_elements")), _abs_frame_count(0),
+    _num_elements(config.get<int64_t>(unique_name, "num_elements")),
+    _num_workers(config.get_default<int>(unique_name, "num_workers", 1)), _abs_frame_count(0),
     _tel(Telescope::instance().cast<CHORDTelescope>()),
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
@@ -356,6 +357,7 @@ void N2Accumulate::main_thread() {
             assert(_weights.size() == corr_stride_t / 2);
 
             // The actual accumulation of visibility.
+#pragma omp parallel for simd num_threads(_num_workers)
             for (uint64_t d = 0; d < corr_stride_t; ++d) {
                 _vis[d] += corr[d + corr_offset_t];
             } // d
@@ -365,6 +367,7 @@ void N2Accumulate::main_thread() {
             if (vis_sample_num_abs % 2 == 0) {
                 vis_even = corr + corr_offset_t;
             } else {
+#pragma omp parallel for simd num_threads(_num_workers)
                 for (uint64_t d = 0;
                      d < (uint64_t)(_n2k_correlation_num_products * _num_freq_per_n2k_frame); ++d) {
                     float dr = corr[corr_offset_t + 2 * d + 0] - vis_even[2 * d + 0];
