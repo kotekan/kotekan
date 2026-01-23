@@ -390,43 +390,22 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
         const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
         assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
-        std::vector<int> I_freq_upchan_factor;
-        if (!I_has_metadata)
-          I_freq_upchan_factor.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
-        else
-          I_freq_upchan_factor = I_meta->get_freq_upchan_factor();
-        for (int freq = 0; freq < I_nfreq; ++freq)
-            I_freq_upchan_factor.at(freq) = Ebar_freq_upchan_factor.at(freq);
+        const auto& I_freq_upchan_factor = Ebar_freq_upchan_factor;
         I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
 
         const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
         assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
-        std::vector<int> I_freq_upchan_index;
-        if (!I_has_metadata)
-          I_freq_upchan_index.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
-        else
-          I_freq_upchan_index = I_meta->get_freq_upchan_index();
-        for (int freq = 0; freq < I_nfreq; ++freq)
-            I_freq_upchan_index.at(freq) = Ebar_freq_upchan_index.at(freq);
+        const auto& I_freq_upchan_index = Ebar_freq_upchan_index;
         I_meta->set_freq_upchan_index(I_freq_upchan_index);
 
         const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
         assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
-        std::vector<int> I_coarse_freq;
-        if (!I_has_metadata)
-          I_coarse_freq.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
-        else
-          I_coarse_freq = I_meta->get_coarse_freq();
-        for (int freq = 0; freq < I_nfreq; ++freq)
-            I_coarse_freq.at(freq) = Ebar_coarse_freq.at(freq);
+        const auto& I_coarse_freq = Ebar_coarse_freq;
         I_meta->set_coarse_freq(I_coarse_freq);
 
         const auto Ebar_time_downsampling_fpga = Ebar_meta->get_time_downsampling_fpga();
         const auto I_time_downsampling_fpga = Ebar_time_downsampling_fpga * cuda_downsampling_factor;
-        if (!I_has_metadata)
-          I_meta->set_time_downsampling_fpga(I_time_downsampling_fpga);
-        else
-          assert(I_meta->get_time_downsampling_fpga() == I_time_downsampling_fpga);
+        I_meta->set_time_downsampling_fpga(I_time_downsampling_fpga);
 
         const auto W_meta = W_buffer.get_metadata();
         const auto W_nfreq = W_meta->get_nfreq();
