@@ -182,8 +182,7 @@ private:
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    // To avoid trailing comma below
-    int dummy;
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cuda{{{kernel_name}}});
@@ -233,7 +232,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    dummy()                      // avoid trailing comma
+    did_set_metadata(false)
 {
     // Register host memory
     {{#kernel_arguments}}
@@ -333,14 +332,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{/kernel_arguments}}
 
     // Since we use a ring buffer we need to set the metadata only once
-    static bool did_set_metadata = false;
-    static std::mutex set_metadata_mutex;
     if (instance_num == 0 && !did_set_metadata) {
         did_set_metadata = true;
-
-        // Our output buffer I has multiple producers.
-        // They must serialize setting their part of the metadata.
-        std::lock_guard<std::mutex> lock(set_metadata_mutex);
 
         {{#kernel_arguments}}
             {{#hasbuffer}}
@@ -384,8 +377,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();
-        if (!I_has_metadata)
-          I_buffer.set_metadata(Ebar_meta);
+        assert(!I_has_metadata);
+        I_buffer.set_metadata(Ebar_meta);
         auto I_meta = I_buffer.get_metadata();
 
         const auto Ebar_nfreq = Ebar_meta->get_nfreq();
@@ -393,8 +386,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         assert(I_nfreq >= 0);
         // We are not using all the non-upchannelized frequencies.
         // But we are (should be!) using all the upchannelized ones.
-        if (cuda_upchannelization_factor > 1)
-          assert(I_nfreq == Ebar_nfreq);
+        assert(cuda_upchannelization_factor > 1);
 
         const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
         assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));

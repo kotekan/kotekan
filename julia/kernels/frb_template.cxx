@@ -189,7 +189,14 @@ private:
     {{/kernel_arguments}}
 
     bool did_init_host_S_buffer;
+    bool did_set_metadata;
 };
+
+// Declare and define a single mutex that is used and shared by all
+// kernels writing into the `I` buffer (the output buffer of the first
+// FRB kernel). We need this lock to serialize metadata updates for
+// this buffer.
+inline std::mutex frb_I_lock;
 
 REGISTER_CUDA_COMMAND(cuda{{{kernel_name}}});
 
@@ -242,7 +249,8 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    did_init_host_S_buffer(false)
+    did_init_host_S_buffer(false),
+    did_set_metadata(false)
 {
     // Register host memory
     {{#kernel_arguments}}
@@ -342,14 +350,12 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{/kernel_arguments}}
 
     // Since we use a ring buffer we need to set the metadata only once
-    static bool did_set_metadata = false;
-    static std::mutex set_metadata_mutex;
     if (instance_num == 0 && !did_set_metadata) {
         did_set_metadata = true;
 
         // Our output buffer I has multiple producers.
         // They must serialize setting their part of the metadata.
-        std::lock_guard<std::mutex> lock(set_metadata_mutex);
+        std::lock_guard<std::mutex> lock(frb_I_lock);
 
         {{#kernel_arguments}}
             {{#hasbuffer}}
@@ -394,7 +400,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();
         if (!I_has_metadata)
-          I_buffer.set_metadata(Ebar_meta);
+            I_buffer.set_metadata(Ebar_meta);
         auto I_meta = I_buffer.get_metadata();
 
         assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
@@ -406,18 +412,16 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         // We are not using all the non-upchannelized frequencies.
         // But we are (should be!) using all the upchannelized ones.
         if (cuda_upchannelization_factor > 1)
-          assert(I_nfreq == Ebar_nfreq);
+            assert(I_nfreq == Ebar_nfreq);
 
         const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
         assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
         std::vector<int> I_freq_upchan_factor;
         if (!I_has_metadata)
-          I_freq_upchan_factor.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
+            I_freq_upchan_factor.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
         else
-          I_freq_upchan_factor = I_meta->get_freq_upchan_factor();
+            I_freq_upchan_factor = I_meta->get_freq_upchan_factor();
         for (int freq = 0; freq < I_nfreq; ++freq)
-          assert(static_cast<std::size_t>(Fbar_out_min + freq) < I_freq_upchan_factor.size()),
-            assert(static_cast<std::size_t>(Fbar_in_min) + freq < Ebar_freq_upchan_factor.size()),
             I_freq_upchan_factor.at(Fbar_out_min + freq) = Ebar_freq_upchan_factor.at(Fbar_in_min + freq);
         I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
 
@@ -425,12 +429,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
         std::vector<int> I_freq_upchan_index;
         if (!I_has_metadata)
-          I_freq_upchan_index.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
+            I_freq_upchan_index.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
         else
-          I_freq_upchan_index = I_meta->get_freq_upchan_index();
+            I_freq_upchan_index = I_meta->get_freq_upchan_index();
         for (int freq = 0; freq < I_nfreq; ++freq)
-          assert(static_cast<std::size_t>(Fbar_out_min) + freq < I_freq_upchan_index.size()),
-            assert(static_cast<std::size_t>(Fbar_in_min) + freq < Ebar_freq_upchan_index.size()),
             I_freq_upchan_index.at(Fbar_out_min + freq) = Ebar_freq_upchan_index.at(Fbar_in_min + freq);
         I_meta->set_freq_upchan_index(I_freq_upchan_index);
 
@@ -438,29 +440,25 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
         std::vector<int> I_coarse_freq;
         if (!I_has_metadata)
-          I_coarse_freq.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
+            I_coarse_freq.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
         else
-          I_coarse_freq = I_meta->get_coarse_freq();
+            I_coarse_freq = I_meta->get_coarse_freq();
         for (int freq = 0; freq < I_nfreq; ++freq)
-          assert(static_cast<std::size_t>(Fbar_out_min + freq) < I_coarse_freq.size()),
-            assert(static_cast<std::size_t>(Fbar_in_min) + freq < Ebar_coarse_freq.size()),
             I_coarse_freq.at(Fbar_out_min + freq) = Ebar_coarse_freq.at(Fbar_in_min + freq);
         I_meta->set_coarse_freq(I_coarse_freq);
 
         const auto Ebar_time_downsampling_fpga = Ebar_meta->get_time_downsampling_fpga();
         const auto I_time_downsampling_fpga = Ebar_time_downsampling_fpga * cuda_downsampling_factor;
         if (!I_has_metadata)
-          I_meta->set_time_downsampling_fpga(I_time_downsampling_fpga);
+            I_meta->set_time_downsampling_fpga(I_time_downsampling_fpga);
         else
-          assert(I_meta->get_time_downsampling_fpga() == I_time_downsampling_fpga);
+            assert(I_meta->get_time_downsampling_fpga() == I_time_downsampling_fpga);
 
         const auto W_meta = W_buffer.get_metadata();
         const auto W_nfreq = W_meta->get_nfreq();
         assert(W_nfreq == I_nfreq);
         const auto W_coarse_freq = W_meta->get_coarse_freq();
         for (int freq = 0; freq < W_nfreq; ++freq)
-          assert(static_cast<std::size_t>(Fbar_out_min) + freq < I_coarse_freq.size()),
-            assert(static_cast<std::size_t>(freq) < W_coarse_freq.size()),
             assert(I_coarse_freq.at(Fbar_out_min + freq) == W_coarse_freq.at(freq));
 
         // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
