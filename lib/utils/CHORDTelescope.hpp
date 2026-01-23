@@ -823,23 +823,4 @@ protected:
     std::vector<EOP> _eop_table;
 };
 
-/**
- * @brief   Comparison function for searching/sorting the EOP table. Compares
- *          EOP based on t_inst, orders chronologically.
- *
- * @params  eop1    First EOP to compare.
- * @params  eop2    Second EOP to compare.
- **/
-bool EOP_comp_time(const EOP& eop1, const EOP& eop2);
-
-/**
- * @brief   Comparison function for searching/sorting the EOP table. Compares
- *          EOP based on t_ut1, orders by increasing rotation. Will produce the
- *          same order as t_inst, unless something is apocalyptically wrong.
- *
- * @params  eop1    First EOP to compare.
- * @params  eop2    Second EOP to compare.
- **/
-bool EOP_comp_ut1(const EOP& eop1, const EOP& eop2);
-
 #endif // CHORD_TELESCOPE_HPP

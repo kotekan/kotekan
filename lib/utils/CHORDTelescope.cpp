@@ -1056,14 +1056,6 @@ EOP CHORDTelescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst
     return eop;
 }
 
-bool EOP_comp_time(const EOP& eop1, const EOP& eop2) {
-    return eop1.t_inst < eop2.t_inst;
-}
-
-bool EOP_comp_ut1(const EOP& eop1, const EOP& eop2) {
-    return eop1.t_ut1 < eop2.t_ut1;
-}
-
 void to_json(nlohmann::json& j, const EOP& m) {
     assert(j.empty());
 
