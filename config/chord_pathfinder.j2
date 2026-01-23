@@ -46,7 +46,8 @@
 
 # n2k sub-integrations to combine into each output N2 frame by N2Accumulate.
 # Choose a multiple of integrations_per_frame so n2k_frames_per_output is an integer and generators run long enough.
-{% set num_n2k_samples_to_accumulate = 96 %}
+# 238 ~= 10 seconds. 
+{% set num_n2k_samples_to_accumulate = 238 %} 
 
 # correlation frames needed to form one output N2 frame
 {% set n2k_frames_per_output = num_n2k_samples_to_accumulate // integrations_per_frame %}
@@ -74,6 +75,7 @@ freq_ids: {{ freq_ids_list | list }}
 num_gpus: 1
 buffer_depth: 4
 num_gpu_frames: 4
+host_side_buffer_depth: buffer_depth * 4
 cpu_affinity: [0,1,8,11,12,13,14,15]
 frame_arrival_period: 5.12e-6 * {{ samples_per_data_set }}
 sizeof_gpu_int: 4 # bytes
@@ -152,7 +154,7 @@ n2_pool:
 # Buffers
 network_input_buffers:
     log_level: info
-    num_frames: 16
+    num_frames: host_side_buffer_depth
     frame_size: dpdk_output_frame_size
     metadata_pool: main_pool
     use_hugepages: true
@@ -167,7 +169,7 @@ network_input_buffers:
 
 packet_receipt_bitmap_buffers:
     log_level: info
-    num_frames: 16
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / time_samples_per_packet) * num_crs_boards  # One bit per stream
     metadata_pool: main_pool
     use_hugepages: true
@@ -180,7 +182,7 @@ packet_receipt_bitmap_buffers:
 
 host_rfi_RFImask_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: num_local_freq * samples_per_data_set / 8
     zero_new_frames: true
     zero_value: 0xFF
@@ -189,7 +191,7 @@ host_rfi_RFImask_buffer:
 # Note this is the expanded version of the pl_mask used for correlator input
 host_pl_mask_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
     metadata_pool: main_pool
 
@@ -198,7 +200,7 @@ vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 host_correlation_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * vis_num_blocks * 2 * sizeof_gpu_int
     metadata_pool: main_pool
 
@@ -207,7 +209,7 @@ counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
 counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
 host_counts_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_gpu_int
     metadata_pool: main_pool
 
@@ -215,7 +217,7 @@ n2_buffer:
     kotekan_buffer: N2
     num_ev: 0
     n2_layout: "FullUpperTri"
-    num_frames: buffer_depth * num_local_freq
+    num_frames: host_side_buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
 n2_eigen_buffer:
@@ -352,12 +354,21 @@ process_packet_mask:
 # This also applies the packet-loss mask to the data
 transpose_voltage_0:
     kotekan_stage: TransposeBasebandArray
+    cpu_affinity: [2]
+    timesamples_per_frame: samples_per_data_set
+    in_buf: network_input_buffer_0
+    pl_mask_buf: host_pl_mask_buffer
+    out_buf: host_voltage_buffer
+    frame_mode: even
+
+transpose_voltage_1:
+    kotekan_stage: TransposeBasebandArray
     cpu_affinity: [3]
     timesamples_per_frame: samples_per_data_set
     in_buf: network_input_buffer_0
     pl_mask_buf: host_pl_mask_buffer
     out_buf: host_voltage_buffer
-    #process_even: true
+    frame_mode: odd
 
 
 ## Send data to GPU ringbuffers ##

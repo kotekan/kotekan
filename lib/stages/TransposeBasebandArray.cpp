@@ -43,8 +43,6 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
 
     // Get configuration parameters
     timesamples_per_frame = config.get<uint32_t>(unique_name, "timesamples_per_frame");
-    // TODO Remove this option.
-    process_even = config.get<bool>(unique_name, "process_even");
 
     // Validate that config matches our constants
     uint32_t cfg_num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
@@ -72,6 +70,21 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
             fmt("TransposeBasebandArray: element_short ({:d}) must be {:d}"),
             cfg_element_short, ELEMENT_SHORT));
     }
+
+    // Get frame_mode configuration
+    std::string frame_mode_str = config.get_default<std::string>(unique_name, "frame_mode", "all");
+    if (frame_mode_str == "all") {
+        frame_mode = FrameMode::All;
+    } else if (frame_mode_str == "even") {
+        frame_mode = FrameMode::Even;
+    } else if (frame_mode_str == "odd") {
+        frame_mode = FrameMode::Odd;
+    } else {
+        throw std::runtime_error(fmt::format(
+            fmt("TransposeBasebandArray: frame_mode '{}' must be 'all', 'even', or 'odd'"),
+            frame_mode_str));
+    }
+    INFO("TransposeBasebandArray: frame_mode = {}", frame_mode_str);
 
     // Calculate derived dimensions
     time_long = timesamples_per_frame / TIME_SHORT;
@@ -137,7 +150,6 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
             kotekan::int4x2_swapped_withoffset, "E", {timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS/2},
             {"T", "F", "P", "D"});
 
-    INFO("TransposeBasebandArray: Initialized (process_even={:s})", process_even ? "true" : "false");
     INFO("TransposeBasebandArray: Input shape: [{:d}][{:d}][{:d}][{:d}][{:d}]", time_long,
          NUM_LOCAL_FREQ, ELEMENT_LONG, TIME_SHORT, ELEMENT_SHORT);
     INFO("TransposeBasebandArray: Output shape: [{:d}][{:d}][{:d}]", timesamples_per_frame,
@@ -209,6 +221,9 @@ void TransposeBasebandArray::main_thread() {
     frameID out_frame_id(out_buf);
     frameID pl_mask_frame_id(pl_mask_buf);
 
+    // Frame counter for even/odd mode
+    uint64_t frame_counter = 0;
+
     // Pre-calculate strides for the loops (using constants where possible)
     constexpr size_t in_freq_stride = (size_t)ELEMENT_LONG * TIME_SHORT * ELEMENT_SHORT; // 2048
     const size_t in_tlong_stride = (size_t)NUM_LOCAL_FREQ * in_freq_stride;
@@ -226,30 +241,38 @@ void TransposeBasebandArray::main_thread() {
         if (in_frame == nullptr)
             break;
 
+        // Wait for pl_mask frame (need it before skip decision to keep buffers in sync)
+        uint8_t* pl_mask_frame = pl_mask_buf->wait_for_full_frame(unique_name, pl_mask_frame_id);
+        if (pl_mask_frame == nullptr)
+            break;
+
         // Wait for output frame
         uint8_t* out_frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
         if (out_frame == nullptr)
             break;
 
-        // Wait for pl_mask frame
-        uint8_t* pl_mask_frame = pl_mask_buf->wait_for_full_frame(unique_name, pl_mask_frame_id);
-        if (pl_mask_frame == nullptr)
-            break;
 
-        const uint64_t* pl_mask_ptr = (const uint64_t*)pl_mask_frame;
+        // Check if we should skip this frame based on frame_mode
+        bool should_process = (frame_mode == FrameMode::All)
+                              || (frame_mode == FrameMode::Even && (frame_counter % 2) == 0)
+                              || (frame_mode == FrameMode::Odd && (frame_counter % 2) == 1);
 
-        // Check if we should process this frame based on even/odd filtering
-        /*bool is_even_frame = ((int)in_frame_id % 2) == 0;
-        if (is_even_frame != process_even) {
-            // Skip this frame - mark as done without processing
-            DEBUG("TransposeBasebandArray: Skipping frame {:d} (process_even={:s}, frame is {:s})",
-                  (int)in_frame_id, process_even ? "true" : "false", is_even_frame ? "even" : "odd");
+        if (!should_process) {
+            // Skip this frame - release input buffers without producing output
+            DEBUG("TransposeBasebandArray: Skipping frame {:d} (counter={:d}, mode={})",
+                  (int)in_frame_id, frame_counter,
+                  frame_mode == FrameMode::Even ? "even" : "odd");
             in_buf->mark_frame_empty(unique_name, in_frame_id++);
             pl_mask_buf->mark_frame_empty(unique_name, pl_mask_frame_id++);
-            // Return the output frame without filling it
-            out_buf->mark_frame_empty(unique_name, out_frame_id++);
+            // Note that since both TransposeBasebandArray stages produce to the same
+            // buffer, this is needed when skipping.
+            out_buf->mark_frame_full(unique_name, out_frame_id++);
+            frame_counter++;
             continue;
-        }*/
+        }
+
+
+        const uint64_t* pl_mask_ptr = (const uint64_t*)pl_mask_frame;
 
         // Transpose the data
         // Input:  E[time_long][frequency_local][element_long][time_short][element_short]
@@ -390,5 +413,6 @@ void TransposeBasebandArray::main_thread() {
         in_buf->mark_frame_empty(unique_name, in_frame_id++);
         out_buf->mark_frame_full(unique_name, out_frame_id++);
         pl_mask_buf->mark_frame_empty(unique_name, pl_mask_frame_id++);
+        frame_counter++;
     }
 }

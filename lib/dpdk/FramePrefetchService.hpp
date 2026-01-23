@@ -224,11 +224,19 @@ void FramePrefetchService::prefetcher_loop() {
 
             DEBUG("FramePrefetchService {} prefetching frame {} (seq {})", unique_name, frame_id,
                  seq);
+            if (!buf->is_frame_empty(frame_id)) {
+                WARN("FramePrefetchService {}: wait_for_empty_frame on buf frame {} will block",
+                     unique_name, frame_id);
+            }
             uint8_t* ptr = buf->wait_for_empty_frame(unique_name, frame_id);
             if (ptr == nullptr) {
                 error_flag = true;
                 running = false;
                 return;
+            }
+            if (!receipt_bitmap_buf->is_frame_empty(frame_id)) {
+                WARN("FramePrefetchService {}: wait_for_empty_frame on receipt_bitmap_buf frame {} will block",
+                     unique_name, frame_id);
             }
             uint8_t* receipt_bitmap_ptr =
                 receipt_bitmap_buf->wait_for_empty_frame(unique_name, frame_id);

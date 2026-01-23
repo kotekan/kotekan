@@ -32,6 +32,9 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
     pl_mask_buf = get_buffer("pl_mask_buf");
     pl_mask_buf->register_producer(unique_name);
 
+    // The RFI mask here is just a hack to avoid running the actual RFI kernels
+    // It just replays a mask of whatever is in the frames at startup
+    // (This should be set to 0xff as the "zeroing" value.)
     rfi_mask_buf = get_buffer("rfi_mask_buf");
     rfi_mask_buf->register_producer(unique_name);
 

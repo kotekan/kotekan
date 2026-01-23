@@ -45,6 +45,8 @@
  * @conf num_elements           Int. Total number of elements.
  * @conf time_short             Int. Size of the short time dimension (default: 16).
  * @conf element_short          Int. Size of the short element dimension (default: 8).
+ * @conf frame_mode             String. Which frames to process: "all" (default), "even", or "odd".
+ *                              Use "even"/"odd" to parallelize two instances on alternate frames.
  *
  * @author Kotekan Team
  */
@@ -68,8 +70,9 @@ private:
     /// Configuration parameter (runtime)
     uint32_t timesamples_per_frame;
 
-    /// If true, only process even-numbered frames; if false, only process odd-numbered frames
-    bool process_even;
+    /// Frame processing mode: which frames this instance should handle
+    enum class FrameMode { All, Even, Odd };
+    FrameMode frame_mode;
 
     /// Derived dimension
     uint32_t time_long;

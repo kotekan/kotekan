@@ -231,9 +231,9 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         if (unlikely(active_f0 == nullptr || active_f1 == nullptr)) {
             if (prefetch_service->has_error() || prefetch_service->is_complete())
                 return -1;
-            WARN("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} because ran "
-                 "out of prefetched frames",
-                 port, worker_id, seq_num);
+            //WARN("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} because ran "
+            //     "out of prefetched frames",
+            //     port, worker_id, seq_num);
             active_f0 = nullptr;
             active_f1 = nullptr;
             return 0;
@@ -272,9 +272,9 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         if (unlikely(active_f0 == nullptr || active_f1 == nullptr)) {
             if (prefetch_service->has_error() || prefetch_service->is_complete())
                 return -1;
-            WARN("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} because ran "
-                 "out of prefetched frames",
-                 port, worker_id, seq_num);
+            //WARN("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} because ran "
+            //     "out of prefetched frames",
+            //     port, worker_id, seq_num);
             active_f0 = nullptr;
             active_f1 = nullptr;
             return 0;
