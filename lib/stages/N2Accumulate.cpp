@@ -152,8 +152,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     // _num_freq_per_n2k_frame (accumulate the full, blocked matrix x frequencies from the GPU)
     _vis = std::vector<int32_t>(2 * _num_freq_per_n2k_frame * _n2k_correlation_num_products,
                                 0); // vis with complex as 2 ints
-    _vis_even = std::vector<int32_t>(2 * _num_freq_per_n2k_frame * _n2k_correlation_num_products,
-                                     0); // store even vis matrix for weights calculation
     _weights = std::vector<float>(_num_freq_per_n2k_frame * _n2k_correlation_num_products,
                                   0.0f); // real-valued weights
 
@@ -164,7 +162,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _n_rfi_samples_in_vis = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
 
     _vis_samples_in_out_frame = 0;
-    _accum_fpga_start_tick = 0;
+    _accum_fpga_start_tick = -1;
 
     // Ensure incoming buffer frame sizes are correct
     size_t in_corr_frame_size = 2 * sizeof(int32_t) * _n2k_correlation_num_products
@@ -229,6 +227,7 @@ void N2Accumulate::main_thread() {
         Metrics::instance().add_gauge("kotekan_samples_in_accumulated_out_frame", unique_name);
 
     frameID in_frame_id(in_buf);
+    int previous_in_frame_id = -1;
     frameID in_counts_frame_id(in_counts_buf);
     frameID in_rfimask_frame_id(in_rfimask_buf);
     frameID out_frame_id(out_buf);
@@ -243,6 +242,10 @@ void N2Accumulate::main_thread() {
     uint64_t rfi_stride_f = 128; // = rfimask_fast_time_len / bits_per_entry = 1024 / 8;
     uint64_t rfi_stride_thi = rfi_stride_f * _num_freq_per_n2k_frame;
 
+    // vis_even may be an odd frame if the first frame eencountered is odd,
+    // since fpga_seq_num does not have to start from 0, in which case we skip
+    // it.
+    int32_t const* vis_even = nullptr;
 
     while (!stop_thread) {
 
@@ -303,6 +306,26 @@ void N2Accumulate::main_thread() {
             // "absolute" vis sample number
             int64_t vis_sample_num_abs = in_frame_num * _n_integrations_per_n2k_frame + vis_samp_n;
 
+            if (vis_even == nullptr) { // first time
+                // this will skip all of the vis_samp_n loop, but is easier to
+                // do here than outside due to the frame advance at the end of
+                // the outer loop
+                // if starting n2k frame fragment is not even numbered, skip whole frame
+                // if starting n2k fragment is not a multiple of the number of
+                // n2k samples to accumulate, skip whole frame
+                if (vis_sample_num_abs % 2 != 0
+                    || vis_sample_num_abs % _num_n2k_samples_to_accumulate != 0) {
+                    // NOTE: since we enforce that
+                    // _n_fpga_samples_per_n2k_frame % _n_fpga_samples_per_n2k_correlation == 0
+                    // holds we can ony get here if
+                    // _n_fpga_samples_per_n2k_frame == _n_fpga_samples_per_n2k_correlation
+                    // and the initial fpga_seq_num corresponds to an odd frame
+                    break;
+                }
+                assert(_accum_fpga_start_tick == -1);
+                _accum_fpga_start_tick = frame_metadata->get_fpga_seq_num();
+            }
+
             DEBUG("Accumulating new visibility sample ({:d} of {:d} in frame).", vis_samp_n,
                   _n_integrations_per_n2k_frame);
             // DEBUG("   Times are [start, end, out, num] = [{:d}, {:d}, {:d}, {:d}]",
@@ -330,7 +353,6 @@ void N2Accumulate::main_thread() {
 
             // Double checking the accumulation arrays are the right shape
             assert(_vis.size() == corr_stride_t);
-            assert(_vis_even.size() == corr_stride_t);
             assert(_weights.size() == corr_stride_t / 2);
 
             // The actual accumulation of visibility.
@@ -340,16 +362,13 @@ void N2Accumulate::main_thread() {
 
             // If we're working on an even sample, store it for differencing
             // with an odd sample. If odd, add to the _weights matrix.
-            // Potential optimization: copying vis_even is only really
-            // necessary if we've started accumulating a new frame
             if (vis_sample_num_abs % 2 == 0) {
-                std::copy(corr + corr_offset_t, corr + corr_offset_t + corr_stride_t,
-                          _vis_even.begin());
+                vis_even = corr + corr_offset_t;
             } else {
                 for (uint64_t d = 0;
                      d < (uint64_t)(_n2k_correlation_num_products * _num_freq_per_n2k_frame); ++d) {
-                    float dr = corr[corr_offset_t + 2 * d + 0] - _vis_even[2 * d + 0];
-                    float di = corr[corr_offset_t + 2 * d + 1] - _vis_even[2 * d + 1];
+                    float dr = corr[corr_offset_t + 2 * d + 0] - vis_even[2 * d + 0];
+                    float di = corr[corr_offset_t + 2 * d + 1] - vis_even[2 * d + 1];
                     _weights[d] += dr * dr + di * di;
                 } // d
             } // if even/odd
@@ -426,7 +445,9 @@ void N2Accumulate::main_thread() {
         } // t (vis samples in frame)
 
         // Advance to the next frame
-        in_buf->mark_frame_empty(unique_name, in_frame_id++);
+        if (previous_in_frame_id != -1)
+            in_buf->mark_frame_empty(unique_name, previous_in_frame_id);
+        previous_in_frame_id = in_frame_id++;
         in_counts_buf->mark_frame_empty(unique_name, in_counts_frame_id++);
         in_rfimask_buf->mark_frame_empty(unique_name, in_rfimask_frame_id++);
     }
@@ -453,6 +474,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
         DEBUG("Allocating metadata.");
         out_buf->allocate_new_metadata_object(out_frame_id);
         std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, out_frame_id);
+
+        assert(_accum_fpga_start_tick >= 0);
 
         meta->fpga_start_tick = _accum_fpga_start_tick;
         meta->frame_length_fpga_ticks =
