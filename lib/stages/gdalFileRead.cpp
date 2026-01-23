@@ -175,16 +175,20 @@ public:
 
             {
                 const auto coarse_freq = group->GetAttribute("coarse_freq");
+                assert(meta->has_nfreq() == bool(coarse_freq));
                 if (coarse_freq) {
-                    const auto coarse_nfreqs_shape = coarse_freq->GetDimensionsSize();
-                    assert(coarse_nfreqs_shape.size() == 1);
-                    meta->set_coarse_freq(coarse_freq->ReadAsIntArray());
+                    const auto coarse_freq_shape = coarse_freq->GetDimensionsSize();
+                    assert(coarse_freq_shape.size() == 1);
+                    assert(std::ptrdiff_t(coarse_freq_shape.at(0)) == meta->get_nfreq());
+                    const auto coarse_freq_data = coarse_freq->ReadAsIntArray();
+                    assert(std::ptrdiff_t(coarse_freq_data.size()) == meta->get_nfreq());
+                    meta->set_coarse_freq(coarse_freq_data);
                 }
             }
 
             {
                 const auto freq_upchan_factor = group->GetAttribute("freq_upchan_factor");
-                assert((meta->get_nfreq() >= 0) == bool(freq_upchan_factor));
+                assert(meta->has_nfreq() == bool(freq_upchan_factor));
                 if (freq_upchan_factor) {
                     const auto freq_upchan_factor_shape = freq_upchan_factor->GetDimensionsSize();
                     assert(freq_upchan_factor_shape.size() == 1);
@@ -192,6 +196,19 @@ public:
                     const auto freq_upchan_factor_data = freq_upchan_factor->ReadAsIntArray();
                     assert(std::ptrdiff_t(freq_upchan_factor_data.size()) == meta->get_nfreq());
                     meta->set_freq_upchan_factor(freq_upchan_factor_data);
+                }
+            }
+
+            {
+                const auto freq_upchan_index = group->GetAttribute("freq_upchan_index");
+                assert(meta->has_nfreq() == bool(freq_upchan_index));
+                if (freq_upchan_index) {
+                    const auto freq_upchan_index_shape = freq_upchan_index->GetDimensionsSize();
+                    assert(freq_upchan_index_shape.size() == 1);
+                    assert(std::ptrdiff_t(freq_upchan_index_shape.at(0)) == meta->get_nfreq());
+                    const auto freq_upchan_index_data = freq_upchan_index->ReadAsIntArray();
+                    assert(std::ptrdiff_t(freq_upchan_index_data.size()) == meta->get_nfreq());
+                    meta->set_freq_upchan_index(freq_upchan_index_data);
                 }
             }
 

@@ -20,7 +20,7 @@ namespace jsonMetadata {
 // these must match chimeMetadata and choordMetadata for now
 // in namespace for C++ const
 #define MAX_NUM_BEAMS 20
-const int CHORD_META_MAX_FREQ = 1024;
+const int CHORD_META_MAX_FREQ = 4096;
 
 typedef nlohmann::json metadata;
 
@@ -53,6 +53,8 @@ const std::string TV_USEC("TV_USEC"); // the tv_usec memmber of a timeval
 
 const std::string
     FREQ_UPCHAN_FACTOR("FREQ_UPCHAN_FACTOR"); // an array of int of size CHORD_META_MAX_FREQ
+const std::string
+    FREQ_UPCHAN_INDEX("FREQ_UPCHAN_INDEX"); // an array of int of size CHORD_META_MAX_FREQ
 
 
 struct beamCoord {

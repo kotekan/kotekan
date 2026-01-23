@@ -400,6 +400,16 @@ private:
 public:
     // Metadata:
 
+    bool has_metadata() const {
+        const std::shared_ptr<const metadataObject> mc = ringbuffer->get_metadata(0);
+        if (!mc)
+            return false;
+        const std::shared_ptr<const chordMetadata> metadata = get_chord_metadata(mc);
+        if (!metadata)
+            return false;
+        return true;
+    }
+
     std::shared_ptr<const chordMetadata> get_metadata() const {
         const std::shared_ptr<const metadataObject> mc = ringbuffer->get_metadata(0);
         assert(mc);
