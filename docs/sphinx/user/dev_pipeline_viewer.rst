@@ -60,18 +60,26 @@ To enable crash dump, add the following to config:
 
 Running Debug Server
 -----------------------
-Debug server is written in python with Flask, and it provides a way for web interface to fetch run-time data 
+Debug server is written in python with Flask, and it provides a way for web interface to fetch run-time data
 from kotekan endpoints and read dump files from file system.
 
 To start the server:
 
 .. code-block:: bash
 
-    FLASK_APP=debug_server.py FLASK_DEBUG=1 flask run
+    python debug_server.py
 
-**Note: use option -h to see help info**
-"-a=<kotelan_addr>" sets the kotekan address. The default is ``http://localhost:12048``.
-"-d=<dump_folder>" sets the dump folder path. The default is ``./``.
+**Options:**
+
+- ``-a <kotekan_addr>`` sets the kotekan address. The default is ``http://localhost:12048``.
+- ``-d <dump_folder>`` sets the dump folder path. The default is ``./``.
+- ``-h`` shows help info.
+
+Example with custom kotekan address:
+
+.. code-block:: bash
+
+    python debug_server.py -a http://remote-host:12048
 
 To stop the server:
 
