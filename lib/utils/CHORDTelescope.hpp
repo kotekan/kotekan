@@ -11,7 +11,6 @@
 #include <array>        // for array
 #include <complex>      // for complex
 #include <mutex>        // for mutex
-#include <shared_mutex> // for shared_mutex
 #include <stdint.h>     // for uint64_t, uint32_t, int64_t, uint8_t
 #include <string>       // for string, basic_string
 #include <time.h>       // for timespec
@@ -479,7 +478,7 @@ public:
      * @brief   Return the time corresponding to the given fpga sequence number as an int64_t.
      *          Uses the epoch of time0_ns.
      */
-    int64_t to_time_ns(uint64_t seq) const;
+    int64_t to_time_ns(uint64_t seq) const override;
 
     /**
      * @brief   Return the longitude of the instrument.
@@ -774,41 +773,6 @@ public:
     ~CHORDTelescope();
 
 protected:
-    /**
-     * @brief Callback to update EOP data
-     *
-     * @param json JSON reference of the config
-     */
-    bool receive_eop_updates(nlohmann::json& json);
-
-    /**
-     * @brief   Callback to send current EOP table
-     *
-     * @param   conn    Kotekan connection.
-     */
-    void send_eop_table(kotekan::connectionInstance& conn);
-
-    /**
-     * @brief   Callback to send time0_ns value
-     *
-     * @param   conn    Kotekan connection.
-     */
-    void send_time0_ns(kotekan::connectionInstance& conn);
-
-    /**
-     * @brief   Build a single EOP struct from config values
-     *
-     * @param   t_ns    Instrument time in nanoseconds.
-     * @param   delta_ut1_inst  Diff between UT1 and Instrument time in seconds
-     * @param   xp_as   Polar Motion x' coordinate in arcseconds
-     * @param   yp_as   Polar Motion y' coordinate in arcseconds
-     **/
-    EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
-                              double yp_as) const;
-
-    // The telescope's name in the config
-    const std::string _unique_name;
-
     // Frequency parameters
     const FreqParams _freq_params;
 
@@ -817,10 +781,6 @@ protected:
 
     /// Dish / array geometry and coordinate transforms.
     const GeographicParams _geographic_params;
-
-    /// Earth Orientation Parameters
-    mutable std::shared_mutex _eop_lock;
-    std::vector<EOP> _eop_table;
 };
 
 #endif // CHORD_TELESCOPE_HPP

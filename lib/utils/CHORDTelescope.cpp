@@ -1,10 +1,8 @@
 #include "CHORDTelescope.hpp"
 
 #include "Telescope.hpp"      // for Telescope, freq_id_t, REGISTER_TELESCOPE, _factory_aliasTe...
-#include "configUpdater.hpp"  // for configUpdater
 #include "kotekanLogging.hpp" // for WARN, INFO, DEBUG
 #include "restClient.hpp"     // for restClient
-#include "restServer.hpp"     // for restServer, connectionInstance
 #include "timeUtil.hpp" // for EOP, get_ERA_from_UT1, get_UT1_from_time, nanosec_i64_to_timespec
 
 #include "fmt.hpp"  // for compile_string_to_view
@@ -26,9 +24,6 @@ REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
 static constexpr double C = 2.99792458e8;
 static constexpr double deg2rad = M_PI / 180.0;
 static constexpr double arcsec2rad = M_PI / (180.0 * 3600);
-
-using kotekan::connectionInstance;
-using kotekan::restServer;
 
 
 // Dish parameters calculation/initialization
@@ -382,89 +377,20 @@ void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps, const st
 // CHORD telescope
 
 CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string& path) :
-    Telescope(config.get<std::string>(path, "log_level")), _unique_name(path),
+    Telescope(path,
+              config.get<std::string>(path, "log_level"),
+              config.get_default<std::string>(path, "updatable_config", "")),
     // Frequency sampling parameters
     _freq_params(FreqParams::from_config(config, path)),
     // GPS time configuration parameters
     _gps_time_params(GPSTimeParams::from_config(config, path)),
     // Instrument geographic coordinates
     _geographic_params(GeographicParams::from_config(config, path)) {
-
-    // Set up callbacks for updating EOP and sending time0_ns
-    using namespace std::placeholders;
-
-    kotekan::configUpdater::instance().subscribe(
-        config.get<std::string>(path, "updatable_config"),
-        std::bind(&CHORDTelescope::receive_eop_updates, this, _1));
-
-    restServer& rest_server = restServer::instance();
-
-    rest_server.register_get_callback(path + "/time0_ns",
-                                      std::bind(&CHORDTelescope::send_time0_ns, this, _1));
-    rest_server.register_get_callback(path + "/eop_table",
-                                      std::bind(&CHORDTelescope::send_eop_table, this, _1));
+    
+    INFO("Building CHORDTelescope");
 }
 
-CHORDTelescope::~CHORDTelescope() {
-    // Must manually remove the GET callbacks
-    restServer& rest_server = restServer::instance();
-    rest_server.remove_get_callback(_unique_name + "/time0_ns");
-    rest_server.remove_get_callback(_unique_name + "/eop_table");
-}
-
-bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
-    try {
-        // Fill a temporary table with the updated values.
-        std::vector<EOP> tmp_eop_table;
-        for (const auto& elem : json.at("earth_orientation_parameter_table")) {
-            INFO("CHORDTelescope EOP update: {:s}", elem.dump());
-            int64_t t_ns = elem.at("time_inst_ns").get<int64_t>();
-            double dut1 = elem.at("delta_UT1_inst").get<double>();
-            double x_pm = elem.at("x_pm").get<double>();
-            double y_pm = elem.at("y_pm").get<double>();
-            tmp_eop_table.push_back(build_EOP_from_update(t_ns, dut1, x_pm, y_pm));
-        }
-
-        if (tmp_eop_table.empty()) {
-            ERROR(
-                "CHORDTelescope {}: earth_orientation_parameter_table update contained no entries.",
-                _unique_name);
-            return false;
-        }
-
-        // Sort chronologically
-        std::sort(tmp_eop_table.begin(), tmp_eop_table.end(), EOP_comp_time);
-
-        // Replace old table with new.
-        {
-            // Make sure no one is using the EOP table while we're updating it.
-            std::unique_lock lock(_eop_lock);
-            _eop_table = tmp_eop_table;
-            INFO("Updated EOP Table with {:d} entries", _eop_table.size());
-        }
-
-    } catch (std::exception& e) {
-        WARN("CHORDTelescope failed to read EOP update: {:s}", e.what());
-        return false;
-    }
-
-    return true;
-}
-
-void CHORDTelescope::send_eop_table(connectionInstance& conn) {
-    nlohmann::json reply;
-    {
-        std::shared_lock lock(_eop_lock);
-        reply["eop_table"] = _eop_table;
-    }
-    conn.send_json_reply(reply);
-}
-
-void CHORDTelescope::send_time0_ns(connectionInstance& conn) {
-    nlohmann::json reply;
-    reply["time0_ns"] = _gps_time_params.time0_ns;
-    conn.send_json_reply(reply);
-}
+CHORDTelescope::~CHORDTelescope() {}
 
 timespec CHORDTelescope::to_time(uint64_t seq) const {
     return nanosec_i64_to_timespec(to_time_ns(seq));
@@ -1037,23 +963,6 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
 size_t CHORDTelescope::num_freq_per_stream() const {
     FATAL_ERROR("CHORDTelesope does not support num_freq_per_stream()");
     return 0;
-}
-
-EOP CHORDTelescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst, double xp_as,
-                                          double yp_as) const {
-
-    struct timespec ts_inst = nanosec_i64_to_timespec(time_ns);
-    int64_t ut1 = get_UT1_from_time(ts_inst, delta_ut1_inst);
-    double era = get_ERA_from_UT1(ut1, nullptr);
-
-    EOP eop{.t_inst = time_ns,
-            .t_ut1 = ut1,
-            .delta_UT1_inst = delta_ut1_inst,
-            .ERA_deg = era,
-            .xp_as = xp_as,
-            .yp_as = yp_as};
-
-    return eop;
 }
 
 void to_json(nlohmann::json& j, const EOP& m) {

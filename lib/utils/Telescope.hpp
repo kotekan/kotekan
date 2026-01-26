@@ -4,11 +4,14 @@
 #include "Config.hpp"         // for Config
 #include "factory.hpp"        // for FACTORY, CREATE_FACTORY, REGISTER_NAMED_TYPE_WITH_FACTORY
 #include "kotekanLogging.hpp" // for ERROR, kotekanLogging
+#include "restServer.hpp" // for connectionInstance
+#include "timeUtil.hpp"   // for EOP
 
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <exception> // for exception
 #include <memory>    // for unique_ptr
+#include <shared_mutex> // for shared_mutex
 #include <stdint.h>  // for uint32_t, uint64_t, UINT32_MAX, uint8_t
 #include <string>    // for string, basic_string
 #include <time.h>    // for timespec
@@ -61,7 +64,7 @@ public:
     static const Telescope& instance();
 
 
-    virtual ~Telescope() = default;
+    ~Telescope();
 
     /**
      * @brief   Get the type name of this telescope object.
@@ -179,7 +182,12 @@ public:
      * @return  The corresponding UNIX time.
      **/
     virtual timespec to_time(uint64_t seq) const = 0;
-
+    
+    /**
+     * @brief   Return the time corresponding to the given fpga sequence number as an int64_t.
+     *          Uses the epoch of time0_ns.
+     */
+    virtual int64_t to_time_ns(uint64_t seq) const = 0;
 
     /**
      * @brief Convert a UNIX epoch time into the nearest sequence number.
@@ -225,8 +233,59 @@ protected:
      * This constructor sets up the logging. Implement a specific constructor
      * in a derived class to parse the config, and call this one to make sure
      * the logging is done correctly.
+     *
+     * TODO: UPDATE THIS
      **/
-    Telescope(const std::string& log_level);
+    Telescope(const std::string& tel_path, const std::string& log_level, const std::string& updatable_config_path);
+
+    /**
+     * @brief Callback to update EOP data
+     *
+     * @param json JSON reference of the config
+     */
+    bool receive_eop_updates(nlohmann::json& json);
+
+    /**
+     * @brief   Callback to send current EOP table
+     *
+     * @param   conn    Kotekan connection.
+     */
+    void send_eop_table(kotekan::connectionInstance& conn);
+
+    /**
+     * @brief   Callback to send time0_ns value
+     *
+     * @param   conn    Kotekan connection.
+     */
+    void send_time0_ns(kotekan::connectionInstance& conn);
+
+    /**
+     * @brief   Build a single EOP struct from config values
+     *
+     * @param   t_ns    Instrument time in nanoseconds.
+     * @param   delta_ut1_inst  Diff between UT1 and Instrument time in seconds
+     * @param   xp_as   Polar Motion x' coordinate in arcseconds
+     * @param   yp_as   Polar Motion y' coordinate in arcseconds
+     **/
+    EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
+                              double yp_as) const;
+
+    /**
+     * The telescope's name in the config
+     */
+    const std::string _unique_name;
+
+    /**
+     * This is the Earth Orientation Parameter (EOP) table used to determine
+     * UT1 time and Earth Rotation Angle.
+     */
+    std::vector<EOP> _eop_table;
+    
+    /**
+     * This mutex locks access to the _eop_table which can be updated via REST
+     * calls.
+     */
+    mutable std::shared_mutex _eop_lock;
 };
 
 #endif // TELESCOPE_HPP

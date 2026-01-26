@@ -71,6 +71,8 @@ gps_time:
   frame0_nano: 50 * nsec_in_jyear
 
 num_dishes: 32
+num_dishes_x: 16
+num_dishes_y: 16
 
 # Add a consumer stage that prints the output buffer to screen
 screen_dump:
