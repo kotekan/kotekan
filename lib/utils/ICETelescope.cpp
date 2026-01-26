@@ -16,8 +16,7 @@ REGISTER_TELESCOPE(ICETelescope, "ICETelescope");
 #define GIGA 1000000000
 
 ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& path) :
-    Telescope(path,
-              config.get<std::string>(path, "log_level"),
+    Telescope(path, config.get<std::string>(path, "log_level"),
               config.get_default<std::string>(path, "updatable_config", "")) {
     INFO("Building ICETelescope");
 

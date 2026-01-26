@@ -4,17 +4,17 @@
 #include "Config.hpp"         // for Config
 #include "factory.hpp"        // for FACTORY, CREATE_FACTORY, REGISTER_NAMED_TYPE_WITH_FACTORY
 #include "kotekanLogging.hpp" // for ERROR, kotekanLogging
-#include "restServer.hpp" // for connectionInstance
-#include "timeUtil.hpp"   // for EOP
+#include "restServer.hpp"     // for connectionInstance
+#include "timeUtil.hpp"       // for EOP
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <exception> // for exception
-#include <memory>    // for unique_ptr
+#include <exception>    // for exception
+#include <memory>       // for unique_ptr
 #include <shared_mutex> // for shared_mutex
-#include <stdint.h>  // for uint32_t, uint64_t, UINT32_MAX, uint8_t
-#include <string>    // for string, basic_string
-#include <time.h>    // for timespec
+#include <stdint.h>     // for uint32_t, uint64_t, UINT32_MAX, uint8_t
+#include <string>       // for string, basic_string
+#include <time.h>       // for timespec
 
 // Create the abstract factory for generating patterns
 class Telescope;
@@ -182,7 +182,7 @@ public:
      * @return  The corresponding UNIX time.
      **/
     virtual timespec to_time(uint64_t seq) const = 0;
-    
+
     /**
      * @brief   Return the time corresponding to the given fpga sequence number as an int64_t.
      *          Uses the epoch of time0_ns.
@@ -236,7 +236,8 @@ protected:
      *
      * TODO: UPDATE THIS
      **/
-    Telescope(const std::string& tel_path, const std::string& log_level, const std::string& updatable_config_path);
+    Telescope(const std::string& tel_path, const std::string& log_level,
+              const std::string& updatable_config_path);
 
     /**
      * @brief Callback to update EOP data
@@ -280,7 +281,7 @@ protected:
      * UT1 time and Earth Rotation Angle.
      */
     std::vector<EOP> _eop_table;
-    
+
     /**
      * This mutex locks access to the _eop_table which can be updated via REST
      * calls.

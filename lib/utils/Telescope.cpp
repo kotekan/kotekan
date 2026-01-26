@@ -1,9 +1,10 @@
 #include "Telescope.hpp"
 
-#include "configUpdater.hpp"  // for configUpdater
-#include "fmt.hpp" // for compile_string_to_view
-#include "restServer.hpp"   // for restServer, connectionInstance
+#include "configUpdater.hpp" // for configUpdater
+#include "restServer.hpp"    // for restServer, connectionInstance
 #include "timeUtil.hpp"
+
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <mutex>
 #include <shared_mutex>
@@ -12,11 +13,11 @@
 using kotekan::connectionInstance;
 using kotekan::restServer;
 
-Telescope::Telescope(const std::string& tel_path, const std::string& log_level, const std::string& updatable_config_path) :
-    _unique_name(tel_path) {
+Telescope::Telescope(const std::string& tel_path, const std::string& log_level,
+                     const std::string& updatable_config_path) : _unique_name(tel_path) {
     set_log_level(log_level);
     set_log_prefix("/telescope");
-    
+
     INFO("Building Telescope");
 
     // Set up callbacks for updating EOP and sending time0_ns
@@ -25,8 +26,7 @@ Telescope::Telescope(const std::string& tel_path, const std::string& log_level, 
     // Subscribe to config updates if updatable_config is set.
     if (updatable_config_path.length() > 0) {
         kotekan::configUpdater::instance().subscribe(
-            updatable_config_path,
-            std::bind(&Telescope::receive_eop_updates, this, _1));
+            updatable_config_path, std::bind(&Telescope::receive_eop_updates, this, _1));
     }
 
     INFO("Adding telescope REST GET endpoints");
@@ -107,9 +107,8 @@ bool Telescope::receive_eop_updates(nlohmann::json& json) {
         }
 
         if (tmp_eop_table.empty()) {
-            ERROR(
-                "Telescope {}: earth_orientation_parameter_table update contained no entries.",
-                _unique_name);
+            ERROR("Telescope {}: earth_orientation_parameter_table update contained no entries.",
+                  _unique_name);
             return false;
         }
 
@@ -147,8 +146,8 @@ void Telescope::send_time0_ns(connectionInstance& conn) {
     conn.send_json_reply(reply);
 }
 
-EOP Telescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst,
-                                     double xp_as, double yp_as) const {
+EOP Telescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst, double xp_as,
+                                     double yp_as) const {
 
     struct timespec ts_inst = nanosec_i64_to_timespec(time_ns);
     int64_t ut1 = get_UT1_from_time(ts_inst, delta_ut1_inst);

@@ -377,8 +377,7 @@ void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps, const st
 // CHORD telescope
 
 CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string& path) :
-    Telescope(path,
-              config.get<std::string>(path, "log_level"),
+    Telescope(path, config.get<std::string>(path, "log_level"),
               config.get_default<std::string>(path, "updatable_config", "")),
     // Frequency sampling parameters
     _freq_params(FreqParams::from_config(config, path)),
@@ -386,7 +385,7 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     _gps_time_params(GPSTimeParams::from_config(config, path)),
     // Instrument geographic coordinates
     _geographic_params(GeographicParams::from_config(config, path)) {
-    
+
     INFO("Building CHORDTelescope");
 }
 
