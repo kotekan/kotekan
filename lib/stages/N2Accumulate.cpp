@@ -338,7 +338,7 @@ void N2Accumulate::main_thread() {
 
             // Finalize accumulation if the visibility elements are past the output time...
             //  end on an odd frame too so we accumulate weights.
-            // if (t_vis_s > t_output && vis_sample_num_abs % 2 == 1) {
+            // if (t_vis_s > t_output && vis_sample_num_abs % 2 == 1) { }
             if (_vis_samples_in_out_frame >= _num_n2k_samples_to_accumulate) {
 
                 INFO("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
