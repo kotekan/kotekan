@@ -19,7 +19,7 @@ clOutputDataZero::clOutputDataZero(Config& config, const std::string& unique_nam
 
     // output_len = _num_local_freq * _num_blocks * (_block_size * _block_size) * 2 * _num_data_sets
     //              * sizeof(int32_t);
-    output_len = _samples_per_data_set * _num_data_sets * _num_local_freq * _num_pointings * 2  * sizeof(uint32_t);
+    output_len = _samples_per_data_set * _num_data_sets * _num_local_freq * _num_pointings * 2  * sizeof(cl_float2);
 
 
     int err;

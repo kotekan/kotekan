@@ -144,10 +144,10 @@ int main() {
     cl_kernel kernel = clCreateKernel(program, "gpu_beamforming", nullptr);
 
     cl_mem inBuf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                  sizeof(unsigned int) * NTIME * NFREQ * NINPUT, inputData.data(), nullptr);
+                                  sizeof(char) * NTIME * NFREQ * NINPUT, inputData.data(), nullptr);
     cl_mem phBuf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                  sizeof(float) * NPOINTING * NFREQ * NINPUT, phaseMap.data(), nullptr);
-    cl_mem outBuf = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(float) * NTIME * NFREQ * NPOINTING * 2, nullptr, nullptr);
+                                  sizeof(cl_float2) * NPOINTING * NFREQ * NINPUT, phaseMap.data(), nullptr);
+    cl_mem outBuf = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(cl_float2) * NTIME * NFREQ * NPOINTING * 2, nullptr, nullptr);
 
     // inputData, phasemap, outputData
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inBuf);

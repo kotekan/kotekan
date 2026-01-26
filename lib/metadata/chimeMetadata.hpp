@@ -192,6 +192,53 @@ inline void set_dataset_id(Buffer* buf, int ID, dset_id_t dataset_id) {
     chime_metadata->dataset_id = dataset_id;
 }
 
+inline void chime_metadata_init(chimeMetadata* c) {
+    bzero(c, sizeof(chimeMetadata));
+}
+
+inline void chime_metadata_copy(chimeMetadata* out, const chimeMetadata* in) {
+    memcpy(out, in, sizeof(chimeMetadata));
+}
+
+inline bool metadata_is_chime(Buffer* buf, int) {
+    return strcmp(buf->metadata_pool->type_name, "chimeMetadata") == 0;
+}
+
+inline bool metadata_container_is_chime(const metadataContainer* mc) {
+    return strcmp(mc->parent_pool->type_name, "chimeMetadata") == 0;
+}
+
+inline const chimeMetadata* get_chime_metadata(const Buffer* buf, int frame_id) {
+    return (const chimeMetadata*)buf->metadata[frame_id]->metadata;
+}
+
+inline chimeMetadata* get_chime_metadata(Buffer* buf, int frame_id) {
+    return (chimeMetadata*)buf->metadata[frame_id]->metadata;
+}
+
+inline const chimeMetadata* get_chime_metadata(const metadataContainer* mc) {
+    if (!mc)
+        return nullptr;
+    if (strcmp(mc->parent_pool->type_name, "chimeMetadata")) {
+        WARN_NON_OO("Expected metadata to be type \"chimeMetadata\", got \"{:s}\".",
+                    mc->parent_pool->type_name);
+        return nullptr;
+    }
+    return static_cast<const chimeMetadata*>(mc->metadata);
+}
+
+inline chimeMetadata* get_chime_metadata(metadataContainer* mc) {
+    if (!mc)
+        return nullptr;
+    if (strcmp(mc->parent_pool->type_name, "chimeMetadata")) {
+        WARN_NON_OO("Expected metadata to be type \"chimeMetadata\", got \"{:s}\".",
+                    mc->parent_pool->type_name);
+        return nullptr;
+    }
+    return static_cast<chimeMetadata*>(mc->metadata);
+}
+
+
 /**
  * @brief Zeros the number of lost samples for the given frame metadata
  *

@@ -1,4 +1,6 @@
 #include "clOutputData.hpp"
+#include "BeamMetadata.hpp"   // for BeamMetadata
+#include "BasebandMetadata.hpp"   // for BeamMetadata
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -67,8 +69,26 @@ void clOutputData::finalize_frame() {
     Buffer * out_buf = out_bufs[gpu_frame_id % out_bufs.size()];
     int out_frame_index = gpu_frame_id / out_bufs.size() % out_buf->num_frames;
 
-    pass_metadata(in_buf, in_frame_index, out_buf, out_frame_index);
+    //pass_metadata(in_buf, in_frame_index, out_buf, out_frame_index);
+    // Copy over the relevant metadata
+    allocate_new_metadata_object(out_buf, out_frame_index);
 
+    BasebandMetadata* in_metadata = (BasebandMetadata*)get_metadata(in_buf, in_frame_index);
+    BeamMetadata* out_metadata = (BeamMetadata*)get_metadata(out_buf, out_frame_index);
+
+    out_metadata->time0_ctime = in_metadata->time0_ctime;
+    out_metadata->time0_ctime_offset = in_metadata->time0_ctime_offset;
+    out_metadata->event_id = in_metadata->event_id;
+    out_metadata->freq_id = in_metadata->freq_id;
+    // Copy the base dataset ID from the GPU data.
+    // @TODO we will likely want to add a unique dataset ID state
+    // for each beam for systems that like to track things with the dataset ID
+    // however at the moment all that data should be contained in this metadata
+    // plus the root dataset ID.
+    
+    //out_metadata->ra = in_metadata->beam_coord.ra[_extract_beam];
+    //out_metadata->dec = in_metadata->beam_coord.dec[_extract_beam];
+    
     mark_frame_empty(in_buf, unique_name.c_str(), in_frame_index);
     mark_frame_full(out_buf, unique_name.c_str(), out_frame_index);
 }

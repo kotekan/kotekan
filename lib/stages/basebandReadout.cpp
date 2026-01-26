@@ -58,6 +58,7 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     _max_dump_samples(config.get_default<uint64_t>(unique_name, "max_dump_samples", 1 << 30)),
     in_buf(get_buffer("in_buf")), next_frame(0), oldest_frame(-1), frame_locks(_num_frames_buffer),
     out_buf(get_buffer("out_buf")), out_frame_id(out_buf),
+    _dump_on_start(config.get_default<bool>(unique_name, "dump_on_start", false)),
     readout_counter(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_baseband_readout_total", unique_name, {"freq_id", "status"})),
     readout_sent_frame_counter(kotekan::prometheus::Metrics::instance().add_counter(

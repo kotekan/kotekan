@@ -7,6 +7,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "chordMetadata.hpp"
+#include "BasebandMetadata.hpp"
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "kotekanTrackers.hpp" // for KotekanTrackers
 #include "oneHotMetadata.hpp"  // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
@@ -29,6 +30,7 @@
 #include <sys/types.h> // for uint
 #include <unistd.h>    // for usleep
 #include <vector>      // for vector
+// #include <struct_timespec.h>
 
 
 using kotekan::bufferContainer;
@@ -53,7 +55,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
            || type == "random" || type == "random_signed" 
            || type == "ramp"
            || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
-           || type == "square" || type == "onehot");
+           || type == "square" || type == "onehot" || type == "4b+4b");
     assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
     int type_size = 1; // default
     if (type == "const")
@@ -68,6 +70,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         type_size = 2;
     if (type == "constf32")
         type_size = 4;
+
     if (type == "const" || type == "const8" || type == "const16" || type == "const32"
         || type == "random" || type == "random_signed" || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
@@ -77,6 +80,20 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         fvalue = config.get_default<float>(unique_name, "value", -1.0);
         _fvalue_array =
             config.get_default<std::vector<float>>(unique_name, "values", std::vector<float>());
+    } else if (type == "4b+4b"){
+        type_size = 1;
+        char real_value = config.get_default<int>(unique_name, "real_value", -1999);
+        char imag_value = config.get_default<int>(unique_name, "imag_value", -1999);
+        value = real_value << 4u; 
+        value += imag_value & 0x0f; 
+        _value_array =
+            config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
+        // std::cout<< "test gpu allocate buffer size" << "\n";
+        // std::cout<< value  << "\n";
+        // std::cout<< (int) real_value  << "\n";
+        // std::cout<< (int) imag_value  << "\n";
+        // ERROR("testing");
+        // exit(3);
     }
     _reuse_random = config.get_default<bool>(unique_name, "reuse_random", false);
     _seed = config.get_default<int>(unique_name, "seed", 0);
@@ -182,6 +199,9 @@ void testDataGen::main_thread() {
 
     if (((type == "random") || (type == "random_signed") || (type == "onehot")) && _seed)
         srand(_seed);
+    if ((type == "4b+4b") && _seed){
+        srand(_seed);
+    }
 
     while (!stop_thread) {
         double start_time = current_time();
@@ -205,6 +225,27 @@ void testDataGen::main_thread() {
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
         uint n_to_set = buf->frame_size / sizeof(uint8_t);
+
+
+         if (metadata_is_chime(buf, frame_id)) {
+                chimeMetadata* chimemeta = get_chime_metadata(buf, frame_id);
+                chime_metadata_init(chimemeta);
+                struct timespec ts;
+                // timespec_get(&ts, TIME_UTC);
+                ts.tv_sec = start_time+frame_id;
+                ts.tv_nsec = frame_id;
+                chimemeta->gps_time = ts;
+
+                struct timeval tv;
+                TIMESPEC_TO_TIMEVAL(&tv, &ts);
+                chimemeta->first_packet_recv_time = tv;
+
+
+                // chimemeta->event_id = 0;
+                // chimemeta->freq_id = -1;
+                // chimemeta->time0_ctime = frame_id;
+            }
+
         if (type == "const") {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
@@ -212,6 +253,20 @@ void testDataGen::main_thread() {
                 chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
                 chord_metadata_init(chordmeta);
                 chordmeta->type = chordDataType::int4p4;
+                chordmeta->dims = (int)_array_shape.size();
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    chordmeta->dim[d] = _array_shape[d];
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
+                                 sizeof chordmeta->dim_name[d]);
+            }
+        } else if (type == "4b+4b") {
+            n_to_set /= sizeof(int8_t);
+            frame8 = (int8_t*)frame;
+            if (metadata_is_chord(buf, frame_id)) {
+                chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                chord_metadata_init(chordmeta);
+                chordmeta->type = chordDataType::int8;
                 chordmeta->dims = (int)_array_shape.size();
                 for (int d = 0; d < chordmeta->dims; ++d)
                     chordmeta->dim[d] = _array_shape[d];
@@ -380,6 +435,10 @@ void testDataGen::main_thread() {
                 if (finished_seeding_constant)
                     break;
                 frame[j] = value;
+            } else if (type == "4b+4b") {
+                if (finished_seeding_constant)
+                    break;
+                frame8[j] = value;
             } else if (type == "const8") {
                 if (finished_seeding_constant)
                     break;

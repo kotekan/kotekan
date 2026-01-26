@@ -51,6 +51,11 @@ __kernel void trackingbf_float( __global uint *data,
             }
 
             //Reduction of 64, eventually each number comes from the sum of 1024 values
+            // lanes 0-15 have sums for lanes 0-63
+            // an AMD GPU has "wavefronts", each of which have 64 lanes.
+            // before: sum.RE has values from this work item only. 
+            // after:  sum.RE has the sum of this, and the work items at +16, +32, +48
+            // so full sum is contained across lanes 0-15
             sum.RE += as_float(__builtin_amdgcn_ds_bpermute((16+get_local_id(0))*4,as_uint(sum.RE)))+
                       as_float(__builtin_amdgcn_ds_bpermute((32+get_local_id(0))*4,as_uint(sum.RE)))+
                       as_float(__builtin_amdgcn_ds_bpermute((48+get_local_id(0))*4,as_uint(sum.RE)));

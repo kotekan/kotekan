@@ -35,7 +35,7 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  * @par Buffers
  * @buffer in_buf buffer to manage and read. Must be several frames larger than
  *                ``num_frames_buffer`` config parameter.
- *         @buffer_format DPDK baseband ``samples_per_data_set x num_elements`` bytes
+ *         @buffer_format DPDK baseband ``samples_per_data_set x num_elements`` bytes #TODO SUS WHERE FREQ
  *         @buffer_metadata chimeMetadata
  *
  * @buffer out_buf The extracted single frequency baseband output
@@ -81,6 +81,9 @@ private:
     uint32_t _num_freq_per_stream;
     int _samples_per_data_set;
     int64_t _max_dump_samples;
+    bool _dump_on_start; 
+    std::atomic<bool> _did_start_dump{false};
+
     std::vector<input_ctype> _inputs;
 
     Buffer* in_buf;

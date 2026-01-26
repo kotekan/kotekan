@@ -43,4 +43,51 @@ struct BasebandMetadata {
     int32_t reserved;
 };
 
+
+inline void baseband_metadata_init(BasebandMetadata* c) {
+    bzero(c, sizeof(BasebandMetadata));
+}
+
+inline void baseband_metadata_copy(BasebandMetadata* out, const BasebandMetadata* in) {
+    memcpy(out, in, sizeof(BasebandMetadata));
+}
+
+inline bool metadata_is_baseband(Buffer* buf, int) {
+    return strcmp(buf->metadata_pool->type_name, "BasebandMetadata") == 0;
+}
+
+inline bool metadata_container_is_baseband(const metadataContainer* mc) {
+    return strcmp(mc->parent_pool->type_name, "BasebandMetadata") == 0;
+}
+
+inline const BasebandMetadata* get_baseband_metadata(const Buffer* buf, int frame_id) {
+    return (const BasebandMetadata*)buf->metadata[frame_id]->metadata;
+}
+
+inline BasebandMetadata* get_baseband_metadata(Buffer* buf, int frame_id) {
+    return (BasebandMetadata*)buf->metadata[frame_id]->metadata;
+}
+
+inline const BasebandMetadata* get_baseband_metadata(const metadataContainer* mc) {
+    if (!mc)
+        return nullptr;
+    if (strcmp(mc->parent_pool->type_name, "BasebandMetadata")) {
+        WARN_NON_OO("Expected metadata to be type \"BasebandMetadata\", got \"{:s}\".",
+                    mc->parent_pool->type_name);
+        return nullptr;
+    }
+    return static_cast<const BasebandMetadata*>(mc->metadata);
+}
+
+inline BasebandMetadata* get_baseband_metadata(metadataContainer* mc) {
+    if (!mc)
+        return nullptr;
+    if (strcmp(mc->parent_pool->type_name, "BasebandMetadata")) {
+        WARN_NON_OO("Expected metadata to be type \"BasebandMetadata\", got \"{:s}\".",
+                    mc->parent_pool->type_name);
+        return nullptr;
+    }
+    return static_cast<BasebandMetadata*>(mc->metadata);
+}
+
 #endif // BASEBAND_METADATA_HPP
