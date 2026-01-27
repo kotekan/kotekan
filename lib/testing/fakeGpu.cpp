@@ -177,7 +177,7 @@ void FakeGpu::main_thread() {
 
 FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(path, config.get<std::string>(path, "log_level"),
-              config.get_default<std::string>(path, "updatable_config", "")) {
+              config.get_default<std::string>(path, "eop_updatable_config", "")) {
     _num_local_freq = config.get_default<size_t>(path, "num_local_freq", 1);
 }
 

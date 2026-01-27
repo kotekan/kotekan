@@ -18,7 +18,7 @@ REGISTER_TELESCOPE(CHIMETelescope, "CHIMETelescope");
 
 CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string& path) :
     ICETelescope(path, config.get<std::string>(path, "log_level"),
-                 config.get_default<std::string>(path, "updatable_config", "")) {
+                 config.get_default<std::string>(path, "eop_updatable_config", "")) {
     INFO("Building CHIMETelescope");
 
     // This is always 1 for CHIME

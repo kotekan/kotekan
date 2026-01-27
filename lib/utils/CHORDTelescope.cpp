@@ -378,7 +378,7 @@ void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps, const st
 
 CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(path, config.get<std::string>(path, "log_level"),
-              config.get_default<std::string>(path, "updatable_config", "")),
+              config.get_default<std::string>(path, "eop_updatable_config", "")),
     // Frequency sampling parameters
     _freq_params(FreqParams::from_config(config, path)),
     // GPS time configuration parameters

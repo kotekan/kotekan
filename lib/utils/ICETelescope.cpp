@@ -17,7 +17,7 @@ REGISTER_TELESCOPE(ICETelescope, "ICETelescope");
 
 ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(path, config.get<std::string>(path, "log_level"),
-              config.get_default<std::string>(path, "updatable_config", "")) {
+              config.get_default<std::string>(path, "eop_updatable_config", "")) {
     INFO("Building ICETelescope");
 
     // TODO: rename this parameter to `num_freq_per_stream` in the config

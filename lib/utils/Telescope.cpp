@@ -25,6 +25,7 @@ Telescope::Telescope(const std::string& tel_path, const std::string& log_level,
 
     // Subscribe to config updates if updatable_config is set.
     if (updatable_config_path.length() > 0) {
+        INFO("Subscribing {:s} to updatable config.", updatable_config_path);
         kotekan::configUpdater::instance().subscribe(
             updatable_config_path, std::bind(&Telescope::receive_eop_updates, this, _1));
     }
