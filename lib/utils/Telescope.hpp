@@ -64,7 +64,7 @@ public:
     static const Telescope& instance();
 
 
-    ~Telescope();
+    virtual ~Telescope();
 
     /**
      * @brief   Get the type name of this telescope object.
