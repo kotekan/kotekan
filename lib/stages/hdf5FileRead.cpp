@@ -167,6 +167,9 @@ public:
                 if (dataset.hasAttribute("freq_upchan_factor"))
                     meta->set_freq_upchan_factor(
                         dataset.getAttribute("freq_upchan_factor").read<std::vector<int>>());
+                if (dataset.hasAttribute("freq_upchan_index"))
+                    meta->set_freq_upchan_index(
+                        dataset.getAttribute("freq_upchan_index").read<std::vector<int>>());
 
                 if (dataset.hasAttribute("ndishes")) {
                     meta->ndishes = dataset.getAttribute("ndishes").read<int>();

@@ -170,12 +170,14 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
     std::uint64_t* const rfi_S012bar_memory = rfi_S012bar.get_ndarray().data();
 
     const std::ptrdiff_t Trfi_size = rfi_S012.get_ndarray().extent(0);
-    const std::ptrdiff_t Trfi_min = rfi_S012.get_read_valid().begin();
+    // Trfi_min wraps around into actual array index to avoid overflows
+    const std::ptrdiff_t Trfi_min = rfi_S012.get_read_valid().begin() % Trfi_size;
     const std::ptrdiff_t Trfi = rfi_S012.get_read_valid().size();
     DEBUG("Trfi_size={:d} Trfi_min={:d} Trfi={:d}", Trfi_size, Trfi_min, Trfi);
 
     const std::ptrdiff_t Trfibar_size = rfi_S012bar.get_ndarray().extent(0);
-    const std::ptrdiff_t Trfibar_min = rfi_S012bar.get_write_valid().begin();
+    // Trfibar_min wraps around into actual array index to avoid overflows
+    const std::ptrdiff_t Trfibar_min = rfi_S012bar.get_write_valid().begin() % Trfibar_size;
     const std::ptrdiff_t Trfibar = rfi_S012bar.get_write_valid().size();
     DEBUG("Trfibar_size={:d} Trfibar_min={:d} Trfibar={:d}", Trfibar_size, Trfibar_min, Trfibar);
 

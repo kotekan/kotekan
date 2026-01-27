@@ -32,7 +32,7 @@
 #pragma pack()
 
 // Maximum number of frequencies in metadata array
-const int CHORD_META_MAX_FREQ = 1024;
+const int CHORD_META_MAX_FREQ = 4096;
 
 // Maximum number of dimensions for arrays
 const int CHORD_META_MAX_DIM = 10;
@@ -384,7 +384,6 @@ public:
     // Per-frequency arrays
 
     // the upchannelization factor that each frequency has gone through (1 for = FPGA)
-    // Also indexed by the local coarse frequency channel.
     void set_freq_upchan_factor(const std::vector<int>& freq_upchan_factor) {
         std::lock_guard<std::mutex> lock(this->lock);
         assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
@@ -401,7 +400,22 @@ public:
         return metadata.at(jsonMetadata::FREQ_UPCHAN_FACTOR).template get<std::vector<int>>();
     }
 
-    // TODO: Store upchannelization index as well
+    // the upchannelization index for each frequency (0 ... upchannelization factor - 1)
+    void set_freq_upchan_index(const std::vector<int>& freq_upchan_index) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        assert(freq_upchan_index.size() <= CHORD_META_MAX_FREQ);
+        metadata[jsonMetadata::FREQ_UPCHAN_INDEX] = freq_upchan_index;
+    }
+
+    bool has_freq_upchan_index() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::FREQ_UPCHAN_INDEX);
+    }
+
+    std::vector<int> get_freq_upchan_index() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::FREQ_UPCHAN_INDEX).template get<std::vector<int>>();
+    }
 
     // non-science metadata
 

@@ -66,6 +66,8 @@ __global__ void __launch_bounds__(128, 8)
 s12_kernel(ulong *S12, const uint *E, int Tds, int Tmin, int Tsize, int F, int S, int Nds, int out_fstride, bool offset_encoded)
 {
     const uint to_offset_encoded = offset_encoded ? 0 : 0x88888888U;
+
+    assert(Tsize & (Tsize - 1) == 0 && "Tsize must be a power of 2");
     
     ulong s1_0, s1_1, s1_2, s1_3, s2_0, s2_1, s2_2, s2_3;
     s1_0 = s1_1 = s1_2 = s1_3 = s2_0 = s2_1 = s2_2 = s2_3 = 0;
@@ -138,6 +140,8 @@ void launch_s12_kernel(ulong* S12, const uint8_t* E, long T, long Tmin, long Tsi
 	throw runtime_error("launch_s12_kernel: first sample Tmin must be >= 0");
     if (Tsize <= 0)
 	throw runtime_error("launch_s12_kernel: ringbuffer size Tsize be > 0");
+    if (Tsize & (Tsize - 1) != 0)
+        throw runtime_error("launch_s12_kernel: Tsize must be a power of 2");
     if (F <= 0)
 	throw runtime_error("launch_s12_kernel: number of frequency samples F must be > 0");
     if (S <= 0)

@@ -210,14 +210,17 @@ void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& 
 
     std::vector<int> coarse_freq(num_local_freq);
     std::vector<int> freq_upchan_factor(num_local_freq);
+    std::vector<int> freq_upchan_index(num_local_freq);
 
     for (int f = 0; f < num_local_freq; f++) {
         coarse_freq[f] = freq_ids[f % freq_ids.size()];
         freq_upchan_factor[f] = 1;
+        freq_upchan_index[f] = 0;
     }
 
     meta->set_coarse_freq(coarse_freq);
     meta->set_freq_upchan_factor(freq_upchan_factor);
+    meta->set_freq_upchan_index(freq_upchan_index);
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
 
@@ -239,14 +242,17 @@ void testN2kGen::set_counts_metadata(const std::shared_ptr<chordMetadata>& meta,
 
     std::vector<int> coarse_freq(num_local_freq);
     std::vector<int> freq_upchan_factor(num_local_freq);
+    std::vector<int> freq_upchan_index(num_local_freq);
 
     for (int f = 0; f < num_local_freq; f++) {
         coarse_freq[f] = freq_ids[f % freq_ids.size()];
         freq_upchan_factor[f] = 1;
+        freq_upchan_index[f] = 0;
     }
 
     meta->set_coarse_freq(coarse_freq);
     meta->set_freq_upchan_factor(freq_upchan_factor);
+    meta->set_freq_upchan_index(freq_upchan_index);
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
 

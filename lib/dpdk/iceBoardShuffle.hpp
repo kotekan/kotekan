@@ -456,6 +456,8 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
         get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])
             ->set_freq_upchan_factor(std::vector<int>(1 /* nfreq */, 1));
+        get_chord_metadata(out_bufs[i], out_buf_frame_ids[i])
+            ->set_freq_upchan_index(std::vector<int>(1 /* nfreq */, 0));
 
         ice_stream_id_t tmp_stream_id = port_stream_id;
         // Set the unused flag to store the post shuffle freq bin number.
@@ -506,6 +508,8 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_time_downsampling_fpga(1);
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)
         ->set_freq_upchan_factor(std::vector<int>(1 /* nfreq */, 1));
+    get_chord_metadata(lost_samples_buf, lost_samples_frame_id)
+        ->set_freq_upchan_index(std::vector<int>(1 /* nfreq */, 0));
     // TODO: are these required for the lost_samples buffer? or is having them
     // in the corresponding data buffer sufficient?
     get_chord_metadata(lost_samples_buf, lost_samples_frame_id)->set_first_packet_recv_time(now);

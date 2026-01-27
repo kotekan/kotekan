@@ -405,25 +405,70 @@ cudaUpchannelizer_pathfinder_U64::execute(cudaPipelineState& /*pipestate*/,
     void* const Ebar_memory = Ebar_buffer.get_ndarray().data();
     void* const info_memory = info_buffer.get_ndarray().data();
 
-    G_buffer.check_metadata();
-    E_buffer.check_metadata();
-    Ebar_buffer.set_metadata(E_buffer.get_metadata());
+    // Since we use a ring buffer we need to set the metadata only once
+    static bool did_set_metadata = false;
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
 
-    const auto E_meta = E_buffer.get_metadata();
-    auto Ebar_meta = Ebar_buffer.get_metadata();
-    const auto nfreq = Ebar_meta->get_nfreq();
-    assert(nfreq >= 0);
-    assert(nfreq == E_meta->get_nfreq());
-    auto freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
-    assert(freq_upchan_factor.size() == static_cast<size_t>(nfreq));
-    for (int freq = 0; freq < nfreq; ++freq)
-        freq_upchan_factor.at(freq) *= cuda_upchannelization_factor;
-    Ebar_meta->set_freq_upchan_factor(freq_upchan_factor);
-    auto time_downsampling_fpga = Ebar_meta->get_time_downsampling_fpga();
-    time_downsampling_fpga *= cuda_upchannelization_factor;
-    Ebar_meta->set_time_downsampling_fpga(time_downsampling_fpga);
+        G_buffer.check_metadata();
+        E_buffer.check_metadata();
+        Ebar_buffer.set_metadata(E_buffer.get_metadata());
 
-    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
+        const auto E_meta = E_buffer.get_metadata();
+        auto Ebar_meta = Ebar_buffer.get_metadata();
+
+        const auto E_nfreq = E_meta->get_nfreq();
+        const auto Ebar_nfreq = cuda_upchannelization_factor * (Fmax - Fmin);
+        assert(Ebar_nfreq >= 0);
+        assert(Ebar_nfreq <= cuda_upchannelization_factor * E_nfreq);
+
+        const auto E_freq_upchan_factor = E_meta->get_freq_upchan_factor();
+        std::vector<int> Ebar_freq_upchan_factor(Ebar_nfreq);
+        for (int freq = 0; freq < Ebar_nfreq; ++freq) {
+            const int coarse_freq = Fmin + freq / cuda_upchannelization_factor;
+            assert(coarse_freq < Fmax);
+            Ebar_freq_upchan_factor.at(freq) =
+                E_freq_upchan_factor.at(coarse_freq) * cuda_upchannelization_factor;
+        }
+        Ebar_meta->set_freq_upchan_factor(Ebar_freq_upchan_factor);
+
+        const auto E_freq_upchan_index = E_meta->get_freq_upchan_index();
+        std::vector<int> Ebar_freq_upchan_index(Ebar_nfreq);
+        for (int freq = 0; freq < Ebar_nfreq; ++freq) {
+            const int upchan_index = freq % cuda_upchannelization_factor;
+            Ebar_freq_upchan_index.at(freq) = upchan_index;
+        }
+        Ebar_meta->set_freq_upchan_index(Ebar_freq_upchan_index);
+
+        const auto E_time_downsampling_fpga = E_meta->get_time_downsampling_fpga();
+        const auto Ebar_time_downsampling_fpga =
+            E_time_downsampling_fpga * cuda_upchannelization_factor;
+        Ebar_meta->set_time_downsampling_fpga(Ebar_time_downsampling_fpga);
+
+        const auto E_coarse_freq = E_meta->get_coarse_freq();
+        std::vector<int> Ebar_coarse_freq(Ebar_nfreq);
+        for (int freq = 0; freq < Ebar_nfreq; ++freq) {
+            const int coarse_freq = Fmin + freq / cuda_upchannelization_factor;
+            assert(coarse_freq < Fmax);
+            Ebar_coarse_freq.at(freq) = E_coarse_freq.at(coarse_freq);
+        }
+        Ebar_meta->set_coarse_freq(Ebar_coarse_freq);
+
+        const auto G_meta = G_buffer.get_metadata();
+        const auto G_nfreq = G_meta->get_nfreq();
+        assert(G_nfreq == Ebar_nfreq);
+        const auto G_coarse_freq = G_meta->get_coarse_freq();
+        for (int freq = 0; freq < Ebar_nfreq; ++freq)
+            assert(Ebar_coarse_freq.at(freq) == G_coarse_freq.at(freq));
+
+        assert(E_meta->dim[E_rank - 1 - E_index_F] == E_nfreq);
+        assert(G_meta->dim[G_rank - 1 - G_index_Fbar] >= G_nfreq);
+        assert(Ebar_meta->dim[Ebar_rank - 1 - Ebar_index_Fbar] >= Ebar_nfreq);
+
+        // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
+    } // if !did_set_metadata
+
+    assert(Ebar_buffer.has_metadata());
 
     const char* exc_arg = "exception";
     std::int32_t T_min_arg;
@@ -507,10 +552,11 @@ cudaUpchannelizer_pathfinder_U64::execute(cudaPipelineState& /*pipestate*/,
         CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 
         // Check error codes
-        const std::uint32_t error_code = *std::max_element(
-            (const std::uint32_t*)&host_info_buffer[0],
-            (const std::uint32_t*)&host_info_buffer[blocks * info_lengths[info_index_warp]
-                                                    * info_lengths[info_index_thread]]);
+        const std::uint32_t error_code =
+            *std::max_element((const std::uint32_t*)host_info_buffer.data(),
+                              (const std::uint32_t*)(host_info_buffer.data()
+                                                     + blocks * info_lengths[info_index_warp]
+                                                           * info_lengths[info_index_thread]));
         if (error_code != 0)
             ERROR("CUDA kernel Upchannelizer_pathfinder_U64 returned error code: {}", error_code);
 

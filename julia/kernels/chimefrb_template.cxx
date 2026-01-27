@@ -182,8 +182,7 @@ private:
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    // To avoid trailing comma below
-    int dummy;
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cuda{{{kernel_name}}});
@@ -233,7 +232,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    dummy()                      // avoid trailing comma
+    did_set_metadata(false)
 {
     // Register host memory
     {{#kernel_arguments}}
@@ -332,36 +331,94 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    {{#kernel_arguments}}
-        {{#hasbuffer}}
-            {{^isoutput}}
-                {{{name}}}_buffer.check_metadata();
-            {{/isoutput}}
-            {{#isoutput}}
-                {{{name}}}_buffer.set_metadata(Ebar_buffer.get_metadata());
-            {{/isoutput}}
-        {{/hasbuffer}}
-    {{/kernel_arguments}}
+    // Since we use a ring buffer we need to set the metadata only once
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+
+        {{#kernel_arguments}}
+            {{#hasbuffer}}
+                {{^isoutput}}
+                    if (args::{{{name}}} == args::Ebar && cuda_upchannelization_factor == 1) {
+                        // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
+                        // {{{name}}}_buffer.check_metadata();
+                        const std::string quantity = "E";
+                        const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
+                        const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
+                        if (!(metadata->get_name() == quantity))
+                            ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}", Ebar_buffer.get_buffer_name(), quantity,
+                                  metadata->get_name());
+                        assert(metadata->get_name() == quantity);
+                        const auto& ndarray = Ebar_buffer.get_ndarray();
+                        assert(metadata->type == ndarray.value_datatype);
+                        assert(metadata->dims == ndarray.rank);
+                        for (std::size_t d = 0; d < ndarray.rank; ++d) {
+                            assert(metadata->get_dimension_name(d) == dimname[d]);
+                            // The ring buffer direction is special
+                            if (d > 0)
+                                assert(metadata->dim[d] == int(ndarray.extent(d)));
+                            assert(metadata->stride[d] == ndarray.stride(d));
+                        }
+                    } else {
+                        {{{name}}}_buffer.check_metadata();
+                    }
+                {{/isoutput}}
+                {{#isoutput}}
+                    if (args::{{{name}}} != args::I)
+                        {{{name}}}_buffer.set_metadata(Ebar_buffer.get_metadata());
+                {{/isoutput}}
+            {{/hasbuffer}}
+        {{/kernel_arguments}}
+
+        const auto Ebar_meta = Ebar_buffer.get_metadata();
+        assert(Ebar_meta->ndishes == cuda_number_of_dishes);
+        assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
+        assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
+        assert(Ebar_meta->dish_index);
+
+        // Allocate metadata of I buffer only once
+        const bool I_has_metadata = I_buffer.has_metadata();
+        assert(!I_has_metadata);
+        I_buffer.set_metadata(Ebar_meta);
+        auto I_meta = I_buffer.get_metadata();
+
+        const auto Ebar_nfreq = Ebar_meta->get_nfreq();
+        const auto I_nfreq = I_meta->dim[I_rank - 1 - I_index_Fbar];
+        assert(I_nfreq >= 0);
+        // We are not using all the non-upchannelized frequencies.
+        // But we are (should be!) using all the upchannelized ones.
+        assert(cuda_upchannelization_factor > 1);
+
+        const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
+        assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
+        const auto& I_freq_upchan_factor = Ebar_freq_upchan_factor;
+        I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
+
+        const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
+        assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
+        const auto& I_freq_upchan_index = Ebar_freq_upchan_index;
+        I_meta->set_freq_upchan_index(I_freq_upchan_index);
+
+        const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
+        assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
+        const auto& I_coarse_freq = Ebar_coarse_freq;
+        I_meta->set_coarse_freq(I_coarse_freq);
+
+        const auto Ebar_time_downsampling_fpga = Ebar_meta->get_time_downsampling_fpga();
+        const auto I_time_downsampling_fpga = Ebar_time_downsampling_fpga * cuda_downsampling_factor;
+        I_meta->set_time_downsampling_fpga(I_time_downsampling_fpga);
+
+        const auto W_meta = W_buffer.get_metadata();
+        const auto W_nfreq = W_meta->get_nfreq();
+        assert(W_nfreq == I_nfreq);
+        const auto W_coarse_freq = W_meta->get_coarse_freq();
+        for (int freq = 0; freq < W_nfreq; ++freq)
+            assert(I_coarse_freq.at(freq) == W_coarse_freq.at(freq));
+
+        // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
+    } // if !did_set_metadata
 
     const auto Ebar_meta = Ebar_buffer.get_metadata();
-    assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-    assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
-    assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
-    assert(Ebar_meta->dish_index);
-
-    auto I_meta = I_buffer.get_metadata();
-    const auto nfreq = I_meta->get_nfreq();
-    assert(nfreq >= 0);
-    assert(nfreq == Ebar_meta->get_nfreq());
-    auto freq_upchan_factor = I_meta->get_freq_upchan_factor();
-    assert(freq_upchan_factor.size() == static_cast<size_t>(nfreq));
-    for (int freq = 0; freq < nfreq; ++freq)
-        freq_upchan_factor.at(freq) *= cuda_downsampling_factor;
-    I_meta->set_freq_upchan_factor(freq_upchan_factor);
-    auto time_downsampling_fpga = I_meta->get_time_downsampling_fpga();
-    time_downsampling_fpga *= cuda_downsampling_factor;
-    I_meta->set_time_downsampling_fpga(time_downsampling_fpga);
-    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
+    assert(I_buffer.has_metadata());
 
     const char* exc_arg = "exception";
     {{#kernel_arguments}}
@@ -478,8 +535,9 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
         // Check error codes
         const std::uint32_t error_code = *std::max_element(
-            (const std::uint32_t*)&host_info_buffer[0],
-            (const std::uint32_t*)&host_info_buffer[blocks * info_lengths[info_index_warp] * info_lengths[info_index_thread]]);
+            (const std::uint32_t*)host_info_buffer.data(),
+            (const std::uint32_t*)(host_info_buffer.data() +
+                                   blocks * info_lengths[info_index_warp] * info_lengths[info_index_thread]));
         if (error_code != 0)
             ERROR("CUDA kernel {{{kernel_name}}} returned error code: {}", error_code);
 
