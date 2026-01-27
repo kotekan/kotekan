@@ -100,23 +100,24 @@ function update_cpu_utl(cpu_stats, isDynamic, time_required){
     var cpu_map = new Map();
     var stage_usage = new Map();
     var tracker_names = Object.keys(cpu_stats);
-    for (tracker of tracker_names) {
+    for (const tracker of tracker_names) {
         var words = tracker.split("|");
         var stage_name = words[0];
         var type = words[2];
         var cur, timestamp;
         if (isDynamic) {
             cur = cpu_stats[tracker]["cur"]["value"];
+            timestamp = 0;
         } else {
             var data = binary_search(cpu_stats[tracker]["samples"], time_required);
             cur = data[0];
             timestamp = data[1];
         }
 
-        var avg = (cpu_stats[tracker]["avg"]).toFixed(1);
-        var max = (cpu_stats[tracker]["max"]).toFixed(1);
-        var min = (cpu_stats[tracker]["min"]).toFixed(1);
-        var std = (cpu_stats[tracker]["std"]).toFixed(1);
+        var avg = parseFloat((cpu_stats[tracker]["avg"]).toFixed(1));
+        var max = parseFloat((cpu_stats[tracker]["max"]).toFixed(1));
+        var min = parseFloat((cpu_stats[tracker]["min"]).toFixed(1));
+        var std = parseFloat((cpu_stats[tracker]["std"]).toFixed(1));
         var unit = cpu_stats[tracker]["unit"];
 
         // Sum all threads in the same stage.
@@ -158,7 +159,7 @@ function update_stats(tracker, stage, isDynamic, time_required) {
     d3.select(tracker).forEach((stage_obj) => {
 
         var tracker_name = Object.keys(stage_obj[0]);
-        for (tracker of tracker_name) {
+        for (const tracker of tracker_name) {
             // Limit to two-decimal scientific expression.
             var avg = (stage_obj[0][tracker]["avg"]).toExponential(2);
             var max = (stage_obj[0][tracker]["max"]).toExponential(2);
@@ -222,7 +223,7 @@ var binary_search = function (arr, x) {
 
 function update_trackers(trackers, isDynamic, time_required){
     var stage_names = Object.keys(trackers);
-    for (stage of stage_names) {
+    for (const stage of stage_names) {
         if (stage == "cpu_monitor") {
             update_cpu_utl(trackers[stage], isDynamic, time_required);
             continue;
@@ -240,7 +241,7 @@ var show_trackers_in_label = (function() {
             done = true;
 
             var stage_names = Object.keys(trackers);
-            for (stage of stage_names) {
+            for (const stage of stage_names) {
                 d3.select(trackers[stage]).forEach((stage_obj) => {
                     var tracker_names = Object.keys(stage_obj[0]);
 
@@ -319,7 +320,7 @@ function get_time(timestamp, isFull) {
     }
     var date = new Date(timestamp);
     var years = String(date.getFullYear()).padStart(4, "0");
-    var months = String(date.getMonth()).padStart(2, "0");
+    var months = String(date.getMonth() + 1).padStart(2, "0");
     var days = String(date.getDate()).padStart(2, "0");
     var hours = String(date.getHours()).padStart(2, "0");
     var minutes = String(date.getMinutes()).padStart(2, "0");
