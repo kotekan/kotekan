@@ -125,6 +125,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         // number of "integrations" (coarse time samples) per n2k (gpu) frame
         _n_integrations_per_n2k_frame =
             _n_fpga_samples_per_n2k_frame / _n_fpga_samples_per_n2k_correlation;
+        assert(_n_fpga_samples_per_n2k_frame % _n_fpga_samples_per_n2k_correlation == 0
+               && "_n_fpga_samples_per_n2k_frame must be a multiple of "
+                  "_n_fpga_samples_per_n2k_correlation");
 
         // sizes for blocked input correlation matrix
         _n2k_correlation_lin_blocks = _num_elements / _n2k_correlation_blocksize;
