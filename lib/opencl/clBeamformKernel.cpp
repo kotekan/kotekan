@@ -38,7 +38,7 @@ clBeamformKernel::clBeamformKernel(Config& config, const std::string& unique_nam
     // for (int i = 0; i < remap_size; ++i) {
     //     _inverse_product_remap[_product_remap[i]] = i;
     // }
-    //_scale_factor = config.get<int>(unique_name, "scale_factor");
+    _scale_factor = config.get<int>(unique_name, "scale_factor");
 
     num_local_freq = Telescope::instance().num_freq_per_stream();
 }
@@ -87,9 +87,7 @@ void clBeamformKernel::build() {
 
     // set group size
     int group_size = 64;
-
-    CHECK_CL_ERROR(clSetKernelArg(kernel, 3, sizeof(cl_float2) * group_size, nullptr));
-    CHECK_CL_ERROR(clSetKernelArg(kernel, 4, sizeof(cl_float2) * group_size, nullptr));
+    CHECK_CL_ERROR(clSetKernelArg(kernel, 4, sizeof(float), &_scale_factor)); //not making this pointing dependent
     CHECK_CL_ERROR(clSetKernelArg(kernel, 5, sizeof(unsigned int), &_num_pointings));
 
     // Beamforming kernel global and local work space sizes.
