@@ -41,7 +41,7 @@ global_params = {
         "dish_vert_axis": [0.0, 0.0, 1.0],
         "dish_coelev_deg": 90.0,
         "require_gps": False,
-        "updatable_config": "/earth_rotation_data",
+        "eop_updatable_config": "/earth_rotation_data",
         "num_dishes_x": 22,
         "num_dishes_y": 24,
         "dish_separation_x_m": 6.3,
