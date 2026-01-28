@@ -389,7 +389,9 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     INFO("Building CHORDTelescope");
 }
 
-CHORDTelescope::~CHORDTelescope() {}
+CHORDTelescope::~CHORDTelescope() {
+    INFO("Removing CHORDTelescope");
+}
 
 timespec CHORDTelescope::to_time(uint64_t seq) const {
     return nanosec_i64_to_timespec(to_time_ns(seq));
@@ -733,175 +735,6 @@ double CHORDTelescope::get_dish_separation_x_m() const {
 double CHORDTelescope::get_dish_separation_y_m() const {
     return _geographic_params.dish_separation_y_m;
 }
-
-size_t CHORDTelescope::get_EOP_table_len() const {
-    std::shared_lock lock(_eop_lock);
-    return _eop_table.size();
-}
-
-EOP CHORDTelescope::get_EOP_at_idx(uint64_t i) const {
-    std::shared_lock lock(_eop_lock);
-
-    if (i < _eop_table.size()) {
-        EOP eop = _eop_table[i];
-        return eop;
-    }
-
-    return eop_null;
-}
-
-EOP CHORDTelescope::get_EOP_at_time(const timespec& ts_target) const {
-    // Interpolate on the EOP table to find EOP for the given instrument time.
-
-    EOP eop;
-
-    int64_t t_target = timespec_to_nanosec_i64(ts_target);
-    eop.t_inst = t_target;
-
-    {
-        std::shared_lock lock(_eop_lock);
-
-        if (_eop_table.empty()) {
-            WARN("EOP table is empty, cannot interpolate EOP at UT1 time {:d} s + {:d} ns.",
-                 t_target / GIGA, t_target % GIGA);
-            return eop_null;
-        }
-
-        // _eop_table is always sorted by instrument time. Do a quick search
-        // for the first table entry with larger time than the target.
-        auto eop_b = std::lower_bound(_eop_table.begin(), _eop_table.end(), eop, EOP_comp_time);
-
-        // DUT1, xp_as, and yp_as evolve slowly, on secular time scales, so we
-        // interpolate these, and calculate ERA after.
-
-        if (eop_b == _eop_table.begin()) {
-            // Time is earlier than covered by the table, use the first value.
-            eop.delta_UT1_inst = eop_b->delta_UT1_inst;
-            eop.xp_as = eop_b->xp_as;
-            eop.yp_as = eop_b->yp_as;
-            WARN(
-                "Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. Earliest "
-                "time = {:d} s + {:d} ns.",
-                t_target / GIGA, t_target % GIGA, eop_b->t_inst / GIGA, eop_b->t_inst % GIGA);
-        } else if (eop_b == _eop_table.end()) {
-            // Time is later than covered by the table, use the last value.
-            auto eop_last = eop_b - 1;
-            eop.delta_UT1_inst = eop_last->delta_UT1_inst;
-            eop.xp_as = eop_last->xp_as;
-            eop.yp_as = eop_last->yp_as;
-            WARN("Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest "
-                 "UT1 = "
-                 "{:d} s + {:d} ns.",
-                 t_target / GIGA, t_target % GIGA, eop_last->t_inst / GIGA,
-                 eop_last->t_inst % GIGA);
-        } else {
-            // Interpolate!
-            auto eop_a = eop_b - 1;
-            // t - ta in ns. Should be > 0
-            int64_t diff_ns_a = t_target - eop_a->t_inst;
-            // t - tb in ns. Should be < 0
-            int64_t diff_ns_b = t_target - eop_b->t_inst;
-            // tb - ta in ns.
-            int64_t diff_ns = diff_ns_a - diff_ns_b;
-
-            // weights for points a and b.
-            double wb = diff_ns_a / ((double)diff_ns);
-            double wa = 1.0 - wb;
-
-            // interpolate
-            eop.delta_UT1_inst = wa * eop_a->delta_UT1_inst + wb * eop_b->delta_UT1_inst;
-            eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
-            eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
-        }
-    }
-
-    // now that we have a delta_UT1, can compute UT1 and ERA
-    int64_t ut1 = get_UT1_from_time(ts_target, eop.delta_UT1_inst);
-    double era = get_ERA_from_UT1(ut1, nullptr);
-
-    eop.t_ut1 = ut1;
-    eop.ERA_deg = era;
-
-    return eop;
-}
-
-EOP CHORDTelescope::get_EOP_at_UT1(int64_t t_ut1) const {
-    // Interpolate on the EOP table to find EOP for the given UT1 time.
-
-    EOP eop;
-    eop.t_ut1 = t_ut1;
-
-    {
-        std::shared_lock lock(_eop_lock);
-
-        if (_eop_table.empty()) {
-            WARN("EOP table is empty, cannot interpolate EOP at UT1 time {:d} s + {:d} ns.",
-                 t_ut1 / GIGA, t_ut1 % GIGA);
-            return eop_null;
-        }
-
-        // _eop_table is always sorted by instrument time. UT1 is monotonic
-        // with instrument time, unless the Earth has been met with catastrophe.
-        // Do a quick search for the first table entry with larger UT1 time than
-        // the target.
-        auto eop_b = std::lower_bound(_eop_table.begin(), _eop_table.end(), eop, EOP_comp_ut1);
-
-        // DUT1, xp_as, and yp_as evolve slowly, on secular time scales, so we
-        // interpolate these, and calculate ERA after.
-
-        if (eop_b == _eop_table.begin()) {
-            // Time is earlier than covered by the table, use the first value.
-            eop.delta_UT1_inst = eop_b->delta_UT1_inst;
-            eop.xp_as = eop_b->xp_as;
-            eop.yp_as = eop_b->yp_as;
-            WARN("Requesting EOP earlier than in table. Requested UT1 = {:d} s + {:d} ns. Earliest "
-                 "UT1 "
-                 "= {:d} s + {:d} ns.",
-                 t_ut1 / GIGA, t_ut1 % GIGA, eop_b->t_ut1 / GIGA, eop_b->t_ut1 % GIGA);
-        } else if (eop_b == _eop_table.end()) {
-            // Time is later than covered by the table, use the last value.
-            auto eop_last = eop_b - 1;
-            eop.delta_UT1_inst = eop_last->delta_UT1_inst;
-            eop.xp_as = eop_last->xp_as;
-            eop.yp_as = eop_last->yp_as;
-            WARN("Requesting EOP later than in table. Requested UT1 = {:d} s + {:d} ns. Latest UT1 "
-                 "= "
-                 "{:d} s + {:d} ns.",
-                 t_ut1 / GIGA, t_ut1 % GIGA, eop_last->t_ut1 / GIGA, eop_last->t_ut1 % GIGA);
-        } else {
-            // Interpolate! Target time = t, in table interval [ta, tb]
-            auto eop_a = eop_b - 1;
-
-            // t - ta in ns. Should be > 0
-            int64_t diff_ns_a = t_ut1 - eop_a->t_ut1;
-            // t - tb in ns. Should be < 0
-            int64_t diff_ns_b = t_ut1 - eop_b->t_ut1;
-
-            // tb - ta in ns.
-            int64_t diff_ns = diff_ns_a - diff_ns_b;
-
-            // weight for b point
-            double wb = diff_ns_a / ((double)diff_ns);
-            // weight for a point.
-            double wa = 1.0 - wb;
-
-            // interpolate.
-            eop.delta_UT1_inst = wa * eop_a->delta_UT1_inst + wb * eop_b->delta_UT1_inst;
-            eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
-            eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
-        }
-    }
-
-    // Now that we have a delta_UT1, can get t_inst and the ERA
-    timespec ts_inst = get_time_from_UT1(t_ut1, eop.delta_UT1_inst);
-    double era = get_ERA_from_UT1(t_ut1, nullptr);
-
-    eop.t_inst = timespec_to_nanosec_i64(ts_inst);
-    eop.ERA_deg = era;
-
-    return eop;
-}
-
 const dishInfo& CHORDTelescope::get_dish_at_idx(dish_index_t idx) const {
     return _geographic_params.dish_info_table.at(idx);
 }
@@ -962,26 +795,6 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
 size_t CHORDTelescope::num_freq_per_stream() const {
     FATAL_ERROR("CHORDTelesope does not support num_freq_per_stream()");
     return 0;
-}
-
-void to_json(nlohmann::json& j, const EOP& m) {
-    assert(j.empty());
-
-    j.emplace("t_inst", m.t_inst);                 // Instrument time, nanoseconds, UNIX epoch.
-    j.emplace("t_ut1", m.t_ut1);                   // UT1 time, nanoseconds, J2000(UT1) epoch.
-    j.emplace("delta_UT1_inst", m.delta_UT1_inst); // Diff between UT1 and Instrument time, seconds
-    j.emplace("ERA_deg", m.ERA_deg);               // Earth Rotation Angle, degrees
-    j.emplace("xp_as", m.xp_as);                   // Polar Motion x', in arcseconds.
-    j.emplace("yp_as", m.yp_as);                   // Polar Motion y', in arcseconds.
-}
-
-void from_json(const nlohmann::json& j, EOP& m) {
-    m.t_inst = j.at("t_inst");                 // Instrument time, nanoseconds, UNIX epoch.
-    m.t_ut1 = j.at("t_ut1");                   // UT1 time, nanoseconds, J2000(UT1) epoch.
-    m.delta_UT1_inst = j.at("delta_UT1_inst"); // Diff between UT1 and Instrument time, seconds
-    m.ERA_deg = j.at("ERA_deg");               // Earth Rotation Angle, degrees
-    m.xp_as = j.at("xp_as");                   // Polar Motion x', in arcseconds.
-    m.yp_as = j.at("yp_as");                   // Polar Motion y', in arcseconds.
 }
 
 void to_json(nlohmann::json& j, const dishInfo& d) {

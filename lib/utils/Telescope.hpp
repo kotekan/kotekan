@@ -224,6 +224,36 @@ public:
      * @return  Length of an FPGA sequence number tick.
      **/
     virtual uint64_t seq_length_nsec() const = 0;
+    
+    /**
+     * @brief   Return the number of entries in the EOP table.
+     **/
+    size_t get_EOP_table_len() const;
+
+    /**
+     * @brief   Return the EOP table entry at an index.
+     *
+     * @param   i   Index of desired EOP entry, 0 <= i < EOP_table_len
+     **/
+    EOP get_EOP_at_table_idx(uint64_t i) const;
+
+    /**
+     * @brief   Return the EOP at the desired instrument time. Will interpolate
+     *          over table, use first or last entry if target time is out of
+     *          table range.
+     *
+     * @param   ts  Target instrument time, as a timespec.
+     **/
+    EOP get_EOP_at_time(const timespec& ts) const;
+
+    /**
+     * @brief   Return the EOP at the desired UT1 time. Will interpolate
+     *          over table, using the first or last entry if target time is
+     *          out of table range.
+     *
+     * @param   ts  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
+     **/
+    EOP get_EOP_at_UT1(int64_t ut1) const;
 
 private:
     static std::unique_ptr<Telescope>& tel_instance();

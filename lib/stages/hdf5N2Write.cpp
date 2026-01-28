@@ -329,7 +329,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                 std::vector<double> eop_yp_as(eop_len);
 
                 for (int i = 0; i < eop_len; i++) {
-                    EOP eop = telescope.get_EOP_at_idx(i);
+                    EOP eop = telescope.get_EOP_at_table_idx(i);
                     eop_t_inst[i] = eop.t_inst;
                     eop_t_ut1[i] = eop.t_ut1;
                     eop_delta_UT1_inst[i] = eop.delta_UT1_inst;

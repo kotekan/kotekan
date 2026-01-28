@@ -531,35 +531,6 @@ public:
     double get_dish_separation_x_m() const;
     double get_dish_separation_y_m() const;
 
-    /**
-     * @brief   Return the number of entries in the EOP table.
-     **/
-    size_t get_EOP_table_len() const;
-
-    /**
-     * @brief   Return the EOP table entry at an index.
-     *
-     * @param   i   Index of desired EOP entry, 0 <= i < EOP_table_len
-     **/
-    EOP get_EOP_at_idx(uint64_t i) const;
-
-    /**
-     * @brief   Return the EOP at the desired instrument time. Will interpolate
-     *          over table, use first or last entry if target time is out of
-     *          table range.
-     *
-     * @param   ts  Target instrument time, as a timespec.
-     **/
-    EOP get_EOP_at_time(const timespec& ts) const;
-
-    /**
-     * @brief   Return the EOP at the desired UT1 time. Will interpolate
-     *          over table, using the first or last entry if target time is
-     *          out of table range.
-     *
-     * @param   ts  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
-     **/
-    EOP get_EOP_at_UT1(int64_t ut1) const;
 
     /**
      * @brief get information about a specific dish.

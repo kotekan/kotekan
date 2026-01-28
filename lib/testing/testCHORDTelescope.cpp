@@ -90,7 +90,7 @@ void TestCHORDTelescope::main_thread() {
         int i;
         INFO("            EOP entries: {:d}", n_eop);
         for (i = 0; i < n_eop; i++) {
-            struct EOP eop = tel.get_EOP_at_idx(i);
+            struct EOP eop = tel.get_EOP_at_table_idx(i);
             eop_times.push_back(eop.t_inst);
             INFO("            {0: 2d} - t_inst: {1:d} s + {2:d} ns", i, eop.t_inst / GIGA,
                  eop.t_inst % GIGA);
