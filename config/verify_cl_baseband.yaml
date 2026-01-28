@@ -1,0 +1,180 @@
+# verify_outrigger_beamformer.yaml
+# Config to test the opencl stack
+
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+#https://github.com/kotekan/kotekan/blob/abp/outrigger_beamformer/config/chime_hco_gpu.j2
+log_level: debug2
+
+num_data_sets: 1
+num_pointings: 1
+num_links: 16     
+samples_per_data_set: 32  
+buffer_depth: 8 #12 #num_gpu_frames: 4
+cpu_affinity: [2,3,4,5,8,9,10,11]
+num_elements: 256 #32 #256 #2048
+num_local_freq: 8
+sizeof_data: 4 #int
+sizeof_input_data: 1
+sizeof_float: 4
+sizeof_output_data: 8 #should probably circle back to this
+size_of_phase_data: 8 #should probably circle back to this
+seed: 20
+# The number of FPGA links per NUMA domain
+#num_links: 1
+
+baseband_buffer_depth: 30 # 228 # ~33 seconds after accounting for margin.
+num_freq_in_frame: num_local_freq
+sizeof_int: 4
+num_gpus: 1
+block_size: 32
+num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
+num_data_sets: 1
+data_format: "4+4b"
+# The number of FPGA links per NUMA domain
+instrument_name: hco
+num_ev: 4
+join_timeout: 15
+
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+gpu_input_buffers:
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets * sizeof_input_data
+    metadata_pool: main_pool
+    gpu_input_buffer:
+        kotekan_buffer: standard
+
+gpu_phase_buffer: 
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size:  num_elements * num_local_freq * num_data_sets * num_pointings * size_of_phase_data
+    metadata_pool: main_pool
+
+
+gpu_output_buffers:
+    frame_size: samples_per_data_set * num_data_sets * num_local_freq * num_pointings * 2 * sizeof_output_data #samples_per_data_set * num_data_sets * num_local_freq * 2
+    metadata_pool: main_pool
+    num_frames: buffer_depth
+    gpu_output_buffer:
+        kotekan_buffer: standard
+
+
+baseband_output_buffer_mergeds:
+    num_frames: buffer_depth * num_local_freq
+    frame_size: samples_per_data_set * num_elements * num_data_sets * sizeof_input_data
+    metadata_pool: main_pool
+    baseband_output_buffer_merged:
+        kotekan_buffer: standard
+
+
+
+gen_data:
+  # type: 4b+4b #const
+  # real_value: 4
+  # imag_value: 3
+  type: random_signed
+  kotekan_stage: testDataGen
+  out_buf: gpu_input_buffer
+
+gen_phases:
+  type: constf32 #const
+  value: 1.0
+  kotekan_stage: testDataGen
+  out_buf: gpu_phase_buffer
+
+#data_format: dot4b
+# data_format: "4+4b"
+#full_complicated: false #don't use the ISA-like kernel: intrinsics, extra packing, overflows, etc
+
+gpu:
+  profiling: true
+  kernel_path: "/home/shiona/kotekan/lib/opencl/kernels"
+  gain_dir: "/etc/kotekan/"
+  log_level: debug2 #buffer_depth: 8
+  frame_arrival_period: 390625
+  commands: &command_list
+  - name: clInputData
+    gpu_memory: input
+    in_bufs:
+      - network_buf
+  - name: clInputData
+    gpu_memory: phases
+    in_bufs:
+      - phases_buf
+  - name: clOutputDataZero
+  - name: clBeamformKernel
+  - name: clOutputData
+    out_bufs:
+       - output_buf
+    in_bufs:
+       - network_buf
+  gpu_0:
+    kotekan_stage: clProcess
+    gpu_id: 0
+    commands: *command_list
+    in_buffers:
+      network_buf: gpu_input_buffer
+      phases_buf: gpu_phase_buffer
+    out_buffers:
+      output_buf: gpu_output_buffer
+
+metadata_dump:
+  kotekan_stage: chimeMetadataDump
+  in_buf: gpu_output_buffer
+
+baseband_merge:
+    kotekan_stage: bufferMerge
+    timeout: 0.1
+    in_bufs:
+        - gpu_input_buffer
+    out_buf: baseband_output_buffer_merged
+
+write_baseband:
+  root_path: /home/shiona/kotekan_baseband_dump_test
+  dump_timeout: 1 # 1s
+  write:
+    kotekan_stage: BasebandWriter
+    in_buf: baseband_output_buffer_merged
+
+h5_file_write:
+  kotekan_stage: hdf5FileWrite
+  in_buf: gpu_output_buffer
+  # *** Change this value for each run ***
+  base_dir: /home/shiona/kotekan_tests
+  file_name: adc_data
+  exit_after_n_files: buffer_depth
+
+
+#16 links? num_links
+#https://github.com/CHIMEFRB/outrigger-devops/blob/ml/hco_cleanup/docker/stacks/hco/configs/kotekan/kotekan_gpu.j2
+#gpu_input_buffer
+#baseband_buffer_depth: 228 # ~33 seconds after accounting for margin.
+#samples_per_data_set: 4096
+
+#num_frames: baseband_buffer_depth
+#    frame_size: samples_per_data_set * num_elements * num_local_freq
+#   metadata_pool: main_pool
+#    use_hugepages: true
+
+#baseband_output_buffer_merged and baseband_output_buffer_:
+#    num_frames: 100 * num_local_freq
+#    frame_size: samples_per_data_set * num_elements
+#    metadata_pool: baseband_pool
+#baseband_output_buffer_ 16 then merged
+#  frame_size: num_elements * samples_per_data_set
+
+# 
+#gpu_input_buffer 
+#-> basebandReadout (baseband_output_buffer_)
+#-> bufferMerge (baseband_output_buffer_merged) 
+#-> bufferSend (baseband_output_buffer_merged) -> bufferRecv (baseband_recv_buffer_0) 
+#-> BasebandWriter

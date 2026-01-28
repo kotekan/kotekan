@@ -6,7 +6,14 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <random>
 
+static inline float truncate_uint8(float val)
+{
+    val = (val > 15) ? 15 : val;
+    val = (val < 0) ? 0 : val;
+    return val; 
+}
 
 // temporary wrapper for testing kernel without kotekan, to be removed after later stages of testing
 
@@ -21,23 +28,30 @@ std::string loadKernel(const std::string& path) {
 }
 
 int main() {
-    const int NTIME = 100;
-    const int NFREQ = 8;
+    const int NTIME = 1; // 100;
+    const int NFREQ = 8; //8;
     const int NINPUT = 256;
-    const int NPOINTING = 4;
-    const int GROUP = 4; // no. work items
+    const int NPOINTING = 1; //4;
+    const int GROUP = 64; // no. work items
+
+    // Random number generator
+    std::random_device rd;                        
+    std::mt19937 gen(rd());                      
+    std::uniform_int_distribution<int> dist(0, 255);  // range for uchar
+    std::uniform_real_distribution<float> dist_phase(0.0f, 1.0f); // floats in [0,1)
 
     // Test data
-    std::vector<unsigned int> inputData(NTIME * NFREQ * NINPUT, 1.0);
-    std::vector<float> phaseMap(NPOINTING * NFREQ * NINPUT, 1.0);
-    std::vector<float> gpuOut(NTIME * NFREQ * NPOINTING * 2, 0.0); // e.g. X,Y per pointing per time
-    std::vector<float> refOut(NTIME * NFREQ * NPOINTING * 2, 0.0); // CPU 
-
+    std::vector<unsigned char> inputData(NTIME * NFREQ * NINPUT, 0b00010001);
+    std::vector<float> phaseMap(NPOINTING * NFREQ * NINPUT*2, 1.0);
+    std::vector<unsigned char> gpuOut(NTIME * NFREQ * NPOINTING * 2, 0.0); // e.g. X,Y per pointing per time
+    std::vector<unsigned char> refOut(NTIME * NFREQ * NPOINTING * 2, 0.0); // CPU 
+    float scaling = 256; 
+    int POLBLOCK = 16; 
     for (int t = 0; t < NTIME; t++) {
         for (int f = 0; f < NFREQ; f++) {
             for (int i = 0; i < NINPUT; i++) {
                 int idx = t * (NFREQ * NINPUT) + f * NINPUT + i;
-                inputData[idx] = 1 + idx;  
+                inputData[idx] =  static_cast<unsigned char>(dist(gen)); //0b01010111; // (idx)%NINPUT;  
             }
         }
     }
@@ -45,8 +59,9 @@ int main() {
     for (int p = 0; p < NPOINTING; p++) {
         for (int f = 0; f < NFREQ; f++) {
             for (int i = 0; i < NINPUT; i++) {
-                int idx = p * (NFREQ * NINPUT) + f * NINPUT + i;
-                phaseMap[idx] = .42; // trivial phases
+                int idx = p * (NFREQ * NINPUT*2) + f * NINPUT*2 + i*2;
+                phaseMap[idx] = dist_phase(gen); //1.0; // .42; // trivial phases
+                phaseMap[idx+1] = dist_phase(gen); //.5;// .8; // trivial phases
             }
         }
     }
@@ -55,29 +70,44 @@ int main() {
     for (int p = 0; p < NPOINTING; p++) {
         for (int f = 0; f < NFREQ; f++) {
             for (int t = 0; t < NTIME; t++) {
-                float refX = 0, refY = 0;
+                float refX_re = 0, refX_im = 0,refY_re = 0, refY_im = 0;
                 for (int i = 0; i < NINPUT; i++) {
                     int inIdx = t * (NFREQ * NINPUT) + f * NINPUT + i;
-                    int phIdx = p * (NFREQ * NINPUT) + f * NINPUT + i;
-                    float v = inputData[inIdx] * phaseMap[phIdx];
-                    if (i % 2 == 0) refX += v;
-                    else            refY += v;
+                    int phIdx = p * (NFREQ * 2*NINPUT) + f * 2*NINPUT + i*2;
+                    float ph_RE = phaseMap[phIdx];
+                    float ph_IM = phaseMap[phIdx+1];
+                    unsigned char data_temp = inputData[inIdx];
+                    //float v = inputData[inIdx] * phaseMap[phIdx];
+                    if ((i / POLBLOCK ) % 2 == 0) {
+                        refX_re +=  ph_RE*((float)((data_temp & 0xf0)>> 4u)-8)
+                                  - ph_IM*((float)((data_temp & 0x0f)>> 0u)-8);     
+                        refX_im += ph_IM*((float)((data_temp & 0xf0)>> 4u)-8)
+                                 + ph_RE*((float)((data_temp & 0x0f)>> 0u)-8);  
+                    }
+                    else{
+                        refY_re += ph_RE*((float)((data_temp & 0xf0)>> 4u)-8)
+                                  -ph_IM*((float)((data_temp & 0x0f)>> 0u)-8);   
+                        
+                        refY_im += ph_IM*((float)((data_temp & 0xf0)>> 4u)-8)
+                                  +ph_RE*((float)((data_temp & 0x0f)>> 0u)-8); 
+                    }
                 }
-                int outIdx = t * (NFREQ * NPOINTING*2) + f * NPOINTING*2 + p*2;
-                refOut[outIdx + 0] = refX;
-                refOut[outIdx + 1] = refY;
-                //std::cout << "test" << std::endl;
-                //std::cout << outIdx + 1 << std::endl;
-                // if (f == 0 && p == 0) {
-                //     std::cout << "test" << "\n";
-                //     std::cout << outIdx + 1 << std::endl;
-                //     std::cout << refY << std::endl;
-                //     std::cout << refOut[outIdx + 1] << std::endl;
-                // }
+                refX_re = refX_re / scaling + 8; 
+                refX_im = refX_im / scaling + 8; 
+                refX_re = truncate_uint8(refX_re);
+                refX_im = truncate_uint8(refX_im);
+                int out_idx = f * (NTIME * NPOINTING*2) + t * NPOINTING*2 + p*2;
+                refOut[out_idx] = (((int)refX_re << 4) & 0xF0) + ((int)refX_im& 0x0F); 
+
+                refY_re = refY_re / scaling + 8; 
+                refY_im = refY_im / scaling + 8; 
+                refY_re = truncate_uint8(refY_re);
+                refY_im = truncate_uint8(refY_im);
+                refOut[out_idx + 1] = (((int)refY_re << 4) & 0xF0) + ((int)refY_im& 0x0F);
+
             }
         }
     }
-    std::cout << refOut[1] << std::endl;
 
     // ---- OpenCL setup ----
     cl_platform_id platform;
@@ -143,11 +173,15 @@ int main() {
 
     cl_kernel kernel = clCreateKernel(program, "gpu_beamforming", nullptr);
 
+    //  std::vector<unsigned char> inputData(NTIME * NFREQ * NINPUT, 0b00010001);
+    // std::vector<float> phaseMap(NPOINTING * NFREQ * NINPUT*2, 1.0);
+    // std::vector<unsigned char> gpuOut(NTIME * NFREQ * NPOINTING * 2, 0.0); // e.g. X,Y per pointing per time
+    // std::vector<unsigned char> refOut(NTIME * NFREQ * NPOINTING * 2, 0.0); // CPU 
     cl_mem inBuf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                  sizeof(char) * NTIME * NFREQ * NINPUT, inputData.data(), nullptr);
+                                  sizeof(u_char) * NTIME * NFREQ * NINPUT, inputData.data(), nullptr);
     cl_mem phBuf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                                   sizeof(cl_float2) * NPOINTING * NFREQ * NINPUT, phaseMap.data(), nullptr);
-    cl_mem outBuf = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(cl_float2) * NTIME * NFREQ * NPOINTING * 2, nullptr, nullptr);
+    cl_mem outBuf = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(u_char) * NTIME * NFREQ * NPOINTING * 2, nullptr, nullptr);
 
     // inputData, phasemap, outputData
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &inBuf);
@@ -158,11 +192,13 @@ int main() {
     //clSetKernelArg(kernel, 4, sizeof(float) * NINPUT, nullptr);
     
     // outputPartial X/Y
-    clSetKernelArg(kernel, 3, sizeof(float) * GROUP, nullptr);
-    clSetKernelArg(kernel, 4, sizeof(float) * GROUP, nullptr);
+    //clSetKernelArg(kernel, 3, sizeof(float) * GROUP, nullptr);
+    //clSetKernelArg(kernel, 4, sizeof(float) * GROUP, nullptr);
+
+    clSetKernelArg(kernel, 3, sizeof(float), &scaling);
 
     unsigned int nPointingVal = NPOINTING;
-    clSetKernelArg(kernel, 5, sizeof(unsigned int), &nPointingVal);
+    clSetKernelArg(kernel, 4, sizeof(unsigned int), &nPointingVal);
 
     // size-3 arrays for opencl dimensions
     // split first dimension into pointing and input. Local automatically splits the first dim, 
@@ -174,24 +210,53 @@ int main() {
     clEnqueueNDRangeKernel(queue, kernel, 3, nullptr, global, local, 0, nullptr, nullptr);
     clFinish(queue);
     // move data from gpu -> cpu
-    clEnqueueReadBuffer(queue, outBuf, CL_TRUE, 0, sizeof(float) * NTIME * NFREQ * NPOINTING * 2, gpuOut.data(), 0, nullptr,
+    clEnqueueReadBuffer(queue, outBuf, CL_TRUE, 0, sizeof(u_char) * NTIME * NFREQ * NPOINTING * 2, gpuOut.data(), 0, nullptr,
                         nullptr);
     clFinish(queue); 
-    for (int sidx=0; sidx<NTIME * NFREQ * NPOINTING * 2; sidx++){
+    for (int sidx=0; sidx<NTIME * NFREQ * NPOINTING; sidx++){
         //int idx = sidx*2;
         //std::cout << "idx:" << idx << "\n";
         //std::cout << "CPU: X=" << refOut[idx] << " Y=" << refOut[idx+1] << "\n";
         //std::cout << "GPU: X=" << gpuOut[idx] << " Y=" << gpuOut[idx+1] << "\n";
-        if (std::fabs(refOut[sidx] - gpuOut[sidx])/refOut[sidx] > 1e-5){
-            std::cout << "FAILED\n";
-            std::cout << "GPU=" << gpuOut[sidx] << " CPU=" << refOut[sidx] << "\n";
+        // if (std::fabs(refOut[sidx] - gpuOut[sidx])/refOut[sidx] > 1){
+        int idx = sidx * 2;
+
+        u_char refOutVal = refOut[idx];
+        int refOutRe = ((refOutVal & 0xf0)>> 4u)-8;
+        int refOutIm = ((refOutVal & 0x0f)>> 0u)-8;
+        u_char gpuOutVal = gpuOut[idx];
+        int gpuOutRe = ((gpuOutVal & 0xf0)>> 4u)-8;
+        int gpuOutIm = ((gpuOutVal & 0x0f)>> 0u)-8;
+        
+        std::cout << "X Re GPU=" << gpuOutRe << " CPU=" << refOutRe << std::endl;
+        std::cout << "X Im GPU=" << gpuOutIm << " CPU=" << refOutIm << std::endl;
+        if (refOut[idx] != gpuOut[idx]) {
+            std::cout << "FAILED";
         }
+        std::cout << "\n";
+
+        idx = idx+1;
+
+        refOutVal = refOut[idx];
+        refOutRe = ((refOutVal & 0xf0)>> 4u)-8;
+        refOutIm = ((refOutVal & 0x0f)>> 0u)-8;
+        gpuOutVal = gpuOut[idx];
+        gpuOutRe = ((gpuOutVal & 0xf0)>> 4u)-8;
+        gpuOutIm = ((gpuOutVal & 0x0f)>> 0u)-8;
+        
+        std::cout << "Y Re GPU=" << gpuOutRe << " CPU=" << refOutRe << std::endl;
+        std::cout << "Y Im GPU=" << gpuOutIm << " CPU=" << refOutIm << std::endl;
+
+        if (refOut[idx] != gpuOut[idx]) {
+            std::cout << "FAILED";
+        }
+        std::cout << "\n";
     }
 
-    int idx = 2;
+    int idx = 0;
     std::cout << "idx:" << idx << "\n";
-    std::cout << "CPU: X=" << refOut[idx] << " Y=" << refOut[idx+1] << "\n";
-    std::cout << "GPU: X=" << gpuOut[idx] << " Y=" << gpuOut[idx+1] << "\n";
+    std::cout << "CPU: X=" << (int)refOut[idx] << " Y=" << (int)refOut[idx+1] << "\n";
+    std::cout << "GPU: X=" << (int)gpuOut[idx] << " Y=" << (int)gpuOut[idx+1] << "\n";
 
     return 0;
 }

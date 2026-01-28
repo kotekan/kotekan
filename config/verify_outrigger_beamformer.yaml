@@ -11,45 +11,30 @@ log_level: debug2
 
 num_data_sets: 1
 num_pointings: 1
-samples_per_data_set: 32  
-buffer_depth: 8
+num_links: 16     
+samples_per_data_set: 64  
+buffer_depth: 2 #8 #12 #num_gpu_frames: 4
 cpu_affinity: [2,3,4,5,8,9,10,11]
-num_elements: 256
-num_local_freq: 8. # USED BY FAKE TELESCOPE
-sizeof_data: 4 #int
-sizeof_input_data: 1
+num_elements: 256 #32 #256 #2048
+num_local_freq: 8
+sizeof_data: 1 #4 #int
 sizeof_float: 4
-sizeof_output_data: 8 
-size_of_phase_data: 8 
-seed: 20
-num_links: 1 # circle back to this
-num_frames_buffer: 5
-
-telescope:
-    name: ICETelescope
-    require_gps: false
-    query_gps: false
-    allow_default_frequency_map: true
-
+scale_factor: 1
+#samples_per_data_set * num_data_sets * num_local_freq * num_pointings * 2 * sizeof_data
 # Pool
 main_pool:
     kotekan_metadata_pool: chimeMetadata
-    num_metadata_objects: 4 * num_links * buffer_depth
-
-# Baseband metadata pool
-baseband_pool:
-  kotekan_metadata_pool: BasebandMetadata
-  num_metadata_objects: num_links * num_local_freq * 1024 * 2 * buffer_depth
-
-beam_metadata_pool:
-  kotekan_metadata_pool: BeamMetadata
-  num_metadata_objects: num_links * num_local_freq * 1024 * 2 * buffer_depth
-
+    num_metadata_objects: 15 * buffer_depth
+# # Pool
+# main_pool:
+#     kotekan_metadata_pool: chordMetadata
+#     num_metadata_objects: 15 * buffer_depth
+#     type: float32
 
 # Buffers
 gpu_input_buffers:
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets * sizeof_input_data
+    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets * sizeof_data
     metadata_pool: main_pool
     gpu_input_buffer:
         kotekan_buffer: standard
@@ -57,36 +42,26 @@ gpu_input_buffers:
 gpu_phase_buffer: 
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size:  num_elements * num_local_freq * num_data_sets * num_pointings * size_of_phase_data
+    frame_size:  num_elements * num_local_freq * num_data_sets * num_pointings * sizeof_data * 2 * 4
     metadata_pool: main_pool
 
 
-gpu_output_buffers:
-    frame_size: samples_per_data_set * num_data_sets * num_local_freq * num_pointings * 2 * sizeof_output_data #samples_per_data_set * num_data_sets * num_local_freq * 2
+gpu_output_buffer:
+    kotekan_buffer: standard
+    frame_size: samples_per_data_set * num_data_sets * num_local_freq * num_pointings * 2 #* sizeof_data #samples_per_data_set * num_data_sets * num_local_freq * 2
     metadata_pool: main_pool
     num_frames: buffer_depth
-    gpu_output_buffer:
-        kotekan_buffer: standard
 
-
-# baseband_output_buffers:
-#     num_frames: buffer_depth * num_local_freq
-#     frame_size: samples_per_data_set * num_elements * num_data_sets * sizeof_input_data
-#     metadata_pool: baseband_pool
-#     baseband_output_buffer:
-#         kotekan_buffer: standard
 
 gen_data:
-  # type: 4b+4b #const
-  # real_value: 4
-  # imag_value: 3
-  type: random_signed
+  type: const32 #const
+  value: 10
   kotekan_stage: testDataGen
   out_buf: gpu_input_buffer
 
 gen_phases:
   type: constf32 #const
-  value: 1.0
+  value: 1.5
   kotekan_stage: testDataGen
   out_buf: gpu_phase_buffer
 
@@ -125,31 +100,24 @@ gpu:
       phases_buf: gpu_phase_buffer
     out_buffers:
       output_buf: gpu_output_buffer
-        # ChimeMetadataDump takes in baseband data
 
+#cpu:
+#   kotekan_stage: bkCheck
+#   log_level: debug2
+#   network_in_buf: gpu_output_buffer
 
-  # [DONE] add faketelescope
-  # basebandReadout takes in chimemetadata and write basebandmetadata
-  # BasebandWriter takes in basebandmetadata
-  # bufferStatus
+metadata_dump:
+  kotekan_stage: chimeMetadataDump
+  in_buf: gpu_output_buffer
 
-# metadata_dump:
-#   kotekan_stage: chimeMetadataDump
+# raw_file_write:
+#   kotekan_stage: rawFileWrite
 #   in_buf: gpu_output_buffer
-
-# baseband_readout:
-#     kotekan_stage: basebandReadout
-#     timeout: 0.1
-#     in_buf: gpu_input_buffer
-#     out_buf: baseband_output_buffer
-
-
-# write_baseband:
-#   root_path: /home/shiona/kotekan_baseband_dump_test
-#   dump_timeout: 1 # 1s
-#   write:
-#     kotekan_stage: BasebandWriter
-#     in_buf: baseband_output_buffer
+#   # *** Change this value for each run ***
+#   base_dir: /home/shiona/kotekan_tests
+#   file_name: adc_data
+#   file_ext: raw
+#   exit_after_n_files: buffer_depth
 
 # h5_file_write:
 #   kotekan_stage: hdf5FileWrite
@@ -158,33 +126,3 @@ gpu:
 #   base_dir: /home/shiona/kotekan_tests
 #   file_name: adc_data
 #   exit_after_n_files: buffer_depth
-
-
-# TODO confirm types and dump
-
-#16 links? num_links
-#https://github.com/CHIMEFRB/outrigger-devops/blob/ml/hco_cleanup/docker/stacks/hco/configs/kotekan/kotekan_gpu.j2
-#gpu_input_buffer
-#baseband_buffer_depth: 228 # ~33 seconds after accounting for margin.
-#samples_per_data_set: 4096
-
-#num_frames: baseband_buffer_depth
-#    frame_size: samples_per_data_set * num_elements * num_local_freq
-#   metadata_pool: main_pool
-#    use_hugepages: true
-
-#baseband_output_buffer_merged and baseband_output_buffer_:
-#    num_frames: 100 * num_local_freq
-#    frame_size: samples_per_data_set * num_elements
-#    metadata_pool: baseband_pool
-#baseband_output_buffer_ 16 then merged
-#  frame_size: num_elements * samples_per_data_set
-
-# 
-#gpu_input_buffer 
-#-> basebandReadout (baseband_output_buffer_)
-#-> bufferMerge (baseband_output_buffer_merged) #-> bufferSend (baseband_output_buffer_merged) -> bufferRecv (baseband_recv_buffer_0) 
-#-> BasebandWriter
-
-
-#curl -H "Content-Type: application/json" -d '{"event_id": '"500"', "file_path": "'"$t/"'", "start_unix_seconds": '"5000"', "start_unix_nano": 5000, "duration_nano": 100000, "dm": 0.000000, "dm_error": 0.000000}' localhost:12048/baseband 
