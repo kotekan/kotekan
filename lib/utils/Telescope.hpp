@@ -49,6 +49,56 @@ struct stream_t {
  * frequency, etc).  It also contains the Earth Orientation Parameter (EOP) table,
  * which holds data to compute UT1 time and CIRS coordinate transformations from
  * instrument time.
+ *
+ * REST Endpoints
+ *
+ * @endpoint    /time0_ns   GET     Returns a JSON object with a single field
+ *                                  "time0_ns" which contains the instrument time
+ *                                  in nanoseconds at fpga_seq_num = 0. Instrument
+ *                                  time at seq = 0 is represented as a UNIX time
+ *                                  with nanosecond resolution.
+ * @endpoint    /eop_table  GET     Returns a JSON object with a single field "eop_table" which
+ *                                  contains a list of EOP objects. Each EOP object contains 6
+ *                                  fields:
+ *                                  - t_inst            int64   Instrument time in nanoseconds.
+ *                                  - t_ut1             int64   UT1 time in nanoseconds since
+ *                                                              2451545.0 JD(UT1).
+ *                                  - delta_UT1_inst    double  Difference in seconds between
+ *                                                              UT1 and Instrument time.
+ *                                  - ERA_deg           double  Earth Rotation Angle in degrees.
+ *                                  - xp_as             double  Polar Motion x', arcseconds.
+ *                                  - yp_as             double  Polar Motion y', arcseconds.
+ *
+ * Updatable Config
+ *
+ * @conf    eop_updatable_config    Optional. If not present, EOP table will be empty and only
+ *                                  null values (all 0s) will be returned by get_EOP functions.
+ *                                  If present, the config path to an updatable config field
+ *                                  containing the field "earth_orientation_parameter_table",
+ *                                  which is a list of EOP Update objects. Each contains 4
+ *                                  fields:
+ *                                  - time_inst_ns      int     Instrument time in nanoseconds.
+ *                                  - delta_UT1_inst    double  As in EOP.
+ *                                  - x_pm              double  As in EOP.
+ *                                  - y_pm              double  As in EOP.
+ *                                  Upon receiving an update, the entire EOP table is replaced
+ *                                  with the new table. UT1 and ERA values are calculated from
+ *                                  the given time_inst_ns and delta_UT1_inst.
+ *
+ * To maintain continuity, tools updating the EOP table should first GET the current table, and
+ * only update or add values at least two entries in the future.  The table is linearly
+ * interpolated between the most recent past & future entries, so changing the closest future
+ * entry will immediately change values currently being used in Kotekan.
+ *
+ * For example, given a current table:
+ * [Jan 1 UTC 00:00:00,
+ *  Jan 2 UTC 00:00:00,
+ *  Jan 3 UTC 00:00:00,
+ *  Jan 4 UTC 00:00:00]
+ *
+ *  An update on Jan 2 UTC 12:00:00 should keep the exact Jan 2 and Jan 3 entries as they are
+ *  currently being used for interpolation.  Jan 4 may be modified, Jan 5 (or later) could be
+ *  added, and Jan 1 can be removed.
  **/
 class Telescope : public kotekan::kotekanLogging {
 

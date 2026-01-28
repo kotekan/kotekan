@@ -416,7 +416,8 @@ private:
  * @see FreqParams::from_config (frequency sampling)
  * @see GeographicParams::from_config (dish and array geometry)
  *
- * @conf    updatable_config    string. ConfigUpdater path for dynamic EOP updates.
+ * @conf    eop_updatable_config    string. ConfigUpdater path for dynamic EOP updates. For more
+ *information see Telescope.hpp
  * @conf    log_level           string. Optional log level for this telescope instance.
  *
  * @author Geoffrey Ryan
@@ -429,6 +430,7 @@ private:
  *              introduced with per-dish grid placement, positioning, pointing, and labels. GR
  * 2025/12/04: Factor telescope members into logical groups: frequency parameters,
  *              gps time parameters, geographic/dish parameters. JM (PR #1373)
+ * 2026/01/28:  Remove EOP functionality and move to Telescope.
  */
 
 class CHORDTelescope : public Telescope {
