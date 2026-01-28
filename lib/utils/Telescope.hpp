@@ -224,7 +224,7 @@ public:
      * @return  Length of an FPGA sequence number tick.
      **/
     virtual uint64_t seq_length_nsec() const = 0;
-    
+
     /**
      * @brief   Return the number of entries in the EOP table.
      **/

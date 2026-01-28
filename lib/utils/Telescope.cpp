@@ -46,7 +46,7 @@ Telescope::~Telescope() {
     restServer& rest_server = restServer::instance();
     rest_server.remove_get_callback(_unique_name + "/time0_ns");
     rest_server.remove_get_callback(_unique_name + "/eop_table");
-    INFO_NON_OO("/telescope: removed REST GET endpoints");
+    INFO_NON_OO("/telescope: Removed REST GET endpoints");
 }
 
 const Telescope& Telescope::instance() {
@@ -194,7 +194,7 @@ EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
         std::shared_lock lock(_eop_lock);
 
         if (_eop_table.empty()) {
-            WARN("EOP table is empty, cannot interpolate EOP at UT1 time {:d} s + {:d} ns.",
+            WARN("EOP table is empty, cannot interpolate EOP at instrument time {:d} s + {:d} ns.",
                  t_target / GIGA, t_target % GIGA);
             return eop_null;
         }
@@ -333,4 +333,3 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1) const {
 
     return eop;
 }
-
