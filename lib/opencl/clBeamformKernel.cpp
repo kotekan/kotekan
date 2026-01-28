@@ -87,8 +87,8 @@ void clBeamformKernel::build() {
 
     // set group size
     int group_size = 64;
-    CHECK_CL_ERROR(clSetKernelArg(kernel, 4, sizeof(float), &_scale_factor)); //not making this pointing dependent
-    CHECK_CL_ERROR(clSetKernelArg(kernel, 5, sizeof(unsigned int), &_num_pointings));
+    CHECK_CL_ERROR(clSetKernelArg(kernel, 3, sizeof(float), &_scale_factor)); //not making this pointing dependent
+    CHECK_CL_ERROR(clSetKernelArg(kernel, 4, sizeof(unsigned int), &_num_pointings));
 
     // Beamforming kernel global and local work space sizes.
     // HERE FIX
@@ -119,16 +119,12 @@ cl_event clBeamformKernel::execute(cl_event pre_event) {
     cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     cl_mem phase_memory =
         device.get_gpu_memory_array("phases", gpu_frame_id, _num_elements * num_local_freq * _num_pointings * _num_data_sets * sizeof(cl_float2));
-    //std::cout<< "test gpu allocate buffer size" << "\n";
-    //std::cout<< sizeof(uint32_t) << "\n";
-    //std::cout<< sizeof(cl_float2) << "\n";
-
 
     uint32_t output_len = _samples_per_data_set * _num_data_sets * num_local_freq * _num_pointings * 2  * sizeof(char);//cl_float2);
+
     cl_mem output_memory_frame =
         device.get_gpu_memory_array("output", gpu_frame_id, output_len);
 
-    // HERE FIX
     setKernelArg(0, input_memory);
     setKernelArg(1, phase_memory);
     setKernelArg(2, output_memory_frame);
