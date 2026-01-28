@@ -42,7 +42,13 @@ struct stream_t {
 /**
  * @brief A class to hold telescope specific functionality.
  *
- *
+ * This serves as a generic Telescope base class. It cannot be instantiated,
+ * only derived classes can.  It provides virtual hooks for routines to map
+ * between sequence number and instrument time, and for returning sampling
+ * parameters (raw sample rate, frequency spacing, map from freq_id to physical
+ * frequency, etc).  It also contains the Earth Orientation Parameter (EOP) table,
+ * which holds data to compute UT1 time and CIRS coordinate transformations from
+ * instrument time.
  **/
 class Telescope : public kotekan::kotekanLogging {
 
@@ -260,11 +266,19 @@ private:
 
 protected:
     /**
-     * This constructor sets up the logging. Implement a specific constructor
-     * in a derived class to parse the config, and call this one to make sure
-     * the logging is done correctly.
+     * @brief   The primary constructor which should be called by derived classes
+     *          upon instantiation.
      *
-     * TODO: UPDATE THIS
+     * This constructor sets up the logging and REST endpoints for Earth
+     * Orientation Parameters (EOP) and time0. Implement a specific constructor
+     * in a derived class to parse the config, and call this one to make sure
+     * the logging is done correctly and endpoints are active.
+     *
+     * @param   tel_path    Path to the telescope in the Config (e.g. /telescope)
+     * @param   log_level   The level to set logging at.
+     * @param   updatable_config_path   The value of "eop_updatable_config" in
+     *          the telescope Config, pointing to the updatable field which
+     *          contains "earth_orientation_parameter_table"
      **/
     Telescope(const std::string& tel_path, const std::string& log_level,
               const std::string& updatable_config_path);
