@@ -312,14 +312,14 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "origin_itrs_lat_deg", telescope.get_origin_itrs_lat_deg());
         _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
         _check_create_attribute(*file, "num_dishes", telescope.get_num_dishes());
-        _check_create_attribute(*file, "EOP_table_len", telescope.get_EOP_table_len());
         _check_create_attribute(*file, "num_file_f",
                                 telescope.num_science_freqs()); // "science-case" frequencies only
         _check_create_attribute(*file, "num_telescope_f", telescope.num_freq());
 
-        // Store EOP table ERA_deg and t_ut1 only
+        // Store EOP table.
         {
-            const int eop_len = telescope.get_EOP_table_len();
+            std::vector<EOP> eop_table = telescope.get_current_EOP_table();
+            const int eop_len = eop_table.size();
             if (eop_len > 0) {
                 std::vector<int64_t> eop_t_inst(eop_len);
                 std::vector<int64_t> eop_t_ut1(eop_len);
@@ -329,7 +329,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                 std::vector<double> eop_yp_as(eop_len);
 
                 for (int i = 0; i < eop_len; i++) {
-                    EOP eop = telescope.get_EOP_at_table_idx(i);
+                    EOP eop = eop_table[i];
                     eop_t_inst[i] = eop.t_inst;
                     eop_t_ut1[i] = eop.t_ut1;
                     eop_delta_UT1_inst[i] = eop.delta_UT1_inst;

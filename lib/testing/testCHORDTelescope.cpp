@@ -83,14 +83,15 @@ void TestCHORDTelescope::main_thread() {
         INFO("                              {0:.6f} {1:.6f} {2:.6f}",
              tel.get_dish_orientation_el(2, 0), tel.get_dish_orientation_el(2, 1),
              tel.get_dish_orientation_el(2, 2));
-        int n_eop = tel.get_EOP_table_len();
+
+        std::vector<EOP> eop_tab = tel.get_current_EOP_table();
 
         std::vector<int64_t> eop_times;
 
-        int i;
-        INFO("            EOP entries: {:d}", n_eop);
-        for (i = 0; i < n_eop; i++) {
-            struct EOP eop = tel.get_EOP_at_table_idx(i);
+        size_t i;
+        INFO("            EOP entries: {:d}", eop_tab.size());
+        for (i = 0; i < eop_tab.size(); i++) {
+            struct EOP eop = eop_tab[i];
             eop_times.push_back(eop.t_inst);
             INFO("            {0: 2d} - t_inst: {1:d} s + {2:d} ns", i, eop.t_inst / GIGA,
                  eop.t_inst % GIGA);
@@ -101,7 +102,7 @@ void TestCHORDTelescope::main_thread() {
             INFO("               - yp:     {:f} arcsec", eop.yp_as);
         }
 
-        int nt = eop_times.size();
+        size_t nt = eop_times.size();
 
         INFO("            EOP Probes:");
 
@@ -161,7 +162,7 @@ void TestCHORDTelescope::main_thread() {
             }
         }
 
-        int n_dish = tel.get_num_dishes();
+        size_t n_dish = tel.get_num_dishes();
         INFO("            Num Dishes:  {:d}", n_dish);
         for (i = 0; i < n_dish; i++) {
             std::array<double, 3> pos = tel.get_dish_position_in_grid_coords(i);

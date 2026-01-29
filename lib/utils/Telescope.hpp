@@ -231,7 +231,7 @@ public:
     virtual nyquist_zone_t nyquist_zone() const = 0;
 
     /**
-     * Convert a sequence number into a UNIX epoch time.
+     * Convert a sequence number into an Instrument (~UNIX epoch) time.
      *
      * @param  seq  The sequence number.
      *
@@ -240,19 +240,20 @@ public:
     virtual timespec to_time(uint64_t seq) const = 0;
 
     /**
-     * @brief   Return the time corresponding to the given fpga sequence number as an int64_t.
-     *          Uses the epoch of time0_ns.
+     * @brief   Return the Instrument time in ns corresponding to the given fpga sequence number as
+     * an int64_t.
      */
     virtual int64_t to_time_ns(uint64_t seq) const = 0;
 
     /**
-     * @brief Convert a UNIX epoch time into the nearest sequence number.
+     * @brief Convert an Instrument (~UNIX epoch) time into the nearest sequence number.
      *
      * @note When there is not an exact correspondence between the given time
      *       and FPGA sequence numbers, this routine will return the latest valid
      *       FPGA sequence number before the given timestamp.
      *
-     * @param  time  The UNIX time.
+     * @param  time  The Instrument time (a UNIX time unless a leap second has occured since
+     *instrument startup, or one will occur in the next 24 hours).
      *
      * @return  The corresponding sequence number.
      **/
@@ -282,16 +283,9 @@ public:
     virtual uint64_t seq_length_nsec() const = 0;
 
     /**
-     * @brief   Return the number of entries in the EOP table.
+     * @brief   Return a copy of the current EOP table.
      **/
-    size_t get_EOP_table_len() const;
-
-    /**
-     * @brief   Return the EOP table entry at an index.
-     *
-     * @param   i   Index of desired EOP entry, 0 <= i < EOP_table_len
-     **/
-    EOP get_EOP_at_table_idx(uint64_t i) const;
+    std::vector<EOP> get_current_EOP_table() const;
 
     /**
      * @brief   Return the EOP at the desired instrument time. Will interpolate
@@ -326,12 +320,12 @@ protected:
      *
      * @param   tel_path    Path to the telescope in the Config (e.g. /telescope)
      * @param   log_level   The level to set logging at.
-     * @param   updatable_config_path   The value of "eop_updatable_config" in
+     * @param   eop_updatable_config_path   The value of "eop_updatable_config" in
      *          the telescope Config, pointing to the updatable field which
      *          contains "earth_orientation_parameter_table"
      **/
     Telescope(const std::string& tel_path, const std::string& log_level,
-              const std::string& updatable_config_path);
+              const std::string& eop_updatable_config_path);
 
     /**
      * @brief Callback to update EOP data

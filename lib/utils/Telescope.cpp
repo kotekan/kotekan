@@ -16,20 +16,20 @@ using kotekan::restServer;
 #define GIGA 1'000'000'000L
 
 Telescope::Telescope(const std::string& tel_path, const std::string& log_level,
-                     const std::string& updatable_config_path) : _unique_name(tel_path) {
+                     const std::string& eop_updatable_config_path) : _unique_name(tel_path) {
     set_log_level(log_level);
     set_log_prefix("/telescope");
 
-    INFO("Building Telescope");
+    DEBUG("Building Telescope");
 
     // Set up callbacks for updating EOP and sending time0_ns
     using namespace std::placeholders;
 
     // Subscribe to config updates if updatable_config is set.
-    if (updatable_config_path.length() > 0) {
-        INFO("Subscribing {:s} to updatable config.", updatable_config_path);
+    if (eop_updatable_config_path.length() > 0) {
+        INFO("Subscribing {:s} to updatable config.", eop_updatable_config_path);
         kotekan::configUpdater::instance().subscribe(
-            updatable_config_path, std::bind(&Telescope::receive_eop_updates, this, _1));
+            eop_updatable_config_path, std::bind(&Telescope::receive_eop_updates, this, _1));
     }
 
     INFO("Adding telescope REST GET endpoints");
@@ -46,7 +46,7 @@ Telescope::~Telescope() {
     restServer& rest_server = restServer::instance();
     rest_server.remove_get_callback(_unique_name + "/time0_ns");
     rest_server.remove_get_callback(_unique_name + "/eop_table");
-    INFO_NON_OO("/telescope: Removed REST GET endpoints");
+    INFO("Removed REST GET endpoints");
 }
 
 const Telescope& Telescope::instance() {
@@ -166,20 +166,14 @@ EOP Telescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst, dou
     return eop;
 }
 
-size_t Telescope::get_EOP_table_len() const {
-    std::shared_lock lock(_eop_lock);
-    return _eop_table.size();
-}
+std::vector<EOP> Telescope::get_current_EOP_table() const {
 
-EOP Telescope::get_EOP_at_table_idx(uint64_t i) const {
-    std::shared_lock lock(_eop_lock);
-
-    if (i < _eop_table.size()) {
-        EOP eop = _eop_table[i];
-        return eop;
+    std::vector<EOP> tab_copy;
+    {
+        std::shared_lock lock(_eop_lock);
+        tab_copy = _eop_table;
     }
-
-    return eop_null;
+    return tab_copy;
 }
 
 EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {

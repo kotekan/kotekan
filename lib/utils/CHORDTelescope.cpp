@@ -385,12 +385,11 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     _gps_time_params(GPSTimeParams::from_config(config, path)),
     // Instrument geographic coordinates
     _geographic_params(GeographicParams::from_config(config, path)) {
-
-    INFO("Building CHORDTelescope");
+    DEBUG("Building CHORDTelescope");
 }
 
 CHORDTelescope::~CHORDTelescope() {
-    INFO("Removing CHORDTelescope");
+    DEBUG("Removing CHORDTelescope");
 }
 
 timespec CHORDTelescope::to_time(uint64_t seq) const {
