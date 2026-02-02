@@ -62,8 +62,7 @@ static void fill_input_frame(Buffer* buf, int frame_id) {
     N2FrameView fv(buf, frame_id);
 
     // Fill vis with (input_a, input_b) pattern
-    std::vector<N2::prod_ctype> prods;
-    fv.fill_prod_maps(prods);
+    const auto& prods = fv._desc->get_product_list();
 
     for (size_t i = 0; i < prods.size(); ++i) {
         fv.vis[i] = N2::cfloat(float(prods[i].input_a), float(prods[i].input_b));

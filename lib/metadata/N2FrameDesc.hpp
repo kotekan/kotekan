@@ -90,14 +90,11 @@ public:
     }
 
     /**
-     * @brief Get the explicit product list for this frame descriptor.
+     * @brief Get the product list for this frame descriptor.
      *
-     * For FullUpperTri and Autocorrelations layouts, this returns an empty vector
-     * (products are computed on-the-fly by fill_prod_maps).
-     * For subset layouts (InputANDMasked, InputORMasked, GeneralSubset), this returns
-     * the explicit list of products stored in this descriptor.
+     * The product list is populated on construction for all layouts.
      *
-     * @return Reference to the product list (may be empty for computed layouts)
+     * @return Reference to the product list.
      */
     const std::vector<N2::prod_ctype>& get_product_list() const {
         return product_list;
@@ -127,28 +124,31 @@ public:
      * @param layout The N2Layout to check
      * @return Config parameter name: "none", "input_list", or "product_list"
      */
-    static const char* get_required_config_param(N2Layout layout);
+    static const char* note_additional_required_config_param(N2Layout layout);
 
     /**
-     * @brief Generate a product list from an input list for InputORMasked or InputANDMasked
-     * layouts.
+     * @brief Generate a product list for the given layout.
+     *
+     * For FullUpperTri: generates all upper-triangular products
+     * For Autocorrelations: generates diagonal-only products
+     * For InputORMasked: generates products where input_a OR input_b is in input_list
+     * For InputANDMasked: generates products where input_a AND input_b are in input_list
      *
      * @param num_elements  Number of elements (dishes x polarizations)
-     * @param input_list    List of input indices to filter by
-     * @param layout        Must be InputORMasked or InputANDMasked
+     * @param layout        The N2Layout to generate products for
+     * @param input_list    List of input indices (required for InputORMasked/InputANDMasked)
      *
-     * @return Vector of products matching the filter criteria:
-     *         - InputORMasked: products where input_a OR input_b is in input_list
-     *         - InputANDMasked: products where input_a AND input_b are in input_list
+     * @return Vector of products for the given layout
      *
-     * @throws std::runtime_error if layout is not InputORMasked or InputANDMasked
+     * @throws std::runtime_error if layout is not supported or if input_list is required
+     *         but not provided
      */
     static std::vector<N2::prod_ctype>
-    generate_product_list(uint32_t num_elements, const std::vector<uint16_t>& input_list,
-                          N2Layout layout);
+    generate_product_list(uint32_t num_elements, N2Layout layout,
+                          const std::vector<uint16_t>& input_list = {});
 
     /**
-     * @brief Create an N2FrameDesc from configuration.
+     * @brief Construct an N2FrameDesc from configuration.
      *
      * Reads num_elements, num_ev, and n2_layout from config, then based on the layout:
      * - FullUpperTri/Autocorrelations: no additional config needed
@@ -157,11 +157,8 @@ public:
      *
      * @param config    The configuration object
      * @param location  The config path for this buffer
-     *
-     * @return Shared pointer to the created N2FrameDesc
      */
-    static std::shared_ptr<N2FrameDesc> from_config(kotekan::Config& config,
-                                                    const std::string& location);
+    N2FrameDesc(kotekan::Config& config, const std::string& location);
 
     // Static helpers (previously in frame view)
     /**
@@ -184,7 +181,6 @@ public:
      */
     static size_t calculate_frame_size(uint32_t num_elements_in, uint32_t num_ev_in,
                                        size_t num_prod_in);
-    static size_t calculate_frame_size(kotekan::Config& config, const std::string& unique_name);
 
     /**
      * @brief The layout of data/fields within the frame.
@@ -194,52 +190,17 @@ public:
     static n2frame_layout_t get_frame_layout(uint32_t num_elements_in, uint32_t num_ev_in,
                                              size_t num_prod_in);
 
-    /**
-     * @brief Fill the product maps vector for each product in the visibility matrix.
-     *
-     * Every product in the frame view is a visibility matrix V_{ab} that was formed from two input
-     * elements: a (first, the full vis matrix row index) and b (second, the full vis matrix column
-     * index), where 0 <= a, b < num_elements. This function fills the given vector prods with
-     * num_prod entries, that is, one entry for each object in vis or weights. Each is a prod_ctype
-     * which has the 'a' element index for this product in prod.index_a, and the 'b' element index
-     * in prod.index_b.
-     *
-     * @note The given vector prods is reserved to num_prods size, which potentially performs an
-     * allocation of size num_prod * sizeof(prod_ctype).
-     *
-     * @param   prods   Vector of prod_ctype to fill.
-     *
-     * @throws  std::runtime_error  If this N2FrameView has an unknown layout.
-     */
-    void fill_prod_maps(std::vector<N2::prod_ctype>& prods) const;
-
 private:
-    /**
-     * @brief Fill the product maps vector for each product in the visibility matrix in the
-     * FullUpperTri layout.
-     *
-     * See N2FrameDesc::fill_prod_maps() for full details.
-     *
-     * @param   prods           Vector to fill.
-     */
-    void fill_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods) const;
-
-    /**
-     * @brief Fill the product maps vector for each product in the visibility matrix in the
-     * Autocorrelations-only (diagonal) layout.
-     *
-     * See N2FrameDesc::fill_prod_maps() for full details.
-     *
-     * @param   prods           Vector to fill.
-     */
-    void fill_prod_maps_Autocorrelations(std::vector<N2::prod_ctype>& prods) const;
+    /// Helper for the config constructor: parses config and returns a fully constructed
+    /// N2FrameDesc.
+    static N2FrameDesc _from_config_impl(kotekan::Config& config, const std::string& location);
 
     const uint32_t num_elements;
     const uint32_t num_ev;
     const uint32_t num_products;
     const N2Layout n2_layout;
 
-    /// Explicit product list for subset layouts (empty for FullUpperTri/Autocorrelations)
+    /// Product list for this frame descriptor (populated for all layouts)
     const std::vector<N2::prod_ctype> product_list;
 };
 

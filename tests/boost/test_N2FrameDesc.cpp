@@ -129,7 +129,7 @@ BOOST_AUTO_TEST_CASE(test_constructor_fulluppertri) {
     BOOST_CHECK_EQUAL(desc.get_num_ev(), num_ev);
     BOOST_CHECK_EQUAL(desc.get_num_products(), num_prod);
     BOOST_CHECK(desc.get_n2_layout() == N2Layout::FullUpperTri);
-    BOOST_CHECK(desc.get_product_list().empty()); // No explicit list for FullUpperTri
+    BOOST_CHECK_EQUAL(desc.get_product_list().size(), num_prod); // Product list generated
 
     std::cout << "Success.\n";
 }
@@ -146,7 +146,7 @@ BOOST_AUTO_TEST_CASE(test_constructor_autocorrelations) {
     BOOST_CHECK_EQUAL(desc.get_num_elements(), num_elements);
     BOOST_CHECK_EQUAL(desc.get_num_products(), num_prod);
     BOOST_CHECK(desc.get_n2_layout() == N2Layout::Autocorrelations);
-    BOOST_CHECK(desc.get_product_list().empty());
+    BOOST_CHECK_EQUAL(desc.get_product_list().size(), num_prod); // Product list generated
 
     std::cout << "Success.\n";
 }
@@ -205,16 +205,15 @@ BOOST_AUTO_TEST_CASE(test_constructor_throws_mismatched_product_count) {
     std::cout << "Success.\n";
 }
 
-BOOST_AUTO_TEST_CASE(test_fill_prod_maps_fulluppertri) {
-    std::cout << "Testing fill_prod_maps() for FullUpperTri...\n";
+BOOST_AUTO_TEST_CASE(test_get_product_list_fulluppertri) {
+    std::cout << "Testing get_product_list() for FullUpperTri...\n";
 
     uint32_t num_elements = 4;
     uint32_t num_prod = N2FrameDesc::get_num_prod(num_elements, N2Layout::FullUpperTri);
 
     N2FrameDesc desc(num_elements, 0, num_prod, N2Layout::FullUpperTri);
 
-    std::vector<N2::prod_ctype> prods;
-    desc.fill_prod_maps(prods);
+    const auto& prods = desc.get_product_list();
 
     BOOST_CHECK_EQUAL(prods.size(), 10); // 4*5/2 = 10
 
@@ -231,16 +230,15 @@ BOOST_AUTO_TEST_CASE(test_fill_prod_maps_fulluppertri) {
     std::cout << "Success.\n";
 }
 
-BOOST_AUTO_TEST_CASE(test_fill_prod_maps_autocorrelations) {
-    std::cout << "Testing fill_prod_maps() for Autocorrelations...\n";
+BOOST_AUTO_TEST_CASE(test_get_product_list_autocorrelations) {
+    std::cout << "Testing get_product_list() for Autocorrelations...\n";
 
     uint32_t num_elements = 4;
     uint32_t num_prod = N2FrameDesc::get_num_prod(num_elements, N2Layout::Autocorrelations);
 
     N2FrameDesc desc(num_elements, 0, num_prod, N2Layout::Autocorrelations);
 
-    std::vector<N2::prod_ctype> prods;
-    desc.fill_prod_maps(prods);
+    const auto& prods = desc.get_product_list();
 
     BOOST_CHECK_EQUAL(prods.size(), 4);
 
@@ -253,15 +251,14 @@ BOOST_AUTO_TEST_CASE(test_fill_prod_maps_autocorrelations) {
     std::cout << "Success.\n";
 }
 
-BOOST_AUTO_TEST_CASE(test_fill_prod_maps_general_subset) {
-    std::cout << "Testing fill_prod_maps() for GeneralSubset...\n";
+BOOST_AUTO_TEST_CASE(test_get_product_list_general_subset) {
+    std::cout << "Testing get_product_list() for GeneralSubset...\n";
 
     std::vector<N2::prod_ctype> product_list = {{0, 0}, {1, 3}, {2, 5}, {7, 7}};
 
     N2FrameDesc desc(8, 0, product_list.size(), N2Layout::GeneralSubset, product_list);
 
-    std::vector<N2::prod_ctype> prods;
-    desc.fill_prod_maps(prods);
+    const auto& prods = desc.get_product_list();
 
     BOOST_CHECK_EQUAL(prods.size(), product_list.size());
 
@@ -328,6 +325,41 @@ BOOST_AUTO_TEST_CASE(test_byte_size) {
     std::cout << "Success.\n";
 }
 
+BOOST_AUTO_TEST_CASE(test_generate_product_list_fulluppertri) {
+    std::cout << "Testing generate_product_list() for FullUpperTri...\n";
+
+    uint32_t num_elements = 4;
+    auto products = N2FrameDesc::generate_product_list(num_elements, N2Layout::FullUpperTri);
+
+    BOOST_CHECK_EQUAL(products.size(), 10); // 4*5/2 = 10
+
+    // Verify upper triangle order
+    std::vector<std::pair<uint16_t, uint16_t>> expected = {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {1, 1},
+                                                           {1, 2}, {1, 3}, {2, 2}, {2, 3}, {3, 3}};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        BOOST_CHECK_EQUAL(products[i].input_a, expected[i].first);
+        BOOST_CHECK_EQUAL(products[i].input_b, expected[i].second);
+    }
+
+    std::cout << "Success.\n";
+}
+
+BOOST_AUTO_TEST_CASE(test_generate_product_list_autocorrelations) {
+    std::cout << "Testing generate_product_list() for Autocorrelations...\n";
+
+    uint32_t num_elements = 4;
+    auto products = N2FrameDesc::generate_product_list(num_elements, N2Layout::Autocorrelations);
+
+    BOOST_CHECK_EQUAL(products.size(), 4);
+
+    for (uint16_t i = 0; i < num_elements; ++i) {
+        BOOST_CHECK_EQUAL(products[i].input_a, i);
+        BOOST_CHECK_EQUAL(products[i].input_b, i);
+    }
+
+    std::cout << "Success.\n";
+}
+
 BOOST_AUTO_TEST_CASE(test_generate_product_list_InputORMasked) {
     std::cout << "Testing generate_product_list() for InputORMasked...\n";
 
@@ -335,7 +367,7 @@ BOOST_AUTO_TEST_CASE(test_generate_product_list_InputORMasked) {
     std::vector<uint16_t> input_list = {0, 2}; // Include inputs 0 and 2
 
     auto products =
-        N2FrameDesc::generate_product_list(num_elements, input_list, N2Layout::InputORMasked);
+        N2FrameDesc::generate_product_list(num_elements, N2Layout::InputORMasked, input_list);
 
     // InputORMasked: include product (i,j) if i OR j is in input_list
     // With inputs {0,2} and 4 elements, the products are:
@@ -374,7 +406,7 @@ BOOST_AUTO_TEST_CASE(test_generate_product_list_InputANDMasked) {
     std::vector<uint16_t> input_list = {0, 1, 2}; // Include inputs 0, 1, and 2
 
     auto products =
-        N2FrameDesc::generate_product_list(num_elements, input_list, N2Layout::InputANDMasked);
+        N2FrameDesc::generate_product_list(num_elements, N2Layout::InputANDMasked, input_list);
 
     // InputANDMasked: include product (i,j) if i AND j are both in input_list
     // With inputs {0,1,2} and 4 elements, the products are:
@@ -406,17 +438,14 @@ BOOST_AUTO_TEST_CASE(test_generate_product_list_InputANDMasked) {
     std::cout << "Success.\n";
 }
 
-BOOST_AUTO_TEST_CASE(test_generate_product_list_throws_for_wrong_layout) {
-    std::cout << "Testing generate_product_list() throws for non-input-list layouts...\n";
+BOOST_AUTO_TEST_CASE(test_generate_product_list_throws_for_unsupported_layout) {
+    std::cout << "Testing generate_product_list() throws for unsupported layouts...\n";
 
-    std::vector<uint16_t> input_list = {0, 1};
-
-    // Should throw for layouts that don't use input_list
-    BOOST_CHECK_THROW(N2FrameDesc::generate_product_list(8, input_list, N2Layout::FullUpperTri),
+    // GeneralSubset and RedundantBaselineAvg are not supported by generate_product_list
+    // (product lists for those layouts are read directly from config)
+    BOOST_CHECK_THROW(N2FrameDesc::generate_product_list(8, N2Layout::GeneralSubset),
                       std::runtime_error);
-    BOOST_CHECK_THROW(N2FrameDesc::generate_product_list(8, input_list, N2Layout::Autocorrelations),
-                      std::runtime_error);
-    BOOST_CHECK_THROW(N2FrameDesc::generate_product_list(8, input_list, N2Layout::GeneralSubset),
+    BOOST_CHECK_THROW(N2FrameDesc::generate_product_list(8, N2Layout::RedundantBaselineAvg),
                       std::runtime_error);
 
     std::cout << "Success.\n";

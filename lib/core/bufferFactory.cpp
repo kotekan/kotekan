@@ -90,7 +90,7 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
     } else if (type_name == "vis") {
         frame_size = VisFrameView::calculate_frame_size(config, location);
     } else if (type_name == "N2") {
-        frame_desc = N2FrameDesc::from_config(config, location);
+        frame_desc = std::make_shared<N2FrameDesc>(config, location);
         frame_size = frame_desc->get_byte_size();
     } else if (type_name == "hfb") {
         frame_size = HFBFrameView::calculate_frame_size(config, location);
