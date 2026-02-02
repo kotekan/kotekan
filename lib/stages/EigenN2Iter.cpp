@@ -143,7 +143,7 @@ void EigenN2Iter::main_thread() {
         }
 
         // Start the calculation clock.
-        uint64_t start_time = current_time();
+        double start_time = current_time();
 
         // Initialise the mask
         if (!initialized) {
@@ -164,14 +164,14 @@ void EigenN2Iter::main_thread() {
 
         // Stop the calculation clock. This doesn't include time to copy stuff into
         // the buffers, but that has to wait for one to be available.
-        uint64_t elapsed_time = current_time() - start_time;
+        double elapsed_time = current_time() - start_time;
 
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
         for (uint32_t i = 0; i < _num_eigenvectors; i++) {
             str_evals = fmt::format("{} {}", str_evals, evals[i]);
         }
-        DEBUG("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:d} s. Took {:d}/{:d} "
+        DEBUG("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:.3f} s. Took {:d}/{:d} "
               "iterations.",
               str_evals, stats.rms, elapsed_time, stats.iterations, _max_iterations);
 
@@ -215,7 +215,7 @@ void EigenN2Iter::main_thread() {
 }
 
 
-void EigenN2Iter::update_metrics(int freq_id, u_int64_t elapsed_time, const eig_t<cfloat>& eigpair,
+void EigenN2Iter::update_metrics(int freq_id, double elapsed_time, const eig_t<cfloat>& eigpair,
                                  const EigConvergenceStats& stats) {
     // Update average write time in prometheus
     auto& calc_time = calc_time_map[freq_id];
