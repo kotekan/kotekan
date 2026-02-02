@@ -47,7 +47,7 @@ Cmake build options (defaults shown in parentheses; most feature toggles accept 
 * `-DUSE_CUDA=<AUTO|ON|OFF>` (`AUTO`) - Build the CUDA backend and enable CUDA stages when `nvcc` and the CUDA toolkit are available. Adds `-DWITH_CUDA` on success.
 * `-DUSE_OPENCL=<AUTO|ON|OFF>` (`OFF`) - Build the OpenCL backend and install kernels to `/var/lib/kotekan/opencl` when OpenCL headers/libs are found.
 * `-DUSE_HIP=<AUTO|ON|OFF>` (`OFF`) - Build the HIP backend when HIP is detected.
-* `-DUSE_DPDK=<AUTO|ON|OFF>` (`AUTO`) - Enable DPDK stages when `libdpdk>=19.11` is present via `pkg-config`. Forced `OFF` automatically when `-DWITH_BOOST_TESTS=ON` to avoid linker issues.
+* `-DUSE_DPDK=<AUTO|ON|OFF>` (`AUTO`) - Enable DPDK stages when `libdpdk>=19.11` is present via `pkg-config`.
 * `-DUSE_AIRSPY=<AUTO|ON|OFF>` (`AUTO`) - Build the Airspy capture stages when `libairspy` is available.
 * `-DUSE_ASDF=<AUTO|ON|OFF>` (`AUTO`) - Enable ASDF output stages when `asdf-cxx` is found; defines `-DWITH_ASDF_CXX`.
 * `-DUSE_GDAL=<AUTO|ON|OFF>` (`AUTO`) - Enable GDAL output stages when GDAL is detected; defines `-DWITH_GDAL`.
@@ -67,7 +67,7 @@ Cmake build options (defaults shown in parentheses; most feature toggles accept 
 * `-DSUPERDEBUG=<AUTO|ON|OFF>` (`OFF`) - Force `-O0` and retain frame pointers in Debug/Test configurations for deep debugging/coverage work.
 * `-DSANITIZE=<AUTO|ON|OFF>` (`OFF`) - Enable the Clang/LLVM AddressSanitizer toolchain flags for Debug/Test builds.
 * `-DWITH_TESTS=<AUTO|ON|OFF>` (`OFF`) - Build and link the helper stages from `lib/testing` into the kotekan binary (used by QA/example configs). Does not build unit tests.
-* `-DWITH_BOOST_TESTS=<AUTO|ON|OFF>` (`OFF`) - Build the Boost.Test unit tests under `tests/boost` (requires `pytest-cpp`). Forces `USE_DPDK` to `OFF` while enabled.
+* `-DWITH_BOOST_TESTS=<AUTO|ON|OFF>` (`OFF`) - Build the Boost.Test unit tests under `tests/boost` (requires `pytest-cpp`).
 
 Additional helpers:
 
