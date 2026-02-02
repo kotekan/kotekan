@@ -1,6 +1,7 @@
 #include "bufferFactory.hpp"
 
 #include "Config.hpp"         // for Config
+#include "FrameDesc.hpp"      // for FrameDesc
 #include "HFBFrameView.hpp"   // for HFBFrameView
 #include "N2FrameDesc.hpp"    // for N2FrameDesc
 #include "buffer.hpp"         // for GenericBuffer, Buffer
@@ -83,14 +84,14 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
     // See also buffer::is_frame_buffer(), which looks for these three strings ("standard", "vis",
     // "hfb")
     size_t frame_size = 0;
-    std::shared_ptr<kotekan::N2FrameDesc> n2_frame_desc = nullptr;
+    std::shared_ptr<kotekan::FrameDesc> frame_desc = nullptr;
     if (type_name == "standard") {
         frame_size = config.get<size_t>(location, "frame_size");
     } else if (type_name == "vis") {
         frame_size = VisFrameView::calculate_frame_size(config, location);
     } else if (type_name == "N2") {
-        n2_frame_desc = N2FrameDesc::from_config(config, location);
-        frame_size = n2_frame_desc->get_byte_size();
+        frame_desc = N2FrameDesc::from_config(config, location);
+        frame_size = frame_desc->get_byte_size();
     } else if (type_name == "hfb") {
         frame_size = HFBFrameView::calculate_frame_size(config, location);
     }
@@ -109,9 +110,9 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         buf = new Buffer(num_frames, frame_size, pool, name, type_name, numa_node, use_hugepages,
                          mlock_frames, cpu_affinity, zero_new_frames);
 
-        // Set frame descriptor for N2 buffers
-        if (n2_frame_desc) {
-            static_cast<Buffer*>(buf)->set_frame_desc(n2_frame_desc);
+        // Set frame descriptor if one was created
+        if (frame_desc) {
+            static_cast<Buffer*>(buf)->set_frame_desc(frame_desc);
         }
 
     } else if (type_name == "ring") {
