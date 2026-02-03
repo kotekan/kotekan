@@ -870,7 +870,7 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
     _base_dir(config.get<std::string>(unique_name, "base_dir")),
-    _gains_base_directory(config.get_default<std::string>(unique_name, "gains_base_directory", "")),
+    _gains_base_directory(config.get_default<std::string>(unique_name, "baseband_gain_dir", "")),
     _num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),
     _compression(config.get_default<std::string>(unique_name, "compression", "none")),
     _compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),

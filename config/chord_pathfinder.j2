@@ -538,8 +538,8 @@ hdf5_N2_write_accum:
     kotekan_stage: hdf5N2Write
     cpu_affinity: [12]
     in_buf: n2_buffer
-    base_dir: /data/vis_test_data_subset/full/
-    baseband_gain_dir: /mnt/cs00/data/
+    base_dir: /mnt/cs00/data/kotekan_vis_files/full/
+    baseband_gain_dir: /mnt/cs00/data/baseband_gains/
     file_name: pipeline_test
     prefix_hostname: false
     use_bitshuffle: true
@@ -560,8 +560,8 @@ hdf5_N2_write_eigen:
     kotekan_stage: hdf5N2Write
     cpu_affinity: [13]
     in_buf: n2_eigen_buffer
-    base_dir: /data/vis_test_data_subset/subset/
-    baseband_gain_dir: /mnt/cs00/data/
+    base_dir: /mnt/cs00/data/kotekan_vis_files/subset/
+    baseband_gain_dir: /mnt/cs00/data/baseband_gains/
     file_name: pipeline_eigen
     prefix_hostname: false
     use_bitshuffle: true
