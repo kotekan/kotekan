@@ -741,9 +741,22 @@ eig_10s_buffer:
     num_frames: gpu_buffer_depth * num_freq_gpu_buf
     metadata_pool: n2_pool
 
+failed_10s_buffer:
+    kotekan_buffer: N2
+    num_ev: 0
+    n2_layout: "FullUpperTri"
+    num_frames: gpu_buffer_depth * num_freq_gpu_buf
+    metadata_pool: n2_pool
+
 vis_buffer:
     kotekan_buffer: vis
     num_ev: num_ev_to_calculate
+    num_frames: gpu_buffer_depth * num_freq_gpu_buf
+    metadata_pool: vis_pool
+
+failed_vis_buffer:
+    kotekan_buffer: vis
+    num_ev: 0
     num_frames: gpu_buffer_depth * num_freq_gpu_buf
     metadata_pool: vis_pool
 
@@ -796,6 +809,7 @@ eigencalc:
     num_ev: num_ev_to_calculate
     in_buf: vis_10s_buffer
     out_buf: eig_10s_buffer
+    failed_buf: failed_10s_buffer
     # Convergence config from chime science run
     tol_eval: 0.00001
     tol_evec: 0.0001
@@ -808,6 +822,11 @@ vis_convert:
     kotekan_stage: n2FrameToVisFrame
     n2_buf: eig_10s_buffer
     vis_buf: vis_buffer
+
+failed_vis_convert:
+    kotekan_stage: n2FrameToVisFrame
+    n2_buf: failed_10s_buffer
+    vis_buf: failed_vis_buffer
 
 ################################################################################
 # output to receivers
@@ -841,6 +860,12 @@ write_vis:
     root_path: vis_data
     file_type: raw
     in_buf: vis_buffer
+
+write_failed_vis:
+    kotekan_stage: VisWriter
+    root_path: failed_eig
+    file_type: raw
+    in_buf: failed_vis_buffer
 
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)
