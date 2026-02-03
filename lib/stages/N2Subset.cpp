@@ -72,14 +72,9 @@ N2Subset::N2Subset(Config& config, const std::string& unique_name,
                     in_desc->get_num_ev(), out_desc->get_num_ev());
     }
 
-    // Store element counts for per-element field copying
-    _in_num_elements = in_desc->get_num_elements();
-    _out_num_elements = out_desc->get_num_elements();
-
-    // Build product lists for input and output
-    std::vector<N2::prod_ctype> in_prods, out_prods;
-    in_desc->fill_prod_maps(in_prods);
-    out_desc->fill_prod_maps(out_prods);
+    // Get product lists for input and output from frame descriptors
+    const auto& in_prods = in_desc->get_product_list();
+    const auto& out_prods = out_desc->get_product_list();
 
     // Build a map from (input_a, input_b) -> index for the input products
     // Use a map with key = (input_a << 16) | input_b for fast lookup

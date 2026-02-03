@@ -433,8 +433,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
 
         // Store product list as a dataset
         {
-            std::vector<N2::prod_ctype> prods(fv.num_prod);
-            fv.fill_prod_maps(prods);
+            const auto& prods = fv._desc->get_product_list();
             auto prod_dtype = HighFive::create_datatype<N2::prod_ctype>();
             _check_create_dataset(*file, "/index_map/prod", {fv.num_prod}, {"product"}, prod_dtype,
                                   props_empty);

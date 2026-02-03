@@ -92,7 +92,6 @@ This section maps common CMake options (see :doc:`cmake_options`) to the package
 
 - ``WITH_BOOST_TESTS`` (Boost unit tests under ``tests/boost``)
   - Ubuntu packages: ``libboost-test-dev`` (plus typical Boost dependencies)
-  - Note: This configuration disables DPDK to avoid linker issues.
 
 - ``COMPILE_DOCS`` (documentation)
   - Ubuntu packages: ``doxygen``, ``graphviz``
@@ -268,7 +267,7 @@ feature when its dependencies are present and otherwise continues without it. Se
 * ``-DUSE_NUMA=<AUTO|ON|OFF>`` (default ``ON``) and ``-DNO_MEMLOCK=<AUTO|ON|OFF>`` (default ``OFF``)
     Control NUMA-aware buffering and whether kotekan attempts to ``mlock`` buffers (useful in containers).
 * ``-DWITH_TESTS=<AUTO|ON|OFF>``, ``-DWITH_BOOST_TESTS=<AUTO|ON|OFF>`` (defaults ``OFF``)
-    Build the helper stages in ``lib/testing`` and the Boost unit tests under ``tests/boost`` (requires ``pytest-cpp``). The Boost tests configuration disables DPDK automatically.
+    Build the helper stages in ``lib/testing`` and the Boost unit tests under ``tests/boost`` (requires ``pytest-cpp``).
 * ``-DCOMPILE_DOCS=<AUTO|ON|OFF>`` (default ``OFF``)
     Build the documentation tree (Sphinx + Doxygen) when the tooling is installed. The docs target must be built explicitly.
 * ``-DWERROR=<AUTO|ON|OFF>``, ``-DCCACHE=<AUTO|ON|OFF>``, ``-DIWYU=<AUTO|ON|OFF>`` (defaults ``ON``/``OFF``/``OFF``)

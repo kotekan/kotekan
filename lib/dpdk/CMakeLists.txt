@@ -7,8 +7,8 @@ find_package(NUMA REQUIRED)
 
 add_library(kotekan_dpdk dpdkCore.cpp zeroSamples.cpp invalidateVDIFframes.cpp)
 
-add_definitions(${DPDK_STATIC_CFLAGS})
-set(DPDK_LIBRARIES ${DPDK_STATIC_LDFLAGS})
+add_definitions(${DPDK_CFLAGS})
+set(DPDK_LIBRARIES ${DPDK_LDFLAGS})
 message(STATUS "DPDK include dirs: ${DPDK_INCLUDE_DIRS}")
 target_include_directories(kotekan_dpdk SYSTEM PRIVATE ${DPDK_INCLUDE_DIRS})
 

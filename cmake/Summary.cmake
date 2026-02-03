@@ -269,7 +269,7 @@ endif()
 kfeature_row("C++ Tests (lib)" "${WITH_TESTS}" "${TESTS_REASON}" OFF WITH_TESTS)
 
 if("${WITH_BOOST_TESTS}" STREQUAL "ON")
-    set(BOOSTTEST_REASON "enabled: builds tests/boost and disables DPDK")
+    set(BOOSTTEST_REASON "enabled: builds tests/boost")
 else()
     set(BOOSTTEST_REASON "disabled")
 endif()
