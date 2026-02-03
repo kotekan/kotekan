@@ -29,28 +29,32 @@ BOOST_AUTO_TEST_CASE(test_layout_requires_product_list) {
     std::cout << "Success.\n";
 }
 
-BOOST_AUTO_TEST_CASE(test_get_required_config_param) {
-    std::cout << "Testing get_required_config_param()...\n";
+BOOST_AUTO_TEST_CASE(test_note_additional_required_config_param) {
+    std::cout << "Testing note_additional_required_config_param()...\n";
 
     using std::string;
 
     // Computed layouts - no config param needed
-    BOOST_CHECK_EQUAL(string(N2FrameDesc::get_required_config_param(N2Layout::FullUpperTri)),
-                      "none");
-    BOOST_CHECK_EQUAL(string(N2FrameDesc::get_required_config_param(N2Layout::Autocorrelations)),
-                      "none");
+    BOOST_CHECK_EQUAL(
+        string(N2FrameDesc::note_additional_required_config_param(N2Layout::FullUpperTri)), "none");
+    BOOST_CHECK_EQUAL(
+        string(N2FrameDesc::note_additional_required_config_param(N2Layout::Autocorrelations)),
+        "none");
 
     // Input list layouts
-    BOOST_CHECK_EQUAL(string(N2FrameDesc::get_required_config_param(N2Layout::InputORMasked)),
-                      "input_list");
-    BOOST_CHECK_EQUAL(string(N2FrameDesc::get_required_config_param(N2Layout::InputANDMasked)),
-                      "input_list");
+    BOOST_CHECK_EQUAL(
+        string(N2FrameDesc::note_additional_required_config_param(N2Layout::InputORMasked)),
+        "input_list");
+    BOOST_CHECK_EQUAL(
+        string(N2FrameDesc::note_additional_required_config_param(N2Layout::InputANDMasked)),
+        "input_list");
 
     // Explicit product list layouts
-    BOOST_CHECK_EQUAL(string(N2FrameDesc::get_required_config_param(N2Layout::GeneralSubset)),
-                      "product_list");
     BOOST_CHECK_EQUAL(
-        string(N2FrameDesc::get_required_config_param(N2Layout::RedundantBaselineAvg)),
+        string(N2FrameDesc::note_additional_required_config_param(N2Layout::GeneralSubset)),
+        "product_list");
+    BOOST_CHECK_EQUAL(
+        string(N2FrameDesc::note_additional_required_config_param(N2Layout::RedundantBaselineAvg)),
         "product_list");
 
     std::cout << "Success.\n";
