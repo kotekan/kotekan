@@ -93,12 +93,13 @@ void BaseWriter::main_thread() {
 
     frameID frame_id(in_buf);
 
-    const timespec timeout = double_to_ts(acq_timeout);
-
     while (!stop_thread) {
 
+       const time_t now = time(nullptr);
+       const timespec timeout_time = double_to_ts(now + acq_timeout);
+
         // Wait for the buffer to be filled with data
-        auto status = in_buf->wait_for_full_frame_timeout(unique_name, frame_id, timeout);
+        auto status = in_buf->wait_for_full_frame_timeout(unique_name, frame_id, timeout_time);
         if (status == 0) {
             // Write frame
             write_data(in_buf, frame_id);
@@ -108,6 +109,7 @@ void BaseWriter::main_thread() {
         } else if (status == -1) {
             break;
         }
+	assert(status == 1); // timeout
 
         // Clean out any acquisitions that have been inactive long
         close_old_acqs();
