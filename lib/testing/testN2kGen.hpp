@@ -40,6 +40,8 @@
  * @conf  counts_values         Vector of ints. Optional cycle for "const" count frames.
  * @conf  seed                  Int. Default 0. Seeds the deterministic RNG for "random" correlation
  *                              and counts variants.
+ * @conf  first_frame_index     Int. Default 0. Starting FPGA frame number, fro
+ *                              frames of size samples_per_data_set.
  * @conf  samples_per_data_set  Int. How often to produce data.
  * @conf  num_frames            Int. How many frames to produce. Default inf.
  * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
@@ -77,6 +79,7 @@ private:
     int32_t num_elements;
     std::vector<uint32_t> freq_ids;
     uint32_t seed;
+    int64_t first_frame_index;
 
     static constexpr int corr_blocksize = 16; // ALWAYS 16
     static constexpr int count_blocksize = 8; // ALWAYS 8

@@ -81,6 +81,8 @@ private:
 
     int64_t _num_elements; ///< Total number of telescope elements (~2 * num dishes)
 
+    const int _num_workers; ///< number of OpenMP threads to use to process data
+
     // Absolute frame counter (TODO: determine this another way)
     uint64_t _abs_frame_count;
 
@@ -105,7 +107,6 @@ private:
     // The below vectors are initialized in the constructor after _num_vis_products
     // and _num_freq_in_frame are known.
     std::vector<int32_t> _vis;
-    std::vector<int32_t> _vis_even;
     std::vector<float> _weights;
     // number of fpga samples, per frequency, in frame
     std::vector<int32_t> _n_valid_fpga_samples_in_vis;

@@ -34,10 +34,10 @@ datasetManager& datasetManager::instance() {
     datasetManager& dm = private_instance();
 
     if (!dm._config_applied) {
-        ERROR_NON_OO("A part of kotekan that is configured to load uses the datasetManager, but "
-                     "no block named '{:s}' was found in the config.\nExiting...",
-                     DS_UNIQUE_NAME);
-        exit(-1);
+        FATAL_ERROR_NON_OO(
+            "A part of kotekan that is configured to load uses the datasetManager, but "
+            "no block named '{:s}' was found in the config.\nExiting...",
+            DS_UNIQUE_NAME);
     }
 
     return dm;

@@ -57,6 +57,7 @@ class N2Metadata(ctypes.Structure):
         ("frame_length_fpga_ticks", ctypes.c_uint64),
         ("n_valid_fpga_ticks", ctypes.c_uint64),
         ("n_rfi_fpga_ticks", ctypes.c_uint64),
+        ("dataset_id", ctypes.c_uint64 * 2),
     ]
 
 

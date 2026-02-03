@@ -231,6 +231,22 @@ n2_merge_buffer:
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
+# Subset buffers for testing N2Subset stage
+n2_autocorr_buffer:
+    kotekan_buffer: N2
+    num_ev: num_ev_to_calculate
+    n2_layout: "Autocorrelations"
+    num_frames: buffer_depth * num_local_freq
+    metadata_pool: n2_pool
+
+n2_first24_buffer:
+    kotekan_buffer: N2
+    num_ev: num_ev_to_calculate
+    n2_layout: "InputORMasked"
+    input_list: {{ range(24) | list }}
+    num_frames: buffer_depth * num_local_freq
+    metadata_pool: n2_pool
+
 # Ringbuffer signalling buffer
 host_voltage_ringbuffer:
     kotekan_buffer: ring
@@ -479,6 +495,17 @@ buffer_merge_n2:
     - n2_recv_buffer_2
     out_buf: n2_merge_buffer
 
+# Subset the merged visibilities
+n2_subset_autocorr:
+    kotekan_stage: N2Subset
+    in_buf: n2_merge_buffer
+    out_buf: n2_autocorr_buffer
+
+n2_subset_first24:
+    kotekan_stage: N2Subset
+    in_buf: n2_merge_buffer
+    out_buf: n2_first24_buffer
+
 # Write out the visibilities using HDF5
 
 # Visibilities immediately after accumulation (for comparison)
@@ -521,6 +548,44 @@ hdf5_N2_write_final:
     vis_layout: "FullUpperTri"
     num_file_t: 10
     gains_base_directory: "" # "/mnt/cs00/data/baseband_gains/"
+
+# Autocorrelations-only subset
+hdf5_N2_write_autocorr:
+    log_level: DEBUG
+    kotekan_stage: hdf5N2Write
+    in_buf: n2_autocorr_buffer
+    base_dir: ./vis_data/autocorr/
+    file_name: pipeline_test
+    prefix_hostname: false
+    use_bitshuffle: true
+    compression: "lz4"
+    compression_level: 3
+    zip_compression: 0
+    blocksize_f: {{ num_frequencies }}
+    blocksize_t: 5
+    late_frame_grace_seconds: 30
+    num_ev: num_ev_to_calculate
+    vis_layout: "Autocorrelations"
+    num_file_t: 10
+
+# First 24 elements (OR-wise) subset
+hdf5_N2_write_first24:
+    log_level: DEBUG
+    kotekan_stage: hdf5N2Write
+    in_buf: n2_first24_buffer
+    base_dir: ./vis_data/first24/
+    file_name: pipeline_test
+    prefix_hostname: false
+    use_bitshuffle: true
+    compression: "lz4"
+    compression_level: 3
+    zip_compression: 0
+    blocksize_f: {{ num_frequencies }}
+    blocksize_t: 5
+    late_frame_grace_seconds: 30
+    num_ev: num_ev_to_calculate
+    vis_layout: "InputORMasked"
+    num_file_t: 10
 
 # Monitor N2 buffer for activity
 

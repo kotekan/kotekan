@@ -183,6 +183,14 @@ void lostSamplesToPLMask::main_thread() {
                                                   lost_samples_freq_upchan_factor.begin(),
                                                   lost_samples_freq_upchan_factor.end());
                 pl_mask_meta->set_freq_upchan_factor(pl_mask_freq_upchan_factor);
+
+                const auto lost_samples_freq_upchan_index =
+                    lost_samples_meta->get_freq_upchan_index();
+                auto pl_mask_freq_upchan_index = pl_mask_meta->get_freq_upchan_index();
+                pl_mask_freq_upchan_index.insert(pl_mask_freq_upchan_index.end(),
+                                                 lost_samples_freq_upchan_index.begin(),
+                                                 lost_samples_freq_upchan_index.end());
+                pl_mask_meta->set_freq_upchan_index(pl_mask_freq_upchan_index);
             }
 
             lost_samples_buf->mark_frame_empty(unique_name, lost_samples_buf_frame_id);

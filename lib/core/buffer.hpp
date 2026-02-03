@@ -634,9 +634,9 @@ public:
     void set_frame_desc(std::shared_ptr<kotekan::FrameDesc> new_desc) {
         buffer_lock lock(mutex);
 
-        if (new_desc->get_byte_size() != aligned_frame_size) {
+        if (new_desc->get_byte_size() != frame_size) {
             FATAL_ERROR("Frame description size ({:d}) is unexpected, buffer provides ({:d})",
-                        new_desc->get_byte_size(), aligned_frame_size);
+                        new_desc->get_byte_size(), frame_size);
         }
 
         if (!frames_desc) {

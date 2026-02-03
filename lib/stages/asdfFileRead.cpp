@@ -295,6 +295,23 @@ public:
             }
 
             {
+                if (group->count("freq_upchan_index")) {
+                    assert(meta->get_nfreq() >= 0);
+                    DEBUG("[{:s}/{:d}] group0->at(\"freq_upchan_index\")", buffer->buffer_name,
+                          frame_counter);
+                    const auto freq_upchan_index =
+                        group->at("freq_upchan_index")->get_maybe_sequence();
+                    assert(freq_upchan_index);
+                    assert(std::ptrdiff_t(freq_upchan_index->size()) == meta->get_nfreq());
+                    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+                    std::vector<int> O_freq_upchan_index(meta->get_nfreq());
+                    for (int n = 0; n < meta->get_nfreq(); ++n)
+                        O_freq_upchan_index[n] = freq_upchan_index->at(n)->get_maybe_int().value();
+                    meta->set_freq_upchan_index(O_freq_upchan_index);
+                }
+            }
+
+            {
                 if (group->count("fpga_seq_num")) {
                     DEBUG("[{:s}/{:d}] group0->at(\"fpga_seq_num\")", buffer->buffer_name,
                           frame_counter);

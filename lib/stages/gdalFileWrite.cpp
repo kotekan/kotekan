@@ -272,6 +272,17 @@ public:
                     assert(success);
                 }
 
+                if (meta->has_freq_upchan_index()) {
+                    const auto freq_upchan_index = group->CreateAttribute(
+                        "freq_upchan_index", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
+                        GDALExtendedDataType::Create(
+                            get_gdal_datatype(*meta->get_freq_upchan_index().data())));
+                    const bool success = freq_upchan_index->Write(
+                        meta->get_freq_upchan_index().data(),
+                        meta->get_nfreq() * sizeof *meta->get_freq_upchan_index().data());
+                    assert(success);
+                }
+
                 if (meta->has_fpga_seq_num()) {
                     const auto fpga_seq_num_value = meta->get_fpga_seq_num();
                     const auto fpga_seq_num = group->CreateAttribute(

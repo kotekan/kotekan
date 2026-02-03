@@ -45,6 +45,8 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     n_valid_fpga_ticks(_metadata->n_valid_fpga_ticks),
     n_rfi_fpga_ticks(_metadata->n_rfi_fpga_ticks),
 
+    dataset_id(_metadata->dataset_id),
+
     vis(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::vis])),
     weight(bind_span<float>(_frame, frame_layout.fields[N2Field::weight])),
     flags(bind_span<float>(_frame, frame_layout.fields[N2Field::flags])),
@@ -110,8 +112,4 @@ void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Fie
 
     if (copy_member(N2Field::gain))
         std::copy(frame_to_copy_from.gain.begin(), frame_to_copy_from.gain.end(), gain.begin());
-}
-
-void N2FrameView::fill_prod_maps(std::vector<N2::prod_ctype>& prods) const {
-    _desc->fill_prod_maps(prods);
 }

@@ -84,6 +84,8 @@ public:
     uint64_t& n_valid_fpga_ticks;
     /// The number of lost samples due to RFI (rfi_total)
     uint64_t& n_rfi_fpga_ticks;
+    /// CHIME dataset id tracking updateable config item changes
+    dset_id_t& dataset_id;
 
     /// View of the visibility data.
     const gsl_lite::span<N2::cfloat> vis;
@@ -152,8 +154,6 @@ public:
      *
      **/
     void copy_data(N2FrameView frame_to_copy_from, const std::set<N2Field>& skip_members);
-
-    void fill_prod_maps(std::vector<N2::prod_ctype>& prods) const;
 };
 
 #endif

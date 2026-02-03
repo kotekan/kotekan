@@ -299,6 +299,15 @@ public:
                         group->emplace("freq_upchan_factor", freq_upchan_factor);
                     }
 
+                    if (meta->has_freq_upchan_index()) {
+                        auto freq_upchan_index = std::make_shared<ASDF::sequence>();
+                        const std::vector<int> I_freq_upchan_index = meta->get_freq_upchan_index();
+                        for (int freq = 0; freq < meta->get_nfreq(); ++freq)
+                            freq_upchan_index->push_back(
+                                std::make_shared<ASDF::int_entry>(I_freq_upchan_index[freq]));
+                        group->emplace("freq_upchan_index", freq_upchan_index);
+                    }
+
                     if (meta->has_fpga_seq_num()) {
                         group->emplace("fpga_seq_num",
                                        std::make_shared<ASDF::int_entry>(meta->get_fpga_seq_num()));

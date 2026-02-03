@@ -1,9 +1,9 @@
 #include "bufferFactory.hpp"
 
 #include "Config.hpp"         // for Config
+#include "FrameDesc.hpp"      // for FrameDesc
 #include "HFBFrameView.hpp"   // for HFBFrameView
 #include "N2FrameDesc.hpp"    // for N2FrameDesc
-#include "N2Layout.hpp"       // for N2Layout
 #include "buffer.hpp"         // for GenericBuffer, Buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.hpp"       // for metadataPool
@@ -84,22 +84,14 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
     // See also buffer::is_frame_buffer(), which looks for these three strings ("standard", "vis",
     // "hfb")
     size_t frame_size = 0;
-    std::shared_ptr<kotekan::N2FrameDesc> n2_frame_desc = nullptr;
+    std::shared_ptr<kotekan::FrameDesc> frame_desc = nullptr;
     if (type_name == "standard") {
         frame_size = config.get<size_t>(location, "frame_size");
     } else if (type_name == "vis") {
         frame_size = VisFrameView::calculate_frame_size(config, location);
     } else if (type_name == "N2") {
-        // Read N2 parameters from config
-        const uint32_t num_elements = config.get<uint32_t>(location, "num_elements");
-        const uint32_t num_ev = config.get<uint32_t>(location, "num_ev");
-        const N2Layout n2_layout = config.get<N2Layout>(location, "n2_layout");
-        const uint32_t num_prod = N2FrameDesc::get_num_prod(num_elements, n2_layout);
-
-        // Create the frame descriptor
-        n2_frame_desc =
-            std::make_shared<kotekan::N2FrameDesc>(num_elements, num_ev, num_prod, n2_layout);
-        frame_size = n2_frame_desc->get_byte_size();
+        frame_desc = std::make_shared<N2FrameDesc>(config, location);
+        frame_size = frame_desc->get_byte_size();
     } else if (type_name == "hfb") {
         frame_size = HFBFrameView::calculate_frame_size(config, location);
     }
@@ -119,9 +111,9 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         buf = new Buffer(num_frames, frame_size, pool, name, type_name, numa_node, use_hugepages,
                          mlock_frames, cpu_affinity, zero_new_frames, zero_value);
 
-        // Set frame descriptor for N2 buffers
-        if (n2_frame_desc) {
-            static_cast<Buffer*>(buf)->set_frame_desc(n2_frame_desc);
+        // Set frame descriptor if one was created
+        if (frame_desc) {
+            static_cast<Buffer*>(buf)->set_frame_desc(frame_desc);
         }
 
     } else if (type_name == "ring") {

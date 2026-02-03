@@ -7,94 +7,70 @@
 #define N2_SUB_HPP
 
 #include "Config.hpp"
-#include "N2Util.hpp" // for prod_ctype
-#include "Stage.hpp"  // for Stage
+#include "N2FrameDesc.hpp" // for N2FrameDesc
+#include "N2Util.hpp"      // for prod_ctype
+#include "Stage.hpp"       // for Stage
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 
-#include <map>      // for map
-#include <stddef.h> // for size_t
-#include <string>   // for string
-#include <tuple>    // for tuple
-#include <utility>  // for pair
-#include <vector>   // for vector
+#include <cstddef> // for size_t
+#include <memory>  // for shared_ptr
+#include <string>  // for string
+#include <vector>  // for vector
 
 
 /**
  * @class N2Subset
  * @brief ``kotekan::Stage`` that extracts a subset of the products.
  *
- * This task consumes a full set of visibilities from a ``N2Buffer`` and
- * passes on a subset of products to an output ``N2Buffer``. The subset
- * extracted depends on the parameter 'prod_subset_type'. Here is a list of
- * values 'prod_subset_type' can take and the parameters they support:
- * - 'all': no extra parameters needed
- *   - Default. All the products.
- * - 'autos': no extra parameters needed
- *   - The subset are all the auto-correlations.
- * - 'have_inputs': input_list
- *   - The subset are all the correlations containing at least one of the
- *   inputs in the input_list.
- * - 'only_inputs': input_list
- *   - The subset are all the correlations containing only inputs from the
- *   input_list.
+ * This task consumes a set of visibilities from an input ``N2Buffer`` and
+ * passes a subset of products to an output ``N2Buffer``. The subset is
+ * determined by the output buffer's frame descriptor, which is configured
+ * via the buffer's YAML configuration.
+ *
+ * The stage validates that all products in the output buffer exist in the
+ * input buffer, and builds an index mapping to efficiently copy data.
  *
  * @par Buffers
- * @buffer in_buf The kotekan buffer from which the visibilities are read, can be any size.
- *     @buffer_format N2Buffer with FullUpperTri layout
+ * @buffer in_buf The kotekan buffer from which the visibilities are read.
+ *     @buffer_format N2Buffer (any supported layout)
  *     @buffer_metadata N2Metadata
  * @buffer out_buf The kotekan buffer which will be fed the subset of visibilities.
- *     @buffer_format N2Buffer with Autocorrelations layout
+ *     @buffer_format N2Buffer (layout must be a subset of in_buf products)
  *     @buffer_metadata N2Metadata
  *
- * @conf  prod_subset_type      string. Type of product subset to perform.
- * @conf  num_elements          UInt. The number of elements (i.e. inputs) in the
- *                              correlator data
- * @conf  input_list            vector of int. The list of inputs to include.
- *
- * @author  Tristan Pinsonneault-Marotte and Mateus Fandino
- *
+ * @par Configuration
+ * The subset of products is determined entirely by the output buffer's configuration.
+ * See N2FrameDesc and bufferFactory for details on configuring N2 buffers with
+ * different layouts (FullUpperTri, Autocorrelations, GeneralSubset, etc.) and
+ * explicit product lists.
  */
 class N2Subset : public kotekan::Stage {
 
 public:
-    /// Constructor. Loads config options. Defines subset of products.
+    /// Constructor. Validates buffer descriptors and builds index mapping.
     N2Subset(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
 
-    /// Primary loop: sorts products and passes them on to output buffer.
+    /// Primary loop: copies subset of products from input to output buffer.
     void main_thread() override;
 
 private:
     /// Input buffer
     Buffer* in_buf;
 
-    /// Output buffer to receive baseline subset visibilities
+    /// Output buffer to receive subset of visibilities
     Buffer* out_buf;
 
-    /// vector of the product inputs
-    const std::tuple<std::vector<size_t>, std::vector<N2::prod_ctype>> _prod_subset_list;
+    /// Frame descriptor for input buffer
+    std::shared_ptr<const kotekan::N2FrameDesc> in_desc;
 
-    /// Number of products after subsetting
-    const size_t _num_subset_prod;
+    /// Frame descriptor for output buffer
+    std::shared_ptr<const kotekan::N2FrameDesc> out_desc;
 
-    /// Vector of indices for subset of products (before subsetting on the products in data)
-    const std::vector<size_t> _base_prod_ind;
-
-    /// Vector of subset of products
-    const std::vector<N2::prod_ctype> _base_prod_subset;
+    /// Index mapping: for each output product index, the corresponding input product index
+    std::vector<size_t> prod_index_map;
 };
-
-
-/**
- * @brief Parse the product subseting section
- * @param config    kotekan::Configuration handle.
- * @param base_path Path into YAML file to search from.
- * @return          Tuple containing a vector of the product inputs, and a
- *                  vector of the corresponding input labels.
- */
-std::tuple<std::vector<size_t>, std::vector<N2::prod_ctype>>
-parse_N2_subset(kotekan::Config& config, const std::string base_path);
 
 
 #endif

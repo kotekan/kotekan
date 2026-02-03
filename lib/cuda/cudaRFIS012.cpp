@@ -206,7 +206,8 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
 
     const std::ptrdiff_t Tsize = voltage.get_ndarray().extent(0);
     assert(Tsize % rfi_downsampling_factor == 0);
-    const std::ptrdiff_t Tmin = voltage.get_read_valid().begin();
+    // Tmin wraps around into actual array index to avoid overflows
+    const std::ptrdiff_t Tmin = voltage.get_read_valid().begin() % Tsize;
     assert(Tmin % 128 == 0);
     const std::ptrdiff_t T = voltage.get_read_valid().size();
 

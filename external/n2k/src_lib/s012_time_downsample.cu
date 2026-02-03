@@ -37,6 +37,9 @@ namespace n2k {
 __global__ void s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, int Tds, int M, int Nds,
                                             int Trfi_min, int Trfi_size, int Trfibar_min, int Trfibar_size)
 {
+    assert(Trfi_size & (Trfi_size - 1) == 0 && "Trfi_size must be a power of 2");
+    assert(Trfibar_size & (Trfibar_size - 1) == 0 && "Trfibar_size must be a power of 2");
+
     // Per-thread (downsampled time, spectator index)
     uint m = (blockIdx.x * blockDim.x) + threadIdx.x;
     ulong tout = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -94,8 +97,14 @@ void launch_s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, long T, l
 	throw runtime_error("launch_s012_time_downsample_kernel(): expected M to be a multiple of 32");
     if (Nds <= 0)
 	throw runtime_error("launch_s012_time_downsample_kernel(): expected Nds > 0");
-    if ((T >= INT_MAX) || (M >= INT_MAX) || (Nds >= INT_MAX))
+    if (Trfi_size & (Trfi_size - 1) != 0)
+        throw runtime_error("launch_s012_time_downsample_kernel(): Trfi_size must be a power of 2");
+    if (Trfibar_size & (Trfibar_size - 1) != 0)
+        throw runtime_error("launch_s012_time_downsample_kernel(): Trfibar_size must be a power of 2");
+    if ((T >= INT_MAX) || (M >= INT_MAX) || (Nds >= INT_MAX) || (Trfi_min >= INT_MAX)
+        || (Trfi_size >= INT_MAX) || (Trfibar_min >= INT_MAX) || (Trfibar_size >= INT_MAX))
 	throw runtime_error("launch_s012_time_downsample_kernel(): 32-bit overflow");
+
 
     long Tds = T/Nds;
 

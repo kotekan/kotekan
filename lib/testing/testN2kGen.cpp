@@ -79,6 +79,7 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     freq_ids = config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids",
                                                          std::vector<uint32_t>({4096}));
     seed = config.get_default<uint32_t>(unique_name, "seed", 0);
+    first_frame_index = config.get_default<int64_t>(unique_name, "first_frame_index", 0);
 
     // Check parameter compatibility
     if (num_elements <= 0) {
@@ -210,14 +211,17 @@ void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& 
 
     std::vector<int> coarse_freq(num_local_freq);
     std::vector<int> freq_upchan_factor(num_local_freq);
+    std::vector<int> freq_upchan_index(num_local_freq);
 
     for (int f = 0; f < num_local_freq; f++) {
         coarse_freq[f] = freq_ids[f % freq_ids.size()];
         freq_upchan_factor[f] = 1;
+        freq_upchan_index[f] = 0;
     }
 
     meta->set_coarse_freq(coarse_freq);
     meta->set_freq_upchan_factor(freq_upchan_factor);
+    meta->set_freq_upchan_index(freq_upchan_index);
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
 
@@ -239,14 +243,17 @@ void testN2kGen::set_counts_metadata(const std::shared_ptr<chordMetadata>& meta,
 
     std::vector<int> coarse_freq(num_local_freq);
     std::vector<int> freq_upchan_factor(num_local_freq);
+    std::vector<int> freq_upchan_index(num_local_freq);
 
     for (int f = 0; f < num_local_freq; f++) {
         coarse_freq[f] = freq_ids[f % freq_ids.size()];
         freq_upchan_factor[f] = 1;
+        freq_upchan_index[f] = 0;
     }
 
     meta->set_coarse_freq(coarse_freq);
     meta->set_freq_upchan_factor(freq_upchan_factor);
+    meta->set_freq_upchan_index(freq_upchan_index);
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
 
@@ -284,7 +291,7 @@ void testN2kGen::main_thread() {
     frameID count_frame_id(count_buf);
     frameID rfi_frame_id(rfi_buf);
     int num_frames_generated = 0;
-    uint64_t seq_num = 0;
+    uint64_t seq_num = first_frame_index * samples_per_data_set;
 
     std::mt19937 rng(seed);
     std::uniform_int_distribution<int32_t> count_dist(count_min, count_max);

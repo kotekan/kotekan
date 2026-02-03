@@ -87,7 +87,7 @@ Build & Tooling
 - ``SANITIZE`` (``OFF``): Enable the Clang/LLVM AddressSanitizer toolchain flags for Debug/Test builds.
 - ``WITH_TESTS`` (``OFF``): Build and link the helper stages in ``lib/testing`` into the kotekan binary.
 - ``WITH_BOOST_TESTS`` (``OFF``): Build the Boost.Test unit tests under ``tests/boost`` (requires
-  ``pytest-cpp``). Automatically disables DPDK to avoid linker issues during the test build.
+  ``pytest-cpp``).
 
 
 Common Paths and Overrides

@@ -44,6 +44,12 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata) {
     };
     meta0.set_freq_upchan_factor(freq_upchan_factor);
 
+    std::vector<int> freq_upchan_index = {
+        43, 57, 16, 26,  833, 73, 646, 194, 490, 771, 54,
+        29, 54, 85, 866, 996, 88, 732, 492, 912, 601, 22,
+    };
+    meta0.set_freq_upchan_index(freq_upchan_index);
+
     meta0.set_time_downsampling_fpga(47);
 
     timeval tv = {17863, 341};
