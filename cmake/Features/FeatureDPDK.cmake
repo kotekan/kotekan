@@ -2,8 +2,7 @@
 # Centralizes the tri-state handling for DPDK discovery and messaging.
 
 # Inputs:
-#  - USE_DPDK        : AUTO/ON/OFF toggle (AUTO probes via pkg-config)
-#  - WITH_BOOST_TESTS: if ON, force DPDK OFF to avoid linker issues
+#  - USE_DPDK : AUTO/ON/OFF toggle (AUTO probes via pkg-config)
 
 # Outputs (for summary/consumers):
 #  - DPDK_REASON : short human explanation for the status
@@ -11,14 +10,6 @@
 
 include_guard(GLOBAL)
 include(${CMAKE_CURRENT_LIST_DIR}/../Color.cmake)
-
-# If building Boost tests, always disable DPDK
-if(WITH_BOOST_TESTS)
-    set(USE_DPDK "OFF")
-    set(DPDK_REASON "disabled (boost tests)")
-    kmsg_warn("DPDK disabled while WITH_BOOST_TESTS=ON")
-    return()
-endif()
 
 macro(_kotekan_detect_dpdk OUT_FOUND)
     set(${OUT_FOUND} OFF)

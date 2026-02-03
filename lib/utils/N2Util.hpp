@@ -52,6 +52,11 @@ struct prod_ctype {
     uint16_t input_a;
     /// Index of input B
     uint16_t input_b;
+
+    /// Equality comparison
+    bool operator==(const prod_ctype& other) const {
+        return input_a == other.input_a && input_b == other.input_b;
+    }
 };
 
 /**

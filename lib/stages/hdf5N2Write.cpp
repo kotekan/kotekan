@@ -433,8 +433,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
 
         // Store product list as a dataset
         {
-            std::vector<N2::prod_ctype> prods(fv.num_prod);
-            fv.fill_prod_maps(prods);
+            const auto& prods = fv._desc->get_product_list();
             auto prod_dtype = HighFive::create_datatype<N2::prod_ctype>();
             _check_create_dataset(*file, "/index_map/prod", {fv.num_prod}, {"product"}, prod_dtype,
                                   props_empty);
@@ -606,13 +605,10 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     };
 
     // Structural data consistency checks
-    if (n2_layout != fv.n2_layout
-        || fv.vis.size() != kotekan::N2FrameDesc::get_num_prod(fv.num_elements, fv.n2_layout)
-        || fv.weight.size() != kotekan::N2FrameDesc::get_num_prod(fv.num_elements, fv.n2_layout)
-        || fv.eval.size() != fv.num_ev || fv.evec.size() != fv.num_ev * fv.num_elements
-        || fv.gain.size() != fv.num_elements || fv.flags.size() != fv.num_elements
-        || fv.num_elements != num_elements || fv.num_prod != num_prod || fv.num_ev != num_ev
-        || fv.frame_length_fpga_ticks == 0
+    if (n2_layout != fv.n2_layout || fv.eval.size() != fv.num_ev
+        || fv.evec.size() != fv.num_ev * fv.num_elements || fv.gain.size() != fv.num_elements
+        || fv.flags.size() != fv.num_elements || fv.num_elements != num_elements
+        || fv.num_prod != num_prod || fv.num_ev != num_ev || fv.frame_length_fpga_ticks == 0
         || (fpga_start_tick[t_index] > 0 && fpga_start_tick[t_index] != fv.fpga_start_tick)
         || (frame_length_fpga_ticks[t_index] > 0
             && frame_length_fpga_ticks[t_index] != fv.frame_length_fpga_ticks)

@@ -170,3 +170,22 @@ endif()
 
 add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)
 target_link_libraries(test_CHORDTelescope kotekan_utils)
+
+# test_N2FrameDesc - unit tests for N2FrameDesc product list features
+add_executable(test_N2FrameDesc test_N2FrameDesc.cpp)
+target_link_libraries(test_N2FrameDesc PRIVATE kotekan_metadata kotekan_utils libexternal)
+
+# test_N2Subset - tests for N2Subset stage
+add_executable(test_N2Subset test_N2Subset.cpp)
+target_link_libraries(
+    test_N2Subset
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,--whole-archive
+            kotekan_metadata
+            -Wl,--no-whole-archive)
+target_include_directories(test_N2Subset PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                 ${KOTEKAN_SOURCE_DIR}/lib/utils)
