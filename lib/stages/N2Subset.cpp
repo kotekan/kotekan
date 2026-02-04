@@ -61,10 +61,14 @@ N2Subset::N2Subset(Config& config, const std::string& unique_name,
         FATAL_ERROR("N2Subset: out_buf does not have an N2FrameDesc");
     }
 
+    // Store num_elements from descriptors
+    _in_num_elements = in_desc->get_num_elements();
+    _out_num_elements = out_desc->get_num_elements();
+
     // Validate that output num_elements <= input (we can subset elements)
-    if (out_desc->get_num_elements() > in_desc->get_num_elements()) {
+    if (_out_num_elements > _in_num_elements) {
         FATAL_ERROR("N2Subset: output num_elements ({:d}) cannot exceed input ({:d})",
-                    out_desc->get_num_elements(), in_desc->get_num_elements());
+                    _out_num_elements, _in_num_elements);
     }
     // Validate num_ev matches (eigenvector fields must have same size if present)
     if (in_desc->get_num_ev() != out_desc->get_num_ev()) {

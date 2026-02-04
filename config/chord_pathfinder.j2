@@ -298,19 +298,19 @@ host_pl_mask_exp_ringbuffer:
 ##  Packet capture from the F-engine ##
 dpdk:
     kotekan_stage: dpdkCore
-    log_level: info
+    log_level: warn
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [5,6,7] # [5,6,7]
     main_lcore_cpu: 4
-    num_mbufs: 16384
-    rx_ring_size: 1024
+    num_mbufs: 65536
+    rx_ring_size: 4096
     mbuf_cache_size: 512
     packet_size: 6208
     payload_size: 6144
     max_rx_pkt_len: 6208
     burst_size: 32
     # The number of stream IDs expected per worker
-    num_expected_stream_ids: 4
+    num_expected_stream_ids: 16
     frame_service_cpu_affinity: [4]
     # List of PCIe addresses to block from DPDK use
     pcie_block_list:
@@ -320,10 +320,10 @@ dpdk:
         - "0000:b5:00.1"
     worker_ring_map:
         - name: worker_ring_0
-          num_slots: 512
+          num_slots: 4096
           socket_id: 0
         - name: worker_ring_1
-          num_slots: 512
+          num_slots: 4096
           socket_id: 0
     # Format is index = lcore, value = array of port IDs
     # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
@@ -360,8 +360,9 @@ process_packet_mask:
     rfi_mask_buf: host_rfi_RFImask_buffer
     num_frequency: num_local_freq
     num_source_ids: num_crs_boards
-    # Update this as we add more CRS (F-engine) boards 
-    missing_source_ids: [4,5,6,7,8,9,10,11,12,13,14,15]
+    # Update this as we add more CRS (F-engine) boards
+    # Source 0 is also offline (not sending any data)
+    missing_source_ids: [0,4,5,6,7,8,9,10,11,12,13,14,15]
 
 # Transpose the voltage data from the network input buffer into a more convenient layout
 # for the GPU and baseband dump processing. 
@@ -547,7 +548,7 @@ hdf5_N2_write_accum:
     compression_level: 3
     zip_compression: 0
     # Chunking: ensure positive chunk sizes
-    blocksize_f: {{ num_frequencies }}
+    blocksize_f: num_local_freq
     blocksize_t: 5
     late_frame_grace_seconds: 30
     num_ev: 0
@@ -569,7 +570,7 @@ hdf5_N2_write_eigen:
     compression_level: 3
     zip_compression: 0
     # Chunking: ensure positive chunk sizes
-    blocksize_f: {{ num_frequencies }}
+    blocksize_f: num_local_freq
     blocksize_t: 5
     late_frame_grace_seconds: 30
     num_ev: num_ev_to_calculate
