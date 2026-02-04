@@ -141,7 +141,7 @@ accumulate_params = {
     #  sub_integration_ntime)
     "packet_loss_is_scalar": True,
     "vis_layout": "FullUpperTri",
-    "log_level": "DEBUG"
+    "log_level": "DEBUG",
 }
 
 

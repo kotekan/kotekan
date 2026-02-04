@@ -57,8 +57,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _n_fpga_samples_per_n2k_correlation(config.get<int64_t>(unique_name, "sub_integration_ntime")),
     _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")),
     _num_elements(config.get<int64_t>(unique_name, "num_elements")),
-    _num_workers(config.get_default<int>(unique_name, "num_workers", 1)),
-    _abs_frame_count(0),
+    _num_workers(config.get_default<int>(unique_name, "num_workers", 1)), _abs_frame_count(0),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
     _tel(Telescope::instance()),
     skipped_frame_counter(Metrics::instance().add_counter(
@@ -268,8 +267,8 @@ void N2Accumulate::main_thread() {
     // vis_even may be an odd frame if the first frame eencountered is odd,
     // since fpga_seq_num does not have to start from 0, in which case we skip
     // it.
-    //int32_t const* vis_even = nullptr;
-    
+    // int32_t const* vis_even = nullptr;
+
     // EOP at target fringestop time.
     EOP target_eop = eop_null;
 
@@ -366,12 +365,12 @@ void N2Accumulate::main_thread() {
             // sequence number of this sample in the frame.
             int64_t seq = seq0 + vis_samp_n * _n_fpga_samples_per_n2k_correlation;
 
-            DEBUG("Frame: {0:d}  Sample {1:d}: {2:d} seq: {3:d}",
-                    in_frame_num, vis_samp_n, vis_sample_num_abs, seq);
+            DEBUG("Frame: {0:d}  Sample {1:d}: {2:d} seq: {3:d}", in_frame_num, vis_samp_n,
+                  vis_sample_num_abs, seq);
 
             // Startup - wait to be at the beginning of an accumulation bin.
             if (mode == Mode::WAITING_FOR_ALIGNMENT) {
-                
+
                 if (seq == next_accum_start_tick) {
                     // Away we go!
                     assert(vis_sample_num_abs % 2 == 0);
@@ -433,7 +432,7 @@ void N2Accumulate::main_thread() {
             assert(_weights.size() == corr_stride_t / 2);
 
             // Work in single frequency chunks, so we don't have to compute
-            // fringestopping phases twice.  
+            // fringestopping phases twice.
 #pragma omp parallel for simd num_threads(_num_workers)
             for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
 
@@ -457,10 +456,12 @@ void N2Accumulate::main_thread() {
                         _tel.to_time(seq + _n_fpga_samples_per_n2k_correlation / 2));
 
                     // Physical frequency for this f
-                    double freq_MHz = _tel.to_freq_MHz(static_cast<freq_id_t>(frame_metadata->get_coarse_freq()[f]));
+                    double freq_MHz = _tel.to_freq_MHz(
+                        static_cast<freq_id_t>(frame_metadata->get_coarse_freq()[f]));
 
                     // Compute the fringestopping phases for this frequency
-                    _tel.cast<CHORDTelescope>().fringestop_phases_1d(freq_MHz, eop, target_eop, fringe_phase);
+                    _tel.cast<CHORDTelescope>().fringestop_phases_1d(freq_MHz, eop, target_eop,
+                                                                     fringe_phase);
 
                     // Compute the fringestopped visibility and store it in vis_tf
                     uint64_t block_idx = 0;
