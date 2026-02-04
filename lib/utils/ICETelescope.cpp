@@ -16,7 +16,9 @@ REGISTER_TELESCOPE(ICETelescope, "ICETelescope");
 #define GIGA 1000000000
 
 ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& path) :
-    Telescope(config.get<std::string>(path, "log_level")) {
+    Telescope(path, config.get<std::string>(path, "log_level"),
+              config.get_default<std::string>(path, "eop_updatable_config", "")) {
+    INFO("Building ICETelescope");
 
     // TODO: rename this parameter to `num_freq_per_stream` in the config
     _num_freq_per_stream = config.get_default<uint32_t>(path, "num_local_freq", 128);
@@ -168,6 +170,11 @@ double ICETelescope::freq_width_MHz(freq_id_t freq_id) const {
 timespec ICETelescope::to_time(uint64_t seq) const {
     auto time_ns = time0_ns + seq * dt_ns;
     return {(time_t)(time_ns / GIGA), (long)(time_ns % GIGA)};
+}
+
+int64_t ICETelescope::to_time_ns(uint64_t seq) const {
+    int64_t time_ns = time0_ns + seq * dt_ns;
+    return time_ns;
 }
 
 uint64_t ICETelescope::to_seq(timespec time) const {

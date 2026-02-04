@@ -39,7 +39,7 @@ const std::string default_config_str = R"config_str({
     "dish_elev_axis": [1.0, 0.0, 0.0],
     "dish_vert_axis":    [0.0, 0.0, 1.0],
     "require_gps":        false,
-    "updatable_config":   "/earth_rotation_data"
+    "eop_updatable_config":   "/earth_rotation_data"
     },
     "num_dishes_x" : 22,
     "num_dishes_y" : 24,

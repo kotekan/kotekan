@@ -63,6 +63,29 @@ void to_json(nlohmann::json& j, const EOP& m);
 void from_json(const nlohmann::json& j, EOP& m);
 
 /**
+ * @brief   Comparison function for searching/sorting the EOP table. Compares
+ *          EOP based on t_inst, orders chronologically.
+ *
+ * @params  eop1    First EOP to compare.
+ * @params  eop2    Second EOP to compare.
+ **/
+inline bool EOP_comp_time(const EOP& eop1, const EOP& eop2) {
+    return eop1.t_inst < eop2.t_inst;
+}
+
+/**
+ * @brief   Comparison function for searching/sorting the EOP table. Compares
+ *          EOP based on t_ut1, orders by increasing rotation. Will produce the
+ *          same order as t_inst, unless something is apocalyptically wrong.
+ *
+ * @params  eop1    First EOP to compare.
+ * @params  eop2    Second EOP to compare.
+ **/
+inline bool EOP_comp_ut1(const EOP& eop1, const EOP& eop2) {
+    return eop1.t_ut1 < eop2.t_ut1;
+}
+
+/**
  * @brief   Directly convert timespec fields into a count of nanoseconds in an int64_t. Overflows
  *          if the timespec represents a time more than 2^63-1 nanoseconds (~292 years) past the
  * epoch.

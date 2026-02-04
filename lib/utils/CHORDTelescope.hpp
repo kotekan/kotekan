@@ -8,15 +8,14 @@
 
 #include "json.hpp" // for json
 
-#include <array>        // for array
-#include <complex>      // for complex
-#include <mutex>        // for mutex
-#include <shared_mutex> // for shared_mutex
-#include <stdint.h>     // for uint64_t, uint32_t, int64_t, uint8_t
-#include <string>       // for string, basic_string
-#include <time.h>       // for timespec
-#include <utility>      // for forward
-#include <vector>       // for vector
+#include <array>    // for array
+#include <complex>  // for complex
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint64_t, uint32_t, int64_t, uint8_t
+#include <string>   // for string, basic_string
+#include <time.h>   // for timespec
+#include <utility>  // for forward
+#include <vector>   // for vector
 
 // Types for frequency and dish indexing
 // (Not necessarily logical IDs)
@@ -417,7 +416,8 @@ private:
  * @see FreqParams::from_config (frequency sampling)
  * @see GeographicParams::from_config (dish and array geometry)
  *
- * @conf    updatable_config    string. ConfigUpdater path for dynamic EOP updates.
+ * @conf    eop_updatable_config    string. ConfigUpdater path for dynamic EOP updates. For more
+ *information see Telescope.hpp
  * @conf    log_level           string. Optional log level for this telescope instance.
  *
  * @author Geoffrey Ryan
@@ -430,6 +430,7 @@ private:
  *              introduced with per-dish grid placement, positioning, pointing, and labels. GR
  * 2025/12/04: Factor telescope members into logical groups: frequency parameters,
  *              gps time parameters, geographic/dish parameters. JM (PR #1373)
+ * 2026/01/28:  Remove EOP functionality and move to Telescope.
  */
 
 class CHORDTelescope : public Telescope {
@@ -479,7 +480,7 @@ public:
      * @brief   Return the time corresponding to the given fpga sequence number as an int64_t.
      *          Uses the epoch of time0_ns.
      */
-    int64_t to_time_ns(uint64_t seq) const;
+    int64_t to_time_ns(uint64_t seq) const override;
 
     /**
      * @brief   Return the longitude of the instrument.
@@ -532,35 +533,6 @@ public:
     double get_dish_separation_x_m() const;
     double get_dish_separation_y_m() const;
 
-    /**
-     * @brief   Return the number of entries in the EOP table.
-     **/
-    size_t get_EOP_table_len() const;
-
-    /**
-     * @brief   Return the EOP table entry at an index.
-     *
-     * @param   i   Index of desired EOP entry, 0 <= i < EOP_table_len
-     **/
-    EOP get_EOP_at_idx(uint64_t i) const;
-
-    /**
-     * @brief   Return the EOP at the desired instrument time. Will interpolate
-     *          over table, use first or last entry if target time is out of
-     *          table range.
-     *
-     * @param   ts  Target instrument time, as a timespec.
-     **/
-    EOP get_EOP_at_time(const timespec& ts) const;
-
-    /**
-     * @brief   Return the EOP at the desired UT1 time. Will interpolate
-     *          over table, using the first or last entry if target time is
-     *          out of table range.
-     *
-     * @param   ts  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
-     **/
-    EOP get_EOP_at_UT1(int64_t ut1) const;
 
     /**
      * @brief get information about a specific dish.
@@ -774,41 +746,6 @@ public:
     ~CHORDTelescope();
 
 protected:
-    /**
-     * @brief Callback to update EOP data
-     *
-     * @param json JSON reference of the config
-     */
-    bool receive_eop_updates(nlohmann::json& json);
-
-    /**
-     * @brief   Callback to send current EOP table
-     *
-     * @param   conn    Kotekan connection.
-     */
-    void send_eop_table(kotekan::connectionInstance& conn);
-
-    /**
-     * @brief   Callback to send time0_ns value
-     *
-     * @param   conn    Kotekan connection.
-     */
-    void send_time0_ns(kotekan::connectionInstance& conn);
-
-    /**
-     * @brief   Build a single EOP struct from config values
-     *
-     * @param   t_ns    Instrument time in nanoseconds.
-     * @param   delta_ut1_inst  Diff between UT1 and Instrument time in seconds
-     * @param   xp_as   Polar Motion x' coordinate in arcseconds
-     * @param   yp_as   Polar Motion y' coordinate in arcseconds
-     **/
-    EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
-                              double yp_as) const;
-
-    // The telescope's name in the config
-    const std::string _unique_name;
-
     // Frequency parameters
     const FreqParams _freq_params;
 
@@ -817,29 +754,6 @@ protected:
 
     /// Dish / array geometry and coordinate transforms.
     const GeographicParams _geographic_params;
-
-    /// Earth Orientation Parameters
-    mutable std::shared_mutex _eop_lock;
-    std::vector<EOP> _eop_table;
 };
-
-/**
- * @brief   Comparison function for searching/sorting the EOP table. Compares
- *          EOP based on t_inst, orders chronologically.
- *
- * @params  eop1    First EOP to compare.
- * @params  eop2    Second EOP to compare.
- **/
-bool EOP_comp_time(const EOP& eop1, const EOP& eop2);
-
-/**
- * @brief   Comparison function for searching/sorting the EOP table. Compares
- *          EOP based on t_ut1, orders by increasing rotation. Will produce the
- *          same order as t_inst, unless something is apocalyptically wrong.
- *
- * @params  eop1    First EOP to compare.
- * @params  eop2    Second EOP to compare.
- **/
-bool EOP_comp_ut1(const EOP& eop1, const EOP& eop2);
 
 #endif // CHORD_TELESCOPE_HPP
