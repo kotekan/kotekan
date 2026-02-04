@@ -46,7 +46,7 @@ Telescope::~Telescope() {
     restServer& rest_server = restServer::instance();
     rest_server.remove_get_callback(_unique_name + "/time0_ns");
     rest_server.remove_get_callback(_unique_name + "/eop_table");
-    INFO("Removed REST GET endpoints");
+    DEBUG("Removed REST GET endpoints");
 }
 
 const Telescope& Telescope::instance() {
