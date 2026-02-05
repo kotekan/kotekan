@@ -258,8 +258,9 @@ void N2Accumulate::main_thread() {
 
     // A buffer to store the (possibly fringestopped) correlations of a single time and frequency
     std::vector<float> vis_tf(corr_stride_f, 0.0f);
-    // A buffer to store the (possibly fringestopped) correlations of a single time and all frequencies
-    std::vector<int32_t> vis_even(corr_stride_t, 0); 
+    // A buffer to store the (possibly fringestopped) correlations of a single time and all
+    // frequencies
+    std::vector<int32_t> vis_even(corr_stride_t, 0);
 
     int64_t next_accum_start_tick = 0;
     int64_t fpga_ticks_per_accum =
