@@ -437,7 +437,7 @@ void N2Accumulate::main_thread() {
 
             // Work in single frequency chunks, so we don't have to compute
             // fringestopping phases twice.
-#pragma omp parallel for simd num_threads(_num_workers)
+#pragma omp parallel for num_threads(_num_workers)
             for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
 
                 // Our current offset into the corr array
