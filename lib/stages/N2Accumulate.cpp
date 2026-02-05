@@ -258,7 +258,8 @@ void N2Accumulate::main_thread() {
 
     // A buffer to store the (possibly fringestopped) correlations of a single time and frequency
     std::vector<float> vis_tf(corr_stride_f, 0.0f);
-    std::vector<int32_t> vis_even(corr_stride_t, 0);
+    // A buffer to store the (possibly fringestopped) correlations of a single time and all frequencies
+    std::vector<int32_t> vis_even(corr_stride_t, 0); 
 
     int64_t next_accum_start_tick = 0;
     int64_t fpga_ticks_per_accum =
@@ -510,11 +511,11 @@ void N2Accumulate::main_thread() {
                 // with an odd sample. If odd, difference and add squares to the
                 // _weights matrix.
                 if (_vis_samples_in_out_frame % 2 == 0) {
-                    std::copy(vis_tf.begin(), vis_tf.end(), _vis_even.begin() + vis_offset_f);
+                    std::copy(vis_tf.begin(), vis_tf.end(), vis_even.begin() + vis_offset_f);
                 } else {
                     for (uint64_t d = 0; d < corr_stride_f / 2; d++) {
-                        float dr = vis_tf[2 * d + 0] - _vis_even[vis_offset_f + 2 * d + 0];
-                        float di = vis_tf[2 * d + 1] - _vis_even[vis_offset_f + 2 * d + 1];
+                        float dr = vis_tf[2 * d + 0] - vis_even[vis_offset_f + 2 * d + 0];
+                        float di = vis_tf[2 * d + 1] - vis_even[vis_offset_f + 2 * d + 1];
                         _weights[weight_offset_f + d] += dr * dr + di * di;
                     } // d
                 } // if even/odd
