@@ -376,7 +376,7 @@ def chord_output(tmpdir_factory):
         # Start with a large fpga_seq so restart detection works
         # (first_packet_recv_time is wall clock, so we need fpga_seq
         # to contribute significantly to the computed start_time)
-        first_frame_index=100000
+        first_frame_index = 100000
 
         input_buffer = ChordMetadataBuffer(
             frame_size=1024,

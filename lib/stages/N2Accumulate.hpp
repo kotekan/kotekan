@@ -138,9 +138,7 @@ private:
 
     const int _num_workers; ///< number of OpenMP threads to use to process data
 
-    // Absolute frame counter (TODO: determine this another way)
-    uint64_t _abs_frame_count;
-    const bool _do_fringestop;
+    const bool _do_fringestop; ///< Whether to fringestop
 
     // Some derived parameters
 

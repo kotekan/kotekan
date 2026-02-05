@@ -57,7 +57,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _n_fpga_samples_per_n2k_correlation(config.get<int64_t>(unique_name, "sub_integration_ntime")),
     _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")),
     _num_elements(config.get<int64_t>(unique_name, "num_elements")),
-    _num_workers(config.get_default<int>(unique_name, "num_workers", 1)), _abs_frame_count(0),
+    _num_workers(config.get_default<int>(unique_name, "num_workers", 1)),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
     _tel(Telescope::instance()),
     skipped_frame_counter(Metrics::instance().add_counter(
@@ -313,7 +313,6 @@ void N2Accumulate::main_thread() {
 
         // Get metadata for all incoming frames.
         std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
-        int64_t in_frame_num = frame_metadata->get_fpga_seq_num() / _n_fpga_samples_per_n2k_frame;
 
         std::shared_ptr<chordMetadata> counts_metadata =
             get_chord_metadata(in_counts_buf, in_counts_frame_id);
@@ -342,6 +341,9 @@ void N2Accumulate::main_thread() {
         
         // Sequence number for the start of this frame.
         int64_t seq0 = frame_metadata->get_fpga_seq_num();
+
+        // Absolute frame number for this frame (since frame 0)
+        int64_t in_frame_num = frame_metadata->get_fpga_seq_num() / _n_fpga_samples_per_n2k_frame;
 
 
         // Do some first-time initialization
