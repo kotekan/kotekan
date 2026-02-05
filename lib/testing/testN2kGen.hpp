@@ -84,6 +84,7 @@ private:
     uint32_t seed;
     std::optional<dset_id_t> dset_id;
     int64_t first_frame_index;
+    int repeat_count;
 
     static constexpr int corr_blocksize = 16; // ALWAYS 16
     static constexpr int count_blocksize = 8; // ALWAYS 8
@@ -92,6 +93,9 @@ private:
     int corr_num_blocks;
     int count_num_blocks;
     int num_integrations;
+
+    int corr_num_entries;
+    int count_num_entries;
 
     std::shared_ptr<chordMetadata> get_new_metadata(Buffer* buf, frameID frame_id);
     void allocate_correlation_frame_desc(Buffer* buf);
