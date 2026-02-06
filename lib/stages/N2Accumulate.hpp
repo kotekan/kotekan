@@ -139,6 +139,7 @@ private:
     const int _num_workers; ///< number of OpenMP threads to use to process data
 
     const bool _do_fringestop; ///< Whether to fringestop
+    const int _debug_accum_mode;
 
     // Some derived parameters
 
