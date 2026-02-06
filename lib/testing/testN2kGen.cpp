@@ -15,6 +15,7 @@
 #include <assert.h>   // for assert
 #include <cstdlib>    // for abort, size_t
 #include <functional> // for bind, function
+#include <omp.h>      // for omp_get_wtime
 #include <random>     // for uniform_int_distribution, mt19937
 #include <stdint.h>   // for int32_t, uint32_t, uint64_t, int64_t
 #include <utility>    // for swap
@@ -338,6 +339,8 @@ void testN2kGen::main_thread() {
         count_store.resize(count_num_entries * num_frames);
     }
 
+    double last_time = omp_get_wtime();
+
     while (!stop_thread) {
 
         // grab frames
@@ -524,10 +527,10 @@ void testN2kGen::main_thread() {
                       corr_store.begin() + (store_index + 1) * corr_num_entries, corr);
             std::copy(count_store.begin() + store_index * count_num_entries,
                       count_store.begin() + (store_index + 1) * count_num_entries, count);
-            DEBUG("Repeated a {:s} test correlation data set into {:s}[{:d}] at seq {:d}",
-                  corr_type, corr_buf->buffer_name, corr_frame_id, seq_num);
-            DEBUG("Repeated a {:s} test counts data set into {:s}[{:d}] at seq {:d}", count_type,
-                  count_buf->buffer_name, count_frame_id, seq_num);
+            // DEBUG("Repeated a {:s} test correlation data set into {:s}[{:d}] at seq {:d}",
+            //       corr_type, corr_buf->buffer_name, corr_frame_id, seq_num);
+            // DEBUG("Repeated a {:s} test counts data set into {:s}[{:d}] at seq {:d}", count_type,
+            //       count_buf->buffer_name, count_frame_id, seq_num);
         }
 
         corr_buf->mark_frame_full(unique_name, corr_frame_id++);
@@ -536,6 +539,12 @@ void testN2kGen::main_thread() {
 
         num_frames_generated++;
         seq_num += samples_per_data_set;
+
+        double curr_time = omp_get_wtime();
+        if (num_frames_generated % 4 == 1) {
+            DEBUG("Frame generation took {:f} ms", (curr_time - last_time) * 1000);
+        }
+        last_time = curr_time;
 
         if (num_frames >= 0 && num_frames_generated >= total_frames) {
             INFO("Generated the requested number of frames ({:d}) - exiting", total_frames);
