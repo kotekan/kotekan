@@ -339,7 +339,7 @@ void testN2kGen::main_thread() {
         count_store.resize(count_num_entries * num_frames);
     }
 
-    double last_time = omp_get_wtime();
+    [[maybe_unused]] double last_time = omp_get_wtime();
 
     while (!stop_thread) {
 
@@ -353,6 +353,8 @@ void testN2kGen::main_thread() {
         int32_t* rfi = (int32_t*)rfi_buf->wait_for_full_frame(unique_name, rfi_frame_id);
         if (rfi == nullptr)
             break;
+
+        [[maybe_unused]] double start_time = omp_get_wtime();
 
         // create metadata
         const std::shared_ptr<chordMetadata> corr_meta = get_new_metadata(corr_buf, corr_frame_id);
@@ -532,6 +534,13 @@ void testN2kGen::main_thread() {
             // DEBUG("Repeated a {:s} test counts data set into {:s}[{:d}] at seq {:d}", count_type,
             //       count_buf->buffer_name, count_frame_id, seq_num);
         }
+        
+        [[maybe_unused]] double curr_time = omp_get_wtime();
+        if (num_frames_generated % 4 == 1) {
+            DEBUG("Frame generation took {:f} ms + {:f} ms idle", (curr_time - start_time) * 1000,
+                    (start_time - last_time) * 1000);
+        }
+        last_time = curr_time;
 
         corr_buf->mark_frame_full(unique_name, corr_frame_id++);
         count_buf->mark_frame_full(unique_name, count_frame_id++);
@@ -539,12 +548,6 @@ void testN2kGen::main_thread() {
 
         num_frames_generated++;
         seq_num += samples_per_data_set;
-
-        double curr_time = omp_get_wtime();
-        if (num_frames_generated % 4 == 1) {
-            DEBUG("Frame generation took {:f} ms", (curr_time - last_time) * 1000);
-        }
-        last_time = curr_time;
 
         if (num_frames >= 0 && num_frames_generated >= total_frames) {
             INFO("Generated the requested number of frames ({:d}) - exiting", total_frames);
