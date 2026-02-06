@@ -22,9 +22,9 @@
 #include <cstdlib>    // for abort
 #include <functional> // for bind, function, placeholders
 #include <memory>     // for shared_ptr, __shared_ptr_access
-#include <time.h>     // for size_t, timespec
-#include <vector>     // for vector
 #include <omp.h>
+#include <time.h> // for size_t, timespec
+#include <vector> // for vector
 
 
 using namespace std::placeholders;
@@ -263,7 +263,7 @@ void N2Accumulate::main_thread() {
     // A buffer to store the (possibly fringestopped) correlations of a single time and all
     // frequencies
     std::vector<int32_t> vis_even_vec(corr_stride_t, 0);
-    const int32_t *vis_even_ptr = nullptr;
+    const int32_t* vis_even_ptr = nullptr;
 
     int64_t next_accum_start_tick = 0;
     int64_t fpga_ticks_per_accum =
@@ -367,7 +367,7 @@ void N2Accumulate::main_thread() {
         // Accumulate each visibility sample in the in_frame
         // t_outer
         for (int64_t vis_samp_n = 0; vis_samp_n < _n_integrations_per_n2k_frame; ++vis_samp_n) {
-        
+
             [[maybe_unused]] double prof_start_time = omp_get_wtime();
 
 
@@ -443,7 +443,7 @@ void N2Accumulate::main_thread() {
 
             if (_debug_accum_mode == 0) {
 #pragma omp parallel for simd num_threads(_num_workers)
-                for(uint64_t d = 0; d < corr_stride_t; d++) {
+                for (uint64_t d = 0; d < corr_stride_t; d++) {
                     _vis[d] += corr[d + corr_offset_t];
                 }
 
@@ -451,10 +451,10 @@ void N2Accumulate::main_thread() {
                     vis_even_ptr = corr + corr_offset_t;
                 } else {
 #pragma omp parallel for simd num_threads(_num_workers)
-                    for(uint64_t d = 0; d < corr_stride_t / 2; d++) {
-                        float dr = corr[corr_offset_t + 2*d + 0] - vis_even_ptr[2*d + 0];
-                        float di = corr[corr_offset_t + 2*d + 1] - vis_even_ptr[2*d + 1];
-                        _weights[d] += dr*dr + di*di;
+                    for (uint64_t d = 0; d < corr_stride_t / 2; d++) {
+                        float dr = corr[corr_offset_t + 2 * d + 0] - vis_even_ptr[2 * d + 0];
+                        float di = corr[corr_offset_t + 2 * d + 1] - vis_even_ptr[2 * d + 1];
+                        _weights[d] += dr * dr + di * di;
                     }
                 }
             } // debug_accum_mode 0
@@ -498,8 +498,8 @@ void N2Accumulate::main_thread() {
                                 // For this stage to run, _num_elements must be a multiple of 64.
                                 // Since correlation blocksize is 16, there will always be a muliple
                                 // of 4 correlation_linear_blocks.  So for num_polarization = 2,
-                                // a block will not cross a polarization boundary, and we're guaranteed
-                                // all elements in a block will share a polarization.
+                                // a block will not cross a polarization boundary, and we're
+                                // guaranteed all elements in a block will share a polarization.
                                 uint64_t di0 = _n2k_correlation_blocksize * ihi % _num_elements;
                                 uint64_t dj0 = _n2k_correlation_blocksize * jhi % _num_elements;
                                 uint64_t idx0 = block_idx * corr_stride_b;
@@ -538,7 +538,8 @@ void N2Accumulate::main_thread() {
                     // with an odd sample. If odd, difference and add squares to the
                     // _weights matrix.
                     if (_vis_samples_in_out_frame % 2 == 0) {
-                        std::copy(vis_tf.begin(), vis_tf.end(), vis_even_vec.begin() + vis_offset_f);
+                        std::copy(vis_tf.begin(), vis_tf.end(),
+                                  vis_even_vec.begin() + vis_offset_f);
                     } else {
                         for (uint64_t d = 0; d < corr_stride_f / 2; d++) {
                             float dr = vis_tf[2 * d + 0] - vis_even_vec[vis_offset_f + 2 * d + 0];
@@ -589,11 +590,11 @@ void N2Accumulate::main_thread() {
                     seq + _n_fpga_samples_per_n2k_correlation + fpga_ticks_per_accum / 2));
                 next_accum_start_tick += fpga_ticks_per_accum;
             }
-            
+
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
             DEBUG("Adding input frame took {:f} ms + {:f} ms idle",
-                    (prof_curr_time - prof_start_time) * 1000,
-                    (prof_start_time - prof_last_time) * 1000);
+                  (prof_curr_time - prof_start_time) * 1000,
+                  (prof_start_time - prof_last_time) * 1000);
             prof_last_time = prof_curr_time;
 
         } // t (vis samples in frame)

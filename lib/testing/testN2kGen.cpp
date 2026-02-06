@@ -534,10 +534,10 @@ void testN2kGen::main_thread() {
             // DEBUG("Repeated a {:s} test counts data set into {:s}[{:d}] at seq {:d}", count_type,
             //       count_buf->buffer_name, count_frame_id, seq_num);
         }
-        
+
         [[maybe_unused]] double curr_time = omp_get_wtime();
         DEBUG("Frame generation took {:f} ms + {:f} ms idle", (curr_time - start_time) * 1000,
-                (start_time - last_time) * 1000);
+              (start_time - last_time) * 1000);
         last_time = curr_time;
 
         corr_buf->mark_frame_full(unique_name, corr_frame_id++);
