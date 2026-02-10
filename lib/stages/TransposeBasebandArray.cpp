@@ -196,32 +196,6 @@ void TransposeBasebandArray::transpose_block_avx512(const uint8_t* in, uint8_t* 
         // Gather next 64 bytes (elements 64-127 from e_long 8-15)
         __m512i data_hi = _mm512_i64gather_epi64(indices_hi, (const long long*)base, 1);
 
-
-
-
-        // Check if any nibbles are zero in data_lo or data_hi
-        // Using the "hasless" technique: (v - 0x1111...) & ~v & 0x8888...
-        const __m512i ones = _mm512_set1_epi8(0x11);
-        const __m512i highs = _mm512_set1_epi8(0x88);
-
-        __m512i sub_lo = _mm512_sub_epi8(data_lo, ones);
-        __m512i sub_hi = _mm512_sub_epi8(data_hi, ones);
-        __m512i check_lo = _mm512_ternarylogic_epi64(sub_lo, data_lo, highs, 0x20); // (~B & A & C)
-        __m512i check_hi = _mm512_ternarylogic_epi64(sub_hi, data_hi, highs, 0x20);
-
-        // Combine and test if any bits are set
-        __m512i check_combined = _mm512_or_si512(check_lo, check_hi);
-        bool has_zero_nibble = !_mm512_test_epi64_mask(check_combined, check_combined) == 0;
-        // Simpler: check if result is non-zero
-        has_zero_nibble = _mm512_test_epi64_mask(check_combined, check_combined) != 0;
-
-        if (has_zero_nibble) {
-            FATAL_ERROR("TransposeBasebandArray: Detected zero nibble in input data during transpose. "
-                 "This indicates corrupted data.");
-        }
-
-
-
         // Write 128 bytes using non-temporal stores (bypasses cache)
         uint8_t* out_row = out + t_short * out_stride;
         _mm512_stream_si512((__m512i*)out_row, data_lo);
