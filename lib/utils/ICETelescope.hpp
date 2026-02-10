@@ -40,6 +40,7 @@ public:
     // Implementations of the required time mapping functions
     bool gps_time_enabled() const override;
     timespec to_time(uint64_t seq) const override;
+    int64_t to_time_ns(uint64_t seq) const override;
     uint64_t to_seq(timespec time) const override;
     uint64_t seq_length_nsec() const override;
 

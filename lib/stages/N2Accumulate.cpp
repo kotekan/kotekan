@@ -49,7 +49,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")),
     _num_elements(config.get<int64_t>(unique_name, "num_elements")),
     _num_workers(config.get_default<int>(unique_name, "num_workers", 1)), _abs_frame_count(0),
-    _tel(Telescope::instance().cast<CHORDTelescope>()),
+    _tel(Telescope::instance()),
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
 

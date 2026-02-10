@@ -100,10 +100,10 @@ __global__ void sk_kernel(
     int rfimask_T1024min,                // First (coarse) time sample in rfimask array
     int rfimask_T1024size)               // Number of (coarse) time samples in rfimask array
 {
-    assert(S012_Tsize & (S012_Tsize - 1) == 0 && "S012_Tsize must be a power of two");
-    assert(sk_feed_averaged_Tsize & (sk_feed_averaged_Tsize - 1) == 0 && "sk_feed_averaged_Tsize must be a power of two");
-    assert(sk_single_feed_Tsize & (sk_single_feed_Tsize - 1) == 0 && "sk_single_feed_Tsize must be a power of two");
-    assert(rfimask_T1024size & (rfimask_T1024size - 1) == 0 && "rfimask_T1024size must be a power of two");
+    assert((S012_Tsize & (S012_Tsize - 1)) == 0 && "S012_Tsize must be a power of two");
+    assert((sk_feed_averaged_Tsize & (sk_feed_averaged_Tsize - 1)) == 0 && "sk_feed_averaged_Tsize must be a power of two");
+    assert((sk_single_feed_Tsize & (sk_single_feed_Tsize - 1)) == 0 && "sk_single_feed_Tsize must be a power of two");
+    assert((rfimask_T1024size & (rfimask_T1024size - 1)) == 0 && "rfimask_T1024size must be a power of two");
 
 #ifdef DEBUGGING
     const int64_t S012_size = S012_Tsize * F * 3 * S;
