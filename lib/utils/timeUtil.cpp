@@ -196,3 +196,23 @@ double get_ERA_from_time(const timespec& time, double dUT) {
     int64_t ut1 = get_UT1_from_time(time, dUT);
     return get_ERA_from_UT1(ut1, nullptr);
 }
+
+void to_json(nlohmann::json& j, const EOP& m) {
+    assert(j.empty());
+
+    j.emplace("t_inst", m.t_inst);                 // Instrument time, nanoseconds, UNIX epoch.
+    j.emplace("t_ut1", m.t_ut1);                   // UT1 time, nanoseconds, J2000(UT1) epoch.
+    j.emplace("delta_UT1_inst", m.delta_UT1_inst); // Diff between UT1 and Instrument time, seconds
+    j.emplace("ERA_deg", m.ERA_deg);               // Earth Rotation Angle, degrees
+    j.emplace("xp_as", m.xp_as);                   // Polar Motion x', in arcseconds.
+    j.emplace("yp_as", m.yp_as);                   // Polar Motion y', in arcseconds.
+}
+
+void from_json(const nlohmann::json& j, EOP& m) {
+    m.t_inst = j.at("t_inst");                 // Instrument time, nanoseconds, UNIX epoch.
+    m.t_ut1 = j.at("t_ut1");                   // UT1 time, nanoseconds, J2000(UT1) epoch.
+    m.delta_UT1_inst = j.at("delta_UT1_inst"); // Diff between UT1 and Instrument time, seconds
+    m.ERA_deg = j.at("ERA_deg");               // Earth Rotation Angle, degrees
+    m.xp_as = j.at("xp_as");                   // Polar Motion x', in arcseconds.
+    m.yp_as = j.at("yp_as");                   // Polar Motion y', in arcseconds.
+}

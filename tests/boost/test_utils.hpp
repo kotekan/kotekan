@@ -232,7 +232,7 @@ struct CompareCTypes {
                                                        {"coelev_disp_deg", 0.0},
                                                        {"type", "ArrayDish"},
                                                        {"label", "D01"}}});
-    telescope["updatable_config"] = "/earth_rotation_data";
+    telescope["eop_updatable_config"] = "/earth_rotation_data";
     telescope["grid_x_axis"] = {1.0, 0.0, 0.0};
     telescope["grid_y_axis"] = {0.0, 1.0, 0.0};
     telescope["dish_elev_axis"] = {1.0, 0.0, 0.0};

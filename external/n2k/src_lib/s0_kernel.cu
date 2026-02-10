@@ -112,7 +112,7 @@ __global__ void s0_kernel(ulong4_16a *s0, const uint *pl, int T, int Tmin, int T
 {
     static constexpr uint ALL_LANES = 0xffffffffU;
 
-    assert((Tsize >> 7) & ((Tsize >> 7) - 1) == 0 && "Tsize / 128 must be a power of 2");
+    assert(((Tsize >> 7) & ((Tsize >> 7) - 1)) == 0 && "Tsize / 128 must be a power of 2");
     
     // Warp location within larger kerenl
     int tds = (blockIdx.z * blockDim.z + threadIdx.z);              // output time

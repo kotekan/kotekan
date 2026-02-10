@@ -83,7 +83,7 @@ struct template_magic<1,1>
     // Base case: L == N == 1.
     static __device__ ulong load_and_sum(const ulong *Sin, uint bf, int m0, int T, int Tmin, int Tsize, int F, int S)
     {
-        assert(Tsize & (Tsize - 1) == 0 && "Tsize must be a power of 2");
+        assert((Tsize & (Tsize - 1)) == 0 && "Tsize must be a power of 2");
 
         const int M = T * F * 3;
 	m0 = (m0 < M) ? m0 : (M-1);

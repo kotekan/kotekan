@@ -117,7 +117,7 @@ private:
     int64_t _accum_fpga_start_tick;
 
     // The telescope
-    const CHORDTelescope& _tel;
+    const Telescope& _tel;
 
     // Reference to the prometheus metric that we will use for counting skipped
     // frames

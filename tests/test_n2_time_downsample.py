@@ -84,7 +84,7 @@ global_params = {
         "dish_coelev_deg": 0.0,
         "num_dishes_x": 22,
         "num_dishes_y": 24,
-        "updatable_config": "/earth_rotation_data",
+        "eop_updatable_config": "/earth_rotation_data",
         "dish_inputs": [],
     },
     "gps_time": {"frame0_nano": t_start_inst_ns},

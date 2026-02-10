@@ -176,7 +176,8 @@ void FakeGpu::main_thread() {
 
 
 FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& path) :
-    Telescope(config.get<std::string>(path, "log_level")) {
+    Telescope(path, config.get<std::string>(path, "log_level"),
+              config.get_default<std::string>(path, "eop_updatable_config", "")) {
     _num_local_freq = config.get_default<size_t>(path, "num_local_freq", 1);
 }
 
@@ -209,6 +210,11 @@ nyquist_zone_t FakeTelescope::nyquist_zone() const {
 timespec FakeTelescope::to_time(uint64_t seq) const {
     uint64_t ns = seq_length_nsec() * seq;
     return {time_t(ns / 1000000000ULL), time_t(ns % 1000000000ULL)};
+}
+
+int64_t FakeTelescope::to_time_ns(uint64_t seq) const {
+    uint64_t ns = seq_length_nsec() * seq;
+    return int64_t(ns);
 }
 
 uint64_t FakeTelescope::to_seq(timespec time) const {

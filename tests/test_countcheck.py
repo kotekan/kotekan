@@ -32,7 +32,7 @@ def make_chord_telescope_config(num_dishes=8):
         "dish_vert_axis": [0.0, 0.0, 1.0],
         "dish_coelev_deg": 90.0,
         "require_gps": False,
-        "updatable_config": "/earth_rotation_data",
+        "eop_updatable_config": "/earth_rotation_data",
         "num_dishes": num_dishes,
         "num_dishes_x": 4,
         "num_dishes_y": 4,
