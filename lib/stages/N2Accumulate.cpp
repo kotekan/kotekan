@@ -1,6 +1,5 @@
 #include "N2Accumulate.hpp"
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope, EOP
 #include "Config.hpp"            // for Config
 #include "N2FrameView.hpp"       // for N2FrameView
 #include "N2Metadata.hpp"        // for N2Metadata, get_N2_metadata
@@ -12,6 +11,7 @@
 #include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "timeUtil.hpp"          // for EOP
 
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
