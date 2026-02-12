@@ -551,7 +551,7 @@ void N2Accumulate::main_thread() {
                 } // f
             } // accum_mode 1
             else if (_debug_accum_mode == 2) {
-                
+
                 // EOP in the middle of this sample.
                 EOP eop = _tel.get_EOP_at_time(
                     _tel.to_time(seq + _n_fpga_samples_per_n2k_correlation / 2));
@@ -566,7 +566,7 @@ void N2Accumulate::main_thread() {
                         _tel.cast<CHORDTelescope>().fringestop_phases_1d(freq_MHz, eop, target_eop,
                                                                          fringe_phase);
                     }
-                    
+
                     // Our current offset into the corr array
                     uint64_t corr_offset_tf = corr_offset_t + f * corr_stride_f;
                     uint64_t vis_offset_f = f * corr_stride_f;
@@ -584,8 +584,8 @@ void N2Accumulate::main_thread() {
                             uint64_t corr_offset_tfb = corr_offset_tf + block_idx * corr_stride_b;
                             uint64_t vis_offset_fb = vis_offset_f + block_idx * corr_stride_b;
 
-                            const std::complex<float> *phase_i = fringe_phase.data() + di0;
-                            const std::complex<float> *phase_j = fringe_phase.data() + dj0;
+                            const std::complex<float>* phase_i = fringe_phase.data() + di0;
+                            const std::complex<float>* phase_j = fringe_phase.data() + dj0;
 
                             for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
                                 for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
@@ -602,11 +602,10 @@ void N2Accumulate::main_thread() {
                                         _vis[vis_offset_fb + idx + 1] +=
                                             phase.imag() * corr[corr_offset_tfb + idx]
                                             + phase.real() * corr[corr_offset_tfb + idx + 1];
-                                    }
-                                    else {
-                                        _vis[vis_offset_fb + idx + 0] += 
+                                    } else {
+                                        _vis[vis_offset_fb + idx + 0] +=
                                             corr[corr_offset_tfb + idx + 0];
-                                        _vis[vis_offset_fb + idx + 1] += 
+                                        _vis[vis_offset_fb + idx + 1] +=
                                             corr[corr_offset_tfb + idx + 1];
                                     }
                                 } // jlo
@@ -615,7 +614,7 @@ void N2Accumulate::main_thread() {
                         } // jhi
                     } // ihi
                 } // f
-                
+
                 if (vis_sample_num_abs % 2 == 0) {
                     vis_even_ptr = corr + corr_offset_t;
                 } else {
@@ -628,39 +627,44 @@ void N2Accumulate::main_thread() {
                             double freq_MHz = _tel.to_freq_MHz(
                                 static_cast<freq_id_t>(frame_metadata->get_coarse_freq()[f]));
                             // Compute the fringestopping phases for this frequency
-                            _tel.cast<CHORDTelescope>().fringestop_phases_1d(freq_MHz, eop, target_eop,
-                                                                             fringe_phase);
-                            _tel.cast<CHORDTelescope>().fringestop_phases_1d(freq_MHz, eop_even, target_eop,
-                                                                             fringe_phase_even);
+                            _tel.cast<CHORDTelescope>().fringestop_phases_1d(
+                                freq_MHz, eop, target_eop, fringe_phase);
+                            _tel.cast<CHORDTelescope>().fringestop_phases_1d(
+                                freq_MHz, eop_even, target_eop, fringe_phase_even);
                         }
-                        
+
                         // Our current offset into the corr array
                         uint64_t corr_offset_tf = corr_offset_t + f * corr_stride_f;
                         uint64_t vis_offset_f = f * corr_stride_f;
-                        uint64_t weight_offset_f = f * corr_stride_f / 2;  // weights are real, corr is complex
+                        uint64_t weight_offset_f =
+                            f * corr_stride_f / 2; // weights are real, corr is complex
 
                         uint64_t block_idx = 0;
                         for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
                             for (int64_t jhi = 0; jhi <= ihi; jhi++) {
                                 // For this stage to run, _num_elements must be a multiple of 64.
-                                // Since correlation blocksize is 16, there will always be a multiple
-                                // of 4 correlation_linear_blocks.  So for num_polarization = 2,
-                                // a block will not cross a polarization boundary, and we're
+                                // Since correlation blocksize is 16, there will always be a
+                                // multiple of 4 correlation_linear_blocks.  So for num_polarization
+                                // = 2, a block will not cross a polarization boundary, and we're
                                 // guaranteed all elements in a block will share a polarization.
                                 uint64_t di0 = _n2k_correlation_blocksize * ihi % num_dishes;
                                 uint64_t dj0 = _n2k_correlation_blocksize * jhi % num_dishes;
-                                uint64_t corr_offset_tfb = corr_offset_tf + block_idx * corr_stride_b;
+                                uint64_t corr_offset_tfb =
+                                    corr_offset_tf + block_idx * corr_stride_b;
                                 uint64_t vis_offset_fb = vis_offset_f + block_idx * corr_stride_b;
-                                uint64_t weight_offset_fb = weight_offset_f + block_idx * corr_stride_b / 2;
+                                uint64_t weight_offset_fb =
+                                    weight_offset_f + block_idx * corr_stride_b / 2;
 
-                                const std::complex<float> *phase_i = fringe_phase.data() + di0;
-                                const std::complex<float> *phase_j = fringe_phase.data() + dj0;
-                                const std::complex<float> *phase_even_i = fringe_phase_even.data() + di0;
-                                const std::complex<float> *phase_even_j = fringe_phase_even.data() + dj0;
+                                const std::complex<float>* phase_i = fringe_phase.data() + di0;
+                                const std::complex<float>* phase_j = fringe_phase.data() + dj0;
+                                const std::complex<float>* phase_even_i =
+                                    fringe_phase_even.data() + di0;
+                                const std::complex<float>* phase_even_j =
+                                    fringe_phase_even.data() + dj0;
 
                                 for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
                                     for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
-                                        
+
                                         uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
                                         uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
 
@@ -673,22 +677,36 @@ void N2Accumulate::main_thread() {
                                             std::complex<float> phase_even =
                                                 phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
 
-                                            std::complex<float> vis_even{static_cast<float>(vis_even_ptr[vis_offset_fb + idx + 0]),
-                                                                         static_cast<float>(vis_even_ptr[vis_offset_fb + idx + 1])};
-                                            std::complex<float> vis_odd{static_cast<float>(corr[corr_offset_tfb + idx + 0]),
-                                                                         static_cast<float>(corr[corr_offset_tfb + idx + 1])};
-                                            std::complex<float> dvis = phase * vis_odd - phase_even * vis_even;
+                                            std::complex<float> vis_even{
+                                                static_cast<float>(
+                                                    vis_even_ptr[vis_offset_fb + idx + 0]),
+                                                static_cast<float>(
+                                                    vis_even_ptr[vis_offset_fb + idx + 1])};
+                                            std::complex<float> vis_odd{
+                                                static_cast<float>(corr[corr_offset_tfb + idx + 0]),
+                                                static_cast<float>(
+                                                    corr[corr_offset_tfb + idx + 1])};
+                                            std::complex<float> dvis =
+                                                phase * vis_odd - phase_even * vis_even;
 
-                                            _weights[weight_offset_fb + w_idx] += dvis.real() * dvis.real() + dvis.imag() * dvis.imag();
-                                        }
-                                        else {
-                                            std::complex<float> vis_even{static_cast<float>(vis_even_ptr[vis_offset_fb + idx + 0]),
-                                                                         static_cast<float>(vis_even_ptr[vis_offset_fb + idx + 1])};
-                                            std::complex<float> vis_odd{static_cast<float>(corr[corr_offset_tfb + idx + 0]),
-                                                                         static_cast<float>(corr[corr_offset_tfb + idx + 1])};
+                                            _weights[weight_offset_fb + w_idx] +=
+                                                dvis.real() * dvis.real()
+                                                + dvis.imag() * dvis.imag();
+                                        } else {
+                                            std::complex<float> vis_even{
+                                                static_cast<float>(
+                                                    vis_even_ptr[vis_offset_fb + idx + 0]),
+                                                static_cast<float>(
+                                                    vis_even_ptr[vis_offset_fb + idx + 1])};
+                                            std::complex<float> vis_odd{
+                                                static_cast<float>(corr[corr_offset_tfb + idx + 0]),
+                                                static_cast<float>(
+                                                    corr[corr_offset_tfb + idx + 1])};
                                             std::complex<float> dvis = vis_odd - vis_even;
 
-                                            _weights[weight_offset_fb + w_idx] += dvis.real() * dvis.real() + dvis.imag() * dvis.imag();
+                                            _weights[weight_offset_fb + w_idx] +=
+                                                dvis.real() * dvis.real()
+                                                + dvis.imag() * dvis.imag();
                                         }
                                     } // jlo
                                 } // ilo
@@ -743,8 +761,8 @@ void N2Accumulate::main_thread() {
 
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
             INFO("Adding input frame took {:f} ms + {:f} ms idle",
-                  (prof_curr_time - prof_start_time) * 1000,
-                  (prof_start_time - prof_last_time) * 1000);
+                 (prof_curr_time - prof_start_time) * 1000,
+                 (prof_start_time - prof_last_time) * 1000);
             prof_last_time = prof_curr_time;
 
         } // t (vis samples in frame)

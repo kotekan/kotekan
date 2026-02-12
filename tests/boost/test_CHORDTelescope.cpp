@@ -107,7 +107,7 @@ void check_equal_vec3d(const std::array<double, 3>& v1, const std::array<double,
  * @brief   Helper to test equality for float vec3s within tolerance.
  */
 void check_close_float(float v1, float v2, float atol, float rtol, const std::string& label1,
-                        const std::string& label2) {
+                       const std::string& label2) {
 
     float diff = v1 - v2;
     float tol = atol + rtol * fabs(0.5 * (v1 + v2));
@@ -1113,8 +1113,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     for (int i = 0; i < 4; i++) {
         check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases[i],
-                           1.0e-8, 1.0e-5, "tel_phase1", "test_phase1");
+        check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases[i], 1.0e-8,
+                          1.0e-5, "tel_phase1", "test_phase1");
     }
 
     // Position the array at a different latitude (tests that we're converting
@@ -1133,7 +1133,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     for (int i = 0; i < 4; i++) {
         check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
         check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases2[i],
-                           1.0e-7, 1.0e-5, "tel_phase2", "test_phase2");
+                          1.0e-7, 1.0e-5, "tel_phase2", "test_phase2");
     }
 
     // Rotate the dish orientation (tests that we're converting dish -> topo coords)
@@ -1152,7 +1152,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     for (int i = 0; i < 4; i++) {
         check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
         check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases3[i],
-                           1.0e-7, 1.0e-5, "tel_phase3", "test_phase3");
+                          1.0e-7, 1.0e-5, "tel_phase3", "test_phase3");
     }
 
     // Rotate the grid orientation (tests that we've converting tel -> topo
@@ -1172,6 +1172,6 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     for (int i = 0; i < 4; i++) {
         check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
         check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases4[i],
-                           1.0e-7, 1.0e-5, "tel_phase4", "test_phase4");
+                          1.0e-7, 1.0e-5, "tel_phase4", "test_phase4");
     }
 }

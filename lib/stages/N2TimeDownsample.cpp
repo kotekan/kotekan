@@ -302,15 +302,16 @@ void N2TimeDownsample::main_thread() {
                     // Computing the total phase in double precision
                     // in case one of the dish phases is small.
                     // Adding the weighting by valid samples here as well.
-                    //std::complex<double> w_doub = (fringe_phase[d_i] * std::conj(fringe_phase[d_j]))
+                    // std::complex<double> w_doub = (fringe_phase[d_i] *
+                    // std::conj(fringe_phase[d_j]))
                     //                              * ((double)frame.n_valid_fpga_ticks);
 
                     // Now truncate the phase to a float to match vis[]
                     // Have to be explicit about this, compiler complains
                     // otherwise.
-                    //N2::cfloat w{(float)w_doub.real(), (float)w_doub.imag()};
+                    // N2::cfloat w{(float)w_doub.real(), (float)w_doub.imag()};
                     std::complex<float> w = (fringe_phase[d_i] * std::conj(fringe_phase[d_j]))
-                                                  * ((float)frame.n_valid_fpga_ticks);
+                                            * ((float)frame.n_valid_fpga_ticks);
 
                     // Accumulate
                     output_frame.vis[idx] += w * frame.vis[idx];
@@ -329,9 +330,9 @@ void N2TimeDownsample::main_thread() {
                     int k = i * num_elements + j;
                     size_t d_j = j % num_dishes;
                     // Ensure 1st element of each evec doesn't get a phase.
-                    //std::complex<double> phase_doub =
-                        fringe_phase[d_j] * std::conj(fringe_phase[0]);
-                    //N2::cfloat phase{(float)phase_doub.real(), (float)phase_doub.imag()};
+                    // std::complex<double> phase_doub =
+                    fringe_phase[d_j] * std::conj(fringe_phase[0]);
+                    // N2::cfloat phase{(float)phase_doub.real(), (float)phase_doub.imag()};
                     std::complex<float> phase = fringe_phase[d_j] * std::conj(fringe_phase[0]);
                     output_frame.evec[k] +=
                         frame.evec[k] * phase * ((float)frame.n_valid_fpga_ticks);

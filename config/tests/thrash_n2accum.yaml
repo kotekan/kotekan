@@ -37,7 +37,7 @@ vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 
 frames_to_generate: buffer_depth  # must be at least n2_frames_to_write * num_n2k_samples_to_accumulate
-repeat: 16
+repeat: 64
 corr_frames: repeat * frames_to_generate
 n2_samples_per_frame: samples_per_data_set / sub_integration_ntime
 n2_frames: num_local_freq * (corr_frames * samples_per_data_set) / (sub_integration_ntime * num_n2k_samples_to_accumulate)
@@ -154,7 +154,7 @@ N2_accumulate:
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
-    num_workers: 1
+    num_workers: 4
     do_fringestop: False
     debug_accum_mode: 2
 
