@@ -104,6 +104,20 @@ void check_equal_vec3d(const std::array<double, 3>& v1, const std::array<double,
 }
 
 /*
+ * @brief   Helper to test equality for float vec3s within tolerance.
+ */
+void check_close_float(float v1, float v2, float atol, float rtol, const std::string& label1,
+                        const std::string& label2) {
+
+    float diff = v1 - v2;
+    float tol = atol + rtol * fabs(0.5 * (v1 + v2));
+
+    BOOST_CHECK_MESSAGE(
+        fabs(diff) <= tol,
+        fmt::format("Expected |{:s} - {:s}| = |{:g} - {:g}| <= {:g}", label1, label2, v1, v2, tol));
+}
+
+/*
  * @brief   Helper to test equality for double vec3s within tolerance.
  */
 void check_close_double(double v1, double v2, double atol, double rtol, const std::string& label1,
@@ -1087,19 +1101,19 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     json_config["telescope"]["grid_x_axis"] = {1.0, 0.0, 0.0};
     json_config["telescope"]["grid_y_axis"] = {0.0, 1.0, 0.0};
 
-    std::vector<std::complex<double>> tel_phases(4, 0);
+    std::vector<std::complex<float>> tel_phases(4, 0);
 
-    double test_phase_val = 2 * M_PI * w_e * t * cos(dec);
+    float test_phase_val = 2 * M_PI * w_e * t * cos(dec);
 
-    std::vector<double> test_phases({0.0, test_phase_val, 0.0, test_phase_val});
+    std::vector<float> test_phases({0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel = get_telescope(json_config);
 
     tel.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
 
     for (int i = 0; i < 4; i++) {
-        check_close_double(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_double(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases[i],
+        check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
+        check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases[i],
                            1.0e-8, 1.0e-5, "tel_phase1", "test_phase1");
     }
 
@@ -1117,8 +1131,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     tel2.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
 
     for (int i = 0; i < 4; i++) {
-        check_close_double(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_double(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases2[i],
+        check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
+        check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases2[i],
                            1.0e-7, 1.0e-5, "tel_phase2", "test_phase2");
     }
 
@@ -1136,8 +1150,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     tel3.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
 
     for (int i = 0; i < 4; i++) {
-        check_close_double(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_double(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases3[i],
+        check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
+        check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases3[i],
                            1.0e-7, 1.0e-5, "tel_phase3", "test_phase3");
     }
 
@@ -1156,8 +1170,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     tel4.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
 
     for (int i = 0; i < 4; i++) {
-        check_close_double(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_double(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases4[i],
+        check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
+        check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases4[i],
                            1.0e-7, 1.0e-5, "tel_phase4", "test_phase4");
     }
 }

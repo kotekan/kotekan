@@ -730,7 +730,7 @@ std::array<double, 3> CHORDTelescope::vec_itrs_to_cirs(const std::array<double, 
 }
 
 void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
-                                          std::vector<std::complex<double>>& phases) const {
+                                          std::vector<std::complex<float>>& phases) const {
 
     // Get the pointing vector (phase center) for the telescope in dish coordinates. This is
     // constant in time.
@@ -765,7 +765,7 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const
                           + _geographic_params.dish_positions[i][1] * (n_grid[1] - n_grid0[1])
                           + _geographic_params.dish_positions[i][2] * (n_grid[2] - n_grid0[2]));
 
-        phases[i] = {cos(phase), sin(phase)};
+        phases[i] = {static_cast<float>(cos(phase)), static_cast<float>(sin(phase))};
     }
 }
 

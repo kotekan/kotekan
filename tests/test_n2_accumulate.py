@@ -142,6 +142,7 @@ accumulate_params = {
     "packet_loss_is_scalar": True,
     "vis_layout": "FullUpperTri",
     "log_level": "DEBUG",
+    "debug_accum_mode": 2,
 }
 
 

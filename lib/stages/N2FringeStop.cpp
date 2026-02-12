@@ -69,7 +69,7 @@ void N2FringeStop::main_thread() {
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
 
     int num_dishes = tel.get_num_dishes();
-    std::vector<std::complex<double>> fringe_phase(num_dishes, 1.0);
+    std::vector<std::complex<float>> fringe_phase(num_dishes, 1.0);
 
     int64_t ut1 = get_UT1_from_ERA(num_rot_target, era_target_deg);
 
