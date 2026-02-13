@@ -33,7 +33,7 @@ __device__ static inline half2x4 load_half2x4(const __half2* __restrict__ const 
 // version is wrong.
 void cpu_quantize4_chunks(const __half* __restrict__ const input,
                           __half* __restrict__ const outputf,
-                          kotekan::uint4x2_t* __restrict__ const outputi, const int input_stride,
+                          kotekan::int4x2_t* __restrict__ const outputi, const int input_stride,
                           const int outputf_stride, const int outputi_stride) {
     static_assert(chunk_size >= 0);
     // The chunk size must be even because we process 2 `half` values simultaneously to create 1
@@ -81,9 +81,9 @@ void cpu_quantize4_chunks(const __half* __restrict__ const input,
             const __half y1 = (x1 - offseth) / scaleh;
             const __half z0 = __hmax(minh, __hmin(maxh, y0 + out_offseth));
             const __half z1 = __hmax(minh, __hmin(maxh, y1 + out_offseth));
-            const uint8_t i0 = lrint(__half2float(z0));
-            const uint8_t i1 = lrint(__half2float(z1));
-            const kotekan::uint4x2_t outi(i0, i1);
+            const int8_t i0 = lrint(__half2float(z0));
+            const int8_t i1 = lrint(__half2float(z1));
+            const kotekan::int4x2_t outi(i0, i1);
 
             outputi[(i + outputi_offset) / 2] = outi;
         }
@@ -93,7 +93,7 @@ void cpu_quantize4_chunks(const __half* __restrict__ const input,
 // Quantize a "frame", i.e. a set of "chunks". This is an efficient GPU implementation.
 __global__ void
 gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict__ const outputf0,
-                     kotekan::uint4x2_t* __restrict__ const outputi0, const int input_size1,
+                     kotekan::int4x2_t* __restrict__ const outputi0, const int input_size1,
                      const int input_size2, const int input_size3, const int input_stride2,
                      const int input_stride3, const int outputf_size1, const int outputf_size2,
                      const int outputf_size3, const int outputf_stride2, const int outputf_stride3,
@@ -214,7 +214,7 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
 }
 
 void cpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ const outputf,
-                   kotekan::uint4x2_t* __restrict__ const outputi, const int input_size1,
+                   kotekan::int4x2_t* __restrict__ const outputi, const int input_size1,
                    const int input_size2, const int input_size3, const int input_stride2,
                    const int input_stride3, const int outputf_size1, const int outputf_size2,
                    const int outputf_size3, const int outputf_stride2, const int outputf_stride3,
@@ -274,7 +274,7 @@ void cpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
 }
 
 void gpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ const outputf,
-                   kotekan::uint4x2_t* __restrict__ const outputi, const int input_size1,
+                   kotekan::int4x2_t* __restrict__ const outputi, const int input_size1,
                    const int input_size2, const int input_size3, const int input_stride2,
                    const int input_stride3, const int outputf_size1, const int outputf_size2,
                    const int outputf_size3, const int outputf_stride2, const int outputf_stride3,

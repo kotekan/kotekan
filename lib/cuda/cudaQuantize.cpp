@@ -1,11 +1,12 @@
 #include "cudaQuantize.hpp"
 
-#include "DataType.hpp"            // for uint4x2_t, float16_t
+#include "DataType.hpp"            // for int4x2_t, float16_t
 #include "NDArray.hpp"             // for NDArray
 #include "NDArrayBuffer.hpp"       // for NDArrayBuffer
 #include "chordMetadata.hpp"       // for chordMetadata, get_chord_metadata, metadata_is_chord
 #include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaQuantizeKernel4.hpp" // for gpu_quantize4
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
 #include "div.hpp"                 // for div_noremainder
 #include "gpuCommand.hpp"          // for gpuCommandType
@@ -23,14 +24,6 @@
 #include <string>             // for allocator, basic_string, string, operator+
 #include <tuple>              // for tuple, make_tuple
 #include <vector>             // for vector
-
-void gpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ const outputf,
-                   kotekan::uint4x2_t* __restrict__ const outputi, const int input_size1,
-                   const int input_size2, const int input_size3, const int input_stride2,
-                   const int input_stride3, const int outputf_size1, const int outputf_size2,
-                   const int outputf_size3, const int outputf_stride2, const int outputf_stride3,
-                   const int outputi_size1, const int outputi_size2, const int outputi_size3,
-                   const int outputi_stride2, const int outputi_stride3, cudaStream_t stream);
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -65,8 +58,8 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
         const std::array<std::ptrdiff_t, 3> beam_lengths{_num_beams, _num_frequencies,
                                                          _num_times / 2};
         const std::array<std::string, 3> beam_dimnames{"R", "Fbar", "Ttilde"};
-        return NDArrayBuffer<kotekan::uint4x2_t, 3>(_gpu_mem_beams, "frb3_beams", beam_lengths,
-                                                    beam_dimnames, *this);
+        return NDArrayBuffer<kotekan::int4x2_t, 3>(_gpu_mem_beams, "frb3_beams", beam_lengths,
+                                                   beam_dimnames, *this);
     }()),
     meanstd_buffer([&]() {
         assert(_num_times % CHUNK_SIZE == 0);
@@ -111,7 +104,7 @@ cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEven
 
     const float16_t* const input = input_ndarray.data();
     float16_t* const outputf = meanstd_ndarray.data();
-    kotekan::uint4x2_t* const outputi = beam_ndarray.data();
+    kotekan::int4x2_t* const outputi = beam_ndarray.data();
     const int input_size1 = input_ndarray.extent(2);
     const int input_size2 = input_ndarray.extent(1);
     const int input_size3 = input_ndarray.extent(0);

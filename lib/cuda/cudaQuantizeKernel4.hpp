@@ -3,7 +3,7 @@
 
 #include <DataType.hpp>
 
-void gpu_quantize4(const float16_t* input, float16_t* outputf, kotekan::uint4x2_t* outputi,
+void gpu_quantize4(const float16_t* input, float16_t* outputf, kotekan::int4x2_t* outputi,
                    const int input_size1, int input_size2, int input_size3, int input_stride2,
                    int input_stride3, int outputf_size1, int outputf_size2, int outputf_size3,
                    int outputf_stride2, int outputf_stride3, int outputi_size1, int outputi_size2,

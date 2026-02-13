@@ -2,7 +2,7 @@
 #define KOTEKAN_CUDA_QUANTIZE_HPP
 
 #include "Config.hpp"              // for Config
-#include "DataType.hpp"            // for float16_t, uint4x2_t
+#include "DataType.hpp"            // for float16_t, int4x2_t
 #include "NDArrayBuffer.hpp"       // for NDArrayBuffer
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState
@@ -60,7 +60,7 @@ private:
     const std::string _gpu_mem_beams_meanstd;
 
     const NDArrayBuffer<float16_t, 3> input_buffer;
-    NDArrayBuffer<kotekan::uint4x2_t, 3> beam_buffer;
+    NDArrayBuffer<kotekan::int4x2_t, 3> beam_buffer;
     NDArrayBuffer<float16_t, 4> meanstd_buffer;
 };
 
