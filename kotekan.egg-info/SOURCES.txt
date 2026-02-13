@@ -1,0 +1,7 @@
+README.md
+kotekan.egg-info/PKG-INFO
+kotekan.egg-info/SOURCES.txt
+kotekan.egg-info/dependency_links.txt
+kotekan.egg-info/entry_points.txt
+kotekan.egg-info/requires.txt
+kotekan.egg-info/top_level.txt

@@ -2,7 +2,7 @@
 
 #include "fmt.hpp" // for format
 
-#include <inttypes.h> // for SCNx64
+#include <inttypes.h> // IWYU pragma: keep
 #include <iostream>   // for istream, ostream, basic_istream::read
 #include <stdexcept>  // for invalid_argument
 #include <stdio.h>    // for sscanf

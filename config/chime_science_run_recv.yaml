@@ -351,6 +351,7 @@ archive_writers:
     kotekan_stage: VisWriter
     in_buf: visbuf_5s_26m_gated_post
     instrument_name: chime26mgated
+    critical_states: ["gating"]
 
   cal:
     kotekan_stage: VisWriter

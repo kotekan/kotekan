@@ -1,0 +1,318 @@
+##########################################
+#
+# ndisk_raw_2_sorted.yaml
+#
+# Configuration for reading tracking beam 
+# frames from files and merge ans sort packets 
+# to a bigger frame.
+#
+# Author: Jing Luo
+#
+##########################################
+---
+type: debug
+log_level: info
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+samples_per_data_set: 49152
+queue_frame_size: samples_per_data_set
+dump_size: 50000
+num_pol: 2
+total_freq_chan: 1024
+time_resolution: 2.56e-6
+wait_nframes: 20
+buffer_depth: 105
+sub_frames_per_merged_frame: 500
+##########################################
+#
+#If one want to use different number of
+#buffers, please change the number below
+#
+##########################################
+use_n_out_buffer: 8
+total_freq_chan: 1024
+# Number of extra channels if total_freq_chan can not fully divide by use_n_out_buffer
+# total_freq_chan % use_n_out_buffer
+extra_chan: 0
+# Base number of channels for each buffer int(total_freq_chan / use_n_out_buffer)
+base_num_chan: 128
+# All extra channels will be added to the first buffer, buffer0
+nchan_buffer0: base_num_chan + extra_chan 
+nchan_buffer1: base_num_chan
+# The size of metadata with freq ID
+freq_id_metadata_size: 72
+
+#telescope:
+#  name: CHIMETelescope
+#  require_gps: true
+#  query_gps: true
+#  require_frequency_map: true
+#  query_frequency_map: true
+#  allow_default_frequency_map: false
+
+dataset_manager:
+  use_dataset_broker: false
+
+beam_metadata_pool:
+  kotekan_metadata_pool: FreqIDBeamMetadata
+  num_metadata_objects: 1024
+
+merged_beam_metadata_pool:
+  kotekan_metadata_pool: MergedBeamMetadata
+  num_metadata_objects: 2048
+
+sorted_beam_metadata_pool0:
+  kotekan_metadata_pool: MergedBeamMetadata
+  num_metadata_objects: 200
+
+#sorted_beam_metadata_pool1:
+#  kotekan_metadata_pool: MergedBeamMetadata
+#  num_metadata_objects: 40
+
+beam_recv_buffer:
+  kotekan_buffer: standard
+  num_frames: 20
+  metadata_pool: beam_metadata_pool
+  frame_size: samples_per_data_set * num_pol
+
+beam_recv_buffer_2:
+  kotekan_buffer: standard
+  num_frames: 20
+  metadata_pool: beam_metadata_pool
+  frame_size: dump_size * num_pol
+
+merged_beam_buffer:
+  kotekan_buffer: standard
+  num_frames: 8
+  metadata_pool: merged_beam_metadata_pool
+  frame_size: (samples_per_data_set * num_pol + freq_id_metadata_size) * sub_frames_per_merged_frame
+
+sort_buffers:
+  num_frames: wait_nframes
+  metadata_pool: sorted_beam_metadata_pool0
+  # the size of the beam metadata with frequency is 72
+  sorted_buffer_0:
+    kotekan_buffer: standard
+    frame_size: (dump_size * num_pol + freq_id_metadata_size) * nchan_buffer0
+    #metadata_pool: sorted_beam_metadata_pool0
+  sorted_buffer_1:
+    kotekan_buffer: standard
+    frame_size: (dump_size * num_pol + freq_id_metadata_size) * nchan_buffer1
+    #metadata_pool: sorted_beam_metadata_pool1
+  sorted_buffer_2:
+    kotekan_buffer: standard
+    frame_size: (dump_size * num_pol + freq_id_metadata_size) * nchan_buffer1
+  sorted_buffer_3:
+    kotekan_buffer: standard
+    frame_size: (dump_size * num_pol + freq_id_metadata_size) * nchan_buffer1
+  sorted_buffer_4:
+    kotekan_buffer: standard
+    frame_size: (dump_size * num_pol + freq_id_metadata_size) * nchan_buffer1
+  sorted_buffer_5:
+    kotekan_buffer: standard
+    frame_size: (dump_size * num_pol + freq_id_metadata_size) * nchan_buffer1
+  sorted_buffer_6:
+    kotekan_buffer: standard
+    frame_size: (dump_size * num_pol + freq_id_metadata_size) * nchan_buffer1
+  sorted_buffer_7:
+    kotekan_buffer: standard
+    frame_size: (dump_size * num_pol + freq_id_metadata_size) * nchan_buffer1
+    #  sorted_buffer_8:
+    #kotekan_buffer: standard
+    #frame_size: (dump_size * num_pol + freq_id_metadata_size) * sub_frames_per_merged_frame1
+    #  sorted_buffer_9:
+    # kotekan_buffer: standard
+    #frame_size: (dump_size * num_pol + freq_id_metadata_size) * sub_frames_per_merged_frame1
+    
+raw_file_read:
+  base_dir: /drives/scratch/B0329+54
+  file_name: ""
+  ndisk_wrote: true
+  read0:
+    kotekan_stage: rawFileRead
+    file_ext: raw
+    buf: merged_beam_buffer
+
+merged_beam_split:
+  kotekan_stage: splitMergedBeamBuffer
+  in_buf: merged_beam_buffer
+  out_buf: beam_recv_buffer
+  has_metadata: false
+  sub_frame_pre_frame: sub_frames_per_merged_frame
+  sub_frame_metadata_size: freq_id_metadata_size
+  sub_frame_data_size: samples_per_data_set * num_pol
+
+sort_frame:
+  kotekan_stage: BeamBufferSort
+  has_freq_bin: True
+  in_buf: beam_recv_buffer
+  out_bufs:
+    - sorted_buffer_0
+    - sorted_buffer_1
+    - sorted_buffer_2
+    - sorted_buffer_3
+    - sorted_buffer_4
+    - sorted_buffer_5
+    - sorted_buffer_6
+    - sorted_buffer_7
+      # - sorted_buffer_8
+      #- sorted_buffer_9
+ 
+vdif_write0:
+  kotekan_stage: oneDiskVDIFWrite
+  in_buf: sorted_buffer_0
+  disk_base: /drives
+  disk_set: CHF
+  disk_id: 0
+  file_name: test1
+  instrument_name: CHIME
+  write_to_disk: true
+  use_abs_path: false
+  abs_path: /drives/scratch/vdif_test
+  vdif_frames_per_freq: 20
+  vdif_frame_header_size: 32
+  ref_year: 2021
+  #exit_after_n_files: 2000
+
+vdif_write1:
+  kotekan_stage: oneDiskVDIFWrite
+  in_buf: sorted_buffer_1
+  disk_base: /drives
+  disk_set: CHF
+  disk_id: 1
+  file_name: test1
+  instrument_name: CHIME
+  write_to_disk: true
+  #use_abs_path: false
+  #abs_path: /drives/scratch/vdif_test
+  vdif_frames_per_freq: 20
+  vdif_frame_header_size: 32
+  ref_year: 2021
+  #exit_after_n_files: 2000
+
+vdif_write2:
+  kotekan_stage: oneDiskVDIFWrite
+  in_buf: sorted_buffer_2
+  disk_base: /drives
+  disk_set: CHF
+  disk_id: 2
+  file_name: test1
+  instrument_name: CHIME
+  write_to_disk: true
+  #use_abs_path: false
+  #abs_path: /drives/scratch/vdif_test
+  vdif_frames_per_freq: 20
+  vdif_frame_header_size: 32
+  ref_year: 2021
+  ##exit_after_n_files: 2000
+
+vdif_write3:
+  kotekan_stage: oneDiskVDIFWrite
+  in_buf: sorted_buffer_3
+  disk_base: /drives
+  disk_set: CHF
+  disk_id: 3
+  file_name: test1
+  instrument_name: CHIME
+  write_to_disk: true
+  #use_abs_path: false
+  #abs_path: /drives/scratch/vdif_test
+  vdif_frames_per_freq: 20
+  vdif_frame_header_size: 32
+  ref_year: 2021
+  #exit_after_n_files: 2000
+
+vdif_write4:
+  kotekan_stage: oneDiskVDIFWrite
+  in_buf: sorted_buffer_4
+  disk_base: /drives
+  disk_set: CHF
+  disk_id: 4
+  file_name: test1
+  instrument_name: CHIME
+  write_to_disk: true
+  #use_abs_path: false
+  #abs_path: /drives/scratch/vdif_test
+  vdif_frames_per_freq: 20
+  vdif_frame_header_size: 32
+  ref_year: 2021
+  #exit_after_n_files: 2000
+
+vdif_write5:
+  kotekan_stage: oneDiskVDIFWrite
+  in_buf: sorted_buffer_5
+  disk_base: /drives
+  disk_set: CHF
+  disk_id: 5
+  file_name: test1
+  instrument_name: CHIME
+  write_to_disk: true
+  #use_abs_path: false
+  #abs_path: /drives/scratch/vdif_test
+  vdif_frames_per_freq: 20
+  vdif_frame_header_size: 32
+  ref_year: 2021
+  #exit_after_n_files: 2000
+ 
+vdif_write6:
+  kotekan_stage: oneDiskVDIFWrite
+  in_buf: sorted_buffer_6
+  disk_base: /drives
+  disk_set: CHF
+  disk_id: 6
+  file_name: test1
+  instrument_name: CHIME
+  write_to_disk: true
+  #use_abs_path: false
+  #abs_path: /drives/scratch/vdif_test
+  vdif_frames_per_freq: 20
+  vdif_frame_header_size: 32
+  ref_year: 2021
+  #exit_after_n_files: 2000
+
+vdif_write7:
+  kotekan_stage: oneDiskVDIFWrite
+  in_buf: sorted_buffer_7
+  disk_base: /drives
+  disk_set: CHF
+  disk_id: 7
+  file_name: test1
+  instrument_name: CHIME
+  write_to_disk: true
+  #use_abs_path: false
+  #abs_path: /drives/scratch/vdif_test
+  vdif_frames_per_freq: 20
+  vdif_frame_header_size: 32
+  ref_year: 2021
+  #exit_after_n_files: 2000 
+
+  #vdif_write8:
+  #kotekan_stage: oneDiskVDIFWrite
+  #in_buf: sorted_buffer_8
+  #disk_base: /drives
+  #disk_set: CHF
+  #disk_id: 8
+  #file_name: test1
+  #instrument_name: CHIME
+  #write_to_disk: true
+  #use_abs_path: false
+  #abs_path: /drives/scratch/vdif_test
+  #  vdif_frames_per_freq: 20
+  #vdif_frame_header_size: 32
+  #ref_year: 2021
+  #exit_after_n_files: 2000 
+
+  #vdif_write9:
+  #kotekan_stage: oneDiskVDIFWrite
+  #in_buf: sorted_buffer_9
+  # disk_base: /drives
+  #disk_set: CHF
+  #disk_id: 9
+  #file_name: test1
+  #instrument_name: CHIME
+  #write_to_disk: true
+  #use_abs_path: false
+  #abs_path: /drives/scratch/vdif_test
+  # vdif_frames_per_freq: 20
+  #vdif_frame_header_size: 32
+  #ref_year: 2021
+  #exit_after_n_files: 2000

@@ -14,6 +14,9 @@ target_link_libraries(test_truncate PRIVATE kotekan_utils)
 add_executable(test_synchronized_queue test_synchronized_queue.cpp)
 target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_utils)
 
+add_executable(test_stat_tracker test_stat_tracker.cpp)
+target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_utils kotekan_core)
+
 # needs MurmurHash3
 add_executable(test_hash test_hash.cpp)
 target_link_libraries(test_hash PRIVATE libexternal kotekan_utils)

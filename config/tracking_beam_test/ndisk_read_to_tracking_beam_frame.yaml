@@ -1,0 +1,61 @@
+##########################################
+#
+# ndisk_to_tracking_beam_frame.yaml
+#
+# Configuration for reading mereged frame 
+# in n disks to single tracking beam frame.
+#
+# Author: Jing Luo
+#
+##########################################
+---
+type: config
+log_level: info
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+samples_per_data_set: 49152
+num_pol: 2
+buffer_depth: 105
+sub_frames_per_merged_frame: 500
+# The size of metadata with freq ID
+freq_id_metadata_size: 72
+
+telescope:
+  name: CHIMETelescope
+  require_gps: true
+  query_gps: true
+  require_frequency_map: true
+  query_frequency_map: true
+  allow_default_frequency_map: false
+
+dataset_manager:
+  use_dataset_broker: false
+
+beam_metadata_pool:
+  kotekan_metadata_pool: BeamMetadata
+  num_metadata_objects: 4096
+
+merged_beam_metadata_pool:
+  kotekan_metadata_pool: MergedBeamMetadata
+  num_metadata_objects: 60
+
+merged_buffer:
+  kotekan_buffer: standard
+  num_frames: 30
+  metadata_pool: merged_beam_metadata_pool
+  # freq_id_metadata_size is definded on the top
+  frame_size: (samples_per_data_set * num_pol + freq_id_metadata_size) * sub_frames_per_merged_frame 
+
+single_frame_buffer:
+  kotekan_buffer: standard
+  num_frames: 2048
+  metadata_pool: beam_metadata_pool
+  frame_size: samples_per_data_set * num_pol
+
+read_ndisk:
+  kotekan_stage: nDiskFileRead
+  out_buf: single_frame_buffer
+  num_disks: 8
+  disk_base: /drives/
+  disk_set: CHA
+  capture: 20210216T213455Z_no_name_set_vdif
+  starting_file_index: 0

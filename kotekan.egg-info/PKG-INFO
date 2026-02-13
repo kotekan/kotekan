@@ -1,0 +1,23 @@
+Metadata-Version: 1.0
+Name: kotekan
+Version: 2020.11b0+49.g7aec288e.dirty
+Summary: Python support code for kotekan
+Home-page: http://github.com/kotekan/kotekan/
+Author: Kotekan Developers
+Author-email: UNKNOWN
+License: MIT
+Description: Kotekan Python Utilities
+        ========================
+        
+        Tools for interacting with kotekan via Python.
+        
+        
+        Kotekan Runner and Tester
+        -------------------------
+        
+        Just a quick note that for the `KotekanRunner` and `KotekanStageTester`
+        classes, if they are being run from a non-installed copy of the package, they
+        will attempt to use the installation of kotekan from within the build
+        directory of the same tree. If not, it will try to run a system installed
+        version.
+Platform: UNKNOWN

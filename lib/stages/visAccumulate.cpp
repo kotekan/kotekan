@@ -500,6 +500,14 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
     for (size_t i = 0; i < num_prod_gpu; i++) {
         gate.vis2[i] = scl * (1.0 - scl) * vis.vis2[i];
     }
+
+    // The number of FPGA frames that went into this integration is the same as
+    // for the ungated dataset. If we don't correct this, only the on gates are
+    // counted.
+    for (size_t i = 0; i < num_freq_in_frame; i++) {
+        gate.frames[i].fpga_seq_total = vis.frames[i].fpga_seq_total;
+        gate.frames[i].rfi_total = vis.frames[i].rfi_total;
+    }
 }
 
 

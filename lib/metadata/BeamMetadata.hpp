@@ -43,6 +43,10 @@ struct MergedBeamMetadata {
     uint32_t nchan;
     /// Number of time frame
     uint32_t nframe;
+    /// Number of time samples per frame
+    uint32_t n_sample_per_frame;
+    /// Number of polarization
+    uint32_t n_pol;
     /// The ICEBoard sequence number of start time frame
     int64_t fpga_seq_start;
     /// The GPS time of @c fpga_seq_start.

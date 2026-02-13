@@ -3,6 +3,13 @@ type: config
 log_level: DEBUG
 cpu_affinity: [0,1,2,3]
 
+trackers:
+  enable_crash_dump: true
+  dump_path: ./
+
+cpu_monitor:
+  enabled: false
+
 main_pool:
   kotekan_metadata_pool: chimeMetadata
   num_metadata_objects: 30

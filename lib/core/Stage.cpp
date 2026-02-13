@@ -7,18 +7,21 @@
 
 #include "fmt.hpp" // for format
 
-#include <algorithm>    // for copy, max
-#include <chrono>       // for seconds
-#include <cstdlib>      // for abort
-#include <cxxabi.h>     // for __forced_unwind
-#include <exception>    // for exception
-#include <future>       // for async, future, future_status, future_status::timeout, launch
-#include <pthread.h>    // for pthread_setaffinity_np, pthread_setname_np
-#include <regex>        // for match_results<>::_Base_type
-#include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>    // for runtime_error
+#include <algorithm>     // for copy, max, find
+#include <chrono>        // for seconds
+#include <cstdlib>       // for abort
+#include <cxxabi.h>      // for __forced_unwind
+#include <exception>     // for exception
+#include <future>        // for async, future, future_status, future_status::timeout, launch
+#include <pthread.h>     // for pthread_setaffinity_np, pthread_setname_np
+#include <regex>         // for match_results<>::_Base_type
+#include <sched.h>       // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>     // for runtime_error
+#include <sys/syscall.h> // for SYS_gettid // IWYU pragma: keep
+// IWYU pragma: no_include <syscall.h>
 #include <system_error> // for system_error
 #include <thread>       // for thread
+#include <unistd.h>     // for syscall
 
 namespace kotekan {
 
@@ -100,7 +103,16 @@ void Stage::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
 }
 
 void Stage::start() {
-    this_thread = std::thread(main_thread_fn, std::ref(*this));
+    this_thread = std::thread([&]() {
+#if !defined(MAC_OSX)
+        pid_t tid = syscall(SYS_gettid);
+        register_tid(tid);
+#endif
+        main_thread_fn(std::ref(*this));
+#if !defined(MAC_OSX)
+        unregister_tid(tid);
+#endif
+    });
 
     apply_cpu_affinity();
 }
@@ -139,6 +151,21 @@ Stage::~Stage() {
 
 std::string Stage::dot_string(const std::string& prefix) const {
     return fmt::format("{:s}\"{:s}\" [shape=box, color=darkgreen];\n", prefix, get_unique_name());
+}
+
+void Stage::register_tid(pid_t tid) {
+    thread_list.push_back(tid);
+}
+
+void Stage::unregister_tid(pid_t tid) {
+    auto itr = std::find(thread_list.begin(), thread_list.end(), tid);
+    if (itr != thread_list.end()) {
+        thread_list.erase(itr);
+    }
+}
+
+const std::vector<pid_t>& Stage::get_tids() {
+    return thread_list;
 }
 
 } // namespace kotekan

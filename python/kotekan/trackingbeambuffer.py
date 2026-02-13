@@ -50,7 +50,14 @@ class MergedBeamMetadata(ctypes.Structure):
     _fields_ = [
         ("sub_frame_per_frame", ctypes.c_uint32),
         ("sub_frame_metadata_size", ctypes.c_uint32),
-        ("sub_frame_data_size", ctypes.c_uint32)
+        ("sub_frame_data_size", ctypes.c_uint32),
+        ("freq_start", ctypes.c_uint32),
+        ("nchan", ctypes.c_uint32),
+        ("nframe", ctypes.c_uint32),
+        ("n_sample_per_frame", ctypes.c_uint32),
+        ("n_pol", ctypes.c_uint32),
+        ("fpga_seq_start", ctypes.c_uint64),
+        ("ctime", timespec.time_spec)
     ]
 
 # Build uint_8 to complex64 lookup table.
@@ -156,6 +163,7 @@ class SingleBeamFrame(BeamFrameBase):
         self.num_pol = num_pol
         self.metadata_size = ctypes.sizeof(metadata_cls)
         self.data_size = len(self._buffer[ctypes.sizeof(metadata_cls) :])
+        print("Single Frame: ", self.data_size, samples_per_frame * num_pol)
         if self.data_size != samples_per_frame * num_pol:
             raise ValueError("Data size in the file does not match the"
                              " `samples_per_frame` and `num_pol` input.")
@@ -236,9 +244,10 @@ class MergedBeamFrame(BeamFrameBase):
             self.sub_frame_metadata_size = self.metadata.sub_frame_metadata_size
             self.sub_frame_data_size = self.metadata.sub_frame_data_size
             self.metadata_size = ctypes.sizeof(merged_metadata_cls)
-            print(self.sub_frame_metadata_size, ctypes.sizeof(single_frame_metadata_cls))
-            if self.sub_frame_metadata_size != ctypes.sizeof(single_frame_metadata_cls):
+            print("signle frame metadata size:", self.sub_frame_metadata_size, ctypes.sizeof(single_frame_metadata_cls))
+            if int(self.sub_frame_metadata_size) != int(ctypes.sizeof(single_frame_metadata_cls)):
                 raise ValueError("Input single frame metadata size does not match the buffer metadata.")
+            print("signle data size: ", self.sub_frame_data_size * num_pol, samples_per_single_frame * num_pol)
             if self.sub_frame_data_size != samples_per_single_frame * num_pol:
                 raise ValueError("Input single frame data size does not match the buffer metadata.")
         self.single_frame_metadata_cls = single_frame_metadata_cls
@@ -256,6 +265,9 @@ class MergedBeamFrame(BeamFrameBase):
             raise ValueError("Sub-frame data size does not provided"
                              " correctly.")
         self.data_size = len(self._buffer[self.metadata_size:])
+        print(self.metadata_size, self.data_size, self.sub_frame_per_frame * (self.sub_frame_metadata_size
+            + self.sub_frame_data_size))
+        print(self.sub_frame_per_frame , self.sub_frame_metadata_size, self.sub_frame_data_size)
         if self.data_size != self.sub_frame_per_frame * (self.sub_frame_metadata_size 
             + self.sub_frame_data_size):
             raise ValueError("The input `sub_frame_per_frame`,"
@@ -351,11 +363,22 @@ class SortedTrackingBeamReader(object):
 
     def _read_one_frame(self):
         frames = self._load_file(self.files[self.frame_offset])
+        start_fpga = 0
+        start_ctime = 0
         for ii, fm in enumerate(frames):
             fm.read_frame()
-            print(fm.metadata.fpga_seq_start, fm.metadata.frequency_bin, self.frame_offset, self.files[self.frame_offset])
+            if ii == 0:
+                start_fpga = fm.metadata.fpga_seq_start
+                start_ctime = fm.metadata.ctime
+            else:
+                #print("ctime test", fm.metadata.ctime.tv, start_ctime.tv, ii)
+                assert fm.metadata.fpga_seq_start == start_fpga
+                assert fm.metadata.ctime.tv == start_ctime.tv
+                assert fm.metadata.ctime.tv_nsec == start_ctime.tv_nsec
+            #print(fm.metadata.fpga_seq_start, fm.metadata.frequency_bin, self.frame_offset, self.files[self.frame_offset])
             self._frame_buffer[:, ii, :] = fm.data
         self.frame_offset += 1
+        return start_fpga, start_ctime
 
 class TrackingBeamReader(object):
     """CHIME Tracking Beam raw data stream reader from files. 

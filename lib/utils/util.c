@@ -50,6 +50,27 @@ void make_rfi_dirs(int streamID, const char* write_to, const char* time_dir) {
     }
 }
 
+
+int make_dir(const char* dir_name) {
+    // Make the data dir from the absolute path
+    int err = 0;
+    err = mkdir(dir_name, 0777);
+
+    if (err != -1) {
+        return err;
+    }
+    if (errno == EEXIST) {
+    
+    // printf("The data set: %s, already exists.\nPlease delete the data set, or use another
+           // name.\n", data_set); printf("The current data set can be deleted with: rm -fr %s/*/%s
+           // && rm -fr %s/%s\n", disk_base, data_set, symlink_dir, data_set);
+    } else {
+        perror("Error creating data set directory.\n");
+        printf("The directory was: %s \n", dir_name);
+    }
+    exit(errno);
+}
+
 void make_dirs(char* disk_base, char* data_set, int num_disks) {
 
     // Make the data location.

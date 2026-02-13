@@ -23,6 +23,7 @@
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error, out_of_range
+#include <time.h>     // for timespec
 #include <utility>    // for pair
 #include <vector>     // for vector
 
@@ -95,18 +96,21 @@ void BaseWriter::main_thread() {
 
     frameID frame_id(in_buf);
 
+    const timespec timeout = double_to_ts(acq_timeout);
+
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        auto status = wait_for_full_frame_timeout(in_buf, unique_name.c_str(), frame_id, timeout);
+        if (status == 0) {
+            // Write frame
+            write_data(in_buf, frame_id);
+
+            // Mark the buffer and move on
+            mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+        } else if (status == -1) {
             break;
         }
-
-        // Write frame
-        write_data(in_buf, frame_id);
-
-        // Mark the buffer and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
 
         // Clean out any acquisitions that have been inactive long
         close_old_acqs();

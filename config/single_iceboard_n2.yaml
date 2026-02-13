@@ -210,7 +210,7 @@ gpu:
   kernel_path: "/var/lib/kotekan/opencl/kernels/"
   log_level: WARN
   frame_arrival_period: samples_per_data_set / 390625 / num_links
-  commands:
+  commands: &command_list
     - name: clInputData
     - name: clPresumZero
     - name: clOutputDataZero
@@ -220,6 +220,7 @@ gpu:
   gpu_0:
     kotekan_stage: clProcess
     gpu_id: 0
+    commands: *command_list
     in_buffers:
       network_buf: merged_network_buf
     out_buffers:

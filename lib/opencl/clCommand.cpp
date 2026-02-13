@@ -48,7 +48,7 @@ void clCommand::finalize_frame(int gpu_frame_id) {
         CHECK_CL_ERROR(clReleaseEvent(post_events[gpu_frame_id]));
         post_events[gpu_frame_id] = nullptr;
     } else
-        ERROR("*** WTF? Null event!");
+        FATAL_ERROR("Null OpenCL event!");
 }
 
 

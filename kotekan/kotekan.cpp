@@ -4,6 +4,7 @@
 #include "errors.h"               // for get_error_message, get_exit_code, __enable_syslog, exi...
 #include "kotekanLogging.hpp"     // for INFO_NON_OO, logLevel, ERROR_NON_OO, FATAL_ERROR_NON_OO
 #include "kotekanMode.hpp"        // for kotekanMode
+#include "kotekanTrackers.hpp"    // for KotekanTrackers
 #include "prometheusMetrics.hpp"  // for Metrics, Gauge
 #include "restServer.hpp"         // for connectionInstance, HTTP_RESPONSE, restServer, HTTP_RE...
 #include "util.h"                 // for EVER
@@ -483,6 +484,9 @@ int main(int argc, char** argv) {
                 INFO_NON_OO("Attempting to stop and join kotekan_stages...");
                 kotekan_mode->stop_stages();
                 kotekan_mode->join();
+                if (string(get_error_message()) != "not set") {
+                    KotekanTrackers::instance().dump_trackers();
+                }
                 delete kotekan_mode;
             }
             break;

@@ -10,6 +10,8 @@ add_library(
     ReadGain.cpp
     nDiskFileWrite.cpp
     nDiskFileRead.cpp
+    oneDiskVDIFWrite.cpp
+    oneDiskVDIFWrite.hpp
     networkPowerStream.cpp
     integratePowerStream.cpp
     monitorBuffer.cpp
@@ -74,7 +76,8 @@ add_library(
     BeamInspect.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
-    BadInputFlag.cpp)
+    BadInputFlag.cpp
+    hexDump.cpp)
 
 target_include_directories(kotekan_stages PRIVATE .)
 
