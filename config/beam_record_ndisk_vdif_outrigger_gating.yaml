@@ -1,13 +1,13 @@
 ##########################################
 #
-# beam_record_ndisk_vdif.yaml
+# beam_record_ndisk_vdif_outrigger_gating.yaml
 #
 # Configuration for reading tracking beam 
 # frames from files merge and sort packets 
 # to a bigger frame. The missing packets 
 # will be filled up with zeros. 
 #
-# Author: Jing Luo
+# Author: Aaron Pearlman
 #
 ##########################################
 ---
