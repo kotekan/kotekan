@@ -94,6 +94,7 @@ add_library(
     configTrackerWriter.cpp
     givenDataGen.cpp
     testDataGen.cpp
+    testDataGenFewHot.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
     hexDump.cpp
