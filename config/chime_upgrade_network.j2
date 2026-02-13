@@ -174,7 +174,7 @@ dpdk:
 zero_samples:
   duplicate_ls_buffer: False
 {%- for id in range(16) %}
-  zero_{{ id }}}:
+  zero_{{ id }}:
     kotekan_stage: zeroSamples
     lost_samples_buf: lost_samples_buffer_{{ id // 4 }}
     out_buf: host_voltage_buffer_{{ id }}

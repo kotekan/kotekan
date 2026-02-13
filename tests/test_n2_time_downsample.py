@@ -84,7 +84,7 @@ global_params = {
         "dish_coelev_deg": 0.0,
         "num_dishes_x": 22,
         "num_dishes_y": 24,
-        "updatable_config": "/earth_rotation_data",
+        "eop_updatable_config": "/earth_rotation_data",
         "dish_inputs": [],
     },
     "gps_time": {"frame0_nano": t_start_inst_ns},
@@ -341,7 +341,12 @@ def n2_data(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("n2_data")
 
     expected_frames = len(calc_downsamp_frame_meta())
-    dump_buffer = runner.DumpN2Buffer(str(tmpdir), exit_after_n_files=expected_frames)
+    dump_buffer = runner.DumpN2Buffer(
+        str(tmpdir),
+        exit_after_n_files=expected_frames,
+        num_elements=global_params["num_elements"],
+        num_ev=global_params["num_ev"],
+    )
 
     test = runner.KotekanStageTester(
         "N2TimeDownsample",
@@ -365,11 +370,6 @@ def test_structure(n2_data):
 
     # Check that each samples is the expected shape
     n = global_params["num_elements"]
-
-    for frame in n2_data:
-        assert frame.metadata.num_elements == n
-        assert frame.metadata.num_prod == (n * (n + 1) // 2)
-        assert frame.metadata.num_ev == global_params["num_ev"]
 
     # Check that we have the expected number of samples
 
@@ -407,7 +407,6 @@ def test_metadata(n2_data):
 
     for i, frame in enumerate(n2_data):
         assert frame.metadata.abs_time_idx == i + 1  # First frame skipped.
-        assert frame.metadata.vis_layout == 0
         assert frame.metadata.freq_id == 0
         assert frame.metadata.fpga_start_tick == frame_meta[i]["seq_start"]
         assert frame.metadata.frame_length_fpga_ticks == frame_meta[i]["seq_len"]

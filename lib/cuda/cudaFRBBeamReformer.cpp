@@ -1,21 +1,21 @@
 #include "cudaFRBBeamReformer.hpp"
 
+#include "DataType.hpp"            // for float16_t, DataType
 #include "buffer.hpp"              // for GenericBuffer
-#include "cublas_v2.h"             // for cublasCreate, cublasDestroy, cublasSetStream
 #include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "div.hpp"                 // for div_noremainder, mod
 #include "driver_types.h"          // for CUevent_st, cudaEvent_t, CUstream_st
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG, ERROR
 #include "metadata.hpp"            // for metadataObject
 #include "ringbuffer.hpp"          // for RingBuffer
 
-#include <DataType.hpp>      // for float16_t, DataType
 #include <algorithm>         // for max
-#include <assert.h>          // for assert
+#include <cassert>           // for assert
 #include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, metadata_is_chord
 #include <cstdlib>           // for abort
-#include <div.hpp>           // for div_noremainder, mod
+#include <cublas_v2.h>       // for cublasCreate, cublasDestroy, cublasSetStream
 #include <fmt.hpp>           // for compile_string_to_view
 #include <memory>            // for shared_ptr, __shared_ptr_access
 #include <optional>          // for optional
@@ -37,9 +37,9 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     // Number of output beams
     _num_beams = config.get<int>(unique_name, "num_beams");
     // Number of input beams
-    _beam_grid_size_ns = config.get<int>(unique_name, "beam_grid_size_ns");
-    _beam_grid_size_ew = config.get<int>(unique_name, "beam_grid_size_ew");
-    num_input_beams = _beam_grid_size_ew * _beam_grid_size_ns;
+    _beam_grid_size_P = config.get<int>(unique_name, "beam_grid_size_P");
+    _beam_grid_size_Q = config.get<int>(unique_name, "beam_grid_size_Q");
+    num_input_beams = _beam_grid_size_P * _beam_grid_size_Q;
     // Number of frequencies
     _max_num_local_freq = config.get<int>(unique_name, "max_num_local_freq");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
@@ -190,18 +190,12 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         assert(in_meta->type == kotekan::float16);
         // Assert Ttilde x Fbar x beamQ x beamP
         assert(in_meta->dims == 4);
-        // in_meta->dim[0] is in the ringbuffer
-        // in_meta->dim[1] is set wrong
-        // if (!(in_meta->dim[1] == _num_local_freq))
-        //     ERROR("in dim=[{},{},{},{}] num_local_freq={}", in_meta->dim[0], in_meta->dim[1],
-        //           in_meta->dim[2], in_meta->dim[3], _num_local_freq);
-        // assert(in_meta->dim[1] == _num_local_freq);
         if (!(in_meta->dim[1] == _max_num_local_freq))
             ERROR("in dim=[{},{},{},{}] max_num_local_freq={}", in_meta->dim[0], in_meta->dim[1],
                   in_meta->dim[2], in_meta->dim[3], _max_num_local_freq);
         assert(in_meta->dim[1] == _max_num_local_freq);
-        assert(in_meta->dim[2] == _beam_grid_size_ew);
-        assert(in_meta->dim[3] == _beam_grid_size_ns);
+        assert(in_meta->dim[2] == _beam_grid_size_Q);
+        assert(in_meta->dim[3] == _beam_grid_size_P);
         for (int d = in_meta->dims - 1; d >= 0; --d)
             if (d == in_meta->dims - 1)
                 assert(in_meta->stride[d] == 1);
@@ -227,9 +221,11 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         DEBUG("Set output metadata: array shape {:s}, array type {:s}",
               out_meta->get_dimensions_string(), out_meta->get_type_string());
 
-        // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+        // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`
         assert(input_cursor % in_meta->sample_bytes() == 0);
-        out_meta->set_sample0_offset(div_noremainder(input_cursor, in_meta->sample_bytes()));
+        out_meta->set_fpga_seq_num(in_meta->get_fpga_seq_num()
+                                   + in_meta->get_time_downsampling_fpga()
+                                         * div_noremainder(input_cursor, in_meta->sample_bytes()));
     }
 
     return record_end_event();

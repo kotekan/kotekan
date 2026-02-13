@@ -6,10 +6,10 @@
 #ifndef N2_ACCUMULATE_HPP
 #define N2_ACCUMULATE_HPP
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope
 #include "Config.hpp"            // for Config
 #include "N2Util.hpp"            // for frameID
 #include "Stage.hpp"             // for Stage
+#include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
@@ -81,6 +81,8 @@ private:
 
     int64_t _num_elements; ///< Total number of telescope elements (~2 * num dishes)
 
+    const int _num_workers; ///< number of OpenMP threads to use to process data
+
     // Absolute frame counter (TODO: determine this another way)
     uint64_t _abs_frame_count;
 
@@ -105,7 +107,6 @@ private:
     // The below vectors are initialized in the constructor after _num_vis_products
     // and _num_freq_in_frame are known.
     std::vector<int32_t> _vis;
-    std::vector<int32_t> _vis_even;
     std::vector<float> _weights;
     // number of fpga samples, per frequency, in frame
     std::vector<int32_t> _n_valid_fpga_samples_in_vis;
@@ -116,7 +117,7 @@ private:
     int64_t _accum_fpga_start_tick;
 
     // The telescope
-    const CHORDTelescope& _tel;
+    const Telescope& _tel;
 
     // Reference to the prometheus metric that we will use for counting skipped
     // frames

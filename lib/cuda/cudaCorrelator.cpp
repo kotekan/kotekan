@@ -7,25 +7,24 @@
 #include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h"      // for cudaGetLastError
+#include "div.hpp"                 // for div_noremainder, mod
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG
 #include "n2k/Correlator.hpp"      // for Correlator
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <algorithm>         // for max
-#include <array>             // for array
-#include <cassert>           // for assert
-#include <chordMetadata.hpp> // for chordMetadata
-#include <cstddef>           // for ptrdiff_t
-#include <cstdint>           // for int32_t, int8_t, uint32_t
-#include <div.hpp>           // for div_noremainder, mod
-#include <functional>        // for function
-#include <memory>            // for shared_ptr, __shared_ptr_access
-#include <stdexcept>         // for runtime_error
-#include <string>            // for allocator, basic_string, string
-#include <tuple>             // for tuple, make_tuple
+#include <algorithm>          // for max
+#include <array>              // for array
+#include <cassert>            // for assert
+#include <chordMetadata.hpp>  // for chordMetadata
+#include <cstddef>            // for ptrdiff_t
+#include <cstdint>            // for int32_t, int8_t, uint32_t
+#include <cuda_runtime_api.h> // for cudaGetLastError
+#include <fmt.hpp>            // for compile_string_to_view
+#include <functional>         // for function
+#include <memory>             // for shared_ptr, __shared_ptr_access
+#include <stdexcept>          // for runtime_error
+#include <string>             // for allocator, basic_string, string
+#include <tuple>              // for tuple, make_tuple
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -46,6 +45,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     _voltage_name(config.get<std::string>(unique_name, "voltage_name")),
     _rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
     _n2k_correlation_name(config.get<std::string>(unique_name, "n2k_correlation_name")),
+    _poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     voltage(_voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{_buffer_depth * _num_times, _num_local_freq, 2,
                                           _num_elements / 2},
@@ -120,45 +120,29 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     rfi_RFImask.check_metadata();
     n2k_correlation.set_metadata(voltage.get_metadata());
 
-    const std::shared_ptr<const chordMetadata> in_meta = voltage.get_metadata();
+    const std::shared_ptr<const chordMetadata> voltage_meta = voltage.get_metadata();
     const std::shared_ptr<const chordMetadata> rfi_meta = rfi_RFImask.get_metadata();
-    const std::shared_ptr<chordMetadata> out_meta = n2k_correlation.get_metadata();
-
-    // The input ringbuffers do not contain time-dependent data,
-    // so we must reconstruct it here. (fpga_seq_num and sample0_offset)
-    // TODO: do this automatically in `NDArrayRingBuffer`
-
-    // Assuming the voltage is coming in at the raw sample rate.
-    out_meta->set_fpga_seq_num(voltage.get_read_valid().begin());
-    out_meta->set_sample0_offset(out_meta->get_fpga_seq_num() / _sub_integration_ntime);
-
-    std::vector<int> out_time_downsampling_fpga(out_meta->get_nfreq());
-    std::vector<int64_t> out_half_fpga_sample0(out_meta->get_nfreq());
-    const std::vector<int64_t> in_half_fpga_sample0 = in_meta->get_half_fpga_sample0();
-    const std::vector<int> in_time_downsampling_fpga = in_meta->get_time_downsampling_fpga();
-
-    for (int freq = 0; freq < out_meta->get_nfreq(); ++freq) {
-        out_time_downsampling_fpga[freq] = _sub_integration_ntime * in_time_downsampling_fpga[freq];
-        out_half_fpga_sample0[freq] = in_half_fpga_sample0[freq] + out_time_downsampling_fpga[freq]
-                                      - in_time_downsampling_fpga[freq];
-    }
-
-    out_meta->set_time_downsampling_fpga(out_time_downsampling_fpga);
-    out_meta->set_half_fpga_sample0(out_half_fpga_sample0);
-
-    // Set poison for debug checks.
-    n2k_correlation.set_to_poison(0x80);
-
-    // The ringbuffering here is fishy. We should fix the kernel instead.
+    const std::shared_ptr<chordMetadata> n2k_corr_meta = n2k_correlation.get_metadata();
 
     // Ensure consistency:
-    assert(in_meta->get_nfreq() == rfi_meta->get_nfreq());
-    // set above already
-    // const std::vector<int> in_time_downsampling_fpga = in_meta->get_time_downsampling_fpga();
-    const std::vector<int> rfi_time_downsampling_fpga = rfi_meta->get_time_downsampling_fpga();
-    for (int freq = 0; freq < in_meta->get_nfreq(); ++freq)
-        assert(voltage.get_read_valid().begin() * in_time_downsampling_fpga[freq]
-               == rfi_RFImask.get_read_valid().begin() * rfi_time_downsampling_fpga[freq]);
+    assert(voltage_meta->get_fpga_seq_num()
+               + voltage.get_read_valid().begin() * voltage_meta->get_time_downsampling_fpga()
+           == rfi_meta->get_fpga_seq_num()
+                  + rfi_RFImask.get_read_valid().begin() * rfi_meta->get_time_downsampling_fpga());
+
+    // The input ringbuffer metadata do not contain time-dependent metadata,
+    // so we must reconstruct it here. (fpga_seq_num)
+    n2k_corr_meta->set_fpga_seq_num(voltage_meta->get_fpga_seq_num()
+                                    + voltage.get_read_valid().begin()
+                                          * voltage_meta->get_time_downsampling_fpga());
+    n2k_corr_meta->set_time_downsampling_fpga(_sub_integration_ntime
+                                              * voltage_meta->get_time_downsampling_fpga());
+
+    // Set poison for debug checks.
+    if (_poison_buffers)
+        n2k_correlation.set_to_poison(0x80);
+
+    // The ringbuffering here is fishy. We should fix the kernel instead.
 
     const std::ptrdiff_t time_offset =
         voltage.get_read_valid().begin() % voltage.get_ndarray().extent(0);
@@ -187,7 +171,8 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     CHECK_CUDA_ERROR(cudaGetLastError());
 
     // Check if poison value made it through
-    n2k_correlation.check_for_poison(0x80);
+    if (_poison_buffers)
+        n2k_correlation.check_for_poison(0x80);
 
     return record_end_event();
 }

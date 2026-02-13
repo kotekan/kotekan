@@ -1,34 +1,34 @@
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for type_total_bytes, type_to_string
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "cpl_error.h"         // for CPLErr
-#include "cpl_port.h"          // for GUInt64, GPtrDiff_t
-#include "gdalFiles.hpp"       // for get_gdal_datatype, convert_to_cstring_list, chord2gdal
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, WARN, INFO
-#include "metadata.hpp"        // for metadataObject
-
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <Stage.hpp>               // for Stage
-#include <StageFactory.hpp>        // for REGISTER_KOTEKAN_STAGE
-#include <array>                   // for array
-#include <atomic>                  // for __atomic_base, atomic
-#include <cassert>                 // for assert
-#include <chordMetadata.hpp>       // for chordMetadata, metadata_is_chord, get_chord_metadata
-#include <cstdint>                 // for int64_t, uint32_t, uint8_t
-#include <cstring>                 // for size_t, strerror
-#include <errno.h>                 // for errno, EEXIST, EISDIR
-#include <errors.h>                // for exit_kotekan, ReturnCode
-#include <functional>              // for function
-#include <gdal.h>                  // for GDALAllRegister, GDALGetDataTypeSizeBytes, GDT_Int32
-#include <gdal_priv.h>             // for GDALGroup, GDALExtendedDataType, GDALAttribute, GDALD...
-#include <iomanip>                 // for operator<<, setfill, setw
-#include <memory>                  // for shared_ptr, __shared_ptr_access, allocator, unique_ptr
-#include <prometheusMetrics.hpp>   // for Metrics, Gauge
-#include <sstream>                 // for basic_ostream, operator<<, basic_ostringstream, ostri...
-#include <string>                  // for basic_string, char_traits, string, operator<<, operat...
-#include <sys/stat.h>              // for mkdir
+#include <Config.hpp>       // for Config
+#include <DataType.hpp>     // for type_total_bytes, type_to_string
+#include <Stage.hpp>        // for Stage
+#include <StageFactory.hpp> // for REGISTER_KOTEKAN_STAGE
+#include <Telescope.hpp>
+#include <array>                 // for array
+#include <atomic>                // for __atomic_base, atomic
+#include <buffer.hpp>            // for Buffer
+#include <bufferContainer.hpp>   // for bufferContainer
+#include <cassert>               // for assert
+#include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, get_chord_metadata
+#include <cpl_error.h>           // for CPLErr
+#include <cpl_port.h>            // for GUInt64, GPtrDiff_t
+#include <cstdint>               // for int64_t, uint32_t, uint8_t
+#include <cstring>               // for size_t, strerror
+#include <errno.h>               // for errno, EEXIST, EISDIR
+#include <errors.h>              // for exit_kotekan, ReturnCode
+#include <fmt.hpp>               // for compile_string_to_view
+#include <functional>            // for function
+#include <gdal.h>                // for GDALAllRegister, GDALGetDataTypeSizeBytes, GDT_Int32
+#include <gdalFiles.hpp>         // for get_gdal_datatype, convert_to_cstring_list, chord2gdal
+#include <gdal_priv.h>           // for GDALGroup, GDALExtendedDataType, GDALAttribute, GDALD...
+#include <iomanip>               // for operator<<, setfill, setw
+#include <kotekanLogging.hpp>    // for DEBUG, FATAL_ERROR, WARN, INFO
+#include <memory>                // for shared_ptr, __shared_ptr_access, allocator, unique_ptr
+#include <metadata.hpp>          // for metadataObject
+#include <prometheusMetrics.hpp> // for Metrics, Gauge
+#include <sstream>               // for basic_ostream, operator<<, basic_ostringstream, ostri...
+#include <string>                // for basic_string, char_traits, string, operator<<, operat...
+#include <sys/stat.h>            // for mkdir
+#include <timeUtil.hpp>
 #include <unistd.h>                // for gethostname
 #include <vector>                  // for vector
 #include <visUtil.hpp>             // for current_time
@@ -94,6 +94,8 @@ public:
         auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
             "kotekan_gdalfilewrite_write_time_seconds", unique_name);
 
+        const auto& telescope = Telescope::instance();
+
         const double start_time = current_time();
 
         for (std::int64_t frame_counter = 0;; ++frame_counter) {
@@ -128,7 +130,7 @@ public:
             const double elapsed_time = this_time - start_time;
 
             INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
-                 frame_counter, meta->get_sample0_offset(), elapsed_time);
+                 frame_counter, meta->get_fpga_seq_num(), elapsed_time);
 
             if (!skip_writing) {
 
@@ -186,6 +188,38 @@ public:
                 // Write metadata (attributes)
 
                 {
+                    const std::string telescope_name_value = telescope.get_name();
+                    const auto telescope_name_datatype =
+                        GDALExtendedDataType::CreateString(telescope_name_value.size());
+                    const auto telescope_name = group->CreateAttribute(
+                        "telescope_name", std::vector<GUInt64>{}, telescope_name_datatype);
+                    assert(telescope_name);
+                    const bool success = telescope_name->Write(telescope_name_value.c_str());
+                    assert(success);
+                }
+
+                {
+                    const auto seq_length_nsec_value = telescope.seq_length_nsec();
+                    const auto seq_length_nsec = group->CreateAttribute(
+                        "seq_length_nsec", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(seq_length_nsec_value)));
+                    const bool success = seq_length_nsec->Write(&seq_length_nsec_value,
+                                                                sizeof seq_length_nsec_value);
+                    assert(success);
+                }
+
+                {
+                    // Store bool as int
+                    const int gps_time_enabled_value = telescope.gps_time_enabled();
+                    const auto gps_time_enabled = group->CreateAttribute(
+                        "gps_time_enabled", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(gps_time_enabled_value)));
+                    const bool success = gps_time_enabled->Write(&gps_time_enabled_value,
+                                                                 sizeof gps_time_enabled_value);
+                    assert(success);
+                }
+
+                {
                     const std::string name_value = meta->get_name();
                     const auto name_datatype =
                         GDALExtendedDataType::CreateString(name_value.size());
@@ -216,7 +250,7 @@ public:
                     assert(success);
                 }
 
-                if (meta->get_nfreq() >= 0) {
+                if (meta->has_coarse_freq()) {
                     const auto coarse_freq = group->CreateAttribute(
                         "coarse_freq", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
                         GDALExtendedDataType::Create(
@@ -227,7 +261,7 @@ public:
                     assert(success);
                 }
 
-                if (meta->get_nfreq() >= 0) {
+                if (meta->has_freq_upchan_factor()) {
                     const auto freq_upchan_factor = group->CreateAttribute(
                         "freq_upchan_factor", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
                         GDALExtendedDataType::Create(
@@ -238,45 +272,46 @@ public:
                     assert(success);
                 }
 
-                if (meta->get_sample0_offset() >= 0) {
-                    const auto sample0_offset_value = meta->get_sample0_offset();
-                    const auto sample0_offset = group->CreateAttribute(
-                        "sample0_offset", std::vector<GUInt64>{},
-                        GDALExtendedDataType::Create(get_gdal_datatype(sample0_offset_value)));
+                if (meta->has_freq_upchan_index()) {
+                    const auto freq_upchan_index = group->CreateAttribute(
+                        "freq_upchan_index", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
+                        GDALExtendedDataType::Create(
+                            get_gdal_datatype(*meta->get_freq_upchan_index().data())));
+                    const bool success = freq_upchan_index->Write(
+                        meta->get_freq_upchan_index().data(),
+                        meta->get_nfreq() * sizeof *meta->get_freq_upchan_index().data());
+                    assert(success);
+                }
+
+                if (meta->has_fpga_seq_num()) {
+                    const auto fpga_seq_num_value = meta->get_fpga_seq_num();
+                    const auto fpga_seq_num = group->CreateAttribute(
+                        "fpga_seq_num", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(fpga_seq_num_value)));
                     const bool success =
-                        sample0_offset->Write(&sample0_offset_value, sizeof sample0_offset_value);
+                        fpga_seq_num->Write(&fpga_seq_num_value, sizeof fpga_seq_num_value);
                     assert(success);
                 }
 
-                if (meta->get_offset_downsampling() >= 0) {
-                    const auto offset_downsampling_value = meta->get_offset_downsampling();
-                    const auto offset_downsampling = group->CreateAttribute(
-                        "offset_downsampling", std::vector<GUInt64>{},
-                        GDALExtendedDataType::Create(get_gdal_datatype(offset_downsampling_value)));
-                    const bool success = offset_downsampling->Write(
-                        &offset_downsampling_value, sizeof offset_downsampling_value);
+                if (meta->has_fpga_seq_num()) {
+                    const auto fpga_seq_time_nsec_value =
+                        timespec_to_nanosec_i64(telescope.to_time(meta->get_fpga_seq_num()));
+                    const auto fpga_seq_time_nsec = group->CreateAttribute(
+                        "fpga_seq_time_nsec", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(fpga_seq_time_nsec_value)));
+                    const bool success = fpga_seq_time_nsec->Write(&fpga_seq_time_nsec_value,
+                                                                   sizeof fpga_seq_time_nsec_value);
                     assert(success);
                 }
 
-                if (meta->get_nfreq() >= 0) {
-                    const auto half_fpga_sample0 = group->CreateAttribute(
-                        "half_fpga_sample0", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
-                        GDALExtendedDataType::Create(
-                            get_gdal_datatype(*meta->get_half_fpga_sample0().data())));
-                    const bool success = half_fpga_sample0->Write(
-                        meta->get_half_fpga_sample0().data(),
-                        meta->get_nfreq() * sizeof *meta->get_half_fpga_sample0().data());
-                    assert(success);
-                }
-
-                if (meta->get_nfreq() >= 0) {
-                    const auto time_downsampling_fpga = group->CreateAttribute(
-                        "time_downsampling_fpga", std::vector<GUInt64>{GUInt64(meta->get_nfreq())},
-                        GDALExtendedDataType::Create(
-                            get_gdal_datatype(*meta->get_time_downsampling_fpga().data())));
+                if (meta->has_time_downsampling_fpga()) {
+                    const auto time_downsampling_fpga_value = meta->get_time_downsampling_fpga();
+                    const auto time_downsampling_fpga =
+                        group->CreateAttribute("time_downsampling_fpga", std::vector<GUInt64>{},
+                                               GDALExtendedDataType::Create(get_gdal_datatype(
+                                                   time_downsampling_fpga_value)));
                     const bool success = time_downsampling_fpga->Write(
-                        meta->get_time_downsampling_fpga().data(),
-                        meta->get_nfreq() * sizeof *meta->get_time_downsampling_fpga().data());
+                        &time_downsampling_fpga_value, sizeof time_downsampling_fpga_value);
                     assert(success);
                 }
 
@@ -412,9 +447,15 @@ public:
             }
         } // for
 
-        if (--waiting_for_max_frames == 0) {
-            WARN("Shutting down Kotekan");
-            exit_kotekan(CLEAN_EXIT);
+        if (max_frames >= 0) {
+            // Unregister to allow the pipeline to continue, unless I'm the last
+            // consumer on this buffer.
+            buffer->unregister_consumer(unique_name, true);
+
+            if (--waiting_for_max_frames == 0) {
+                WARN("Shutting down Kotekan");
+                exit_kotekan(CLEAN_EXIT);
+            }
         }
 
         DEBUG("exiting");

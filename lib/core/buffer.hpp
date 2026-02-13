@@ -9,6 +9,7 @@
 #define KOTEKAN_BUFFER_HPP
 
 #include "DataType.hpp"       // for DataType
+#include "FrameDesc.hpp"      // for FrameDesc
 #include "NDArray.hpp"        // for GenericNDArray, NDArray
 #include "Symbol.hpp"         // for Symbol
 #include "kotekanLogging.hpp" // for kotekanLogging
@@ -146,8 +147,9 @@ public:
      * to unregister when they close.
      *
      * @param name The name of the consumer to unregister
+     * @param leave_last Optional, do not unregister if you are the last consumer.
      */
-    virtual void unregister_consumer(const std::string& name);
+    virtual void unregister_consumer(const std::string& name, bool leave_last = false);
 
     /**
      * @brief Register a producer with a given name.
@@ -286,7 +288,7 @@ public:
 protected:
     typedef std::lock_guard<std::recursive_mutex> buffer_lock;
     /// The main lock for frame state management
-    std::recursive_mutex mutex;
+    mutable std::recursive_mutex mutex;
 
     /// The condition variable for calls to @c wait_for_full_buffer
     std::condition_variable_any full_cond;
@@ -372,8 +374,11 @@ public:
      * @brief Unregisters the named consumer from this buffer.
      * Signals producers if this causes the buffer to become free for
      * writing.
+     *
+     * @param name unique name of consumer to unregister
+     * @param leave_last if true, do not unregister the last consumer.
      */
-    void unregister_consumer(const std::string& name) override;
+    void unregister_consumer(const std::string& name, bool leave_last = false) override;
 
     /**
      * @brief Prints a summary the frames and state of the producers and consumers.
@@ -532,26 +537,34 @@ public:
      * @param[in] dimnames Array axis labels in the D dimensions
      */
     template<typename T, std::size_t D>
-    void allocate_new_frame_desc(kotekan::Symbol quantity_name,
-                                 const std::array<std::ptrdiff_t, D>& extents,
-                                 const std::array<kotekan::Symbol, D>& dimnames) {
+    void allocate_ndarray_frame_desc(kotekan::Symbol quantity_name,
+                                     const std::array<std::ptrdiff_t, D>& extents,
+                                     const std::array<kotekan::Symbol, D>& dimnames) {
         buffer_lock lock(mutex);
         if (!frames_desc)
             frames_desc =
                 std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
         else {
-#if 0
-            if(D != frames_desc->get_rank())
-                ERROR("Rank mismatch: {:d} != {:d}", D, frames_desc->get_rank());
-            if(kotekan::GetDataType_v<T> != frames_desc->get_value_datatype())
-                ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(kotekan::GetDataType_v<T>), kotekan::type_to_string(frames_desc->get_value_datatype()));
-            if(quantity_name != frames_desc->get_quantity_name())
-                ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name, frames_desc->get_quantity_name());
-            if(!std::equal(extents.begin(), extents.end(), frames_desc->get_extents().begin()))
-                ERROR("Extents do not match: [{:s}] != [{:s}]", fmt::join(extents, ", "), fmt::join(frames_desc->get_extents(), ", "));
-            if(!std::equal(dimnames.begin(), dimnames.end(), frames_desc->get_dimnames().begin()))
-                ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "), fmt::join(frames_desc->get_dimnames(), ", "));
-#endif
+            auto nd_desc = std::dynamic_pointer_cast<kotekan::GenericNDArray>(frames_desc);
+            if (!nd_desc) {
+                ERROR("Frame desc mismatch: existing desc is not an NDArray");
+                return;
+            }
+            if (D != nd_desc->get_rank())
+                ERROR("Rank mismatch: {:d} != {:d}", D, nd_desc->get_rank());
+            if (kotekan::GetDataType_v<T> != nd_desc->get_value_datatype())
+                ERROR("Type mismatch: {:s} != {:s}",
+                      kotekan::type_to_string(kotekan::GetDataType_v<T>),
+                      kotekan::type_to_string(nd_desc->get_value_datatype()));
+            if (quantity_name != nd_desc->get_quantity_name())
+                ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
+                      nd_desc->get_quantity_name());
+            if (!std::equal(extents.begin(), extents.end(), nd_desc->get_extents().begin()))
+                ERROR("Extents do not match: [{:s}] != [{:s}]", fmt::join(extents, ", "),
+                      fmt::join(nd_desc->get_extents(), ", "));
+            if (!std::equal(dimnames.begin(), dimnames.end(), nd_desc->get_dimnames().begin()))
+                ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "),
+                      fmt::join(nd_desc->get_dimnames(), ", "));
         }
     }
 
@@ -563,40 +576,75 @@ public:
      * @param[in] extents Array extentds in the D dimensions
      * @param[in] dimnames Array axis labels in the D dimensions
      */
-    void allocate_new_frame_desc(kotekan::DataType value_type, kotekan::Symbol quantity_name,
-                                 const std::vector<std::ptrdiff_t>& extents,
-                                 const std::vector<kotekan::Symbol>& dimnames) {
+    void allocate_ndarray_frame_desc(kotekan::DataType value_type, kotekan::Symbol quantity_name,
+                                     const std::vector<std::ptrdiff_t>& extents,
+                                     const std::vector<kotekan::Symbol>& dimnames) {
         buffer_lock lock(mutex);
-        if (!frames_desc)
+        if (!frames_desc) {
             frames_desc = kotekan::GenericNDArray::create(value_type, quantity_name, extents,
                                                           dimnames, nullptr);
-        else {
-            if (extents.size() != frames_desc->get_rank())
-                ERROR("Rank mismatch: {:d} != {:d}", extents.size(), frames_desc->get_rank());
-            if (value_type != frames_desc->get_value_datatype())
+        } else {
+            auto nd_desc = std::dynamic_pointer_cast<kotekan::GenericNDArray>(frames_desc);
+            if (!nd_desc) {
+                ERROR("Frame desc mismatch: existing desc is not an NDArray");
+                return;
+            }
+            if (extents.size() != nd_desc->get_rank())
+                ERROR("Rank mismatch: {:d} != {:d}", extents.size(), nd_desc->get_rank());
+            if (value_type != nd_desc->get_value_datatype())
                 ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(value_type),
-                      kotekan::type_to_string(frames_desc->get_value_datatype()));
-            if (quantity_name != frames_desc->get_quantity_name())
+                      kotekan::type_to_string(nd_desc->get_value_datatype()));
+            if (quantity_name != nd_desc->get_quantity_name())
                 ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
-                      frames_desc->get_quantity_name());
-            if (extents != frames_desc->get_extents())
+                      nd_desc->get_quantity_name());
+            if (extents != nd_desc->get_extents())
                 ERROR("Extents do not match: [{:s}] != [{:s}]",
                       fmt::format("{:s}", fmt::join(extents, ", ")),
-                      fmt::format("{:s}", fmt::join(frames_desc->get_extents(), ", ")));
-            if (dimnames != frames_desc->get_dimnames())
+                      fmt::format("{:s}", fmt::join(nd_desc->get_extents(), ", ")));
+            if (dimnames != nd_desc->get_dimnames())
                 ERROR("Dimnames do not match: [{:s}] != [{:s}]",
                       fmt::format("{:s}", fmt::join(dimnames, ", ")),
-                      fmt::format("{:s}", fmt::join(frames_desc->get_dimnames(), ", ")));
+                      fmt::format("{:s}", fmt::join(nd_desc->get_dimnames(), ", ")));
         }
     }
 
     /**
      * @brief provides read access to the array description
-     * @return The NDArray data structure describing the array
+     * @return The NDArray data structure describing the array. If type of frames_desc is
+     * not GenericNDArray, this will return nullptr.
      */
-    std::shared_ptr<const kotekan::GenericNDArray> get_frame_desc() {
-        // TODO: use a get/set pair instead?
+    std::shared_ptr<const kotekan::GenericNDArray> get_ndarray_frame_desc() {
+        buffer_lock lock(mutex);
+        return std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
+    }
+
+    /**
+     * @brief provides read access to the frame description
+     * @return The data structure describing the frame
+     */
+    std::shared_ptr<const kotekan::FrameDesc> get_frame_description() {
+        buffer_lock lock(mutex);
         return frames_desc;
+    }
+
+    /**
+     * @brief Sets the frame description
+     */
+    void set_frame_desc(std::shared_ptr<kotekan::FrameDesc> new_desc) {
+        buffer_lock lock(mutex);
+
+        if (new_desc->get_byte_size() != frame_size) {
+            FATAL_ERROR("Frame description size ({:d}) is unexpected, buffer provides ({:d})",
+                        new_desc->get_byte_size(), frame_size);
+        }
+
+        if (!frames_desc) {
+            frames_desc = new_desc;
+        } else {
+            if (*frames_desc != *new_desc) {
+                ERROR("Frame description mismatch!");
+            }
+        }
     }
 
     /**
@@ -641,7 +689,7 @@ public:
     std::vector<uint8_t*> frames;
 
     /// Metdata describing the shape of the data stored in frames
-    std::shared_ptr<kotekan::GenericNDArray> frames_desc;
+    std::shared_ptr<kotekan::FrameDesc> frames_desc;
 
     /**
      * @brief Flag variables to say which frames are full

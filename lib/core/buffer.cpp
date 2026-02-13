@@ -13,7 +13,7 @@
 
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
-#include "errors.h"           // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F, FATAL_ERROR_F
+#include "errors.h"           // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F
 #include "kotekanLogging.hpp" // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
 #include "metadata.hpp"       // for metadataObject, metadataPool
 #include "nt_memset.h"        // for nt_memset
@@ -68,9 +68,17 @@ void GenericBuffer::register_consumer(const std::string& name) {
     }
 }
 
-void GenericBuffer::unregister_consumer(const std::string& name) {
+void GenericBuffer::unregister_consumer(const std::string& name, bool leave_last) {
     {
         buffer_lock lock(mutex);
+
+        // Optional: do not unregister if this is the last consumer.
+        if (leave_last && consumers.size() == 1) {
+            DEBUG("Not unregistering consumer {:s} for buffer {:s}, it is the last consumer.", name,
+                  buffer_name);
+            return;
+        }
+
         DEBUG("Unregistering consumer {:s} for buffer {:s}", name, buffer_name);
         size_t nrem = consumers.erase(name);
         if (nrem == 0) {
@@ -614,10 +622,18 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
     return frames[ID];
 }
 
-void Buffer::unregister_consumer(const std::string& name) {
+void Buffer::unregister_consumer(const std::string& name, bool leave_last) {
     int broadcast = 0;
     {
         buffer_lock lock(mutex);
+
+        // Optional: do not unregister if this is the last consumer.
+        if (leave_last && consumers.size() == 1) {
+            DEBUG("Not unregistering consumer {:s} for buffer {:s}, it is the last consumer.", name,
+                  buffer_name);
+            return;
+        }
+
         DEBUG("Unregistering consumer {:s} for buffer {:s}", name, buffer_name);
         size_t nrem = consumers.erase(name);
         if (nrem == 0) {

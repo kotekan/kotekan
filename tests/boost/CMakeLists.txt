@@ -24,8 +24,8 @@ target_link_libraries(test_updatequeue PRIVATE libexternal kotekan_libs kotekan_
 
 # test_dataset_manager_rest needs fmt
 add_executable(test_dataset_manager_rest test_dataset_manager_rest.cpp)
-target_link_libraries(test_dataset_manager_rest PRIVATE libexternal kotekan_libs kotekan_core
-                                                        kotekan_utils)
+target_link_libraries(test_dataset_manager_rest PRIVATE libexternal kotekan_libs kotekan_utils
+                                                        kotekan_core)
 
 # test_dataset_manager needs fmt
 add_executable(test_dataset_manager test_dataset_manager.cpp)
@@ -34,7 +34,7 @@ target_link_libraries(test_dataset_manager PRIVATE libexternal kotekan_libs kote
 
 # test_ringbuffer
 add_executable(test_ringbuffer test_ringbuffer.cpp)
-target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_core kotekan_libs kotekan_utils)
+target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
 # test_fmt
 add_executable(test_fmt test_fmt.cpp)
@@ -43,7 +43,7 @@ target_link_libraries(test_fmt PRIVATE kotekan_libs kotekan_utils)
 
 # test_restclient needs fmt
 add_executable(test_restclient test_restclient.cpp)
-target_link_libraries(test_restclient PRIVATE libexternal kotekan_core kotekan_libs kotekan_utils)
+target_link_libraries(test_restclient PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
 # test_bip_buffer needs fmt
 add_executable(test_bip_buffer test_bip_buffer.cpp)
@@ -109,6 +109,14 @@ if(HDF5_FOUND
                                                             ${CUDA_INCLUDE_DIRS})
 endif()
 
+if(LAPACKE_FOUND AND BLAZE_FOUND)
+    add_executable(test_eigenStages test_eigenStages.cpp)
+    target_link_libraries(test_eigenStages PRIVATE libexternal kotekan_stages kotekan_libs
+                                                   kotekan_utils kotekan_core)
+    target_include_directories(test_eigenStages PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                        ${KOTEKAN_SOURCE_DIR}/lib/testing)
+endif()
+
 add_executable(test_DataType test_DataType.cpp)
 target_link_libraries(test_DataType kotekan_metadata libexternal)
 
@@ -139,5 +147,45 @@ add_custom_target(
     DEPENDS ${PROJECT_BINARY_DIR}/timeUtil.py
     COMMENT "Generating timeUtil.py script")
 
+# visFileData unit test + end-to-end writer test (HDF5 backend)
+if(HDF5_FOUND AND HighFive_FOUND)
+    add_executable(test_hdf5N2Write test_hdf5N2Write.cpp)
+    target_link_libraries(
+        test_hdf5N2Write
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                ${HDF5_HL_LIBRARIES}
+                ${HDF5_LIBRARIES}
+                HighFive::HighFive)
+    target_include_directories(
+        test_hdf5N2Write PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages ${KOTEKAN_SOURCE_DIR}/lib/utils
+                                 ${HDF5_INCLUDE_DIRS})
+    target_include_directories(test_hdf5N2Write PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+    target_compile_definitions(test_hdf5N2Write
+                               PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/testdata")
+endif()
+
 add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)
 target_link_libraries(test_CHORDTelescope kotekan_utils)
+
+# test_N2FrameDesc - unit tests for N2FrameDesc product list features
+add_executable(test_N2FrameDesc test_N2FrameDesc.cpp)
+target_link_libraries(test_N2FrameDesc PRIVATE kotekan_metadata kotekan_utils libexternal)
+
+# test_N2Subset - tests for N2Subset stage
+add_executable(test_N2Subset test_N2Subset.cpp)
+target_link_libraries(
+    test_N2Subset
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,--whole-archive
+            kotekan_metadata
+            -Wl,--no-whole-archive)
+target_include_directories(test_N2Subset PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                 ${KOTEKAN_SOURCE_DIR}/lib/utils)

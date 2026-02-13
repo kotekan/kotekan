@@ -360,6 +360,9 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
                                                 int first_buf_id, int second_buf_id) {
     int num_errors = 0;
 
+    // Number of frequencies from metadata (if available)
+    int num_freq = meta1->has_nfreq() ? meta1->get_nfreq() : 0;
+
     /*
      * The relevant metadata fields are a bit of a moving target at the moment (251022),
      * so some of these checks are being commented out.  This function should be updated
@@ -368,6 +371,10 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
 
     // int64_t fpga_seq_num;
     CHECK_META_SCALAR_INT(fpga_seq_num, meta1, meta2, num_errors, first_buf->buffer_name,
+                          first_buf_id, second_buf->buffer_name, second_buf_id);
+
+    // int time_downsampling_fpga;
+    CHECK_META_SCALAR_INT(time_downsampling_fpga, meta1, meta2, num_errors, first_buf->buffer_name,
                           first_buf_id, second_buf->buffer_name, second_buf_id);
 
     // TODO: struct timeval first_packet_recv_time;
@@ -428,19 +435,9 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
                                  first_buf_id, second_buf->buffer_name, second_buf_id);
 
 
-    // int64_t sample0_offset;
-    CHECK_META_SCALAR_INT(sample0_offset, meta1, meta2, num_errors, first_buf->buffer_name,
-                          first_buf_id, second_buf->buffer_name, second_buf_id);
-
-    // int offset_downsampling;
-    CHECK_META_SCALAR_INT(offset_downsampling, meta1, meta2, num_errors, first_buf->buffer_name,
-                          first_buf_id, second_buf->buffer_name, second_buf_id);
-
     // int nfreq;
     CHECK_META_SCALAR_INT(nfreq, meta1, meta2, num_errors, first_buf->buffer_name, first_buf_id,
                           second_buf->buffer_name, second_buf_id);
-
-    int num_freq = meta1->get_nfreq(); // we know they match now.
 
     // int coarse_freq[CHORD_META_MAX_FREQ];
     CHECK_META_ARR1_INT(coarse_freq, num_freq, meta1, meta2, num_errors, first_buf->buffer_name,
@@ -451,13 +448,8 @@ int testDataCheck<A_Type>::check_chord_metadata(const std::shared_ptr<const chor
                         first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
                         second_buf_id);
 
-    // int64_t half_fpga_sample0[CHORD_META_MAX_FREQ];
-    CHECK_META_ARR1_INT(half_fpga_sample0, num_freq, meta1, meta2, num_errors,
-                        first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
-                        second_buf_id);
-
-    // int time_downsampling_fpga[CHORD_META_MAX_FREQ];
-    CHECK_META_ARR1_INT(time_downsampling_fpga, num_freq, meta1, meta2, num_errors,
+    // int freq_upchan_index[CHORD_META_MAX_FREQ];
+    CHECK_META_ARR1_INT(freq_upchan_index, num_freq, meta1, meta2, num_errors,
                         first_buf->buffer_name, first_buf_id, second_buf->buffer_name,
                         second_buf_id);
 
@@ -483,16 +475,6 @@ int testDataCheck<A_Type>::check_N2_metadata(const std::shared_ptr<const N2Metad
                                              const std::shared_ptr<const N2Metadata> meta2,
                                              int first_buf_id, int second_buf_id) {
     int num_errors = 0;
-
-    // Basic dimensionality and indexing
-    CHECK_META_SCALAR_INT_DIRECT(num_elements, meta1, meta2, num_errors, first_buf->buffer_name,
-                                 first_buf_id, second_buf->buffer_name, second_buf_id);
-    CHECK_META_SCALAR_INT_DIRECT(num_prod, meta1, meta2, num_errors, first_buf->buffer_name,
-                                 first_buf_id, second_buf->buffer_name, second_buf_id);
-    CHECK_META_SCALAR_INT_DIRECT(num_ev, meta1, meta2, num_errors, first_buf->buffer_name,
-                                 first_buf_id, second_buf->buffer_name, second_buf_id);
-    CHECK_META_SCALAR_INT_DIRECT(nfreq, meta1, meta2, num_errors, first_buf->buffer_name,
-                                 first_buf_id, second_buf->buffer_name, second_buf_id);
 
     // Frequency identifiers
     CHECK_META_SCALAR_INT_DIRECT(freq_id, meta1, meta2, num_errors, first_buf->buffer_name,

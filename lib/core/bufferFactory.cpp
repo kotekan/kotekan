@@ -1,8 +1,9 @@
 #include "bufferFactory.hpp"
 
 #include "Config.hpp"         // for Config
+#include "FrameDesc.hpp"      // for FrameDesc
 #include "HFBFrameView.hpp"   // for HFBFrameView
-#include "N2FrameView.hpp"    // for N2FrameView
+#include "N2FrameDesc.hpp"    // for N2FrameDesc
 #include "buffer.hpp"         // for GenericBuffer, Buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.hpp"       // for metadataPool
@@ -83,12 +84,14 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
     // See also buffer::is_frame_buffer(), which looks for these three strings ("standard", "vis",
     // "hfb")
     size_t frame_size = 0;
+    std::shared_ptr<kotekan::FrameDesc> frame_desc = nullptr;
     if (type_name == "standard") {
         frame_size = config.get<size_t>(location, "frame_size");
     } else if (type_name == "vis") {
         frame_size = VisFrameView::calculate_frame_size(config, location);
     } else if (type_name == "N2") {
-        frame_size = N2FrameView::calculate_frame_size(config, location);
+        frame_desc = std::make_shared<N2FrameDesc>(config, location);
+        frame_size = frame_desc->get_byte_size();
     } else if (type_name == "hfb") {
         frame_size = HFBFrameView::calculate_frame_size(config, location);
     }
@@ -106,6 +109,11 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
                     type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
         buf = new Buffer(num_frames, frame_size, pool, name, type_name, numa_node, use_hugepages,
                          mlock_frames, cpu_affinity, zero_new_frames);
+
+        // Set frame descriptor if one was created
+        if (frame_desc) {
+            static_cast<Buffer*>(buf)->set_frame_desc(frame_desc);
+        }
 
     } else if (type_name == "ring") {
         size_t ringbuf_size = config.get<size_t>(location, "ring_buffer_size");

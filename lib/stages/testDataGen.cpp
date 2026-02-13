@@ -1,5 +1,6 @@
 #include "testDataGen.hpp"
 
+#include "CHORDTelescope.hpp"  // for CHORDTelescope
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
@@ -21,6 +22,7 @@
 #include <cmath>       // for fmod
 #include <functional>  // for bind, function, _1, _2
 #include <random>      // for mt19937
+#include <signal.h>    // for raise, SIGINT
 #include <stdexcept>   // for invalid_argument
 #include <stdint.h>    // for int8_t, uint32_t, uint8_t, int16_t, int32_t, uint64_t
 #include <strings.h>   // for bzero
@@ -121,6 +123,13 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _manual_freq_ids = config.get_default<std::vector<uint32_t>>(unique_name, "manual_freq_ids",
                                                                  std::vector<uint32_t>());
 
+    // Get simulate_fpga_restart_at_frame option
+    _simulate_fpga_restart_at_frame =
+        config.get_default<int64_t>(unique_name, "simulate_fpga_restart_at_frame", -1);
+
+    // Get end_interrupt option
+    _end_interrupt = config.get_default<bool>(unique_name, "end_interrupt", false);
+
     endpoint = unique_name + "/generate_test_data";
     using namespace std::placeholders;
     restServer::instance().register_post_callback(
@@ -178,8 +187,10 @@ void testDataGen::main_thread() {
 
     int link_id = 0;
 
-    double frame_length =
-        samples_per_data_set * ts_to_double(Telescope::instance().seq_length()) / num_links;
+    auto& telescope = Telescope::instance();
+    std::string telescope_type = telescope.get_name();
+
+    double frame_length = samples_per_data_set * ts_to_double(telescope.seq_length()) / num_links;
 
     std::mt19937 rng(_seed);
 
@@ -199,6 +210,7 @@ void testDataGen::main_thread() {
         std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
 
         chordmeta->set_fpga_seq_num(seq_num);
+        chordmeta->set_time_downsampling_fpga(_meta_time_downsample_factor);
 
         // TODO: Fix this, cannot change from frame to frame (and should not be "now")
         gettimeofday(&now, nullptr);
@@ -214,26 +226,22 @@ void testDataGen::main_thread() {
         assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
         std::vector<int> coarse_freq(_num_freq_in_frame);
         std::vector<int> freq_upchan_factor(coarse_freq.size());
-        std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
-        std::vector<int> time_downsampling_fpga(coarse_freq.size());
+        std::vector<int> freq_upchan_index(coarse_freq.size());
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             if (_manual_freq_ids.size() > 0)
                 coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
+            else if (telescope_type == "CHORDTelescope")
+                coarse_freq[f] = telescope.cast<CHORDTelescope>().min_science_freq_id() + f;
             else
                 coarse_freq[f] = f;
             freq_upchan_factor[f] = 1;
-            half_fpga_sample0[f] = _meta_time_downsample_factor - 1;
-            time_downsampling_fpga[f] = _meta_time_downsample_factor;
+            freq_upchan_index[f] = 0;
         }
 
         chordmeta->set_coarse_freq(coarse_freq);
         chordmeta->set_freq_upchan_factor(freq_upchan_factor);
-        chordmeta->set_half_fpga_sample0(half_fpga_sample0);
-        chordmeta->set_time_downsampling_fpga(time_downsampling_fpga);
+        chordmeta->set_freq_upchan_index(freq_upchan_index);
 
-        chordmeta->set_sample0_offset(frame_id_abs * samples_per_data_set
-                                      / _meta_time_downsample_factor);
-        chordmeta->set_offset_downsampling(1);
         chordmeta->set_frame_counter(frame_id_abs);
 
         unsigned char temp_output;
@@ -309,9 +317,9 @@ void testDataGen::main_thread() {
         const std::vector<ptrdiff_t> extents(_array_shape.begin(), _array_shape.end());
         const std::vector<kotekan::Symbol> dimnames(_dim_name.begin(), _dim_name.end());
 
-        buf->allocate_new_frame_desc(chordmeta->type, _name, extents, dimnames);
+        buf->allocate_ndarray_frame_desc(chordmeta->type, _name, extents, dimnames);
         /* test that things are consistent */
-        chordmeta->check_frame_desc(buf->get_frame_desc());
+        chordmeta->check_frame_desc(buf->get_ndarray_frame_desc());
 
         if (type == "onehot") {
             int val = value;
@@ -462,6 +470,9 @@ void testDataGen::main_thread() {
         frame_id_abs += 1;
         if (num_frames >= 0 && frame_id_abs >= num_frames) {
             INFO("Generated the requested number of frames ({:d}) - exiting", num_frames);
+            if (_end_interrupt) {
+                raise(SIGINT);
+            }
             break;
         };
         frame_id = frame_id_abs % buf->num_frames;
@@ -476,6 +487,14 @@ void testDataGen::main_thread() {
             }
         } else {
             seq_num += samples_per_data_set;
+        }
+
+        // Simulate FPGA restart if requested
+        if (_simulate_fpga_restart_at_frame >= 0
+            && frame_id_abs == _simulate_fpga_restart_at_frame) {
+            INFO("Simulating FPGA restart at frame {:d}: resetting seq_num from {:d} to 0",
+                 frame_id_abs, seq_num);
+            seq_num = 0;
         }
         if (frame_id == 0) {
             if (_value_array.size() && (_value_array.size() != (size_t)buf->num_frames)) {

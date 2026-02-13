@@ -1,0 +1,5 @@
+**************
+visTestPattern
+**************
+
+.. doxygenclass:: visTestPattern

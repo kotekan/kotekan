@@ -269,7 +269,7 @@ void RingBuffer::print_full_status() {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     static std::recursive_mutex print_mutex;
     std::lock_guard<std::recursive_mutex> print_lock(print_mutex);
-    DEBUG2("--------------------- %s ---------------------", buffer_name.c_str());
+    DEBUG2("--------------------- {:s} ---------------------", buffer_name.c_str());
     DEBUG2("{:<40} : {:13.6f} MB", "size", size / 1.0e+6);
     DEBUG2("{:<40} : {:13.6f} MB", "last_read_tail", last_read_tail / 1.0e+6);
     DEBUG2("{:<40} : {:13.6f} MB", "first_write_head", first_write_head / 1.0e+6);

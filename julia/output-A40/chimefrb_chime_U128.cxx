@@ -6,21 +6,22 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
-#include <NDArrayRingBuffer.hpp>
+#include "DataType.hpp"
+#include "NDArrayBuffer.hpp"
+#include "NDArrayRingBuffer.hpp"
+#include "bufferContainer.hpp"
+#include "chordMetadata.hpp"
+#include "cudaCommand.hpp"
+#include "cudaDeviceInterface.hpp"
+#include "div.hpp"
+#include "ringbuffer.hpp"
+
 #include <algorithm>
 #include <array>
-#include <bufferContainer.hpp>
 #include <cassert>
-#include <chordMetadata.hpp>
 #include <cstring>
-#include <cudaCommand.hpp>
-#include <cudaDeviceInterface.hpp>
-#include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
-#include <ringbuffer.hpp>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -37,7 +38,7 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
         result[d] = values[D - 1 - d];
     return result;
 }
-} // namespace
+}
 
 /**
  * @class cudaCHIMEFRBBeamformer_chime_U128
@@ -283,6 +284,8 @@ private:
                             <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
+    const bool poison_buffers;
+
     // Kotekan buffer names
     const std::string W_name;
     const std::string Ebar_name;
@@ -299,8 +302,7 @@ private:
     NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
     std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
 
-    // To avoid trailing comma below
-    int dummy;
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaCHIMEFRBBeamformer_chime_U128);
@@ -312,6 +314,8 @@ cudaCHIMEFRBBeamformer_chime_U128::cudaCHIMEFRBBeamformer_chime_U128(Config& con
                                                                      const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "CHIMEFRBBeamformer_chime_U128", "CHIMEFRBBeamformer_chime_U128.ptx"),
+
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
     W_name(config.get<std::string>(unique_name, "frb_phase_name")),
     Ebar_name(config.get<std::string>(unique_name, "voltage_name")),
@@ -325,8 +329,7 @@ cudaCHIMEFRBBeamformer_chime_U128::cudaCHIMEFRBBeamformer_chime_U128(Config& con
     info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
     host_info_buffer(info_length),
 
-    dummy() // avoid trailing comma
-{
+    did_set_metadata(false) {
     // Register host memory
     {
         const cudaError_t ierr = cudaHostRegister(
@@ -414,30 +417,110 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
     void* const I_memory = I_buffer.get_ndarray().data();
     void* const info_memory = info_buffer.get_ndarray().data();
 
-    W_buffer.check_metadata();
-    Ebar_buffer.check_metadata();
-    I_buffer.set_metadata(Ebar_buffer.get_metadata());
+    // Since we use a ring buffer we need to set the metadata only once
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+
+        if (args::W == args::Ebar && cuda_upchannelization_factor == 1) {
+            // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
+            // W_buffer.check_metadata();
+            const std::string quantity = "E";
+            const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
+            const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
+            if (!(metadata->get_name() == quantity))
+                ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
+                      Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
+            assert(metadata->get_name() == quantity);
+            const auto& ndarray = Ebar_buffer.get_ndarray();
+            assert(metadata->type == ndarray.value_datatype);
+            assert(metadata->dims == ndarray.rank);
+            for (std::size_t d = 0; d < ndarray.rank; ++d) {
+                assert(metadata->get_dimension_name(d) == dimname[d]);
+                // The ring buffer direction is special
+                if (d > 0)
+                    assert(metadata->dim[d] == int(ndarray.extent(d)));
+                assert(metadata->stride[d] == ndarray.stride(d));
+            }
+        } else {
+            W_buffer.check_metadata();
+        }
+        if (args::Ebar == args::Ebar && cuda_upchannelization_factor == 1) {
+            // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
+            // Ebar_buffer.check_metadata();
+            const std::string quantity = "E";
+            const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
+            const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
+            if (!(metadata->get_name() == quantity))
+                ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
+                      Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
+            assert(metadata->get_name() == quantity);
+            const auto& ndarray = Ebar_buffer.get_ndarray();
+            assert(metadata->type == ndarray.value_datatype);
+            assert(metadata->dims == ndarray.rank);
+            for (std::size_t d = 0; d < ndarray.rank; ++d) {
+                assert(metadata->get_dimension_name(d) == dimname[d]);
+                // The ring buffer direction is special
+                if (d > 0)
+                    assert(metadata->dim[d] == int(ndarray.extent(d)));
+                assert(metadata->stride[d] == ndarray.stride(d));
+            }
+        } else {
+            Ebar_buffer.check_metadata();
+        }
+        if (args::I != args::I)
+            I_buffer.set_metadata(Ebar_buffer.get_metadata());
+
+        const auto Ebar_meta = Ebar_buffer.get_metadata();
+        assert(Ebar_meta->ndishes == cuda_number_of_dishes);
+        assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
+        assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
+        assert(Ebar_meta->dish_index);
+
+        // Allocate metadata of I buffer only once
+        const bool I_has_metadata = I_buffer.has_metadata();
+        assert(!I_has_metadata);
+        I_buffer.set_metadata(Ebar_meta);
+        auto I_meta = I_buffer.get_metadata();
+
+        const auto Ebar_nfreq = Ebar_meta->get_nfreq();
+        const auto I_nfreq = I_meta->dim[I_rank - 1 - I_index_Fbar];
+        assert(I_nfreq >= 0);
+        // We are not using all the non-upchannelized frequencies.
+        // But we are (should be!) using all the upchannelized ones.
+        assert(cuda_upchannelization_factor > 1);
+
+        const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
+        assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
+        const auto& I_freq_upchan_factor = Ebar_freq_upchan_factor;
+        I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
+
+        const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
+        assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
+        const auto& I_freq_upchan_index = Ebar_freq_upchan_index;
+        I_meta->set_freq_upchan_index(I_freq_upchan_index);
+
+        const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
+        assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
+        const auto& I_coarse_freq = Ebar_coarse_freq;
+        I_meta->set_coarse_freq(I_coarse_freq);
+
+        const auto Ebar_time_downsampling_fpga = Ebar_meta->get_time_downsampling_fpga();
+        const auto I_time_downsampling_fpga =
+            Ebar_time_downsampling_fpga * cuda_downsampling_factor;
+        I_meta->set_time_downsampling_fpga(I_time_downsampling_fpga);
+
+        const auto W_meta = W_buffer.get_metadata();
+        const auto W_nfreq = W_meta->get_nfreq();
+        assert(W_nfreq == I_nfreq);
+        const auto W_coarse_freq = W_meta->get_coarse_freq();
+        for (int freq = 0; freq < W_nfreq; ++freq)
+            assert(I_coarse_freq.at(freq) == W_coarse_freq.at(freq));
+
+        // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
+    } // if !did_set_metadata
 
     const auto Ebar_meta = Ebar_buffer.get_metadata();
-    assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-    assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
-    assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
-    assert(Ebar_meta->dish_index);
-
-    auto I_meta = I_buffer.get_metadata();
-    assert(I_meta->get_nfreq() >= 0);
-    assert(I_meta->get_nfreq() == Ebar_meta->get_nfreq());
-    auto freq_upchan_factor = I_meta->get_freq_upchan_factor();
-    auto time_downsampling_fpga = I_meta->get_time_downsampling_fpga();
-    assert(freq_upchan_factor.size() == static_cast<size_t>(I_meta->get_nfreq()));
-    assert(time_downsampling_fpga.size() == static_cast<size_t>(I_meta->get_nfreq()));
-    for (int freq = 0; freq < I_meta->get_nfreq(); ++freq) {
-        freq_upchan_factor[freq] *= cuda_downsampling_factor;
-        time_downsampling_fpga[freq] *= cuda_downsampling_factor;
-    }
-    I_meta->set_freq_upchan_factor(freq_upchan_factor);
-    I_meta->set_time_downsampling_fpga(time_downsampling_fpga);
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
+    assert(I_buffer.has_metadata());
 
     const char* exc_arg = "exception";
     std::int32_t Tbar_min_arg;
@@ -480,14 +563,14 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
 
     // Copy inputs to device memory
 
-    I_buffer.set_to_poison(0xff); // 0xffff is NaN16
-    info_buffer.set_to_poison(0xff);
+    if (poison_buffers) {
+        I_buffer.set_to_poison(0xff); // 0xffff is NaN16
+        info_buffer.set_to_poison(0xff);
 
-#ifdef DEBUGGING
-    // Initialize host-side buffer arrays
-    CHECK_CUDA_ERROR(
-        cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes, device.getStream(cuda_stream_id)));
-#endif
+        // Initialize host-side buffer arrays
+        CHECK_CUDA_ERROR(cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes,
+                                         device.getStream(cuda_stream_id)));
+    } // if (poison_buffers)
 
     const std::string symname = "CHIMEFRBBeamformer_chime_U128_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
@@ -505,44 +588,45 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
         ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
-#ifdef DEBUGGING
-    // Copy results back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
-                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+    if (poison_buffers) {
+        // Copy results back to host memory
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
+                                         cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+        CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 
-    // Check error codes
-    const std::uint32_t error_code = *std::max_element(
-        (const std::uint32_t*)&host_info_buffer[0],
-        (const std::uint32_t*)&host_info_buffer[blocks * info_lengths[info_index_warp]
-                                                * info_lengths[info_index_thread]]);
-    if (error_code != 0)
-        ERROR("CUDA kernel CHIMEFRBBeamformer_chime_U128 returned error code: {}", error_code);
+        // Check error codes
+        const std::uint32_t error_code =
+            *std::max_element((const std::uint32_t*)host_info_buffer.data(),
+                              (const std::uint32_t*)(host_info_buffer.data()
+                                                     + blocks * info_lengths[info_index_warp]
+                                                           * info_lengths[info_index_thread]));
+        if (error_code != 0)
+            ERROR("CUDA kernel CHIMEFRBBeamformer_chime_U128 returned error code: {}", error_code);
 
-    if (error_code != 0) {
-        // TODO: Introduce a new "unbuffered" buffer; do this there
-        // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
-        for (int block = 0; block < blocks; ++block) {
-            for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
-                for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
-                    const std::ptrdiff_t i = info_strides[info_index_thread] * thread
-                                             + info_strides[info_index_warp] * warp
-                                             + info_strides[info_index_block] * block;
-                    const std::uint32_t val = host_info_buffer.data()[i];
-                    if (val != 0)
-                        ERROR(
-                            "CUDA kernel CHIMEFRBBeamformer_chime_U128 returned 'info' value {:d} "
-                            "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no "
-                            "error)",
-                            val, thread, warp, block, i);
+        if (error_code != 0) {
+            // TODO: Introduce a new "unbuffered" buffer; do this there
+            // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
+            for (int block = 0; block < blocks; ++block) {
+                for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+                    for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                        const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                                 + info_strides[info_index_warp] * warp
+                                                 + info_strides[info_index_block] * block;
+                        const std::uint32_t val = host_info_buffer.data()[i];
+                        if (val != 0)
+                            ERROR("CUDA kernel CHIMEFRBBeamformer_chime_U128 returned 'info' value "
+                                  "{:d} "
+                                  "for thread {:d} warp {:d} block {:d} at index {:d} (zero "
+                                  "indicates no error)",
+                                  val, thread, warp, block, i);
+                    }
                 }
             }
         }
-    }
-#endif
 
-    I_buffer.check_for_poison(0xff);
+        I_buffer.check_for_poison(0xff);
+    } // if (poison_buffers)
 
     return record_end_event();
 }

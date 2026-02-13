@@ -1,0 +1,5 @@
+*************
+monitorBuffer
+*************
+
+.. doxygenclass:: monitorBuffer

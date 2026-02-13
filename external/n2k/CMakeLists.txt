@@ -65,12 +65,13 @@ set(CUFILES
 foreach(file ${KERNELFILES})
     add_custom_command(
         OUTPUT template_instantiations/${file}
-        COMMAND
-            mkdir -p template_instantiations && python3
-            ${CMAKE_CURRENT_SOURCE_DIR}/template_instantiations/make-instantiation.py ${file} && mv
-            ${file} template_instantiations/${file}
+        COMMAND ${CMAKE_COMMAND} -E make_directory template_instantiations
+        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/template_instantiations/make-instantiation.py
+                ${file}
+        COMMAND ${CMAKE_COMMAND} -E rename ${file} template_instantiations/${file}
         DEPENDS template_instantiations/make-instantiation.py
-        COMMENT "Generating template file ${file}")
+        COMMENT "Generating template file ${file}"
+        VERBATIM)
     list(APPEND CUFILES "${CMAKE_CURRENT_BINARY_DIR}/template_instantiations/${file}")
 endforeach()
 
@@ -81,6 +82,9 @@ target_link_libraries(n2k gputils)
 # Include directories
 target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
+# Install the shared library so installed kotekan can find libn2k at runtime.
+install(TARGETS n2k LIBRARY DESTINATION lib)
 
 # Set architecture flags
 set_target_properties(n2k PROPERTIES CUDA_ARCHITECTURES "86;89")

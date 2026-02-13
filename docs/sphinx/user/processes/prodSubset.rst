@@ -1,0 +1,5 @@
+**********
+prodSubset
+**********
+
+.. doxygenclass:: prodSubset

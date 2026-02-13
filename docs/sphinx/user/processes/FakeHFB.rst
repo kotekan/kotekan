@@ -1,0 +1,5 @@
+*******
+FakeHFB
+*******
+
+.. doxygenclass:: FakeHFB

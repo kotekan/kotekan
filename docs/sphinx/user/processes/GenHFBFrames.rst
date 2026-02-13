@@ -1,0 +1,5 @@
+************
+GenHFBFrames
+************
+
+.. doxygenclass:: GenHFBFrames

@@ -7,7 +7,7 @@
 using namespace kotekan;
 
 void examineNDArray(const GenericNDArray& arr) {
-    arr.output_metadata(std::cout);
+    arr.output_framedesc(std::cout);
 }
 
 BOOST_AUTO_TEST_CASE(test1) {

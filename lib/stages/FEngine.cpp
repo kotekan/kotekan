@@ -1,27 +1,30 @@
-#include "DataType.hpp"       // for float16_t, DataType, GetType, KOTEKAN_FLOAT16
-#include "kotekanLogging.hpp" // for DEBUG, FATAL_ERROR, INFO
+#include "FEngine.hpp"
 
-#include "fmt.hpp" // for compile_string_to_view
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include <julia.h> // for jl_box_int64, jl_box_float32, jl_exception_occurred, jl_ty...
+#pragma GCC diagnostic pop
 
-#include <Config.hpp> // for Config
-#include <FEngine.hpp>
-#include <Stage.hpp>         // for Stage
-#include <StageFactory.hpp>  // for REGISTER_KOTEKAN_STAGE
-#include <algorithm>         // for fill_n, max
-#include <cassert>           // for assert
-#include <chordMetadata.hpp> // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
-#include <cmath>             // for cos, sin, M_PI
-#include <complex>           // for complex
-#include <cstddef>           // for ptrdiff_t, size_t
-#include <cstdint>           // for int64_t, uint8_t, int8_t, int32_t, uint64_t
-#include <cstring>           // for strncpy, memset
-#include <fstream>           // for basic_ifstream, basic_istream::seekg, basic_istream::read
-#include <functional>        // for function
-#include <julia.h>           // for jl_box_int64, jl_box_float32, jl_exception_occurred, jl_ty...
-#include <juliaManager.hpp>  // for juliaCall, juliaShutdown, juliaStartup
-#include <memory>            // for shared_ptr, __shared_ptr_access
-#include <string>            // for allocator, basic_string, operator+, to_string, string
-#include <vector>            // for vector
+#include <Config.hpp>         // for Config
+#include <DataType.hpp>       // for float16_t, DataType, GetType, KOTEKAN_FLOAT16
+#include <Stage.hpp>          // for Stage
+#include <StageFactory.hpp>   // for REGISTER_KOTEKAN_STAGE
+#include <algorithm>          // for fill_n, max
+#include <cassert>            // for assert
+#include <chordMetadata.hpp>  // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
+#include <cmath>              // for cos, sin, M_PI
+#include <complex>            // for complex
+#include <cstddef>            // for ptrdiff_t, size_t
+#include <cstdint>            // for int64_t, uint8_t, int8_t, int32_t, uint64_t
+#include <cstring>            // for strncpy, memset
+#include <fmt.hpp>            // for compile_string_to_view
+#include <fstream>            // for basic_ifstream, basic_istream::seekg, basic_istream::read
+#include <functional>         // for function
+#include <juliaManager.hpp>   // for juliaCall, juliaShutdown, juliaStartup
+#include <kotekanLogging.hpp> // for DEBUG, FATAL_ERROR, INFO
+#include <memory>             // for shared_ptr, __shared_ptr_access
+#include <string>             // for allocator, basic_string, operator+, to_string, string
+#include <vector>             // for vector
 
 #if !KOTEKAN_FLOAT16
 #warning "The F-Engine simulator requires float16 support"
@@ -85,16 +88,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     chord_telescope(Telescope::instance().cast<CHORDTelescope>()),
 
     // Dishes
-    // TODO num_dish_locations_ew(config.get<int>(unique_name, "num_dish_locations_ew")),
-    // TODO num_dish_locations_ns(config.get<int>(unique_name, "num_dish_locations_ns")),
-    // TODO num_dish_locations(num_dish_locations_ew * num_dish_locations_ns),
-    // TODO dish_separation_ew(config.get<float>(unique_name, "dish_separation_ew")),
-    // TODO dish_separation_ns(config.get<float>(unique_name, "dish_separation_ns")),
-    // TODO num_dishes(config.get<int>(unique_name, "num_dishes")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
-    // TODO dish_indices(config.get<std::vector<int>>(unique_name, "dish_indices")),
-    // TODO dish_locations(2 * num_dishes, -1),
-    // TODO dish_indices_ptr(new int[num_dish_locations_ew * num_dish_locations_ns]),
     dish_grid(chord_telescope.get_dish_grid()),
 
     // ADC
@@ -178,7 +172,6 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     repeat_count(config.get_default<int>(unique_name, "repeat_count", 1)),
 
     // Frame sizes
-    // TODO dish_positions_frame_size(sizeof(float) * 2 * num_dishes),
     bf_mask_frame_size(sizeof(int8_t) * num_dishes * num_polarizations),
     pl_mask_frame_size(sizeof(uint8_t) * (64 / 8) * (num_dishes / 8) * num_polarizations
                        * (num_frequencies / 4) * (num_times / 2 / 64)),
@@ -200,26 +193,33 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         std::int64_t(sizeof(float16_t)) * upchan_max_num_channelss.at(U64) * upchan_factor(U64),
     },
     W1_frame_sizes{
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U1) * upchan_factor(U1),
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U2) * upchan_factor(U2),
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U4) * upchan_factor(U4),
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U8) * upchan_factor(U8),
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U16) * upchan_factor(U16),
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U32) * upchan_factor(U32),
-        std::int64_t(sizeof(float16_t)) * num_components * chord_telescope.get_num_dishes_x()
-            * chord_telescope.get_num_dishes_y() * num_polarizations
+        std::int64_t(sizeof(float16_t)) * num_components
+            * std::int64_t(chord_telescope.get_num_dishes_x())
+            * std::int64_t(chord_telescope.get_num_dishes_y()) * num_polarizations
             * upchan_max_num_channelss.at(U64) * upchan_factor(U64),
     },
     W2_frame_size(sizeof(float16_t) * (frb1_num_beams_P * frb1_num_beams_Q)
@@ -229,7 +229,6 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
                   * upchan_all_max_num_output_channels * frb_num_times),
 
     // Buffers
-    // TODO dish_positions_buffer(get_buffer("dish_positions_buffer")),
     bf_mask_buffer(get_buffer("bf_mask_buffer")), pl_mask_buffer(get_buffer("pl_mask_buffer")),
     E_buffer_chord(!receive_chime ? get_buffer("E_buffer") : nullptr), E_buffers_chime([&]() {
         std::vector<Buffer*> buffers;
@@ -262,28 +261,6 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
 {
     assert(source_channels.size() == source_amplitudes.size());
-
-    // TODO assert(num_dishes >= 0 && num_dishes <= num_dish_locations);
-    // TODO assert(std::ptrdiff_t(dish_indices.size()) == dish_grid.get_num_dishes_x() *
-    // dish_grid.get_num_dishes_y());
-    // TODO int num_dishes_seen = 0;
-    // TODO for (int loc_ns = 0; loc_ns < dish_grid.get_num_dishes_y(); ++loc_ns) {
-    // TODO     for (int loc_ew = 0; loc_ew < dish_grid.get_num_dishes_x(); ++loc_ew) {
-    // TODO         int loc = loc_ew + dish_grid.get_num_dishes_x() * loc_ns;
-    // TODO         int dish = dish_indices.at(loc);
-    // TODO         assert(dish == -1 || (dish >= 0 && dish < num_dishes));
-    // TODO         if (dish >= 0) {
-    // TODO             ++num_dishes_seen;
-    // TODO             // check for duplicate dish indices
-    // TODO             assert(dish_locations.at(2 * dish + 0) == -1);
-    // TODO             dish_locations.at(2 * dish + 0) = loc_ew;
-    // TODO             dish_locations.at(2 * dish + 1) = loc_ns;
-    // TODO         }
-    // TODO         assert(loc >= 0 && loc < num_dish_locations);
-    // TODO         dish_indices_ptr[loc] = dish;
-    // TODO     }
-    // TODO }
-    // TODO assert(num_dishes_seen == num_dishes);
 
     // for pl_mask consistency:
     assert(num_frequencies % 4 == 0);
@@ -319,7 +296,6 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
             assert(int(upchan_gainss.at(Uindex).size()) == upchan_factor(upchan_factor_t(Uindex)));
     }
 
-    // TODO assert(dish_positions_buffer);
     assert(bf_mask_buffer);
     assert(pl_mask_buffer);
     if (!receive_chime)
@@ -341,7 +317,6 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         assert(W1_buffer);
     assert(W2_buffer);
     // assert(I1_buffer);
-    // TODO dish_positions_buffer->register_producer(unique_name);
     bf_mask_buffer->register_producer(unique_name);
     pl_mask_buffer->register_producer(unique_name);
     if (!receive_chime)
@@ -363,55 +338,60 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     W2_buffer->register_producer(unique_name);
     // I1_buffer->register_producer(unique_name);
 
-    // TODO dish_positions_buffer->allocate_new_frame_desc<kotekan::gettype<kotekan::float32>::type,
-    // 2>(
-    // TODO     "dish_positions", {num_dishes, 2}, {"D", "EW/NS"});
     if (scatter_indices_buffer)
-        scatter_indices_buffer->allocate_new_frame_desc<std::int32_t, 2>(
+        scatter_indices_buffer->allocate_ndarray_frame_desc<std::int32_t, 2>(
             "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"});
-    bf_mask_buffer->allocate_new_frame_desc<std::int8_t, 2>(
+    bf_mask_buffer->allocate_ndarray_frame_desc<std::int8_t, 2>(
         "bf_mask", {num_polarizations, num_dishes}, {"P", "D"});
-    bb_beam_positions_buffer->allocate_new_frame_desc<float, 2>("bb_beam_positions",
-                                                                {bb_num_beams, 2}, {"B", "EW/NS"});
-    A_buffer->allocate_new_frame_desc<std::int8_t, 5>(
+    bb_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
+        "bb_beam_positions", {bb_num_beams, 2}, {"B", "EW/NS"});
+    A_buffer->allocate_ndarray_frame_desc<std::int8_t, 5>(
         "A", {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
         {"F", "P", "B", "D", "C"});
-    s_buffer->allocate_new_frame_desc<std::int32_t, 3>(
+    s_buffer->allocate_ndarray_frame_desc<std::int32_t, 3>(
         "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"});
+    // CHORD and CHIME use different conventions for the (M,N) dish indices and (P,Q) beam
+    // indices
+    // For CHORD: M = P = x = east-west
+    // For CHIME: M = P = y = north-south
+    const int num_dishes_M =
+        receive_chime ? chord_telescope.get_num_dishes_y() : chord_telescope.get_num_dishes_x();
+    const int num_dishes_N =
+        receive_chime ? chord_telescope.get_num_dishes_x() : chord_telescope.get_num_dishes_y();
+    const int num_beams_P = 2 * num_dishes_M;
+    const int num_beams_Q = 2 * num_dishes_N;
     for (int Uindex = 0; Uindex < Usize; ++Uindex) {
         const upchan_factor_t Ufactor = upchan_factor_t(Uindex);
         const int U = upchan_factor(Ufactor);
         Buffer* const G_buffer = G_buffers.at(Ufactor);
         if (G_buffer)
-            G_buffer->allocate_new_frame_desc<float16_t, 1>(
+            G_buffer->allocate_ndarray_frame_desc<float16_t, 1>(
                 "G", {upchan_max_num_channelss[Ufactor] * U}, {"Fbar"});
         Buffer* const W1_buffer = W1_buffers.at(Ufactor);
-        W1_buffer->allocate_new_frame_desc<float16_t, 5>(
-            "W",
-            {upchan_max_num_channelss[Ufactor] * U, num_polarizations,
-             chord_telescope.get_num_dishes_x(), chord_telescope.get_num_dishes_y(),
-             num_components},
-            {"F", "P", "dishN", "dishM", "C"});
+        W1_buffer->allocate_ndarray_frame_desc<float16_t, 5>("W",
+                                                             {upchan_max_num_channelss[Ufactor] * U,
+                                                              num_polarizations, num_dishes_N,
+                                                              num_dishes_M, num_components},
+                                                             {"F", "P", "dishN", "dishM", "C"});
     }
-    W2_buffer->allocate_new_frame_desc<float16_t, 4>(
+    W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>(
         "W2",
         {upchan_all_max_output_channel - upchan_all_min_output_channel,
-         frb2_num_beams_ns * frb2_num_beams_ew, 2 * chord_telescope.get_num_dishes_x(),
-         2 * chord_telescope.get_num_dishes_y()},
+         frb2_num_beams_ns * frb2_num_beams_ew, num_beams_Q, num_beams_P},
         {"Fbar", "R", "beamQ", "beamP"});
     if (receive_chime) {
         // Use the CHIME input buffer layout (one buffer per frequency)
         for (auto E_buffer_chime : E_buffers_chime)
-            E_buffer_chime->allocate_new_frame_desc<
+            E_buffer_chime->allocate_ndarray_frame_desc<
                 kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 2>(
                 "E", {num_times, num_dishes * num_polarizations}, {"T", "E"});
     } else {
         // Use CHORDs input buffer layout
-        E_buffer_chord->allocate_new_frame_desc<
+        E_buffer_chord->allocate_ndarray_frame_desc<
             kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 4>(
             "E", {num_times, num_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"});
     }
-    pl_mask_buffer->allocate_new_frame_desc<kotekan::uint1x8_t, 5>(
+    pl_mask_buffer->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 5>(
         "pl_mask",
         {num_times / 2 / 64, num_frequencies / 4, num_polarizations, num_dishes / 8, 64 / 8},
         {"T2hi64", "F4", "P", "D8", "T2lo64"});
@@ -437,19 +417,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         julia_source.at(julia_source_length) = '\0';
         kotekan::juliaCall([&]() {
             jl_value_t* const res = jl_eval_string(julia_source.data());
-            jl_value_t* exc = jl_exception_occurred();
-            if (exc) {
-                FATAL_ERROR("Caught Julia exception");
-
-                // Get Base.showerror
-                jl_function_t* showerror = jl_get_function(jl_base_module, "showerror");
-
-                // Call showerror(io, exc)
-                jl_call2(showerror, jl_stderr_obj(), exc);
-
-                // jl_flush_cstdio()
-                // jl_print_backtrace()
-            }
+            kotekan::juliaHandlePossibleExceptions();
             assert(res);
         });
         INFO("Defined Julia code.");
@@ -463,10 +431,6 @@ FEngine::~FEngine() {
 }
 
 void FEngine::main_thread() {
-    static bool stale = false;
-    assert(!stale);
-    stale = true;
-
     // This functions shall be executed only once, during the initialization.
     jl_value_t* refs = nullptr;
     jl_function_t* setindex = nullptr;
@@ -480,6 +444,9 @@ void FEngine::main_thread() {
     jl_value_t* FEngine_setup = nullptr;
     if (!skip_julia) {
         INFO("Initializing F-Engine...");
+        const std::vector<int> dish_indices(dish_grid.get_dish_indices().begin(),
+                                            dish_grid.get_dish_indices().end());
+        // Make a copy to convert to `int`
         kotekan::juliaCall([&]() {
             jl_module_t* const f_engine_module =
                 (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
@@ -518,8 +485,7 @@ void FEngine::main_thread() {
             args[iargc++] = jl_box_float32(source_position_ns);
             args[iargc++] = jl_box_int64(dish_grid.get_num_dishes_x());
             args[iargc++] = jl_box_int64(dish_grid.get_num_dishes_y());
-            args[iargc++] =
-                jl_box_voidpointer(const_cast<int*>(dish_grid.get_dish_indices().data()));
+            args[iargc++] = jl_box_voidpointer(const_cast<int*>(dish_indices.data()));
             // TODO: Pass dish positions instead
             args[iargc++] = jl_box_float32(chord_telescope.get_dish_separation_x_m());
             args[iargc++] = jl_box_float32(chord_telescope.get_dish_separation_y_m());
@@ -538,8 +504,7 @@ void FEngine::main_thread() {
             assert(iargc == nargs);
             FEngine_setup = jl_call(setup, args, nargs);
             JL_GC_POP();
-            if (jl_exception_occurred())
-                FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
+            kotekan::juliaHandlePossibleExceptions();
             if (!FEngine_setup)
                 FATAL_ERROR("Could not initialize F-Engine");
             assert(FEngine_setup);
@@ -586,10 +551,9 @@ void FEngine::main_thread() {
                 args[2] = jl_box_int64(num_dishes);
                 args[3] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_dish_positions, args, nargs);
-                if (jl_exception_occurred())
-                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                assert(res);
                 JL_GC_POP();
+                kotekan::juliaHandlePossibleExceptions();
+                assert(res);
             });
         } else {
             // Find centre
@@ -632,7 +596,7 @@ void FEngine::main_thread() {
                     dish_positions_metadata->stride[d + 1] * dish_positions_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        dish_positions_metadata->check_frame_desc(dish_positions_buffer->get_frame_desc());
+        dish_positions_metadata->check_frame_desc(dish_positions_buffer->get_ndarray_frame_desc());
 
         dish_positions_metadata->ndishes = num_dishes;
         dish_positions_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
@@ -696,13 +660,14 @@ void FEngine::main_thread() {
                     scatter_indices_metadata->stride[d + 1] * scatter_indices_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        scatter_indices_metadata->check_frame_desc(scatter_indices_buffer->get_frame_desc());
+        scatter_indices_metadata->check_frame_desc(
+            scatter_indices_buffer->get_ndarray_frame_desc());
 
         scatter_indices_metadata->ndishes = num_dishes;
         scatter_indices_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
         scatter_indices_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
         scatter_indices_metadata->dish_index =
-            const_cast<int*>(dish_grid.get_dish_indices().data());
+            const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
         // Mark buffer as full
         scatter_indices_buffer->mark_frame_full(unique_name, scatter_indices_frame_id);
@@ -754,13 +719,14 @@ void FEngine::main_thread() {
                     bf_mask_metadata->stride[d + 1] * bf_mask_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        bf_mask_metadata->check_frame_desc(bf_mask_buffer->get_frame_desc());
+        bf_mask_metadata->check_frame_desc(bf_mask_buffer->get_ndarray_frame_desc());
 
         // This bf mask is not time-dependent
         bf_mask_metadata->ndishes = num_dishes;
         bf_mask_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
         bf_mask_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
-        bf_mask_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+        bf_mask_metadata->dish_index =
+            const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
         // Mark buffer as full
         profile_mark("bf_mask_frame::mark_frame_full");
@@ -804,10 +770,9 @@ void FEngine::main_thread() {
                 args[2] = jl_box_int64(bb_num_beams);
                 args[3] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_bb_beam_positions, args, nargs);
-                if (jl_exception_occurred())
-                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                assert(res);
                 JL_GC_POP();
+                kotekan::juliaHandlePossibleExceptions();
+                assert(res);
             });
         } else {
             // Find centre
@@ -852,13 +817,14 @@ void FEngine::main_thread() {
                                                         * bb_beam_positions_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        bb_beam_positions_metadata->check_frame_desc(bb_beam_positions_buffer->get_frame_desc());
+        bb_beam_positions_metadata->check_frame_desc(
+            bb_beam_positions_buffer->get_ndarray_frame_desc());
 
         bb_beam_positions_metadata->ndishes = num_dishes;
         bb_beam_positions_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
         bb_beam_positions_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
         bb_beam_positions_metadata->dish_index =
-            const_cast<int*>(dish_grid.get_dish_indices().data());
+            const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
         // Mark buffer as full
         bb_beam_positions_buffer->mark_frame_full(unique_name, bb_beam_positions_frame_id);
@@ -898,10 +864,9 @@ void FEngine::main_thread() {
                 args[5] = jl_box_int64(num_frequencies);
                 args[6] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_A, args, nargs);
-                if (jl_exception_occurred())
-                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                assert(res);
                 JL_GC_POP();
+                kotekan::juliaHandlePossibleExceptions();
+                assert(res);
             });
         } else {
             for (int n = 0; n < num_components * num_dishes * bb_num_beams * num_polarizations
@@ -937,22 +902,18 @@ void FEngine::main_thread() {
                 A_metadata->stride[d] = A_metadata->stride[d + 1] * A_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        A_metadata->check_frame_desc(A_buffer->get_frame_desc());
+        A_metadata->check_frame_desc(A_buffer->get_ndarray_frame_desc());
 
         std::vector<int> coarse_freq(num_frequencies);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
-        std::vector<int> freq_upchan_factor(num_frequencies);
-        assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
             coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
-            freq_upchan_factor.at(freq) = 1;
         }
         A_metadata->set_coarse_freq(coarse_freq);
-        A_metadata->set_freq_upchan_factor(freq_upchan_factor);
         A_metadata->ndishes = num_dishes;
         A_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
         A_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
-        A_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+        A_metadata->dish_index = const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
         // Mark buffer as full
         A_buffer->mark_frame_full(unique_name, A_frame_id);
@@ -1003,22 +964,17 @@ void FEngine::main_thread() {
                 s_metadata->stride[d] = s_metadata->stride[d + 1] * s_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        s_metadata->check_frame_desc(s_buffer->get_frame_desc());
+        s_metadata->check_frame_desc(s_buffer->get_ndarray_frame_desc());
 
         std::vector<int> coarse_freq(num_frequencies);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
-        std::vector<int> freq_upchan_factor(num_frequencies);
-        assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
-        for (int freq = 0; freq < num_frequencies; ++freq) {
+        for (int freq = 0; freq < num_frequencies; ++freq)
             coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
-            freq_upchan_factor.at(freq) = 1;
-        }
         s_metadata->set_coarse_freq(coarse_freq);
-        s_metadata->set_freq_upchan_factor(freq_upchan_factor);
         s_metadata->ndishes = num_dishes;
         s_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
         s_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
-        s_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+        s_metadata->dish_index = const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
         // Mark buffer as full
         s_buffer->mark_frame_full(unique_name, s_frame_id);
@@ -1076,23 +1032,26 @@ void FEngine::main_thread() {
             G_metadata->stride[0] = 1;
             // frame_desc set in constructor
             /* test that things are consistent */
-            G_metadata->check_frame_desc(G_buffer->get_frame_desc());
+            G_metadata->check_frame_desc(G_buffer->get_ndarray_frame_desc());
 
             std::vector<int> coarse_freq(U * num_local_channels);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             std::vector<int> freq_upchan_factor(U * num_local_channels);
+            std::vector<int> freq_upchan_index(U * num_local_channels);
             assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < U * num_local_channels; ++freq) {
                 coarse_freq.at(freq) =
                     frequency_channels.at(upchan_min_channels.at(Ufactor) + freq / U);
                 freq_upchan_factor.at(freq) = U;
+                freq_upchan_index.at(freq) = freq % U;
             }
             G_metadata->set_coarse_freq(coarse_freq);
             G_metadata->set_freq_upchan_factor(freq_upchan_factor);
+            G_metadata->set_freq_upchan_index(freq_upchan_index);
             G_metadata->ndishes = num_dishes;
             G_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
             G_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
-            G_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+            G_metadata->dish_index = const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
             // Mark buffer as full
             G_buffer->mark_frame_full(unique_name, G_frame_id);
@@ -1138,23 +1097,21 @@ void FEngine::main_thread() {
                     JL_GC_PUSHARGS(args, nargs);
                     args[0] = jl_box_uint8pointer(W1_frame);
                     args[1] = jl_box_int64(W1_frame_sizes.at(Ufactor));
-                    args[2] =
-                        jl_box_int64(chord_telescope.get_num_dishes_y()); // Note ns/ew is reversed!
-                    args[3] = jl_box_int64(chord_telescope.get_num_dishes_x());
+                    // Note ns/ew is reversed!
+                    args[2] = jl_box_int64(chord_telescope.get_num_dishes_x());
+                    args[3] = jl_box_int64(chord_telescope.get_num_dishes_y());
                     args[4] = jl_box_int64(num_polarizations);
                     args[5] = jl_box_int64(num_local_channels * U);
                     args[6] = jl_box_int64(W1_frame_index + 1);
                     jl_value_t* const res = jl_call(set_W1, args, nargs);
-                    if (jl_exception_occurred())
-                        FATAL_ERROR("Julia exception:\n{:s}",
-                                    jl_typeof_str(jl_exception_occurred()));
-                    assert(res);
                     JL_GC_POP();
+                    kotekan::juliaHandlePossibleExceptions();
+                    assert(res);
                 });
             } else {
-                for (int n = 0;
-                     n < chord_telescope.get_num_dishes_y() * chord_telescope.get_num_dishes_x()
-                             * num_polarizations * num_local_channels * U;
+                for (int n = 0; n < int(chord_telescope.get_num_dishes_y()
+                                        * chord_telescope.get_num_dishes_x())
+                                        * num_polarizations * num_local_channels * U;
                      ++n) {
                     assert(n >= 0
                            && std::size_t(n)
@@ -1179,8 +1136,10 @@ void FEngine::main_thread() {
             std::strncpy(W1_metadata->dim_name[4], "C", sizeof W1_metadata->dim_name[4]);
             W1_metadata->dim[0] = upchan_max_num_channelss.at(Ufactor) * U;
             W1_metadata->dim[1] = num_polarizations;
-            W1_metadata->dim[2] = chord_telescope.get_num_dishes_x();
-            W1_metadata->dim[3] = chord_telescope.get_num_dishes_y();
+            W1_metadata->dim[2] = receive_chime ? chord_telescope.get_num_dishes_x()
+                                                : chord_telescope.get_num_dishes_y();
+            W1_metadata->dim[3] = receive_chime ? chord_telescope.get_num_dishes_y()
+                                                : chord_telescope.get_num_dishes_x();
             W1_metadata->dim[4] = num_components;
             for (int d = W1_metadata->dims - 1; d >= 0; --d)
                 if (d == W1_metadata->dims - 1)
@@ -1189,23 +1148,27 @@ void FEngine::main_thread() {
                     W1_metadata->stride[d] = W1_metadata->stride[d + 1] * W1_metadata->dim[d + 1];
             // frame_desc set in constructor
             /* test that things are consistent */
-            W1_metadata->check_frame_desc(W1_buffers[Ufactor]->get_frame_desc());
+            W1_metadata->check_frame_desc(W1_buffers[Ufactor]->get_ndarray_frame_desc());
 
             std::vector<int> coarse_freq(U * num_local_channels);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             std::vector<int> freq_upchan_factor(U * num_local_channels);
+            std::vector<int> freq_upchan_index(U * num_local_channels);
             assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < U * num_local_channels; ++freq) {
                 coarse_freq.at(freq) =
                     frequency_channels.at(upchan_min_channels.at(Ufactor) + freq / U);
                 freq_upchan_factor.at(freq) = U;
+                freq_upchan_index.at(freq) = freq % U;
             }
             W1_metadata->set_coarse_freq(coarse_freq);
             W1_metadata->set_freq_upchan_factor(freq_upchan_factor);
+            W1_metadata->set_freq_upchan_index(freq_upchan_index);
             W1_metadata->ndishes = num_dishes;
             W1_metadata->n_dish_locations_ew = chord_telescope.get_num_dishes_x();
             W1_metadata->n_dish_locations_ns = chord_telescope.get_num_dishes_y();
-            W1_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+            W1_metadata->dish_index =
+                const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
             // Mark buffer as full
             W1_buffer->mark_frame_full(unique_name, W1_frame_id);
@@ -1230,9 +1193,9 @@ void FEngine::main_thread() {
         float16_t* __restrict__ const W2 = (float16_t*)W2_frame;
         constexpr std::ptrdiff_t beamIn_ns_stride = 1;
         const std::ptrdiff_t beamIn_ew_stride =
-            beamIn_ns_stride * 2 * chord_telescope.get_num_dishes_y();
+            beamIn_ns_stride * 2 * chord_telescope.get_num_dishes_x();
         const std::ptrdiff_t beamOut_ns_stride =
-            beamIn_ew_stride * 2 * chord_telescope.get_num_dishes_x();
+            beamIn_ew_stride * 2 * chord_telescope.get_num_dishes_y();
         const std::ptrdiff_t beamOut_ew_stride = beamOut_ns_stride * frb2_num_beams_ns;
         const std::ptrdiff_t freq_stride = beamOut_ew_stride * frb2_num_beams_ew;
         const std::ptrdiff_t npoints =
@@ -1362,8 +1325,10 @@ void FEngine::main_thread() {
         std::strncpy(W2_metadata->dim_name[3], "beamP", sizeof W2_metadata->dim_name[3]);
         W2_metadata->dim[0] = upchan_all_max_output_channel - upchan_all_min_output_channel;
         W2_metadata->dim[1] = frb2_num_beams_ns * frb2_num_beams_ew;
-        W2_metadata->dim[2] = 2 * chord_telescope.get_num_dishes_x();
-        W2_metadata->dim[3] = 2 * chord_telescope.get_num_dishes_y();
+        W2_metadata->dim[2] = receive_chime ? 2 * chord_telescope.get_num_dishes_x()
+                                            : 2 * chord_telescope.get_num_dishes_y();
+        W2_metadata->dim[3] = receive_chime ? 2 * chord_telescope.get_num_dishes_y()
+                                            : 2 * chord_telescope.get_num_dishes_x();
         for (int d = W2_metadata->dims - 1; d >= 0; --d)
             if (d == W2_metadata->dims - 1)
                 W2_metadata->stride[d] = 1;
@@ -1371,7 +1336,7 @@ void FEngine::main_thread() {
                 W2_metadata->stride[d] = W2_metadata->stride[d + 1] * W2_metadata->dim[d + 1];
         // frame_desc set in constructor
         /* test that things are consistent */
-        W2_metadata->check_frame_desc(W2_buffer->get_frame_desc());
+        W2_metadata->check_frame_desc(W2_buffer->get_ndarray_frame_desc());
 
         // TODO: correct this
         // W2_metadata->nfreq = (upchan_all_max_output_channel - upchan_all_min_output_channel)
@@ -1379,17 +1344,21 @@ void FEngine::main_thread() {
         std::vector<int> coarse_freq(CHORD_META_MAX_FREQ);
         assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
         std::vector<int> freq_upchan_factor(CHORD_META_MAX_FREQ);
+        std::vector<int> freq_upchan_index(CHORD_META_MAX_FREQ);
         assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
+        assert(freq_upchan_index.size() <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < ptrdiff_t(coarse_freq.size()); ++freq) {
             coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
-            freq_upchan_factor.at(freq) = upchannelization_factor;
+            freq_upchan_factor.at(freq) = 1; // upchannelization_factor;
+            freq_upchan_index.at(freq) = 0;
         }
         W2_metadata->set_coarse_freq(coarse_freq);
         W2_metadata->set_freq_upchan_factor(freq_upchan_factor);
+        W2_metadata->set_freq_upchan_index(freq_upchan_index);
         W2_metadata->ndishes = num_dishes;
         W2_metadata->n_dish_locations_ew = chord_telescope.get_num_dishes_x();
         W2_metadata->n_dish_locations_ns = chord_telescope.get_num_dishes_y();
-        W2_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+        W2_metadata->dish_index = const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
         // Mark buffer as full
         W2_buffer->mark_frame_full(unique_name, W2_frame_id);
@@ -1468,11 +1437,9 @@ void FEngine::main_thread() {
                             args[6] = FEngine_setup;
                             args[7] = jl_box_int64(E_frame_index % num_frames + 1);
                             jl_value_t* const res = jl_call(set_E, args, nargs);
-                            if (jl_exception_occurred())
-                                FATAL_ERROR("Julia exception:\n{:s}",
-                                            jl_typeof_str(jl_exception_occurred()));
-                            assert(res);
                             JL_GC_POP();
+                            kotekan::juliaHandlePossibleExceptions();
+                            assert(res);
                         });
                         for (int t = 0; t < num_times; ++t) {
                             for (int f = 0; f < num_frequencies; ++f) {
@@ -1583,32 +1550,35 @@ void FEngine::main_thread() {
                     E_metadata->stride[d] = E_metadata->stride[d + 1] * E_metadata->dim[d + 1];
             // frame_desc set in constructor
             /* test that things are consistent */
-            E_metadata->check_frame_desc(E_buffer->get_frame_desc());
+            E_metadata->check_frame_desc(E_buffer->get_ndarray_frame_desc());
 
-            E_metadata->set_sample0_offset(seq_num);
-            E_metadata->set_offset_downsampling(1);
+            E_metadata->set_fpga_seq_num(seq_num);
+            E_metadata->set_time_downsampling_fpga(1);
             std::vector<int> coarse_freq(num_frequencies);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
             std::vector<int> freq_upchan_factor(num_frequencies);
+            std::vector<int> freq_upchan_index(num_frequencies);
             assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
-            std::vector<int64_t> half_fpga_sample0(num_frequencies);
-            assert(half_fpga_sample0.size() <= CHORD_META_MAX_FREQ);
-            std::vector<int> time_downsampling_fpga(num_frequencies);
-            assert(time_downsampling_fpga.size() <= CHORD_META_MAX_FREQ);
-            for (int freq = 0; freq < num_frequencies; ++freq) {
-                coarse_freq.at(freq) = frequency_channels.at(freq);
-                freq_upchan_factor.at(freq) = 1;
-                half_fpga_sample0.at(freq) = 0;
-                time_downsampling_fpga.at(freq) = 1;
+            assert(freq_upchan_index.size() <= CHORD_META_MAX_FREQ);
+            if (!receive_chime) {
+                for (int freq = 0; freq < num_frequencies; ++freq) {
+                    coarse_freq.at(freq) = frequency_channels.at(freq);
+                    freq_upchan_factor.at(freq) = 1;
+                    freq_upchan_index.at(freq) = 0;
+                }
+            } else {
+                // In the CHIME layout there is only a single frequency
+                coarse_freq.at(0) = frequency_channels.at(freq);
+                freq_upchan_factor.at(0) = 1;
+                freq_upchan_index.at(0) = 0;
             }
             E_metadata->set_coarse_freq(coarse_freq);
             E_metadata->set_freq_upchan_factor(freq_upchan_factor);
-            E_metadata->set_half_fpga_sample0(half_fpga_sample0);
-            E_metadata->set_time_downsampling_fpga(time_downsampling_fpga);
+            E_metadata->set_freq_upchan_index(freq_upchan_index);
             E_metadata->ndishes = num_dishes;
             E_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
             E_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
-            E_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+            E_metadata->dish_index = const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
             // Mark buffer as full
             DEBUG("[{:d}] Marking E buffer as full...", E_frame_index);
@@ -1679,38 +1649,21 @@ void FEngine::main_thread() {
                         pl_mask_metadata->stride[d + 1] * pl_mask_metadata->dim[d + 1];
             // frame_desc set in constructor
             /* test that things are consistent */
-            pl_mask_metadata->check_frame_desc(pl_mask_buffer->get_frame_desc());
+            pl_mask_metadata->check_frame_desc(pl_mask_buffer->get_ndarray_frame_desc());
 
-            pl_mask_metadata->set_sample0_offset(seq_num);
+            pl_mask_metadata->set_fpga_seq_num(seq_num);
             // This pl mask:
             // - is downsampled by 2 in time
             // - has a factor of 64 split off the slowest-varying index
             //   (we count this as "downsampling" as well)
             // Only the slowest-varying index counts as "time" for the
             // ring buffer mechanics.
-            pl_mask_metadata->set_offset_downsampling(2 * 64);
-            std::vector<int> coarse_freq(num_frequencies);
-            assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
-            std::vector<int> freq_upchan_factor(num_frequencies);
-            assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
-            std::vector<int64_t> half_fpga_sample0(num_frequencies);
-            assert(half_fpga_sample0.size() <= CHORD_META_MAX_FREQ);
-            std::vector<int> time_downsampling_fpga(num_frequencies);
-            assert(time_downsampling_fpga.size() <= CHORD_META_MAX_FREQ);
-            for (int freq = 0; freq < num_frequencies; ++freq) {
-                coarse_freq.at(freq) = frequency_channels.at(freq);
-                freq_upchan_factor.at(freq) = 1; // we want 1/4 but we cannot
-                half_fpga_sample0.at(freq) = 64;
-                time_downsampling_fpga.at(freq) = 2 * 64;
-            }
-            pl_mask_metadata->set_coarse_freq(coarse_freq);
-            pl_mask_metadata->set_freq_upchan_factor(freq_upchan_factor);
-            pl_mask_metadata->set_half_fpga_sample0(half_fpga_sample0);
-            pl_mask_metadata->set_time_downsampling_fpga(time_downsampling_fpga);
+            pl_mask_metadata->set_time_downsampling_fpga(2 * 64);
             pl_mask_metadata->ndishes = num_dishes;
             pl_mask_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
             pl_mask_metadata->n_dish_locations_ns = dish_grid.get_num_dishes_y();
-            pl_mask_metadata->dish_index = const_cast<int*>(dish_grid.get_dish_indices().data());
+            pl_mask_metadata->dish_index =
+                const_cast<dish_index_t*>(dish_grid.get_dish_indices().data());
 
             // Mark buffer as full
             DEBUG("[{:d}] Marking pl buffer as full...", E_frame_index);
@@ -1756,10 +1709,9 @@ void FEngine::main_thread() {
                     args[5] = jl_box_int64(bb_num_beams);
                     args[6] = jl_box_int64(J_frame_index + 1);
                     jl_value_t* const res = jl_call(set_J, args, nargs);
-                    if (jl_exception_occurred())
-                        FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                    assert(res);
                     JL_GC_POP();
+                    kotekan::juliaHandlePossibleExceptions();
+                    assert(res);
                 });
                 DEBUG("[{:d}] Done filling J buffer.", J_frame_index);
             }
@@ -1785,15 +1737,13 @@ void FEngine::main_thread() {
                     J_metadata->stride[d] = 1;
                 else
                     J_metadata->stride[d] = J_metadata->stride[d + 1] * J_metadata->dim[d + 1];
-            J_metadata->sample0_offset = seq_num;
-            J_metadata->offset_downsampling = 1;
+            J_metadata->fpga_seq_num = seq_num;
+            J_metadata->time_downsampling_fpga = 1;
             J_metadata->nfreq = num_frequencies;
             assert(J_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
                 J_metadata->coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
                 J_metadata->freq_upchan_factor.at(freq) = 1;
-                J_metadata->half_fpga_sample0.at(freq) = 0;
-                J_metadata->time_downsampling_fpga.at(freq) = 1;
             }
             J_metadata->ndishes = num_dishes;
             J_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();
@@ -1842,10 +1792,9 @@ void FEngine::main_thread() {
                         args[5] = jl_box_int64(num_frequencies * U);
                         args[6] = jl_box_int64(I1_frame_index + 1);
                         jl_value_t* const res = jl_call(set_I, args, nargs);
-                        if (jl_exception_occurred())
-                            FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-                        assert(res);
                         JL_GC_POP();
+                        kotekan::juliaHandlePossibleExceptions();
+                        assert(res);
                     });
 #else
                 std::memset(I1_frame, 0, I1_frame_size);
@@ -1873,15 +1822,13 @@ void FEngine::main_thread() {
                     I1_metadata->stride[d] = 1;
                 else
                     I1_metadata->stride[d] = I1_metadata->stride[d + 1] * I1_metadata->dim[d + 1];
-            I1_metadata->sample0_offset = seq_num;
-            I1_metadata->offset_downsampling = 1;
+            I1_metadata->fpga_seq_num = seq_num;
+            I1_metadata->time_downsampling_fpga = U * Tds;
             I1_metadata->nfreq = num_frequencies;
             assert(I1_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
                 I1_metadata->coarse_freq.at(freq) = freq + 1; // See `FEngine.f_engine`
                 I1_metadata->freq_upchan_factor.at(freq) = U;
-                I1_metadata->half_fpga_sample0.at(freq) = 2 * Tds - 1;
-                I1_metadata->time_downsampling_fpga.at(freq) = U * Tds;
             }
             I1_metadata->ndishes = num_dishes;
             I1_metadata->n_dish_locations_ew = dish_grid.get_num_dishes_x();

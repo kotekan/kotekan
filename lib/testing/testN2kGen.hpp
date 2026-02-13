@@ -6,10 +6,12 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata
+#include "dataset.hpp"         // for dset_id_t
 #include "visUtil.hpp"         // for frameID
 
 #include <array>    // for array
 #include <memory>   // for shared_ptr
+#include <optional> // for optional
 #include <stdint.h> // for int32_t, uint32_t, uint64_t
 #include <string>   // for string, basic_string
 #include <vector>   // for vector
@@ -40,6 +42,9 @@
  * @conf  counts_values         Vector of ints. Optional cycle for "const" count frames.
  * @conf  seed                  Int. Default 0. Seeds the deterministic RNG for "random" correlation
  *                              and counts variants.
+ * @conf  dataset_id            Hash string. Optional dataset id to set for CHIME * pipelines.
+ * @conf  first_frame_index     Int. Default 0. Starting FPGA frame number, fro
+ *                              frames of size samples_per_data_set.
  * @conf  samples_per_data_set  Int. How often to produce data.
  * @conf  num_frames            Int. How many frames to produce. Default inf.
  * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
@@ -77,6 +82,8 @@ private:
     int32_t num_elements;
     std::vector<uint32_t> freq_ids;
     uint32_t seed;
+    std::optional<dset_id_t> dset_id;
+    int64_t first_frame_index;
 
     static constexpr int corr_blocksize = 16; // ALWAYS 16
     static constexpr int count_blocksize = 8; // ALWAYS 8

@@ -1,31 +1,28 @@
-#include "CHORDTelescope.hpp"  // for EOP
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for DataType, type_to_string
-#include "N2FrameView.hpp"     // for N2FrameView
-#include "N2Metadata.hpp"      // for metadata_is_N2
-#include "NDArray.hpp"         // for GenericNDArray
-#include "Symbol.hpp"          // for Symbol
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "hdf5Files.hpp"       // for chord2hdf5, BITSHUFFLE_BLOCKSIZE_AUTO
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, WARN, INFO
-#include "metadata.hpp"        // for metadataObject
-
-#include "fmt.hpp"      // for compile_string_to_view
-#include "gsl-lite.hpp" // for span
-
-#include <Stage.hpp>                             // for Stage
-#include <StageFactory.hpp>                      // for REGISTER_KOTEKAN_STAGE
+#include <CHORDTelescope.hpp> // for EOP
+#include <Config.hpp>         // for Config
+#include <DataType.hpp>       // for DataType, type_to_string
+#include <N2FrameView.hpp>    // for N2FrameView
+#include <N2Metadata.hpp>     // for metadata_is_N2
+#include <NDArray.hpp>        // for GenericNDArray
+#include <Stage.hpp>          // for Stage
+#include <StageFactory.hpp>   // for REGISTER_KOTEKAN_STAGE
+#include <Symbol.hpp>         // for Symbol
+#include <Telescope.hpp>
 #include <algorithm>                             // for max, min
 #include <array>                                 // for array
 #include <atomic>                                // for __atomic_base, atomic
+#include <buffer.hpp>                            // for Buffer
+#include <bufferContainer.hpp>                   // for bufferContainer
 #include <cassert>                               // for assert
 #include <chordMetadata.hpp>                     // for chordMetadata, metadata_is_chord, get_c...
 #include <cstddef>                               // for size_t, ptrdiff_t
 #include <cstdint>                               // for uint8_t, int64_t, uint32_t
 #include <errno.h>                               // for errno, EEXIST, EISDIR
 #include <errors.h>                              // for exit_kotekan, ReturnCode
+#include <fmt.hpp>                               // for compile_string_to_view
 #include <functional>                            // for function
+#include <gsl-lite.hpp>                          // for span
+#include <hdf5Files.hpp>                         // for chord2hdf5, BITSHUFFLE_BLOCKSIZE_AUTO
 #include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::createAttribute
 #include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::DataSpace, DataSp...
 #include <highfive/H5DataType.hpp>               // for DataType, DataType::getSize
@@ -35,16 +32,19 @@
 #include <highfive/bits/H5PropertyList_misc.hpp> // for PropertyList::_initializeIfNeeded, Chun...
 #include <highfive/bits/H5Slice_traits_misc.hpp> // for SliceTraits::write_raw
 #include <iomanip>                               // for operator<<, setfill, setw
+#include <kotekanLogging.hpp>                    // for DEBUG, FATAL_ERROR, WARN, INFO
 #include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
+#include <metadata.hpp>                          // for metadataObject
 #include <prometheusMetrics.hpp>                 // for Metrics, Gauge
 #include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
 #include <string.h>                              // for strerror
 #include <string>                                // for basic_string, char_traits, string, oper...
 #include <sys/stat.h>                            // for mkdir
-#include <unistd.h>                              // for gethostname
-#include <vector>                                // for vector
-#include <visUtil.hpp>                           // for current_time
-#include <waitingForMaxFrames.hpp>               // for waiting_for_max_frames
+#include <timeUtil.hpp>
+#include <unistd.h>                // for gethostname
+#include <vector>                  // for vector
+#include <visUtil.hpp>             // for current_time
+#include <waitingForMaxFrames.hpp> // for waiting_for_max_frames
 
 using namespace hdf5;
 using namespace HighFive;
@@ -60,10 +60,12 @@ using namespace HighFive;
  *
  * @conf base_dir  String. Directory to write into.
  * @conf file_name String. Base filename to write.
- * @conf exit_after_n_frames  Int. Stop writing after this many frames, Default 0 = unlimited
+ * @conf prefix_hostname  Bool. Prepend hostname to output file names. Default:
+ *       true.
+ * @conf max_frames  Int. Stop writing after this many frames, Default 0 = unlimited
  *       frames.
- * @conf exit_with_n_writers  Int. Exit after this many HDF5 writers finished writing, Default 0 =
- *       unlimited writers.
+ * @conf skip_writing  Bool. Do not actually write anything. Default:
+ *       false.
  *
  * @par Metrics
  * @metric kotekan_hdf5filewrite_write_time_seconds
@@ -113,6 +115,8 @@ public:
     void write_chord(const std::string& full_path, const std::uint8_t* const frame,
                      const std::shared_ptr<const chordMetadata>& meta,
                      const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) {
+
+        const auto& telescope = Telescope::instance();
 
         // Create HDF5 file
         File file(full_path, File::Truncate);
@@ -169,6 +173,10 @@ public:
 
         // Write metadata (attributes)
 
+        dataset.createAttribute("telescope_name", telescope.get_name());
+        dataset.createAttribute("seq_length_nsec", telescope.seq_length_nsec());
+        dataset.createAttribute("gps_time_enabled", telescope.gps_time_enabled());
+
         dataset.createAttribute("chord_metadata_version", chord_metadata_version);
         dataset.createAttribute("name", meta->get_name());
         dataset.createAttribute("type", kotekan::type_to_string(frame_desc->get_value_datatype()));
@@ -176,14 +184,14 @@ public:
         std::vector<std::string> dim_names(dimnames.begin(), dimnames.end());
         dataset.createAttribute("dim_names", dim_names);
 
-        if (meta->has_fpga_seq_num())
+        if (meta->has_fpga_seq_num()) {
             dataset.createAttribute("fpga_seq_num", meta->get_fpga_seq_num());
+            dataset.createAttribute("fpga_seq_time_nsec", timespec_to_nanosec_i64(telescope.to_time(
+                                                              meta->get_fpga_seq_num())));
+        }
 
-        if (meta->has_sample0_offset())
-            dataset.createAttribute("sample0_offset", meta->get_sample0_offset());
-
-        if (meta->has_offset_downsampling())
-            dataset.createAttribute("offset_downsampling", meta->get_offset_downsampling());
+        if (meta->has_time_downsampling_fpga())
+            dataset.createAttribute("time_downsampling_fpga", meta->get_time_downsampling_fpga());
 
         if (meta->has_coarse_freq())
             dataset.createAttribute("coarse_freq", meta->get_coarse_freq());
@@ -191,11 +199,8 @@ public:
         if (meta->has_freq_upchan_factor())
             dataset.createAttribute("freq_upchan_factor", meta->get_freq_upchan_factor());
 
-        if (meta->has_half_fpga_sample0())
-            dataset.createAttribute("half_fpga_sample0", meta->get_half_fpga_sample0());
-
-        if (meta->has_time_downsampling_fpga())
-            dataset.createAttribute("time_downsampling_fpga", meta->get_time_downsampling_fpga());
+        if (meta->has_freq_upchan_index())
+            dataset.createAttribute("freq_upchan_index", meta->get_freq_upchan_index());
 
         if (meta->ndishes >= 0) {
             dataset.createAttribute("ndishes", meta->ndishes);
@@ -285,9 +290,9 @@ public:
         file.createAttribute("num_elements", frame.num_elements);
         file.createAttribute("num_prod", frame.num_prod);
         file.createAttribute("num_ev", frame.num_ev);
-        file.createAttribute("nfreq", frame.nfreq);
         file.createAttribute("freq_id", frame.freq_id);
         file.createAttribute("freq_MHz", frame.freq_MHz);
+        file.createAttribute("abs_time_idx", frame.abs_time_idx);
         file.createAttribute("time_center_eop.t_inst", frame.time_center_eop.t_inst);
         file.createAttribute("time_center_eop.t_ut1", frame.time_center_eop.t_ut1);
         file.createAttribute("time_center_eop.delta_UT1_inst",
@@ -432,7 +437,7 @@ public:
                     assert(metadata_is_chord(mc));
                     const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
                     const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
-                        buffer->get_frame_desc();
+                        buffer->get_ndarray_frame_desc();
                     assert(frame_desc);
                     write_chord(full_path, frame, meta, frame_desc);
                 } else if (metadata_is_N2(mc)) {
@@ -460,9 +465,15 @@ public:
             }
         } // for
 
-        if (--waiting_for_max_frames == 0) {
-            WARN("Shutting down Kotekan");
-            exit_kotekan(CLEAN_EXIT);
+        if (max_frames >= 0) {
+            // Unregister to allow the pipeline to continue, unless I'm the last
+            // consumer on this buffer.
+            buffer->unregister_consumer(unique_name, true);
+
+            if (--waiting_for_max_frames == 0) {
+                WARN("Shutting down Kotekan");
+                exit_kotekan(CLEAN_EXIT);
+            }
         }
 
         DEBUG("exiting");

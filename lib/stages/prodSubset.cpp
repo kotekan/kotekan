@@ -42,6 +42,11 @@ prodSubset::prodSubset(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
+    // in and out buffers must be of type VisBuffer
+    if (in_buf->buffer_type != "vis" || out_buf->buffer_type != "vis") {
+        FATAL_ERROR("prodSubset: both in_buf and out_buf must be of type 'vis'");
+    }
+
     auto subset_list = parse_prod_subset(config, unique_name);
     _base_prod_ind = std::get<0>(subset_list);
     _base_prod_subset = std::get<1>(subset_list);

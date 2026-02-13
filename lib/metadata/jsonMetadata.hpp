@@ -20,7 +20,7 @@ namespace jsonMetadata {
 // these must match chimeMetadata and choordMetadata for now
 // in namespace for C++ const
 #define MAX_NUM_BEAMS 20
-const int CHORD_META_MAX_FREQ = 1024;
+const int CHORD_META_MAX_FREQ = 4096;
 
 typedef nlohmann::json metadata;
 
@@ -32,6 +32,7 @@ const std::string RIGHT_ASCENSION("RIGHT_ASCENSION"); // an array of float of si
 const std::string DECLINATION("DECLINATION");         // an array of float of size MAX_NUM_BEAMS
 const std::string SCALING("SCALING");                 // an array of uint32 of size MAX_NUM_BEAMS
 const std::string FPGA_SEQ_NUM("FPGA_SEQ_NUM");       // an uint64
+const std::string TIME_DOWNSAMPLING_FPGA("TIME_DOWNSAMPLING_FPGA"); // an int
 // frequencies -- integer (0-8192) identifier for FPGA coarse frequencies
 // This is the FPGA frequency channel index, indexed by the local coarse frequency channel.
 // TODO: this should really be a freq_id_t array
@@ -50,15 +51,10 @@ const std::string FIRST_PACKET_RECV_TIME(
 const std::string TV_SEC("TV_SEC");   // the tv_sec memmber of a timeval
 const std::string TV_USEC("TV_USEC"); // the tv_usec memmber of a timeval
 
-const std::string SAMPLE0_OFFSET("SAMPLE0_OFFSET"); // an int64, used with offset_downsampling
-const std::string OFFSET_DOWNSAMPLING("OFFSET_DOWNSAMPLING"); // an int, used with sample0_offset
-
-const std::string
-    HALF_FPGA_SAMPLE0("HALF_FPGA_SAMPLE0"); // an array of int of size CHORD_META_MAX_FREQ
-const std::string TIME_DOWNSAMPLING_FPGA(
-    "TIME_DOWNSAMPLING_FPGA"); // an array of int64_t of size CHORD_META_MAX_FREQ
 const std::string
     FREQ_UPCHAN_FACTOR("FREQ_UPCHAN_FACTOR"); // an array of int of size CHORD_META_MAX_FREQ
+const std::string
+    FREQ_UPCHAN_INDEX("FREQ_UPCHAN_INDEX"); // an array of int of size CHORD_META_MAX_FREQ
 
 
 struct beamCoord {

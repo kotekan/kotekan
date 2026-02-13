@@ -25,6 +25,7 @@
 #include <deque>      // for deque
 #include <functional> // for function
 #include <optional>   // for optional
+#include <random>     // for mt19937
 #include <stddef.h>   // for size_t
 #include <stdint.h>   // for uint32_t
 #include <string>     // for string
@@ -280,11 +281,30 @@ private:
 };
 
 /**
- * @brief Fill with an ideal point source.
+ * @brief Fill with an ideal point source, with very simple beam model and noise.
  *
- * Here the input values are defined in the config value 'input_values'.
- *
- * @conf  input_values  Array of CFloat. Values for the frequency IDs
+ * @conf    ra          double, CIRS Right Ascension in degrees for the source.
+ * @conf    dec         double, CIRS Declination in degrees for the source.
+ * @conf    stokes_I    double, Stokes I parameter for the source (intensity) at
+ *                      300 MHz, arbitrary units. Defaults to 1.0.
+ * @conf    stokes_Q    double, Stokes Q parameter for the source at 300 MHz,
+ *                      arbitrary units. Defaults to 0.0.
+ * @conf    stokes_U    double, Stokes U parameter for the source at 300 MHz,
+ *                      arbitrary units. Defaults to 0.0.
+ * @conf    stokes_V    double, Stokes V parameter for the source at 300 MHz,
+ *                      arbitrary units. Defaults to 0.0.
+ * @conf    spectral_index  double, power law index to apply to source spectrum,
+ *                      F_nu ~ F_300 * (nu / 300 Mhz)^spectral_index.  Defaults
+ *                      to 0.0.
+ * @conf    noise_var double, Variance of the voltage noise, proportional to system
+ *                      temperature. Same units as stokes_I. Defaults to 0.0.
+ * @conf    beam_FWHM_300MHz_deg    double, Size (full width at half max) of the
+ *                      primary beam at 300MHz in degrees. Defaults to 10.0.
+ * @conf    n_rfi_ticks uint32, number of ticks to assign to rfi each frame.
+ *                      Defaults to 0.
+ * @conf    n_lost_ticks    uint32, number of ticks to assign to packet loss each
+ *                      frame. Defaults to 0.
+ * @conf    seed        int, seed for random number generator. defaults to 12345.
  *
  **/
 class PointSourceVisPattern : public FakeVisPattern {
@@ -303,8 +323,11 @@ private:
     double stokes_Q;
     double stokes_U;
     double stokes_V;
+    double spectral_index;
     double noise_var;
+    double beam_fwhm_300MHz_deg;
     uint32_t n_rfi_ticks;
     uint32_t n_lost_ticks;
+    std::mt19937 rng;
 };
 #endif // FAKE_VIS_PATTERN

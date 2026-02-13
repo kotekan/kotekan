@@ -52,43 +52,58 @@ bool chordMetadata::operator==(const chordMetadata& other) const {
     return metadata == other.metadata;
 }
 
-/// Helper function to compare data during conversion to NDArray
 void chordMetadata::check_frame_desc(
     const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) const {
-    (void)frame_desc;
+
+    bool failed = false;
+
     if (strncmp(this->name, frame_desc->get_quantity_name().get_c_string(), sizeof(this->name))
-        != 0)
+        != 0) {
         ERROR("Names differ: {:s} != {:s}",
               std::string(this->name, strnlen(this->name, sizeof(this->name))),
               frame_desc->get_quantity_name());
-    if (this->type != frame_desc->get_value_datatype())
+        failed = true;
+    }
+    if (this->type != frame_desc->get_value_datatype()) {
         ERROR("Types differ for {:s}: {:s} != {:s}", frame_desc->get_quantity_name(),
               kotekan::type_to_string(this->type),
               kotekan::type_to_string(frame_desc->get_value_datatype()));
-    if (size_t(this->dims) != frame_desc->get_rank())
+        failed = true;
+    }
+    if (size_t(this->dims) != frame_desc->get_rank()) {
         ERROR("Ranks differ for {:s}: {:d} != {:d}", frame_desc->get_quantity_name(), this->dims,
               frame_desc->get_rank());
+        failed = true;
+    }
     for (int d = this->dims - 1; d >= 0; --d) {
 
         if (strncmp(this->dim_name[d], frame_desc->get_dimname(d).get_c_string(),
                     sizeof this->dim_name[d])
-            != 0)
+            != 0) {
             ERROR("Dim_name[{:d}] differs for {:s}: {:s} != {:s}", d,
                   frame_desc->get_quantity_name(),
                   std::string(this->dim_name[d],
                               strnlen(this->dim_name[d], sizeof(this->dim_name[d]))),
                   frame_desc->get_dimname(d));
+            failed = true;
+        }
 
-        if (this->dim[d] != frame_desc->get_extent(d))
+        if (this->dim[d] != frame_desc->get_extent(d)) {
             ERROR("Dim[{:d}] differs for {:s}: {:d} != {:d}", d, frame_desc->get_quantity_name(),
                   this->dim[d], frame_desc->get_extent(d));
-        if (this->stride[d] != frame_desc->get_stride(d))
+            failed = true;
+        }
+        if (this->stride[d] != frame_desc->get_stride(d)) {
             ERROR("Stride[{:d}] differs for {:s}: {:d} != {:d}", d, frame_desc->get_quantity_name(),
                   this->stride[d], frame_desc->get_stride(d));
+            failed = true;
+        }
     }
+
+    if (failed)
+        FATAL_ERROR("Incosistent array description between CHORDMetadata and FrameDesc");
 }
 
-/// Helper function to set CHORD metadata during conversion to NDArray
 void chordMetadata::set_from_frame_desc(
     const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) {
     this->type = frame_desc->get_value_datatype();
@@ -122,6 +137,10 @@ struct chordMetadataFormat {
     int32_t frame_counter;
     int64_t fpga_seq_num;
 
+    // Time sampling -- the factor by which the time samples have been
+    // downsampled relative to FPGA samples.
+    int32_t time_downsampling_fpga;
+
     char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
     // chordDataType type;
     int32_t type;
@@ -132,19 +151,6 @@ struct chordMetadataFormat {
     int64_t stride[CHORD_META_MAX_DIM];
     int64_t offset;
 
-    // All time samples in this buffer (or the whole buffer, if the
-    // buffer does not have a time sample index) have `sample_offset`
-    // added to the buffer's time sample index. (This allows quickly
-    // shifting metadata in time to re-use metadata objects.)
-    //
-    // The actual (possibly fractional) time sample index is calculated as follows:
-    //     T_actual = (sample0_offset + T / offset_downsampling + half_fpga_sample0[F]) /
-    //                time_downsampling_fpga[F]
-    // where `T` is the time sample index (the slowest varying index)
-    // and `F` is the coarse frequency index.
-    int64_t sample0_offset;
-    int offset_downsampling;
-
     // Per-frequency arrays
     int32_t nfreq;
 
@@ -154,17 +160,8 @@ struct chordMetadataFormat {
     // the upchannelization factor that each frequency has gone through (1 for = FPGA)
     int32_t freq_upchan_factor[CHORD_META_MAX_FREQ];
 
-    // Time sampling -- for each coarse frequency channel, 2x the FPGA
-    // sample number of the first sample.  The 2x is there to handle
-    // the upchannelization case, where 2 or more samples may get
-    // averaged, producing a new sample that is effectively halfway in
-    // between them, ie, at a half-FPGAsample time.
-    int64_t half_fpga_sample0[CHORD_META_MAX_FREQ];
-
-    // Time sampling -- for each coarse frequency channel, the factor
-    // by which the time samples have been downsampled relative to
-    // FPGA samples.
-    int32_t time_downsampling_fpga[CHORD_META_MAX_FREQ];
+    // the upchannelization index for each frequency (0 ... freq_upchan_factor - 1)
+    int32_t freq_upchan_index[CHORD_META_MAX_FREQ];
 
     uint32_t rfi_num_bad_inputs;
     int32_t rfi_flagged_samples;
@@ -198,6 +195,8 @@ size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t 
         this->set_frame_counter(fmt->frame_counter);
     if (fmt->fpga_seq_num != -1)
         this->set_fpga_seq_num(fmt->fpga_seq_num);
+    if (fmt->time_downsampling_fpga != -1)
+        this->set_time_downsampling_fpga(fmt->time_downsampling_fpga);
     for (int i = 0; i < CHORD_META_MAX_DIMNAME; i++) {
         name[i] = fmt->name[i];
     }
@@ -215,23 +214,14 @@ size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t 
         stride[i] = fmt->stride[i];
     }
     offset = fmt->offset;
-    if (fmt->sample0_offset != -1)
-        this->set_sample0_offset(fmt->sample0_offset);
-    if (fmt->offset_downsampling != -1)
-        this->set_offset_downsampling(fmt->offset_downsampling);
     const int nfreq = fmt->nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
     if (fmt->freq_upchan_factor[0] != 0) // 0 should be an invalid value
         this->set_freq_upchan_factor(
             std::vector<int>(fmt->freq_upchan_factor, fmt->freq_upchan_factor + nfreq));
-    // Preserve half_fpga_sample0 for serialization (-1 = absent).
-    if (fmt->half_fpga_sample0[0] != -1) {
-        this->set_half_fpga_sample0(
-            std::vector<int64_t>(fmt->half_fpga_sample0, fmt->half_fpga_sample0 + nfreq));
-    }
-    if (fmt->time_downsampling_fpga[0] != 0) // 0 should be an invalid value
-        this->set_time_downsampling_fpga(
-            std::vector<int>(fmt->time_downsampling_fpga, fmt->time_downsampling_fpga + nfreq));
+    if (fmt->freq_upchan_index[0] != -1) // -1 should be an invalid value
+        this->set_freq_upchan_index(
+            std::vector<int>(fmt->freq_upchan_index, fmt->freq_upchan_index + nfreq));
     if (fmt->coarse_freq[0] != -1) // -1 is an invalid frequency index
         this->set_coarse_freq(std::vector<int>(fmt->coarse_freq, fmt->coarse_freq + nfreq));
 
@@ -274,6 +264,10 @@ size_t chordMetadata::serialize(char* bytes) {
         fmt->fpga_seq_num = this->get_fpga_seq_num();
     else
         fmt->fpga_seq_num = -1;
+    if (this->has_time_downsampling_fpga())
+        fmt->time_downsampling_fpga = this->get_time_downsampling_fpga();
+    else
+        fmt->time_downsampling_fpga = -1;
     for (int i = 0; i < CHORD_META_MAX_DIMNAME; i++) {
         fmt->name[i] = name[i];
     }
@@ -287,29 +281,19 @@ size_t chordMetadata::serialize(char* bytes) {
         fmt->stride[i] = stride[i];
     }
     fmt->offset = offset;
-    if (this->has_sample0_offset())
-        fmt->sample0_offset = this->get_sample0_offset();
-    else
-        fmt->sample0_offset = -1;
-    if (this->has_offset_downsampling())
-        fmt->offset_downsampling = this->get_offset_downsampling();
-    else
-        fmt->offset_downsampling = -1;
     fmt->nfreq = this->get_nfreq();
     assert(fmt->nfreq < CHORD_META_MAX_FREQ);
     if (this->has_freq_upchan_factor())
         std::copy_n(this->get_freq_upchan_factor().data(), this->get_nfreq(),
                     fmt->freq_upchan_factor);
-    if (this->has_half_fpga_sample0()) {
-        std::copy_n(this->get_half_fpga_sample0().data(), this->get_nfreq(),
-                    fmt->half_fpga_sample0);
-    } else {
-        // Use -1 as a placeholder for "absent"
-        std::fill_n(fmt->half_fpga_sample0, this->get_nfreq(), int64_t(-1));
-    }
-    if (this->has_time_downsampling_fpga())
-        std::copy_n(this->get_time_downsampling_fpga().data(), this->get_nfreq(),
-                    fmt->time_downsampling_fpga);
+    if (this->has_freq_upchan_index())
+        std::copy_n(this->get_freq_upchan_index().data(), this->get_nfreq(),
+                    fmt->freq_upchan_index);
+    else
+        std::memset(
+            fmt->freq_upchan_index, -1,
+            this->get_nfreq()
+                * sizeof(fmt->freq_upchan_index[0])); // set bytes not ints but is ok for now
     if (this->has_coarse_freq())
         std::copy_n(this->get_coarse_freq().data(), this->get_nfreq(), fmt->coarse_freq);
     else
@@ -390,6 +374,9 @@ void from_json(const nlohmann::json& j, chordMetadata& m) {
         m.metadata.emplace(jsonMetadata::BEAM_COORD, j.at(jsonMetadata::BEAM_COORD));
     if (j.contains(jsonMetadata::FPGA_SEQ_NUM))
         m.metadata.emplace(jsonMetadata::FPGA_SEQ_NUM, j.at(jsonMetadata::FPGA_SEQ_NUM));
+    if (j.contains(jsonMetadata::TIME_DOWNSAMPLING_FPGA))
+        m.metadata.emplace(jsonMetadata::TIME_DOWNSAMPLING_FPGA,
+                           j.at(jsonMetadata::TIME_DOWNSAMPLING_FPGA));
     if (j.contains(jsonMetadata::COARSE_FREQ))
         m.metadata.emplace(jsonMetadata::COARSE_FREQ, j.at(jsonMetadata::COARSE_FREQ));
     if (j.contains(jsonMetadata::DATASET_ID))
@@ -411,20 +398,11 @@ void from_json(const nlohmann::json& j, chordMetadata& m) {
         m.metadata.emplace(jsonMetadata::FIRST_PACKET_RECV_TIME,
                            j.at(jsonMetadata::FIRST_PACKET_RECV_TIME));
 
-    if (j.contains(jsonMetadata::SAMPLE0_OFFSET))
-        m.metadata.emplace(jsonMetadata::SAMPLE0_OFFSET, j.at(jsonMetadata::SAMPLE0_OFFSET));
-    if (j.contains(jsonMetadata::OFFSET_DOWNSAMPLING))
-        m.metadata.emplace(jsonMetadata::OFFSET_DOWNSAMPLING,
-                           j.at(jsonMetadata::OFFSET_DOWNSAMPLING));
-
-    if (j.contains(jsonMetadata::HALF_FPGA_SAMPLE0))
-        m.metadata.emplace(jsonMetadata::HALF_FPGA_SAMPLE0, j.at(jsonMetadata::HALF_FPGA_SAMPLE0));
-    if (j.contains(jsonMetadata::TIME_DOWNSAMPLING_FPGA))
-        m.metadata.emplace(jsonMetadata::TIME_DOWNSAMPLING_FPGA,
-                           j.at(jsonMetadata::TIME_DOWNSAMPLING_FPGA));
     if (j.contains(jsonMetadata::FREQ_UPCHAN_FACTOR))
         m.metadata.emplace(jsonMetadata::FREQ_UPCHAN_FACTOR,
                            j.at(jsonMetadata::FREQ_UPCHAN_FACTOR));
+    if (j.contains(jsonMetadata::FREQ_UPCHAN_INDEX))
+        m.metadata.emplace(jsonMetadata::FREQ_UPCHAN_INDEX, j.at(jsonMetadata::FREQ_UPCHAN_INDEX));
 
     assert(j.at("max_dim") == CHORD_META_MAX_DIM);
     assert(j.at("max_dimname") == CHORD_META_MAX_DIMNAME);

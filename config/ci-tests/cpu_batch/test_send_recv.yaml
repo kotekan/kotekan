@@ -20,7 +20,7 @@ telescope:
     dish_elev_axis: [1.0, 0.0, 0.0]
     dish_vert_axis: [0.0, 0.0, 1.0]
     require_gps: False
-    updatable_config: /earth_rotation_data
+    eop_updatable_config: /earth_rotation_data
     num_dishes_x: 22
     num_dishes_y: 24
     num_dishes: 64
@@ -71,13 +71,13 @@ recv_buffer_noCT:
 send_N2_buffer:
     kotekan_buffer: N2
     metadata_pool: N2_pool
-    vis_layout: "FullUpperTri"
+    n2_layout: "FullUpperTri"
     num_frames: buffer_depth
 
 recv_N2_buffer:
     kotekan_buffer: N2
     metadata_pool: N2_pool
-    vis_layout: "FullUpperTri"
+    n2_layout: "FullUpperTri"
     num_frames: buffer_depth
 
 

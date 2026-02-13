@@ -83,6 +83,8 @@ struct template_magic<1,1>
     // Base case: L == N == 1.
     static __device__ ulong load_and_sum(const ulong *Sin, uint bf, int m0, int T, int Tmin, int Tsize, int F, int S)
     {
+        assert((Tsize & (Tsize - 1)) == 0 && "Tsize must be a power of 2");
+
         const int M = T * F * 3;
 	m0 = (m0 < M) ? m0 : (M-1);
 	
@@ -163,6 +165,8 @@ void launch_s012_station_downsample_kernel(ulong* Sout, const ulong* Sin, const 
 	throw runtime_error("launch_s012_station_downsample_kernel(): first sample Tmin must be >= 0");
     if (Tsize <= 0)
 	throw runtime_error("launch_s012_station_downsample_kernel(): ringbuffer size Tsize be > 0");
+    if (Tsize & (Tsize - 1) != 0)
+        throw runtime_error("launch_s012_station_downsample_kernel(): Tsize must be a power of 2");
     if (F <= 0)
 	throw runtime_error("launch_s012_station_downsample_kernel(): expected F > 0");
     if (S <= 0)
@@ -171,7 +175,8 @@ void launch_s012_station_downsample_kernel(ulong* Sout, const ulong* Sin, const 
 	throw runtime_error("launch_s012_station_downsample_kernel(): expected S to be a multple of 128");
     if (S > rfi_max_stations)
 	throw runtime_error("launch_s012_station_downsample_kernel(): expected S to be <= max_rfi_stations");
-    if ((M*S) > INT_MAX)
+    if ((T >= INT_MAX) || (Tmin >= INT_MAX) || (Tsize >= INT_MAX) || (F >= INT_MAX)
+        || (S >= INT_MAX) || (M*S) > INT_MAX)
 	throw runtime_error("launch_s012_station_downsample_kernel(): 32-bit overflow");
 
     uint Wx = (S+1023) / 1024;

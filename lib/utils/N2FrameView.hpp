@@ -10,6 +10,7 @@
 #include "CHORDTelescope.hpp" // for CHORDTelescope
 #include "Config.hpp"         // for Config
 #include "FrameView.hpp"      // for FrameView
+#include "N2FrameDesc.hpp"    // for N2FrameDesc
 #include "N2Metadata.hpp"     // for N2Metadata
 #include "N2Util.hpp"         // for cfloat, get_num_prod
 #include "buffer.hpp"         // for Buffer
@@ -28,19 +29,8 @@
 #include <utility>   // for pair, make_pair
 #include <vector>    // for vector
 
-/**
- * @brief The fields within the N2FrameView.
- *
- * Use this enum to refer to the fields.
- **/
-enum class N2Field { vis, weight, flags, eval, evec, emethod, erms, gain };
-
-/**
- * @brief Eigenvalue and Eigenvector calculation method
- *
- * Use this enum to refer to the method used to compute Eigenvalues and Eigenvectors.
- **/
-enum class N2EigenMethod { cheevr, iterative };
+using kotekan::N2EigenMethod;
+using kotekan::N2Field;
 
 /**
  * @class N2FrameView
@@ -54,19 +44,18 @@ class N2FrameView : public FrameView {
 
 public:
     const std::shared_ptr<N2Metadata> _metadata;
+    const std::shared_ptr<const kotekan::N2FrameDesc> _desc;
+
+    /// Layout of the visibility matrix
+    const N2Layout n2_layout;
     /// Number of elements for data in buffer
-    const uint32_t& num_elements;
+    const uint32_t num_elements;
     /// Number of products for data in buffer
-    const uint32_t& num_prod;
+    const uint32_t num_prod;
     /// Number of eigenvectors and values calculated
-    const uint32_t& num_ev;
-    /// Total number of frequencies in the pipeline
-    const uint32_t& nfreq;
+    const uint32_t num_ev;
 
-    std::map<N2Field, std::pair<size_t, size_t>> frame_layout;
-
-    /// Vis Matrix Layout
-    const N2Layout& vis_layout;
+    kotekan::n2frame_layout_t frame_layout;
 
     /// ID of the frequency associated with this frame
     const uint32_t& freq_id;
@@ -81,8 +70,8 @@ public:
     struct EOP& bin_eop;
     double& bin_start_ERA_deg;
     double& bin_end_ERA_deg;
-    int64_t& bin_start_LAST;
-    int64_t& bin_end_LAST;
+    double& bin_start_LAST;
+    double& bin_end_LAST;
 
     /// The sequence number of the first FPGA frame integrated into this
     /// visibility frame (time<0> in VisFrameView)
@@ -95,6 +84,8 @@ public:
     uint64_t& n_valid_fpga_ticks;
     /// The number of lost samples due to RFI (rfi_total)
     uint64_t& n_rfi_fpga_ticks;
+    /// CHIME dataset id tracking updateable config item changes
+    dset_id_t& dataset_id;
 
     /// View of the visibility data.
     const gsl_lite::span<N2::cfloat> vis;
@@ -112,126 +103,6 @@ public:
     float& erms;
     /// View of the applied gains
     const gsl_lite::span<N2::cfloat> gain;
-
-    /**
-     * @brief The sizes of the fields in the N2FrameView.
-     */
-    static std::vector<std::pair<N2Field, size_t>>
-    get_field_sizes(uint32_t num_elements_in, uint32_t num_ev_in, size_t num_prod_in) {
-
-        std::vector<std::pair<N2Field, size_t>> field_sizes;
-        field_sizes.push_back({N2Field::vis, sizeof(N2::cfloat) * num_prod_in});
-        field_sizes.push_back({N2Field::weight, sizeof(float) * num_prod_in});
-        field_sizes.push_back({N2Field::flags, sizeof(float) * num_elements_in});
-        field_sizes.push_back({N2Field::eval, sizeof(float) * num_ev_in});
-        field_sizes.push_back({N2Field::evec, sizeof(N2::cfloat) * num_ev_in * num_elements_in});
-        field_sizes.push_back({N2Field::emethod, sizeof(N2EigenMethod) * 1});
-        field_sizes.push_back({N2Field::erms, sizeof(float) * 1});
-        field_sizes.push_back({N2Field::gain, sizeof(N2::cfloat) * num_elements_in});
-
-        return field_sizes;
-    }
-
-    /**
-     * @brief The layout of the fields within the N2FrameView.
-     *
-     * @return A map of the field to the { start, end } of the field in the frame.
-     **/
-    static std::map<N2Field, std::pair<size_t, size_t>>
-    get_frame_layout(uint32_t num_elements_in, uint32_t num_ev_in, size_t num_prod_in) {
-        std::map<N2Field, std::pair<size_t, size_t>> frame_layout;
-        std::vector<std::pair<N2Field, size_t>> field_sizes =
-            get_field_sizes(num_elements_in, num_ev_in, num_prod_in);
-
-        // build the layout
-        size_t offset = 0;
-        for (const std::pair<N2Field, size_t>& field : field_sizes) {
-            frame_layout[field.first] = std::make_pair(offset, offset + field.second);
-            offset += field.second;
-        }
-
-        return frame_layout;
-    }
-
-    /**
-     * @brief Calculate the size of the frame.
-     */
-    static size_t calculate_frame_size(uint32_t num_elements_in, uint32_t num_ev_in,
-                                       size_t num_prod_in) {
-        size_t frame_size =
-            get_frame_layout(num_elements_in, num_ev_in, num_prod_in)[N2Field::gain].second;
-        return frame_size;
-    }
-
-    static size_t calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
-
-        const int num_elements_in = config.get<int>(unique_name, "num_elements");
-        const int num_ev_in = config.get<int>(unique_name, "num_ev");
-
-        const N2Layout vis_layout = config.get<N2Layout>(unique_name, "vis_layout");
-
-        const uint64_t num_prod_in = get_num_prod(num_elements_in, vis_layout);
-
-        return calculate_frame_size(num_elements_in, num_ev_in, num_prod_in);
-    }
-
-    /**
-     * @brief Get the number of products in the visibility matrix for the given number of elements
-     * and layout.
-     *
-     * @param   num_elemens_in  number of elements (dishes x polarizations) in the pipeline
-     * @param   vis_layout_in       the layout of the visibility matrix in the N2FrameView
-     *
-     * @throws std::runtime_error    If vis_layout_in is unknown.
-     */
-    static size_t get_num_prod(uint32_t num_elements_in, N2Layout vis_layout_in) {
-        size_t num_prod_in;
-
-        switch (vis_layout_in) {
-            case N2Layout::FullUpperTri:
-                num_prod_in = (num_elements_in * (num_elements_in + 1)) / 2;
-                break;
-            case N2Layout::RedundantBaselineAvg:
-                num_prod_in = Telescope::instance().cast<CHORDTelescope>().get_num_stacks();
-                break;
-            default:
-                std::string msg =
-                    fmt::format("N2FrameView::get_num_prod given unknown N2Layout: {:s}",
-                                N2Layout_to_string(vis_layout_in));
-                ERROR_NON_OO("{:s}", msg);
-                throw std::runtime_error(msg);
-                break;
-        }
-
-        return num_prod_in;
-    }
-
-    /**
-     * @brief Get the product maps for each product in the visibility matrix in the FullUpperTri
-     * layout.
-     *
-     * See N2FrameView::get_prod_maps() for full details.
-     *
-     * @param   prods           Vector to fill.
-     * @param   num_elements_in Number of elements (dishes x polarizations) in the pipeline
-     */
-    static void get_prod_maps_FullUpperTri(std::vector<N2::prod_ctype>& prods,
-                                           uint32_t num_elements_in) {
-
-        size_t num_prod_in = (num_elements_in * (num_elements_in + 1)) / 2;
-
-        prods.resize(num_prod_in);
-
-        // Loop over all rows
-        size_t p = 0;
-        for (uint16_t i = 0; i < num_elements_in; i++) {
-            // Upper Triangular!  Loop over upper columns only;
-            for (uint16_t j = i; j < num_elements_in; j++) {
-                prods[p] = {.input_a = i, .input_b = j};
-                p++;
-            }
-        }
-    }
 
     /**
      * @brief Create view without modifying layout.
@@ -283,25 +154,6 @@ public:
      *
      **/
     void copy_data(N2FrameView frame_to_copy_from, const std::set<N2Field>& skip_members);
-
-    /**
-     * @brief Get the product maps for each product in the visibility matrix.
-     *
-     * Every product in the frame view is a visibility matrix V_{ab} that was formed from two input
-     * elements: a (first, the full vis matrix row index) and b (second, the full vis matrix column
-     * index), where 0 <= a, b < num_elements. This function fills the given vector prods with
-     * num_prod entries, that is, one entry for each object in vis or weights. Each is a prod_ctype
-     * which has the 'a' element index for this product in prod.index_a, and the 'b' element index
-     * in prod.index_b.
-     *
-     * @note The given vector prods is reserved to num_prods size, which potentially performs an
-     * allocation of size num_prod * sizeof(prod_ctype).
-     *
-     * @param   prods   Vector of prod_ctype to fill.
-     *
-     * @throws  std::runtime_error  If this N2FrameView has an unknown layout.
-     */
-    void get_prod_maps(std::vector<N2::prod_ctype>& prods);
 };
 
 #endif

@@ -6,21 +6,20 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
-#include <NDArrayRingBuffer.hpp>
-#include <bufferContainer.hpp>
-#include <chordMetadata.hpp>
-#include <cudaCommand.hpp>
-#include <cudaDeviceInterface.hpp>
-#include <div.hpp>
-
-#include <fmt.hpp>
+#include "DataType.hpp"
+#include "NDArrayBuffer.hpp"
+#include "NDArrayRingBuffer.hpp"
+#include "bufferContainer.hpp"
+#include "chordMetadata.hpp"
+#include "cudaCommand.hpp"
+#include "cudaDeviceInterface.hpp"
+#include "div.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstring>
+#include <fmt.hpp>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -147,6 +146,8 @@ private:
         //
     {{/kernel_arguments}}
 
+    const bool poison_buffers;
+
     // Kotekan buffer names
     {{#kernel_arguments}}
         {{^isscalar}}
@@ -187,6 +188,8 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         "{{{kernel_name}}}", "{{{kernel_name}}}.ptx"),
     Fmin(config.get<int>(unique_name, "Fmin")),
     Fmax(config.get<int>(unique_name, "Fmax")),
+
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
     {{#kernel_arguments}}
         {{^isscalar}}
@@ -325,18 +328,75 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    {{#kernel_arguments}}
-        {{#hasbuffer}}
-            {{^isoutput}}
-                {{{name}}}_buffer.check_metadata();
-            {{/isoutput}}
-            {{#isoutput}}
-                {{{name}}}_buffer.set_metadata(E_buffer.get_metadata());
-            {{/isoutput}}
-        {{/hasbuffer}}
-    {{/kernel_arguments}}
+    // Since we use a ring buffer we need to set the metadata only once
+    static bool did_set_metadata = false;
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
 
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
+        {{#kernel_arguments}}
+            {{#hasbuffer}}
+                {{^isoutput}}
+                    {{{name}}}_buffer.check_metadata();
+                {{/isoutput}}
+                {{#isoutput}}
+                    {{{name}}}_buffer.set_metadata(E_buffer.get_metadata());
+                {{/isoutput}}
+            {{/hasbuffer}}
+        {{/kernel_arguments}}
+
+        const auto E_meta = E_buffer.get_metadata();
+        auto Ebar_meta = Ebar_buffer.get_metadata();
+
+        const auto E_nfreq = E_meta->get_nfreq();
+        const auto Ebar_nfreq = cuda_upchannelization_factor * (Fmax - Fmin);
+        assert(Ebar_nfreq >= 0);
+        assert(Ebar_nfreq <= cuda_upchannelization_factor * E_nfreq);
+
+        const auto E_freq_upchan_factor = E_meta->get_freq_upchan_factor();
+        std::vector<int> Ebar_freq_upchan_factor(Ebar_nfreq);
+        for (int freq = 0; freq < Ebar_nfreq; ++freq) {
+            const int coarse_freq = Fmin + freq / cuda_upchannelization_factor;
+            assert(coarse_freq < Fmax);
+            Ebar_freq_upchan_factor.at(freq) = E_freq_upchan_factor.at(coarse_freq) * cuda_upchannelization_factor;
+        }
+        Ebar_meta->set_freq_upchan_factor(Ebar_freq_upchan_factor);
+
+        const auto E_freq_upchan_index = E_meta->get_freq_upchan_index();
+        std::vector<int> Ebar_freq_upchan_index(Ebar_nfreq);
+        for (int freq = 0; freq < Ebar_nfreq; ++freq) {
+            const int upchan_index =  freq % cuda_upchannelization_factor;
+            Ebar_freq_upchan_index.at(freq) = upchan_index;
+        }
+        Ebar_meta->set_freq_upchan_index(Ebar_freq_upchan_index);
+
+        const auto E_time_downsampling_fpga = E_meta->get_time_downsampling_fpga();
+        const auto Ebar_time_downsampling_fpga = E_time_downsampling_fpga * cuda_upchannelization_factor;
+        Ebar_meta->set_time_downsampling_fpga(Ebar_time_downsampling_fpga);
+
+        const auto E_coarse_freq = E_meta->get_coarse_freq();
+        std::vector<int> Ebar_coarse_freq(Ebar_nfreq);
+        for (int freq = 0; freq < Ebar_nfreq; ++freq) {
+            const int coarse_freq = Fmin + freq / cuda_upchannelization_factor;
+            assert(coarse_freq < Fmax);
+            Ebar_coarse_freq.at(freq) = E_coarse_freq.at(coarse_freq);
+        }
+        Ebar_meta->set_coarse_freq(Ebar_coarse_freq);
+
+        const auto G_meta = G_buffer.get_metadata();
+        const auto G_nfreq = G_meta->get_nfreq();
+        assert(G_nfreq == Ebar_nfreq);
+        const auto G_coarse_freq = G_meta->get_coarse_freq();
+        for (int freq = 0; freq < Ebar_nfreq; ++freq)
+            assert(Ebar_coarse_freq.at(freq) == G_coarse_freq.at(freq));
+
+        assert(E_meta->dim[E_rank - 1 - E_index_F] == E_nfreq);
+        assert(G_meta->dim[G_rank - 1 - G_index_Fbar] >= G_nfreq);
+        assert(Ebar_meta->dim[Ebar_rank - 1 - Ebar_index_Fbar] >= Ebar_nfreq);
+
+        // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
+    } // if !did_set_metadata
+
+    assert(Ebar_buffer.has_metadata());
 
     const char* exc_arg = "exception";
     {{#kernel_arguments}}
@@ -401,24 +461,24 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    Ebar_buffer.set_to_poison(0x00, 0, Fmax - Fmin);
-    info_buffer.set_to_poison(0xff);
+    if (poison_buffers) {
+        Ebar_buffer.set_to_poison(0x00, 0, Fmax - Fmin);
+        info_buffer.set_to_poison(0xff);
 
-#ifdef DEBUGGING
-    // Initialize host-side buffer arrays
-    {{#kernel_arguments}}
-        {{^isscalar}}
-            {{^hasbuffer}}
-                {{#isoutput}}
-                    CHECK_CUDA_ERROR(cudaMemsetAsync({{{name}}}_memory,
-                                                     0xff,
-                                                     {{{name}}}_length_in_bytes,
-                                                     device.getStream(cuda_stream_id)));
-                {{/isoutput}}
-            {{/hasbuffer}}
-        {{/isscalar}}
-    {{/kernel_arguments}}
-#endif
+        // Initialize host-side buffer arrays
+        {{#kernel_arguments}}
+            {{^isscalar}}
+                {{^hasbuffer}}
+                    {{#isoutput}}
+                        CHECK_CUDA_ERROR(cudaMemsetAsync({{{name}}}_memory,
+                                                         0xff,
+                                                         {{{name}}}_length_in_bytes,
+                                                         device.getStream(cuda_stream_id)));
+                    {{/isoutput}}
+                {{/hasbuffer}}
+            {{/isscalar}}
+        {{/kernel_arguments}}
+    } // if (poison_buffers)
 
     const std::string symname = "{{{kernel_name}}}_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
@@ -438,53 +498,54 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
-#ifdef DEBUGGING
-    // Copy results back to host memory
-    {{#kernel_arguments}}
-        {{^isscalar}}
-            {{^hasbuffer}}
-                {{#isoutput}}
-                    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_{{{name}}}_buffer.data(),
-                                                     {{{name}}}_memory,
-                                                     {{{name}}}_length_in_bytes,
-                                                     cudaMemcpyDeviceToHost,
-                                                     device.getStream(cuda_stream_id)));
-                {{/isoutput}}
-            {{/hasbuffer}}
-        {{/isscalar}}
-    {{/kernel_arguments}}
+    if (poison_buffers) {
+        // Copy results back to host memory
+        {{#kernel_arguments}}
+            {{^isscalar}}
+                {{^hasbuffer}}
+                    {{#isoutput}}
+                        CHECK_CUDA_ERROR(cudaMemcpyAsync(host_{{{name}}}_buffer.data(),
+                                                         {{{name}}}_memory,
+                                                         {{{name}}}_length_in_bytes,
+                                                         cudaMemcpyDeviceToHost,
+                                                         device.getStream(cuda_stream_id)));
+                    {{/isoutput}}
+                {{/hasbuffer}}
+            {{/isscalar}}
+        {{/kernel_arguments}}
 
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+        CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 
-    // Check error codes
-    const std::uint32_t error_code = *std::max_element(
-        (const std::uint32_t*)&host_info_buffer[0],
-        (const std::uint32_t*)&host_info_buffer[blocks * info_lengths[info_index_warp] * info_lengths[info_index_thread]]);
-    if (error_code != 0)
-        ERROR("CUDA kernel {{{kernel_name}}} returned error code: {}", error_code);
+        // Check error codes
+        const std::uint32_t error_code = *std::max_element(
+            (const std::uint32_t*)host_info_buffer.data(),
+            (const std::uint32_t*)(host_info_buffer.data() +
+                                   blocks * info_lengths[info_index_warp] * info_lengths[info_index_thread]));
+        if (error_code != 0)
+            ERROR("CUDA kernel {{{kernel_name}}} returned error code: {}", error_code);
 
-    if (error_code != 0) {
-        // TODO: Introduce a new "unbuffered" buffer; do this there
-        // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
-        for (int block = 0; block < blocks; ++block) {
-            for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
-                for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
-                    const std::ptrdiff_t i =
-                        info_strides[info_index_thread] * thread +
-                        info_strides[info_index_warp] * warp +
-                        info_strides[info_index_block] * block;
-                    const std::uint32_t val = host_info_buffer.data()[i];
-                    if (val != 0)
-                        ERROR("CUDA kernel {{{kernel_name}}} returned 'info' value {:d} "
-                              "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no error)",
-                              val, thread, warp, block, i);
+        if (error_code != 0) {
+            // TODO: Introduce a new "unbuffered" buffer; do this there
+            // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
+            for (int block = 0; block < blocks; ++block) {
+                for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+                    for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                        const std::ptrdiff_t i =
+                            info_strides[info_index_thread] * thread +
+                            info_strides[info_index_warp] * warp +
+                            info_strides[info_index_block] * block;
+                        const std::uint32_t val = host_info_buffer.data()[i];
+                        if (val != 0)
+                            ERROR("CUDA kernel {{{kernel_name}}} returned 'info' value {:d} "
+                                  "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no error)",
+                                  val, thread, warp, block, i);
+                    }
                 }
             }
         }
-    }
-#endif
 
-    Ebar_buffer.check_for_poison(0x00, 0, Fmax - Fmin);
+        Ebar_buffer.check_for_poison(0x00, 0, Fmax - Fmin);
+    } // if (poison_buffers)
 
     return record_end_event();
 }

@@ -1,45 +1,45 @@
-#include "Config.hpp"          // for Config
-#include "NDArray.hpp"         // for GenericNDArray
-#include "asdfFiles.hpp"       // for beautify_buffer_name, chord2asdf, chord_metadata_version
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, ERROR, INFO, WARN
-#include "metadata.hpp"        // for metadataObject
-
-#include "fmt.hpp"      // for compile_string_to_view, join
-#include "gsl-lite.hpp" // for span
-
-#include <DataType.hpp>            // for type_to_string, type_total_bytes
-#include <N2FrameView.hpp>         // for N2FrameView
-#include <N2Metadata.hpp>          // for N2Metadata, metadata_is_N2
-#include <Stage.hpp>               // for Stage
-#include <StageFactory.hpp>        // for REGISTER_KOTEKAN_STAGE
-#include <algorithm>               // for max
-#include <array>                   // for array
-#include <asdf/asdf.hxx>           // for asdf
-#include <asdf/byteorder.hxx>      // for host_byteorder
-#include <asdf/config.hxx>         // for ASDF_CHECK_VERSION
-#include <asdf/datatype.hxx>       // for datatype_t, complex64_t, float32_t, scalar_type_id_t
-#include <asdf/entry.hxx>          // for int_entry, group, sequence, ndarray_entry, string_entry
-#include <asdf/io.hxx>             // for block_format_t, compression_t
-#include <asdf/memoized.hxx>       // for make_constant_memoized
-#include <asdf/ndarray.hxx>        // for ndarray, ptr_block_t, block_info_t, block_t
-#include <atomic>                  // for __atomic_base, atomic
-#include <cassert>                 // for assert
-#include <chordMetadata.hpp>       // for chordMetadata, metadata_is_chord, get_chord_metadata
-#include <cstddef>                 // for ptrdiff_t, size_t
-#include <cstdint>                 // for int64_t, uint8_t, uint32_t
-#include <cstring>                 // for memcpy, strerror
-#include <errno.h>                 // for errno, EEXIST, EISDIR
-#include <errors.h>                // for exit_kotekan, ReturnCode
-#include <functional>              // for function
-#include <iomanip>                 // for operator<<, setfill, setw
-#include <memory>                  // for shared_ptr, __shared_ptr_access, make_shared, allocator
-#include <optional>                // for optional
-#include <prometheusMetrics.hpp>   // for Metrics, Gauge
-#include <sstream>                 // for basic_ostream, operator<<, basic_ostringstream, ostri...
-#include <string>                  // for basic_string, char_traits, string, operator<<
-#include <sys/stat.h>              // for mkdir
+#include <Config.hpp>       // for Config
+#include <DataType.hpp>     // for type_to_string, type_total_bytes
+#include <N2FrameView.hpp>  // for N2FrameView
+#include <N2Metadata.hpp>   // for N2Metadata, metadata_is_N2
+#include <NDArray.hpp>      // for GenericNDArray
+#include <Stage.hpp>        // for Stage
+#include <StageFactory.hpp> // for REGISTER_KOTEKAN_STAGE
+#include <Telescope.hpp>
+#include <algorithm>             // for max
+#include <array>                 // for array
+#include <asdf/asdf.hxx>         // for asdf
+#include <asdf/byteorder.hxx>    // for host_byteorder
+#include <asdf/config.hxx>       // for ASDF_CHECK_VERSION
+#include <asdf/datatype.hxx>     // for datatype_t, complex64_t, float32_t, scalar_type_id_t
+#include <asdf/entry.hxx>        // for int_entry, group, sequence, ndarray_entry, string_entry
+#include <asdf/io.hxx>           // for block_format_t, compression_t
+#include <asdf/memoized.hxx>     // for make_constant_memoized
+#include <asdf/ndarray.hxx>      // for ndarray, ptr_block_t, block_info_t, block_t
+#include <asdfFiles.hpp>         // for beautify_buffer_name, chord2asdf, chord_metadata_version
+#include <atomic>                // for __atomic_base, atomic
+#include <buffer.hpp>            // for Buffer
+#include <bufferContainer.hpp>   // for bufferContainer
+#include <cassert>               // for assert
+#include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, get_chord_metadata
+#include <cstddef>               // for ptrdiff_t, size_t
+#include <cstdint>               // for int64_t, uint8_t, uint32_t
+#include <cstring>               // for memcpy, strerror
+#include <errno.h>               // for errno, EEXIST, EISDIR
+#include <errors.h>              // for exit_kotekan, ReturnCode
+#include <fmt.hpp>               // for compile_string_to_view, join
+#include <functional>            // for function
+#include <gsl-lite.hpp>          // for span
+#include <iomanip>               // for operator<<, setfill, setw
+#include <kotekanLogging.hpp>    // for DEBUG, FATAL_ERROR, ERROR, INFO, WARN
+#include <memory>                // for shared_ptr, __shared_ptr_access, make_shared, allocator
+#include <metadata.hpp>          // for metadataObject
+#include <optional>              // for optional
+#include <prometheusMetrics.hpp> // for Metrics, Gauge
+#include <sstream>               // for basic_ostream, operator<<, basic_ostringstream, ostri...
+#include <string>                // for basic_string, char_traits, string, operator<<
+#include <sys/stat.h>            // for mkdir
+#include <timeUtil.hpp>
 #include <unistd.h>                // for ssize_t, gethostname
 #include <vector>                  // for vector
 #include <visUtil.hpp>             // for current_time
@@ -101,6 +101,8 @@ public:
         auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
             "kotekan_asdffilewrite_write_time_seconds", unique_name);
 
+        const auto& telescope = Telescope::instance();
+
         const double start_time = current_time();
 
         for (std::int64_t frame_counter = 0;; ++frame_counter) {
@@ -135,14 +137,14 @@ public:
             assert(metadata_is_chord(mc) || metadata_is_N2(mc));
             const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
             const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
-                buffer->get_frame_desc();
+                buffer->get_ndarray_frame_desc();
             assert(frame_desc);
 
             const double this_time = current_time();
             const double elapsed_time = this_time - start_time;
 
             INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
-                 frame_counter, meta->get_sample0_offset(), elapsed_time);
+                 frame_counter, meta->get_fpga_seq_num(), elapsed_time);
 
             if (!skip_writing) {
 
@@ -258,6 +260,15 @@ public:
                 // working            const auto compression = ASDF::compression_t::none;
                 const int compression_level = 9;
 
+                group->emplace("telescope_name",
+                               std::make_shared<ASDF::string_entry>(telescope.get_name()));
+
+                group->emplace("seq_length_nsec",
+                               std::make_shared<ASDF::int_entry>(telescope.seq_length_nsec()));
+
+                group->emplace("gps_time_enabled",
+                               std::make_shared<ASDF::bool_entry>(telescope.gps_time_enabled()));
+
                 if (metadata_is_chord(mc)) {
                     const auto ndarray = std::make_shared<ASDF::ndarray>(
                         ASDF::make_constant_memoized(block), std::optional<ASDF::block_info_t>(),
@@ -288,33 +299,27 @@ public:
                         group->emplace("freq_upchan_factor", freq_upchan_factor);
                     }
 
-                    if (meta->has_sample0_offset())
-                        group->emplace("sample0_offset", std::make_shared<ASDF::int_entry>(
-                                                             meta->get_sample0_offset()));
-
-                    if (meta->has_offset_downsampling())
-                        group->emplace("offset_downsampling", std::make_shared<ASDF::int_entry>(
-                                                                  meta->get_offset_downsampling()));
-
-                    if (meta->has_half_fpga_sample0()) {
-                        auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
-                        const std::vector<int64_t> I_half_fpga_sample0 =
-                            meta->get_half_fpga_sample0();
+                    if (meta->has_freq_upchan_index()) {
+                        auto freq_upchan_index = std::make_shared<ASDF::sequence>();
+                        const std::vector<int> I_freq_upchan_index = meta->get_freq_upchan_index();
                         for (int freq = 0; freq < meta->get_nfreq(); ++freq)
-                            half_fpga_sample0->push_back(
-                                std::make_shared<ASDF::int_entry>(I_half_fpga_sample0[freq]));
-                        group->emplace("half_fpga_sample0", half_fpga_sample0);
+                            freq_upchan_index->push_back(
+                                std::make_shared<ASDF::int_entry>(I_freq_upchan_index[freq]));
+                        group->emplace("freq_upchan_index", freq_upchan_index);
                     }
 
-                    if (meta->has_time_downsampling_fpga()) {
-                        auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
-                        const std::vector<int> I_time_downsampling_fpga =
-                            meta->get_time_downsampling_fpga();
-                        for (int freq = 0; freq < meta->get_nfreq(); ++freq)
-                            time_downsampling_fpga->push_back(
-                                std::make_shared<ASDF::int_entry>(I_time_downsampling_fpga[freq]));
-                        group->emplace("time_downsampling_fpga", time_downsampling_fpga);
+                    if (meta->has_fpga_seq_num()) {
+                        group->emplace("fpga_seq_num",
+                                       std::make_shared<ASDF::int_entry>(meta->get_fpga_seq_num()));
+                        group->emplace("fpga_seq_time_nsec",
+                                       std::make_shared<ASDF::int_entry>(timespec_to_nanosec_i64(
+                                           telescope.to_time(meta->get_fpga_seq_num()))));
                     }
+
+                    if (meta->has_time_downsampling_fpga())
+                        group->emplace(
+                            "time_downsampling_fpga",
+                            std::make_shared<ASDF::int_entry>(meta->get_time_downsampling_fpga()));
 
                     auto chord_metadata_version_attribute = std::make_shared<ASDF::sequence>();
                     for (std::size_t n = 0; n < chord_metadata_version.size(); ++n)
@@ -363,7 +368,7 @@ public:
                     auto vis_array = std::make_shared<ASDF::ndarray>(
                         vis_view, ASDF::block_format_t::inline_array, compression,
                         compression_level, std::vector<bool>(),
-                        std::vector<int64_t>{meta->num_prod});
+                        std::vector<int64_t>{frame_view.num_prod});
                     group->emplace("vis", vis_array);
 
                     std::vector<ASDF::float32_t> weights_view(frame_view.weight.begin(),
@@ -371,7 +376,7 @@ public:
                     auto weights_array = std::make_shared<ASDF::ndarray>(
                         weights_view, ASDF::block_format_t::inline_array, compression,
                         compression_level, std::vector<bool>(),
-                        std::vector<int64_t>{meta->num_prod});
+                        std::vector<int64_t>{frame_view.num_prod});
                     group->emplace("weights", weights_array);
 
                     std::vector<ASDF::float32_t> flags_view(frame_view.flags.begin(),
@@ -379,14 +384,15 @@ public:
                     auto flags_array = std::make_shared<ASDF::ndarray>(
                         flags_view, ASDF::block_format_t::inline_array, compression,
                         compression_level, std::vector<bool>(),
-                        std::vector<int64_t>{meta->num_elements});
+                        std::vector<int64_t>{frame_view.num_elements});
                     group->emplace("flags", flags_array);
 
                     std::vector<ASDF::float32_t> eval_view(frame_view.eval.begin(),
                                                            frame_view.eval.end());
                     auto eval_array = std::make_shared<ASDF::ndarray>(
                         eval_view, ASDF::block_format_t::inline_array, compression,
-                        compression_level, std::vector<bool>(), std::vector<int64_t>{meta->num_ev});
+                        compression_level, std::vector<bool>(),
+                        std::vector<int64_t>{frame_view.num_ev});
                     group->emplace("eval", eval_array);
 
                     std::vector<ASDF::complex64_t> evec_view(frame_view.evec.begin(),
@@ -394,7 +400,7 @@ public:
                     auto evec_array = std::make_shared<ASDF::ndarray>(
                         evec_view, ASDF::block_format_t::inline_array, compression,
                         compression_level, std::vector<bool>(),
-                        std::vector<int64_t>{meta->num_ev * meta->num_elements});
+                        std::vector<int64_t>{frame_view.num_ev * frame_view.num_elements});
                     group->emplace("evec", evec_array);
 
                     group->emplace("emethod",
@@ -406,14 +412,15 @@ public:
                     auto gain_array = std::make_shared<ASDF::ndarray>(
                         gain_view, ASDF::block_format_t::inline_array, compression,
                         compression_level, std::vector<bool>(),
-                        std::vector<int64_t>{meta->num_elements});
+                        std::vector<int64_t>{frame_view.num_elements});
                     group->emplace("gain", evec_array);
 
                     group->emplace("n_valid_fpga_ticks",
                                    std::make_shared<ASDF::int_entry>(meta->n_valid_fpga_ticks));
                     group->emplace("num_elements",
-                                   std::make_shared<ASDF::int_entry>(meta->num_elements));
-                    group->emplace("num_prod", std::make_shared<ASDF::int_entry>(meta->num_prod));
+                                   std::make_shared<ASDF::int_entry>(frame_view.num_elements));
+                    group->emplace("num_prod",
+                                   std::make_shared<ASDF::int_entry>(frame_view.num_prod));
                     group->emplace("freq_id", std::make_shared<ASDF::int_entry>(meta->freq_id));
                 }
 
@@ -462,9 +469,15 @@ public:
             }
         } // for
 
-        if (--waiting_for_max_frames == 0) {
-            WARN("Shutting down Kotekan");
-            exit_kotekan(CLEAN_EXIT);
+        if (max_frames >= 0) {
+            // Unregister to allow the pipeline to continue, unless I'm the last
+            // consumer on this buffer.
+            buffer->unregister_consumer(unique_name, true);
+
+            if (--waiting_for_max_frames == 0) {
+                WARN("Shutting down Kotekan");
+                exit_kotekan(CLEAN_EXIT);
+            }
         }
 
         DEBUG("exiting");

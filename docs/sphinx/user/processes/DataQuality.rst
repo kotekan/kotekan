@@ -1,0 +1,5 @@
+***********
+DataQuality
+***********
+
+.. doxygenclass:: DataQuality

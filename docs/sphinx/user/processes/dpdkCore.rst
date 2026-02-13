@@ -1,0 +1,5 @@
+********
+dpdkCore
+********
+
+.. doxygenclass:: dpdkCore

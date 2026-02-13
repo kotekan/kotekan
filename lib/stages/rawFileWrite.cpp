@@ -37,6 +37,7 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
 
     buf = get_buffer("in_buf");
     buf->register_consumer(unique_name);
+
     _base_dir = config.get<std::string>(unique_name, "base_dir");
     _file_name = config.get<std::string>(unique_name, "file_name");
     _file_ext = config.get<std::string>(unique_name, "file_ext");
@@ -72,6 +73,13 @@ void rawFileWrite::main_thread() {
         frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
+
+        // Check for NDArray on first frame (after producer may have set the descriptor)
+        if (buf->get_ndarray_frame_desc()) {
+            FATAL_ERROR(
+                "rawFileWrite does not support NDArray buffers. The NDArray frame descriptor "
+                "is set dynamically and will not be written to the file.");
+        }
 
         // Start timing the write time
         double st = current_time();
@@ -151,6 +159,11 @@ void rawFileWrite::main_thread() {
         // may be replaced by frames which can contain a "final" signal or some other
         // mechanism.
         if (_exit_after_n_files > 0 && file_num >= _exit_after_n_files) {
+
+            // Unregister to allow the pipeline to continue, unless I'm the last
+            // consumer on this buffer.
+            buf->unregister_consumer(unique_name, true);
+
             if (--waiting_for_max_frames == 0)
                 exit_kotekan(ReturnCode::CLEAN_EXIT);
             break;

@@ -1,0 +1,5 @@
+************
+bufferSwitch
+************
+
+.. doxygenclass:: bufferSwitch

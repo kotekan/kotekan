@@ -1,0 +1,5 @@
+******************
+TestCHORDTelescope
+******************
+
+.. doxygenclass:: TestCHORDTelescope

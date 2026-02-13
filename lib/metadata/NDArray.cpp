@@ -2,9 +2,10 @@
 #include "Symbol.hpp"   // for operator<<, Symbol
 
 #include <NDArray.hpp>
-#include <cassert> // for assert
-#include <sstream> // for basic_ostringstream
-#include <string>  // for operator<<, basic_string, string
+#include <cassert>   // for assert
+#include <sstream>   // for basic_ostringstream
+#include <stdexcept> // for runtime_error
+#include <string>    // for operator<<, basic_string, string
 
 namespace kotekan {
 
@@ -27,7 +28,7 @@ std::string format_vector(const std::vector<T>& vec) {
 
 } // namespace
 
-void GenericNDArray::output_metadata(std::ostream& os) const {
+void GenericNDArray::output_framedesc(std::ostream& os) const {
     os << "NDArray:\n"
        << "    quantity name:   " << get_quantity_name() << "\n"
        << "    value datatype:  " << get_value_datatype() << "\n"
@@ -79,6 +80,59 @@ std::shared_ptr<GenericNDArray> GenericNDArray::create(const DataType value_data
     assert(extents.size() == dimnames.size());
     return make_NDArray<DataType(end_type - 1), max_rank>(value_datatype, quantity_name, extents,
                                                           dimnames, data);
+}
+
+bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
+    const GenericNDArray* other_ptr = dynamic_cast<const GenericNDArray*>(&other_desc);
+    if (!other_ptr)
+        return false;
+    const GenericNDArray& other = *other_ptr;
+
+    if (this->get_value_datatype() != other.get_value_datatype())
+        return false;
+    if (this->get_quantity_name() != other.get_quantity_name())
+        return false;
+    if (this->get_rank() != other.get_rank())
+        return false;
+    if (this->get_extents() != other.get_extents())
+        return false;
+    if (this->get_dimnames() != other.get_dimnames())
+        return false;
+    if (this->get_strides() != other.get_strides())
+        return false;
+
+    // currently all NDArrays have "simple" strides, ie there are no gaps in
+    // memory, so a bulk memory compare will do
+    {
+        bool is_simple_stride = true;
+        auto const& strides = this->get_strides();
+        auto const& extents = this->get_extents();
+        for (ssize_t d = 0, simple_stride = 1; d < ssize_t(strides.size()); ++d) {
+            if (simple_stride != strides[d]) {
+                is_simple_stride = false;
+                break;
+            }
+            simple_stride *= extents[d];
+        }
+        if (!is_simple_stride) {
+            std::ostringstream buf;
+            buf << "NDArray " << this->get_quantity_name()
+                << " does not have simple stride. Strides " << format_vector(strides)
+                << " are no simple for extents " << format_vector(extents)
+                << " and cannot be compared.";
+            // cannot use ERROR since I don't derive from kotekan_loging
+            throw std::runtime_error(buf.str());
+        }
+    }
+
+    if (this->get_data() == nullptr && other.get_data() == nullptr)
+        return true;
+    else if (this->get_data() != nullptr && other.get_data() != nullptr)
+        return std::memcmp(this->get_data(), other.get_data(),
+                           this->get_size() * this->get_value_type_size())
+               == 0;
+    else
+        return false;
 }
 
 } // namespace kotekan

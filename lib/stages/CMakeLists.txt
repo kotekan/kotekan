@@ -26,6 +26,7 @@ add_library(
     $<$<BOOL:${GDAL_FOUND}>:gdalFileRead.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFileWrite.cpp>
     $<$<BOOL:${GDAL_FOUND}>:gdalFiles.cpp>
+    $<${HDF5_CONDITION}:hdf5N2Write.cpp>
     $<${HDF5_CONDITION}:hdf5FileRead.cpp>
     $<${HDF5_CONDITION}:hdf5FileWrite.cpp>
     $<${HDF5_CONDITION}:hdf5Files.cpp>
@@ -40,6 +41,7 @@ add_library(
     freqSplit.cpp
     FreqSubset.cpp
     prodSubset.cpp
+    N2Subset.cpp
     countCheck.cpp
     visAccumulate.cpp
     visCompression.cpp
@@ -48,10 +50,10 @@ add_library(
     basebandReadout.cpp
     BasebandWriter.cpp
     BaseWriter.cpp
-    VisWriter.cpp
     HFBWriter.cpp
     RawReader.cpp
     VisRawReader.cpp
+    VisWriter.cpp
     HFBRawReader.cpp
     restInspectFrame.cpp
     frbNetworkProcess.cpp
@@ -73,6 +75,7 @@ add_library(
     removeEv.cpp
     HFBAccumulate.cpp
     compressLostSamples.cpp
+    lostSamplesToPLMask.cpp
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
@@ -125,7 +128,8 @@ if(HDF5_FOUND
    AND HDF5Plugin_PLUGIN_DIR)
     target_sources(kotekan_stages PRIVATE applyGains.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
-    target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
+    target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES}
+                                                 HighFive::HighFive)
     # applyGains.cpp uses std::atomic<timespec>, which relies on libatomic on some platforms
     target_link_libraries(kotekan_stages PRIVATE atomic)
 endif()
@@ -154,7 +158,8 @@ if(OpenMP_FOUND)
 endif()
 
 if(LAPACKE_FOUND AND BLAZE_FOUND)
-    target_sources(kotekan_stages PRIVATE eigenVis.cpp RingMapMaker.cpp EigenVisIter.cpp)
+    target_sources(kotekan_stages PRIVATE eigenVis.cpp RingMapMaker.cpp EigenVisIter.cpp
+                                          EigenN2Iter.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${LAPACKE_INCLUDE_DIRS} ${BLAZE_PATH})
     target_link_libraries(kotekan_stages PRIVATE ${LAPACKE_LIBRARIES})
     if(DEFINED OPENBLAS_EXTRA_LIB AND OPENBLAS_EXTRA_LIB)

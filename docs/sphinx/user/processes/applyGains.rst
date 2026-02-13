@@ -1,0 +1,5 @@
+**********
+applyGains
+**********
+
+.. doxygenclass:: applyGains

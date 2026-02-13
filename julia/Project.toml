@@ -1,7 +1,7 @@
 name = "Kotekan"
 uuid = "4b3ecac4-cfa8-46ac-ae66-cdd0e0e0ae48"
-authors = ["Erik Schnetter <schnetter@gmail.com>"]
 version = "0.1.0"
+authors = ["Erik Schnetter <schnetter@gmail.com>"]
 
 [deps]
 ASDF = "686f71d1-807d-59a4-a860-28280ea06d7b"
@@ -11,7 +11,6 @@ CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CUDASIMDTypes = "ba1ee33b-8807-41fd-9812-6d5f2ce04139"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 DimensionalData = "0703355e-b756-11e9-17c0-8b28908087d0"
-DiskArrays = "3c3547ce-8d99-4f5e-a174-61eb10b00ae3"
 Extents = "411431e0-e8b7-467b-b5e0-f676ba4f2910"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 GDAL = "add2ef01-049f-52c4-9ee2-e494f65e021a"
@@ -44,7 +43,7 @@ Extents = "0.1.6"
 FFTW = "1.7.2"
 H5Zbitshuffle = "0.1.2"
 HDF5 = "0.17.1"
-IndexSpaces = "1.8.0"
+IndexSpaces = "1.9.0"
 JuliaFormatter = "1.0.42"
 MappedArrays = "0.4.2"
 Mustache = "1.0.18"

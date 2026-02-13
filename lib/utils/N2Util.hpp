@@ -8,6 +8,7 @@
 #include "buffer.hpp"
 #include "timeUtil.hpp"
 
+#include <cmath>
 #include <complex> // for complex, imag, real
 #include <cstdint> // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
 #include <cstdlib> // for size_t
@@ -17,6 +18,16 @@ namespace N2 {
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
+
+/**
+ * @brief Frequency index map type for the N2 pipeline.
+ */
+struct freq_ctype {
+    /// Centre of frequency channel in MHz
+    double centre;
+    /// Width of frequency channel in MHz
+    double width;
+};
 
 /**
  * @brief Index into a flattened upper matrix triangle.
@@ -41,6 +52,11 @@ struct prod_ctype {
     uint16_t input_a;
     /// Index of input B
     uint16_t input_b;
+
+    /// Equality comparison
+    bool operator==(const prod_ctype& other) const {
+        return input_a == other.input_a && input_b == other.input_b;
+    }
 };
 
 /**
@@ -49,18 +65,31 @@ struct prod_ctype {
  * @param n Total number of inputs.
  * @return Product pair indices.
  *
- * @todo This is super inefficient.
+ * @details Given an index k into a flattened upper-triangular matrix of size n x n, return the
+ *  corresponding row and column indices (i, j) such that i <= j. Uses an approximate
+ *  triangular root, then iteratively corrects for roundoff.
  **/
 inline prod_ctype icmap(uint32_t k, uint16_t n) {
-    uint16_t ii;
-    for (ii = 0; ii < n; ii++) {
-        if (cmap(ii, n - 1, n) >= k) {
-            break;
-        }
-    }
+    // Calculate number of elements left from k to the end of the triangular matrix
+    uint64_t rem = (uint64_t)n * (n + 1) / 2 - k;
 
-    uint16_t j = k - cmap(ii, ii, n) + ii;
-    return {ii, j};
+    // Use triangular root to estimate height of the remaining triangle
+    uint64_t x = (uint64_t)((std::sqrt((long double)8 * rem) + 1) / 2);
+
+    // Lambda to compute Triangular number T(t) = t*(t+1)/2
+    auto T = [](uint64_t t) { return t * (t + 1) / 2; };
+    // If estimate is too high (the triangle below x-1 is still >= rem), decrease x
+    while (x > 0 && T(x - 1) >= rem)
+        --x;
+    // If estimate is too low (the triangle at x is smaller than rem), increase x
+    while (T(x) < rem)
+        ++x;
+
+    // Convert x back to row i and column j
+    uint16_t i = n - (uint16_t)x;
+    uint16_t j = i + (uint16_t)(T(x) - rem);
+
+    return {i, j};
 }
 
 /**
@@ -77,6 +106,27 @@ inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
 
     return block * block * b_ix + (i % block) * block + (j % block);
 }
+
+/**
+ * @brief Correlator input type
+ */
+struct input_ctype {
+    input_ctype(uint16_t idx, std::string input_id) {
+        // Check input_id length
+        if (input_id.size() >= 32) {
+            ERROR_NON_OO("input_id {} length exceeds 31 characters", input_id);
+        }
+        element_idx = idx;
+        std::memset(input_id_str, 0, 32);
+        input_id.copy(input_id_str, 31); // Ensure null termination
+    }
+
+    /// element index
+    uint16_t element_idx;
+    /// input identifier
+    char input_id_str[32];
+};
+
 
 /**
  * @brief A class for modular arithmetic. Used for holding ring buffer indices.
@@ -291,6 +341,24 @@ inline int64_t current_system_time_ns() {
     timespec output_ts;
     timespec_get(&output_ts, TIME_UTC);
     return timespec_to_nanosec_i64(output_ts);
+}
+
+} // namespace N2
+
+// Include json.hpp for JSON serialization support
+#include "json.hpp"
+
+// ADL-compatible JSON serialization for N2::prod_ctype
+// Must be in the N2 namespace for ADL to work with nlohmann::json
+namespace N2 {
+
+inline void to_json(nlohmann::json& j, const prod_ctype& p) {
+    j = nlohmann::json::array({p.input_a, p.input_b});
+}
+
+inline void from_json(const nlohmann::json& j, prod_ctype& p) {
+    p.input_a = j.at(0).get<uint16_t>();
+    p.input_b = j.at(1).get<uint16_t>();
 }
 
 } // namespace N2

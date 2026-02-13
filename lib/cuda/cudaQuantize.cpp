@@ -1,28 +1,31 @@
 #include "cudaQuantize.hpp"
 
-#include <DataType.hpp>            // for uint4x2_t, float16_t
-#include <NDArray.hpp>             // for NDArray
-#include <NDArrayBuffer.hpp>       // for NDArrayBuffer
-#include <algorithm>               // for max
-#include <array>                   // for array
-#include <assert.h>                // for assert
-#include <chordMetadata.hpp>       // for chordMetadata, get_chord_metadata, metadata_is_chord
-#include <cstddef>                 // for size_t, ptrdiff_t
-#include <cstdint>                 // for int64_t
-#include <cudaCommand.hpp>         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
-#include <cudaDeviceInterface.hpp> // for cudaDeviceInterface
-#include <cudaQuantizeKernel4.hpp>
-#include <cudaUtils.hpp>      // for CHECK_CUDA_ERROR
+#include "DataType.hpp"            // for uint4x2_t, float16_t
+#include "NDArray.hpp"             // for NDArray
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
+#include "chordMetadata.hpp"       // for chordMetadata, get_chord_metadata, metadata_is_chord
+#include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "div.hpp"                 // for div_noremainder
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "metadata.hpp"            // for metadataObject
+
+#include <algorithm>          // for max
+#include <array>              // for array
+#include <cassert>            // for assert
+#include <cstddef>            // for size_t, ptrdiff_t
+#include <cstdint>            // for int64_t
+#include <cuda_fp16.h>        // for __half2, __half
 #include <cuda_runtime_api.h> // for cudaGetLastError, cudaMemcpy
-#include <div.hpp>            // for div_noremainder
-#include <gpuCommand.hpp>     // for gpuCommandType
 #include <memory>             // for shared_ptr, __shared_ptr_access
-#include <metadata.hpp>       // for metadataObject
 #include <stdexcept>          // for runtime_error
 #include <string>             // for allocator, basic_string, string, operator+
 #include <tuple>              // for tuple, make_tuple
 #include <vector>             // for vector
 
+void launch_quantize_kernel(cudaStream_t stream, int nframes, const __half2* in_base,
+                            __half2* outf_base, unsigned int* outi_base, const int* index_array);
 
 using kotekan::bufferContainer;
 using kotekan::Config;

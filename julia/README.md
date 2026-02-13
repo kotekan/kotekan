@@ -6,9 +6,9 @@
   is to use [juliaup](https://github.com/JuliaLang/juliaup). Julia
   will be installed into the directory `.julia` in your home
   directory.
-  - Install juliaup and Julia 1.11.7
+  - Install juliaup and Julia 1.12.3
     ```sh
-    curl -fsSL https://install.julialang.org | sh -s -- --default-channel 1.11.7
+    curl -fsSL https://install.julialang.org | sh -s -- --default-channel 1.12.3
     # reload PATH as indicated by juliaup (or log out and back in)
     ```
 - Instantiate the Julia package dependencies.

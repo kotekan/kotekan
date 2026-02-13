@@ -9,37 +9,30 @@ So you like the idea of **Kotekan** and want to get started using it? That's wha
 Running kotekan
 ---------------
 
-**Using systemd (full install)**
-
-To start kotekan
+**Using systemd (full install, recommended for production)**
 
 .. code:: bash
 
-    sudo systemctl start kotekan
+    sudo systemctl start kotekan   # stop with: sudo systemctl stop kotekan
 
-To stop kotekan
+Configs installed via packages live at ``/etc/kotekan/``.
 
-.. code:: bash
-
-    sudo systemctl stop kotekan
-
-**To run in debug mode, run from `ch_gpu/build/kotekan/`**
+**Direct invocation (development/debug)**
 
 .. code:: bash
 
-    sudo ./kotekan -c <config_file>.yaml
+    sudo ./kotekan -c <config_file>.yaml   # binds 0.0.0.0:12048 by default
 
-
-When installed kotekan's config files are located at /etc/kotekan/
-
-If running with no options then kotekan just stats a rest server, and waits for someone to send it a config in json format on port **12048**.
+Use ``-b <ipv4:port>`` to change the REST bind address/port (IPv4 only), ``-s`` to enable syslog,
+and ``-e '{"foo": "bar"}'`` to provide Jinja variables for ``.j2`` configs. Running with no ``-c``
+starts the REST server only and waits for a POST to ``/start`` with the config.
 
 
 
 .. _user_pipeline_example:
 
-A Simple Pipeline
------------------
+A Simple Pipeline (Quick Start)
+-------------------------------
 
 To get things started, let's configure kotekan to generate two buffers full of data with a constant value, dot product those buffers together, and then print out a summary of the results.
 
@@ -87,7 +80,8 @@ reads from those two input buffers and writes to the output buffer.
     :language: yaml
 
 Finally, we'll add a consumer stage that reads from the output buffer
-and prints summary statistics to the screen.
+and prints summary statistics to the screen. This example uses `standard` buffers and does not need
+a metadata pool; typed buffers (``vis``, ``N2``, ``hfb``) do require a matching metadata pool.
 
 .. literalinclude:: ../../../config/examples/dot_product.yaml
     :lines: 47-50
@@ -97,7 +91,7 @@ All together now:
 
 .. literalinclude:: ../../../config/examples/dot_product.yaml
 
-One warning is in order: Kotekan buffers don't have types, they are just treated as opaque data.  Each Kotekan stage expects to read or write data in a given type (eg, float32, or uint8), and it is up to the pipeline creator to ensure that stages are compatible!  In this example, all the stages we're using assume float32.
+One warning is in order: `standard` buffers are just opaque bytes, while typed buffers (``vis``/``N2``/``hfb``) lock in a specific layout and numeric types (e.g., complex floats for vis/N2, floats for HFB fields). Each stage still expects those payloads, and it is up to the pipeline creator to ensure stages are compatible. In this example, all stages assume float32.
 
 Pipeline Graph
 --------------
@@ -114,5 +108,3 @@ To run `kotekan` move to the binary directory and pass the config file as an arg
 
     cd kotekan
     ./kotekan -c ../../config/examples/dot_product.yaml
-
-

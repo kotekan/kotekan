@@ -6,22 +6,24 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
-#include <DataType.hpp>
-#include <NDArrayBuffer.hpp>
-#include <NDArrayRingBuffer.hpp>
+#include "DataType.hpp"
+#include "NDArrayBuffer.hpp"
+#include "NDArrayRingBuffer.hpp"
+#include "bufferContainer.hpp"
+#include "chordMetadata.hpp"
+#include "cudaCommand.hpp"
+#include "cudaDeviceInterface.hpp"
+#include "div.hpp"
+#include "ringbuffer.hpp"
+
 #include <algorithm>
 #include <array>
-#include <bufferContainer.hpp>
 #include <cassert>
-#include <chordMetadata.hpp>
 #include <cstring>
-#include <cudaCommand.hpp>
-#include <cudaDeviceInterface.hpp>
-#include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
 #include <memory>
-#include <ringbuffer.hpp>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -38,7 +40,7 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
         result[d] = values[D - 1 - d];
     return result;
 }
-} // namespace
+}
 
 /**
  * @class cudaFRBBeamformer_hirax_U2
@@ -354,6 +356,8 @@ private:
                             <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
+    const bool poison_buffers;
+
     // Kotekan buffer names
     const std::string S_name;
     const std::string W_name;
@@ -375,7 +379,14 @@ private:
     std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
 
     bool did_init_host_S_buffer;
+    bool did_set_metadata;
 };
+
+// Declare and define a single mutex that is used and shared by all
+// kernels writing into the `I` buffer (the output buffer of the first
+// FRB kernel). We need this lock to serialize metadata updates for
+// this buffer.
+inline std::mutex frb_I_lock;
 
 REGISTER_CUDA_COMMAND(cudaFRBBeamformer_hirax_U2);
 
@@ -391,6 +402,8 @@ cudaFRBBeamformer_hirax_U2::cudaFRBBeamformer_hirax_U2(Config& config,
     Fbar_out_min(config.get<int>(unique_name, "Fbar_out_min")),
     Fbar_out_max(config.get<int>(unique_name, "Fbar_out_max")),
 
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
+
     S_name(unique_name + "/frb_dishlayout_name"),
     W_name(config.get<std::string>(unique_name, "frb_phase_name")),
     Ebar_name(config.get<std::string>(unique_name, "voltage_name")),
@@ -405,7 +418,7 @@ cudaFRBBeamformer_hirax_U2::cudaFRBBeamformer_hirax_U2(Config& config,
     info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
     host_info_buffer(info_length),
 
-    did_init_host_S_buffer(false) {
+    did_init_host_S_buffer(false), did_set_metadata(false) {
     // Register host memory
     {
         const cudaError_t ierr = cudaHostRegister(
@@ -500,74 +513,141 @@ cudaEvent_t cudaFRBBeamformer_hirax_U2::execute(cudaPipelineState& /*pipestate*/
     void* const I_memory = I_buffer.get_ndarray().data();
     void* const info_memory = info_buffer.get_ndarray().data();
 
-    if (args::W == args::Ebar && cuda_upchannelization_factor == 1) {
-        // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
-        // W_buffer.check_metadata();
-        const std::string quantity = "E";
-        const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
-        const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
-        if (!(metadata->get_name() == quantity))
-            ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                  Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
-        assert(metadata->get_name() == quantity);
-        const auto& ndarray = Ebar_buffer.get_ndarray();
-        assert(metadata->type == ndarray.value_datatype);
-        assert(metadata->dims == ndarray.rank);
-        for (std::size_t d = 0; d < ndarray.rank; ++d) {
-            assert(metadata->get_dimension_name(d) == dimname[d]);
-            // The ring buffer direction is special
-            if (d > 0)
-                assert(metadata->dim[d] == int(ndarray.extent(d)));
-            assert(metadata->stride[d] == ndarray.stride(d));
+    // Since we use a ring buffer we need to set the metadata only once
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+
+        // Our output buffer I has multiple producers.
+        // They must serialize setting their part of the metadata.
+        std::lock_guard<std::mutex> lock(frb_I_lock);
+
+        if (args::W == args::Ebar && cuda_upchannelization_factor == 1) {
+            // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
+            // W_buffer.check_metadata();
+            const std::string quantity = "E";
+            const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
+            const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
+            if (!(metadata->get_name() == quantity))
+                ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
+                      Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
+            assert(metadata->get_name() == quantity);
+            const auto& ndarray = Ebar_buffer.get_ndarray();
+            assert(metadata->type == ndarray.value_datatype);
+            assert(metadata->dims == ndarray.rank);
+            for (std::size_t d = 0; d < ndarray.rank; ++d) {
+                assert(metadata->get_dimension_name(d) == dimname[d]);
+                // The ring buffer direction is special
+                if (d > 0)
+                    assert(metadata->dim[d] == int(ndarray.extent(d)));
+                assert(metadata->stride[d] == ndarray.stride(d));
+            }
+        } else {
+            W_buffer.check_metadata();
         }
-    } else {
-        W_buffer.check_metadata();
-    }
-    if (args::Ebar == args::Ebar && cuda_upchannelization_factor == 1) {
-        // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
-        // Ebar_buffer.check_metadata();
-        const std::string quantity = "E";
-        const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
-        const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
-        if (!(metadata->get_name() == quantity))
-            ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                  Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
-        assert(metadata->get_name() == quantity);
-        const auto& ndarray = Ebar_buffer.get_ndarray();
-        assert(metadata->type == ndarray.value_datatype);
-        assert(metadata->dims == ndarray.rank);
-        for (std::size_t d = 0; d < ndarray.rank; ++d) {
-            assert(metadata->get_dimension_name(d) == dimname[d]);
-            // The ring buffer direction is special
-            if (d > 0)
-                assert(metadata->dim[d] == int(ndarray.extent(d)));
-            assert(metadata->stride[d] == ndarray.stride(d));
+        if (args::Ebar == args::Ebar && cuda_upchannelization_factor == 1) {
+            // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
+            // Ebar_buffer.check_metadata();
+            const std::string quantity = "E";
+            const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
+            const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
+            if (!(metadata->get_name() == quantity))
+                ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
+                      Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
+            assert(metadata->get_name() == quantity);
+            const auto& ndarray = Ebar_buffer.get_ndarray();
+            assert(metadata->type == ndarray.value_datatype);
+            assert(metadata->dims == ndarray.rank);
+            for (std::size_t d = 0; d < ndarray.rank; ++d) {
+                assert(metadata->get_dimension_name(d) == dimname[d]);
+                // The ring buffer direction is special
+                if (d > 0)
+                    assert(metadata->dim[d] == int(ndarray.extent(d)));
+                assert(metadata->stride[d] == ndarray.stride(d));
+            }
+        } else {
+            Ebar_buffer.check_metadata();
         }
-    } else {
-        Ebar_buffer.check_metadata();
-    }
-    I_buffer.set_metadata(Ebar_buffer.get_metadata());
+        if (args::I != args::I)
+            I_buffer.set_metadata(Ebar_buffer.get_metadata());
+
+        const auto Ebar_meta = Ebar_buffer.get_metadata();
+        assert(Ebar_meta->ndishes == cuda_number_of_dishes);
+        assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_M);
+        assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_N);
+        assert(Ebar_meta->dish_index);
+
+        // Allocate metadata of I buffer only once
+        const bool I_has_metadata = I_buffer.has_metadata();
+        if (!I_has_metadata)
+            I_buffer.set_metadata(Ebar_meta);
+        auto I_meta = I_buffer.get_metadata();
+
+        assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
+        const auto Ebar_nfreq = Ebar_meta->get_nfreq();
+        assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
+        const auto I_all_nfreq = I_meta->dim[I_rank - 1 - I_index_Fbar];
+        const auto I_nfreq = Fbar_out_max - Fbar_out_min;
+        assert(I_nfreq >= 0 && I_nfreq <= I_all_nfreq);
+        // We are not using all the non-upchannelized frequencies.
+        // But we are (should be!) using all the upchannelized ones.
+        if (cuda_upchannelization_factor > 1)
+            assert(I_nfreq == Ebar_nfreq);
+
+        const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
+        assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
+        std::vector<int> I_freq_upchan_factor;
+        if (I_has_metadata)
+            I_freq_upchan_factor = I_meta->get_freq_upchan_factor();
+        if (I_freq_upchan_factor.size() < std::size_t(Fbar_out_min + I_nfreq))
+            I_freq_upchan_factor.resize(Fbar_out_min + I_nfreq, -1);
+        for (int freq = 0; freq < I_nfreq; ++freq)
+            I_freq_upchan_factor.at(Fbar_out_min + freq) =
+                Ebar_freq_upchan_factor.at(Fbar_in_min + freq);
+        I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
+
+        const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
+        assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
+        std::vector<int> I_freq_upchan_index;
+        if (I_has_metadata)
+            I_freq_upchan_index = I_meta->get_freq_upchan_index();
+        if (I_freq_upchan_index.size() < std::size_t(Fbar_out_min + I_nfreq))
+            I_freq_upchan_index.resize(Fbar_out_min + I_nfreq, -1);
+        for (int freq = 0; freq < I_nfreq; ++freq)
+            I_freq_upchan_index.at(Fbar_out_min + freq) =
+                Ebar_freq_upchan_index.at(Fbar_in_min + freq);
+        I_meta->set_freq_upchan_index(I_freq_upchan_index);
+
+        const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
+        assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
+        std::vector<int> I_coarse_freq;
+        if (I_has_metadata)
+            I_coarse_freq = I_meta->get_coarse_freq();
+        if (I_coarse_freq.size() < std::size_t(Fbar_out_min + I_nfreq))
+            I_coarse_freq.resize(Fbar_out_min + I_nfreq, -1);
+        for (int freq = 0; freq < I_nfreq; ++freq)
+            I_coarse_freq.at(Fbar_out_min + freq) = Ebar_coarse_freq.at(Fbar_in_min + freq);
+        I_meta->set_coarse_freq(I_coarse_freq);
+
+        const auto Ebar_time_downsampling_fpga = Ebar_meta->get_time_downsampling_fpga();
+        const auto I_time_downsampling_fpga =
+            Ebar_time_downsampling_fpga * cuda_downsampling_factor;
+        if (!I_has_metadata)
+            I_meta->set_time_downsampling_fpga(I_time_downsampling_fpga);
+        else
+            assert(I_meta->get_time_downsampling_fpga() == I_time_downsampling_fpga);
+
+        const auto W_meta = W_buffer.get_metadata();
+        const auto W_nfreq = W_meta->get_nfreq();
+        assert(W_nfreq == I_nfreq);
+        const auto W_coarse_freq = W_meta->get_coarse_freq();
+        for (int freq = 0; freq < W_nfreq; ++freq)
+            assert(I_coarse_freq.at(Fbar_out_min + freq) == W_coarse_freq.at(freq));
+
+        // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
+    } // if !did_set_metadata
 
     const auto Ebar_meta = Ebar_buffer.get_metadata();
-    assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-    assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
-    assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
-    assert(Ebar_meta->dish_index);
-
-    auto I_meta = I_buffer.get_metadata();
-    assert(I_meta->get_nfreq() >= 0);
-    assert(I_meta->get_nfreq() == Ebar_meta->get_nfreq());
-    auto freq_upchan_factor = I_meta->get_freq_upchan_factor();
-    auto time_downsampling_fpga = I_meta->get_time_downsampling_fpga();
-    assert(freq_upchan_factor.size() == static_cast<size_t>(I_meta->get_nfreq()));
-    assert(time_downsampling_fpga.size() == static_cast<size_t>(I_meta->get_nfreq()));
-    for (int freq = 0; freq < I_meta->get_nfreq(); ++freq) {
-        freq_upchan_factor[freq] *= cuda_downsampling_factor;
-        time_downsampling_fpga[freq] *= cuda_downsampling_factor;
-    }
-    I_meta->set_freq_upchan_factor(freq_upchan_factor);
-    I_meta->set_time_downsampling_fpga(time_downsampling_fpga);
-    // Since we use a ring buffer we do not need to update `meta->sample0_offset`
+    assert(I_buffer.has_metadata());
 
     const char* exc_arg = "exception";
     std::int32_t Tbar_min_arg;
@@ -642,24 +722,27 @@ cudaEvent_t cudaFRBBeamformer_hirax_U2::execute(cudaPipelineState& /*pipestate*/
         // S maps dishes to locations.
         // The first `ndishes` dishes are real dishes,
         // the remaining dishes are not real and exist only to label the unoccupied dish locations.
-        std::int16_t* __restrict__ const S = host_S_buffer.data();
+        for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
+            host_S_buffer.at(s) = -1;
         int surplus_dish_index = cuda_number_of_dishes;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                int dish_index = Ebar_meta->get_dish_index(locN, locM);
+                int dish_index = Ebar_meta->get_dish_index(locM, locN);
                 if (dish_index >= 0) {
                     // This location holds a real dish, record its location
-                    S[2 * dish_index + 0] = locM;
-                    S[2 * dish_index + 1] = locN;
+                    host_S_buffer.at(2 * dish_index + 0) = locM;
+                    host_S_buffer.at(2 * dish_index + 1) = locN;
                 } else {
                     // This location is empty, assign it a surplus dish index
-                    S[2 * surplus_dish_index + 0] = locM;
-                    S[2 * surplus_dish_index + 1] = locN;
+                    host_S_buffer.at(2 * surplus_dish_index + 0) = locM;
+                    host_S_buffer.at(2 * surplus_dish_index + 1) = locN;
                     ++surplus_dish_index;
                 }
             }
         }
         assert(surplus_dish_index == cuda_dish_layout_M * cuda_dish_layout_N);
+        for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
+            assert(host_S_buffer.at(s) >= 0);
 
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, host_S_buffer.data(), S_length_in_bytes,
                                          cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
@@ -672,15 +755,15 @@ cudaEvent_t cudaFRBBeamformer_hirax_U2::execute(cudaPipelineState& /*pipestate*/
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, host_S_buffer.data(), S_length_in_bytes,
                                          cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 
-    // We do not write all frequencies
-    I_buffer.set_to_poison(0xff, Fbar_out_min, Fbar_out_max); // 0xffff is NaN16
-    info_buffer.set_to_poison(0xff);
+    if (poison_buffers) {
+        // We do not write all frequencies
+        I_buffer.set_to_poison(0xff, Fbar_out_min, Fbar_out_max); // 0xffff is NaN16
+        info_buffer.set_to_poison(0xff);
 
-#ifdef DEBUGGING
-    // Initialize host-side buffer arrays
-    CHECK_CUDA_ERROR(
-        cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes, device.getStream(cuda_stream_id)));
-#endif
+        // Initialize host-side buffer arrays
+        CHECK_CUDA_ERROR(cudaMemsetAsync(info_memory, 0xff, info_length_in_bytes,
+                                         device.getStream(cuda_stream_id)));
+    } // if (poison_buffers)
 
     const std::string symname = "FRBBeamformer_hirax_U2_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
@@ -697,44 +780,45 @@ cudaEvent_t cudaFRBBeamformer_hirax_U2::execute(cudaPipelineState& /*pipestate*/
         ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
-#ifdef DEBUGGING
-    // Copy results back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
-                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+    if (poison_buffers) {
+        // Copy results back to host memory
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info_buffer.data(), info_memory, info_length_in_bytes,
+                                         cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+        CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 
-    // Check error codes
-    const std::uint32_t error_code = *std::max_element(
-        (const std::uint32_t*)&host_info_buffer[0],
-        (const std::uint32_t*)&host_info_buffer[blocks * info_lengths[info_index_warp]
-                                                * info_lengths[info_index_thread]]);
-    if (error_code != 0)
-        ERROR("CUDA kernel FRBBeamformer_hirax_U2 returned error code: {}", error_code);
+        // Check error codes
+        const std::uint32_t error_code =
+            *std::max_element((const std::uint32_t*)host_info_buffer.data(),
+                              (const std::uint32_t*)(host_info_buffer.data()
+                                                     + blocks * info_lengths[info_index_warp]
+                                                           * info_lengths[info_index_thread]));
+        if (error_code != 0)
+            ERROR("CUDA kernel FRBBeamformer_hirax_U2 returned error code: {}", error_code);
 
-    if (error_code != 0) {
-        // TODO: Introduce a new "unbuffered" buffer; do this there
-        // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
-        for (int block = 0; block < blocks; ++block) {
-            for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
-                for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
-                    const std::ptrdiff_t i = info_strides[info_index_thread] * thread
-                                             + info_strides[info_index_warp] * warp
-                                             + info_strides[info_index_block] * block;
-                    const std::uint32_t val = host_info_buffer.data()[i];
-                    if (val != 0)
-                        ERROR("CUDA kernel FRBBeamformer_hirax_U2 returned 'info' value {:d} "
-                              "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates "
-                              "no error)",
-                              val, thread, warp, block, i);
+        if (error_code != 0) {
+            // TODO: Introduce a new "unbuffered" buffer; do this there
+            // Our `info` buffer is too large (`blocks` vs. `max_blocks`)
+            for (int block = 0; block < blocks; ++block) {
+                for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+                    for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                        const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                                 + info_strides[info_index_warp] * warp
+                                                 + info_strides[info_index_block] * block;
+                        const std::uint32_t val = host_info_buffer.data()[i];
+                        if (val != 0)
+                            ERROR("CUDA kernel FRBBeamformer_hirax_U2 returned 'info' value {:d} "
+                                  "for thread {:d} warp {:d} block {:d} at index {:d} (zero "
+                                  "indicates no error)",
+                                  val, thread, warp, block, i);
+                    }
                 }
             }
         }
-    }
-#endif
 
-    // We do not write all frequencies
-    I_buffer.check_for_poison(0xff, Fbar_out_min, Fbar_out_max); // 0xffff is NaN16
+        // We do not write all frequencies
+        I_buffer.check_for_poison(0xff, Fbar_out_min, Fbar_out_max); // 0xffff is NaN16
+    } // if (poison_buffers)
 
     return record_end_event();
 }

@@ -51,8 +51,16 @@ fi
 passed=0
 failed=0
 declare -a failed_tests
+interrupted=0
+
+handle_interrupt() {
+    interrupted=1
+}
+
+trap 'handle_interrupt' INT
 
 for exe in "${EXECUTABLES[@]}"; do
+    [ $interrupted -ne 0 ] && break
     echo "Running $exe..."
     # Use temporary files to capture output
     tmp_output=$(mktemp)
@@ -69,6 +77,12 @@ for exe in "${EXECUTABLES[@]}"; do
         exit_code=$?
         [ $exit_code -ne 0 ] && [ -s "$tmp_stderr" ] && cat "$tmp_stderr" >&2
     fi
+    if [ $interrupted -ne 0 ] || [ $exit_code -eq 130 ]; then
+        interrupted=1
+        rm -f "$tmp_output" "$tmp_stderr"
+        echo "Interrupted by user, stopping remaining tests." >&2
+        break
+    fi
     if [ $exit_code -eq 0 ]; then
         echo "$exe: PASSED"
         ((passed++))
@@ -81,6 +95,7 @@ for exe in "${EXECUTABLES[@]}"; do
         failed_tests+=("$exe (exit code $exit_code)")
         ((failed++))
     fi
+    rm -f "$tmp_output" "$tmp_stderr"
     echo "----------------"
 done
 

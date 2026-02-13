@@ -1,29 +1,28 @@
 #include "Config.hpp"              // for Config
 #include "NDArray.hpp"             // for NDArray
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer, buffer_type_t
+#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
 #include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h"      // for cudaStreamSynchronize
-#include "driver_types.h"          // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
+#include "div.hpp"                 // for div_noremainder, round_down
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG
 #include "n2k/rfi_kernels.hpp"     // for SkKernel
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <NDArrayBuffer.hpp>     // for NDArrayBuffer, buffer_type_t
-#include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include <algorithm>             // for min
-#include <array>                 // for array
-#include <cstddef>               // for ptrdiff_t
-#include <cstdint>               // for int8_t, uint64_t, uint8_t
-#include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include <div.hpp>               // for div_noremainder, round_down
-#include <functional>            // for function
-#include <memory>                // for allocator, shared_ptr
-#include <string>                // for basic_string, string
-#include <sys/types.h>           // for uint, ulong
-#include <vector>                // for vector
+#include <algorithm>          // for min
+#include <array>              // for array
+#include <cstddef>            // for ptrdiff_t
+#include <cstdint>            // for int8_t, uint64_t, uint8_t
+#include <cuda_runtime_api.h> // for cudaStreamSynchronize
+#include <driver_types.h>     // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
+#include <fmt.hpp>            // for compile_string_to_view
+#include <functional>         // for function
+#include <memory>             // for allocator, shared_ptr
+#include <string>             // for basic_string, string
+#include <sys/types.h>        // for uint, ulong
+#include <vector>             // for vector
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -69,6 +68,7 @@ private:
     const int rfi_downsampling_factor;
     const int rfi_second_downsampling_factor;
     const int rfi_num_times_bar;
+    const bool poison_buffers;
 
     // Kotekan buffer names
     const std::string bf_mask_name;
@@ -101,6 +101,7 @@ cudaRFISKbar::cudaRFISKbar(kotekan::Config& config, const std::string& unique_na
     rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
     rfi_second_downsampling_factor(config.get<int>(unique_name, "rfi_second_downsampling_factor")),
     rfi_num_times_bar(config.get<int>(unique_name, "rfi_num_times_bar")),
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
     bf_mask_name(config.get<std::string>(unique_name, "bf_mask_name")),
     rfi_S012bar_name(config.get<std::string>(unique_name, "rfi_S012bar_name")),
@@ -190,8 +191,10 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
     rfi_SKbar.set_metadata(rfi_S012bar.get_metadata());
     rfi_SKbartilde.set_metadata(rfi_S012bar.get_metadata());
 
-    rfi_SKbar.set_to_poison(0xff);
-    rfi_SKbartilde.set_to_poison(0xff);
+    if (poison_buffers) {
+        rfi_SKbar.set_to_poison(0xff);
+        rfi_SKbartilde.set_to_poison(0xff);
+    }
 
     const std::int8_t* const bf_mask_memory = bf_mask.get_ndarray().data();
     const std::uint64_t* const rfi_S012bar_memory = rfi_S012bar.get_ndarray().data();
@@ -224,8 +227,10 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
 
-    rfi_SKbar.check_for_poison(0xff);
-    rfi_SKbartilde.check_for_poison(0xff);
+    if (poison_buffers) {
+        rfi_SKbar.check_for_poison(0xff);
+        rfi_SKbartilde.check_for_poison(0xff);
+    }
 
     return record_end_event();
 }

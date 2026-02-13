@@ -4,14 +4,17 @@
 #include "Config.hpp"         // for Config
 #include "factory.hpp"        // for FACTORY, CREATE_FACTORY, REGISTER_NAMED_TYPE_WITH_FACTORY
 #include "kotekanLogging.hpp" // for ERROR, kotekanLogging
+#include "restServer.hpp"     // for connectionInstance
+#include "timeUtil.hpp"       // for EOP
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <exception> // for exception
-#include <memory>    // for unique_ptr
-#include <stdint.h>  // for uint32_t, uint64_t, UINT32_MAX, uint8_t
-#include <string>    // for string, basic_string
-#include <time.h>    // for timespec
+#include <exception>    // for exception
+#include <memory>       // for unique_ptr
+#include <shared_mutex> // for shared_mutex
+#include <stdint.h>     // for uint32_t, uint64_t, UINT32_MAX, uint8_t
+#include <string>       // for string, basic_string
+#include <time.h>       // for timespec
 
 // Create the abstract factory for generating patterns
 class Telescope;
@@ -21,7 +24,8 @@ CREATE_FACTORY(Telescope, const kotekan::Config&, const std::string&);
     REGISTER_NAMED_TYPE_WITH_FACTORY(Telescope, TelescopeType, name)
 
 
-using freq_id_t = uint32_t;
+using nyquist_zone_t = std::uint8_t;
+using freq_id_t = std::uint32_t; // logical ID, not necessarily an index
 #define FREQ_ID_NOT_SET UINT32_MAX
 
 
@@ -38,7 +42,63 @@ struct stream_t {
 /**
  * @brief A class to hold telescope specific functionality.
  *
+ * This serves as a generic Telescope base class. It cannot be instantiated,
+ * only derived classes can.  It provides virtual hooks for routines to map
+ * between sequence number and instrument time, and for returning sampling
+ * parameters (raw sample rate, frequency spacing, map from freq_id to physical
+ * frequency, etc).  It also contains the Earth Orientation Parameter (EOP) table,
+ * which holds data to compute UT1 time and CIRS coordinate transformations from
+ * instrument time.
  *
+ * REST Endpoints
+ *
+ * @endpoint    /time0_ns   GET     Returns a JSON object with a single field
+ *                                  "time0_ns" which contains the instrument time
+ *                                  in nanoseconds at fpga_seq_num = 0. Instrument
+ *                                  time at seq = 0 is represented as a UNIX time
+ *                                  with nanosecond resolution.
+ * @endpoint    /eop_table  GET     Returns a JSON object with a single field "eop_table" which
+ *                                  contains a list of EOP objects. Each EOP object contains 6
+ *                                  fields:
+ *                                  - t_inst            int64   Instrument time in nanoseconds.
+ *                                  - t_ut1             int64   UT1 time in nanoseconds since
+ *                                                              2451545.0 JD(UT1).
+ *                                  - delta_UT1_inst    double  Difference in seconds between
+ *                                                              UT1 and Instrument time.
+ *                                  - ERA_deg           double  Earth Rotation Angle in degrees.
+ *                                  - xp_as             double  Polar Motion x', arcseconds.
+ *                                  - yp_as             double  Polar Motion y', arcseconds.
+ *
+ * Updatable Config
+ *
+ * @conf    eop_updatable_config    Optional. If not present, EOP table will be empty and only
+ *                                  null values (all 0s) will be returned by get_EOP functions.
+ *                                  If present, the config path to an updatable config field
+ *                                  containing the field "earth_orientation_parameter_table",
+ *                                  which is a list of EOP Update objects. Each contains 4
+ *                                  fields:
+ *                                  - time_inst_ns      int     Instrument time in nanoseconds.
+ *                                  - delta_UT1_inst    double  As in EOP.
+ *                                  - x_pm              double  As in EOP.
+ *                                  - y_pm              double  As in EOP.
+ *                                  Upon receiving an update, the entire EOP table is replaced
+ *                                  with the new table. UT1 and ERA values are calculated from
+ *                                  the given time_inst_ns and delta_UT1_inst.
+ *
+ * To maintain continuity, tools updating the EOP table should first GET the current table, and
+ * only update or add values at least two entries in the future.  The table is linearly
+ * interpolated between the most recent past & future entries, so changing the closest future
+ * entry will immediately change values currently being used in Kotekan.
+ *
+ * For example, given a current table:
+ * [Jan 1 UTC 00:00:00,
+ *  Jan 2 UTC 00:00:00,
+ *  Jan 3 UTC 00:00:00,
+ *  Jan 4 UTC 00:00:00]
+ *
+ *  An update on Jan 2 UTC 12:00:00 should keep the exact Jan 2 and Jan 3 entries as they are
+ *  currently being used for interpolation.  Jan 4 may be modified, Jan 5 (or later) could be
+ *  added, and Jan 1 can be removed.
  **/
 class Telescope : public kotekan::kotekanLogging {
 
@@ -60,7 +120,7 @@ public:
     static const Telescope& instance();
 
 
-    virtual ~Telescope() = default;
+    virtual ~Telescope();
 
     /**
      * @brief   Get the type name of this telescope object.
@@ -144,7 +204,7 @@ public:
      *
      * @return  The number of frequencies on a stream.
      **/
-    virtual uint32_t num_freq_per_stream() const = 0;
+    virtual size_t num_freq_per_stream() const = 0;
 
 
     /**
@@ -154,7 +214,7 @@ public:
      *
      * @return  The total number of frequency channels.
      **/
-    virtual uint32_t num_freq() const = 0;
+    virtual size_t num_freq() const = 0;
 
     /**
      * @brief Get the frequency width of a given channel.
@@ -168,10 +228,10 @@ public:
      *
      * @return  The Nyquist zone.
      **/
-    virtual uint8_t nyquist_zone() const = 0;
+    virtual nyquist_zone_t nyquist_zone() const = 0;
 
     /**
-     * Convert a sequence number into a UNIX epoch time.
+     * Convert a sequence number into an Instrument (~UNIX epoch) time.
      *
      * @param  seq  The sequence number.
      *
@@ -179,15 +239,21 @@ public:
      **/
     virtual timespec to_time(uint64_t seq) const = 0;
 
+    /**
+     * @brief   Return the Instrument time in ns corresponding to the given fpga sequence number as
+     * an int64_t.
+     */
+    virtual int64_t to_time_ns(uint64_t seq) const = 0;
 
     /**
-     * @brief Convert a UNIX epoch time into the nearest sequence number.
+     * @brief Convert an Instrument (~UNIX epoch) time into the nearest sequence number.
      *
      * @note When there is not an exact correspondence between the given time
      *       and FPGA sequence numbers, this routine will return the latest valid
      *       FPGA sequence number before the given timestamp.
      *
-     * @param  time  The UNIX time.
+     * @param  time  The Instrument time (a UNIX time unless a leap second has occured since
+     *instrument startup, or one will occur in the next 24 hours).
      *
      * @return  The corresponding sequence number.
      **/
@@ -216,16 +282,99 @@ public:
      **/
     virtual uint64_t seq_length_nsec() const = 0;
 
+    /**
+     * @brief   Return a copy of the current EOP table.
+     **/
+    std::vector<EOP> get_current_EOP_table() const;
+
+    /**
+     * @brief   Return the EOP at the desired instrument time. Will interpolate
+     *          over table, use first or last entry if target time is out of
+     *          table range.
+     *
+     * @param   ts  Target instrument time, as a timespec.
+     **/
+    EOP get_EOP_at_time(const timespec& ts) const;
+
+    /**
+     * @brief   Return the EOP at the desired UT1 time. Will interpolate
+     *          over table, using the first or last entry if target time is
+     *          out of table range.
+     *
+     * @param   ts  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
+     **/
+    EOP get_EOP_at_UT1(int64_t ut1) const;
+
 private:
     static std::unique_ptr<Telescope>& tel_instance();
 
 protected:
     /**
-     * This constructor sets up the logging. Implement a specific constructor
+     * @brief   The primary constructor which should be called by derived classes
+     *          upon instantiation.
+     *
+     * This constructor sets up the logging and REST endpoints for Earth
+     * Orientation Parameters (EOP) and time0. Implement a specific constructor
      * in a derived class to parse the config, and call this one to make sure
-     * the logging is done correctly.
+     * the logging is done correctly and endpoints are active.
+     *
+     * @param   tel_path    Path to the telescope in the Config (e.g. /telescope)
+     * @param   log_level   The level to set logging at.
+     * @param   eop_updatable_config_path   The value of "eop_updatable_config" in
+     *          the telescope Config, pointing to the updatable field which
+     *          contains "earth_orientation_parameter_table"
      **/
-    Telescope(const std::string& log_level);
+    Telescope(const std::string& tel_path, const std::string& log_level,
+              const std::string& eop_updatable_config_path);
+
+    /**
+     * @brief Callback to update EOP data
+     *
+     * @param json JSON reference of the config
+     */
+    bool receive_eop_updates(nlohmann::json& json);
+
+    /**
+     * @brief   Callback to send current EOP table
+     *
+     * @param   conn    Kotekan connection.
+     */
+    void send_eop_table(kotekan::connectionInstance& conn);
+
+    /**
+     * @brief   Callback to send time0_ns value
+     *
+     * @param   conn    Kotekan connection.
+     */
+    void send_time0_ns(kotekan::connectionInstance& conn);
+
+    /**
+     * @brief   Build a single EOP struct from config values
+     *
+     * @param   t_ns    Instrument time in nanoseconds.
+     * @param   delta_ut1_inst  Diff between UT1 and Instrument time in seconds
+     * @param   xp_as   Polar Motion x' coordinate in arcseconds
+     * @param   yp_as   Polar Motion y' coordinate in arcseconds
+     **/
+    EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
+                              double yp_as) const;
+
+    /**
+     * The telescope's name in the config
+     */
+    const std::string _unique_name;
+
+    /**
+     * This is the Earth Orientation Parameter (EOP) table used to determine
+     * UT1 time and Earth Rotation Angle.
+     */
+    std::vector<EOP> _eop_table;
+
+    /**
+     * This mutex locks access to the _eop_table which can be updated via REST
+     * calls.
+     */
+    mutable std::shared_mutex _eop_lock;
 };
 
 #endif // TELESCOPE_HPP

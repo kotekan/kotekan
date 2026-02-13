@@ -1,8 +1,10 @@
 #ifndef H5_SUPPORT_HPP
 #define H5_SUPPORT_HPP
 
+#include "N2Util.hpp"  // for N2::freq_ctype, N2::prod_ctype
 #include "visUtil.hpp" // for freq_ctype, prod_ctype, time_ctype, input_ctype
 
+#include <cstddef>                 // for offsetof
 #include <highfive/H5DataType.hpp> // for DataType, AtomicType, DataType::DataType
 
 using namespace HighFive;
@@ -56,6 +58,20 @@ inline DataType HighFive::create_datatype<prod_ctype>() {
         {"input_a", AtomicType<uint16_t>{}},
         {"input_b", AtomicType<uint16_t>{}},
     };
+}
+
+template<>
+inline DataType HighFive::create_datatype<N2::freq_ctype>() {
+    return CompoundType({{"centre", AtomicType<double>{}, offsetof(N2::freq_ctype, centre)},
+                         {"width", AtomicType<double>{}, offsetof(N2::freq_ctype, width)}},
+                        sizeof(N2::freq_ctype));
+}
+
+template<>
+inline DataType HighFive::create_datatype<N2::prod_ctype>() {
+    return CompoundType({{"input_a", AtomicType<uint16_t>{}, offsetof(N2::prod_ctype, input_a)},
+                         {"input_b", AtomicType<uint16_t>{}, offsetof(N2::prod_ctype, input_b)}},
+                        sizeof(N2::prod_ctype));
 }
 
 template<>

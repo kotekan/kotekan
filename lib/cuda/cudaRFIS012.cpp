@@ -1,31 +1,30 @@
 #include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for int4x2_swapped_withoffset_t, uint1x8_t
 #include "NDArray.hpp"             // for NDArray
+#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, read_descriptor_t, extent_t
 #include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h"      // for cudaStreamSynchronize
-#include "driver_types.h"          // for CUstream_st, cudaEvent_t, CUevent_st
+#include "div.hpp"                 // for div_noremainder, round_down
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
 #include "n2k/rfi_kernels.hpp"     // for launch_s0_kernel, launch_s12_kernel
 
-#include "fmt/format.h" // for compile_string_to_view
-
-#include <DataType.hpp>          // for int4x2_swapped_withoffset_t, uint1x8_t
-#include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, read_descriptor_t, extent_t
-#include <algorithm>             // for min
-#include <array>                 // for array
-#include <cassert>               // for assert
-#include <chordMetadata.hpp>     // for chordMetadata
-#include <cstddef>               // for ptrdiff_t, size_t
-#include <cstdint>               // for uint64_t, uint8_t
-#include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include <div.hpp>               // for div_noremainder, round_down
-#include <functional>            // for function
-#include <memory>                // for allocator, shared_ptr, __shared_ptr_access
-#include <string>                // for basic_string, string
-#include <sys/types.h>           // for ulong
-#include <vector>                // for vector
+#include <algorithm>          // for min
+#include <array>              // for array
+#include <cassert>            // for assert
+#include <cstddef>            // for ptrdiff_t, size_t
+#include <cstdint>            // for uint64_t, uint8_t
+#include <cuda_runtime_api.h> // for cudaStreamSynchronize
+#include <driver_types.h>     // for CUstream_st, cudaEvent_t, CUevent_st
+#include <fmt.hpp>            // for compile_string_to_view
+#include <functional>         // for function
+#include <memory>             // for allocator, shared_ptr, __shared_ptr_access
+#include <string>             // for basic_string, string
+#include <sys/types.h>        // for ulong
+#include <vector>             // for vector
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -71,6 +70,7 @@ private:
     const int num_dishes;
     const int rfi_downsampling_factor;
     const int rfi_num_times;
+    const bool poison_buffers;
 
     // Kotekan buffer names
     const std::string pl_mask_name;
@@ -98,6 +98,7 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
     rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
     pl_mask_name(config.get<std::string>(unique_name, "pl_mask_name")),
     voltage_name(config.get<std::string>(unique_name, "voltage_name")),
@@ -189,22 +190,15 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     pl_mask.check_metadata();
     voltage.check_metadata();
 
+    // TODO: Set these metadata only once
     rfi_S012.set_metadata(voltage.get_metadata());
     const auto& rfi_S012_meta = rfi_S012.get_metadata();
-    auto freq_upchan_factor = rfi_S012_meta->get_freq_upchan_factor();
-    auto time_downsampling_fpga = rfi_S012_meta->get_time_downsampling_fpga();
-    assert(freq_upchan_factor.size() == static_cast<size_t>(rfi_S012_meta->get_nfreq()));
-    assert(time_downsampling_fpga.size() == static_cast<size_t>(rfi_S012_meta->get_nfreq()));
-    assert(rfi_S012_meta->get_nfreq() >= 0);
-    for (int freq = 0; freq < rfi_S012_meta->get_nfreq(); ++freq) {
-        freq_upchan_factor[freq] *= rfi_downsampling_factor;
-        time_downsampling_fpga[freq] *= rfi_downsampling_factor;
-    }
-    rfi_S012_meta->set_freq_upchan_factor(freq_upchan_factor);
-    rfi_S012_meta->set_time_downsampling_fpga(time_downsampling_fpga);
+    rfi_S012_meta->set_time_downsampling_fpga(rfi_S012_meta->get_time_downsampling_fpga()
+                                              * rfi_downsampling_factor);
 
     // There is no poison value
-    // rfi_S012.set_to_poison(0xff);
+    // if (poison_buffers)
+    //     rfi_S012.set_to_poison(0xff);
 
     const kotekan::uint1x8_t* const pl_mask_memory = pl_mask.get_ndarray().data();
     const kotekan::int4x2_swapped_withoffset_t* const voltage_memory = voltage.get_ndarray().data();
@@ -212,7 +206,8 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
 
     const std::ptrdiff_t Tsize = voltage.get_ndarray().extent(0);
     assert(Tsize % rfi_downsampling_factor == 0);
-    const std::ptrdiff_t Tmin = voltage.get_read_valid().begin();
+    // Tmin wraps around into actual array index to avoid overflows
+    const std::ptrdiff_t Tmin = voltage.get_read_valid().begin() % Tsize;
     assert(Tmin % 128 == 0);
     const std::ptrdiff_t T = voltage.get_read_valid().size();
 
@@ -234,7 +229,8 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
 #endif
 
     // There is no poison value
-    // rfi_S012.check_for_poison(0xff);
+    // if (poison_buffers)
+    //     rfi_S012.check_for_poison(0xff);
 
     return record_end_event();
 }

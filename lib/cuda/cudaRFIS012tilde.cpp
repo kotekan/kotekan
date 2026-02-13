@@ -1,29 +1,28 @@
 #include "Config.hpp"              // for Config
 #include "NDArray.hpp"             // for NDArray
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer, buffer_type_t
+#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
 #include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h"      // for cudaStreamSynchronize
-#include "driver_types.h"          // for cudaEvent_t, CUevent_st, CUstream_st
+#include "div.hpp"                 // for div_noremainder, round_down
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG
 #include "n2k/rfi_kernels.hpp"     // for launch_s012_station_downsample_kernel
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <NDArrayBuffer.hpp>     // for NDArrayBuffer, buffer_type_t
-#include <NDArrayRingBuffer.hpp> // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include <algorithm>             // for min
-#include <array>                 // for array
-#include <cstddef>               // for ptrdiff_t
-#include <cstdint>               // for uint64_t, int8_t, uint8_t
-#include <cudaCommand.hpp>       // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include <div.hpp>               // for div_noremainder, round_down
-#include <functional>            // for function
-#include <memory>                // for allocator, shared_ptr
-#include <string>                // for basic_string, string
-#include <sys/types.h>           // for ulong
-#include <vector>                // for vector
+#include <algorithm>          // for min
+#include <array>              // for array
+#include <cstddef>            // for ptrdiff_t
+#include <cstdint>            // for uint64_t, int8_t, uint8_t
+#include <cuda_runtime_api.h> // for cudaStreamSynchronize
+#include <driver_types.h>     // for cudaEvent_t, CUevent_st, CUstream_st
+#include <fmt.hpp>            // for compile_string_to_view
+#include <functional>         // for function
+#include <memory>             // for allocator, shared_ptr
+#include <string>             // for basic_string, string
+#include <sys/types.h>        // for ulong
+#include <vector>             // for vector
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -68,6 +67,7 @@ private:
     const int num_polarizations;
     const int num_dishes;
     const int rfi_num_times;
+    const bool poison_buffers;
 
     // Kotekan buffer names
     const std::string bf_mask_name;
@@ -94,6 +94,7 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
     bf_mask_name(config.get<std::string>(unique_name, "bf_mask_name")),
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
@@ -157,14 +158,16 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
     rfi_S012tilde.set_metadata(rfi_S012.get_metadata());
 
     // There is no poison value
-    // rfi_S012tilde.set_to_poison(0xff);
+    // if (poison_buffers)
+    //     rfi_S012tilde.set_to_poison(0xff);
 
     const std::int8_t* const bf_mask_memory = bf_mask.get_ndarray().data();
     const std::uint64_t* const rfi_S012_memory = rfi_S012.get_ndarray().data();
     std::uint64_t* const rfi_S012tilde_memory = rfi_S012tilde.get_ndarray().data();
 
     const std::ptrdiff_t Trfisize = rfi_S012.get_ndarray().extent(0);
-    const std::ptrdiff_t Trfimin = rfi_S012.get_read_valid().begin();
+    // Trfimin wraps around into actual array index to avoid overflows
+    const std::ptrdiff_t Trfimin = rfi_S012.get_read_valid().begin() % Trfisize;
     const std::ptrdiff_t Trfi = rfi_S012.get_read_valid().size();
     DEBUG("Trfisize={:d} Trfimin={:d} Trfi={:d}", Trfisize, Trfimin, Trfi);
 
@@ -177,7 +180,8 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
 #endif
 
     // There is no poison value
-    // rfi_S012tilde.check_for_poison(0xff);
+    // if (poison_buffers)
+    //     rfi_S012tilde.check_for_poison(0xff);
 
     return record_end_event();
 }

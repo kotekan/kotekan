@@ -1,0 +1,5 @@
+*********************************
+gpuSimulateCudaBasebandBeamformer
+*********************************
+
+.. doxygenclass:: gpuSimulateCudaBasebandBeamformer

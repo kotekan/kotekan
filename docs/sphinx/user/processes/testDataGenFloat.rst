@@ -1,0 +1,5 @@
+****************
+testDataGenFloat
+****************
+
+.. doxygenclass:: testDataGenFloat
