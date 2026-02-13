@@ -382,7 +382,7 @@ void N2Accumulate::main_thread() {
                     assert(vis_sample_num_abs % 2 == 0);
                     _vis_samples_in_out_frame = 0;
                     _accum_fpga_start_tick = seq;
-                    
+
                     next_accum_start_tick = get_next_accum_start_tick(seq);
                     accum_seq_length = next_accum_start_tick - seq;
 
@@ -752,8 +752,8 @@ void N2Accumulate::main_thread() {
                 _accum_fpga_start_tick = seq + _n_fpga_samples_per_n2k_correlation;
                 next_accum_start_tick = get_next_accum_start_tick(_accum_fpga_start_tick);
                 accum_seq_length = next_accum_start_tick - _accum_fpga_start_tick;
-                target_eop = _tel.get_EOP_at_time(_tel.to_time(
-                    _accum_fpga_start_tick + accum_seq_length / 2));
+                target_eop = _tel.get_EOP_at_time(
+                    _tel.to_time(_accum_fpga_start_tick + accum_seq_length / 2));
             }
 
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
@@ -774,40 +774,44 @@ void N2Accumulate::main_thread() {
 }
 
 int64_t N2Accumulate::get_next_accum_start_tick(int64_t seq) {
+    if (_bin_in_ERA) {
+        return seq;
+    } else {
+        int64_t fpga_ticks_per_accum =
+            _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
 
-    int64_t fpga_ticks_per_accum = _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
-    
-    return (seq / fpga_ticks_per_accum + 1) * fpga_ticks_per_accum;
+        return (seq / fpga_ticks_per_accum + 1) * fpga_ticks_per_accum;
+    }
 }
 
 int64_t N2Accumulate::get_abs_accum_idx(int64_t seq_start) {
 
-    if(_bin_in_ERA) {
+    if (_bin_in_ERA) {
         int64_t nrot;
         timespec t_inst = _tel.to_time(seq_start);
         EOP eop = _tel.get_EOP_at_time(t_inst);
         int64_t t_ut1 = get_UT1_from_time(t_inst, eop.delta_UT1_inst);
-        double ERA_deg = get_ERA_from_UT1(t_ut1, &nrot);  // ERA is always in [0.0, 360.0)
+        double ERA_deg = get_ERA_from_UT1(t_ut1, &nrot); // ERA is always in [0.0, 360.0)
 
         double dERA = 360.0 / _num_bins_per_rotation;
 
-        int64_t ERA_idx = static_cast<int64_t>(round(ERA_deg/dERA));
+        int64_t ERA_idx = static_cast<int64_t>(round(ERA_deg / dERA));
         if (ERA_idx >= _num_bins_per_rotation) {
             ERA_idx -= _num_bins_per_rotation;
             nrot += 1;
         }
 
-        return _num_bins_per_rotation * nrot + static_cast<int64_t>(round(ERA_deg/dERA));
+        return _num_bins_per_rotation * nrot + static_cast<int64_t>(round(ERA_deg / dERA));
 
 
     } else {
-        int64_t fpga_ticks_per_accum = _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
+        int64_t fpga_ticks_per_accum =
+            _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
         int64_t idx = seq_start / fpga_ticks_per_accum;
         assert(_accum_fpga_start_tick % fpga_ticks_per_accum == 0);
-        
+
         return idx;
     }
-
 }
 
 void N2Accumulate::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_vis) {

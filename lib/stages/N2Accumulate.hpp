@@ -104,8 +104,8 @@ public:
     int64_t get_next_accum_start_tick(int64_t seq);
 
     /**
-     * @brief   Return a montonic index (counter) for the accumulation bin beginning at seq_start. Will increase
-     *          by 1 for each accumulation performed. May not begin at 0. Restart-safe.
+     * @brief   Return a montonic index (counter) for the accumulation bin beginning at seq_start.
+     * Will increase by 1 for each accumulation performed. May not begin at 0. Restart-safe.
      *
      * @param   seq_start   Sequence tick for the start of the bin in question
      *
