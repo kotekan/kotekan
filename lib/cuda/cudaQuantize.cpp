@@ -24,8 +24,13 @@
 #include <tuple>              // for tuple, make_tuple
 #include <vector>             // for vector
 
-void launch_quantize_kernel(cudaStream_t stream, int nframes, const __half2* in_base,
-                            __half2* outf_base, unsigned int* outi_base, const int* index_array);
+void gpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ const outputf,
+                   kotekan::uint4x2_t* __restrict__ const outputi, const int input_size1,
+                   const int input_size2, const int input_size3, const int input_stride2,
+                   const int input_stride3, const int outputf_size1, const int outputf_size2,
+                   const int outputf_size3, const int outputf_stride2, const int outputf_stride3,
+                   const int outputi_size1, const int outputi_size2, const int outputi_size3,
+                   const int outputi_stride2, const int outputi_stride3, cudaStream_t stream);
 
 using kotekan::bufferContainer;
 using kotekan::Config;
