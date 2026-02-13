@@ -93,6 +93,27 @@ public:
     void main_thread() override;
 
     /**
+     * @brief   Return the sequence number for the start of the next accumulation bin edge,
+     *          must be after the given seq.
+     *
+     * @param   seq     The current sequence number, the returned seq will be that of the first
+     *                  bin edge after this seq.
+     *
+     * @return  The seq for the next bin edge.
+     */
+    int64_t get_next_accum_start_tick(int64_t seq);
+
+    /**
+     * @brief   Return a montonic index (counter) for the accumulation bin beginning at seq_start. Will increase
+     *          by 1 for each accumulation performed. May not begin at 0. Restart-safe.
+     *
+     * @param   seq_start   Sequence tick for the start of the bin in question
+     *
+     * @return  The index value for this accumulation bin.
+     */
+    int64_t get_abs_accum_idx(int64_t seq_start);
+
+    /**
      * @brief Accumulate the rfimask over the given n2k integration into _n_rfi_samples_in_vis
      *
      * @param   rfimask The raw rfimask used in n2k to compute the correlation.

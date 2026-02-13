@@ -266,8 +266,7 @@ void N2Accumulate::main_thread() {
     const int32_t* vis_even_ptr = nullptr;
 
     int64_t next_accum_start_tick = 0;
-    int64_t fpga_ticks_per_accum =
-        _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
+    int64_t accum_seq_length = 0;
 
     // vis_even may be an odd frame if the first frame eencountered is odd,
     // since fpga_seq_num does not have to start from 0, in which case we skip
@@ -354,13 +353,7 @@ void N2Accumulate::main_thread() {
 
         // Do some first-time initialization
         if (mode == Mode::START) {
-            if (seq0 % fpga_ticks_per_accum == 0)
-                // if we're aligned with a bin edge, start now.
-                next_accum_start_tick = seq0;
-            else {
-                // otherwise, start accumulating at the next edge.
-                next_accum_start_tick = (seq0 / fpga_ticks_per_accum + 1) * fpga_ticks_per_accum;
-            }
+            next_accum_start_tick = get_next_accum_start_tick(seq0 - 1);
 
             mode = Mode::WAITING_FOR_ALIGNMENT;
         }
@@ -389,8 +382,11 @@ void N2Accumulate::main_thread() {
                     assert(vis_sample_num_abs % 2 == 0);
                     _vis_samples_in_out_frame = 0;
                     _accum_fpga_start_tick = seq;
-                    next_accum_start_tick += fpga_ticks_per_accum;
-                    target_eop = _tel.get_EOP_at_time(_tel.to_time(seq + fpga_ticks_per_accum / 2));
+                    
+                    next_accum_start_tick = get_next_accum_start_tick(seq);
+                    accum_seq_length = next_accum_start_tick - seq;
+
+                    target_eop = _tel.get_EOP_at_time(_tel.to_time(seq + accum_seq_length / 2));
 
                     mode = Mode::ACCUMULATING;
                     DEBUG("MODE: Setting accum_fpga_start_tick: {0:d}", _accum_fpga_start_tick);
@@ -745,7 +741,7 @@ void N2Accumulate::main_thread() {
 
             // Finalize accumulation if we've hit the number of sub-frames
             // to accumulate.
-            if (_vis_samples_in_out_frame >= _num_n2k_samples_to_accumulate) {
+            if (seq + _n_fpga_samples_per_n2k_correlation >= next_accum_start_tick) {
 
                 INFO("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
                      _vis_samples_in_out_frame);
@@ -754,9 +750,10 @@ void N2Accumulate::main_thread() {
 
                 _vis_samples_in_out_frame = 0;
                 _accum_fpga_start_tick = seq + _n_fpga_samples_per_n2k_correlation;
+                next_accum_start_tick = get_next_accum_start_tick(_accum_fpga_start_tick);
+                accum_seq_length = next_accum_start_tick - _accum_fpga_start_tick;
                 target_eop = _tel.get_EOP_at_time(_tel.to_time(
-                    seq + _n_fpga_samples_per_n2k_correlation + fpga_ticks_per_accum / 2));
-                next_accum_start_tick += fpga_ticks_per_accum;
+                    _accum_fpga_start_tick + accum_seq_length / 2));
             }
 
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
@@ -774,6 +771,22 @@ void N2Accumulate::main_thread() {
         in_counts_buf->mark_frame_empty(unique_name, in_counts_frame_id++);
         in_rfimask_buf->mark_frame_empty(unique_name, in_rfimask_frame_id++);
     }
+}
+
+int64_t N2Accumulate::get_next_accum_start_tick(int64_t seq) {
+
+    int64_t fpga_ticks_per_accum = _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
+    
+    return (seq / fpga_ticks_per_accum + 1) * fpga_ticks_per_accum;
+}
+
+int64_t N2Accumulate::get_abs_accum_idx(int64_t seq_start) {
+
+    int64_t fpga_ticks_per_accum = _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
+    int64_t idx = seq_start / fpga_ticks_per_accum;
+    assert(_accum_fpga_start_tick % fpga_ticks_per_accum == 0);
+    
+    return idx;
 }
 
 void N2Accumulate::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_vis) {
@@ -854,12 +867,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
         meta->frame_length_fpga_ticks =
             _vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation;
 
-        meta->abs_time_idx =
-            _accum_fpga_start_tick
-            / (_num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation);
-        assert(_accum_fpga_start_tick
-                   % (_num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation)
-               == 0);
+        meta->abs_time_idx = get_abs_accum_idx(_accum_fpga_start_tick);
         meta->freq_id = chord_frame_metadata->get_coarse_freq()[f];
         meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
 

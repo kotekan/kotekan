@@ -154,9 +154,9 @@ N2_accumulate:
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
-    num_workers: 4
+    num_workers: 2
     do_fringestop: False
-    debug_accum_mode: 2
+    debug_accum_mode: 0
 
 eat_n2:
   kotekan_stage: dropAllFrames
