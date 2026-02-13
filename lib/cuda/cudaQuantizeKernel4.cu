@@ -46,8 +46,8 @@ void cpu_quantize4_chunks(const __half* __restrict__ const input,
         const int outputf_offset = chunk * outputf_stride;
         const int outputi_offset = chunk * outputi_stride;
 
-        // Find the sum and sum-squared of all input values. Calculate everything a `float` to avoid
-        // overflow.
+        // Find the sum and sum-squared of all input values. Calculate everything as `float` to
+        // avoid overflow.
         float sum = 0, sum2 = 0;
         for (int i = 0; i < chunk_size; ++i) {
             const float x = __half2float(input[i + input_offset]);
