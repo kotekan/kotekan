@@ -383,8 +383,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         // Use the CHIME input buffer layout (one buffer per frequency)
         for (auto E_buffer_chime : E_buffers_chime)
             E_buffer_chime->allocate_ndarray_frame_desc<
-                kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 2>(
-                "E", {num_times, num_dishes * num_polarizations}, {"T", "E"});
+                kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 3>(
+                "E", {num_times, 1, num_dishes * num_polarizations}, {"T", "F", "E"});
     } else {
         // Use CHORDs input buffer layout
         E_buffer_chord->allocate_ndarray_frame_desc<
@@ -1441,75 +1441,68 @@ void FEngine::main_thread() {
                             kotekan::juliaHandlePossibleExceptions();
                             assert(res);
                         });
+                        int idx = 0;
                         for (int t = 0; t < num_times; ++t) {
                             for (int f = 0; f < num_frequencies; ++f) {
                                 for (int p = 0; p < num_polarizations; ++p) {
                                     for (int d = 0; d < num_dishes; ++d) {
-                                        const int idx = d
-                                                        + num_dishes
-                                                              * (p
-                                                                 + num_polarizations
-                                                                       * (f + num_frequencies * t));
-                                        assert(idx >= 0 && idx < E_size);
-                                        const std::uint8_t e = E_ptr[idx];
+                                        const std::uint8_t e = E_ptr[idx++];
                                         const std::int8_t ere = ((e >> 0x04) & 0x0f) - 8;
                                         const std::int8_t eim = ((e >> 0x00) & 0x0f) - 8;
                                         assert(ere != -8 && eim != -8);
+                                        assert((e & 0xf0) != 0 && (e & 0x0f) != 0);
                                     }
                                 }
                             }
                         }
+                        assert(idx == E_size);
                     }
                     if (receive_chime) {
+                        int idx = 0;
                         for (int t = 0; t < num_times; ++t) {
                             for (int p = 0; p < num_polarizations; ++p) {
                                 for (int d = 0; d < num_dishes; ++d) {
-                                    const int idx_frame =
-                                        d + num_dishes * (p + num_polarizations * t);
                                     const int idx_ptr =
                                         d
                                         + num_dishes
                                               * (p
                                                  + num_polarizations
                                                        * (freq + num_frequencies * t));
-                                    assert(idx_frame >= 0
-                                           && std::size_t(idx_frame) < E_buffer->frame_size);
                                     assert(idx_ptr >= 0 && idx_ptr < E_size);
-                                    E_frame[idx_frame] = E_ptr[idx_ptr];
+                                    E_frame[idx++] = E_ptr[idx_ptr];
+                                    auto e = E_frame[idx - 1];
+                                    assert((e & 0xf0) != 0 && (e & 0x0f) != 0);
                                 }
                             }
                         }
+                        assert(std::size_t(idx) == E_buffer->frame_size);
                     }
                 } else { // if skip_julia
                     if (!receive_chime) {
                         // std::memset(E_frame, 0xcc,
                         //             num_dishes * num_polarizations * num_frequencies *
                         //             num_times);
+                        int idx = 0;
                         for (int t = 0; t < num_times; ++t) {
                             for (int f = 0; f < num_frequencies; ++f) {
                                 for (int p = 0; p < num_polarizations; ++p) {
                                     for (int d = 0; d < num_dishes; ++d) {
-                                        const int idx = d
-                                                        + num_dishes
-                                                              * (p
-                                                                 + num_polarizations
-                                                                       * (f + num_frequencies * t));
-                                        assert(idx >= 0 && std::size_t(idx) < E_buffer->frame_size);
-                                        E_frame[idx] = d % 2 == 0 ? 0xcc : 0x44;
+                                        E_frame[idx++] = d % 2 == 0 ? 0xcc : 0x44;
                                     }
                                 }
                             }
                         }
+                        assert(std::size_t(idx) == E_buffer->frame_size);
                     } else { // if receive_chime
+                        int idx = 0;
                         for (int t = 0; t < num_times; ++t) {
                             for (int p = 0; p < num_polarizations; ++p) {
                                 for (int d = 0; d < num_dishes; ++d) {
-                                    const int idx = d + num_dishes * (p + num_polarizations * t);
-                                    assert(idx >= 0 && std::size_t(idx) < E_buffer->frame_size);
-                                    E_frame[idx] = d % 2 == 0 ? 0xcc : 0x44;
+                                    E_frame[idx++] = d % 2 == 0 ? 0xcc : 0x44;
                                 }
                             }
                         }
+                        assert(std::size_t(idx) == E_buffer->frame_size);
                     } // if receive_chime
                 } // if !skip_julia
             } // if E_frame_index < max(E_buffer->num_frames, num_frames)
@@ -1536,12 +1529,14 @@ void FEngine::main_thread() {
                 E_metadata->dim[3] = num_dishes;
             } else {
                 // Use the CHIME input buffer layout (one buffer per frequency)
-                E_metadata->dims = 2;
+                E_metadata->dims = 3;
                 assert(E_metadata->dims <= CHORD_META_MAX_DIM);
                 std::strncpy(E_metadata->dim_name[0], "T", sizeof E_metadata->dim_name[0]);
-                std::strncpy(E_metadata->dim_name[1], "E", sizeof E_metadata->dim_name[1]);
+                std::strncpy(E_metadata->dim_name[1], "F", sizeof E_metadata->dim_name[1]);
+                std::strncpy(E_metadata->dim_name[2], "E", sizeof E_metadata->dim_name[2]);
                 E_metadata->dim[0] = num_times;
-                E_metadata->dim[1] = num_dishes * num_polarizations;
+                E_metadata->dim[1] = 1;
+                E_metadata->dim[2] = num_dishes * num_polarizations;
             }
             for (int d = E_metadata->dims - 1; d >= 0; --d)
                 if (d == E_metadata->dims - 1)
@@ -1554,10 +1549,10 @@ void FEngine::main_thread() {
 
             E_metadata->set_fpga_seq_num(seq_num);
             E_metadata->set_time_downsampling_fpga(1);
-            std::vector<int> coarse_freq(num_frequencies);
+            std::vector<int> coarse_freq(!receive_chime ? num_frequencies : 1);
             assert(coarse_freq.size() <= CHORD_META_MAX_FREQ);
-            std::vector<int> freq_upchan_factor(num_frequencies);
-            std::vector<int> freq_upchan_index(num_frequencies);
+            std::vector<int> freq_upchan_factor(!receive_chime ? num_frequencies : 1);
+            std::vector<int> freq_upchan_index(!receive_chime ? num_frequencies : 1);
             assert(freq_upchan_factor.size() <= CHORD_META_MAX_FREQ);
             assert(freq_upchan_index.size() <= CHORD_META_MAX_FREQ);
             if (!receive_chime) {
