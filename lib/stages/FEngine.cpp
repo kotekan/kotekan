@@ -1531,11 +1531,11 @@ void FEngine::main_thread() {
                 // Use the CHIME input buffer layout (one buffer per frequency)
                 E_metadata->dims = 3;
                 assert(E_metadata->dims <= CHORD_META_MAX_DIM);
-                std::strncpy(E_metadata->dim_name[0], "T", sizeof E_metadata->dim_name[0]);
-                std::strncpy(E_metadata->dim_name[1], "F", sizeof E_metadata->dim_name[1]);
+                std::strncpy(E_metadata->dim_name[0], "F", sizeof E_metadata->dim_name[1]);
+                std::strncpy(E_metadata->dim_name[1], "T", sizeof E_metadata->dim_name[0]);
                 std::strncpy(E_metadata->dim_name[2], "E", sizeof E_metadata->dim_name[2]);
-                E_metadata->dim[0] = num_times;
-                E_metadata->dim[1] = 1;
+                E_metadata->dim[0] = 1;
+                E_metadata->dim[1] = num_times;
                 E_metadata->dim[2] = num_dishes * num_polarizations;
             }
             for (int d = E_metadata->dims - 1; d >= 0; --d)
