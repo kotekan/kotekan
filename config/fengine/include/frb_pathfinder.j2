@@ -302,16 +302,26 @@ run_frb23:
           in_buf: host_frb2_phase_buffer
           gpu_mem: frb2_phase_buffer
         - name: cudaFRBBeamReformer
-          max_num_local_freq: upchan_all_max_num_output_channels
-          num_local_freq: upchan_all_max_output_channel - upchan_all_min_output_channel
-          beam_grid_size_P: frb_num_beams_P
-          beam_grid_size_Q: frb_num_beams_Q
-          num_beams: frb_num_beams
-          samples_per_data_set: frb_num_output_times
+          frb1_max_num_frequencies: upchan_all_max_num_output_channels
+          frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
+          frb1_num_beams_P: frb_num_beams_P
+          frb1_num_beams_Q: frb_num_beams_Q
+          frb2_num_beams: frb_num_beams
+          frb2_num_times: frb_num_output_times
           in_signal: host_frb1_beams_ringbuffer
-          gpu_mem_beamgrid: frb1_beams
-          gpu_mem_phase: frb2_phase
-          gpu_mem_beamout: frb2_beams
+          frb1_beams_name: frb1_beams
+          frb2_phase_name: frb2_phase
+          frb2_beams_name: frb2_beams
+          # max_num_local_freq: upchan_all_max_num_output_channels
+          # num_local_freq: upchan_all_max_output_channel - upchan_all_min_output_channel
+          # beam_grid_size_P: frb_num_beams_P
+          # beam_grid_size_Q: frb_num_beams_Q
+          # num_beams: frb_num_beams
+          # samples_per_data_set: frb_num_output_times
+          # in_signal: host_frb1_beams_ringbuffer
+          # gpu_mem_beamgrid: frb1_beams
+          # gpu_mem_phase: frb2_phase
+          # gpu_mem_beamout: frb2_beams
         - name: cudaQuantize
           # the output is quantized in chunks of `frb_chunk_size`
           num_beams: frb_num_beams
