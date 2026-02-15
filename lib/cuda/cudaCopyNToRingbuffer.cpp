@@ -157,7 +157,7 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
 
         // Set the shape of the array
         assert(meta_in0->dims == 3);
-        assert(meta_in0->dim[0] == 1); // F
+        assert(meta_in0->dim[0] == 1);     // F
         assert(meta_in0->dim[1] == 16384); // T
         meta_ring->dims = 4;
         meta_ring->set_array_dimension(0, _gpu_buffer_depth, "Thi16384");
