@@ -384,7 +384,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         for (auto E_buffer_chime : E_buffers_chime)
             E_buffer_chime->allocate_ndarray_frame_desc<
                 kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 3>(
-                "E", {num_times, 1, num_dishes * num_polarizations}, {"T", "F", "E"});
+                "E", {1, num_times, num_dishes * num_polarizations}, {"F", "T", "E"});
     } else {
         // Use CHORDs input buffer layout
         E_buffer_chord->allocate_ndarray_frame_desc<
