@@ -50,8 +50,8 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     input_buffer([&]() {
         const std::array<std::ptrdiff_t, 3> input_lengths{_num_beams, _num_frequencies, _num_times};
         const std::array<std::string, 3> input_dimnames{"R", "Fbar", "Ttilde"};
-        return NDArrayBuffer<float16_t, 3>(_gpu_mem_input, "frb2_beams", input_lengths,
-                                           input_dimnames, *this);
+        return NDArrayBuffer<float16_t, 3>(_gpu_mem_input, "I2", input_lengths, input_dimnames,
+                                           *this);
     }()),
     beam_buffer([&]() {
         // The data are stored as 4-bit integers, 2 values per byte
@@ -59,7 +59,7 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
         const std::array<std::ptrdiff_t, 3> beam_lengths{_num_beams / 2, _num_frequencies,
                                                          _num_times};
         const std::array<std::string, 3> beam_dimnames{"R", "Fbar", "Ttilde"};
-        return NDArrayBuffer<kotekan::uint4x2_t, 3>(_gpu_mem_beams, "frb3_beams", beam_lengths,
+        return NDArrayBuffer<kotekan::uint4x2_t, 3>(_gpu_mem_beams, "I3", beam_lengths,
                                                     beam_dimnames, *this);
     }()),
     meanstd_buffer([&]() {
@@ -68,8 +68,8 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
         const std::array<std::ptrdiff_t, 4> meanstd_lengths{_num_beams, _num_frequencies,
                                                             _num_times / CHUNK_SIZE, 2};
         const std::array<std::string, 4> meanstd_dimnames{"R", "Fbar", "Ttilde256", "mean/std"};
-        return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_meanstd, "frb3_beams_meanstd",
-                                           meanstd_lengths, meanstd_dimnames, *this);
+        return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_meanstd, "I3_meanstd", meanstd_lengths,
+                                           meanstd_dimnames, *this);
     }())
 //
 {

@@ -93,18 +93,18 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(kotekan::Config& config, const std::str
     frb2_beams_name(config.get<std::string>(unique_name, "frb2_beams_name")),
 
     frb2_phase_buffer(frb2_phase_name, "W2",
-                      std::array<std::ptrdiff_t, 4>{frb1_num_beams_Q, frb1_num_beams_P,
-                                                    frb2_num_frequencies, frb2_num_beams},
-                      std::array<std::string, 4>{"beamQ", "beamP", "F", "R"}, *this,
+                      std::array<std::ptrdiff_t, 4>{frb2_num_frequencies, frb2_num_beams,
+                                                    frb1_num_beams_Q, frb1_num_beams_P},
+                      std::array<std::string, 4>{"Fbar", "R", "beamQ", "beamP"}, *this,
                       buffer_type_t::do_once),
     frb1_beams_buffer(frb1_beams_name, "I",
                       std::array<std::ptrdiff_t, 4>{frb1_max_num_times, frb1_max_num_frequencies,
                                                     frb1_num_beams_Q, frb1_num_beams_P},
-                      std::array<std::string, 4>{"T", "F", "beamQ", "beamP"}, *this),
+                      std::array<std::string, 4>{"Ttilde", "Fbar", "beamQ", "beamP"}, *this),
     frb2_beams_buffer(
         frb2_beams_name, "I2",
         std::array<std::ptrdiff_t, 3>{frb2_num_beams, frb2_num_frequencies, frb2_num_times},
-        std::array<std::string, 3>{"R", "F", "T"}, *this),
+        std::array<std::string, 3>{"R", "Fbar", "Ttilde"}, *this),
 
     did_set_metadata(false)
 
@@ -165,13 +165,20 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
 
     frb2_phase_buffer.check_metadata();
     frb1_beams_buffer.check_metadata();
+
+    if (!did_set_metadata) {
+        did_set_metadata = true;
+        // Set metadata
+        const std::shared_ptr<const chordMetadata> frb1_beams_meta =
+            frb1_beams_buffer.get_metadata();
+        frb2_beams_buffer.set_metadata(frb1_beams_meta);
+        const std::shared_ptr<chordMetadata> frb2_beams_meta = frb2_beams_buffer.get_metadata();
+        frb2_beams_meta->set_time_downsampling_fpga(frb1_beams_meta->get_time_downsampling_fpga());
+        frb2_beams_meta->set_coarse_freq(frb1_beams_meta->get_coarse_freq());
+        frb2_beams_meta->set_freq_upchan_factor(frb1_beams_meta->get_freq_upchan_factor());
+        frb2_beams_meta->set_freq_upchan_index(frb1_beams_meta->get_freq_upchan_index());
+    }
     frb2_beams_buffer.check_metadata();
-
-    if (poison_buffers)
-        frb2_beams_buffer.set_to_poison(0xff); // 0xffff is a NaN16
-
-    // Get buffer pointers
-    const float16_t* const frb2_phase_memory = frb2_phase_buffer.get_ndarray().data();
 
     const std::ptrdiff_t frb1_beams_offset = frb1_beams_buffer.get_read_valid().begin();
     const std::ptrdiff_t frb1_beams_extent = frb1_beams_buffer.get_ndarray().get_extent(0);
@@ -179,6 +186,17 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     // Ensure there is no wrap-around
     if (mod(frb1_beams_offset, frb1_beams_extent) + frb2_num_times > frb1_beams_stride)
         std::abort();
+
+    // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`
+    const std::shared_ptr<chordMetadata> frb2_beams_meta = frb2_beams_buffer.get_metadata();
+    frb2_beams_meta->set_fpga_seq_num(frb1_beams_offset);
+
+    if (poison_buffers)
+        frb2_beams_buffer.set_to_poison(0xff); // 0xffff is a NaN16
+
+    // Get buffer pointers
+    const float16_t* const frb2_phase_memory = frb2_phase_buffer.get_ndarray().data();
+
     const float16_t* const frb1_beams_memory =
         frb1_beams_buffer.get_ndarray().data()
         + frb1_beams_stride * mod(frb1_beams_offset, frb1_beams_extent);
@@ -216,9 +234,9 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     const int k = frb1_num_beams_P * frb1_num_beams_Q;
 
     // Matrix layouts (times and beams)
-    const int lda = frb1_beams_buffer.get_ndarray().get_stride(2);
+    const int lda = frb1_beams_buffer.get_ndarray().get_stride(0);
     const int ldb = frb2_phase_buffer.get_ndarray().get_stride(1);
-    const int ldc = frb2_beams_buffer.get_ndarray().get_stride(2);
+    const int ldc = frb2_beams_buffer.get_ndarray().get_stride(0);
 
     // Batch strides (frequencies)
     const std::ptrdiff_t strideA = frb1_beams_buffer.get_ndarray().get_stride(1);
@@ -228,6 +246,10 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     const float16_t alpha = 1;
     const float16_t beta = 0;
 
+    DEBUG("m={} n={} k={} frb1_beams_memory={} lda={} strideA={} frb2_phase_memory={} ldb={} "
+          "strideB={} frb2_beams_memory={} ldc={} strideC={} frb2_num_frequencies={}",
+          m, n, k, (const void*)frb1_beams_memory, lda, strideA, (const void*)frb2_phase_memory,
+          ldb, strideB, (const void*)frb2_beams_memory, ldc, strideC, frb2_num_frequencies);
     cublasStatus_t stat =
         cublasHgemmStridedBatched(handle, CUBLAS_OP_T, CUBLAS_OP_N, m, n, k, &alpha,
                                   frb1_beams_memory, lda, strideA, frb2_phase_memory, ldb, strideB,
@@ -236,21 +258,6 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
         ERROR("Error at {:s}:{:d}: cublasHgemmStridedBatched: {:s}", __FILE__, __LINE__,
               cublasGetStatusString(stat));
         std::abort();
-    }
-
-    // Update metadata
-    const std::shared_ptr<chordMetadata> frb2_beams_meta = frb2_beams_buffer.get_metadata();
-    // Since we do not use a ring buffer we need to set `meta->fpga_seq_num`
-    frb2_beams_meta->set_fpga_seq_num(frb1_beams_offset);
-
-    if (!did_set_metadata) {
-        did_set_metadata = true;
-        const std::shared_ptr<const chordMetadata> frb1_beams_meta =
-            frb1_beams_buffer.get_metadata();
-        frb2_beams_meta->set_time_downsampling_fpga(frb1_beams_meta->get_time_downsampling_fpga());
-        frb2_beams_meta->set_coarse_freq(frb1_beams_meta->get_coarse_freq());
-        frb2_beams_meta->set_freq_upchan_factor(frb1_beams_meta->get_freq_upchan_factor());
-        frb2_beams_meta->set_freq_upchan_index(frb1_beams_meta->get_freq_upchan_index());
     }
 
     if (poison_buffers)

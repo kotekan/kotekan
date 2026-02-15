@@ -303,6 +303,7 @@ run_frb23:
           gpu_mem: frb2_phase_buffer
         - name: cudaFRBBeamReformer
           frb1_max_num_frequencies: upchan_all_max_num_output_channels
+          frb1_max_num_times: buffer_depth * frb_num_output_times
           frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
           frb1_num_beams_P: frb_num_beams_P
           frb1_num_beams_Q: frb_num_beams_Q
