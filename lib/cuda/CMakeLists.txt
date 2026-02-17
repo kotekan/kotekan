@@ -32,7 +32,6 @@ add_library(
     chordMVPSetup.cpp
     cudaPLMaskExpander.cpp
     cudaPL1bitCorrelator.cpp
-    cudaQuantizeKernel.cu
     cudaQuantizeKernel4.cu
     cudaQuantize.cpp
     cudaRechunk.cpp
