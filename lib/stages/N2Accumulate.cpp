@@ -798,7 +798,7 @@ int64_t N2Accumulate::get_next_accum_start_tick(int64_t seq) {
             next_nrot = nrot + 1;
         }
 
-        int64_t next_seq = get_aligned_seq_of_ERA_bin(next_era_idx, nrot);
+        int64_t next_seq = get_aligned_seq_of_ERA_bin(next_era_idx, next_nrot);
         if (next_seq <= seq) {
             next_era_idx++;
             if (next_era_idx == _num_bins_per_rotation) {
@@ -806,7 +806,7 @@ int64_t N2Accumulate::get_next_accum_start_tick(int64_t seq) {
                 next_nrot++;
             }
 
-            next_seq = get_aligned_seq_of_ERA_bin(next_era_idx, nrot);
+            next_seq = get_aligned_seq_of_ERA_bin(next_era_idx, next_nrot);
         }
 
         return next_seq;
