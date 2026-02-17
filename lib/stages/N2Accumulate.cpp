@@ -819,9 +819,10 @@ int64_t N2Accumulate::get_next_accum_start_tick(int64_t seq) {
 }
 
 int64_t N2Accumulate::get_aligned_seq_of_ERA_bin(int64_t era_idx, int64_t nrot) {
-    
+
     // The ERA for the start of the bin.
-    double era_deg = (static_cast<double>(era_idx) / static_cast<double>(_num_bins_per_rotation)) * 360.0;
+    double era_deg =
+        (static_cast<double>(era_idx) / static_cast<double>(_num_bins_per_rotation)) * 360.0;
 
     // Find the seq value for this ERA.
     int64_t t_ut1 = get_UT1_from_ERA(nrot, era_deg);
