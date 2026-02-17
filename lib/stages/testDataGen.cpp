@@ -219,7 +219,7 @@ void testDataGen::main_thread() {
         chordmeta->set_name(_name);
         chordmeta->dims = (int)_array_shape.size();
         for (int d = 0; d < chordmeta->dims; ++d)
-            chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
+            chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d], 1);
         chordmeta->set_strides_simple();
         // frame_desc is set only after "type" has been decoded below
 
@@ -314,10 +314,11 @@ void testDataGen::main_thread() {
         // this needs the decoded type
         // could be moved into constructor, but need the bit of code above
         /* new style array description */
-        const std::vector<ptrdiff_t> extents(_array_shape.begin(), _array_shape.end());
+        const std::vector<std::ptrdiff_t> extents(_array_shape.begin(), _array_shape.end());
         const std::vector<kotekan::Symbol> dimnames(_dim_name.begin(), _dim_name.end());
+        const std::vector<std::ptrdiff_t> dimscalings(dimnames.size(), 1);
 
-        buf->allocate_ndarray_frame_desc(chordmeta->type, _name, extents, dimnames);
+        buf->allocate_ndarray_frame_desc(chordmeta->type, _name, extents, dimnames, dimscalings);
         /* test that things are consistent */
         chordmeta->check_frame_desc(buf->get_ndarray_frame_desc());
 

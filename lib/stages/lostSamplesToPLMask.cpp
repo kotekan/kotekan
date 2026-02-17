@@ -94,7 +94,7 @@ void lostSamplesToPLMask::main_thread() {
             // wait_for_full_frame()
             auto const expected_lost_samples_frame_desc = kotekan::GenericNDArray::create(
                 kotekan::DataType::uint8, "lost_samples", {ptrdiff_t(lost_samples_buf->frame_size)},
-                {"T"}, nullptr);
+                {"T"}, {1}, nullptr);
             assert(*lost_samples_buf->get_ndarray_frame_desc()
                    == *expected_lost_samples_frame_desc);
 
@@ -147,6 +147,11 @@ void lostSamplesToPLMask::main_thread() {
                 std::strncpy(pl_mask_meta->dim_name[2], "P", sizeof pl_mask_meta->dim_name[2]);
                 std::strncpy(pl_mask_meta->dim_name[3], "D8", sizeof pl_mask_meta->dim_name[3]);
                 std::strncpy(pl_mask_meta->dim_name[4], "T2lo64", sizeof pl_mask_meta->dim_name[4]);
+                pl_mask_meta->dim_scaling[0] = 2 * 64;
+                pl_mask_meta->dim_scaling[1] = 4;
+                pl_mask_meta->dim_scaling[2] = 1;
+                pl_mask_meta->dim_scaling[3] = 8;
+                pl_mask_meta->dim_scaling[4] = 8;
                 pl_mask_meta->dim[0] = lost_samples_bufs.at(0)->frame_size
                                        / PL_MASK_DOWNSAMPLING_FACTOR / PL_MASK_HILO_SPLIT;
                 pl_mask_meta->dim[1] = lost_samples_bufs.size();
@@ -205,7 +210,7 @@ void lostSamplesToPLMask::main_thread() {
              ptrdiff_t(lost_samples_bufs.size()), NUM_POLARIZATIONS,
              NUM_DISHES / PL_MASK_DISHES_PER_BIN,
              PL_MASK_HILO_SPLIT / BITS_PER_BYTE /* because we count uint1x8, not uint1 */},
-            {"T2hi64", "F4", "P", "D8", "T2lo64"});
+            {"T2hi64", "F4", "P", "D8", "T2lo64"}, {2 * 64, 4, 1, 8, 8});
         pl_mask_meta->check_frame_desc(pl_mask_buf->get_ndarray_frame_desc());
         pl_mask_buf->mark_frame_full(unique_name, pl_mask_buf_frame_id);
         pl_mask_buf_frame_id = (pl_mask_buf_frame_id + 1) % pl_mask_buf->num_frames;

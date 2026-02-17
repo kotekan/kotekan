@@ -131,18 +131,20 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
                 auto chord = std::dynamic_pointer_cast<chordMetadata>(meta);
                 if (chord) {
                     /* new style array description */
-                    std::vector<ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
+                    std::vector<std::ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
                     std::vector<kotekan::Symbol> dimnames(chord->dims);
                     for (size_t d = 0; d < dimnames.size(); ++d) {
                         dimnames.at(d) =
                             std::string(chord->dim_name[d],
                                         strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
                     }
+                    std::vector<std::ptrdiff_t> dimscalings(chord->dim_scaling,
+                                                            chord->dim_scaling + chord->dims);
 
                     // difficult to move to constructor since it depends on frame_desc in the
                     // signal_buffer which may not be set at contructor time
                     output_buffer->allocate_ndarray_frame_desc(chord->type, chord->get_name(),
-                                                               dimensions, dimnames);
+                                                               dimensions, dimnames, dimscalings);
                     /* test that things are consistent */
                     chord->check_frame_desc(output_buffer->get_ndarray_frame_desc());
                 }

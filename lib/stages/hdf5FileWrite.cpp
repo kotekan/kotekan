@@ -122,14 +122,36 @@ public:
         File file(full_path, File::Truncate);
 
         // Choose dataspace
-        const auto extents = frame_desc->get_extents();
-        const DataSpace space(extents.begin(), extents.end());
+
+        const auto mem_extents = frame_desc->get_extents();
+
+        // Select only the valid frequencies
+        auto file_extents = mem_extents;
+        // if (meta->has_nfreq()) {
+        //     // Find the frequency dimension
+        //     int freq_dim = -1;
+        //     for (int d = 0; d < meta->dims; ++d) {
+        //         if (meta->dim_name[d][0] == 'F') {
+        //             freq_dim = d;
+        //             break;
+        //         }
+        //     }
+        //     if (freq_dim >= 0) {
+        //         const int nfreq = meta->get_nfreq();
+        //         assert(file_extents.at(freq_dim) >= nfreq);
+        //         file_extents.at(freq_dim) = nfreq;
+        //     }
+        // }
+
+        const DataSpace mem_space(mem_extents.begin(), mem_extents.end());
+        const DataSpace file_space(file_extents.begin(), file_extents.end());
         {
             [[maybe_unused]] std::ptrdiff_t npoints = frame_desc->get_size();
-            assert(std::ptrdiff_t(space.getElementCount()) == npoints);
+            assert(std::ptrdiff_t(mem_space.getElementCount()) == npoints);
             assert(meta->offset == 0);
         }
-        assert(space.getNumberDimensions() == frame_desc->get_rank());
+        assert(mem_space.getNumberDimensions() == frame_desc->get_rank());
+        assert(file_space.getNumberDimensions() == frame_desc->get_rank());
 
         // Choose datatype
         const DataType type = chord2hdf5(frame_desc->get_value_datatype());
@@ -137,7 +159,7 @@ public:
         RawPropertyList<PropertyType::DATASET_CREATE> props;
 
         // Enable chunking
-        std::vector<hsize_t> chunk_dims(extents.begin(), extents.end());
+        std::vector<hsize_t> chunk_dims(file_extents.begin(), file_extents.end());
         if (!chunk_dims.empty()) {
             // Choose chunk size
             std::size_t npoints_lo = 1;
@@ -169,7 +191,7 @@ public:
                   bitshuffle_flags.data());
 
         // Create dataset
-        auto dataset = file.createDataSet(file_name, space, type, props);
+        auto dataset = file.createDataSet(file_name, file_space, type, props);
 
         // Write metadata (attributes)
 
@@ -180,9 +202,14 @@ public:
         dataset.createAttribute("chord_metadata_version", chord_metadata_version);
         dataset.createAttribute("name", meta->get_name());
         dataset.createAttribute("type", kotekan::type_to_string(frame_desc->get_value_datatype()));
-        const auto dimnames = frame_desc->get_dimnames();
-        std::vector<std::string> dim_names(dimnames.begin(), dimnames.end());
-        dataset.createAttribute("dim_names", dim_names);
+        //TODO const auto dimnames = frame_desc->get_dimnames();
+        //TODO std::vector<std::string> dim_names(dimnames.begin(), dimnames.end());
+        //TODO dataset.createAttribute("dim_names", dim_names);
+        dataset.createAttribute("dim_names", frame_desc->get_dimnames());
+        //TODO const auto dimscalings = frame_desc->get_dimscalings();
+        //TODO std::vector<std::ptrdiff_t> dim_scalings(dimscalings.begin(), dimscalings.end());
+        //TODO dataset.createAttribute("dim_scalings", dim_scalings);
+        dataset.createAttribute("dim_scalings", frame_desc->get_dimscalings());
 
         if (meta->has_fpga_seq_num()) {
             dataset.createAttribute("fpga_seq_num", meta->get_fpga_seq_num());
@@ -218,8 +245,15 @@ public:
         }
 
         // Write data
-        assert(dataset.getElementCount() * dataset.getDataType().getSize() == buffer->frame_size);
+
+        assert(dataset.getElementCount() * dataset.getDataType().getSize() ==
+        buffer->frame_size);
         dataset.write_raw(frame, type);
+
+        // std::vector<std::size_t> slab_offset(file_extents.size(), 0),
+        //     slab_count(file_extents.begin(), file_extents.end());
+        // const HighFive::HyperSlab slab(HighFive::RegularHyperSlab(slab_offset, slab_count));
+        // dataset.select(slab, slab.apply(mem_space)).write_raw(frame, type);
     }
 
     /**

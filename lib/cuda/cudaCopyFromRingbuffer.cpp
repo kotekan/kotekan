@@ -176,8 +176,10 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
             dimnames.push_back(
                 std::string(out_meta->dim_name[d],
                             strnlen(out_meta->dim_name[d], sizeof(out_meta->dim_name[d]))));
+        std::vector<std::ptrdiff_t> dimscalings(out_meta->dim_scaling,
+                                                out_meta->dim_scaling + out_meta->dims);
         out_buffer->allocate_ndarray_frame_desc(out_meta->type, out_meta->get_name(), extents,
-                                                dimnames);
+                                                dimnames, dimscalings);
         /* test that things are consistent */
         out_meta->check_frame_desc(out_buffer->get_ndarray_frame_desc());
 

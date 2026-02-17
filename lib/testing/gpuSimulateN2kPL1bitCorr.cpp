@@ -80,6 +80,11 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     output_buf = get_buffer("out_buf");
     output_buf->register_producer(unique_name);
 
+    // TODO: Check input_plmask; does it have the right time scaling?
+    const auto input_plmask_frame_desc = input_plmask_buf->get_ndarray_frame_desc();
+    assert(std::string(input_plmask_frame_desc->get_dimname(0)) == "T");
+    const auto input_plmask_time_scaling = input_plmask_frame_desc->get_dimscaling(0);
+
     /* new style array description */
     int n_integrations = _samples_per_data_set / _sub_integration_ntime;
     int nf = _num_local_freq;
@@ -88,7 +93,7 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     int n_blocks = (n_block_lin * (n_block_lin + 1)) / 2;
     output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int32>::type, 5>(
         "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}, {input_plmask_time_scaling, 1, 8, 1, 1});
 }
 
 gpuSimulateN2kPL1bitCorr::~gpuSimulateN2kPL1bitCorr() {}
@@ -245,11 +250,13 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         meta_out->type = kotekan::int32;
         meta_out->dims = 5;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
-        meta_out->set_array_dimension(0, n_integrations, "Tc");
-        meta_out->set_array_dimension(1, nf, "F");
-        meta_out->set_array_dimension(2, n_blocks, "D8Phi");
-        meta_out->set_array_dimension(3, _blocksize, "D8Plo1");
-        meta_out->set_array_dimension(4, _blocksize, "D8Plo2");
+        meta_out->set_array_dimension(0, n_integrations, "Tc",
+                                      div_noremainder(meta_in->get_time_downsampling_fpga(), 64)
+                                          * _sub_integration_ntime);
+        meta_out->set_array_dimension(1, nf, "F", 1);
+        meta_out->set_array_dimension(2, n_blocks, "D8Phi", 8);
+        meta_out->set_array_dimension(3, _blocksize, "D8Plo1", 1);
+        meta_out->set_array_dimension(4, _blocksize, "D8Plo2", 1);
         meta_out->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */

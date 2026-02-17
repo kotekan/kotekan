@@ -130,12 +130,17 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
                      std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 64),
                                                    num_frequencies, num_polarizations,
                                                    div_noremainder(num_dishes, 8), 64 / 8},
-                     std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, *this),
+                     std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 1},
+                     *this),
     rfi_RFImask(rfi_RFImask_name, "RFImask",
                 std::array<std::ptrdiff_t, 3>{buffer_depth * div_noremainder(num_times, 8 * 128),
                                               num_frequencies, 128},
-                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, *this),
+                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, {8 * 128, 1, 8}, *this),
     n2k_counts([&]() {
+        const auto pl_mask_dimscaling_time = pl_expanded_mask.get_ndarray().dimscaling(0);
+        const auto n2k_dimscaling_time =
+            n2k_sub_integration_ntime * div_noremainder(pl_mask_dimscaling_time, 64);
+
         // aka "nt_outer" in n2k.hpp
         const int num_subintegrations = div_noremainder(num_times, n2k_sub_integration_ntime);
         const int blocksize = 8;
@@ -144,8 +149,9 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
         const std::array<std::ptrdiff_t, 5> n2k_lengths{num_subintegrations, num_frequencies,
                                                         triangle_num_blocks, blocksize, blocksize};
         const std::array<std::string, 5> n2k_dimnames{"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"};
+        const std::array<std::ptrdiff_t, 5> n2k_dimscalings{n2k_dimscaling_time, 1, 8, 1, 1};
         return NDArrayBuffer<std::int32_t, 5>(n2k_counts_name, "n2k_counts", n2k_lengths,
-                                              n2k_dimnames, *this);
+                                              n2k_dimnames, n2k_dimscalings, *this);
     }()),
     // internals
     warned_about_unsupported_Sds(false)

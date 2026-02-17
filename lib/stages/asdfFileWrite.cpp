@@ -340,6 +340,12 @@ public:
                             std::make_shared<ASDF::string_entry>(meta->get_dimension_name(d)));
                     group->emplace("dim_names", dim_names);
 
+                    auto dim_scalings = std::make_shared<ASDF::sequence>();
+                    for (ssize_t d = 0; d < ndims; ++d)
+                        dim_scalings->push_back(
+                            std::make_shared<ASDF::int_entry>(meta->dim_scaling[d]));
+                    group->emplace("dim_scalings", dim_scalings);
+
                     if (meta->ndishes >= 0)
                         group->emplace("ndishes", std::make_shared<ASDF::int_entry>(meta->ndishes));
 

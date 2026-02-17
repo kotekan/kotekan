@@ -533,17 +533,20 @@ public:
     /**
      * @brief Allocates a new frame description object holding a D dimensional
      *        array of type T
+     * @param[in] quantity_name Physical quantity stored
      * @param[in] extents Array extentds in the D dimensions
      * @param[in] dimnames Array axis labels in the D dimensions
+     * @param[in] dimscalings Array axis scalings in the D dimensions
      */
     template<typename T, std::size_t D>
     void allocate_ndarray_frame_desc(kotekan::Symbol quantity_name,
                                      const std::array<std::ptrdiff_t, D>& extents,
-                                     const std::array<kotekan::Symbol, D>& dimnames) {
+                                     const std::array<kotekan::Symbol, D>& dimnames,
+                                     const std::array<std::ptrdiff_t, D>& dimscalings) {
         buffer_lock lock(mutex);
         if (!frames_desc)
-            frames_desc =
-                std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
+            frames_desc = std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames,
+                                                                   dimscalings, nullptr);
         else {
             auto nd_desc = std::dynamic_pointer_cast<kotekan::GenericNDArray>(frames_desc);
             if (!nd_desc) {
@@ -565,6 +568,10 @@ public:
             if (!std::equal(dimnames.begin(), dimnames.end(), nd_desc->get_dimnames().begin()))
                 ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "),
                       fmt::join(nd_desc->get_dimnames(), ", "));
+            if (!std::equal(dimscalings.begin(), dimscalings.end(),
+                            nd_desc->get_dimscalings().begin()))
+                ERROR("Dimscalings do not match: [{:s}] != [{:s}]", fmt::join(dimscalings, ", "),
+                      fmt::join(nd_desc->get_dimscalings(), ", "));
         }
     }
 
@@ -572,17 +579,20 @@ public:
      * @brief Allocates a new frame description object holding a D dimensional
      *        array of type T
      * @param[in] value_type the kotekan type enumerator of the values stored
+     * @param[in] quantity_name Physical quantity stored
      * @param[in] rank dimensionality of the data array
      * @param[in] extents Array extentds in the D dimensions
      * @param[in] dimnames Array axis labels in the D dimensions
+     * @param[in] dimscalings Array axis scalings in the D dimensions
      */
     void allocate_ndarray_frame_desc(kotekan::DataType value_type, kotekan::Symbol quantity_name,
                                      const std::vector<std::ptrdiff_t>& extents,
-                                     const std::vector<kotekan::Symbol>& dimnames) {
+                                     const std::vector<kotekan::Symbol>& dimnames,
+                                     const std::vector<std::ptrdiff_t>& dimscalings) {
         buffer_lock lock(mutex);
         if (!frames_desc) {
             frames_desc = kotekan::GenericNDArray::create(value_type, quantity_name, extents,
-                                                          dimnames, nullptr);
+                                                          dimnames, dimscalings, nullptr);
         } else {
             auto nd_desc = std::dynamic_pointer_cast<kotekan::GenericNDArray>(frames_desc);
             if (!nd_desc) {
@@ -605,6 +615,10 @@ public:
                 ERROR("Dimnames do not match: [{:s}] != [{:s}]",
                       fmt::format("{:s}", fmt::join(dimnames, ", ")),
                       fmt::format("{:s}", fmt::join(nd_desc->get_dimnames(), ", ")));
+            if (dimscalings != nd_desc->get_dimscalings())
+                ERROR("Dimscalings do not match: [{:s}] != [{:s}]",
+                      fmt::format("{:s}", fmt::join(dimscalings, ", ")),
+                      fmt::format("{:s}", fmt::join(nd_desc->get_dimscalings(), ", ")));
         }
     }
 

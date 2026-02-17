@@ -38,6 +38,7 @@ void GenericNDArray::output_framedesc(std::ostream& os) const {
        << "    empty:           " << format_bool(get_empty()) << "\n"
        << "    size:            " << get_size() << "\n"
        << "    dimnames:        " << format_vector(get_dimnames()) << "\n"
+       << "    dimscalings:     " << format_vector(get_dimscalings()) << "\n"
        << "    strides:         " << format_vector(get_strides()) << "\n";
 }
 
@@ -48,7 +49,7 @@ template<DataType my_datatype, size_t my_rank>
 static inline std::shared_ptr<GenericNDArray>
 make_NDArray(const DataType datatype, const Symbol quantity_name,
              const std::vector<std::ptrdiff_t>& extents, const std::vector<Symbol>& dimnames,
-             void* data) {
+             const std::vector<std::ptrdiff_t>& dimscalings, void* data) {
     // recurse until datatype matches
     if constexpr (my_datatype == unknown_type) {
         assert(my_datatype != unknown_type);
@@ -61,25 +62,26 @@ make_NDArray(const DataType datatype, const Symbol quantity_name,
         } else if (int(extents.size()) == my_rank) {
             // both match
             return std::shared_ptr<GenericNDArray>(new NDArray<GetType_t<my_datatype>, my_rank>(
-                quantity_name, extents, dimnames, static_cast<GetType_t<my_datatype>*>(data)));
+                quantity_name, extents, dimnames, dimscalings,
+                static_cast<GetType_t<my_datatype>*>(data)));
         } else {
             return make_NDArray<my_datatype, my_rank - 1>(datatype, quantity_name, extents,
-                                                          dimnames, data);
+                                                          dimnames, dimscalings, data);
         }
     } else {
         return make_NDArray<DataType(my_datatype - 1), my_rank>(datatype, quantity_name, extents,
-                                                                dimnames, data);
+                                                                dimnames, dimscalings, data);
     }
 }
 
-std::shared_ptr<GenericNDArray> GenericNDArray::create(const DataType value_datatype,
-                                                       const Symbol quantity_name,
-                                                       const std::vector<std::ptrdiff_t>& extents,
-                                                       const std::vector<Symbol>& dimnames,
-                                                       void* data) {
+std::shared_ptr<GenericNDArray>
+GenericNDArray::create(const DataType value_datatype, const Symbol quantity_name,
+                       const std::vector<std::ptrdiff_t>& extents,
+                       const std::vector<Symbol>& dimnames,
+                       const std::vector<std::ptrdiff_t>& dimscalings, void* data) {
     assert(extents.size() == dimnames.size());
     return make_NDArray<DataType(end_type - 1), max_rank>(value_datatype, quantity_name, extents,
-                                                          dimnames, data);
+                                                          dimnames, dimscalings, data);
 }
 
 bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
@@ -97,6 +99,8 @@ bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
     if (this->get_extents() != other.get_extents())
         return false;
     if (this->get_dimnames() != other.get_dimnames())
+        return false;
+    if (this->get_dimscalings() != other.get_dimscalings())
         return false;
     if (this->get_strides() != other.get_strides())
         return false;

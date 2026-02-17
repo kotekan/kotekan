@@ -185,14 +185,14 @@ void testN2kGen::allocate_correlation_frame_desc(Buffer* buf) {
     buf->allocate_ndarray_frame_desc(
         kotekan::int32, "n2k_correlation",
         {num_integrations, num_local_freq, corr_num_blocks, corr_blocksize, corr_blocksize, 2},
-        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
+        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}, {sub_integration_ntime, 1, 16, 1, 1, 1});
 }
 
 void testN2kGen::allocate_counts_frame_desc(Buffer* buf) {
     buf->allocate_ndarray_frame_desc(
         kotekan::int32, "n2k_counts",
         {num_integrations, num_local_freq, count_num_blocks, count_blocksize, count_blocksize},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}, {sub_integration_ntime, 1, 8, 1, 1});
 }
 
 void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& meta,
@@ -201,12 +201,12 @@ void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& 
     meta->type = kotekan::int32;
     meta->dims = 6;
     assert(meta->dims <= CHORD_META_MAX_DIM);
-    meta->set_array_dimension(0, num_integrations, "Tc");
-    meta->set_array_dimension(1, num_local_freq, "F");
-    meta->set_array_dimension(2, corr_num_blocks, "DPhi");
-    meta->set_array_dimension(3, corr_blocksize, "DPlo1");
-    meta->set_array_dimension(4, corr_blocksize, "DPlo2");
-    meta->set_array_dimension(5, 2, "C");
+    meta->set_array_dimension(0, num_integrations, "Tc", sub_integration_ntime);
+    meta->set_array_dimension(1, num_local_freq, "F", 1);
+    meta->set_array_dimension(2, corr_num_blocks, "DPhi", corr_blocksize);
+    meta->set_array_dimension(3, corr_blocksize, "DPlo1", 1);
+    meta->set_array_dimension(4, corr_blocksize, "DPlo2", 1);
+    meta->set_array_dimension(5, 2, "C", 1);
     meta->set_strides_simple();
 
     meta->set_fpga_seq_num(seq_num);
@@ -237,11 +237,11 @@ void testN2kGen::set_counts_metadata(const std::shared_ptr<chordMetadata>& meta,
     meta->type = kotekan::int32;
     meta->dims = 5;
     assert(meta->dims <= CHORD_META_MAX_DIM);
-    meta->set_array_dimension(0, num_integrations, "Tc");
-    meta->set_array_dimension(1, num_local_freq, "F");
-    meta->set_array_dimension(2, count_num_blocks, "D8Phi");
-    meta->set_array_dimension(3, count_blocksize, "D8Plo1");
-    meta->set_array_dimension(4, count_blocksize, "D8Plo2");
+    meta->set_array_dimension(0, num_integrations, "Tc", sub_integration_ntime);
+    meta->set_array_dimension(1, num_local_freq, "F", 1);
+    meta->set_array_dimension(2, count_num_blocks, "D8Phi", count_blocksize);
+    meta->set_array_dimension(3, count_blocksize, "D8Plo1", 1);
+    meta->set_array_dimension(4, count_blocksize, "D8Plo2", 1);
     meta->set_strides_simple();
 
     // This looks inconsistent

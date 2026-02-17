@@ -142,8 +142,11 @@ public:
                 const auto dim_names =
                     dataset.getAttribute("dim_names").read<std::vector<std::string>>();
                 assert(std::ptrdiff_t(dim_names.size()) == meta->dims);
+                const auto dim_scalings =
+                    dataset.getAttribute("dim_scalings").read<std::vector<std::ptrdiff_t>>();
+                assert(std::ptrdiff_t(dim_scalings.size()) == meta->dims);
                 for (int d = 0; d < meta->dims; ++d)
-                    meta->set_array_dimension(d, dims.at(d), dim_names.at(d));
+                    meta->set_array_dimension(d, dims.at(d), dim_names.at(d), dim_scalings.at(d));
                 {
                     std::ptrdiff_t npoints = 1;
                     for (int d = meta->dims - 1; d >= 0; --d) {
@@ -199,10 +202,12 @@ public:
                     assert(value_type != kotekan::unknown_type);
                     const std::string name = dataset.getAttribute("name").read<std::string>();
 
-                    std::vector<ptrdiff_t> dimensions(dims.begin(), dims.end());
+                    std::vector<std::ptrdiff_t> dimensions(dims.begin(), dims.end());
                     std::vector<kotekan::Symbol> dimnames(dim_names.begin(), dim_names.end());
+                    //TODO std::vector<std::ptrdiff_t> dimscalings(dim_scalings.begin(), dim_scalings.end());
 
-                    buffer->allocate_ndarray_frame_desc(value_type, name, dimensions, dimnames);
+                    //TODO buffer->allocate_ndarray_frame_desc(value_type, name, dimensions, dimnames,dimscalings);
+                    buffer->allocate_ndarray_frame_desc(value_type, name, dimensions, dimnames, dim_scalings);
                     /* test that things are consistent */
                     meta->check_frame_desc(buffer->get_ndarray_frame_desc());
                 }

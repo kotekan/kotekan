@@ -17,6 +17,7 @@ chordMetadata::chordMetadata() :
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
         dim_name[d][0] = '\0';
+        dim_scaling[d] = -1;
         stride[d] = -1;
     }
 }
@@ -41,6 +42,9 @@ bool chordMetadata::operator==(const chordMetadata& other) const {
             return false;
     for (int d = 0; d < dims; ++d)
         if (0 != strncmp(dim_name[d], other.dim_name[d], CHORD_META_MAX_DIMNAME))
+            return false;
+    for (int d = 0; d < dims; ++d)
+        if (dim_scaling[d] != other.dim_scaling[d])
             return false;
     for (int d = 0; d < dims; ++d)
         if (stride[d] != other.stride[d])
@@ -88,6 +92,13 @@ void chordMetadata::check_frame_desc(
             failed = true;
         }
 
+        if (this->dim_scaling[d] != frame_desc->get_dimscaling(d)) {
+            ERROR("Dim_scaling[{:d}] differs for {:s}: {:d} != {:d}", d,
+                  frame_desc->get_quantity_name(), this->dim_scaling[d],
+                  frame_desc->get_dimscaling(d));
+            failed = true;
+        }
+
         if (this->dim[d] != frame_desc->get_extent(d)) {
             ERROR("Dim[{:d}] differs for {:s}: {:d} != {:d}", d, frame_desc->get_quantity_name(),
                   this->dim[d], frame_desc->get_extent(d));
@@ -111,6 +122,7 @@ void chordMetadata::set_from_frame_desc(
     for (int d = this->dims - 1; d >= 0; --d) {
         strncpy(this->dim_name[d], frame_desc->get_dimname(d).get_c_string(),
                 sizeof this->dim_name[d]);
+        this->dim_scaling[d] = frame_desc->get_dimscaling(d);
         this->dim[d] = frame_desc->get_extent(d);
         this->stride[d] = frame_desc->get_stride(d);
     }
@@ -148,6 +160,7 @@ struct chordMetadataFormat {
     int32_t dims;
     int32_t dim[CHORD_META_MAX_DIM];
     char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // "F", "Tbar", "D", etc
+    int64_t dim_scaling[CHORD_META_MAX_DIM];
     int64_t stride[CHORD_META_MAX_DIM];
     int64_t offset;
 
@@ -211,6 +224,7 @@ size_t chordMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t 
         for (int j = 0; j < CHORD_META_MAX_DIMNAME; j++) {
             dim_name[i][j] = fmt->dim_name[i][j];
         }
+        dim_scaling[i] = fmt->dim_scaling[i];
         stride[i] = fmt->stride[i];
     }
     offset = fmt->offset;
@@ -278,6 +292,7 @@ size_t chordMetadata::serialize(char* bytes) {
         for (int j = 0; j < CHORD_META_MAX_DIMNAME; j++) {
             fmt->dim_name[i][j] = dim_name[i][j];
         }
+        fmt->dim_scaling[i] = dim_scaling[i];
         fmt->stride[i] = stride[i];
     }
     fmt->offset = offset;
@@ -361,6 +376,7 @@ void to_json(nlohmann::json& j, const chordMetadata& m) {
         dimnames.push_back(
             std::string(m.dim_name[i], strnlen(m.dim_name[i], sizeof(m.dim_name[i]))));
     j.emplace("dim_name", dimnames);
+    j.emplace("dim_scaling", std::vector<int64_t>(m.dim_scaling, m.dim_scaling + m.dims));
     j.emplace("stride", std::vector<int64_t>(m.stride, m.stride + m.dims));
     j.emplace("offset", m.offset);
     // TODO: this misses dish_positions etc
@@ -423,6 +439,9 @@ void from_json(const nlohmann::json& j, chordMetadata& m) {
     std::vector<std::string> dimnames = j.at("dim_name").template get<std::vector<std::string>>();
     for (int i = 0; i < m.dims; i++)
         strncpy(m.dim_name[i], dimnames.at(i).c_str(), sizeof(m.dim_name[i]));
+    std::vector<int64_t> dim_scalings = j.at("dim_scaling").template get<std::vector<int64_t>>();
+    for (int i = 0; i < m.dims; i++)
+        m.dim_scaling[i] = dim_scalings.at(i);
     std::vector<int64_t> strides = j.at("stride").template get<std::vector<int64_t>>();
     for (int i = 0; i < m.dims; i++)
         m.stride[i] = strides.at(i);

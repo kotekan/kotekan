@@ -340,16 +340,16 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
     if (scatter_indices_buffer)
         scatter_indices_buffer->allocate_ndarray_frame_desc<std::int32_t, 2>(
-            "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"});
+            "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"}, {1, 1});
     bf_mask_buffer->allocate_ndarray_frame_desc<std::int8_t, 2>(
-        "bf_mask", {num_polarizations, num_dishes}, {"P", "D"});
+        "bf_mask", {num_polarizations, num_dishes}, {"P", "D"}, {1, 1});
     bb_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
-        "bb_beam_positions", {bb_num_beams, 2}, {"B", "EW/NS"});
+        "bb_beam_positions", {bb_num_beams, 2}, {"B", "EW/NS"}, {1, 1});
     A_buffer->allocate_ndarray_frame_desc<std::int8_t, 5>(
         "A", {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
-        {"F", "P", "B", "D", "C"});
+        {"F", "P", "B", "D", "C"}, {1, 1, 1, 1, 1});
     s_buffer->allocate_ndarray_frame_desc<std::int32_t, 3>(
-        "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"});
+        "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"}, {1, 1, 1});
     // CHORD and CHIME use different conventions for the (M,N) dish indices and (P,Q) beam
     // indices
     // For CHORD: M = P = x = east-west
@@ -366,35 +366,36 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         Buffer* const G_buffer = G_buffers.at(Ufactor);
         if (G_buffer)
             G_buffer->allocate_ndarray_frame_desc<float16_t, 1>(
-                "G", {upchan_max_num_channelss[Ufactor] * U}, {"Fbar"});
+                "G", {upchan_max_num_channelss[Ufactor] * U}, {"Fbar"}, {1});
         Buffer* const W1_buffer = W1_buffers.at(Ufactor);
-        W1_buffer->allocate_ndarray_frame_desc<float16_t, 5>("W",
-                                                             {upchan_max_num_channelss[Ufactor] * U,
-                                                              num_polarizations, num_dishes_N,
-                                                              num_dishes_M, num_components},
-                                                             {"F", "P", "dishN", "dishM", "C"});
+        W1_buffer->allocate_ndarray_frame_desc<float16_t, 5>(
+            "W",
+            {upchan_max_num_channelss[Ufactor] * U, num_polarizations, num_dishes_N, num_dishes_M,
+             num_components},
+            {"F", "P", "dishN", "dishM", "C"}, {1, 1, 1, 1, 1});
     }
     W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>(
         "W2",
         {upchan_all_max_output_channel - upchan_all_min_output_channel,
          frb2_num_beams_ns * frb2_num_beams_ew, num_beams_Q, num_beams_P},
-        {"Fbar", "R", "beamQ", "beamP"});
+        {"Fbar", "R", "beamQ", "beamP"}, {1, 1, 1, 1});
     if (receive_chime) {
         // Use the CHIME input buffer layout (one buffer per frequency)
         for (auto E_buffer_chime : E_buffers_chime)
             E_buffer_chime->allocate_ndarray_frame_desc<
                 kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 2>(
-                "E", {num_times, num_dishes * num_polarizations}, {"T", "E"});
+                "E", {num_times, num_dishes * num_polarizations}, {"T", "E"}, {1, 1});
     } else {
         // Use CHORDs input buffer layout
         E_buffer_chord->allocate_ndarray_frame_desc<
             kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 4>(
-            "E", {num_times, num_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"});
+            "E", {num_times, num_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"},
+            {1, 1, 1, 1});
     }
     pl_mask_buffer->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 5>(
         "pl_mask",
         {num_times / 2 / 64, num_frequencies / 4, num_polarizations, num_dishes / 8, 64 / 8},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"});
+        {"T2hi64", "F4", "P", "D8", "T2lo64"}, {2 * 64, 4, 1, 8, 8});
 
     INFO("Starting Julia...");
     kotekan::juliaStartup();
@@ -586,6 +587,8 @@ void FEngine::main_thread() {
                      sizeof dish_positions_metadata->dim_name[1]);
         std::strncpy(dish_positions_metadata->dim_name[1], "EW/NS",
                      sizeof dish_positions_metadata->dim_name[0]);
+        dish_positions_metadata->dim_scalings[0] = 1;
+        dish_positions_metadata->dim_scalings[1] = 1;
         dish_positions_metadata->dim[0] = num_dishes;
         dish_positions_metadata->dim[1] = 2;
         for (int d = dish_positions_metadata->dims - 1; d >= 0; --d)
@@ -650,6 +653,8 @@ void FEngine::main_thread() {
                      sizeof scatter_indices_metadata->dim_name[1]);
         std::strncpy(scatter_indices_metadata->dim_name[1], "D",
                      sizeof scatter_indices_metadata->dim_name[0]);
+        scatter_indices_metadata->dim_scaling[0] = 1;
+        scatter_indices_metadata->dim_scaling[1] = 1;
         scatter_indices_metadata->dim[0] = num_polarizations;
         scatter_indices_metadata->dim[1] = num_dishes;
         for (int d = scatter_indices_metadata->dims - 1; d >= 0; --d)
@@ -709,6 +714,8 @@ void FEngine::main_thread() {
         assert(bf_mask_metadata->dims <= CHORD_META_MAX_DIM);
         std::strncpy(bf_mask_metadata->dim_name[0], "P", sizeof bf_mask_metadata->dim_name[0]);
         std::strncpy(bf_mask_metadata->dim_name[1], "D", sizeof bf_mask_metadata->dim_name[1]);
+        bf_mask_metadata->dim_scaling[0] = 1;
+        bf_mask_metadata->dim_scaling[1] = 1;
         bf_mask_metadata->dim[0] = num_polarizations;
         bf_mask_metadata->dim[1] = num_dishes;
         for (int d = bf_mask_metadata->dims - 1; d >= 0; --d)
@@ -807,6 +814,8 @@ void FEngine::main_thread() {
                      sizeof bb_beam_positions_metadata->dim_name[1]);
         std::strncpy(bb_beam_positions_metadata->dim_name[1], "EW/NS",
                      sizeof bb_beam_positions_metadata->dim_name[0]);
+        bb_beam_positions_metadata->dim_scaling[0] = 1;
+        bb_beam_positions_metadata->dim_scaling[1] = 1;
         bb_beam_positions_metadata->dim[0] = bb_num_beams;
         bb_beam_positions_metadata->dim[1] = 2;
         for (int d = bb_beam_positions_metadata->dims - 1; d >= 0; --d)
@@ -890,6 +899,11 @@ void FEngine::main_thread() {
         std::strncpy(A_metadata->dim_name[2], "B", sizeof A_metadata->dim_name[2]);
         std::strncpy(A_metadata->dim_name[3], "D", sizeof A_metadata->dim_name[3]);
         std::strncpy(A_metadata->dim_name[4], "C", sizeof A_metadata->dim_name[4]);
+        A_metadata->dim_scaling[0] = 1;
+        A_metadata->dim_scaling[1] = 1;
+        A_metadata->dim_scaling[2] = 1;
+        A_metadata->dim_scaling[3] = 1;
+        A_metadata->dim_scaling[4] = 1;
         A_metadata->dim[0] = num_frequencies;
         A_metadata->dim[1] = num_polarizations;
         A_metadata->dim[2] = bb_num_beams;
@@ -954,6 +968,9 @@ void FEngine::main_thread() {
         std::strncpy(s_metadata->dim_name[0], "F", sizeof s_metadata->dim_name[0]);
         std::strncpy(s_metadata->dim_name[1], "P", sizeof s_metadata->dim_name[1]);
         std::strncpy(s_metadata->dim_name[2], "B", sizeof s_metadata->dim_name[2]);
+        s_metadata->dim_scaling[0] = 1;
+        s_metadata->dim_scaling[1] = 1;
+        s_metadata->dim_scaling[2] = 1;
         s_metadata->dim[0] = num_frequencies;
         s_metadata->dim[1] = num_polarizations;
         s_metadata->dim[2] = bb_num_beams;
@@ -1026,6 +1043,7 @@ void FEngine::main_thread() {
             G_metadata->dims = 1;
             assert(G_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(G_metadata->dim_name[0], "Fbar", sizeof G_metadata->dim_name[0]);
+            G_metadata->dim_scaling[0] = 1;
             // TODO: Set the correct length (and update all kernels which read this)
             // G_metadata->dim[0] = num_local_channels * U;
             G_metadata->dim[0] = upchan_max_num_channelss.at(Ufactor) * U;
@@ -1134,6 +1152,11 @@ void FEngine::main_thread() {
             std::strncpy(W1_metadata->dim_name[2], "dishN", sizeof W1_metadata->dim_name[2]);
             std::strncpy(W1_metadata->dim_name[3], "dishM", sizeof W1_metadata->dim_name[3]);
             std::strncpy(W1_metadata->dim_name[4], "C", sizeof W1_metadata->dim_name[4]);
+            W1_metadata->dim_scaling[0] = 1;
+            W1_metadata->dim_scaling[1] = 1;
+            W1_metadata->dim_scaling[2] = 1;
+            W1_metadata->dim_scaling[3] = 1;
+            W1_metadata->dim_scaling[4] = 1;
             W1_metadata->dim[0] = upchan_max_num_channelss.at(Ufactor) * U;
             W1_metadata->dim[1] = num_polarizations;
             W1_metadata->dim[2] = receive_chime ? chord_telescope.get_num_dishes_x()
@@ -1323,6 +1346,10 @@ void FEngine::main_thread() {
         std::strncpy(W2_metadata->dim_name[1], "R", sizeof W2_metadata->dim_name[1]);
         std::strncpy(W2_metadata->dim_name[2], "beamQ", sizeof W2_metadata->dim_name[2]);
         std::strncpy(W2_metadata->dim_name[3], "beamP", sizeof W2_metadata->dim_name[3]);
+        W2_metadata->dim_scaling[0] = 1;
+        W2_metadata->dim_scaling[1] = 1;
+        W2_metadata->dim_scaling[2] = 1;
+        W2_metadata->dim_scaling[3] = 1;
         W2_metadata->dim[0] = upchan_all_max_output_channel - upchan_all_min_output_channel;
         W2_metadata->dim[1] = frb2_num_beams_ns * frb2_num_beams_ew;
         W2_metadata->dim[2] = receive_chime ? 2 * chord_telescope.get_num_dishes_x()
@@ -1530,6 +1557,10 @@ void FEngine::main_thread() {
                 std::strncpy(E_metadata->dim_name[1], "F", sizeof E_metadata->dim_name[1]);
                 std::strncpy(E_metadata->dim_name[2], "P", sizeof E_metadata->dim_name[2]);
                 std::strncpy(E_metadata->dim_name[3], "D", sizeof E_metadata->dim_name[3]);
+                E_metadata->dim_scaling[0] = 1;
+                E_metadata->dim_scaling[1] = 1;
+                E_metadata->dim_scaling[2] = 1;
+                E_metadata->dim_scaling[3] = 1;
                 E_metadata->dim[0] = num_times;
                 E_metadata->dim[1] = num_frequencies;
                 E_metadata->dim[2] = num_polarizations;
@@ -1540,6 +1571,8 @@ void FEngine::main_thread() {
                 assert(E_metadata->dims <= CHORD_META_MAX_DIM);
                 std::strncpy(E_metadata->dim_name[0], "T", sizeof E_metadata->dim_name[0]);
                 std::strncpy(E_metadata->dim_name[1], "E", sizeof E_metadata->dim_name[1]);
+                E_metadata->dim_scaling[0] = 1;
+                E_metadata->dim_scaling[1] = 1;
                 E_metadata->dim[0] = num_times;
                 E_metadata->dim[1] = num_dishes * num_polarizations;
             }
@@ -1636,6 +1669,11 @@ void FEngine::main_thread() {
             std::strncpy(pl_mask_metadata->dim_name[3], "D8", sizeof pl_mask_metadata->dim_name[3]);
             std::strncpy(pl_mask_metadata->dim_name[4], "T2lo64",
                          sizeof pl_mask_metadata->dim_name[4]);
+            pl_mask_metadata->dim_scaling[0] = 2 * 64;
+            pl_mask_metadata->dim_scaling[1] = 4;
+            pl_mask_metadata->dim_scaling[2] = 1;
+            pl_mask_metadata->dim_scaling[3] = 8;
+            pl_mask_metadata->dim_scaling[4] = 8; // because we count uint1x8, not uint1
             pl_mask_metadata->dim[0] = num_times / 2 / 64;
             pl_mask_metadata->dim[1] = num_frequencies / 4;
             pl_mask_metadata->dim[2] = num_polarizations;
@@ -1728,6 +1766,10 @@ void FEngine::main_thread() {
             std::strncpy(J_metadata->dim_name[1], "F", sizeof J_metadata->dim_name[1]);
             std::strncpy(J_metadata->dim_name[2], "P", sizeof J_metadata->dim_name[2]);
             std::strncpy(J_metadata->dim_name[3], "T", sizeof J_metadata->dim_name[3]);
+            J_metadata->dim_scaling[0] = 1;
+            J_metadata->dim_scaling[1] = 1;
+            J_metadata->dim_scaling[2] = 1;
+            J_metadata->dim_scaling[3] = 1;
             J_metadata->dim[0] = bb_num_beams;
             J_metadata->dim[1] = num_frequencies;
             J_metadata->dim[2] = num_polarizations;
@@ -1813,6 +1855,10 @@ void FEngine::main_thread() {
             std::strncpy(I1_metadata->dim_name[1], "Fbar", sizeof I1_metadata->dim_name[1]);
             std::strncpy(I1_metadata->dim_name[2], "beamQ", sizeof I1_metadata->dim_name[2]);
             std::strncpy(I1_metadata->dim_name[3], "beamP", sizeof I1_metadata->dim_name[3]);
+            I1_metadata->dim_scaling[0] = 1;
+            I1_metadata->dim_scaling[1] = 1;
+            I1_metadata->dim_scaling[2] = 1;
+            I1_metadata->dim_scaling[3] = 1;
             I1_metadata->dim[0] = frb_num_times;
             I1_metadata->dim[1] = num_frequencies * U;
             I1_metadata->dim[2] = frb_num_beams_Q;

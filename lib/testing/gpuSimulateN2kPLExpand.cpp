@@ -46,7 +46,7 @@ gpuSimulateN2kPLExpand::gpuSimulateN2kPLExpand(Config& config, const std::string
     int nf = _num_local_freq;
     int ne = _num_elements / 8;
     output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::uint1x8>::type, 5>(
-        "pl_mask", {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"});
+        "pl_mask", {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 1});
 }
 
 gpuSimulateN2kPLExpand::~gpuSimulateN2kPLExpand() {}
@@ -176,11 +176,11 @@ void gpuSimulateN2kPLExpand::main_thread() {
         meta_out->type = kotekan::uint1x8;
         meta_out->dims = 5;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
-        meta_out->set_array_dimension(0, nt, "Thi64");
-        meta_out->set_array_dimension(1, nf, "F");
-        meta_out->set_array_dimension(2, 2, "P");
-        meta_out->set_array_dimension(3, ne / 2, "D8");
-        meta_out->set_array_dimension(4, 8, "Tlo64");
+        meta_out->set_array_dimension(0, nt, "Thi64", 64);
+        meta_out->set_array_dimension(1, nf, "F", 1);
+        meta_out->set_array_dimension(2, 2, "P", 1);
+        meta_out->set_array_dimension(3, ne / 2, "D8", 8);
+        meta_out->set_array_dimension(4, 8, "Tlo64", 1);
         meta_out->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */

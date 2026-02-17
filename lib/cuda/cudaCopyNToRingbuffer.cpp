@@ -157,11 +157,11 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
 
         // Set the shape of the array
         meta_ring->dims = 4;
-        meta_ring->set_array_dimension(0, _gpu_buffer_depth, "Thi16384");
-        meta_ring->set_array_dimension(1, in_buffers.size(), "F");
+        meta_ring->set_array_dimension(0, _gpu_buffer_depth, "Thi16384", 16386);
+        meta_ring->set_array_dimension(1, in_buffers.size(), "F", 1);
         assert(meta_in0->dim[0] == 16384);
-        meta_ring->set_array_dimension(2, meta_in0->dim[0], "Tlo16384");
-        meta_ring->set_array_dimension(3, meta_in0->dim[1], "E");
+        meta_ring->set_array_dimension(2, meta_in0->dim[0], "Tlo16384", 1);
+        meta_ring->set_array_dimension(3, meta_in0->dim[1], "E", 1);
         meta_ring->set_strides_simple();
 
         // Set the data type

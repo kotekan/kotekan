@@ -224,11 +224,21 @@ public:
                         const std::string dim_name = dim_names->at(d)->get_maybe_string().value();
                         dimnames.push_back(dim_name);
                     }
-                    buffer->allocate_ndarray_frame_desc(value_type, name, dimensions, dimnames);
+                    DEBUG("[{:s}/{:d}] group0->at(\"dim_scalings\")", buffer->buffer_name,
+                          frame_counter);
+                    const auto dim_scalings = group->at("dim_scalings")->get_maybe_sequence();
+                    assert(dim_scalings);
+                    std::vector<std::ptrdiff_t> dimscalings;
+                    for (size_t d = 0; d < dimensions.size(); ++d) {
+                        const std::ptrdiff_t dim_scaling =
+                            dim_scalings->at(d)->get_maybe_int().value();
+                        dimscalings.push_back(dim_scaling);
+                    }
+                    buffer->allocate_ndarray_frame_desc(value_type, name, dimensions, dimnames,
+                                                        dimscalings);
                     /* test that things are consistent */
                     meta->check_frame_desc(buffer->get_ndarray_frame_desc());
                 }
-
 
                 const std::ptrdiff_t data_size = npoints * datatype_size;
                 DEBUG("[{:s}/{:d}] data_size={} datatype->type_size={} meta->stride[0]={} "

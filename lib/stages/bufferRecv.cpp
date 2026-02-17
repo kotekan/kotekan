@@ -549,16 +549,18 @@ void connInstance::internal_read_callback() {
                 auto chord = std::dynamic_pointer_cast<chordMetadata>(metadata);
                 if (chord) {
                     /* new style array description */
-                    std::vector<ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
+                    std::vector<std::ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
                     std::vector<kotekan::Symbol> dimnames(chord->dims);
                     for (size_t d = 0; d < dimnames.size(); ++d) {
                         dimnames.at(d) =
                             std::string(chord->dim_name[d],
                                         strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
                     }
+                    std::vector<std::ptrdiff_t> dimscalings(chord->dim_scaling,
+                                                            chord->dim_scaling + chord->dims);
 
                     buf->allocate_ndarray_frame_desc(chord->type, chord->get_name(), dimensions,
-                                                     dimnames);
+                                                     dimnames, dimscalings);
                     /* test that things are consistent */
                     chord->check_frame_desc(buf->get_ndarray_frame_desc());
                 }

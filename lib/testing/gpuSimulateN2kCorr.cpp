@@ -104,6 +104,10 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
         std::abort();
     }
 
+    const auto input_frame_desc = input_buf->get_ndarray_frame_desc();
+    assert(std::string(input_frame_desc->get_dimname(0)) == "T");
+    const auto input_time_scaling = input_frame_desc->get_dimscaling(0);
+
     /* new style array description */
     // number of elements = number of dishes * polarizations
     int nt_inner = _sub_integration_ntime;
@@ -111,7 +115,7 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
     output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
         "n2k_correlation",
         {nt_outer, _num_local_freq, (_num_elements / 16) * (_num_elements / 16 + 1) / 2, 16, 16, 2},
-        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
+        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}, {input_time_scaling, 1, 16, 1, 1, 1});
 }
 
 gpuSimulateN2kCorr::~gpuSimulateN2kCorr() {}
@@ -272,13 +276,14 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->type = kotekan::int32;
         meta_out->dims = 6;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
-        meta_out->set_array_dimension(0, nt_outer, "Tc");
-        meta_out->set_array_dimension(1, _num_local_freq, "F");
+        meta_out->set_array_dimension(
+            0, nt_outer, "Tc", meta_in->get_time_downsampling_fpga() * _sub_integration_ntime);
+        meta_out->set_array_dimension(1, _num_local_freq, "F", 1);
         meta_out->set_array_dimension(2, (_num_elements / 16) * (_num_elements / 16 + 1) / 2,
-                                      "DPhi");
-        meta_out->set_array_dimension(3, 16, "DPlo1");
-        meta_out->set_array_dimension(4, 16, "DPlo2");
-        meta_out->set_array_dimension(5, 2, "C");
+                                      "DPhi", 16);
+        meta_out->set_array_dimension(3, 16, "DPlo1", 1);
+        meta_out->set_array_dimension(4, 16, "DPlo2", 1);
+        meta_out->set_array_dimension(5, 2, "C", 1);
         meta_out->set_strides_simple();
 
         // frame_desc set in constructor

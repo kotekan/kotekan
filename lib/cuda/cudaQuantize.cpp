@@ -29,6 +29,7 @@ void launch_quantize_kernel(cudaStream_t stream, int nframes, const __half2* in_
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::div_noremainder;
 
 REGISTER_CUDA_COMMAND(cudaQuantize);
 
@@ -39,8 +40,7 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     _num_beams(config.get<std::int64_t>(unique_name, "num_beams")),
     _num_frequencies(config.get<std::int64_t>(unique_name, "num_frequencies")),
     _num_times(config.get<std::int64_t>(unique_name, "num_times")),
-    _num_chunks(
-        kotekan::div_noremainder(1LL * _num_beams * _num_frequencies * _num_times, CHUNK_SIZE)),
+    _num_chunks(div_noremainder(1LL * _num_beams * _num_frequencies * _num_times, CHUNK_SIZE)),
     //
     _gpu_mem_input(config.get<std::string>(unique_name, "gpu_mem_input")),
     _gpu_mem_beams(config.get<std::string>(unique_name, "gpu_mem_output")),
@@ -48,10 +48,13 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     _gpu_mem_index(unique_name + "/index"),
     //
     input_buffer([&]() {
+        const auto input_dimscaling_time =
+            get_buffer_metadata(*this, _gpu_mem_input)->dim_scaling[2];
         const std::array<std::ptrdiff_t, 3> input_lengths{_num_beams, _num_frequencies, _num_times};
         const std::array<std::string, 3> input_dimnames{"R", "Fbar", "Ttilde"};
+        const std::array<std::ptrdiff_t, 3> input_dimscalings{1, 1, input_dimscaling_time};
         return NDArrayBuffer<float16_t, 3>(_gpu_mem_input, "frb2_beams", input_lengths,
-                                           input_dimnames, *this);
+                                           input_dimnames, input_dimscalings, *this);
     }()),
     beam_buffer([&]() {
         // The data are stored as 4-bit integers, 2 values per byte
@@ -59,8 +62,10 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
         const std::array<std::ptrdiff_t, 3> beam_lengths{_num_beams / 2, _num_frequencies,
                                                          _num_times};
         const std::array<std::string, 3> beam_dimnames{"R", "Fbar", "Ttilde"};
+        const std::array<std::ptrdiff_t, 3> beam_dimscalings{
+            1, 1, input_buffer.get_ndarray().get_dimscaling(2)};
         return NDArrayBuffer<kotekan::uint4x2_t, 3>(_gpu_mem_beams, "frb3_beams", beam_lengths,
-                                                    beam_dimnames, *this);
+                                                    beam_dimnames, beam_dimscalings, *this);
     }()),
     meanstd_buffer([&]() {
         assert(_num_times % CHUNK_SIZE == 0);
@@ -68,8 +73,11 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
         const std::array<std::ptrdiff_t, 4> meanstd_lengths{_num_beams, _num_frequencies,
                                                             _num_times / CHUNK_SIZE, 2};
         const std::array<std::string, 4> meanstd_dimnames{"R", "Fbar", "Ttilde256", "mean/std"};
+        const std::array<std::ptrdiff_t, 4> meanstd_dimscalings{
+            1, 1, div_noremainder(beam_buffer.get_ndarray().get_dimscaling(2), 256), 1};
         return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_meanstd, "frb3_beams_meanstd",
-                                           meanstd_lengths, meanstd_dimnames, *this);
+                                           meanstd_lengths, meanstd_dimnames, meanstd_dimscalings,
+                                           *this);
     }())
 //
 {
