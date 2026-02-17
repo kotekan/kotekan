@@ -31,9 +31,13 @@
  *   @gpu_mem_type   staging
  *   @gpu_mem_format Array of @c int4
  *
+ * @conf   num_beams           Int.  Number of beams in the gpu_mem_input.
+ * @conf   num_frequencies     Int.  Number of frequencies in the gpu_mem_input.
+ * @conf   num_times           Int.  Number of times in the gpu_mem_input.
  * @conf   num_chunks          Int.  Number of 256-element "chunks" in the gpu_mem_input
- * time-stream.  Must be a factor of 32.
+ * time-stream.  Must be a multiple of 32.
  */
+
 class cudaQuantize : public cudaCommand {
 public:
     cudaQuantize(kotekan::Config& config, const std::string& unique_name,
