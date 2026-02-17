@@ -775,13 +775,71 @@ void N2Accumulate::main_thread() {
 
 int64_t N2Accumulate::get_next_accum_start_tick(int64_t seq) {
     if (_bin_in_ERA) {
-        return seq;
+
+        // get the current ERA and nrot.
+        int64_t nrot;
+        timespec t_inst = _tel.to_time(seq);
+        EOP eop = _tel.get_EOP_at_time(t_inst);
+        int64_t t_ut1 = get_UT1_from_time(t_inst, eop.delta_UT1_inst);
+        double ERA_deg = get_ERA_from_UT1(t_ut1, &nrot); // ERA is always in [0.0, 360.0)
+
+        // Get the current ERA bin index
+        int64_t era_idx = static_cast<int64_t>(floor((ERA_deg / 360.0) * _num_bins_per_rotation));
+        assert(era_idx >= 0 && era_idx < _num_bins_per_rotation);
+
+        // Compute the next ERA bin index (increase nrot if wrap around)
+        int64_t next_era_idx, next_nrot;
+
+        if (era_idx < _num_bins_per_rotation - 1) {
+            next_era_idx = era_idx + 1;
+            next_nrot = nrot;
+        } else {
+            next_era_idx = 0;
+            next_nrot = nrot + 1;
+        }
+
+        int64_t next_seq = get_aligned_seq_of_ERA_bin(next_era_idx, nrot);
+        if (next_seq <= seq) {
+            next_era_idx++;
+            if (next_era_idx == _num_bins_per_rotation) {
+                next_era_idx = 0;
+                next_nrot++;
+            }
+
+            next_seq = get_aligned_seq_of_ERA_bin(next_era_idx, nrot);
+        }
+
+        return next_seq;
     } else {
         int64_t fpga_ticks_per_accum =
             _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
 
         return (seq / fpga_ticks_per_accum + 1) * fpga_ticks_per_accum;
     }
+}
+
+int64_t N2Accumulate::get_aligned_seq_of_ERA_bin(int64_t era_idx, int64_t nrot) {
+    
+    // The ERA for the start of the bin.
+    double era_deg = (static_cast<double>(era_idx) / static_cast<double>(_num_bins_per_rotation)) * 360.0;
+
+    // Find the seq value for this ERA.
+    int64_t t_ut1 = get_UT1_from_ERA(nrot, era_deg);
+    EOP eop = _tel.get_EOP_at_UT1(t_ut1);
+    timespec t_inst = get_time_from_UT1(t_ut1, eop.delta_UT1_inst);
+    int64_t seq = _tel.to_seq(t_inst);
+
+    // Snap it to the grid.
+
+    // Because of even/odd weight calculation, must start on an *even* vis sample,
+    // hence valid start seqs are separated by 2 * (number of ticks in a vis sample)
+    int64_t dseq = 2 * _n_fpga_samples_per_n2k_correlation;
+
+    int64_t seq_aligned = (seq / dseq) * dseq;
+    if (seq - seq_aligned > dseq / 2)
+        seq_aligned += dseq;
+
+    return seq_aligned;
 }
 
 int64_t N2Accumulate::get_abs_accum_idx(int64_t seq_start) {
