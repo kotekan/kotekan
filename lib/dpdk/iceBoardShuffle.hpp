@@ -276,8 +276,9 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
         /* new style array description */
         out_bufs[i]
             ->allocate_ndarray_frame_desc<
-                kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 2>(
-                "E", {ptrdiff_t(out_bufs[i]->frame_size) / sample_size, sample_size}, {"T", "E"});
+                kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 3>(
+                "E", {ptrdiff_t(out_bufs[i]->frame_size) / sample_size, sample_size},
+                {"F", "T", "E"});
     }
 
     lost_samples_buf =
@@ -476,14 +477,16 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         // feed and polarization.  Note that off the F-engine polarization is _not_ a defined
         // axis.
         /* old style array description */
-        std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
-        std::strncpy(meta->dim_name[1], "E", sizeof meta->dim_name[1]);
-        meta->dims = 2;
+        std::strncpy(meta->dim_name[0], "F", sizeof meta->dim_name[0]);
+        std::strncpy(meta->dim_name[1], "T", sizeof meta->dim_name[1]);
+        std::strncpy(meta->dim_name[2], "E", sizeof meta->dim_name[2]);
+        meta->dims = 3;
         meta->type = kotekan::int4x2_swapped_withoffset;
         // Somewhat confusingly E in this context is the electric field...
         std::strncpy(meta->name, "E", sizeof meta->name);
-        meta->dim[0] = out_bufs[i]->frame_size / sample_size;
-        meta->dim[1] = sample_size;
+        meta->dim[0] = 1;
+        meta->dim[1] = out_bufs[i]->frame_size / sample_size;
+        meta->dim[2] = sample_size;
         meta->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */
