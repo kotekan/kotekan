@@ -64,6 +64,7 @@ add_library(
     bufferCopy.cpp
     bufferSwitch.cpp
     bufferDelay.cpp
+    bufferQuiet.cpp
     BufferSplit.cpp
     InputSubset.cpp
     setScatterIndices.cpp
