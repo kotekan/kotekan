@@ -351,7 +351,7 @@ void N2Accumulate::main_thread() {
 
         // Do some first-time initialization
         if (mode == Mode::START) {
-            
+
             // During startup, _accum_bin_idx stores the bin index of the last
             // sample (e.g. the one *before* the stage started). This is usually
             // also the bin index of the current (first) frame.
@@ -383,7 +383,7 @@ void N2Accumulate::main_thread() {
 
             DEBUG("Frame: {0:d}  Sample {1:d}: {2:d} seq: {3:d}", in_frame_num, vis_samp_n,
                   vis_sample_num_abs, seq);
-                
+
             int64_t bin_idx = get_accum_abs_bin_idx(seq);
 
             // Startup - wait to be at the beginning of an accumulation bin.
@@ -407,7 +407,7 @@ void N2Accumulate::main_thread() {
             if (mode != Mode::ACCUMULATING) {
                 DEBUG("Waiting for accumulation bin {:d} to start, currently at {:d}. Skipping"
                       " visibility sample {:d} of {:d} in frame with seq {:d}.",
-                      _accum_bin_idx+1, bin_idx, vis_samp_n, _n_integrations_per_n2k_frame, seq);
+                      _accum_bin_idx + 1, bin_idx, vis_samp_n, _n_integrations_per_n2k_frame, seq);
                 continue;
             }
 
@@ -752,7 +752,7 @@ void N2Accumulate::main_thread() {
                 _vis_samples_in_out_frame = 0;
                 _accum_fpga_start_tick = seq + _n_fpga_samples_per_n2k_correlation;
                 _accum_bin_idx = next_bin_idx;
-                target_eop = get_accum_bin_eop(next_bin_idx); 
+                target_eop = get_accum_bin_eop(next_bin_idx);
             }
 
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
@@ -772,17 +772,17 @@ void N2Accumulate::main_thread() {
     }
 }
 
-int64_t N2Accumulate::calculate_ERA_bin_idx_from_time(const timespec &t_inst) {
-        
-        EOP eop = _tel.get_EOP_at_time(t_inst);
-        int64_t t_ut1 = get_UT1_from_time(t_inst, eop.delta_UT1_inst);
-        int64_t nrot;
-        double ERA_deg = get_ERA_from_UT1(t_ut1, &nrot); // ERA is always in [0.0, 360.0)
+int64_t N2Accumulate::calculate_ERA_bin_idx_from_time(const timespec& t_inst) {
 
-        // Calculate which bin this index is in
-        int64_t ERA_idx = static_cast<int64_t>(floor((ERA_deg / 360.0) * _num_bins_per_rotation));
+    EOP eop = _tel.get_EOP_at_time(t_inst);
+    int64_t t_ut1 = get_UT1_from_time(t_inst, eop.delta_UT1_inst);
+    int64_t nrot;
+    double ERA_deg = get_ERA_from_UT1(t_ut1, &nrot); // ERA is always in [0.0, 360.0)
 
-        return _num_bins_per_rotation * nrot + ERA_idx;
+    // Calculate which bin this index is in
+    int64_t ERA_idx = static_cast<int64_t>(floor((ERA_deg / 360.0) * _num_bins_per_rotation));
+
+    return _num_bins_per_rotation * nrot + ERA_idx;
 }
 
 int64_t N2Accumulate::get_accum_abs_bin_idx(uint64_t seq) {
@@ -824,7 +824,7 @@ EOP N2Accumulate::get_accum_bin_eop(int64_t accum_bin_idx) {
 
         // UT1 time at bin center
         int64_t t_ut1 = get_UT1_from_ERA(nrot, ERA_cen);
-        
+
         // return the EOP
         return _tel.get_EOP_at_UT1(t_ut1);
     } else {
@@ -833,7 +833,7 @@ EOP N2Accumulate::get_accum_bin_eop(int64_t accum_bin_idx) {
         int64_t fpga_ticks_per_accum =
             _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
         uint64_t seq_start = static_cast<uint64_t>(accum_bin_idx) * fpga_ticks_per_accum;
-        
+
         // sequence number at center of bin, we know fpga_ticks_per_accum is even
         uint64_t seq_cen = seq_start + fpga_ticks_per_accum / 2;
 
@@ -855,7 +855,7 @@ bool N2Accumulate::is_seq_start_of_bin(uint64_t seq, int64_t bin_idx) {
         // number of ticks in an even/odd pair of samples
         uint64_t ticks_per_sample_pair = 2 * _n_fpga_samples_per_n2k_correlation;
         // the tick number for the start of the current even/odd pair
-        
+
         if (seq % ticks_per_sample_pair != 0)
             return false;
 
@@ -864,7 +864,7 @@ bool N2Accumulate::is_seq_start_of_bin(uint64_t seq, int64_t bin_idx) {
         int64_t t_cen_ns = _tel.to_time_ns(seq + ticks_per_sample_pair / 2);
         int64_t t_last_cen_ns = t_start_ns - (t_cen_ns - t_start_ns);
         timespec t_last_cen = nanosec_i64_to_timespec(t_last_cen_ns);
-       
+
         int64_t last_bin_idx = calculate_ERA_bin_idx_from_time(t_last_cen);
 
         return last_bin_idx != bin_idx;

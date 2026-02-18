@@ -94,7 +94,8 @@ public:
 
     /**
      * @brief   Return a montonic index (counter) for the accumulation bin including seq.
-     * Will increase by 1 for each accumulation bin. If bins are smaller than input frames, bins will be skipped on output. The index may or may not begin at 0. Restart-safe.
+     * Will increase by 1 for each accumulation bin. If bins are smaller than input frames, bins
+     * will be skipped on output. The index may or may not begin at 0. Restart-safe.
      *
      * @param   seq   Sequence tick for the moment in question
      *
@@ -108,7 +109,7 @@ public:
      *
      * @return  The index value for this accumulation bin.
      */
-    int64_t calculate_ERA_bin_idx_from_time(const timespec &t_inst);
+    int64_t calculate_ERA_bin_idx_from_time(const timespec& t_inst);
 
     /**
      * @brief   Return the Earth Orientation Parameters (EOP) for this
