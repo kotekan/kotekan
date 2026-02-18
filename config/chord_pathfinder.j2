@@ -52,6 +52,17 @@
 # correlation frames needed to form one output N2 frame
 {% set n2k_frames_per_output = num_n2k_samples_to_accumulate // integrations_per_frame %}
 
+# RFI Detection Parameters
+{% set rfi_downsampling_factor = 256 %}
+{% set rfi_num_times = samples_per_data_set // rfi_downsampling_factor %}  {# = 32 #}
+
+# RFI SK Thresholds
+{% set rfi_sk_rfimask_sigmas = 5.0 %}
+{% set rfi_single_feed_min_good_frac = 0.8 %}
+{% set rfi_feed_averaged_min_good_frac = 0.8 %}
+{% set rfi_mu_min = 2.0 %}
+{% set rfi_mu_max = 20.0 %}
+
 
 ##########################################
 #
@@ -79,12 +90,21 @@ host_side_buffer_depth: buffer_depth * 4
 cpu_affinity: [0,1,8,11,12,13,14,15]
 frame_arrival_period: 5.12e-6 * {{ samples_per_data_set }}
 sizeof_gpu_int: 4 # bytes
+sizeof_int8: 1
+sizeof_uint64: 8
+sizeof_float32: 4
 
-# For faster testing, we're using...
 sub_integration_ntime: {{ sub_integration_ntime }}
 samples_per_data_set: {{ samples_per_data_set }}
-rfi_downsampling_factor: 256
+rfi_downsampling_factor: {{ rfi_downsampling_factor }}
+rfi_num_times: {{ rfi_num_times }}
+rfi_sk_rfimask_sigmas: {{ rfi_sk_rfimask_sigmas }}
+rfi_single_feed_min_good_frac: {{ rfi_single_feed_min_good_frac }}
+rfi_feed_averaged_min_good_frac: {{ rfi_feed_averaged_min_good_frac }}
+rfi_mu_min: {{ rfi_mu_min }}
+rfi_mu_max: {{ rfi_mu_max }}
 num_times: samples_per_data_set  # New N2K needs this.
+num_frequencies: num_local_freq  # Alias for RFI kernels
 num_polarizations: 2
 num_dishes: {{ num_dishes }}
 num_elements: num_polarizations * {{ num_dishes }}
@@ -172,6 +192,14 @@ n2_pool:
     kotekan_metadata_pool: N2Metadata
     num_metadata_objects: 16 * buffer_depth
 
+# Bad feed mask - marks which feeds to exclude from RFI calculations
+# Shape: [P, D] = [2, num_dishes] - all ones means all feeds are good
+host_bf_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    metadata_pool: main_pool
+
 # Buffers
 network_input_buffers:
     log_level: info
@@ -214,6 +242,14 @@ host_pl_mask_buffer:
     kotekan_buffer: standard
     num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+
+# Compact pl_mask for RFI s0_kernel: all-valid (assumes no packet loss)
+# Shape: [T/128, F/4, P, D/8, 8] — fengine compact format per rfi_desc.tex eq. (4)
+host_pl_mask_compact_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_local_freq / 4) * (samples_per_data_set / 2 / 64)
     metadata_pool: main_pool
 
 vis_blocksize: 16
@@ -311,6 +347,25 @@ host_rfi_RFImask_ringbuffer:
 host_pl_mask_exp_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (samples_per_data_set * num_local_freq * (num_elements / 8)) / 8
+    metadata_pool: main_pool
+
+host_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * (num_local_freq / 4) * (samples_per_data_set / 2 / 64)
+    metadata_pool: main_pool
+
+# RFI S012 statistics ringbuffer
+# Shape: [Trfi, F, S, P, D] = [rfi_num_times, num_local_freq, 3, 2, num_dishes]
+host_rfi_S012_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_local_freq * rfi_num_times
+    metadata_pool: main_pool
+
+# RFI SKtilde statistics ringbuffer (feed-averaged SK)
+# Shape: [Trfi, F, SK] = [rfi_num_times, num_local_freq, 3]
+host_rfi_SKtilde_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * sizeof_float32 * 3 * num_local_freq * rfi_num_times
     metadata_pool: main_pool
 
 
@@ -424,21 +479,90 @@ run_send_voltage:
           signal_buf: host_voltage_ringbuffer_out
           gpu_mem_output: voltage_buffer
 
-run_send_rfi_RFImask:
+## RFI Detection Pipeline ##
+
+# Generate bf_mask (bad feed mask) filled with all-ones (all feeds good)
+generate_bf_mask:
+    kotekan_stage: testDataGen
+    out_buf: host_bf_mask_buffer
+    type: const8
+    value: 1
+    num_frames: 1
+    wait: false
+    name: bf_mask
+    array_shape: [2, {{ num_dishes }}]
+    dim_name: ["P", "D"]
+
+# Generate all-valid compact pl_mask for RFI s0_kernel
+# All 0xFF = all bits set = all samples valid (no packet loss assumed).
+# This avoids the pl_mask format mismatch: ProcessPacketMask produces expanded
+# format [T/64, F, P, D/8, 8] but s0_kernel expects compact [T/128, F/4, P, D/8, 8].
+# Since E is zeroed for lost packets, S1 and S2 are already correct; S0 = Nds
+# (all valid) is exact when there is no packet loss.
+generate_pl_mask_compact:
+    kotekan_stage: testDataGen
+    out_buf: host_pl_mask_compact_buffer
+    type: const8
+    value: 255
+    name: pl_mask
+    array_shape: [{{ samples_per_data_set // 128 }}, {{ num_local_freq // 4 }}, 2, {{ num_dishes // 8 }}, 8]
+    dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+
+# Copy compact pl_mask to GPU ring buffer for s0_kernel
+run_send_pl_mask_compact:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_rfi_RFImask_buffer_in: host_rfi_RFImask_buffer
+            host_pl_mask_compact_buffer_in: host_pl_mask_compact_buffer
         out_buffers:
-            host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
         commands:
         - name: cudaCopyToRingbuffer
-          input_size: num_local_freq * samples_per_data_set / 8
+          input_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_local_freq / 4) * (samples_per_data_set / 2 / 64)
           ring_buffer_size: buffer_depth * input_size
-          in_buf: host_rfi_RFImask_buffer_in
-          signal_buf: host_rfi_RFImask_ringbuffer_out
-          gpu_mem_output: rfi_RFImask_buffer
+          in_buf: host_pl_mask_compact_buffer_in
+          signal_buf: host_pl_mask_ringbuffer
+          gpu_mem_output: pl_mask_buffer
+
+# Compute S0, S1, S2 statistics from voltage and compact packet loss mask
+run_rfi_S012:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+        out_buffers:
+            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+        commands:
+        - name: cudaRFIS012
+          pl_mask_name: pl_mask
+          voltage_name: voltage
+          rfi_S012_name: rfi_S012
+
+# Compute SK statistics and RFI mask from S012 + bf_mask
+run_rfi_SKtilde:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+        out_buffers:
+            host_rfi_SKtilde_ringbuffer: host_rfi_SKtilde_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_bf_mask_buffer
+          gpu_mem: bf_mask_buffer
+        - name: cudaSyncInput
+        - name: cudaRFISKtilde
+          bf_mask_name: bf_mask
+          rfi_S012_name: rfi_S012
+          rfi_SKtilde_name: rfi_SKtilde
+          rfi_RFImask_name: rfi_RFImask
 
 run_send_pl_mask:
     gpu_0:
