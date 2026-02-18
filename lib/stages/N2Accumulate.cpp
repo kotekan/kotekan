@@ -180,6 +180,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     _vis_samples_in_out_frame = 0;
     _accum_fpga_start_tick = -1;
+    _accum_bin_idx = -1;
 
     // Ensure incoming buffer frame sizes are correct
     size_t in_corr_frame_size = 2 * sizeof(int32_t) * _n2k_correlation_num_products
@@ -264,9 +265,6 @@ void N2Accumulate::main_thread() {
     // frequencies
     std::vector<int32_t> vis_even_vec(corr_stride_t, 0);
     const int32_t* vis_even_ptr = nullptr;
-
-    int64_t next_accum_start_tick = 0;
-    int64_t accum_seq_length = 0;
 
     // vis_even may be an odd frame if the first frame eencountered is odd,
     // since fpga_seq_num does not have to start from 0, in which case we skip
@@ -353,7 +351,19 @@ void N2Accumulate::main_thread() {
 
         // Do some first-time initialization
         if (mode == Mode::START) {
-            next_accum_start_tick = get_next_accum_start_tick(seq0 - 1);
+            
+            // During startup, _accum_bin_idx stores the bin index of the last
+            // sample (e.g. the one *before* the stage started). This is usually
+            // also the bin index of the current (first) frame.
+            _accum_bin_idx = get_accum_abs_bin_idx(seq0);
+
+            // Unless the first frame happens to start a new bin! Then
+            // _accum_bin_idx should refer to the previous bin.
+            if (is_seq_start_of_bin(seq0, _accum_bin_idx))
+                _accum_bin_idx--;
+
+            // Now the WAITING_FOR_ALIGNMENT check later will correctly detect
+            // if the current frame starts a new bin.
 
             mode = Mode::WAITING_FOR_ALIGNMENT;
         }
@@ -373,20 +383,20 @@ void N2Accumulate::main_thread() {
 
             DEBUG("Frame: {0:d}  Sample {1:d}: {2:d} seq: {3:d}", in_frame_num, vis_samp_n,
                   vis_sample_num_abs, seq);
+                
+            int64_t bin_idx = get_accum_abs_bin_idx(seq);
 
             // Startup - wait to be at the beginning of an accumulation bin.
             if (mode == Mode::WAITING_FOR_ALIGNMENT) {
 
-                if (seq == next_accum_start_tick) {
+
+                if (bin_idx != _accum_bin_idx) {
                     // Away we go!
                     assert(vis_sample_num_abs % 2 == 0);
                     _vis_samples_in_out_frame = 0;
                     _accum_fpga_start_tick = seq;
-
-                    next_accum_start_tick = get_next_accum_start_tick(seq);
-                    accum_seq_length = next_accum_start_tick - seq;
-
-                    target_eop = _tel.get_EOP_at_time(_tel.to_time(seq + accum_seq_length / 2));
+                    _accum_bin_idx = bin_idx;
+                    target_eop = get_accum_bin_eop(bin_idx);
 
                     mode = Mode::ACCUMULATING;
                     DEBUG("MODE: Setting accum_fpga_start_tick: {0:d}", _accum_fpga_start_tick);
@@ -395,9 +405,9 @@ void N2Accumulate::main_thread() {
 
             // If we're not ready to accumulate, keep on spinning until we reach the correct frame.
             if (mode != Mode::ACCUMULATING) {
-                DEBUG("Waiting for accumulation bin to start at seq {:d}, skipping visibility "
-                      "sample {:d} of {:d} in frame with seq {:d}.",
-                      next_accum_start_tick, vis_samp_n, _n_integrations_per_n2k_frame, seq);
+                DEBUG("Waiting for accumulation bin {:d} to start, currently at {:d}. Skipping"
+                      " visibility sample {:d} of {:d} in frame with seq {:d}.",
+                      _accum_bin_idx+1, bin_idx, vis_samp_n, _n_integrations_per_n2k_frame, seq);
                 continue;
             }
 
@@ -420,15 +430,6 @@ void N2Accumulate::main_thread() {
                 _vis_samples_in_out_frame = 0;
                 _accum_fpga_start_tick = frame_metadata->get_fpga_seq_num()
                                          + vis_samp_n * _n_fpga_samples_per_n2k_correlation;
-            }
-
-            if (mode == Mode::WAITING_FOR_ALIGNMENT) {
-                if (seq >= next_accum_start_tick)
-                    mode = Mode::ACCUMULATING;
-            }
-
-            if (mode != Mode::ACCUMULATING) {
-                continue;
             }
 
             uint64_t corr_offset_t = vis_samp_n * corr_stride_t;
@@ -739,9 +740,9 @@ void N2Accumulate::main_thread() {
 
             _vis_samples_in_out_frame++;
 
-            // Finalize accumulation if we've hit the number of sub-frames
-            // to accumulate.
-            if (seq + _n_fpga_samples_per_n2k_correlation >= next_accum_start_tick) {
+            // Finalize accumulation if the next sample is in a new bin.
+            int64_t next_bin_idx = get_accum_abs_bin_idx(seq + _n_fpga_samples_per_n2k_correlation);
+            if (next_bin_idx != _accum_bin_idx) {
 
                 INFO("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
                      _vis_samples_in_out_frame);
@@ -750,10 +751,8 @@ void N2Accumulate::main_thread() {
 
                 _vis_samples_in_out_frame = 0;
                 _accum_fpga_start_tick = seq + _n_fpga_samples_per_n2k_correlation;
-                next_accum_start_tick = get_next_accum_start_tick(_accum_fpga_start_tick);
-                accum_seq_length = next_accum_start_tick - _accum_fpga_start_tick;
-                target_eop = _tel.get_EOP_at_time(
-                    _tel.to_time(_accum_fpga_start_tick + accum_seq_length / 2));
+                _accum_bin_idx = next_bin_idx;
+                target_eop = get_accum_bin_eop(next_bin_idx); 
             }
 
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
@@ -773,103 +772,108 @@ void N2Accumulate::main_thread() {
     }
 }
 
-int64_t N2Accumulate::get_next_accum_start_tick(int64_t seq) {
-    if (_bin_in_ERA) {
-
-        // get the current ERA and nrot.
-        int64_t nrot;
-        timespec t_inst = _tel.to_time(seq);
+int64_t N2Accumulate::calculate_ERA_bin_idx_from_time(const timespec &t_inst) {
+        
         EOP eop = _tel.get_EOP_at_time(t_inst);
         int64_t t_ut1 = get_UT1_from_time(t_inst, eop.delta_UT1_inst);
+        int64_t nrot;
         double ERA_deg = get_ERA_from_UT1(t_ut1, &nrot); // ERA is always in [0.0, 360.0)
 
-        // Get the current ERA bin index
-        int64_t era_idx = static_cast<int64_t>(floor((ERA_deg / 360.0) * _num_bins_per_rotation));
-        assert(era_idx >= 0 && era_idx < _num_bins_per_rotation);
+        // Calculate which bin this index is in
+        int64_t ERA_idx = static_cast<int64_t>(floor((ERA_deg / 360.0) * _num_bins_per_rotation));
 
-        // Compute the next ERA bin index (increase nrot if wrap around)
-        int64_t next_era_idx, next_nrot;
+        return _num_bins_per_rotation * nrot + ERA_idx;
+}
 
-        if (era_idx < _num_bins_per_rotation - 1) {
-            next_era_idx = era_idx + 1;
-            next_nrot = nrot;
-        } else {
-            next_era_idx = 0;
-            next_nrot = nrot + 1;
-        }
+int64_t N2Accumulate::get_accum_abs_bin_idx(uint64_t seq) {
 
-        int64_t next_seq = get_aligned_seq_of_ERA_bin(next_era_idx, next_nrot);
-        if (next_seq <= seq) {
-            next_era_idx++;
-            if (next_era_idx == _num_bins_per_rotation) {
-                next_era_idx = 0;
-                next_nrot++;
-            }
+    if (_bin_in_ERA) {
 
-            next_seq = get_aligned_seq_of_ERA_bin(next_era_idx, next_nrot);
-        }
+        // number of ticks in an even/odd pair of samples
+        uint64_t ticks_per_sample_pair = 2 * _n_fpga_samples_per_n2k_correlation;
 
-        return next_seq;
+        // the tick number for the start of the current even/odd pair
+        uint64_t seq_start = (seq / ticks_per_sample_pair) * ticks_per_sample_pair;
+
+        // sequence number for the center of the pair (the beginning of the odd sample)
+        uint64_t seq_cen = seq_start + _n_fpga_samples_per_n2k_correlation;
+
+        // Get the instrument time at the center of the pair
+        timespec t_inst = _tel.to_time(seq_cen);
+
+        // Return the bin idx;
+        return calculate_ERA_bin_idx_from_time(t_inst);
+
     } else {
         int64_t fpga_ticks_per_accum =
             _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
+        int64_t idx = seq / fpga_ticks_per_accum;
 
-        return (seq / fpga_ticks_per_accum + 1) * fpga_ticks_per_accum;
+        return idx;
     }
 }
 
-int64_t N2Accumulate::get_aligned_seq_of_ERA_bin(int64_t era_idx, int64_t nrot) {
+EOP N2Accumulate::get_accum_bin_eop(int64_t accum_bin_idx) {
+    if (_bin_in_ERA) {
+        // extract the rotation number and ERA bin from the index
+        int64_t nrot = accum_bin_idx / _num_bins_per_rotation;
+        int64_t ERA_idx = accum_bin_idx % _num_bins_per_rotation;
 
-    // The ERA for the start of the bin.
-    double era_deg =
-        (static_cast<double>(era_idx) / static_cast<double>(_num_bins_per_rotation)) * 360.0;
+        // ERA of bin center
+        double ERA_cen = (360.0 * ERA_idx) / _num_bins_per_rotation;
 
-    // Find the seq value for this ERA.
-    int64_t t_ut1 = get_UT1_from_ERA(nrot, era_deg);
-    EOP eop = _tel.get_EOP_at_UT1(t_ut1);
-    timespec t_inst = get_time_from_UT1(t_ut1, eop.delta_UT1_inst);
-    int64_t seq = _tel.to_seq(t_inst);
+        // UT1 time at bin center
+        int64_t t_ut1 = get_UT1_from_ERA(nrot, ERA_cen);
+        
+        // return the EOP
+        return _tel.get_EOP_at_UT1(t_ut1);
+    } else {
 
-    // Snap it to the grid.
+        // extract the sequence number of the start of the bin
+        int64_t fpga_ticks_per_accum =
+            _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
+        uint64_t seq_start = static_cast<uint64_t>(accum_bin_idx) * fpga_ticks_per_accum;
+        
+        // sequence number at center of bin, we know fpga_ticks_per_accum is even
+        uint64_t seq_cen = seq_start + fpga_ticks_per_accum / 2;
 
-    // Because of even/odd weight calculation, must start on an *even* vis sample,
-    // hence valid start seqs are separated by 2 * (number of ticks in a vis sample)
-    int64_t dseq = 2 * _n_fpga_samples_per_n2k_correlation;
+        // instrument time at bin center
+        timespec ts_cen = _tel.to_time(seq_cen);
 
-    int64_t seq_aligned = (seq / dseq) * dseq;
-    if (seq - seq_aligned > dseq / 2)
-        seq_aligned += dseq;
-
-    return seq_aligned;
+        // Return the EOP
+        return _tel.get_EOP_at_time(ts_cen);
+    }
 }
 
-int64_t N2Accumulate::get_abs_accum_idx(int64_t seq_start) {
-
+bool N2Accumulate::is_seq_start_of_bin(uint64_t seq, int64_t bin_idx) {
     if (_bin_in_ERA) {
-        int64_t nrot;
-        timespec t_inst = _tel.to_time(seq_start);
-        EOP eop = _tel.get_EOP_at_time(t_inst);
-        int64_t t_ut1 = get_UT1_from_time(t_inst, eop.delta_UT1_inst);
-        double ERA_deg = get_ERA_from_UT1(t_ut1, &nrot); // ERA is always in [0.0, 360.0)
 
-        double dERA = 360.0 / _num_bins_per_rotation;
+        // Only way to check this is to check the bin idx of the last frame.
+        // Since seq >= 0, we have to be a little tricky since we might be looking
+        // before frame 0.
 
-        int64_t ERA_idx = static_cast<int64_t>(round(ERA_deg / dERA));
-        if (ERA_idx >= _num_bins_per_rotation) {
-            ERA_idx -= _num_bins_per_rotation;
-            nrot += 1;
-        }
+        // number of ticks in an even/odd pair of samples
+        uint64_t ticks_per_sample_pair = 2 * _n_fpga_samples_per_n2k_correlation;
+        // the tick number for the start of the current even/odd pair
+        
+        if (seq % ticks_per_sample_pair != 0)
+            return false;
 
-        return _num_bins_per_rotation * nrot + static_cast<int64_t>(round(ERA_deg / dERA));
+        // Get the instrument time of the center of the last sample pair.
+        int64_t t_start_ns = _tel.to_time_ns(seq);
+        int64_t t_cen_ns = _tel.to_time_ns(seq + ticks_per_sample_pair / 2);
+        int64_t t_last_cen_ns = t_start_ns - (t_cen_ns - t_start_ns);
+        timespec t_last_cen = nanosec_i64_to_timespec(t_last_cen_ns);
+       
+        int64_t last_bin_idx = calculate_ERA_bin_idx_from_time(t_last_cen);
 
+        return last_bin_idx != bin_idx;
 
     } else {
         int64_t fpga_ticks_per_accum =
             _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
-        int64_t idx = seq_start / fpga_ticks_per_accum;
-        assert(_accum_fpga_start_tick % fpga_ticks_per_accum == 0);
 
-        return idx;
+        return (seq % fpga_ticks_per_accum == 0);
     }
 }
 
@@ -944,14 +948,13 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
         out_buf->allocate_new_metadata_object(out_frame_id);
         std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, out_frame_id);
 
-        assert(_accum_fpga_start_tick >= 0);
         assert(_vis_samples_in_out_frame == _num_n2k_samples_to_accumulate);
 
         meta->fpga_start_tick = _accum_fpga_start_tick;
         meta->frame_length_fpga_ticks =
             _vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation;
 
-        meta->abs_time_idx = get_abs_accum_idx(_accum_fpga_start_tick);
+        meta->abs_time_idx = _accum_bin_idx;
         meta->freq_id = chord_frame_metadata->get_coarse_freq()[f];
         meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
 

@@ -93,27 +93,42 @@ public:
     void main_thread() override;
 
     /**
-     * @brief   Return the sequence number for the start of the next accumulation bin edge,
-     *          must be after the given seq.
+     * @brief   Return a montonic index (counter) for the accumulation bin including seq.
+     * Will increase by 1 for each accumulation bin. If bins are smaller than input frames, bins will be skipped on output. The index may or may not begin at 0. Restart-safe.
      *
-     * @param   seq     The current sequence number, the returned seq will be that of the first
-     *                  bin edge after this seq.
-     *
-     * @return  The seq for the next bin edge.
-     */
-    int64_t get_next_accum_start_tick(int64_t seq);
-
-    int64_t get_aligned_seq_of_ERA_bin(int64_t era_idx, int64_t nrot);
-
-    /**
-     * @brief   Return a montonic index (counter) for the accumulation bin beginning at seq_start.
-     * Will increase by 1 for each accumulation performed. May not begin at 0. Restart-safe.
-     *
-     * @param   seq_start   Sequence tick for the start of the bin in question
+     * @param   seq   Sequence tick for the moment in question
      *
      * @return  The index value for this accumulation bin.
      */
-    int64_t get_abs_accum_idx(int64_t seq_start);
+    int64_t get_accum_abs_bin_idx(uint64_t seq);
+
+    /**
+     * @brief   Calculate the accumulation bin index at a given time for ERA-binning.
+     * @param   t_inst  Instrument time to calculate the bin index.
+     *
+     * @return  The index value for this accumulation bin.
+     */
+    int64_t calculate_ERA_bin_idx_from_time(const timespec &t_inst);
+
+    /**
+     * @brief   Return the Earth Orientation Parameters (EOP) for this
+     *          accumulation bin. This will be the EOP at the center of the bin.
+     *
+     * @param   accum_bin_idx   Index for the accumulation bin.
+     *
+     * @return  The EOP for the center of the bin.
+     */
+    EOP get_accum_bin_eop(int64_t accum_bin_idx);
+
+    /**
+     * @brief   Check if the given sequence number is the beginning of the given accumulation bin.
+     *
+     * @param   seq     Sequence number of a visibility sample
+     * @param   bin_idx Index of the accumulation bin to check.
+     *
+     * @return  true if seq is the start of the bin.
+     */
+    bool is_seq_start_of_bin(uint64_t seq, int64_t bin_idx);
 
     /**
      * @brief Accumulate the rfimask over the given n2k integration into _n_rfi_samples_in_vis
@@ -192,7 +207,8 @@ private:
     std::vector<float> _n_valid_sample_diff_sq_sum;
     std::vector<int32_t> _n_rfi_samples_in_vis;
     int64_t _vis_samples_in_out_frame;
-    int64_t _accum_fpga_start_tick;
+    uint64_t _accum_fpga_start_tick;
+    int64_t _accum_bin_idx;
 
     // The telescope
     const Telescope& _tel;
