@@ -81,7 +81,7 @@ log_level: INFO
 
 numa_node: 0
 
-freq_ids: {{ freq_ids_list | list }}
+# freq_ids: {{ freq_ids_list | list }}
 
 num_gpus: 1
 buffer_depth: 4
@@ -104,7 +104,6 @@ rfi_feed_averaged_min_good_frac: {{ rfi_feed_averaged_min_good_frac }}
 rfi_mu_min: {{ rfi_mu_min }}
 rfi_mu_max: {{ rfi_mu_max }}
 num_times: samples_per_data_set  # New N2K needs this.
-num_frequencies: num_local_freq  # Alias for RFI kernels
 num_polarizations: 2
 num_dishes: {{ num_dishes }}
 num_elements: num_polarizations * {{ num_dishes }}
@@ -244,8 +243,8 @@ host_pl_mask_buffer:
     frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
     metadata_pool: main_pool
 
-# Compact pl_mask for RFI s0_kernel: all-valid (assumes no packet loss)
-# Shape: [T/128, F/4, P, D/8, 8] — fengine compact format per rfi_desc.tex eq. (4)
+# pl_mask for RFI s0_kernel, assumes all valid (no packet loss)
+# Shape: [T/128, F/4, P, D/8, 8]
 host_pl_mask_compact_buffer:
     kotekan_buffer: standard
     num_frames: host_side_buffer_depth
@@ -479,9 +478,26 @@ run_send_voltage:
           signal_buf: host_voltage_ringbuffer_out
           gpu_mem_output: voltage_buffer
 
+run_send_pl_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_mask_buffer_in: host_pl_mask_buffer
+        out_buffers:
+            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_pl_mask_buffer_in
+          signal_buf: host_pl_mask_exp_ringbuffer
+          gpu_mem_output: pl_mask_exp_buffer
+
+
 ## RFI Detection Pipeline ##
 
-# Generate bf_mask (bad feed mask) filled with all-ones (all feeds good)
+# Generate fake bad feed mask filled with ones for now (all feeds good)
 generate_bf_mask:
     kotekan_stage: testDataGen
     out_buf: host_bf_mask_buffer
@@ -493,12 +509,9 @@ generate_bf_mask:
     array_shape: [2, {{ num_dishes }}]
     dim_name: ["P", "D"]
 
-# Generate all-valid compact pl_mask for RFI s0_kernel
-# All 0xFF = all bits set = all samples valid (no packet loss assumed).
-# This avoids the pl_mask format mismatch: ProcessPacketMask produces expanded
+# Generate pl_mask for RFI s0_kernel (all valid)
+# This works around a pl_mask shape mismatch: ProcessPacketMask produces expanded
 # format [T/64, F, P, D/8, 8] but s0_kernel expects compact [T/128, F/4, P, D/8, 8].
-# Since E is zeroed for lost packets, S1 and S2 are already correct; S0 = Nds
-# (all valid) is exact when there is no packet loss.
 generate_pl_mask_compact:
     kotekan_stage: testDataGen
     out_buf: host_pl_mask_compact_buffer
@@ -527,6 +540,7 @@ run_send_pl_mask_compact:
 
 # Compute S0, S1, S2 statistics from voltage and compact packet loss mask
 run_rfi_S012:
+    num_frequencies: num_local_freq
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -543,6 +557,7 @@ run_rfi_S012:
 
 # Compute SK statistics and RFI mask from S012 + bf_mask
 run_rfi_SKtilde:
+    num_frequencies: num_local_freq
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -563,23 +578,6 @@ run_rfi_SKtilde:
           rfi_S012_name: rfi_S012
           rfi_SKtilde_name: rfi_SKtilde
           rfi_RFImask_name: rfi_RFImask
-
-run_send_pl_mask:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_pl_mask_buffer_in: host_pl_mask_buffer
-        out_buffers:
-            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
-        commands:
-        - name: cudaCopyToRingbuffer
-          input_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
-          ring_buffer_size: buffer_depth * input_size
-          in_buf: host_pl_mask_buffer_in
-          signal_buf: host_pl_mask_exp_ringbuffer
-          gpu_mem_output: pl_mask_exp_buffer
-
 
 # Packet-loss correlator to produce counts for N2Accumulate
 
