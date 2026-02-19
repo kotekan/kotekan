@@ -77,7 +77,7 @@ std::shared_ptr<GenericNDArray> GenericNDArray::create(const DataType value_data
                                                        const std::vector<std::ptrdiff_t>& extents,
                                                        const std::vector<Symbol>& dimnames,
                                                        void* data) {
-    assert(extents.size() == dimnames.size());
+    assert(extents.size() == dimnames.size() && "Sizes of extents and dimnames must aggree");
     return make_NDArray<DataType(end_type - 1), max_rank>(value_datatype, quantity_name, extents,
                                                           dimnames, data);
 }
