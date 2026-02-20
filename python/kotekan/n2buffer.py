@@ -57,6 +57,12 @@ class N2Metadata(ctypes.Structure):
         ("frame_length_fpga_ticks", ctypes.c_uint64),
         ("n_valid_fpga_ticks", ctypes.c_uint64),
         ("n_rfi_fpga_ticks", ctypes.c_uint64),
+        # RFI Excision
+        ("rfi_excision_enabled", ctypes.c_bool),
+        ("rfi_excision_num", ctypes.c_uint32),
+        ("rfi_excision_threshold", ctypes.c_float * 8),
+        ("rfi_excision_fraction", ctypes.c_float * 8),
+        # For CHIME: dataset_id
         ("dataset_id", ctypes.c_uint64 * 2),
     ]
 
@@ -147,13 +153,15 @@ class N2Buffer(object):
             ("evec", np.complex64, num_ev * num_elements),
             ("emethod", np.int32, 1),
             ("erms", np.float32, 1),
+            ("radiometer_chi2", np.float32, 1),
             ("gain", np.complex64, num_elements),
+            ("mask", np.uint8, num_elements),
         ]
 
         end = 0
 
         members = []
-        maxsize = 0
+        maxalign = 0
 
         for name, dtype, num in structure:
 
@@ -161,10 +169,12 @@ class N2Buffer(object):
 
             size = np.dtype(dtype).itemsize
 
-            # Update the maximum size
-            maxsize = size if maxsize < size else maxsize
+            align = size // 2 if dtype in (np.complex64, np.complex128) else size
 
-            member["start"] = _offset(end, size)
+            # Update the maximum alignment
+            maxalign = align if maxalign < align else maxalign
+
+            member["start"] = _offset(end, align)
             end = member["start"] + num * size
             member["end"] = end
             member["size"] = num * size
@@ -180,8 +190,9 @@ class N2Buffer(object):
 
             members.append(member)
 
-        struct_end = _offset(members[-1]["end"], maxsize)
+        struct_end = _offset(members[-1]["end"], maxalign)
         layout = {"size": struct_end, "members": members}
+
         return layout
 
     @classmethod
@@ -267,7 +278,7 @@ class N2Buffer(object):
         return cls(buf, skip=0)
 
 
-def _offset(offset, size):
+def _offset(offset, align):
     """Calculate the start of a member of `size` after `offset` within a
     struct."""
-    return ((size - (offset % size)) % size) + offset
+    return ((align - (offset % align)) % align) + offset

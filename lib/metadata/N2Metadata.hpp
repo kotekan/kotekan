@@ -29,8 +29,8 @@ struct N2MetadataFormat {
     /// Physical frequency in Hz
     double freq_MHz = 0.0;
 
-    /// absolute time index of this frame in its stream. Begins at 0 at instument start
-    /// and counts monitonically afterwards.
+    /// absolute time index of this frame in its stream. Begins at 0 at some
+    /// epoch and counts monitonically afterwards.
     uint64_t abs_time_idx = 0;
 
     /// Earth Orientation Parameters at the center of the integration/accumulation time
@@ -56,6 +56,14 @@ struct N2MetadataFormat {
     /// as well as RFI. For renormalization this value should NOT be used, use
     /// lost samples (= @c frame_length_fpga_ticks - @c n_valid_fpga_ticks) instead.
     uint64_t n_rfi_fpga_ticks = 0;
+    /// Whether second stage RFI excision was applied to this frame
+    bool rfi_excision_enabled = false;
+    /// The number of active RFI excision thresholds.
+    int32_t rfi_excision_num = 0;
+    /// The SK thresholds (in sigma) for RFI excision
+    std::array<float, 8> rfi_excision_threshold = {0};
+    /// The fraction of samples above threshold that trigger RFI excision.
+    std::array<float, 8> rfi_excision_fraction = {0};
     /// CHIME dataset id tracking updateable config item changes
     dset_id_t dataset_id = dset_id_t::null;
 };

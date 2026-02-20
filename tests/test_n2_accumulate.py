@@ -302,6 +302,7 @@ def test_structure(accumulate_data):
         assert frame.eval.shape == (n_ev,)
         assert frame.evec.shape == (n_ev * n,)
         assert frame.gain.shape == (n,)
+        assert frame.mask.shape == (n,)
 
     # Check that we have the expected number of samples
     nsamp = global_params["num_local_freq"] * (

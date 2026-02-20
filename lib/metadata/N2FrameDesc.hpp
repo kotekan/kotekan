@@ -18,7 +18,7 @@ namespace kotekan {
  *
  * Use this enum to refer to the fields.
  **/
-enum class N2Field { vis, weight, flags, eval, evec, emethod, erms, gain };
+enum class N2Field { vis, weight, flags, eval, evec, emethod, erms, radiometer_chi2, gain, mask };
 
 /**
  * @brief Describes the byte range of a field within an N2 frame.
