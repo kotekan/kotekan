@@ -82,6 +82,7 @@ add_library(
     HFBAccumulate.cpp
     compressLostSamples.cpp
     lostSamplesToPLMask.cpp
+    lostSamplesToN2Counts.cpp
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
