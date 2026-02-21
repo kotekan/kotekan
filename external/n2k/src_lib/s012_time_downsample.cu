@@ -101,6 +101,8 @@ void launch_s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, long T, l
         throw runtime_error("launch_s012_time_downsample_kernel(): Trfi_size must be a power of 2");
     if ((Trfibar_size & (Trfibar_size - 1)) != 0)
         throw runtime_error("launch_s012_time_downsample_kernel(): Trfibar_size must be a power of 2");
+    if (Trfi_size > 0 && Trfi_min >= Trfi_size)
+        throw runtime_error("launch_s012_time_downsample_kernel(): expected Trfi_min to be smaller than Trfi_size, but got " + std::to_string(Trfi_min) + ".");
     if ((T >= INT_MAX) || (M >= INT_MAX) || (Nds >= INT_MAX) || (Trfi_min >= INT_MAX)
         || (Trfi_size >= INT_MAX) || (Trfibar_min >= INT_MAX) || (Trfibar_size >= INT_MAX))
 	throw runtime_error("launch_s012_time_downsample_kernel(): 32-bit overflow");

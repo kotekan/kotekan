@@ -220,8 +220,10 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     const long S012_Tsize = rfi_S012.get_ndarray().get_extent(0);
     // S012_Tmin wraps around into actual array index to avoid overflows
     const long S012_Tmin = rfi_S012.get_read_valid().begin() % S012_Tsize;
-    const long sk_feed_averaged_Tmin = rfi_SKtilde.get_write_valid().begin();
+    // sk_feed_averaged_Tmin wraps around into actual array index to avoid overflows
     const long sk_feed_averaged_Tsize = rfi_SKtilde.get_ndarray().get_extent(0);
+    const long sk_feed_averaged_Tmin =
+        rfi_SKtilde.get_write_valid().begin() % sk_feed_averaged_Tsize;
     const long sk_single_feed_Tmin = 0;
     const long sk_single_feed_Tsize = 0;
     // rfimask_T512min wraps around into actual array index to avoid overflows

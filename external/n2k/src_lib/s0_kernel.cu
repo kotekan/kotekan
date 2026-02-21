@@ -245,6 +245,8 @@ void launch_s0_kernel(ulong* s0, const ulong* pl_mask, long T, long Tmin, long T
 	throw runtime_error("launch_s0_kernel(): out_fstride must be >= S");	
     if (out_fstride & 3)
 	throw runtime_error("launch_s0_kernel(): out_fstride must be a multiple of 4");
+    if (Tsize > 0 && Tmin >= Tsize)
+        throw runtime_error("launch_s0_kernel(): expected Tmin to be smaller than Tsize, but got " + std::to_string(Tmin) + ".");
     if ((T >= INT_MAX) || (Tmin >= INT_MAX) || (Tsize >= INT_MAX) || (F >= INT_MAX)
         || (S >= INT_MAX) || (Nds >= INT_MAX) || (out_fstride >= INT_MAX))
         throw runtime_error("launch_s0_kernel(): 32-bit overflow");
