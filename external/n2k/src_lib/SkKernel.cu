@@ -238,13 +238,13 @@ __global__ void sk_kernel(
 	ulong S1i = in_S012[s+S];
 	ulong S2i = in_S012[s+2*S];
 #ifdef DEBUGGING
-        assert(&in_S012[s] == &ringbuffer_S012(dbg_in_S012[s]));
-        assert(&in_S012[s+S] == &ringbuffer_S012(dbg_in_S012[s+S]));
-        assert(&in_S012[s+2*S] == &ringbuffer_S012(dbg_in_S012[s+2*S]));
-
         assert((&in_S012[s] - incoming_in_S012) >= 0 && (&in_S012[s] - incoming_in_S012) < S012_size);
         assert((&in_S012[s+S] - incoming_in_S012) >= 0 && (&in_S012[s+S] - incoming_in_S012) < S012_size);
         assert((&in_S012[s+2*S] - incoming_in_S012) >= 0 && (&in_S012[s+2*S] - incoming_in_S012) < S012_size);
+
+        assert(&in_S012[s] == &ringbuffer_S012(dbg_in_S012[s]));
+        assert(&in_S012[s+S] == &ringbuffer_S012(dbg_in_S012[s+S]));
+        assert(&in_S012[s+2*S] == &ringbuffer_S012(dbg_in_S012[s+2*S]));
 #endif
 
 	float S0f = float(S0i);
