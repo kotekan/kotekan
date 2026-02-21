@@ -217,14 +217,16 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     const long F = rfi_S012.get_ndarray().get_extent(1);
     const long S = rfi_S012.get_ndarray().get_extent(3)
                    * rfi_S012.get_ndarray().get_extent(4); // Number of stations (= 2 * dishes)
-    const long S012_Tmin = rfi_S012.get_read_valid().begin();
     const long S012_Tsize = rfi_S012.get_ndarray().get_extent(0);
+    // S012_Tmin wraps around into actual array index to avoid overflows
+    const long S012_Tmin = rfi_S012.get_read_valid().begin() % S012_Tsize;
     const long sk_feed_averaged_Tmin = rfi_SKtilde.get_write_valid().begin();
     const long sk_feed_averaged_Tsize = rfi_SKtilde.get_ndarray().get_extent(0);
     const long sk_single_feed_Tmin = 0;
     const long sk_single_feed_Tsize = 0;
-    const long rfimask_T512min = rfi_RFImask.get_write_valid().begin();
+    // rfimask_T512min wraps around into actual array index to avoid overflows
     const long rfimask_T512size = rfi_RFImask.get_ndarray().get_extent(0);
+    const long rfimask_T512min = rfi_RFImask.get_write_valid().begin() % rfimask_T512size;
     const cudaStream_t stream = device.getStream(cuda_stream_id);
     skKernel.launch(out_sk_feed_averaged, out_sk_single_feed, out_rfimask, in_S012, in_bf_mask, T,
                     F, S, S012_Tmin, S012_Tsize, sk_feed_averaged_Tmin, sk_feed_averaged_Tsize,
