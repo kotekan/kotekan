@@ -27,7 +27,7 @@
  *
  * Core code was developed by Nada El-Falou in https://github.com/nadafalou/CHORD/blob/main/mmul.cu
  *
- * The phase matrix for the beam locations uses the correct math but
+ * The weights matrix for the beam locations uses the correct math but
  * with a lot of placeholder assumptions.  This will need to get
  * revisited in post-MVP development.
  */
@@ -66,15 +66,15 @@ private:
 
     /// Size in bytes of the input beamgrid array
     size_t beamgrid_len;
-    /// Size in bytes of the input phase array
-    size_t phase_len;
+    /// Size in bytes of the input weights array
+    size_t weights_len;
     /// Size in bytes of the output beam array
     size_t beamout_len;
 
     /// GPU side memory name for the beam-grid input
     std::string _gpu_mem_beamgrid;
-    /// GPU side memory name for the beamforming phases
-    std::string _gpu_mem_phase;
+    /// GPU side memory name for the beamforming weightss
+    std::string _gpu_mem_weights;
     /// GPU side memory name for the beam output
     std::string _gpu_mem_beamout;
 
@@ -82,7 +82,7 @@ private:
     // [freq batch = stream] = [per-freq pointers]
     std::vector<float16_t**> _gpu_in_pointers;
     std::vector<float16_t**> _gpu_out_pointers;
-    std::vector<float16_t**> _gpu_phase_pointers;
+    std::vector<float16_t**> _gpu_weights_pointers;
 
     // Signalling ring buffer for the input (raw FRB beams) data
     RingBuffer* input_ringbuf_signal;

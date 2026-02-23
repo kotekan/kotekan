@@ -313,10 +313,6 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_shift_buffer
         file_name: bb_shift
-    # write_expected_bb_beams:
-    #     kotekan_stage: hdf5FileWrite
-    #     in_buf: host_expected_bb_beams_buffer
-    #     file_name: expected_bb_beams
     write_bb_beams:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beams_buffer
@@ -397,14 +393,14 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb1_U64_phase_buffer
         file_name: frb1_U64_phase
-    write_frb2_phase:
+    write_frb2_beam_positions:
         kotekan_stage: hdf5FileWrite
-        in_buf: host_frb2_phase_buffer
-        file_name: frb2_phase
-    # write_expected_frb1_beams:
-    #     kotekan_stage: hdf5FileWrite
-    #     in_buf: host_expected_frb1_beams_buffer
-    #     file_name: expected_frb1_beams
+        in_buf: host_frb2_beam_positions_buffer
+        file_name: frb2_beam_positions
+    write_frb2_weights:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_frb2_weights_buffer
+        file_name: frb2_weights
     write_frb1_beams:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb1_beams_buffer

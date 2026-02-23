@@ -70,6 +70,17 @@ upchannelization_factor_mapping:
 
 
 
+upchan_factors: [2, 4, 8, 16, 32, 64]
+# ranges are [min, max)
+upchan_channel_ranges:
+    64: [0, 1750]
+    32: [1750, 2264]
+    16: [2264, 2912]
+    8: [2912, 3661]
+    4: [3661, 4646]
+    2: [4646, 5985]
+    1: [5985, 8192]
+
 # The GPU-local (not global) channel index range for each upchannelization factor
 
 # actual = 14, scaled = 896
@@ -125,27 +136,11 @@ upchan_all_max_num_output_channels: 4096
 upchan_all_min_output_channel: 0
 upchan_all_max_output_channel: upchan_U1_max_output_channel
 
-# Upchannelization gains
-upchan_U2_gains: [1, 1]
-upchan_U4_gains: [1, 1, 1, 1]
-upchan_U8_gains: [1, 1, 1, 1, 1, 1, 1, 1]
-upchan_U16_gains: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-upchan_U32_gains: [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-]
-upchan_U64_gains: [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-]
-
 ################################################################################
 
 # Buffers
 
-# Gains
+# Gain
 
 host_upchan_U2_gain_buffer:
     kotekan_buffer: standard
@@ -248,6 +243,56 @@ host_upchan_U64_voltage_ringbuffer:
 ################################################################################
 
 # Stages
+
+run_set_upchan_U2_gain:
+    kotekan_stage: setUpchanGain
+    upchan_factor: 2
+    upchan_max_num_channels: upchan_U2_max_num_channels
+    upchan_gain: [1, 1]
+    upchan_gain_buffer: host_upchan_U2_gain_buffer
+
+run_set_upchan_U4_gain:
+    kotekan_stage: setUpchanGain
+    upchan_factor: 4
+    upchan_max_num_channels: upchan_U4_max_num_channels
+    upchan_gain: [1, 1, 1, 1]
+    upchan_gain_buffer: host_upchan_U4_gain_buffer
+
+run_set_upchan_U8_gain:
+    kotekan_stage: setUpchanGain
+    upchan_factor: 8
+    upchan_max_num_channels: upchan_U8_max_num_channels
+    upchan_gain: [1, 1, 1, 1, 1, 1, 1, 1]
+    upchan_gain_buffer: host_upchan_U8_gain_buffer
+
+run_set_upchan_U16_gain:
+    kotekan_stage: setUpchanGain
+    upchan_factor: 16
+    upchan_max_num_channels: upchan_U16_max_num_channels
+    upchan_gain: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    upchan_gain_buffer: host_upchan_U16_gain_buffer
+
+run_set_upchan_U32_gain:
+    kotekan_stage: setUpchanGain
+    upchan_factor: 32
+    upchan_max_num_channels: upchan_U32_max_num_channels
+    upchan_gain: [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    ]
+    upchan_gain_buffer: host_upchan_U32_gain_buffer
+
+run_set_upchan_U64_gain:
+    kotekan_stage: setUpchanGain
+    upchan_factor: 64
+    upchan_max_num_channels: upchan_U64_max_num_channels
+    upchan_gain: [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    ]
+    upchan_gain_buffer: host_upchan_U64_gain_buffer
 
 run_upchan_U2:
     gpu_0:

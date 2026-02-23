@@ -164,21 +164,17 @@ host_voltage_ringbuffer:
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times
     metadata_pool: main_pool
 
-# host_expected_bb_beams_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
-#     metadata_pool: main_pool
-# 
-# host_expected_frb1_beams_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
-#     metadata_pool: main_pool
-
 ################################################################################
 
 # Stages
+
+run_invent_bf_mask:
+    kotekan_stage: inventBFMask
+    bf_mask: host_bf_mask_buffer
+
+run_invent_pl_mask:
+    kotekan_stage: inventPLMask
+    pl_mask: host_pl_mask_buffer
 
 # run_send_bf_mask:
 #     gpu_0:

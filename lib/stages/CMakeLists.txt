@@ -28,6 +28,7 @@ add_library(
     $<$<BOOL:${GDAL_FOUND}>:gdalFiles.cpp>
     $<${HDF5_CONDITION}:hdf5N2Write.cpp>
     $<${HDF5_CONDITION}:hdf5FileRead.cpp>
+    $<${HDF5_CONDITION}:hdf5FileReadSingleFile.cpp>
     $<${HDF5_CONDITION}:hdf5FileWrite.cpp>
     $<${HDF5_CONDITION}:hdf5Files.cpp>
     vdifStream.cpp
@@ -64,7 +65,13 @@ add_library(
     bufferDelay.cpp
     BufferSplit.cpp
     InputSubset.cpp
-    $<$<BOOL:${Julia_FOUND}>:FEngine.cpp>
+    inventBFMask.cpp
+    inventPLMask.cpp
+    UpchannelizationSchedule.cpp
+    calcBBPhase.cpp
+    setUpchanGain.cpp
+    setFRB1Phase.cpp
+    calcFRB2Weights.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
