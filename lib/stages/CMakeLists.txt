@@ -17,6 +17,7 @@ add_library(
     integratePowerStream.cpp
     monitorBuffer.cpp
     networkInputPowerStream.cpp
+    parseReorderDefault.cpp
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
