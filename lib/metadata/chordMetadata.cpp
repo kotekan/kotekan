@@ -101,7 +101,7 @@ void chordMetadata::check_frame_desc(
     }
 
     if (failed)
-        FATAL_ERROR("Incosistent array description between CHORDMetadata and FrameDesc");
+        FATAL_ERROR("Inconsistent array description between CHORDMetadata and FrameDesc");
 }
 
 void chordMetadata::set_from_frame_desc(
