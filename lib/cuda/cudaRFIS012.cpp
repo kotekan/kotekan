@@ -211,19 +211,25 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     assert(Tmin % 128 == 0);
     const std::ptrdiff_t T = voltage.get_read_valid().size();
 
+    const int T_stride = rfi_S012.get_ndarray().stride(0);
     const int F_stride = rfi_S012.get_ndarray().stride(1);
     const int S_stride = rfi_S012.get_ndarray().stride(2);
     constexpr bool offset_encoded = true;
-    n2k::launch_s0_kernel((ulong*)rfi_S012_memory, (const ulong*)pl_mask_memory, T, Tmin, Tsize,
-                          num_frequencies, num_dishes * num_polarizations, rfi_downsampling_factor,
-                          F_stride, device.getStream(cuda_stream_id));
+
+    // Current offset into the rfi_S012 buffer
+    // n2k does not apply this itself
+    const int Trfi_offset = Tmin / rfi_downsampling_factor * T_stride;
+
+    n2k::launch_s0_kernel((ulong*)rfi_S012_memory + Trfi_offset, (const ulong*)pl_mask_memory, T,
+                          Tmin, Tsize, num_frequencies, num_dishes * num_polarizations,
+                          rfi_downsampling_factor, F_stride, device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
-    n2k::launch_s12_kernel((ulong*)(rfi_S012_memory + S_stride), (const uint8_t*)voltage_memory, T,
-                           Tmin, Tsize, num_frequencies, num_dishes * num_polarizations,
-                           rfi_downsampling_factor, F_stride, offset_encoded,
-                           device.getStream(cuda_stream_id));
+    n2k::launch_s12_kernel((ulong*)(rfi_S012_memory + S_stride + Trfi_offset),
+                           (const uint8_t*)voltage_memory, T, Tmin, Tsize, num_frequencies,
+                           num_dishes * num_polarizations, rfi_downsampling_factor, F_stride,
+                           offset_encoded, device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
