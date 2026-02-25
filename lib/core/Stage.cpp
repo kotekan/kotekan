@@ -105,10 +105,10 @@ void Stage::start() {
             // abruptly.
             ERROR("Stage {:s} caught FatalError: {:s}, attempting controlled shutdown.",
                   unique_name, e.what());
-        // } catch (const std::exception& e) {
-        //     ERROR("Exception in stage {:s}: {:s}", unique_name, e.what());
-        //     // throw will throw the same exception.
-        //     throw;
+        } catch (const std::exception& e) {
+            ERROR("Exception in stage {:s}: {:s}", unique_name, e.what());
+            // throw will throw the same exception.
+            throw;
         }
 #if !defined(MAC_OSX)
         unregister_tid(tid);
