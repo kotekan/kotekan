@@ -95,13 +95,13 @@ void applyGenPL::main_thread() {
     int output_frame_id = 0;
 
     while (!stop_thread) {
-        char* input = (char*)input_buf->wait_for_full_frame(unique_name, input_frame_id);
+        uint8_t* input = (uint8_t*)input_buf->wait_for_full_frame(unique_name, input_frame_id);
         if (input == nullptr)
             break;
         uint64_t* plmask = (uint64_t*)plmask_buf->wait_for_full_frame(unique_name, plmask_frame_id);
         if (plmask == nullptr)
             break;
-        char* output = (char*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
+        uint8_t* output = (uint8_t*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
         if (output == nullptr)
             break;
 
