@@ -351,11 +351,10 @@ void testDataCheck<A_Type>::main_thread() {
                 }
             }
         } // frames
-        
+
         if (num_errors > 0) {
             break;
         }
-
     }
 }
 

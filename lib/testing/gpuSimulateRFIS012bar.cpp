@@ -28,7 +28,7 @@ using N2::frameID;
 REGISTER_KOTEKAN_STAGE(gpuSimulateRFIS012bar);
 
 gpuSimulateRFIS012bar::gpuSimulateRFIS012bar(Config& config, const std::string& unique_name,
-                                       bufferContainer& buffer_container) :
+                                             bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&gpuSimulateRFIS012bar::main_thread, this)) {
 

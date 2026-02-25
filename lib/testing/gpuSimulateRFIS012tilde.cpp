@@ -28,7 +28,7 @@ using N2::frameID;
 REGISTER_KOTEKAN_STAGE(gpuSimulateRFIS012tilde);
 
 gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::string& unique_name,
-                                       bufferContainer& buffer_container) :
+                                                 bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&gpuSimulateRFIS012tilde::main_thread, this)) {
 

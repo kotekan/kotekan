@@ -80,10 +80,10 @@ applyGenPL::applyGenPL(Config& config, const std::string& unique_name,
                     output_buf->buffer_name, output_buf->frame_size, voltage_frame_size);
         std::abort();
     }
-    
-    output_buf->allocate_ndarray_frame_desc(kotekan::int4x2_swapped_withoffset,
-        "E", {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2},
-        {"T", "F", "P", "D"});
+
+    output_buf->allocate_ndarray_frame_desc(
+        kotekan::int4x2_swapped_withoffset, "E",
+        {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"});
 }
 
 applyGenPL::~applyGenPL() {}
@@ -133,7 +133,7 @@ void applyGenPL::main_thread() {
                     if (pl)
                         output[v_idx] = input[v_idx];
                     else
-                        output[v_idx] = 16*8 + 8; // = 0 in offset-encoding
+                        output[v_idx] = 16 * 8 + 8; // = 0 in offset-encoding
                 } // e
             } // f
         } // tout
