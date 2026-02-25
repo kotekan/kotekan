@@ -170,7 +170,7 @@ public:
                 assert(dish_index.at(idx) == -1);
                 dish_index.at(idx) = n;
             }
-           int num_empty_dish_locations  [[maybe_unused]]  = 0;
+            int num_empty_dish_locations [[maybe_unused]] = 0;
             for (int iy = 0; iy < n_dish_locations_ns; ++iy) {
                 for (int ix = 0; ix < n_dish_locations_ew; ++ix) {
                     const int idx = ix + n_dish_locations_ew * iy;
