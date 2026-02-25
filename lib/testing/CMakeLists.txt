@@ -19,6 +19,8 @@ add_library(
     gpuSimulateN2kPLExpand.cpp
     gpuSimulateN2kPL1bitCorr.cpp
     gpuSimulateRFIS012.cpp
+    gpuSimulateRFIS012bar.cpp
+    gpuSimulateRFIS012tilde.cpp
     inventBFMask.cpp
     inventPLMask.cpp
     networkOutputSim.cpp
