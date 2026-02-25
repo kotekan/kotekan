@@ -49,7 +49,9 @@ for setup in ${setups}; do
 done
 
 # Format generated Julia code
-julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("'output-${card}'")' &
+for setup in ${setups}; do
+    julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("'output-${card}/xpose2048_${setup}.jl'")' &
+done
 wait
 
 # Copy kernels into Kotekan
