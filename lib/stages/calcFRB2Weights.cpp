@@ -34,8 +34,9 @@ class calcFRB2Weights : public kotekan::Stage {
     const float frb2_beam_separation_y = config.get<float>(unique_name, "frb2_beam_separation_y");
     const int frb2_num_frequencies = config.get<int>(unique_name, "frb2_num_frequencies");
 
-    const std::ptrdiff_t frb2_beam_positions_frame_size = sizeof(float) * 2 * frb2_num_beams;
-    const std::ptrdiff_t W2_frame_size =
+    const std::ptrdiff_t frb2_beam_positions_frame_size [[maybe_unused]] =
+        sizeof(float) * 2 * frb2_num_beams;
+    const std::ptrdiff_t W2_frame_size [[maybe_unused]] =
         sizeof(float16_t) * frb1_num_beams * frb2_num_beams * frb2_num_frequencies;
 
     Buffer* const frb2_beam_positions_buffer;
