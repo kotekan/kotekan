@@ -65,11 +65,11 @@ private:
     int32_t num_input_beams;
 
     /// Size in bytes of the input beamgrid array
-    size_t beamgrid_len;
+    size_t beamgrid_size;
     /// Size in bytes of the input weights array
-    size_t weights_len;
+    size_t weights_size;
     /// Size in bytes of the output beam array
-    size_t beamout_len;
+    size_t beamout_size;
 
     /// GPU side memory name for the beam-grid input
     std::string _gpu_mem_beamgrid;
