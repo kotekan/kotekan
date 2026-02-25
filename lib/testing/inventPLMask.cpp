@@ -73,10 +73,9 @@ public:
             buffer->allocate_new_metadata_object(frame_id);
             const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
             meta->set_from_frame_desc(buffer->get_ndarray_frame_desc());
-            meta->set_fpga_seq_num(0);                // ???
-            meta->set_time_downsampling_fpga(2 * 64); // ???
+            meta->set_fpga_seq_num(frame_index * num_times);
+            meta->set_time_downsampling_fpga(2 * 64);
 
-            // We should probably set this...
             meta->ndishes = -1;
             meta->dish_index = nullptr;
 

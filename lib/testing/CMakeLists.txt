@@ -18,6 +18,8 @@ add_library(
     gpuSimulateN2kCorr.cpp
     gpuSimulateN2kPLExpand.cpp
     gpuSimulateN2kPL1bitCorr.cpp
+    inventBFMask.cpp
+    inventPLMask.cpp
     networkOutputSim.cpp
     simVdifData.cpp
     testDataCheck.cpp

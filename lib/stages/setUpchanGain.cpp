@@ -34,6 +34,11 @@ public:
         // We use the same gain for all channels
         assert(std::ptrdiff_t(upchan_gain.size()) == upchan_factor);
         assert(upchan_gain_buffer);
+
+        // Check buffer size
+        assert(upchan_gain_buffer->frame_size
+               == sizeof(float16_t) * upchan_max_num_channels * upchan_factor);
+
         upchan_gain_buffer->register_producer(unique_name);
     }
 
@@ -56,10 +61,6 @@ public:
             static_cast<void*>(upchan_gain_buffer->wait_for_empty_frame(unique_name, frame_id)));
         if (!upchan_gain_frame)
             return;
-
-        // Check buffer size
-        assert(upchan_gain_buffer->frame_size
-               == sizeof(float16_t) * upchan_max_num_channels * upchan_factor);
 
         // Set metadata
         upchan_gain_buffer->allocate_ndarray_frame_desc<float16_t, 1>(

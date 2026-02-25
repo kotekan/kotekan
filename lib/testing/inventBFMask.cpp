@@ -28,6 +28,7 @@
 class inventBFMask : public kotekan::Stage {
     const int num_dishes = config.get<int>(unique_name, "num_dishes");
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
+    const int num_times = config.get<int>(unique_name, "num_times");
 
     Buffer* const buffer;
 
@@ -66,10 +67,9 @@ public:
         buffer->allocate_new_metadata_object(frame_id);
         const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
         meta->set_from_frame_desc(buffer->get_ndarray_frame_desc());
-        meta->set_fpga_seq_num(0);           // ???
-        meta->set_time_downsampling_fpga(1); // ???
+        meta->set_fpga_seq_num(frame_index * num_times);
+        meta->set_time_downsampling_fpga(1);
 
-        // We should probably set this...
         meta->ndishes = -1;
         meta->dish_index = nullptr;
 

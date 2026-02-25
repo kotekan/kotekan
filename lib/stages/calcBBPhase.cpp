@@ -20,6 +20,7 @@ class calcBBPhase : public kotekan::Stage {
     const int num_dishes = config.get<int>(unique_name, "num_dishes");
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
     const int num_frequencies = config.get<int>(unique_name, "num_frequencies");
+    const int num_times = config.get<int>(unique_name, "num_times");
 
     const std::vector<int> frequency_channels =
         config.get<std::vector<int>>(unique_name, "frequency_channels");
@@ -141,8 +142,8 @@ public:
             get_chord_metadata(bb_beam_positions_buffer->get_metadata(frame_id));
         bb_beam_positions_meta->set_from_frame_desc(
             bb_beam_positions_buffer->get_ndarray_frame_desc());
-        bb_beam_positions_meta->set_fpga_seq_num(0);           // ???
-        bb_beam_positions_meta->set_time_downsampling_fpga(1); // ???
+        bb_beam_positions_meta->set_fpga_seq_num(frame_index * num_times);
+        bb_beam_positions_meta->set_time_downsampling_fpga(1);
 
         A_buffer->allocate_ndarray_frame_desc<std::int8_t, 5>(
             "A", {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
@@ -150,8 +151,8 @@ public:
         A_buffer->allocate_new_metadata_object(frame_id);
         const auto& A_meta = get_chord_metadata(A_buffer->get_metadata(frame_id));
         A_meta->set_from_frame_desc(A_buffer->get_ndarray_frame_desc());
-        A_meta->set_fpga_seq_num(0);           // ???
-        A_meta->set_time_downsampling_fpga(1); // ???
+        A_meta->set_fpga_seq_num(frame_index * num_times);
+        A_meta->set_time_downsampling_fpga(1);
         A_meta->set_coarse_freq(frequency_channels);
         A_meta->set_freq_upchan_factor(freq_upchan_factor);
         A_meta->set_freq_upchan_index(freq_upchan_index);
@@ -161,8 +162,8 @@ public:
         s_buffer->allocate_new_metadata_object(frame_id);
         const auto& s_meta = get_chord_metadata(s_buffer->get_metadata(frame_id));
         s_meta->set_from_frame_desc(s_buffer->get_ndarray_frame_desc());
-        s_meta->set_fpga_seq_num(0);           // ???
-        s_meta->set_time_downsampling_fpga(1); // ???
+        s_meta->set_fpga_seq_num(frame_index * num_times);
+        s_meta->set_time_downsampling_fpga(1);
         s_meta->set_coarse_freq(frequency_channels);
         s_meta->set_freq_upchan_factor(freq_upchan_factor);
         s_meta->set_freq_upchan_index(freq_upchan_index);

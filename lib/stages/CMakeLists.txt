@@ -65,8 +65,6 @@ add_library(
     bufferDelay.cpp
     BufferSplit.cpp
     InputSubset.cpp
-    inventBFMask.cpp
-    inventPLMask.cpp
     setScatterIndices.cpp
     UpchannelizationSchedule.cpp
     calcBBPhase.cpp
