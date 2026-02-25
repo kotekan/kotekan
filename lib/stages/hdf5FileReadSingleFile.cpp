@@ -170,7 +170,7 @@ public:
                 assert(dish_index.at(idx) == -1);
                 dish_index.at(idx) = n;
             }
-#ifndef _NDEBUG
+#ifndef NDEBUG
             int num_empty_dish_locations = 0;
             for (int iy = 0; iy < n_dish_locations_ns; ++iy) {
                 for (int ix = 0; ix < n_dish_locations_ew; ++ix) {
