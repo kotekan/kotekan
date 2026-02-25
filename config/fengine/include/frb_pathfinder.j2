@@ -21,7 +21,7 @@ frb2_beam_separation_y: 0.015
 host_frb2_beam_positions_buffer:
     kotekan_buffer: standard
     num_frames: 1
-    frame_size: sizeof_float64 * 2 * frb2_num_beams
+    frame_size: sizeof_float32 * 2 * frb2_num_beams
     metadata_pool: main_pool
 
 frb_chunk_size: 256
@@ -30,7 +30,7 @@ frb_chunk_size: 256
 
 # Buffers
 
-# Phase
+# Phases
 
 host_frb1_U1_phase_buffer:
     kotekan_buffer: standard

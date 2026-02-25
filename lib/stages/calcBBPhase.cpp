@@ -28,11 +28,11 @@ class calcBBPhase : public kotekan::Stage {
     const int bb_num_beams_x = config.get<int>(unique_name, "bb_num_beams_x");
     const int bb_num_beams_y = config.get<int>(unique_name, "bb_num_beams_y");
     const int bb_num_beams = bb_num_beams_x * bb_num_beams_y;
-    const double bb_beam_separation_x = config.get<double>(unique_name, "bb_beam_separation_x");
-    const double bb_beam_separation_y = config.get<double>(unique_name, "bb_beam_separation_y");
+    const float bb_beam_separation_x = config.get<float>(unique_name, "bb_beam_separation_x");
+    const float bb_beam_separation_y = config.get<float>(unique_name, "bb_beam_separation_y");
     const int bb_scale = config.get<int>(unique_name, "bb_scale");
 
-    const std::ptrdiff_t bb_beam_positions_frame_size = sizeof(double) * 2 * bb_num_beams;
+    const std::ptrdiff_t bb_beam_positions_frame_size = sizeof(float) * 2 * bb_num_beams;
     const std::ptrdiff_t A_frame_size = sizeof(std::int8_t) * num_components * num_dishes
                                         * bb_num_beams * num_polarizations * num_frequencies;
     const std::ptrdiff_t s_frame_size =
@@ -76,11 +76,11 @@ public:
         const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
 
         // Calculate dish positions
-        const double dish_separation_x = chord_telescope.get_dish_separation_x_m();
-        const double dish_separation_y = chord_telescope.get_dish_separation_y_m();
+        const float dish_separation_x = chord_telescope.get_dish_separation_x_m();
+        const float dish_separation_y = chord_telescope.get_dish_separation_y_m();
         const auto& dish_grid = chord_telescope.get_dish_grid();
         assert(std::ptrdiff_t(chord_telescope.get_num_dishes()) == num_dishes);
-        std::vector<double> dish_loc_x(num_dishes, -1), dish_loc_y(num_dishes, -1),
+        std::vector<float> dish_loc_x(num_dishes, -1), dish_loc_y(num_dishes, -1),
             dish_loc_z(num_dishes, -1);
         assert(std::ptrdiff_t(dish_grid.get_dish_indices().size()) >= num_dishes);
         for (const auto dish_index : dish_grid.get_dish_indices()) {
@@ -97,10 +97,10 @@ public:
         assert(std::ptrdiff_t(dish_loc_x.size()) == num_dishes);
 
         // Get frequencies
-        std::vector<double> frequencies(num_frequencies); // [Hz]
+        std::vector<float> frequencies(num_frequencies); // [Hz]
         for (int freq = 0; freq < num_frequencies; ++freq) {
             const int channel = frequency_channels.at(freq);
-            frequencies.at(freq) = chord_telescope.to_freq_MHz(channel) * 1.0e+6;
+            frequencies.at(freq) = chord_telescope.to_freq_MHz(channel) * 1.0e+6f;
         }
         const std::vector<int> freq_upchan_factor(frequency_channels.size(), 1);
         const std::vector<int> freq_upchan_index(frequency_channels.size(), 0);
@@ -108,7 +108,7 @@ public:
         // Wait for buffers
         DEBUG("[{:s}/{:d}] Waiting for buffer...", bb_beam_positions_buffer->buffer_name,
               frame_index);
-        double* const bb_beam_positions_frame = static_cast<double*>(static_cast<void*>(
+        float* const bb_beam_positions_frame = static_cast<float*>(static_cast<void*>(
             bb_beam_positions_buffer->wait_for_empty_frame(unique_name, frame_id)));
         if (!bb_beam_positions_frame)
             return;
@@ -132,7 +132,7 @@ public:
         assert(std::ptrdiff_t(s_buffer->frame_size) == s_frame_size);
 
         // Set metadata
-        bb_beam_positions_buffer->allocate_ndarray_frame_desc<double, 2>(
+        bb_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
             "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"});
         bb_beam_positions_buffer->allocate_new_metadata_object(frame_id);
         const auto& bb_beam_positions_meta =
@@ -168,14 +168,14 @@ public:
         // Set bb_beam_positions
         {
             // Find centre
-            const double i_x0 = (bb_num_beams_x - 1) / 2.0;
-            const double i_y0 = (bb_num_beams_y - 1) / 2.0;
+            const float i_x0 = (bb_num_beams_x - 1) / 2.0f;
+            const float i_y0 = (bb_num_beams_y - 1) / 2.0f;
             for (int i_y = 0; i_y < bb_num_beams_y; ++i_y) {
                 for (int i_x = 0; i_x < bb_num_beams_x; ++i_x) {
                     const int beam = i_x + bb_num_beams_x * i_y;
                     const int idx = 2 * beam;
-                    const double theta_x = bb_beam_separation_x * (i_x - i_x0);
-                    const double theta_y = bb_beam_separation_y * (i_y - i_y0);
+                    const float theta_x = bb_beam_separation_x * (i_x - i_x0);
+                    const float theta_y = bb_beam_separation_y * (i_y - i_y0);
                     assert(idx >= 0
                            && idx < std::ptrdiff_t(bb_beam_positions_buffer->frame_size
                                                    / sizeof *bb_beam_positions_frame));
@@ -187,7 +187,7 @@ public:
 
         // Set A
         {
-            const double c0 = 299792458.0; // speed of light in vacuum [m/s]
+            const float c0 = 299792458.0f; // speed of light in vacuum [m/s]
             const std::ptrdiff_t str_dish = 1;
             const std::ptrdiff_t str_beam = str_dish * num_dishes;
             const std::ptrdiff_t str_polr = str_beam * bb_num_beams;
@@ -201,18 +201,18 @@ public:
                             // We choose A independent of polarization
                             using std::clamp, std::lrint, std::polar, std::sqrt;
                             const auto pow2 = [](auto x) { return x * x; };
-                            const double dish_x = dish_loc_x.at(dish);
-                            const double dish_y = dish_loc_y.at(dish);
-                            const double dish_z = dish_loc_z.at(dish);
-                            const double theta_x = bb_beam_positions_frame[2 * beam + 0];
-                            const double theta_y = bb_beam_positions_frame[2 * beam + 1];
-                            const double theta_z = sqrt(1 - (pow2(theta_x) + pow2(theta_y)));
-                            const double deltat = sin(theta_x) * dish_x / c0
-                                                  + sin(theta_y) * dish_y / c0
-                                                  + sin(theta_z) * dish_z / c0;
-                            const double f = frequencies.at(freq);
-                            const double phi = 2 * M_PI * f * deltat;
-                            const std::complex<double> A = polar(127.5, phi);
+                            const float dish_x = dish_loc_x.at(dish);
+                            const float dish_y = dish_loc_y.at(dish);
+                            const float dish_z = dish_loc_z.at(dish);
+                            const float theta_x = bb_beam_positions_frame[2 * beam + 0];
+                            const float theta_y = bb_beam_positions_frame[2 * beam + 1];
+                            const float theta_z = sqrt(1 - (pow2(theta_x) + pow2(theta_y)));
+                            const float deltat = sin(theta_x) * dish_x / c0
+                                                 + sin(theta_y) * dish_y / c0
+                                                 + sin(theta_z) * dish_z / c0;
+                            const float f = frequencies.at(freq);
+                            const float phi = 2 * float(M_PI) * f * deltat;
+                            const std::complex<float> A = polar(127.5f, phi);
                             const std::complex<std::int8_t> iA(
                                 clamp(int(lrint(real(A))), -127, +127),
                                 clamp(int(lrint(imag(A))), -127, +127));

@@ -163,6 +163,10 @@ host_xposed_voltage_ringbuffer:
 
 # Stages
 
+run_set_scatter_indices:
+    kotekan_stage: setScatterIndices
+    scatter_indices_name: host_scatter_indices_buffer
+
 run_xpose2048:
     gpu_0:
         kotekan_stage: cudaProcess

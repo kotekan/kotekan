@@ -10,13 +10,10 @@
 log_level: debug
 poison_buffers: true
 
-fengine_num_frames: 25
 fengine_repeat_count: 1
 
-skip_julia: true
-
-input_dir: data/fengine_init_hirax
-base_dir: data/fengine_test_hirax
+input_dir: data/fengine_hirax_init
+base_dir: data/fengine_hirax
 prefix_hostname: false
 prefix_host_rank: true
 
@@ -29,7 +26,6 @@ prefix_host_rank: true
 {% include "include/upchan_hirax.j2" %}
 {% include "include/frb_hirax.j2" %}
 
-{% include "include/input_init_hirax.j2" %}
-
-{% include "include/output_test_hirax.j2" %}
+{% include "include/input_hirax.j2" %}
+{% include "include/output_hirax.j2" %}
 ...

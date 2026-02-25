@@ -48,9 +48,9 @@ telescope:
     # xxxxxxx
 
     dish_inputs:
-    {% for y in range(0, 10) %}
-    {% for x in range(0, 7) %}
-    {% if x+7*y < 64 %}
+{% for y in range(0, 10) %}
+{%   for x in range(0, 7) %}
+{%     if x+7*y < 64 %}
     - dish_idx: {{x+7*y}}
       grid_x_idx: {{x}}
       grid_y_idx: {{y}}
@@ -58,10 +58,9 @@ telescope:
       coelev_disp_deg: 0.0
       type: ArrayDish
       label: CHORD-{{"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[y]}}{{"{:02d}".format(x+1)}}
-    {% endif %}
-    {% endfor %}
-    {% endfor %}
-dummy_declaration_to_eat_jinja2_white_space_keep_this_right_after_the_telescope_definition:
+{%     endif %}
+{%   endfor %}
+{% endfor %}
 
 earth_rotation_data:
     kotekan_update_endpoint: json

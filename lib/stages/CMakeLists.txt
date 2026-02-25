@@ -67,6 +67,7 @@ add_library(
     InputSubset.cpp
     inventBFMask.cpp
     inventPLMask.cpp
+    setScatterIndices.cpp
     UpchannelizationSchedule.cpp
     calcBBPhase.cpp
     setUpchanGain.cpp

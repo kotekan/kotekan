@@ -30,11 +30,11 @@ class calcFRB2Weights : public kotekan::Stage {
     const int frb2_num_beams_x = config.get<int>(unique_name, "frb2_num_beams_x");
     const int frb2_num_beams_y = config.get<int>(unique_name, "frb2_num_beams_y");
     const int frb2_num_beams = frb2_num_beams_x * frb2_num_beams_y;
-    const double frb2_beam_separation_x = config.get<double>(unique_name, "frb2_beam_separation_x");
-    const double frb2_beam_separation_y = config.get<double>(unique_name, "frb2_beam_separation_y");
+    const float frb2_beam_separation_x = config.get<float>(unique_name, "frb2_beam_separation_x");
+    const float frb2_beam_separation_y = config.get<float>(unique_name, "frb2_beam_separation_y");
     const int frb2_num_frequencies = config.get<int>(unique_name, "frb2_num_frequencies");
 
-    const std::ptrdiff_t frb2_beam_positions_frame_size = sizeof(double) * 2 * frb2_num_beams;
+    const std::ptrdiff_t frb2_beam_positions_frame_size = sizeof(float) * 2 * frb2_num_beams;
     const std::ptrdiff_t W2_frame_size =
         sizeof(float16_t) * frb1_num_beams * frb2_num_beams * frb2_num_frequencies;
 
@@ -75,11 +75,11 @@ public:
         const auto& upchan_schedule = UpchannelizationSchedule::instance(config);
 
         // Calculate dish positions
-        const double dish_separation_x = chord_telescope.get_dish_separation_x_m();
-        const double dish_separation_y = chord_telescope.get_dish_separation_y_m();
+        const float dish_separation_x = chord_telescope.get_dish_separation_x_m();
+        const float dish_separation_y = chord_telescope.get_dish_separation_y_m();
         const auto& dish_grid = chord_telescope.get_dish_grid();
         assert(std::ptrdiff_t(chord_telescope.get_num_dishes()) == num_dishes);
-        std::vector<double> dish_loc_x(num_dishes, -1), dish_loc_y(num_dishes, -1),
+        std::vector<float> dish_loc_x(num_dishes, -1), dish_loc_y(num_dishes, -1),
             dish_loc_z(num_dishes, -1);
         assert(std::ptrdiff_t(dish_grid.get_dish_indices().size()) >= num_dishes);
         for (const auto dish_index : dish_grid.get_dish_indices()) {
@@ -100,10 +100,10 @@ public:
         std::vector<int> coarse_freq;
         std::vector<int> freq_upchan_factor;
         std::vector<int> freq_upchan_index;
-        std::vector<double> frequencies;
+        std::vector<float> frequencies;
         for (const int channel : frequency_channels) {
-            const double frequency = chord_telescope.to_freq_MHz(channel) * 1.0e+6;
-            const double frequency_spacing = chord_telescope.freq_width_MHz(channel) * 1.0e+6;
+            const float frequency = chord_telescope.to_freq_MHz(channel) * 1.0e+6f;
+            const float frequency_spacing = chord_telescope.freq_width_MHz(channel) * 1.0e+6f;
             const auto& upchan_factors = upchan_schedule.get_upchan_factors(channel);
             if (upchan_factors.empty()) {
                 // Assume we keep the frequency itself
@@ -116,9 +116,9 @@ public:
                 // ones
                 for (const int upchan_factor : upchan_factors) {
                     for (int upchan_index = 0; upchan_index < upchan_factor; ++upchan_index) {
-                        const double upchan_frequency =
+                        const float upchan_frequency =
                             frequency
-                            + frequency_spacing * ((upchan_index + 0.5) / upchan_factor - 0.5);
+                            + frequency_spacing * ((upchan_index + 0.5f) / upchan_factor - 0.5f);
                         coarse_freq.push_back(channel);
                         freq_upchan_factor.push_back(upchan_factor);
                         freq_upchan_index.push_back(upchan_index);
@@ -132,7 +132,7 @@ public:
         // Wait for buffers
         DEBUG("[{:s}/{:d}] Waiting for buffer...", frb2_beam_positions_buffer->buffer_name,
               frame_index);
-        double* const frb2_beam_positions_frame = static_cast<double*>(static_cast<void*>(
+        float* const frb2_beam_positions_frame = static_cast<float*>(static_cast<void*>(
             frb2_beam_positions_buffer->wait_for_empty_frame(unique_name, frame_id)));
         if (!frb2_beam_positions_frame)
             return;
@@ -149,7 +149,7 @@ public:
         assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
 
         // Set metadata
-        frb2_beam_positions_buffer->allocate_ndarray_frame_desc<double, 2>(
+        frb2_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
             "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"});
         frb2_beam_positions_buffer->allocate_new_metadata_object(frame_id);
         const auto& frb2_beam_positions_meta =
@@ -176,14 +176,14 @@ public:
         // Set frb2_beam_positions
         {
             // Find centre
-            const double i_x0 = (frb2_num_beams_x - 1) / 2.0;
-            const double i_y0 = (frb2_num_beams_y - 1) / 2.0;
+            const float i_x0 = (frb2_num_beams_x - 1) / 2.0f;
+            const float i_y0 = (frb2_num_beams_y - 1) / 2.0f;
             for (int i_y = 0; i_y < frb2_num_beams_y; ++i_y) {
                 for (int i_x = 0; i_x < frb2_num_beams_x; ++i_x) {
                     const int beam = i_x + frb2_num_beams_x * i_y;
                     const int idx = 2 * beam;
-                    const double theta_x = frb2_beam_separation_x * (i_x - i_x0);
-                    const double theta_y = frb2_beam_separation_y * (i_y - i_y0);
+                    const float theta_x = frb2_beam_separation_x * (i_x - i_x0);
+                    const float theta_y = frb2_beam_separation_y * (i_y - i_y0);
                     assert(idx >= 0
                            && idx < std::ptrdiff_t(frb2_beam_positions_buffer->frame_size
                                                    / sizeof *frb2_beam_positions_frame));
@@ -222,15 +222,15 @@ public:
 
             using std::cos, std::sin;
 
-            const double c0 = 299792458.0; // speed of light in vacuum [m/s]
+            const float c0 = 299792458.0f; // speed of light in vacuum [m/s]
 
             // This matches a function defined in Kendrick's beamforming note (eqn
             // 7/8).
-            const auto Ufunc = [](int p, int M, double theta) {
-                double acc = 0.0;
+            const auto Ufunc = [](int p, int M, float theta) {
+                float acc = 0.0f;
                 for (int s = 0; s <= M; ++s) {
-                    double A = s == 0 || s == M ? 0.5 : 1.0;
-                    acc += A * cos(M_PI * (2 * theta - p) * s / M);
+                    float A = s == 0 || s == M ? 0.5f : 1.0f;
+                    acc += A * cos(float(M_PI) * (2 * theta - p) * s / M);
                 }
                 return acc;
             };
@@ -242,20 +242,18 @@ public:
 
 #pragma omp parallel
             {
-                std::vector<double> Up(frb1_num_beams_x);
-                std::vector<double> Uq(frb1_num_beams_y);
+                std::vector<float> Up(frb1_num_beams_x);
+                std::vector<float> Uq(frb1_num_beams_y);
 
 #pragma omp for
                 for (int freq = 0; freq < frb2_num_frequencies; ++freq) {
                     // Calculate physical frequency from channel index
-                    const double afreq = frequencies.at(freq);
-                    const double wavelength = c0 / afreq;
+                    const float afreq = frequencies.at(freq);
+                    const float wavelength = c0 / afreq;
 
                     for (int beamR = 0; beamR < frb2_num_beams; ++beamR) {
-                        const double theta_x =
-                            frb2_beam_positions_frame[2 * beamR + 0] / wavelength;
-                        const double theta_y =
-                            frb2_beam_positions_frame[2 * beamR + 1] / wavelength;
+                        const float theta_x = frb2_beam_positions_frame[2 * beamR + 0] / wavelength;
+                        const float theta_y = frb2_beam_positions_frame[2 * beamR + 1] / wavelength;
 
                         for (int i = 0; i < frb1_num_beams_x; ++i)
                             Up[i] = Ufunc(i, num_dishes_x, theta_x);

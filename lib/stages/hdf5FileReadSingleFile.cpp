@@ -43,6 +43,11 @@ class hdf5FileReadSingleFile : public kotekan::Stage {
         config.get<std::vector<int>>(unique_name, "frequency_channels");
     const int num_times = config.get<int>(unique_name, "num_times");
 
+    const bool combine_dishes_and_polarizations =
+        config.get_default<bool>(unique_name, "combine_dishes_and_polarizations", false);
+    const bool transpose_frequency_and_time =
+        config.get_default<bool>(unique_name, "transpose_frequency_and_time", false);
+
     Buffer* const buffer;
 
 public:
@@ -112,14 +117,33 @@ public:
 
             // Convert dimensions
             assert(dims.size() == 4);
-            const std::vector<std::ptrdiff_t> new_dims{
-                std::ptrdiff_t(num_times), std::ptrdiff_t(frequency_channels.size()),
-                std::ptrdiff_t(dims.at(2)), std::ptrdiff_t(dims.at(3))};
             assert(dim_names.size() == 4);
-            assert(std::string(dim_names.at(0)) == "F");
-            assert(std::string(dim_names.at(1)) == "T");
-            const std::vector<kotekan::Symbol> new_dim_names{dim_names.at(1), dim_names.at(0),
-                                                             dim_names.at(2), dim_names.at(3)};
+            std::vector<std::ptrdiff_t> new_dims;
+            std::vector<kotekan::Symbol> new_dim_names;
+            if (!transpose_frequency_and_time) {
+                // Standard case
+                new_dims.push_back(num_times);
+                new_dims.push_back(frequency_channels.size());
+                new_dim_names.push_back(dim_names.at(0));
+                new_dim_names.push_back(dim_names.at(1));
+            } else {
+                // For CHIME, tranpose time and frequency
+                new_dims.push_back(frequency_channels.size());
+                new_dims.push_back(num_times);
+                new_dim_names.push_back(dim_names.at(1));
+                new_dim_names.push_back(dim_names.at(0));
+            }
+            if (!combine_dishes_and_polarizations) {
+                // Standard case
+                new_dims.push_back(dims.at(2));
+                new_dims.push_back(dims.at(3));
+                new_dim_names.push_back(dim_names.at(2));
+                new_dim_names.push_back(dim_names.at(3));
+            } else {
+                // For CHIME, combine dishes and polarizations into elements
+                new_dims.push_back(dims.at(2) * dims.at(3));
+                new_dim_names.push_back("E");
+            }
 
             // Convert dish representation
             const auto minmaxlocx_iters =
@@ -156,7 +180,8 @@ public:
             assert(num_empty_dish_locations == num_dish_locations - ndishes);
 
             // Find which frequencies to read
-            DEBUG("The file has {} frequencies", dims.at(0));
+            assert(std::string(dim_names.at(1)) == "F");
+            DEBUG("The file has {} frequencies", dims.at(1));
             DEBUG("Reading {} frequencies", frequency_channels.size());
             std::vector<int> frequency_indices(frequency_channels.size());
             for (std::size_t n = 0; n < frequency_channels.size(); ++n) {
@@ -176,8 +201,8 @@ public:
             }
 
             // Calculate available number of frames
-            assert(std::string(dim_names.at(1)) == "T");
-            const std::ptrdiff_t available_num_times = dims.at(1);
+            assert(std::string(dim_names.at(0)) == "T");
+            const std::ptrdiff_t available_num_times = dims.at(0);
             const std::ptrdiff_t available_num_frames = available_num_times / num_times;
             DEBUG("The file has {} time samples", available_num_times);
             DEBUG("Will read {} frames with {} time samples each", available_num_frames, num_times);
@@ -236,9 +261,9 @@ public:
                     assert(dims.size() == 4);
                     // Choose a hyperslab for reading
                     const std::vector<std::size_t> offset{
-                        std::size_t(frequency_index), std::size_t(1LL * frame_index * num_times), 0,
+                        std::size_t(1LL * frame_index * num_times), std::size_t(frequency_index), 0,
                         0};
-                    const std::vector<std::size_t> count{1, std::size_t(num_times), dims.at(2),
+                    const std::vector<std::size_t> count{std::size_t(num_times), 1, dims.at(2),
                                                          dims.at(3)};
                     const auto selection = dataset.select(offset, count);
                     // Transpose after reading
