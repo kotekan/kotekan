@@ -170,6 +170,7 @@ public:
                 assert(dish_index.at(idx) == -1);
                 dish_index.at(idx) = n;
             }
+#ifndef _NDEBUG
             int num_empty_dish_locations = 0;
             for (int iy = 0; iy < n_dish_locations_ns; ++iy) {
                 for (int ix = 0; ix < n_dish_locations_ew; ++ix) {
@@ -178,6 +179,7 @@ public:
                 }
             }
             assert(num_empty_dish_locations == num_dish_locations - ndishes);
+#endif
 
             // Find which frequencies to read
             assert(std::string(dim_names.at(1)) == "F");
