@@ -32,10 +32,12 @@ class calcBBPhase : public kotekan::Stage {
     const float bb_beam_separation_y = config.get<float>(unique_name, "bb_beam_separation_y");
     const int bb_scale = config.get<int>(unique_name, "bb_scale");
 
-    const std::ptrdiff_t bb_beam_positions_frame_size = sizeof(float) * 2 * bb_num_beams;
-    const std::ptrdiff_t A_frame_size = sizeof(std::int8_t) * num_components * num_dishes
-                                        * bb_num_beams * num_polarizations * num_frequencies;
-    const std::ptrdiff_t s_frame_size =
+    const std::ptrdiff_t bb_beam_positions_frame_size [[maybe_unused]] =
+        sizeof(float) * 2 * bb_num_beams;
+    const std::ptrdiff_t A_frame_size [[maybe_unused]] = sizeof(std::int8_t) * num_components
+                                                         * num_dishes * bb_num_beams
+                                                         * num_polarizations * num_frequencies;
+    const std::ptrdiff_t s_frame_size [[maybe_unused]] =
         sizeof(std::int32_t) * bb_num_beams * num_polarizations * num_frequencies;
 
     // Buffers
