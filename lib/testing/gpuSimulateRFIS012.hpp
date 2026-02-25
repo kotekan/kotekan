@@ -60,7 +60,7 @@
 class gpuSimulateRFIS012 : public kotekan::Stage {
 public:
     gpuSimulateRFIS012(kotekan::Config& config, const std::string& unique_name,
-                           kotekan::bufferContainer& buffer_container);
+                       kotekan::bufferContainer& buffer_container);
     ~gpuSimulateRFIS012();
     void main_thread() override;
 

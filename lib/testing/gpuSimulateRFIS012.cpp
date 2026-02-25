@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType
+#include "N2Util.hpp"          // for frameID
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -9,7 +10,6 @@
 #include "div.hpp"             // for div_noremainder
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
 #include "metadata.hpp"        // for metadataObject
-#include "N2Util.hpp"          // for frameID
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -28,7 +28,7 @@ using N2::frameID;
 REGISTER_KOTEKAN_STAGE(gpuSimulateRFIS012);
 
 gpuSimulateRFIS012::gpuSimulateRFIS012(Config& config, const std::string& unique_name,
-                                               bufferContainer& buffer_container) :
+                                       bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&gpuSimulateRFIS012::main_thread, this)) {
 
@@ -54,8 +54,8 @@ gpuSimulateRFIS012::gpuSimulateRFIS012(Config& config, const std::string& unique
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
     int64_t nf = _num_local_freq;
     int64_t ne = _num_elements;
-    out_rfis012_buf->allocate_ndarray_frame_desc<uint64_t, 5>(
-        "S012", {nt, nf, 3, 2, ne / 2}, {"Trfi", "F", "S", "P", "D"});
+    out_rfis012_buf->allocate_ndarray_frame_desc<uint64_t, 5>("S012", {nt, nf, 3, 2, ne / 2},
+                                                              {"Trfi", "F", "S", "P", "D"});
 }
 
 gpuSimulateRFIS012::~gpuSimulateRFIS012() {}
@@ -67,10 +67,12 @@ void gpuSimulateRFIS012::main_thread() {
     frameID out_rfis012_frame_id(out_rfis012_buf);
 
     while (!stop_thread) {
-        uint64_t* pl_mask = (uint64_t*)in_plmask_buf->wait_for_full_frame(unique_name, in_plmask_frame_id);
+        uint64_t* pl_mask =
+            (uint64_t*)in_plmask_buf->wait_for_full_frame(unique_name, in_plmask_frame_id);
         if (pl_mask == nullptr)
             break;
-        uint8_t* voltage = (uint8_t*)in_voltage_buf->wait_for_full_frame(unique_name, in_plmask_frame_id);
+        uint8_t* voltage =
+            (uint8_t*)in_voltage_buf->wait_for_full_frame(unique_name, in_plmask_frame_id);
         if (pl_mask == nullptr)
             break;
         uint64_t* rfi_s012 =
@@ -79,7 +81,8 @@ void gpuSimulateRFIS012::main_thread() {
             break;
 
         INFO("Simulating GPU RFI S012 for {:s}[{:d}], {:s}[{:d}] and putting result in {:s}[{:d}]",
-             in_plmask_buf->buffer_name, in_plmask_frame_id, in_voltage_buf->buffer_name, in_voltage_frame_id, out_rfis012_buf->buffer_name, out_rfis012_frame_id);
+             in_plmask_buf->buffer_name, in_plmask_frame_id, in_voltage_buf->buffer_name,
+             in_voltage_frame_id, out_rfis012_buf->buffer_name, out_rfis012_frame_id);
 
         // number of elements = number of dishes * polarizations
         uint64_t nt = _samples_per_data_set;
@@ -95,23 +98,23 @@ void gpuSimulateRFIS012::main_thread() {
         // array access strides in raw (downsampled) PL mask
         uint64_t fstride_pl = ne_pl;
         uint64_t tstride_pl = ne_pl * nf_pl;
-       
+
         // array access strides in voltage
         uint64_t fstride = ne;
         uint64_t tstride = ne * nf;
-       
+
         // array access strides in S012
         uint64_t sstride_rfi = ne;
         uint64_t fstride_rfi = 3 * ne;
         uint64_t tstride_rfi = nf * 3 * ne;
 
         // Set to 0 to start.
-        for(uint64_t tfse = 0; tfse < tstride_rfi * nt_rfi; tfse++)
+        for (uint64_t tfse = 0; tfse < tstride_rfi * nt_rfi; tfse++)
             rfi_s012[tfse] = 0;
 
         /*
         INFO("val000: v: {:d} {:d}i PL: {:d} S: {:d} {:d} {:d}",
-             static_cast<int32_t>((voltage[0] & 0xf0) >> 4) - 8, 
+             static_cast<int32_t>((voltage[0] & 0xf0) >> 4) - 8,
              static_cast<int32_t>(voltage[0] & 0x0f) - 8,
              pl_mask[0] & 1u,
              rfi_s012[0],  rfi_s012[0 + sstride_rfi], rfi_s012[0 + 2*sstride_rfi]);
@@ -122,21 +125,21 @@ void gpuSimulateRFIS012::main_thread() {
 
             /*
             INFO("val000: v: {:d} {:d}i PL: {:d} S: {:d} {:d} {:d}",
-                 static_cast<int32_t>((voltage[0] & 0xf0) >> 4) - 8, 
+                 static_cast<int32_t>((voltage[0] & 0xf0) >> 4) - 8,
                  static_cast<int32_t>(voltage[0] & 0x0f) - 8,
                  pl_mask[0] & 1u,
                  rfi_s012[0],  rfi_s012[0 + sstride_rfi], rfi_s012[0 + 2*sstride_rfi]);
                  */
 
             // Now accumulate.
-            for(uint64_t tsub = 0; tsub < nsub; tsub++) {
+            for (uint64_t tsub = 0; tsub < nsub; tsub++) {
 
                 // Global t index
                 uint64_t t = tsub + nsub * t_rfi;
                 /*
                 INFO("trfi_{:d} {:d} {:d} - v: {:d} {:d}i PL: {:d}",
                      t_rfi, tsub, t,
-                     static_cast<int32_t>((voltage[t*tstride] & 0xf0) >> 4) - 8, 
+                     static_cast<int32_t>((voltage[t*tstride] & 0xf0) >> 4) - 8,
                      static_cast<int32_t>(voltage[t*tstride] & 0x0f) - 8,
                      (pl_mask[(t/128)*tstride_pl] >> ((t/2) % 64)) & 1u);
                 */
@@ -152,7 +155,7 @@ void gpuSimulateRFIS012::main_thread() {
                         uint64_t t_pl = t / 2;
                         uint64_t t_pl_hi = t_pl / 64;
                         uint64_t t_pl_lo = t_pl % 64;
-                        uint64_t idx_pl =  e_pl + fstride_pl * f_pl + tstride_pl * t_pl_hi;
+                        uint64_t idx_pl = e_pl + fstride_pl * f_pl + tstride_pl * t_pl_hi;
 
                         // Grab the value of the PL mask
                         uint64_t pl = (pl_mask[idx_pl] >> t_pl_lo) & 1u;
@@ -163,16 +166,16 @@ void gpuSimulateRFIS012::main_thread() {
                         int32_t ei = static_cast<int32_t>(voltage[idx_v] & 0x0f) - 8;
                         int32_t er = static_cast<int32_t>((voltage[idx_v] & 0xf0) >> 4) - 8;
 
-                        uint64_t e2 = er*er + ei*ei;
+                        uint64_t e2 = er * er + ei * ei;
                         uint64_t e4 = e2 * e2;
 
-                        rfi_s012[idx_rfi + 0*sstride_rfi] += pl;
-                        rfi_s012[idx_rfi + 1*sstride_rfi] += pl * e2;
-                        rfi_s012[idx_rfi + 2*sstride_rfi] += pl * e4;
+                        rfi_s012[idx_rfi + 0 * sstride_rfi] += pl;
+                        rfi_s012[idx_rfi + 1 * sstride_rfi] += pl * e2;
+                        rfi_s012[idx_rfi + 2 * sstride_rfi] += pl * e4;
                     } // e
                 } // f
             } // tsub
-           
+
             /*
             INFO("trfi_{:d} - S: {:d} {:d} {:d}",
                  t_rfi,
@@ -183,7 +186,8 @@ void gpuSimulateRFIS012::main_thread() {
         } // t_rfi
 
         // Fetch input metadata
-        const std::shared_ptr<const metadataObject> mc_in = in_voltage_buf->get_metadata(in_voltage_frame_id);
+        const std::shared_ptr<const metadataObject> mc_in =
+            in_voltage_buf->get_metadata(in_voltage_frame_id);
         if (!mc_in) {
             FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_voltage_buf->buffer_name,
                         in_voltage_frame_id);
@@ -199,10 +203,11 @@ void gpuSimulateRFIS012::main_thread() {
 
         // Create output metadata
         out_rfis012_buf->allocate_new_metadata_object(out_rfis012_frame_id);
-        const std::shared_ptr<metadataObject> mc = out_rfis012_buf->get_metadata(out_rfis012_frame_id);
+        const std::shared_ptr<metadataObject> mc =
+            out_rfis012_buf->get_metadata(out_rfis012_frame_id);
         if (!mc) {
-            FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata", out_rfis012_buf->buffer_name,
-                        out_rfis012_frame_id);
+            FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata",
+                        out_rfis012_buf->buffer_name, out_rfis012_frame_id);
         }
         assert(mc);
         if (!metadata_is_chord(mc)) {
@@ -227,7 +232,8 @@ void gpuSimulateRFIS012::main_thread() {
                                              * _rfi_downsampling_factor);
 
         INFO("Simulating GPU RFI S012 done for {:s}[{:d}]+{:s}[{:d}] result is in {:s}[{:d}]",
-             in_plmask_buf->buffer_name, in_plmask_frame_id, in_voltage_buf->buffer_name, in_voltage_frame_id, out_rfis012_buf->buffer_name, out_rfis012_frame_id);
+             in_plmask_buf->buffer_name, in_plmask_frame_id, in_voltage_buf->buffer_name,
+             in_voltage_frame_id, out_rfis012_buf->buffer_name, out_rfis012_frame_id);
 
         in_plmask_buf->mark_frame_empty(unique_name, in_plmask_frame_id++);
         in_voltage_buf->mark_frame_empty(unique_name, in_voltage_frame_id++);
