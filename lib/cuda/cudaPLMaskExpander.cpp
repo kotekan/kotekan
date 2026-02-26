@@ -182,10 +182,12 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
     kotekan::uint1x8_t* const pl_mask_memory = pl_mask.get_ndarray().data();
     const kotekan::uint1x8_t* const pl_expanded_mask_memory = pl_expanded_mask.get_ndarray().data();
 
+    // Tmin_in wraps around into actual array index to avoid overflows
     const std::ptrdiff_t Tsize_in = pl_mask.get_ndarray().extent(0);
-    const std::ptrdiff_t Tmin_in = pl_mask.get_read_valid().begin();
+    const std::ptrdiff_t Tmin_in = pl_mask.get_read_valid().begin() % Tsize_in;
+    // Tmin_out wraps around into actual array index to avoid overflows
     const std::ptrdiff_t Tsize_out = pl_expanded_mask.get_ndarray().extent(0);
-    const std::ptrdiff_t Tmin_out = pl_expanded_mask.get_write_valid().begin();
+    const std::ptrdiff_t Tmin_out = pl_expanded_mask.get_write_valid().begin() % Tsize_out;
     const std::ptrdiff_t Tout = pl_expanded_mask.get_write_valid().size() * 64;
 
     n2k::launch_pl_mask_expander((ulong*)pl_expanded_mask_memory, (const ulong*)pl_mask_memory,

@@ -10,13 +10,10 @@
 log_level: debug
 poison_buffers: true
 
-fengine_num_frames: 50
 fengine_repeat_count: 1
 
-skip_julia: true
-
-input_dir: data/fengine_init_chime
-base_dir: data/fengine_test_chime
+input_dir: data/fengine_chime_init
+base_dir: data/fengine_chime
 prefix_hostname: false
 prefix_host_rank: true
 
@@ -30,7 +27,6 @@ prefix_host_rank: true
 {% include "include/upchan_chime.j2" %}
 {% include "include/frb_chime.j2" %}
 
-{% include "include/input_init_chime.j2" %}
-
-{% include "include/output_test_chime.j2" %}
+{% include "include/input_chime.j2" %}
+{% include "include/output_chime.j2" %}
 ...

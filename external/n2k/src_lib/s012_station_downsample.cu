@@ -175,6 +175,8 @@ void launch_s012_station_downsample_kernel(ulong* Sout, const ulong* Sin, const 
 	throw runtime_error("launch_s012_station_downsample_kernel(): expected S to be a multple of 128");
     if (S > rfi_max_stations)
 	throw runtime_error("launch_s012_station_downsample_kernel(): expected S to be <= max_rfi_stations");
+    if (Tsize > 0 && Tmin >= Tsize)
+        throw runtime_error("launch_s012_station_downsample_kernel(): expected Tmin to be smaller than Tsize, but got " + std::to_string(Tmin) + ".");
     if ((T >= INT_MAX) || (Tmin >= INT_MAX) || (Tsize >= INT_MAX) || (F >= INT_MAX)
         || (S >= INT_MAX) || (M*S) > INT_MAX)
 	throw runtime_error("launch_s012_station_downsample_kernel(): 32-bit overflow");

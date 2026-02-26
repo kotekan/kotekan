@@ -392,7 +392,6 @@ public:
             // Start timer
             const double t0 = current_time();
 
-
             const double this_time = current_time();
             const double elapsed_time = this_time - start_time;
 

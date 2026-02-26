@@ -33,7 +33,7 @@ kernel-description:
       intent: in
       type: Int4
       indices: [C, E, Tlo16384, F, Thi16384]
-      shape: [2, 2048, 16384, F, T ÷ 16384]
+      shape: [2, 2048, T16384, F, T ÷ T16384]
       strides: [1, 2, 4096, 67108864, 1073741824]
     - name: "E"
       intent: out

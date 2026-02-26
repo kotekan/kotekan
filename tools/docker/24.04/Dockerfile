@@ -177,12 +177,6 @@ RUN mkdir src && \
     true) && \
     rm -rf src
 
-# Install Julia 1.12.4 directly (no juliaup for no automatic update checks)
-RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.12/julia-1.12.4-linux-x86_64.tar.gz && \
-    tar -xzf julia-1.12.4-linux-x86_64.tar.gz -C /opt && \
-    ln -s /opt/julia-1.12.4/bin/julia /usr/local/bin/julia && \
-    rm julia-1.12.4-linux-x86_64.tar.gz
-
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR=1
 ENV CCACHE_BASEDIR=/code/kotekan/

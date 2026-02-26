@@ -49,13 +49,13 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
 
     // Input and output buffer names
     _gpu_mem_beamgrid = config.get<std::string>(unique_name, "gpu_mem_beamgrid");
-    _gpu_mem_phase = config.get<std::string>(unique_name, "gpu_mem_phase");
+    _gpu_mem_weights = config.get<std::string>(unique_name, "gpu_mem_weights");
     _gpu_mem_beamout = config.get<std::string>(unique_name, "gpu_mem_beamout");
 
     // Calculate buffer sizes (in bytes)
-    beamgrid_len = sizeof(float16_t) * num_input_beams * _max_num_local_freq * _Td;
-    phase_len = sizeof(float16_t) * num_input_beams * _num_beams * _num_local_freq;
-    beamout_len = sizeof(float16_t) * _num_beams * _num_local_freq * _Td;
+    beamgrid_size = sizeof(float16_t) * num_input_beams * _max_num_local_freq * _Td;
+    weights_size = sizeof(float16_t) * num_input_beams * _num_beams * _num_local_freq;
+    beamout_size = sizeof(float16_t) * _num_beams * _num_local_freq * _Td;
 
     // Find input buffer used for signalling ring-buffer state
     input_ringbuf_signal = dynamic_cast<RingBuffer*>(
@@ -65,7 +65,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
 
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beamgrid, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_phase, false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_weights, false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beamout, true, false, true));
 
     // Kotekan stuff
@@ -93,7 +93,7 @@ cudaFRBBeamReformer::~cudaFRBBeamReformer() {
 
 int cudaFRBBeamReformer::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
-    const std::ptrdiff_t input_bytes = beamgrid_len;
+    const std::ptrdiff_t input_bytes = beamgrid_size;
     DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
     DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
     const std::optional<std::ptrdiff_t> val_in =
@@ -121,12 +121,12 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
     float16_t* const beamgrid_memory =
         (float16_t*)device.get_gpu_memory(_gpu_mem_beamgrid + "_buffer", input_ringbuf_signal->size)
         + div_noremainder(input_position, sizeof(float16_t));
-    DEBUG("phase_memory");
-    float16_t* const phase_memory =
-        (float16_t*)device.get_gpu_memory(_gpu_mem_phase + "_buffer", phase_len);
+    DEBUG("weights_memory");
+    float16_t* const weights_memory =
+        (float16_t*)device.get_gpu_memory(_gpu_mem_weights + "_buffer", weights_size);
     DEBUG("beamout_memory");
     float16_t* const beamout_memory = (float16_t*)device.get_gpu_memory_array(
-        _gpu_mem_beamout + "_buffer", gpu_frame_id, _gpu_buffer_depth, beamout_len);
+        _gpu_mem_beamout + "_buffer", gpu_frame_id, _gpu_buffer_depth, beamout_size);
 
     DEBUG("Running CUDA FRB BeamReformer on GPU frame {:d}: F={:d}, T={:d}, B={:d}, "
           "num_input_beams={:d}",
@@ -174,7 +174,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
 
     cublasStatus_t stat = cublasHgemmStridedBatched(
         handle, CUBLAS_OP_T, CUBLAS_OP_N, m, n, k, &alpha, beamgrid_memory, lda, strideA,
-        phase_memory, ldb, strideB, &beta, beamout_memory, ldc, strideC, _num_local_freq);
+        weights_memory, ldb, strideB, &beta, beamout_memory, ldc, strideC, _num_local_freq);
     if (stat != CUBLAS_STATUS_SUCCESS) {
         ERROR("Error at {:s}:{:d}: cublasHgemmStridedBatched: {:s}", __FILE__, __LINE__,
               cublasGetStatusString(stat));
@@ -233,7 +233,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
 
 void cudaFRBBeamReformer::finalize_frame() {
     // Advance the input ringbuffer
-    const std::ptrdiff_t input_bytes = beamgrid_len;
+    const std::ptrdiff_t input_bytes = beamgrid_size;
     DEBUG("Advancing input ringbuffer by {:d} bytes", input_bytes);
     input_ringbuf_signal->finish_read(unique_name, instance_num, input_bytes);
     cudaCommand::finalize_frame();

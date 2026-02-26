@@ -2,7 +2,7 @@
 
 ################################################################################
 #
-# Initialize a CHORD pathfinder test
+# Run a CHORD pathfinder test
 #
 ################################################################################
 
@@ -10,12 +10,10 @@
 log_level: debug
 poison_buffers: true
 
-fengine_num_frames: 25
 fengine_repeat_count: 1
 
-skip_julia: false
-
-base_dir: data/fengine_init_pathfinder
+input_dir: data/fengine_pathfinder_init
+base_dir: data/fengine_pathfinder
 prefix_hostname: false
 prefix_host_rank: true
 
@@ -28,8 +26,6 @@ prefix_host_rank: true
 {% include "include/upchan_pathfinder.j2" %}
 {% include "include/frb_pathfinder.j2" %}
 
-{% include "include/sources_pathfinder.j2" %}
-{% include "include/fengine_init.j2" %}
-
-{% include "include/output_init_pathfinder.j2" %}
+{% include "include/input_pathfinder.j2" %}
+{% include "include/output_pathfinder.j2" %}
 ...

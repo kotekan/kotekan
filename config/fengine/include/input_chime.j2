@@ -1,0 +1,20 @@
+# -*-yaml-*-
+
+# CHIME read initial conditions
+
+################################################################################
+
+# Stages
+
+{% set frequency_channels = [1024, 1088, 1152, 1216, 1280, 1344, 1408, 1472, 1536, 1600, 1664, 1728, 1792, 1856, 1920, 1984,] %}
+
+read_data:
+{% for id in range(16) %}   # num_frequencies = 16
+    read_voltage_{{ id }}:
+        kotekan_stage: hdf5FileReadSingleFile
+        file_name: voltage
+        frequency_channels: [{{ frequency_channels[id] }}]
+        combine_dishes_and_polarizations: true
+        transpose_frequency_and_time: true
+        out_buf: host_voltage_buffer_{{ id }}
+{% endfor %}
