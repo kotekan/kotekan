@@ -14,23 +14,20 @@ log_level: INFO
 
 num_gpus: 1
 buffer_depth: 4
-cpu_affinity: [2,3,4,5,8,9,10,11]
+cpu_affinity: [2,]
 sizeof_float: 4
-frame_arrival_period: 5.12e-6 * samples_per_data_set
 sizeof_int: 4
 sizeof_long: 8
 
 # For faster CHORD testing, we're using...
-samples_per_data_set: 128
-# sub_integration_ntime: 8192  # ~40 ms for chord
-# samples_per_data_set: 8192   # 
-num_times: samples_per_data_set
+samples_per_data_set: 1024
+frame_arrival_period: 5.12e-6 * samples_per_data_set
 num_polarizations: 2
 num_dishes: 64
 num_elements: num_polarizations * num_dishes
-num_local_freq: 4
+num_local_freq: 8
 
-rfi_downsampling_factor: 128
+rfi_downsampling_factor: 256
 
 # Pool
 main_pool:
@@ -87,23 +84,19 @@ host_rfi_s012_ringbuffer:
 
 gen_data_voltage:
     type: random_signed_offset
-    type: const_offset
-    value: (1 + 8) * 16 + (0 + 8)
     kotekan_stage: testDataGen
     out_buf: raw_voltage_buffer
     name: "E"
-    array_shape: [ 128, 4, 2, 64 ]
+    array_shape: [ 1024, 8, 2, 64 ]
     dim_name: ["T", "F", "P", "D" ]
     num_frames: 2*buffer_depth  # Must be at least what check_data expects
 
 gen_pl_mask:
-  # type: const1x8 
     type: random1x8 
-    value: 255
     kotekan_stage: testDataGen
     out_buf: host_pl_mask_buffer
     name: "pl_mask"
-    array_shape: [ 1, 1, 2, 8, 8 ]  # = num_times/128, num_freq/4, 2, num_dishes/8, 8
+    array_shape: [ 8, 2, 2, 8, 8 ]  # = num_times/128, num_freq/4, 2, num_dishes/8, 8
     dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
     num_frames: 2*buffer_depth  # Must be at least what check_data expects
     meta_time_downsample_factor: 128  # The number of time samples represented by each coarse time index.
@@ -187,17 +180,8 @@ cpu_rfi_s012:
     in_plmask_buf: host_pl_mask_buffer
     out_buf: simulated_rfi_s012_buffer
 
-# eat_cpu_rfi_s012:
-#   kotekan_stage: dropAllFrames
-#   in_buf: simulated_rfi_s012_buffer
-#   max_frames: 2 * buffer_depth
-# 
-# eat_rfi_s012:
-#   kotekan_stage: dropAllFrames
-#   in_buf: host_rfi_s012_buffer
-#   max_frames: 2 * buffer_depth
 
-check_correlation_data:
+check_rfi_data:
   kotekan_stage: testDataCheckUlong
   first_buf: host_rfi_s012_buffer
   second_buf: simulated_rfi_s012_buffer

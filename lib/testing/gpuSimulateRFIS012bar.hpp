@@ -65,15 +65,15 @@ public:
     void main_thread() override;
 
 private:
-    Buffer* in_plmask_buf;
-    Buffer* in_voltage_buf;
-    Buffer* out_rfis012_buf;
+    Buffer* in_buf;
+    Buffer* out_buf;
 
     // Config options
     int64_t _num_local_freq;
     int64_t _num_elements;
     int64_t _samples_per_data_set;
     int64_t _rfi_downsampling_factor;
+    int64_t _rfi_second_downsampling_factor;
 };
 
 #endif
