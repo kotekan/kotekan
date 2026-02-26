@@ -573,8 +573,8 @@ cudaFRBBeamformer_smallfinder_U16::execute(cudaPipelineState& /*pipestate*/,
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
         assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-        assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_M);
-        assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_N);
+        assert(Ebar_meta->n_dish_locations_ew <= cuda_dish_layout_M);
+        assert(Ebar_meta->n_dish_locations_ns <= cuda_dish_layout_N);
         assert(Ebar_meta->dish_index);
 
         // Allocate metadata of I buffer only once
@@ -728,7 +728,9 @@ cudaFRBBeamformer_smallfinder_U16::execute(cudaPipelineState& /*pipestate*/,
         int surplus_dish_index = cuda_number_of_dishes;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                int dish_index = Ebar_meta->get_dish_index(locM, locN);
+                const bool have_dish_index =
+                    locM < Ebar_meta->n_dish_locations_ew && locN < Ebar_meta->n_dish_locations_ns;
+                const int dish_index = have_dish_index ? Ebar_meta->get_dish_index(locM, locN) : -1;
                 if (dish_index >= 0) {
                     // This location holds a real dish, record its location
                     host_S_buffer.at(2 * dish_index + 0) = locM;

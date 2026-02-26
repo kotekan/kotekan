@@ -1,3 +1,6 @@
+Precompiling packages...
+   6817.9 ms  ✓ IndexSpaces
+  1 dependency successfully precompiled in 8 seconds. 104 already precompiled.
 [Choosing CUDA device...]
 NVIDIA A40
 [Creating bb kernel...]
