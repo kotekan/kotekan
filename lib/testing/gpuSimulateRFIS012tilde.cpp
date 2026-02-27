@@ -38,13 +38,13 @@ gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::stri
     _samples_per_data_set = config.get<int64_t>(unique_name, "samples_per_data_set");
     _rfi_downsampling_factor = config.get<int64_t>(unique_name, "rfi_downsampling_factor");
 
-    in_voltage_buf = get_buffer("in_voltage_buf");
-    in_voltage_buf->register_consumer(unique_name);
-    in_plmask_buf = get_buffer("in_plmask_buf");
-    in_plmask_buf->register_consumer(unique_name);
+    in_rfi_s012_buf = get_buffer("in_rfi_s012_buf");
+    in_rfi_s012_buf->register_consumer(unique_name);
+    in_bf_mask_buf = get_buffer("in_bf_mask_buf");
+    in_bf_mask_buf->register_consumer(unique_name);
 
-    out_rfis012_buf = get_buffer("out_buf");
-    out_rfis012_buf->register_producer(unique_name);
+    out_rfi_s012tilde_buf = get_buffer("out_rfi_s012tilde_buf");
+    out_rfi_s012tilde_buf->register_producer(unique_name);
 
     if (_samples_per_data_set % _rfi_downsampling_factor != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of rfi_downsampling_factor");
@@ -53,166 +53,88 @@ gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::stri
 
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
     int64_t nf = _num_local_freq;
-    int64_t ne = _num_elements;
-    out_rfis012_buf->allocate_ndarray_frame_desc<uint64_t, 5>("S012", {nt, nf, 3, 2, ne / 2},
-                                                              {"Trfi", "F", "S", "P", "D"});
+    out_rfi_s012tilde_buf->allocate_ndarray_frame_desc<uint64_t, 3>("S012tilde", {nt, nf, 3},
+                                                              {"Trfi", "F", "S"});
 }
 
 gpuSimulateRFIS012tilde::~gpuSimulateRFIS012tilde() {}
 
 void gpuSimulateRFIS012tilde::main_thread() {
 
-    frameID in_plmask_frame_id(in_plmask_buf);
-    frameID in_voltage_frame_id(in_voltage_buf);
-    frameID out_rfis012_frame_id(out_rfis012_buf);
+    frameID in_bf_mask_frame_id(in_bf_mask_buf);
+    frameID in_rfi_s012_frame_id(in_rfi_s012_buf);
+    frameID out_rfi_s012tilde_frame_id(out_rfi_s012tilde_buf);
+   
+    // BF mask (for now) is not updated in time. Only read once.
+    uint8_t* bf_mask =
+        (uint8_t*)in_bf_mask_buf->wait_for_full_frame(unique_name, in_bf_mask_frame_id);
+    if (bf_mask == nullptr)
+        return;
+
+    for(int64_t e = 0; e < _num_elements; e++) {
+        INFO("BF[{:03d}]: {:08b}", e, bf_mask[e]);
+    }
 
     while (!stop_thread) {
-        uint64_t* pl_mask =
-            (uint64_t*)in_plmask_buf->wait_for_full_frame(unique_name, in_plmask_frame_id);
-        if (pl_mask == nullptr)
-            break;
-        uint8_t* voltage =
-            (uint8_t*)in_voltage_buf->wait_for_full_frame(unique_name, in_plmask_frame_id);
-        if (pl_mask == nullptr)
-            break;
+        // Grab in/out buffers
         uint64_t* rfi_s012 =
-            (uint64_t*)out_rfis012_buf->wait_for_empty_frame(unique_name, out_rfis012_frame_id);
+            (uint64_t*)in_rfi_s012_buf->wait_for_full_frame(unique_name, in_rfi_s012_frame_id);
         if (rfi_s012 == nullptr)
+            break;
+        uint64_t* rfi_s012tilde =
+            (uint64_t*)out_rfi_s012tilde_buf->wait_for_empty_frame(unique_name, out_rfi_s012tilde_frame_id);
+        if (rfi_s012tilde == nullptr)
             break;
 
         INFO("Simulating GPU RFI S012 for {:s}[{:d}], {:s}[{:d}] and putting result in {:s}[{:d}]",
-             in_plmask_buf->buffer_name, in_plmask_frame_id, in_voltage_buf->buffer_name,
-             in_voltage_frame_id, out_rfis012_buf->buffer_name, out_rfis012_frame_id);
+             in_bf_mask_buf->buffer_name, in_bf_mask_frame_id, in_rfi_s012_buf->buffer_name,
+             in_rfi_s012_frame_id, out_rfi_s012tilde_buf->buffer_name, out_rfi_s012tilde_frame_id);
 
-        // number of elements = number of dishes * polarizations
-        uint64_t nt = _samples_per_data_set;
+        // Dimension sizes
+        uint64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
         uint64_t nf = _num_local_freq;
         uint64_t ne = _num_elements;
 
-        uint64_t nt_rfi = nt / _rfi_downsampling_factor;
-        uint64_t nsub = _rfi_downsampling_factor;
+        // Looping over time, freq, and S012 index. (spectator indices)
+        for (uint64_t tfs = 0; tfs < 3 * nf * nt; tfs++) {
 
-        uint64_t nf_pl = (_num_local_freq + 3) / 4;
-        uint64_t ne_pl = _num_elements / 8;
-
-        // array access strides in raw (downsampled) PL mask
-        uint64_t fstride_pl = ne_pl;
-        uint64_t tstride_pl = ne_pl * nf_pl;
-
-        // array access strides in voltage
-        uint64_t fstride = ne;
-        uint64_t tstride = ne * nf;
-
-        // array access strides in S012
-        uint64_t sstride_rfi = ne;
-        uint64_t fstride_rfi = 3 * ne;
-        uint64_t tstride_rfi = nf * 3 * ne;
-
-        // Set to 0 to start.
-        for (uint64_t tfse = 0; tfse < tstride_rfi * nt_rfi; tfse++)
-            rfi_s012[tfse] = 0;
-
-        /*
-        INFO("val000: v: {:d} {:d}i PL: {:d} S: {:d} {:d} {:d}",
-             static_cast<int32_t>((voltage[0] & 0xf0) >> 4) - 8,
-             static_cast<int32_t>(voltage[0] & 0x0f) - 8,
-             pl_mask[0] & 1u,
-             rfi_s012[0],  rfi_s012[0 + sstride_rfi], rfi_s012[0 + 2*sstride_rfi]);
-        */
-
-        // Looping over entries in the rfi buffer.
-        for (uint64_t t_rfi = 0; t_rfi < nt_rfi; t_rfi++) {
-
-            /*
-            INFO("val000: v: {:d} {:d}i PL: {:d} S: {:d} {:d} {:d}",
-                 static_cast<int32_t>((voltage[0] & 0xf0) >> 4) - 8,
-                 static_cast<int32_t>(voltage[0] & 0x0f) - 8,
-                 pl_mask[0] & 1u,
-                 rfi_s012[0],  rfi_s012[0 + sstride_rfi], rfi_s012[0 + 2*sstride_rfi]);
-                 */
+            rfi_s012tilde[tfs] = 0;
 
             // Now accumulate.
-            for (uint64_t tsub = 0; tsub < nsub; tsub++) {
-
-                // Global t index
-                uint64_t t = tsub + nsub * t_rfi;
-                /*
-                INFO("trfi_{:d} {:d} {:d} - v: {:d} {:d}i PL: {:d}",
-                     t_rfi, tsub, t,
-                     static_cast<int32_t>((voltage[t*tstride] & 0xf0) >> 4) - 8,
-                     static_cast<int32_t>(voltage[t*tstride] & 0x0f) - 8,
-                     (pl_mask[(t/128)*tstride_pl] >> ((t/2) % 64)) & 1u);
-                */
-
-                for (uint64_t f = 0; f < nf; f++) {
-                    for (uint64_t e = 0; e < ne; e++) {
-
-                        uint64_t idx_v = e + fstride * f + tstride * t;
-                        uint64_t idx_rfi = e + fstride_rfi * f + tstride_rfi * t_rfi;
-
-                        uint64_t e_pl = e / 8;
-                        uint64_t f_pl = f / 4;
-                        uint64_t t_pl = t / 2;
-                        uint64_t t_pl_hi = t_pl / 64;
-                        uint64_t t_pl_lo = t_pl % 64;
-                        uint64_t idx_pl = e_pl + fstride_pl * f_pl + tstride_pl * t_pl_hi;
-
-                        // Grab the value of the PL mask
-                        uint64_t pl = (pl_mask[idx_pl] >> t_pl_lo) & 1u;
-
-                        // Decode the input voltage in the CHIME format:
-                        // offset encoded by 8, imaginary part in lo 4 bits,
-                        // real part in hi 4 bits.
-                        int32_t ei = static_cast<int32_t>(voltage[idx_v] & 0x0f) - 8;
-                        int32_t er = static_cast<int32_t>((voltage[idx_v] & 0xf0) >> 4) - 8;
-
-                        uint64_t e2 = er * er + ei * ei;
-                        uint64_t e4 = e2 * e2;
-
-                        rfi_s012[idx_rfi + 0 * sstride_rfi] += pl;
-                        rfi_s012[idx_rfi + 1 * sstride_rfi] += pl * e2;
-                        rfi_s012[idx_rfi + 2 * sstride_rfi] += pl * e4;
-                    } // e
-                } // f
-            } // tsub
-
-            /*
-            INFO("trfi_{:d} - S: {:d} {:d} {:d}",
-                 t_rfi,
-                 rfi_s012[t_rfi * tstride_rfi],
-                 rfi_s012[t_rfi * tstride_rfi + sstride_rfi],
-                 rfi_s012[t_rfi * tstride_rfi + 2*sstride_rfi]);
-            */
-        } // t_rfi
+            for (uint64_t e = 0; e < ne; e++) {
+                if (bf_mask[e] & 1)
+                    rfi_s012tilde[tfs] += rfi_s012[tfs*ne + e];
+            } // e
+        } // tfs
 
         // Fetch input metadata
         const std::shared_ptr<const metadataObject> mc_in =
-            in_voltage_buf->get_metadata(in_voltage_frame_id);
+            in_rfi_s012_buf->get_metadata(in_rfi_s012_frame_id);
         if (!mc_in) {
-            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_voltage_buf->buffer_name,
-                        in_voltage_frame_id);
+            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_rfi_s012_buf->buffer_name,
+                        in_rfi_s012_frame_id);
         }
         assert(mc_in);
         if (!metadata_is_chord(mc_in)) {
             FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
-                        in_voltage_buf->buffer_name, in_voltage_frame_id);
+                        in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id);
         }
         assert(metadata_is_chord(mc_in));
 
         const std::shared_ptr<const chordMetadata> meta_in = get_chord_metadata(mc_in);
 
         // Create output metadata
-        out_rfis012_buf->allocate_new_metadata_object(out_rfis012_frame_id);
+        out_rfi_s012tilde_buf->allocate_new_metadata_object(out_rfi_s012tilde_frame_id);
         const std::shared_ptr<metadataObject> mc =
-            out_rfis012_buf->get_metadata(out_rfis012_frame_id);
+            out_rfi_s012tilde_buf->get_metadata(out_rfi_s012tilde_frame_id);
         if (!mc) {
             FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata",
-                        out_rfis012_buf->buffer_name, out_rfis012_frame_id);
+                        out_rfi_s012tilde_buf->buffer_name, out_rfi_s012tilde_frame_id);
         }
         assert(mc);
         if (!metadata_is_chord(mc)) {
             FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
-                        out_rfis012_buf->buffer_name, out_rfis012_frame_id);
+                        out_rfi_s012tilde_buf->buffer_name, out_rfi_s012tilde_frame_id);
         }
         assert(metadata_is_chord(mc));
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
@@ -221,22 +143,22 @@ void gpuSimulateRFIS012tilde::main_thread() {
         // Start with a copy
         meta_out->deepCopy(meta_in);
 
-        meta_out->set_from_frame_desc(out_rfis012_buf->get_ndarray_frame_desc());
+        meta_out->set_from_frame_desc(out_rfi_s012tilde_buf->get_ndarray_frame_desc());
 
         // test that things are consistent
-        meta_out->check_frame_desc(out_rfis012_buf->get_ndarray_frame_desc());
+        meta_out->check_frame_desc(out_rfi_s012tilde_buf->get_ndarray_frame_desc());
 
         // Set non-NDArray things.
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->set_time_downsampling_fpga(meta_in->get_time_downsampling_fpga()
-                                             * _rfi_downsampling_factor);
 
-        INFO("Simulating GPU RFI S012 done for {:s}[{:d}]+{:s}[{:d}] result is in {:s}[{:d}]",
-             in_plmask_buf->buffer_name, in_plmask_frame_id, in_voltage_buf->buffer_name,
-             in_voltage_frame_id, out_rfis012_buf->buffer_name, out_rfis012_frame_id);
+        INFO("Simulating GPU RFI S012tilde done for {:s}[{:d}]+{:s}[{:d}] result is in {:s}[{:d}]",
+             in_bf_mask_buf->buffer_name, in_bf_mask_frame_id, in_rfi_s012_buf->buffer_name,
+             in_rfi_s012_frame_id, out_rfi_s012tilde_buf->buffer_name, out_rfi_s012tilde_frame_id);
 
-        in_plmask_buf->mark_frame_empty(unique_name, in_plmask_frame_id++);
-        in_voltage_buf->mark_frame_empty(unique_name, in_voltage_frame_id++);
-        out_rfis012_buf->mark_frame_full(unique_name, out_rfis012_frame_id++);
+        in_rfi_s012_buf->mark_frame_empty(unique_name, in_rfi_s012_frame_id++);
+        out_rfi_s012tilde_buf->mark_frame_full(unique_name, out_rfi_s012tilde_frame_id++);
     }
+    
+    // Only release the bf_mask when we're done.
+    in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id);
 }

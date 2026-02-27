@@ -1,8 +1,8 @@
 ##########################################
 #
-# verify_cuda_n2k.yaml
+# verify_cuda_rfi_s012.yaml
 #
-# Config to test Kendrick's cuda RFI S012 kernel
+# Config to test the cuda RFI S012 kernel
 #
 ##########################################
 ---

@@ -65,9 +65,9 @@ public:
     void main_thread() override;
 
 private:
-    Buffer* in_plmask_buf;
-    Buffer* in_voltage_buf;
-    Buffer* out_rfis012_buf;
+    Buffer* in_bf_mask_buf;
+    Buffer* in_rfi_s012_buf;
+    Buffer* out_rfi_s012tilde_buf;
 
     // Config options
     int64_t _num_local_freq;

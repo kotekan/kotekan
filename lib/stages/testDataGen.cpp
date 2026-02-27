@@ -52,7 +52,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     assert(type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
            || type == "const16" || type == "const32" || type == "constf16" || type == "random"
            || type == "random_signed" || type == "random_signed_offset" || type == "random1x8"
-           || type == "constu64" || type == "randomu64" || type == "ramp" || type == "tpluse"
+           || type == "constu64" || type == "randomu64" || type == "random8" || type == "ramp" || type == "tpluse"
            || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square"
            || type == "onehot");
     assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
@@ -73,7 +73,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         type_size = 8;
     if (type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
         || type == "const16" || type == "const32" || type == "random" || type == "random_signed"
-        || type == "random_signed_offset" || type == "random1x8" || type == "ramp"
+        || type == "random_signed_offset" || type == "random1x8" || type == "random8" || type == "ramp"
         || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
         _value_array =
@@ -266,7 +266,7 @@ void testDataGen::main_thread() {
             frame8 = (int8_t*)frame;
             if (chordmeta)
                 chordmeta->type = kotekan::int4x2_swapped_withoffset;
-        } else if (type == "const8") {
+        } else if (type == "const8" || type == "random8") {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
             if (chordmeta)
@@ -448,6 +448,12 @@ void testDataGen::main_thread() {
                 uint64_t lo = static_cast<uint64_t>(rng());
                 uint64_t hi = static_cast<uint64_t>(rng());
                 frameu64[j] = (hi << 32) | lo;
+            } else if (type == "random8") {
+                if (_reuse_random && finished_seeding_constant)
+                    break;
+                uint32_t rand_val = rng() % 256; // rand in [0, 255]
+                int32_t rand_i_val = static_cast<int32_t>(rand_val) - 128; // rand in [-128, 127]
+                frame8[j] = static_cast<int8_t>(rand_i_val);
             } else if (type == "tpluse") {
                 int time_idx = j / num_elements;
                 int elem_idx = j % num_elements;

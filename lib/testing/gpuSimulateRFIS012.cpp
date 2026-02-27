@@ -72,8 +72,8 @@ void gpuSimulateRFIS012::main_thread() {
         if (pl_mask == nullptr)
             break;
         uint8_t* voltage =
-            (uint8_t*)in_voltage_buf->wait_for_full_frame(unique_name, in_plmask_frame_id);
-        if (pl_mask == nullptr)
+            (uint8_t*)in_voltage_buf->wait_for_full_frame(unique_name, in_voltage_frame_id);
+        if (voltage == nullptr)
             break;
         uint64_t* rfi_s012 =
             (uint64_t*)out_rfis012_buf->wait_for_empty_frame(unique_name, out_rfis012_frame_id);
@@ -112,37 +112,14 @@ void gpuSimulateRFIS012::main_thread() {
         for (uint64_t tfse = 0; tfse < tstride_rfi * nt_rfi; tfse++)
             rfi_s012[tfse] = 0;
 
-        /*
-        INFO("val000: v: {:d} {:d}i PL: {:d} S: {:d} {:d} {:d}",
-             static_cast<int32_t>((voltage[0] & 0xf0) >> 4) - 8,
-             static_cast<int32_t>(voltage[0] & 0x0f) - 8,
-             pl_mask[0] & 1u,
-             rfi_s012[0],  rfi_s012[0 + sstride_rfi], rfi_s012[0 + 2*sstride_rfi]);
-        */
-
         // Looping over entries in the rfi buffer.
         for (uint64_t t_rfi = 0; t_rfi < nt_rfi; t_rfi++) {
-
-            /*
-            INFO("val000: v: {:d} {:d}i PL: {:d} S: {:d} {:d} {:d}",
-                 static_cast<int32_t>((voltage[0] & 0xf0) >> 4) - 8,
-                 static_cast<int32_t>(voltage[0] & 0x0f) - 8,
-                 pl_mask[0] & 1u,
-                 rfi_s012[0],  rfi_s012[0 + sstride_rfi], rfi_s012[0 + 2*sstride_rfi]);
-                 */
 
             // Now accumulate.
             for (uint64_t tsub = 0; tsub < nsub; tsub++) {
 
                 // Global t index
                 uint64_t t = tsub + nsub * t_rfi;
-                /*
-                INFO("trfi_{:d} {:d} {:d} - v: {:d} {:d}i PL: {:d}",
-                     t_rfi, tsub, t,
-                     static_cast<int32_t>((voltage[t*tstride] & 0xf0) >> 4) - 8,
-                     static_cast<int32_t>(voltage[t*tstride] & 0x0f) - 8,
-                     (pl_mask[(t/128)*tstride_pl] >> ((t/2) % 64)) & 1u);
-                */
 
                 for (uint64_t f = 0; f < nf; f++) {
                     for (uint64_t e = 0; e < ne; e++) {
@@ -175,14 +152,6 @@ void gpuSimulateRFIS012::main_thread() {
                     } // e
                 } // f
             } // tsub
-
-            /*
-            INFO("trfi_{:d} - S: {:d} {:d} {:d}",
-                 t_rfi,
-                 rfi_s012[t_rfi * tstride_rfi],
-                 rfi_s012[t_rfi * tstride_rfi + sstride_rfi],
-                 rfi_s012[t_rfi * tstride_rfi + 2*sstride_rfi]);
-            */
         } // t_rfi
 
         // Fetch input metadata
