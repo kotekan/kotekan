@@ -181,8 +181,8 @@ public:
 
             // Find which frequencies to read
             assert(std::string(dim_names.at(1)) == "F");
-            DEBUG("The file has {} frequencies", dims.at(1));
-            DEBUG("Reading {} frequencies", frequency_channels.size());
+            INFO("This file has {} frequencies", dims.at(1));
+            INFO("Will read {} frequencies", frequency_channels.size());
             std::vector<int> frequency_indices(frequency_channels.size());
             for (std::size_t n = 0; n < frequency_channels.size(); ++n) {
                 const int frequency_channel = frequency_channels.at(n);
@@ -191,6 +191,8 @@ public:
                 assert(frequency_index_iter != coarse_freq.end());
                 const int frequency_index = frequency_index_iter - coarse_freq.begin();
                 frequency_indices.at(n) = frequency_index;
+                INFO("   local array index {}, file dataset index {}, channel {}", n,
+                     frequency_index, frequency_channel);
             }
             std::vector<int> new_freq_upchan_factor(frequency_indices.size());
             std::vector<int> new_freq_upchan_index(frequency_indices.size());
@@ -204,8 +206,8 @@ public:
             assert(std::string(dim_names.at(0)) == "T");
             const std::ptrdiff_t available_num_times = dims.at(0);
             const std::ptrdiff_t available_num_frames = available_num_times / num_times;
-            DEBUG("The file has {} time samples", available_num_times);
-            DEBUG("Will read {} frames with {} time samples each", available_num_frames, num_times);
+            INFO("This file has {} time samples", available_num_times);
+            INFO("Will read {} frames with {} time samples each", available_num_frames, num_times);
 
             ////////////////////////////////////////////////////////////////////////////////
 
@@ -249,6 +251,10 @@ public:
                 meta->set_time_downsampling_fpga(time_downsampling_fpga);
                 meta->set_fpga_seq_num(fpga_seq_num + 1LL * frame_index * num_times);
 
+                // Poison buffer
+                const std::uint8_t voltage_poison = 0x00;
+                std::memset(frame, voltage_poison, buffer->frame_size);
+
                 // Read buffer
                 DEBUG("[{:s}/{:d}] Reading buffer from file...", buffer->buffer_name, frame_index);
                 const std::ptrdiff_t buf_stride = dims.at(2) * dims.at(3);
@@ -272,10 +278,17 @@ public:
                     selection.read_raw(buf.data(), hdf5_type);
                     for (int time = 0; time < num_times; ++time) {
                         const std::uint8_t* __restrict__ const src = buf.data() + buf_stride * time;
-                        std::uint8_t* __restrict__ const dst = frame + frame_stride * time;
+                        std::uint8_t* __restrict__ const dst =
+                            frame + buf_stride * freq + frame_stride * time;
                         std::memcpy(dst, src, buf_stride);
                     }
                 }
+
+                // Check for poison
+                // (Poison can either originate from a bad input file, or from a logic error in this
+                // reader function.)
+                if (std::memchr(frame, voltage_poison, buffer->frame_size))
+                    FATAL_ERROR("Poison found in voltage buffer after reading");
 
                 // Mark buffer as full
                 DEBUG("[{:s}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);
