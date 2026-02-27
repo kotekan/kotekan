@@ -1,4 +1,4 @@
-#include "cudaQuantizeKernel4.hpp"
+#include "cudaQuantizeKernel8.hpp"
 
 #include <DataType.hpp>
 #include <cassert>
@@ -10,9 +10,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 // Global constants
-
-// How many standard deviations can we represent? 2 or 3 sounds about right.
-static constexpr float stddev_cutoff = 3.0f;
 
 // The output is quantized in "chunks". Each chunk has a different offset and scale.
 static constexpr int chunk_size = 256;
@@ -46,14 +43,11 @@ __device__ static inline half2x4 load_half2x4(const __half2* __restrict__ const 
 // Quantize a "frame", i.e. a set of "chunks". This is a CPU implementation that is straightforward
 // and thus "obviously correct". If the GPU version produces a different result, then the GPU
 // version is wrong.
-void cpu_quantize4_chunks(const __half* __restrict__ const input,
+void cpu_quantize8_chunks(const __half* __restrict__ const input,
                           __half* __restrict__ const outputf,
-                          kotekan::int4x2_t* __restrict__ const outputi, const int input_stride,
+                          std::uint8_t* __restrict__ const outputi, const int input_stride,
                           const int outputf_stride, const int outputi_stride) {
     static_assert(chunk_size >= 0);
-    // The chunk size must be even because we process 2 `half` values simultaneously to create 1
-    // output byte.
-    static_assert(chunk_size % 2 == 0);
 
     // Loop over all chunks in the frame. The chunks are all independent.
     for (int chunk = 0; chunk < chunks_per_frame; ++chunk) {
@@ -61,65 +55,53 @@ void cpu_quantize4_chunks(const __half* __restrict__ const input,
         const int outputf_offset = chunk * outputf_stride;
         const int outputi_offset = chunk * outputi_stride;
 
-        // Find the sum and sum-squared of all input values. Calculate everything as `float` to
-        // avoid overflow.
-        float sum = 0, sum2 = 0;
+        // Find the minimum and maximum of all input values. Calculate
+        // everything as `float` for convenience.
+        float minval = +1.0f / 0.0f, maxval = -1.0f / 0.0f;
         for (int i = 0; i < chunk_size; ++i) {
             const float x = __half2float(input[i + input_offset]);
-            sum += x;
-            sum2 += x * x;
+            minval = fmin(minval, x);
+            maxval = fmax(maxval, x);
         }
-        // Calculate the mean and corrected standard deviation
-        const float mean = sum / chunk_size;
-        const float stddev = sqrt(sum2 / (chunk_size - 1));
         // Calculate offset and scale. Ensure the scale is nonzero.
-        // There are 15 possible int4 values since we don't use 0.
-        // Values are reconstructed as `offset + scale * n`, with `int4 n`.
-        constexpr int outi_min = -7;
-        constexpr int outi_max = -7;
+        // There are 254 possible uint8 values since we don't use 0 or 255.
+        // Values are reconstructed as `offset + scale * n`, with `uint8 n`.
+        constexpr int outi_min = 1;
+        constexpr int outi_max = 254;
         constexpr float outf_min = outi_min - 0.5f;
         constexpr float outf_max = outi_max + 0.5f;
         // We want this mapping:
-        //     mean                          => 0
-        //     mean - stddev * stddev_cutoff => outf_min
-        //     mean + stddev * stddev_cutoff => outf_max
+        //     minval => outf_min
+        //     maxval => outf_max
         const float outf_range = outf_max - outf_min;
-        const float in_range = 2 * stddev * stddev_cutoff;
-        const float offset = mean;
+        const float in_range = maxval - minval;
         const float scale = fmax(1.0e-4f, in_range / outf_range);
+        const float offset = minval - outf_min * scale;
 
         // Store offset and scale for this chunk in the output array
         outputf[outputf_offset + 0] = __float2half(offset);
         outputf[outputf_offset + 1] = __float2half(scale);
 
-        // We encode values as offset-encoded signed 4-bit integers. We combine two 4-bit integers
-        // into one byte. The lower 4 bits hold the first value, the upper 4 bits hold the second
-        // value.
-        for (int i = 0; i < chunk_size; i += 2) {
+        // We encode values as offset-encoded unsigned 8-bit integers.
+        for (int i = 0; i < chunk_size; ++i) {
             // Get values
-            const float x0 = __half2float(input[i + input_offset + 0]);
-            const float x1 = __half2float(input[i + input_offset + 1]);
+            const float x = __half2float(input[i + input_offset]);
             // Scale
-            const float y0 = (x0 - offset) / scale;
-            const float y1 = (x1 - offset) / scale;
+            const float y = (x - offset) / scale;
             // Round
-            const int j0 = lrint(y0);
-            const int j1 = lrint(y1);
+            const int j = lrint(y);
             // Clamp
-            const int k0 = max(outi_min, min(outi_max, j0));
-            const int k1 = max(outi_min, min(outi_max, j1));
-            // Combine
-            const kotekan::int4x2_t outi(k0, k1);
+            const int k = max(outi_min, min(outi_max, j));
             // Store
-            outputi[(i + outputi_offset) / 2] = outi;
+            outputi[i + outputi_offset] = k;
         }
     }
 }
 
 // Quantize a "frame", i.e. a set of "chunks". This is an efficient GPU implementation.
 __global__ void
-gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict__ const outputf0,
-                     kotekan::int4x2_t* __restrict__ const outputi0, const int input_size1,
+gpu_quantize8_chunks(const __half* __restrict__ const input0, __half* __restrict__ const outputf0,
+                     std::uint8_t* __restrict__ const outputi0, const int input_size1,
                      const int input_size2, const int input_size3, const int input_stride2,
                      const int input_stride3, const int outputf_size1, const int outputf_size2,
                      const int outputf_size3, const int outputf_stride2, const int outputf_stride3,
@@ -243,8 +225,8 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
 
 // Drivers (externally visible)
 
-void cpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ const outputf,
-                   kotekan::int4x2_t* __restrict__ const outputi, const int input_size1,
+void cpu_quantize8(const __half* __restrict__ const input, __half* __restrict__ const outputf,
+                   std::uint8_t* __restrict__ const outputi, const int input_size1,
                    const int input_size2, const int input_size3, const int input_stride2,
                    const int input_stride3, const int outputf_size1, const int outputf_size2,
                    const int outputf_size3, const int outputf_stride2, const int outputf_stride3,
@@ -295,7 +277,7 @@ void cpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
                     outputf_dim1 + outputf_stride2 * dim2 + outputf_stride3 * dim3;
                 const int outputi_offset =
                     outputi_dim1 + outputi_stride2 * dim2 + outputi_stride3 * dim3;
-                cpu_quantize4_chunks(input + input_offset, outputf + outputf_offset,
+                cpu_quantize8_chunks(input + input_offset, outputf + outputf_offset,
                                      outputi + outputi_offset, input_stride3, outputf_stride3,
                                      outputi_stride3);
             }
@@ -303,8 +285,8 @@ void cpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
     }
 }
 
-void gpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ const outputf,
-                   kotekan::int4x2_t* __restrict__ const outputi, const int input_size1,
+void gpu_quantize8(const __half* __restrict__ const input, __half* __restrict__ const outputf,
+                   std::uint8_t* __restrict__ const outputi, const int input_size1,
                    const int input_size2, const int input_size3, const int input_stride2,
                    const int input_stride3, const int outputf_size1, const int outputf_size2,
                    const int outputf_size3, const int outputf_stride2, const int outputf_stride3,
@@ -356,7 +338,7 @@ void gpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
     nblocks.y = input_size2;
     nblocks.z = input_size3 / chunks_per_frame;
     const int shmem_nbytes = 0;
-    gpu_quantize4_chunks<<<nblocks, nthreads, shmem_nbytes, stream>>>(
+    gpu_quantize8_chunks<<<nblocks, nthreads, shmem_nbytes, stream>>>(
         input, outputf, outputi, input_size1, input_size2, input_size3, input_stride2,
         input_stride3, outputf_size1, outputf_size2, outputf_size3, outputf_stride2,
         outputf_stride3, outputi_size1, outputi_size2, outputi_size3, outputi_stride2,
