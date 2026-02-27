@@ -52,9 +52,9 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     assert(type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
            || type == "const16" || type == "const32" || type == "constf16" || type == "random"
            || type == "random_signed" || type == "random_signed_offset" || type == "random1x8"
-           || type == "constu64" || type == "randomu64"
-           || type == "ramp" || type == "tpluse" || type == "tpluseplusf"
-           || type == "tpluseplusfprime" || type == "square" || type == "onehot");
+           || type == "constu64" || type == "randomu64" || type == "ramp" || type == "tpluse"
+           || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square"
+           || type == "onehot");
     assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
     int type_size = 1; // default
     if (type == "const")
@@ -84,8 +84,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
             config.get_default<std::vector<float>>(unique_name, "values", std::vector<float>());
     } else if (type == "constu64" || type == "randomu64") {
         lvalue = config.get_default<uint64_t>(unique_name, "value", 0);
-        _lvalue_array =
-            config.get_default<std::vector<uint64_t>>(unique_name, "values", std::vector<uint64_t>());
+        _lvalue_array = config.get_default<std::vector<uint64_t>>(unique_name, "values",
+                                                                  std::vector<uint64_t>());
     }
     _reuse_random = config.get_default<bool>(unique_name, "reuse_random", false);
     _seed = config.get_default<int>(unique_name, "seed", 0);

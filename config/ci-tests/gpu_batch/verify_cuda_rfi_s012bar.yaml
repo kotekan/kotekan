@@ -76,6 +76,7 @@ gen_rfi_s012:
     array_shape: [ 128, 8, 3, 2, 64 ]
     dim_name: ["Trfi", "F", "S", "P", "D" ]
     num_frames: 2*buffer_depth  # Must be at least what check_data expects
+    meta_time_downsample_factor: rfi_downsampling_factor
 
 run_send_rfi_s012:
     gpu_0:

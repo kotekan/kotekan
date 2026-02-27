@@ -37,7 +37,8 @@ gpuSimulateRFIS012bar::gpuSimulateRFIS012bar(Config& config, const std::string& 
     _num_local_freq = config.get<int64_t>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int64_t>(unique_name, "samples_per_data_set");
     _rfi_downsampling_factor = config.get<int64_t>(unique_name, "rfi_downsampling_factor");
-    _rfi_second_downsampling_factor = config.get<int64_t>(unique_name, "rfi_second_downsampling_factor");
+    _rfi_second_downsampling_factor =
+        config.get<int64_t>(unique_name, "rfi_second_downsampling_factor");
 
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
@@ -51,15 +52,17 @@ gpuSimulateRFIS012bar::gpuSimulateRFIS012bar(Config& config, const std::string& 
     assert(_samples_per_data_set % _rfi_downsampling_factor == 0);
 
     if ((_samples_per_data_set / _rfi_downsampling_factor) % _rfi_second_downsampling_factor != 0) {
-        FATAL_ERROR("samples_per_data_set / rfi_downsampling_factor must be a multiple of rfi_second_downsampling_factor");
+        FATAL_ERROR("samples_per_data_set / rfi_downsampling_factor must be a multiple of "
+                    "rfi_second_downsampling_factor");
     }
-    assert((_samples_per_data_set / _rfi_downsampling_factor) % _rfi_second_downsampling_factor == 0);
+    assert((_samples_per_data_set / _rfi_downsampling_factor) % _rfi_second_downsampling_factor
+           == 0);
 
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor / _rfi_second_downsampling_factor;
     int64_t nf = _num_local_freq;
     int64_t ne = _num_elements;
-    out_buf->allocate_ndarray_frame_desc<uint64_t, 5>("S012", {nt, nf, 3, 2, ne / 2},
-                                                              {"Trfibar", "F", "S", "P", "D"});
+    out_buf->allocate_ndarray_frame_desc<uint64_t, 5>("S012bar", {nt, nf, 3, 2, ne / 2},
+                                                      {"Trfibar", "F", "S", "P", "D"});
 }
 
 gpuSimulateRFIS012bar::~gpuSimulateRFIS012bar() {}
@@ -70,102 +73,25 @@ void gpuSimulateRFIS012bar::main_thread() {
     frameID out_frame_id(out_buf);
 
     while (!stop_thread) {
-        uint64_t* rfi_in =
-            (uint64_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
+        uint64_t* rfi_in = (uint64_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (rfi_in == nullptr)
             break;
-        uint64_t* rfi_out =
-            (uint64_t*)out_buf->wait_for_empty_frame(unique_name, out_frame_id);
+        uint64_t* rfi_out = (uint64_t*)out_buf->wait_for_empty_frame(unique_name, out_frame_id);
         if (rfi_out == nullptr)
             break;
 
         INFO("Simulating GPU RFI S012 for {:s}[{:d}] and putting result in {:s}[{:d}]",
              in_buf->buffer_name, in_frame_id, out_buf->buffer_name, out_frame_id);
 
-        /*
-        // number of elements = number of dishes * polarizations
-        uint64_t nt = _samples_per_data_set;
-        uint64_t nf = _num_local_freq;
-        uint64_t ne = _num_elements;
-
-        uint64_t nt_rfi = nt / _rfi_downsampling_factor;
-        uint64_t nsub = _rfi_downsampling_factor;
-
-        uint64_t nf_pl = (_num_local_freq + 3) / 4;
-        uint64_t ne_pl = _num_elements / 8;
-
-        // array access strides in raw (downsampled) PL mask
-        uint64_t fstride_pl = ne_pl;
-        uint64_t tstride_pl = ne_pl * nf_pl;
-
-        // array access strides in voltage
-        uint64_t fstride = ne;
-        uint64_t tstride = ne * nf;
-
-        // array access strides in S012
-        uint64_t sstride_rfi = ne;
-        uint64_t fstride_rfi = 3 * ne;
-        uint64_t tstride_rfi = nf * 3 * ne;
-
-        // Set to 0 to start.
-        for (uint64_t tfse = 0; tfse < tstride_rfi * nt_rfi; tfse++)
-            rfi_s012[tfse] = 0;
-
-        // Looping over entries in the rfi buffer.
-        for (uint64_t t_rfi = 0; t_rfi < nt_rfi; t_rfi++) {
-
-            // Now accumulate.
-            for (uint64_t tsub = 0; tsub < nsub; tsub++) {
-
-                // Global t index
-                uint64_t t = tsub + nsub * t_rfi;
-
-                for (uint64_t f = 0; f < nf; f++) {
-                    for (uint64_t e = 0; e < ne; e++) {
-
-                        uint64_t idx_v = e + fstride * f + tstride * t;
-                        uint64_t idx_rfi = e + fstride_rfi * f + tstride_rfi * t_rfi;
-
-                        uint64_t e_pl = e / 8;
-                        uint64_t f_pl = f / 4;
-                        uint64_t t_pl = t / 2;
-                        uint64_t t_pl_hi = t_pl / 64;
-                        uint64_t t_pl_lo = t_pl % 64;
-                        uint64_t idx_pl = e_pl + fstride_pl * f_pl + tstride_pl * t_pl_hi;
-
-                        // Grab the value of the PL mask
-                        uint64_t pl = (pl_mask[idx_pl] >> t_pl_lo) & 1u;
-
-                        // Decode the input voltage in the CHIME format:
-                        // offset encoded by 8, imaginary part in lo 4 bits,
-                        // real part in hi 4 bits.
-                        int32_t ei = static_cast<int32_t>(voltage[idx_v] & 0x0f) - 8;
-                        int32_t er = static_cast<int32_t>((voltage[idx_v] & 0xf0) >> 4) - 8;
-
-                        uint64_t e2 = er * er + ei * ei;
-                        uint64_t e4 = e2 * e2;
-
-                        rfi_s012[idx_rfi + 0 * sstride_rfi] += pl;
-                        rfi_s012[idx_rfi + 1 * sstride_rfi] += pl * e2;
-                        rfi_s012[idx_rfi + 2 * sstride_rfi] += pl * e4;
-                    } // e
-                } // f
-            } // tsub
-
-        } // t_rfi
-        */
-
         // Fetch input metadata
-        const std::shared_ptr<const metadataObject> mc_in =
-            in_buf->get_metadata(in_frame_id);
+        const std::shared_ptr<const metadataObject> mc_in = in_buf->get_metadata(in_frame_id);
         if (!mc_in) {
-            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_buf->buffer_name,
-                        in_frame_id);
+            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_buf->buffer_name, in_frame_id);
         }
         assert(mc_in);
         if (!metadata_is_chord(mc_in)) {
-            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
-                        in_buf->buffer_name, in_frame_id);
+            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata", in_buf->buffer_name,
+                        in_frame_id);
         }
         assert(metadata_is_chord(mc_in));
 
@@ -173,16 +99,15 @@ void gpuSimulateRFIS012bar::main_thread() {
 
         // Create output metadata
         out_buf->allocate_new_metadata_object(out_frame_id);
-        const std::shared_ptr<metadataObject> mc =
-            out_buf->get_metadata(out_frame_id);
+        const std::shared_ptr<metadataObject> mc = out_buf->get_metadata(out_frame_id);
         if (!mc) {
-            FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata",
-                        out_buf->buffer_name, out_frame_id);
+            FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata", out_buf->buffer_name,
+                        out_frame_id);
         }
         assert(mc);
         if (!metadata_is_chord(mc)) {
-            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
-                        out_buf->buffer_name, out_frame_id);
+            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata", out_buf->buffer_name,
+                        out_frame_id);
         }
         assert(metadata_is_chord(mc));
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
@@ -190,7 +115,6 @@ void gpuSimulateRFIS012bar::main_thread() {
 
         // Start with a copy
         meta_out->deepCopy(meta_in);
-
         meta_out->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
 
         // test that things are consistent
@@ -199,7 +123,34 @@ void gpuSimulateRFIS012bar::main_thread() {
         // Set non-NDArray things.
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->set_time_downsampling_fpga(meta_in->get_time_downsampling_fpga()
-                                             * _rfi_downsampling_factor * _rfi_second_downsampling_factor);
+                                             * _rfi_second_downsampling_factor);
+
+        // number of elements = number of dishes * polarizations
+        uint64_t nt_in = _samples_per_data_set / _rfi_downsampling_factor;
+        uint64_t nf = _num_local_freq;
+        uint64_t ne = _num_elements;
+
+        uint64_t nt_out = nt_in / _rfi_second_downsampling_factor;
+
+        // array access strides in rfi_s012 buffers
+        uint64_t tstride = 3 * nf * ne;
+
+        // Set to 0 to start.
+        for (uint64_t tfse = 0; tfse < tstride * nt_out; tfse++)
+            rfi_out[tfse] = 0;
+
+        // Looping over entries in the input buffer.
+        for (uint64_t t_in = 0; t_in < nt_in; t_in++) {
+
+            // downsampled time in output buffer
+            uint64_t t_out = t_in / _rfi_second_downsampling_factor;
+
+            // accumulate!
+            for (uint64_t fse = 0; fse < tstride; fse++)
+                rfi_out[t_out * tstride + fse] += rfi_in[t_in * tstride + fse];
+
+        } // t_in
+
 
         INFO("Simulating GPU RFI S012 done for {:s}[{:d}] result is in {:s}[{:d}]",
              in_buf->buffer_name, in_frame_id, out_buf->buffer_name, out_frame_id);
