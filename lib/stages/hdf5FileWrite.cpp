@@ -141,7 +141,7 @@ public:
         FileAccessProps fapl;
         // We need at least version 1.10 version for SWMR.
         // (That's the file format version, not the library version.)
-        fapl.add(FileVersionBounds(H5F_LIBVER_V110, H5F_LIBVER_V110);
+        fapl.add(FileVersionBounds(H5F_LIBVER_V110, H5F_LIBVER_V110));
         HighFive::FileCreateProps fprops;
         // Use SWMR. This keeps HDF5 files readable even if they were not properly closed.
         // You may have to use `h5clear -s FILENAME.h5` to "tell" the file that the writer does not
