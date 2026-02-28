@@ -12,26 +12,21 @@
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "visUtil.hpp"           // for current_time
 
-#include <algorithm>                             // for copy
-#include <array>                                 // for array
-#include <cassert>                               // for assert
-#include <cstddef>                               // for ptrdiff_t
-#include <cstdint>                               // for int64_t, uint8_t
-#include <cstring>                               // for memcpy
-#include <fmt.hpp>                               // for compile_string_to_view
-#include <functional>                            // for function
-#include <highfive/H5Attribute.hpp>              // for Attribute, Attribute::read
-#include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::getAttribute
-#include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::getDimensions
-#include <highfive/H5Exception.hpp>              // for FileException
-#include <highfive/H5File.hpp>                   // for File, File::File, NodeTraits::getDataSet
-#include <highfive/bits/H5Slice_traits_misc.hpp> // for SliceTraits::read_raw
-#include <iomanip>                               // for operator<<, setfill, setw
-#include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
-#include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
-#include <string>                                // for basic_string, char_traits, string, oper...
-#include <unistd.h>                              // for gethostname, sleep
-#include <vector>                                // for vector
+#include <algorithm>             // for copy
+#include <array>                 // for array
+#include <cassert>               // for assert
+#include <cstddef>               // for ptrdiff_t
+#include <cstdint>               // for int64_t, uint8_t
+#include <cstring>               // for memcpy
+#include <fmt.hpp>               // for compile_string_to_view
+#include <functional>            // for function
+#include <highfive/highfive.hpp> //
+#include <iomanip>               // for operator<<, setfill, setw
+#include <memory>                // for allocator, shared_ptr, __shared_ptr_access
+#include <sstream>               // for basic_ostream, operator<<, basic_ostrin...
+#include <string>                // for basic_string, char_traits, string, oper...
+#include <unistd.h>              // for gethostname, sleep
+#include <vector>                // for vector
 
 using namespace hdf5;
 using namespace HighFive;

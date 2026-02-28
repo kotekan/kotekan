@@ -1,10 +1,10 @@
 #ifndef HDF5FILES_HPP
 #define HDF5FILES_HPP
 
-#include <DataType.hpp>                  // for DataType, float16_t
-#include <array>                         // for array
-#include <highfive/H5DataType.hpp>       // for AtomicType, DataType, H5T_NATIVE_FLOAT
-#include <highfive/bits/h5t_wrapper.hpp> // for h5t_copy, h5t_set_ebias, h5t_set_fields, h5t_se...
+#include "DataType.hpp" // for DataType, float16_t
+
+#include <array> // for array
+#include <highfive/highfive.hpp>
 
 namespace hdf5 {
 
