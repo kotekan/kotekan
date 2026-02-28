@@ -68,6 +68,12 @@ vis_buffer:
   visbuf_10s_mfreq:
     kotekan_buffer: vis
     buffer_depth: 16
+  visbuf_10s_extra_mfreq:  # extra N2 frequencies that match upgrade test node
+    kotekan_buffer: vis
+    buffer_depth: 16
+  visbuf_10s_extra_mfreq_post:
+    kotekan_buffer: vis
+    buffer_depth: 16
   visbuf_10s_stack_mfreq:
     kotekan_buffer: vis
     num_prod: 17000  # Approximation to the correct size
@@ -117,6 +123,8 @@ vis_buffer:
 
 # Subset of good frequencies to output whole for monitoring
 mfreq: &mfreq [107, 344, 619, 938]
+# Subset of frequencies to save to a separate acquisition for comparing to upgrade test node
+extra_mfreq: &extra_mfreq []  # TODO fill these in
 # Larger subset to be sent to map maker, spanning entire band
 mapfreq: &mapfreq [
         1, 12, 23, 36, 47, 58, 70, 82, 92, 103, 184, 194, 205, 216,
@@ -151,6 +159,9 @@ updatable_config:
   26m_ungated:
     kotekan_update_endpoint: "json"
     enabled: false
+  extra_n2:
+    kotekan_update_endpoint: "json"
+    enabled: false
 
 # Kotekan stages
 buffer_recv:
@@ -183,6 +194,13 @@ switch_26m_gated:
     - enabled: visbuf_5s_26m_gated
   out_buf: visbuf_5s_26m_gated_post
   updatable_config: "/updatable_config/26m_gated"
+
+switch_extra_N2:
+  kotekan_stage: bufferSwitch
+  in_bufs:
+    - enabled: visbuf_10s_extra_mfreq
+  out_buf: visbuf_10s_extra_mfreq_post
+  updatable_config: "/updatable_config/extra_n2"
 
 receive_flags:
   kotekan_stage: ReceiveFlags
@@ -292,6 +310,14 @@ mfreq_subset:
     out_buf: visbuf_10s_stack_mfreq
     subset_list: *mapfreq
 
+# Subset another set of frequencies to compare to upgrade node
+mfreq_subset:
+  n2:
+    kotekan_stage: VisFreqSubset
+    in_buf: visbuf_10s_flags
+    out_buf: visbuf_10s_extra_mfreq
+    subset_list: *extra_mfreq
+
 remove_ev:
   chimestack:
     kotekan_stage: removeEv
@@ -325,7 +351,6 @@ vis_dset_tracking:
     kotekan_stage: visDebug
     in_buf: visbuf_10s_timing_ne
 
-
 archive_writers:
 
   file_length: 512
@@ -336,6 +361,11 @@ archive_writers:
     kotekan_stage: VisWriter
     in_buf: visbuf_10s_mfreq
     instrument_name: chimeN2
+
+  n2_extra:
+    kotekan_stage: VisWriter
+    in_buf: visbuf_10s_extra_mfreq_post
+    instrument_name: chimeextraN2
 
   chimestack:
     kotekan_stage: VisWriter
