@@ -139,8 +139,9 @@ public:
 
         // Create HDF5 file
         FileAccessProps fapl;
-        // We need the latest version for SWMR
-        fapl.add(FileVersionBounds(H5F_LIBVER_LATEST, H5F_LIBVER_LATEST));
+        // We need at least version 1.10 version for SWMR.
+        // (That's the file format version, not the library version.)
+        fapl.add(FileVersionBounds(H5F_LIBVER_V110, H5F_LIBVER_V110);
         HighFive::FileCreateProps fprops;
         // Use SWMR. This keeps HDF5 files readable even if they were not properly closed.
         // You may have to use `h5clear -s FILENAME.h5` to "tell" the file that the writer does not
@@ -187,10 +188,6 @@ public:
             initial_shape.at(0) = 0;
             maximum_shape.at(0) = DataSpace::UNLIMITED;
             const DataSpace space(initial_shape, maximum_shape);
-            {
-                // [[maybe_unused]] std::ptrdiff_t npoints = frame_desc->get_size();
-                // assert(std::ptrdiff_t(space.getElementCount()) == npoints);
-            }
             assert(meta->offset == 0);
             assert(space.getNumberDimensions() == frame_desc->get_rank());
 
