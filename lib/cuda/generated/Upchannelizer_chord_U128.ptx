@@ -13,17 +13,9 @@
 .address_size 64
 
 	// .globl	_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE // -- Begin function _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE
-.extern .func julia_AssertionError_25171
+.extern .func julia_AssertionError_25228
 ()
 ;
-.func gpu_signal_exception
-(
-	.param .align 8 .b8 gpu_signal_exception_param_0[16]
-)
-.noreturn
-{
-	trap;
-}
 .func gpu_report_exception
 (
 	.param .align 8 .b8 gpu_report_exception_param_0[16],
@@ -33,8 +25,16 @@
 {
 	trap;
 }
-.global .align 1 .b8 exception2757[6] = {101, 114, 114, 111, 114, 0};
-.global .align 1 .b8 exception12782[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
+.func gpu_signal_exception
+(
+	.param .align 8 .b8 gpu_signal_exception_param_0[16]
+)
+.noreturn
+{
+	trap;
+}
+.global .align 1 .b8 exception3231[6] = {101, 114, 114, 111, 114, 0};
+.global .align 1 .b8 exception13257[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
                                         // @_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE
 .visible .entry _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE(
 	.param .align 8 .b8 _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_0[16],
@@ -52,7 +52,7 @@
 .reqntid 32, 16, 1
 .minnctapersm 2
 {
-	.reg .pred 	%p<133>;
+	.reg .pred 	%p<132>;
 	.reg .b32 	%r<214>;
 	.reg .f32 	%f<809>;
 	.reg .b64 	%rd<15>;
@@ -78,9 +78,9 @@ $L__BB0_4:                              // %L27
 	ld.param.u64 	%rd1, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_10];
 	mov.u32 	%r16, %ctaid.x;
 	shl.b32 	%r17, %r16, 9;
-	mov.u32 	%r1, %tid.x;
 	mov.u32 	%r18, %tid.y;
 	shl.b32 	%r19, %r18, 5;
+	mov.u32 	%r1, %tid.x;
 	or.b32  	%r20, %r17, %r19;
 	or.b32  	%r21, %r20, %r1;
 	mul.wide.u32 	%rd8, %r21, 4;
@@ -88,49 +88,47 @@ $L__BB0_4:                              // %L27
 	mov.b32 	%r22, 1;
 	st.global.u32 	[%rd2], %r22;
 	setp.gt.u32 	%p3, %r8, 32767;
-	@%p3 bra 	$L__BB0_9;
-// %bb.5:                               // %L124
+	@%p3 bra 	$L__BB0_13;
+// %bb.5:                               // %L134
 	ld.param.u32 	%r9, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_2];
 	setp.lt.s32 	%p4, %r9, %r8;
 	setp.gt.s32 	%p5, %r9, 65535;
 	or.pred  	%p6, %p4, %p5;
-	@%p6 bra 	$L__BB0_9;
-// %bb.6:                               // %L131
+	@%p6 bra 	$L__BB0_13;
+// %bb.6:                               // %L141
 	ld.param.u32 	%r10, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_3];
 	sub.s32 	%r23, %r9, %r8;
 	and.b32  	%r24, %r23, 255;
 	setp.ne.s32 	%p7, %r24, 0;
 	setp.gt.u32 	%p8, %r10, 255;
 	or.pred  	%p9, %p7, %p8;
-	@%p9 bra 	$L__BB0_9;
-// %bb.7:                               // %L142
+	@%p9 bra 	$L__BB0_13;
+// %bb.7:                               // %L152
 	ld.param.u32 	%r11, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_4];
 	setp.gt.s32 	%p10, %r10, %r11;
 	setp.gt.s32 	%p11, %r11, 511;
 	or.pred  	%p12, %p10, %p11;
-	@%p12 bra 	$L__BB0_9;
-// %bb.8:                               // %L149
+	@%p12 bra 	$L__BB0_13;
+// %bb.8:                               // %L159
 	not.b32 	%r25, %r11;
 	add.s32 	%r26, %r25, %r10;
 	and.b32  	%r27, %r26, 1;
 	setp.eq.b32 	%p13, %r27, 1;
 	mov.pred 	%p14, 0;
 	xor.pred  	%p15, %p13, %p14;
-	not.pred 	%p16, %p15;
-	@%p16 bra 	$L__BB0_10;
-	bra.uni 	$L__BB0_9;
-$L__BB0_10:                             // %L255
+	@%p15 bra 	$L__BB0_13;
+// %bb.9:                               // %L275
 	ld.param.u32 	%r12, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_5];
-	setp.lt.s32 	%p17, %r12, 0;
-	@%p17 bra 	$L__BB0_12;
-// %bb.11:                              // %L257
+	setp.lt.s32 	%p16, %r12, 0;
+	@%p16 bra 	$L__BB0_11;
+// %bb.10:                              // %L277
 	ld.param.u32 	%r13, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_6];
-	setp.le.s32 	%p18, %r12, %r13;
-	setp.lt.s32 	%p19, %r13, 49;
-	and.pred  	%p20, %p18, %p19;
-	@%p20 bra 	$L__BB0_13;
-	bra.uni 	$L__BB0_12;
-$L__BB0_13:                             // %pass435
+	setp.le.s32 	%p17, %r12, %r13;
+	setp.lt.s32 	%p18, %r13, 49;
+	and.pred  	%p19, %p17, %p18;
+	@%p19 bra 	$L__BB0_12;
+	bra.uni 	$L__BB0_11;
+$L__BB0_12:                             // %pass515
 	shr.u32 	%r28, %r1, 2;
 	bfe.u32 	%r3, %r1, 2, 1;
 	and.b32  	%r29, %r28, 4;
@@ -151,86 +149,86 @@ $L__BB0_13:                             // %pass435
 	cvt.rn.f32.s32 	%f136, %r44;
 	div.approx.f32 	%f4, %f136, %f91;
 	mul.f32 	%f6, %f4, 0f40800000;
-	setp.eq.f32 	%p31, %f6, 0f00000000;
+	setp.eq.f32 	%p30, %f6, 0f00000000;
 	or.b32  	%r55, %r6, -509;
 	cvt.rn.f32.s32 	%f180, %r55;
 	div.approx.f32 	%f9, %f180, %f91;
 	mul.f32 	%f11, %f9, 0f40800000;
-	setp.eq.f32 	%p38, %f11, 0f00000000;
+	setp.eq.f32 	%p37, %f11, 0f00000000;
 	or.b32  	%r63, %r6, -381;
 	cvt.rn.f32.s32 	%f226, %r63;
 	div.approx.f32 	%f15, %f226, %f91;
 	mul.f32 	%f17, %f15, 0f40800000;
-	setp.eq.f32 	%p45, %f17, 0f00000000;
+	setp.eq.f32 	%p44, %f17, 0f00000000;
 	or.b32  	%r74, %r6, -255;
 	cvt.rn.f32.s32 	%f270, %r74;
 	div.approx.f32 	%f20, %f270, %f91;
 	mul.f32 	%f22, %f20, 0f40800000;
-	setp.eq.f32 	%p52, %f22, 0f00000000;
+	setp.eq.f32 	%p51, %f22, 0f00000000;
 	or.b32  	%r82, %r6, -127;
 	cvt.rn.f32.s32 	%f316, %r82;
 	div.approx.f32 	%f26, %f316, %f91;
 	mul.f32 	%f28, %f26, 0f40800000;
-	setp.eq.f32 	%p59, %f28, 0f00000000;
+	setp.eq.f32 	%p58, %f28, 0f00000000;
 	or.b32  	%r93, %r6, -253;
 	cvt.rn.f32.s32 	%f360, %r93;
 	div.approx.f32 	%f31, %f360, %f91;
 	mul.f32 	%f33, %f31, 0f40800000;
-	setp.eq.f32 	%p66, %f33, 0f00000000;
+	setp.eq.f32 	%p65, %f33, 0f00000000;
 	or.b32  	%r101, %r6, -125;
 	cvt.rn.f32.s32 	%f406, %r101;
 	div.approx.f32 	%f37, %f406, %f91;
 	mul.f32 	%f39, %f37, 0f40800000;
-	setp.eq.f32 	%p73, %f39, 0f00000000;
+	setp.eq.f32 	%p72, %f39, 0f00000000;
 	or.b32  	%r112, %r6, 1;
 	cvt.rn.f32.s32 	%f450, %r112;
 	div.approx.f32 	%f42, %f450, %f91;
 	mul.f32 	%f44, %f42, 0f40800000;
-	setp.eq.f32 	%p80, %f44, 0f00000000;
+	setp.eq.f32 	%p79, %f44, 0f00000000;
 	or.b32  	%r120, %r6, 129;
 	cvt.rn.f32.s32 	%f496, %r120;
 	div.approx.f32 	%f48, %f496, %f91;
 	mul.f32 	%f50, %f48, 0f40800000;
-	setp.eq.f32 	%p87, %f50, 0f00000000;
+	setp.eq.f32 	%p86, %f50, 0f00000000;
 	or.b32  	%r131, %r6, 3;
 	cvt.rn.f32.s32 	%f540, %r131;
 	div.approx.f32 	%f53, %f540, %f91;
 	mul.f32 	%f55, %f53, 0f40800000;
-	setp.eq.f32 	%p94, %f55, 0f00000000;
+	setp.eq.f32 	%p93, %f55, 0f00000000;
 	or.b32  	%r139, %r6, 131;
 	cvt.rn.f32.s32 	%f586, %r139;
 	div.approx.f32 	%f59, %f586, %f91;
 	mul.f32 	%f61, %f59, 0f40800000;
-	setp.eq.f32 	%p101, %f61, 0f00000000;
+	setp.eq.f32 	%p100, %f61, 0f00000000;
 	or.b32  	%r150, %r6, 257;
 	cvt.rn.f32.s32 	%f630, %r150;
 	div.approx.f32 	%f64, %f630, %f91;
 	mul.f32 	%f66, %f64, 0f40800000;
-	setp.eq.f32 	%p108, %f66, 0f00000000;
+	setp.eq.f32 	%p107, %f66, 0f00000000;
 	or.b32  	%r158, %r6, 385;
 	cvt.rn.f32.s32 	%f676, %r158;
 	div.approx.f32 	%f70, %f676, %f91;
 	mul.f32 	%f72, %f70, 0f40800000;
-	setp.eq.f32 	%p115, %f72, 0f00000000;
+	setp.eq.f32 	%p114, %f72, 0f00000000;
 	or.b32  	%r169, %r6, 259;
 	cvt.rn.f32.s32 	%f720, %r169;
 	div.approx.f32 	%f75, %f720, %f91;
 	mul.f32 	%f77, %f75, 0f40800000;
-	setp.eq.f32 	%p122, %f77, 0f00000000;
+	setp.eq.f32 	%p121, %f77, 0f00000000;
 	or.b32  	%r177, %r6, 387;
 	cvt.rn.f32.s32 	%f766, %r177;
 	div.approx.f32 	%f81, %f766, %f91;
 	mul.f32 	%f83, %f81, 0f40800000;
-	setp.eq.f32 	%p129, %f83, 0f00000000;
-	setp.neu.f32 	%p24, %f88, 0f00000000;
+	setp.eq.f32 	%p128, %f83, 0f00000000;
+	setp.neu.f32 	%p23, %f88, 0f00000000;
 	{ // callseq 4, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_25171, 
+	julia_AssertionError_25228, 
 	(
 	);
 	} // callseq 4
-	mov.u64 	%rd9, exception12782;
+	mov.u64 	%rd9, exception13257;
 	cvta.global.u64 	%rd10, %rd9;
 	{ // callseq 5, 0
 	.reg .b32 temp_param_reg;
@@ -262,7 +260,7 @@ $L__BB0_13:                             // %pass435
 	exit;
 	// end inline asm
 $L__BB0_1:                              // %L9
-	mov.u64 	%rd4, exception12782;
+	mov.u64 	%rd4, exception13257;
 	cvta.global.u64 	%rd5, %rd4;
 	{ // callseq 0, 0
 	.reg .b32 temp_param_reg;
@@ -294,7 +292,7 @@ $L__BB0_1:                              // %L9
 	exit;
 	// end inline asm
 $L__BB0_3:                              // %L25
-	mov.u64 	%rd6, exception12782;
+	mov.u64 	%rd6, exception13257;
 	cvta.global.u64 	%rd7, %rd6;
 	{ // callseq 2, 0
 	.reg .b32 temp_param_reg;
@@ -325,10 +323,10 @@ $L__BB0_3:                              // %L25
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_9:                              // %L170
+$L__BB0_13:                             // %pass174
 	mov.b32 	%r213, 2;
 	st.global.u32 	[%rd2], %r213;
-	mov.u64 	%rd13, exception2757;
+	mov.u64 	%rd13, exception3231;
 	cvta.global.u64 	%rd14, %rd13;
 	{ // callseq 9, 0
 	.reg .b32 temp_param_reg;
@@ -359,10 +357,10 @@ $L__BB0_9:                              // %L170
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_12:                             // %L269
+$L__BB0_11:                             // %pass262
 	mov.b32 	%r212, 3;
 	st.global.u32 	[%rd2], %r212;
-	mov.u64 	%rd11, exception2757;
+	mov.u64 	%rd11, exception3231;
 	cvta.global.u64 	%rd12, %rd11;
 	{ // callseq 7, 0
 	.reg .b32 temp_param_reg;
