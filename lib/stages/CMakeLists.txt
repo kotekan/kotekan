@@ -100,6 +100,7 @@ add_library(
     N2Accumulate.cpp
     N2TimeDownsample.cpp
     N2FringeStop.cpp
+    dropAllFrames.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 

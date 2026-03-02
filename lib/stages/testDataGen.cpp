@@ -52,9 +52,9 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     assert(type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
            || type == "const16" || type == "const32" || type == "constf16" || type == "random"
            || type == "random_signed" || type == "random_signed_offset" || type == "random1x8"
-           || type == "constu64" || type == "randomu64" || type == "random8" || type == "ramp" || type == "tpluse"
-           || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square"
-           || type == "onehot");
+           || type == "constu64" || type == "randomu64" || type == "random8" || type == "ramp"
+           || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
+           || type == "square" || type == "onehot");
     assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
     int type_size = 1; // default
     if (type == "const")
@@ -73,8 +73,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         type_size = 8;
     if (type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
         || type == "const16" || type == "const32" || type == "random" || type == "random_signed"
-        || type == "random_signed_offset" || type == "random1x8" || type == "random8" || type == "ramp"
-        || type == "onehot") {
+        || type == "random_signed_offset" || type == "random1x8" || type == "random8"
+        || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
         _value_array =
             config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
@@ -451,7 +451,7 @@ void testDataGen::main_thread() {
             } else if (type == "random8") {
                 if (_reuse_random && finished_seeding_constant)
                     break;
-                uint32_t rand_val = rng() % 256; // rand in [0, 255]
+                uint32_t rand_val = rng() % 256;                           // rand in [0, 255]
                 int32_t rand_i_val = static_cast<int32_t>(rand_val) - 128; // rand in [-128, 127]
                 frame8[j] = static_cast<int8_t>(rand_i_val);
             } else if (type == "tpluse") {

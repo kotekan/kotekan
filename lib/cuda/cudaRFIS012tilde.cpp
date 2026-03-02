@@ -169,12 +169,13 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
     // Trfimin wraps around into actual array index to avoid overflows
     const std::ptrdiff_t Trfimin = rfi_S012.get_read_valid().begin() % Trfisize;
     const std::ptrdiff_t Trfi = rfi_S012.get_read_valid().size();
+    const std::ptrdiff_t Trfitilde_stride = rfi_S012tilde.get_ndarray().stride(0);
     DEBUG("Trfisize={:d} Trfimin={:d} Trfi={:d}", Trfisize, Trfimin, Trfi);
 
     n2k::launch_s012_station_downsample_kernel(
-        (ulong*)rfi_S012tilde_memory, (const ulong*)rfi_S012_memory, (const uint8_t*)bf_mask_memory,
-        Trfi, Trfimin, Trfisize, num_frequencies, num_dishes * num_polarizations,
-        device.getStream(cuda_stream_id));
+        (ulong*)rfi_S012tilde_memory + Trfimin * Trfitilde_stride, (const ulong*)rfi_S012_memory,
+        (const uint8_t*)bf_mask_memory, Trfi, Trfimin, Trfisize, num_frequencies,
+        num_dishes * num_polarizations, device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif

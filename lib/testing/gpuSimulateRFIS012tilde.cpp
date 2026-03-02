@@ -54,7 +54,7 @@ gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::stri
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
     int64_t nf = _num_local_freq;
     out_rfi_s012tilde_buf->allocate_ndarray_frame_desc<uint64_t, 3>("S012tilde", {nt, nf, 3},
-                                                              {"Trfi", "F", "S"});
+                                                                    {"Trfi", "F", "S"});
 }
 
 gpuSimulateRFIS012tilde::~gpuSimulateRFIS012tilde() {}
@@ -64,14 +64,14 @@ void gpuSimulateRFIS012tilde::main_thread() {
     frameID in_bf_mask_frame_id(in_bf_mask_buf);
     frameID in_rfi_s012_frame_id(in_rfi_s012_buf);
     frameID out_rfi_s012tilde_frame_id(out_rfi_s012tilde_buf);
-   
+
     // BF mask (for now) is not updated in time. Only read once.
     uint8_t* bf_mask =
         (uint8_t*)in_bf_mask_buf->wait_for_full_frame(unique_name, in_bf_mask_frame_id);
     if (bf_mask == nullptr)
         return;
 
-    for(int64_t e = 0; e < _num_elements; e++) {
+    for (int64_t e = 0; e < _num_elements; e++) {
         INFO("BF[{:03d}]: {:08b}", e, bf_mask[e]);
     }
 
@@ -81,8 +81,8 @@ void gpuSimulateRFIS012tilde::main_thread() {
             (uint64_t*)in_rfi_s012_buf->wait_for_full_frame(unique_name, in_rfi_s012_frame_id);
         if (rfi_s012 == nullptr)
             break;
-        uint64_t* rfi_s012tilde =
-            (uint64_t*)out_rfi_s012tilde_buf->wait_for_empty_frame(unique_name, out_rfi_s012tilde_frame_id);
+        uint64_t* rfi_s012tilde = (uint64_t*)out_rfi_s012tilde_buf->wait_for_empty_frame(
+            unique_name, out_rfi_s012tilde_frame_id);
         if (rfi_s012tilde == nullptr)
             break;
 
@@ -102,8 +102,8 @@ void gpuSimulateRFIS012tilde::main_thread() {
 
             // Now accumulate.
             for (uint64_t e = 0; e < ne; e++) {
-                if (bf_mask[e] & 1)
-                    rfi_s012tilde[tfs] += rfi_s012[tfs*ne + e];
+                if (bf_mask[e])
+                    rfi_s012tilde[tfs] += rfi_s012[tfs * ne + e];
             } // e
         } // tfs
 
@@ -158,7 +158,7 @@ void gpuSimulateRFIS012tilde::main_thread() {
         in_rfi_s012_buf->mark_frame_empty(unique_name, in_rfi_s012_frame_id++);
         out_rfi_s012tilde_buf->mark_frame_full(unique_name, out_rfi_s012tilde_frame_id++);
     }
-    
+
     // Only release the bf_mask when we're done.
     in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id);
 }
