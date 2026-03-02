@@ -11,6 +11,7 @@
 #include "div.hpp"
 
 #include <array>
+#include <cassert>
 #include <cstdlib>
 #include <cublas_api.h>   // for cublasContext, cublasHandle_t
 #include <cublas_v2.h>    // for cublasCreate, cublasDestroy, cublasSetStream
@@ -26,7 +27,7 @@ using kotekan::mod;
  *
  * Core code was developed by Nada El-Falou in https://github.com/nadafalou/CHORD/blob/main/mmul.cu
  *
- * The phase matrix for the beam locations uses the correct math but
+ * The weights matrix for the beam locations uses the correct math but
  * with a lot of placeholder assumptions.  This will need to get
  * revisited in post-MVP development.
  */
@@ -55,14 +56,14 @@ private:
     const int frb2_num_times;
 
     // Kotekan buffer names
-    const std::string frb2_phase_name;
+    const std::string frb2_weights_name;
     const std::string frb1_beams_name;
     const std::string frb2_beams_name;
 
     // Buffers
-    NDArrayBuffer<float16_t, 4> frb2_phase_buffer;
+    NDArrayBuffer<float16_t, 4> frb2_weights_buffer;
     NDArrayRingBuffer<float16_t, 4> frb1_beams_buffer;
-    NDArrayBuffer<float16_t, 3> frb2_beams_buffer;
+    NDArrayBuffer<float16_t, 4> frb2_beams_buffer;
 
     cublasHandle_t handle;
 
@@ -88,28 +89,28 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(kotekan::Config& config, const std::str
     frb2_num_beams(config.get<int>(unique_name, "frb2_num_beams")),
     frb2_num_times(config.get<int>(unique_name, "frb2_num_times")),
 
-    frb2_phase_name(config.get<std::string>(unique_name, "frb2_phase_name")),
+    frb2_weights_name(config.get<std::string>(unique_name, "frb2_weights_name")),
     frb1_beams_name(config.get<std::string>(unique_name, "frb1_beams_name")),
     frb2_beams_name(config.get<std::string>(unique_name, "frb2_beams_name")),
 
-    frb2_phase_buffer(frb2_phase_name, "W2",
-                      std::array<std::ptrdiff_t, 4>{frb2_num_frequencies, frb2_num_beams,
-                                                    frb1_num_beams_Q, frb1_num_beams_P},
-                      std::array<std::string, 4>{"Fbar", "R", "beamQ", "beamP"}, *this,
-                      buffer_type_t::do_once),
+    frb2_weights_buffer(frb2_weights_name, "W2",
+                        std::array<std::ptrdiff_t, 4>{frb2_num_frequencies, frb2_num_beams,
+                                                      frb1_num_beams_Q, frb1_num_beams_P},
+                        std::array<std::string, 4>{"Fbar", "R", "beamQ", "beamP"}, *this,
+                        buffer_type_t::do_once),
     frb1_beams_buffer(frb1_beams_name, "I",
                       std::array<std::ptrdiff_t, 4>{frb1_max_num_times, frb1_max_num_frequencies,
                                                     frb1_num_beams_Q, frb1_num_beams_P},
                       std::array<std::string, 4>{"Ttilde", "Fbar", "beamQ", "beamP"}, *this),
     frb2_beams_buffer(
         frb2_beams_name, "I2",
-        std::array<std::ptrdiff_t, 3>{frb2_num_beams, frb2_num_frequencies, frb2_num_times},
-        std::array<std::string, 3>{"R", "Fbar", "Ttilde"}, *this),
+        std::array<std::ptrdiff_t, 4>{1, frb2_num_beams, frb2_num_frequencies, frb2_num_times},
+        std::array<std::string, 4>{"Ttildehi256", "R", "Fbar", "Ttildelo256"}, *this),
 
     did_set_metadata(false)
 
 {
-    frb2_phase_buffer.register_consumer();
+    frb2_weights_buffer.register_consumer();
     frb1_beams_buffer.register_consumer();
     frb2_beams_buffer.register_producer();
 
@@ -163,7 +164,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     pre_execute();
     record_start_event();
 
-    frb2_phase_buffer.check_metadata();
+    frb2_weights_buffer.check_metadata();
     frb1_beams_buffer.check_metadata();
 
     if (!did_set_metadata) {
@@ -194,66 +195,106 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& /*pipestate*/,
     if (poison_buffers)
         frb2_beams_buffer.set_to_poison(0xff); // 0xffff is a NaN16
 
-    // Get buffer pointers
-    const float16_t* const frb2_phase_memory = frb2_phase_buffer.get_ndarray().data();
-
-    const float16_t* const frb1_beams_memory =
-        frb1_beams_buffer.get_ndarray().data()
-        + frb1_beams_stride * mod(frb1_beams_offset, frb1_beams_extent);
-
-    float16_t* const frb2_beams_memory = frb2_beams_buffer.get_ndarray().data();
-
-    // Calculate
-    //     Iout[T,F,Bout] = Iin[Bin,F0,T0] * W[Bin,Bout,F]
+    // All arrays here use C index ordering.
+    // The "natural" matrix multiplications then looks like
+    //     C[n,m] = A[k,m] B[n,k]
+    // where k is "on the outside" on the right hand side.
+    //
+    // We calculate
+    //     Iout[Bout,F,T] = W[F,Bout,Bin] * Iin[T,F,Bin]
+    //
+    // We map this to the matrix multiplication above:
     //     C = A^T * B
+    // This is, with indices:
+    //     C[n,m] = A^T[m,k] B[n,k]
+    // We add an additional spectator index p:
+    //     C[p,n,m] = A^T[p,m,k] B[p,n,k]
     //
-    //     C[m,n] = A^T[k,m] B[k,n]
+    // We choose:
+    //     A = Iin
+    //     B = W
+    //     C = Iout
+    //     m = T
+    //     n = Bout
+    //     k = Bin
+    //     p = F
     //
-    // Thus
-    //     m       = T
-    //     n       = Bout
-    //     k       = Bin
-    //     lda     = Bin * F0
-    //     ldb     = Bin
-    //     ldc     = T * F
-    //     strideA = Bin
-    //     strideB = Bin * Bout
-    //     strideC = T
-    //
-    // These indices are in Fortran notation (which cuBLAS
-    // uses), i.e. the leftmost index is contiguous in memory.
+    // We read off the arguments for `HgemmStridedBatched`:
+    //     transA     = true
+    //     transB     = false
+    //     M          = T
+    //     N          = Bout
+    //     K          = Bin
+    //     alpha      = 1
+    //     A          = Iin
+    //     ldA        = T_stride
+    //     strideA    = F_stride
+    //     B          = W
+    //     ldB        = Bout_stride
+    //     strideB    = F_stride
+    //     beta       = 0
+    //     C          = Iout
+    //     ldC        = Bout_stride
+    //     strideC    = F_stride
+    //     batchCount = F
     //
     // The frequency is a spectator index, i.e. we only show
     // one frequency at a time to cuBLAS. This makes the
     // matrices non-contiguous in memory. This is fine, cuBLAS
     // supports this.
 
+    // Matrix transposes
+    const auto transA = CUBLAS_OP_T;
+    const auto transB = CUBLAS_OP_N;
+
     // Matrix sizes (times and beams)
-    const int m = frb2_num_times;
-    const int n = frb2_num_beams;
-    const int k = frb1_num_beams_P * frb1_num_beams_Q;
+    const int M = frb2_num_times;                      // times
+    const int N = frb2_num_beams;                      // output beams
+    const int K = frb1_num_beams_P * frb1_num_beams_Q; // input beams
 
-    // Matrix layouts (times and beams)
-    const int lda = frb1_beams_buffer.get_ndarray().get_stride(0);
-    const int ldb = frb2_phase_buffer.get_ndarray().get_stride(1);
-    const int ldc = frb2_beams_buffer.get_ndarray().get_stride(0);
-
-    // Batch strides (frequencies)
-    const std::ptrdiff_t strideA = frb1_beams_buffer.get_ndarray().get_stride(1);
-    const std::ptrdiff_t strideB = frb2_phase_buffer.get_ndarray().get_stride(2);
-    const std::ptrdiff_t strideC = frb2_beams_buffer.get_ndarray().get_stride(1);
-
+    // Matrix A
     const float16_t alpha = 1;
-    const float16_t beta = 0;
+    const float16_t* A = frb1_beams_buffer.get_ndarray().data()
+                         + frb1_beams_stride * mod(frb1_beams_offset, frb1_beams_extent);
+    assert(std::string(frb1_beams_buffer.get_ndarray().get_dimname(0)) == "Ttilde");
+    const int ldA = frb1_beams_buffer.get_ndarray().get_stride(0); // time
+    assert(std::string(frb1_beams_buffer.get_ndarray().get_dimname(1)) == "Fbar");
+    const std::ptrdiff_t strideA = frb1_beams_buffer.get_ndarray().get_stride(1); // frequency
 
-    DEBUG("m={} n={} k={} frb1_beams_memory={} lda={} strideA={} frb2_phase_memory={} ldb={} "
-          "strideB={} frb2_beams_memory={} ldc={} strideC={} frb2_num_frequencies={}",
-          m, n, k, (const void*)frb1_beams_memory, lda, strideA, (const void*)frb2_phase_memory,
-          ldb, strideB, (const void*)frb2_beams_memory, ldc, strideC, frb2_num_frequencies);
+    // Matrix B
+    const float16_t* B = frb2_weights_buffer.get_ndarray().data();
+    assert(std::string(frb2_weights_buffer.get_ndarray().get_dimname(1)) == "R");
+    const int ldB = frb2_weights_buffer.get_ndarray().get_stride(1); // output beams
+    assert(std::string(frb2_weights_buffer.get_ndarray().get_dimname(0)) == "Fbar");
+    const std::ptrdiff_t strideB = frb2_weights_buffer.get_ndarray().get_stride(0); // frequency
+
+    // Matrix C
+    const float16_t beta = 0;
+    float16_t* C = frb2_beams_buffer.get_ndarray().data();
+    assert(std::string(frb2_beams_buffer.get_ndarray().get_dimname(1)) == "R");
+    const int ldC = frb2_beams_buffer.get_ndarray().get_stride(1); // output beams
+    assert(std::string(frb2_beams_buffer.get_ndarray().get_dimname(2)) == "Fbar");
+    const std::ptrdiff_t strideC = frb2_beams_buffer.get_ndarray().get_stride(2); // frequency
+
+    // Batch
+    const int batchCount = frb2_num_frequencies; // frequencies
+
+    // HgemmStridedBatched(cublasHandle_t handle,
+    //                     cublasOperation_t transA, cublasOperation_t transB,
+    //                     int M, int N, int K,
+    //                     const T* alpha,
+    //                     const T* A, int ldA, int strideA,
+    //                     const T* B, int ldB, int strideB,
+    //                     const T* beta,
+    //                     T* C, int ldC, int strideC,
+    //                     int batchCount)
+    DEBUG("M={} N={} K={} A={} ldA={} strideA={} B={} ldB={} strideB={} C={} ldC={} strideC={} "
+          "batchCount={}",
+          M, N, K, (const void*)A, ldA, strideA, (const void*)B, ldB, strideB, (void*)C, ldC,
+          strideC, batchCount);
     cublasStatus_t stat =
-        cublasHgemmStridedBatched(handle, CUBLAS_OP_T, CUBLAS_OP_N, m, n, k, &alpha,
-                                  frb1_beams_memory, lda, strideA, frb2_phase_memory, ldb, strideB,
-                                  &beta, frb2_beams_memory, ldc, strideC, frb2_num_frequencies);
+        cublasHgemmStridedBatched(handle, transA, transB, M, N, K, &alpha, A, ldA, strideA, B, ldB,
+                                  strideB, &beta, C, ldC, strideC, batchCount);
     if (stat != CUBLAS_STATUS_SUCCESS) {
         ERROR("Error at {:s}:{:d}: cublasHgemmStridedBatched: {:s}", __FILE__, __LINE__,
               cublasGetStatusString(stat));

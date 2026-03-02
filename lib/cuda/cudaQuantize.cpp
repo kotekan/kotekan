@@ -48,26 +48,27 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     _gpu_mem_index(unique_name + "/index"),
     //
     input_buffer([&]() {
-        const std::array<std::ptrdiff_t, 3> input_lengths{_num_beams, _num_frequencies, _num_times};
-        const std::array<std::string, 3> input_dimnames{"R", "Fbar", "Ttilde"};
-        return NDArrayBuffer<float16_t, 3>(_gpu_mem_input, "I2", input_lengths, input_dimnames,
+        const std::array<std::ptrdiff_t, 4> input_lengths{1, _num_beams, _num_frequencies,
+                                                          _num_times};
+        const std::array<std::string, 4> input_dimnames{"Ttildehi256", "R", "Fbar", "Ttildelo256"};
+        return NDArrayBuffer<float16_t, 4>(_gpu_mem_input, "I2", input_lengths, input_dimnames,
                                            *this);
     }()),
     beam_buffer([&]() {
         // The data are stored as 4-bit integers, 2 values per byte
         assert(_num_beams % 2 == 0);
-        const std::array<std::ptrdiff_t, 3> beam_lengths{_num_beams / 2, _num_frequencies,
+        const std::array<std::ptrdiff_t, 4> beam_lengths{1, _num_beams / 2, _num_frequencies,
                                                          _num_times};
-        const std::array<std::string, 3> beam_dimnames{"R", "Fbar", "Ttilde"};
-        return NDArrayBuffer<kotekan::uint4x2_t, 3>(_gpu_mem_beams, "I3", beam_lengths,
+        const std::array<std::string, 4> beam_dimnames{"Ttildehi256", "R", "Fbar", "Ttildelo256"};
+        return NDArrayBuffer<kotekan::uint4x2_t, 4>(_gpu_mem_beams, "I3", beam_lengths,
                                                     beam_dimnames, *this);
     }()),
     meanstd_buffer([&]() {
         assert(_num_times % CHUNK_SIZE == 0);
         static_assert(CHUNK_SIZE == 256);
-        const std::array<std::ptrdiff_t, 4> meanstd_lengths{_num_beams, _num_frequencies,
-                                                            _num_times / CHUNK_SIZE, 2};
-        const std::array<std::string, 4> meanstd_dimnames{"R", "Fbar", "Ttilde256", "mean/std"};
+        assert(_num_times / CHUNK_SIZE == 1); // This avoids `Ttildelo256`
+        const std::array<std::ptrdiff_t, 4> meanstd_lengths{1, _num_beams, _num_frequencies, 2};
+        const std::array<std::string, 4> meanstd_dimnames{"Ttildehi256", "R", "Fbar", "mean/std"};
         return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_meanstd, "I3_meanstd", meanstd_lengths,
                                            meanstd_dimnames, *this);
     }())
@@ -116,8 +117,8 @@ cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEven
     assert(input_mc);
     assert(metadata_is_chord(input_mc));
     const std::shared_ptr<const chordMetadata> input_meta = get_chord_metadata(input_mc);
-    assert(input_meta->dims == 3);
-    assert(input_meta->dim[0] % 2 == 0);
+    assert(input_meta->dims == 4);
+    assert(input_meta->dim[1] % 2 == 0);
     static_assert(CHUNK_SIZE == 256);
 
     // TODO: Avoid the index array

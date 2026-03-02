@@ -61,8 +61,8 @@ private:
     /// GPU side index array
     const std::string _gpu_mem_index;
 
-    const NDArrayBuffer<float16_t, 3> input_buffer;
-    NDArrayBuffer<kotekan::uint4x2_t, 3> beam_buffer;
+    const NDArrayBuffer<float16_t, 4> input_buffer;
+    NDArrayBuffer<kotekan::uint4x2_t, 4> beam_buffer;
     NDArrayBuffer<float16_t, 4> meanstd_buffer;
 };
 
