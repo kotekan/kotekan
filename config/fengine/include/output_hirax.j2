@@ -201,6 +201,7 @@ run_recv_frb1_beams:
 # Output
 
 write_data:
+    create_single_file: true
     write_bf_mask:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bf_mask_buffer
