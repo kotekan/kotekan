@@ -358,11 +358,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/kernel_arguments}}
     };
 
-    // Set Ein_memory to beginning of input ring buffer
-    Ein_arg = array_desc(Ein_memory, Ein_length_in_bytes);
-
-    // Set E_memory to beginning of output ring buffer
-    E_arg = array_desc(E_memory, E_length_in_bytes);
+    // Ein_arg = array_desc(Ein_memory, Ein_length_in_bytes);
+    // E_arg = array_desc_arg(E_memory, E_length_in_bytes);
 
     // Ringbuffer size
     const std::ptrdiff_t Tin_ringbuf = Ein_buffer.get_ndarray().extent(0);
@@ -378,10 +375,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    Tin_min_arg = 16384 * mod(Tin_min, Tin_ringbuf);
-    Tin_max_arg = 16384 * (mod(Tin_min, Tin_ringbuf) + Tin_length);
+    Tin_min_arg = mod(Tin_min, Tin_ringbuf);
+    Tin_max_arg = Tin_min_arg + Tin_length;
     T_min_arg = mod(T_min, T_ringbuf);
-    T_max_arg = mod(T_min, T_ringbuf) + T_length;
+    T_max_arg = T_min_arg + T_length;
 
     // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
 
@@ -401,22 +398,6 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{/kernel_arguments}}
 
     if (poison_buffers) {
-        E_buffer.set_to_poison(0x00);
-
-        // Initialize host-side buffer arrays
-        {{#kernel_arguments}}
-            {{^isscalar}}
-                {{^hasbuffer}}
-                    {{#isoutput}}
-                        CHECK_CUDA_ERROR(cudaMemsetAsync({{{name}}}_memory,
-                                                         0xff,
-                                                         {{{name}}}_length_in_bytes,
-                                                         device.getStream(cuda_stream_id)));
-                    {{/isoutput}}
-                {{/hasbuffer}}
-            {{/isscalar}}
-        {{/kernel_arguments}}
-
         E_buffer.set_to_poison(0x00);
         info_buffer.set_to_poison(0xff);
     } // if (poison_buffers)
@@ -458,11 +439,6 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 
         // Check error codes
-        const std::int32_t error_code = *std::max_element((const std::int32_t*)&*host_info_buffer.begin(),
-                                                          (const std::int32_t*)&*host_info_buffer.end());
-        if (error_code != 0)
-            ERROR("CUDA kernel {{{kernel_name}}} returned error code: {}", error_code);
-
         // TODO: Introduce a new "unbuffered" buffer; do this there
         for (int block = 0; block < info_lengths[info_index_block]; ++block) {
             for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
@@ -479,6 +455,11 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 }
             }
         }
+
+        const std::int32_t error_code = *std::max_element((const std::int32_t*)&*host_info_buffer.begin(),
+                                                          (const std::int32_t*)&*host_info_buffer.end());
+        if (error_code != 0)
+            FATAL_ERROR("CUDA kernel {{{kernel_name}}} returned error code: {}", error_code);
 
         E_buffer.check_for_poison(0x00);
     } // if (poison_buffers)

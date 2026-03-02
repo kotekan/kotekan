@@ -566,7 +566,7 @@ function upchan!(emitter)
     apply!(emitter, :F_ringbuf => layout_F_ringbuf_registers, :(zero(Int4x8)))
 
     # Load gains
-    load!(emitter, :Gains => layout_G_registers, :G_memory => layout_G_memory)
+    load!(emitter, :Gain => layout_G_registers, :G_memory => layout_G_memory)
 
     # Calculate weights
     # sinc-Hanning weight function, eqn. (11), with `N=U`
@@ -1364,7 +1364,7 @@ function upchan!(emitter)
 
                     # Step 7: Compute E5 by applying gains to E4
                     # TODO: Combine gains and last FFT step
-                    apply!(emitter, :E5, [:E4, :Gains], (E4, G) -> :($G * $E4))
+                    apply!(emitter, :E5, [:E4, :Gain], (E4, G) -> :($G * $E4))
 
                     # Step 8: Compute F̄_out by quantizing E5
                     apply!(emitter, :E5, [:E5], (E5,) -> :(clamp($E5, Float16x2(-7, -7), Float16x2(+7, +7))))

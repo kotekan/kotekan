@@ -1,0 +1,13 @@
+# -*-yaml-*-
+
+# CHORD pathfinder read initial conditions
+
+################################################################################
+
+# Stages
+
+read_data:
+    read_voltage:
+        kotekan_stage: hdf5FileReadSingleFile
+        file_name: voltage
+        out_buf: host_voltage_buffer

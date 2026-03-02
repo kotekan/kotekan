@@ -37,8 +37,8 @@ telescope:
     dish_separation_y_m: 0.390625
 
     dish_inputs:
-    {% for x in range(0, 4) %}
-    {% for y in range(0, 256) %}
+{% for x in range(0, 4) %}
+{%   for y in range(0, 256) %}
     - dish_idx: {{y+256*x}}
       grid_x_idx: {{x}}
       grid_y_idx: {{y}}
@@ -46,9 +46,8 @@ telescope:
       coelev_disp_deg: 0.0
       type: ArrayDish
       label: CHIME-{{"ABCD"[x]}}{{"{:04d}".format(y+1)}}
-    {% endfor %}
-    {% endfor %}
-dummy_declaration_to_eat_jinja2_white_space_keep_this_right_after_the_telescope_definition:
+{%   endfor %}
+{% endfor %}
 
 earth_rotation_data:
     kotekan_update_endpoint: json
@@ -81,12 +80,11 @@ num_frequencies: 16       # 2048 frequencies / 64 gpus * 50% coverage
 frequency_channels: [
     1024, 1088, 1152, 1216, 1280, 1344, 1408, 1472, 1536, 1600, 1664, 1728, 1792, 1856, 1920, 1984,
 ]
-
 ################################################################################
 
 # Input frames
 
-num_times: 16384                # frame length is 16384 * 2.56 us = 20.97152 ms
+num_times: 16384                # frame length is 16384 * 2.56 us = 41.94304 ms
 
 ################################################################################
 
@@ -118,16 +116,15 @@ host_pl_expanded_mask_ringbuffer:
     ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)
     metadata_pool: main_pool
 
-use_chime_input_buffers: true
 host_voltage_buffers:
   num_frames: buffer_depth
   frame_size: num_dishes * num_polarizations * num_times
   metadata_pool: main_pool
   numa_0:
-    {%- for id in range(16) %}  # num_frequencies = 16
+{% for id in range(16) %}   # num_frequencies = 16
     host_voltage_buffer_{{ id }}:
       kotekan_buffer: standard
-    {%- endfor %}
+{% endfor %}
 
 host_voltage_buffer:
     kotekan_buffer: standard
@@ -139,21 +136,17 @@ host_voltage_ringbuffer:
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times
     metadata_pool: main_pool
 
-# host_expected_bb_beams_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
-#     metadata_pool: main_pool
-# 
-# host_expected_frb1_beams_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
-#     metadata_pool: main_pool
-
 ################################################################################
 
 # Stages
+
+run_invent_bf_mask:
+    kotekan_stage: inventBFMask
+    bf_mask: host_bf_mask_buffer
+
+run_invent_pl_mask:
+    kotekan_stage: inventPLMask
+    pl_mask: host_pl_mask_buffer
 
 # run_send_bf_mask:
 #     gpu_0:
@@ -203,18 +196,17 @@ run_send_voltage:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            # host_voltage_buffer: host_voltage_buffer
-            {%- for id in range(16) %} # num_frequencies = 16
+{% for id in range(16) %}   # num_frequencies = 16
             host_voltage_buffer_{{ id }}: host_voltage_buffer_{{ id }}
-            {%- endfor %}
+{% endfor %}
         out_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
         commands:
         - name: cudaCopyNToRingbuffer
           ring_buffer_size: buffer_depth * input_size
           in_bufs: 
-            {%- for id in range(16) %} # num_frequencies = 16
-            - host_voltage_buffer_{{ id }}
-            {%- endfor %}
+{% for id in range(16) %}   # num_frequencies = 16
+          - host_voltage_buffer_{{ id }}
+{% endfor %}
           signal_buf: host_voltage_ringbuffer
           gpu_mem_output: voltage_buffer

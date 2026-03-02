@@ -1,6 +1,6 @@
 # -*-yaml-*-
 
-# CHORD smallfinder test output
+# Test output
 
 ################################################################################
 
@@ -134,38 +134,6 @@ run_recv_rfi_SKbarbartilde:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_SKbartilde_buffer
 
-run_recv_upchan_U2_voltage:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_upchan_U2_voltage_ringbuffer: host_upchan_U2_voltage_ringbuffer
-        out_buffers:
-            host_upchan_U2_voltage_buffer: host_upchan_U2_voltage_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_upchan_U2_voltage_ringbuffer
-          gpu_mem_input: upchan_U2_voltage_buffer
-          output_size: num_dishes * num_polarizations * (upchan_U2_max_num_channels * 2) * (num_times / 2)
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_upchan_U2_voltage_buffer
-
-run_recv_upchan_U4_voltage:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_upchan_U4_voltage_ringbuffer: host_upchan_U4_voltage_ringbuffer
-        out_buffers:
-            host_upchan_U4_voltage_buffer: host_upchan_U4_voltage_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_upchan_U4_voltage_ringbuffer
-          gpu_mem_input: upchan_U4_voltage_buffer
-          output_size: num_dishes * num_polarizations * (upchan_U4_max_num_channels * 4) * (num_times / 4)
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_upchan_U4_voltage_buffer
-
 run_recv_upchan_U8_voltage:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -214,22 +182,6 @@ run_recv_upchan_U32_voltage:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_upchan_U32_voltage_buffer
 
-run_recv_upchan_U64_voltage:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_upchan_U64_voltage_ringbuffer: host_upchan_U64_voltage_ringbuffer
-        out_buffers:
-            host_upchan_U64_voltage_buffer: host_upchan_U64_voltage_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_upchan_U64_voltage_ringbuffer
-          gpu_mem_input: upchan_U64_voltage_buffer
-          output_size: num_dishes * num_polarizations * (upchan_U64_max_num_channels * 64) * (num_times / 64)
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_upchan_U64_voltage_buffer
-
 run_recv_frb1_beams:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -249,6 +201,7 @@ run_recv_frb1_beams:
 # Output
 
 write_data:
+    create_single_file: true
     write_bf_mask:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bf_mask_buffer
@@ -313,22 +266,10 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_shift_buffer
         file_name: bb_shift
-    # write_expected_bb_beams:
-    #     kotekan_stage: hdf5FileWrite
-    #     in_buf: host_expected_bb_beams_buffer
-    #     file_name: expected_bb_beams
     write_bb_beams:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beams_buffer
         file_name: bb_beams
-    write_upchan_U2_gain:
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_upchan_U2_gain_buffer
-        file_name: upchan_U2_gain
-    write_upchan_U4_gain:
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_upchan_U4_gain_buffer
-        file_name: upchan_U4_gain
     write_upchan_U8_gain:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U8_gain_buffer
@@ -341,18 +282,6 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U32_gain_buffer
         file_name: upchan_U32_gain
-    write_upchan_U64_gain:
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_upchan_U64_gain_buffer
-        file_name: upchan_U64_gain
-    write_upchan_U2_voltage:
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_upchan_U2_voltage_buffer
-        file_name: upchan_U2_voltage
-    write_upchan_U4_voltage:
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_upchan_U4_voltage_buffer
-        file_name: upchan_U4_voltage
     write_upchan_U8_voltage:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U8_voltage_buffer
@@ -365,22 +294,6 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U32_voltage_buffer
         file_name: upchan_U32_voltage
-    write_upchan_U64_voltage:
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_upchan_U64_voltage_buffer
-        file_name: upchan_U64_voltage
-    write_frb1_U1_phase:
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_frb1_U1_phase_buffer
-        file_name: frb1_U1_phase
-    write_frb1_U2_phase:
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_frb1_U2_phase_buffer
-        file_name: frb1_U2_phase
-    write_frb1_U4_phase:
-        kotekan_stage: hdf5FileWrite
-        in_buf: host_frb1_U4_phase_buffer
-        file_name: frb1_U4_phase
     write_frb1_U8_phase:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb1_U8_phase_buffer
@@ -393,18 +306,14 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb1_U32_phase_buffer
         file_name: frb1_U32_phase
-    write_frb1_U64_phase:
+    write_frb2_beam_positions:
         kotekan_stage: hdf5FileWrite
-        in_buf: host_frb1_U64_phase_buffer
-        file_name: frb1_U64_phase
-    write_frb2_phase:
+        in_buf: host_frb2_beam_positions_buffer
+        file_name: frb2_beam_positions
+    write_frb2_weights:
         kotekan_stage: hdf5FileWrite
-        in_buf: host_frb2_phase_buffer
-        file_name: frb2_phase
-    # write_expected_frb1_beams:
-    #     kotekan_stage: hdf5FileWrite
-    #     in_buf: host_expected_frb1_beams_buffer
-    #     file_name: expected_frb1_beams
+        in_buf: host_frb2_weights_buffer
+        file_name: frb2_weights
     write_frb1_beams:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb1_beams_buffer
