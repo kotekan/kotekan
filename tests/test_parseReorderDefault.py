@@ -18,6 +18,8 @@ global_params = {
     "log_level": "INFO",
     "cpu_affinity": [0, 1],
     "num_elements": 2048,
+    "num_dishes": 1024,
+    "num_polarizations": 2,
     # KotekanStageTester adds a "main_pool" section
     # Buffers
     "reorder_buffer": {
