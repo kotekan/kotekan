@@ -123,6 +123,13 @@ class N2Buffer(object):
 
         layout = self.__class__.calculate_layout(num_elements, num_prod, num_ev)
 
+        if layout["size"] != len(_data):
+            raise RuntimeError("Received buffer length {0:d} (Total {1:d} - Metadata {2:d})"
+                               .format(len(_data), len(self._buffer), ctypes.sizeof(N2Metadata))
+                               + " does not match expected size {0:d}".format(layout["size"])
+                               + " from num_elements {0:d} num_ev {1:d} num_prod {2:d}"
+                               .format(num_elements, num_ev, num_prod))
+
         for member in layout["members"]:
 
             arr = np.frombuffer(
@@ -279,6 +286,6 @@ class N2Buffer(object):
 
 
 def _offset(offset, align):
-    """Calculate the start of a member of `size` after `offset` within a
+    """Calculate the start of a member with alignment `align` after `offset` within a
     struct."""
     return ((align - (offset % align)) % align) + offset
