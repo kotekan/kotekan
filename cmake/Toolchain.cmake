@@ -280,7 +280,7 @@ check_cxx_compiler_flag(-fcx-limited-range HAVE_CX_LIMITED_RANGE)
 if(HAVE_CX_LIMITED_RANGE
    AND NOT ${IWYU}
    AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcx-limited-range -ffast-math")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcx-limited-range")
 endif()
 check_c_compiler_flag(-fcx-limited-range HAVE_C_LIMITED_RANGE)
 if(HAVE_C_LIMITED_RANGE

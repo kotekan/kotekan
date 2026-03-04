@@ -171,7 +171,7 @@ void EigenN2Iter::main_thread() {
         for (uint32_t i = 0; i < _num_eigenvectors; i++) {
             str_evals = fmt::format("{} {}", str_evals, evals[i]);
         }
-        INFO("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:.3f} s. Took {:d}/{:d} "
+        DEBUG("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:.3f} s. Took {:d}/{:d} "
               "iterations.",
               str_evals, stats.rms, elapsed_time, stats.iterations, _max_iterations);
 
