@@ -221,21 +221,24 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     // Current offset into the rfi_S012 buffer
     // n2k does not apply this itself
     const std::ptrdiff_t Trfi_offset = Tmin / rfi_downsampling_factor * T_stride;
-    
+
     const auto& pl_mask_meta = pl_mask.get_metadata();
     const std::ptrdiff_t Tpl_stride = pl_mask.get_ndarray().stride(0);
-    const std::ptrdiff_t Tpl_offset = Tmin / pl_mask_meta->get_time_downsampling_fpga() * Tpl_stride;;
+    const std::ptrdiff_t Tpl_offset =
+        Tmin / pl_mask_meta->get_time_downsampling_fpga() * Tpl_stride;
+    ;
 
-    n2k::launch_s0_kernel((ulong*)rfi_S012_memory + Trfi_offset, (const ulong*)(pl_mask_memory + Tpl_offset), T,
-                          0, Tsize, num_frequencies, num_dishes * num_polarizations,
-                          rfi_downsampling_factor, F_stride, device.getStream(cuda_stream_id));
+    n2k::launch_s0_kernel((ulong*)rfi_S012_memory + Trfi_offset,
+                          (const ulong*)(pl_mask_memory + Tpl_offset), T, 0, Tsize, num_frequencies,
+                          num_dishes * num_polarizations, rfi_downsampling_factor, F_stride,
+                          device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
     n2k::launch_s12_kernel((ulong*)(rfi_S012_memory + S_stride + Trfi_offset),
-                           (const uint8_t*)(voltage_memory + T_offset), T, 0, Tsize, num_frequencies,
-                           num_dishes * num_polarizations, rfi_downsampling_factor, F_stride,
-                           offset_encoded, device.getStream(cuda_stream_id));
+                           (const uint8_t*)(voltage_memory + T_offset), T, 0, Tsize,
+                           num_frequencies, num_dishes * num_polarizations, rfi_downsampling_factor,
+                           F_stride, offset_encoded, device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif

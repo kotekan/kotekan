@@ -53,17 +53,18 @@ gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::stri
     assert(_samples_per_data_set % _rfi_downsampling_factor == 0);
 
     size_t bf_mask_size = _num_elements;
-    size_t rfi_s012_size = (_samples_per_data_set / _rfi_downsampling_factor) * _num_local_freq * 3 * _num_elements * sizeof(uint64_t);
-    
+    size_t rfi_s012_size = (_samples_per_data_set / _rfi_downsampling_factor) * _num_local_freq * 3
+                           * _num_elements * sizeof(uint64_t);
+
     if (in_rfi_s012_buf->frame_size != rfi_s012_size) {
         FATAL_ERROR("in_rfi_s012_buf ({:s}) has frame size: {:d}, expected {:d}",
-                in_rfi_s012_buf->buffer_name, in_rfi_s012_buf->frame_size, rfi_s012_size);
+                    in_rfi_s012_buf->buffer_name, in_rfi_s012_buf->frame_size, rfi_s012_size);
     }
     assert(in_rfi_s012_buf->frame_size == rfi_s012_size);
 
     if (in_bf_mask_buf->frame_size != bf_mask_size) {
         FATAL_ERROR("in_bf_mask_buf ({:s}) has frame size: {:d}, expected {:d}",
-                in_bf_mask_buf->buffer_name, in_bf_mask_buf->frame_size, bf_mask_size);
+                    in_bf_mask_buf->buffer_name, in_bf_mask_buf->frame_size, bf_mask_size);
     }
     assert(in_bf_mask_buf->frame_size == bf_mask_size);
 

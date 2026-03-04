@@ -73,7 +73,7 @@ private:
     // Config options
     const int64_t _num_polarizations;
     const int64_t _num_dishes;
-    const int64_t _num_elements;  // num_pol x num_dishes
+    const int64_t _num_elements; // num_pol x num_dishes
     const int64_t _num_local_freq;
     const int64_t _samples_per_data_set;
     const int64_t _rfi_downsampling_factor;
