@@ -188,12 +188,12 @@ cudaEvent_t cudaQuantize8::execute(cudaPipelineState&, const std::vector<cudaEve
                       outputi_stride3);
         // Compare results
         for (std::size_t n = 0; n < cpu_meanstd_buffer.size(); ++n) {
-            const float16_t x = gpu_meanstd_buffer.at(n);
+            const float16_t x [[maybe_unused]] = gpu_meanstd_buffer.at(n);
             assert(isfinite(float(x)));
             assert(x == cpu_meanstd_buffer.at(n));
         }
         for (std::size_t n = 0; n < cpu_beam_buffer.size(); ++n) {
-            const std::uint8_t x = gpu_beam_buffer.at(n);
+            const std::uint8_t x [[maybe_unused]] = gpu_beam_buffer.at(n);
             assert(x != 0 && x != 255);
             assert(x == cpu_beam_buffer.at(n));
         }

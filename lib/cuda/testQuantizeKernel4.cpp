@@ -62,7 +62,7 @@ public:
                 case 4:
                     return 0.5f * x + 0.5f * x * x * x + 10 * (time % 23 == 0);
             }
-            assert(0);
+            std::abort();
         };
 
 
