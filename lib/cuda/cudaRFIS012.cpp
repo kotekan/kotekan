@@ -126,6 +126,12 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
     if (rfi_downsampling_factor % 128 != 0)
         FATAL_ERROR("rfi_downsampling_factor % 128 != 0");
 
+    if (num_times != rfi_downsampling_factor * rfi_num_times)
+        FATAL_ERROR(
+            "num_times ({:d}) != rfi_downsampling_factor x rfi_num_times ({:d} x {:d} = {:d})",
+            num_times, rfi_downsampling_factor, rfi_num_times,
+            rfi_downsampling_factor * rfi_num_times);
+
     pl_mask.register_consumer();
     voltage.register_consumer();
     rfi_S012.register_producer();
@@ -210,6 +216,11 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Tmin = voltage.get_read_valid().begin() % Tsize;
     assert(Tmin % 128 == 0);
     const std::ptrdiff_t T = voltage.get_read_valid().size();
+    if (Tmin + T > Tsize) {
+        FATAL_ERROR("Chunk starting at Tmin={:d} of size T={:d} runs past end of ringbuffer {:s} "
+                    "of size Tsize={:d}",
+                    Tmin, T, voltage.get_buffer_name(), Tsize);
+    }
     assert(Tmin + T <= Tsize);
     const std::ptrdiff_t T_offset = Tmin * voltage.get_ndarray().stride(0);
 

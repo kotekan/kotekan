@@ -111,6 +111,11 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
                   std::array<std::string, 3>{"Trfi", "F", "S"}, *this)
 //
 {
+    if (num_times % rfi_num_times != 0)
+        FATAL_ERROR("num_times {:d} must be a multiple of rfi_num_times {:d}", num_times,
+                    rfi_num_times);
+    assert(num_times % rfi_num_times == 0);
+
     rfi_S012.register_consumer();
     rfi_S012tilde.register_producer();
 
@@ -171,6 +176,11 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Trfi = rfi_S012.get_read_valid().size();
 
     // Offsets into rfi_S012 and rfi_S012tilde to start reading/writing.
+    if (Trfimin + Trfi > Trfisize) {
+        FATAL_ERROR("Chunk starting at Trfimin={:d} of size Trfi={:d} runs past end of ringbuffer "
+                    "{:s} of size Trfisize={:d}",
+                    Trfimin, Trfi, rfi_S012.get_buffer_name(), Trfisize);
+    }
     assert(Trfimin + Trfi <= Trfisize);
     const std::ptrdiff_t Trfi_offset = Trfimin * rfi_S012.get_ndarray().stride(0);
     const std::ptrdiff_t Trfitilde_offset = Trfimin * rfi_S012tilde.get_ndarray().stride(0);
