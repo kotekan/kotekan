@@ -52,10 +52,11 @@
  *          * num_local_freq * num_elements / 64 bytes.
  *      @buffer_metadata chordMetadata. time_downsample_fpga[] = 64
  *
- * @conf  num_elements         Int.  Number of feeds or (antennas x
- *      polarizations).
+ * @conf num_polarizations     Int.  Number of polarizations
+ * @conf num_dishes            Int.  Number of feeds per polarization.
  * @conf num_local_freq        Int.  Number of frequencies.
  * @conf samples_per_data_set  Int.  Number of samples per frame.
+ * @conf rfi_downsampling_factor  Int.  Downsampling factor of input buffer
  */
 class gpuSimulateRFIS012tilde : public kotekan::Stage {
 public:
@@ -70,10 +71,12 @@ private:
     Buffer* out_rfi_s012tilde_buf;
 
     // Config options
-    int64_t _num_local_freq;
-    int64_t _num_elements;
-    int64_t _samples_per_data_set;
-    int64_t _rfi_downsampling_factor;
+    const int64_t _num_polarizations;
+    const int64_t _num_dishes;
+    const int64_t _num_elements;  // num_pol x num_dishes
+    const int64_t _num_local_freq;
+    const int64_t _samples_per_data_set;
+    const int64_t _rfi_downsampling_factor;
 };
 
 #endif

@@ -74,10 +74,12 @@ private:
     Buffer* out_rfis012_buf;
 
     // Config options
-    int64_t _num_local_freq;
-    int64_t _num_elements;
-    int64_t _samples_per_data_set;
-    int64_t _rfi_downsampling_factor;
+    const int64_t _num_polarizations;
+    const int64_t _num_dishes;
+    const int64_t _num_elements;
+    const int64_t _num_local_freq;
+    const int64_t _samples_per_data_set;
+    const int64_t _rfi_downsampling_factor;
 };
 
 #endif

@@ -30,14 +30,15 @@ REGISTER_KOTEKAN_STAGE(gpuSimulateRFIS012tilde);
 gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::string& unique_name,
                                                  bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
-          std::bind(&gpuSimulateRFIS012tilde::main_thread, this)) {
+          std::bind(&gpuSimulateRFIS012tilde::main_thread, this)),
+    _num_polarizations(config.get<int64_t>(unique_name, "num_polarizations")),
+    _num_dishes(config.get<int64_t>(unique_name, "num_dishes")),
+    _num_elements(_num_polarizations * _num_dishes),
+    _num_local_freq(config.get<int64_t>(unique_name, "num_local_freq")),
+    _samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
+    _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")) {
 
-    // Apply config.
-    _num_elements = config.get<int64_t>(unique_name, "num_elements"); // = "2*D"
-    _num_local_freq = config.get<int64_t>(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get<int64_t>(unique_name, "samples_per_data_set");
-    _rfi_downsampling_factor = config.get<int64_t>(unique_name, "rfi_downsampling_factor");
-
+    // Grab buffers.
     in_rfi_s012_buf = get_buffer("in_rfi_s012_buf");
     in_rfi_s012_buf->register_consumer(unique_name);
     in_bf_mask_buf = get_buffer("in_bf_mask_buf");
@@ -50,6 +51,21 @@ gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::stri
         FATAL_ERROR("samples_per_data_set must be a multiple of rfi_downsampling_factor");
     }
     assert(_samples_per_data_set % _rfi_downsampling_factor == 0);
+
+    size_t bf_mask_size = _num_elements;
+    size_t rfi_s012_size = (_samples_per_data_set / _rfi_downsampling_factor) * _num_local_freq * 3 * _num_elements * sizeof(uint64_t);
+    
+    if (in_rfi_s012_buf->frame_size != rfi_s012_size) {
+        FATAL_ERROR("in_rfi_s012_buf ({:s}) has frame size: {:d}, expected {:d}",
+                in_rfi_s012_buf->buffer_name, in_rfi_s012_buf->frame_size, rfi_s012_size);
+    }
+    assert(in_rfi_s012_buf->frame_size == rfi_s012_size);
+
+    if (in_bf_mask_buf->frame_size != bf_mask_size) {
+        FATAL_ERROR("in_bf_mask_buf ({:s}) has frame size: {:d}, expected {:d}",
+                in_bf_mask_buf->buffer_name, in_bf_mask_buf->frame_size, bf_mask_size);
+    }
+    assert(in_bf_mask_buf->frame_size == bf_mask_size);
 
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
     int64_t nf = _num_local_freq;

@@ -35,8 +35,8 @@
  *      @buffer_metadata chordMetadata. time_downsampling_fpga = rfi_downsampling_factor *
  * rfi_second_downsampling_factor
  *
- * @conf  num_elements         Int.  Number of feeds or (antennas x
- *      polarizations).
+ * @conf num_polarizations     Int.  Number of polarizations
+ * @conf num_dishes            Int.  Number of feeds per polarization.
  * @conf num_local_freq        Int.  Number of frequencies.
  * @conf samples_per_data_set  Int.  Number of samples per frame.
  * @conf rfi_downsampling_factor  Int.  Downsampling factor of input buffer
@@ -54,11 +54,13 @@ private:
     Buffer* out_buf;
 
     // Config options
-    int64_t _num_local_freq;
-    int64_t _num_elements;
-    int64_t _samples_per_data_set;
-    int64_t _rfi_downsampling_factor;
-    int64_t _rfi_second_downsampling_factor;
+    const int64_t _num_polarizations;
+    const int64_t _num_dishes;
+    const int64_t _num_elements;
+    const int64_t _num_local_freq;
+    const int64_t _samples_per_data_set;
+    const int64_t _rfi_downsampling_factor;
+    const int64_t _rfi_second_downsampling_factor;
 };
 
 #endif

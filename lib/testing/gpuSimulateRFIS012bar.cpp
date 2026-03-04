@@ -30,22 +30,23 @@ REGISTER_KOTEKAN_STAGE(gpuSimulateRFIS012bar);
 gpuSimulateRFIS012bar::gpuSimulateRFIS012bar(Config& config, const std::string& unique_name,
                                              bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
-          std::bind(&gpuSimulateRFIS012bar::main_thread, this)) {
+          std::bind(&gpuSimulateRFIS012bar::main_thread, this)),
+    _num_polarizations(config.get<int64_t>(unique_name, "num_polarizations")),
+    _num_dishes(config.get<int64_t>(unique_name, "num_dishes")),
+    _num_elements(_num_polarizations * _num_dishes),
+    _num_local_freq(config.get<int64_t>(unique_name, "num_local_freq")),
+    _samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
+    _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")),
+    _rfi_second_downsampling_factor(config.get<int64_t>(unique_name, "rfi_second_downsampling_factor")) {
 
-    // Apply config.
-    _num_elements = config.get<int64_t>(unique_name, "num_elements"); // = "2*D"
-    _num_local_freq = config.get<int64_t>(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get<int64_t>(unique_name, "samples_per_data_set");
-    _rfi_downsampling_factor = config.get<int64_t>(unique_name, "rfi_downsampling_factor");
-    _rfi_second_downsampling_factor =
-        config.get<int64_t>(unique_name, "rfi_second_downsampling_factor");
-
+    // Grab buffers
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
 
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
+    // input validation
     if (_samples_per_data_set % _rfi_downsampling_factor != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of rfi_downsampling_factor");
     }
@@ -58,11 +59,18 @@ gpuSimulateRFIS012bar::gpuSimulateRFIS012bar(Config& config, const std::string& 
     assert((_samples_per_data_set / _rfi_downsampling_factor) % _rfi_second_downsampling_factor
            == 0);
 
+    size_t rfi_s012_size = (_samples_per_data_set / _rfi_downsampling_factor) * _num_local_freq * 3 * _num_elements * sizeof(uint64_t);
+
+    if (in_buf->frame_size != rfi_s012_size) {
+        FATAL_ERROR("in_buf ({:s}) has frame size: {:d}, expected {:d}",
+                in_buf->buffer_name, in_buf->frame_size, rfi_s012_size);
+    }
+    assert(in_buf->frame_size == rfi_s012_size);
+
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor / _rfi_second_downsampling_factor;
-    int64_t nf = _num_local_freq;
-    int64_t ne = _num_elements;
-    out_buf->allocate_ndarray_frame_desc<uint64_t, 5>("S012bar", {nt, nf, 3, 2, ne / 2},
-                                                      {"Trfibar", "F", "S", "P", "D"});
+    out_buf->allocate_ndarray_frame_desc<uint64_t, 5>("S012bar",
+            {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
+            {"Trfibar", "F", "S", "P", "D"});
 }
 
 gpuSimulateRFIS012bar::~gpuSimulateRFIS012bar() {}

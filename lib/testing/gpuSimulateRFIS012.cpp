@@ -30,14 +30,15 @@ REGISTER_KOTEKAN_STAGE(gpuSimulateRFIS012);
 gpuSimulateRFIS012::gpuSimulateRFIS012(Config& config, const std::string& unique_name,
                                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
-          std::bind(&gpuSimulateRFIS012::main_thread, this)) {
+          std::bind(&gpuSimulateRFIS012::main_thread, this)),
+    _num_polarizations(config.get<int64_t>(unique_name, "num_polarizations")),
+    _num_dishes(config.get<int64_t>(unique_name, "num_dishes")),
+    _num_elements(_num_polarizations * _num_dishes),
+    _num_local_freq(config.get<int64_t>(unique_name, "num_local_freq")),
+    _samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
+    _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")) {
 
-    // Apply config.
-    _num_elements = config.get<int64_t>(unique_name, "num_elements"); // = "2*D"
-    _num_local_freq = config.get<int64_t>(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get<int64_t>(unique_name, "samples_per_data_set");
-    _rfi_downsampling_factor = config.get<int64_t>(unique_name, "rfi_downsampling_factor");
-
+    // Grab Buffers
     in_voltage_buf = get_buffer("in_voltage_buf");
     in_voltage_buf->register_consumer(unique_name);
     in_plmask_buf = get_buffer("in_plmask_buf");
@@ -46,16 +47,38 @@ gpuSimulateRFIS012::gpuSimulateRFIS012(Config& config, const std::string& unique
     out_rfis012_buf = get_buffer("out_buf");
     out_rfis012_buf->register_producer(unique_name);
 
+
+    size_t voltage_size = _samples_per_data_set * _num_local_freq * _num_elements;
+    size_t plmask_size = ((_samples_per_data_set / 2) * (_num_local_freq / 4) * (_num_elements / 8)) / 8;
+
+    // Check input sizes and buffer compatibility
     if (_samples_per_data_set % _rfi_downsampling_factor != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of rfi_downsampling_factor");
     }
     assert(_samples_per_data_set % _rfi_downsampling_factor == 0);
+    
+    if (_num_elements % 8 != 0) {
+        FATAL_ERROR("num_elements (num_polarizations x num_dishes) must be a multiple of 8");
+    }
+    assert(_samples_per_data_set % _rfi_downsampling_factor == 0);
 
+    if (in_voltage_buf->frame_size != voltage_size) {
+        FATAL_ERROR("in_voltage_buf ({:s}) has frame size: {:d}, expected: {:d}",
+                in_voltage_buf->buffer_name, in_voltage_buf->frame_size, voltage_size);
+    }
+    assert(in_voltage_buf->frame_size == voltage_size);
+
+    if (in_plmask_buf->frame_size != plmask_size) {
+        FATAL_ERROR("in_plmask_buf ({:s}) has frame size: {:d}, expected: {:d}",
+                in_plmask_buf->buffer_name, in_plmask_buf->frame_size, plmask_size);
+    }
+    assert(in_plmask_buf->frame_size == plmask_size);
+
+    // Make frame desc for produced buffer
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
-    int64_t nf = _num_local_freq;
-    int64_t ne = _num_elements;
-    out_rfis012_buf->allocate_ndarray_frame_desc<uint64_t, 5>("S012", {nt, nf, 3, 2, ne / 2},
-                                                              {"Trfi", "F", "S", "P", "D"});
+    out_rfis012_buf->allocate_ndarray_frame_desc<uint64_t, 5>("S012",
+            {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
+            {"Trfi", "F", "S", "P", "D"});
 }
 
 gpuSimulateRFIS012::~gpuSimulateRFIS012() {}
