@@ -14,7 +14,7 @@ log_level: INFO
 
 num_gpus: 1
 buffer_depth: 4
-cpu_affinity: [2,]
+cpu_affinity: [0,]
 sizeof_float: 4
 sizeof_int: 4
 sizeof_long: 8

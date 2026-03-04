@@ -133,7 +133,7 @@ void applyGenPL::main_thread() {
                     if (pl)
                         output[v_idx] = input[v_idx];
                     else
-                        output[v_idx] = 16 * 8 + 8; // = 0 in offset-encoding
+                        output[v_idx] = 0x88; // = 0 in offset-encoding
                 } // e
             } // f
         } // tout
