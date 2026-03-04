@@ -68,8 +68,7 @@ host_rfi_s012bar_ringbuffer:
     metadata_pool: main_pool
 
 gen_rfi_s012:
-    type: constu64
-    value: 1024
+    type: randomu64
     kotekan_stage: testDataGen
     out_buf: host_rfi_s012_buffer
     name: "S012"
