@@ -1,5 +1,3 @@
-#include "cudaQuantize.hpp"
-
 #include "DataType.hpp"            // for int4x2_t, float16_t
 #include "NDArray.hpp"             // for NDArray
 #include "NDArrayBuffer.hpp"       // for NDArrayBuffer
@@ -28,10 +26,43 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-REGISTER_CUDA_COMMAND(cudaQuantize);
+class cudaQuantize4 : public cudaCommand {
+public:
+    cudaQuantize4(kotekan::Config& config, const std::string& unique_name,
+                  kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device, int inst);
+    ~cudaQuantize4();
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
 
-cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
-                           bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
+    // These are the exact array sizes supported by the Cuda code
+    static constexpr int CHUNK_SIZE = 256;
+    static constexpr int FRAME_SIZE = 32;
+
+private:
+    const int _num_beams;
+    const int _num_frequencies;
+    const int _num_times;
+    const int64_t _num_chunks;
+
+    // How many standard deviations can we represent? 2 or 3 sounds about right.
+    const float _stddev_cutoff;
+
+    /// GPU side memory name for the time-stream input
+    const std::string _gpu_mem_input;
+    /// GPU side memory name for the time-stream output
+    const std::string _gpu_mem_beams;
+    /// GPU side memory name for mean,stdev output
+    const std::string _gpu_mem_beams_meanstd;
+
+    const NDArrayBuffer<float16_t, 3> input_buffer;
+    NDArrayBuffer<kotekan::int4x2_t, 3> beam_buffer;
+    NDArrayBuffer<float16_t, 4> meanstd_buffer;
+};
+
+REGISTER_CUDA_COMMAND(cudaQuantize4);
+
+cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
+                             bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
     cudaCommand(config, unique_name, host_buffers, device, inst),
     //
     _num_beams(config.get<std::int64_t>(unique_name, "num_beams")),
@@ -39,6 +70,8 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     _num_times(config.get<std::int64_t>(unique_name, "num_times")),
     _num_chunks(
         kotekan::div_noremainder(1LL * _num_beams * _num_frequencies * _num_times, CHUNK_SIZE)),
+    //
+    _stddev_cutoff(config.get<float>(unique_name, "stddev_cutoff")),
     //
     _gpu_mem_input(config.get<std::string>(unique_name, "gpu_mem_input")),
     _gpu_mem_beams(config.get<std::string>(unique_name, "gpu_mem_output")),
@@ -76,16 +109,16 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
         throw std::runtime_error("The num_chunks parameter must be a multiple of 32");
 
     set_command_type(gpuCommandType::KERNEL);
-    set_name("cudaQuantize");
+    set_name("cudaQuantize4");
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams, true, false, true));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams_meanstd, true, false, true));
 }
 
-cudaQuantize::~cudaQuantize() {}
+cudaQuantize4::~cudaQuantize4() {}
 
-cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
+cudaEvent_t cudaQuantize4::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
     record_start_event();
@@ -130,7 +163,7 @@ cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEven
     gpu_quantize4(input, outputf, outputi, input_size1, input_size2, input_size3, input_stride2,
                   input_stride3, outputf_size1, outputf_size2, outputf_size3, outputf_stride2,
                   outputf_stride3, outputi_size1, outputi_size2, outputi_size3, outputi_stride2,
-                  outputi_stride3, stream);
+                  outputi_stride3, _stddev_cutoff, stream);
     CHECK_CUDA_ERROR(cudaGetLastError());
 
     return record_end_event();

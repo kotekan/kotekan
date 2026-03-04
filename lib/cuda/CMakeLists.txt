@@ -32,9 +32,11 @@ add_library(
     chordMVPSetup.cpp
     cudaPLMaskExpander.cpp
     cudaPL1bitCorrelator.cpp
+    cudaQuantize4.cpp
+    cudaQuantize8.cpp
     cudaQuantizeKernel4.cu
     cudaQuantizeKernel8.cu
-    cudaQuantize.cpp
+    testQuantizeKernel4.cpp
     cudaRechunk.cpp
     cudaRFIS012.cpp
     cudaRFIS012bar.cpp

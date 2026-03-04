@@ -11,17 +11,14 @@
 
 // Global constants
 
-// How many standard deviations can we represent? 2 or 3 sounds about right.
-static constexpr float stddev_cutoff = 3.0f;
-
 // The output is quantized in "chunks". Each chunk has a different offset and scale.
 static constexpr int chunk_size = 256;
 
-// For efficiency we proceess several chunks at once as a "frame".
-static constexpr int chunks_per_frame = 32;
+// For efficiency we proceess several chunks at once on the GPU.
+static constexpr int nchunks = 32;
 
 // Number of threads per block
-static constexpr int nthreads = 32;
+static constexpr int nthreads = nchunks;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -43,80 +40,72 @@ __device__ static inline half2x4 load_half2x4(const __half2* __restrict__ const 
 
 // Kernels (called by the drivers below)
 
-// Quantize a "frame", i.e. a set of "chunks". This is a CPU implementation that is straightforward
-// and thus "obviously correct". If the GPU version produces a different result, then the GPU
-// version is wrong.
-void cpu_quantize4_chunks(const __half* __restrict__ const input,
-                          __half* __restrict__ const outputf,
-                          kotekan::int4x2_t* __restrict__ const outputi, const int input_stride,
-                          const int outputf_stride, const int outputi_stride) {
+// Quantize a "chunk". This is a CPU implementation that is
+// straightforward and thus "obviously correct". If the GPU version
+// produces a different result, then the GPU version is wrong.
+void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restrict__ const outputf,
+                         kotekan::int4x2_t* __restrict__ const outputi, const float stddev_cutoff) {
     static_assert(chunk_size >= 0);
     // The chunk size must be even because we process 2 `half` values simultaneously to create 1
     // output byte.
     static_assert(chunk_size % 2 == 0);
 
-    // Loop over all chunks in the frame. The chunks are all independent.
-    for (int chunk = 0; chunk < chunks_per_frame; ++chunk) {
-        const int input_offset = chunk * input_stride;
-        const int outputf_offset = chunk * outputf_stride;
-        const int outputi_offset = chunk * outputi_stride;
+    // Find the sum and sum-squared of all input values. Calculate everything as `float` to
+    // avoid overflow.
+    float sum = 0, sum2 = 0;
+    for (int i = 0; i < chunk_size; ++i) {
+        const float x = __half2float(input[i]);
+        sum += x;
+        sum2 += x * x;
+    }
+    // Calculate the mean and corrected standard deviation
+    using std::fmax, std::sqrt;
+    const float mean = sum / chunk_size;
+    const float stddev = sqrt(fmax(0.0f, sum2 / chunk_size - mean * mean));
+    // Calculate offset and scale. Ensure the scale is nonzero.
+    // There are 15 possible int4 values since we don't use 0.
+    // Values are reconstructed as `offset + scale * n`, with `int4 n`.
+    constexpr int outi_min = -7;
+    constexpr int outi_max = +7;
+    constexpr float outf_min = outi_min - 0.5f;
+    constexpr float outf_max = outi_max + 0.5f;
+    // We want this mapping:
+    //     mean                          => 0
+    //     mean - stddev * stddev_cutoff => outf_min
+    //     mean + stddev * stddev_cutoff => outf_max
+    const float outf_range = outf_max - outf_min;
+    const float in_range = 2 * stddev * stddev_cutoff;
+    const float offset = mean;
+    const float scale = fmax(1.0e-4f, in_range / outf_range);
 
-        // Find the sum and sum-squared of all input values. Calculate everything as `float` to
-        // avoid overflow.
-        float sum = 0, sum2 = 0;
-        for (int i = 0; i < chunk_size; ++i) {
-            const float x = __half2float(input[i + input_offset]);
-            sum += x;
-            sum2 += x * x;
-        }
-        // Calculate the mean and corrected standard deviation
-        const float mean = sum / chunk_size;
-        const float stddev = sqrt(sum2 / (chunk_size - 1));
-        // Calculate offset and scale. Ensure the scale is nonzero.
-        // There are 15 possible int4 values since we don't use 0.
-        // Values are reconstructed as `offset + scale * n`, with `int4 n`.
-        constexpr int outi_min = -7;
-        constexpr int outi_max = -7;
-        constexpr float outf_min = outi_min - 0.5f;
-        constexpr float outf_max = outi_max + 0.5f;
-        // We want this mapping:
-        //     mean                          => 0
-        //     mean - stddev * stddev_cutoff => outf_min
-        //     mean + stddev * stddev_cutoff => outf_max
-        const float outf_range = outf_max - outf_min;
-        const float in_range = 2 * stddev * stddev_cutoff;
-        const float offset = mean;
-        const float scale = fmax(1.0e-4f, in_range / outf_range);
+    // Store offset and scale for this chunk in the output array
+    outputf[0] = __float2half(offset);
+    outputf[1] = __float2half(scale);
 
-        // Store offset and scale for this chunk in the output array
-        outputf[outputf_offset + 0] = __float2half(offset);
-        outputf[outputf_offset + 1] = __float2half(scale);
-
-        // We encode values as offset-encoded signed 4-bit integers. We combine two 4-bit integers
-        // into one byte. The lower 4 bits hold the first value, the upper 4 bits hold the second
-        // value.
-        for (int i = 0; i < chunk_size; i += 2) {
-            // Get values
-            const float x0 = __half2float(input[i + input_offset + 0]);
-            const float x1 = __half2float(input[i + input_offset + 1]);
-            // Scale
-            const float y0 = (x0 - offset) / scale;
-            const float y1 = (x1 - offset) / scale;
-            // Round
-            const int j0 = lrint(y0);
-            const int j1 = lrint(y1);
-            // Clamp
-            const int k0 = max(outi_min, min(outi_max, j0));
-            const int k1 = max(outi_min, min(outi_max, j1));
-            // Combine
-            const kotekan::int4x2_t outi(k0, k1);
-            // Store
-            outputi[(i + outputi_offset) / 2] = outi;
-        }
+    // We encode values as offset-encoded signed 4-bit integers. We combine two 4-bit integers
+    // into one byte. The lower 4 bits hold the first value, the upper 4 bits hold the second
+    // value.
+    for (int i = 0; i < chunk_size; i += 2) {
+        // Get values
+        const float x0 = __half2float(input[i + 0]);
+        const float x1 = __half2float(input[i + 1]);
+        // Scale
+        const float y0 = (x0 - offset) / scale;
+        const float y1 = (x1 - offset) / scale;
+        // Round
+        const int j0 = lrint(y0);
+        const int j1 = lrint(y1);
+        // Clamp
+        const int k0 = max(outi_min, min(outi_max, j0));
+        const int k1 = max(outi_min, min(outi_max, j1));
+        // Combine
+        const kotekan::int4x2_t outi(k0, k1);
+        // Store
+        outputi[i / 2] = outi;
     }
 }
 
-// Quantize a "frame", i.e. a set of "chunks". This is an efficient GPU implementation.
+// Quantize a set of "chunk"s. This is an efficient GPU implementation.
 __global__ void
 gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict__ const outputf0,
                      kotekan::int4x2_t* __restrict__ const outputi0, const int input_size1,
@@ -124,46 +113,48 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
                      const int input_stride3, const int outputf_size1, const int outputf_size2,
                      const int outputf_size3, const int outputf_stride2, const int outputf_stride3,
                      const int outputi_size1, const int outputi_size2, const int outputi_size3,
-                     const int outputi_stride2, const int outputi_stride3) {
+                     const int outputi_stride2, const int outputi_stride3,
+                     const float stddev_cutoff) {
     static_assert(chunk_size >= 0);
     static_assert(chunk_size % (8 * nthreads) == 0);
 
+    // Calculate array indices and convert to SIMD reference
+    const auto input = [&](const int dim1, const int dim2, const int dim3) -> const __half2& {
+        assert(dim1 >= 0 && dim1 < input_size1);
+        assert(dim2 >= 0 && dim2 < input_size2);
+        assert(dim3 >= 0 && dim3 < input_size3);
+        return *(const __half2*)&(input0[dim1 + input_stride2 * dim2 + input_stride3 * dim3]);
+    };
+    const auto outputi = [&](const int dim1, const int dim2, const int dim3) -> std::uint32_t& {
+        assert(dim1 >= 0 && dim1 < outputi_size1);
+        assert(dim2 >= 0 && dim2 < outputi_size2);
+        assert(dim3 >= 0 && dim3 < outputi_size3);
+        return *(std::uint32_t*)&(outputi0[dim1 + outputi_stride2 * dim2 + outputi_stride3 * dim3]);
+    };
+    const auto outputf = [&](const int dim1, const int dim2, const int dim3) -> __half2& {
+        assert(dim1 >= 0 && dim1 < outputf_size1);
+        assert(dim2 >= 0 && dim2 < outputf_size2);
+        assert(dim3 >= 0 && dim3 < outputf_size3);
+        return *(__half2*)&(outputf0[dim1 + outputf_stride2 * dim2 + outputf_stride3 * dim3]);
+    };
+
+    // // Find our position in the arrays
     const int thread = threadIdx.x;
-
     const int dim1 = blockIdx.x * chunk_size;
-    const int dim2 = blockIdx.y * chunks_per_frame;
-    const int dim3 = blockIdx.z;
+    const int dim2 = blockIdx.y;
+    const int dim3 = blockIdx.z * nchunks;
 
-    const __half2* __restrict__ const input1 = (const __half2*)input0;
-    __half2* __restrict__ const outputf1 = (__half2*)outputf0;
-    uint32_t* __restrict__ const outputi1 = (uint32_t*)outputi0;
-
-    const int input_dim1 = dim1;
-    const int outputf_dim1 = dim1 / chunk_size;
-    const int outputi_dim1 = dim1 / 2;
-
-    const __half2* __restrict__ const input2 =
-        input1 + (input_dim1 + input_stride2 * dim2 + input_stride3 * dim3) / 2;
-    __half2* __restrict__ const outputf =
-        outputf1 + (outputf_dim1 + outputf_stride2 * dim2 + outputf_stride3 * dim3) / 2;
-    uint32_t* __restrict__ const outputi2 =
-        outputi1 + (outputi_dim1 + outputi_stride2 * dim2 + outputi_stride3 * dim3) / 4;
-
-    static_assert(chunks_per_frame == nthreads);
+    static_assert(nchunks == nthreads);
     // We store offset and scale only after finishing the loop over all chunks. Each thread stores
     // one offset/scale pair.
     __half2 outf;
     // Loop over all chunks in the frame
-    for (int chunk = 0; chunk < chunks_per_frame; ++chunk) {
-        const __half2* __restrict__ const input = input2 + (chunk * input_stride3) / 2;
-        uint32_t* __restrict__ const outputi = outputi2 + (chunk * outputi_stride3) / 4;
-
+    for (int chunk = 0; chunk < nchunks; ++chunk) {
         float sum = 0, sum2 = 0;
         static_assert(chunk_size == 8 * nthreads);
-        const int i = 8 * thread;
 
         // Load all values in this chunk. We load all values at once in the beginning.
-        const half2x4 xs = load_half2x4(input + i);
+        const half2x4 xs = load_half2x4(&input(dim1 + 8 * thread, dim2, dim3 + chunk));
         const __half2 x01 = xs.x;
         const __half2 x23 = xs.y;
         const __half2 x45 = xs.z;
@@ -186,57 +177,66 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
         sum += x6 + x7;
         sum2 += x6 * x6 + x7 * x7;
 
-        sum += __shfl_sync(0xffffffff, sum, threadIdx.x ^ 1);
-        sum += __shfl_sync(0xffffffff, sum, threadIdx.x ^ 2);
-        sum += __shfl_sync(0xffffffff, sum, threadIdx.x ^ 4);
-        sum += __shfl_sync(0xffffffff, sum, threadIdx.x ^ 8);
-        sum += __shfl_sync(0xffffffff, sum, threadIdx.x ^ 16);
-        sum2 += __shfl_sync(0xffffffff, sum2, threadIdx.x ^ 1);
-        sum2 += __shfl_sync(0xffffffff, sum2, threadIdx.x ^ 2);
-        sum2 += __shfl_sync(0xffffffff, sum2, threadIdx.x ^ 4);
-        sum2 += __shfl_sync(0xffffffff, sum2, threadIdx.x ^ 8);
-        sum2 += __shfl_sync(0xffffffff, sum2, threadIdx.x ^ 16);
+        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x01);
+        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x02);
+        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x04);
+        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x08);
+        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x10);
+        sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x01);
+        sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x02);
+        sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x04);
+        sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x08);
+        sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x10);
 
+        using std::fmax, std::sqrt;
         const float mean = sum / chunk_size;
-        const float stddev = sqrt(sum2 / (chunk_size - 1));
+        const float stddev = sqrt(fmax(0.0f, sum2 / chunk_size - mean * mean));
+        constexpr int outi_min = -7;
+        constexpr int outi_max = +7;
+        constexpr float outf_min = outi_min - 0.5f;
+        constexpr float outf_max = outi_max + 0.5f;
+        constexpr float outf_range = outf_max - outf_min;
+        const float in_range = 2 * stddev * stddev_cutoff;
         const float offset = mean;
-        const float scale = fmax(1.0f, stddev / 2.3f);
+        const float scale = fmax(1.0e-4f, in_range / outf_range);
 
         const __half2 offseth_scaleh = __floats2half2_rn(offset, scale);
         if (chunk == thread)
             outf = offseth_scaleh;
 
-        const __half2 eff_scaleh = __half2half2(__float2half(1.0f / scale));
-        const __half2 eff_offseth = __half2half2(__float2half(8.0f - offset / scale));
+        // Idea: Add 8 before converting to int, then the result will be positive and we don't need
+        // to mask when combining. Use a single xor to subtract 8 again in the end.
 
-        const __half2 minh = __half2half2(__float2half(1.0f));
-        const __half2 maxh = __half2half2(__float2half(15.0f));
+        const __half2 inv_offseth = __half2half2(__float2half(-offset / scale));
+        const __half2 inv_scaleh = __half2half2(__float2half(1.0f / scale));
 
-        uint32_t outi = 0;
+        const __half2 minh = __half2half2(__int2half_rn(outi_min));
+        const __half2 maxh = __half2half2(__int2half_rn(outi_max));
 
-        const __half2 y01 = __hmax2(minh, __hmin2(maxh, __hfma2(x01, eff_scaleh, eff_offseth)));
-        const uint32_t i0 = __half2int_rd(__low2half(y01));
-        const uint32_t i1 = __half2int_rd(__high2half(y01));
-        outi |= (i0 << 0) | (i1 << 4);
+        const __half2 y01 = __hmax2(minh, __hmin2(maxh, __hfma2(x01, inv_scaleh, inv_offseth)));
+        const std::int32_t i0 = __half2int_rn(__low2half(y01));
+        const std::int32_t i1 = __half2int_rn(__high2half(y01));
 
-        const __half2 y23 = __hmax2(minh, __hmin2(maxh, __hfma2(x23, eff_scaleh, eff_offseth)));
-        const uint32_t i2 = __half2int_rd(__low2half(y23));
-        const uint32_t i3 = __half2int_rd(__high2half(y23));
-        outi |= (i2 << 8) | (i3 << 12);
+        const __half2 y23 = __hmax2(minh, __hmin2(maxh, __hfma2(x23, inv_scaleh, inv_offseth)));
+        const std::int32_t i2 = __half2int_rn(__low2half(y23));
+        const std::int32_t i3 = __half2int_rn(__high2half(y23));
 
-        const __half2 y45 = __hmax2(minh, __hmin2(maxh, __hfma2(x45, eff_scaleh, eff_offseth)));
-        const uint32_t i4 = __half2int_rd(__low2half(y45));
-        const uint32_t i5 = __half2int_rd(__high2half(y45));
-        outi |= (i4 << 16) | (i5 << 20);
+        const __half2 y45 = __hmax2(minh, __hmin2(maxh, __hfma2(x45, inv_scaleh, inv_offseth)));
+        const std::int32_t i4 = __half2int_rn(__low2half(y45));
+        const std::int32_t i5 = __half2int_rn(__high2half(y45));
 
-        const __half2 y67 = __hmax2(minh, __hmin2(maxh, __hfma2(x67, eff_scaleh, eff_offseth)));
-        const uint32_t i6 = __half2int_rd(__low2half(y67));
-        const uint32_t i7 = __half2int_rd(__high2half(y67));
-        outi |= (i6 << 24) | (i7 << 28);
+        const __half2 y67 = __hmax2(minh, __hmin2(maxh, __hfma2(x67, inv_scaleh, inv_offseth)));
+        const std::int32_t i6 = __half2int_rn(__low2half(y67));
+        const std::int32_t i7 = __half2int_rn(__high2half(y67));
 
-        outputi[i / 8] = outi;
+        const std::uint32_t outi = ((i0 & 0x0f) << 0x00) | ((i1 & 0x0f) << 0x04)
+                                   | ((i2 & 0x0f) << 0x08) | ((i3 & 0x0f) << 0x0c)
+                                   | ((i4 & 0x0f) << 0x10) | ((i5 & 0x0f) << 0x14)
+                                   | ((i6 & 0x0f) << 0x18) | ((i7 & 0x0f) << 0x1c);
+
+        outputi((dim1 + 8 * thread) / 2, dim2, dim3 + chunk) = outi;
     }
-    outputf[thread * outputf_stride3] = outf;
+    outputf(2 * dim1 / chunk_size, dim2, dim3 + thread) = outf;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -249,7 +249,8 @@ void cpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
                    const int input_stride3, const int outputf_size1, const int outputf_size2,
                    const int outputf_size3, const int outputf_stride2, const int outputf_stride3,
                    const int outputi_size1, const int outputi_size2, const int outputi_size3,
-                   const int outputi_stride2, const int outputi_stride3) {
+                   const int outputi_stride2, const int outputi_stride3,
+                   const float stddev_cutoff) {
     assert(input);
     assert(outputf);
     assert(outputi);
@@ -270,12 +271,10 @@ void cpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
     assert(outputi_stride2 >= 0);
     assert(outputi_stride3 >= 0);
     static_assert(chunk_size > 0);
-    static_assert(chunks_per_frame > 0);
 
     static_assert(chunk_size % 2 == 0);
     assert(input_size1 % 2 == 0);
     assert(input_size1 % chunk_size == 0);
-    assert(input_size3 % chunks_per_frame == 0);
 
     assert(outputf_size1 == 2 * input_size1 / chunk_size);
     assert(outputf_size2 == input_size2);
@@ -284,20 +283,19 @@ void cpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
     assert(outputi_size2 == input_size2);
     assert(outputi_size3 == input_size3);
 
-    for (int dim3 = 0; dim3 < input_size3; dim3 += chunks_per_frame) {
+    for (int dim3 = 0; dim3 < input_size3; ++dim3) {
         for (int dim2 = 0; dim2 < input_size2; ++dim2) {
             for (int dim1 = 0; dim1 < input_size1; dim1 += chunk_size) {
                 const int input_dim1 = dim1;
-                const int outputf_dim1 = dim1 / chunk_size;
+                const int outputf_dim1 = 2 * dim1 / chunk_size;
                 const int outputi_dim1 = dim1 / 2;
                 const int input_offset = input_dim1 + input_stride2 * dim2 + input_stride3 * dim3;
                 const int outputf_offset =
                     outputf_dim1 + outputf_stride2 * dim2 + outputf_stride3 * dim3;
                 const int outputi_offset =
                     outputi_dim1 + outputi_stride2 * dim2 + outputi_stride3 * dim3;
-                cpu_quantize4_chunks(input + input_offset, outputf + outputf_offset,
-                                     outputi + outputi_offset, input_stride3, outputf_stride3,
-                                     outputi_stride3);
+                cpu_quantize4_chunk(input + input_offset, outputf + outputf_offset,
+                                    outputi + outputi_offset, stddev_cutoff);
             }
         }
     }
@@ -309,7 +307,8 @@ void gpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
                    const int input_stride3, const int outputf_size1, const int outputf_size2,
                    const int outputf_size3, const int outputf_stride2, const int outputf_stride3,
                    const int outputi_size1, const int outputi_size2, const int outputi_size3,
-                   const int outputi_stride2, const int outputi_stride3, cudaStream_t stream) {
+                   const int outputi_stride2, const int outputi_stride3, const float stddev_cutoff,
+                   cudaStream_t stream) {
     assert(input);
     assert(outputf);
     assert(outputi);
@@ -330,23 +329,16 @@ void gpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
     assert(outputi_stride2 >= 0);
     assert(outputi_stride3 >= 0);
     static_assert(chunk_size > 0);
-    static_assert(chunks_per_frame > 0);
+    static_assert(nchunks > 0);
 
     static_assert(chunk_size % 2 == 0);
     assert(input_size1 % 2 == 0);
-    if (!(input_size1 % chunk_size == 0))
-        std::cerr << "input_size1=" << input_size1 << " chunk_size=" << chunk_size << "\n";
     assert(input_size1 % chunk_size == 0);
-    if (!(input_size3 % chunks_per_frame == 0))
-        std::cerr << "input_size3=" << input_size3 << " chunks_per_frame=" << chunks_per_frame
-                  << "\n";
-    assert(input_size3 % chunks_per_frame == 0);
+    assert(input_size3 % nchunks == 0);
 
     assert(outputf_size1 == 2 * input_size1 / chunk_size);
     assert(outputf_size2 == input_size2);
     assert(outputf_size3 == input_size3);
-    if (!(outputi_size1 == input_size1 / 2))
-        std::cerr << "outputi_size1=" << outputi_size1 << " input_size1=" << input_size1 << "\n";
     assert(outputi_size1 == input_size1 / 2);
     assert(outputi_size2 == input_size2);
     assert(outputi_size3 == input_size3);
@@ -354,11 +346,11 @@ void gpu_quantize4(const __half* __restrict__ const input, __half* __restrict__ 
     dim3 nblocks;
     nblocks.x = input_size1 / chunk_size;
     nblocks.y = input_size2;
-    nblocks.z = input_size3 / chunks_per_frame;
+    nblocks.z = input_size3 / nchunks;
     const int shmem_nbytes = 0;
     gpu_quantize4_chunks<<<nblocks, nthreads, shmem_nbytes, stream>>>(
         input, outputf, outputi, input_size1, input_size2, input_size3, input_stride2,
         input_stride3, outputf_size1, outputf_size2, outputf_size3, outputf_stride2,
         outputf_stride3, outputi_size1, outputi_size2, outputi_size3, outputi_stride2,
-        outputi_stride3);
+        outputi_stride3, stddev_cutoff);
 }

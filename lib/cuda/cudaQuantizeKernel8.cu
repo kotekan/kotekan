@@ -122,7 +122,7 @@ gpu_quantize8_chunks(const __half* __restrict__ const input0, __half* __restrict
 
     const int input_dim1 = dim1;
     const int outputf_dim1 = dim1 / chunk_size;
-    const int outputi_dim1 = dim1 / 2;
+    const int outputi_dim1 = dim1;
 
     const __half2* __restrict__ const input2 =
         input1 + (input_dim1 + input_stride2 * dim2 + input_stride3 * dim3) / 2;
@@ -327,9 +327,9 @@ void gpu_quantize8(const __half* __restrict__ const input, __half* __restrict__ 
     assert(outputf_size1 == 2 * input_size1 / chunk_size);
     assert(outputf_size2 == input_size2);
     assert(outputf_size3 == input_size3);
-    if (!(outputi_size1 == input_size1 / 2))
+    if (!(outputi_size1 == input_size1))
         std::cerr << "outputi_size1=" << outputi_size1 << " input_size1=" << input_size1 << "\n";
-    assert(outputi_size1 == input_size1 / 2);
+    assert(outputi_size1 == input_size1);
     assert(outputi_size2 == input_size2);
     assert(outputi_size3 == input_size3);
 
