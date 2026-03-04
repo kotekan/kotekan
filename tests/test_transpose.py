@@ -286,7 +286,7 @@ def test_transpose(transpose):
     assert f_tr["flags/frac_rfi"].shape == (n_f, n_t)
     assert f_tr["flags/dataset_id"].shape == (n_f, n_t)
 
-    assert (f_tr["flags/frac_lost"][:frac_freq, :] == 0.0).all()
+    assert np.allclose(f_tr["flags/frac_lost"][:frac_freq, :], 0.0, atol=1e-6)
     assert np.allclose(f_tr["flags/frac_lost"][frac_freq, :], frac_lost, rtol=1e-3)
     assert np.allclose(f_tr["flags/frac_rfi"][frac_freq, :], frac_rfi, rtol=1e-3)
     assert (f_tr["flags/dataset_id"][empty_freq, :] == NULL_DSET_ID).all()

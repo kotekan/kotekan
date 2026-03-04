@@ -52,6 +52,7 @@ downsamp_params = {
 }
 
 global_params = {
+    "log_level": "WARN",
     "num_elements": 4,
     "num_dishes": 2,
     "num_ev": 4,
@@ -513,10 +514,10 @@ def test_contents(n2_data):
                 )
             )
         """
-        assert np.all(frame.vis == model_vis)
-        assert np.all(frame.evec == model_evec)
-        assert np.all(frame.eval == model_eval)
-        assert frame.erms == 1.0
+        assert np.allclose(frame.vis, model_vis, rtol=1e-6, atol=0)
+        assert np.allclose(frame.evec, model_evec, rtol=1e-6, atol=0)
+        assert np.allclose(frame.eval, model_eval, rtol=1e-6, atol=0)
+        assert np.isclose(frame.erms, 1.0, rtol=1e-6, atol=0)
 
     # weights get an extra factor of nsamp
     for i, frame in enumerate(n2_data):

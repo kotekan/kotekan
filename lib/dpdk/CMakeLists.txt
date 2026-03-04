@@ -9,13 +9,18 @@ add_library(kotekan_dpdk dpdkCore.cpp zeroSamples.cpp invalidateVDIFframes.cpp)
 
 if(WITH_BOOST_TESTS)
     # If we're compiling with boost tests, use dynamic flags
-    add_definitions(${DPDK_CFLAGS})
+    set(_dpdk_cflags ${DPDK_CFLAGS})
     set(DPDK_LIBRARIES ${DPDK_LDFLAGS})
 else()
     # Otherwise, use static
-    add_definitions(${DPDK_STATIC_CFLAGS})
+    set(_dpdk_cflags ${DPDK_STATIC_CFLAGS})
     set(DPDK_LIBRARIES ${DPDK_STATIC_LDFLAGS})
 endif()
+
+# Filter out -march= flags from DPDK's pkg-config cflags to avoid conflicting
+# with the project-wide -march setting from Toolchain.cmake.
+list(FILTER _dpdk_cflags EXCLUDE REGEX "^-march=")
+target_compile_options(kotekan_dpdk PRIVATE ${_dpdk_cflags})
 
 message(STATUS "DPDK include dirs: ${DPDK_INCLUDE_DIRS}")
 target_include_directories(kotekan_dpdk SYSTEM PRIVATE ${DPDK_INCLUDE_DIRS})

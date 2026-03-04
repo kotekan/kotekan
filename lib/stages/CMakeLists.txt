@@ -115,6 +115,7 @@ endif()
 
 if(ASDF_CXX_FOUND)
     target_include_directories(kotekan_stages PRIVATE ${ASDF_CXX_INCLUDE_DIRS})
+    target_link_directories(kotekan_stages PUBLIC ${ASDF_CXX_LIBRARY_DIRS})
     target_link_options(kotekan_stages PUBLIC ${ASDF_CXX_LDFLAGS})
     target_link_libraries(kotekan_stages PUBLIC ${ASDF_CXX_LIBRARIES})
 endif()

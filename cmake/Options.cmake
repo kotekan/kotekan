@@ -96,6 +96,7 @@ ktk_tristate_option(USE_NUMA "Enable NUMA support in core (libnuma)" ON)
 ktk_tristate_option(WERROR "Warnings are errors" ON)
 
 # OFF by default
+ktk_tristate_option(USE_LTO "Enable link-time optimization in Release builds" AUTO)
 ktk_tristate_option(CCACHE "Use ccache to speed up the build" OFF)
 ktk_tristate_option(CMAKE_LINK_WHAT_YOU_USE "Report missing link dependencies while building" OFF)
 ktk_tristate_option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
