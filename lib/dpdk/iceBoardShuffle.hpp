@@ -277,7 +277,7 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
         out_bufs[i]
             ->allocate_ndarray_frame_desc<
                 kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 3>(
-                "E", {ptrdiff_t(out_bufs[i]->frame_size) / sample_size, sample_size},
+                "E", {1, ptrdiff_t(out_bufs[i]->frame_size) / sample_size, sample_size},
                 {"F", "T", "E"});
     }
 
