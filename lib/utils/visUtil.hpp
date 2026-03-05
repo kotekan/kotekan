@@ -958,6 +958,12 @@ inline std::string format_nice_string(uint32_t x) {
 inline std::string format_nice_string(int x) {
     return fmt::format("{} = 0x{:x}", x, x);
 }
+inline std::string format_nice_string(int64_t x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+inline std::string format_nice_string(uint64_t x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
 #if KOTEKAN_FLOAT16
 inline std::string format_nice_string(float16_t x) {
     return fmt::format("{}", (float)x);

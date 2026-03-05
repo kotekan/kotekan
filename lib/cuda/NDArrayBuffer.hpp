@@ -244,7 +244,7 @@ public:
     }
 
     // Check an NDArray buffer for poison
-    void check_for_poison(const std::uint8_t poison_value) {
+    void check_for_poison(const std::uint8_t poison_value) const {
         T poison;
         // The cast suppresses a bogus -Wclass-memaccess on GCC.
         std::memset(static_cast<void*>(&poison), poison_value, sizeof poison);

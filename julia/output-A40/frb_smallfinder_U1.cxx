@@ -573,8 +573,8 @@ cudaFRBBeamformer_smallfinder_U1::execute(cudaPipelineState& /*pipestate*/,
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
         assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-        assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_M);
-        assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_N);
+        assert(Ebar_meta->n_dish_locations_ew <= cuda_dish_layout_M);
+        assert(Ebar_meta->n_dish_locations_ns <= cuda_dish_layout_N);
         assert(Ebar_meta->dish_index);
 
         // Allocate metadata of I buffer only once
@@ -597,10 +597,10 @@ cudaFRBBeamformer_smallfinder_U1::execute(cudaPipelineState& /*pipestate*/,
         const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
         assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
         std::vector<int> I_freq_upchan_factor;
-        if (!I_has_metadata)
-            I_freq_upchan_factor.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
-        else
+        if (I_has_metadata)
             I_freq_upchan_factor = I_meta->get_freq_upchan_factor();
+        if (I_freq_upchan_factor.size() < std::size_t(Fbar_out_min + I_nfreq))
+            I_freq_upchan_factor.resize(Fbar_out_min + I_nfreq, -1);
         for (int freq = 0; freq < I_nfreq; ++freq)
             I_freq_upchan_factor.at(Fbar_out_min + freq) =
                 Ebar_freq_upchan_factor.at(Fbar_in_min + freq);
@@ -609,10 +609,10 @@ cudaFRBBeamformer_smallfinder_U1::execute(cudaPipelineState& /*pipestate*/,
         const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
         assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
         std::vector<int> I_freq_upchan_index;
-        if (!I_has_metadata)
-            I_freq_upchan_index.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
-        else
+        if (I_has_metadata)
             I_freq_upchan_index = I_meta->get_freq_upchan_index();
+        if (I_freq_upchan_index.size() < std::size_t(Fbar_out_min + I_nfreq))
+            I_freq_upchan_index.resize(Fbar_out_min + I_nfreq, -1);
         for (int freq = 0; freq < I_nfreq; ++freq)
             I_freq_upchan_index.at(Fbar_out_min + freq) =
                 Ebar_freq_upchan_index.at(Fbar_in_min + freq);
@@ -621,10 +621,10 @@ cudaFRBBeamformer_smallfinder_U1::execute(cudaPipelineState& /*pipestate*/,
         const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
         assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
         std::vector<int> I_coarse_freq;
-        if (!I_has_metadata)
-            I_coarse_freq.resize(I_meta->dim[I_rank - 1 - I_index_Fbar], -1);
-        else
+        if (I_has_metadata)
             I_coarse_freq = I_meta->get_coarse_freq();
+        if (I_coarse_freq.size() < std::size_t(Fbar_out_min + I_nfreq))
+            I_coarse_freq.resize(Fbar_out_min + I_nfreq, -1);
         for (int freq = 0; freq < I_nfreq; ++freq)
             I_coarse_freq.at(Fbar_out_min + freq) = Ebar_coarse_freq.at(Fbar_in_min + freq);
         I_meta->set_coarse_freq(I_coarse_freq);
@@ -723,24 +723,29 @@ cudaFRBBeamformer_smallfinder_U1::execute(cudaPipelineState& /*pipestate*/,
         // S maps dishes to locations.
         // The first `ndishes` dishes are real dishes,
         // the remaining dishes are not real and exist only to label the unoccupied dish locations.
-        std::int16_t* __restrict__ const S = host_S_buffer.data();
+        for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
+            host_S_buffer.at(s) = -1;
         int surplus_dish_index = cuda_number_of_dishes;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                int dish_index = Ebar_meta->get_dish_index(locM, locN);
+                const bool have_dish_index =
+                    locM < Ebar_meta->n_dish_locations_ew && locN < Ebar_meta->n_dish_locations_ns;
+                const int dish_index = have_dish_index ? Ebar_meta->get_dish_index(locM, locN) : -1;
                 if (dish_index >= 0) {
                     // This location holds a real dish, record its location
-                    S[2 * dish_index + 0] = locM;
-                    S[2 * dish_index + 1] = locN;
+                    host_S_buffer.at(2 * dish_index + 0) = locM;
+                    host_S_buffer.at(2 * dish_index + 1) = locN;
                 } else {
                     // This location is empty, assign it a surplus dish index
-                    S[2 * surplus_dish_index + 0] = locM;
-                    S[2 * surplus_dish_index + 1] = locN;
+                    host_S_buffer.at(2 * surplus_dish_index + 0) = locM;
+                    host_S_buffer.at(2 * surplus_dish_index + 1) = locN;
                     ++surplus_dish_index;
                 }
             }
         }
         assert(surplus_dish_index == cuda_dish_layout_M * cuda_dish_layout_N);
+        for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
+            assert(host_S_buffer.at(s) >= 0);
 
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, host_S_buffer.data(), S_length_in_bytes,
                                          cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
