@@ -66,8 +66,7 @@ host_frb2_beams_buffer:
 host_frb3_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    # `1/2` because the output is of type `int4`
-    frame_size: frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times / 2
+    frame_size: sizeof_uint8 * frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times
     metadata_pool: main_pool
 
 host_frb3_beams_offsetscale_buffer:
