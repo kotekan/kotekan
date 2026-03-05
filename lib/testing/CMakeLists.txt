@@ -21,6 +21,7 @@ add_library(
     gpuSimulateRFIS012.cpp
     gpuSimulateRFIS012bar.cpp
     gpuSimulateRFIS012tilde.cpp
+    gpuSimulateRFISK.cpp
     inventBFMask.cpp
     inventPLMask.cpp
     networkOutputSim.cpp
