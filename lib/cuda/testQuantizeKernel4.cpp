@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cfloat>
 #include <cmath>
 #include <cstdlib>
 #include <string>
@@ -50,17 +51,29 @@ public:
         // Invent some data
         const auto f = [&](const int beam, const int time) -> float {
             const float x = (time + 0.5) / ntimes;
-            switch (beam % 5) {
+            switch (beam % 11) {
                 case 0:
-                    return 0.1f * beam;
+                    return 0.0f;
                 case 1:
-                    return time % 2;
+                    return 0.1f * beam;
                 case 2:
-                    return x;
+                    return time % 2;
                 case 3:
-                    return 0.5f * x + 0.5f * x * x * x;
+                    return x;
                 case 4:
+                    return 0.5f * x + 0.5f * x * x * x;
+                case 5:
                     return 0.5f * x + 0.5f * x * x * x + 10 * (time % 23 == 0);
+                case 6:
+                    return 10000 * time; // large but not infinity
+                case 7:
+                    return 10000 * time; // some values are infinity
+                case 8:
+                    return time / 10000; // small, but 1/x is less than infinity
+                case 9:
+                    return time / 100000; // small, and some 1/x are infinity
+                case 10:
+                    return 0.5f * x + 0.5f * x * x * x + (time % 23 == 0 ? 0.0f / 0.0f : 0.0f);
             }
             std::abort();
         };
@@ -74,29 +87,52 @@ public:
                 for (int time = 0; time < ntimes; ++time) {
                     const float x = f(beam, time % chunk_size);
                     const int idx = time + ntimes * (freq + nfreqs * beam);
-                    input.at(idx) = (float16_t)x;
+                    input.at(idx) = float16_t(x);
                 }
             }
         }
 
         // A function to check the result
         const auto check_result = [&]() {
+            using std::fabs, std::fmax, std::sqrt, std::fmin, std::isfinite;
+
             for (int beam = 0; beam < nbeams; ++beam) {
 
                 // Calculate expected result
-                float sum = 0, sum2 = 0;
+                //
+                // When comparing to the expected result, two things can go wrong:
+                // 1. The scale can be zero, or can be close to zero (`scale_may_collapse`)
+                // 2. The input can contain large numbers, or infinities, or not-a-numbers
+                //    (`may_overflow`)
+                //
+                // We need to handle both cases, and we need to be lenient when comparing when this
+                // happens. For example, there might be an overflow on the GPU, but not in the CPU
+                // implementation. This should not be flagged as error.
+                float sum = 0, sum2 = 0, min = +FLT_MAX, max = -FLT_MAX;
+                bool may_overflow = false;
                 for (int time = 0; time < chunk_size; ++time) {
                     const float x = f(beam, time);
                     sum += x;
                     sum2 += x * x;
+                    min = fmin(min, x);
+                    max = fmax(max, x);
+                    // Allow the respective float16 calculations to overflow
+                    may_overflow |= fabs(x) >= 2048.0f;
                 }
+                may_overflow |= fabs(sum) >= 2048.0f || fabs(sum2) >= 2048.0f;
+                // Allow the scale to be inaccurate when all inputs are close together
+                const bool scale_may_collapse = fabs(max - min) < epsilon;
                 const float mean = sum / chunk_size;
-                using std::fmax, std::sqrt;
                 const float stddev = sqrt(fmax(0.0f, sum2 / chunk_size - mean * mean));
                 const int int4_range = 15;
                 const float stddev_cutoff = 3.0;
-                const float expected_offset = mean;
-                const float expected_scale = 2 * stddev_cutoff * stddev / int4_range;
+                float expected_offset = mean;
+                float expected_scale = 2 * stddev_cutoff * stddev / int4_range;
+                if (!isfinite(expected_offset) || !isfinite(expected_scale)) {
+                    may_overflow = true;
+                    expected_offset = 0.0f;
+                    expected_scale = 0.0f;
+                }
 
                 for (int freq = 0; freq < nfreqs; ++freq) {
                     for (int chunk = 0; chunk < nchunks; ++chunk) {
@@ -104,17 +140,38 @@ public:
                             offsetscale.at(2 * chunk + 2 * nchunks * (freq + nfreqs * beam) + 0);
                         const float scale =
                             offsetscale.at(2 * chunk + 2 * nchunks * (freq + nfreqs * beam) + 1);
-                        using std::isfinite;
                         if (!isfinite(offset))
                             FATAL_ERROR("Found non-finite offset {}", offset);
                         if (!isfinite(scale))
                             FATAL_ERROR("Found non-finite scale {}", scale);
-                        if (!(fabs(offset - expected_offset) <= epsilon))
-                            FATAL_ERROR("Found inaccurate offset: want {}, have {}",
-                                        expected_offset, offset);
-                        if (!(fabs(scale - expected_scale) <= epsilon))
-                            FATAL_ERROR("Found inaccurate scale: want {}, have {}", expected_scale,
-                                        scale);
+
+                        // Check relative error of offset
+                        bool offset_is_good =
+                            fabs(offset - expected_offset)
+                            <= epsilon * fmax(1.0f, fmax(fabs(offset), fabs(expected_offset)));
+                        // If we think an overflow is allowed, and if the other implementation might
+                        // have detected one (offset=0), then all is fine as well
+                        if (may_overflow && offset == 0.0f)
+                            offset_is_good = true;
+                        if (!offset_is_good)
+                            FATAL_ERROR("Found inaccurate offset: beam {}, want {}, have {}, "
+                                        "scale_may_collapse={}",
+                                        beam, expected_offset, offset, scale_may_collapse);
+
+                        // Check absolute error of scale
+                        bool scale_is_good = abs(scale - expected_scale) <= epsilon;
+                        // If the scale is close to zero then don't worry about the scale at all
+                        if (scale_may_collapse)
+                            scale_is_good = true;
+                        // If we think an overflow is allowed, and if the other implementation might
+                        // have detected one (offset=0), then all is fine as well
+                        if (may_overflow && scale == 0.0f)
+                            scale_is_good = true;
+                        if (!scale_is_good)
+                            FATAL_ERROR("Found inaccurate scale: beam{}, want {}, have {}, "
+                                        "scale_may_collapse={}",
+                                        beam, expected_scale, scale, scale_may_collapse);
+
                         for (int time2 = chunk * chunk_size; time2 < (chunk + 1) * chunk_size;
                              time2 += 2) {
                             const kotekan::int4x2_t i01 =
@@ -128,6 +185,7 @@ public:
                                 const float expected_x = input.at(idx);
 
                                 bool isgood = false;
+
                                 // Allow the value to be clamped
                                 if (i == -7 && x > expected_x)
                                     isgood = true;
@@ -135,10 +193,15 @@ public:
                                     isgood = true;
                                 // The value should differ by no more than scale/2
                                 isgood |= fabs(x - expected_x) <= scale / 2 + epsilon;
+                                // Handle non-finite inputs
+                                if (may_overflow && offset == 0.0f && scale == 0.0f)
+                                    isgood = true;
                                 if (!isgood)
-                                    FATAL_ERROR(
-                                        "Found inaccurate value: want {}, have {}, scale is {}",
-                                        expected_x, x, scale);
+                                    FATAL_ERROR("Found inaccurate value: beam {}, want {}, have "
+                                                "{}, offset {}, scale {}, may_overflow={}, "
+                                                "expected_offset={}, expected_scale={}",
+                                                beam, expected_x, x, offset, scale, may_overflow,
+                                                expected_offset, expected_scale);
                             }
                         }
                     }

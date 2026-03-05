@@ -60,6 +60,13 @@ struct uint1x8_t {
         return (val >> n) & 1;
     }
 
+    friend constexpr bool operator==(const uint1x8_t x, const uint1x8_t y) {
+        return x.val == y.val;
+    }
+    friend constexpr bool operator!=(const uint1x8_t x, const uint1x8_t y) {
+        return !(x == y);
+    }
+
     friend std::ostream& operator<<(std::ostream& os, const uint1x8_t x) {
         for (int n = 0; n < 8; ++n)
             os << int(x[n]);
@@ -84,6 +91,13 @@ struct uint4x2_t {
     constexpr std::uint8_t operator[](int n) const {
         KOTEKAN_ASSERT(0 <= n && n < 2);
         return (val >> (4 * n)) & 0xf;
+    }
+
+    friend constexpr bool operator==(const uint4x2_t x, const uint4x2_t y) {
+        return x.val == y.val;
+    }
+    friend constexpr bool operator!=(const uint4x2_t x, const uint4x2_t y) {
+        return !(x == y);
     }
 
     friend std::ostream& operator<<(std::ostream& os, const uint4x2_t x) {
@@ -112,6 +126,13 @@ struct int4x2_t {
         return (std::int8_t)(bits << 4) >> 4;
     }
 
+    friend constexpr bool operator==(const int4x2_t x, const int4x2_t y) {
+        return x.val == y.val;
+    }
+    friend constexpr bool operator!=(const int4x2_t x, const int4x2_t y) {
+        return !(x == y);
+    }
+
     friend std::ostream& operator<<(std::ostream& os, const int4x2_t x) {
         // don't output char to ostream, since it shows up as characters,not numbers
         return os << int(x[0]) << "," << int(x[1]);
@@ -136,6 +157,15 @@ struct int4x2_swapped_withoffset_t {
         KOTEKAN_ASSERT(0 <= n && n < 2);
         const int bits = (val >> (4 * n)) & 0xf;
         return bits - 8;
+    }
+
+    friend constexpr bool operator==(const int4x2_swapped_withoffset_t x,
+                                     const int4x2_swapped_withoffset_t y) {
+        return x.val == y.val;
+    }
+    friend constexpr bool operator!=(const int4x2_swapped_withoffset_t x,
+                                     const int4x2_swapped_withoffset_t y) {
+        return !(x == y);
     }
 
     friend std::ostream& operator<<(std::ostream& os, const int4x2_swapped_withoffset_t x) {

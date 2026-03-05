@@ -1,6 +1,7 @@
+#include "DataType.hpp"
 #include "cudaQuantizeKernel8.hpp"
 
-#include <DataType.hpp>
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdint>

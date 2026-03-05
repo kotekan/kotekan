@@ -1,6 +1,7 @@
+#include "DataType.hpp"
 #include "cudaQuantizeKernel4.hpp"
 
-#include <DataType.hpp>
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -75,12 +76,35 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restr
     //     mean + stddev * stddev_cutoff => outf_max
     const float outf_range = outf_max - outf_min;
     const float in_range = 2 * stddev * stddev_cutoff;
-    const float offset = mean;
-    const float scale = fmax(1.0e-4f, in_range / outf_range);
+    float offset = mean;
+    float scale = fmax(0.0f, in_range / outf_range);
+    __half offseth = __float2half(offset);
+    __half scaleh = __float2half(scale);
+
+    // Avoid non-finite numbers
+    using std::isfinite;
+    if (!isfinite(__half2float(offseth)) || !isfinite(__half2float(scaleh))) {
+        offset = 0.0f;
+        scale = 0.0f;
+        offseth = __float2half(offset);
+        scaleh = __float2half(scale);
+    }
 
     // Store offset and scale for this chunk in the output array
     outputf[0] = __float2half(offset);
     outputf[1] = __float2half(scale);
+
+    const auto sane_lrint = [](const float x) {
+        // Avoid all the implementation-defined cases
+        using std::isnan, std::lrint;
+        if (x < INT_MIN)
+            return INT_MIN;
+        if (x > INT_MAX)
+            return INT_MAX;
+        if (isnan(x))
+            return 0; // we could mask to -8 instead
+        return int(lrint(x));
+    };
 
     // We encode values as offset-encoded signed 4-bit integers. We combine two 4-bit integers
     // into one byte. The lower 4 bits hold the first value, the upper 4 bits hold the second
@@ -93,9 +117,10 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restr
         const float y0 = (x0 - offset) / scale;
         const float y1 = (x1 - offset) / scale;
         // Round
-        const int j0 = lrint(y0);
-        const int j1 = lrint(y1);
+        const int j0 = sane_lrint(y0);
+        const int j1 = sane_lrint(y1);
         // Clamp
+        using std::max, std::min;
         const int k0 = max(outi_min, min(outi_max, j0));
         const int k1 = max(outi_min, min(outi_max, j1));
         // Combine
@@ -150,7 +175,6 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
     __half2 outf;
     // Loop over all chunks in the frame
     for (int chunk = 0; chunk < nchunks; ++chunk) {
-        float sum = 0, sum2 = 0;
         static_assert(chunk_size == 8 * nthreads);
 
         // Load all values in this chunk. We load all values at once in the beginning.
@@ -162,30 +186,26 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
 
         const float x0 = __half2float(__low2half(x01));
         const float x1 = __half2float(__high2half(x01));
-        sum += x0 + x1;
-        sum2 += x0 * x0 + x1 * x1;
         const float x2 = __half2float(__low2half(x23));
         const float x3 = __half2float(__high2half(x23));
-        sum += x2 + x3;
-        sum2 += x2 * x2 + x3 * x3;
         const float x4 = __half2float(__low2half(x45));
         const float x5 = __half2float(__high2half(x45));
-        sum += x4 + x5;
-        sum2 += x4 * x4 + x5 * x5;
         const float x6 = __half2float(__low2half(x67));
         const float x7 = __half2float(__high2half(x67));
-        sum += x6 + x7;
-        sum2 += x6 * x6 + x7 * x7;
+
+        float sum = ((x0 + x1) + (x2 + x3)) + ((x4 + x5) + (x6 + x7));
+        float sum2 = ((x0 * x0 + x1 * x1) + (x2 * x2 + x3 * x3))
+                     + ((x4 * x4 + x5 * x5) + (x6 * x6 + x7 * x7));
 
         sum += __shfl_sync(0xffffffff, sum, thread ^ 0x01);
-        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x02);
-        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x04);
-        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x08);
-        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x10);
         sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x01);
+        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x02);
         sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x02);
+        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x04);
         sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x04);
+        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x08);
         sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x08);
+        sum += __shfl_sync(0xffffffff, sum, thread ^ 0x10);
         sum2 += __shfl_sync(0xffffffff, sum2, thread ^ 0x10);
 
         using std::fmax, std::sqrt;
@@ -198,34 +218,62 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
         constexpr float outf_range = outf_max - outf_min;
         const float in_range = 2 * stddev * stddev_cutoff;
         const float offset = mean;
-        const float scale = fmax(1.0e-4f, in_range / outf_range);
-
-        const __half2 offseth_scaleh = __floats2half2_rn(offset, scale);
-        if (chunk == thread)
-            outf = offseth_scaleh;
+        const float scale = fmax(0.0f, in_range / outf_range);
 
         // Idea: Add 8 before converting to int, then the result will be positive and we don't need
         // to mask when combining. Use a single xor to subtract 8 again in the end.
 
-        const __half2 inv_offseth = __half2half2(__float2half(-offset / scale));
-        const __half2 inv_scaleh = __half2half2(__float2half(1.0f / scale));
+        const float inv_offset = -offset / scale;
+        const float inv_scale = 1.0f / scale;
+        __half offseth = __float2half_rn(offset);
+        __half scaleh = __float2half_rn(scale);
+        __half inv_offseth = __float2half_rn(inv_offset);
+        __half inv_scaleh = __float2half_rn(inv_scale);
+
+        // Avoid non-finite numbers
+        using std::isfinite;
+        if (!isfinite(__half2float(offseth)) || !isfinite(__half2float(scaleh))) {
+            // Offset or scale are non-finite
+            offseth = __float2half_rn(0.0f);
+            scaleh = __float2half_rn(0.0f);
+            inv_offseth = __float2half_rn(inv_offset);
+            inv_scaleh = __float2half_rn(inv_scale);
+        } else if (!isfinite(__half2float(inv_offseth)) || !isfinite(__half2float(inv_scaleh))) {
+            // Offset and scale are fine, but the inverse scale is non-finite. This means the scale
+            // is too close to zero.
+            scaleh = __float2half_rn(0.0f);
+            inv_offseth = -offseth;
+            inv_scaleh = __float2half_rn(0.0f);
+        }
+
+        if (chunk == thread)
+            outf = __halves2half2(offseth, scaleh);
 
         const __half2 minh = __half2half2(__int2half_rn(outi_min));
         const __half2 maxh = __half2half2(__int2half_rn(outi_max));
+        const __half2 inv_offseth2 = __half2half2(inv_offseth);
+        const __half2 inv_scaleh2 = __half2half2(inv_scaleh);
 
-        const __half2 y01 = __hmax2(minh, __hmin2(maxh, __hfma2(x01, inv_scaleh, inv_offseth)));
+        // Note:
+        //     __half2int_rn(+/-0) returns 0.
+        //     __half2int_rn(+Inf) returns INT_MAX = 0x7FFFFFFF.
+        //     __half2int_rn(-Inf) returns INT_MIN = 0x80000000.
+        //     __half2int_rn(NaN)  returns 0.
+        // This is consistent with what we need. There is also no performance penalty.
+
+        const __half2 y01 = __hmax2(minh, __hmin2(maxh, __hfma2(x01, inv_scaleh2, inv_offseth2)));
         const std::int32_t i0 = __half2int_rn(__low2half(y01));
         const std::int32_t i1 = __half2int_rn(__high2half(y01));
 
-        const __half2 y23 = __hmax2(minh, __hmin2(maxh, __hfma2(x23, inv_scaleh, inv_offseth)));
+        const __half2 y23 = __hmax2(minh, __hmin2(maxh, __hfma2(x23, inv_scaleh2, inv_offseth2)));
         const std::int32_t i2 = __half2int_rn(__low2half(y23));
         const std::int32_t i3 = __half2int_rn(__high2half(y23));
 
-        const __half2 y45 = __hmax2(minh, __hmin2(maxh, __hfma2(x45, inv_scaleh, inv_offseth)));
+        const __half2 y45 = __hmax2(minh, __hmin2(maxh, __hfma2(x45, inv_scaleh2, inv_offseth2)));
         const std::int32_t i4 = __half2int_rn(__low2half(y45));
         const std::int32_t i5 = __half2int_rn(__high2half(y45));
 
-        const __half2 y67 = __hmax2(minh, __hmin2(maxh, __hfma2(x67, inv_scaleh, inv_offseth)));
+        const __half2 y67 = __hmax2(minh, __hmin2(maxh, __hfma2(x67, inv_scaleh2, inv_offseth2)));
         const std::int32_t i6 = __half2int_rn(__low2half(y67));
         const std::int32_t i7 = __half2int_rn(__high2half(y67));
 

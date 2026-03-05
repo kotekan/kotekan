@@ -70,7 +70,7 @@ host_frb3_beams_buffer:
     frame_size: frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times / 2
     metadata_pool: main_pool
 
-host_frb3_beams_meanstd_buffer:
+host_frb3_beams_offsetscale_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     # the output is quantized in chunks of `frb_chunk_size`
@@ -131,7 +131,7 @@ run_frb23:
         out_buffers:
             host_frb2_beams_buffer: host_frb2_beams_buffer
             host_frb3_beams_buffer: host_frb3_beams_buffer
-            host_frb3_beams_meanstd_buffer: host_frb3_beams_meanstd_buffer
+            host_frb3_beams_offsetscale_buffer: host_frb3_beams_offsetscale_buffer
         commands:
         - name: cudaInputData
           do_once: true
@@ -148,14 +148,15 @@ run_frb23:
           gpu_mem_beamgrid: frb1_beams
           gpu_mem_weights: frb2_weights
           gpu_mem_beamout: frb2_beams
-        - name: cudaQuantize
+        - name: cudaQuantize8
           # the output is quantized in chunks of `frb_chunk_size`
           num_beams: frb2_num_beams
           num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
           num_times: frb_num_output_times
+          test_kernel: true
           gpu_mem_input: frb2_beams
           gpu_mem_output: frb3_beams
-          gpu_mem_meanstd: frb3_beams_meanstd
+          gpu_mem_offsetscale: frb3_beams_offsetscale
         - name: cudaSyncOutput
         - name: cudaOutputData
           # TODO: Don't do this in production
@@ -165,5 +166,5 @@ run_frb23:
           gpu_mem: frb3_beams_buffer
           out_buf: host_frb3_beams_buffer
         - name: cudaOutputData
-          gpu_mem: frb3_beams_meanstd_buffer
-          out_buf: host_frb3_beams_meanstd_buffer
+          gpu_mem: frb3_beams_offsetscale_buffer
+          out_buf: host_frb3_beams_offsetscale_buffer

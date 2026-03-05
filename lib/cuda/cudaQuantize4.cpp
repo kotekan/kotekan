@@ -13,6 +13,7 @@
 #include <algorithm>          // for max
 #include <array>              // for array
 #include <cassert>            // for assert
+#include <cmath>              //
 #include <cstddef>            // for size_t, ptrdiff_t
 #include <cstdint>            // for int64_t
 #include <cuda_fp16.h>        // for __half2, __half
@@ -44,7 +45,7 @@ private:
     const int _num_times;
     const int64_t _num_chunks;
 
-    // How many standard deviations can we represent? 2 or 3 sounds about right.
+    /// How many standard deviations can we represent? 2 or 3 sounds about right.
     const float _stddev_cutoff;
 
     /// GPU side memory name for the time-stream input
@@ -52,11 +53,11 @@ private:
     /// GPU side memory name for the time-stream output
     const std::string _gpu_mem_beams;
     /// GPU side memory name for mean,stdev output
-    const std::string _gpu_mem_beams_meanstd;
+    const std::string _gpu_mem_beams_offsetscale;
 
     const NDArrayBuffer<float16_t, 3> input_buffer;
     NDArrayBuffer<kotekan::int4x2_t, 3> beam_buffer;
-    NDArrayBuffer<float16_t, 4> meanstd_buffer;
+    NDArrayBuffer<float16_t, 4> offsetscale_buffer;
 };
 
 REGISTER_CUDA_COMMAND(cudaQuantize4);
@@ -75,7 +76,7 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
     //
     _gpu_mem_input(config.get<std::string>(unique_name, "gpu_mem_input")),
     _gpu_mem_beams(config.get<std::string>(unique_name, "gpu_mem_output")),
-    _gpu_mem_beams_meanstd(config.get<std::string>(unique_name, "gpu_mem_meanstd")),
+    _gpu_mem_beams_offsetscale(config.get<std::string>(unique_name, "gpu_mem_offsetscale")),
     //
     input_buffer([&]() {
         const std::array<std::ptrdiff_t, 3> input_lengths{_num_beams, _num_frequencies, _num_times};
@@ -94,14 +95,15 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
         return NDArrayBuffer<kotekan::int4x2_t, 3>(_gpu_mem_beams, "frb3_beams", beam_lengths,
                                                    beam_dimnames, *this);
     }()),
-    meanstd_buffer([&]() {
+    offsetscale_buffer([&]() {
         assert(_num_times % CHUNK_SIZE == 0);
         assert(_num_beams % FRAME_SIZE == 0);
-        const std::array<std::ptrdiff_t, 4> meanstd_lengths{_num_beams, _num_frequencies,
-                                                            _num_times / CHUNK_SIZE, 2};
-        const std::array<std::string, 4> meanstd_dimnames{"R", "Fbar", "Ttilde256", "mean/std"};
-        return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_meanstd, "frb3_beams_meanstd",
-                                           meanstd_lengths, meanstd_dimnames, *this);
+        const std::array<std::ptrdiff_t, 4> offsetscale_lengths{_num_beams, _num_frequencies,
+                                                                _num_times / CHUNK_SIZE, 2};
+        const std::array<std::string, 4> offsetscale_dimnames{"R", "Fbar", "Ttilde256",
+                                                              "offset/scale"};
+        return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_offsetscale, "frb3_beams_offsetscale",
+                                           offsetscale_lengths, offsetscale_dimnames, *this);
     }())
 //
 {
@@ -113,7 +115,7 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams_meanstd, true, false, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams_offsetscale, true, false, true));
 }
 
 cudaQuantize4::~cudaQuantize4() {}
@@ -129,14 +131,14 @@ cudaEvent_t cudaQuantize4::execute(cudaPipelineState&, const std::vector<cudaEve
 
     // Set metadata
     beam_buffer.set_metadata(input_meta);
-    meanstd_buffer.set_metadata(input_meta);
+    offsetscale_buffer.set_metadata(input_meta);
 
     const auto& input_ndarray = input_buffer.get_ndarray();
-    auto& meanstd_ndarray = meanstd_buffer.get_ndarray();
+    auto& offsetscale_ndarray = offsetscale_buffer.get_ndarray();
     auto& beam_ndarray = beam_buffer.get_ndarray();
 
     const float16_t* const input = input_ndarray.data();
-    float16_t* const outputf = meanstd_ndarray.data();
+    float16_t* const outputf = offsetscale_ndarray.data();
     kotekan::int4x2_t* const outputi = beam_ndarray.data();
     const int input_size1 = input_ndarray.extent(2);
     const int input_size2 = input_ndarray.extent(1);
@@ -144,14 +146,14 @@ cudaEvent_t cudaQuantize4::execute(cudaPipelineState&, const std::vector<cudaEve
     assert(input_ndarray.stride(2) == 1);
     const int input_stride2 = input_ndarray.stride(1);
     const int input_stride3 = input_ndarray.stride(0);
-    assert(meanstd_ndarray.extent(3) == 2);
-    const int outputf_size1 = meanstd_ndarray.extent(2) * 2;
-    const int outputf_size2 = meanstd_ndarray.extent(1);
-    const int outputf_size3 = meanstd_ndarray.extent(0);
-    assert(meanstd_ndarray.stride(3) == 1);
-    assert(meanstd_ndarray.stride(2) == 2);
-    const int outputf_stride2 = meanstd_ndarray.stride(1);
-    const int outputf_stride3 = meanstd_ndarray.stride(0);
+    assert(offsetscale_ndarray.extent(3) == 2);
+    const int outputf_size1 = offsetscale_ndarray.extent(2) * 2;
+    const int outputf_size2 = offsetscale_ndarray.extent(1);
+    const int outputf_size3 = offsetscale_ndarray.extent(0);
+    assert(offsetscale_ndarray.stride(3) == 1);
+    assert(offsetscale_ndarray.stride(2) == 2);
+    const int outputf_stride2 = offsetscale_ndarray.stride(1);
+    const int outputf_stride3 = offsetscale_ndarray.stride(0);
     const int outputi_size1 = beam_ndarray.extent(2);
     const int outputi_size2 = beam_ndarray.extent(1);
     const int outputi_size3 = beam_ndarray.extent(0);

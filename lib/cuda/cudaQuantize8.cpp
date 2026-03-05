@@ -52,11 +52,11 @@ private:
     /// GPU side memory name for the time-stream output
     const std::string _gpu_mem_beams;
     /// GPU side memory name for mean,stdev output
-    const std::string _gpu_mem_beams_meanstd;
+    const std::string _gpu_mem_beams_offsetscale;
 
     const NDArrayBuffer<float16_t, 3> input_buffer;
     NDArrayBuffer<std::uint8_t, 3> beam_buffer;
-    NDArrayBuffer<float16_t, 4> meanstd_buffer;
+    NDArrayBuffer<float16_t, 4> offsetscale_buffer;
 };
 
 REGISTER_CUDA_COMMAND(cudaQuantize8);
@@ -75,7 +75,7 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
     //
     _gpu_mem_input(config.get<std::string>(unique_name, "gpu_mem_input")),
     _gpu_mem_beams(config.get<std::string>(unique_name, "gpu_mem_output")),
-    _gpu_mem_beams_meanstd(config.get<std::string>(unique_name, "gpu_mem_meanstd")),
+    _gpu_mem_beams_offsetscale(config.get<std::string>(unique_name, "gpu_mem_offsetscale")),
     //
     input_buffer([&]() {
         const std::array<std::ptrdiff_t, 3> input_lengths{_num_beams, _num_frequencies, _num_times};
@@ -91,14 +91,15 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
         return NDArrayBuffer<std::uint8_t, 3>(_gpu_mem_beams, "frb3_beams", beam_lengths,
                                               beam_dimnames, *this);
     }()),
-    meanstd_buffer([&]() {
+    offsetscale_buffer([&]() {
         assert(_num_times % CHUNK_SIZE == 0);
         assert(_num_beams % FRAME_SIZE == 0);
-        const std::array<std::ptrdiff_t, 4> meanstd_lengths{_num_beams, _num_frequencies,
-                                                            _num_times / CHUNK_SIZE, 2};
-        const std::array<std::string, 4> meanstd_dimnames{"R", "Fbar", "Ttilde256", "mean/std"};
-        return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_meanstd, "frb3_beams_meanstd",
-                                           meanstd_lengths, meanstd_dimnames, *this);
+        const std::array<std::ptrdiff_t, 4> offsetscale_lengths{_num_beams, _num_frequencies,
+                                                                _num_times / CHUNK_SIZE, 2};
+        const std::array<std::string, 4> offsetscale_dimnames{"R", "Fbar", "Ttilde256",
+                                                              "offset/scale"};
+        return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_offsetscale, "frb3_beams_offsetscale",
+                                           offsetscale_lengths, offsetscale_dimnames, *this);
     }())
 //
 {
@@ -110,7 +111,7 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams_meanstd, true, false, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams_offsetscale, true, false, true));
 }
 
 cudaQuantize8::~cudaQuantize8() {}
@@ -126,14 +127,14 @@ cudaEvent_t cudaQuantize8::execute(cudaPipelineState&, const std::vector<cudaEve
 
     // Set metadata
     beam_buffer.set_metadata(input_meta);
-    meanstd_buffer.set_metadata(input_meta);
+    offsetscale_buffer.set_metadata(input_meta);
 
     const auto& input_ndarray = input_buffer.get_ndarray();
-    auto& meanstd_ndarray = meanstd_buffer.get_ndarray();
+    auto& offsetscale_ndarray = offsetscale_buffer.get_ndarray();
     auto& beam_ndarray = beam_buffer.get_ndarray();
 
     const float16_t* const input = input_ndarray.data();
-    float16_t* const outputf = meanstd_ndarray.data();
+    float16_t* const outputf = offsetscale_ndarray.data();
     std::uint8_t* const outputi = beam_ndarray.data();
     const int input_size1 = input_ndarray.extent(2);
     const int input_size2 = input_ndarray.extent(1);
@@ -141,14 +142,14 @@ cudaEvent_t cudaQuantize8::execute(cudaPipelineState&, const std::vector<cudaEve
     assert(input_ndarray.stride(2) == 1);
     const int input_stride2 = input_ndarray.stride(1);
     const int input_stride3 = input_ndarray.stride(0);
-    assert(meanstd_ndarray.extent(3) == 2);
-    const int outputf_size1 = meanstd_ndarray.extent(2) * 2;
-    const int outputf_size2 = meanstd_ndarray.extent(1);
-    const int outputf_size3 = meanstd_ndarray.extent(0);
-    assert(meanstd_ndarray.stride(3) == 1);
-    assert(meanstd_ndarray.stride(2) == 2);
-    const int outputf_stride2 = meanstd_ndarray.stride(1);
-    const int outputf_stride3 = meanstd_ndarray.stride(0);
+    assert(offsetscale_ndarray.extent(3) == 2);
+    const int outputf_size1 = offsetscale_ndarray.extent(2) * 2;
+    const int outputf_size2 = offsetscale_ndarray.extent(1);
+    const int outputf_size3 = offsetscale_ndarray.extent(0);
+    assert(offsetscale_ndarray.stride(3) == 1);
+    assert(offsetscale_ndarray.stride(2) == 2);
+    const int outputf_stride2 = offsetscale_ndarray.stride(1);
+    const int outputf_stride3 = offsetscale_ndarray.stride(0);
     const int outputi_size1 = beam_ndarray.extent(2);
     const int outputi_size2 = beam_ndarray.extent(1);
     const int outputi_size3 = beam_ndarray.extent(0);
@@ -164,38 +165,45 @@ cudaEvent_t cudaQuantize8::execute(cudaPipelineState&, const std::vector<cudaEve
     CHECK_CUDA_ERROR(cudaGetLastError());
 
     if (_test_kernel) {
+        // Synchronize
+        CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
         // Copy inputs from GPU
         std::vector<float16_t> cpu_input_buffer(input_ndarray.get_size());
         CHECK_CUDA_ERROR(cudaMemcpy(cpu_input_buffer.data(), input,
                                     cpu_input_buffer.size() * sizeof *cpu_input_buffer.data(),
                                     cudaMemcpyDeviceToHost));
         // Copy GPU outputs from GPU
-        std::vector<float16_t> gpu_meanstd_buffer(meanstd_ndarray.get_size());
-        CHECK_CUDA_ERROR(cudaMemcpy(gpu_meanstd_buffer.data(), outputf,
-                                    gpu_meanstd_buffer.size() * sizeof *gpu_meanstd_buffer.data(),
-                                    cudaMemcpyDeviceToHost));
+        std::vector<float16_t> gpu_offsetscale_buffer(offsetscale_ndarray.get_size());
+        CHECK_CUDA_ERROR(
+            cudaMemcpy(gpu_offsetscale_buffer.data(), outputf,
+                       gpu_offsetscale_buffer.size() * sizeof *gpu_offsetscale_buffer.data(),
+                       cudaMemcpyDeviceToHost));
         std::vector<std::uint8_t> gpu_beam_buffer(beam_ndarray.get_size());
         CHECK_CUDA_ERROR(cudaMemcpy(gpu_beam_buffer.data(), outputi,
                                     gpu_beam_buffer.size() * sizeof *gpu_beam_buffer.data(),
                                     cudaMemcpyDeviceToHost));
         // Re-calculate results on CPU
-        std::vector<float16_t> cpu_meanstd_buffer(meanstd_ndarray.get_size());
+        std::vector<float16_t> cpu_offsetscale_buffer(offsetscale_ndarray.get_size());
         std::vector<std::uint8_t> cpu_beam_buffer(beam_ndarray.get_size());
-        cpu_quantize8(cpu_input_buffer.data(), cpu_meanstd_buffer.data(), cpu_beam_buffer.data(),
-                      input_size1, input_size2, input_size3, input_stride2, input_stride3,
-                      outputf_size1, outputf_size2, outputf_size3, outputf_stride2, outputf_stride3,
-                      outputi_size1, outputi_size2, outputi_size3, outputi_stride2,
+        cpu_quantize8(cpu_input_buffer.data(), cpu_offsetscale_buffer.data(),
+                      cpu_beam_buffer.data(), input_size1, input_size2, input_size3, input_stride2,
+                      input_stride3, outputf_size1, outputf_size2, outputf_size3, outputf_stride2,
+                      outputf_stride3, outputi_size1, outputi_size2, outputi_size3, outputi_stride2,
                       outputi_stride3);
         // Compare results
-        for (std::size_t n = 0; n < cpu_meanstd_buffer.size(); ++n) {
-            const float16_t x [[maybe_unused]] = gpu_meanstd_buffer.at(n);
-            assert(isfinite(float(x)));
-            assert(x == cpu_meanstd_buffer.at(n));
+        for (std::size_t n = 0; n < cpu_offsetscale_buffer.size(); ++n) {
+            const float expected_x = cpu_offsetscale_buffer.at(n);
+            const float x = gpu_offsetscale_buffer.at(n);
+            if (!isfinite(expected_x) || !isfinite(x) || x != expected_x)
+                FATAL_ERROR("offset/scale is wrong at index {}; expected {}, got {}", n, expected_x,
+                            x);
         }
         for (std::size_t n = 0; n < cpu_beam_buffer.size(); ++n) {
-            const std::uint8_t x [[maybe_unused]] = gpu_beam_buffer.at(n);
-            assert(x != 0 && x != 255);
-            assert(x == cpu_beam_buffer.at(n));
+            const std::uint8_t expected_x = cpu_beam_buffer.at(n);
+            const std::uint8_t x = gpu_beam_buffer.at(n);
+            if (expected_x == 0 || expected_x == 255 || x == 0 || x == 255 || x != expected_x)
+                FATAL_ERROR("beam intensity value is wrong at index {}; expected {}, got {}", n,
+                            expected_x, x);
         }
     }
 

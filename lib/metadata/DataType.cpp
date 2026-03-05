@@ -38,6 +38,21 @@ constexpr bool test_uint1x8_t() {
             return false;
         if (y[7] != v7)
             return false;
+        for (int val2 = 0x00; val2 <= 0xff; ++val2) {
+            const bool w0 = val2 & 0x01;
+            const bool w1 = val2 & 0x02;
+            const bool w2 = val2 & 0x04;
+            const bool w3 = val2 & 0x08;
+            const bool w4 = val2 & 0x10;
+            const bool w5 = val2 & 0x20;
+            const bool w6 = val2 & 0x40;
+            const bool w7 = val2 & 0x80;
+            const uint1x8_t x2(w0, w1, w2, w3, w4, w5, w6, w7);
+            if ((x2 == x) != (val == val2))
+                return false;
+            if ((x2 != x) != (val != val2))
+                return false;
+        }
     }
     return true;
 }
@@ -59,6 +74,15 @@ constexpr bool test_uint4x2_t() {
             return false;
         if (y[1] != v1)
             return false;
+        for (int val2 = 0x00; val2 <= 0xff; ++val2) {
+            const unsigned int w0 = (val2 & 0x0f) >> 0;
+            const unsigned int w1 = (val2 & 0xf0) >> 4;
+            const uint4x2_t x2(w0, w1);
+            if ((x2 == x) != (val == val2))
+                return false;
+            if ((x2 != x) != (val != val2))
+                return false;
+        }
     }
     return true;
 }
@@ -80,6 +104,15 @@ constexpr bool test_int4x2_t() {
             return false;
         if (y[1] != v1)
             return false;
+        for (int val2 = 0x00; val2 <= 0xff; ++val2) {
+            const int w0 = std::int8_t(((val2 & 0x0f) >> 0) << 4) >> 4;
+            const int w1 = std::int8_t(((val2 & 0xf0) >> 4) << 4) >> 4;
+            const int4x2_t x2(w0, w1);
+            if ((x2 == x) != (val == val2))
+                return false;
+            if ((x2 != x) != (val != val2))
+                return false;
+        }
     }
     return true;
 }
@@ -101,6 +134,15 @@ constexpr bool test_int4x2_swapped_withoffset_t() {
             return false;
         if (y[1] != v1)
             return false;
+        for (int val2 = 0x00; val2 <= 0xff; ++val2) {
+            const int w0 = ((val2 & 0x0f) >> 0) - 8;
+            const int w1 = ((val2 & 0xf0) >> 4) - 8;
+            const int4x2_swapped_withoffset_t x2(w0, w1);
+            if ((x2 == x) != (val == val2))
+                return false;
+            if ((x2 != x) != (val != val2))
+                return false;
+        }
     }
     return true;
 }
