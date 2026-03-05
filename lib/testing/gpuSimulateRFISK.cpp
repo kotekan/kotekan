@@ -129,6 +129,7 @@ void gpuSimulateRFISK::main_thread() {
 
     frameID in_bf_mask_frame_id(in_bf_mask_buf);
     frameID in_rfi_s012_frame_id(in_rfi_s012_buf);
+    frameID out_rfi_sk_frame_id(out_rfi_sktilde_buf);
     frameID out_rfi_sktilde_frame_id(out_rfi_sktilde_buf);
     frameID out_rfi_mask_frame_id(out_rfi_mask_buf);
 
@@ -141,6 +142,10 @@ void gpuSimulateRFISK::main_thread() {
             (uint64_t*)in_rfi_s012_buf->wait_for_full_frame(unique_name, in_rfi_s012_frame_id);
         if (rfi_s012 == nullptr)
             break;
+        float* rfi_sk =
+            (float*)out_rfi_sk_buf->wait_for_empty_frame(unique_name, out_rfi_sk_frame_id);
+        if (rfi_sk == nullptr)
+            break;
         float* rfi_sktilde =
             (float*)out_rfi_sktilde_buf->wait_for_empty_frame(unique_name, out_rfi_sktilde_frame_id);
         if (rfi_sktilde == nullptr)
@@ -150,9 +155,10 @@ void gpuSimulateRFISK::main_thread() {
         if (rfi_mask == nullptr)
             break;
 
-        INFO("Simulating GPU RFI S012 for {:s}[{:d}], {:s}[{:d}] and putting result in {:s}[{:d}], {:s}[{:d}]",
+        INFO("Simulating GPU RFI S012 for {:s}[{:d}], {:s}[{:d}] and putting result in {:s}[{:d}], {:s}[{:d}], {:s}[{:d}]",
              in_bf_mask_buf->buffer_name, in_bf_mask_frame_id,
              in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id,
+             out_rfi_sk_buf->buffer_name, out_rfi_sk_frame_id,
              out_rfi_sktilde_buf->buffer_name, out_rfi_sktilde_frame_id,
              out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
 
@@ -162,7 +168,7 @@ void gpuSimulateRFISK::main_thread() {
         uint64_t ne = _num_elements;
 
         uint64_t nt_rfi = nt / _rfi_downsampling_factor;
-        uint64_t nsub = _rfi_downsampling_factor;
+        //uint64_t nsub = _rfi_downsampling_factor;
 
         // array access strides in S012
         uint64_t sstride_s012 = ne;
@@ -170,11 +176,18 @@ void gpuSimulateRFISK::main_thread() {
         uint64_t tstride_s012 = nf * 3 * ne;
 
         // array access strides in SK
-        uint64_t fstride_sk = 3;
-        uint64_t tstride_sk = nf * 3;
+        //uint64_t sstride_sk = ne;
+        uint64_t fstride_sk = 3 * ne;
+        uint64_t tstride_sk = nf * 3 * ne;
+
+        // array access strides in SKtilde
+        uint64_t fstride_sktilde = 3;
+        uint64_t tstride_sktilde = nf * 3;
 
         // Set to 0 to start.
-        for (uint64_t tfs = 0; tfs < tstride_sk * nt_rfi; tfs++)
+        for (uint64_t tfse = 0; tfse < tstride_sk * nt_rfi; tfse++)
+            rfi_sk[tfse] = 0;
+        for (uint64_t tfs = 0; tfs < tstride_sktilde * nt_rfi; tfs++)
             rfi_sktilde[tfs] = 0;
         for (uint64_t tf = 0; tf < nt * nf / 8; tf++)
             rfi_mask[tf] = 0;
@@ -185,97 +198,123 @@ void gpuSimulateRFISK::main_thread() {
             for (uint64_t f = 0; f < nf; f++) {
 
                 uint64_t sk_idx = f * fstride_sk + t_rfi * tstride_sk;
+                uint64_t sktilde_idx = f * fstride_sktilde + t_rfi * tstride_sktilde;
                 uint64_t s012_idx = f * fstride_s012 + t_rfi * tstride_s012;
 
                 uint64_t n = 0;
 
                 for (uint64_t e = 0; e < ne; e++) {
-                    if (bf_mask[e])
-                        n += rfi_s012[s012_idx + e];
+                    uint64_t ne = rfi_s012[s012_idx + e];
+                    uint64_t s1 = rfi_s012[s012_idx + sstride_s012 + e];
+                    uint64_t s2 = rfi_s012[s012_idx + 2*sstride_s012 + e];
+                    rfi_sk[sk_idx + e] = static_cast<float>(ne + 1) / static_cast<float>(ne-1)
+                        * (static_cast<float>(ne * s2) / static_cast<float>(s1*s1) - 1.0f);
+                    if (bf_mask[e]) {
+                        n += ne;
+                        rfi_sktilde[sktilde_idx] += ne * rfi_sk[sk_idx + e];
+                    }
+                } // e
 
-
-                        uint64_t idx_v = e + fstride * f + tstride * t;
-                        uint64_t idx_rfi = e + fstride_rfi * f + tstride_rfi * t_rfi;
-
-                        uint64_t e_pl = e / 8;
-                        uint64_t f_pl = f / 4;
-                        uint64_t t_pl = t / 2;
-                        uint64_t t_pl_hi = t_pl / 64;
-                        uint64_t t_pl_lo = t_pl % 64;
-                        uint64_t idx_pl = e_pl + fstride_pl * f_pl + tstride_pl * t_pl_hi;
-
-                        // Grab the value of the PL mask
-                        uint64_t pl = (pl_mask[idx_pl] >> t_pl_lo) & 1u;
-
-                        // Decode the input voltage in the CHIME format:
-                        // offset encoded by 8, imaginary part in lo 4 bits,
-                        // real part in hi 4 bits.
-                        int32_t ei = static_cast<int32_t>(voltage[idx_v] & 0x0f) - 8;
-                        int32_t er = static_cast<int32_t>((voltage[idx_v] & 0xf0) >> 4) - 8;
-
-                        uint64_t e2 = er * er + ei * ei;
-                        uint64_t e4 = e2 * e2;
-
-                        rfi_s012[idx_rfi + 0 * sstride_rfi] += pl;
-                        rfi_s012[idx_rfi + 1 * sstride_rfi] += pl * e2;
-                        rfi_s012[idx_rfi + 2 * sstride_rfi] += pl * e4;
-                    } // e
-                } // f
-            } // tsub
+                rfi_sktilde[sktilde_idx] /= n;
+            } // f
         } // t_rfi
 
         // Fetch input metadata
         const std::shared_ptr<const metadataObject> mc_in =
-            in_voltage_buf->get_metadata(in_voltage_frame_id);
+            in_rfi_s012_buf->get_metadata(in_rfi_s012_frame_id);
         if (!mc_in) {
-            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_voltage_buf->buffer_name,
-                        in_voltage_frame_id);
+            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_rfi_s012_buf->buffer_name,
+                        in_rfi_s012_frame_id);
         }
         assert(mc_in);
         if (!metadata_is_chord(mc_in)) {
             FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
-                        in_voltage_buf->buffer_name, in_voltage_frame_id);
+                        in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id);
         }
         assert(metadata_is_chord(mc_in));
 
         const std::shared_ptr<const chordMetadata> meta_in = get_chord_metadata(mc_in);
 
-        // Create output metadata
-        out_rfis012_buf->allocate_new_metadata_object(out_rfis012_frame_id);
-        const std::shared_ptr<metadataObject> mc =
-            out_rfis012_buf->get_metadata(out_rfis012_frame_id);
-        if (!mc) {
+        // Create output SK metadata
+        out_rfi_sk_buf->allocate_new_metadata_object(out_rfi_sk_frame_id);
+        const std::shared_ptr<metadataObject> mc_sk =
+            out_rfi_sk_buf->get_metadata(out_rfi_sk_frame_id);
+        if (!mc_sk) {
             FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata",
-                        out_rfis012_buf->buffer_name, out_rfis012_frame_id);
+                        out_rfi_sk_buf->buffer_name, out_rfi_sk_frame_id);
         }
-        assert(mc);
-        if (!metadata_is_chord(mc)) {
+        assert(mc_sk);
+        if (!metadata_is_chord(mc_sk)) {
             FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
-                        out_rfis012_buf->buffer_name, out_rfis012_frame_id);
+                        out_rfi_sk_buf->buffer_name, out_rfi_sk_frame_id);
         }
-        assert(metadata_is_chord(mc));
-        const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
-        assert(meta_out);
+        assert(metadata_is_chord(mc_sk));
+        const std::shared_ptr<chordMetadata> meta_sk = get_chord_metadata(mc_sk);
+        assert(meta_sk);
+
+        // Create output SKtilde metadata
+        out_rfi_sktilde_buf->allocate_new_metadata_object(out_rfi_sktilde_frame_id);
+        const std::shared_ptr<metadataObject> mc_sktilde =
+            out_rfi_sktilde_buf->get_metadata(out_rfi_sktilde_frame_id);
+        if (!mc_sktilde) {
+            FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata",
+                        out_rfi_sktilde_buf->buffer_name, out_rfi_sktilde_frame_id);
+        }
+        assert(mc_sktilde);
+        if (!metadata_is_chord(mc_sktilde)) {
+            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
+                        out_rfi_sktilde_buf->buffer_name, out_rfi_sktilde_frame_id);
+        }
+        assert(metadata_is_chord(mc_sktilde));
+        const std::shared_ptr<chordMetadata> meta_sktilde = get_chord_metadata(mc_sktilde);
+        assert(meta_sktilde);
+
+        // Create output SKtilde metadata
+        out_rfi_mask_buf->allocate_new_metadata_object(out_rfi_mask_frame_id);
+        const std::shared_ptr<metadataObject> mc_rfi_mask =
+            out_rfi_mask_buf->get_metadata(out_rfi_mask_frame_id);
+        if (!mc_rfi_mask) {
+            FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata",
+                        out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
+        }
+        assert(mc_rfi_mask);
+        if (!metadata_is_chord(mc_rfi_mask)) {
+            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
+                        out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
+        }
+        assert(metadata_is_chord(mc_rfi_mask));
+        const std::shared_ptr<chordMetadata> meta_rfi_mask = get_chord_metadata(mc_rfi_mask);
+        assert(meta_rfi_mask);
 
         // Start with a copy
-        meta_out->deepCopy(meta_in);
+        meta_sk->deepCopy(meta_in);
+        meta_sktilde->deepCopy(meta_in);
+        meta_rfi_mask->deepCopy(meta_in);
 
-        meta_out->set_from_frame_desc(out_rfis012_buf->get_ndarray_frame_desc());
+        meta_sk->set_from_frame_desc(out_rfi_sk_buf->get_ndarray_frame_desc());
+        meta_sktilde->set_from_frame_desc(out_rfi_sktilde_buf->get_ndarray_frame_desc());
+        meta_rfi_mask->set_from_frame_desc(out_rfi_mask_buf->get_ndarray_frame_desc());
 
         // test that things are consistent
-        meta_out->check_frame_desc(out_rfis012_buf->get_ndarray_frame_desc());
+        meta_sk->check_frame_desc(out_rfi_sk_buf->get_ndarray_frame_desc());
+        meta_sktilde->check_frame_desc(out_rfi_sktilde_buf->get_ndarray_frame_desc());
+        meta_rfi_mask->check_frame_desc(out_rfi_mask_buf->get_ndarray_frame_desc());
 
         // Set non-NDArray things.
-        meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->set_time_downsampling_fpga(meta_in->get_time_downsampling_fpga()
-                                             * _rfi_downsampling_factor);
+        meta_rfi_mask->set_time_downsampling_fpga(1024 * meta_in->get_time_downsampling_fpga() / _rfi_downsampling_factor);
 
-        INFO("Simulating GPU RFI S012 done for {:s}[{:d}]+{:s}[{:d}] result is in {:s}[{:d}]",
-             in_plmask_buf->buffer_name, in_plmask_frame_id, in_voltage_buf->buffer_name,
-             in_voltage_frame_id, out_rfis012_buf->buffer_name, out_rfis012_frame_id);
+        INFO("Simulating GPU RFI S012 done for {:s}[{:d}]+{:s}[{:d}] result is in {:s}[{:d}]+{:s}[{:d}]+{:s}[{:d}]",
+             in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id,
+             in_bf_mask_buf->buffer_name, in_bf_mask_frame_id,
+             out_rfi_sk_buf->buffer_name, out_rfi_sk_frame_id,
+             out_rfi_sktilde_buf->buffer_name, out_rfi_sktilde_frame_id,
+             out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
 
-        in_plmask_buf->mark_frame_empty(unique_name, in_plmask_frame_id++);
-        in_voltage_buf->mark_frame_empty(unique_name, in_voltage_frame_id++);
-        out_rfis012_buf->mark_frame_full(unique_name, out_rfis012_frame_id++);
-    }
+        in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id++);
+        in_rfi_s012_buf->mark_frame_empty(unique_name, in_rfi_s012_frame_id++);
+        out_rfi_sk_buf->mark_frame_full(unique_name, out_rfi_sk_frame_id++);
+        out_rfi_sktilde_buf->mark_frame_full(unique_name, out_rfi_sktilde_frame_id++);
+        out_rfi_mask_buf->mark_frame_full(unique_name, out_rfi_mask_frame_id++);
+    } // while !stop_thread
 }
+    
