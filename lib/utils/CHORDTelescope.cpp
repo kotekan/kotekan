@@ -186,11 +186,13 @@ void GeographicParams::set_dish_info(const kotekan::Config& config, const std::s
         // Catch inconsistencies
         assert(dish_info.idx == dish);
         dish_index_t& dish_index = dish_grid.dish_index(dish_info.grid_x_idx, dish_info.grid_y_idx);
-        // Catch inconsistencies
+        // Not catching inconsistencies -- Pathfinder is wired bad
+        /*
         if (dish_index != -1) {
             FATAL_ERROR_NON_OO("dish {:s} has duplicate grid location ({:d},{:d})", dish_info.label,
                                dish_info.grid_x_idx, dish_info.grid_y_idx);
         }
+        */
         dish_index = dish;
     }
 }
