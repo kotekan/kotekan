@@ -298,6 +298,9 @@ void testDataGen::main_thread() {
             frameu64 = (uint64_t*)frame;
             if (chordmeta)
                 chordmeta->type = kotekan::uint64;
+        } else if (type == "random") {
+            if (chordmeta)
+                chordmeta->type = kotekan::uint4x2;
         } else if (type == "random_signed") {
             if (chordmeta)
                 chordmeta->type = kotekan::int4x2;
@@ -307,6 +310,9 @@ void testDataGen::main_thread() {
         } else if (type == "random1x8") {
             if (chordmeta)
                 chordmeta->type = kotekan::uint1x8;
+        } else if (type == "ramp") {
+            if (chordmeta)
+                chordmeta->type = kotekan::uint8;
         } else if (type == "tpluse") {
             if (chordmeta)
                 chordmeta->type = kotekan::uint1x8;
@@ -319,8 +325,11 @@ void testDataGen::main_thread() {
         } else if (type == "square") {
             if (chordmeta)
                 chordmeta->type = kotekan::int4x2;
+        } else if (type == "onehot") {
+            if (chordmeta)
+                chordmeta->type = kotekan::uint8;
         } else {
-            ERROR("unexpected type: {s}", type);
+            ERROR("unexpected type: {:s}", type);
             throw std::runtime_error("unexpected type: " + type);
         }
 
@@ -489,7 +498,7 @@ void testDataGen::main_thread() {
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
             } else {
-                ERROR("unexpected type: {s}", type);
+                ERROR("unexpected type: {:s}", type);
                 throw std::runtime_error("unexpected type: " + type);
             }
         }
