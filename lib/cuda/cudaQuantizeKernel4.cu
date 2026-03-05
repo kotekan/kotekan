@@ -37,6 +37,18 @@ __device__ static inline half2x4 load_half2x4(const __half2* __restrict__ const 
     return reinterpret_cast<const half2x4&>(data);
 }
 
+// Round to nearest integer, avoiding all the implementation-defined cases
+static int sane_lrint(const float x) {
+    using std::isnan, std::lrint;
+    if (x < INT_MIN)
+        return INT_MIN;
+    if (x > INT_MAX)
+        return INT_MAX;
+    if (isnan(x))
+        return 0; // we could mask to -8 instead
+    return int(lrint(x));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Kernels (called by the drivers below)
@@ -50,6 +62,8 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restr
     // The chunk size must be even because we process 2 `half` values simultaneously to create 1
     // output byte.
     static_assert(chunk_size % 2 == 0);
+
+    using std::fmax, std::isfinite, std::max, std::min, std::sqrt;
 
     // Find the sum and sum-squared of all input values. Calculate everything as `float` to
     // avoid overflow.
@@ -76,13 +90,13 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restr
     //     mean + stddev * stddev_cutoff => outf_max
     const float outf_range = outf_max - outf_min;
     const float in_range = 2 * stddev * stddev_cutoff;
+
     float offset = mean;
-    float scale = fmax(0.0f, in_range / outf_range);
+    float scale = in_range / outf_range;
     __half offseth = __float2half(offset);
     __half scaleh = __float2half(scale);
 
     // Avoid non-finite numbers
-    using std::isfinite;
     if (!isfinite(__half2float(offseth)) || !isfinite(__half2float(scaleh))) {
         offset = 0.0f;
         scale = 0.0f;
@@ -90,25 +104,12 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restr
         scaleh = __float2half(scale);
     }
 
-    // Store offset and scale for this chunk in the output array
+    // Store offset and scale in the output array
     outputf[0] = __float2half(offset);
     outputf[1] = __float2half(scale);
 
-    const auto sane_lrint = [](const float x) {
-        // Avoid all the implementation-defined cases
-        using std::isnan, std::lrint;
-        if (x < INT_MIN)
-            return INT_MIN;
-        if (x > INT_MAX)
-            return INT_MAX;
-        if (isnan(x))
-            return 0; // we could mask to -8 instead
-        return int(lrint(x));
-    };
-
-    // We encode values as offset-encoded signed 4-bit integers. We combine two 4-bit integers
-    // into one byte. The lower 4 bits hold the first value, the upper 4 bits hold the second
-    // value.
+    // We encode values as signed 4-bit integers. We combine two 4-bit integers into one byte. The
+    // lower 4 bits hold the first value, the upper 4 bits hold the second value.
     for (int i = 0; i < chunk_size; i += 2) {
         // Get values
         const float x0 = __half2float(input[i + 0]);
@@ -120,13 +121,12 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restr
         const int j0 = sane_lrint(y0);
         const int j1 = sane_lrint(y1);
         // Clamp
-        using std::max, std::min;
         const int k0 = max(outi_min, min(outi_max, j0));
         const int k1 = max(outi_min, min(outi_max, j1));
         // Combine
-        const kotekan::int4x2_t outi(k0, k1);
+        const kotekan::int4x2_t k01(k0, k1);
         // Store
-        outputi[i / 2] = outi;
+        outputi[i / 2] = k01;
     }
 }
 
@@ -262,25 +262,26 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
         // This is consistent with what we need. There is also no performance penalty.
 
         const __half2 y01 = __hmax2(minh, __hmin2(maxh, __hfma2(x01, inv_scaleh2, inv_offseth2)));
-        const std::int32_t i0 = __half2int_rn(__low2half(y01));
-        const std::int32_t i1 = __half2int_rn(__high2half(y01));
+        const int i0 = __half2int_rn(__low2half(y01));
+        const int i1 = __half2int_rn(__high2half(y01));
 
         const __half2 y23 = __hmax2(minh, __hmin2(maxh, __hfma2(x23, inv_scaleh2, inv_offseth2)));
-        const std::int32_t i2 = __half2int_rn(__low2half(y23));
-        const std::int32_t i3 = __half2int_rn(__high2half(y23));
+        const int i2 = __half2int_rn(__low2half(y23));
+        const int i3 = __half2int_rn(__high2half(y23));
 
         const __half2 y45 = __hmax2(minh, __hmin2(maxh, __hfma2(x45, inv_scaleh2, inv_offseth2)));
-        const std::int32_t i4 = __half2int_rn(__low2half(y45));
-        const std::int32_t i5 = __half2int_rn(__high2half(y45));
+        const int i4 = __half2int_rn(__low2half(y45));
+        const int i5 = __half2int_rn(__high2half(y45));
 
         const __half2 y67 = __hmax2(minh, __hmin2(maxh, __hfma2(x67, inv_scaleh2, inv_offseth2)));
-        const std::int32_t i6 = __half2int_rn(__low2half(y67));
-        const std::int32_t i7 = __half2int_rn(__high2half(y67));
+        const int i6 = __half2int_rn(__low2half(y67));
+        const int i7 = __half2int_rn(__high2half(y67));
 
-        const std::uint32_t outi = ((i0 & 0x0f) << 0x00) | ((i1 & 0x0f) << 0x04)
-                                   | ((i2 & 0x0f) << 0x08) | ((i3 & 0x0f) << 0x0c)
-                                   | ((i4 & 0x0f) << 0x10) | ((i5 & 0x0f) << 0x14)
-                                   | ((i6 & 0x0f) << 0x18) | ((i7 & 0x0f) << 0x1c);
+        const std::uint32_t outi =
+            (std::uint32_t(i0 & 0x0f) << 0x00) | (std::uint32_t(i1 & 0x0f) << 0x04)
+            | (std::uint32_t(i2 & 0x0f) << 0x08) | (std::uint32_t(i3 & 0x0f) << 0x0c)
+            | (std::uint32_t(i4 & 0x0f) << 0x10) | (std::uint32_t(i5 & 0x0f) << 0x14)
+            | (std::uint32_t(i6 & 0x0f) << 0x18) | (std::uint32_t(i7 & 0x0f) << 0x1c);
 
         outputi((dim1 + 8 * thread) / 2, dim2, dim3 + chunk) = outi;
     }

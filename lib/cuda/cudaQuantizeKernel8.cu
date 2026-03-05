@@ -15,11 +15,11 @@
 // The output is quantized in "chunks". Each chunk has a different offset and scale.
 static constexpr int chunk_size = 256;
 
-// For efficiency we proceess several chunks at once as a "frame".
-static constexpr int chunks_per_frame = 32;
+// For efficiency we proceess several chunks at once on the GPU.
+static constexpr int nchunks = 32;
 
 // Number of threads per block
-static constexpr int nthreads = 32;
+static constexpr int nthreads = nchunks;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,69 +37,101 @@ __device__ static inline half2x4 load_half2x4(const __half2* __restrict__ const 
     return reinterpret_cast<const half2x4&>(data);
 }
 
+// Calculate the maximum but do not ignore not-a-numbers
+__device__ __host__ static inline float sane_fmax(const float x, const float y) {
+    using std::fmax, std::isnan;
+    if (isnan(x) || isnan(y))
+        return 0.0f / 0.0f;
+    return fmax(x, y);
+}
+
+// Calculate the minimum but do not ignore not-a-numbers
+__device__ __host__ static inline float sane_fmin(const float x, const float y) {
+    using std::fmin, std::isnan;
+    if (isnan(x) || isnan(y))
+        return 0.0f / 0.0f;
+    return fmin(x, y);
+}
+
+// Round to nearest integer, avoiding all the implementation-defined cases
+__device__ __host__ static inline int sane_lrint(const float x) {
+    using std::isnan, std::lrint;
+    if (x < INT_MIN)
+        return INT_MIN;
+    if (x > INT_MAX)
+        return INT_MAX;
+    if (isnan(x))
+        return 0; // we could mask to -8 instead
+    return int(lrint(x));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Kernels (called by the drivers below)
 
-// Quantize a "frame", i.e. a set of "chunks". This is a CPU implementation that is straightforward
-// and thus "obviously correct". If the GPU version produces a different result, then the GPU
-// version is wrong.
-void cpu_quantize8_chunks(const __half* __restrict__ const input,
-                          __half* __restrict__ const outputf,
-                          std::uint8_t* __restrict__ const outputi, const int input_stride,
-                          const int outputf_stride, const int outputi_stride) {
+// Quantize a "chunk". This is a CPU implementation that is
+// straightforward and thus "obviously correct". If the GPU version
+// produces a different result, then the GPU version is wrong.
+void cpu_quantize8_chunk(const __half* __restrict__ const input, __half* __restrict__ const outputf,
+                         std::uint8_t* __restrict__ const outputi) {
     static_assert(chunk_size >= 0);
 
-    // Loop over all chunks in the frame. The chunks are all independent.
-    for (int chunk = 0; chunk < chunks_per_frame; ++chunk) {
-        const int input_offset = chunk * input_stride;
-        const int outputf_offset = chunk * outputf_stride;
-        const int outputi_offset = chunk * outputi_stride;
+    using std::isfinite, std::max, std::min;
 
-        // Find the minimum and maximum of all input values. Calculate
-        // everything as `float` for convenience.
-        float minval = +1.0f / 0.0f, maxval = -1.0f / 0.0f;
-        for (int i = 0; i < chunk_size; ++i) {
-            const float x = __half2float(input[i + input_offset]);
-            minval = fmin(minval, x);
-            maxval = fmax(maxval, x);
-        }
-        // Calculate offset and scale. Ensure the scale is nonzero.
-        // There are 254 possible uint8 values since we don't use 0 or 255.
-        // Values are reconstructed as `offset + scale * n`, with `uint8 n`.
-        constexpr int outi_min = 1;
-        constexpr int outi_max = 254;
-        constexpr float outf_min = outi_min - 0.5f;
-        constexpr float outf_max = outi_max + 0.5f;
-        // We want this mapping:
-        //     minval => outf_min
-        //     maxval => outf_max
-        const float outf_range = outf_max - outf_min;
-        const float in_range = maxval - minval;
-        const float scale = fmax(1.0e-4f, in_range / outf_range);
-        const float offset = minval - outf_min * scale;
+    // Find the minimum and maximum of all input values. Calculate
+    // everything as `float` for convenience.
+    float minval = +1.0f / 0.0f, maxval = -1.0f / 0.0f;
+    for (int i = 0; i < chunk_size; ++i) {
+        const float x = __half2float(input[i]);
+        minval = sane_fmin(minval, x);
+        maxval = sane_fmax(maxval, x);
+    }
+    // Calculate offset and scale. Ensure the scale is nonzero.
+    // There are 254 possible uint8 values since we don't use 0 or 255.
+    // Values are reconstructed as `offset + scale * n`, with `uint8 n`.
+    constexpr int outi_min = 1;
+    constexpr int outi_max = 254;
+    constexpr float outf_min = outi_min - 0.5f;
+    constexpr float outf_max = outi_max + 0.5f;
+    // We want this mapping:
+    //     minval => outf_min
+    //     maxval => outf_max
+    const float outf_range = outf_max - outf_min;
+    const float in_range = maxval - minval;
 
-        // Store offset and scale for this chunk in the output array
-        outputf[outputf_offset + 0] = __float2half(offset);
-        outputf[outputf_offset + 1] = __float2half(scale);
+    float scale = in_range / outf_range;
+    float offset = minval - outf_min * scale;
+    __half offseth = __float2half(offset);
+    __half scaleh = __float2half(scale);
 
-        // We encode values as offset-encoded unsigned 8-bit integers.
-        for (int i = 0; i < chunk_size; ++i) {
-            // Get values
-            const float x = __half2float(input[i + input_offset]);
-            // Scale
-            const float y = (x - offset) / scale;
-            // Round
-            const int j = lrint(y);
-            // Clamp
-            const int k = max(outi_min, min(outi_max, j));
-            // Store
-            outputi[i + outputi_offset] = k;
-        }
+    // Avoid non-finite numbers
+    if (!isfinite(__half2float(offseth)) || !isfinite(__half2float(scaleh))) {
+        offset = 0.0f;
+        scale = 0.0f;
+        offseth = __float2half(offset);
+        scaleh = __float2half(scale);
+    }
+
+    // Store offset and scale in the output array
+    outputf[0] = __float2half(offset);
+    outputf[1] = __float2half(scale);
+
+    // We encode values as unsigned 8-bit integers.
+    for (int i = 0; i < chunk_size; ++i) {
+        // Get value
+        const float x = __half2float(input[i]);
+        // Scale
+        const float y = (x - offset) / scale;
+        // Round
+        const int j = sane_lrint(y);
+        // Clamp
+        const int k = max(outi_min, min(outi_max, j));
+        // Store
+        outputi[i] = k;
     }
 }
 
-// Quantize a "frame", i.e. a set of "chunks". This is an efficient GPU implementation.
+// Quantize a set of "chunk"s. This is an efficient GPU implementation.
 __global__ void
 gpu_quantize8_chunks(const __half* __restrict__ const input0, __half* __restrict__ const outputf0,
                      std::uint8_t* __restrict__ const outputi0, const int input_size1,
@@ -111,42 +143,42 @@ gpu_quantize8_chunks(const __half* __restrict__ const input0, __half* __restrict
     static_assert(chunk_size >= 0);
     static_assert(chunk_size % (8 * nthreads) == 0);
 
+    // Calculate array indices and convert to SIMD reference
+    const auto input = [&](const int dim1, const int dim2, const int dim3) -> const __half2& {
+        assert(dim1 >= 0 && dim1 < input_size1);
+        assert(dim2 >= 0 && dim2 < input_size2);
+        assert(dim3 >= 0 && dim3 < input_size3);
+        return *(const __half2*)&(input0[dim1 + input_stride2 * dim2 + input_stride3 * dim3]);
+    };
+    const auto outputi = [&](const int dim1, const int dim2, const int dim3) -> std::uint64_t& {
+        assert(dim1 >= 0 && dim1 < outputi_size1);
+        assert(dim2 >= 0 && dim2 < outputi_size2);
+        assert(dim3 >= 0 && dim3 < outputi_size3);
+        return *(std::uint64_t*)&(outputi0[dim1 + outputi_stride2 * dim2 + outputi_stride3 * dim3]);
+    };
+    const auto outputf = [&](const int dim1, const int dim2, const int dim3) -> __half2& {
+        assert(dim1 >= 0 && dim1 < outputf_size1);
+        assert(dim2 >= 0 && dim2 < outputf_size2);
+        assert(dim3 >= 0 && dim3 < outputf_size3);
+        return *(__half2*)&(outputf0[dim1 + outputf_stride2 * dim2 + outputf_stride3 * dim3]);
+    };
+
+    // // Find our position in the arrays
     const int thread = threadIdx.x;
-
     const int dim1 = blockIdx.x * chunk_size;
-    const int dim2 = blockIdx.y * chunks_per_frame;
-    const int dim3 = blockIdx.z;
+    const int dim2 = blockIdx.y;
+    const int dim3 = blockIdx.z * nchunks;
 
-    const __half2* __restrict__ const input1 = (const __half2*)input0;
-    __half2* __restrict__ const outputf1 = (__half2*)outputf0;
-    uint32_t* __restrict__ const outputi1 = (uint32_t*)outputi0;
-
-    const int input_dim1 = dim1;
-    const int outputf_dim1 = dim1 / chunk_size;
-    const int outputi_dim1 = dim1;
-
-    const __half2* __restrict__ const input2 =
-        input1 + (input_dim1 + input_stride2 * dim2 + input_stride3 * dim3) / 2;
-    __half2* __restrict__ const outputf =
-        outputf1 + (outputf_dim1 + outputf_stride2 * dim2 + outputf_stride3 * dim3) / 2;
-    uint32_t* __restrict__ const outputi2 =
-        outputi1 + (outputi_dim1 + outputi_stride2 * dim2 + outputi_stride3 * dim3) / 4;
-
-    static_assert(chunks_per_frame == nthreads);
+    static_assert(nchunks == nthreads);
     // We store offset and scale only after finishing the loop over all chunks. Each thread stores
     // one offset/scale pair.
     __half2 outf;
     // Loop over all chunks in the frame
-    for (int chunk = 0; chunk < chunks_per_frame; ++chunk) {
-        const __half2* __restrict__ const input = input2 + (chunk * input_stride3) / 2;
-        uint32_t* __restrict__ const outputi = outputi2 + (chunk * outputi_stride3) / 4;
-
-        float sum = 0, sum2 = 0;
+    for (int chunk = 0; chunk < nchunks; ++chunk) {
         static_assert(chunk_size == 8 * nthreads);
-        const int i = 8 * thread;
 
         // Load all values in this chunk. We load all values at once in the beginning.
-        const half2x4 xs = load_half2x4(input + i);
+        const half2x4 xs = load_half2x4(&input(dim1 + 8 * thread, dim2, dim3 + chunk));
         const __half2 x01 = xs.x;
         const __half2 x23 = xs.y;
         const __half2 x45 = xs.z;
@@ -154,72 +186,100 @@ gpu_quantize8_chunks(const __half* __restrict__ const input0, __half* __restrict
 
         const float x0 = __half2float(__low2half(x01));
         const float x1 = __half2float(__high2half(x01));
-        sum += x0 + x1;
-        sum2 += x0 * x0 + x1 * x1;
         const float x2 = __half2float(__low2half(x23));
         const float x3 = __half2float(__high2half(x23));
-        sum += x2 + x3;
-        sum2 += x2 * x2 + x3 * x3;
         const float x4 = __half2float(__low2half(x45));
         const float x5 = __half2float(__high2half(x45));
-        sum += x4 + x5;
-        sum2 += x4 * x4 + x5 * x5;
         const float x6 = __half2float(__low2half(x67));
         const float x7 = __half2float(__high2half(x67));
-        sum += x6 + x7;
-        sum2 += x6 * x6 + x7 * x7;
 
-        sum += __shfl_sync(0xffffffff, sum, threadIdx.x ^ 1);
-        sum += __shfl_sync(0xffffffff, sum, threadIdx.x ^ 2);
-        sum += __shfl_sync(0xffffffff, sum, threadIdx.x ^ 4);
-        sum += __shfl_sync(0xffffffff, sum, threadIdx.x ^ 8);
-        sum += __shfl_sync(0xffffffff, sum, threadIdx.x ^ 16);
-        sum2 += __shfl_sync(0xffffffff, sum2, threadIdx.x ^ 1);
-        sum2 += __shfl_sync(0xffffffff, sum2, threadIdx.x ^ 2);
-        sum2 += __shfl_sync(0xffffffff, sum2, threadIdx.x ^ 4);
-        sum2 += __shfl_sync(0xffffffff, sum2, threadIdx.x ^ 8);
-        sum2 += __shfl_sync(0xffffffff, sum2, threadIdx.x ^ 16);
+        float minval = sane_fmin(sane_fmin(sane_fmin(x0, x1), sane_fmin(x2, x3)),
+                                 sane_fmin(sane_fmin(x4, x5), sane_fmin(x6, x7)));
+        float maxval = sane_fmax(sane_fmax(sane_fmax(x0, x1), sane_fmax(x2, x3)),
+                                 sane_fmax(sane_fmax(x4, x5), sane_fmax(x6, x7)));
 
-        const float mean = sum / chunk_size;
-        const float stddev = sqrt(sum2 / (chunk_size - 1));
-        const float offset = mean;
-        const float scale = fmax(1.0f, stddev / 2.3f);
+        minval = sane_fmin(minval, __shfl_sync(0xffffffff, minval, thread ^ 0x01));
+        maxval = sane_fmax(maxval, __shfl_sync(0xffffffff, maxval, thread ^ 0x01));
+        minval = sane_fmin(minval, __shfl_sync(0xffffffff, minval, thread ^ 0x02));
+        maxval = sane_fmax(maxval, __shfl_sync(0xffffffff, maxval, thread ^ 0x02));
+        minval = sane_fmin(minval, __shfl_sync(0xffffffff, minval, thread ^ 0x04));
+        maxval = sane_fmax(maxval, __shfl_sync(0xffffffff, maxval, thread ^ 0x04));
+        minval = sane_fmin(minval, __shfl_sync(0xffffffff, minval, thread ^ 0x08));
+        maxval = sane_fmax(maxval, __shfl_sync(0xffffffff, maxval, thread ^ 0x08));
+        minval = sane_fmin(minval, __shfl_sync(0xffffffff, minval, thread ^ 0x10));
+        maxval = sane_fmax(maxval, __shfl_sync(0xffffffff, maxval, thread ^ 0x10));
 
-        const __half2 offseth_scaleh = __floats2half2_rn(offset, scale);
+        constexpr int outi_min = 1;
+        constexpr int outi_max = 254;
+        constexpr float outf_min = outi_min - 0.5f;
+        constexpr float outf_max = outi_max + 0.5f;
+        const float outf_range = outf_max - outf_min;
+        const float in_range = maxval - minval;
+        const float scale = in_range / outf_range;
+        const float offset = minval - outf_min * scale;
+
+        const float inv_offset = -offset / scale;
+        const float inv_scale = 1.0f / scale;
+        __half offseth = __float2half_rn(offset);
+        __half scaleh = __float2half_rn(scale);
+        __half inv_offseth = __float2half_rn(inv_offset);
+        __half inv_scaleh = __float2half_rn(inv_scale);
+
+        // Avoid non-finite numbers
+        using std::isfinite;
+        if (!isfinite(__half2float(offseth)) || !isfinite(__half2float(scaleh))) {
+            // Offset or scale are non-finite
+            offseth = __float2half_rn(0.0f);
+            scaleh = __float2half_rn(0.0f);
+            inv_offseth = __float2half_rn(inv_offset);
+            inv_scaleh = __float2half_rn(inv_scale);
+        } else if (!isfinite(__half2float(inv_offseth)) || !isfinite(__half2float(inv_scaleh))) {
+            // Offset and scale are fine, but the inverse scale is non-finite. This means the scale
+            // is too close to zero.
+            scaleh = __float2half_rn(0.0f);
+            inv_offseth = -offseth;
+            inv_scaleh = __float2half_rn(0.0f);
+        }
+
         if (chunk == thread)
-            outf = offseth_scaleh;
+            outf = __halves2half2(offseth, scaleh);
 
-        const __half2 eff_scaleh = __half2half2(__float2half(1.0f / scale));
-        const __half2 eff_offseth = __half2half2(__float2half(8.0f - offset / scale));
+        const __half2 minh = __half2half2(__int2half_rn(outi_min));
+        const __half2 maxh = __half2half2(__int2half_rn(outi_max));
+        const __half2 inv_offseth2 = __half2half2(inv_offseth);
+        const __half2 inv_scaleh2 = __half2half2(inv_scaleh);
 
-        const __half2 minh = __half2half2(__float2half(1.0f));
-        const __half2 maxh = __half2half2(__float2half(15.0f));
+        // Note:
+        //     __half2int_rn(+/-0) returns 0.
+        //     __half2int_rn(+Inf) returns INT_MAX = 0x7FFFFFFF.
+        //     __half2int_rn(-Inf) returns INT_MIN = 0x80000000.
+        //     __half2int_rn(NaN)  returns 0.
+        // This is consistent with what we need. There is also no performance penalty.
 
-        uint32_t outi = 0;
+        const __half2 y01 = __hmax2(minh, __hmin2(maxh, __hfma2(x01, inv_scaleh2, inv_offseth2)));
+        const int i0 = __half2int_rn(__low2half(y01));
+        const int i1 = __half2int_rn(__high2half(y01));
 
-        const __half2 y01 = __hmax2(minh, __hmin2(maxh, __hfma2(x01, eff_scaleh, eff_offseth)));
-        const uint32_t i0 = __half2int_rd(__low2half(y01));
-        const uint32_t i1 = __half2int_rd(__high2half(y01));
-        outi |= (i0 << 0) | (i1 << 4);
+        const __half2 y23 = __hmax2(minh, __hmin2(maxh, __hfma2(x23, inv_scaleh2, inv_offseth2)));
+        const int i2 = __half2int_rn(__low2half(y23));
+        const int i3 = __half2int_rn(__high2half(y23));
 
-        const __half2 y23 = __hmax2(minh, __hmin2(maxh, __hfma2(x23, eff_scaleh, eff_offseth)));
-        const uint32_t i2 = __half2int_rd(__low2half(y23));
-        const uint32_t i3 = __half2int_rd(__high2half(y23));
-        outi |= (i2 << 8) | (i3 << 12);
+        const __half2 y45 = __hmax2(minh, __hmin2(maxh, __hfma2(x45, inv_scaleh2, inv_offseth2)));
+        const int i4 = __half2int_rn(__low2half(y45));
+        const int i5 = __half2int_rn(__high2half(y45));
 
-        const __half2 y45 = __hmax2(minh, __hmin2(maxh, __hfma2(x45, eff_scaleh, eff_offseth)));
-        const uint32_t i4 = __half2int_rd(__low2half(y45));
-        const uint32_t i5 = __half2int_rd(__high2half(y45));
-        outi |= (i4 << 16) | (i5 << 20);
+        const __half2 y67 = __hmax2(minh, __hmin2(maxh, __hfma2(x67, inv_scaleh2, inv_offseth2)));
+        const int i6 = __half2int_rn(__low2half(y67));
+        const int i7 = __half2int_rn(__high2half(y67));
 
-        const __half2 y67 = __hmax2(minh, __hmin2(maxh, __hfma2(x67, eff_scaleh, eff_offseth)));
-        const uint32_t i6 = __half2int_rd(__low2half(y67));
-        const uint32_t i7 = __half2int_rd(__high2half(y67));
-        outi |= (i6 << 24) | (i7 << 28);
+        const std::uint64_t outi = (std::uint64_t(i0) << 0x00) | (std::uint64_t(i1) << 0x08)
+                                   | (std::uint64_t(i2) << 0x10) | (std::uint64_t(i3) << 0x18)
+                                   | (std::uint64_t(i4) << 0x20) | (std::uint64_t(i5) << 0x28)
+                                   | (std::uint64_t(i6) << 0x30) | (std::uint64_t(i7) << 0x38);
 
-        outputi[i / 8] = outi;
+        outputi((dim1 + 8 * thread), dim2, dim3 + chunk) = outi;
     }
-    outputf[thread * outputf_stride3] = outf;
+    outputf(2 * dim1 / chunk_size, dim2, dim3 + thread) = outf;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -253,34 +313,29 @@ void cpu_quantize8(const __half* __restrict__ const input, __half* __restrict__ 
     assert(outputi_stride2 >= 0);
     assert(outputi_stride3 >= 0);
     static_assert(chunk_size > 0);
-    static_assert(chunks_per_frame > 0);
 
-    static_assert(chunk_size % 2 == 0);
-    assert(input_size1 % 2 == 0);
     assert(input_size1 % chunk_size == 0);
-    assert(input_size3 % chunks_per_frame == 0);
 
     assert(outputf_size1 == 2 * input_size1 / chunk_size);
     assert(outputf_size2 == input_size2);
     assert(outputf_size3 == input_size3);
-    assert(outputi_size1 == input_size1 / 2);
+    assert(outputi_size1 == input_size1);
     assert(outputi_size2 == input_size2);
     assert(outputi_size3 == input_size3);
 
-    for (int dim3 = 0; dim3 < input_size3; dim3 += chunks_per_frame) {
+    for (int dim3 = 0; dim3 < input_size3; ++dim3) {
         for (int dim2 = 0; dim2 < input_size2; ++dim2) {
             for (int dim1 = 0; dim1 < input_size1; dim1 += chunk_size) {
                 const int input_dim1 = dim1;
-                const int outputf_dim1 = dim1 / chunk_size;
-                const int outputi_dim1 = dim1 / 2;
+                const int outputf_dim1 = 2 * dim1 / chunk_size;
+                const int outputi_dim1 = dim1;
                 const int input_offset = input_dim1 + input_stride2 * dim2 + input_stride3 * dim3;
                 const int outputf_offset =
                     outputf_dim1 + outputf_stride2 * dim2 + outputf_stride3 * dim3;
                 const int outputi_offset =
                     outputi_dim1 + outputi_stride2 * dim2 + outputi_stride3 * dim3;
-                cpu_quantize8_chunks(input + input_offset, outputf + outputf_offset,
-                                     outputi + outputi_offset, input_stride3, outputf_stride3,
-                                     outputi_stride3);
+                cpu_quantize8_chunk(input + input_offset, outputf + outputf_offset,
+                                    outputi + outputi_offset);
             }
         }
     }
@@ -313,23 +368,14 @@ void gpu_quantize8(const __half* __restrict__ const input, __half* __restrict__ 
     assert(outputi_stride2 >= 0);
     assert(outputi_stride3 >= 0);
     static_assert(chunk_size > 0);
-    static_assert(chunks_per_frame > 0);
+    static_assert(nchunks > 0);
 
-    static_assert(chunk_size % 2 == 0);
-    assert(input_size1 % 2 == 0);
-    if (!(input_size1 % chunk_size == 0))
-        std::cerr << "input_size1=" << input_size1 << " chunk_size=" << chunk_size << "\n";
     assert(input_size1 % chunk_size == 0);
-    if (!(input_size3 % chunks_per_frame == 0))
-        std::cerr << "input_size3=" << input_size3 << " chunks_per_frame=" << chunks_per_frame
-                  << "\n";
-    assert(input_size3 % chunks_per_frame == 0);
+    assert(input_size3 % nchunks == 0);
 
     assert(outputf_size1 == 2 * input_size1 / chunk_size);
     assert(outputf_size2 == input_size2);
     assert(outputf_size3 == input_size3);
-    if (!(outputi_size1 == input_size1))
-        std::cerr << "outputi_size1=" << outputi_size1 << " input_size1=" << input_size1 << "\n";
     assert(outputi_size1 == input_size1);
     assert(outputi_size2 == input_size2);
     assert(outputi_size3 == input_size3);
@@ -337,7 +383,7 @@ void gpu_quantize8(const __half* __restrict__ const input, __half* __restrict__ 
     dim3 nblocks;
     nblocks.x = input_size1 / chunk_size;
     nblocks.y = input_size2;
-    nblocks.z = input_size3 / chunks_per_frame;
+    nblocks.z = input_size3 / nchunks;
     const int shmem_nbytes = 0;
     gpu_quantize8_chunks<<<nblocks, nthreads, shmem_nbytes, stream>>>(
         input, outputf, outputi, input_size1, input_size2, input_size3, input_stride2,

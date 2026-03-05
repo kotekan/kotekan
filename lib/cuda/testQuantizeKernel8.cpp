@@ -3,30 +3,31 @@
 #include "Stage.hpp"
 #include "StageFactory.hpp"
 #include "bufferContainer.hpp"
-#include "cudaQuantizeKernel4.hpp"
+#include "cudaQuantizeKernel8.hpp"
 #include "cudaUtils.hpp"
 
 #include <algorithm>
 #include <cassert>
 #include <cfloat>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <string>
 #include <vector>
 
-class testQuantizeKernel4 : public kotekan::Stage {
+class testQuantizeKernel8 : public kotekan::Stage {
 public:
-    testQuantizeKernel4(kotekan::Config& config, const std::string& unique_name,
+    testQuantizeKernel8(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& buffer_container) :
         Stage(config, unique_name, buffer_container, [](const kotekan::Stage& stage) {
             return const_cast<kotekan::Stage&>(stage).main_thread();
         }) {}
 
-    virtual ~testQuantizeKernel4() {}
+    virtual ~testQuantizeKernel8() {}
 
     void main_thread() override {
         const float16_t fpoison(0.0f / 0.0f);
-        const kotekan::int4x2_t ipoison(-8, -8);
+        const std::uint8_t ipoison(0);
 
         const float epsilon = 1.0e-3; // We're using float16
 
@@ -36,17 +37,14 @@ public:
         const int nfreqs = 32;
         const int nbeams = 64;
 
-        const float stddev_cutoff = 3.0f;
-
         ////////////////////////////////////////////////////////////////////////////////
 
         // layout: input[beam, freq, time]
         std::vector<float16_t> input(ntimes * nfreqs * nbeams);
         assert(ntimes % chunk_size == 0);
         const int nchunks = ntimes / chunk_size;
-        assert(ntimes % 2 == 0);
         std::vector<float16_t> offsetscale(2 * nchunks * nfreqs * nbeams);
-        std::vector<kotekan::int4x2_t> beams(ntimes / 2 * nfreqs * nbeams);
+        std::vector<std::uint8_t> beams(ntimes * nfreqs * nbeams);
 
         // Invent some data
         const auto f = [&](const int beam, const int time) -> float {
@@ -94,7 +92,7 @@ public:
 
         // A function to check the result
         const auto check_result = [&]() {
-            using std::fabs, std::fmax, std::sqrt, std::fmin, std::isfinite;
+            using std::fabs, std::fmax, std::fmin, std::sqrt, std::fmin, std::isfinite, std::isnan;
 
             for (int beam = 0; beam < nbeams; ++beam) {
 
@@ -108,26 +106,22 @@ public:
                 // We need to handle both cases, and we need to be lenient when comparing when this
                 // happens. For example, there might be an overflow on the GPU, but not in the CPU
                 // implementation. This should not be flagged as error.
-                float sum = 0, sum2 = 0, minval = +FLT_MAX, maxval = -FLT_MAX;
+                float minval = +FLT_MAX, maxval = -FLT_MAX;
                 bool may_overflow = false;
                 for (int time = 0; time < chunk_size; ++time) {
                     const float x = f(beam, time);
-                    sum += x;
-                    sum2 += x * x;
-                    minval = fmin(minval, x);
-                    maxval = fmax(maxval, x);
+                    minval = isnan(x) ? 0.0f / 0.0f : fmin(minval, x);
+                    maxval = isnan(x) ? 0.0f / 0.0f : fmax(maxval, x);
                     // Allow the respective float16 calculations to overflow
                     may_overflow |= !isfinite(x) || fabs(x) >= 2048.0f;
                 }
-                may_overflow |= !isfinite(sum) || fabs(sum) >= 2048.0f || !isfinite(sum2)
-                                || fabs(sum2) >= 2048.0f;
+                may_overflow |= !isfinite(minval) || fabs(minval) >= 2048.0f || !isfinite(maxval)
+                                || fabs(maxval) >= 2048.0f;
                 // Allow the scale to be inaccurate when all inputs are close together
                 const bool scale_may_collapse = fabs(maxval - minval) < epsilon;
-                const float mean = sum / chunk_size;
-                const float stddev = sqrt(fmax(0.0f, sum2 / chunk_size - mean * mean));
-                const int int4_range = 15; // avoid -8
-                float expected_offset = mean;
-                float expected_scale = 2 * stddev_cutoff * stddev / int4_range;
+                const int uint8_range = 254; // avoid 0 and 255
+                float expected_scale = (maxval - minval) / uint8_range;
+                float expected_offset = minval - 0.5f * expected_scale;
                 if (!isfinite(expected_offset) || !isfinite(expected_scale)) {
                     may_overflow = true;
                     expected_offset = 0.0f;
@@ -172,37 +166,33 @@ public:
                                         "scale_may_collapse={}",
                                         beam, expected_scale, scale, scale_may_collapse);
 
-                        for (int time2 = chunk * chunk_size; time2 < (chunk + 1) * chunk_size;
-                             time2 += 2) {
-                            const kotekan::int4x2_t i01 =
-                                beams.at(time2 / 2 + ntimes / 2 * (freq + nfreqs * beam));
-                            for (int time = time2; time < time2 + 2; ++time) {
-                                const int i = i01[time - time2];
-                                assert(i != -8);
-                                const float x = offset + scale * i;
+                        for (int time = chunk * chunk_size; time < (chunk + 1) * chunk_size;
+                             ++time) {
+                            const std::uint8_t i = beams.at(time + ntimes * (freq + nfreqs * beam));
+                            assert(i != 0 && i != 255);
+                            const float x = offset + scale * i;
 
-                                const int idx = time + ntimes * (freq + nfreqs * beam);
-                                const float expected_x = input.at(idx);
+                            const int idx = time + ntimes * (freq + nfreqs * beam);
+                            const float expected_x = input.at(idx);
 
-                                bool isgood = false;
+                            bool isgood = false;
 
-                                // Allow the value to be clamped
-                                if (i == -7 && x > expected_x)
-                                    isgood = true;
-                                if (i == +7 && x < expected_x)
-                                    isgood = true;
-                                // The value should differ by no more than scale/2
-                                isgood |= fabs(x - expected_x) <= scale / 2 + epsilon;
-                                // Handle non-finite inputs
-                                if (may_overflow && offset == 0.0f && scale == 0.0f)
-                                    isgood = true;
-                                if (!isgood)
-                                    FATAL_ERROR("Found inaccurate value: beam {}, want {}, have "
-                                                "{}, offset {}, scale {}, may_overflow={}, "
-                                                "expected_offset={}, expected_scale={}",
-                                                beam, expected_x, x, offset, scale, may_overflow,
-                                                expected_offset, expected_scale);
-                            }
+                            // Allow the value to be clamped
+                            if (i == 1 && x > expected_x)
+                                isgood = true;
+                            if (i == 254 && x < expected_x)
+                                isgood = true;
+                            // The value should differ by no more than scale/2
+                            isgood |= fabs(x - expected_x) <= scale / 2 + epsilon;
+                            // Handle non-finite inputs
+                            if (may_overflow && offset == 0.0f && scale == 0.0f)
+                                isgood = true;
+                            if (!isgood)
+                                FATAL_ERROR("Found inaccurate value: beam {}, want {}, have "
+                                            "{}, offset {}, scale {}, may_overflow={}, "
+                                            "expected_offset={}, expected_scale={}",
+                                            beam, expected_x, x, offset, scale, may_overflow,
+                                            expected_offset, expected_scale);
                         }
                     }
                 }
@@ -217,11 +207,10 @@ public:
 
         // Quantize on the CPU
         INFO("Testing on CPU...");
-        cpu_quantize4(input.data(), offsetscale.data(), beams.data(),                 //
+        cpu_quantize8(input.data(), offsetscale.data(), beams.data(),                 //
                       ntimes, nfreqs, nbeams, ntimes, ntimes * nfreqs,                //
                       2 * nchunks, nfreqs, nbeams, 2 * nchunks, 2 * nchunks * nfreqs, //
-                      ntimes / 2, nfreqs, nbeams, ntimes / 2, ntimes / 2 * nfreqs,    //
-                      stddev_cutoff                                                   //
+                      ntimes, nfreqs, nbeams, ntimes, ntimes * nfreqs                 //
         );
 
         // Check CPU result
@@ -235,7 +224,7 @@ public:
         float16_t* gpu_offsetscale;
         CHECK_CUDA_ERROR(
             cudaMalloc(&gpu_offsetscale, offsetscale.size() * sizeof *offsetscale.data()));
-        kotekan::int4x2_t* gpu_beams;
+        std::uint8_t* gpu_beams;
         CHECK_CUDA_ERROR(cudaMalloc(&gpu_beams, beams.size() * sizeof *beams.data()));
 
         // Poison output
@@ -253,11 +242,10 @@ public:
 
         // Quantize on the GPU
         INFO("Testing on GPU...");
-        gpu_quantize4(gpu_input, gpu_offsetscale, gpu_beams,                          //
+        gpu_quantize8(gpu_input, gpu_offsetscale, gpu_beams,                          //
                       ntimes, nfreqs, nbeams, ntimes, ntimes * nfreqs,                //
                       2 * nchunks, nfreqs, nbeams, 2 * nchunks, 2 * nchunks * nfreqs, //
-                      ntimes / 2, nfreqs, nbeams, ntimes / 2, ntimes / 2 * nfreqs,    //
-                      stddev_cutoff,                                                  //
+                      ntimes, nfreqs, nbeams, ntimes, ntimes * nfreqs,                //
                       nullptr                                                         //
         );
 
@@ -276,4 +264,4 @@ public:
     }
 };
 
-REGISTER_KOTEKAN_STAGE(testQuantizeKernel4);
+REGISTER_KOTEKAN_STAGE(testQuantizeKernel8);
