@@ -311,7 +311,7 @@ mfreq_subset:
     subset_list: *mapfreq
 
 # Subset another set of frequencies to compare to upgrade node
-mfreq_subset:
+mfreq_extra:
   n2:
     kotekan_stage: VisFreqSubset
     in_buf: visbuf_10s_flags
