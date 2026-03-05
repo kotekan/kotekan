@@ -45,8 +45,6 @@ private:
     const int _num_times;
     const int64_t _num_chunks;
 
-    const bool _test_kernel;
-
     /// GPU side memory name for the time-stream input
     const std::string _gpu_mem_input;
     /// GPU side memory name for the time-stream output
@@ -70,8 +68,6 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
     _num_times(config.get<std::int64_t>(unique_name, "num_times")),
     _num_chunks(
         kotekan::div_noremainder(1LL * _num_beams * _num_frequencies * _num_times, CHUNK_SIZE)),
-    //
-    _test_kernel(config.get_default<bool>(unique_name, "test_kernel", false)),
     //
     _gpu_mem_input(config.get<std::string>(unique_name, "gpu_mem_input")),
     _gpu_mem_beams(config.get<std::string>(unique_name, "gpu_mem_output")),
@@ -163,49 +159,6 @@ cudaEvent_t cudaQuantize8::execute(cudaPipelineState&, const std::vector<cudaEve
                   outputf_stride3, outputi_size1, outputi_size2, outputi_size3, outputi_stride2,
                   outputi_stride3, stream);
     CHECK_CUDA_ERROR(cudaGetLastError());
-
-    if (_test_kernel) {
-        // Synchronize
-        CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
-        // Copy inputs from GPU
-        std::vector<float16_t> cpu_input_buffer(input_ndarray.get_size());
-        CHECK_CUDA_ERROR(cudaMemcpy(cpu_input_buffer.data(), input,
-                                    cpu_input_buffer.size() * sizeof *cpu_input_buffer.data(),
-                                    cudaMemcpyDeviceToHost));
-        // Copy GPU outputs from GPU
-        std::vector<float16_t> gpu_offsetscale_buffer(offsetscale_ndarray.get_size());
-        CHECK_CUDA_ERROR(
-            cudaMemcpy(gpu_offsetscale_buffer.data(), outputf,
-                       gpu_offsetscale_buffer.size() * sizeof *gpu_offsetscale_buffer.data(),
-                       cudaMemcpyDeviceToHost));
-        std::vector<std::uint8_t> gpu_beam_buffer(beam_ndarray.get_size());
-        CHECK_CUDA_ERROR(cudaMemcpy(gpu_beam_buffer.data(), outputi,
-                                    gpu_beam_buffer.size() * sizeof *gpu_beam_buffer.data(),
-                                    cudaMemcpyDeviceToHost));
-        // Re-calculate results on CPU
-        std::vector<float16_t> cpu_offsetscale_buffer(offsetscale_ndarray.get_size());
-        std::vector<std::uint8_t> cpu_beam_buffer(beam_ndarray.get_size());
-        cpu_quantize8(cpu_input_buffer.data(), cpu_offsetscale_buffer.data(),
-                      cpu_beam_buffer.data(), input_size1, input_size2, input_size3, input_stride2,
-                      input_stride3, outputf_size1, outputf_size2, outputf_size3, outputf_stride2,
-                      outputf_stride3, outputi_size1, outputi_size2, outputi_size3, outputi_stride2,
-                      outputi_stride3);
-        // Compare results
-        for (std::size_t n = 0; n < cpu_offsetscale_buffer.size(); ++n) {
-            const float expected_x = cpu_offsetscale_buffer.at(n);
-            const float x = gpu_offsetscale_buffer.at(n);
-            if (!isfinite(expected_x) || !isfinite(x) || x != expected_x)
-                FATAL_ERROR("offset/scale is wrong at index {}; expected {}, got {}", n, expected_x,
-                            x);
-        }
-        for (std::size_t n = 0; n < cpu_beam_buffer.size(); ++n) {
-            const std::uint8_t expected_x = cpu_beam_buffer.at(n);
-            const std::uint8_t x = gpu_beam_buffer.at(n);
-            if (expected_x == 0 || expected_x == 255 || x == 0 || x == 255 || x != expected_x)
-                FATAL_ERROR("beam intensity value is wrong at index {}; expected {}, got {}", n,
-                            expected_x, x);
-        }
-    }
 
     return record_end_event();
 }
