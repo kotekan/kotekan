@@ -1,6 +1,5 @@
 #include "N2Accumulate.hpp"
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope, EOP
 #include "Config.hpp"            // for Config
 #include "N2FrameView.hpp"       // for N2FrameView
 #include "N2Metadata.hpp"        // for N2Metadata, get_N2_metadata
@@ -12,6 +11,7 @@
 #include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "timeUtil.hpp"          // for EOP
 
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
@@ -511,6 +511,10 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
         meta->bin_end_LAST = -1;   // TODO: update
 
         meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];
+
+        if (chord_frame_metadata->has_dataset_id()) {
+            meta->dataset_id = chord_frame_metadata->get_dataset_id();
+        }
 
         DEBUG("Creating N2FrameView for freq f[{:d}] = {:d}", f,
               chord_frame_metadata->get_coarse_freq()[f]);

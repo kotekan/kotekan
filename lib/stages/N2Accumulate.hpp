@@ -6,10 +6,10 @@
 #ifndef N2_ACCUMULATE_HPP
 #define N2_ACCUMULATE_HPP
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope
 #include "Config.hpp"            // for Config
 #include "N2Util.hpp"            // for frameID
 #include "Stage.hpp"             // for Stage
+#include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily

@@ -590,7 +590,7 @@ function write_Fsh2!(emitter)
         delete!(layout, Dish(:dish, W, RF1))
         emitter.environment[:Freg1′] = layout
         real_dish_value = Symbol(:Freg1_dish, string(W * i))
-        zero_dish_value = zero(Int4x8)
+        zero_dish_value = chimify(zero(Int4x8))
         if i < D ÷ W
             # This is a real dish for all warps
             dish_value = real_dish_value
@@ -650,7 +650,7 @@ function read_Fsh2!(emitter)
         Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
     ])
     # This loads garbage for nlo ≥ idiv(N, 4)
-    apply!(emitter, :Freg2 => layout_Freg2_registers, :(zero(Int4x8)))
+    apply!(emitter, :Freg2 => layout_Freg2_registers, chimify(zero(Int4x8)))
     if!(
         emitter, :(
             let
@@ -1972,7 +1972,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         println("Setting up input data...")
         map!(i -> zero(Int16x2), Smn_memory, Smn_memory)
         map!(i -> zero(Float16x2), W_memory, W_memory)
-        map!(i -> zero(Int4x8), E_memory, E_memory)
+        map!(i -> chimify(zero(Int4x8)), E_memory, E_memory)
         map!(i -> zero(Float16x2), I_wanted, I_wanted)
         map!(i -> zero(Int32), info_wanted, info_wanted)
 

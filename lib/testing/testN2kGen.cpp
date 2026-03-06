@@ -79,6 +79,9 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     freq_ids = config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids",
                                                          std::vector<uint32_t>({4096}));
     seed = config.get_default<uint32_t>(unique_name, "seed", 0);
+    if (config.exists(unique_name, "dataset_id")) {
+        dset_id = config.get<dset_id_t>(unique_name, "dataset_id");
+    }
     first_frame_index = config.get_default<int64_t>(unique_name, "first_frame_index", 0);
 
     // Check parameter compatibility
@@ -223,6 +226,10 @@ void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& 
     meta->set_freq_upchan_factor(freq_upchan_factor);
     meta->set_freq_upchan_index(freq_upchan_index);
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+
+    if (dset_id) {
+        meta->set_dataset_id(dset_id.value());
+    }
 }
 
 void testN2kGen::set_counts_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num) {

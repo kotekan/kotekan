@@ -210,12 +210,16 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
     const long F = rfi_S012bar.get_ndarray().get_extent(1);
     const long S = rfi_S012bar.get_ndarray().get_extent(3)
                    * rfi_S012bar.get_ndarray().get_extent(4); // Number of stations (= 2 * dishes)
-    const long S012_Tmin = rfi_S012bar.get_read_valid().begin();
+    // S012_Tmin wraps around into actual array index to avoid overflows
     const long S012_Tsize = rfi_S012bar.get_ndarray().get_extent(0);
-    const long sk_feed_averaged_Tmin = rfi_SKbartilde.get_write_valid().begin();
+    const long S012_Tmin = rfi_S012bar.get_read_valid().begin() % S012_Tsize;
+    // sk_feed_averaged_Tmin wraps around into actual array index to avoid overflows
     const long sk_feed_averaged_Tsize = rfi_SKbartilde.get_ndarray().get_extent(0);
-    const long sk_single_feed_Tmin = rfi_SKbar.get_write_valid().begin();
+    const long sk_feed_averaged_Tmin =
+        rfi_SKbartilde.get_write_valid().begin() % sk_feed_averaged_Tsize;
+    // sk_single_feed_Tmin wraps around into actual array index to avoid overflows
     const long sk_single_feed_Tsize = rfi_SKbar.get_ndarray().get_extent(0);
+    const long sk_single_feed_Tmin = rfi_SKbar.get_write_valid().begin() % sk_single_feed_Tsize;
     const long rfimask_T1024min = 0;
     const long rfimask_T1024size = 0;
     const cudaStream_t stream = device.getStream(cuda_stream_id);

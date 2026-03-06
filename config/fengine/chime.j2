@@ -1,0 +1,32 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# Run a CHIME test
+#
+################################################################################
+
+---
+log_level: debug
+poison_buffers: true
+
+fengine_repeat_count: 1
+
+input_dir: data/fengine_chime_init
+base_dir: data/fengine_chime
+prefix_hostname: false
+prefix_host_rank: true
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_chime.j2" %}
+
+{% include "include/rfi_chime.j2" %}
+{% include "include/xpose2048_chime.j2" %}
+{% include "include/n2k_chime.j2" %}
+{% include "include/bb_chime.j2" %}
+{% include "include/upchan_chime.j2" %}
+{% include "include/frb_chime.j2" %}
+
+{% include "include/input_chime.j2" %}
+{% include "include/output_chime.j2" %}
+...

@@ -238,13 +238,13 @@ __global__ void sk_kernel(
 	ulong S1i = in_S012[s+S];
 	ulong S2i = in_S012[s+2*S];
 #ifdef DEBUGGING
-        assert(&in_S012[s] == &ringbuffer_S012(dbg_in_S012[s]));
-        assert(&in_S012[s+S] == &ringbuffer_S012(dbg_in_S012[s+S]));
-        assert(&in_S012[s+2*S] == &ringbuffer_S012(dbg_in_S012[s+2*S]));
-
         assert((&in_S012[s] - incoming_in_S012) >= 0 && (&in_S012[s] - incoming_in_S012) < S012_size);
         assert((&in_S012[s+S] - incoming_in_S012) >= 0 && (&in_S012[s+S] - incoming_in_S012) < S012_size);
         assert((&in_S012[s+2*S] - incoming_in_S012) >= 0 && (&in_S012[s+2*S] - incoming_in_S012) < S012_size);
+
+        assert(&in_S012[s] == &ringbuffer_S012(dbg_in_S012[s]));
+        assert(&in_S012[s+S] == &ringbuffer_S012(dbg_in_S012[s+S]));
+        assert(&in_S012[s+2*S] == &ringbuffer_S012(dbg_in_S012[s+2*S]));
 #endif
 
 	float S0f = float(S0i);
@@ -639,12 +639,20 @@ void SkKernel::launch(
     // Check assumptions made for efficient wrapping of the ringbuffer data
     if ((S012_Tsize & (S012_Tsize-1)) != 0)
         throw runtime_error("SkKernel::launch: expected S012_Tsize to be a power of 2, but got " + std::to_string(S012_Tsize) + ".");
+    if (S012_Tsize > 0 && S012_Tmin >= S012_Tsize)
+        throw runtime_error("SkKernel::launch: expected S012_Tmin to be smaller than S012_Tsize, but got " + std::to_string(S012_Tmin) + ".");
     if ((sk_feed_averaged_Tsize & (sk_feed_averaged_Tsize-1)) != 0)
         throw runtime_error("SkKernel::launch: expected sk_feed_averaged_Tsize to be a power of 2, but got " + std::to_string(sk_feed_averaged_Tsize) + ".");
+    if (sk_feed_averaged_Tsize > 0 && sk_feed_averaged_Tmin >= sk_feed_averaged_Tsize)
+        throw runtime_error("SkKernel::launch: expected sk_feed_averaged_Tmin to be smaller than sk_feed_averaged_Tsize, but got " + std::to_string(sk_feed_averaged_Tmin) + ".");
     if ((sk_single_feed_Tsize & (sk_single_feed_Tsize-1)) != 0)
         throw runtime_error("SkKernel::launch: expected sk_single_feed_Tsize to be a power of 2, but got " + std::to_string(sk_single_feed_Tsize) + ".");
+    if (sk_single_feed_Tsize > 0 && sk_single_feed_Tmin >= sk_single_feed_Tsize)
+        throw runtime_error("SkKernel::launch: expected sk_single_feed_Tmin to be smaller than sk_single_feed_Tsize, but got " + std::to_string(sk_single_feed_Tmin) + ".");
     if ((rfimask_T1024size & (rfimask_T1024size-1)) != 0)
         throw runtime_error("SkKernel::launch: expected rfimask_T1024size to be a power of 2, but got " + std::to_string(rfimask_T1024size) + ".");
+    if (rfimask_T1024size > 0 && rfimask_T1024min >= rfimask_T1024size)
+        throw runtime_error("SkKernel::launch: expected rfimask_T1024min to be smaller than rfimask_T1024size, but got " + std::to_string(rfimask_T1024min) + ".");
 
     // If an RFI bitmask is being computed, check 'sk_rfimask_sigmas' argument.
     

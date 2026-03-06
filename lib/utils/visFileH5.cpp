@@ -263,7 +263,7 @@ uint32_t visFileH5::extend_time(time_ctype new_time) {
 
 void visFileH5::write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame_view) {
 
-    const VisFrameView& frame = static_cast<const VisFrameView&>(frame_view);
+    const VisFrameView& frame = dynamic_cast<const VisFrameView&>(frame_view);
 
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {

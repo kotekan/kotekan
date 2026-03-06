@@ -52,7 +52,9 @@ for setup in ${setups}; do
 done
 
 # Format generated Julia code
-julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("output-A40")' &
+for setup in ${setups}; do
+    julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("'output-A40/upchan_${setup}.jl'")' &
+done
 wait
 
 # Copy kernels into Kotekan
