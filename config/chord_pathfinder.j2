@@ -77,7 +77,7 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: INFO
+log_level: DEBUG
 
 numa_node: 0
 
@@ -119,8 +119,8 @@ time_long: samples_per_data_set / time_short
 element_short: 8
 element_long: num_elements / element_short
 
-GIGA: 1000000000
-start_time_s: 1760000000 # ~ 2025-10-09
+# GIGA: 1000000000
+# start_time_s: 1760000000 # ~ 2025-10-09
 
 telescope:
   name: CHORDTelescope
@@ -164,23 +164,19 @@ telescope:
   updatable_config: /earth_rotation_data
 
 gps_time:
-  frame0_nano: start_time_s * GIGA
+  frame0_nano: 1772810821000002880
 
 earth_rotation_data:
   kotekan_update_endpoint: json
   earth_orientation_parameter_table: [
-    {
-      time_inst_ns: 1750000000000000000,
-      delta_UT1_inst: 0.5,
-      x_pm: 0.1,
-      y_pm: 0.2
-    }, {
-      time_inst_ns: 1770000000000000000,
-      delta_UT1_inst: -0.5,
-      x_pm: 0.3,
-      y_pm: 0.4
-    }]
-
+    {time_inst_ns: 1772582400000000000, delta_UT1_inst: 0.0656707, x_pm: 0.105507, y_pm: 0.391049},
+    {time_inst_ns: 1772668800000000000, delta_UT1_inst: 0.0648799, x_pm: 0.105252, y_pm: 0.392053},
+    {time_inst_ns: 1772755200000000000, delta_UT1_inst: 0.0641748, x_pm: 0.105104, y_pm: 0.392867},
+    {time_inst_ns: 1772841600000000000, delta_UT1_inst: 0.0636325, x_pm: 0.104868, y_pm: 0.393615},
+    {time_inst_ns: 1772928000000000000, delta_UT1_inst: 0.0632809, x_pm: 0.104708, y_pm: 0.3943},
+    {time_inst_ns: 1773014400000000000, delta_UT1_inst: 0.0630986, x_pm: 0.104657, y_pm: 0.394958},
+    {time_inst_ns: 1773100800000000000, delta_UT1_inst: 0.063031, x_pm: 0.104761, y_pm: 0.395598}
+  ]
 
 # Pools
 main_pool:
@@ -644,7 +640,7 @@ n2_accumulate:
     num_n2k_samples_to_accumulate: {{ num_n2k_samples_to_accumulate }}
 
 
-# Subset to first 6 elements (12 dishes x 2 polarizations)
+# Subset to first 6 elements (3 dishes x 2 polarizations)
 
 n2_subset:
     kotekan_stage: N2Subset
