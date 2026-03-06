@@ -23,6 +23,8 @@ telescope:
   origin_itrs_lat_deg: 49.32075144444
   origin_itrs_lon_deg: -119.62081125
 
+  eop_updatable_config: /earth_rotation_data
+
   grid_x_axis: [ 0.999974342398359362,
                 -0.000037539331442772,
                 -0.007163318767675494]
