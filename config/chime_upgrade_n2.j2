@@ -274,6 +274,8 @@ host_pl_expanded_mask_ringbuffer:
 # glue code to handle lost frames formats
 lostSamplesToPLMask:
     kotekan_stage: lostSamplesToPLMask
+    # num_dishes: num_dishes # set via a global
+    # num_polarizations: num_polarizations # set via a global
     pl_mask_buf: host_pl_mask_buffer
     lost_samples_buffers:
 {%- for id in range(num_freq_gpu_buf // 4) %}
