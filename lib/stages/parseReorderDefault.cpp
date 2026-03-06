@@ -26,13 +26,19 @@ parseReorderDefault::parseReorderDefault(Config& config, const std::string& uniq
           std::bind(&parseReorderDefault::main_thread, this)),
     _out_buf(get_buffer("out_buf")), _name(config.get<std::string>(unique_name, "name")),
     _input_reorder(std::get<0>(parse_reorder_default(config, unique_name))),
-    _invert_mapping(config.get_default<bool>(unique_name, "invert_mapping", true)) {
-
+    _invert_mapping(config.get_default<bool>(unique_name, "invert_mapping", true)),
+    _num_polarizations(config.get<int>(unique_name, "num_polarizations")),
+    _num_dishes(config.get<int>(unique_name, "num_dishes")) {
     _out_buf->register_producer(unique_name);
 
     if (_out_buf->frame_size != _input_reorder.size() * sizeof(_input_reorder[0])) {
         throw std::invalid_argument("parseReorderDefault: incorrect frame size");
     }
+
+    // TODO: this is not quite correct. Really if going to cylinder order
+    // the array is {4,2,256} {"C", "P", "D"}
+    _out_buf->allocate_ndarray_frame_desc(kotekan::int32, _name, {_num_polarizations, _num_dishes},
+                                          {"P", "D"});
 }
 
 
@@ -72,9 +78,6 @@ void parseReorderDefault::main_thread() {
 
         chordmeta->set_frame_counter(0); // these do not actually change with time
 
-        // TODO: this is not quite correct. Really if going to cylinder order
-        // the array is {4,2,256} {"C", "P", "D"}
-        _out_buf->allocate_ndarray_frame_desc(kotekan::int32, _name, {2, 1024}, {"P", "D"});
         chordmeta->set_from_frame_desc(_out_buf->get_ndarray_frame_desc());
         chordmeta->check_frame_desc(_out_buf->get_ndarray_frame_desc());
 

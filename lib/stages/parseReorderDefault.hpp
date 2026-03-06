@@ -23,6 +23,10 @@
  * @conf  invert_mapping        Bool. Default: true. Invert the input reorder
  *                              table, that is store the target indices instead
  *                              of the source indices consecutively.
+ * @conf  num_polarizations     Int. Number of polarizations. Used only to
+ *                              compute number of elements.
+ * @conf  num_dishes            Int. Number of dishes in telescope. Used only to
+ *                              compute number of elements.
  *
  * @author Roland Haas
  */
@@ -38,6 +42,8 @@ private:
     const std::string _name;
     const std::vector<uint32_t> _input_reorder;
     const bool _invert_mapping;
+    const int _num_polarizations;
+    const int _num_dishes;
 };
 
 #endif
