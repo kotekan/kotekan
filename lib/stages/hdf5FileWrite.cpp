@@ -501,6 +501,7 @@ public:
             INFO("Received buffer {} frame {} (duration {} sec)", unique_name, frame_counter,
                  elapsed_time);
 
+            // Optionally, only write every X out of Y frames.
             bool do_write = true;
             if (write_x_frames >= 0 && per_y_frames > 0) {
                 if (frame_counter % per_y_frames > write_x_frames) {
