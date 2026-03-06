@@ -204,7 +204,9 @@ baseband_output_buffers:
 {%- for id in range(16) %}
   baseband_output_buffer_{{ id }}:
     kotekan_buffer: standard
-    num_frames: 11 * 32 # baseband_buffer_depth
+    # times 3 to match the lenght of seconds of CHIME's output buffer
+    # accounting for the fact that CHIME upgrade's frames are 1/3 the size
+    num_frames: 11 * 32 * 3 # baseband_buffer_depth
 {%- endfor %}
   baseband_output_buffer_merged:
     kotekan_buffer: standard
