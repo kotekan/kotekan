@@ -47,6 +47,7 @@
  * @conf element_short          Int. Size of the short element dimension (default: 8).
  * @conf frame_mode             String. Which frames to process: "all" (default), "even", or "odd".
  *                              Use "even"/"odd" to parallelize two instances on alternate frames.
+ * @conf check_for_zero_nibbles Bool. Enable checking for zero nibbles in the input data (default: false).
  *
  * @author Kotekan Team
  */
@@ -79,6 +80,9 @@ private:
 
     /// Flag indicating if AVX512 fast path can be used
     bool use_avx512_fast_path;
+
+    /// Flag to enable checking for zero nibbles in the input data.
+    bool check_for_zero_nibbles;
 
 #ifdef __AVX512F__
     /// AVX512 optimized transpose for a single (time_long, freq) block
