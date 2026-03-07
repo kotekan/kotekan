@@ -165,7 +165,7 @@ telescope:
   eop_updatable_config: /earth_rotation_data
 
 gps_time:
-  frame0_nano: 1772810821000002880
+  frame0_nano: 1772838439000002880
 
 earth_rotation_data:
   kotekan_update_endpoint: json
@@ -287,7 +287,7 @@ n2_buffer:
 
 n2_subset_buffer:
     kotekan_buffer: N2
-    num_elements: 6
+    num_elements: 8
     num_ev: 0
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -295,7 +295,7 @@ n2_subset_buffer:
 
 n2_eigen_buffer:
     kotekan_buffer: N2
-    num_elements: 6
+    num_elements: 8
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -303,7 +303,7 @@ n2_eigen_buffer:
 
 n2_split_1:
     kotekan_buffer: N2
-    num_elements: 6
+    num_elements: 8
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -311,7 +311,7 @@ n2_split_1:
 
 n2_split_2:
     kotekan_buffer: N2
-    num_elements: 6
+    num_elements: 8
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -319,7 +319,7 @@ n2_split_2:
 
 n2_recv_buffer_1:
     kotekan_buffer: N2
-    num_elements: 6
+    num_elements: 8
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -327,7 +327,7 @@ n2_recv_buffer_1:
 
 n2_recv_buffer_2:
     kotekan_buffer: N2
-    num_elements: 6
+    num_elements: 8
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -335,7 +335,7 @@ n2_recv_buffer_2:
 
 n2_merge_buffer:
     kotekan_buffer: N2
-    num_elements: 6
+    num_elements: 8
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -764,7 +764,7 @@ n2_accumulate:
     num_n2k_samples_to_accumulate: {{ num_n2k_samples_to_accumulate }}
 
 
-# Subset to first 6 elements (3 dishes x 2 polarizations)
+# Subset to first 12 elements (6 dishes x 2 polarizations)
 
 n2_subset:
     kotekan_stage: N2Subset
@@ -775,22 +775,22 @@ n2_subset:
 
 # Add eigen calculation (runs on subsetted data)
 
-eigencalc:
-    kotekan_stage: EigenN2Iter
-    num_ev: num_ev_to_calculate
-    cpu_affinity: [10]
-    log_level: debug
+# eigencalc:
+#     kotekan_stage: EigenN2Iter
+#     num_ev: num_ev_to_calculate
+#     cpu_affinity: [10]
+#     log_level: debug
 
-    in_buf: n2_subset_buffer
-    out_buf: n2_eigen_buffer
+#     in_buf: n2_subset_buffer
+#     out_buf: n2_eigen_buffer
 
-    # Convergence config
-    tol_eval: 0.001
-    tol_evec: 0.01
-    max_iterations: 10
-    num_ev_conv: 2
-    krylov: 2
-    subspace: 1
+#     # Convergence config
+#     tol_eval: 0.0001
+#     tol_evec: 0.001
+#     max_iterations: 10
+#     num_ev_conv: 2
+#     krylov: 2
+#     subspace: 2
 
 
 # Write out the visibilities using HDF5
@@ -801,7 +801,7 @@ hdf5_N2_write_accum:
     kotekan_stage: hdf5N2Write
     cpu_affinity: [12]
     in_buf: n2_buffer
-    base_dir: /mnt/cs00/data/kotekan_vis_files/full/
+    base_dir: /mnt/cs00/data/kotekan_vis_files/2026_03_06/full/
     baseband_gain_dir: /mnt/cs00/data/baseband_gains/
     file_name: pipeline_test
     prefix_hostname: false
@@ -817,25 +817,25 @@ hdf5_N2_write_accum:
     num_file_t: 20
 
 # Eigen output (6 elements with eigenvectors)
-hdf5_N2_write_eigen:
-    log_level: DEBUG
-    kotekan_stage: hdf5N2Write
-    cpu_affinity: [13]
-    in_buf: n2_eigen_buffer
-    base_dir: /mnt/cs00/data/kotekan_vis_files/subset/
-    baseband_gain_dir: /mnt/cs00/data/baseband_gains/
-    file_name: pipeline_eigen
-    prefix_hostname: false
-    use_bitshuffle: true
-    compression: "lz4"
-    compression_level: 3
-    zip_compression: 0
-    # Chunking: ensure positive chunk sizes
-    blocksize_f: 16
-    late_frame_grace_seconds: 30
-    num_ev: num_ev_to_calculate
-    n2_layout: "FullUpperTri"
-    num_file_t: 20
+# hdf5_N2_write_eigen:
+#     log_level: DEBUG
+#     kotekan_stage: hdf5N2Write
+#     cpu_affinity: [13]
+#     in_buf: n2_eigen_buffer
+#     base_dir: /mnt/cs00/data/kotekan_vis_files/2026_03_06/subset/
+#     baseband_gain_dir: /mnt/cs00/data/baseband_gains/
+#     file_name: pipeline_eigen
+#     prefix_hostname: false
+#     use_bitshuffle: true
+#     compression: "lz4"
+#     compression_level: 3
+#     zip_compression: 0
+#     # Chunking: ensure positive chunk sizes
+#     blocksize_f: 16
+#     late_frame_grace_seconds: 30
+#     num_ev: num_ev_to_calculate
+#     n2_layout: "FullUpperTri"
+#     num_file_t: 20
 
 # Write out (some) SKtilde statistics
 hdf5_write_SKtilde:
@@ -843,7 +843,7 @@ hdf5_write_SKtilde:
     kotekanStage: hdf5FileWrite
     cpu_affinity: [13]
     in_buf: host_rfi_SKtilde_buffer
-    base_dir: /mnt/cs00/data/kotekan_vis_files/SKtilde/
+    base_dir: /mnt/cs00/data/kotekan_vis_files/2026_03_06/SKtilde/
     filename: pipeline_SKtilde
     prefix_hostname: false
     create_single_file: true
@@ -856,9 +856,11 @@ hdf5_write_SKtilde:
     kotekanStage: hdf5FileWrite
     cpu_affinity: [13]
     in_buf: host_rfi_SKbar_buffer
-    base_dir: /mnt/cs00/data/kotekan_vis_files/SKbar/
+    base_dir: /mnt/cs00/data/kotekan_vis_files/2026_03_06/SKbar/
     filename: pipeline_SKbar
     prefix_hostname: false
     create_single_file: true
     write_x_frames: 32  # 1 frame is ~42 ms, so this is ~1.3 s of writing
     per_y_frames: 16384 # 2048 = 32 * 64 ~ 1.3 minutes  16384 ~ 11 minutes
+
+
