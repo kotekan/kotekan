@@ -520,126 +520,126 @@ run_send_pl_mask:
 
 ## RFI Detection Pipeline ##
 
-# Generate fake bad feed mask filled with ones for now (all feeds good)
-generate_bf_mask:
-    kotekan_stage: testDataGen
-    out_buf: host_bf_mask_buffer
-    type: const8
-    value: 1
-    num_frames: 1
-    wait: false
-    name: bf_mask
-    array_shape: [2, {{ num_dishes }}]
-    dim_name: ["P", "D"]
-
-# Generate pl_mask for RFI s0_kernel (all valid)
-# This works around a pl_mask shape mismatch: ProcessPacketMask produces expanded
-# format [T/64, F, P, D/8, 8] but s0_kernel expects compact [T/128, F/4, P, D/8, 8].
-generate_pl_mask_compact:
-    kotekan_stage: testDataGen
-    out_buf: host_pl_mask_compact_buffer
-    type: const8
-    value: 255
-    name: pl_mask
-    array_shape: [{{ samples_per_data_set // 128 }}, {{ num_local_freq // 4 }}, 2, {{ num_dishes // 8 }}, 8]
-    dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64"]
-
-# Copy compact pl_mask to GPU ring buffer for s0_kernel
-run_send_pl_mask_compact:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_pl_mask_compact_buffer_in: host_pl_mask_compact_buffer
-        out_buffers:
-            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
-        commands:
-        - name: cudaCopyToRingbuffer
-          input_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_local_freq / 4) * (samples_per_data_set / 2 / 64)
-          ring_buffer_size: buffer_depth * input_size
-          in_buf: host_pl_mask_compact_buffer_in
-          signal_buf: host_pl_mask_ringbuffer
-          gpu_mem_output: pl_mask_buffer
-
-# Compute S0, S1, S2 statistics from voltage and compact packet loss mask
-run_rfi_S012:
-    num_frequencies: num_local_freq
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
-            host_voltage_ringbuffer: host_voltage_ringbuffer
-        out_buffers:
-            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
-        commands:
-        - name: cudaRFIS012
-          pl_mask_name: pl_mask
-          voltage_name: voltage
-          rfi_S012_name: rfi_S012
-
-# Compute SK statistics and RFI mask from S012 + bf_mask
-run_rfi_SKtilde:
-    num_frequencies: num_local_freq
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer
-            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
-        out_buffers:
-            host_rfi_SKtilde_ringbuffer: host_rfi_SKtilde_ringbuffer
-            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
-        commands:
-        - name: cudaInputData
-          do_once: true
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
-        - name: cudaRFISKtilde
-          bf_mask_name: bf_mask
-          rfi_S012_name: rfi_S012
-          rfi_SKtilde_name: rfi_SKtilde
-          rfi_RFImask_name: rfi_RFImask
-
-# Downsample S0, S1, S2 statistics by rfi_second_downsampling_factor
-run_rfi_S012bar:
-    num_frequencies: num_local_freq
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
-        out_buffers:
-            host_rfi_S012bar_ringbuffer: host_rfi_S012bar_ringbuffer
-        commands:
-        - name: cudaRFIS012bar
-          rfi_S012_name: rfi_S012
-          rfi_S012bar_name: rfi_S012bar
-
-# Compute SK statistics from S012bar + bf_mask
-run_rfi_SKbar:
-    num_frequencies: num_local_freq
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_bf_mask_buffer: host_bf_mask_buffer
-            host_rfi_S012bar_ringbuffer: host_rfi_S012bar_ringbuffer
-        out_buffers:
-            host_rfi_SKbar_ringbuffer: host_rfi_SKbar_ringbuffer
-            host_rfi_SKbartilde_ringbuffer: host_rfi_SKbartilde_ringbuffer
-        commands:
-        - name: cudaInputData
-          do_once: true
-          in_buf: host_bf_mask_buffer
-          gpu_mem: bf_mask_buffer
-        - name: cudaSyncInput
-        - name: cudaRFISKbar
-          bf_mask_name: bf_mask
-          rfi_S012bar_name: rfi_S012bar
-          rfi_SKbar_name: rfi_SKbar
-          rfi_SKbartilde_name: rfi_SKbartilde
+# # Generate fake bad feed mask filled with ones for now (all feeds good)
+# generate_bf_mask:
+#     kotekan_stage: testDataGen
+#     out_buf: host_bf_mask_buffer
+#     type: const8
+#     value: 1
+#     num_frames: 1
+#     wait: false
+#     name: bf_mask
+#     array_shape: [2, {{ num_dishes }}]
+#     dim_name: ["P", "D"]
+# 
+# # Generate pl_mask for RFI s0_kernel (all valid)
+# # This works around a pl_mask shape mismatch: ProcessPacketMask produces expanded
+# # format [T/64, F, P, D/8, 8] but s0_kernel expects compact [T/128, F/4, P, D/8, 8].
+# generate_pl_mask_compact:
+#     kotekan_stage: testDataGen
+#     out_buf: host_pl_mask_compact_buffer
+#     type: const8
+#     value: 255
+#     name: pl_mask
+#     array_shape: [{{ samples_per_data_set // 128 }}, {{ num_local_freq // 4 }}, 2, {{ num_dishes // 8 }}, 8]
+#     dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+# 
+# # Copy compact pl_mask to GPU ring buffer for s0_kernel
+# run_send_pl_mask_compact:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_pl_mask_compact_buffer_in: host_pl_mask_compact_buffer
+#         out_buffers:
+#             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+#         commands:
+#         - name: cudaCopyToRingbuffer
+#           input_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_local_freq / 4) * (samples_per_data_set / 2 / 64)
+#           ring_buffer_size: buffer_depth * input_size
+#           in_buf: host_pl_mask_compact_buffer_in
+#           signal_buf: host_pl_mask_ringbuffer
+#           gpu_mem_output: pl_mask_buffer
+# 
+# # Compute S0, S1, S2 statistics from voltage and compact packet loss mask
+# run_rfi_S012:
+#     num_frequencies: num_local_freq
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+#             host_voltage_ringbuffer: host_voltage_ringbuffer
+#         out_buffers:
+#             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+#         commands:
+#         - name: cudaRFIS012
+#           pl_mask_name: pl_mask
+#           voltage_name: voltage
+#           rfi_S012_name: rfi_S012
+# 
+# # Compute SK statistics and RFI mask from S012 + bf_mask
+# run_rfi_SKtilde:
+#     num_frequencies: num_local_freq
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_bf_mask_buffer: host_bf_mask_buffer
+#             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+#         out_buffers:
+#             host_rfi_SKtilde_ringbuffer: host_rfi_SKtilde_ringbuffer
+#             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_bf_mask_buffer
+#           gpu_mem: bf_mask_buffer
+#         - name: cudaSyncInput
+#         - name: cudaRFISKtilde
+#           bf_mask_name: bf_mask
+#           rfi_S012_name: rfi_S012
+#           rfi_SKtilde_name: rfi_SKtilde
+#           rfi_RFImask_name: rfi_RFImask
+# 
+# # Downsample S0, S1, S2 statistics by rfi_second_downsampling_factor
+# run_rfi_S012bar:
+#     num_frequencies: num_local_freq
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+#         out_buffers:
+#             host_rfi_S012bar_ringbuffer: host_rfi_S012bar_ringbuffer
+#         commands:
+#         - name: cudaRFIS012bar
+#           rfi_S012_name: rfi_S012
+#           rfi_S012bar_name: rfi_S012bar
+# 
+# # Compute SK statistics from S012bar + bf_mask
+# run_rfi_SKbar:
+#     num_frequencies: num_local_freq
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_bf_mask_buffer: host_bf_mask_buffer
+#             host_rfi_S012bar_ringbuffer: host_rfi_S012bar_ringbuffer
+#         out_buffers:
+#             host_rfi_SKbar_ringbuffer: host_rfi_SKbar_ringbuffer
+#             host_rfi_SKbartilde_ringbuffer: host_rfi_SKbartilde_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_bf_mask_buffer
+#           gpu_mem: bf_mask_buffer
+#         - name: cudaSyncInput
+#         - name: cudaRFISKbar
+#           bf_mask_name: bf_mask
+#           rfi_S012bar_name: rfi_S012bar
+#           rfi_SKbar_name: rfi_SKbar
+#           rfi_SKbartilde_name: rfi_SKbartilde
 
 # Packet-loss correlator to produce counts for N2Accumulate
 
@@ -685,56 +685,56 @@ run_n2k:
           gpu_mem: correlation_buffer
           out_buf: host_correlation
 
-# Copy RFI mask back to CPU
-run_recv_rfi_mask:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_rfi_RFImask_ringbuffer_in: host_rfi_RFImask_ringbuffer
-        out_buffers:
-            host_rfi_RFImask_buffer_out: host_rfi_RFImask_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_rfi_RFImask_ringbuffer_in
-          gpu_mem_input: rfi_RFImask_buffer
-          output_size: samples_per_data_set * num_local_freq / 8
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_rfi_RFImask_buffer_out
-
-# Copy RFI feed-averaged SK statistics back to CPU
-run_recv_SKtilde:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_rfi_SKtilde_ringbuffer_in: host_rfi_SKtilde_ringbuffer
-        out_buffers:
-            host_rfi_SKtilde_buffer_out: host_rfi_SKtilde_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_rfi_SKtilde_ringbuffer_in
-          gpu_mem_input: rfi_SKtilde_buffer
-          output_size: sizeof_float32 * 3 * num_local_freq * rfi_num_times
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_rfi_SKtilde_buffer_out
-
-# Copy RFI time-downsampled SK statistics back to CPU
-run_recv_SKbar:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_rfi_SKbar_ringbuffer_in: host_rfi_SKbar_ringbuffer
-        out_buffers:
-            host_rfi_SKbar_buffer_out: host_rfi_SKbar_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_rfi_SKbar_ringbuffer_in
-          gpu_mem_input: rfi_SKbar_buffer
-          output_size: sizeof_float32 * num_dishes * num_polarizations * 3 * num_local_freq * rfi_num_times_bar
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_rfi_SKbar_buffer_out
+# # Copy RFI mask back to CPU
+# run_recv_rfi_mask:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_rfi_RFImask_ringbuffer_in: host_rfi_RFImask_ringbuffer
+#         out_buffers:
+#             host_rfi_RFImask_buffer_out: host_rfi_RFImask_buffer
+#         commands:
+#         - name: cudaCopyFromRingbuffer
+#           host_signal: host_rfi_RFImask_ringbuffer_in
+#           gpu_mem_input: rfi_RFImask_buffer
+#           output_size: samples_per_data_set * num_local_freq / 8
+#           ring_buffer_size: buffer_depth * output_size
+#           out_buf: host_rfi_RFImask_buffer_out
+# 
+# # Copy RFI feed-averaged SK statistics back to CPU
+# run_recv_SKtilde:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_rfi_SKtilde_ringbuffer_in: host_rfi_SKtilde_ringbuffer
+#         out_buffers:
+#             host_rfi_SKtilde_buffer_out: host_rfi_SKtilde_buffer
+#         commands:
+#         - name: cudaCopyFromRingbuffer
+#           host_signal: host_rfi_SKtilde_ringbuffer_in
+#           gpu_mem_input: rfi_SKtilde_buffer
+#           output_size: sizeof_float32 * 3 * num_local_freq * rfi_num_times
+#           ring_buffer_size: buffer_depth * output_size
+#           out_buf: host_rfi_SKtilde_buffer_out
+# 
+# # Copy RFI time-downsampled SK statistics back to CPU
+# run_recv_SKbar:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_rfi_SKbar_ringbuffer_in: host_rfi_SKbar_ringbuffer
+#         out_buffers:
+#             host_rfi_SKbar_buffer_out: host_rfi_SKbar_buffer
+#         commands:
+#         - name: cudaCopyFromRingbuffer
+#           host_signal: host_rfi_SKbar_ringbuffer_in
+#           gpu_mem_input: rfi_SKbar_buffer
+#           output_size: sizeof_float32 * num_dishes * num_polarizations * 3 * num_local_freq * rfi_num_times_bar
+#           ring_buffer_size: buffer_depth * output_size
+#           out_buf: host_rfi_SKbar_buffer_out
 
 
 # Accumulate N2K visibilities on CPU
@@ -830,30 +830,30 @@ hdf5_N2_write_accum:
 #     n2_layout: "FullUpperTri"
 #     num_file_t: 20
 
-# Write out (some) SKtilde statistics
-hdf5_write_SKtilde:
-    log_level: INFO
-    kotekanStage: hdf5FileWrite
-    cpu_affinity: [13]
-    in_buf: host_rfi_SKtilde_buffer
-    base_dir: /mnt/cs00/data/kotekan_vis_files/2026_03_06/SKtilde/
-    filename: pipeline_SKtilde
-    prefix_hostname: false
-    create_single_file: true
-    write_x_frames: 32  # 1 frame is ~42 ms, so this is ~1.3 s of writing
-    per_y_frames: 16384 # 2048 = 32 * 64 ~ 1.3 minutes  16384 ~ 11 minutes
-
-# Write out (some) SKbar statistics
-hdf5_write_SKtilde:
-    log_level: INFO
-    kotekanStage: hdf5FileWrite
-    cpu_affinity: [13]
-    in_buf: host_rfi_SKbar_buffer
-    base_dir: /mnt/cs00/data/kotekan_vis_files/2026_03_06/SKbar/
-    filename: pipeline_SKbar
-    prefix_hostname: false
-    create_single_file: true
-    write_x_frames: 32  # 1 frame is ~42 ms, so this is ~1.3 s of writing
-    per_y_frames: 16384 # 2048 = 32 * 64 ~ 1.3 minutes  16384 ~ 11 minutes
-
+# # Write out (some) SKtilde statistics
+# hdf5_write_SKtilde:
+#     log_level: INFO
+#     kotekanStage: hdf5FileWrite
+#     cpu_affinity: [13]
+#     in_buf: host_rfi_SKtilde_buffer
+#     base_dir: /mnt/cs00/data/kotekan_vis_files/2026_03_06/SKtilde/
+#     filename: pipeline_SKtilde
+#     prefix_hostname: false
+#     create_single_file: true
+#     write_x_frames: 32  # 1 frame is ~42 ms, so this is ~1.3 s of writing
+#     per_y_frames: 16384 # 2048 = 32 * 64 ~ 1.3 minutes  16384 ~ 11 minutes
+# 
+# # Write out (some) SKbar statistics
+# hdf5_write_SKtilde:
+#     log_level: INFO
+#     kotekanStage: hdf5FileWrite
+#     cpu_affinity: [13]
+#     in_buf: host_rfi_SKbar_buffer
+#     base_dir: /mnt/cs00/data/kotekan_vis_files/2026_03_06/SKbar/
+#     filename: pipeline_SKbar
+#     prefix_hostname: false
+#     create_single_file: true
+#     write_x_frames: 32  # 1 frame is ~42 ms, so this is ~1.3 s of writing
+#     per_y_frames: 16384 # 2048 = 32 * 64 ~ 1.3 minutes  16384 ~ 11 minutes
+# 
 
