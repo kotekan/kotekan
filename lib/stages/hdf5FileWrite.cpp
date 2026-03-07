@@ -81,6 +81,10 @@ class hdf5FileWrite : public kotekan::Stage {
     const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
     const bool create_single_file =
         config.get_default<bool>(unique_name, "create_single_file", false);
+    const int64_t write_x_frames =
+        config.get_default<int64_t>(unique_name, "write_x_frames", -1);
+    const int64_t per_y_frames =
+        config.get_default<int64_t>(unique_name, "per_y_frames", -1);
 
     Buffer* const buffer;
 
@@ -497,7 +501,15 @@ public:
             INFO("Received buffer {} frame {} (duration {} sec)", unique_name, frame_counter,
                  elapsed_time);
 
-            if (!skip_writing) {
+            // Optionally, only write every X out of Y frames.
+            bool do_write = true;
+            if (write_x_frames >= 0 && per_y_frames > 0) {
+                if (frame_counter % per_y_frames > write_x_frames) {
+                    do_write = false;
+                }
+            }
+
+            if (!skip_writing && do_write) {
                 // Fetch metadata
                 const std::shared_ptr<const metadataObject> mc = buffer->get_metadata(frame_id);
                 if (!mc)
