@@ -230,13 +230,13 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     constexpr bool offset_encoded = true;
 
     // Current offset into the rfi_S012 buffer
-    // n2k does not apply this itself
     const std::ptrdiff_t Trfi_offset = Tmin / rfi_downsampling_factor * T_stride;
 
+    const auto& voltage_meta = voltage.get_metadata();
     const auto& pl_mask_meta = pl_mask.get_metadata();
     const std::ptrdiff_t Tpl_stride = pl_mask.get_ndarray().stride(0);
-    const std::ptrdiff_t Tpl_offset =
-        Tmin / pl_mask_meta->get_time_downsampling_fpga() * Tpl_stride;
+    const std::ptrdiff_t Tpl_offset = Tmin * voltage_meta->get_time_downsampling_fpga()
+                                      / pl_mask_meta->get_time_downsampling_fpga() * Tpl_stride;
     ;
 
     n2k::launch_s0_kernel((ulong*)rfi_S012_memory + Trfi_offset,
