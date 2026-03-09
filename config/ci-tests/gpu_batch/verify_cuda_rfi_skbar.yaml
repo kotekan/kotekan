@@ -212,7 +212,7 @@ check_rfi_data:
   kotekan_stage: testDataCheckFloat
   first_buf: host_rfi_skbar_buffer
   second_buf: simulated_rfi_skbar_buffer
-  max_num_errors_logged: 64
+  max_num_errors_logged: 384
   num_frames_to_test: 2 * buffer_depth
   check_metadata: True
 

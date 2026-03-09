@@ -204,14 +204,23 @@ void gpuSimulateRFISK::main_thread() {
                 uint64_t n = 0;
 
                 for (uint64_t e = 0; e < ne; e++) {
-                    uint64_t ne = rfi_s012[s012_idx + e];
+                    uint64_t s0 = rfi_s012[s012_idx + e];
                     uint64_t s1 = rfi_s012[s012_idx + sstride_s012 + e];
                     uint64_t s2 = rfi_s012[s012_idx + 2*sstride_s012 + e];
-                    rfi_sk[sk_idx + e] = static_cast<float>(ne + 1) / static_cast<float>(ne-1)
-                        * (static_cast<float>(ne * s2) / static_cast<float>(s1*s1) - 1.0f);
+                    float s0f = static_cast<float>(s0);
+                    float s1f = static_cast<float>(s1);
+
+                    // Copying order of operations from n2k SkKernel.cu
+                    //
+                    // SK = ((s0 + 1) / (s0 - 1)) * (s0 * s2 / s1^2 - 1)
+                    float sk_num = (s0f + 1.0f) * static_cast<float>(s0*s2 - s1*s1);
+                    float sk_den = (s0f - 1.0f) * s1f*s1f;
+
+                    rfi_sk[sk_idx + e] = sk_num / sk_den;
+
                     if (bf_mask[e]) {
-                        n += ne;
-                        rfi_sktilde[sktilde_idx] += ne * rfi_sk[sk_idx + e];
+                        n += s0;
+                        rfi_sktilde[sktilde_idx] += s0 * rfi_sk[sk_idx + e];
                     }
                 } // e
 
@@ -269,7 +278,7 @@ void gpuSimulateRFISK::main_thread() {
         const std::shared_ptr<chordMetadata> meta_sktilde = get_chord_metadata(mc_sktilde);
         assert(meta_sktilde);
 
-        // Create output SKtilde metadata
+        // Create output rfi mask metadata
         out_rfi_mask_buf->allocate_new_metadata_object(out_rfi_mask_frame_id);
         const std::shared_ptr<metadataObject> mc_rfi_mask =
             out_rfi_mask_buf->get_metadata(out_rfi_mask_frame_id);
