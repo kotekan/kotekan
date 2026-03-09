@@ -94,6 +94,7 @@ add_library(
     BadInputFlag.cpp
     hexDump.cpp
     ProcessPacketMask.cpp
+    PLMaskExpandedToCompact.cpp
     printSparse.cpp
     ExampleProducer.cpp
     ExampleConsumer.cpp
