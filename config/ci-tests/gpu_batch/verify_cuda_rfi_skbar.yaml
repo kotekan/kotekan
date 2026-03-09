@@ -36,6 +36,9 @@ rfi_feed_averaged_min_good_frac: 0.8
 rfi_mu_min: 2.0
 rfi_mu_max: 20.0
 
+rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+rfi_num_times_bar: rfi_num_times / rfi_second_downsampling_factor
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata
@@ -52,31 +55,31 @@ host_bf_mask_buffer:
 host_rfi_s012bar_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    frame_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_long
     metadata_pool: main_pool
 
 host_rfi_skbar_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_float
+    frame_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_float
     metadata_pool: main_pool
 
 host_rfi_skbartilde_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * sizeof_float
+    frame_size: rfi_num_times_bar * num_local_freq * 3 * sizeof_float
     metadata_pool: main_pool
 
 simulated_rfi_skbar_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_float
+    frame_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_float
     metadata_pool: main_pool
 
 simulated_rfi_skbartilde_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * sizeof_float
+    frame_size: rfi_num_times_bar * num_local_freq * 3 * sizeof_float
     metadata_pool: main_pool
 
 simulated_rfi_mask_buffer:
@@ -89,17 +92,17 @@ simulated_rfi_mask_buffer:
 # Ringbuffer signalling buffer
 host_rfi_s012bar_ringbuffer:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    ring_buffer_size: buffer_depth * rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_long
     metadata_pool: main_pool
 
 host_rfi_skbar_ringbuffer:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_float
+    ring_buffer_size: buffer_depth * rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_float
     metadata_pool: main_pool
 
 host_rfi_skbartilde_ringbuffer:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * sizeof_float
+    ring_buffer_size: buffer_depth * rfi_num_times_bar * num_local_freq * 3 * sizeof_float
     metadata_pool: main_pool
 
 gen_rfi_s012bar:
@@ -131,7 +134,7 @@ run_send_rfi_s012bar:
             host_rfi_s012bar_ringbuffer_out: host_rfi_s012bar_ringbuffer
         commands:
         - name: cudaCopyToRingbuffer
-          input_size: samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor * num_local_freq * 3 * num_elements * sizeof_long
+          input_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_long
           ring_buffer_size: buffer_depth * input_size
           in_buf: host_rfi_s012bar_buffer_in
           signal_buf: host_rfi_s012bar_ringbuffer_out
@@ -157,10 +160,9 @@ run_rfi_skbar:
         - name: cudaRFISKbar
           rfi_S012bar_name: rfi_s012bar
           bf_mask_name: bf_mask
-          rfi_SKbar_name: rfi_skbartilde
+          rfi_SKbar_name: rfi_skbar
           rfi_SKbartilde_name: rfi_skbartilde
           num_frequencies: num_local_freq
-          rfi_num_times_bar: samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor
 
 run_recv_rfi_skbar:
     gpu_0:
@@ -174,7 +176,7 @@ run_recv_rfi_skbar:
         - name: cudaCopyFromRingbuffer
           host_signal: host_rfi_skbar_ringbuffer_in
           gpu_mem_input: rfi_skbar_buffer
-          output_size: (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_float
+          output_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_float
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_skbar_buffer_out
 
@@ -190,7 +192,7 @@ run_recv_rfi_skbarbartilde:
         - name: cudaCopyFromRingbuffer
           host_signal: host_rfi_skbartilde_ringbuffer_in
           gpu_mem_input: rfi_skbartilde_buffer
-          output_size: (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * sizeof_float
+          output_size: rfi_num_times_bar * num_local_freq * 3 * sizeof_float
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_skbartilde_buffer_out
 
