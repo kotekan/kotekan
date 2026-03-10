@@ -177,16 +177,17 @@ public:
                             const kotekan::int4x2_t i01 =
                                 beams.at(time2 / 2 + ntimes / 2 * (freq + nfreqs * beam));
                             for (int time = time2; time < time2 + 2; ++time) {
-                                const int i = i01[time - time2];
-                                assert(i != -8);
-                                const float x = offset + scale * i;
-
                                 const int idx = time + ntimes * (freq + nfreqs * beam);
                                 const float expected_x = input.at(idx);
+
+                                const int i = i01[time - time2];
+                                const float x = i == -8 ? 0.0f / 0.0f : offset + scale * i;
 
                                 bool isgood = false;
 
                                 // Allow the value to be clamped
+                                if (i == -8 && isnan(expected_x))
+                                    isgood = true;
                                 if (i == -7 && x > expected_x)
                                     isgood = true;
                                 if (i == +7 && x < expected_x)
@@ -200,12 +201,14 @@ public:
                                 if (scale_may_collapse && scale == 0.0f)
                                     isgood = true;
                                 if (!isgood)
-                                    FATAL_ERROR(
-                                        "Found inaccurate value: beam {}, time {}, want {}, have "
-                                        "{}, offset {}, scale {}, may_overflow={}, "
-                                        "expected_offset={}, expected_scale={}",
-                                        beam, time, expected_x, x, offset, scale, may_overflow,
-                                        expected_offset, expected_scale);
+                                    FATAL_ERROR("Found inaccurate value: "
+                                                "beam {}, freq {}, time {}, "
+                                                "want {}, have {}, "
+                                                "offset {}, scale {}, "
+                                                "may_overflow={}, "
+                                                "expected_offset={}, expected_scale={}",
+                                                beam, freq, time, expected_x, x, offset, scale,
+                                                may_overflow, expected_offset, expected_scale);
                             }
                         }
                     }

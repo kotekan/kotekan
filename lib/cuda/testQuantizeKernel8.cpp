@@ -168,16 +168,19 @@ public:
 
                         for (int time = chunk * chunk_size; time < (chunk + 1) * chunk_size;
                              ++time) {
-                            const std::uint8_t i = beams.at(time + ntimes * (freq + nfreqs * beam));
-                            assert(i != 0 && i != 255);
-                            const float x = offset + scale * i;
-
                             const int idx = time + ntimes * (freq + nfreqs * beam);
                             const float expected_x = input.at(idx);
+
+                            const std::uint8_t i = beams.at(time + ntimes * (freq + nfreqs * beam));
+                            if (i == 255)
+                                FATAL_ERROR("Unexpected value {}", i);
+                            const float x = i == 0 ? 0.0f / 0.0f : offset + scale * i;
 
                             bool isgood = false;
 
                             // Allow the value to be clamped
+                            if (i == 0 && isnan(x))
+                                isgood = true;
                             if (i == 1 && x > expected_x)
                                 isgood = true;
                             if (i == 254 && x < expected_x)

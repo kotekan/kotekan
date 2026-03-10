@@ -124,8 +124,8 @@ void cpu_quantize8_chunk(const __half* __restrict__ const input, __half* __restr
         const float y = (x - offset) / scale;
         // Round
         const int j = sane_lrint(y);
-        // Clamp
-        const int k = max(outi_min, min(outi_max, j));
+        // Clamp; use 0 for nan
+        const int k = isnan(y) ? 0 : max(outi_min, min(outi_max, j));
         // Store
         outputi[i] = k;
     }
@@ -256,21 +256,32 @@ gpu_quantize8_chunks(const __half* __restrict__ const input0, __half* __restrict
         //     __half2int_rn(NaN)  returns 0.
         // This is consistent with what we need. There is also no performance penalty.
 
-        const __half2 y01 = __hmax2(minh, __hmin2(maxh, __hfma2(x01, inv_scaleh2, inv_offseth2)));
-        const int i0 = __half2int_rn(__low2half(y01));
-        const int i1 = __half2int_rn(__high2half(y01));
+        const auto half2int = [](const __half x) {
+            // This special case is not necessary since __half2int_rn maps nan to 0 anyway
+            // if (__hisnan(x))
+            //     return 0;
+            return __half2int_rn(x);
+        };
 
-        const __half2 y23 = __hmax2(minh, __hmin2(maxh, __hfma2(x23, inv_scaleh2, inv_offseth2)));
-        const int i2 = __half2int_rn(__low2half(y23));
-        const int i3 = __half2int_rn(__high2half(y23));
+        const __half2 y01 =
+            __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x01, inv_scaleh2, inv_offseth2)));
+        const int i0 = half2int(__low2half(y01));
+        const int i1 = half2int(__high2half(y01));
 
-        const __half2 y45 = __hmax2(minh, __hmin2(maxh, __hfma2(x45, inv_scaleh2, inv_offseth2)));
-        const int i4 = __half2int_rn(__low2half(y45));
-        const int i5 = __half2int_rn(__high2half(y45));
+        const __half2 y23 =
+            __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x23, inv_scaleh2, inv_offseth2)));
+        const int i2 = half2int(__low2half(y23));
+        const int i3 = half2int(__high2half(y23));
 
-        const __half2 y67 = __hmax2(minh, __hmin2(maxh, __hfma2(x67, inv_scaleh2, inv_offseth2)));
-        const int i6 = __half2int_rn(__low2half(y67));
-        const int i7 = __half2int_rn(__high2half(y67));
+        const __half2 y45 =
+            __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x45, inv_scaleh2, inv_offseth2)));
+        const int i4 = half2int(__low2half(y45));
+        const int i5 = half2int(__high2half(y45));
+
+        const __half2 y67 =
+            __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x67, inv_scaleh2, inv_offseth2)));
+        const int i6 = half2int(__low2half(y67));
+        const int i7 = half2int(__high2half(y67));
 
         const std::uint64_t outi = (std::uint64_t(i0) << 0x00) | (std::uint64_t(i1) << 0x08)
                                    | (std::uint64_t(i2) << 0x10) | (std::uint64_t(i3) << 0x18)
