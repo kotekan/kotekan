@@ -30,7 +30,8 @@ n2FrameToVisFrame::n2FrameToVisFrame(Config& config, const std::string& unique_n
     vis_buf = get_buffer("vis_buf");
     vis_buf->register_producer(unique_name);
 
-    // TODO: add any sanity checks required
+    // cannot check on num_ev, num_elements, or num_prod which are used only to
+    // calculate the frame size in BufferFactory but not stored
     if (n2_buf->frame_size != vis_buf->frame_size) {
         FATAL_ERROR(
             "Frame sizes between N2FrameView and VisFrameView must be identical, but got {} and {}",
