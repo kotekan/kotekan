@@ -30,7 +30,7 @@ using N2::frameID;
 class gpuSimulateRFISK : public kotekan::Stage {
 public:
     gpuSimulateRFISK(Config& config, const std::string& unique_name,
-                                   bufferContainer& buffer_container);
+                     bufferContainer& buffer_container);
     ~gpuSimulateRFISK();
     void main_thread() override;
 
@@ -53,7 +53,7 @@ private:
     const uint64_t _bias_ny;
     const uint64_t _bias_nmin;
     const uint64_t _sigma_nx;
-    
+
     std::vector<float> _bias_coeffs;
     std::vector<float> _sigma_coeffs;
 
@@ -75,17 +75,11 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
     _num_local_freq(config.get<int64_t>(unique_name, "num_local_freq")),
     _samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_total_downsampling_factor")),
-    _bar_mode(config.get<bool>(unique_name, "bar_mode")),
-    _mu_min(n2k_globals::mu_min),
-    _mu_max(n2k_globals::mu_max),
-    _xmin(n2k_globals::xmin),
-    _xmax(n2k_globals::xmax), 
-    _bias_nx(n2k_globals::bias_nx),
-    _bias_ny(n2k_globals::bias_ny),
-    _bias_nmin(n2k_globals::bias_nmin),
-    _sigma_nx(n2k_globals::sigma_nx),
-    _bias_coeffs(std::vector<float>()),
-    _sigma_coeffs(std::vector<float>()) {
+    _bar_mode(config.get<bool>(unique_name, "bar_mode")), _mu_min(n2k_globals::mu_min),
+    _mu_max(n2k_globals::mu_max), _xmin(n2k_globals::xmin), _xmax(n2k_globals::xmax),
+    _bias_nx(n2k_globals::bias_nx), _bias_ny(n2k_globals::bias_ny),
+    _bias_nmin(n2k_globals::bias_nmin), _sigma_nx(n2k_globals::sigma_nx),
+    _bias_coeffs(std::vector<float>()), _sigma_coeffs(std::vector<float>()) {
 
     // Grab Buffers
     in_rfi_s012_buf = get_buffer("in_rfi_s012_buf");
@@ -126,13 +120,12 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
     assert(in_bf_mask_buf->frame_size == bf_mask_size);
 
     // Make frame desc for produced buffers
-    if(_bar_mode) {
+    if (_bar_mode) {
         out_rfi_sk_buf->allocate_ndarray_frame_desc<float, 5>(
             "SKbar", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
             {"Trfibar", "F", "SK", "P", "D"});
         out_rfi_sktilde_buf->allocate_ndarray_frame_desc<float, 3>(
-            "SKbartilde", {nt, _num_local_freq, 3},
-            {"Trfibar", "F", "SK"});
+            "SKbartilde", {nt, _num_local_freq, 3}, {"Trfibar", "F", "SK"});
         out_rfi_mask_buf->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 3>(
             "RFImask", {_samples_per_data_set / 1024, _num_local_freq, 128},
             {"T8hi128", "F", "T8lo128"});
@@ -141,8 +134,7 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
             "SK", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
             {"Trfi", "F", "SK", "P", "D"});
         out_rfi_sktilde_buf->allocate_ndarray_frame_desc<float, 3>(
-            "SKtilde", {nt, _num_local_freq, 3},
-            {"Trfi", "F", "SK"});
+            "SKtilde", {nt, _num_local_freq, 3}, {"Trfi", "F", "SK"});
         out_rfi_mask_buf->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 3>(
             "RFImask", {_samples_per_data_set / 1024, _num_local_freq, 128},
             {"T8hi128", "F", "T8lo128"});
@@ -153,17 +145,18 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
         FATAL_ERROR("lib/testing/n2k_globals.hpp bsigma_coeffs is {:d} bytes."
                     "Expected ({:d} x {:d} + {:d}) x {:d} = {:d} bytes.",
                     sizeof(n2k_globals::bsigma_coeffs), _bias_nx, _bias_ny, _sigma_nx,
-                    sizeof(double), (_bias_nx * _bias_ny +  _sigma_nx) * sizeof(double));
+                    sizeof(double), (_bias_nx * _bias_ny + _sigma_nx) * sizeof(double));
     }
-    assert(sizeof(n2k_globals::bsigma_coeffs) == (_bias_nx * _bias_ny + _sigma_nx) * sizeof(double));
+    assert(sizeof(n2k_globals::bsigma_coeffs)
+           == (_bias_nx * _bias_ny + _sigma_nx) * sizeof(double));
 
     // Copy the n2k_globals::bsigma_coeffs into local arrays, converting to floats
     // as we go.
     uint64_t num_bias = _bias_nx * _bias_ny;
-    for(uint64_t idx = 0; idx < num_bias; idx++)
+    for (uint64_t idx = 0; idx < num_bias; idx++)
         _bias_coeffs.push_back(static_cast<float>(n2k_globals::bsigma_coeffs[idx]));
 
-    for(uint64_t idx = 0; idx <  _sigma_nx; idx++)
+    for (uint64_t idx = 0; idx < _sigma_nx; idx++)
         _sigma_coeffs.push_back(static_cast<float>(n2k_globals::bsigma_coeffs[num_bias + idx]));
 
     // Run a quick self test on the cubic interpolation routine.
@@ -196,8 +189,8 @@ void gpuSimulateRFISK::main_thread() {
             (float*)out_rfi_sk_buf->wait_for_empty_frame(unique_name, out_rfi_sk_frame_id);
         if (rfi_sk == nullptr)
             break;
-        float* rfi_sktilde =
-            (float*)out_rfi_sktilde_buf->wait_for_empty_frame(unique_name, out_rfi_sktilde_frame_id);
+        float* rfi_sktilde = (float*)out_rfi_sktilde_buf->wait_for_empty_frame(
+            unique_name, out_rfi_sktilde_frame_id);
         if (rfi_sktilde == nullptr)
             break;
         uint8_t* rfi_mask =
@@ -205,10 +198,10 @@ void gpuSimulateRFISK::main_thread() {
         if (rfi_mask == nullptr)
             break;
 
-        INFO("Simulating GPU RFI S012 for {:s}[{:d}], {:s}[{:d}] and putting result in {:s}[{:d}], {:s}[{:d}], {:s}[{:d}]",
-             in_bf_mask_buf->buffer_name, in_bf_mask_frame_id,
-             in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id,
-             out_rfi_sk_buf->buffer_name, out_rfi_sk_frame_id,
+        INFO("Simulating GPU RFI S012 for {:s}[{:d}], {:s}[{:d}] and putting result in {:s}[{:d}], "
+             "{:s}[{:d}], {:s}[{:d}]",
+             in_bf_mask_buf->buffer_name, in_bf_mask_frame_id, in_rfi_s012_buf->buffer_name,
+             in_rfi_s012_frame_id, out_rfi_sk_buf->buffer_name, out_rfi_sk_frame_id,
              out_rfi_sktilde_buf->buffer_name, out_rfi_sktilde_frame_id,
              out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
 
@@ -218,7 +211,7 @@ void gpuSimulateRFISK::main_thread() {
         uint64_t ne = _num_elements;
 
         uint64_t nt_rfi = nt / _rfi_downsampling_factor;
-        //uint64_t nsub = _rfi_downsampling_factor;
+        // uint64_t nsub = _rfi_downsampling_factor;
 
         // array access strides in S012
         uint64_t sstride_s012 = ne;
@@ -256,31 +249,32 @@ void gpuSimulateRFISK::main_thread() {
                 for (uint64_t e = 0; e < ne; e++) {
                     uint64_t s0 = rfi_s012[s012_idx + e];
                     uint64_t s1 = rfi_s012[s012_idx + sstride_s012 + e];
-                    uint64_t s2 = rfi_s012[s012_idx + 2*sstride_s012 + e];
+                    uint64_t s2 = rfi_s012[s012_idx + 2 * sstride_s012 + e];
                     float s0f = static_cast<float>(s0);
                     float s1f = static_cast<float>(s1);
 
                     // Copying order of operations from n2k SkKernel.cu
                     //
                     // SK = ((s0 + 1) / (s0 - 1)) * (s0 * s2 / s1^2 - 1)
-                    float sk_num = (s0f + 1.0f) * static_cast<float>(s0*s2 - s1*s1);
-                    float sk_den = (s0f - 1.0f) * s1f*s1f;
+                    float sk_num = (s0f + 1.0f) * static_cast<float>(s0 * s2 - s1 * s1);
+                    float sk_den = (s0f - 1.0f) * s1f * s1f;
 
-                    float y = 1.0f / s0f;   // = 1/n
-                    float mu = s1f * y;     // = s1f/n = <|E|^2>
+                    float y = 1.0f / s0f; // = 1/n
+                    float mu = s1f * y;   // = s1f/n = <|E|^2>
                     float x = std::clamp(logf(mu), _xmin, _xmax);
 
                     // There are nx sample points uniform over [xmin, xmax].
                     // tx is in [0, nx-1] => integer part of tx is interval index.
-                    float tx = (x - _xmin) * ((static_cast<float>(_sigma_nx) - 1.0f) / (_xmax - _xmin));
+                    float tx =
+                        (x - _xmin) * ((static_cast<float>(_sigma_nx) - 1.0f) / (_xmax - _xmin));
                     // index of reference pt in interval.
-                    uint64_t tx_idx = std::clamp(static_cast<uint64_t>(tx), 1ul, _sigma_nx-3);
+                    uint64_t tx_idx = std::clamp(static_cast<uint64_t>(tx), 1ul, _sigma_nx - 3);
                     float tx_diff = tx - static_cast<float>(tx_idx);
 
                     // = sigma * sqrt(s0)
-                    float sigma_tmp = cubic_interpolate(tx_diff, _sigma_coeffs[tx_idx - 1],
-                            _sigma_coeffs[tx_idx], _sigma_coeffs[tx_idx + 1],
-                            _sigma_coeffs[tx_idx + 2]);
+                    float sigma_tmp =
+                        cubic_interpolate(tx_diff, _sigma_coeffs[tx_idx - 1], _sigma_coeffs[tx_idx],
+                                          _sigma_coeffs[tx_idx + 1], _sigma_coeffs[tx_idx + 2]);
 
                     float sigma = sigma_tmp * sqrtf(y); // divide by sqrt(s0)
 
@@ -382,12 +376,13 @@ void gpuSimulateRFISK::main_thread() {
         meta_rfi_mask->check_frame_desc(out_rfi_mask_buf->get_ndarray_frame_desc());
 
         // Set non-NDArray things.
-        meta_rfi_mask->set_time_downsampling_fpga(1024 * meta_in->get_time_downsampling_fpga() / _rfi_downsampling_factor);
+        meta_rfi_mask->set_time_downsampling_fpga(1024 * meta_in->get_time_downsampling_fpga()
+                                                  / _rfi_downsampling_factor);
 
-        INFO("Simulating GPU RFI S012 done for {:s}[{:d}]+{:s}[{:d}] result is in {:s}[{:d}]+{:s}[{:d}]+{:s}[{:d}]",
-             in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id,
-             in_bf_mask_buf->buffer_name, in_bf_mask_frame_id,
-             out_rfi_sk_buf->buffer_name, out_rfi_sk_frame_id,
+        INFO("Simulating GPU RFI S012 done for {:s}[{:d}]+{:s}[{:d}] result is in "
+             "{:s}[{:d}]+{:s}[{:d}]+{:s}[{:d}]",
+             in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id, in_bf_mask_buf->buffer_name,
+             in_bf_mask_frame_id, out_rfi_sk_buf->buffer_name, out_rfi_sk_frame_id,
              out_rfi_sktilde_buf->buffer_name, out_rfi_sktilde_frame_id,
              out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
 
@@ -403,20 +398,20 @@ void gpuSimulateRFISK::main_thread() {
  * Copied straight from external/n2k/include/n2k/internals/interpolation.hpp
  */
 float gpuSimulateRFISK::cubic_interpolate(float x, float y0, float y1, float y2, float y3) {
-    
+
     constexpr float half = 1.0f / 2.0f;
     constexpr float third = 1.0f / 3.0f;
 
     float d01 = x * (y1 - y0);
-    float d12 = (x-1) * (y2 - y1);
-    
-    float c12 = x * (y2 - y1);
-    float c23 = (x-1) * (y3 - y2);
+    float d12 = (x - 1) * (y2 - y1);
 
-    float d012 = half * (x-1) * (c12 - d01);
+    float c12 = x * (y2 - y1);
+    float c23 = (x - 1) * (y3 - y2);
+
+    float d012 = half * (x - 1) * (c12 - d01);
     float c123 = half * x * (c23 - d12);
 
-    float c0123 = third * (x+1) * (c123 - d012);
+    float c0123 = third * (x + 1) * (c123 - d012);
 
     return c0123 + d012 + c12 + y1;
 }
@@ -434,24 +429,18 @@ bool gpuSimulateRFISK::test_cubic_interpolate() {
     float atol = 5.0e-7;
     float rtol = 5.0e-7;
 
-    std::vector<std::array<float, 2>> tests = {
-        {-1.0f, y0},
-        {0.0f, y1},
-        {1.0f, y2},
-        {2.0f, y3},
-        {-0.5f, -0.125f},
-        {0.5f, 0.125f},
-        {1.5f, 3.375f},
-        {3.0f, 27.0f}};
+    std::vector<std::array<float, 2>> tests = {{-1.0f, y0},    {0.0f, y1},       {1.0f, y2},
+                                               {2.0f, y3},     {-0.5f, -0.125f}, {0.5f, 0.125f},
+                                               {1.5f, 3.375f}, {3.0f, 27.0f}};
 
-    for(auto xy : tests) {
+    for (auto xy : tests) {
         float y = cubic_interpolate(xy[0], y0, y1, y2, y3);
 
         float max_y = std::max(fabs(y), fabs(xy[1]));
 
-        if(fabs(y - xy[1]) > atol + max_y * rtol) {
-            ERROR("cubic_interpolate({:f}, {:f}, {:f}, {:f}, {:f}) = {:f}, expected {:f}",
-                xy[0], y0, y1, y2, y3, y, xy[1]);
+        if (fabs(y - xy[1]) > atol + max_y * rtol) {
+            ERROR("cubic_interpolate({:f}, {:f}, {:f}, {:f}, {:f}) = {:f}, expected {:f}", xy[0],
+                  y0, y1, y2, y3, y, xy[1]);
             good = false;
         }
     }
