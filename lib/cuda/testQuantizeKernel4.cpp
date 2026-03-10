@@ -115,8 +115,8 @@ public:
                         const float x = f(beam, freq, time);
                         sum += x;
                         sum2 += x * x;
-                        minval = isnan(x) ? 0.0f / 0.0f : fmin(minval, x);
-                        maxval = isnan(x) ? 0.0f / 0.0f : fmax(maxval, x);
+                        minval = isnan(minval) || isnan(x) ? 0.0f / 0.0f : fmin(minval, x);
+                        maxval = isnan(maxval) || isnan(x) ? 0.0f / 0.0f : fmax(maxval, x);
                         // Allow the respective float16 calculations to overflow
                         may_overflow |= !isfinite(x) || fabs(x) >= 2048.0f;
                     }
