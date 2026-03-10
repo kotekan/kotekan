@@ -29,7 +29,7 @@
 #define CHECK_META_SCALAR_INT_DIRECT(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1,         \
                                      BUF_NAME2, FRAME_ID2)                                         \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         if ((META1)->FIELD != (META2)->FIELD) {                                                    \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:d} {:d}", (BUF_NAME1),   \
                   (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2), #FIELD, (META1)->FIELD,           \
@@ -41,7 +41,7 @@
 #define CHECK_META_SCALAR_INT(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2,     \
                               FRAME_ID2)                                                           \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         if ((META1)->get_##FIELD() != (META2)->get_##FIELD()) {                                    \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:d} {:d}", (BUF_NAME1),   \
                   (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2), #FIELD, (META1)->get_##FIELD(),   \
@@ -53,7 +53,7 @@
 #define CHECK_META_SCALAR_STREAM_T(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1,           \
                                    BUF_NAME2, FRAME_ID2)                                           \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         if ((META1)->get_##FIELD().id != (META2)->get_##FIELD().id) {                              \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:d} {:d}", (BUF_NAME1),   \
                   (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2), #FIELD,                           \
@@ -65,7 +65,7 @@
 #define CHECK_META_ARR1_INT(FIELD, LEN, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2,  \
                             FRAME_ID2)                                                             \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         for (int meta_idx = 0; meta_idx < (LEN); meta_idx++) {                                     \
             if ((META1)->get_##FIELD()[meta_idx] != (META2)->get_##FIELD()[meta_idx]) {            \
                 ERROR(                                                                             \
@@ -80,7 +80,7 @@
 #define CHECK_META_ARR1_INT_DIRECT(FIELD, LEN, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1,      \
                                    BUF_NAME2, FRAME_ID2)                                           \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         for (int meta_idx = 0; meta_idx < (LEN); meta_idx++) {                                     \
             if ((META1)->FIELD[meta_idx] != (META2)->FIELD[meta_idx]) {                            \
                 ERROR(                                                                             \
@@ -95,7 +95,7 @@
 #define CHECK_META_SCALAR_STR(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2,     \
                               FRAME_ID2)                                                           \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         if ((META1)->get_##FIELD() != (META2)->get_##FIELD()) {                                    \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:s} {:s}", (BUF_NAME1),   \
                   (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2), #FIELD, (META1)->get_##FIELD(),   \
@@ -107,7 +107,7 @@
 #define CHECK_META_ARR1_CSTR_DIRECT(FIELD, ARR_LEN, STR_LEN, META1, META2, ERR_COUNT, BUF_NAME1,   \
                                     FRAME_ID1, BUF_NAME2, FRAME_ID2)                               \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         for (int meta_idx = 0; meta_idx < (ARR_LEN); meta_idx++) {                                 \
             if (strncmp((META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx], (STR_LEN))) {          \
                 ERROR(                                                                             \
@@ -351,6 +351,10 @@ void testDataCheck<A_Type>::main_thread() {
                 }
             }
         } // frames
+
+        if (num_errors > 0) {
+            break;
+        }
     }
 }
 

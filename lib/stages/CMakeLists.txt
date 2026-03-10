@@ -17,6 +17,7 @@ add_library(
     integratePowerStream.cpp
     monitorBuffer.cpp
     networkInputPowerStream.cpp
+    parseReorderDefault.cpp
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
@@ -82,6 +83,7 @@ add_library(
     HFBAccumulate.cpp
     compressLostSamples.cpp
     lostSamplesToPLMask.cpp
+    lostSamplesToN2Counts.cpp
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
@@ -100,6 +102,7 @@ add_library(
     N2Accumulate.cpp
     N2TimeDownsample.cpp
     N2FringeStop.cpp
+    dropAllFrames.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
