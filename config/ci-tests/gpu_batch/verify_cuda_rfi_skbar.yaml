@@ -20,7 +20,7 @@ sizeof_int: 4
 sizeof_long: 8
 
 # For faster CHORD testing, we're using...
-samples_per_data_set: 16384
+samples_per_data_set: 4096
 frame_arrival_period: 5.12e-6 * samples_per_data_set
 num_polarizations: 2
 num_dishes: 64
@@ -31,10 +31,10 @@ rfi_downsampling_factor: 256
 rfi_second_downsampling_factor: 16
 
 rfi_sk_rfimask_sigmas: 1.0
-rfi_single_feed_min_good_frac: 0.8
+rfi_single_feed_min_good_frac: 0.1
 rfi_feed_averaged_min_good_frac: 0.8
 rfi_mu_min: 2.0
-rfi_mu_max: 20.0
+rfi_mu_max: 50.0
 
 rfi_num_times: samples_per_data_set / rfi_downsampling_factor
 rfi_num_times_bar: rfi_num_times / rfi_second_downsampling_factor
@@ -106,14 +106,13 @@ host_rfi_skbartilde_ringbuffer:
     metadata_pool: main_pool
 
 gen_rfi_s012bar:
-    type: randomu64
-    kotekan_stage: testDataGen
+    log_level: DEBUG
+    kotekan_stage: testRFIS012Gen
     out_buf: host_rfi_s012bar_buffer
-    name: "S012bar"
-    array_shape: [ 4, 4, 3, 2, 64 ]
-    dim_name: ["Trfibar", "F", "S", "P", "D" ]
-    num_frames: 2*buffer_depth  # Must be at least what check_data expects
-    meta_time_downsample_factor: rfi_downsampling_factor
+    type: random
+    bar_mode: true
+    downsampling_factor: rfi_downsampling_factor * rfi_second_downsampling_factor
+    num_frames: 2 * buffer_depth
 
 gen_bf_mask:
     type: random8
@@ -158,6 +157,7 @@ run_rfi_skbar:
           gpu_mem: bf_mask_buffer
         - name: cudaSyncInput
         - name: cudaRFISKbar
+          # log_level: DEBUG
           rfi_S012bar_name: rfi_s012bar
           bf_mask_name: bf_mask
           rfi_SKbar_name: rfi_skbar

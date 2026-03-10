@@ -35,6 +35,7 @@ public:
     void main_thread() override;
 
     float cubic_interpolate(float x, float y0, float y1, float y2, float y3);
+    double nice_cubic_interpolate(double x, double x0, double dx, double y0, double y1, double y2, double y3);
     bool test_cubic_interpolate();
 
 private:
@@ -45,6 +46,11 @@ private:
     const int64_t _samples_per_data_set;
     const int64_t _rfi_downsampling_factor;
     const bool _bar_mode;
+    const double _rfi_sk_rfimask_sigmas;
+    const double _rfi_single_feed_min_good_frac;
+    const double _rfi_feed_averaged_min_good_frac;
+    const double _rfi_mu_min;
+    const double _rfi_mu_max;
     const float _mu_min;
     const float _mu_max;
     const float _xmin;
@@ -75,7 +81,13 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
     _num_local_freq(config.get<int64_t>(unique_name, "num_local_freq")),
     _samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_total_downsampling_factor")),
-    _bar_mode(config.get<bool>(unique_name, "bar_mode")), _mu_min(n2k_globals::mu_min),
+    _bar_mode(config.get<bool>(unique_name, "bar_mode")),
+    _rfi_sk_rfimask_sigmas(config.get<double>(unique_name, "rfi_sk_rfimask_sigmas")),
+    _rfi_single_feed_min_good_frac(config.get<double>(unique_name, "rfi_single_feed_min_good_frac")),
+    _rfi_feed_averaged_min_good_frac(config.get<double>(unique_name, "rfi_feed_averaged_min_good_frac")),
+    _rfi_mu_min(config.get<double>(unique_name, "rfi_mu_min")),
+    _rfi_mu_max(config.get<double>(unique_name, "rfi_mu_max")),
+    _mu_min(n2k_globals::mu_min),
     _mu_max(n2k_globals::mu_max), _xmin(n2k_globals::xmin), _xmax(n2k_globals::xmax),
     _bias_nx(n2k_globals::bias_nx), _bias_ny(n2k_globals::bias_ny),
     _bias_nmin(n2k_globals::bias_nmin), _sigma_nx(n2k_globals::sigma_nx),
@@ -244,25 +256,52 @@ void gpuSimulateRFISK::main_thread() {
                 uint64_t sktilde_idx = f * fstride_sktilde + t_rfi * tstride_sktilde;
                 uint64_t s012_idx = f * fstride_s012 + t_rfi * tstride_s012;
 
-                uint64_t n = 0;
-
                 for (uint64_t e = 0; e < ne; e++) {
                     uint64_t s0 = rfi_s012[s012_idx + e];
                     uint64_t s1 = rfi_s012[s012_idx + sstride_s012 + e];
                     uint64_t s2 = rfi_s012[s012_idx + 2 * sstride_s012 + e];
                     float s0f = static_cast<float>(s0);
                     float s1f = static_cast<float>(s1);
+                    
+                    if (s0 < _rfi_downsampling_factor * _rfi_single_feed_min_good_frac
+                        || s1 < _rfi_mu_min * s0
+                        || s1 > _rfi_mu_max * s0) {
+                        rfi_sk[sk_idx + 0 * sstride_sk + e] = 0.0f;
+                        rfi_sk[sk_idx + 1 * sstride_sk + e] = 0.0f;
+                        rfi_sk[sk_idx + 2 * sstride_sk + e] = -1.0f;
+                        continue;
+                    }
 
                     // Copying order of operations from n2k SkKernel.cu
                     //
                     // SK = ((s0 + 1) / (s0 - 1)) * (s0 * s2 / s1^2 - 1)
-                    float sk_num = (s0f + 1.0f) * static_cast<float>(s0 * s2 - s1 * s1);
-                    float sk_den = (s0f - 1.0f) * s1f * s1f;
+                    double sk_num = (s0 + 1) * static_cast<double>(s0 * s2 - s1 * s1);
+                    double sk_den = (s0 - 1) * static_cast<double>(s1 * s1);
 
                     float y = 1.0f / s0f; // = 1/n
                     float mu = s1f * y;   // = s1f/n = <|E|^2>
                     float x = std::clamp(logf(mu), _xmin, _xmax);
 
+                    // x spacing in the sigma table
+                    double dx = (_xmax - _xmin) / ((double) (_sigma_nx - 1));
+
+                    // index of bin in sigma table containing x, unless x is near the end
+                    // of the bin. Leaves at least 1 free bin to the left and at least two
+                    // free bins to the right.
+                    uint64_t bin_idx = std::clamp(static_cast<uint64_t>((x - _xmin) / dx),
+                                                  1ul, _sigma_nx - 3);
+                    // Index of first bin (or first table point) in the reconstruction.
+                    // Probable one to the left of where the sample point is.
+                    uint64_t i0 = bin_idx - 1;
+                    // x-value of point at i0.
+                    double x0 = _xmin + dx * i0;
+
+                    // table interpolation for sigma. Returns sigma * sqrt(s0)
+                    double sigma_tab = nice_cubic_interpolate(x, x0, dx, _sigma_coeffs[i0],
+                            _sigma_coeffs[i0+1], _sigma_coeffs[i0+2], _sigma_coeffs[i0+3]);
+                    double sigma = sigma_tab / sqrt(s0);
+
+                    /*
                     // There are nx sample points uniform over [xmin, xmax].
                     // tx is in [0, nx-1] => integer part of tx is interval index.
                     float tx =
@@ -277,12 +316,18 @@ void gpuSimulateRFISK::main_thread() {
                                           _sigma_coeffs[tx_idx + 1], _sigma_coeffs[tx_idx + 2]);
 
                     float sigma = sigma_tmp * sqrtf(y); // divide by sqrt(s0)
+                    */
 
-                    INFO("sigma_tmp = {}  s0f = {}  sigma = {}", sigma_tmp, s0f, sigma);
+                    //INFO("sigma_tmp = {}  s0f = {}  sigma = {}", sigma_tmp, s0f, sigma);
                     rfi_sk[sk_idx + e] = sk_num / sk_den;
                     rfi_sk[sk_idx + 2 * sstride_sk + e] = sigma;
+                } // e
+                
+                uint64_t n = 0;
 
+                for (uint64_t e = 0; e < ne; e++) {
                     if (bf_mask[e]) {
+                        uint64_t s0 = rfi_s012[s012_idx + e];
                         n += s0;
                         rfi_sktilde[sktilde_idx] += s0 * rfi_sk[sk_idx + e];
                         rfi_sktilde[sktilde_idx + 2] += s0 * rfi_sk[sk_idx + 2 * sstride_sk + e];
@@ -414,6 +459,22 @@ float gpuSimulateRFISK::cubic_interpolate(float x, float y0, float y1, float y2,
     float c0123 = third * (x + 1) * (c123 - d012);
 
     return c0123 + d012 + c12 + y1;
+}
+
+double gpuSimulateRFISK::nice_cubic_interpolate(double x, double x0, double dx, double y0, double y1, double y2, double y3) {
+
+    double x1 = x0 + dx;
+    double x2 = x0 + 2*dx;
+    double x3 = x0 + 3*dx;
+
+    // Interpolating polynomials.
+    // pN = 1 if x = xN and 0 if x = xM (M != N)
+    double p0 = (x - x1) * (x - x2) * (x - x3) / ((x0 - x1) * (x0 - x2) * (x0 - x3));
+    double p1 = (x - x0) * (x - x2) * (x - x3) / ((x1 - x0) * (x1 - x2) * (x1 - x3));
+    double p2 = (x - x0) * (x - x1) * (x - x3) / ((x2 - x0) * (x2 - x1) * (x2 - x3));
+    double p3 = (x - x0) * (x - x1) * (x - x2) / ((x3 - x0) * (x3 - x1) * (x3 - x2));
+
+    return p0*y0 + p1*y1 + p2*y2 + p3*y3;
 }
 
 bool gpuSimulateRFISK::test_cubic_interpolate() {

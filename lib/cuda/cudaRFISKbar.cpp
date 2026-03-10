@@ -223,6 +223,21 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
     const long rfimask_T1024min = 0;
     const long rfimask_T1024size = 0;
     const cudaStream_t stream = device.getStream(cuda_stream_id);
+
+    uint64_t S0 = 0;
+    uint64_t S1 = 0;
+    uint64_t S2 = 0;
+    uint64_t check_e = 1;
+    uint64_t DS_S012 = rfi_S012bar.get_ndarray().get_stride(2);
+    uint64_t DT_S012 = rfi_S012bar.get_ndarray().get_stride(0);
+    cudaMemcpy(&S0, in_S012 + S012_Tmin * DT_S012 + 0*DS_S012 + check_e, sizeof(uint64_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&S1, in_S012 + S012_Tmin * DT_S012 + 1*DS_S012 + check_e, sizeof(uint64_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&S2, in_S012 + S012_Tmin * DT_S012 + 2*DS_S012 + check_e, sizeof(uint64_t), cudaMemcpyDeviceToHost);
+    DEBUG("RFISKbar Reading S012[{:d}+{:d}] = {:d}, {:d}, {:d} - frac: {:f}  mu: {}",
+            S012_Tmin, check_e, S0, S1, S2,
+            ((double) S0) / (rfi_downsampling_factor * rfi_second_downsampling_factor),
+            ((double) S1) / S0);
+
     skKernel.launch(out_sk_feed_averaged, out_sk_single_feed, out_rfimask, in_S012, in_bf_mask, T,
                     F, S, S012_Tmin, S012_Tsize, sk_feed_averaged_Tmin, sk_feed_averaged_Tsize,
                     sk_single_feed_Tmin, sk_single_feed_Tsize, rfimask_T1024min, rfimask_T1024size,
@@ -230,6 +245,16 @@ cudaEvent_t cudaRFISKbar::execute(cudaPipelineState& /*pipestate*/,
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
+
+    float sk = 0.0f;
+    float bias = 0.0f;
+    float sigma = 0.0f;
+    uint64_t DS_SK = rfi_SKbar.get_ndarray().get_stride(2);
+    uint64_t DT_SK = rfi_SKbar.get_ndarray().get_stride(0);
+    cudaMemcpy(&sk, out_sk_single_feed + sk_single_feed_Tmin * DT_SK + 0*DS_SK + check_e, sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&bias, out_sk_single_feed + sk_single_feed_Tmin * DT_SK + 1*DS_SK + check_e, sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&sigma, out_sk_single_feed + sk_single_feed_Tmin * DT_SK + 2*DS_SK + check_e, sizeof(float), cudaMemcpyDeviceToHost);
+    DEBUG("RFISKbar Wrote SK[{:d}+{:d}] = {}, {}, {}", sk_single_feed_Tmin, check_e, sk, bias, sigma);
 
     if (poison_buffers) {
         rfi_SKbar.check_for_poison(0xff);

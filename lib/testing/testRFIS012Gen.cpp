@@ -168,11 +168,9 @@ void testRFIS012Gen::main_thread() {
 
     std::mt19937 rng(seed);
 
-    /*
     uint64_t s0_val_idx = 0;
     uint64_t s1_val_idx = 0;
     uint64_t s2_val_idx = 0;
-    */
 
     while (!stop_thread) {
 
@@ -190,7 +188,74 @@ void testRFIS012Gen::main_thread() {
         // check frame descriptors match metadata
         meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
 
-        s012[0] = 0;
+        int64_t ds = num_elements;
+        int64_t df = 3 * num_elements;
+        int64_t dt = num_local_freq * 3 * num_elements;
+
+        uint64_t max_E = 7;
+        uint64_t max_E2 = 2 * max_E * max_E;
+        uint64_t max_E4 = max_E2 * max_E2;
+
+        for(int64_t t = 0; t < num_rfi_samples; t++) {
+            for(int64_t f = 0; f < num_local_freq; f++) {
+                int64_t idx = t*dt + f*df;
+                for(int64_t e = 0; e < num_elements; e++) {
+                    uint64_t s0 = 0;
+                    uint64_t s1 = 0;
+                    uint64_t s2 = 0;
+
+                    if (type == "const") {
+                        if (S0_value_array.size() > 0) {
+                            s0 = S0_value_array[s0_val_idx % S0_value_array.size()];
+                            s0_val_idx++;
+                        } else
+                            s0 = S0_value;
+
+                        if (S1_value_array.size() > 0) {
+                            s1 = S1_value_array[s1_val_idx % S1_value_array.size()];
+                            s1_val_idx++;
+                        } else
+                            s1 = S1_value;
+
+                        if (S2_value_array.size() > 0) {
+                            s2 = S2_value_array[s2_val_idx % S2_value_array.size()];
+                            s2_val_idx++;
+                        } else
+                            s2 = S2_value;
+                    }
+                    else if (type == "random") {
+                        // s0 is counts, can only be as many as seq_nums
+                        s0 = rng() % downsampling_factor;
+                        if (s0 > 0) {
+                            // Restrict s1 and s2 to be mathematically possible values
+                            uint64_t min_s1 = 0;
+                            uint64_t max_s1 = s0 * max_E2;
+                            s1 = min_s1 + rng() % (max_s1 - min_s1 + 1);
+
+                            // s2 in [min_s2, max_s2]
+                            uint64_t max_s2 = s0 * max_E4;
+                            uint64_t min_s2 = s1 * s1 / s0;
+                            if (max_s2 < min_s2)
+                                FATAL_ERROR("For s0 = {:d}, s1 = {:d}, min_s2 = {:d} > max_s2 = {:d}",
+                                        s0, s1, min_s2, max_s2);
+
+                            s2 = min_s2 + rng() % (max_s2 - min_s2 + 1);
+                        } else {
+                            s1 = 0;
+                            s2 = 0;
+                        }
+                    }
+
+                    s012[idx + 0*ds + e] = s0;
+                    s012[idx + 1*ds + e] = s1;
+                    s012[idx + 2*ds + e] = s2;
+
+                    if (e == 0 && f == 0)
+                        DEBUG("Wrote S012[{:d}, {:d}, :, {:d}] = ({:d}, {:d}, {:d})",
+                                t, f, e, s0, s1, s2);
+                } // e
+            } // f
+        } // t
 
         DEBUG("Generated a {:s} test RFI S012 data set in {:s}[{:d}]", type,
               out_buf->buffer_name, frame_id);
