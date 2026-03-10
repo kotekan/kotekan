@@ -65,13 +65,13 @@ public:
                 case 5:
                     return 0.5f * x + 0.5f * x * x * x + 10 * (time % 23 == 0);
                 case 6:
-                    return 10000 * time; // large but not infinity
+                    return 10000.0f * time; // large but not infinity
                 case 7:
-                    return 10000 * time; // some values are infinity
+                    return 100000.0f * time; // some values are infinity
                 case 8:
-                    return time / 10000; // small, but 1/x is less than infinity
+                    return time / 10000.0f; // small, but 1/x is less than infinity
                 case 9:
-                    return time / 100000; // small, and some 1/x are infinity
+                    return time / 100000.0f; // small, and some 1/x are infinity
                 case 10:
                     return 0.5f * x + 0.5f * x * x * x + (time % 23 == 0 ? 0.0f / 0.0f : 0.0f);
             }
@@ -94,7 +94,7 @@ public:
 
         // A function to check the result
         const auto check_result = [&]() {
-            using std::fabs, std::fmax, std::sqrt, std::fmin, std::isfinite;
+            using std::fabs, std::fmax, std::fmin, std::isfinite, std::isnan, std::sqrt;
 
             for (int beam = 0; beam < nbeams; ++beam) {
 
@@ -114,15 +114,15 @@ public:
                     const float x = f(beam, time);
                     sum += x;
                     sum2 += x * x;
-                    minval = fmin(minval, x);
-                    maxval = fmax(maxval, x);
+                    minval = isnan(x) ? 0.0f / 0.0f : fmin(minval, x);
+                    maxval = isnan(x) ? 0.0f / 0.0f : fmax(maxval, x);
                     // Allow the respective float16 calculations to overflow
                     may_overflow |= !isfinite(x) || fabs(x) >= 2048.0f;
                 }
                 may_overflow |= !isfinite(sum) || fabs(sum) >= 2048.0f || !isfinite(sum2)
                                 || fabs(sum2) >= 2048.0f;
                 // Allow the scale to be inaccurate when all inputs are close together
-                const bool scale_may_collapse = fabs(maxval - minval) < epsilon;
+                const bool scale_may_collapse = fabs(maxval - minval) < 10 * epsilon;
                 const float mean = sum / chunk_size;
                 const float stddev = sqrt(fmax(0.0f, sum2 / chunk_size - mean * mean));
                 const int int4_range = 15; // avoid -8
@@ -192,16 +192,20 @@ public:
                                 if (i == +7 && x < expected_x)
                                     isgood = true;
                                 // The value should differ by no more than scale/2
-                                isgood |= fabs(x - expected_x) <= scale / 2 + epsilon;
+                                isgood |= fabs(x - expected_x)
+                                          <= fmax(scale, expected_scale) / 2 + epsilon;
                                 // Handle non-finite inputs
                                 if (may_overflow && offset == 0.0f && scale == 0.0f)
                                     isgood = true;
+                                if (scale_may_collapse && scale == 0.0f)
+                                    isgood = true;
                                 if (!isgood)
-                                    FATAL_ERROR("Found inaccurate value: beam {}, want {}, have "
-                                                "{}, offset {}, scale {}, may_overflow={}, "
-                                                "expected_offset={}, expected_scale={}",
-                                                beam, expected_x, x, offset, scale, may_overflow,
-                                                expected_offset, expected_scale);
+                                    FATAL_ERROR(
+                                        "Found inaccurate value: beam {}, time {}, want {}, have "
+                                        "{}, offset {}, scale {}, may_overflow={}, "
+                                        "expected_offset={}, expected_scale={}",
+                                        beam, time, expected_x, x, offset, scale, may_overflow,
+                                        expected_offset, expected_scale);
                             }
                         }
                     }

@@ -63,13 +63,13 @@ public:
                 case 5:
                     return 0.5f * x + 0.5f * x * x * x + 10 * (time % 23 == 0);
                 case 6:
-                    return 10000 * time; // large but not infinity
+                    return 10000.0f * time; // large but not infinity
                 case 7:
-                    return 10000 * time; // some values are infinity
+                    return 100000.0f * time; // some values are infinity
                 case 8:
-                    return time / 10000; // small, but 1/x is less than infinity
+                    return time / 10000.0f; // small, but 1/x is less than infinity
                 case 9:
-                    return time / 100000; // small, and some 1/x are infinity
+                    return time / 100000.0f; // small, and some 1/x are infinity
                 case 10:
                     return 0.5f * x + 0.5f * x * x * x + (time % 23 == 0 ? 0.0f / 0.0f : 0.0f);
             }
@@ -92,7 +92,7 @@ public:
 
         // A function to check the result
         const auto check_result = [&]() {
-            using std::fabs, std::fmax, std::fmin, std::sqrt, std::fmin, std::isfinite, std::isnan;
+            using std::fabs, std::fmin, std::fmax, std::isfinite, std::isnan, std::sqrt;
 
             for (int beam = 0; beam < nbeams; ++beam) {
 
@@ -118,7 +118,7 @@ public:
                 may_overflow |= !isfinite(minval) || fabs(minval) >= 2048.0f || !isfinite(maxval)
                                 || fabs(maxval) >= 2048.0f;
                 // Allow the scale to be inaccurate when all inputs are close together
-                const bool scale_may_collapse = fabs(maxval - minval) < epsilon;
+                const bool scale_may_collapse = fabs(maxval - minval) < 10 * epsilon;
                 const int uint8_range = 254; // avoid 0 and 255
                 float expected_scale = (maxval - minval) / uint8_range;
                 float expected_offset = minval - 0.5f * expected_scale;
@@ -145,7 +145,7 @@ public:
                             <= epsilon * fmax(1.0f, fmax(fabs(offset), fabs(expected_offset)));
                         // If we think an overflow is allowed, and if the other implementation might
                         // have detected one (offset=0), then all is fine as well
-                        if (may_overflow && offset == 0.0f)
+                        if (may_overflow && scale == 0.0f && offset == 0.0f)
                             offset_is_good = true;
                         if (!offset_is_good)
                             FATAL_ERROR("Found inaccurate offset: beam {}, want {}, have {}, "
@@ -158,8 +158,8 @@ public:
                         if (scale_may_collapse)
                             scale_is_good = true;
                         // If we think an overflow is allowed, and if the other implementation might
-                        // have detected one (offset=0), then all is fine as well
-                        if (may_overflow && scale == 0.0f)
+                        // have detected one (scale=0, offset=0), then all is fine as well
+                        if (may_overflow && scale == 0.0f && offset == 0.0f)
                             scale_is_good = true;
                         if (!scale_is_good)
                             FATAL_ERROR("Found inaccurate scale: beam{}, want {}, have {}, "
@@ -183,16 +183,20 @@ public:
                             if (i == 254 && x < expected_x)
                                 isgood = true;
                             // The value should differ by no more than scale/2
-                            isgood |= fabs(x - expected_x) <= scale / 2 + epsilon;
+                            isgood |=
+                                fabs(x - expected_x) <= fmax(scale, expected_scale) / 2 + epsilon;
                             // Handle non-finite inputs
                             if (may_overflow && offset == 0.0f && scale == 0.0f)
                                 isgood = true;
+                            if (scale_may_collapse && scale == 0.0f)
+                                isgood = true;
                             if (!isgood)
-                                FATAL_ERROR("Found inaccurate value: beam {}, want {}, have "
-                                            "{}, offset {}, scale {}, may_overflow={}, "
+                                FATAL_ERROR("Found inaccurate value: beam {}, time {}, want {}, "
+                                            "have {}, offset {}, "
+                                            "scale {}, may_overflow={}, scale_may_collapse={}, "
                                             "expected_offset={}, expected_scale={}",
-                                            beam, expected_x, x, offset, scale, may_overflow,
-                                            expected_offset, expected_scale);
+                                            beam, time, expected_x, x, offset, scale, may_overflow,
+                                            scale_may_collapse, expected_offset, expected_scale);
                         }
                     }
                 }

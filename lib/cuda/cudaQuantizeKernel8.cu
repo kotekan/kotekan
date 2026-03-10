@@ -61,7 +61,7 @@ __device__ __host__ static inline int sane_lrint(const float x) {
     if (x > INT_MAX)
         return INT_MAX;
     if (isnan(x))
-        return 0; // we could mask to -8 instead
+        return 0; // we could mask to 0 instead
     return int(lrint(x));
 }
 
