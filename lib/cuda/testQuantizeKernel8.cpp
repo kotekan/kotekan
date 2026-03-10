@@ -47,9 +47,9 @@ public:
         std::vector<std::uint8_t> beams(ntimes * nfreqs * nbeams);
 
         // Invent some data
-        const auto f = [&](const int beam, const int time) -> float {
+        const auto f = [&](const int beam, const int freq, const int time) -> float {
             const float x = (time + 0.5) / ntimes;
-            switch (beam % 11) {
+            switch ((beam + freq) % 11) {
                 case 0:
                     return 0.0f;
                 case 1:
@@ -83,7 +83,7 @@ public:
         for (int beam = 0; beam < nbeams; ++beam) {
             for (int freq = 0; freq < nfreqs; ++freq) {
                 for (int time = 0; time < ntimes; ++time) {
-                    const float x = f(beam, time % chunk_size);
+                    const float x = f(beam, freq, time % chunk_size);
                     const int idx = time + ntimes * (freq + nfreqs * beam);
                     input.at(idx) = float16_t(x);
                 }
@@ -95,40 +95,40 @@ public:
             using std::fabs, std::fmin, std::fmax, std::isfinite, std::isnan, std::sqrt;
 
             for (int beam = 0; beam < nbeams; ++beam) {
-
-                // Calculate expected result
-                //
-                // When comparing to the expected result, two things can go wrong:
-                // 1. The scale can be zero, or can be close to zero (`scale_may_collapse`)
-                // 2. The input can contain large numbers, or infinities, or not-a-numbers
-                //    (`may_overflow`)
-                //
-                // We need to handle both cases, and we need to be lenient when comparing when this
-                // happens. For example, there might be an overflow on the GPU, but not in the CPU
-                // implementation. This should not be flagged as error.
-                float minval = +FLT_MAX, maxval = -FLT_MAX;
-                bool may_overflow = false;
-                for (int time = 0; time < chunk_size; ++time) {
-                    const float x = f(beam, time);
-                    minval = isnan(x) ? 0.0f / 0.0f : fmin(minval, x);
-                    maxval = isnan(x) ? 0.0f / 0.0f : fmax(maxval, x);
-                    // Allow the respective float16 calculations to overflow
-                    may_overflow |= !isfinite(x) || fabs(x) >= 2048.0f;
-                }
-                may_overflow |= !isfinite(minval) || fabs(minval) >= 2048.0f || !isfinite(maxval)
-                                || fabs(maxval) >= 2048.0f;
-                // Allow the scale to be inaccurate when all inputs are close together
-                const bool scale_may_collapse = fabs(maxval - minval) < 10 * epsilon;
-                const int uint8_range = 254; // avoid 0 and 255
-                float expected_scale = (maxval - minval) / uint8_range;
-                float expected_offset = minval - 0.5f * expected_scale;
-                if (!isfinite(expected_offset) || !isfinite(expected_scale)) {
-                    may_overflow = true;
-                    expected_offset = 0.0f;
-                    expected_scale = 0.0f;
-                }
-
                 for (int freq = 0; freq < nfreqs; ++freq) {
+
+                    // Calculate expected result
+                    //
+                    // When comparing to the expected result, two things can go wrong:
+                    // 1. The scale can be zero, or can be close to zero (`scale_may_collapse`)
+                    // 2. The input can contain large numbers, or infinities, or not-a-numbers
+                    //    (`may_overflow`)
+                    //
+                    // We need to handle both cases, and we need to be lenient when comparing when
+                    // this happens. For example, there might be an overflow on the GPU, but not in
+                    // the CPU implementation. This should not be flagged as error.
+                    float minval = +FLT_MAX, maxval = -FLT_MAX;
+                    bool may_overflow = false;
+                    for (int time = 0; time < chunk_size; ++time) {
+                        const float x = f(beam, freq, time);
+                        minval = isnan(x) ? 0.0f / 0.0f : fmin(minval, x);
+                        maxval = isnan(x) ? 0.0f / 0.0f : fmax(maxval, x);
+                        // Allow the respective float16 calculations to overflow
+                        may_overflow |= !isfinite(x) || fabs(x) >= 2048.0f;
+                    }
+                    may_overflow |= !isfinite(minval) || fabs(minval) >= 2048.0f
+                                    || !isfinite(maxval) || fabs(maxval) >= 2048.0f;
+                    // Allow the scale to be inaccurate when all inputs are close together
+                    const bool scale_may_collapse = fabs(maxval - minval) < 10 * epsilon;
+                    const int uint8_range = 254; // avoid 0 and 255
+                    float expected_scale = (maxval - minval) / uint8_range;
+                    float expected_offset = minval - 0.5f * expected_scale;
+                    if (!isfinite(expected_offset) || !isfinite(expected_scale)) {
+                        may_overflow = true;
+                        expected_offset = 0.0f;
+                        expected_scale = 0.0f;
+                    }
+
                     for (int chunk = 0; chunk < nchunks; ++chunk) {
                         const float offset =
                             offsetscale.at(2 * chunk + 2 * nchunks * (freq + nfreqs * beam) + 0);
