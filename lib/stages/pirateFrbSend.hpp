@@ -1,0 +1,40 @@
+#ifndef PIRATE_FRB_SEND_H
+#define PIRATE_FRB_SEND_H
+
+#include "bufferSend.hpp"
+
+class pirateFrbSend : public bufferSend {
+public:
+    /// Standard constructor
+    pirateFrbSend(kotekan::Config& config, const std::string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
+
+    /// Destructor
+    ~pirateFrbSend();
+
+    /// Called when a frame has been received -- just after it has been claimed from
+    /// kotekan.  If false is returned, the sending will end.
+    bool got_frame(uint8_t* frame, int frame_id) override;
+
+    /// Send a frame
+    bool send_frame(uint8_t* frame, int frame_id) override;
+
+    /// Called when a frame has been sent -- just before the buffer frame is released
+    /// back to kotekan.
+    void done_with_frame(int frame_id) override;
+
+protected:
+    std::string get_buffer_name() const override;
+
+private:
+    /// Have we sent the pirate protocol header yet?
+    bool sent_header;
+
+    /// The input buffer containing offset & scale values
+    Buffer* offset_scale_buf;
+
+    /// The current frame of offsets & scales
+    uint8_t* offset_scale_frame;
+};
+
+#endif

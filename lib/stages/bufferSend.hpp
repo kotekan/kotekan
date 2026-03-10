@@ -97,7 +97,17 @@ public:
     /// Adds the target server to the pipeline dot graph
     virtual std::string dot_string(const std::string& prefix) const override;
 
+protected:
+    /// The input buffer name to grab.
+    virtual std::string get_buffer_name() const;
+
+    /// The connection file handle
+    int socket_fd;
+
 private:
+    /// The input buffer name to grab.
+    std::string buffer_name;
+
     /// The input buffer to send frames from.
     Buffer* buf;
 
@@ -141,9 +151,6 @@ private:
     /// Internal server address struct
     struct sockaddr_in server_addr;
 
-    /// The connection file handle
-    int socket_fd;
-
     /// Prevent the sending thread and connection thread from contension
     std::mutex connection_state_mutex;
 
@@ -155,6 +162,17 @@ private:
 
     /// Thread for connecting to the remote server
     void connect_to_server();
+
+    /// Called when a frame has been received -- just after it has been claimed from
+    /// kotekan.  If false is returned, the sending will end.
+    virtual bool got_frame(uint8_t* frame, int frame_id);
+
+    /// Send a frame
+    virtual bool send_frame(uint8_t* frame, int frame_id);
+
+    /// Called when a frame has been sent -- just before the buffer frame is released
+    /// back to kotekan.
+    virtual void done_with_frame(int frame_id);
 };
 
 #endif

@@ -42,8 +42,9 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&bufferSend::main_thread, this)),
     dropped_frame_counter(
         Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
+    buffer_name = get_buffer_name();
 
-    buf = get_buffer("buf");
+    buf = get_buffer(buffer_name);
     buf->register_consumer(unique_name);
 
     connected = false;
@@ -70,6 +71,10 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
 
 bufferSend::~bufferSend() {}
 
+std::string bufferSend::get_buffer_name() const {
+    return "buf";
+}
+
 void bufferSend::main_thread() {
 
     int frame_id = 0;
@@ -80,6 +85,8 @@ void bufferSend::main_thread() {
 
         uint8_t* frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
+            break;
+        if (!got_frame(frame, frame_id))
             break;
 
         uint32_t num_full_frames = buf->get_num_full_frames();
@@ -96,89 +103,14 @@ void bufferSend::main_thread() {
                  buf->buffer_name, frame_id, server_ip, server_port);
             dropped_frame_counter.inc();
         } else if (connected) {
-            int32_t n = 0;
-            int32_t n_sent = 0;
-
-            auto meta = buf->get_metadata(frame_id);
-            auto metadata_size = meta->get_serialized_size();
-            auto frame_size = buf->frame_size;
-            bufferFrameHeader header;
-            header.metadata_size = static_cast<uint32_t>(meta->get_serialized_size());
-            header.frame_size = static_cast<uint32_t>(buf->frame_size);
-            header.config_tracker_update =
-                config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
-            // for legacy CHIME, do not send laast field (config_tracker_update)
-            size_t header_len = use_config_tracker ? sizeof(bufferFrameHeader)
-                                                   : sizeof(bufferFrameHeaderNoConfigTracker);
-
-            if (header.config_tracker_update)
-                DEBUG("Config tracker data has been updated, sending new config tracker data.");
-            DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}",
-                   header.frame_size, header.metadata_size, header.config_tracker_update);
-
-            // Recover from partial sends
-            DEBUG2("Sending header");
-            while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
-                             MSG_NOSIGNAL))
-                   > 0) {
-                n_sent += n;
-            }
-
-            // Handle errors
-            if (n < 0) {
-                ERROR("Error {:s}, failed to send header to {:s}:{:d}", strerror(errno), server_ip,
-                      server_port);
+            if (!send_frame(frame, frame_id)) {
                 close_connection();
                 continue;
             }
-
-
-            // If the frame sent successfully,
-            if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
-                config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
-            }
-            DEBUG2("Sent header: {:d}", n_sent);
-
-            // Send metadata
-            DEBUG2("Sending metadata");
-            n_sent = 0;
-            {
-                char metabuf[metadata_size];
-                meta->serialize(metabuf);
-                while ((n = send(socket_fd, metabuf + n_sent, metadata_size - n_sent, MSG_NOSIGNAL))
-                       > 0) {
-                    n_sent += n;
-                }
-            }
-            if (n < 0) {
-                ERROR("Error {:s}, failed to metadata to {:s}:{:d}", strerror(errno), server_ip,
-                      server_port);
-                close_connection();
-                continue;
-            }
-            DEBUG2("Sent metadata: {:d}", n_sent);
-
-            // Send buffer frame.
-            DEBUG2("Sending frame with {:d} bytes", frame_size);
-            n_sent = 0;
-            while ((n = send(socket_fd, &frame[n_sent], (int32_t)frame_size - n_sent, MSG_NOSIGNAL))
-                   > 0) {
-                n_sent += n;
-                // DEBUG("Total sent: {:d}", n_sent);
-            }
-            if (n < 0) {
-                ERROR("Error {:s}, failed to frame data to {:s}:{:d}", strerror(errno), server_ip,
-                      server_port);
-                close_connection();
-                continue;
-            }
-            DEBUG2("Sent frame: {:d}", n_sent);
             DEBUG("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id, server_ip,
                   server_port);
-
             // Set to true since we've sent a transmission.
             first_transmission_sent = true;
-
         } else {
             // Wait for connection and block
             INFO("Waiting for connection to {:s}:{:d}...", server_ip, server_port);
@@ -188,12 +120,89 @@ void bufferSend::main_thread() {
             continue;
         }
 
+        done_with_frame(frame_id);
         buf->mark_frame_empty(unique_name, frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;
     }
 
     close_connection();
     connect_thread.join();
+}
+
+bool bufferSend::send_frame(uint8_t* frame, int frame_id) {
+    int32_t n = 0;
+    int32_t n_sent = 0;
+
+    auto meta = buf->get_metadata(frame_id);
+    auto metadata_size = meta->get_serialized_size();
+    auto frame_size = buf->frame_size;
+    bufferFrameHeader header;
+    header.metadata_size = static_cast<uint32_t>(meta->get_serialized_size());
+    header.frame_size = static_cast<uint32_t>(buf->frame_size);
+    header.config_tracker_update =
+        config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
+    // for legacy CHIME, do not send laast field (config_tracker_update)
+    size_t header_len = use_config_tracker ? sizeof(bufferFrameHeader)
+                                           : sizeof(bufferFrameHeaderNoConfigTracker);
+
+    if (header.config_tracker_update)
+        DEBUG("Config tracker data has been updated, sending new config tracker data.");
+    DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}",
+           header.frame_size, header.metadata_size, header.config_tracker_update);
+
+    // Recover from partial sends
+    DEBUG2("Sending header");
+    while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
+                     MSG_NOSIGNAL))
+           > 0) {
+        n_sent += n;
+    }
+    // Handle errors
+    if (n < 0) {
+        ERROR("Error {:s}, failed to send header to {:s}:{:d}", strerror(errno), server_ip,
+              server_port);
+        return false;
+    }
+
+    // If the frame sent successfully,
+    if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
+        config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
+    }
+    DEBUG2("Sent header: {:d}", n_sent);
+
+    // Send metadata
+    DEBUG2("Sending metadata");
+    n_sent = 0;
+    {
+        char metabuf[metadata_size];
+        meta->serialize(metabuf);
+        while ((n = send(socket_fd, metabuf + n_sent, metadata_size - n_sent, MSG_NOSIGNAL))
+               > 0) {
+            n_sent += n;
+        }
+    }
+    if (n < 0) {
+        ERROR("Error {:s}, failed to metadata to {:s}:{:d}", strerror(errno), server_ip,
+              server_port);
+        return false;
+    }
+    DEBUG2("Sent metadata: {:d}", n_sent);
+
+    // Send buffer frame.
+    DEBUG2("Sending frame with {:d} bytes", frame_size);
+    n_sent = 0;
+    while ((n = send(socket_fd, &frame[n_sent], (int32_t)frame_size - n_sent, MSG_NOSIGNAL))
+           > 0) {
+        n_sent += n;
+        // DEBUG("Total sent: {:d}", n_sent);
+    }
+    if (n < 0) {
+        ERROR("Error {:s}, failed to frame data to {:s}:{:d}", strerror(errno), server_ip,
+              server_port);
+        return false;
+    }
+    DEBUG2("Sent frame: {:d}", n_sent);
+    return true;
 }
 
 void bufferSend::close_connection() {
@@ -277,4 +286,11 @@ std::string bufferSend::dot_string(const std::string& prefix) const {
     dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\"", prefix, get_unique_name(), target);
 
     return dot;
+}
+
+bool bufferSend::got_frame(uint8_t* frame, int frame_id) {
+    return true;
+}
+
+void bufferSend::done_with_frame(int frame_id) {
 }
