@@ -31,6 +31,7 @@ add_library(
     testDataGenFloat.cpp
     testLostSamplesToPLMask.cpp
     testN2kGen.cpp
+    testRFIS012Gen.cpp
     TestDropFrames.cpp
     testCHORDTelescope.cpp
     TimeUtilDump.cpp

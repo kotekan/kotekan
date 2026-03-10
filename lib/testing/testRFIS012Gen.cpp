@@ -1,0 +1,208 @@
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
+#include "metadata.hpp"        // for metadataObject
+#include "visUtil.hpp"         // for frameID, modulo
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <assert.h>   // for assert
+#include <cstdlib>    // for abort, size_t
+#include <functional> // for bind, function
+#include <random>     // for uniform_int_distribution, mt19937
+#include <stdint.h>   // for int32_t, uint32_t, uint64_t, int64_t
+#include <utility>    // for swap
+#include <vector>     // for vector
+
+
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+class testRFIS012Gen : public kotekan::Stage {
+public:
+    testRFIS012Gen(kotekan::Config& config, const std::string& unique_name,
+               kotekan::bufferContainer& buffer_container);
+    ~testRFIS012Gen(){};
+    void main_thread() override;
+
+private:
+    const std::string type;
+    const int64_t samples_per_data_set;
+    const int64_t num_local_freq;
+    const int64_t num_polarizations;
+    const int64_t num_dishes;
+    const int64_t num_frames;
+    const int64_t downsampling_factor;
+    const int64_t num_rfi_samples;
+    const int64_t num_elements;
+    const bool bar_mode;
+    const uint64_t S0_value;
+    const uint64_t S1_value;
+    const uint64_t S2_value;
+    const std::vector<uint64_t> S0_value_array;
+    const std::vector<uint64_t> S1_value_array;
+    const std::vector<uint64_t> S2_value_array;
+    const std::vector<uint32_t> freq_ids;
+    const uint64_t seed;
+    const uint64_t first_frame_index;
+
+    Buffer* out_buf;
+
+    std::shared_ptr<chordMetadata> get_new_metadata(frameID frame_id);
+    void set_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num);
+};
+
+REGISTER_KOTEKAN_STAGE(testRFIS012Gen);
+
+testRFIS012Gen::testRFIS012Gen(Config& config, const std::string& unique_name,
+                       bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&testRFIS012Gen::main_thread, this)),
+    type(config.get<std::string>(unique_name, "type")),
+    samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
+    num_local_freq(config.get<int64_t>(unique_name, "num_local_freq")),
+    num_polarizations(config.get<int64_t>(unique_name, "num_polarizations")),
+    num_dishes(config.get<int64_t>(unique_name, "num_dishes")),
+    num_frames(config.get<int64_t>(unique_name, "num_frames")),
+    downsampling_factor(config.get<int64_t>(unique_name, "downsampling_factor")),
+    num_rfi_samples(samples_per_data_set / downsampling_factor),
+    num_elements(num_dishes * num_polarizations),
+    bar_mode(config.get<bool>(unique_name, "bar_mode")),
+    S0_value(config.get_default<uint64_t>(unique_name, "S0_value", downsampling_factor)),
+    S1_value(config.get_default<uint64_t>(unique_name, "S1_value", downsampling_factor)),
+    S2_value(config.get_default<uint64_t>(unique_name, "S2_value", downsampling_factor)),
+    S0_value_array(config.get_default<std::vector<uint64_t>>(unique_name, "S0_values", std::vector<uint64_t>())),
+    S1_value_array(config.get_default<std::vector<uint64_t>>(unique_name, "S1_values", std::vector<uint64_t>())),
+    S2_value_array(config.get_default<std::vector<uint64_t>>(unique_name, "S2_values", std::vector<uint64_t>())),
+    freq_ids(config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids", std::vector<uint32_t>({4096}))),
+    seed(config.get_default<uint64_t>(unique_name, "seed", 12345)),
+    first_frame_index(config.get_default<uint64_t>(unique_name, "first_frame_index", 0)) {
+
+    assert(type == "const" || type == "random");
+
+    // Get buffers
+    out_buf = get_buffer("out_buf");
+    out_buf->register_producer(unique_name);
+
+    // Check parameter compatibility
+    if (num_elements <= 0) {
+        FATAL_ERROR("num_elements ({:d}) is not positive.", num_elements);
+    }
+    if (num_local_freq <= 0) {
+        FATAL_ERROR("num_local_freq ({:d}) is not positive.", num_local_freq);
+    }
+    if (samples_per_data_set <= 0) {
+        FATAL_ERROR("samples_per_data_set ({:d}) is not positive.", samples_per_data_set);
+    }
+    if (samples_per_data_set % downsampling_factor != 0) {
+        FATAL_ERROR(
+            "samples_per_data_set ({:d}) is not a multiple of downsampling_factor ({:d}).",
+            samples_per_data_set, downsampling_factor);
+    }
+    if (freq_ids.empty()) {
+        FATAL_ERROR("freq_ids must have at least one element.");
+    }
+
+    // allocate frame descriptor
+    if (bar_mode) {
+        out_buf->allocate_ndarray_frame_desc<uint64_t, 5>("S012bar",
+            {num_rfi_samples, num_local_freq, 3, num_polarizations, num_dishes},
+            {"Trfibar", "F", "S", "P", "D"});
+    } else {
+        out_buf->allocate_ndarray_frame_desc<uint64_t, 5>("S012",
+            {num_rfi_samples, num_local_freq, 3, num_polarizations, num_dishes},
+            {"Trfi", "F", "S", "P", "D"});
+    }
+}
+
+std::shared_ptr<chordMetadata> testRFIS012Gen::get_new_metadata(frameID frame_id) {
+    out_buf->allocate_new_metadata_object(frame_id);
+
+    const std::shared_ptr<metadataObject> mc = out_buf->get_metadata(frame_id);
+    if (!mc) {
+        FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata", out_buf->buffer_name, frame_id);
+    }
+    assert(mc);
+    if (!metadata_is_chord(mc)) {
+        FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata", out_buf->buffer_name,
+                    frame_id);
+    }
+    assert(metadata_is_chord(mc));
+    const std::shared_ptr<chordMetadata> meta = get_chord_metadata(mc);
+    assert(meta);
+
+    return meta;
+}
+
+void testRFIS012Gen::set_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num) {
+    meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+
+    meta->set_fpga_seq_num(seq_num);
+    meta->set_time_downsampling_fpga(downsampling_factor);
+
+    std::vector<int> coarse_freq(num_local_freq);
+    std::vector<int> freq_upchan_factor(num_local_freq);
+    std::vector<int> freq_upchan_index(num_local_freq);
+
+    for (int f = 0; f < num_local_freq; f++) {
+        coarse_freq[f] = freq_ids[f % freq_ids.size()];
+        freq_upchan_factor[f] = 1;
+        freq_upchan_index[f] = 0;
+    }
+
+    meta->set_coarse_freq(coarse_freq);
+    meta->set_freq_upchan_factor(freq_upchan_factor);
+    meta->set_freq_upchan_index(freq_upchan_index);
+    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+}
+
+void testRFIS012Gen::main_thread() {
+
+    frameID frame_id(out_buf);
+    int num_frames_generated = 0;
+    uint64_t seq_num = first_frame_index * samples_per_data_set;
+
+    std::mt19937 rng(seed);
+
+    /*
+    uint64_t s0_val_idx = 0;
+    uint64_t s1_val_idx = 0;
+    uint64_t s2_val_idx = 0;
+    */
+
+    while (!stop_thread) {
+
+        // grab frame
+        uint64_t* s012 = (uint64_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
+        if (s012 == nullptr)
+            break;
+
+        // create metadata
+        const std::shared_ptr<chordMetadata> meta = get_new_metadata(frame_id);
+
+        // fill metadata
+        set_metadata(meta, seq_num);
+
+        // check frame descriptors match metadata
+        meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
+
+        s012[0] = 0;
+
+        DEBUG("Generated a {:s} test RFI S012 data set in {:s}[{:d}]", type,
+              out_buf->buffer_name, frame_id);
+
+        out_buf->mark_frame_full(unique_name, frame_id++);
+
+        num_frames_generated++;
+        seq_num += samples_per_data_set;
+
+        if (num_frames >= 0 && num_frames_generated >= num_frames) {
+            INFO("Generated the requested number of frames ({:d}) - exiting", num_frames);
+            break;
+        }
+    }
+}
