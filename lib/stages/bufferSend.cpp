@@ -109,8 +109,6 @@ void bufferSend::main_thread() {
             }
             DEBUG("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id, server_ip,
                   server_port);
-            // Set to true since we've sent a transmission.
-            first_transmission_sent = true;
         } else {
             // Wait for connection and block
             INFO("Waiting for connection to {:s}:{:d}...", server_ip, server_port);
@@ -266,7 +264,6 @@ void bufferSend::connect_to_server() {
         {
             std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
             connected = true;
-            first_transmission_sent = false; // Reset first transmission flag
         }
 
         // Notify that connection is established

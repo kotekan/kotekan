@@ -145,9 +145,6 @@ private:
     /// Set to true if there is an active connection
     std::atomic<bool> connected;
 
-    /// Set to true if this is the first transmission
-    std::atomic<bool> first_transmission_sent;
-
     /// Internal server address struct
     struct sockaddr_in server_addr;
 
