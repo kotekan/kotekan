@@ -6,7 +6,6 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata, CHO...
-#include "div.hpp"             // for div_noremainder
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
 #include "metadata.hpp"        // for metadataObject
 #include "n2k_sk_globals.hpp"  // for n2k_globals
@@ -22,11 +21,98 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::div_noremainder;
-using kotekan::Stage;
-using N2::frameID;
 
-
+/**
+ * @class gpuSimulateRFISK
+ *
+ * @brief Simulate the external/n2k/src_lib/SkKernel.cu sk_kernel(), as called by
+ * lib/cuda/cudaRFISKbar.cpp and lib/cuda/cudaRFISKtilde.cpp
+ *
+ * Given an input buffer containing S0, S1, and S2 values:
+ *
+ * S0 = \sum_{t \in t_rfi} PL[t]
+ * S1 = \sum_{t \in t_rfi} PL[t] x |E[t]|^2
+ * S2 = \sum_{t \in t_rfi} PL[t] x |E[t]|^4
+ *
+ * where `t_rfi` is a downsampled time variable, covering `downsampling_factor` fast time samples
+ * `t`, PL is the packet loss mask, and E is the voltage/electric field.
+ *
+ * This stage computes an estimator for the bias-corrected spectral kurtosis (SK),
+ * its bias (b), and the square root of its variance (sigma).
+ *
+ * It first computes each of these for the feeds independently, then averages over feeds, then
+ * computes an RFI mask from the feed-averaged SK.
+ *
+ * SK for a single feed is:
+ *
+ * SK = ((S0 + 1) / (S0 - 1)) * (S0 * S2 / (S1 * S1) - 1) - bias
+ *
+ * The expected mean of SK for input signals with Gaussian noise is 1.0.  The `bias` and `sigma` are
+ * interpolated from tables located in n2k_sk_globals.hpp, which has been copied from `n2k`.
+ *
+ * Where possible calculations here are done in double precision, when comparing output with n2k
+ * the results should agree to at least 10^{-6}.
+ *
+ * For the single-feed results, computation only proceeds if the fraction of good counts
+ * (S0 / rfi_total_downsampling_factor) is greater than `rfi_single_feed_min_good_frac` and the
+ * average signal (S1 / S0 = <|E^2|>) is in `[rfi_mu_min, rfi_mu_max]`. Otherwise
+ * SK, bias, sigma = (0, 0, -1) is written.
+ *
+ * For the feed-averaged results, single feeds results are only included if they passed the
+ * single feed threshold, if the bad feed mask (bf_mask) is true, and the fraction of good samples
+ * (Sum_e(S0[e]) / (rfi_total_downsampling_factor * num_elements)) is greater than
+ * rfi_feed_averaged_min_good frac.  Feed-averaged values are weighed by the number of samples.
+ *
+ * The RFI mask is 1 (good) if the feed-averaged SK is within `rfi_sk_rfimask_sigmas`
+ * feed-averaged sigmas of 1.0, otherwise the RFI mask is 0 (bad).
+ *
+ * This stage produces buffers compatible with either cudaRFISKtilde or cudaRFISKbar.
+ *
+ * @par Buffers
+ * @buffer in_rfi_s012_buf      Buffer of input S012 values
+ *         @buffer_format uint64
+ *         @buffer_shape [samples_per_data_set/rfi_total_downsampling_factor, num_local_freq, 3,
+ *              num_polarizations, num_dishes]
+ *         @buffer_metadata chordMetadata time_downsample_fpga[] = rfi_total_downsampling_factor
+ * @buffer in_bf_mask_buf       The bad feed mask
+ *         @buffer_format uint8
+ *         @buffer_shape [num_polarizations, num_dishes]
+ *         @buffer_metadata chordMetadata
+ * @buffer out_rfi_sk_buf       Buffer of single feed (SK, bias, sigma) values
+ *         @buffer_format float32
+ *         @buffer_shape [samples_per_data_set/rfi_total_downsampling_factor, num_local_freq, 3,
+ *              num_polarizations, num_dishes]
+ *         @buffer_metadata chordMetadata time_downsample_fpga[] = rfi_total_downsampling_factor
+ * @buffer out_rfi_sktilde_buf  Buffer of feed-averaged (SK, bias, sigma) values
+ *         @buffer_format float32
+ *         @buffer_shape [samples_per_data_set/rfi_total_downsampling_factor, num_local_freq, 3]
+ *         @buffer_metadata chordMetadata time_downsample_fpga[] = rfi_total_downsampling_factor
+ * @buffer out_rfi_mask_buf     The RFI mask. A bit mask.
+ *         @buffer_format uint1x8
+ *         @buffer_shape    As a uint8: [samples_per_data_set/1024, num_local_freq, 128]
+ *                          As a uint1: [samples_per_data_set/1024, num_local_freq, 1024]
+ *         @buffer_metadata chordMetadata time_downsample_fpga[] = 1024
+ *
+ * @conf  num_polarizations     Int. Number of polarizations.
+ * @conf  num_dishes            Int. Number of dishes.
+ * @conf  num_local_freq        Int. Number of frequencies.
+ * @conf  samples_per_data_set  Int. Number of fast time samples per buffer.
+ * @conf  rfi_total_downsampling_factor   Int. Number of fast times `t` in a `t_rfi`. Must divide
+ *                              `samples_per_data_set`. Output SK buffers will contain
+ *                              `samples_per_data_set` / `downsampling_factor` time samples.
+ * @conf  bar_mode              Bool. Whether to output an SKbar buffer or SK buffer.
+ * @conf  rfi_sk_rfimask_sigmas             Double. SK sigma threshold for RFI mask.
+ * @conf  rfi_single_feed_min_good_frac     Double. Threshold of good sample coverage for inclusion
+ *                                          in single feed SK calculation.
+ * @conf  rfi_feed_averaged_min_good_frac   Double. Threshold on good sample coverage for inclusion
+ *                                          in feed-averaged SK calculation.
+ * @conf  rfi_mu_min                        Double. Lower threshold on <|E^2|> for inclusion
+ *                                          in single feed SK calculation.
+ * @conf  rfi_mu_max                        Double. Upper threshold on <|E^2|> for inclusion
+ *                                          in single feed SK calculation.
+ *
+ * @author Geoffrey Ryan
+ */
 class gpuSimulateRFISK : public kotekan::Stage {
 public:
     gpuSimulateRFISK(Config& config, const std::string& unique_name,
@@ -54,13 +140,20 @@ private:
     const double _rfi_feed_averaged_min_good_frac;
     const double _rfi_mu_min;
     const double _rfi_mu_max;
+    /// Lower x limit in bias & sigma tables
     const float _xmin;
+    /// Upper x limit in bias & sigma tables
     const float _xmax;
+    /// Number of x samples in bias table.
     const uint64_t _bias_nx;
+    /// Number of y samples in bias table.
     const uint64_t _bias_ny;
+    /// Number of x samples in sigma table.
     const uint64_t _sigma_nx;
 
+    /// bias table
     std::vector<float> _bias_coeffs;
+    /// sigma table
     std::vector<float> _sigma_coeffs;
 
     Buffer* in_bf_mask_buf;
@@ -69,6 +162,9 @@ private:
     Buffer* out_rfi_sktilde_buf;
     Buffer* out_rfi_mask_buf;
 };
+
+using kotekan::Stage;
+using N2::frameID;
 
 REGISTER_KOTEKAN_STAGE(gpuSimulateRFISK);
 
@@ -210,7 +306,7 @@ void gpuSimulateRFISK::main_thread() {
         if (rfi_mask == nullptr)
             break;
 
-        INFO("Simulating GPU RFI S012 for {:s}[{:d}], {:s}[{:d}] and putting result in {:s}[{:d}], "
+        INFO("Simulating GPU RFI SK for {:s}[{:d}], {:s}[{:d}] and putting result in {:s}[{:d}], "
              "{:s}[{:d}], {:s}[{:d}]",
              in_bf_mask_buf->buffer_name, in_bf_mask_frame_id, in_rfi_s012_buf->buffer_name,
              in_rfi_s012_frame_id, out_rfi_sk_buf->buffer_name, out_rfi_sk_frame_id,
@@ -252,15 +348,19 @@ void gpuSimulateRFISK::main_thread() {
 
             for (uint64_t f = 0; f < nf; f++) {
 
+                uint64_t s012_idx = f * fstride_s012 + t_rfi * tstride_s012;
                 uint64_t sk_idx = f * fstride_sk + t_rfi * tstride_sk;
                 uint64_t sktilde_idx = f * fstride_sktilde + t_rfi * tstride_sktilde;
-                uint64_t s012_idx = f * fstride_s012 + t_rfi * tstride_s012;
 
+                // First, loop through elements and calculate SK, bias, sigma for each.
                 for (uint64_t e = 0; e < ne; e++) {
+
+                    // Grab single-feed inputs
                     uint64_t s0 = rfi_s012[s012_idx + e];
                     uint64_t s1 = rfi_s012[s012_idx + sstride_s012 + e];
                     uint64_t s2 = rfi_s012[s012_idx + 2 * sstride_s012 + e];
 
+                    // Check if within thresholds. If not, write dummy values and move on.
                     if (s0 < _rfi_downsampling_factor * _rfi_single_feed_min_good_frac
                         || s1 < _rfi_mu_min * s0 || s1 > _rfi_mu_max * s0) {
                         rfi_sk[sk_idx + 0 * sstride_sk + e] = 0.0f;
@@ -270,66 +370,67 @@ void gpuSimulateRFISK::main_thread() {
                     }
 
                     // SK = ((s0 + 1) / (s0 - 1)) * (s0 * s2 / s1^2 - 1)
+                    // Compute numerator and denominator of uncorrected SK,
+                    // do subtraction in ints for precision.
                     double sk_num = (s0 + 1) * static_cast<double>(s0 * s2 - s1 * s1);
                     double sk_den = (s0 - 1) * static_cast<double>(s1 * s1);
 
+                    // compute x = log(<|E^s|>), y = 1/s0 for table interpolation.
                     double y = 1.0 / static_cast<double>(s0); // = 1/n
                     double mu = static_cast<double>(s1) / s0; // = s1f/n = <|E|^2>
                     double x = std::clamp(log(mu), (double)_xmin, (double)_xmax);
 
+                    // Get the bias and sigma (via table interpolation)
                     double bias = get_bias(x, y);
                     double sigma = get_sigma(x, s0);
 
-                    /*
-                    // There are nx sample points uniform over [xmin, xmax].
-                    // tx is in [0, nx-1] => integer part of tx is interval index.
-                    float tx =
-                        (x - _xmin) * ((static_cast<float>(_sigma_nx) - 1.0f) / (_xmax - _xmin));
-                    // index of reference pt in interval.
-                    uint64_t tx_idx = std::clamp(static_cast<uint64_t>(tx), 1ul, _sigma_nx - 3);
-                    float tx_diff = tx - static_cast<float>(tx_idx);
-
-                    // = sigma * sqrt(s0)
-                    float sigma_tmp =
-                        cubic_interpolate(tx_diff, _sigma_coeffs[tx_idx - 1], _sigma_coeffs[tx_idx],
-                                          _sigma_coeffs[tx_idx + 1], _sigma_coeffs[tx_idx + 2]);
-
-                    float sigma = sigma_tmp * sqrtf(y); // divide by sqrt(s0)
-                    */
-
-                    // INFO("sigma_tmp = {}  s0f = {}  sigma = {}", sigma_tmp, s0f, sigma);
+                    // Write the values
                     rfi_sk[sk_idx + 0 * sstride_sk + e] = sk_num / sk_den - bias;
                     rfi_sk[sk_idx + 1 * sstride_sk + e] = bias;
                     rfi_sk[sk_idx + 2 * sstride_sk + e] = sigma;
                 } // e
 
-                uint64_t n = 0;
+                // Now we're calculating the feed-averaged values.
 
+                // Accumulation variables. Feed-averaged values are weighted by good counts (S0)
+                uint64_t n = 0;
                 double w_sk_tilde = 0;
                 double w_bias_tilde = 0;
-                double w2_sigma2_tilde = 0.0;
+                double w2_sigma2_tilde = 0.0; // Accumulate variance = sigma^2 instead of sigma.
 
+                // Loop over elements, accumulate accordingly.
                 for (uint64_t e = 0; e < ne; e++) {
+                    // single feed values for this element.
                     float sk = rfi_sk[sk_idx + 0 * sstride_sk + e];
                     float bias = rfi_sk[sk_idx + 1 * sstride_sk + e];
                     float sigma = rfi_sk[sk_idx + 2 * sstride_sk + e];
 
+                    // Only include if BF is good AND single feed passed the threshold
                     if (bf_mask[e] && sigma > 0.0) {
                         uint64_t s0 = rfi_s012[s012_idx + e];
                         n += s0;
                         w_sk_tilde += s0 * sk;
                         w_bias_tilde += s0 * bias;
+                        // variance gets weighted by N^2 instead of N.
                         w2_sigma2_tilde += s0 * s0 * sigma * sigma;
                     }
                 } // e
 
+
+                // Now we can assign the feed-averaged SK values.  While we're at it we
+                // do the check for if this sample should be RFI masked or not.
+
+                // By default, sample is bad.
                 bool rfi_good = false;
 
+                // Make sure we pass the threshold, if not, write the dummy values.
                 if (n < _rfi_feed_averaged_min_good_frac * _rfi_downsampling_factor * ne) {
                     rfi_sktilde[sktilde_idx + 0] = 0.0f;
                     rfi_sktilde[sktilde_idx + 1] = 0.0f;
                     rfi_sktilde[sktilde_idx + 2] = -1.0f;
                 } else {
+
+                    // We're good! Write the feed-averaged sk, bias, and sigma.
 
                     double sk = w_sk_tilde / n;
                     double sigma = sqrt(w2_sigma2_tilde) / n;
@@ -338,26 +439,36 @@ void gpuSimulateRFISK::main_thread() {
                     rfi_sktilde[sktilde_idx + 1] = w_bias_tilde / n;
                     rfi_sktilde[sktilde_idx + 2] = sigma;
 
+                    // While we have the values, check if sk is within the sigma threshold of 1.0.
                     if (sk >= 1.0 - _rfi_sk_rfimask_sigmas * sigma
                         && sk <= 1.0 + _rfi_sk_rfimask_sigmas * sigma)
                         rfi_good = true;
                 }
 
+                // Finally, we can write the RFI mask value.
+
+                // RFI mask access strides.  The RFI mask has time split into a slow (t / 1024)
+                // and fast (t % 1024) index.  This index addresses a BIT, but the strides are
+                // in BYTES, so the fast stride is 128 bytes = 1024 bits.
                 uint64_t fstride_rfimask = 128; // = 1024 / 8
                 uint64_t thistride_rfimask = nf * 128;
 
-                // Write the RFI mask
+                // Write the RFI mask.  The RFI mask has values for *every* time sample,
+                // so this value is copied along rfi_downsampling_factor time samples.
                 for (uint64_t t = t_rfi * _rfi_downsampling_factor;
                      t < (t_rfi + 1) * _rfi_downsampling_factor; t++) {
 
+                    // Split the time into fast and slow, bytes, and bits.
                     uint64_t t_hi = t / 1024;
                     uint64_t t_lo = t % 1024;
                     uint64_t t_lo_byte = t_lo / 8;
                     uint8_t t_lo_bit = t_lo % 8;
 
+                    // Calculate the byte index we're writing to.
                     uint64_t rfimask_idx =
                         t_hi * thistride_rfimask + f * fstride_rfimask + t_lo_byte;
 
+                    // Write the bit!
                     if (rfi_good) {
                         rfi_mask[rfimask_idx] |= (1u << t_lo_bit);
                     } else {
@@ -454,7 +565,7 @@ void gpuSimulateRFISK::main_thread() {
         meta_rfi_mask->set_time_downsampling_fpga(1024 * meta_in->get_time_downsampling_fpga()
                                                   / _rfi_downsampling_factor);
 
-        INFO("Simulating GPU RFI S012 done for {:s}[{:d}]+{:s}[{:d}] result is in "
+        INFO("Simulating GPU RFI SK done for {:s}[{:d}]+{:s}[{:d}] result is in "
              "{:s}[{:d}]+{:s}[{:d}]+{:s}[{:d}]",
              in_rfi_s012_buf->buffer_name, in_rfi_s012_frame_id, in_bf_mask_buf->buffer_name,
              in_bf_mask_frame_id, out_rfi_sk_buf->buffer_name, out_rfi_sk_frame_id,

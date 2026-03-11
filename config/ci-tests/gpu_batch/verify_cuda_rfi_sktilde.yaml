@@ -20,7 +20,7 @@ sizeof_int: 4
 sizeof_long: 8
 
 # For faster CHORD testing, we're using...
-samples_per_data_set: 1024
+samples_per_data_set: 8192
 frame_arrival_period: 5.12e-6 * samples_per_data_set
 num_polarizations: 2
 num_dishes: 64
@@ -29,11 +29,18 @@ num_local_freq: 4
 
 rfi_downsampling_factor: 256
 
-rfi_sk_rfimask_sigmas: 1.0
-rfi_single_feed_min_good_frac: 0.8
-rfi_feed_averaged_min_good_frac: 0.8
-rfi_mu_min: 2.0
-rfi_mu_max: 20.0
+# For random data (as used here) the sk-sigma is ~1.0e-3 but sk~[10, 50].
+# To get a non-trivial (not all true or false) RFI mask, need the 
+# RFI mask sigmas to be enormous, 2000 is good.
+#
+# The other thresholds are also set wide, because their effect is multiplicative.
+# A mu range of [2, 80] and min_good_frac of 0.25 only gives 60% good SK, the
+# rest are 0'd.
+rfi_sk_rfimask_sigmas: 2000.0 
+rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are good
+rfi_feed_averaged_min_good_frac: 0.25   # Wide open (0.25) so most averaged feeds are good
+rfi_mu_min: 2.0       # Should be small (2) to let in many samples.
+rfi_mu_max: 80.0      # Should be big (80) to let in many samples.
 
 # Pool
 main_pool:
