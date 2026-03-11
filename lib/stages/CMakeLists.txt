@@ -17,6 +17,7 @@ add_library(
     integratePowerStream.cpp
     monitorBuffer.cpp
     networkInputPowerStream.cpp
+    parseReorderDefault.cpp
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
@@ -63,6 +64,7 @@ add_library(
     bufferCopy.cpp
     bufferSwitch.cpp
     bufferDelay.cpp
+    bufferQuiet.cpp
     BufferSplit.cpp
     InputSubset.cpp
     setScatterIndices.cpp
@@ -82,6 +84,7 @@ add_library(
     HFBAccumulate.cpp
     compressLostSamples.cpp
     lostSamplesToPLMask.cpp
+    lostSamplesToN2Counts.cpp
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
@@ -89,12 +92,11 @@ add_library(
     BeamExtract.cpp
     BeamInspect.cpp
     configTrackerWriter.cpp
+    givenDataGen.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
     hexDump.cpp
-    ProcessPacketMask.cpp
-    PLMaskExpandedToCompact.cpp
     printSparse.cpp
     ExampleProducer.cpp
     ExampleConsumer.cpp
@@ -102,8 +104,8 @@ add_library(
     N2Accumulate.cpp
     N2TimeDownsample.cpp
     N2FringeStop.cpp
-    TransposeBasebandArray.cpp
     dropAllFrames.cpp
+    N2FrameToVisFrame.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 

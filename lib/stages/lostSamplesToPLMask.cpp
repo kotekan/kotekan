@@ -33,14 +33,12 @@ REGISTER_KOTEKAN_STAGE(lostSamplesToPLMask);
 
 #define BITS_PER_BYTE 8
 
-// CHIME parameters, actually
-#define NUM_DISHES 1024
-#define NUM_POLARIZATIONS 2
-
 lostSamplesToPLMask::lostSamplesToPLMask(Config& config, const std::string& unique_name,
                                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
-          std::bind(&lostSamplesToPLMask::main_thread, this)) {
+          std::bind(&lostSamplesToPLMask::main_thread, this)),
+    num_polarizations(config.get<int>(unique_name, "num_polarizations")),
+    num_dishes(config.get<int>(unique_name, "num_dishes")) {
 
     pl_mask_buf = get_buffer("pl_mask_buf");
     pl_mask_buf->register_producer(unique_name);
@@ -61,8 +59,8 @@ lostSamplesToPLMask::lostSamplesToPLMask(Config& config, const std::string& uniq
     const int num_freq_bins = int(lost_samples_bufs.size());
 
     if (pl_mask_buf->frame_size
-        != lost_samples_bufs.at(0)->frame_size / PL_MASK_DOWNSAMPLING_FACTOR * NUM_DISHES
-               / PL_MASK_DISHES_PER_BIN * NUM_POLARIZATIONS / BITS_PER_BYTE * num_freq_bins)
+        != lost_samples_bufs.at(0)->frame_size / PL_MASK_DOWNSAMPLING_FACTOR * num_dishes
+               / PL_MASK_DISHES_PER_BIN * num_polarizations / BITS_PER_BYTE * num_freq_bins)
         FATAL_ERROR("Unexpected frames sizes for pl_mask {:d} and lost_samples {:d}",
                     pl_mask_buf->frame_size, lost_samples_bufs.at(0)->frame_size);
 }
@@ -120,10 +118,10 @@ void lostSamplesToPLMask::main_thread() {
                 // frequencies
                 size_t idx =
                     (ihi / PL_MASK_DOWNSAMPLING_FACTOR / PL_MASK_HILO_SPLIT * num_freq_bins + f)
-                    * NUM_POLARIZATIONS * NUM_DISHES / PL_MASK_DISHES_PER_BIN * PL_MASK_HILO_SPLIT
+                    * num_polarizations * num_dishes / PL_MASK_DISHES_PER_BIN * PL_MASK_HILO_SPLIT
                     / BITS_PER_BYTE;
-                for (int dbin = 0; dbin < NUM_DISHES / PL_MASK_DISHES_PER_BIN; ++dbin) {
-                    for (int polr = 0; polr < NUM_POLARIZATIONS; ++polr) {
+                for (int dbin = 0; dbin < num_dishes / PL_MASK_DISHES_PER_BIN; ++dbin) {
+                    for (int polr = 0; polr < num_polarizations; ++polr) {
                         std::memcpy(&pl_mask_frame[idx], buf, sizeof(buf));
                         idx += sizeof(buf);
                     }
@@ -150,8 +148,8 @@ void lostSamplesToPLMask::main_thread() {
                 pl_mask_meta->dim[0] = lost_samples_bufs.at(0)->frame_size
                                        / PL_MASK_DOWNSAMPLING_FACTOR / PL_MASK_HILO_SPLIT;
                 pl_mask_meta->dim[1] = lost_samples_bufs.size();
-                pl_mask_meta->dim[2] = NUM_POLARIZATIONS;
-                pl_mask_meta->dim[3] = NUM_DISHES / PL_MASK_DISHES_PER_BIN;
+                pl_mask_meta->dim[2] = num_polarizations;
+                pl_mask_meta->dim[3] = num_dishes / PL_MASK_DISHES_PER_BIN;
                 pl_mask_meta->dim[4] =
                     PL_MASK_HILO_SPLIT / BITS_PER_BYTE; // because we count uint1x8, not uint1
                 for (int d = pl_mask_meta->dims - 1; d >= 0; --d)
@@ -202,8 +200,8 @@ void lostSamplesToPLMask::main_thread() {
             "pl_mask",
             {ptrdiff_t(lost_samples_bufs.at(0)->frame_size / PL_MASK_DOWNSAMPLING_FACTOR
                        / PL_MASK_HILO_SPLIT),
-             ptrdiff_t(lost_samples_bufs.size()), NUM_POLARIZATIONS,
-             NUM_DISHES / PL_MASK_DISHES_PER_BIN,
+             ptrdiff_t(lost_samples_bufs.size()), num_polarizations,
+             num_dishes / PL_MASK_DISHES_PER_BIN,
              PL_MASK_HILO_SPLIT / BITS_PER_BYTE /* because we count uint1x8, not uint1 */},
             {"T2hi64", "F4", "P", "D8", "T2lo64"});
         pl_mask_meta->check_frame_desc(pl_mask_buf->get_ndarray_frame_desc());
