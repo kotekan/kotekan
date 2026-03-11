@@ -242,6 +242,9 @@ struct GeographicParams {
     /// Description of the grid of dishes
     dishGrid dish_grid;
 
+    /// Whether to fatal on duplicate dish grid locations (default: true).
+    bool check_duplicate_dish_grid = true;
+
     /**
      * @brief Build full dish parameters (including rotation matrices and positions)
      * from the config for this telescope.
@@ -264,6 +267,8 @@ struct GeographicParams {
      * @conf   num_dishes           size_t. Total number of dishes.
      * @conf   num_dishes_x         size_t. Number of dishes in the E/W (x) direction.
      * @conf   num_dishes_y         size_t. Number of dishes in the N/S (y) direction.
+     * @conf   check_duplicate_dish_grid  bool. Fatal on duplicate dish grid locations.
+     *                              Default: true.
      *
      * @param   config  The config.
      * @param   path    This telescope's path in the config.

@@ -97,6 +97,7 @@ add_library(
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
     hexDump.cpp
+    ProcessPacketMask.cpp
     printSparse.cpp
     ExampleProducer.cpp
     ExampleConsumer.cpp
@@ -104,6 +105,7 @@ add_library(
     N2Accumulate.cpp
     N2TimeDownsample.cpp
     N2FringeStop.cpp
+    TransposeBasebandArray.cpp
     dropAllFrames.cpp
     N2FrameToVisFrame.cpp
     # Julia

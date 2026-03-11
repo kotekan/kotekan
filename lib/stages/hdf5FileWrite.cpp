@@ -61,6 +61,10 @@ using namespace HighFive;
  *       frames.
  * @conf skip_writing  Bool. Do not actually write anything. Default:
  *       false.
+ * @conf write_x_frames  Int. Write the first X out of every Y frames (see per_y_frames).
+ *       Default: -1 (disabled).
+ * @conf per_y_frames  Int. Period Y for frame decimation (see write_x_frames).
+ *       Default: -1 (disabled).
  *
  * @par Metrics
  * @metric kotekan_hdf5filewrite_write_time_seconds

@@ -125,6 +125,7 @@ telescope:
   dish_vert_axis: [0.0, 0.0, 1.0]
 
   dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
+  check_duplicate_dish_grid: false  # Pathfinder has duplicate grid locations
 
   num_dishes_x: 8
   num_dishes_y: 12
@@ -405,19 +406,6 @@ transpose_voltage_1:
     pl_mask_buf: host_pl_mask_exp_buffer
     out_buf: host_voltage_buffer
     frame_mode: odd
-
-# Generate fake bad feed mask filled with ones for now (all feeds good)
-generate_bf_mask:
-    kotekan_stage: testDataGen
-    out_buf: host_bf_mask_buffer
-    type: const8
-    value: 1
-    num_frames: 1
-    wait: false
-    name: bf_mask
-    array_shape: [2, {{ num_dishes }}]
-    dim_name: ["P", "D"]
-
 
 
 ## Send data to GPU ringbuffers ##
