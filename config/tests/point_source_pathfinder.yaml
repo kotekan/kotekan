@@ -1,4 +1,5 @@
 ---
+# Emulates a point source transit with the early CHORD Pathfinder topology, generates N2 data.
 type: config
 log_level: INFO
 

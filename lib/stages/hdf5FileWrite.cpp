@@ -51,16 +51,20 @@ using namespace HighFive;
  * @par Buffers:
  * @buffer in_buf Buffer to write to disk.
  *     @buffer_format Any
- *     @buffer_metadata Any
+ *     @buffer_metadata chord or N2
  *
  * @conf base_dir  String. Directory to write into.
  * @conf file_name String. Base filename to write.
  * @conf prefix_hostname  Bool. Prepend hostname to output file names. Default:
  *       true.
+ * @conf prefix_host_rank  Bool. Prepend rank to output file names. Default: false.
+ * @conf frequency_pool_rank    Int. This stage's rank in the frequency pool.
+ * @conf frequency_pool_size    Int. Number of stages in the frequency pool.
  * @conf max_frames  Int. Stop writing after this many frames, Default 0 = unlimited
  *       frames.
  * @conf skip_writing  Bool. Do not actually write anything. Default:
  *       false.
+ * @conf create_single_file Bool. Write all data to one single file.
  * @conf write_x_frames  Int. Write the first X out of every Y frames (see per_y_frames).
  *       Default: -1 (disabled).
  * @conf per_y_frames  Int. Period Y for frame decimation (see write_x_frames).
