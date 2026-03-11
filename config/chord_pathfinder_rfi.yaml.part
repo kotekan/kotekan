@@ -1,5 +1,6 @@
 ## This is just a yaml snippet for reference.
 ## Eventually something like this should used for RFI flagging.
+## Delete once included with one of the production configs. 
 
 
 # RFI Detection Parameters
