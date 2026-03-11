@@ -54,13 +54,10 @@ private:
     const double _rfi_feed_averaged_min_good_frac;
     const double _rfi_mu_min;
     const double _rfi_mu_max;
-    const float _mu_min;
-    const float _mu_max;
     const float _xmin;
     const float _xmax;
     const uint64_t _bias_nx;
     const uint64_t _bias_ny;
-    const uint64_t _bias_nmin;
     const uint64_t _sigma_nx;
 
     std::vector<float> _bias_coeffs;
@@ -91,11 +88,10 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
     _rfi_feed_averaged_min_good_frac(
         config.get<double>(unique_name, "rfi_feed_averaged_min_good_frac")),
     _rfi_mu_min(config.get<double>(unique_name, "rfi_mu_min")),
-    _rfi_mu_max(config.get<double>(unique_name, "rfi_mu_max")), _mu_min(n2k_globals::mu_min),
-    _mu_max(n2k_globals::mu_max), _xmin(n2k_globals::xmin), _xmax(n2k_globals::xmax),
-    _bias_nx(n2k_globals::bias_nx), _bias_ny(n2k_globals::bias_ny),
-    _bias_nmin(n2k_globals::bias_nmin), _sigma_nx(n2k_globals::sigma_nx),
-    _bias_coeffs(std::vector<float>()), _sigma_coeffs(std::vector<float>()) {
+    _rfi_mu_max(config.get<double>(unique_name, "rfi_mu_max")), _xmin(n2k_globals::xmin),
+    _xmax(n2k_globals::xmax), _bias_nx(n2k_globals::bias_nx), _bias_ny(n2k_globals::bias_ny),
+    _sigma_nx(n2k_globals::sigma_nx), _bias_coeffs(std::vector<float>()),
+    _sigma_coeffs(std::vector<float>()) {
 
     // Grab Buffers
     in_rfi_s012_buf = get_buffer("in_rfi_s012_buf");
