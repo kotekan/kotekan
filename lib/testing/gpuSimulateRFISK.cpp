@@ -308,17 +308,65 @@ void gpuSimulateRFISK::main_thread() {
                 
                 uint64_t n = 0;
 
+                double w_sk_tilde = 0;
+                double w_bias_tilde = 0;
+                double w2_sigma2_tilde = 0.0;
+
                 for (uint64_t e = 0; e < ne; e++) {
-                    if (bf_mask[e]) {
+                    float sk = rfi_sk[sk_idx + 0 * sstride_sk + e];
+                    float bias = rfi_sk[sk_idx + 1 * sstride_sk + e];
+                    float sigma = rfi_sk[sk_idx + 2 * sstride_sk + e];
+
+                    if (bf_mask[e] && sigma > 0.0) {
                         uint64_t s0 = rfi_s012[s012_idx + e];
                         n += s0;
-                        rfi_sktilde[sktilde_idx] += s0 * rfi_sk[sk_idx + e];
-                        rfi_sktilde[sktilde_idx + 2] += s0 * rfi_sk[sk_idx + 2 * sstride_sk + e];
+                        w_sk_tilde += s0 * sk;
+                        w_bias_tilde += s0 * bias;
+                        w2_sigma2_tilde += s0 * s0 * sigma * sigma;
                     }
                 } // e
 
-                rfi_sktilde[sktilde_idx] /= n;
-                rfi_sktilde[sktilde_idx + 2] /= n;
+                bool rfi_good = false;
+
+                if (n < _rfi_feed_averaged_min_good_frac * _rfi_downsampling_factor * ne) {
+                    rfi_sktilde[sktilde_idx + 0] = 0.0f;
+                    rfi_sktilde[sktilde_idx + 1] = 0.0f;
+                    rfi_sktilde[sktilde_idx + 2] = -1.0f;
+                } else {
+
+                    double sk = w_sk_tilde / n;
+                    double sigma = sqrt(w2_sigma2_tilde) / n;
+
+                    rfi_sktilde[sktilde_idx + 0] = sk;
+                    rfi_sktilde[sktilde_idx + 1] = w_bias_tilde / n;
+                    rfi_sktilde[sktilde_idx + 2] = sigma;
+
+                    if (sk >= 1.0 - _rfi_sk_rfimask_sigmas * sigma
+                            && sk <= 1.0 + _rfi_sk_rfimask_sigmas * sigma)
+                        rfi_good = true;
+                }
+
+                uint64_t fstride_rfimask = 128;  // = 1024 / 8
+                uint64_t thistride_rfimask = nf * 128;
+
+                // Write the RFI mask
+                for(uint64_t t = t_rfi * _rfi_downsampling_factor; t < (t_rfi + 1) * _rfi_downsampling_factor; t++) {
+
+                    uint64_t t_hi = t / 1024;
+                    uint64_t t_lo = t % 1024;
+                    uint64_t t_lo_byte = t_lo / 8;
+                    uint8_t t_lo_bit = t_lo % 8;
+
+                    uint64_t rfimask_idx = t_hi * thistride_rfimask + f * fstride_rfimask + t_lo_byte;
+
+                    if (rfi_good) {
+                        rfi_mask[rfimask_idx] |= (1u << t_lo_bit); 
+                    } else {
+                        rfi_mask[rfimask_idx] |= (0u << t_lo_bit); 
+                    }
+
+                } // t
+
             } // f
         } // t_rfi
 

@@ -102,14 +102,13 @@ host_rfi_mask_ringbuffer:
     metadata_pool: main_pool
 
 gen_rfi_s012:
-    type: randomu64
-    kotekan_stage: testDataGen
+    log_level: DEBUG
+    kotekan_stage: testRFIS012Gen
     out_buf: host_rfi_s012_buffer
-    name: "S012"
-    array_shape: [ 4, 4, 3, 2, 64 ]
-    dim_name: ["Trfi", "F", "S", "P", "D" ]
-    num_frames: 2*buffer_depth  # Must be at least what check_data expects
-    meta_time_downsample_factor: rfi_downsampling_factor
+    type: random
+    bar_mode: false
+    downsampling_factor: rfi_downsampling_factor
+    num_frames: 2 * buffer_depth
 
 gen_bf_mask:
     type: random8
@@ -178,6 +177,22 @@ run_recv_rfi_sktilde:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_sktilde_buffer_out
 
+run_recv_rfi_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_mask_ringbuffer_in: host_rfi_mask_ringbuffer
+        out_buffers:
+            host_rfi_mask_buffer_out: host_rfi_mask_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_mask_ringbuffer_in
+          gpu_mem_input: rfi_mask_buffer
+          output_size: samples_per_data_set * num_local_freq / 8
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_mask_buffer_out
+
 
 cpu_rfi_sktilde:
     kotekan_stage: gpuSimulateRFISK
@@ -190,10 +205,19 @@ cpu_rfi_sktilde:
     rfi_total_downsampling_factor: rfi_downsampling_factor
 
 
-check_rfi_data:
+check_rfi_sktilde_data:
   kotekan_stage: testDataCheckFloat
   first_buf: host_rfi_sktilde_buffer
   second_buf: simulated_rfi_sktilde_buffer
+  max_num_errors_logged: 64
+  epsilon: 1.0e-6
+  num_frames_to_test: 2 * buffer_depth
+  check_metadata: True
+
+check_rfi_rfimask_data:
+  kotekan_stage: testDataCheckUchar
+  first_buf: host_rfi_mask_buffer
+  second_buf: simulated_rfi_mask_buffer
   max_num_errors_logged: 64
   num_frames_to_test: 2 * buffer_depth
   check_metadata: True

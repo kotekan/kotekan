@@ -39,6 +39,7 @@ add_library(
     pulsarSimProcess.cpp
     visNoise.cpp
     visDrop.cpp
+    waitingForAllTests.cpp
     zeroLowerTriangle.cpp
     visTestPattern.cpp)
 
