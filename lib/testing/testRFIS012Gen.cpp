@@ -308,6 +308,8 @@ void testRFIS012Gen::main_thread() {
                             s1 = 0;
                             s2 = 0;
                         }
+                    } else {
+                        FATAL_ERROR("Unknown 'type': {:s}", type);
                     }
 
                     s012[idx + 0 * ds + e] = s0;
