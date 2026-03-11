@@ -346,7 +346,7 @@ run_send_voltage:
             host_voltage_ringbuffer: host_voltage_ringbuffer
         commands:
         - name: cudaCopyNToRingbuffer
-          input_size: samples_per_data_set * num_elements * num_freq_gpu_buf
+          input_size: samples_per_data_set * num_elements * num_freq_host_buf
           ring_buffer_size: gpu_buffer_depth * input_size
           in_bufs: 
 {%- for id in range(num_freq_gpu_buf) %}
