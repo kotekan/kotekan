@@ -34,6 +34,8 @@ public:
     ~gpuSimulateRFISK();
     void main_thread() override;
 
+    double get_bias(double x, double y);
+    double get_sigma(double x, uint64_t s0);
     float cubic_interpolate(float x, float y0, float y1, float y2, float y3);
     double nice_cubic_interpolate(double x, double x0, double dx, double y0, double y1, double y2, double y3);
     bool test_cubic_interpolate();
@@ -260,8 +262,6 @@ void gpuSimulateRFISK::main_thread() {
                     uint64_t s0 = rfi_s012[s012_idx + e];
                     uint64_t s1 = rfi_s012[s012_idx + sstride_s012 + e];
                     uint64_t s2 = rfi_s012[s012_idx + 2 * sstride_s012 + e];
-                    float s0f = static_cast<float>(s0);
-                    float s1f = static_cast<float>(s1);
                     
                     if (s0 < _rfi_downsampling_factor * _rfi_single_feed_min_good_frac
                         || s1 < _rfi_mu_min * s0
@@ -272,34 +272,16 @@ void gpuSimulateRFISK::main_thread() {
                         continue;
                     }
 
-                    // Copying order of operations from n2k SkKernel.cu
-                    //
                     // SK = ((s0 + 1) / (s0 - 1)) * (s0 * s2 / s1^2 - 1)
                     double sk_num = (s0 + 1) * static_cast<double>(s0 * s2 - s1 * s1);
                     double sk_den = (s0 - 1) * static_cast<double>(s1 * s1);
 
-                    float y = 1.0f / s0f; // = 1/n
-                    float mu = s1f * y;   // = s1f/n = <|E|^2>
-                    float x = std::clamp(logf(mu), _xmin, _xmax);
+                    double y = 1.0 / static_cast<double>(s0); // = 1/n
+                    double mu = static_cast<double>(s1) / s0;   // = s1f/n = <|E|^2>
+                    double x = std::clamp(log(mu), (double)_xmin, (double)_xmax);
 
-                    // x spacing in the sigma table
-                    double dx = (_xmax - _xmin) / ((double) (_sigma_nx - 1));
-
-                    // index of bin in sigma table containing x, unless x is near the end
-                    // of the bin. Leaves at least 1 free bin to the left and at least two
-                    // free bins to the right.
-                    uint64_t bin_idx = std::clamp(static_cast<uint64_t>((x - _xmin) / dx),
-                                                  1ul, _sigma_nx - 3);
-                    // Index of first bin (or first table point) in the reconstruction.
-                    // Probable one to the left of where the sample point is.
-                    uint64_t i0 = bin_idx - 1;
-                    // x-value of point at i0.
-                    double x0 = _xmin + dx * i0;
-
-                    // table interpolation for sigma. Returns sigma * sqrt(s0)
-                    double sigma_tab = nice_cubic_interpolate(x, x0, dx, _sigma_coeffs[i0],
-                            _sigma_coeffs[i0+1], _sigma_coeffs[i0+2], _sigma_coeffs[i0+3]);
-                    double sigma = sigma_tab / sqrt(s0);
+                    double bias = get_bias(x, y);
+                    double sigma = get_sigma(x, s0);
 
                     /*
                     // There are nx sample points uniform over [xmin, xmax].
@@ -319,7 +301,8 @@ void gpuSimulateRFISK::main_thread() {
                     */
 
                     //INFO("sigma_tmp = {}  s0f = {}  sigma = {}", sigma_tmp, s0f, sigma);
-                    rfi_sk[sk_idx + e] = sk_num / sk_den;
+                    rfi_sk[sk_idx + 0 * sstride_sk + e] = sk_num / sk_den - bias;
+                    rfi_sk[sk_idx + 1 * sstride_sk + e] = bias;
                     rfi_sk[sk_idx + 2 * sstride_sk + e] = sigma;
                 } // e
                 
@@ -431,12 +414,65 @@ void gpuSimulateRFISK::main_thread() {
              out_rfi_sktilde_buf->buffer_name, out_rfi_sktilde_frame_id,
              out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
 
-        in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id++);
         in_rfi_s012_buf->mark_frame_empty(unique_name, in_rfi_s012_frame_id++);
         out_rfi_sk_buf->mark_frame_full(unique_name, out_rfi_sk_frame_id++);
         out_rfi_sktilde_buf->mark_frame_full(unique_name, out_rfi_sktilde_frame_id++);
         out_rfi_mask_buf->mark_frame_full(unique_name, out_rfi_mask_frame_id++);
     } // while !stop_thread
+}
+
+double gpuSimulateRFISK::get_bias(double x, double y) {
+    double dx = (_xmax - _xmin) / ((double) (_bias_nx - 1));
+    
+    // index of bin in bias table containing x, unless x is near the end
+    // of the bin. Leaves at least 1 free bin to the left and at least two
+    // free bins to the right.
+    uint64_t bin_idx = std::clamp(static_cast<uint64_t>((x - _xmin) / dx),
+                                  1ul, _bias_nx - 3);
+    // Index of first bin (or first table point) in the reconstruction.
+    // Probably one to the left of where the sample point is.
+    uint64_t i0 = bin_idx - 1;
+    // x-value of point at i0.
+    double x0 = _xmin + dx * i0;
+
+    // We will use the table rows i0, i0+1, i0+2, i0+3.
+    // Each row is a list of coefficients for a polynomial in y.
+
+    double c[4] = {0.0};
+
+    // Evaluate the polynomials in y for each row we need.
+    for(uint64_t i = 0; i < 4; i++) {
+        double yp = 1.0;
+        for(uint64_t j = 0; j < _bias_ny; j++) {
+            c[i] += _bias_coeffs[(i+i0)*_bias_ny + j] * yp;
+            yp *= y;
+        }
+    }
+
+    // Now we can interpolate
+    return nice_cubic_interpolate(x, x0, dx, c[0], c[1], c[2], c[3]);
+}
+
+double gpuSimulateRFISK::get_sigma(double x, uint64_t s0) {
+    double dx = (_xmax - _xmin) / ((double) (_sigma_nx - 1));
+
+    // index of bin in sigma table containing x, unless x is near the end
+    // of the bin. Leaves at least 1 free bin to the left and at least two
+    // free bins to the right.
+    uint64_t bin_idx = std::clamp(static_cast<uint64_t>((x - _xmin) / dx),
+                                  1ul, _sigma_nx - 3);
+    // Index of first bin (or first table point) in the reconstruction.
+    // Probably one to the left of where the sample point is.
+    uint64_t i0 = bin_idx - 1;
+    // x-value of point at i0.
+    double x0 = _xmin + dx * i0;
+
+    // table interpolation for sigma. Returns sigma * sqrt(s0)
+    double sigma_tab = nice_cubic_interpolate(x, x0, dx, _sigma_coeffs[i0],
+            _sigma_coeffs[i0+1], _sigma_coeffs[i0+2], _sigma_coeffs[i0+3]);
+    double sigma = sigma_tab / sqrt(s0);
+
+    return sigma;
 }
 
 /*
