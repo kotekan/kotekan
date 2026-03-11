@@ -26,7 +26,7 @@ using kotekan::Stage;
 class testRFIS012Gen : public kotekan::Stage {
 public:
     testRFIS012Gen(kotekan::Config& config, const std::string& unique_name,
-               kotekan::bufferContainer& buffer_container);
+                   kotekan::bufferContainer& buffer_container);
     ~testRFIS012Gen(){};
     void main_thread() override;
 
@@ -60,7 +60,7 @@ private:
 REGISTER_KOTEKAN_STAGE(testRFIS012Gen);
 
 testRFIS012Gen::testRFIS012Gen(Config& config, const std::string& unique_name,
-                       bufferContainer& buffer_container) :
+                               bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&testRFIS012Gen::main_thread, this)),
     type(config.get<std::string>(unique_name, "type")),
     samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
@@ -75,10 +75,14 @@ testRFIS012Gen::testRFIS012Gen(Config& config, const std::string& unique_name,
     S0_value(config.get_default<uint64_t>(unique_name, "S0_value", downsampling_factor)),
     S1_value(config.get_default<uint64_t>(unique_name, "S1_value", downsampling_factor)),
     S2_value(config.get_default<uint64_t>(unique_name, "S2_value", downsampling_factor)),
-    S0_value_array(config.get_default<std::vector<uint64_t>>(unique_name, "S0_values", std::vector<uint64_t>())),
-    S1_value_array(config.get_default<std::vector<uint64_t>>(unique_name, "S1_values", std::vector<uint64_t>())),
-    S2_value_array(config.get_default<std::vector<uint64_t>>(unique_name, "S2_values", std::vector<uint64_t>())),
-    freq_ids(config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids", std::vector<uint32_t>({4096}))),
+    S0_value_array(config.get_default<std::vector<uint64_t>>(unique_name, "S0_values",
+                                                             std::vector<uint64_t>())),
+    S1_value_array(config.get_default<std::vector<uint64_t>>(unique_name, "S1_values",
+                                                             std::vector<uint64_t>())),
+    S2_value_array(config.get_default<std::vector<uint64_t>>(unique_name, "S2_values",
+                                                             std::vector<uint64_t>())),
+    freq_ids(config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids",
+                                                       std::vector<uint32_t>({4096}))),
     seed(config.get_default<uint64_t>(unique_name, "seed", 12345)),
     first_frame_index(config.get_default<uint64_t>(unique_name, "first_frame_index", 0)) {
 
@@ -99,9 +103,8 @@ testRFIS012Gen::testRFIS012Gen(Config& config, const std::string& unique_name,
         FATAL_ERROR("samples_per_data_set ({:d}) is not positive.", samples_per_data_set);
     }
     if (samples_per_data_set % downsampling_factor != 0) {
-        FATAL_ERROR(
-            "samples_per_data_set ({:d}) is not a multiple of downsampling_factor ({:d}).",
-            samples_per_data_set, downsampling_factor);
+        FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of downsampling_factor ({:d}).",
+                    samples_per_data_set, downsampling_factor);
     }
     if (freq_ids.empty()) {
         FATAL_ERROR("freq_ids must have at least one element.");
@@ -109,12 +112,12 @@ testRFIS012Gen::testRFIS012Gen(Config& config, const std::string& unique_name,
 
     // allocate frame descriptor
     if (bar_mode) {
-        out_buf->allocate_ndarray_frame_desc<uint64_t, 5>("S012bar",
-            {num_rfi_samples, num_local_freq, 3, num_polarizations, num_dishes},
+        out_buf->allocate_ndarray_frame_desc<uint64_t, 5>(
+            "S012bar", {num_rfi_samples, num_local_freq, 3, num_polarizations, num_dishes},
             {"Trfibar", "F", "S", "P", "D"});
     } else {
-        out_buf->allocate_ndarray_frame_desc<uint64_t, 5>("S012",
-            {num_rfi_samples, num_local_freq, 3, num_polarizations, num_dishes},
+        out_buf->allocate_ndarray_frame_desc<uint64_t, 5>(
+            "S012", {num_rfi_samples, num_local_freq, 3, num_polarizations, num_dishes},
             {"Trfi", "F", "S", "P", "D"});
     }
 }
@@ -124,7 +127,8 @@ std::shared_ptr<chordMetadata> testRFIS012Gen::get_new_metadata(frameID frame_id
 
     const std::shared_ptr<metadataObject> mc = out_buf->get_metadata(frame_id);
     if (!mc) {
-        FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata", out_buf->buffer_name, frame_id);
+        FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata", out_buf->buffer_name,
+                    frame_id);
     }
     assert(mc);
     if (!metadata_is_chord(mc)) {
@@ -196,10 +200,10 @@ void testRFIS012Gen::main_thread() {
         uint64_t max_E2 = 2 * max_E * max_E;
         uint64_t max_E4 = max_E2 * max_E2;
 
-        for(int64_t t = 0; t < num_rfi_samples; t++) {
-            for(int64_t f = 0; f < num_local_freq; f++) {
-                int64_t idx = t*dt + f*df;
-                for(int64_t e = 0; e < num_elements; e++) {
+        for (int64_t t = 0; t < num_rfi_samples; t++) {
+            for (int64_t f = 0; f < num_local_freq; f++) {
+                int64_t idx = t * dt + f * df;
+                for (int64_t e = 0; e < num_elements; e++) {
                     uint64_t s0 = 0;
                     uint64_t s1 = 0;
                     uint64_t s2 = 0;
@@ -222,8 +226,7 @@ void testRFIS012Gen::main_thread() {
                             s2_val_idx++;
                         } else
                             s2 = S2_value;
-                    }
-                    else if (type == "random") {
+                    } else if (type == "random") {
                         // s0 is counts, can only be as many as seq_nums
                         s0 = rng() % downsampling_factor;
                         if (s0 > 0) {
@@ -236,8 +239,9 @@ void testRFIS012Gen::main_thread() {
                             uint64_t max_s2 = s0 * max_E4;
                             uint64_t min_s2 = s1 * s1 / s0;
                             if (max_s2 < min_s2)
-                                FATAL_ERROR("For s0 = {:d}, s1 = {:d}, min_s2 = {:d} > max_s2 = {:d}",
-                                        s0, s1, min_s2, max_s2);
+                                FATAL_ERROR(
+                                    "For s0 = {:d}, s1 = {:d}, min_s2 = {:d} > max_s2 = {:d}", s0,
+                                    s1, min_s2, max_s2);
 
                             s2 = min_s2 + rng() % (max_s2 - min_s2 + 1);
                         } else {
@@ -246,19 +250,19 @@ void testRFIS012Gen::main_thread() {
                         }
                     }
 
-                    s012[idx + 0*ds + e] = s0;
-                    s012[idx + 1*ds + e] = s1;
-                    s012[idx + 2*ds + e] = s2;
+                    s012[idx + 0 * ds + e] = s0;
+                    s012[idx + 1 * ds + e] = s1;
+                    s012[idx + 2 * ds + e] = s2;
 
                     if (e == 0 && f == 0)
-                        DEBUG("Wrote S012[{:d}, {:d}, :, {:d}] = ({:d}, {:d}, {:d})",
-                                t, f, e, s0, s1, s2);
+                        DEBUG("Wrote S012[{:d}, {:d}, :, {:d}] = ({:d}, {:d}, {:d})", t, f, e, s0,
+                              s1, s2);
                 } // e
             } // f
         } // t
 
-        DEBUG("Generated a {:s} test RFI S012 data set in {:s}[{:d}]", type,
-              out_buf->buffer_name, frame_id);
+        DEBUG("Generated a {:s} test RFI S012 data set in {:s}[{:d}]", type, out_buf->buffer_name,
+              frame_id);
 
         out_buf->mark_frame_full(unique_name, frame_id++);
 
