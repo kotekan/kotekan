@@ -21,6 +21,7 @@ add_library(
     gpuSimulateRFIS012.cpp
     gpuSimulateRFIS012bar.cpp
     gpuSimulateRFIS012tilde.cpp
+    gpuSimulateRFISK.cpp
     inventBFMask.cpp
     inventPLMask.cpp
     networkOutputSim.cpp
@@ -30,6 +31,7 @@ add_library(
     testDataGenFloat.cpp
     testLostSamplesToPLMask.cpp
     testN2kGen.cpp
+    testRFIS012Gen.cpp
     TestDropFrames.cpp
     testCHORDTelescope.cpp
     TimeUtilDump.cpp
@@ -37,6 +39,7 @@ add_library(
     pulsarSimProcess.cpp
     visNoise.cpp
     visDrop.cpp
+    waitingForAllTests.cpp
     zeroLowerTriangle.cpp
     visTestPattern.cpp)
 
