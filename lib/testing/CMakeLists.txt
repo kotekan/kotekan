@@ -34,6 +34,7 @@ add_library(
     testRFIS012Gen.cpp
     TestDropFrames.cpp
     testCHORDTelescope.cpp
+    testXpose.cpp
     TimeUtilDump.cpp
     GenHFBFrames.cpp
     pulsarSimProcess.cpp
