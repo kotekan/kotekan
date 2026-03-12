@@ -197,7 +197,7 @@ void TransposeBasebandArray::transpose_block_avx512(const uint8_t* in, uint8_t* 
         // Gather next 64 bytes (elements 64-127 from e_long 8-15)
         __m512i data_hi = _mm512_i64gather_epi64(indices_hi, (const long long*)base, 1);
 
-        if (unlikely(check_for_zero_nibbles)) {
+        if (check_for_zero_nibbles) {
             // Check for zero nibbles in the input data, which would indicate corruption
             // Check if any nibbles are zero in data_lo or data_hi
             // Using the "hasless" technique: (v - 0x1111...) & ~v & 0x8888...

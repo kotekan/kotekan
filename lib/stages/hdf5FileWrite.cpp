@@ -51,16 +51,24 @@ using namespace HighFive;
  * @par Buffers:
  * @buffer in_buf Buffer to write to disk.
  *     @buffer_format Any
- *     @buffer_metadata Any
+ *     @buffer_metadata chord or N2
  *
  * @conf base_dir  String. Directory to write into.
  * @conf file_name String. Base filename to write.
  * @conf prefix_hostname  Bool. Prepend hostname to output file names. Default:
  *       true.
+ * @conf prefix_host_rank  Bool. Prepend rank to output file names. Default: false.
+ * @conf frequency_pool_rank    Int. This stage's rank in the frequency pool.
+ * @conf frequency_pool_size    Int. Number of stages in the frequency pool.
  * @conf max_frames  Int. Stop writing after this many frames, Default 0 = unlimited
  *       frames.
  * @conf skip_writing  Bool. Do not actually write anything. Default:
  *       false.
+ * @conf create_single_file Bool. Write all data to one single file.
+ * @conf write_x_frames  Int. Write the first X out of every Y frames (see per_y_frames).
+ *       Default: -1 (disabled).
+ * @conf per_y_frames  Int. Period Y for frame decimation (see write_x_frames).
+ *       Default: -1 (disabled).
  *
  * @par Metrics
  * @metric kotekan_hdf5filewrite_write_time_seconds
@@ -81,6 +89,10 @@ class hdf5FileWrite : public kotekan::Stage {
     const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
     const bool create_single_file =
         config.get_default<bool>(unique_name, "create_single_file", false);
+    const int64_t write_x_frames =
+        config.get_default<int64_t>(unique_name, "write_x_frames", -1);
+    const int64_t per_y_frames =
+        config.get_default<int64_t>(unique_name, "per_y_frames", -1);
 
     Buffer* const buffer;
 
@@ -497,7 +509,15 @@ public:
             INFO("Received buffer {} frame {} (duration {} sec)", unique_name, frame_counter,
                  elapsed_time);
 
-            if (!skip_writing) {
+            // Optionally, only write every X out of Y frames.
+            bool do_write = true;
+            if (write_x_frames >= 0 && per_y_frames > 0) {
+                if (frame_counter % per_y_frames > write_x_frames) {
+                    do_write = false;
+                }
+            }
+
+            if (!skip_writing && do_write) {
                 // Fetch metadata
                 const std::shared_ptr<const metadataObject> mc = buffer->get_metadata(frame_id);
                 if (!mc)

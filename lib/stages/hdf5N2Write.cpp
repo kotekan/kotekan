@@ -187,38 +187,38 @@ std::optional<N2FileData::DigitalGains> N2FileData::_get_digital_gains() const {
                            e.what());
         return std::nullopt;
     }
-    // Verify two vectors named "gains_lin" and "gains_log" exist
-    if (!gains_file->exist("gains_lin") || !gains_file->exist("gains_log")) {
+    // Verify two vectors named "gain_lin" and "gain_log" exist
+    if (!gains_file->exist("gain_lin") || !gains_file->exist("gain_log")) {
         FATAL_ERROR_NON_OO(
-            "Digital gains file {} does not contain required datasets 'gains_lin' and "
-            "'gains_log'.",
+            "Digital gains file {} does not contain required datasets 'gain_lin' and "
+            "'gain_log'.",
             gains_path.string());
         return std::nullopt;
     }
-    if (gains_file->getObjectType("gains_lin") != HighFive::ObjectType::Dataset
-        || gains_file->getObjectType("gains_log") != HighFive::ObjectType::Dataset) {
+    if (gains_file->getObjectType("gain_lin") != HighFive::ObjectType::Dataset
+        || gains_file->getObjectType("gain_log") != HighFive::ObjectType::Dataset) {
         FATAL_ERROR_NON_OO(
-            "Digital gains file {} does not contain required datasets 'gains_lin' and "
-            "'gains_log' as datasets.",
+            "Digital gains file {} does not contain required datasets 'gain_lin' and "
+            "'gain_log' as datasets.",
             gains_path.string());
         return std::nullopt;
     }
     // Verify datasets are of type uint16_t
-    auto ds_lin_type = gains_file->getDataSet("gains_lin").getDataType();
-    auto ds_log_type = gains_file->getDataSet("gains_log").getDataType();
+    auto ds_lin_type = gains_file->getDataSet("gain_lin").getDataType();
+    auto ds_log_type = gains_file->getDataSet("gain_log").getDataType();
     HighFive::AtomicType<std::uint16_t> expected_uint16_type;
     if (ds_lin_type != expected_uint16_type || ds_log_type != expected_uint16_type) {
         FATAL_ERROR_NON_OO("Digital gains datasets in file {} are not of type uint16_t!",
                            gains_path.string());
         return std::nullopt;
     }
-    // Read datasets into vectors
-    std::vector<std::uint16_t> gains_lin;
-    std::vector<std::uint16_t> gains_log;
+    // Read datasets into 2D vectors
+    std::vector<std::vector<std::uint16_t>> gains_lin;
+    std::vector<std::vector<std::uint16_t>> gains_log;
     try {
-        auto ds_lin = gains_file->getDataSet("gains_lin");
+        auto ds_lin = gains_file->getDataSet("gain_lin");
         ds_lin.read(gains_lin);
-        auto ds_log = gains_file->getDataSet("gains_log");
+        auto ds_log = gains_file->getDataSet("gain_log");
         ds_log.read(gains_log);
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to read digital gains datasets from file {}: {}",
@@ -510,13 +510,17 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                 _check_create_attribute(*file, "digital_gains_source_file",
                                         gains_data->full_filepath);
 
-                _check_create_dataset(*file, "/digital_gains/gains_lin",
-                                      {gains_data->gains_lin.size()}, {"input"},
-                                      HighFive::create_datatype<uint16_t>(), props_empty);
+                _check_create_dataset(
+                    *file, "/digital_gains/gains_lin",
+                    {gains_data->gains_lin.size(), gains_data->gains_lin.at(0).size()},
+                    {"gain_channel", "input"},
+                    HighFive::create_datatype<uint16_t>(), props_empty);
 
-                _check_create_dataset(*file, "/digital_gains/gains_log",
-                                      {gains_data->gains_log.size()}, {"input"},
-                                      HighFive::create_datatype<uint16_t>(), props_empty);
+                _check_create_dataset(
+                    *file, "/digital_gains/gains_log",
+                    {gains_data->gains_log.size(), gains_data->gains_log.at(0).size()},
+                    {"gain_channel", "input"},
+                    HighFive::create_datatype<uint16_t>(), props_empty);
             }
         } else {
             DEBUG_NON_OO("No gains_base_directory specified, skipping digital gains.");
@@ -832,10 +836,8 @@ bool N2FileData::flush_to_disk() {
                 // Write gains datasets
                 try {
                     h5_file->getDataSet("/digital_gains/gains_lin")
-                        .select({0}, {gains_data->gains_lin.size()})
                         .write(gains_data->gains_lin);
                     h5_file->getDataSet("/digital_gains/gains_log")
-                        .select({0}, {gains_data->gains_log.size()})
                         .write(gains_data->gains_log);
                 } catch (const HighFive::Exception& e) {
                     FATAL_ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}",

@@ -68,8 +68,8 @@ class N2FileData {
 public:
     enum FileMode { CHORD, CHIME };
     struct DigitalGains {
-        std::vector<std::uint16_t> gains_lin;
-        std::vector<std::uint16_t> gains_log;
+        std::vector<std::vector<std::uint16_t>> gains_lin;
+        std::vector<std::vector<std::uint16_t>> gains_log;
         std::string full_filepath;
     };
 

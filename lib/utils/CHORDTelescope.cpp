@@ -79,6 +79,10 @@ GeographicParams GeographicParams::from_config(const kotekan::Config& config,
         dish.R_topo_to_dish[2][i] = dish_z[i];
     }
 
+    // Whether to check for duplicate dish grid locations
+    dish.check_duplicate_dish_grid =
+        config.get_default<bool>(path, "check_duplicate_dish_grid", true);
+
     // Set all dish input data: num_dishes, dish_info_table, dish_position, ...
     dish.set_dish_info(config, path);
 
@@ -186,8 +190,7 @@ void GeographicParams::set_dish_info(const kotekan::Config& config, const std::s
         // Catch inconsistencies
         assert(dish_info.idx == dish);
         dish_index_t& dish_index = dish_grid.dish_index(dish_info.grid_x_idx, dish_info.grid_y_idx);
-        // Catch inconsistencies
-        if (dish_index != -1) {
+        if (check_duplicate_dish_grid && dish_index != -1) {
             FATAL_ERROR_NON_OO("dish {:s} has duplicate grid location ({:d},{:d})", dish_info.label,
                                dish_info.grid_x_idx, dish_info.grid_y_idx);
         }
