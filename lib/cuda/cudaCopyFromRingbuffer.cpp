@@ -154,21 +154,12 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
         nwrap = _output_size - ncopy;
     }
 
-    INFO("Copying from seq={:d}: cursor - {:d} size - {:d} nel - {:d}",
-         out_meta->get_fpga_seq_num(), input_cursor, _output_size, out_meta->dim[0]);
-
     record_start_event();
 
     if (out_buffer) {
         int out_id = gpu_frame_id % out_buffer->num_frames;
         void* host_output_frame = (void*)out_buffer->frames[out_id];
         assert(out_buffer->is_frame_empty(out_id) && "waited for in precondition");
-
-        uint64_t val_gpu = 1234567890;
-        uint64_t val_cpu = ((uint64_t *)host_output_frame)[0];
-    cudaMemcpyAsync(&val_gpu, (char *)rb_memory+start, sizeof(uint64_t), cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id));
-    cudaStreamSynchronize(device.getStream(cuda_stream_id));
-        INFO("GPU[0]: {:d}  CPU[0]: {:d}", val_gpu, val_cpu);
 
         device.async_copy_gpu_to_host(host_output_frame, (char*)rb_memory + start, ncopy,
                                       cuda_stream_id, pre_events[cuda_stream_id], nullptr, nullptr);
@@ -190,12 +181,6 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
                                                 dimnames);
         /* test that things are consistent */
         out_meta->check_frame_desc(out_buffer->get_ndarray_frame_desc());
-        
-        val_gpu = 1234567890;
-        val_cpu = ((uint64_t *)host_output_frame)[0];
-    cudaMemcpyAsync(&val_gpu, (char *)rb_memory+start, sizeof(uint64_t), cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id));
-    cudaStreamSynchronize(device.getStream(cuda_stream_id));
-        INFO("GPU[0]: {:d}  CPU[0]: {:d}", val_gpu, val_cpu);
 
     } else {
         int out_id = gpu_frame_id % _gpu_buffer_depth;
