@@ -75,7 +75,7 @@ private:
     const std::string rfi_S012tilde_name;
 
     // Buffers
-    NDArrayBuffer<std::int8_t, 2> bf_mask;
+    NDArrayRingBuffer<std::int8_t, 3> bf_mask;
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012;
     NDArrayRingBuffer<std::uint64_t, 3> rfi_S012tilde;
 };
@@ -100,8 +100,8 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
     rfi_S012tilde_name(config.get<std::string>(unique_name, "rfi_S012tilde_name")),
     // Buffers
-    bf_mask(bf_mask_name, "bf_mask", std::array<std::ptrdiff_t, 2>{num_polarizations, num_dishes},
-            std::array<std::string, 2>{"P", "D"}, *this, buffer_type_t::do_once),
+    bf_mask(bf_mask_name, "bf_mask", std::array<std::ptrdiff_t, 3>{buffer_depth * 1, num_polarizations, num_dishes},
+            std::array<std::string, 3>{"Tbf", "P", "D"}, *this),
     rfi_S012(rfi_S012_name, "S012",
              std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
                                            num_polarizations, num_dishes},
