@@ -402,9 +402,9 @@ struct GPSTimeParams {
      * @conf    gps_endpoint        string. The enpoint with the GPS time.
      **/
     static GPSTimeParams from_config(const kotekan::Config& config, const std::string& path);
-    
+
     /// Retrieve the time0_ns from a remote server (fpga_master)
-    static bool get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint64_t &time0_ns);
+    static bool get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint64_t& time0_ns);
 
 private:
     /// Set the GPS time parameters (gps_enabled, time0_ns) from the config.
@@ -493,7 +493,7 @@ public:
      * @brief   Queries the source of the GPS time0_ns value. Returns true on success, and updates
      *          the value of the given reference.
      */
-    bool query_gps_time0_ns(uint64_t &time0_ns) const;
+    bool query_gps_time0_ns(uint64_t& time0_ns) const;
 
     /**
      * @brief   Return the longitude of the instrument.
