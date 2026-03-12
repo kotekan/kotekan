@@ -11,6 +11,7 @@
 #include "kotekanLogging.hpp"  // for INFO, ERROR, DEBUG, FATAL_ERROR
 #include "metadata.hpp"        // for metadataObject
 #include "visUtil.hpp"         // for format_nice_string
+#include "waitingForAllTests.hpp" // for waiting_for_all_tests
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -161,6 +162,9 @@ testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string&
     trigger_exit_on_pass = config.get_default<bool>(unique_name, "trigger_exit_on_pass", true);
 
     check_metadata = config.get_default<bool>(unique_name, "check_metadata", false);
+
+    if (trigger_exit_on_pass && num_frames_to_test >= 0)
+        waiting_for_all_tests++;
 }
 
 template<typename A_Type>
@@ -342,10 +346,16 @@ void testDataCheck<A_Type>::main_thread() {
 
 
         if (num_frames_to_test == frames) {
+
             if (num_errors == 0) {
                 if (trigger_exit_on_pass) {
                     INFO("Test passed, exiting.");
-                    TEST_PASSED();
+                    // Unregister to allow the pipeline to continue, unless I'm the last
+                    // consumer on this buffer.
+                    first_buf->unregister_consumer(unique_name, true);
+                    if (--waiting_for_all_tests == 0) {
+                        TEST_PASSED();
+                    }
                 } else {
                     INFO("Test passed.");
                 }
