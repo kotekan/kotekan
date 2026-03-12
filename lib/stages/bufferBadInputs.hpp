@@ -8,21 +8,22 @@
 #define BUFFER_BAD_INPUT_DATA
 
 #include "Config.hpp"          // for Config
+#include "N2Util.hpp"          // for frameID
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
 #include "json.hpp" // for json
 
-#include <stdint.h> // for uint32_t
-#include <string>   // for string
-#include <vector>   // for vector
+#include <string> // for string
+#include <vector> // for vector
 
 /**
  * @class bufferBadInputs
  * @brief Buffers updates to the bad input list.
  *
- * This engine reorders, inverts and generates a mask of bad inputs then stores the mask in a buffer
+ * Copies a list of bad inputs into a mask buffer, which is 0 if
+ * an element is bad and 1 if it is good.
  *
  * @par Buffers
  * @buffer out_buf Kotekan buffer of bad inputs.
@@ -32,8 +33,7 @@
  *                                      config block containing the following properties:
  *                                      "bad_inputs"  An array of bad inputs in cylinder order.
  *
- * @author James Willis
- *
+ * @author James Willis & Liam Gray
  */
 
 class bufferBadInputs : public kotekan::Stage {
@@ -52,22 +52,13 @@ public:
 
 private:
     Buffer* out_buf;
-
-    /// Stage variables
-
-    /// List of current bad inputs in cylinder order
-    std::vector<int> bad_inputs_cylinder;
-
-    /// List of current bad inputs in correlator order.
-    std::vector<int> bad_inputs_correlator;
-
+    /// List of current bad inputs in received order, which
+    // is expected to be cylinder order
+    std::vector<int> bad_inputs;
     /// The size of the bad input mask.
-    uint32_t input_mask_len;
-
-    /// The mapping from correlator to cylinder element indexing.
-    std::vector<uint32_t> input_remap;
-
-    uint32_t out_buffer_ID = 0;
+    size_t num_elements;
+    // Need to use the frame_id outside of the main thread
+    N2::frameID frame_id;
 };
 
 #endif
