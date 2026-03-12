@@ -376,10 +376,15 @@ struct GPSTimeParams {
     /// The endpoint with the GPS time
     std::string gps_endpoint;
 
-    /// The time of FPGA frame=0, and the time length of each frame (in ns)
+    /// Number of gps week rollovers (1024 weeks) to apply to time0
+    uint64_t gps_week_rollover_offset;
+
+    /// Whether GPS time has been enabled
+    bool gps_enabled = false;
+
+    /// The time of FPGA seq num = 0,
     /// time0_ns is a UNIX timestamp, in nanoseconds. It does not include
     /// leap seconds.
-    bool gps_enabled = false;
     uint64_t time0_ns = 0;
 
     /**
@@ -397,14 +402,16 @@ struct GPSTimeParams {
      * @conf    gps_endpoint        string. The enpoint with the GPS time.
      **/
     static GPSTimeParams from_config(const kotekan::Config& config, const std::string& path);
+    
+    /// Retrieve the time0_ns from a remote server (fpga_master)
+    static bool get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint64_t &time0_ns);
 
 private:
     /// Set the GPS time parameters (gps_enabled, time0_ns) from the config.
     static void set_gps_time_params_from_config(GPSTimeParams& gps, const kotekan::Config& config);
 
     /// Set the GPS time parameters (gps_enabled, time0_ns) from a remote server (fpga_master)
-    static void set_gps_time_params_from_remote(GPSTimeParams& gps, const std::string& host,
-                                                const uint32_t port, const std::string& path);
+    static void set_gps_time_params_from_remote(GPSTimeParams& gps);
 };
 
 
@@ -481,6 +488,12 @@ public:
      *          Uses the epoch of time0_ns.
      */
     int64_t to_time_ns(uint64_t seq) const override;
+
+    /**
+     * @brief   Queries the source of the GPS time0_ns value. Returns true on success, and updates
+     *          the value of the given reference.
+     */
+    bool query_gps_time0_ns(uint64_t &time0_ns) const;
 
     /**
      * @brief   Return the longitude of the instrument.

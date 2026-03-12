@@ -301,10 +301,10 @@ GPSTimeParams GPSTimeParams::from_config(const kotekan::Config& config, const st
     gps.gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
     gps.gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
     gps.gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
+    gps.gps_week_rollover_offset = config.get_default<uint64_t>(path, "gps_week_rollover_offset", 0);
 
     if (gps.query_gps)
-        set_gps_time_params_from_remote(gps, gps.gps_host, gps.gps_port,
-                                        gps.gps_endpoint); // sets gps_enabled, time0_ns
+        set_gps_time_params_from_remote(gps); // sets gps_enabled, time0_ns
     if (!gps.gps_enabled)
         set_gps_time_params_from_config(gps, config); // sets gps_enabled, time0_ns
     if (gps.require_gps && !gps.gps_enabled)
@@ -341,16 +341,35 @@ void GPSTimeParams::set_gps_time_params_from_config(GPSTimeParams& gps,
 }
 
 // static
-void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps, const std::string& host,
-                                                    const uint32_t port, const std::string& path) {
-    INFO_NON_OO("Requesting GPS time from server: {:s}.{:d}{:s} This might take some time...", host,
-                port, path);
+void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps) {
 
-    auto reply = restClient::instance().make_request_blocking(path, {}, host, port, 0, 30);
+    uint64_t time0_ns = 0;
+
+    // The REST request might fail. The gps struct for this call is `const`,
+    // so we provide a different variable to write the time to if successful.
+    bool success = get_gps_time0_ns_from_remote(gps, time0_ns);
+
+    // Get out of here if there was a problem.
+    if (!success) {
+        gps.gps_enabled = false;
+        return;
+    }
+
+    // Otherwise, we successfully have the time!
+    gps.time0_ns = time0_ns;
+    gps.gps_enabled = true;
+    INFO_NON_OO("GPS frame0 time set to {:d}", gps.time0_ns);
+}
+
+bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint64_t &time0_ns) {
+    INFO_NON_OO("Requesting GPS time from server: {:s}.{:d}{:s} This might take some time...", gps.gps_host,
+                gps.gps_port, gps.gps_endpoint);
+
+    auto reply = restClient::instance().make_request_blocking(gps.gps_endpoint, {}, gps.gps_host, gps.gps_port, 0, 30);
 
     if (!reply.first) {
         WARN_NON_OO("Failed to get GPS time, using system time");
-        return;
+        return false;
     }
 
     auto json_reply = nlohmann::json::parse(reply.second);
@@ -358,19 +377,22 @@ void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps, const st
     if (json_reply.count("error") == 1) {
         std::string error_message = json_reply["error"];
         WARN_NON_OO("Error returned by GPS server, error: {:s}", error_message);
-        return;
+        return false;
     }
 
     if (json_reply.count("frame0_nano") == 0) {
         WARN_NON_OO(
             "No `frame0_nano` value returned by GPS server, the server reply was: {:s} - {:s}",
             reply.second, json_reply.dump());
-        return;
+        return false;
     }
 
-    gps.time0_ns = json_reply["frame0_nano"].get<uint64_t>();
-    INFO_NON_OO("GPS frame0 time set to {:d}", gps.time0_ns);
-    gps.gps_enabled = true;
+    // Number of nanoseconds to adjust for the 1024 week rollover.
+    uint64_t week_rollover_offset_ns = gps.gps_week_rollover_offset * 1024ul * 7ul * 86400ul * GIGA;
+
+    time0_ns = json_reply["frame0_nano"].get<uint64_t>() + week_rollover_offset_ns;
+
+    return true;
 }
 
 
@@ -406,6 +428,18 @@ uint64_t CHORDTelescope::to_seq(timespec time) const {
 
 bool CHORDTelescope::gps_time_enabled() const {
     return _gps_time_params.gps_enabled;
+}
+    
+bool CHORDTelescope::query_gps_time0_ns(uint64_t &time0_ns) const {
+
+    if (_gps_time_params.query_gps) {
+        // If we were set to query GPS, then query the GPS and return.
+        return _gps_time_params.get_gps_time0_ns_from_remote(_gps_time_params, time0_ns);
+    }
+
+    // Otherwise, we were set from config, which cannot change. Simply return that value.
+    time0_ns = _gps_time_params.time0_ns;
+    return true;
 }
 
 uint64_t CHORDTelescope::seq_length_nsec() const {
@@ -465,7 +499,7 @@ CHORDTelescope::vec_topocen_to_dish(const std::array<double, 3>& v_topocen) cons
     // Just multiply by known Rotation matrix.
     std::array<double, 3> v_dish = {0, 0, 0};
     for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
+        for (int j = 0;j < 3; j++)
             v_dish[i] += _geographic_params.R_topo_to_dish[i][j] * v_topocen[j];
 
     return v_dish;

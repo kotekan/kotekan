@@ -199,6 +199,24 @@ BOOST_AUTO_TEST_CASE(_DishType_from_json) {
     BOOST_CHECK_THROW(fake_int.get<DishType>(), std::runtime_error);
 }
 
+/*
+ * @brief   Test position getters.
+ */
+BOOST_AUTO_TEST_CASE(_query_gps_time_config) {
+    BOOST_TEST_MESSAGE(fmt::format("Testing time0 query from config."));
+
+    uint64_t time0_ns = 1234567890123;
+
+    json json_config = json::parse(default_config_str);
+    json_config["gps_time"]["frame0_nano"] = time0_ns;
+
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    uint64_t test_time0_val = 0;
+    tel.query_gps_time0_ns(test_time0_val);
+    BOOST_CHECK_EQUAL(test_time0_val, time0_ns);
+}
+
 
 /*
  * @brief   Test position getters.
