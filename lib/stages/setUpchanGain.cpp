@@ -98,7 +98,7 @@ public:
                 assert(idx >= 0
                        && idx < std::ptrdiff_t(upchan_gain_buffer->frame_size
                                                / sizeof *upchan_gain_frame));
-                upchan_gain_frame[freq] = float16_t(
+                upchan_gain_frame[idx] = float16_t(
                     freq < upchan_num_channels ? upchan_gain.at(upchan_index) : 0.0 / 0.0);
             }
         }
