@@ -20,6 +20,9 @@
 REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
 
 #define GIGA 1'000'000'000L
+#define SECONDS_PER_DAY 86'400L
+#define DAYS_PER_WEEK 7L
+#define GPS_WEEK_ROLLOVER 1024L
 
 static constexpr double C = 2.99792458e8;
 static constexpr double deg2rad = M_PI / 180.0;
@@ -363,7 +366,7 @@ void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps) {
 }
 
 bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint64_t& time0_ns) {
-    INFO_NON_OO("Requesting GPS time from server: {:s}.{:d}{:s} This might take some time...",
+    INFO_NON_OO("Requesting GPS time from server: {:s}:{:d}{:s} This might take some time...",
                 gps.gps_host, gps.gps_port, gps.gps_endpoint);
 
     auto reply = restClient::instance().make_request_blocking(gps.gps_endpoint, {}, gps.gps_host,
@@ -390,7 +393,7 @@ bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint6
     }
 
     // Number of nanoseconds to adjust for the 1024 week rollover.
-    uint64_t week_rollover_offset_ns = gps.gps_week_rollover_offset * 1024ul * 7ul * 86400ul * GIGA;
+    uint64_t week_rollover_offset_ns = gps.gps_week_rollover_offset * GPS_WEEK_ROLLOVER * DAYS_PER_WEEK * SECONDS_PER_DAY * GIGA;
 
     time0_ns = json_reply["frame0_nano"].get<uint64_t>() + week_rollover_offset_ns;
 

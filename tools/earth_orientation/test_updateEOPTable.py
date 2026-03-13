@@ -10,11 +10,14 @@ import updateEOPTable
 
 
 if __name__ == "__main__":
-
-    time0_ns = updateEOPTable.read_time0_ns("http://localhost", 12048)
+    
+    time0_ns = updateEOPTable.read_fpga_master_time0_ns("crs-control", 54321)
     print(time0_ns)
 
-    eop_table = updateEOPTable.read_eop_table("http://localhost", 12048)
+    time0_ns = updateEOPTable.read_kotekan_time0_ns("http://localhost", 12048)
+    print(time0_ns)
+
+    eop_table = updateEOPTable.read_kotekan_eop_table("http://localhost", 12048)
     print(eop_table)
 
     ts = [

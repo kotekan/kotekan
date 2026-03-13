@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import argparse
+import sys
 import time
 import requests
 from astropy.time import Time
@@ -7,24 +9,97 @@ import astropy.utils.iers
 import numpy as np
 
 
-def read_time0_ns(base_url, port):
+def make_rest_get_request(host, port, endpoint, protocol="http://"):
+    r"""
+    Make a REST GET request to the specified endpoint and return the response.
+
+    Parameters
+    ----------
+    host : String
+        The hostname at which to find the kotekan instance, no trailing "/". For
+        instance "localhost" or "127.0.0.1"
+    port : int
+        The port at which to find the kotekan instance. For instance 12048.
+    endpoint : String
+        The endpoint to query, no leading "/".  For instance "get-frame0-time".
+    protocol : String, optional
+        Prefix for the URL, for instance "http://" (the default)
+
+    Returns
+    -------
+    resp : Response
+        A requests Response object.
+
+    Raises
+    ------
+    Exceptions from requests.
+    """
+
+    url = "{0:s}{1:s}:{2:d}/{3:s}".format(protocol, host, port, endpoint)
+
+    resp = requests.get(url)
+
+    return resp
+
+
+def make_rest_post_request(host, port, endpoint, json_payload, protocol="http://"):
+    r"""
+    Make a REST POST request to the specified endpoint with the given payload and
+    return the response.
+
+    Parameters
+    ----------
+    host : String
+        The hostname at which to find the kotekan instance, no trailing "/". For
+        instance "localhost" or "127.0.0.1"
+    port : int
+        The port at which to find the kotekan instance. For instance 12048.
+    endpoint : String
+        The endpoint to query, no leading "/".  For instance "get-frame0-time".
+    json_payload : JSON-able Object
+        Payload for the POST, serializable as JSON (e.g. a dict)
+    protocol : String, optional
+        Prefix for the URL, for instance "http://" (the default)
+
+    Returns
+    -------
+    resp : Response
+        A requests Response object.
+
+    Raises
+    ------
+    Exceptions from requests.
+    """
+
+    url = "{0:s}{1:s}:{2:d}/{3:s}".format(protocol, host, port, endpoint)
+
+    resp = requests.post(url, json=json_payload)
+
+    return resp
+
+
+def read_kotekan_frame0_ns(host, port, protocol="http://"):
     r"""
     Read the "time0_ns" parameter from a running Kotekan instance.
 
     time0_ns is the UNIX timestamp (in nanoseconds) of the first frame in
-    Kotekan, and serves as the base time for all future timestamps.
+    F-Engine / Kotekan, and serves as the base time for all future timestamps.
+
+    On fpga_master this is called "frame0_nano".
 
     Parameters
     ----------
-    base_url : String
-        The URL at which to find the kotekan instance, no trailing "/". For
-        instance "http://localhost".
+    host : String
+        The hostname at which to find the kotekan instance, no trailing "/". For
+        instance "localhost" or "127.0.0.1"
     port : int
         The port at which to find the kotekan instance. For instance 12048.
+    protocol : String, optional
+        Prefix for the URL, for instance "http://" (the default)
 
     Returns
     -------
-    time0_ns : int
+    frame0_ns : int
         The UNIX timestamp in nanoseconds received from kotekan.
 
     Raises
@@ -32,14 +107,46 @@ def read_time0_ns(base_url, port):
     Exceptions from requests.
     """
 
-    url = "{0:s}:{1:d}/telescope/time0_ns".format(base_url, port)
-
-    resp = requests.get(url)
+    resp = make_rest_get_request(host, port, "time0_ns", protocol)
 
     return resp.json()["time0_ns"]
 
 
-def read_eop_table(base_url, port):
+def read_fpga_master_frame0_ns(host, port, protocol="http://"):
+    r"""
+    Read the "frame0_nano" parameter from fpga_master.
+
+    frame0_nano is the UNIX timestamp (in nanoseconds) of the first frame in
+    F-Engine / Kotekan, and serves as the base time for all future timestamps.
+
+    In kotekan this is called frame0_nano or time0_ns.
+
+    Parameters
+    ----------
+    host : String
+        The hostname at which to find the kotekan instance, no trailing "/". For
+        instance "localhost" or "127.0.0.1"
+    port : int
+        The port at which to find the kotekan instance. For instance 12048.
+    protocol : String, optional
+        Prefix for the URL, for instance "http://" (the default)
+
+    Returns
+    -------
+    frame0_ns : int
+        The UNIX timestamp in nanoseconds received from kotekan.
+
+    Raises
+    ------
+    Exceptions from requests.
+    """
+
+    resp = make_rest_get_request(host, port, "get-frame0-time", protocol)
+
+    return resp.json()["frame0_nano"]
+
+
+def read_kotekan_eop_table(host, port, protocol="http://"):
     r"""
     Read the "eop_table" from a running Kotekan instance.
 
@@ -48,11 +155,13 @@ def read_eop_table(base_url, port):
 
     Parameters
     ----------
-    base_url : String
-        The URL at which to find the kotekan instance, no trailing "/". For
-        instance "http://localhost".
+    host : String
+        The hostname at which to find the kotekan instance, no trailing "/". For
+        instance "localhost" or "127.0.0.1"
     port : int
         The port at which to find the kotekan instance. For instance 12048.
+    protocol : String, optional
+        Prefix for the URL, for instance "http://" (the default)
 
     Returns
     -------
@@ -64,14 +173,12 @@ def read_eop_table(base_url, port):
     Exceptions from requests.
     """
 
-    url = "{0:s}:{1:d}/telescope/eop_table".format(base_url, port)
-
-    resp = requests.get(url)
+    resp = make_rest_get_request(host, port, "telescope/eop_table", protocol)
 
     return resp.json()["eop_table"]
 
 
-def broadcast_eop_table(base_url, port, eop_table):
+def broadcast_kotekan_eop_table(host, port, eop_table, protocol="http://"):
     r"""
     Send a new EOP table to a running Kotekan instance.
 
@@ -96,11 +203,9 @@ def broadcast_eop_table(base_url, port, eop_table):
     Exceptions from requests.
     """
 
-    url = "{0:s}:{1:d}/earth_rotation_data".format(base_url, port)
-
     payload = {"earth_orientation_parameter_table": eop_table}
 
-    resp = requests.post(url, json=payload)
+    resp = make_rest_post_request(host, port, "earth_rotation_data", payload, protocol)
 
     return resp
 
@@ -144,6 +249,7 @@ def calc_delta_tai_utc(t):
             "second": 0,
         },
         scale="utc",
+        precision=9,
     )
 
     # Compute the remaining time from 0h to the given t, in seconds.
@@ -157,7 +263,7 @@ def calc_delta_tai_utc(t):
     # Due to floating point precision we may have accumulated a few picoseconds
     # of error. In the modern era this dt will always be whole number of
     # seconds, so round the total dt to nearest 0.1 ns.
-    dt = round(dt1 + dt2, 10)
+    dt = round(dt1 + dt2, ndigits=10)
 
     return dt
 
@@ -204,6 +310,7 @@ def calc_astropy_time_from_unix_ns(t_unix_ns):
             "second": t_ts.tm_sec + 1.0e-9 * t_ns,
         },
         scale="utc",
+        precision=9,
     )
 
     return t
@@ -240,6 +347,7 @@ def calc_unix_ns_from_t(t):
             "second": 0,
         },
         scale="utc",
+        precision=9,
     )
 
     # Number of nanoseconds elapsed since t0.
@@ -434,18 +542,80 @@ def build_time_array(
 
 if __name__ == "__main__":
 
-    kotekan_url = "http://localhost"
-    kotekan_port = 12048
+    parser = argparse.ArgumentParser(
+            prog='EOP Table Updater',
+            description='Read, compute, print, and send an Earth Orientation Parameter (EOP) table for kotekan')
 
-    # Get the Frame0 time from kotekan
-    t0_ns = read_time0_ns(kotekan_url, kotekan_port)
+    parser.add_argument("--frame0-src", choices=['fpga_master', 'kotekan', 'manual'],
+                        default='manual')
+    parser.add_argument("--frame0-ns", default=None, type=int)
+    parser.add_argument("--current-time", default=None)
+    parser.add_argument("-kh", "--kotekan-host", default="localhost") 
+    parser.add_argument("-kp", "--kotekan-port", default=12048, type=int)
+    parser.add_argument("-kprot", "--kotekan-protocol", default="http://")
+    parser.add_argument("-fh", "--fpga-master-host", default="localhost") 
+    parser.add_argument("-fp", "--fpga-master-port", default=54321, type=int)
+    parser.add_argument("-fprot", "--fpga-master-protocol", default="http://")
+    parser.add_argument("-nb", "--num-intervals-before", default=2, type=int)
+    parser.add_argument("-na", "--num-intervals-after", default=3, type=int)
+    parser.add_argument("-b", "--broadcast", action='store_true')
+
+    args = parser.parse_args()
+
+    kotekan_protocol = args.kotekan_protocol
+    kotekan_url = args.kotekan_host
+    kotekan_port = args.kotekan_port
+
+    fpga_master_protocol = args.fpga_master_protocol
+    fpga_master_url = args.fpga_master_host
+    fpga_master_port = args.fpga_master_port
+
+    if args.frame0_src != 'manual' and args.frame0_ns is not None:
+        raise RuntimeError("Do not specify frame0_ns if frame0_src is not 'manual'.")
+
+    if args.frame0_src == 'manual' and args.frame0_ns is None:
+        raise RuntimeError("If frame0_src is 'manual', must set frame0_ns")
+
+    if args.frame0_src == "fpga_master":
+        t0_ns = read_fpga_master_frame0_ns(fpga_master_url, fpga_master_port)
+    elif args.frame0_src == "kotekan":
+        t0_ns = read_kotekan_frame0_ns(kotekan_url, kotekan_port)
+    elif args.frame0_src == "manual":
+        t0_ns = args.frame0_ns
+    else:
+        # Should be unneccessary, but just in case.
+        raise ValueError("Unknown frame0_src: {:s}".format(args.frame0_src))
+    
+    t0 = calc_astropy_time_from_unix_ns(t0_ns)
+    print("frame0_ns is: {0:d} ns   (from {1:s})".format(t0_ns, args.frame0_src))
+    print("frame0 time is: ", t0.utc.isot, "(UTC)")
+
+    if args.current_time is not None:
+        t_ref = Time(args.current_time, precision=9)
+    else:
+        t_ref = Time.now()
+        t_ref.precision = 9
+
+    print("Current time is:", t_ref.utc.isot, "(UTC)")
+
+    num_intervals_before = args.num_intervals_before
+    num_intervals_after = args.num_intervals_after
+
+    if num_intervals_before < 0:
+        raise ValueError("num_intervals_before must be positive. Recieved: {:d}"
+                         .format(num_intervals_before))
+    if num_intervals_after < 0:
+        raise ValueError("num_intervals_after must be positive. Recieved: {:d}"
+                         .format(num_intervals_after))
+
+    sys.exit()
+
 
     # Build the list of times to generate EOP entries for
-    t_ref = Time.now()
 
     # Add 2 intervals before the current one, 3 after.  Intervals are 1.0 days
     # long, intervals are snapped to whole days.
-    ts = build_time_array(t_ref, 2, 3, 1.0, snap_to_grid=True)
+    ts = build_time_array(t_ref, num_intervals_before, num_intervals_after, 1.0, snap_to_grid=True)
     print("t_ref (now):", t_ref, t_ref.mjd)
     print("times in table:", ts.iso)
     print("times in table (mjd):", ts.mjd)
@@ -460,4 +630,4 @@ if __name__ == "__main__":
     print(eop_table)
 
     # Send table to Kotekan
-    broadcast_eop_table(kotekan_url, kotekan_port, eop_table)
+    broadcast_kotekan_eop_table(kotekan_url, kotekan_port, eop_table)
