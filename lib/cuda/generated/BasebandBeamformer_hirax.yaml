@@ -51,9 +51,9 @@ kernel-description:
     - name: "J"
       intent: out
       type: Int4
-      indices: [C, T, P, F, B]
-      shape: [2, 16384, 2, 64, 16]
-      strides: [1, 2, 32768, 65536, 4194304]
+      indices: [C, T, P, F, B, Thi]
+      shape: [2, 16384, 2, 64, 16, 1]
+      strides: [1, 2, 32768, 65536, 4194304, 4194304]
     - name: "info"
       intent: out
       type: Int32

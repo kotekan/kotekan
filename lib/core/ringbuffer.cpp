@@ -277,14 +277,14 @@ void RingBuffer::print_full_status() {
            (first_write_head - last_read_tail) / 1.0e+6);
     DEBUG2("{:<40} : {:13.6f} MB", "free space to write",
            (size - (first_write_head - last_read_tail)) / 1.0e+6);
-    DEBUG2("---- Producers ----");
+    DEBUG2("---- Producers ({:d}) ----", producers.size());
     for (auto& it : producers) {
         const auto& name = it.second.name;
         DEBUG2("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),
                write_heads[name] / 1.0e+6, write_next[name] / 1.0e+6,
                (write_next[name] - write_heads[name]) / 1.0e+6);
     }
-    DEBUG2("---- Consumers ----");
+    DEBUG2("---- Consumers ({:d}) ----", consumers.size());
     for (auto& it : consumers) {
         const auto& name = it.second.name;
         DEBUG2("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),

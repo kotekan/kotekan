@@ -40,7 +40,7 @@
 .global .align 1 .b8 __unnamed_1[40] = {116, 104, 114, 101, 97, 100, 61, 37, 100, 32, 119, 97, 114, 112, 61, 37, 100, 32, 98, 108, 111, 99, 107, 61, 37, 100, 32, 83, 109, 61, 37, 100, 32, 83, 110, 61, 37, 100, 10, 0};
 .global .align 1 .b8 exception5404[6] = {101, 114, 114, 111, 114, 0};
 .global .align 1 .b8 exception5452[11] = {116, 121, 112, 101, 32, 101, 114, 114, 111, 114, 0};
-.global .align 1 .b8 exception15464[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
+.global .align 1 .b8 exception15463[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
                                         // @_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE
 .visible .entry _Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE(
 	.param .align 8 .b8 _Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_0[16],
@@ -68,13 +68,13 @@
 	.reg .b16 	%rs<102>;
 	.reg .b32 	%r<3378>;
 	.reg .f32 	%f<763>;
-	.reg .b64 	%rd<252>;
+	.reg .b64 	%rd<263>;
 
 // %bb.0:                               // %conversion
 	mov.u64 	%SPL, __local_depot0;
 	cvta.local.u64 	%SP, %SPL;
 	ld.param.u32 	%r251, [_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_0+8];
-	ld.param.u64 	%rd46, [_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_0];
+	ld.param.u64 	%rd48, [_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_0];
 	// begin inline asm
 	mov.u32 %r260, %dynamic_smem_size;
 	// end inline asm
@@ -82,7 +82,7 @@
 	@%p3 bra 	$L__BB0_2;
 	bra.uni 	$L__BB0_1;
 $L__BB0_2:                              // %L11
-	ld.param.u64 	%rd47, [_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_13];
+	ld.param.u64 	%rd49, [_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_13];
 	ld.param.u32 	%r252, [_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_1];
 	mov.u32 	%r1, %tid.x;
 	mov.u32 	%r2, %tid.y;
@@ -91,8 +91,8 @@ $L__BB0_2:                              // %L11
 	shl.b32 	%r5, %r4, 9;
 	or.b32  	%r261, %r3, %r5;
 	or.b32  	%r262, %r261, %r1;
-	mul.wide.u32 	%rd54, %r262, 4;
-	add.s64 	%rd6, %rd47, %rd54;
+	mul.wide.u32 	%rd56, %r262, 4;
+	add.s64 	%rd6, %rd49, %rd56;
 	mov.b32 	%r263, 1;
 	st.global.u32 	[%rd6], %r263;
 	setp.gt.u32 	%p4, %r252, 8191;
@@ -1253,9 +1253,9 @@ $L__BB0_116:                            // %L804
 	ld.param.u64 	%rd1, [_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE_param_9];
 	shl.b32 	%r484, %r1, 4;
 	or.b32  	%r485, %r484, %r2;
-	mul.wide.u32 	%rd55, %r485, 4;
-	add.s64 	%rd56, %rd1, %rd55;
-	ld.global.u32 	%r486, [%rd56];
+	mul.wide.u32 	%rd57, %r485, 4;
+	add.s64 	%rd58, %rd1, %rd57;
+	ld.global.u32 	%r486, [%rd58];
 	cvt.s32.s16 	%r175, %r486;
 	shr.s32 	%r176, %r486, 16;
 	or.b32  	%r487, %r175, %r176;
@@ -1265,7 +1265,7 @@ $L__BB0_116:                            // %L804
 $L__BB0_148:                            // %L1075
 	mul.lo.s32 	%r491, %r176, 546;
 	mad.lo.s32 	%r177, %r175, 33, %r491;
-$L__BB0_149:                            // %pass869
+$L__BB0_149:                            // %pass842
 	mov.b32 	%r287, %f167;
 	shr.u32 	%r288, %r287, 31;
 	abs.f32 	%f230, %f759;
@@ -1586,23 +1586,23 @@ $L__BB0_149:                            // %pass869
 	cvt.rn.f16x2.f32 %r480, %r482, %r481;
 	// end inline asm
 	shr.u32 	%r493, %r1, 3;
-	bfe.u32 	%r494, %r1, 3, 1;
-	shl.b32 	%r495, %r2, 1;
-	and.b32  	%r496, %r495, 14;
-	shl.b32 	%r497, %r1, 6;
-	and.b32  	%r498, %r497, 192;
-	and.b32  	%r499, %r150, 1;
-	and.b32  	%r500, %r493, 2;
-	or.b32  	%r501, %r499, %r500;
-	shl.b32 	%r502, %r501, 4;
-	or.b32  	%r503, %r498, %r502;
-	or.b32  	%r504, %r503, %r496;
-	or.b32  	%r505, %r504, %r494;
+	and.b32  	%r494, %r493, 2;
+	and.b32  	%r495, %r150, 1;
+	or.b32  	%r496, %r494, %r495;
+	shl.b32 	%r497, %r496, 4;
+	shl.b32 	%r498, %r2, 1;
+	bfe.u32 	%r499, %r1, 3, 1;
+	and.b32  	%r500, %r498, 14;
+	shl.b32 	%r501, %r1, 6;
+	and.b32  	%r502, %r501, 192;
+	or.b32  	%r503, %r497, %r502;
+	or.b32  	%r504, %r499, %r500;
+	or.b32  	%r505, %r504, %r503;
 	or.b32  	%r506, %r505, %r5;
-	mul.wide.u32 	%rd62, %r506, 4;
-	add.s64 	%rd63, %rd2, %rd62;
-	ld.global.u32 	%r178, [%rd63];
-	ld.global.u32 	%r179, [%rd63+1024];
+	mul.wide.u32 	%rd64, %r506, 4;
+	add.s64 	%rd65, %rd2, %rd64;
+	ld.global.u32 	%r178, [%rd65];
+	ld.global.u32 	%r179, [%rd65+1024];
 	shl.b32 	%r507, %r252, 14;
 	shl.b32 	%r508, %r256, 7;
 	shl.b32 	%r509, %r1, 2;
@@ -1614,157 +1614,166 @@ $L__BB0_149:                            // %pass869
 	shr.u32 	%r513, %r1, 4;
 	and.b32  	%r514, %r162, 30;
 	or.b32  	%r515, %r514, %r513;
-	shr.u32 	%r516, %r2, 3;
-	mul.lo.s32 	%r517, %r516, 257;
-	and.b32  	%r518, %r3, 224;
-	add.s32 	%r519, %r518, %r517;
-	or.b32  	%r520, %r494, %r496;
+	mul.lo.s32 	%r516, %r515, 257;
+	and.b32  	%r517, %r3, 224;
+	shr.u32 	%r518, %r2, 3;
+	mul.lo.s32 	%r519, %r518, 257;
+	add.s32 	%r520, %r517, %r519;
 	mul.lo.s32 	%r521, %r149, 2184;
-	mad.lo.s32 	%r522, %r520, 33, %r521;
-	mad.lo.s32 	%r523, %r501, 546, %r522;
+	mad.lo.s32 	%r522, %r504, 33, %r521;
+	mad.lo.s32 	%r523, %r496, 546, %r522;
 	setp.lt.u32 	%p233, %r1, 4;
 	setp.eq.s32 	%p234, %r150, 3;
-	bfe.s32 	%r524, %r1, 3, 1;
-	and.b32  	%r525, %r1, 8;
-	setp.eq.s32 	%p235, %r525, 0;
-	and.b32  	%r526, %r524, 258;
-	selp.b32 	%r527, 0, 1032, %p128;
-	and.b32  	%r528, %r1, 1;
-	neg.s32 	%r529, %r528;
-	and.b32  	%r530, %r529, 2064;
+	selp.b32 	%r524, 0, 1032, %p128;
+	and.b32  	%r525, %r1, 1;
+	neg.s32 	%r526, %r525;
+	and.b32  	%r527, %r526, 2064;
+	bfe.s32 	%r528, %r1, 3, 1;
+	and.b32  	%r529, %r1, 8;
+	setp.eq.s32 	%p235, %r529, 0;
+	and.b32  	%r530, %r528, 258;
 	bfe.s32 	%r531, %r1, 2, 1;
 	and.b32  	%r532, %r1, 4;
 	setp.eq.s32 	%p236, %r532, 0;
 	and.b32  	%r533, %r531, 516;
-	or.b32  	%r534, %r496, %r513;
-	add.s32 	%r535, %r534, %r527;
-	add.s32 	%r536, %r535, %r526;
+	or.b32  	%r534, %r500, %r513;
+	or.b32  	%r535, %r534, %r527;
+	add.s32 	%r536, %r535, %r524;
 	add.s32 	%r537, %r536, %r530;
 	add.s32 	%r538, %r537, %r533;
-	or.b32  	%r539, %r526, %r527;
-	or.b32  	%r540, %r513, %r495;
-	or.b32  	%r541, %r540, 4144;
-	add.s32 	%r542, %r541, %r530;
-	add.s32 	%r543, %r542, %r533;
-	add.s32 	%r544, %r543, %r539;
-	or.b32  	%r545, %r540, 16;
+	or.b32  	%r539, %r513, %r498;
+	or.b32  	%r540, %r539, 4144;
+	add.s32 	%r541, %r540, %r527;
+	add.s32 	%r542, %r541, %r524;
+	add.s32 	%r543, %r542, %r530;
+	add.s32 	%r544, %r543, %r533;
+	or.b32  	%r545, %r539, 16;
 	add.s32 	%r546, %r545, %r527;
-	add.s32 	%r547, %r546, %r526;
+	add.s32 	%r547, %r546, %r524;
 	add.s32 	%r548, %r547, %r530;
 	add.s32 	%r549, %r548, %r533;
-	or.b32  	%r550, %r534, %r530;
-	mul.lo.s32 	%r551, %r516, 258;
-	bfe.s32 	%r552, %r2, 1, 1;
-	and.b32  	%r553, %r2, 2;
-	setp.eq.s32 	%p237, %r553, 0;
-	and.b32  	%r554, %r552, 1032;
-	and.b32  	%r555, %r524, 4144;
-	and.b32  	%r556, %r509, 12;
-	and.b32  	%r557, %r2, 1;
-	neg.s32 	%r558, %r557;
-	setp.eq.b32 	%p238, %r557, 1;
-	and.b32  	%r559, %r558, 2064;
-	bfe.s32 	%r560, %r2, 2, 1;
-	and.b32  	%r561, %r2, 4;
-	setp.eq.s32 	%p239, %r561, 0;
-	and.b32  	%r562, %r560, 516;
-	add.s32 	%r563, %r501, %r551;
-	add.s32 	%r564, %r563, %r556;
-	add.s32 	%r565, %r564, %r554;
-	add.s32 	%r566, %r565, %r555;
-	add.s32 	%r567, %r566, %r559;
-	add.s32 	%r568, %r567, %r562;
-	mul.wide.u32 	%rd64, %r568, 4;
-	mov.u64 	%rd65, shmem;
-	add.s64 	%rd7, %rd65, %rd64;
-	selp.b64 	%rd66, 0, 516, %p239;
-	selp.b64 	%rd67, 2064, 0, %p238;
-	selp.b64 	%rd68, 0, 4144, %p235;
-	selp.b64 	%rd69, 0, 1032, %p237;
-	cvt.u64.u32 	%rd70, %r556;
-	cvt.u64.u32 	%rd71, %r551;
-	cvt.u64.u32 	%rd72, %r501;
-	add.s64 	%rd73, %rd72, %rd71;
-	add.s64 	%rd74, %rd73, %rd70;
-	add.s64 	%rd75, %rd74, %rd69;
-	add.s64 	%rd76, %rd75, %rd68;
-	add.s64 	%rd77, %rd76, %rd67;
-	add.s64 	%rd78, %rd77, %rd66;
-	shl.b64 	%rd79, %rd78, 2;
-	add.s64 	%rd8, %rd65, %rd79;
-	shl.b32 	%r569, %r254, 20;
-	shl.b32 	%r570, %r258, 9;
-	add.s32 	%r571, %r570, %r569;
-	and.b32  	%r182, %r1, 15;
-	or.b32  	%r183, %r181, %r3;
-	cvt.s64.s32 	%rd9, %r571;
-	or.b32  	%r572, %r516, 2;
-	or.b32  	%r573, %r516, 4;
-	or.b32  	%r574, %r516, 6;
-	mad.lo.s32 	%r575, %r515, 257, %r2;
-	mul.wide.u32 	%rd80, %r575, 4;
-	add.s64 	%rd10, %rd65, %rd80;
-	add.s32 	%r576, %r575, 16;
-	mul.wide.u32 	%rd81, %r576, 4;
-	add.s64 	%rd11, %rd65, %rd81;
-	add.s32 	%r577, %r519, %r1;
-	mul.wide.u32 	%rd82, %r577, 4;
-	add.s64 	%rd12, %rd65, %rd82;
-	cvt.u64.u32 	%rd83, %r1;
-	cvt.u64.u32 	%rd84, %r518;
-	cvt.u64.u32 	%rd85, %r517;
-	add.s64 	%rd86, %rd85, %rd84;
-	add.s64 	%rd87, %rd86, %rd83;
-	shl.b64 	%rd88, %rd87, 2;
-	add.s64 	%rd13, %rd65, %rd88;
-	add.s32 	%r578, %r523, %r516;
-	mul.wide.u32 	%rd89, %r578, 4;
-	add.s64 	%rd14, %rd65, %rd89;
-	add.s32 	%r579, %r523, %r572;
-	mul.wide.u32 	%rd90, %r579, 4;
-	add.s64 	%rd15, %rd65, %rd90;
-	add.s32 	%r580, %r523, %r573;
-	mul.wide.u32 	%rd91, %r580, 4;
-	add.s64 	%rd16, %rd65, %rd91;
-	add.s32 	%r581, %r523, %r574;
-	mul.wide.u32 	%rd92, %r581, 4;
-	add.s64 	%rd17, %rd65, %rd92;
+	bfe.s32 	%r550, %r2, 1, 1;
+	and.b32  	%r551, %r2, 2;
+	setp.eq.s32 	%p237, %r551, 0;
+	and.b32  	%r552, %r550, 1032;
+	and.b32  	%r553, %r2, 1;
+	neg.s32 	%r554, %r553;
+	setp.eq.b32 	%p238, %r553, 1;
+	and.b32  	%r555, %r554, 2064;
+	and.b32  	%r556, %r528, 4144;
+	and.b32  	%r557, %r509, 12;
+	mul.lo.s32 	%r558, %r518, 258;
+	bfe.s32 	%r559, %r2, 2, 1;
+	and.b32  	%r560, %r2, 4;
+	setp.eq.s32 	%p239, %r560, 0;
+	and.b32  	%r561, %r559, 516;
+	add.s32 	%r562, %r558, %r557;
+	add.s32 	%r563, %r562, %r555;
+	add.s32 	%r564, %r563, %r552;
+	add.s32 	%r565, %r564, %r556;
+	add.s32 	%r566, %r565, %r496;
+	add.s32 	%r567, %r566, %r561;
+	mul.wide.u32 	%rd66, %r567, 4;
+	mov.u64 	%rd67, shmem;
+	add.s64 	%rd7, %rd67, %rd66;
+	selp.b64 	%rd68, 0, 516, %p239;
+	cvt.u64.u32 	%rd69, %r496;
+	selp.b64 	%rd70, 0, 4144, %p235;
+	selp.b64 	%rd71, 0, 1032, %p237;
+	selp.b64 	%rd72, 2064, 0, %p238;
+	cvt.u64.u32 	%rd73, %r558;
+	cvt.u64.u32 	%rd74, %r557;
+	add.s64 	%rd75, %rd74, %rd73;
+	add.s64 	%rd76, %rd75, %rd72;
+	add.s64 	%rd77, %rd76, %rd71;
+	add.s64 	%rd78, %rd77, %rd70;
+	add.s64 	%rd79, %rd78, %rd69;
+	add.s64 	%rd80, %rd79, %rd68;
+	shl.b64 	%rd81, %rd80, 2;
+	add.s64 	%rd8, %rd67, %rd81;
+	shl.b32 	%r568, %r254, 20;
+	shl.b32 	%r569, %r258, 9;
+	add.s32 	%r570, %r569, %r568;
+	or.b32  	%r182, %r181, %r3;
+	and.b32  	%r183, %r1, 15;
+	cvt.s64.s32 	%rd9, %r570;
+	or.b32  	%r571, %r518, 2;
+	or.b32  	%r572, %r518, 4;
+	or.b32  	%r573, %r518, 6;
+	or.b32  	%r574, %r2, 16;
+	add.s32 	%r575, %r2, %r516;
+	mul.wide.u32 	%rd82, %r575, 4;
+	add.s64 	%rd10, %rd67, %rd82;
+	cvt.u64.u32 	%rd83, %r2;
+	cvt.u64.u32 	%rd84, %r516;
+	add.s64 	%rd85, %rd84, %rd83;
+	shl.b64 	%rd86, %rd85, 2;
+	add.s64 	%rd11, %rd67, %rd86;
+	add.s32 	%r576, %r574, %r516;
+	mul.wide.u32 	%rd87, %r576, 4;
+	add.s64 	%rd12, %rd67, %rd87;
+	cvt.u64.u32 	%rd88, %r574;
+	add.s64 	%rd89, %rd84, %rd88;
+	shl.b64 	%rd90, %rd89, 2;
+	add.s64 	%rd13, %rd67, %rd90;
+	add.s32 	%r577, %r520, %r1;
+	mul.wide.u32 	%rd91, %r577, 4;
+	add.s64 	%rd14, %rd67, %rd91;
+	cvt.u64.u32 	%rd92, %r1;
+	cvt.u64.u32 	%rd93, %r517;
+	cvt.u64.u32 	%rd94, %r519;
+	add.s64 	%rd95, %rd94, %rd93;
+	add.s64 	%rd96, %rd95, %rd92;
+	shl.b64 	%rd97, %rd96, 2;
+	add.s64 	%rd15, %rd67, %rd97;
+	add.s32 	%r578, %r523, %r518;
+	mul.wide.u32 	%rd98, %r578, 4;
+	add.s64 	%rd16, %rd67, %rd98;
+	add.s32 	%r579, %r523, %r571;
+	mul.wide.u32 	%rd99, %r579, 4;
+	add.s64 	%rd17, %rd67, %rd99;
+	add.s32 	%r580, %r523, %r572;
+	mul.wide.u32 	%rd100, %r580, 4;
+	add.s64 	%rd18, %rd67, %rd100;
+	add.s32 	%r581, %r523, %r573;
+	mul.wide.u32 	%rd101, %r581, 4;
+	add.s64 	%rd19, %rd67, %rd101;
 	add.s32 	%r582, %r578, 8;
-	mul.wide.u32 	%rd93, %r582, 4;
-	add.s64 	%rd18, %rd65, %rd93;
+	mul.wide.u32 	%rd102, %r582, 4;
+	add.s64 	%rd20, %rd67, %rd102;
 	add.s32 	%r583, %r578, 10;
-	mul.wide.u32 	%rd94, %r583, 4;
-	add.s64 	%rd19, %rd65, %rd94;
+	mul.wide.u32 	%rd103, %r583, 4;
+	add.s64 	%rd21, %rd67, %rd103;
 	add.s32 	%r584, %r578, 12;
-	mul.wide.u32 	%rd95, %r584, 4;
-	add.s64 	%rd20, %rd65, %rd95;
+	mul.wide.u32 	%rd104, %r584, 4;
+	add.s64 	%rd22, %rd67, %rd104;
 	add.s32 	%r585, %r578, 14;
-	mul.wide.u32 	%rd96, %r585, 4;
-	add.s64 	%rd21, %rd65, %rd96;
+	mul.wide.u32 	%rd105, %r585, 4;
+	add.s64 	%rd23, %rd67, %rd105;
 	add.s32 	%r586, %r578, 16;
-	mul.wide.u32 	%rd97, %r586, 4;
-	add.s64 	%rd22, %rd65, %rd97;
+	mul.wide.u32 	%rd106, %r586, 4;
+	add.s64 	%rd24, %rd67, %rd106;
 	add.s32 	%r587, %r578, 18;
-	mul.wide.u32 	%rd98, %r587, 4;
-	add.s64 	%rd23, %rd65, %rd98;
+	mul.wide.u32 	%rd107, %r587, 4;
+	add.s64 	%rd25, %rd67, %rd107;
 	add.s32 	%r588, %r578, 20;
-	mul.wide.u32 	%rd99, %r588, 4;
-	add.s64 	%rd24, %rd65, %rd99;
+	mul.wide.u32 	%rd108, %r588, 4;
+	add.s64 	%rd26, %rd67, %rd108;
 	add.s32 	%r589, %r578, 22;
-	mul.wide.u32 	%rd100, %r589, 4;
-	add.s64 	%rd25, %rd65, %rd100;
+	mul.wide.u32 	%rd109, %r589, 4;
+	add.s64 	%rd27, %rd67, %rd109;
 	add.s32 	%r590, %r578, 24;
-	mul.wide.u32 	%rd101, %r590, 4;
-	add.s64 	%rd26, %rd65, %rd101;
+	mul.wide.u32 	%rd110, %r590, 4;
+	add.s64 	%rd28, %rd67, %rd110;
 	add.s32 	%r591, %r578, 26;
-	mul.wide.u32 	%rd102, %r591, 4;
-	add.s64 	%rd27, %rd65, %rd102;
+	mul.wide.u32 	%rd111, %r591, 4;
+	add.s64 	%rd29, %rd67, %rd111;
 	add.s32 	%r592, %r578, 28;
-	mul.wide.u32 	%rd103, %r592, 4;
-	add.s64 	%rd28, %rd65, %rd103;
+	mul.wide.u32 	%rd112, %r592, 4;
+	add.s64 	%rd30, %rd67, %rd112;
 	add.s32 	%r593, %r578, 30;
-	mul.wide.u32 	%rd104, %r593, 4;
-	add.s64 	%rd29, %rd65, %rd104;
+	mul.wide.u32 	%rd113, %r593, 4;
+	add.s64 	%rd31, %rd67, %rd113;
 	add.s32 	%r594, %r150, -1;
 	setp.lt.u32 	%p240, %r594, 2;
 	or.pred  	%p1, %p233, %p240;
@@ -1774,69 +1783,70 @@ $L__BB0_149:                            // %pass869
 	setp.eq.s32 	%p242, %r596, 24;
 	or.pred  	%p2, %p241, %p242;
 	selp.b32 	%r184, 1145324612, -286331154, %p234;
-	shl.b32 	%r597, %r516, 5;
+	shl.b32 	%r597, %r518, 5;
 	add.s32 	%r598, %r538, %r597;
-	mul.wide.u32 	%rd105, %r598, 4;
-	add.s64 	%rd30, %rd65, %rd105;
+	mul.wide.u32 	%rd114, %r598, 4;
+	add.s64 	%rd32, %rd67, %rd114;
 	add.s32 	%r599, %r544, %r597;
-	mul.wide.u32 	%rd106, %r599, 4;
-	add.s64 	%rd31, %rd65, %rd106;
+	mul.wide.u32 	%rd115, %r599, 4;
+	add.s64 	%rd33, %rd67, %rd115;
 	add.s32 	%r600, %r549, %r597;
-	mul.wide.u32 	%rd107, %r600, 4;
-	add.s64 	%rd32, %rd65, %rd107;
-	cvt.u64.u32 	%rd108, %r597;
-	cvt.u64.u32 	%rd109, %r539;
-	selp.b64 	%rd110, 0, 516, %p236;
-	cvt.u64.u32 	%rd111, %r550;
-	add.s64 	%rd112, %rd111, %rd110;
-	add.s64 	%rd113, %rd112, %rd109;
-	add.s64 	%rd114, %rd113, %rd108;
-	shl.b64 	%rd115, %rd114, 2;
-	add.s64 	%rd33, %rd65, %rd115;
-	shl.b32 	%r601, %r572, 5;
+	mul.wide.u32 	%rd116, %r600, 4;
+	add.s64 	%rd34, %rd67, %rd116;
+	cvt.u64.u32 	%rd117, %r597;
+	selp.b64 	%rd118, 0, 516, %p236;
+	selp.b64 	%rd119, 0, 258, %p235;
+	selp.b64 	%rd120, 0, 1032, %p128;
+	cvt.u64.u32 	%rd121, %r535;
+	add.s64 	%rd122, %rd121, %rd120;
+	add.s64 	%rd123, %rd122, %rd119;
+	add.s64 	%rd124, %rd123, %rd118;
+	add.s64 	%rd125, %rd124, %rd117;
+	shl.b64 	%rd126, %rd125, 2;
+	add.s64 	%rd35, %rd67, %rd126;
+	shl.b32 	%r601, %r571, 5;
 	add.s32 	%r602, %r538, %r601;
-	mul.wide.u32 	%rd116, %r602, 4;
-	add.s64 	%rd34, %rd65, %rd116;
+	mul.wide.u32 	%rd127, %r602, 4;
+	add.s64 	%rd36, %rd67, %rd127;
 	add.s32 	%r603, %r544, %r601;
-	mul.wide.u32 	%rd117, %r603, 4;
-	add.s64 	%rd35, %rd65, %rd117;
+	mul.wide.u32 	%rd128, %r603, 4;
+	add.s64 	%rd37, %rd67, %rd128;
 	add.s32 	%r604, %r549, %r601;
-	mul.wide.u32 	%rd118, %r604, 4;
-	add.s64 	%rd36, %rd65, %rd118;
-	cvt.u64.u32 	%rd119, %r601;
-	add.s64 	%rd120, %rd113, %rd119;
-	shl.b64 	%rd121, %rd120, 2;
-	add.s64 	%rd37, %rd65, %rd121;
-	shl.b32 	%r605, %r573, 5;
+	mul.wide.u32 	%rd129, %r604, 4;
+	add.s64 	%rd38, %rd67, %rd129;
+	cvt.u64.u32 	%rd130, %r601;
+	add.s64 	%rd131, %rd124, %rd130;
+	shl.b64 	%rd132, %rd131, 2;
+	add.s64 	%rd39, %rd67, %rd132;
+	shl.b32 	%r605, %r572, 5;
 	add.s32 	%r606, %r538, %r605;
-	mul.wide.u32 	%rd122, %r606, 4;
-	add.s64 	%rd38, %rd65, %rd122;
+	mul.wide.u32 	%rd133, %r606, 4;
+	add.s64 	%rd40, %rd67, %rd133;
 	add.s32 	%r607, %r544, %r605;
-	mul.wide.u32 	%rd123, %r607, 4;
-	add.s64 	%rd39, %rd65, %rd123;
+	mul.wide.u32 	%rd134, %r607, 4;
+	add.s64 	%rd41, %rd67, %rd134;
 	add.s32 	%r608, %r549, %r605;
-	mul.wide.u32 	%rd124, %r608, 4;
-	add.s64 	%rd40, %rd65, %rd124;
-	cvt.u64.u32 	%rd125, %r605;
-	add.s64 	%rd126, %rd113, %rd125;
-	shl.b64 	%rd127, %rd126, 2;
-	add.s64 	%rd41, %rd65, %rd127;
-	shl.b32 	%r609, %r574, 5;
+	mul.wide.u32 	%rd135, %r608, 4;
+	add.s64 	%rd42, %rd67, %rd135;
+	cvt.u64.u32 	%rd136, %r605;
+	add.s64 	%rd137, %rd124, %rd136;
+	shl.b64 	%rd138, %rd137, 2;
+	add.s64 	%rd43, %rd67, %rd138;
+	shl.b32 	%r609, %r573, 5;
 	add.s32 	%r610, %r538, %r609;
-	mul.wide.u32 	%rd128, %r610, 4;
-	add.s64 	%rd42, %rd65, %rd128;
+	mul.wide.u32 	%rd139, %r610, 4;
+	add.s64 	%rd44, %rd67, %rd139;
 	add.s32 	%r611, %r544, %r609;
-	mul.wide.u32 	%rd129, %r611, 4;
-	add.s64 	%rd43, %rd65, %rd129;
+	mul.wide.u32 	%rd140, %r611, 4;
+	add.s64 	%rd45, %rd67, %rd140;
 	add.s32 	%r612, %r549, %r609;
-	mul.wide.u32 	%rd130, %r612, 4;
-	add.s64 	%rd44, %rd65, %rd130;
-	cvt.u64.u32 	%rd131, %r609;
-	add.s64 	%rd132, %rd113, %rd131;
-	shl.b64 	%rd133, %rd132, 2;
-	add.s64 	%rd45, %rd65, %rd133;
+	mul.wide.u32 	%rd141, %r612, 4;
+	add.s64 	%rd46, %rd67, %rd141;
+	cvt.u64.u32 	%rd142, %r609;
+	add.s64 	%rd143, %rd124, %rd142;
+	shl.b64 	%rd144, %rd143, 2;
+	add.s64 	%rd47, %rd67, %rd144;
 	mov.b32 	%r91, 0;
-	setp.eq.s32 	%p244, %r181, 0;
 	mov.u16 	%rs43, 25600;
 	mov.u16 	%rs45, 21504;
 	mov.u16 	%rs49, 18432;
@@ -1846,7 +1856,7 @@ $L__BB0_149:                            // %pass869
 	mov.u32 	%r93, %r91;
 	mov.u32 	%r94, %r91;
 	bra.uni 	$L__BB0_150;
-$L__BB0_125:                            // %L47496
+$L__BB0_125:                            // %L47528
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r148, %r91, 64;
 	setp.eq.s32 	%p294, %r91, 8128;
@@ -1860,8 +1870,9 @@ $L__BB0_150:                            // %L1439
 	setp.lt.s32 	%p243, %r613, %r253;
 	@%p243 bra 	$L__BB0_152;
 	bra.uni 	$L__BB0_151;
-$L__BB0_152:                            // %pass1224
+$L__BB0_152:                            // %pass1251
                                         //   in Loop: Header=BB0_150 Depth=1
+	setp.eq.s32 	%p244, %r181, 0;
 	or.b32  	%r806, %r91, %r2;
 	shl.b32 	%r807, %r806, 14;
 	add.s32 	%r808, %r180, %r807;
@@ -1877,9 +1888,9 @@ $L__BB0_152:                            // %pass1224
 	add.s32 	%r815, %r812, %r814;
 	shl.b32 	%r816, %r815, 27;
 	sub.s32 	%r817, %r808, %r816;
-	mul.wide.s32 	%rd134, %r817, 4;
-	add.s64 	%rd135, %rd3, %rd134;
-	ld.global.v4.u32 	{%r818, %r819, %r820, %r821}, [%rd135];
+	mul.wide.s32 	%rd145, %r817, 4;
+	add.s64 	%rd146, %rd3, %rd145;
+	ld.global.v4.u32 	{%r818, %r819, %r820, %r821}, [%rd146];
 	add.s32 	%r822, %r808, 262144;
 	shr.s32 	%r823, %r822, 31;
 	shr.u32 	%r824, %r823, 5;
@@ -1893,9 +1904,9 @@ $L__BB0_152:                            // %pass1224
 	add.s32 	%r829, %r826, %r828;
 	shl.b32 	%r830, %r829, 27;
 	sub.s32 	%r831, %r822, %r830;
-	mul.wide.s32 	%rd136, %r831, 4;
-	add.s64 	%rd137, %rd3, %rd136;
-	ld.global.v4.u32 	{%r832, %r833, %r834, %r835}, [%rd137];
+	mul.wide.s32 	%rd147, %r831, 4;
+	add.s64 	%rd148, %rd3, %rd147;
+	ld.global.v4.u32 	{%r832, %r833, %r834, %r835}, [%rd148];
 	add.s32 	%r836, %r808, 524288;
 	shr.s32 	%r837, %r836, 31;
 	shr.u32 	%r838, %r837, 5;
@@ -1909,9 +1920,9 @@ $L__BB0_152:                            // %pass1224
 	add.s32 	%r843, %r840, %r842;
 	shl.b32 	%r844, %r843, 27;
 	sub.s32 	%r845, %r836, %r844;
-	mul.wide.s32 	%rd138, %r845, 4;
-	add.s64 	%rd139, %rd3, %rd138;
-	ld.global.v4.u32 	{%r846, %r847, %r848, %r849}, [%rd139];
+	mul.wide.s32 	%rd149, %r845, 4;
+	add.s64 	%rd150, %rd3, %rd149;
+	ld.global.v4.u32 	{%r846, %r847, %r848, %r849}, [%rd150];
 	add.s32 	%r850, %r808, 786432;
 	shr.s32 	%r851, %r850, 31;
 	shr.u32 	%r852, %r851, 5;
@@ -1925,9 +1936,9 @@ $L__BB0_152:                            // %pass1224
 	add.s32 	%r857, %r854, %r856;
 	shl.b32 	%r858, %r857, 27;
 	sub.s32 	%r859, %r850, %r858;
-	mul.wide.s32 	%rd140, %r859, 4;
-	add.s64 	%rd141, %rd3, %rd140;
-	ld.global.v4.u32 	{%r860, %r861, %r862, %r863}, [%rd141];
+	mul.wide.s32 	%rd151, %r859, 4;
+	add.s64 	%rd152, %rd3, %rd151;
+	ld.global.v4.u32 	{%r860, %r861, %r862, %r863}, [%rd152];
 	selp.b32 	%r864, %r820, %r818, %p244;
 	shfl.sync.bfly.b32	%r865, %r864, 16, 31, -1;
 	selp.b32 	%r616, %r818, %r865, %p244;
@@ -2126,38 +2137,38 @@ $L__BB0_152:                            // %pass1224
 	prmt.b32 %r802, %r799, %r800, %r805;
 	// end inline asm
 	st.shared.u32 	[%rd10], %r742;
-	st.shared.u32 	[%rd10+512], %r750;
-	st.shared.u32 	[%rd10+256], %r746;
-	st.shared.u32 	[%rd10+768], %r754;
-	st.shared.u32 	[%rd11], %r758;
-	st.shared.u32 	[%rd11+512], %r766;
-	st.shared.u32 	[%rd11+256], %r762;
-	st.shared.u32 	[%rd11+768], %r770;
-	st.shared.u32 	[%rd10+128], %r774;
-	st.shared.u32 	[%rd10+640], %r782;
-	st.shared.u32 	[%rd10+384], %r778;
-	st.shared.u32 	[%rd10+896], %r786;
-	st.shared.u32 	[%rd11+128], %r790;
-	st.shared.u32 	[%rd11+640], %r798;
-	st.shared.u32 	[%rd11+384], %r794;
-	st.shared.u32 	[%rd11+896], %r802;
+	st.shared.u32 	[%rd11+512], %r750;
+	st.shared.u32 	[%rd11+256], %r746;
+	st.shared.u32 	[%rd11+768], %r754;
+	st.shared.u32 	[%rd12], %r758;
+	st.shared.u32 	[%rd13+512], %r766;
+	st.shared.u32 	[%rd13+256], %r762;
+	st.shared.u32 	[%rd13+768], %r770;
+	st.shared.u32 	[%rd11+128], %r774;
+	st.shared.u32 	[%rd11+640], %r782;
+	st.shared.u32 	[%rd11+384], %r778;
+	st.shared.u32 	[%rd11+896], %r786;
+	st.shared.u32 	[%rd13+128], %r790;
+	st.shared.u32 	[%rd13+640], %r798;
+	st.shared.u32 	[%rd13+384], %r794;
+	st.shared.u32 	[%rd13+896], %r802;
 	bar.sync 	0;
-	ld.shared.u32 	%r185, [%rd12];
-	ld.shared.u32 	%r186, [%rd13+2056];
-	ld.shared.u32 	%r187, [%rd13+4112];
-	ld.shared.u32 	%r188, [%rd13+6168];
-	ld.shared.u32 	%r189, [%rd13+8224];
-	ld.shared.u32 	%r190, [%rd13+10280];
-	ld.shared.u32 	%r191, [%rd13+12336];
-	ld.shared.u32 	%r192, [%rd13+14392];
-	ld.shared.u32 	%r193, [%rd13+16448];
-	ld.shared.u32 	%r194, [%rd13+18504];
-	ld.shared.u32 	%r195, [%rd13+20560];
-	ld.shared.u32 	%r196, [%rd13+22616];
-	ld.shared.u32 	%r197, [%rd13+24672];
-	ld.shared.u32 	%r198, [%rd13+26728];
-	ld.shared.u32 	%r199, [%rd13+28784];
-	ld.shared.u32 	%r200, [%rd13+30840];
+	ld.shared.u32 	%r185, [%rd14];
+	ld.shared.u32 	%r186, [%rd15+2056];
+	ld.shared.u32 	%r187, [%rd15+4112];
+	ld.shared.u32 	%r188, [%rd15+6168];
+	ld.shared.u32 	%r189, [%rd15+8224];
+	ld.shared.u32 	%r190, [%rd15+10280];
+	ld.shared.u32 	%r191, [%rd15+12336];
+	ld.shared.u32 	%r192, [%rd15+14392];
+	ld.shared.u32 	%r193, [%rd15+16448];
+	ld.shared.u32 	%r194, [%rd15+18504];
+	ld.shared.u32 	%r195, [%rd15+20560];
+	ld.shared.u32 	%r196, [%rd15+22616];
+	ld.shared.u32 	%r197, [%rd15+24672];
+	ld.shared.u32 	%r198, [%rd15+26728];
+	ld.shared.u32 	%r199, [%rd15+28784];
+	ld.shared.u32 	%r200, [%rd15+30840];
 	bar.sync 	0;
 	shfl.sync.idx.b32	%r201, %r177, 0, 31, -1;
 	shfl.sync.idx.b32	%r202, %r177, 1, 31, -1;
@@ -2181,165 +2192,165 @@ $L__BB0_152:                            // %pass1224
 $L__BB0_154:                            // %pass5795
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r880, %r201, %r1;
-	mul.wide.s32 	%rd142, %r880, 4;
-	add.s64 	%rd144, %rd65, %rd142;
-	st.shared.u32 	[%rd144], %r185;
+	mul.wide.s32 	%rd153, %r880, 4;
+	add.s64 	%rd155, %rd67, %rd153;
+	st.shared.u32 	[%rd155], %r185;
 	setp.ne.s32 	%p258, %r202, 999999999;
 	@%p258 bra 	$L__BB0_156;
 	bra.uni 	$L__BB0_155;
 $L__BB0_156:                            // %pass5929
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r881, %r202, %r1;
-	mul.wide.s32 	%rd145, %r881, 4;
-	add.s64 	%rd147, %rd65, %rd145;
-	st.shared.u32 	[%rd147], %r186;
+	mul.wide.s32 	%rd156, %r881, 4;
+	add.s64 	%rd158, %rd67, %rd156;
+	st.shared.u32 	[%rd158], %r186;
 	setp.ne.s32 	%p259, %r203, 999999999;
 	@%p259 bra 	$L__BB0_158;
 	bra.uni 	$L__BB0_157;
 $L__BB0_158:                            // %pass6064
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r882, %r203, %r1;
-	mul.wide.s32 	%rd148, %r882, 4;
-	add.s64 	%rd150, %rd65, %rd148;
-	st.shared.u32 	[%rd150], %r187;
+	mul.wide.s32 	%rd159, %r882, 4;
+	add.s64 	%rd161, %rd67, %rd159;
+	st.shared.u32 	[%rd161], %r187;
 	setp.ne.s32 	%p260, %r204, 999999999;
 	@%p260 bra 	$L__BB0_160;
 	bra.uni 	$L__BB0_159;
 $L__BB0_160:                            // %pass6199
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r883, %r204, %r1;
-	mul.wide.s32 	%rd151, %r883, 4;
-	add.s64 	%rd153, %rd65, %rd151;
-	st.shared.u32 	[%rd153], %r188;
+	mul.wide.s32 	%rd162, %r883, 4;
+	add.s64 	%rd164, %rd67, %rd162;
+	st.shared.u32 	[%rd164], %r188;
 	setp.ne.s32 	%p261, %r205, 999999999;
 	@%p261 bra 	$L__BB0_162;
 	bra.uni 	$L__BB0_161;
 $L__BB0_162:                            // %pass6334
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r884, %r205, %r1;
-	mul.wide.s32 	%rd154, %r884, 4;
-	add.s64 	%rd156, %rd65, %rd154;
-	st.shared.u32 	[%rd156], %r189;
+	mul.wide.s32 	%rd165, %r884, 4;
+	add.s64 	%rd167, %rd67, %rd165;
+	st.shared.u32 	[%rd167], %r189;
 	setp.ne.s32 	%p262, %r206, 999999999;
 	@%p262 bra 	$L__BB0_164;
 	bra.uni 	$L__BB0_163;
 $L__BB0_164:                            // %pass6469
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r885, %r206, %r1;
-	mul.wide.s32 	%rd157, %r885, 4;
-	add.s64 	%rd159, %rd65, %rd157;
-	st.shared.u32 	[%rd159], %r190;
+	mul.wide.s32 	%rd168, %r885, 4;
+	add.s64 	%rd170, %rd67, %rd168;
+	st.shared.u32 	[%rd170], %r190;
 	setp.ne.s32 	%p263, %r207, 999999999;
 	@%p263 bra 	$L__BB0_166;
 	bra.uni 	$L__BB0_165;
 $L__BB0_166:                            // %pass6604
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r886, %r207, %r1;
-	mul.wide.s32 	%rd160, %r886, 4;
-	add.s64 	%rd162, %rd65, %rd160;
-	st.shared.u32 	[%rd162], %r191;
+	mul.wide.s32 	%rd171, %r886, 4;
+	add.s64 	%rd173, %rd67, %rd171;
+	st.shared.u32 	[%rd173], %r191;
 	setp.ne.s32 	%p264, %r208, 999999999;
 	@%p264 bra 	$L__BB0_168;
 	bra.uni 	$L__BB0_167;
 $L__BB0_168:                            // %pass6739
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r887, %r208, %r1;
-	mul.wide.s32 	%rd163, %r887, 4;
-	add.s64 	%rd165, %rd65, %rd163;
-	st.shared.u32 	[%rd165], %r192;
+	mul.wide.s32 	%rd174, %r887, 4;
+	add.s64 	%rd176, %rd67, %rd174;
+	st.shared.u32 	[%rd176], %r192;
 	setp.ne.s32 	%p265, %r209, 999999999;
 	@%p265 bra 	$L__BB0_170;
 	bra.uni 	$L__BB0_169;
 $L__BB0_170:                            // %pass6874
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r888, %r209, %r1;
-	mul.wide.s32 	%rd166, %r888, 4;
-	add.s64 	%rd168, %rd65, %rd166;
-	st.shared.u32 	[%rd168], %r193;
+	mul.wide.s32 	%rd177, %r888, 4;
+	add.s64 	%rd179, %rd67, %rd177;
+	st.shared.u32 	[%rd179], %r193;
 	setp.ne.s32 	%p266, %r210, 999999999;
 	@%p266 bra 	$L__BB0_172;
 	bra.uni 	$L__BB0_171;
 $L__BB0_172:                            // %pass7009
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r889, %r210, %r1;
-	mul.wide.s32 	%rd169, %r889, 4;
-	add.s64 	%rd171, %rd65, %rd169;
-	st.shared.u32 	[%rd171], %r194;
+	mul.wide.s32 	%rd180, %r889, 4;
+	add.s64 	%rd182, %rd67, %rd180;
+	st.shared.u32 	[%rd182], %r194;
 	setp.ne.s32 	%p267, %r211, 999999999;
 	@%p267 bra 	$L__BB0_174;
 	bra.uni 	$L__BB0_173;
 $L__BB0_174:                            // %pass7144
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r890, %r211, %r1;
-	mul.wide.s32 	%rd172, %r890, 4;
-	add.s64 	%rd174, %rd65, %rd172;
-	st.shared.u32 	[%rd174], %r195;
+	mul.wide.s32 	%rd183, %r890, 4;
+	add.s64 	%rd185, %rd67, %rd183;
+	st.shared.u32 	[%rd185], %r195;
 	setp.ne.s32 	%p268, %r212, 999999999;
 	@%p268 bra 	$L__BB0_176;
 	bra.uni 	$L__BB0_175;
 $L__BB0_176:                            // %pass7279
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r891, %r212, %r1;
-	mul.wide.s32 	%rd175, %r891, 4;
-	add.s64 	%rd177, %rd65, %rd175;
-	st.shared.u32 	[%rd177], %r196;
+	mul.wide.s32 	%rd186, %r891, 4;
+	add.s64 	%rd188, %rd67, %rd186;
+	st.shared.u32 	[%rd188], %r196;
 	setp.ne.s32 	%p269, %r213, 999999999;
 	@%p269 bra 	$L__BB0_178;
 	bra.uni 	$L__BB0_177;
 $L__BB0_178:                            // %pass7414
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r892, %r213, %r1;
-	mul.wide.s32 	%rd178, %r892, 4;
-	add.s64 	%rd180, %rd65, %rd178;
-	st.shared.u32 	[%rd180], %r197;
+	mul.wide.s32 	%rd189, %r892, 4;
+	add.s64 	%rd191, %rd67, %rd189;
+	st.shared.u32 	[%rd191], %r197;
 	setp.ne.s32 	%p270, %r214, 999999999;
 	@%p270 bra 	$L__BB0_180;
 	bra.uni 	$L__BB0_179;
 $L__BB0_180:                            // %pass7549
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r893, %r214, %r1;
-	mul.wide.s32 	%rd181, %r893, 4;
-	add.s64 	%rd183, %rd65, %rd181;
-	st.shared.u32 	[%rd183], %r198;
+	mul.wide.s32 	%rd192, %r893, 4;
+	add.s64 	%rd194, %rd67, %rd192;
+	st.shared.u32 	[%rd194], %r198;
 	setp.ne.s32 	%p271, %r215, 999999999;
 	@%p271 bra 	$L__BB0_182;
 	bra.uni 	$L__BB0_181;
 $L__BB0_182:                            // %pass7684
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r894, %r215, %r1;
-	mul.wide.s32 	%rd184, %r894, 4;
-	add.s64 	%rd186, %rd65, %rd184;
-	st.shared.u32 	[%rd186], %r199;
+	mul.wide.s32 	%rd195, %r894, 4;
+	add.s64 	%rd197, %rd67, %rd195;
+	st.shared.u32 	[%rd197], %r199;
 	setp.ne.s32 	%p272, %r216, 999999999;
 	@%p272 bra 	$L__BB0_184;
 	bra.uni 	$L__BB0_183;
 $L__BB0_184:                            // %pass7819
                                         //   in Loop: Header=BB0_150 Depth=1
 	add.s32 	%r896, %r216, %r1;
-	mul.wide.s32 	%rd187, %r896, 4;
-	add.s64 	%rd189, %rd65, %rd187;
-	st.shared.u32 	[%rd189], %r200;
+	mul.wide.s32 	%rd198, %r896, 4;
+	add.s64 	%rd200, %rd67, %rd198;
+	st.shared.u32 	[%rd200], %r200;
 	bar.sync 	0;
-	ld.shared.u32 	%r217, [%rd14];
-	ld.shared.u32 	%r218, [%rd15];
-	ld.shared.u32 	%r219, [%rd16];
-	ld.shared.u32 	%r220, [%rd17];
-	ld.shared.u32 	%r221, [%rd18];
-	ld.shared.u32 	%r222, [%rd19];
-	ld.shared.u32 	%r223, [%rd20];
-	ld.shared.u32 	%r224, [%rd21];
-	ld.shared.u32 	%r225, [%rd22];
-	ld.shared.u32 	%r226, [%rd23];
-	ld.shared.u32 	%r227, [%rd24];
-	ld.shared.u32 	%r228, [%rd25];
-	ld.shared.u32 	%r229, [%rd26];
-	ld.shared.u32 	%r230, [%rd27];
-	ld.shared.u32 	%r231, [%rd28];
-	ld.shared.u32 	%r232, [%rd29];
+	ld.shared.u32 	%r217, [%rd16];
+	ld.shared.u32 	%r218, [%rd17];
+	ld.shared.u32 	%r219, [%rd18];
+	ld.shared.u32 	%r220, [%rd19];
+	ld.shared.u32 	%r221, [%rd20];
+	ld.shared.u32 	%r222, [%rd21];
+	ld.shared.u32 	%r223, [%rd22];
+	ld.shared.u32 	%r224, [%rd23];
+	ld.shared.u32 	%r225, [%rd24];
+	ld.shared.u32 	%r226, [%rd25];
+	ld.shared.u32 	%r227, [%rd26];
+	ld.shared.u32 	%r228, [%rd27];
+	ld.shared.u32 	%r229, [%rd28];
+	ld.shared.u32 	%r230, [%rd29];
+	ld.shared.u32 	%r231, [%rd30];
+	ld.shared.u32 	%r232, [%rd31];
 	bar.sync 	0;
 	mov.b32 	%r3359, 16;
 	bra.uni 	$L__BB0_185;
-$L__BB0_119:                            // %L22110
+$L__BB0_119:                            // %L22142
                                         //   in Loop: Header=BB0_185 Depth=2
 	bar.sync 	0;
 	ld.shared.u32 	%r1441, [%rd7];
@@ -2818,14 +2829,14 @@ $L__BB0_119:                            // %L22110
 	add.s32 	%r92, %r92, 8;
 	setp.eq.s32 	%p279, %r92, 48;
 	@%p279 bra 	$L__BB0_189;
-$L__BB0_120:                            // %L29944
+$L__BB0_120:                            // %L29976
                                         //   in Loop: Header=BB0_185 Depth=2
 	bar.sync 	0;
 	add.s32 	%r3359, %r3359, -8;
 	setp.ne.s32 	%p283, %r3359, -16;
 	@%p283 bra 	$L__BB0_185;
 	bra.uni 	$L__BB0_121;
-$L__BB0_185:                            // %L12425
+$L__BB0_185:                            // %L12457
                                         //   Parent Loop BB0_150 Depth=1
                                         // =>  This Inner Loop Header: Depth=2
 	setp.eq.s32 	%p273, %r3359, 16;
@@ -3303,73 +3314,73 @@ $L__BB0_187:                            // %pass10749
 	// begin inline asm
 	prmt.b32 %r248, %r1430, %r1431, %r805;
 	// end inline asm
-	st.shared.u32 	[%rd30], %r233;
-	st.shared.u32 	[%rd31], %r234;
-	st.shared.u32 	[%rd32], %r235;
-	st.shared.u32 	[%rd33+16640], %r236;
-	st.shared.u32 	[%rd34], %r237;
-	st.shared.u32 	[%rd35], %r238;
-	st.shared.u32 	[%rd36], %r239;
-	st.shared.u32 	[%rd37+16640], %r240;
-	st.shared.u32 	[%rd38], %r241;
-	st.shared.u32 	[%rd39], %r242;
-	st.shared.u32 	[%rd40], %r243;
-	st.shared.u32 	[%rd41+16640], %r244;
-	st.shared.u32 	[%rd42], %r245;
-	st.shared.u32 	[%rd43], %r246;
-	st.shared.u32 	[%rd44], %r247;
-	st.shared.u32 	[%rd45+16640], %r248;
+	st.shared.u32 	[%rd32], %r233;
+	st.shared.u32 	[%rd33], %r234;
+	st.shared.u32 	[%rd34], %r235;
+	st.shared.u32 	[%rd35+16640], %r236;
+	st.shared.u32 	[%rd36], %r237;
+	st.shared.u32 	[%rd37], %r238;
+	st.shared.u32 	[%rd38], %r239;
+	st.shared.u32 	[%rd39+16640], %r240;
+	st.shared.u32 	[%rd40], %r241;
+	st.shared.u32 	[%rd41], %r242;
+	st.shared.u32 	[%rd42], %r243;
+	st.shared.u32 	[%rd43+16640], %r244;
+	st.shared.u32 	[%rd44], %r245;
+	st.shared.u32 	[%rd45], %r246;
+	st.shared.u32 	[%rd46], %r247;
+	st.shared.u32 	[%rd47+16640], %r248;
 	@%p230 bra 	$L__BB0_119;
 // %bb.188:                             // %pass15156
                                         //   in Loop: Header=BB0_185 Depth=2
-	st.shared.u32 	[%rd30], %r233;
-	st.shared.u32 	[%rd31], %r234;
-	st.shared.u32 	[%rd32], %r235;
-	st.shared.u32 	[%rd33+16640], %r236;
-	st.shared.u32 	[%rd34], %r237;
-	st.shared.u32 	[%rd35], %r238;
-	st.shared.u32 	[%rd36], %r239;
-	st.shared.u32 	[%rd37+16640], %r240;
-	st.shared.u32 	[%rd38], %r241;
-	st.shared.u32 	[%rd39], %r242;
-	st.shared.u32 	[%rd40], %r243;
-	st.shared.u32 	[%rd41+16640], %r244;
-	st.shared.u32 	[%rd42], %r245;
-	st.shared.u32 	[%rd43], %r246;
-	st.shared.u32 	[%rd44], %r247;
-	st.shared.u32 	[%rd45+16640], %r248;
+	st.shared.u32 	[%rd32], %r233;
+	st.shared.u32 	[%rd33], %r234;
+	st.shared.u32 	[%rd34], %r235;
+	st.shared.u32 	[%rd35+16640], %r236;
+	st.shared.u32 	[%rd36], %r237;
+	st.shared.u32 	[%rd37], %r238;
+	st.shared.u32 	[%rd38], %r239;
+	st.shared.u32 	[%rd39+16640], %r240;
+	st.shared.u32 	[%rd40], %r241;
+	st.shared.u32 	[%rd41], %r242;
+	st.shared.u32 	[%rd42], %r243;
+	st.shared.u32 	[%rd43+16640], %r244;
+	st.shared.u32 	[%rd44], %r245;
+	st.shared.u32 	[%rd45], %r246;
+	st.shared.u32 	[%rd46], %r247;
+	st.shared.u32 	[%rd47+16640], %r248;
 	bra.uni 	$L__BB0_119;
-$L__BB0_189:                            // %pass25121
+$L__BB0_189:                            // %pass25093
                                         //   in Loop: Header=BB0_185 Depth=2
 	shl.b32 	%r2102, %r93, 20;
 	or.b32  	%r2103, %r2102, %r182;
 	or.b32  	%r2104, %r2103, %r183;
 	or.b32  	%r2105, %r2104, %r5;
-	cvt.u64.u32 	%rd192, %r2105;
-	add.s64 	%rd193, %rd192, %rd9;
-	shr.u64 	%rd194, %rd193, 34;
-	add.s64 	%rd195, %rd193, %rd194;
-	shr.s64 	%rd196, %rd195, 30;
-	setp.lt.s64 	%p280, %rd193, 0;
-	and.b64  	%rd197, %rd195, -1073741824;
-	setp.ne.s64 	%p281, %rd197, %rd193;
+	cvt.u64.u32 	%rd203, %r2105;
+	add.s64 	%rd204, %rd203, %rd9;
+	shr.u64 	%rd205, %rd204, 34;
+	add.s64 	%rd206, %rd204, %rd205;
+	shr.s64 	%rd207, %rd206, 30;
+	setp.lt.s64 	%p280, %rd204, 0;
+	and.b64  	%rd208, %rd206, -1073741824;
+	setp.ne.s64 	%p281, %rd208, %rd204;
 	and.pred  	%p282, %p280, %p281;
-	selp.s64 	%rd198, -1, 0, %p282;
-	add.s64 	%rd199, %rd196, %rd198;
-	shl.b64 	%rd200, %rd199, 30;
-	sub.s64 	%rd201, %rd193, %rd200;
-	shl.b64 	%rd202, %rd201, 2;
-	add.s64 	%rd203, %rd4, %rd202;
-	st.global.u32 	[%rd203], %r94;
+	selp.s64 	%rd209, -1, 0, %p282;
+	add.s64 	%rd210, %rd207, %rd209;
+	shl.b64 	%rd211, %rd210, 30;
+	sub.s64 	%rd212, %rd204, %rd211;
+	shl.b64 	%rd213, %rd212, 2;
+	add.s64 	%rd214, %rd4, %rd213;
+	st.global.u32 	[%rd214], %r94;
 	add.s32 	%r93, %r93, 1;
 	mov.b32 	%r92, 0;
 	mov.u32 	%r94, %r92;
 	bra.uni 	$L__BB0_120;
-$L__BB0_121:                            // %L29961.preheader
+$L__BB0_121:                            // %L29993.preheader
                                         //   in Loop: Header=BB0_150 Depth=1
 	mov.b32 	%r3366, 16;
 	bra.uni 	$L__BB0_122;
-$L__BB0_123:                            // %L39646
+$L__BB0_123:                            // %L39678
                                         //   in Loop: Header=BB0_122 Depth=2
 	bar.sync 	0;
 	ld.shared.u32 	%r2655, [%rd7];
@@ -3847,14 +3858,14 @@ $L__BB0_123:                            // %L39646
 	add.s32 	%r92, %r92, 8;
 	setp.eq.s32 	%p289, %r92, 48;
 	@%p289 bra 	$L__BB0_191;
-$L__BB0_124:                            // %L47480
+$L__BB0_124:                            // %L47512
                                         //   in Loop: Header=BB0_122 Depth=2
 	bar.sync 	0;
 	add.s32 	%r3366, %r3366, -8;
 	setp.ne.s32 	%p293, %r3366, -16;
 	@%p293 bra 	$L__BB0_122;
 	bra.uni 	$L__BB0_125;
-$L__BB0_122:                            // %L29961
+$L__BB0_122:                            // %L29993
                                         //   Parent Loop BB0_150 Depth=1
                                         // =>  This Inner Loop Header: Depth=2
 	setp.eq.s32 	%p284, %r3366, 16;
@@ -4330,65 +4341,65 @@ $L__BB0_122:                            // %L29961
 	// begin inline asm
 	prmt.b32 %r2631, %r2628, %r2629, %r805;
 	// end inline asm
-	st.shared.u32 	[%rd30], %r2571;
-	st.shared.u32 	[%rd31], %r2575;
-	st.shared.u32 	[%rd32], %r2579;
-	st.shared.u32 	[%rd33+16640], %r2583;
-	st.shared.u32 	[%rd34], %r2587;
-	st.shared.u32 	[%rd35], %r2591;
-	st.shared.u32 	[%rd36], %r2595;
-	st.shared.u32 	[%rd37+16640], %r2599;
-	st.shared.u32 	[%rd38], %r2603;
-	st.shared.u32 	[%rd39], %r2607;
-	st.shared.u32 	[%rd40], %r2611;
-	st.shared.u32 	[%rd41+16640], %r2615;
-	st.shared.u32 	[%rd42], %r2619;
-	st.shared.u32 	[%rd43], %r2623;
-	st.shared.u32 	[%rd44], %r2627;
-	st.shared.u32 	[%rd45+16640], %r2631;
+	st.shared.u32 	[%rd32], %r2571;
+	st.shared.u32 	[%rd33], %r2575;
+	st.shared.u32 	[%rd34], %r2579;
+	st.shared.u32 	[%rd35+16640], %r2583;
+	st.shared.u32 	[%rd36], %r2587;
+	st.shared.u32 	[%rd37], %r2591;
+	st.shared.u32 	[%rd38], %r2595;
+	st.shared.u32 	[%rd39+16640], %r2599;
+	st.shared.u32 	[%rd40], %r2603;
+	st.shared.u32 	[%rd41], %r2607;
+	st.shared.u32 	[%rd42], %r2611;
+	st.shared.u32 	[%rd43+16640], %r2615;
+	st.shared.u32 	[%rd44], %r2619;
+	st.shared.u32 	[%rd45], %r2623;
+	st.shared.u32 	[%rd46], %r2627;
+	st.shared.u32 	[%rd47+16640], %r2631;
 	@%p288 bra 	$L__BB0_190;
 	bra.uni 	$L__BB0_123;
 $L__BB0_190:                            // %pass29966
                                         //   in Loop: Header=BB0_122 Depth=2
-	st.shared.u32 	[%rd30], %r2571;
-	st.shared.u32 	[%rd31], %r2575;
-	st.shared.u32 	[%rd32], %r2579;
-	st.shared.u32 	[%rd33+16640], %r2583;
-	st.shared.u32 	[%rd34], %r2587;
-	st.shared.u32 	[%rd35], %r2591;
-	st.shared.u32 	[%rd36], %r2595;
-	st.shared.u32 	[%rd37+16640], %r2599;
-	st.shared.u32 	[%rd38], %r2603;
-	st.shared.u32 	[%rd39], %r2607;
-	st.shared.u32 	[%rd40], %r2611;
-	st.shared.u32 	[%rd41+16640], %r2615;
-	st.shared.u32 	[%rd42], %r2619;
-	st.shared.u32 	[%rd43], %r2623;
-	st.shared.u32 	[%rd44], %r2627;
-	st.shared.u32 	[%rd45+16640], %r2631;
+	st.shared.u32 	[%rd32], %r2571;
+	st.shared.u32 	[%rd33], %r2575;
+	st.shared.u32 	[%rd34], %r2579;
+	st.shared.u32 	[%rd35+16640], %r2583;
+	st.shared.u32 	[%rd36], %r2587;
+	st.shared.u32 	[%rd37], %r2591;
+	st.shared.u32 	[%rd38], %r2595;
+	st.shared.u32 	[%rd39+16640], %r2599;
+	st.shared.u32 	[%rd40], %r2603;
+	st.shared.u32 	[%rd41], %r2607;
+	st.shared.u32 	[%rd42], %r2611;
+	st.shared.u32 	[%rd43+16640], %r2615;
+	st.shared.u32 	[%rd44], %r2619;
+	st.shared.u32 	[%rd45], %r2623;
+	st.shared.u32 	[%rd46], %r2627;
+	st.shared.u32 	[%rd47+16640], %r2631;
 	bra.uni 	$L__BB0_123;
-$L__BB0_191:                            // %pass39933
+$L__BB0_191:                            // %pass39905
                                         //   in Loop: Header=BB0_122 Depth=2
 	shl.b32 	%r3316, %r93, 20;
 	or.b32  	%r3317, %r3316, %r182;
 	or.b32  	%r3318, %r3317, %r183;
 	or.b32  	%r3319, %r3318, %r5;
-	cvt.u64.u32 	%rd204, %r3319;
-	add.s64 	%rd205, %rd204, %rd9;
-	shr.u64 	%rd206, %rd205, 34;
-	add.s64 	%rd207, %rd205, %rd206;
-	shr.s64 	%rd208, %rd207, 30;
-	setp.lt.s64 	%p290, %rd205, 0;
-	and.b64  	%rd209, %rd207, -1073741824;
-	setp.ne.s64 	%p291, %rd209, %rd205;
+	cvt.u64.u32 	%rd215, %r3319;
+	add.s64 	%rd216, %rd215, %rd9;
+	shr.u64 	%rd217, %rd216, 34;
+	add.s64 	%rd218, %rd216, %rd217;
+	shr.s64 	%rd219, %rd218, 30;
+	setp.lt.s64 	%p290, %rd216, 0;
+	and.b64  	%rd220, %rd218, -1073741824;
+	setp.ne.s64 	%p291, %rd220, %rd216;
 	and.pred  	%p292, %p290, %p291;
-	selp.s64 	%rd210, -1, 0, %p292;
-	add.s64 	%rd211, %rd208, %rd210;
-	shl.b64 	%rd212, %rd211, 30;
-	sub.s64 	%rd213, %rd205, %rd212;
-	shl.b64 	%rd214, %rd213, 2;
-	add.s64 	%rd215, %rd4, %rd214;
-	st.global.u32 	[%rd215], %r94;
+	selp.s64 	%rd221, -1, 0, %p292;
+	add.s64 	%rd222, %rd219, %rd221;
+	shl.b64 	%rd223, %rd222, 30;
+	sub.s64 	%rd224, %rd216, %rd223;
+	shl.b64 	%rd225, %rd224, 2;
+	add.s64 	%rd226, %rd4, %rd225;
+	st.global.u32 	[%rd226], %r94;
 	add.s32 	%r93, %r93, 1;
 	mov.u32 	%r92, %r1160;
 	mov.u32 	%r94, %r1160;
@@ -4398,15 +4409,15 @@ $L__BB0_151:                            // %pass1174
 	st.global.u32 	[%rd6], %r3320;
 	ret;
 $L__BB0_186:                            // %post_box_union
-	mov.u64 	%rd190, exception5452;
-	cvta.global.u64 	%rd191, %rd190;
+	mov.u64 	%rd201, exception5452;
+	cvta.global.u64 	%rd202, %rd201;
 	{ // callseq 53, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd191;
+	st.param.b64 	[param1+0], %rd202;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4417,7 +4428,7 @@ $L__BB0_186:                            // %post_box_union
 	{ // callseq 54, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4432,15 +4443,15 @@ $L__BB0_186:                            // %post_box_union
 $L__BB0_181:                            // %pass7633
 	mov.b32 	%r3322, 5;
 	st.global.u32 	[%rd6], %r3322;
-	mov.u64 	%rd218, exception5404;
-	cvta.global.u64 	%rd219, %rd218;
+	mov.u64 	%rd229, exception5404;
+	cvta.global.u64 	%rd230, %rd229;
 	{ // callseq 57, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd219;
+	st.param.b64 	[param1+0], %rd230;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4451,7 +4462,7 @@ $L__BB0_181:                            // %pass7633
 	{ // callseq 58, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4466,15 +4477,15 @@ $L__BB0_181:                            // %pass7633
 $L__BB0_157:                            // %pass6013
 	mov.b32 	%r3334, 5;
 	st.global.u32 	[%rd6], %r3334;
-	mov.u64 	%rd242, exception5404;
-	cvta.global.u64 	%rd243, %rd242;
+	mov.u64 	%rd253, exception5404;
+	cvta.global.u64 	%rd254, %rd253;
 	{ // callseq 81, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd243;
+	st.param.b64 	[param1+0], %rd254;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4485,7 +4496,7 @@ $L__BB0_157:                            // %pass6013
 	{ // callseq 82, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4500,15 +4511,15 @@ $L__BB0_157:                            // %pass6013
 $L__BB0_159:                            // %pass6148
 	mov.b32 	%r3333, 5;
 	st.global.u32 	[%rd6], %r3333;
-	mov.u64 	%rd240, exception5404;
-	cvta.global.u64 	%rd241, %rd240;
+	mov.u64 	%rd251, exception5404;
+	cvta.global.u64 	%rd252, %rd251;
 	{ // callseq 79, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd241;
+	st.param.b64 	[param1+0], %rd252;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4519,7 +4530,7 @@ $L__BB0_159:                            // %pass6148
 	{ // callseq 80, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4534,15 +4545,15 @@ $L__BB0_159:                            // %pass6148
 $L__BB0_161:                            // %pass6283
 	mov.b32 	%r3332, 5;
 	st.global.u32 	[%rd6], %r3332;
-	mov.u64 	%rd238, exception5404;
-	cvta.global.u64 	%rd239, %rd238;
+	mov.u64 	%rd249, exception5404;
+	cvta.global.u64 	%rd250, %rd249;
 	{ // callseq 77, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd239;
+	st.param.b64 	[param1+0], %rd250;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4553,7 +4564,7 @@ $L__BB0_161:                            // %pass6283
 	{ // callseq 78, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4568,15 +4579,15 @@ $L__BB0_161:                            // %pass6283
 $L__BB0_171:                            // %pass6958
 	mov.b32 	%r3327, 5;
 	st.global.u32 	[%rd6], %r3327;
-	mov.u64 	%rd228, exception5404;
-	cvta.global.u64 	%rd229, %rd228;
+	mov.u64 	%rd239, exception5404;
+	cvta.global.u64 	%rd240, %rd239;
 	{ // callseq 67, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd229;
+	st.param.b64 	[param1+0], %rd240;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4587,7 +4598,7 @@ $L__BB0_171:                            // %pass6958
 	{ // callseq 68, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4602,15 +4613,15 @@ $L__BB0_171:                            // %pass6958
 $L__BB0_175:                            // %pass7228
 	mov.b32 	%r3325, 5;
 	st.global.u32 	[%rd6], %r3325;
-	mov.u64 	%rd224, exception5404;
-	cvta.global.u64 	%rd225, %rd224;
+	mov.u64 	%rd235, exception5404;
+	cvta.global.u64 	%rd236, %rd235;
 	{ // callseq 63, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd225;
+	st.param.b64 	[param1+0], %rd236;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4621,7 +4632,7 @@ $L__BB0_175:                            // %pass7228
 	{ // callseq 64, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4636,15 +4647,15 @@ $L__BB0_175:                            // %pass7228
 $L__BB0_177:                            // %pass7363
 	mov.b32 	%r3324, 5;
 	st.global.u32 	[%rd6], %r3324;
-	mov.u64 	%rd222, exception5404;
-	cvta.global.u64 	%rd223, %rd222;
+	mov.u64 	%rd233, exception5404;
+	cvta.global.u64 	%rd234, %rd233;
 	{ // callseq 61, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd223;
+	st.param.b64 	[param1+0], %rd234;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4655,7 +4666,7 @@ $L__BB0_177:                            // %pass7363
 	{ // callseq 62, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4670,15 +4681,15 @@ $L__BB0_177:                            // %pass7363
 $L__BB0_183:                            // %pass7768
 	mov.b32 	%r3321, 5;
 	st.global.u32 	[%rd6], %r3321;
-	mov.u64 	%rd216, exception5404;
-	cvta.global.u64 	%rd217, %rd216;
+	mov.u64 	%rd227, exception5404;
+	cvta.global.u64 	%rd228, %rd227;
 	{ // callseq 55, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd217;
+	st.param.b64 	[param1+0], %rd228;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4689,7 +4700,7 @@ $L__BB0_183:                            // %pass7768
 	{ // callseq 56, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4704,15 +4715,15 @@ $L__BB0_183:                            // %pass7768
 $L__BB0_153:                            // %pass5744
 	mov.b32 	%r3336, 5;
 	st.global.u32 	[%rd6], %r3336;
-	mov.u64 	%rd246, exception5404;
-	cvta.global.u64 	%rd247, %rd246;
+	mov.u64 	%rd257, exception5404;
+	cvta.global.u64 	%rd258, %rd257;
 	{ // callseq 85, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd247;
+	st.param.b64 	[param1+0], %rd258;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4723,7 +4734,7 @@ $L__BB0_153:                            // %pass5744
 	{ // callseq 86, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4738,15 +4749,15 @@ $L__BB0_153:                            // %pass5744
 $L__BB0_155:                            // %pass5878
 	mov.b32 	%r3335, 5;
 	st.global.u32 	[%rd6], %r3335;
-	mov.u64 	%rd244, exception5404;
-	cvta.global.u64 	%rd245, %rd244;
+	mov.u64 	%rd255, exception5404;
+	cvta.global.u64 	%rd256, %rd255;
 	{ // callseq 83, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd245;
+	st.param.b64 	[param1+0], %rd256;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4757,7 +4768,7 @@ $L__BB0_155:                            // %pass5878
 	{ // callseq 84, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4772,15 +4783,15 @@ $L__BB0_155:                            // %pass5878
 $L__BB0_163:                            // %pass6418
 	mov.b32 	%r3331, 5;
 	st.global.u32 	[%rd6], %r3331;
-	mov.u64 	%rd236, exception5404;
-	cvta.global.u64 	%rd237, %rd236;
+	mov.u64 	%rd247, exception5404;
+	cvta.global.u64 	%rd248, %rd247;
 	{ // callseq 75, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd237;
+	st.param.b64 	[param1+0], %rd248;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4791,7 +4802,7 @@ $L__BB0_163:                            // %pass6418
 	{ // callseq 76, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4806,15 +4817,15 @@ $L__BB0_163:                            // %pass6418
 $L__BB0_165:                            // %pass6553
 	mov.b32 	%r3330, 5;
 	st.global.u32 	[%rd6], %r3330;
-	mov.u64 	%rd234, exception5404;
-	cvta.global.u64 	%rd235, %rd234;
+	mov.u64 	%rd245, exception5404;
+	cvta.global.u64 	%rd246, %rd245;
 	{ // callseq 73, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd235;
+	st.param.b64 	[param1+0], %rd246;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4825,7 +4836,7 @@ $L__BB0_165:                            // %pass6553
 	{ // callseq 74, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4840,15 +4851,15 @@ $L__BB0_165:                            // %pass6553
 $L__BB0_167:                            // %pass6688
 	mov.b32 	%r3329, 5;
 	st.global.u32 	[%rd6], %r3329;
-	mov.u64 	%rd232, exception5404;
-	cvta.global.u64 	%rd233, %rd232;
+	mov.u64 	%rd243, exception5404;
+	cvta.global.u64 	%rd244, %rd243;
 	{ // callseq 71, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd233;
+	st.param.b64 	[param1+0], %rd244;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4859,7 +4870,7 @@ $L__BB0_167:                            // %pass6688
 	{ // callseq 72, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4874,15 +4885,15 @@ $L__BB0_167:                            // %pass6688
 $L__BB0_169:                            // %pass6823
 	mov.b32 	%r3328, 5;
 	st.global.u32 	[%rd6], %r3328;
-	mov.u64 	%rd230, exception5404;
-	cvta.global.u64 	%rd231, %rd230;
+	mov.u64 	%rd241, exception5404;
+	cvta.global.u64 	%rd242, %rd241;
 	{ // callseq 69, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd231;
+	st.param.b64 	[param1+0], %rd242;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4893,7 +4904,7 @@ $L__BB0_169:                            // %pass6823
 	{ // callseq 70, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4908,15 +4919,15 @@ $L__BB0_169:                            // %pass6823
 $L__BB0_173:                            // %pass7093
 	mov.b32 	%r3326, 5;
 	st.global.u32 	[%rd6], %r3326;
-	mov.u64 	%rd226, exception5404;
-	cvta.global.u64 	%rd227, %rd226;
+	mov.u64 	%rd237, exception5404;
+	cvta.global.u64 	%rd238, %rd237;
 	{ // callseq 65, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd227;
+	st.param.b64 	[param1+0], %rd238;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4927,7 +4938,7 @@ $L__BB0_173:                            // %pass7093
 	{ // callseq 66, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4942,15 +4953,15 @@ $L__BB0_173:                            // %pass7093
 $L__BB0_179:                            // %pass7498
 	mov.b32 	%r3323, 5;
 	st.global.u32 	[%rd6], %r3323;
-	mov.u64 	%rd220, exception5404;
-	cvta.global.u64 	%rd221, %rd220;
+	mov.u64 	%rd231, exception5404;
+	cvta.global.u64 	%rd232, %rd231;
 	{ // callseq 59, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd221;
+	st.param.b64 	[param1+0], %rd232;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4961,7 +4972,7 @@ $L__BB0_179:                            // %pass7498
 	{ // callseq 60, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -4976,15 +4987,15 @@ $L__BB0_179:                            // %pass7498
 $L__BB0_126:                            // %pass163
 	mov.b32 	%r3338, 2;
 	st.global.u32 	[%rd6], %r3338;
-	mov.u64 	%rd250, exception5404;
-	cvta.global.u64 	%rd251, %rd250;
+	mov.u64 	%rd261, exception5404;
+	cvta.global.u64 	%rd262, %rd261;
 	{ // callseq 89, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd251;
+	st.param.b64 	[param1+0], %rd262;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -4995,7 +5006,7 @@ $L__BB0_126:                            // %pass163
 	{ // callseq 90, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -5010,15 +5021,15 @@ $L__BB0_126:                            // %pass163
 $L__BB0_12:                             // %pass269
 	mov.b32 	%r3337, 3;
 	st.global.u32 	[%rd6], %r3337;
-	mov.u64 	%rd248, exception5404;
-	cvta.global.u64 	%rd249, %rd248;
+	mov.u64 	%rd259, exception5404;
+	cvta.global.u64 	%rd260, %rd259;
 	{ // callseq 87, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd249;
+	st.param.b64 	[param1+0], %rd260;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -5029,7 +5040,7 @@ $L__BB0_12:                             // %pass269
 	{ // callseq 88, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -5042,15 +5053,15 @@ $L__BB0_12:                             // %pass269
 	exit;
 	// end inline asm
 $L__BB0_1:                              // %L9
-	mov.u64 	%rd52, exception15464;
-	cvta.global.u64 	%rd53, %rd52;
+	mov.u64 	%rd54, exception15463;
+	cvta.global.u64 	%rd55, %rd54;
 	{ // callseq 48, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd53;
+	st.param.b64 	[param1+0], %rd55;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -5061,7 +5072,7 @@ $L__BB0_1:                              // %L9
 	{ // callseq 49, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 
@@ -5074,21 +5085,21 @@ $L__BB0_1:                              // %L9
 	exit;
 	// end inline asm
 $L__BB0_118:                            // %L978
-	add.u64 	%rd51, %SP, 0;
+	add.u64 	%rd53, %SP, 0;
 	add.u64 	%rd5, %SPL, 0;
 	st.local.u32 	[%rd5], %r1;
 	st.local.u32 	[%rd5+4], %r2;
 	st.local.u32 	[%rd5+8], %r4;
 	st.local.u32 	[%rd5+12], %r175;
 	st.local.u32 	[%rd5+16], %r176;
-	mov.u64 	%rd57, __unnamed_1;
-	cvta.global.u64 	%rd58, %rd57;
+	mov.u64 	%rd59, __unnamed_1;
+	cvta.global.u64 	%rd60, %rd59;
 	{ // callseq 50, 0
 	.reg .b32 temp_param_reg;
 	.param .b64 param0;
-	st.param.b64 	[param0+0], %rd58;
+	st.param.b64 	[param0+0], %rd60;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd51;
+	st.param.b64 	[param1+0], %rd53;
 	.param .b32 retval0;
 	call.uni (retval0), 
 	vprintf, 
@@ -5100,15 +5111,15 @@ $L__BB0_118:                            // %L978
 	} // callseq 50
 	mov.b32 	%r490, 4;
 	st.global.u32 	[%rd6], %r490;
-	mov.u64 	%rd60, exception5404;
-	cvta.global.u64 	%rd61, %rd60;
+	mov.u64 	%rd62, exception5404;
+	cvta.global.u64 	%rd63, %rd62;
 	{ // callseq 51, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	.param .b64 param1;
-	st.param.b64 	[param1+0], %rd61;
+	st.param.b64 	[param1+0], %rd63;
 	call.uni 
 	gpu_report_exception, 
 	(
@@ -5119,7 +5130,7 @@ $L__BB0_118:                            // %L978
 	{ // callseq 52, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
-	st.param.b64 	[param0+0], %rd46;
+	st.param.b64 	[param0+0], %rd48;
 	st.param.b32 	[param0+8], %r251;
 	call.uni 
 	gpu_signal_exception, 

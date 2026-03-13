@@ -1154,9 +1154,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             - name: "J"
               intent: out
               type: Int4
-              indices: [C, T, P, F, B]
-              shape: [$C, $Tout, $P, $F, $B]
-              strides: [1, $C, $(C*Tout), $(C*Tout*P), $(C*Tout*P*F)]
+              indices: [C, T, P, F, B, Thi]
+              shape: [$C, $Tout, $P, $F, $B, 1]
+              strides: [1, $C, $(C*Tout), $(C*Tout*P), $(C*Tout*P*F), $(C*Tout*P*F*1)]
             - name: "info"
               intent: out
               type: Int32
@@ -1275,6 +1275,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                             Dict("label" => "P", "length" => P),
                             Dict("label" => "F", "length" => F),
                             Dict("label" => "B", "length" => B),
+                            Dict("label" => "Thi", "length" => 1),
                         ],
                         "isoutput" => true,
                         "isscalar" => false,
