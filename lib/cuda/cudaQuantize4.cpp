@@ -55,8 +55,8 @@ private:
     /// GPU side memory name for mean,stdev output
     const std::string _gpu_mem_beams_offsetscale;
 
-    const NDArrayBuffer<float16_t, 3> input_buffer;
-    NDArrayBuffer<kotekan::int4x2_t, 3> beam_buffer;
+    const NDArrayBuffer<float16_t, 4> input_buffer;
+    NDArrayBuffer<kotekan::int4x2_t, 4> beam_buffer;
     NDArrayBuffer<float16_t, 4> offsetscale_buffer;
 };
 
@@ -79,30 +79,30 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
     _gpu_mem_beams_offsetscale(config.get<std::string>(unique_name, "gpu_mem_offsetscale")),
     //
     input_buffer([&]() {
-        const std::array<std::ptrdiff_t, 3> input_lengths{_num_beams, _num_frequencies, _num_times};
-        const std::array<std::string, 3> input_dimnames{"R", "Fbar", "Ttilde"};
-        return NDArrayBuffer<float16_t, 3>(_gpu_mem_input, "frb2_beams", input_lengths,
-                                           input_dimnames, *this);
+        const std::array<std::ptrdiff_t, 4> input_lengths{1, _num_beams, _num_frequencies,
+                                                          _num_times};
+        const std::array<std::string, 4> input_dimnames{"Ttildehi256", "R", "Fbar", "Ttildelo256"};
+        return NDArrayBuffer<float16_t, 4>(_gpu_mem_input, "I2", input_lengths, input_dimnames,
+                                           *this);
     }()),
     beam_buffer([&]() {
         // The data are stored as 4-bit integers, 2 values per byte
         assert(_num_times % 2 == 0);
         assert(_num_times % CHUNK_SIZE == 0);
         assert(_num_beams % FRAME_SIZE == 0);
-        const std::array<std::ptrdiff_t, 3> beam_lengths{_num_beams, _num_frequencies,
+        const std::array<std::ptrdiff_t, 4> beam_lengths{1, _num_beams, _num_frequencies,
                                                          _num_times / 2};
-        const std::array<std::string, 3> beam_dimnames{"R", "Fbar", "Ttilde"};
-        return NDArrayBuffer<kotekan::int4x2_t, 3>(_gpu_mem_beams, "frb3_beams", beam_lengths,
+        const std::array<std::string, 4> beam_dimnames{"Ttildehi256", "R", "Fbar", "Ttildelo256"};
+        return NDArrayBuffer<kotekan::int4x2_t, 4>(_gpu_mem_beams, "I3", beam_lengths,
                                                    beam_dimnames, *this);
     }()),
     offsetscale_buffer([&]() {
         assert(_num_times % CHUNK_SIZE == 0);
         assert(_num_beams % FRAME_SIZE == 0);
-        const std::array<std::ptrdiff_t, 4> offsetscale_lengths{_num_beams, _num_frequencies,
-                                                                _num_times / CHUNK_SIZE, 2};
-        const std::array<std::string, 4> offsetscale_dimnames{"R", "Fbar", "Ttilde256",
+        const std::array<std::ptrdiff_t, 4> offsetscale_lengths{1, _num_beams, _num_frequencies, 2};
+        const std::array<std::string, 4> offsetscale_dimnames{"Ttilde256", "R", "Fbar",
                                                               "offset/scale"};
-        return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_offsetscale, "frb3_beams_offsetscale",
+        return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_offsetscale, "I3_offsetscale",
                                            offsetscale_lengths, offsetscale_dimnames, *this);
     }())
 //
@@ -134,38 +134,42 @@ cudaEvent_t cudaQuantize4::execute(cudaPipelineState&, const std::vector<cudaEve
     offsetscale_buffer.set_metadata(input_meta);
 
     const auto& input_ndarray = input_buffer.get_ndarray();
-    auto& offsetscale_ndarray = offsetscale_buffer.get_ndarray();
-    auto& beam_ndarray = beam_buffer.get_ndarray();
-
     const float16_t* const input = input_ndarray.data();
+    const int input_size1 = input_ndarray.extent(3); // time
+    const int input_size2 = input_ndarray.extent(2); // freq
+    const int input_size3 = input_ndarray.extent(1); // beam
+    assert(input_ndarray.extent(0) == 1);
+    assert(input_ndarray.stride(3) == 1);              // time
+    const int input_stride2 = input_ndarray.stride(2); // freq
+    const int input_stride3 = input_ndarray.stride(1); // beam
+
+    auto& offsetscale_ndarray = offsetscale_buffer.get_ndarray();
     float16_t* const outputf = offsetscale_ndarray.data();
+    const int outputf_size1 = offsetscale_ndarray.extent(3); // time
+    const int outputf_size2 = offsetscale_ndarray.extent(2); // freq
+    const int outputf_size3 = offsetscale_ndarray.extent(1); // beam
+    assert(offsetscale_ndarray.extent(0) == 1);
+    assert(offsetscale_ndarray.stride(3) == 1);                // time
+    const int outputf_stride2 = offsetscale_ndarray.stride(2); // freq
+    const int outputf_stride3 = offsetscale_ndarray.stride(1); // beam
+
+    auto& beam_ndarray = beam_buffer.get_ndarray();
     kotekan::int4x2_t* const outputi = beam_ndarray.data();
-    const int input_size1 = input_ndarray.extent(2);
-    const int input_size2 = input_ndarray.extent(1);
-    const int input_size3 = input_ndarray.extent(0);
-    assert(input_ndarray.stride(2) == 1);
-    const int input_stride2 = input_ndarray.stride(1);
-    const int input_stride3 = input_ndarray.stride(0);
-    assert(offsetscale_ndarray.extent(3) == 2);
-    const int outputf_size1 = offsetscale_ndarray.extent(2) * 2;
-    const int outputf_size2 = offsetscale_ndarray.extent(1);
-    const int outputf_size3 = offsetscale_ndarray.extent(0);
-    assert(offsetscale_ndarray.stride(3) == 1);
-    assert(offsetscale_ndarray.stride(2) == 2);
-    const int outputf_stride2 = offsetscale_ndarray.stride(1);
-    const int outputf_stride3 = offsetscale_ndarray.stride(0);
-    const int outputi_size1 = beam_ndarray.extent(2);
-    const int outputi_size2 = beam_ndarray.extent(1);
-    const int outputi_size3 = beam_ndarray.extent(0);
-    assert(beam_ndarray.stride(2) == 1);
-    const int outputi_stride2 = beam_ndarray.stride(1);
-    const int outputi_stride3 = beam_ndarray.stride(0);
+    const int outputi_size1 = beam_ndarray.extent(3); // time
+    const int outputi_size2 = beam_ndarray.extent(2); // freq
+    const int outputi_size3 = beam_ndarray.extent(1); // beam
+    assert(beam_ndarray.extent(0) == 1);
+    assert(beam_ndarray.stride(3) == 1);                // time
+    const int outputi_stride2 = beam_ndarray.stride(2); // freq
+    const int outputi_stride3 = beam_ndarray.stride(1); // beam
+
     cudaStream_t stream = device.getStream(cuda_stream_id);
 
-    gpu_quantize4(input, outputf, outputi, input_size1, input_size2, input_size3, input_stride2,
-                  input_stride3, outputf_size1, outputf_size2, outputf_size3, outputf_stride2,
-                  outputf_stride3, outputi_size1, outputi_size2, outputi_size3, outputi_stride2,
-                  outputi_stride3, _stddev_cutoff, stream);
+    gpu_quantize4(input, outputf, outputi,                                                       //
+                  input_size1, input_size2, input_size3, input_stride2, input_stride3,           //
+                  outputf_size1, outputf_size2, outputf_size3, outputf_stride2, outputf_stride3, //
+                  outputi_size1, outputi_size2, outputi_size3, outputi_stride2, outputi_stride3, //
+                  _stddev_cutoff, stream);
     CHECK_CUDA_ERROR(cudaGetLastError());
 
     return record_end_event();
