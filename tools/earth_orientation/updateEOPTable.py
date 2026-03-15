@@ -7,9 +7,10 @@ from astropy.time import Time
 import astropy.units as units
 import astropy.utils.iers
 import numpy as np
+import yaml
 
 
-def make_rest_get_request(host, port, endpoint, protocol="http://"):
+def make_rest_get_request(host, port, endpoint, timeout, protocol="http://"):
     r"""
     Make a REST GET request to the specified endpoint and return the response.
 
@@ -22,6 +23,8 @@ def make_rest_get_request(host, port, endpoint, protocol="http://"):
         The port at which to find the kotekan instance. For instance 12048.
     endpoint : String
         The endpoint to query, no leading "/".  For instance "get-frame0-time".
+    timeout : float
+        Timeout in seconds for the request.
     protocol : String, optional
         Prefix for the URL, for instance "http://" (the default)
 
@@ -37,12 +40,13 @@ def make_rest_get_request(host, port, endpoint, protocol="http://"):
 
     url = "{0:s}{1:s}:{2:d}/{3:s}".format(protocol, host, port, endpoint)
 
-    resp = requests.get(url)
+    resp = requests.get(url, timeout=timeout)
 
     return resp
 
 
-def make_rest_post_request(host, port, endpoint, json_payload, protocol="http://"):
+def make_rest_post_request(host, port, endpoint, json_payload, timeout,
+                           protocol="http://"):
     r"""
     Make a REST POST request to the specified endpoint with the given payload and
     return the response.
@@ -58,6 +62,8 @@ def make_rest_post_request(host, port, endpoint, json_payload, protocol="http://
         The endpoint to query, no leading "/".  For instance "get-frame0-time".
     json_payload : JSON-able Object
         Payload for the POST, serializable as JSON (e.g. a dict)
+    timeout : float
+        Timeout in seconds for the request.
     protocol : String, optional
         Prefix for the URL, for instance "http://" (the default)
 
@@ -73,12 +79,12 @@ def make_rest_post_request(host, port, endpoint, json_payload, protocol="http://
 
     url = "{0:s}{1:s}:{2:d}/{3:s}".format(protocol, host, port, endpoint)
 
-    resp = requests.post(url, json=json_payload)
+    resp = requests.post(url, json=json_payload, timeout=timeout)
 
     return resp
 
 
-def read_kotekan_frame0_ns(host, port, protocol="http://"):
+def read_kotekan_frame0_ns(host, port, timeout, protocol="http://"):
     r"""
     Read the "time0_ns" parameter from a running Kotekan instance.
 
@@ -94,6 +100,8 @@ def read_kotekan_frame0_ns(host, port, protocol="http://"):
         instance "localhost" or "127.0.0.1"
     port : int
         The port at which to find the kotekan instance. For instance 12048.
+    timeout : float
+        Timeout in seconds for the request.
     protocol : String, optional
         Prefix for the URL, for instance "http://" (the default)
 
@@ -107,12 +115,12 @@ def read_kotekan_frame0_ns(host, port, protocol="http://"):
     Exceptions from requests.
     """
 
-    resp = make_rest_get_request(host, port, "time0_ns", protocol)
+    resp = make_rest_get_request(host, port, "time0_ns", timeout, protocol)
 
     return resp.json()["time0_ns"]
 
 
-def read_fpga_master_frame0_ns(host, port, protocol="http://"):
+def read_fpga_master_frame0_ns(host, port, timeout, protocol="http://"):
     r"""
     Read the "frame0_nano" parameter from fpga_master.
 
@@ -128,6 +136,8 @@ def read_fpga_master_frame0_ns(host, port, protocol="http://"):
         instance "localhost" or "127.0.0.1"
     port : int
         The port at which to find the kotekan instance. For instance 12048.
+    timeout : float
+        Timeout in seconds for the request.
     protocol : String, optional
         Prefix for the URL, for instance "http://" (the default)
 
@@ -141,12 +151,12 @@ def read_fpga_master_frame0_ns(host, port, protocol="http://"):
     Exceptions from requests.
     """
 
-    resp = make_rest_get_request(host, port, "get-frame0-time", protocol)
+    resp = make_rest_get_request(host, port, "get-frame0-time", timeout, protocol)
 
     return resp.json()["frame0_nano"]
 
 
-def read_kotekan_eop_table(host, port, protocol="http://"):
+def read_kotekan_eop_table(host, port, timeout, protocol="http://"):
     r"""
     Read the "eop_table" from a running Kotekan instance.
 
@@ -160,6 +170,8 @@ def read_kotekan_eop_table(host, port, protocol="http://"):
         instance "localhost" or "127.0.0.1"
     port : int
         The port at which to find the kotekan instance. For instance 12048.
+    timeout : float
+        Timeout in seconds for the request.
     protocol : String, optional
         Prefix for the URL, for instance "http://" (the default)
 
@@ -178,7 +190,7 @@ def read_kotekan_eop_table(host, port, protocol="http://"):
     return resp.json()["eop_table"]
 
 
-def broadcast_kotekan_eop_table(host, port, eop_table, protocol="http://"):
+def broadcast_kotekan_eop_table(host, port, eop_table, timeout, protocol="http://"):
     r"""
     Send a new EOP table to a running Kotekan instance.
 
@@ -192,6 +204,10 @@ def broadcast_kotekan_eop_table(host, port, eop_table, protocol="http://"):
     eop_table : List of dicts, each an EOP table entry
         The EOP table. A list of entries, each a dict with entries
         "time_inst_ns", "delta_UT1_inst", "x_pm", and "y_pm"
+    timeout : float
+        Timeout in seconds for the request.
+    protocol : String, optional
+        Prefix for the URL, for instance "http://" (the default)
 
     Returns
     -------
@@ -205,7 +221,8 @@ def broadcast_kotekan_eop_table(host, port, eop_table, protocol="http://"):
 
     payload = {"earth_orientation_parameter_table": eop_table}
 
-    resp = make_rest_post_request(host, port, "earth_rotation_data", payload, protocol)
+    resp = make_rest_post_request(host, port, "earth_rotation_data", payload, timeout,
+                                  protocol)
 
     return resp
 
@@ -466,12 +483,12 @@ def build_EOP_table(times, time0_ns, iers):
         # Third argument is whether to return Status as third return value
         x, y, status = iers.pm_xy(t, None, True)
 
-        # Build the EOP entry!
+        # Build the EOP entry! Remove numpy-ness.
         eop = dict(
             time_inst_ns=t_inst,
-            delta_UT1_inst=delta_ut1_inst,
-            x_pm=x.to_value("arcsecond"),
-            y_pm=y.to_value("arcsecond"),
+            delta_UT1_inst=delta_ut1_inst.item(),
+            x_pm=x.to_value("arcsecond").item(),
+            y_pm=y.to_value("arcsecond").item(),
         )
 
         # Append to the table.
@@ -486,12 +503,26 @@ def build_time_array(
     n_intervals_before,
     n_intervals_after,
     interval_length_days,
-    snap_to_grid=False,
+    snap_to_grid,
 ):
     r"""
     Construct an array of times for the entries in the EOP Table.
 
+    The table entries mark edges between intervals of time. The `current interval`
+    is the interval containing the given t_ref. The table will contain at least two
+    entries, marking the beginning and end of the current interval. The caller
+    specifies the number of intervals to add before and after the current interval.
+
     The table will have n_intervals_before + n_intervals_after + 2 entries.
+
+    If snap_to_grid is true, the intervals will be placed aligned with MJD = 0 UTC.
+    Calls to this function with different t_ref will return identical
+    time points when intervals overlap.
+
+    Recommended operation for a telescope is to use `snap_to_grid = True` and
+    `interval_length_days = 1.0`. This will always produce times at UTC midnight (0h)
+    which is precisely the times at which the IERS tables apply. This function works
+    correctly for intervals including a leap second.
 
     Parameters
     ----------
@@ -499,45 +530,70 @@ def build_time_array(
         Reference time to align the bins. If snap_to_grid is False, the central
         time for the current interval.
     n_intervals_before : int
-        Number of intervals to add before the current interval.
+        Number of intervals to add before the current interval, >= 0.
     n_intervals_after : int
-        Number of intervals to add after the current interval.
+        Number of intervals to add after the current interval, >= 0.
     interval_length_days : float
-        Length of intervals in days (86400 seconds).
+        Length of intervals in UTC days (86399, 86400, or 86401 seconds).
     snap_to_grid : boolean
         Whether to snap the intervals to be at e.g. whole days.
     """
 
-    # Interval length with units
-    dt = interval_length_days * units.day
+    if n_intervals_before < 0:
+        raise ValueError("n_intervals_before must be positive or 0, received: {:d}"
+                         .format(n_intervals_before))
 
-    # Array of all entry offsets from t0 (the beginning time of the current
-    # interval).
-    dts = dt * np.arange(-n_intervals_before, n_intervals_after + 2)
+    if n_intervals_after < 0:
+        raise ValueError("n_intervals_after must be positive or 0, received: {:d}"
+                         .format(n_intervals_after))
 
+    if interval_length_days <= 0.0:
+        raise ValueError("interval_length_days must be positive, received: {:g}"
+                         .format(interval_length_days))
+
+    # We'll "grid" in UTC MJD, which is an integer at 0h UTC. 1 UTC day = 1 UTC mjd,
+    # even on leap second days.
+    mjd_ref = t_ref.utc.mjd
+
+    # First, compute `mjd0`, the MJD for `t0`, the time which begins the current
+    # interval. What exactly this time is depends on whether we're snapping to a grid.
     if snap_to_grid:
-        # We'll "grid" in MJD, which is an integer at 0h.
-        mjd_ref = t_ref.mjd
 
         # Compute the MJD value for the beginning of the interval containing
         # t_ref. If length is 1.0, this just takes the floor of mjd_ref,
-        # returning the most recent midnight UTC (assuming t_ref is UTC).
-        # If length is 0,5, will return the most recent midnight or noon UTC
-        # (if t_ref is UTC).
+        # returning the most recent midnight UTC.
+        # If length is 0.5, will return the most recent midnight or noon UTC.
         mjd0 = int(mjd_ref / interval_length_days) * interval_length_days
-
-        # Make the time object for this mjd.
-        t0 = Time(mjd0, format="mjd", scale=t_ref.scale)
-
     else:
-        # If not snapping, then t_ref is center of current interval and
-        # t0 is half a dt earlier.
-        t0 = t_ref - 0.5 * dt
+        # If not snapping, then take the current interval to be centered on `t_ref` and
+        # so place `t0` half a `dt` earlier.
+        mjd0 = mjd_ref - 0.5 * interval_length_days
 
-    # constuct list of times.
-    times = t0 + dts
+    # Array of all entry offsets in mjd from t0 (the beginning time of the current
+    # interval).
+    dt_mjd = interval_length_days * np.arange(-n_intervals_before, n_intervals_after + 2)
+
+    # Constuct list of times. For precision separate mjd0 (which will be ~57000) from
+    # the dt_mjd (which are likely ~integers or fractions thereof). The time
+    # represented will be the sum of these, although internally the Time() object will
+    # keep them separate when possible to preserve precision.
+    times = Time(mjd0, dt_mjd, format="mjd", scale="utc", precision=9)
+
+    t0 = times[n_intervals_before]
+    t1 = times[n_intervals_before + 1]
+
+    if not (t0 <= t_ref and t_ref < t1):
+        raise RuntimeError(
+                "build_time_array failed. The current interval [{}, {}] does not contain t_ref {}".format(t0.isot, t1.isot, t_ref.isot))
 
     return times
+
+def print_eop_table(eop_table):
+
+    print("\n#### BEGIN EOP TABLE ####\n")
+    eop_yaml = yaml.dump(eop_table, default_flow_style=True)
+    print(eop_yaml)
+    print("####  END  EOP TABLE ####\n")
 
 
 if __name__ == "__main__":
@@ -556,40 +612,49 @@ if __name__ == "__main__":
     parser.add_argument("-fh", "--fpga-master-host", default="localhost") 
     parser.add_argument("-fp", "--fpga-master-port", default=54321, type=int)
     parser.add_argument("-fprot", "--fpga-master-protocol", default="http://")
+    parser.add_argument("--timeout", default=30.0, type=float)
     parser.add_argument("-nb", "--num-intervals-before", default=2, type=int)
     parser.add_argument("-na", "--num-intervals-after", default=3, type=int)
+    parser.add_argument("-dt", "--interval-length-days", default=1.0, type=float)
     parser.add_argument("-b", "--broadcast", action='store_true')
 
     args = parser.parse_args()
 
+    # Extract the location of kotekan and fpga_master
     kotekan_protocol = args.kotekan_protocol
-    kotekan_url = args.kotekan_host
+    kotekan_host = args.kotekan_host
     kotekan_port = args.kotekan_port
 
     fpga_master_protocol = args.fpga_master_protocol
-    fpga_master_url = args.fpga_master_host
+    fpga_master_host = args.fpga_master_host
     fpga_master_port = args.fpga_master_port
 
+    timeout = args.timeout
+
+    # Determine how to set t0_ns.
     if args.frame0_src != 'manual' and args.frame0_ns is not None:
         raise RuntimeError("Do not specify frame0_ns if frame0_src is not 'manual'.")
 
     if args.frame0_src == 'manual' and args.frame0_ns is None:
         raise RuntimeError("If frame0_src is 'manual', must set frame0_ns")
 
+    # Set t0_ns, this may make a REST call and could take time or fail.
     if args.frame0_src == "fpga_master":
-        t0_ns = read_fpga_master_frame0_ns(fpga_master_url, fpga_master_port)
+        t0_ns = read_fpga_master_frame0_ns(fpga_master_host, fpga_master_port, timeout)
     elif args.frame0_src == "kotekan":
-        t0_ns = read_kotekan_frame0_ns(kotekan_url, kotekan_port)
+        t0_ns = read_kotekan_frame0_ns(kotekan_host, kotekan_port, timeout)
     elif args.frame0_src == "manual":
         t0_ns = args.frame0_ns
     else:
         # Should be unneccessary, but just in case.
         raise ValueError("Unknown frame0_src: {:s}".format(args.frame0_src))
-    
+   
+    # Get a Time from the t0_ns
     t0 = calc_astropy_time_from_unix_ns(t0_ns)
     print("frame0_ns is: {0:d} ns   (from {1:s})".format(t0_ns, args.frame0_src))
     print("frame0 time is: ", t0.utc.isot, "(UTC)")
 
+    # Set reference (likely current) time.
     if args.current_time is not None:
         t_ref = Time(args.current_time, precision=9)
     else:
@@ -598,8 +663,10 @@ if __name__ == "__main__":
 
     print("Current time is:", t_ref.utc.isot, "(UTC)")
 
+    # Extract parameters for building table entry times
     num_intervals_before = args.num_intervals_before
     num_intervals_after = args.num_intervals_after
+    interval_length_days = args.interval_length_days
 
     if num_intervals_before < 0:
         raise ValueError("num_intervals_before must be positive. Recieved: {:d}"
@@ -608,15 +675,10 @@ if __name__ == "__main__":
         raise ValueError("num_intervals_after must be positive. Recieved: {:d}"
                          .format(num_intervals_after))
 
-    sys.exit()
-
-
-    # Build the list of times to generate EOP entries for
-
-    # Add 2 intervals before the current one, 3 after.  Intervals are 1.0 days
-    # long, intervals are snapped to whole days.
-    ts = build_time_array(t_ref, num_intervals_before, num_intervals_after, 1.0, snap_to_grid=True)
-    print("t_ref (now):", t_ref, t_ref.mjd)
+    # Build the array of times to generate EOP entries for
+    ts = build_time_array(t_ref, num_intervals_before, num_intervals_after,
+                          interval_length_days, snap_to_grid=True)
+    print("t_ref (mjd):", t_ref.mjd)
     print("times in table:", ts.iso)
     print("times in table (mjd):", ts.mjd)
 
@@ -627,7 +689,9 @@ if __name__ == "__main__":
     eop_table = build_EOP_table(ts, t0_ns, iers)
     iers.close()
 
-    print(eop_table)
+    print_eop_table(eop_table)
+
+    sys.exit()
 
     # Send table to Kotekan
-    broadcast_kotekan_eop_table(kotekan_url, kotekan_port, eop_table)
+    broadcast_kotekan_eop_table(kotekan_host, kotekan_port, eop_table)
