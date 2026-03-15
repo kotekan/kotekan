@@ -6,8 +6,14 @@ import requests
 from astropy.time import Time
 import astropy.units as units
 import astropy.utils.iers
+import astropy.utils.data
 import numpy as np
 import yaml
+
+# Ensure Astropy will download new IERS data when needed
+astropy.utils.iers.conf.auto_download = True
+# Set the Astropy IERS Refresh time to the minimum allowed (10 days)
+astropy.utils.iers.conf.auto_max_age = 10.0
 
 
 def make_rest_get_request(host, port, endpoint, timeout, protocol="http://"):
@@ -616,9 +622,14 @@ if __name__ == "__main__":
     parser.add_argument("-nb", "--num-intervals-before", default=2, type=int)
     parser.add_argument("-na", "--num-intervals-after", default=3, type=int)
     parser.add_argument("-dt", "--interval-length-days", default=1.0, type=float)
+    parser.add_argument("--force-iers-download", action='store_true')
     parser.add_argument("-b", "--broadcast", action='store_true')
 
     args = parser.parse_args()
+
+    # Before anything else, set the astropy download options if necessary
+    if args.force_iers_download:
+        astropy.utils.data.clear_download_cache()
 
     # Extract the location of kotekan and fpga_master
     kotekan_protocol = args.kotekan_protocol
