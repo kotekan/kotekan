@@ -384,6 +384,28 @@ def calc_astropy_time_from_unix_ns(t_unix_ns):
 
     return t
 
+def calc_astropy_time_from_inst_ns(t_inst_ns, time0_ns):
+    r"""
+    Constuct an astropy Time object corresponding to an Instrument time in nanoseconds. 
+    Parameters
+    ----------
+    t_inst_ns : int
+        An Instrument time in nanoseconds.
+
+    Returns
+    -------
+    Astropy Time object
+        A Time object representing the given time.
+    """
+    
+    # First calculate t0, a good UNIX time
+    t0 = calc_astropy_time_from_unix_ns(time0_ns)
+
+    # Now add the difference from t0 in TAI nanoseconds
+    dt = TimeDelta((t_inst_ns - time0_ns) * units.ns, scale='tai')
+
+    return t0 + dt
+
 
 def calc_unix_ns_from_t(t):
     r"""
@@ -650,28 +672,50 @@ def build_time_array(
 
     return times
 
-def merge_eop_tables(current_eop_table, new_eop_table, t_ref, time0_ns,
-                     num_intervals_before, num_intervals_after,
-                     merge_cushion_dt):
+def make_update_EOP_from_full_EOP(eop):
     r"""
-    Produce a new EOP table from the current Kotekan table and a proposed updated table.
-    Only include entries past the current interval to ensure continuity of parameters.
-    Drop early entries if they are no longer needed.
+    Produce an EOP update dict (suitable for sending to Kotekan or putting in a config
+    file) from a full EOP dict (one received from Kotekan)
+    
+    Parameters
+    ----------
+    eop : EOP full entry dict
+        A full Kotekan EOP table entry, containing the fields: t_inst, t_ut1,
+        delta_UT1_inst, ERA_deg, xp_as, yp_as.
+
+    Returns
+    -------
+
+    eop_update : EOP update dict
+        An EOP update table entry, contain the fields: time_inst_ns, delta_UT1_inst,
+        x_pm, y_pm.
+    """
+
+    return dict(time_inst_ns=eop['t_inst'], delta_UT1_inst=eop['delta_UT1_inst'],
+                x_pm=eop['xp_as'], y_pm=eop['yp_as'])
+
+
+def merge_eop_tables(current_eop_table, new_eop_table, t_ref, time0_ns,
+                     num_intervals_before, merge_cushion_dt):
+    r"""
+    produce a new eop table from the current kotekan table and a proposed updated table.
+    only include entries past the current interval to ensure continuity of parameters.
+    drop early entries if they are no longer needed.
 
     Parameters
     ----------
-    current_eop_table : List of EOP entry dicts
-        The current table in Kotekan
-    new_eop_table : List of EOP entry dicts
-        The proposed new EOP table, may conflict with current table.
+    current_eop_table : list of eop entry dicts
+        the current table in kotekan (fields: t_inst, t_ut1, delta_ut1_inst, era_deg,
+        xp_as, yp_as)
+    new_eop_table : list of eop update entry dicts
+        the proposed new eop table, may conflict with current table. (fields: 
+        time_inst_ns, delta_ut1_inst, x_pm, y_pm)
     t_ref : Astropy Time object
         The reference (likely current) time used to determine the current interval.
     time0_ns : int
         The UNIX time (as integer nanoseconds) of telescope frame0.
     num_intervals_before : int
         Number of intervals desired in the final table before the current interval.
-    num_intervals_after : int
-        Number of intervals desired in the final table after the current interval.
     merge_cushion_dt : Astropy TimeDelta
         Amount of buffer time to include when determining which current entries to drop.
     
@@ -686,6 +730,9 @@ def merge_eop_tables(current_eop_table, new_eop_table, t_ref, time0_ns,
 
     # First as an Astropy time.
     t_pivot = t_ref + merge_cushion_dt
+
+    print("Merging the current Kotekan table with the update. Using a pivot time of",
+          t_pivot.isot)
     
     # Now get the frame0 time as an Astropy object.
     t0 = calc_astropy_time_from_unix_ns(time0_ns)
@@ -694,24 +741,93 @@ def merge_eop_tables(current_eop_table, new_eop_table, t_ref, time0_ns,
     dt_pivot_ns = calc_tai_ns_from_dt(t_pivot - t0)
     # Now can get t_pivot as an instrument time, time0 + TAI dt
     t_pivot_inst_ns = time0_ns + dt_pivot_ns
-    print(t_pivot_inst_ns, time0_ns, dt_pivot_ns)
 
     # Check input tables are sorted.  
     for i in range(len(current_eop_table) - 1):
-        if current_eop_table[i]['t_inst_ns'] >= current_eop_table[i]['t_inst_ns']:
+        if current_eop_table[i]['t_inst'] >= current_eop_table[i+1]['t_inst']:
             raise RuntimeError("current_eop_table is not sorted. Can only merge sorted tables")
     for i in range(len(new_eop_table) - 1):
-        if new_eop_table[i]['t_inst_ns'] >= new_eop_table[i]['t_inst_ns']:
+        if new_eop_table[i]['time_inst_ns'] >= new_eop_table[i+1]['time_inst_ns']:
             raise RuntimeError("new_eop_table is not sorted. Can only merge sorted tables")
 
     # Extract array of times for easier searching.  If we're here, both arrays have
     # strictly increasing instrument times
-    current_times = np.array([eop['t_inst_ns'] for eop in current_eop_table])
-    new_times = np.array([eop['t_inst_ns'] for eop in new_eop_table])
+    current_times = np.array([eop['t_inst'] for eop in current_eop_table])
+    new_times = np.array([eop['time_inst_ns'] for eop in new_eop_table])
 
+    # For current_times, the pivot_idx will be the index of the first element strictly
+    # greater than the pivot time.  For new_times, the pivot_idx is the index of the 
+    # first time strictly greater than the rightmost kept current_time.
+    #
+    #                 [------- keep ----------]
+    #           tc0   tc1    tc2     tc3      tc4      tc5
+    # current:  |  0  |   1  |   2   |   *3   |    4   |
+    #                                   ^     |
+    #                                   t_pivot (current_pivot_idx = 4)
+    #                                         |
+    #                                         | (new_pivot_idx = 3) 
+    #                                         v      
+    # new:               |   0   |   1   |  2    |  3    |   4   |
+    #                    tn0     tn1     tn2     tn3     tn4     tn5
+    #                                            [------keep-----]
+    #
+    #                 tc1    tc2     tc3      tc4
+    # final:          |  0   |  1    |   2    |3 |  4    |   5   |
+    #                                            tn3     tn4     tn5
     current_pivot_idx = np.searchsorted(current_times, t_pivot_inst_ns, side='right')
 
-    return new_eop_table
+    # First entry index from the current table to keep
+    # Last entry index from the current table to keep
+
+    if current_pivot_idx <= 0:
+        # The entire current table is in the future of pivot time.
+        # For continuity keep the first entry, but discard all after
+        print("The pivot time is before the current table. Keeping only entry 0")
+        current_eop_to_keep = [current_eop_table[0]]
+    elif current_pivot_idx < len(current_times):
+        # Normal case, the pivot time is in the middle of the current table
+
+        # First entry from current table to keep. Don't go out of bounds!
+        left_idx = max(0, current_pivot_idx - 1 - num_intervals_before)
+        # The pivot index already tells us the future entry still being used (endpoint
+        # of the current interval)
+        right_idx = current_pivot_idx
+        
+        print("Keeping current table entries [{:d} - {:d}] (inclusive)".format(
+            left_idx, right_idx))
+        # Start final table with slice from current table
+        current_eop_to_keep = current_eop_table[left_idx:right_idx+1]
+    else:
+        # The entire current table is in the past of the pivot time!
+        # This is bad for telescope operations: the table has expired.
+        # For continuity, keep the last entry in the table (which we are extrapolating
+        # from) and add an entry at the pivot time, which *should* be some comfortable
+        # distance in the future. This puts the current time in a short interval, which
+        # will expire at the pivot time at which point we can start moving to the
+        # new (correct, hopefully) table.
+        
+        eop_pivot = current_table[-1].copy()
+        eop_pivot['t_inst'] = t_pivot_inst_ns
+
+        print("The pivot time is after the current table expires. Keeping only the last entry and cloning it to the pivot time")
+        current_eop_to_keep = [current_table[-1], eop_pivot]
+
+    # Initialize the final EOP update table.  
+    final_eop_table = [make_update_EOP_from_full_EOP(eop)
+                       for eop in current_eop_to_keep]
+
+    # Easy now.  Find the first entry in the new table that's ahead of the end of
+    # the preliminary final table.
+    new_pivot_idx = np.searchsorted(new_times, final_eop_table[-1]['time_inst_ns'])
+
+    # If there are any entries (in normal operations there should be!) add them to
+    # the end of the table
+    if new_pivot_idx < len(new_eop_table):
+        print("Adding {:d} new entries to the EOP table".format(len(new_eop_table)-new_pivot_idx))
+        final_eop_table.extend(new_eop_table[new_pivot_idx:])
+
+    # Done! 
+    return final_eop_table
 
 
 def print_eop_table(eop_table):
@@ -873,10 +989,14 @@ if __name__ == "__main__":
         current_eop_table = read_kotekan_eop_table(kotekan_host, kotekan_port, timeout,
                                                    kotekan_protocol)
         eop_table = merge_eop_tables(current_eop_table, new_eop_table, t_ref, t0_ns,
-                                     num_intervals_before, num_intervals_after,
-                                     merge_cushion_dt)
+                                     num_intervals_before, merge_cushion_dt)
     else:
         eop_table = new_eop_table
+
+    print("The final EOP table contains {:d} entries from {} to {}"
+          .format(len(eop_table),
+                  calc_astropy_time_from_inst_ns(eop_table[0]['time_inst_ns'], t0_ns).utc.isot,
+                  calc_astropy_time_from_inst_ns(eop_table[-1]['time_inst_ns'], t0_ns).utc.isot))
 
     # Print the table
     print_eop_table(new_eop_table)
