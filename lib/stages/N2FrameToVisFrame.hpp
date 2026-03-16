@@ -29,6 +29,8 @@
  *
  * @conf  n2_buf  Buffers to hold the N2FrameView
  * @conf  vis_buf Buffers to hold the VisFrameView
+ * @conf  fake_git_tag String. Fake git hash in visMetadata to make receiver
+ *        accept it. Leave empty to use actual git tag.
  *
  * @author Roland Haas
  */
@@ -61,6 +63,9 @@ private:
 
     /// The target buffer for a visFrame
     Buffer* vis_buf;
+
+    /// Fake git hash to record in visMetadata dataset id
+    std::string fake_git_tag;
 };
 
 #endif /* N2FRAME_TO_VISFRAME_HPP */
