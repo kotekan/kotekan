@@ -107,7 +107,7 @@ bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
         bool is_simple_stride = true;
         auto const& strides = this->get_strides();
         auto const& extents = this->get_extents();
-        for (ssize_t d = ssize_t(strides.size())-1, simple_stride = 1; d >= 0 ; --d) {
+        for (ssize_t d = ssize_t(strides.size()) - 1, simple_stride = 1; d >= 0; --d) {
             if (simple_stride != strides[d]) {
                 is_simple_stride = false;
                 break;
