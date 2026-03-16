@@ -27,7 +27,7 @@ class testXpose : public kotekan::Stage {
 public:
     /// Standard constructor
     testXpose(kotekan::Config& config, const std::string& unique_name,
-                            kotekan::bufferContainer& buffer_container);
+              kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     ~testXpose();

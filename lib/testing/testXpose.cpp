@@ -1,6 +1,6 @@
 #include "testXpose.hpp"
 
-#include "Config.hpp" // for Config
+#include "Config.hpp"          // for Config
 #include "Metadata.hpp"        // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
@@ -12,10 +12,10 @@
 
 #include <algorithm>  // for iota
 #include <assert.h>   // for assert
+#include <cstdint>    // for int32_t
 #include <functional> // for bind, function
 #include <memory>     // for __shared_ptr_access, shared_ptr
 #include <vector>     // for vector
-#include <cstdint>    // for int32_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -38,29 +38,35 @@ REGISTER_KOTEKAN_STAGE(testXpose);
 
 testXpose::testXpose(Config& config, const std::string& unique_name,
                      bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container,
-          std::bind(&testXpose::main_thread, this)),
-          num_polarizations(config.get<int>(unique_name, "num_polarizations")),
-          num_dishes(config.get<int>(unique_name, "num_dishes")),
-          num_times(config.get<int>(unique_name, "num_times")),
-          num_frequencies(config.get<int>(unique_name, "num_frequencies")),
-          num_xposed_frequencies(config.get<int>(unique_name, "num_xposed_frequencies")) {
+    Stage(config, unique_name, buffer_container, std::bind(&testXpose::main_thread, this)),
+    num_polarizations(config.get<int>(unique_name, "num_polarizations")),
+    num_dishes(config.get<int>(unique_name, "num_dishes")),
+    num_times(config.get<int>(unique_name, "num_times")),
+    num_frequencies(config.get<int>(unique_name, "num_frequencies")),
+    num_xposed_frequencies(config.get<int>(unique_name, "num_xposed_frequencies")) {
 
     out_xposed_buf = get_buffer("out_xposed_buf");
     out_xposed_buf->register_producer(unique_name);
-    if (out_xposed_buf->frame_size != num_times * num_xposed_frequencies * num_polarizations * num_dishes * sizeof(uint8_t))
+    if (out_xposed_buf->frame_size
+        != num_times * num_xposed_frequencies * num_polarizations * num_dishes * sizeof(uint8_t))
         FATAL_ERROR("Unexpected frames sizes for out_xposed_buf, expected {:d} received {:d}",
-                    out_xposed_buf->frame_size, num_times * num_xposed_frequencies * num_polarizations * num_dishes * sizeof(uint8_t));
-    out_xposed_buf->allocate_ndarray_frame_desc(kotekan::int4x2_swapped_withoffset, "E", {num_times, num_xposed_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"});
+                    out_xposed_buf->frame_size,
+                    num_times * num_xposed_frequencies * num_polarizations * num_dishes
+                        * sizeof(uint8_t));
+    out_xposed_buf->allocate_ndarray_frame_desc(
+        kotekan::int4x2_swapped_withoffset, "E",
+        {num_times, num_xposed_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"});
 
     scatter_indices_buf = get_buffer("scatter_indices_buf");
     scatter_indices_buf->register_producer(unique_name);
     if (scatter_indices_buf->frame_size != num_polarizations * num_dishes * sizeof(int32_t))
         FATAL_ERROR("Unexpected frames sizes for scatter_indeces, expected {:d} received {:d}",
-                    scatter_indices_buf->frame_size, num_polarizations * num_dishes * sizeof(int32_t));
+                    scatter_indices_buf->frame_size,
+                    num_polarizations * num_dishes * sizeof(int32_t));
     // TODO: this is not quite correct. Really if going to cylinder order
     // the array is {4,2,256} {"C", "P", "D"}
-    scatter_indices_buf->allocate_ndarray_frame_desc(kotekan::int32, "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"});
+    scatter_indices_buf->allocate_ndarray_frame_desc(kotekan::int32, "scatter_indices",
+                                                     {num_polarizations, num_dishes}, {"P", "D"});
 
     // Register as producer for all xpose2048 input buffers
     json bufs = config.get_value(unique_name, "out_bufs");
@@ -68,28 +74,35 @@ testXpose::testXpose(Config& config, const std::string& unique_name,
         Buffer* buf = buffer_container.get_buffer(it.value().get<std::string>());
         out_bufs.push_back(buf);
         buf->register_producer(unique_name);
-        buf->allocate_ndarray_frame_desc(kotekan::int4x2_swapped_withoffset, "E", {num_frequencies, num_times, num_polarizations * num_dishes}, {"F", "T", "E"});
-        if (buf->frame_size != num_polarizations * num_dishes * num_times * num_frequencies * sizeof(uint8_t))
+        buf->allocate_ndarray_frame_desc(
+            kotekan::int4x2_swapped_withoffset, "E",
+            {num_frequencies, num_times, num_polarizations * num_dishes}, {"F", "T", "E"});
+        if (buf->frame_size
+            != num_polarizations * num_dishes * num_times * num_frequencies * sizeof(uint8_t))
             FATAL_ERROR("Input samples bufferer {:s} has unexpected size {:d} instead of {:d}",
-                        it.value().get<std::string>(), buf->frame_size, num_polarizations * num_dishes * num_times * num_frequencies * sizeof(uint8_t));
+                        it.value().get<std::string>(), buf->frame_size,
+                        num_polarizations * num_dishes * num_times * num_frequencies
+                            * sizeof(uint8_t));
         if (buf->num_frames != out_bufs.at(0)->num_frames)
             FATAL_ERROR("Input samples buffers have different number of frames: {:d} != {:d}",
                         buf->num_frames, out_bufs.at(0)->num_frames);
     }
 
     const int num_freq_bins = int(out_bufs.size());
-    if(num_freq_bins * num_frequencies != num_xposed_frequencies)
-        FATAL_ERROR("Number of frequencies in input buffers and expected output buffer do not match: {:d} != {:d}",
+    if (num_freq_bins * num_frequencies != num_xposed_frequencies)
+        FATAL_ERROR("Number of frequencies in input buffers and expected output buffer do not "
+                    "match: {:d} != {:d}",
                     num_freq_bins * num_frequencies, num_xposed_frequencies);
 
-    assert(num_frequencies == 1 && "More than 1 frequency in CPU buffer is strange and may not be supported");
+    assert(num_frequencies == 1
+           && "More than 1 frequency in CPU buffer is strange and may not be supported");
 }
 
 testXpose::~testXpose() {}
 
 void testXpose::main_thread() {
     const int num_elements = num_polarizations * num_dishes;
-    
+
     // some made up scattering that shuffles everyting one element forward (and
     // wraps around)
     std::vector<int32_t> scatter_indices(num_elements);
@@ -98,7 +111,8 @@ void testXpose::main_thread() {
 
     // this is only done once
     const frameID scatter_indices_id(scatter_indices_buf);
-    int32_t* scatter_indices_frame = (int32_t*)scatter_indices_buf->wait_for_empty_frame(unique_name, scatter_indices_id);
+    int32_t* scatter_indices_frame =
+        (int32_t*)scatter_indices_buf->wait_for_empty_frame(unique_name, scatter_indices_id);
     if (scatter_indices_frame == nullptr)
         return;
     std::copy(scatter_indices.begin(), scatter_indices.end(), scatter_indices_frame);
@@ -122,58 +136,61 @@ void testXpose::main_thread() {
         // at each time step at each frequency.
         // Note that this may overwrite values that were already set, so the
         // order of the loops below matters.
-        uint8_t* out_xposed_frame = out_xposed_buf->wait_for_empty_frame(unique_name, out_xposed_id);
+        uint8_t* out_xposed_frame =
+            out_xposed_buf->wait_for_empty_frame(unique_name, out_xposed_id);
         if (out_xposed_frame == nullptr)
             return;
 
         // all unset elements remain at 0xff
         std::memset(out_xposed_frame, 0xff, out_xposed_buf->frame_size);
 
-        for(int buf_num = 0; buf_num < (int)out_bufs.size(); ++buf_num) {
-          uint8_t* out_frame = out_bufs.at(buf_num)->wait_for_empty_frame(unique_name, out_id);
-          if (out_frame == nullptr)
-            return;
+        for (int buf_num = 0; buf_num < (int)out_bufs.size(); ++buf_num) {
+            uint8_t* out_frame = out_bufs.at(buf_num)->wait_for_empty_frame(unique_name, out_id);
+            if (out_frame == nullptr)
+                return;
 
-          // all unset elements remain at 0xff
-          std::memset(out_frame, 0xff, out_bufs.at(buf_num)->frame_size);
+            // all unset elements remain at 0xff
+            std::memset(out_frame, 0xff, out_bufs.at(buf_num)->frame_size);
 
-          for(int f = 0; f < num_frequencies; ++f) {
-            const int f_xposed = buf_num * num_frequencies + f;
-            assert(f_xposed < num_xposed_frequencies);
-            for(int t = 0; t < num_times; ++t) {
-              const int block_idx = f * num_times * num_elements + t * num_elements;
-              const int xposed_block_idx = t * num_xposed_frequencies * num_elements + f_xposed * num_elements;
-              for(int v = 0; v < 15*15-1; ++v) {
-                const int el_idx = (v * 17 + 2*f_xposed + t + seq_num * num_times) % num_elements;
-                const int idx = block_idx + el_idx;
-                assert((unsigned int)idx < out_bufs.at(buf_num)->frame_size);
+            for (int f = 0; f < num_frequencies; ++f) {
+                const int f_xposed = buf_num * num_frequencies + f;
+                assert(f_xposed < num_xposed_frequencies);
+                for (int t = 0; t < num_times; ++t) {
+                    const int block_idx = f * num_times * num_elements + t * num_elements;
+                    const int xposed_block_idx =
+                        t * num_xposed_frequencies * num_elements + f_xposed * num_elements;
+                    for (int v = 0; v < 15 * 15 - 1; ++v) {
+                        const int el_idx =
+                            (v * 17 + 2 * f_xposed + t + seq_num * num_times) % num_elements;
+                        const int idx = block_idx + el_idx;
+                        assert((unsigned int)idx < out_bufs.at(buf_num)->frame_size);
 
-                // build valid nibbles
-                uint8_t val = (((v / 15)+1) << 4) | (((v % 15)+1) << 0);
+                        // build valid nibbles
+                        uint8_t val = (((v / 15) + 1) << 4) | (((v % 15) + 1) << 0);
 
-                // untransposed data
-                out_frame[idx] = val;
+                        // untransposed data
+                        out_frame[idx] = val;
 
-                // write transposed result, note that this replicates the
-                // scattering_indices knowledge
-                const int xposed_idx = xposed_block_idx + (el_idx + 1) % num_elements;
-                assert((unsigned int)xposed_idx < out_xposed_buf->frame_size);
-                out_xposed_frame[xposed_idx] = val;
-              }
+                        // write transposed result, note that this replicates the
+                        // scattering_indices knowledge
+                        const int xposed_idx = xposed_block_idx + (el_idx + 1) % num_elements;
+                        assert((unsigned int)xposed_idx < out_xposed_buf->frame_size);
+                        out_xposed_frame[xposed_idx] = val;
+                    }
+                }
             }
-          }
-          out_bufs.at(buf_num)->allocate_new_metadata_object(out_id);
-          auto out_meta = get_chord_metadata(out_bufs.at(buf_num), out_id);
-          out_meta->set_fpga_seq_num(seq_num * num_times);
-          out_meta->set_freq_upchan_factor(std::vector<int>(num_frequencies, 1));
-          out_meta->set_freq_upchan_index(std::vector<int>(num_frequencies, 0));
-          out_meta->set_time_downsampling_fpga(1);
-          std::vector<int> coarse_freq(num_frequencies);
-          std::iota(coarse_freq.begin(), coarse_freq.end(), buf_num * num_frequencies);
-          out_meta->set_coarse_freq(coarse_freq);
-          out_meta->set_from_frame_desc(out_bufs.at(buf_num)->get_ndarray_frame_desc());
-          out_meta->check_frame_desc(out_bufs.at(buf_num)->get_ndarray_frame_desc());
-          out_bufs.at(buf_num)->mark_frame_full(unique_name, out_id);
+            out_bufs.at(buf_num)->allocate_new_metadata_object(out_id);
+            auto out_meta = get_chord_metadata(out_bufs.at(buf_num), out_id);
+            out_meta->set_fpga_seq_num(seq_num * num_times);
+            out_meta->set_freq_upchan_factor(std::vector<int>(num_frequencies, 1));
+            out_meta->set_freq_upchan_index(std::vector<int>(num_frequencies, 0));
+            out_meta->set_time_downsampling_fpga(1);
+            std::vector<int> coarse_freq(num_frequencies);
+            std::iota(coarse_freq.begin(), coarse_freq.end(), buf_num * num_frequencies);
+            out_meta->set_coarse_freq(coarse_freq);
+            out_meta->set_from_frame_desc(out_bufs.at(buf_num)->get_ndarray_frame_desc());
+            out_meta->check_frame_desc(out_bufs.at(buf_num)->get_ndarray_frame_desc());
+            out_bufs.at(buf_num)->mark_frame_full(unique_name, out_id);
         }
 
         out_xposed_buf->allocate_new_metadata_object(out_xposed_id);
@@ -188,7 +205,7 @@ void testXpose::main_thread() {
         out_xposed_meta->set_from_frame_desc(out_xposed_buf->get_ndarray_frame_desc());
         out_xposed_meta->check_frame_desc(out_xposed_buf->get_ndarray_frame_desc());
         out_xposed_buf->mark_frame_full(unique_name, out_xposed_id);
-        
+
         out_xposed_id += 1;
         out_id += 1;
 

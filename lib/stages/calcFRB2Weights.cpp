@@ -20,8 +20,28 @@ class calcFRB2Weights : public kotekan::Stage {
     const int num_dishes = config.get<int>(unique_name, "num_dishes");
 
     // FRB1 beamformer setup
-    const int num_dishes_x = config.get<int>(unique_name, "num_dishes_x");
-    const int num_dishes_y = config.get<int>(unique_name, "num_dishes_y");
+
+    // The directions we call "x" and "y" are really just describing
+    // the in-memory layout of the dishes (antennae) in the dish
+    // array. For CHORD, the physical x-direction (east-west) runs
+    // fastest, but for CHIME, the y-direction (north-south) runs
+    // fastest. This is necessary to get an efficient FRB1 beamformer
+    // given the different shapes of the dish (antenna) layouts.
+    //
+    // Internally (in the FRB1 kernels) we call the dish (antenna)
+    // directions M and N, where M runs fastest, and the respective
+    // beam directions P and Q, where P runs fastest. For CHORD,
+    // M=P=x=east/west and N=Q=y=north/south. For CHIME it's the
+    // converse, M=P=y=north/south and N=Q=x=east/west.
+    //
+    // We need to take this into account when creating the FRB2
+    // beamforming weights. For CHORD we have `frb1_swap_xy=false`,
+    // and for CHIME we have `frb1_swap_xy=true`.
+    const bool frb1_swap_xy = config.get<bool>(unique_name, "frb1_swap_xy");
+    const int num_dishes_x = frb1_swap_xy ? config.get<int>(unique_name, "num_dishes_y")
+                                          : config.get<int>(unique_name, "num_dishes_x");
+    const int num_dishes_y = frb1_swap_xy ? config.get<int>(unique_name, "num_dishes_x")
+                                          : config.get<int>(unique_name, "num_dishes_y");
     const int frb1_num_beams_x = 2 * num_dishes_x;
     const int frb1_num_beams_y = 2 * num_dishes_y;
     const int frb1_num_beams = frb1_num_beams_x * frb1_num_beams_y;
