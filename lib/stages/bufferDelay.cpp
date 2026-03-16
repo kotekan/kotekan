@@ -90,9 +90,11 @@ void bufferDelay::main_thread() {
                 }
                 in_buf->copy_metadata(in_frame_release_id, out_buf, out_frame_id);
                 std::memcpy(output_frame, in_buf->frames[in_frame_release_id], in_buf->frame_size);
+                out_buf->set_frame_desc(in_buf->get_frame_description());
             } else {
                 in_buf->pass_metadata(in_frame_release_id, out_buf, out_frame_id);
                 in_buf->swap_frames(in_frame_release_id, out_buf, out_frame_id);
+                out_buf->set_frame_desc(in_buf->get_frame_description());
             }
 
             DEBUG("Reached maximum no. of frames to hold. Releasing oldest frame... in_frame_id: "
