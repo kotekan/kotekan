@@ -38,6 +38,8 @@ n2FrameToVisFrame::n2FrameToVisFrame(Config& config, const std::string& unique_n
             n2_buf->frame_size, vis_buf->frame_size);
     }
 
+    fake_git_tag = config.get_default<std::string>(unique_name, "fake_git_tag", std::string());
+
     // Get everything we need for registering dataset states
 
     const auto& tel = Telescope::instance();
@@ -208,7 +210,7 @@ void n2FrameToVisFrame::register_base_dataset_states(
     // weight calculation is hardcoded, so is the weight type name
     // TODO: check if this is still true
     const std::string weight_type = "inverse_var";
-    const std::string git_tag = get_git_commit_hash();
+    const std::string git_tag = fake_git_tag.empty() ? get_git_commit_hash() : fake_git_tag;
 
     // create all the states
     base_dataset_states.push_back(dm.create_state<freqState>(freqs).first);
