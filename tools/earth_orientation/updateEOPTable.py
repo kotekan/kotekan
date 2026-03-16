@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+import json
+from pathlib import Path
 import sys
 import time
 import requests
@@ -8,7 +10,6 @@ import astropy.units as units
 import astropy.utils.iers
 import astropy.utils.data
 import numpy as np
-import yaml
 
 # Ensure Astropy will download new IERS data when needed
 astropy.utils.iers.conf.auto_download = True
@@ -47,6 +48,10 @@ def make_rest_get_request(host, port, endpoint, timeout, protocol="http://"):
     url = "{0:s}{1:s}:{2:d}/{3:s}".format(protocol, host, port, endpoint)
 
     resp = requests.get(url, timeout=timeout)
+    resp.raise_for_status()
+    if resp.status_code != 200:
+        raise RuntimeError("GET request was not OK, received: {} with reason {}"
+                           .format(resp, resp.reason))
 
     return resp
 
@@ -86,6 +91,10 @@ def make_rest_post_request(host, port, endpoint, json_payload, timeout,
     url = "{0:s}{1:s}:{2:d}/{3:s}".format(protocol, host, port, endpoint)
 
     resp = requests.post(url, json=json_payload, timeout=timeout)
+    resp.raise_for_status()
+    if resp.status_code != 200:
+        raise RuntimeError("POST request was not OK, received: {} with reason {}"
+                           .format(resp, resp.reason))
 
     return resp
 
@@ -121,14 +130,17 @@ def read_kotekan_frame0_ns(host, port, timeout, protocol="http://"):
     Exceptions from requests.
     """
 
-    resp = make_rest_get_request(host, port, "time0_ns", timeout, protocol)
+    resp = make_rest_get_request(host, port, "telescope/time0_ns", timeout, protocol)
+    print(resp)
 
     return resp.json()["time0_ns"]
 
 
-def read_fpga_master_frame0_ns(host, port, timeout, protocol="http://"):
+def read_fpga_master_frame0_ns(host, port, timeout, protocol="http://",
+                               apply_rollover_correction=True):
     r"""
-    Read the "frame0_nano" parameter from fpga_master.
+    Read the "frame0_nano" parameter from fpga_master, possibly correcting
+    for GPS 1024 week rollover differences.
 
     frame0_nano is the UNIX timestamp (in nanoseconds) of the first frame in
     F-Engine / Kotekan, and serves as the base time for all future timestamps.
@@ -146,6 +158,9 @@ def read_fpga_master_frame0_ns(host, port, timeout, protocol="http://"):
         Timeout in seconds for the request.
     protocol : String, optional
         Prefix for the URL, for instance "http://" (the default)
+    apply_rollover_correction : bool, optional
+        Apply the GPS 1024 week rollover correction to the obtained value, using
+        the fpga_master `start_ctime` value. Default True.
 
     Returns
     -------
@@ -158,8 +173,37 @@ def read_fpga_master_frame0_ns(host, port, timeout, protocol="http://"):
     """
 
     resp = make_rest_get_request(host, port, "get-frame0-time", timeout, protocol)
+    body_json = resp.json()
+    frame0_nano = int(body_json["frame0_nano"])
 
-    return resp.json()["frame0_nano"]
+    if apply_rollover_correction:
+
+        # Get the start_ctime (float, when the F-Engine booted,
+        # system UNIX time with fractional seconds)
+        start_ctime = body_json['start_ctime']
+
+        # Convert the start time to an integer number of nanoseconds
+        start_time_nano = int(start_ctime * 1e9)
+
+        # Compute the GPS rollover period in nanoseconds
+        DAYS_PER_WEEK = 7
+        SECS_PER_DAY = 86400
+        GIGA = 1_000_000_000
+        rollover_dt_ns = 1024 * DAYS_PER_WEEK * SECS_PER_DAY * GIGA
+
+        # Compute the UNIX time for the GPS epoch (Jan 6, 1980, 00:00:00 UTC)
+        # This time is an exact second in UTC and so is an exact integer in UNIX time.
+        gps0_ns = GIGA * int(Time("1980-01-06T00:00:00", scale='utc').unix)
+
+        # Compute which rollover period the given frame0 time and the F-Engine
+        # start_time are in.
+        rollovers_at_start = (start_time_nano - gps0_ns) // rollover_dt_ns
+        rollovers_in_sent_frame0 = (frame0_nano - gps0_ns) // rollover_dt_ns
+
+        # adjust frame by the difference in rollover periods
+        frame0_nano += rollover_dt_ns * (rollovers_at_start - rollovers_in_sent_frame0)
+
+    return frame0_nano
 
 
 def read_kotekan_eop_table(host, port, timeout, protocol="http://"):
@@ -191,7 +235,7 @@ def read_kotekan_eop_table(host, port, timeout, protocol="http://"):
     Exceptions from requests.
     """
 
-    resp = make_rest_get_request(host, port, "telescope/eop_table", protocol)
+    resp = make_rest_get_request(host, port, "telescope/eop_table", timeout, protocol)
 
     return resp.json()["eop_table"]
 
@@ -594,12 +638,25 @@ def build_time_array(
 
     return times
 
+
 def print_eop_table(eop_table):
 
     print("\n#### BEGIN EOP TABLE ####\n")
-    eop_yaml = yaml.dump(eop_table, default_flow_style=True)
-    print(eop_yaml)
+    # JSON for prettier printing and consistent formatting
+    eop_json = json.dumps({'earth_orientation_paramter_table': eop_table}, indent=4)
+    print(eop_json)
     print("####  END  EOP TABLE ####\n")
+        
+
+def output_json_eop_table(eop_table, filename):
+
+    filepath = Path(filename)
+
+    with open(filepath, "w", encoding='utf-8') as f:
+        json.dump({'earth_orientation_parameter_table': eop_table},
+                  f, indent=4, ensure_ascii=True)
+
+    print("Wrote EOP table to file: {}".format(filepath))
 
 
 if __name__ == "__main__":
@@ -623,7 +680,7 @@ if __name__ == "__main__":
     parser.add_argument("-na", "--num-intervals-after", default=3, type=int)
     parser.add_argument("-dt", "--interval-length-days", default=1.0, type=float)
     parser.add_argument("--force-iers-download", action='store_true')
-    parser.add_argument("-b", "--broadcast", action='store_true')
+    parser.add_argument("-o", "--out-json-file", default=None)
 
     args = parser.parse_args()
 
@@ -701,6 +758,9 @@ if __name__ == "__main__":
     iers.close()
 
     print_eop_table(eop_table)
+
+    if args.out_json_file is not None and len(args.out_json_file) > 0:
+        output_json_eop_table(eop_table, args.out_json_file)
 
     sys.exit()
 
