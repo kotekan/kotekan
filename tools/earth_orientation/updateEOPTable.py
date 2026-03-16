@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 import time
 import requests
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 import astropy.units as units
 import astropy.utils.iers
 import astropy.utils.data
@@ -43,6 +43,7 @@ def make_rest_get_request(host, port, endpoint, timeout, protocol="http://"):
     Raises
     ------
     Exceptions from requests.
+    RuntimeError if no exception was raised by `requests` but response was not 200 OK
     """
 
     url = "{0:s}{1:s}:{2:d}/{3:s}".format(protocol, host, port, endpoint)
@@ -86,6 +87,7 @@ def make_rest_post_request(host, port, endpoint, json_payload, timeout,
     Raises
     ------
     Exceptions from requests.
+    RuntimeError if no exception was raised by `requests` but response was not 200 OK
     """
 
     url = "{0:s}{1:s}:{2:d}/{3:s}".format(protocol, host, port, endpoint)
@@ -587,6 +589,16 @@ def build_time_array(
         Length of intervals in UTC days (86399, 86400, or 86401 seconds).
     snap_to_grid : boolean
         Whether to snap the intervals to be at e.g. whole days.
+    
+    Returns
+    -------
+    times : Astropy Time() array
+        A Time object containing an ordered array of times to construct EOP table
+        entries for.
+
+    Raises
+    ------
+    ValueError if arguments are invalid.
     """
 
     if n_intervals_before < 0:
@@ -638,8 +650,82 @@ def build_time_array(
 
     return times
 
+def merge_eop_tables(current_eop_table, new_eop_table, t_ref, time0_ns,
+                     num_intervals_before, num_intervals_after,
+                     merge_cushion_dt):
+    r"""
+    Produce a new EOP table from the current Kotekan table and a proposed updated table.
+    Only include entries past the current interval to ensure continuity of parameters.
+    Drop early entries if they are no longer needed.
+
+    Parameters
+    ----------
+    current_eop_table : List of EOP entry dicts
+        The current table in Kotekan
+    new_eop_table : List of EOP entry dicts
+        The proposed new EOP table, may conflict with current table.
+    t_ref : Astropy Time object
+        The reference (likely current) time used to determine the current interval.
+    time0_ns : int
+        The UNIX time (as integer nanoseconds) of telescope frame0.
+    num_intervals_before : int
+        Number of intervals desired in the final table before the current interval.
+    num_intervals_after : int
+        Number of intervals desired in the final table after the current interval.
+    merge_cushion_dt : Astropy TimeDelta
+        Amount of buffer time to include when determining which current entries to drop.
+    
+    Returns
+    -------
+    final_eop_table : List of EOP entry dicts
+        The final blended table.
+    """
+
+    # Find the pivot time (when to start replacing current table entries)
+    # as an Instrument time (UNIX frame0 + TAI since)
+
+    # First as an Astropy time.
+    t_pivot = t_ref + merge_cushion_dt
+    
+    # Now get the frame0 time as an Astropy object.
+    t0 = calc_astropy_time_from_unix_ns(time0_ns)
+    # Now calculate the difference between t_pivot and frame0
+    # as TAI nanoseconds
+    dt_pivot_ns = calc_tai_ns_from_dt(t_pivot - t0)
+    # Now can get t_pivot as an instrument time, time0 + TAI dt
+    t_pivot_inst_ns = time0_ns + dt_pivot_ns
+    print(t_pivot_inst_ns, time0_ns, dt_pivot_ns)
+
+    # Check input tables are sorted.  
+    for i in range(len(current_eop_table) - 1):
+        if current_eop_table[i]['t_inst_ns'] >= current_eop_table[i]['t_inst_ns']:
+            raise RuntimeError("current_eop_table is not sorted. Can only merge sorted tables")
+    for i in range(len(new_eop_table) - 1):
+        if new_eop_table[i]['t_inst_ns'] >= new_eop_table[i]['t_inst_ns']:
+            raise RuntimeError("new_eop_table is not sorted. Can only merge sorted tables")
+
+    # Extract array of times for easier searching.  If we're here, both arrays have
+    # strictly increasing instrument times
+    current_times = np.array([eop['t_inst_ns'] for eop in current_eop_table])
+    new_times = np.array([eop['t_inst_ns'] for eop in new_eop_table])
+
+    current_pivot_idx = np.searchsorted(current_times, t_pivot_inst_ns, side='right')
+
+    return new_eop_table
+
 
 def print_eop_table(eop_table):
+    r"""
+    Print the given EOP table to the stdout.
+
+    Parameters
+    ----------
+    eop_table : List of EOP entry dicts
+    
+    Returns
+    -------
+    None
+    """
 
     print("\n#### BEGIN EOP TABLE ####\n")
     # JSON for prettier printing and consistent formatting
@@ -649,6 +735,20 @@ def print_eop_table(eop_table):
         
 
 def output_json_eop_table(eop_table, filename):
+    r"""
+    Write the given EOP table to the file `filename` in JSON format.
+
+    Parameters
+    ----------
+    eop_table : List of EOP entry dicts
+    filename : String
+        Name of file to write the table to. Must be writable. If exists, will be
+        overwritten.
+    
+    Returns
+    -------
+    None
+    """
 
     filepath = Path(filename)
 
@@ -680,6 +780,9 @@ if __name__ == "__main__":
     parser.add_argument("-na", "--num-intervals-after", default=3, type=int)
     parser.add_argument("-dt", "--interval-length-days", default=1.0, type=float)
     parser.add_argument("--force-iers-download", action='store_true')
+    parser.add_argument("--enforce-continuity", choices=['yes', 'no'],
+                        default='yes')
+    parser.add_argument("--merge-cushion-dt", default="1hr")
     parser.add_argument("-o", "--out-json-file", default=None)
 
     args = parser.parse_args()
@@ -751,18 +854,38 @@ if __name__ == "__main__":
     print("times in table (mjd):", ts.mjd)
 
     # Build the table, use astropy's automatic IERS table
-    # TODO: Make sure this table is up to date (force download, or set short
-    # expiry time)
     iers = astropy.utils.iers.IERS_Auto.open()
-    eop_table = build_EOP_table(ts, t0_ns, iers)
+    new_eop_table = build_EOP_table(ts, t0_ns, iers)
     iers.close()
 
-    print_eop_table(eop_table)
+    if args.enforce_continuity == "yes":
+        enforce_continuity = True
+    elif args.enforce_continuity == "no":
+        enforce_continuity = False
+    else:
+        raise ValueError("enforce_continuity must be yes or no")
 
+    # Set the final table, possibly by blending with the current table to ensure
+    # continuity of EOP values
+    if enforce_continuity:
+        # Get the current table loaded into Kotekan
+        merge_cushion_dt = TimeDelta(args.merge_cushion_dt, scale='tai')
+        current_eop_table = read_kotekan_eop_table(kotekan_host, kotekan_port, timeout,
+                                                   kotekan_protocol)
+        eop_table = merge_eop_tables(current_eop_table, new_eop_table, t_ref, t0_ns,
+                                     num_intervals_before, num_intervals_after,
+                                     merge_cushion_dt)
+    else:
+        eop_table = new_eop_table
+
+    # Print the table
+    print_eop_table(new_eop_table)
+
+    # Write the table to a file if asked.
     if args.out_json_file is not None and len(args.out_json_file) > 0:
         output_json_eop_table(eop_table, args.out_json_file)
 
     sys.exit()
 
     # Send table to Kotekan
-    broadcast_kotekan_eop_table(kotekan_host, kotekan_port, eop_table)
+    # broadcast_kotekan_eop_table(kotekan_host, kotekan_port, eop_table)
