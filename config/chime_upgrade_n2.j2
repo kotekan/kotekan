@@ -353,7 +353,7 @@ run_send_voltage:
             - host_voltage_buffer_{{ id }}
 {%- endfor %}
           signal_buf: host_voltage_ringbuffer
-          gpu_mem_output: gpu_voltage_buffer
+          gpu_mem_output: voltage_buffer
 
 ################################################################################
 # transpose kernel to bring data into cylinder (cylinder, polarization, dish) order
