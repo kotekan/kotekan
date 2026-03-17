@@ -1,8 +1,8 @@
-#include "../include/pirate/YamlFile.hpp"
-#include "../include/pirate/file_utils.hpp"  // file_exists()
+#include "YamlFile.hpp"
+#include "file_utils.hpp"  // file_exists()
 
 #include <sstream>
-#include <ksgpu/xassert.hpp>
+#include <xassert.hpp>
 
 using namespace std;
 

@@ -6,7 +6,8 @@
 #include <unordered_set>
 #include <yaml-cpp/yaml.h>
 
-#include <ksgpu/string_utils.hpp>  // tuple_str(), type_name()
+//#include <ksgpu/string_utils.hpp>  // tuple_str(), type_name()
+#include <string_utils.hpp>  // tuple_str(), type_name()
 
 
 namespace pirate {

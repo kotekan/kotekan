@@ -1,6 +1,6 @@
-#include "../include/pirate/file_utils.hpp"
-#include <ksgpu/xassert.hpp>
-#include <ksgpu/rand_utils.hpp>
+#include "file_utils.hpp"
+#include <xassert.hpp>
+#include <rand_utils.hpp>
 
 #include <cstring>
 #include <iostream>
@@ -161,7 +161,7 @@ void RemoveGuard::commit()
 //
 // TmpFileGuard
 
-
+/*
 static fs::path make_tmp_filename(const fs::path &filename)
 {
     fs::path temp_path = filename;
@@ -175,8 +175,7 @@ TmpFileGuard::TmpFileGuard(const fs::path &filename_)
     filename = filename_;
     tmp_filename = make_tmp_filename(filename);
 }
-
-
+*/
 TmpFileGuard::~TmpFileGuard()
 {
     if (committed)

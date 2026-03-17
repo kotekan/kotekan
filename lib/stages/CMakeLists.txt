@@ -61,6 +61,9 @@ add_library(
     frbNetworkProcess.cpp
     pulsarNetworkProcess.cpp
     pirateFrbSend.cpp
+    XEngineMetadata.cpp
+    YamlFile.cpp
+    file_utils.cpp
     bufferMerge.cpp
     bufferCopy.cpp
     bufferSwitch.cpp

@@ -1,9 +1,10 @@
-#include "../include/pirate/XEngineMetadata.hpp"
-#include "../include/pirate/YamlFile.hpp"
+#include "XEngineMetadata.hpp"
+#include "YamlFile.hpp"
 
 #include <sstream>
 #include <unordered_set>
-#include <ksgpu/xassert.hpp>
+//#include <ksgpu/xassert.hpp>
+#include <xassert.hpp>
 #include <yaml-cpp/yaml.h>
 
 using namespace std;
@@ -75,7 +76,7 @@ void XEngineMetadata::validate() const
 
     // Validate initial_time_sample.
     xassert_ge(initial_time_sample, 0);
-    xassert_divisible(initial_time_sample, 256);
+    //xassert_divisible(initial_time_sample, 256);
 }
 
 

@@ -122,13 +122,14 @@ static inline std::string tuple_str(std::initializer_list<T> ini, const char *sp
     return tuple_str(ini.size(), ini.begin());
 }
 
+/*
 static inline std::string dim3_str(const dim3 &d, const char *space="")
 {
     std::stringstream ss;
     ss << "[" << d.x << "," << space << d.y << "," << space << d.z << "]";
     return ss.str();
 }
-
+*/
 
 // ---------------------------  nbytes_to_str(), nbytes_from_str()  --------------------------------
 

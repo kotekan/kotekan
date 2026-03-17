@@ -8,7 +8,7 @@
 #include <cuda_fp16.h>
 
 #include "xassert.hpp"
-#include "complex_type_traits.hpp"  // is_complex_v<T>, decomplexify_type<T>::type
+//#include "complex_type_traits.hpp"  // is_complex_v<T>, decomplexify_type<T>::type
 
 namespace ksgpu {
 #if 0
@@ -64,7 +64,7 @@ inline void randomize_i(T *buf, long nelts, std::mt19937 &rng = default_rng)
 	((char *)buf)[i] = rng();
 }
 
-
+/*
 // General randomize() template, for built-in C++ int/float types.
 // For CUDA __half and __half2, we need specializations (see below).
 template<typename T>
@@ -83,7 +83,6 @@ inline void randomize(T *buf, long nelts, std::mt19937 &rng = default_rng)
 	randomize_i(buf, nelts, rng);
     }
 }
-
 
 // __half randomize() template specialization.
 template<>
@@ -110,6 +109,7 @@ inline void randomize(__half2 *buf, long nelts, std::mt19937 &rng)
 	buf[i] = __floats2half2_rn(x,y);
     }
 }
+*/
 
 
 // -------------------------------------------------------------------------------------------------
