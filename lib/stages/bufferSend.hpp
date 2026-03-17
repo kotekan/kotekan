@@ -44,6 +44,25 @@ struct bufferFrameHeader : public bufferFrameHeaderNoConfigTracker {
 };
 static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 bytes");
 
+struct destination {
+    /// The connection file handle
+    int socket_fd;
+    /// The server port to connect to.
+    uint32_t server_port;
+    /// The server IP address to connect to.
+    std::string server_ip;
+    /// Set to true if there is an active connection
+    std::atomic<bool> connected;
+    /// Internal server address struct
+    struct sockaddr_in server_addr;
+    /// Prevent the sending thread and connection thread from contension
+    std::mutex connection_state_mutex;
+    /// Used to wakeup the connect thread after a change to the connection state
+    std::condition_variable connection_state_cv;
+    /// The thread we're using to connect
+    std::thread connect_thread;
+};
+
 /**
  * @brief Sends a buffer, metadata, and flag for whether config data was updated over TCP.
  *
@@ -98,11 +117,13 @@ public:
     virtual std::string dot_string(const std::string& prefix) const override;
 
 protected:
+    /// Where we're sending stuff
+    std::vector<std::shared_ptr<struct destination> > dests;
+
     /// The input buffer name to grab.
     virtual std::string get_buffer_name() const;
 
-    /// The connection file handle
-    int socket_fd;
+    virtual void initialize_destinations();
 
 private:
     /// The input buffer name to grab.
@@ -110,12 +131,6 @@ private:
 
     /// The input buffer to send frames from.
     Buffer* buf;
-
-    /// The server port to connect to.
-    uint32_t server_port;
-
-    /// The server IP address to connect to.
-    std::string server_ip;
 
     /// The number of seconds before send() times outs and returns and error.
     uint32_t send_timeout;
@@ -142,23 +157,11 @@ private:
      */
     kotekan::prometheus::Counter& dropped_frame_counter;
 
-    /// Set to true if there is an active connection
-    std::atomic<bool> connected;
-
-    /// Internal server address struct
-    struct sockaddr_in server_addr;
-
-    /// Prevent the sending thread and connection thread from contension
-    std::mutex connection_state_mutex;
-
-    /// Used to wakeup the connect thread after a change to the connection state
-    std::condition_variable connection_state_cv;
-
     /// Closes the open connection and starts the process of trying to reconnect
-    void close_connection();
+    void close_connection(std::shared_ptr<struct destination> dest);
 
     /// Thread for connecting to the remote server
-    void connect_to_server();
+    void connect_to_server(std::shared_ptr<struct destination> dest);
 
     /// Called when a frame has been received -- just after it has been claimed from
     /// kotekan.  If false is returned, the sending will end.

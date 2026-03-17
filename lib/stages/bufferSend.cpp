@@ -47,10 +47,6 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
     buf = get_buffer(buffer_name);
     buf->register_consumer(unique_name);
 
-    connected = false;
-    server_ip = config.get<std::string>(unique_name, "server_ip");
-    server_port = config.get_default<uint32_t>(unique_name, "server_port", 11024);
-
     send_timeout = config.get_default<uint32_t>(unique_name, "send_timeout", 20);
     reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
@@ -58,15 +54,10 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
 
     // Publish current dropped frame count.
 
-    bzero(&server_addr, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr(server_ip.c_str());
-    server_addr.sin_port = htons(server_port);
-
-    socket_fd = -1;
-
     use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
     config_tracker_combined_hash = "";
+
+    initialize_destinations();
 }
 
 bufferSend::~bufferSend() {}
@@ -75,11 +66,29 @@ std::string bufferSend::get_buffer_name() const {
     return "buf";
 }
 
+void bufferSend::initialize_destinations() {
+    std::shared_ptr<struct destination> dest = std::make_shared<struct destination>();
+
+    dest->connected = false;
+    dest->server_ip = config.get<std::string>(unique_name, "server_ip");
+    dest->server_port = config.get_default<uint32_t>(unique_name, "server_port", 11024);
+
+    bzero(&dest->server_addr, sizeof(dest->server_addr));
+    dest->server_addr.sin_family = AF_INET;
+    dest->server_addr.sin_addr.s_addr = inet_addr(dest->server_ip.c_str());
+    dest->server_addr.sin_port = htons(dest->server_port);
+
+    dest->socket_fd = -1;
+
+    dests.push_back(dest);
+}
+
 void bufferSend::main_thread() {
 
     int frame_id = 0;
 
-    std::thread connect_thread = std::thread(&bufferSend::connect_to_server, std::ref(*this));
+    for (auto& dest : dests)
+        dest->connect_thread = std::thread(&bufferSend::connect_to_server, std::ref(*this), dest);
 
     while (!stop_thread) {
 
@@ -91,6 +100,13 @@ void bufferSend::main_thread() {
 
         uint32_t num_full_frames = buf->get_num_full_frames();
 
+        bool all_disconnected = true;
+        for (auto& dest : dests)
+            if (dest->connected) {
+                all_disconnected = false;
+                break;
+            }
+
         if (drop_frames && (float)num_full_frames / (float)buf->num_frames > drop_threshold) {
             // If the number of full frames is high, then we drop some frames,
             // because we likely aren't sending fast enough to up with the data rate.
@@ -98,14 +114,18 @@ void bufferSend::main_thread() {
                  "frame_id {:d}",
                  buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
             dropped_frame_counter.inc();
-        } else if (drop_frames && !connected) {
-            INFO("Dropping frame {:s}[{:d}], because connection to {:s}:{:d} is down.",
-                 buf->buffer_name, frame_id, server_ip, server_port);
+        } else if (drop_frames && all_disconnected) {
+            INFO("Dropping frame {:s}[{:d}], because all connections are down.",
+                 buf->buffer_name, frame_id);
             dropped_frame_counter.inc();
-        } else if (connected) {
-            if (!send_frame(frame, frame_id)) {
-                close_connection();
-                continue;
+        } else {
+            bool any_connected = false;
+            for (auto& dest : dests) {
+                if (dest->connected) {
+                    any_connected = true;
+                    if (!send_frame(frame, frame_id, dest))
+                        close_connection(dest);
+                }
             }
             DEBUG("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id, server_ip,
                   server_port);
@@ -215,7 +235,7 @@ void bufferSend::close_connection() {
     connection_state_cv.notify_all();
 }
 
-void bufferSend::connect_to_server() {
+void bufferSend::connect_to_server(struct destination& dest) {
 
     while (!stop_thread) {
 
