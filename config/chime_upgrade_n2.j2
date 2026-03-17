@@ -67,6 +67,16 @@ earth_rotation_data:
   earth_orientation_parameter_table:
     - {time_inst_ns: 0, delta_UT1_inst: 0.0, x_pm: 0.0, y_pm: 0.0}
 
+# these are to trigger visibility dumps while starting kotekan early to avoid
+# packet sync hickups
+updatable_config:
+  enable_vis_out:
+    kotekan_update_endpoint: "json"
+    enabled: false
+  enable_failed_out:
+    kotekan_update_endpoint: "json"
+    enabled: false
+
 dataset_manager:
   use_dataset_broker: False
 
@@ -765,6 +775,18 @@ failed_vis_buffer:
     num_frames: gpu_buffer_depth * num_freq_gpu_buf
     metadata_pool: vis_pool
 
+vis_buffer_post:
+    kotekan_buffer: vis
+    num_ev: num_ev_to_calculate
+    num_frames: gpu_buffer_depth * num_freq_gpu_buf
+    metadata_pool: vis_pool
+
+failed_vis_buffer_post:
+    kotekan_buffer: vis
+    num_ev: 0
+    num_frames: gpu_buffer_depth * num_freq_gpu_buf
+    metadata_pool: vis_pool
+
 # Stages
 
 run_recv_rfi_RFImask:
@@ -838,6 +860,20 @@ failed_vis_convert:
     vis_buf: failed_vis_buffer
     freq_ids: [ 269, 485, 493, 1005, 477, 957, 981, 989, 277, 301, 717, 901, 285, 293, 541, 749 ]
 
+switch_vis_out:
+    kotekan_stage: bufferSwitch
+    in_bufs:
+      - enabled: vis_buffer
+    out_buf: vis_buffer_post
+    updatable_config: /updatable_config/enable_vis_out
+
+switch_failed_out:
+    kotekan_stage: bufferSwitch
+    in_bufs:
+      - enabled: failed_vis_buffer
+    out_buf: failed_vis_buffer_post
+    updatable_config: /updatable_config/enable_failed_out
+
 ################################################################################
 # output to receivers
 
@@ -870,14 +906,14 @@ write_vis:
     root_path: vis_data
     file_type: raw
     file_length: 256
-    in_buf: vis_buffer
+    in_buf: vis_buffer_post
 
 write_failed_vis:
     kotekan_stage: VisWriter
     root_path: failed_eig
     file_type: raw
     file_length: 256
-    in_buf: failed_vis_buffer
+    in_buf: failed_vis_buffer_post
 
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)
