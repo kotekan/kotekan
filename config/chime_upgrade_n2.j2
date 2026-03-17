@@ -830,11 +830,13 @@ vis_convert:
     kotekan_stage: n2FrameToVisFrame
     n2_buf: eig_10s_buffer
     vis_buf: vis_buffer
+    freq_ids: [ 269, 485, 493, 1005, 477, 957, 981, 989, 277, 301, 717, 901, 285, 293, 541, 749 ]
 
 failed_vis_convert:
     kotekan_stage: n2FrameToVisFrame
     n2_buf: failed_10s_buffer
     vis_buf: failed_vis_buffer
+    freq_ids: [ 269, 485, 493, 1005, 477, 957, 981, 989, 277, 301, 717, 901, 285, 293, 541, 749 ]
 
 ################################################################################
 # output to receivers
@@ -867,12 +869,14 @@ write_vis:
     kotekan_stage: VisWriter
     root_path: vis_data
     file_type: raw
+    file_length: 256
     in_buf: vis_buffer
 
 write_failed_vis:
     kotekan_stage: VisWriter
     root_path: failed_eig
     file_type: raw
+    file_length: 256
     in_buf: failed_vis_buffer
 
 # Information for input reordering, packed as
