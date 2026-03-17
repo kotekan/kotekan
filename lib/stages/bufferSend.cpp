@@ -57,7 +57,7 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
     use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
     config_tracker_combined_hash = "";
 
-    initialize_destinations();
+    initialize_destination();
 }
 
 bufferSend::~bufferSend() {}
@@ -66,29 +66,25 @@ std::string bufferSend::get_buffer_name() const {
     return "buf";
 }
 
-void bufferSend::initialize_destinations() {
-    std::shared_ptr<struct destination> dest = std::make_shared<struct destination>();
+void bufferSend::initialize_destination() {
+    dest.connected = false;
+    dest.server_ip = config.get<std::string>(unique_name, "server_ip");
+    dest.server_port = config.get_default<uint32_t>(unique_name, "server_port", 11024);
 
-    dest->connected = false;
-    dest->server_ip = config.get<std::string>(unique_name, "server_ip");
-    dest->server_port = config.get_default<uint32_t>(unique_name, "server_port", 11024);
+    bzero(&dest.server_addr, sizeof(dest.server_addr));
+    dest.server_addr.sin_family = AF_INET;
+    dest.server_addr.sin_addr.s_addr = inet_addr(dest.server_ip.c_str());
+    dest.server_addr.sin_port = htons(dest.server_port);
 
-    bzero(&dest->server_addr, sizeof(dest->server_addr));
-    dest->server_addr.sin_family = AF_INET;
-    dest->server_addr.sin_addr.s_addr = inet_addr(dest->server_ip.c_str());
-    dest->server_addr.sin_port = htons(dest->server_port);
-
-    dest->socket_fd = -1;
-
-    dests.push_back(dest);
+    dest.socket_fd = -1;
 }
 
 void bufferSend::main_thread() {
 
     int frame_id = 0;
 
-    for (auto& dest : dests)
-        dest->connect_thread = std::thread(&bufferSend::connect_to_server, std::ref(*this), dest);
+    dest.connect_thread = std::thread(&bufferSend::connect_to_server, std::ref(*this),
+                                      std::ref(dest));
 
     while (!stop_thread) {
 
@@ -100,13 +96,6 @@ void bufferSend::main_thread() {
 
         uint32_t num_full_frames = buf->get_num_full_frames();
 
-        bool all_disconnected = true;
-        for (auto& dest : dests)
-            if (dest->connected) {
-                all_disconnected = false;
-                break;
-            }
-
         if (drop_frames && (float)num_full_frames / (float)buf->num_frames > drop_threshold) {
             // If the number of full frames is high, then we drop some frames,
             // because we likely aren't sending fast enough to up with the data rate.
@@ -114,27 +103,23 @@ void bufferSend::main_thread() {
                  "frame_id {:d}",
                  buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
             dropped_frame_counter.inc();
-        } else if (drop_frames && all_disconnected) {
-            INFO("Dropping frame {:s}[{:d}], because all connections are down.",
-                 buf->buffer_name, frame_id);
+        } else if (drop_frames && !dest.connected) {
+            INFO("Dropping frame {:s}[{:d}], because connection to {:s}:{:d} is down.",
+                 buf->buffer_name, frame_id, dest.server_ip, dest.server_port);
             dropped_frame_counter.inc();
-        } else {
-            bool any_connected = false;
-            for (auto& dest : dests) {
-                if (dest->connected) {
-                    any_connected = true;
-                    if (!send_frame(frame, frame_id, dest))
-                        close_connection(dest);
-                }
+        } else if (dest.connected) {
+            if (!send_frame(frame, frame_id, dest)) {
+                close_connection(dest);
+                continue;
             }
-            DEBUG("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id, server_ip,
-                  server_port);
+            DEBUG("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id,
+                  dest.server_ip, dest.server_port);
         } else {
             // Wait for connection and block
-            INFO("Waiting for connection to {:s}:{:d}...", server_ip, server_port);
-            std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
-            connection_state_cv.wait_for(connection_lock, std::chrono::seconds(1),
-                                         [&]() { return (stop_thread || connected); });
+            INFO("Waiting for connection to {:s}:{:d}...", dest.server_ip, dest.server_port);
+            std::unique_lock<std::mutex> connection_lock(dest.connection_state_mutex);
+            dest.connection_state_cv.wait_for(connection_lock, std::chrono::seconds(1),
+                                              [&]() { return (stop_thread || dest.connected); });
             continue;
         }
 
@@ -143,11 +128,11 @@ void bufferSend::main_thread() {
         frame_id = (frame_id + 1) % buf->num_frames;
     }
 
-    close_connection();
-    connect_thread.join();
+    close_connection(dest);
+    dest.connect_thread.join();
 }
 
-bool bufferSend::send_frame(uint8_t* frame, int frame_id) {
+bool bufferSend::send_frame(uint8_t* frame, int frame_id, struct destination& dest) {
     int32_t n = 0;
     int32_t n_sent = 0;
 
@@ -159,7 +144,7 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id) {
     header.frame_size = static_cast<uint32_t>(buf->frame_size);
     header.config_tracker_update =
         config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
-    // for legacy CHIME, do not send laast field (config_tracker_update)
+    // for legacy CHIME, do not send last field (config_tracker_update)
     size_t header_len = use_config_tracker ? sizeof(bufferFrameHeader)
                                            : sizeof(bufferFrameHeaderNoConfigTracker);
 
@@ -170,15 +155,15 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id) {
 
     // Recover from partial sends
     DEBUG2("Sending header");
-    while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
+    while ((n = send(dest.socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
                      MSG_NOSIGNAL))
            > 0) {
         n_sent += n;
     }
     // Handle errors
     if (n < 0) {
-        ERROR("Error {:s}, failed to send header to {:s}:{:d}", strerror(errno), server_ip,
-              server_port);
+        ERROR("Error {:s}, failed to send header to {:s}:{:d}", strerror(errno), dest.server_ip,
+              dest.server_port);
         return false;
     }
 
@@ -194,14 +179,14 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id) {
     {
         char metabuf[metadata_size];
         meta->serialize(metabuf);
-        while ((n = send(socket_fd, metabuf + n_sent, metadata_size - n_sent, MSG_NOSIGNAL))
+        while ((n = send(dest.socket_fd, metabuf + n_sent, metadata_size - n_sent, MSG_NOSIGNAL))
                > 0) {
             n_sent += n;
         }
     }
     if (n < 0) {
-        ERROR("Error {:s}, failed to metadata to {:s}:{:d}", strerror(errno), server_ip,
-              server_port);
+        ERROR("Error {:s}, failed to metadata to {:s}:{:d}", strerror(errno), dest.server_ip,
+              dest.server_port);
         return false;
     }
     DEBUG2("Sent metadata: {:d}", n_sent);
@@ -209,51 +194,51 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id) {
     // Send buffer frame.
     DEBUG2("Sending frame with {:d} bytes", frame_size);
     n_sent = 0;
-    while ((n = send(socket_fd, &frame[n_sent], (int32_t)frame_size - n_sent, MSG_NOSIGNAL))
+    while ((n = send(dest.socket_fd, &frame[n_sent], (int32_t)frame_size - n_sent, MSG_NOSIGNAL))
            > 0) {
         n_sent += n;
         // DEBUG("Total sent: {:d}", n_sent);
     }
     if (n < 0) {
-        ERROR("Error {:s}, failed to frame data to {:s}:{:d}", strerror(errno), server_ip,
-              server_port);
+        ERROR("Error {:s}, failed to frame data to {:s}:{:d}", strerror(errno), dest.server_ip,
+              dest.server_port);
         return false;
     }
     DEBUG2("Sent frame: {:d}", n_sent);
     return true;
 }
 
-void bufferSend::close_connection() {
-    if (socket_fd >= 0)
-        close(socket_fd);
+void bufferSend::close_connection(struct destination& dest) {
+    if (dest.socket_fd >= 0)
+        close(dest.socket_fd);
 
-    socket_fd = -1;
+    dest.socket_fd = -1;
     {
-        std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
-        connected = false;
+        std::unique_lock<std::mutex> connection_lock(dest.connection_state_mutex);
+        dest.connected = false;
     }
-    connection_state_cv.notify_all();
+    dest.connection_state_cv.notify_all();
 }
 
 void bufferSend::connect_to_server(struct destination& dest) {
 
     while (!stop_thread) {
 
-        DEBUG("Trying to connecting to server: {:s}:{:d}", server_ip, server_port);
+        DEBUG("Trying to connecting to server: {:s}:{:d}", dest.server_ip, dest.server_port);
 
-        socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-        if (socket_fd == -1) {
+        dest.socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (dest.socket_fd == -1) {
             std::string msg = fmt::format(fmt("Could not create socket, errno: {:d} ({:s})"), errno,
                                           std::strerror(errno));
             ERROR("{:s}", msg);
             throw std::runtime_error(msg);
         }
 
-        if (connect(socket_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
+        if (connect(dest.socket_fd, (struct sockaddr*)&(dest.server_addr), sizeof(dest.server_addr)) == -1) {
             WARN("Could not connect to server {:s}:{:d}, error: {:s}({:d}), waiting {:d} seconds "
                  "to retry...",
-                 server_ip, server_port, strerror(errno), errno, reconnect_time);
-            close(socket_fd);
+                 dest.server_ip, dest.server_port, strerror(errno), errno, reconnect_time);
+            close(dest.socket_fd);
             // TODO Add a Stage level "breakable sleep" so this doesn't
             // lock up the shutdown process for upto reconnect_time seconds.
             sleep(reconnect_time);
@@ -264,7 +249,7 @@ void bufferSend::connect_to_server(struct destination& dest) {
         // This is used for MacOS, since linux doesn't have SO_NOSIGPIPE
 #ifdef SO_NOSIGPIPE
         int set = 1;
-        if (setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&set, sizeof(int)) < 0) {
+        if (setsockopt(dest.socket_fd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&set, sizeof(int)) < 0) {
             ERROR("bufferSend: setsockopt() NOSIGPIPE ");
         }
 #endif
@@ -274,30 +259,30 @@ void bufferSend::connect_to_server(struct destination& dest) {
         tv_timeout.tv_sec = send_timeout;
         tv_timeout.tv_usec = 0;
 
-        if (setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, (void*)&tv_timeout, sizeof(tv_timeout))
+        if (setsockopt(dest.socket_fd, SOL_SOCKET, SO_SNDTIMEO, (void*)&tv_timeout, sizeof(tv_timeout))
             < 0) {
             ERROR("bufferSend: setsockopt() timeout failed.");
         }
 
-        INFO("Connected to server {:s}:{:d} for sending buffer {:s}", server_ip, server_port,
+        INFO("Connected to server {:s}:{:d} for sending buffer {:s}", dest.server_ip, dest.server_port,
              buf->buffer_name);
         {
-            std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
-            connected = true;
+            std::unique_lock<std::mutex> connection_lock(dest.connection_state_mutex);
+            dest.connected = true;
         }
 
         // Notify that connection is established
-        connection_state_cv.notify_one();
+        dest.connection_state_cv.notify_one();
 
         // wait for connection to get closed
-        std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
-        connection_state_cv.wait(connection_lock, [&]() { return !connected || stop_thread; });
+        std::unique_lock<std::mutex> connection_lock(dest.connection_state_mutex);
+        dest.connection_state_cv.wait(connection_lock, [&]() { return !dest.connected || stop_thread; });
     }
 }
 
 std::string bufferSend::dot_string(const std::string& prefix) const {
     std::string dot = Stage::dot_string(prefix);
-    std::string target = fmt::format("{:s}:{:d}", server_ip, server_port);
+    std::string target = fmt::format("{:s}:{:d}", dest.server_ip, dest.server_port);
     dot += fmt::format("{:s}\"{:s}\" [shape=doubleoctagon style=filled,color=lightblue]", prefix,
                        target);
     dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\"", prefix, get_unique_name(), target);

@@ -118,12 +118,12 @@ public:
 
 protected:
     /// Where we're sending stuff
-    std::vector<std::shared_ptr<struct destination> > dests;
+    struct destination dest;
 
     /// The input buffer name to grab.
     virtual std::string get_buffer_name() const;
 
-    virtual void initialize_destinations();
+    virtual void initialize_destination();
 
 private:
     /// The input buffer name to grab.
@@ -158,17 +158,17 @@ private:
     kotekan::prometheus::Counter& dropped_frame_counter;
 
     /// Closes the open connection and starts the process of trying to reconnect
-    void close_connection(std::shared_ptr<struct destination> dest);
+    void close_connection(struct destination& dest);
 
     /// Thread for connecting to the remote server
-    void connect_to_server(std::shared_ptr<struct destination> dest);
+    void connect_to_server(struct destination& dest);
 
     /// Called when a frame has been received -- just after it has been claimed from
     /// kotekan.  If false is returned, the sending will end.
     virtual bool got_frame(uint8_t* frame, int frame_id);
 
     /// Send a frame
-    virtual bool send_frame(uint8_t* frame, int frame_id);
+    virtual bool send_frame(uint8_t* frame, int frame_id, struct destination& dest);
 
     /// Called when a frame has been sent -- just before the buffer frame is released
     /// back to kotekan.
