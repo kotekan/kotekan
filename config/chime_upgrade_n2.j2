@@ -794,6 +794,7 @@ vis_accumulate:
     in_rfimask_buf: host_rfi_RFImask_buffer
     out_buf: vis_10s_buffer
     packet_loss_is_scalar: True
+    cpu_affinity: [17, 18, 19]
     num_workers: 3
     # round_to_even(10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
     # round_to_even(10s / ( 16384 * 2.56us ) * 1) = 238
@@ -811,6 +812,8 @@ vis_accumulate:
 
 eigencalc:
     kotekan_stage: EigenN2Iter
+    cpu_affinity: [15, 16] # for blaze
+    num_blaze_workers: 2
     num_ev: num_ev_to_calculate
     in_buf: vis_10s_buffer
     out_buf: eig_10s_buffer
