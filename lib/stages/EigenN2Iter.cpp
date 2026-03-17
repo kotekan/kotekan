@@ -53,6 +53,9 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     _krylov(config.get_default<size_t>(unique_name, "krylov", 2)),
     _subspace(config.get_default<size_t>(unique_name, "subspace", 3)),
 
+    // blaze parallelizations
+    _num_blaze_workers(config.get_default<uint32_t>(unique_name, "num_blaze_workers", 0)),
+
     // Masking params
     _exclude_inputs(config.get_default<std::vector<size_t>>(unique_name, "exclude_inputs", {})),
     _block_fill_size(config.get_default<size_t>(unique_name, "block_fill_size", 0)),
@@ -153,7 +156,10 @@ void EigenN2Iter::main_thread() {
     uint32_t num_elements = 0;
     bool initialized = false;
 
+    // these are kotekan wide (process wide) settings
     openblas_set_num_threads(1);
+    if (_num_blaze_workers > 0)
+        blaze::setNumThreads(_num_blaze_workers);
 
     while (!stop_thread) {
 
