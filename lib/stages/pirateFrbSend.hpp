@@ -3,6 +3,11 @@
 
 #include "bufferSend.hpp"
 
+struct pirateDestination : public destination {
+    /// Have we sent the pirate protocol header yet?
+    bool sent_header;
+};
+
 class pirateFrbSend : public bufferSend {
 public:
     /// Standard constructor
@@ -17,7 +22,7 @@ public:
     bool got_frame(uint8_t* frame, int frame_id) override;
 
     /// Send a frame
-    bool send_frame(uint8_t* frame, int frame_id) override;
+    bool send_frame(uint8_t* frame, int frame_id, struct destination& dest) override;
 
     /// Called when a frame has been sent -- just before the buffer frame is released
     /// back to kotekan.
@@ -26,9 +31,11 @@ public:
 protected:
     std::string get_buffer_name() const override;
 
+    void initialize_destination() override;
+
 private:
-    /// Have we sent the pirate protocol header yet?
-    bool sent_header;
+    /// Pirate FRB node destinations
+    std::vector<std::shared_ptr<pirateDestination > > dests;
 
     /// The input buffer containing offset & scale values
     Buffer* offset_scale_buf;
