@@ -3,13 +3,10 @@ import argparse
 import json
 from pathlib import Path
 import sys
-import time
-import requests
-import numpy as np
 import generateEOPTable
 
 
-def broadcast_kotekan_eop_table(host, port, eop_table, timeout, protocol="http://"):
+def broadcast_kotekan_eop_table(host, port, eop_table, eop_endpoint, timeout, protocol="http://"):
     r"""
     Send a new EOP table to a running Kotekan instance.
 
@@ -40,7 +37,7 @@ def broadcast_kotekan_eop_table(host, port, eop_table, timeout, protocol="http:/
 
     payload = {"earth_orientation_parameter_table": eop_table}
 
-    resp = generateEOPTable.make_rest_post_request(host, port, "earth_rotation_data",
+    resp = generateEOPTable.make_rest_post_request(host, port, eop_endpoint,
                                                    payload, timeout, protocol)
 
     return resp
@@ -94,33 +91,48 @@ if __name__ == "__main__":
     parser.add_argument("--port", default=12048, type=int)
     parser.add_argument("--protocol", default="http://")
     parser.add_argument("--timeout", default=30.0, type=float)
+    parser.add_argument("--eop-post-endpoint", default="earth_rotation_data")
     parser.add_argument("input-json-file", nargs=1)
 
     args = parser.parse_args()
 
     hostports = parse_broadcast_list(args.broadcast_list, args.host, args.port)
 
-    print(hostports)
-
     print("Checking {:d} Kotekan instances are running.".format(len(hostports)))
 
     bad_instances = []
 
-    for hostport in hostports:
-        host, port = hostport
-        if generateEOPTable.is_kotekan_alive(host, port, args.timeout):
-            print("{:s}:{:d} OK".format(host, port))
+    full_endpoint = "/" + args.eop_post_endpoint
+
+    for host, port in hostports:
+        if generateEOPTable.is_kotekan_alive(host, port, args.timeout, args.protocol):
+            endpoints = generateEOPTable.get_kotekan_endpoints(host, port, args.timeout,
+                                                               args.protocol)
+            if len(endpoints) > 0 and isinstance(endpoints, dict) and 'POST' in endpoints.keys() and full_endpoint in endpoints['POST']:
+                print("{:s}:{:d} OK".format(host, port))
+            else:
+                print("{:s}:{:d} is not accepting POST to {:s}".format(host, port, full_endpoint))
+                bad_instances.append((host, port))
+
         else:
             print("{:s}:{:d} down".format(host, port))
             bad_instances.append((host, port))
 
     if len(bad_instances) > 0:
-        print("The locations:", bad_instances, "did not have Kotekan running.")
+        print("The locations:", bad_instances, "failed.")
         print("Will not continue.")
         sys.exit()
 
+    filepath = Path(args.input_json_file)
+    print("Reading eop_table from", filepath)
+    with open(args.input_json_file, "r") as f:
+        eop_table = json.load(f)
+
+    print(eop_table)
 
     sys.exit()
-
+    
+    for host, port in hostports:
+        broadcast_kotekan_eop_table(host, port, eop_table, args.eop_post_endpoint,
+                                    args.protocol)
     # Send table to Kotekan
-    # broadcast_kotekan_eop_table(kotekan_host, kotekan_port, eop_table)

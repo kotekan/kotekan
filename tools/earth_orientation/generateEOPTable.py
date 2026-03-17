@@ -106,14 +106,18 @@ def is_kotekan_alive(host, port, timeout, protocol="http://"):
     try:
         resp = make_rest_get_request(host, port, "endpoints", timeout, protocol)
         body = resp.json()
-        print(body)
     except:
         body = {}
 
-    if len(body) > 0:
+    if len(body) > 0 and 'GET' in body.keys() and 'POST' in body.keys():
         return True
 
     return False
+
+def get_kotekan_endpoints(host, port, timeout, protocol="http://"):
+    resp = make_rest_get_request(host, port, "endpoints", timeout, protocol)
+
+    return resp.json()
 
 
 def read_kotekan_frame0_ns(host, port, timeout, protocol="http://"):
