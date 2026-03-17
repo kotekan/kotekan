@@ -84,11 +84,68 @@ frb_targets: [
     }
 }
 
-bool pirateFrbSend::send_frame(uint8_t* frame, int frame_id, struct destination& _dest) {
+void pirateFrbSend::main_thread() {
+    int frame_id = 0;
+
+    // Fire up all the connect threads...
+    for (auto dest : dests)
+        dest->connect_thread = std::thread(&bufferSend::connect_to_server, std::ref(*this),
+                                           std::ref(*dest));
+
+    while (!stop_thread) {
+        uint8_t* frame = buf->wait_for_full_frame(unique_name, frame_id);
+        if (frame == nullptr)
+            break;
+        if (!got_frame(frame, frame_id))
+            break;
+
+        uint32_t num_full_frames = buf->get_num_full_frames();
+
+        // This logic is from sendBuffer, but with drop_frames assumed true.
+
+        if ((float)num_full_frames / (float)buf->num_frames > drop_threshold) {
+            // If the number of full frames is high, then we drop some
+            // frames, because we likely aren't sending fast enough to
+            // keep up with the data rate.
+            INFO("Number of full frames in buffer {:s} is {:d} (total frames: {:d}), dropping "
+                 "frame_id {:d}",
+                 buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
+            dropped_frame_counter.inc();
+        } else {
+            bool any_connected = false;
+            for (auto dest : dests)
+                if (dest->connected) {
+                    any_connected = true;
+                    if (!send_frame(frame, frame_id, dest))
+                        close_connection(*dest);
+                    else
+                        DEBUG("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id,
+                              dest->server_ip, dest->server_port);
+                }
+            if (!any_connected) {
+                // Mark this frame as dropped
+                INFO("Dropping frame {:s}[{:d}], because all connections are down.",
+                     buf->buffer_name, frame_id);
+                dropped_frame_counter.inc();
+            }
+        }
+
+        done_with_frame(frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
+        frame_id = (frame_id + 1) % buf->num_frames;
+    }
+
+    for (auto dest : dests)
+        close_connection(*dest);
+    for (auto dest : dests)
+        dest->connect_thread.join();
+}
+
+bool pirateFrbSend::send_frame(uint8_t* frame, int frame_id, std::shared_ptr<struct pirateDestination> dest) {
     int32_t n = 0;
     int32_t n_sent = 0;
 
-    pirateDestination* dest = reinterpret_cast<pirateDestination*>(&_dest);
+    //pirateDestination* dest = reinterpret_cast<pirateDestination*>(&_dest);
 
     if (!dest->sent_header) {
         INFO("Sending header");

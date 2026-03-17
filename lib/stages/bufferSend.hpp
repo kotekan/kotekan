@@ -116,21 +116,45 @@ public:
     /// Adds the target server to the pipeline dot graph
     virtual std::string dot_string(const std::string& prefix) const override;
 
+    /// Thread for connecting to the remote server
+    void connect_to_server(struct destination& dest);
+
 protected:
+    /// The input buffer to send frames from.
+    Buffer* buf;
+
     /// Where we're sending stuff
     struct destination dest;
+
+    /// Threshold to drop frames
+    float drop_threshold;
+
+    /**
+     * @brief Number of frame dropped because the send is too slow.
+     * Only counts dropped data from caused by the send being too slow,
+     * it does not include the number of frames dropped because the server is down.
+     */
+    kotekan::prometheus::Counter& dropped_frame_counter;
 
     /// The input buffer name to grab.
     virtual std::string get_buffer_name() const;
 
     virtual void initialize_destination();
 
+    /// Closes the open connection and starts the process of trying to reconnect
+    void close_connection(struct destination& dest);
+
+    /// Called when a frame has been received -- just after it has been claimed from
+    /// kotekan.  If false is returned, the sending will end.
+    virtual bool got_frame(uint8_t* frame, int frame_id);
+
+    /// Called when a frame has been sent -- just before the buffer frame is released
+    /// back to kotekan.
+    virtual void done_with_frame(int frame_id);
+
 private:
     /// The input buffer name to grab.
     std::string buffer_name;
-
-    /// The input buffer to send frames from.
-    Buffer* buf;
 
     /// The number of seconds before send() times outs and returns and error.
     uint32_t send_timeout;
@@ -141,38 +165,14 @@ private:
     /// Whether to drop frames or block if buffer is full
     bool drop_frames;
 
-    /// Threshold to drop frames
-    float drop_threshold;
-
     /// Flag to indicate if config tracker header data should be sent
     bool use_config_tracker;
 
     /// Serialized list of current config tracker hashes
     std::string config_tracker_combined_hash;
 
-    /**
-     * @brief Number of frame dropped because the send is too slow.
-     * Only counts dropped data from caused by the send being too slow,
-     * it does not include the number of frames dropped because the server is down.
-     */
-    kotekan::prometheus::Counter& dropped_frame_counter;
-
-    /// Closes the open connection and starts the process of trying to reconnect
-    void close_connection(struct destination& dest);
-
-    /// Thread for connecting to the remote server
-    void connect_to_server(struct destination& dest);
-
-    /// Called when a frame has been received -- just after it has been claimed from
-    /// kotekan.  If false is returned, the sending will end.
-    virtual bool got_frame(uint8_t* frame, int frame_id);
-
     /// Send a frame
-    virtual bool send_frame(uint8_t* frame, int frame_id, struct destination& dest);
-
-    /// Called when a frame has been sent -- just before the buffer frame is released
-    /// back to kotekan.
-    virtual void done_with_frame(int frame_id);
+    bool send_frame(uint8_t* frame, int frame_id, struct destination& dest);
 };
 
 #endif

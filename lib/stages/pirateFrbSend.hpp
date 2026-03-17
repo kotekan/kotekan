@@ -17,12 +17,12 @@ public:
     /// Destructor
     ~pirateFrbSend();
 
+    /// Main loop for sending data
+    void main_thread() override;
+
     /// Called when a frame has been received -- just after it has been claimed from
     /// kotekan.  If false is returned, the sending will end.
     bool got_frame(uint8_t* frame, int frame_id) override;
-
-    /// Send a frame
-    bool send_frame(uint8_t* frame, int frame_id, struct destination& dest) override;
 
     /// Called when a frame has been sent -- just before the buffer frame is released
     /// back to kotekan.
@@ -42,6 +42,9 @@ private:
 
     /// The current frame of offsets & scales
     uint8_t* offset_scale_frame;
+
+    /// Send a frame
+    bool send_frame(uint8_t* frame, int frame_id, std::shared_ptr<pirateDestination> dest);
 };
 
 #endif
