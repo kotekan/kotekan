@@ -101,6 +101,21 @@ def make_rest_post_request(host, port, endpoint, json_payload, timeout,
     return resp
 
 
+def is_kotekan_alive(host, port, timeout, protocol="http://"):
+
+    try:
+        resp = make_rest_get_request(host, port, "endpoints", timeout, protocol)
+        body = resp.json()
+        print(body)
+    except:
+        body = {}
+
+    if len(body) > 0:
+        return True
+
+    return False
+
+
 def read_kotekan_frame0_ns(host, port, timeout, protocol="http://"):
     r"""
     Read the "time0_ns" parameter from a running Kotekan instance.
@@ -879,7 +894,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
             prog='EOP Table Updater',
-            description='Read, compute, print, and send an Earth Orientation Parameter (EOP) table for kotekan')
+            description='Read, compute, and output an Earth Orientation Parameter (EOP) table for kotekan')
 
     parser.add_argument("--frame0-src", choices=['fpga_master', 'kotekan', 'manual'],
                         default='manual')
