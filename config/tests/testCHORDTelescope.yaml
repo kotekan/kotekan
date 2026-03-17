@@ -77,4 +77,6 @@ num_dishes_y: 16
 # Add a consumer stage that prints the output buffer to screen
 screen_dump:
   kotekan_stage: TestCHORDTelescope
+  do_dishes: false
+  do_eop_probes: false
   updatable_config: "/updates"
