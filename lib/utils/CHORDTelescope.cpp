@@ -23,6 +23,15 @@ REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
 #define SECONDS_PER_DAY 86'400L
 #define DAYS_PER_WEEK 7L
 #define GPS_WEEK_ROLLOVER 1024L
+#define GPS_EPOCH_S                                                                                \
+    315964800L // This is the UNIX timestamp of the GPS epoch:
+               // 00:00:00, Jan 6, 1980 UTC.
+               // It is equal to:
+               // (365 * 8   (days in 197[01345789])
+               //  + 366 * 2 (days in 197[26])
+               //  + 5 )     (Jan 1 midnight to Jan 6 midnight)
+               //  * 86400   (UTC seconds per UTC day)
+               //  = 315964800
 
 static constexpr double C = 2.99792458e8;
 static constexpr double deg2rad = M_PI / 180.0;
@@ -304,8 +313,8 @@ GPSTimeParams GPSTimeParams::from_config(const kotekan::Config& config, const st
     gps.gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
     gps.gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
     gps.gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
-    gps.gps_week_rollover_offset =
-        config.get_default<uint64_t>(path, "gps_week_rollover_offset", 0);
+    gps.auto_correct_gps_week_rollover =
+        config.get_default<uint64_t>(path, "auto_correct_gps_week_rollover", false);
 
     if (gps.query_gps)
         set_gps_time_params_from_remote(gps); // sets gps_enabled, time0_ns
@@ -351,7 +360,7 @@ void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps) {
 
     // The REST request might fail. The gps struct for this call is `const`,
     // so we provide a different variable to write the time to if successful.
-    bool success = get_gps_time0_ns_from_remote(gps, time0_ns);
+    bool success = get_gps_time0_ns_from_remote(gps, time0_ns, 30);
 
     // Get out of here if there was a problem.
     if (!success) {
@@ -365,12 +374,13 @@ void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps) {
     INFO_NON_OO("GPS frame0 time set to {:d}", gps.time0_ns);
 }
 
-bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint64_t& time0_ns) {
+bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint64_t& time0_ns,
+                                                 int timeout) {
     INFO_NON_OO("Requesting GPS time from server: {:s}:{:d}{:s} This might take some time...",
                 gps.gps_host, gps.gps_port, gps.gps_endpoint);
 
     auto reply = restClient::instance().make_request_blocking(gps.gps_endpoint, {}, gps.gps_host,
-                                                              gps.gps_port, 0, 30);
+                                                              gps.gps_port, 0, timeout);
 
     if (!reply.first) {
         WARN_NON_OO("Failed to get GPS time, using system time");
@@ -392,12 +402,45 @@ bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint6
         return false;
     }
 
-    // Number of nanoseconds to adjust for the 1024 week rollover.
-    uint64_t week_rollover_offset_ns =
-        gps.gps_week_rollover_offset * GPS_WEEK_ROLLOVER * DAYS_PER_WEEK * SECONDS_PER_DAY * GIGA;
+    uint64_t raw_time0_ns = json_reply["frame0_nano"].get<uint64_t>();
 
-    time0_ns = json_reply["frame0_nano"].get<uint64_t>() + week_rollover_offset_ns;
+    uint64_t week_rollover_offset_ns = 0;
 
+    if (gps.auto_correct_gps_week_rollover) {
+        // Number of nanoseconds to adjust for the 1024 week rollover.
+
+        // Can only do this if the GPS Server (fpga_master) sent a "start_ctime"
+        if (json_reply.count("start_ctime") == 0) {
+            WARN_NON_OO(
+                "No `start_ctime` value returned by GPS server, the server reply was: {:s} - {:s}",
+                reply.second, json_reply.dump());
+            return false;
+        }
+
+        // FPGA start time is not subject to the GPS rollover, so that is
+        // our baseline.
+        uint64_t fpga_start_s = json_reply["start_ctime"].get<uint64_t>();
+        uint64_t fpga_start_ns = GIGA * fpga_start_s;
+
+        // nanoseconds in the rollover period
+        uint64_t dt_rollover_ns = GPS_WEEK_ROLLOVER * DAYS_PER_WEEK * SECONDS_PER_DAY * GIGA;
+
+        // GPS epoch (when GPS time started) in ns.
+        uint64_t gps0_ns = GPS_EPOCH_S * GIGA;
+
+        // Compute the (correct) number of rollovers at the fpga start time
+        // and the apparent number of rollovers in the sent GPS time0.
+        uint64_t rollovers_at_start = (fpga_start_ns - gps0_ns) / dt_rollover_ns;
+        uint64_t rollovers_in_time0 = (raw_time0_ns - gps0_ns) / dt_rollover_ns;
+
+        // add 1 rollover of nanoseconds for each rollover time0 is off fpga_start by.
+        week_rollover_offset_ns = dt_rollover_ns * (rollovers_at_start - rollovers_in_time0);
+    }
+
+    // Set final time0, raw from GPS plus optional rollover correction.
+    time0_ns = raw_time0_ns + week_rollover_offset_ns;
+
+    // Success!
     return true;
 }
 
@@ -436,11 +479,11 @@ bool CHORDTelescope::gps_time_enabled() const {
     return _gps_time_params.gps_enabled;
 }
 
-bool CHORDTelescope::query_gps_time0_ns(uint64_t& time0_ns) const {
+bool CHORDTelescope::query_gps_time0_ns(uint64_t& time0_ns, int timeout) const {
 
     if (_gps_time_params.query_gps) {
         // If we were set to query GPS, then query the GPS and return.
-        return _gps_time_params.get_gps_time0_ns_from_remote(_gps_time_params, time0_ns);
+        return _gps_time_params.get_gps_time0_ns_from_remote(_gps_time_params, time0_ns, timeout);
     }
 
     // Otherwise, we were set from config, which cannot change. Simply return that value.

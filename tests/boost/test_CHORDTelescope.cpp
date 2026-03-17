@@ -213,7 +213,7 @@ BOOST_AUTO_TEST_CASE(_query_gps_time_config) {
     const CHORDTelescope& tel = get_telescope(json_config);
 
     uint64_t test_time0_val = 0;
-    tel.query_gps_time0_ns(test_time0_val);
+    tel.query_gps_time0_ns(test_time0_val, 30);
     BOOST_CHECK_EQUAL(test_time0_val, time0_ns);
 }
 

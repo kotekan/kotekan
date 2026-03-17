@@ -33,12 +33,7 @@ telescope:
                    0.0]
   dish_vert_axis: [0.0, 0.0, 1.0]
   dish_coelev_deg: 0.0
-  require_gps: true
-  query_gps: true
-  gps_host: crs-control
-  gps_port: 54321
-  gps_week_rollover_offset: 1
-    # gps_endpoint: /get-frame0-time
+  require_gps: false
   eop_updatable_config: /earth_rotation_data
   num_dishes_x: 8
   num_dishes_y: 12
@@ -70,13 +65,13 @@ earth_rotation_data:
       y_pm: 0.32
     }]
 
-# gps_time:
-# frame0_nano: start_time_s * giga
+gps_time:
+  frame0_nano: start_time_s * giga
 
 fakevis_buf:
   kotekan_buffer: N2
   num_ev: 0
-  n2_layout: FullUpperTri
+  vis_layout: FullUpperTri
   metadata_pool: N2_pool
   num_frames: buffer_depth
 
@@ -108,7 +103,7 @@ write_vis_10s:
   file_name: vis_t10_yfs
   in_buf: fakevis_buf
   prefix_hostname: false
-  max_frames: 1
+  max_frames: 64
   skip_writing: false
 
 write_fullvis_10s:
@@ -122,4 +117,4 @@ write_fullvis_10s:
   blocksize_t: 6
   num_file_t: 6
   late_frame_grace_seconds: 30
-  max_frames: 1
+  max_frames: 96

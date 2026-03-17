@@ -376,8 +376,8 @@ struct GPSTimeParams {
     /// The endpoint with the GPS time
     std::string gps_endpoint;
 
-    /// Number of gps week rollovers (1024 weeks) to apply to time0
-    uint64_t gps_week_rollover_offset;
+    /// Whether to correct gps week rollover (1024 weeks) on time0
+    bool auto_correct_gps_week_rollover = false;
 
     /// Whether GPS time has been enabled
     bool gps_enabled = false;
@@ -400,11 +400,15 @@ struct GPSTimeParams {
      * @conf    gps_host            string. The GPS server IP address.
      * @conf    gps_port            uint.   The port number on the GPS server.
      * @conf    gps_endpoint        string. The enpoint with the GPS time.
+     * @conf    auto_correct_gps_week_rollover  bool.   If true, correct GPS time0
+     *                                      for the 1024 week GPS rollover using
+     *                                      start_ctime from the GPS server.
      **/
     static GPSTimeParams from_config(const kotekan::Config& config, const std::string& path);
 
     /// Retrieve the time0_ns from a remote server (fpga_master)
-    static bool get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint64_t& time0_ns);
+    static bool get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint64_t& time0_ns,
+                                             int timeout);
 
 private:
     /// Set the GPS time parameters (gps_enabled, time0_ns) from the config.
@@ -491,9 +495,15 @@ public:
 
     /**
      * @brief   Queries the source of the GPS time0_ns value. Returns true on success, and updates
-     *          the value of the given reference.
+     *          the value of the given reference. This is a BLOCKING call, may take several seconds
+     * to resolve, and should NOT be used by time-critical functions.
+     *
+     *  @param  time0_ns    The value of time0_ns, updated on succes, otherwise untouched.
+     *  @param  timeout     Timeout length for REST call in seconds, -1 for no timeout.
+     *
+     *  @return true if query was successful and time0_ns is valid. false otherwise.
      */
-    bool query_gps_time0_ns(uint64_t& time0_ns) const;
+    bool query_gps_time0_ns(uint64_t& time0_ns, int timeout) const;
 
     /**
      * @brief   Return the longitude of the instrument.
