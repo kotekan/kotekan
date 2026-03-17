@@ -257,6 +257,7 @@ void ProcessPacketMask::main_thread() {
             cumulative_loss_percentage = (double)total_packets_missing / (double)total_packets_received * 100.0;
         }
 
+        // Re
         INFO("ProcessPacketMask: Voltage frame {:d} packet loss = {:.4f}% ({:d} missing "
              "/ {:d} total) | Cumulative: {:.4f}%",
              (int)voltage_frame_id, packet_loss_percentage, (int)missing_packet_count,

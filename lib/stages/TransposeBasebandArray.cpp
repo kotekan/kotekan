@@ -366,7 +366,7 @@ void TransposeBasebandArray::main_thread() {
 
             // Log packet loss percentage
             double loss_percentage = 100.0 * double(lost_blocks) / double(time_long * NUM_LOCAL_FREQ);
-            INFO("TransposeBasebandArray: Frame {:d} data loss = {:.4f}%",
+            DEBUG("TransposeBasebandArray: Frame {:d} data loss = {:.4f}%",
                  (int)in_frame_id, loss_percentage);
         } else
 #endif

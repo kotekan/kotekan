@@ -71,7 +71,7 @@ numa_node: 0
 num_gpus: 1
 buffer_depth: 4
 num_gpu_frames: 4
-host_side_buffer_depth: buffer_depth * 4
+host_side_buffer_depth: buffer_depth * 6
 cpu_affinity: [0,1,8,11,12,13,14,15]
 frame_arrival_period: 5.12e-6 * {{ samples_per_data_set }}
 sizeof_gpu_int: 4 # bytes
@@ -397,6 +397,7 @@ transpose_voltage_0:
     pl_mask_buf: host_pl_mask_exp_buffer
     out_buf: host_voltage_buffer
     frame_mode: even
+    log_level: info
 
 transpose_voltage_1:
     kotekan_stage: TransposeBasebandArray
@@ -406,6 +407,7 @@ transpose_voltage_1:
     pl_mask_buf: host_pl_mask_exp_buffer
     out_buf: host_voltage_buffer
     frame_mode: odd
+    log_level: info
 
 
 ## Send data to GPU ringbuffers ##
@@ -458,6 +460,28 @@ run_send_pl_mask:
           signal_buf: host_pl_mask_exp_ringbuffer
           gpu_mem_output: pl_mask_exp_buffer
 
+
+# Packet-loss correlator to produce counts for N2Accumulate
+
+run_pl_corr:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+        out_buffers:
+            host_counts_buffer: host_counts_buffer
+        commands:
+        - name: cudaPL1bitCorrelator
+          num_frequencies: num_local_freq
+          pl_expanded_mask_name: pl_mask_exp
+          rfi_RFImask_name: rfi_RFImask
+          n2k_counts_name: counts
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: counts_buffer
+          out_buf: host_counts_buffer
 
 # Run N2K correlator
 
@@ -512,20 +536,20 @@ n2_subset:
 
 # Add eigen calculation (runs on subsetted data)
 
-# eigencalc:
-#     kotekan_stage: EigenN2Iter
-#     num_ev: num_ev_to_calculate
-#     cpu_affinity: [10]
-#     log_level: debug
-#     in_buf: n2_subset_buffer
-#     out_buf: n2_eigen_buffer
-#     # Convergence config
-#     tol_eval: 0.0001
-#     tol_evec: 0.001
-#     max_iterations: 10
-#     num_ev_conv: 2
-#     krylov: 2
-#     subspace: 2
+eigencalc:
+    kotekan_stage: EigenN2Iter
+    num_ev: num_ev_to_calculate
+    cpu_affinity: [10]
+    log_level: debug
+    in_buf: n2_subset_buffer
+    out_buf: n2_eigen_buffer
+    # Convergence config
+    tol_eval: 0.0001
+    tol_evec: 0.001
+    max_iterations: 10
+    num_ev_conv: 2
+    krylov: 2
+    subspace: 2
 
 # Eigen output (6 elements with eigenvectors)
 # hdf5_N2_write_eigen:
@@ -550,16 +574,16 @@ n2_subset:
 
 buffer_send_n2_subset:
     kotekan_stage: bufferSend
-    buf: n2_subset_buffer
-    server_ip: 127.0.0.1
+    buf: n2_eigen_buffer
+    server_ip: 10.222.0.51
     server_port: 11025
-    retry_time: 1.0
-    drop_frames: false
+    retry_time: 10.0
+    drop_frames: true
 
 buffer_send_n2_full:
     kotekan_stage: bufferSend
     buf: n2_buffer
-    server_ip: 127.0.0.1
+    server_ip: 10.222.0.51
     server_port: 11027
-    retry_time: 1.0
-    drop_frames: false
+    retry_time: 10.0
+    drop_frames: true
