@@ -39,8 +39,7 @@ REGISTER_KOTEKAN_STAGE(TestCHORDTelescope);
  */
 TestCHORDTelescope::TestCHORDTelescope(Config& config, const std::string& unique_name,
                                        bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container,
-          std::bind(&TestCHORDTelescope::main_thread, this)),
+    Stage(config, unique_name, buffer_container, std::bind(&TestCHORDTelescope::main_thread, this)),
     do_dishes(config.get_default<bool>(unique_name, "do_dishes", true)),
     do_eop_probes(config.get_default<bool>(unique_name, "do_eop_probes", true)) {}
 
@@ -152,7 +151,8 @@ void TestCHORDTelescope::main_thread() {
                          ts_inst2.tv_nsec);
                     INFO("               -diff:    {0:d} s + {1:d} ns",
                          ts_inst2.tv_sec - eop.t_inst / GIGA, ts_inst2.tv_nsec - eop.t_inst % GIGA);
-                    INFO("               -t_ut12:  {0:d} s + {1:d} ns", t_ut12 / GIGA, t_ut12 % GIGA);
+                    INFO("               -t_ut12:  {0:d} s + {1:d} ns", t_ut12 / GIGA,
+                         t_ut12 % GIGA);
                     INFO("               -diff:    {0:d} s + {1:d} ns", (t_ut12 - eop.t_ut1) / GIGA,
                          (t_ut12 - eop.t_ut1) % GIGA);
 

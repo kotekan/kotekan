@@ -393,7 +393,8 @@ bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint6
     }
 
     // Number of nanoseconds to adjust for the 1024 week rollover.
-    uint64_t week_rollover_offset_ns = gps.gps_week_rollover_offset * GPS_WEEK_ROLLOVER * DAYS_PER_WEEK * SECONDS_PER_DAY * GIGA;
+    uint64_t week_rollover_offset_ns =
+        gps.gps_week_rollover_offset * GPS_WEEK_ROLLOVER * DAYS_PER_WEEK * SECONDS_PER_DAY * GIGA;
 
     time0_ns = json_reply["frame0_nano"].get<uint64_t>() + week_rollover_offset_ns;
 

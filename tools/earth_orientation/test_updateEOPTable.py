@@ -10,7 +10,7 @@ import updateEOPTable
 
 
 if __name__ == "__main__":
-    
+
     time0_ns = updateEOPTable.read_fpga_master_time0_ns("crs-control", 54321)
     print(time0_ns)
 

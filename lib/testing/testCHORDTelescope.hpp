@@ -37,6 +37,7 @@ public:
      * @brief Framework managed pthread.
      */
     void main_thread() override;
+
 private:
     const bool do_dishes;
     const bool do_eop_probes;

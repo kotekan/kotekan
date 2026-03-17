@@ -51,14 +51,18 @@ def make_rest_get_request(host, port, endpoint, timeout, protocol="http://"):
     resp = requests.get(url, timeout=timeout)
     resp.raise_for_status()
     if resp.status_code != 200:
-        raise RuntimeError("GET request was not OK, received: {} with reason {}"
-                           .format(resp, resp.reason))
+        raise RuntimeError(
+            "GET request was not OK, received: {} with reason {}".format(
+                resp, resp.reason
+            )
+        )
 
     return resp
 
 
-def make_rest_post_request(host, port, endpoint, json_payload, timeout,
-                           protocol="http://"):
+def make_rest_post_request(
+    host, port, endpoint, json_payload, timeout, protocol="http://"
+):
     r"""
     Make a REST POST request to the specified endpoint with the given payload and
     return the response.
@@ -95,8 +99,11 @@ def make_rest_post_request(host, port, endpoint, json_payload, timeout,
     resp = requests.post(url, json=json_payload, timeout=timeout)
     resp.raise_for_status()
     if resp.status_code != 200:
-        raise RuntimeError("POST request was not OK, received: {} with reason {}"
-                           .format(resp, resp.reason))
+        raise RuntimeError(
+            "POST request was not OK, received: {} with reason {}".format(
+                resp, resp.reason
+            )
+        )
 
     return resp
 
@@ -134,10 +141,11 @@ def is_kotekan_alive(host, port, timeout, protocol="http://"):
     except:
         body = {}
 
-    if len(body) > 0 and 'GET' in body.keys() and 'POST' in body.keys():
+    if len(body) > 0 and "GET" in body.keys() and "POST" in body.keys():
         return True
 
     return False
+
 
 def get_kotekan_endpoints(host, port, timeout, protocol="http://"):
     r"""
@@ -208,8 +216,9 @@ def read_kotekan_frame0_ns(host, port, timeout, protocol="http://"):
     return resp.json()["time0_ns"]
 
 
-def read_fpga_master_frame0_ns(host, port, timeout, protocol="http://",
-                               apply_rollover_correction=True):
+def read_fpga_master_frame0_ns(
+    host, port, timeout, protocol="http://", apply_rollover_correction=True
+):
     r"""
     Read the "frame0_nano" parameter from fpga_master, possibly correcting
     for GPS 1024 week rollover differences.
@@ -252,7 +261,7 @@ def read_fpga_master_frame0_ns(host, port, timeout, protocol="http://",
 
         # Get the start_ctime (float, when the F-Engine booted,
         # system UNIX time with fractional seconds)
-        start_ctime = body_json['start_ctime']
+        start_ctime = body_json["start_ctime"]
 
         # Convert the start time to an integer number of nanoseconds
         start_time_nano = int(start_ctime * 1e9)
@@ -265,7 +274,7 @@ def read_fpga_master_frame0_ns(host, port, timeout, protocol="http://",
 
         # Compute the UNIX time for the GPS epoch (Jan 6, 1980, 00:00:00 UTC)
         # This time is an exact second in UTC and so is an exact integer in UNIX time.
-        gps0_ns = GIGA * int(Time("1980-01-06T00:00:00", scale='utc').unix)
+        gps0_ns = GIGA * int(Time("1980-01-06T00:00:00", scale="utc").unix)
 
         # Compute which rollover period the given frame0 time and the F-Engine
         # start_time are in.
@@ -312,7 +321,9 @@ def read_kotekan_eop_table(host, port, timeout, protocol="http://"):
     return resp.json()["eop_table"]
 
 
-def broadcast_kotekan_eop_table(host, port, eop_endpoint, eop_table, timeout, protocol="http://"):
+def broadcast_kotekan_eop_table(
+    host, port, eop_endpoint, eop_table, timeout, protocol="http://"
+):
     r"""
     Send a new EOP table to a running Kotekan instance.
 
@@ -344,8 +355,9 @@ def broadcast_kotekan_eop_table(host, port, eop_endpoint, eop_table, timeout, pr
     Exceptions from requests.
     """
 
-    resp = make_rest_post_request(host, port, eop_endpoint,
-                                                   eop_table, timeout, protocol)
+    resp = make_rest_post_request(
+        host, port, eop_endpoint, eop_table, timeout, protocol
+    )
 
     return resp
 
@@ -455,6 +467,7 @@ def calc_astropy_time_from_unix_ns(t_unix_ns):
 
     return t
 
+
 def calc_astropy_time_from_inst_ns(t_inst_ns, time0_ns):
     r"""
     Constuct an astropy Time object corresponding to an Instrument time in nanoseconds. 
@@ -468,12 +481,12 @@ def calc_astropy_time_from_inst_ns(t_inst_ns, time0_ns):
     Astropy Time object
         A Time object representing the given time.
     """
-    
+
     # First calculate t0, a good UNIX time
     t0 = calc_astropy_time_from_unix_ns(time0_ns)
 
     # Now add the difference from t0 in TAI nanoseconds
-    dt = TimeDelta((t_inst_ns - time0_ns) * units.ns, scale='tai')
+    dt = TimeDelta((t_inst_ns - time0_ns) * units.ns, scale="tai")
 
     return t0 + dt
 
@@ -644,11 +657,7 @@ def build_EOP_table(times, time0_ns, iers):
 
 
 def build_time_array(
-    t_ref,
-    n_intervals_before,
-    n_intervals_after,
-    interval_length_days,
-    snap_to_grid,
+    t_ref, n_intervals_before, n_intervals_after, interval_length_days, snap_to_grid,
 ):
     r"""
     Construct an array of times for the entries in the EOP Table.
@@ -695,16 +704,25 @@ def build_time_array(
     """
 
     if n_intervals_before < 0:
-        raise ValueError("n_intervals_before must be positive or 0, received: {:d}"
-                         .format(n_intervals_before))
+        raise ValueError(
+            "n_intervals_before must be positive or 0, received: {:d}".format(
+                n_intervals_before
+            )
+        )
 
     if n_intervals_after < 0:
-        raise ValueError("n_intervals_after must be positive or 0, received: {:d}"
-                         .format(n_intervals_after))
+        raise ValueError(
+            "n_intervals_after must be positive or 0, received: {:d}".format(
+                n_intervals_after
+            )
+        )
 
     if interval_length_days <= 0.0:
-        raise ValueError("interval_length_days must be positive, received: {:g}"
-                         .format(interval_length_days))
+        raise ValueError(
+            "interval_length_days must be positive, received: {:g}".format(
+                interval_length_days
+            )
+        )
 
     # We'll "grid" in UTC MJD, which is an integer at 0h UTC. 1 UTC day = 1 UTC mjd,
     # even on leap second days.
@@ -726,7 +744,9 @@ def build_time_array(
 
     # Array of all entry offsets in mjd from t0 (the beginning time of the current
     # interval).
-    dt_mjd = interval_length_days * np.arange(-n_intervals_before, n_intervals_after + 2)
+    dt_mjd = interval_length_days * np.arange(
+        -n_intervals_before, n_intervals_after + 2
+    )
 
     # Constuct list of times. For precision separate mjd0 (which will be ~57000) from
     # the dt_mjd (which are likely ~integers or fractions thereof). The time
@@ -739,9 +759,13 @@ def build_time_array(
 
     if not (t0 <= t_ref and t_ref < t1):
         raise RuntimeError(
-                "build_time_array failed. The current interval [{}, {}] does not contain t_ref {}".format(t0.isot, t1.isot, t_ref.isot))
+            "build_time_array failed. The current interval [{}, {}] does not contain t_ref {}".format(
+                t0.isot, t1.isot, t_ref.isot
+            )
+        )
 
     return times
+
 
 def make_update_EOP_from_full_EOP(eop):
     r"""
@@ -762,12 +786,22 @@ def make_update_EOP_from_full_EOP(eop):
         x_pm, y_pm.
     """
 
-    return dict(time_inst_ns=eop['t_inst'], delta_UT1_inst=eop['delta_UT1_inst'],
-                x_pm=eop['xp_as'], y_pm=eop['yp_as'])
+    return dict(
+        time_inst_ns=eop["t_inst"],
+        delta_UT1_inst=eop["delta_UT1_inst"],
+        x_pm=eop["xp_as"],
+        y_pm=eop["yp_as"],
+    )
 
 
-def merge_eop_tables(current_eop_table, new_eop_table, t_ref, time0_ns,
-                     num_intervals_before, merge_cushion_dt):
+def merge_eop_tables(
+    current_eop_table,
+    new_eop_table,
+    t_ref,
+    time0_ns,
+    num_intervals_before,
+    merge_cushion_dt,
+):
     r"""
     produce a new eop table from the current kotekan table and a proposed updated table.
     only include entries past the current interval to ensure continuity of parameters.
@@ -802,9 +836,11 @@ def merge_eop_tables(current_eop_table, new_eop_table, t_ref, time0_ns,
     # First as an Astropy time.
     t_pivot = t_ref + merge_cushion_dt
 
-    print("Merging the current Kotekan table with the update. Using a pivot time of",
-          t_pivot.isot)
-    
+    print(
+        "Merging the current Kotekan table with the update. Using a pivot time of",
+        t_pivot.isot,
+    )
+
     # Now get the frame0 time as an Astropy object.
     t0 = calc_astropy_time_from_unix_ns(time0_ns)
     # Now calculate the difference between t_pivot and frame0
@@ -813,21 +849,25 @@ def merge_eop_tables(current_eop_table, new_eop_table, t_ref, time0_ns,
     # Now can get t_pivot as an instrument time, time0 + TAI dt
     t_pivot_inst_ns = time0_ns + dt_pivot_ns
 
-    # Check input tables are sorted.  
+    # Check input tables are sorted.
     for i in range(len(current_eop_table) - 1):
-        if current_eop_table[i]['t_inst'] >= current_eop_table[i+1]['t_inst']:
-            raise RuntimeError("current_eop_table is not sorted. Can only merge sorted tables")
+        if current_eop_table[i]["t_inst"] >= current_eop_table[i + 1]["t_inst"]:
+            raise RuntimeError(
+                "current_eop_table is not sorted. Can only merge sorted tables"
+            )
     for i in range(len(new_eop_table) - 1):
-        if new_eop_table[i]['time_inst_ns'] >= new_eop_table[i+1]['time_inst_ns']:
-            raise RuntimeError("new_eop_table is not sorted. Can only merge sorted tables")
+        if new_eop_table[i]["time_inst_ns"] >= new_eop_table[i + 1]["time_inst_ns"]:
+            raise RuntimeError(
+                "new_eop_table is not sorted. Can only merge sorted tables"
+            )
 
     # Extract array of times for easier searching.  If we're here, both arrays have
     # strictly increasing instrument times
-    current_times = np.array([eop['t_inst'] for eop in current_eop_table])
-    new_times = np.array([eop['time_inst_ns'] for eop in new_eop_table])
+    current_times = np.array([eop["t_inst"] for eop in current_eop_table])
+    new_times = np.array([eop["time_inst_ns"] for eop in new_eop_table])
 
     # For current_times, the pivot_idx will be the index of the first element strictly
-    # greater than the pivot time.  For new_times, the pivot_idx is the index of the 
+    # greater than the pivot time.  For new_times, the pivot_idx is the index of the
     # first time strictly greater than the rightmost kept current_time.
     #
     #                 [------- keep ----------]
@@ -836,8 +876,8 @@ def merge_eop_tables(current_eop_table, new_eop_table, t_ref, time0_ns,
     #                                   ^     |
     #                                   t_pivot (current_pivot_idx = 4)
     #                                         |
-    #                                         | (new_pivot_idx = 3) 
-    #                                         v      
+    #                                         | (new_pivot_idx = 3)
+    #                                         v
     # new:               |   0   |   1   |  2    |  3    |   4   |
     #                    tn0     tn1     tn2     tn3     tn4     tn5
     #                                            [------keep-----]
@@ -845,7 +885,7 @@ def merge_eop_tables(current_eop_table, new_eop_table, t_ref, time0_ns,
     #                 tc1    tc2     tc3      tc4
     # final:          |  0   |  1    |   2    |3 |  4    |   5   |
     #                                            tn3     tn4     tn5
-    current_pivot_idx = np.searchsorted(current_times, t_pivot_inst_ns, side='right')
+    current_pivot_idx = np.searchsorted(current_times, t_pivot_inst_ns, side="right")
 
     # First entry index from the current table to keep
     # Last entry index from the current table to keep
@@ -863,11 +903,14 @@ def merge_eop_tables(current_eop_table, new_eop_table, t_ref, time0_ns,
         # The pivot index already tells us the future entry still being used (endpoint
         # of the current interval)
         right_idx = current_pivot_idx
-        
-        print("Keeping current table entries [{:d} - {:d}] (inclusive)".format(
-            left_idx, right_idx))
+
+        print(
+            "Keeping current table entries [{:d} - {:d}] (inclusive)".format(
+                left_idx, right_idx
+            )
+        )
         # Start final table with slice from current table
-        current_eop_to_keep = current_eop_table[left_idx:right_idx+1]
+        current_eop_to_keep = current_eop_table[left_idx : right_idx + 1]
     else:
         # The entire current table is in the past of the pivot time!
         # This is bad for telescope operations: the table has expired.
@@ -876,28 +919,35 @@ def merge_eop_tables(current_eop_table, new_eop_table, t_ref, time0_ns,
         # distance in the future. This puts the current time in a short interval, which
         # will expire at the pivot time at which point we can start moving to the
         # new (correct, hopefully) table.
-        
-        eop_pivot = current_table[-1].copy()
-        eop_pivot['t_inst'] = t_pivot_inst_ns
 
-        print("The pivot time is after the current table expires. Keeping only the last entry and cloning it to the pivot time")
+        eop_pivot = current_table[-1].copy()
+        eop_pivot["t_inst"] = t_pivot_inst_ns
+
+        print(
+            "The pivot time is after the current table expires. Keeping only the last entry and cloning it to the pivot time"
+        )
         current_eop_to_keep = [current_table[-1], eop_pivot]
 
-    # Initialize the final EOP update table.  
-    final_eop_table = [make_update_EOP_from_full_EOP(eop)
-                       for eop in current_eop_to_keep]
+    # Initialize the final EOP update table.
+    final_eop_table = [
+        make_update_EOP_from_full_EOP(eop) for eop in current_eop_to_keep
+    ]
 
     # Easy now.  Find the first entry in the new table that's ahead of the end of
     # the preliminary final table.
-    new_pivot_idx = np.searchsorted(new_times, final_eop_table[-1]['time_inst_ns'])
+    new_pivot_idx = np.searchsorted(new_times, final_eop_table[-1]["time_inst_ns"])
 
     # If there are any entries (in normal operations there should be!) add them to
     # the end of the table
     if new_pivot_idx < len(new_eop_table):
-        print("Adding {:d} new entries to the EOP table".format(len(new_eop_table)-new_pivot_idx))
+        print(
+            "Adding {:d} new entries to the EOP table".format(
+                len(new_eop_table) - new_pivot_idx
+            )
+        )
         final_eop_table.extend(new_eop_table[new_pivot_idx:])
 
-    # Done! 
+    # Done!
     return final_eop_table
 
 
@@ -916,10 +966,10 @@ def print_eop_table(eop_table):
 
     print("\n#### BEGIN EOP TABLE ####\n")
     # JSON for prettier printing and consistent formatting
-    eop_json = json.dumps({'earth_orientation_paramter_table': eop_table}, indent=4)
+    eop_json = json.dumps({"earth_orientation_paramter_table": eop_table}, indent=4)
     print(eop_json)
     print("####  END  EOP TABLE ####\n")
-        
+
 
 def output_json_eop_table(eop_table, filename):
     r"""
@@ -939,8 +989,12 @@ def output_json_eop_table(eop_table, filename):
 
     filepath = Path(filename)
 
-    with open(filepath, "w", encoding='utf-8') as f:
-        json.dump({'earth_orientation_parameter_table': eop_table},
-                  f, indent=4, ensure_ascii=True)
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(
+            {"earth_orientation_parameter_table": eop_table},
+            f,
+            indent=4,
+            ensure_ascii=True,
+        )
 
     print("Wrote EOP table to file: {}".format(filepath))

@@ -78,17 +78,48 @@ def parse_broadcast_list(broadcast_list, default_host, default_port):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
-            prog='EOP Table Broadcaster',
-            description='Send an Earth Orientation Parameter (EOP) update table to Kotekan')
+        prog="EOP Table Broadcaster",
+        description="Send an Earth Orientation Parameter (EOP) update table to Kotekan",
+    )
 
-    parser.add_argument("--broadcast-list", nargs="*", default=[], help="List of hosts and ports running kotekan. Adjacent hosts and ports are paired, hosts (ports) without a port (host) pair use default_port (default_port)")
-    parser.add_argument("--host", default="localhost", help="The default host to use. default: localhost")
-    parser.add_argument("--port", default=12048, type=int, help="The default port to use. default: 12048")
-    parser.add_argument("--protocol", default="http://", help="Protocol to use for REST requests, default: 'http://'")
-    parser.add_argument("--timeout", default=30.0, type=float, help="REST timeout in seconds, default: 30.0")
-    parser.add_argument("--eop-post-endpoint", default="earth_rotation_data",
-                        help="Endpoint to receive EOP table, no leading '/', default: 'earth_rotation_data'")
-    parser.add_argument("input_json_file", nargs=1, help='Input file name, a JSON file containing the EOP update table to send: An object with the member "earth_orientation_paramer_table" whose value is a list of EOP update objects.')
+    parser.add_argument(
+        "--broadcast-list",
+        nargs="*",
+        default=[],
+        help="List of hosts and ports running kotekan. Adjacent hosts and ports are paired, hosts (ports) without a port (host) pair use default_port (default_port)",
+    )
+    parser.add_argument(
+        "--host",
+        default="localhost",
+        help="The default host to use. default: localhost",
+    )
+    parser.add_argument(
+        "--port",
+        default=12048,
+        type=int,
+        help="The default port to use. default: 12048",
+    )
+    parser.add_argument(
+        "--protocol",
+        default="http://",
+        help="Protocol to use for REST requests, default: 'http://'",
+    )
+    parser.add_argument(
+        "--timeout",
+        default=30.0,
+        type=float,
+        help="REST timeout in seconds, default: 30.0",
+    )
+    parser.add_argument(
+        "--eop-post-endpoint",
+        default="earth_rotation_data",
+        help="Endpoint to receive EOP table, no leading '/', default: 'earth_rotation_data'",
+    )
+    parser.add_argument(
+        "input_json_file",
+        nargs=1,
+        help='Input file name, a JSON file containing the EOP update table to send: An object with the member "earth_orientation_paramer_table" whose value is a list of EOP update objects.',
+    )
 
     args = parser.parse_args()
 
@@ -109,12 +140,22 @@ if __name__ == "__main__":
 
     for host, port in hostports:
         if eop_utils.is_kotekan_alive(host, port, args.timeout, args.protocol):
-            endpoints = eop_utils.get_kotekan_endpoints(host, port, args.timeout,
-                                                               args.protocol)
-            if len(endpoints) > 0 and isinstance(endpoints, dict) and 'POST' in endpoints.keys() and full_endpoint in endpoints['POST']:
+            endpoints = eop_utils.get_kotekan_endpoints(
+                host, port, args.timeout, args.protocol
+            )
+            if (
+                len(endpoints) > 0
+                and isinstance(endpoints, dict)
+                and "POST" in endpoints.keys()
+                and full_endpoint in endpoints["POST"]
+            ):
                 print("{:s}:{:d} OK".format(host, port))
             else:
-                print("{:s}:{:d} is not accepting POST to {:s}".format(host, port, full_endpoint))
+                print(
+                    "{:s}:{:d} is not accepting POST to {:s}".format(
+                        host, port, full_endpoint
+                    )
+                )
                 bad_instances.append((host, port))
 
         else:
@@ -128,7 +169,6 @@ if __name__ == "__main__":
 
     # Send table to Kotekan
     for host, port in hostports:
-        eop_utils.broadcast_kotekan_eop_table(host, port, 
-                                              args.eop_post_endpoint,
-                                              eop_table, args.timeout,
-                                              args.protocol)
+        eop_utils.broadcast_kotekan_eop_table(
+            host, port, args.eop_post_endpoint, eop_table, args.timeout, args.protocol
+        )
