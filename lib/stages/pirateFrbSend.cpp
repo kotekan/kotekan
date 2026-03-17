@@ -6,6 +6,7 @@
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
 #include "metadata.hpp"          // for metadataObject
+#include "XEngineMetadata.hpp"
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
 #include "json.hpp" // for json, basic_json, iter_impl
@@ -150,6 +151,63 @@ bool pirateFrbSend::send_frame(uint8_t* frame, int frame_id, std::shared_ptr<str
     if (!dest->sent_header) {
         INFO("Sending header");
 
+        struct XEngineMetadata meta;
+        meta.version = 1;
+
+        // We need the upchannelization configuration to figure out the upchan zones.
+        /*
+          See upchan_pathfinder.j2, for instance:
+
+          upchan_channel_ranges:
+          64: [0, 1750]
+          32: [1750, 2264]
+          16: [2264, 2912]
+          8: [2912, 3661]
+          4: [3661, 4646]
+          2: [4646, 5985]
+          1: [5985, 8192]
+
+          Where the channel numbers translate to frequencies via
+          fengine_pathfinder.j2:
+
+          #     A channel's frequency is   freq = channel * adc_frequency / num_samples_per_frame
+
+          adc_frequency: 3.2e+9           # [Hz]
+          num_samples_per_frame: 16384
+          
+        */
+
+        double adc_freq = config.get<double>(unique_name, "adc_frequency");
+        int samples_per_frame = config.get<int>(unique_name, "num_samples_per_frame");
+
+        int channel_low = 0;
+        double freq_low = channel_low * adc_freq / samples_per_frame;
+        meta.zone_freq_edges.push_back(freq_low);
+
+        json upchan_ranges = config.get<std::vector<json> >(unique_name, "upchan_channel_ranges");
+        if (!upchan_ranges.is_object()) {
+            throw std::invalid_argument(fmt::format(fmt("Expect 'upchan_channel_ranges' to contain a dicts")));
+        }
+        for (json::iterator it : upchan_ranges) {
+            int upchan_factor = it.key().get<int>();
+            std::vector<int> channel_range = it.value().get<std::vector<int> >();
+            if (channel_range.size() != 2) {
+                throw std::invalid_argument(fmt::format(fmt("Expect 'upchan_channel_ranges' values to be a pair of integers")));
+            }
+            int lo = channel_range[0];
+            int channel_high = channel_range[1];
+            if (lo != channel_low) {
+                throw std::invalid_argument(fmt::format(fmt("Expect 'upchan_channel_ranges' values to be contiguous")));
+            }
+            double freq_high = channel_high * adc_freq / samples_per_frame;
+            meta.zone_freq_edges.push_back(freq_high);
+            int nfreq = upchan_factor * (channel_high - lo);
+            meta.zone_nfreq.push_back(nfreq);
+
+            // next one should have:
+            channel_low = channel_high;
+        }
+
         std::string config = "yaml";
 
         struct pirateNetworkHeader header;
@@ -159,6 +217,15 @@ bool pirateFrbSend::send_frame(uint8_t* frame, int frame_id, std::shared_ptr<str
 
         DEBUG2("Sending header");
         while ((n = send(dest->socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
+                         MSG_NOSIGNAL))
+               > 0) {
+            n_sent += n;
+        }
+
+        size_t config_len = header.config_length;
+        n_sent = 0;
+        DEBUG2("Sending config yaml");
+        while ((n = send(dest->socket_fd, &((uint8_t*)config.c_str())[n_sent], config_len - n_sent,
                          MSG_NOSIGNAL))
                > 0) {
             n_sent += n;

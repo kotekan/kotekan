@@ -44,7 +44,7 @@ private:
     uint8_t* offset_scale_frame;
 
     /// Send a frame
-    bool send_frame(uint8_t* frame, int frame_id, std::shared_ptr<pirateDestination> dest);
+    bool send_frame(uint8_t* frame, int frame_id, std::shared_ptr<struct pirateDestination> dest);
 };
 
 #endif
