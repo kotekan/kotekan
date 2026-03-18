@@ -237,7 +237,6 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Tpl_stride = pl_mask.get_ndarray().stride(0);
     const std::ptrdiff_t Tpl_offset = Tmin * voltage_meta->get_time_downsampling_fpga()
                                       / pl_mask_meta->get_time_downsampling_fpga() * Tpl_stride;
-    ;
 
     n2k::launch_s0_kernel((ulong*)rfi_S012_memory + Trfi_offset,
                           (const ulong*)(pl_mask_memory + Tpl_offset), T, 0, Tsize, num_frequencies,

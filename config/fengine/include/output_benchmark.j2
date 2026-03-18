@@ -74,8 +74,8 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_buffer
         file_name: frb3_beams
-    write_frb3_beams_meanstd:
+    write_frb3_beams_offsetscale:
         kotekan_stage: hdf5FileWrite
-        in_buf: host_frb3_beams_meanstd_buffer
-        file_name: frb3_beams_meanstd
+        in_buf: host_frb3_beams_offsetscale_buffer
+        file_name: frb3_beams_offsetscale
         max_frames: 15
