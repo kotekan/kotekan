@@ -102,61 +102,68 @@ element_short: 8
 element_long: num_elements / element_short
 
 telescope:
-  name: CHORDTelescope
-  sampling_rate_MHz: {{ sampling_rate_MHz }}
-  fft_length: {{ fft_length }}
-  nyquist_zone: {{ nyquist_zone }}
-  min_science_freq_MHz: {{ science_min_freq_MHz }}
-  max_science_freq_MHz: {{ science_max_freq_MHz }}
+    name: CHORDTelescope
+    sampling_rate_MHz: {{ sampling_rate_MHz }}
+    fft_length: {{ fft_length }}
+    nyquist_zone: {{ nyquist_zone }}
+    min_science_freq_MHz: {{ science_min_freq_MHz }}
+    max_science_freq_MHz: {{ science_max_freq_MHz }}
 
-  origin_itrs_lat_deg: 49.32075144444
-  origin_itrs_lon_deg: -119.62081125
+    origin_itrs_lat_deg: 49.32075144444
+    origin_itrs_lon_deg: -119.62081125
 
-  grid_x_axis: [ 0.999974342398359362,
+    grid_x_axis: [ 0.999974342398359362,
                 -0.000037539331442772,
                 -0.007163318767675494]
-  grid_y_axis: [0.000065403387739210,
+    grid_y_axis: [0.000065403387739210,
                 0.999992433220348809,
                 0.003889630373557614]
-  
-  dish_elev_axis: [0.99999999838132391,
+
+    dish_elev_axis: [0.99999999838132391,
                    -0.000056897733584327
                    0.0]
-  dish_vert_axis: [0.0, 0.0, 1.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
 
-  dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
-  check_duplicate_dish_grid: false  # Pathfinder has duplicate grid locations
+    dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
+    check_duplicate_dish_grid: false  # Pathfinder has duplicate grid locations
 
-  num_dishes_x: 8
-  num_dishes_y: 12
-  dish_separation_x_m: 6.300156854906823
-  dish_separation_y_m: 8.500057809796308
-  dish_inputs: [
-    {dish_idx: 0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p1},
-    {dish_idx: 1, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p2},
-    {dish_idx: 2, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p1},
-    {dish_idx: 3, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p2},
-    {dish_idx: 4, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p1},
-    {dish_idx: 5, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p2}
-  ]
+    num_dishes_x: 8
+    num_dishes_y: 12
+    dish_separation_x_m: 6.300156854906823
+    dish_separation_y_m: 8.500057809796308
+    dish_inputs: [
+        {dish_idx: 0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p1},
+        {dish_idx: 1, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p2},
+        {dish_idx: 2, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p1},
+        {dish_idx: 3, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p2},
+        {dish_idx: 4, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p1},
+        {dish_idx: 5, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p2}
+    ]
 
-  require_gps: False
-  eop_updatable_config: /earth_rotation_data
+    require_gps: True
+    query_gps: True
+    gps_host: "crs-control"
+    gps_port: 54321
+    gps_endpoint: "/get-frame0-time"
+    auto_correct_gps_week_rollover: True
 
-gps_time:
-  frame0_nano: 1773347320000002880
+    eop_updatable_config: /earth_rotation_data
 
 earth_rotation_data:
-  kotekan_update_endpoint: json
-  earth_orientation_parameter_table: [
-    {time_inst_ns: 1772582400000000000, delta_UT1_inst: 0.0656707, x_pm: 0.105507, y_pm: 0.391049},
-    {time_inst_ns: 1772668800000000000, delta_UT1_inst: 0.0648799, x_pm: 0.105252, y_pm: 0.392053},
-    {time_inst_ns: 1772755200000000000, delta_UT1_inst: 0.0641748, x_pm: 0.105104, y_pm: 0.392867},
-    {time_inst_ns: 1772841600000000000, delta_UT1_inst: 0.0636325, x_pm: 0.104868, y_pm: 0.393615},
-    {time_inst_ns: 1772928000000000000, delta_UT1_inst: 0.0632809, x_pm: 0.104708, y_pm: 0.3943},
-    {time_inst_ns: 1773014400000000000, delta_UT1_inst: 0.0630986, x_pm: 0.104657, y_pm: 0.394958},
-    {time_inst_ns: 1773100800000000000, delta_UT1_inst: 0.063031, x_pm: 0.104761, y_pm: 0.395598}
-  ]
+    kotekan_update_endpoint: json
+    earth_orientation_parameter_table: [
+        {"time_inst_ns": 1773619200000000000, "delta_UT1_inst": 0.0618436, "x_pm": 0.103666, "y_pm": 0.397414},
+        {"time_inst_ns": 1773705600000000000, "delta_UT1_inst": 0.0611428, "x_pm": 0.103835, "y_pm": 0.398062},
+        {"time_inst_ns": 1773792000000000000, "delta_UT1_inst": 0.0602311, "x_pm": 0.104082, "y_pm": 0.398709},
+        {"time_inst_ns": 1773878400000000000, "delta_UT1_inst": 0.0591636, "x_pm": 0.104346, "y_pm": 0.399345},
+        {"time_inst_ns": 1773964800000000000, "delta_UT1_inst": 0.0580483, "x_pm": 0.10461, "y_pm": 0.399997},
+        {"time_inst_ns": 1774051200000000000, "delta_UT1_inst": 0.0570235, "x_pm": 0.104915, "y_pm": 0.400661},
+        {"time_inst_ns": 1774137600000000000, "delta_UT1_inst": 0.056187, "x_pm": 0.105272, "y_pm": 0.401317},
+        {"time_inst_ns": 1774224000000000000, "delta_UT1_inst": 0.0555814, "x_pm": 0.105657, "y_pm": 0.401957},
+        {"time_inst_ns": 1774310400000000000, "delta_UT1_inst": 0.0552137, "x_pm": 0.106069, "y_pm": 0.402599},
+        {"time_inst_ns": 1774396800000000000, "delta_UT1_inst": 0.0549834, "x_pm": 0.10652, "y_pm": 0.403244},
+        {"time_inst_ns": 1774483200000000000, "delta_UT1_inst": 0.0548208, "x_pm": 0.107002, "y_pm": 0.403878}
+    ]
 
 # Pools
 main_pool:
