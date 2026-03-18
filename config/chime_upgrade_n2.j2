@@ -483,7 +483,7 @@ host_rfi_S012_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times
     type: uint64
     dimnames: ["Trfi", "F", "S", "P", "D"]
-    shape: [buffer_depth * rfi_num_times, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
+    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_S012bar_ringbuffer:
