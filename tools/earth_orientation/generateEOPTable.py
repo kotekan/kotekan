@@ -156,7 +156,7 @@ if __name__ == "__main__":
             fpga_master_host, fpga_master_port, timeout
         )
     elif args.frame0_src == "kotekan":
-        if not is_kotekan_alive(kotekan_host, kotekan_port, timeout):
+        if not eop_utils.is_kotekan_alive(kotekan_host, kotekan_port, timeout):
             print(
                 "ERROR: Kotekan could not be reached on {}:{}. Exiting.".format(
                     kotekan_host, kotekan_port
@@ -232,7 +232,7 @@ if __name__ == "__main__":
         merge_cushion_dt = TimeDelta(args.merge_cushion_dt, scale="tai")
 
         # Get the current table loaded into Kotekan
-        if not is_kotekan_alive(kotekan_host, kotekan_port, timeout):
+        if not eop_utils.is_kotekan_alive(kotekan_host, kotekan_port, timeout):
             print(
                 "ERROR: Kotekan could not be reached on {}:{}. Exiting.".format(
                     kotekan_host, kotekan_port
