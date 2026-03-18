@@ -144,7 +144,7 @@ telescope:
   eop_updatable_config: /earth_rotation_data
 
 gps_time:
-  frame0_nano: 1772838439000002880
+  frame0_nano: 1773347320000002880
 
 earth_rotation_data:
   kotekan_update_endpoint: json
@@ -341,6 +341,7 @@ dpdk:
         - "0000:37:00.1"
         - "0000:b5:00.0"
         - "0000:b5:00.1"
+        - "0000:a0:00.0"
     worker_ring_map:
         - name: worker_ring_0
           num_slots: 512
@@ -552,38 +553,22 @@ eigencalc:
     subspace: 2
 
 # Eigen output (6 elements with eigenvectors)
-# hdf5_N2_write_eigen:
-#     log_level: DEBUG
-#     kotekan_stage: hdf5N2Write
-#     cpu_affinity: [13]
-#     in_buf: n2_eigen_buffer
-#     base_dir: /mnt/cs00/data/kotekan_vis_files/2026_03_07/subset/
-#     baseband_gain_dir: /mnt/cs00/data/baseband_gains/
-#     file_name: pipeline_eigen
-#     prefix_hostname: false
-#     use_bitshuffle: true
-#     compression: "lz4"
-#     compression_level: 3
-#     zip_compression: 0
-#     # Chunking: ensure positive chunk sizes
-#     blocksize_f: 16
-#     late_frame_grace_seconds: 30
-#     num_ev: num_ev_to_calculate
-#     n2_layout: "FullUpperTri"
-#     num_file_t: 20
-
-buffer_send_n2_subset:
-    kotekan_stage: bufferSend
-    buf: n2_eigen_buffer
-    server_ip: 10.222.0.51
-    server_port: 11025
-    retry_time: 10.0
-    drop_frames: true
-
-buffer_send_n2_full:
-    kotekan_stage: bufferSend
-    buf: n2_buffer
-    server_ip: 10.222.0.51
-    server_port: 11027
-    retry_time: 10.0
-    drop_frames: true
+hdf5_N2_write_eigen:
+    log_level: DEBUG
+    kotekan_stage: hdf5N2Write
+    cpu_affinity: [13]
+    in_buf: n2_eigen_buffer
+    base_dir: /mnt/cs00/data/kotekan_vis_files/
+    baseband_gain_file: /mnt/cs00/data/chord_pathfinder_f_engine_data/data/digital_gains/20260312T191610Z_chord_pathfinder_digitalgain/00000000.h5
+    file_name: pipeline_eigen
+    prefix_hostname: false
+    use_bitshuffle: true
+    compression: "lz4"
+    compression_level: 3
+    zip_compression: 0
+    # Chunking: ensure positive chunk sizes
+    blocksize_f: 16
+    late_frame_grace_seconds: 30
+    num_ev: num_ev_to_calculate
+    n2_layout: "FullUpperTri"
+    num_file_t: 50

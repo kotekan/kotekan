@@ -263,7 +263,7 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
                    uint64_t num_file_t, uint64_t blocksize_f = 0, uint64_t blocksize_p = 0,
                    uint64_t blocksize_t = 1, uint64_t late_frame_grace_seconds = 60,
                    uint64_t seq_length_nsec_override = 0,
-                   const std::string& gains_base_directory = "") {
+                   const std::string& baseband_gain_file = "") {
     using json = nlohmann::json;
 
     json cfg;
@@ -282,7 +282,7 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     stage["num_file_t"] = num_file_t;
     stage["join_timeout"] = 5;
     stage["late_frame_grace_seconds"] = late_frame_grace_seconds;
-    stage["gains_base_directory"] = gains_base_directory;
+    stage["baseband_gain_file"] = baseband_gain_file;
     if (seq_length_nsec_override > 0)
         stage["seq_length_nsec_override"] = seq_length_nsec_override;
 

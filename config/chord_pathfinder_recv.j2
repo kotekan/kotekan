@@ -185,7 +185,7 @@ hdf5_N2_write_subset:
     cpu_affinity: [12]
     in_buf: buffer_recv_subset_subset
     base_dir: /data/kotekan_vis_files/2026_03_11/subset/
-    baseband_gain_dir: /mnt/cs00/data/baseband_gains/
+    baseband_gain_file: "" # e.g. /mnt/cs00/data/baseband_gains/00000000.h5
     file_name: pipeline_test
     prefix_hostname: false
     use_bitshuffle: true
@@ -207,7 +207,7 @@ hdf5_N2_write_full:
     cpu_affinity: [12]
     in_buf: n2_recv_full_buffer
     base_dir: /data/kotekan_vis_files/2026_03_11/full/
-    baseband_gain_dir: /mnt/cs00/data/baseband_gains/
+    baseband_gain_file: "" # e.g. /mnt/cs00/data/baseband_gains/00000000.h5
     file_name: pipeline_test
     prefix_hostname: false
     use_bitshuffle: true

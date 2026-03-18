@@ -67,11 +67,6 @@
 class N2FileData {
 public:
     enum FileMode { CHORD, CHIME };
-    struct DigitalGains {
-        std::vector<std::vector<std::uint16_t>> gains_lin;
-        std::vector<std::vector<std::uint16_t>> gains_log;
-        std::string full_filepath;
-    };
 
     // Structural information and fixed sizes
     const size_t num_elements; // number of inputs / elements
@@ -90,14 +85,15 @@ public:
     const bool use_bitshuffle;      // whether to use bitshuffle filter
     const double open_wall_s;       // time opened
     const uint64_t abs_file_idx;    // absolute file index (abs_time_idx / num_file_t)
-    const std::string base_dir;     // base output directory (without /.partial)
-    const std::string
-        gains_base_directory; // Base directory for gains. If empty/absent, gains are not written.
-    const std::string partial_filepath; // working on-disk location
-    const N2Layout n2_layout;           // visibility (N2) layout
+    const std::string base_dir;          // base output directory (without /.partial)
+    const std::string baseband_gain_file; // Path to gains HDF5 file. If empty, gains are not written.
+    const int baseband_gain_update_idx;  // update_time index (-1 = latest)
+    const std::string partial_filepath;  // working on-disk location
+    const N2Layout n2_layout;            // visibility (N2) layout
 
     double last_update_wall_s;               // last frame receipt
     std::unique_ptr<HighFive::File> h5_file; // Working on-disk HDF5 file handle
+    size_t gains_file_hash = 0; // hash of gains file contents at copy time (0 = no gains)
 
 protected:
     // Datasets to be stored until ready to write
@@ -139,13 +135,6 @@ private:
                                const HighFive::DataType& dtype,
                                HighFive::DataSetCreateProps props) const;
 
-    /// Load digital gains from files in given directory
-    ///
-    /// !TODO: switch to API when it exists.
-    /// Need to validate these gains are actualy what the F-engine is using, e.g. query fpga_master.
-    ///
-    std::optional<N2FileData::DigitalGains> _get_digital_gains() const;
-
     /// Open/create/init datasets in h5 file
     std::unique_ptr<HighFive::File> _open_or_create_file(const std::string& filepath,
                                                          const uint64_t num_file_t_,
@@ -159,7 +148,8 @@ public:
                const double open_wall_s_, const uint64_t abs_file_idx_, const size_t blocksize_f_,
                const size_t blocksize_p_, const size_t blocksize_t_, const std::string compression_,
                const size_t compression_level_, const bool use_bitshuffle_,
-               const std::string base_dir_, const std::string gains_base_directory_);
+               const std::string base_dir_, const std::string baseband_gain_file_,
+               const int baseband_gain_update_idx_ = -1);
 
     /**
      * @brief Add a frame of data at the computed time index.
@@ -256,8 +246,10 @@ public:
  * @par Configuration
  * @conf in_buf                   String. N2 buffer supplying frames (`buffer_type` must be "N2").
  * @conf base_dir                 String. Output directory (absolute or relative to the process
- *                                working directory where kotekan was invoked); `<base_dir>` and
- *                                `<base_dir>/.partial` are created.
+ *                                working directory where kotekan was invoked). An acquisition
+ *                                subdirectory `acq_YYYYMMDD_HHMMSS_NNNNNNNNN` is appended
+ *                                automatically at startup; `<base_dir>/<acq>/` and
+ *                                `<base_dir>/<acq>/.partial` are created.
  * @conf num_file_t               UInt. Number of time frames per file (`t_index = abs_time_idx %
  *num_file_t`).
  * @conf blocksize_f              UInt. Chunk cap for the frequency dimension (default: 16).
@@ -268,6 +260,10 @@ public:
  * @conf compression_level        UInt. Codec level (0 picks 4 for deflate, 9 for bitshuffle).
  * @conf use_bitshuffle           Bool. Enable bitshuffle with the selected backend codec (default:
  *                                false).
+ * @conf baseband_gain_file       String. Path to the digital gains HDF5 file. If empty (default),
+ *                                gains are not written.
+ * @conf baseband_gain_update_idx Int. Index along the update_time axis to read from the gains
+ *                                file (-1 = latest, default: -1).
  * @conf late_frame_grace_seconds UInt. Grace period in seconds for late frames (default: 60).
  * @conf max_frames               Int. Stop writing after this many frames (-1 = unlimited).
  *
@@ -317,8 +313,9 @@ public:
 
 private:
     // Config settings (initialized from Config in constructor)
-    const std::string _base_dir;             /// Base directory to write files into
-    const std::string _gains_base_directory; /// Base directory for digital gains files
+    const std::string _base_dir;              /// Base directory to write files into
+    const std::string _baseband_gain_file;   /// Path to digital gains HDF5 file
+    const int _baseband_gain_update_idx;     /// update_time index (-1 = latest)
     const std::uint64_t _num_file_t; /// Number of incoming time frames per file, as indexed by the
                                      /// absolute frame index
     const std::string _compression;
