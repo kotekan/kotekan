@@ -37,7 +37,7 @@ class calcFRB2Weights : public kotekan::Stage {
     // We need to take this into account when creating the FRB2
     // beamforming weights. For CHORD we have `frb1_swap_xy=false`,
     // and for CHIME we have `frb1_swap_xy=true`.
-    const bool frb1_swap_xy = config.get<bool>(unique_name, "frb1_swap_xy");
+    const bool frb1_swap_xy = config.get_default<bool>(unique_name, "frb1_swap_xy", false);
     const int num_dishes_x = frb1_swap_xy ? config.get<int>(unique_name, "num_dishes_y")
                                           : config.get<int>(unique_name, "num_dishes_x");
     const int num_dishes_y = frb1_swap_xy ? config.get<int>(unique_name, "num_dishes_x")
