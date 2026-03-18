@@ -734,31 +734,19 @@ run_n2k_correlation:
           out_buf: host_n2k_correlation_buffer
 
 run_n2k_counts:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        buffer_depth: gpu_buffer_depth
-        # maybe? Depends on the chunking of the previous stage
-        frame_arrival_period: network_frame_arrival_period
-        num_times: samples_per_data_set
-        in_buffers:
-            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
-            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
-        out_buffers:
-            host_n2k_counts_buffer: host_n2k_counts_buffer
-        commands:
-        - name: cudaPL1bitCorrelator
-          num_elements: num_dishes * num_polarizations
-          num_frequencies: num_freq_gpu_buf
-          #samples_per_data_set: n2k_samples_per_data_set # global samples_per_data_set exists and is used in n2k_samples_per_data_set
-          sub_integration_ntime: n2k_sub_integration_ntime
-          pl_expanded_mask_name: pl_expanded_mask
-          rfi_RFImask_name: rfi_RFImask
-          n2k_counts_name: n2k_counts
-        - name: cudaSyncOutput
-        - name: cudaOutputData
-          gpu_mem: n2k_counts_buffer
-          out_buf: host_n2k_counts_buffer
+        kotekan_stage: lostSamplesToN2Counts
+        num_n2k_freq: num_freq_gpu_buf
+        sub_integration_ntime: n2k_sub_integration_ntime
+        # already set via global
+        # samples_per_data_set: samples_per_data_set
+        # already set via global
+        # num_elements: num_elements
+        rfi_mask_buf: host_rfi_RFImask_buffer
+        lost_samples_buffers:
+{%- for id in range(num_freq_gpu_buf // 4) %}
+        - lost_samples_buffer_{{ id }}
+{%- endfor %}
+        n2k_counts_buf: host_n2k_counts_buffer
 
 ################################################################################
 # visibility matrix and eigendecomposition
