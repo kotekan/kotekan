@@ -20,9 +20,14 @@ type: config
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
-num_polarizations: 2
-num_dishes: 1024
-num_elements: num_polarizations * num_dishes
+
+{% set num_polarizations = 2 %}
+{% set num_dishes = 1024 %}
+{% set num_elements = num_polarizations * num_dishes %}
+num_polarizations: {{ num_polarizations }}
+num_dishes: {{ num_dishes }}
+num_elements: {{ num_elements }}
+
 num_components: 2 # Re/Im
 num_freq_host_buf: 1
 {% set num_freq_gpu_buf = 16 %}
@@ -318,13 +323,26 @@ lostSamplesToPLMask:
       - lost_samples_buffer_{{ id }}
 {%- endfor %}
 
-kludge_constant_buffers:
-    set_bf_mask:
-        # no bad feeds, all feeds are good
-        kotekan_stage: testDataGen
-        out_buf: host_bf_mask_buffer
-        type: const8
-        value: 0x01
+set_bf_mask:
+    # TODO: this will be handled by the bad-inputs stage eventually
+    kotekan_stage: givenDataGen
+    out_buf: host_bf_mask_buffer
+    datatype: int8
+    name: "bf_mask"
+    dim_name: ["P", "D"]
+    array_shape: [ {{ num_polarizations }}, {{ num_dishes }} ]
+    do_once: true
+    values:
+      # taken from chime_science_ran_gpu.yaml
+      {% set bad_feeds = [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
+                           370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
+                           807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
+                          1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
+                          1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
+                          1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034] %}
+     {% for el in range(num_elements) %}
+        - {% if el in bad_feeds -%} 0 {%- else -%} 1 {%- endif %}
+     {% endfor %}
 
 run_send_pl_mask:
     gpu_0:
