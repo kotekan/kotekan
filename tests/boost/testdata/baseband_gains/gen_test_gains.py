@@ -29,9 +29,13 @@ with h5py.File(OUTPUT, "w") as f:
 
     # gain_coeff: (update_time, freq, input) complex64
     rng = np.random.default_rng(42)
-    gain_coeff = (rng.standard_normal((N_UPDATE_TIMES, N_FREQ, N_INPUT))
-                  + 1j * rng.standard_normal((N_UPDATE_TIMES, N_FREQ, N_INPUT))).astype(np.complex64)
-    f.create_dataset("gain_coeff", data=gain_coeff, chunks=(1, min(N_FREQ, 512), min(N_INPUT, 4)))
+    gain_coeff = (
+        rng.standard_normal((N_UPDATE_TIMES, N_FREQ, N_INPUT))
+        + 1j * rng.standard_normal((N_UPDATE_TIMES, N_FREQ, N_INPUT))
+    ).astype(np.complex64)
+    f.create_dataset(
+        "gain_coeff", data=gain_coeff, chunks=(1, min(N_FREQ, 512), min(N_INPUT, 4))
+    )
 
     # gain_exp: (update_time, input) int32
     gain_exp = np.full((N_UPDATE_TIMES, N_INPUT), -1, dtype=np.int32)
@@ -43,8 +47,9 @@ with h5py.File(OUTPUT, "w") as f:
 
     # update_id: (update_time,) vlen string
     dt_vlen = h5py.special_dtype(vlen=str)
-    update_id = f.create_dataset("update_id", shape=(N_UPDATE_TIMES,), dtype=dt_vlen,
-                                 chunks=(N_UPDATE_TIMES,))
+    update_id = f.create_dataset(
+        "update_id", shape=(N_UPDATE_TIMES,), dtype=dt_vlen, chunks=(N_UPDATE_TIMES,)
+    )
     update_id[0] = "digitalgain_20250101T000000.000000Z"
 
     # index_map group
@@ -65,8 +70,12 @@ with h5py.File(OUTPUT, "w") as f:
     idx.create_dataset("input", data=input_data)
 
     # index_map/update_time: (update_time,) float64
-    ut = idx.create_dataset("update_time", shape=(N_UPDATE_TIMES,), dtype=np.float64,
-                            chunks=(N_UPDATE_TIMES,))
+    ut = idx.create_dataset(
+        "update_time",
+        shape=(N_UPDATE_TIMES,),
+        dtype=np.float64,
+        chunks=(N_UPDATE_TIMES,),
+    )
     ut[0] = 1.7e9
 
     # Set axis attributes on datasets

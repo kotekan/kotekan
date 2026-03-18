@@ -735,7 +735,7 @@ public:
     freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
 
     /**
-     * @brief Return the number of frequencies per F-engine stream. 
+     * @brief Return the number of frequencies per F-engine stream.
      */
     size_t num_freq_per_stream() const override;
 

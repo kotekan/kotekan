@@ -118,7 +118,8 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
     }
 
     // Validate pl_mask buffer size
-    // pl_mask shape: uint64_t [T/64][F][E/8] where T = time_long * time_short, E = element_long * element_short
+    // pl_mask shape: uint64_t [T/64][F][E/8] where T = time_long * time_short, E = element_long *
+    // element_short
     size_t T = (size_t)time_long * time_short;
     size_t E = (size_t)element_long * element_short;
     size_t expected_pl_mask_size = (T / 64) * num_frequency * (E / 8) * sizeof(uint64_t);
@@ -129,24 +130,25 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
             pl_mask_buf->frame_size, expected_pl_mask_size, T / 64, num_frequency, E / 8));
     }
 
-    pl_mask_buf->allocate_ndarray_frame_desc(kotekan::uint1x8, "pl_mask", 
-        {time_long * time_short / 64, num_frequency, 2, element_long * element_short / 8 / 2, 8}, 
+    pl_mask_buf->allocate_ndarray_frame_desc(
+        kotekan::uint1x8, "pl_mask",
+        {time_long * time_short / 64, num_frequency, 2, element_long * element_short / 8 / 2, 8},
         {"Thi64", "F", "P", "D8", "Tlo64"});
 
     // Validate rfi_mask buffer size
     // rfi_mask shape: uint8_t [T/1024][F][128] where T = time_long * time_short
     size_t expected_rfi_mask_size = (T / 1024) * num_frequency * 128 * sizeof(uint8_t);
     if (rfi_mask_buf->frame_size != expected_rfi_mask_size) {
-        throw std::runtime_error(fmt::format(
-            fmt("ProcessPacketMask: rfi_mask_buf frame size ({:d}) does not match "
-                "expected size ({:d}) for shape [T/1024={:d}][F={:d}][128]"),
-            rfi_mask_buf->frame_size, expected_rfi_mask_size, T / 1024, num_frequency));
+        throw std::runtime_error(
+            fmt::format(fmt("ProcessPacketMask: rfi_mask_buf frame size ({:d}) does not match "
+                            "expected size ({:d}) for shape [T/1024={:d}][F={:d}][128]"),
+                        rfi_mask_buf->frame_size, expected_rfi_mask_size, T / 1024, num_frequency));
     }
 
     rfi_mask_buf->allocate_ndarray_frame_desc(kotekan::uint1x8, "RFImask",
-        {time_long * time_short / 1024, num_frequency, 128},
-        {"T8hi128", "F", "T8lo128"});
-    
+                                              {time_long * time_short / 1024, num_frequency, 128},
+                                              {"T8hi128", "F", "T8lo128"});
+
     INFO("ProcessPacketMask: Initialized with {:d} receipt bitmap buffers",
          receipt_bitmap_bufs.size());
     INFO("ProcessPacketMask: Voltage frame shape: [{:d}][{:d}][{:d}][{:d}][{:d}]", time_long,
@@ -169,8 +171,8 @@ void ProcessPacketMask::main_thread() {
     }
 
     // Constants for pl_mask generation
-    const size_t E_DIV_8 = (size_t)element_long * element_short / 8;  // 16 for default config
-    const size_t F = num_frequency;  // 384
+    const size_t E_DIV_8 = (size_t)element_long * element_short / 8; // 16 for default config
+    const size_t F = num_frequency;                                  // 384
 
     while (!stop_thread) {
         // Wait for voltage frame
@@ -190,7 +192,8 @@ void ProcessPacketMask::main_thread() {
             break;
 
         // Wait for rfi_mask frame
-        uint8_t* rfi_mask_frame = rfi_mask_buf->wait_for_empty_frame(unique_name, rfi_mask_frame_id);
+        uint8_t* rfi_mask_frame =
+            rfi_mask_buf->wait_for_empty_frame(unique_name, rfi_mask_frame_id);
         if (rfi_mask_frame == nullptr)
             break;
 
@@ -235,7 +238,7 @@ void ProcessPacketMask::main_thread() {
             }
         }
         DEBUG("ProcessPacketMask: Voltage frame {:d} has {:d} missing packets in combined bitmap",
-             (int)voltage_frame_id, missing_packet_count);
+              (int)voltage_frame_id, missing_packet_count);
 
         // Calcuate a packet loss rate based on the missing packet count
         // and the number of working source IDs
@@ -254,7 +257,8 @@ void ProcessPacketMask::main_thread() {
         // Calculate cumulative packet loss rate
         double cumulative_loss_percentage = 0.0;
         if (total_packets_received > 0) {
-            cumulative_loss_percentage = (double)total_packets_missing / (double)total_packets_received * 100.0;
+            cumulative_loss_percentage =
+                (double)total_packets_missing / (double)total_packets_received * 100.0;
         }
 
         // Re
@@ -306,8 +310,8 @@ void ProcessPacketMask::main_thread() {
 
                         // Compute T/64 index and bit position within the uint64_t
                         // T = time_long * time_short, time sample = time_long_idx * time_short
-                        // T/64 index = (time_long_idx * time_short) / 64 = time_long_idx / 4 (when time_short=16)
-                        // Bit position = (time_long_idx % 4) * 16
+                        // T/64 index = (time_long_idx * time_short) / 64 = time_long_idx / 4 (when
+                        // time_short=16) Bit position = (time_long_idx % 4) * 16
                         size_t t64_idx = (time_long_idx * time_short) / 64;
                         size_t bit_start = (time_long_idx * time_short) % 64;
 
@@ -323,8 +327,8 @@ void ProcessPacketMask::main_thread() {
                             // Apply clear_mask to all E/8 elements at this (time, frequency)
                             size_t base_pl_idx = t64_idx * F * E_DIV_8 + freq_id * E_DIV_8;
                             for (size_t e = 0; e < E_DIV_8; e++) {
-                                assert(pl_mask_buf->frame_size >
-                                       (base_pl_idx + e) * sizeof(uint64_t));
+                                assert(pl_mask_buf->frame_size
+                                       > (base_pl_idx + e) * sizeof(uint64_t));
                                 pl_mask_ptr[base_pl_idx + e] &= clear_mask;
                             }
                         }
@@ -341,8 +345,7 @@ void ProcessPacketMask::main_thread() {
 
         // Set metadata for pl_mask_buf
         pl_mask_buf->allocate_new_metadata_object(pl_mask_frame_id);
-        auto pl_mask_meta =
-            get_chord_metadata(pl_mask_buf, pl_mask_frame_id);
+        auto pl_mask_meta = get_chord_metadata(pl_mask_buf, pl_mask_frame_id);
 
         pl_mask_meta->set_fpga_seq_num(
             get_chord_metadata(voltage_buf, voltage_frame_id)->get_fpga_seq_num());

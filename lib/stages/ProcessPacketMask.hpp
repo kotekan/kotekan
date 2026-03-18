@@ -29,7 +29,8 @@
  *    @buffer_format combined_receipt_bitmap[time_long][source_id]
  *    @buffer_metadata chordMetadata
  * @buffer pl_mask_buf Output buffer for packet loss mask
- *    @buffer_format uint64_t pl_mask[T/64][F][E/8] where T=time_long*time_short, F=num_frequency, E=element_long*element_short
+ *    @buffer_format uint64_t pl_mask[T/64][F][E/8] where T=time_long*time_short, F=num_frequency,
+ * E=element_long*element_short
  *    @buffer_metadata chordMetadata
  *
  * @conf time_long      Int. Number of long time samples per frame.

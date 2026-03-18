@@ -500,7 +500,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
         meta->frame_start_time_ns = _tel.to_time_ns(meta->fpga_start_tick);
         meta->freq_MHz = _tel.to_freq_MHz(meta->freq_id);
 
-        meta->time_center_eop =_tel.get_EOP_at_time(
+        meta->time_center_eop = _tel.get_EOP_at_time(
             _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
         meta->bin_eop = _tel.get_EOP_at_time(
             _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));

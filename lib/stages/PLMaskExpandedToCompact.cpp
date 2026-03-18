@@ -9,12 +9,11 @@
 
 #include "fmt.hpp"
 
-#include <visUtil.hpp>
-
 #include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
+#include <visUtil.hpp>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -39,9 +38,9 @@ STAGE_CONSTRUCTOR(PLMaskExpandedToCompact) {
             samples_per_data_set));
     }
     if (num_elements % 8 != 0) {
-        throw std::runtime_error(fmt::format(
-            fmt("PLMaskExpandedToCompact: num_elements ({:d}) must be a multiple of 8"),
-            num_elements));
+        throw std::runtime_error(
+            fmt::format(fmt("PLMaskExpandedToCompact: num_elements ({:d}) must be a multiple of 8"),
+                        num_elements));
     }
 
     const size_t T = samples_per_data_set;
@@ -68,7 +67,8 @@ STAGE_CONSTRUCTOR(PLMaskExpandedToCompact) {
     }
 
     // Set up ndarray frame descriptor for the output
-    out_buf->allocate_ndarray_frame_desc(kotekan::uint1x8, "pl_mask",
+    out_buf->allocate_ndarray_frame_desc(
+        kotekan::uint1x8, "pl_mask",
         {(ptrdiff_t)(T / 128), (ptrdiff_t)F_compact, 2, (ptrdiff_t)(E_div_8 / 2), 8},
         {"T2hi64", "F4", "P", "D8", "T2lo64"});
 
@@ -134,7 +134,7 @@ void PLMaskExpandedToCompact::main_thread() {
         for (size_t t128 = 0; t128 < T_div_128; t128++) {
             for (size_t f4 = 0; f4 < F_compact; f4++) {
                 for (size_t e = 0; e < E_div_8; e++) {
-                    
+
                     // Start with all bits set (all valid)
                     uint64_t compact_val = 0xffffffffffffffffULL;
 

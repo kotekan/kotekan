@@ -1,11 +1,11 @@
 #ifndef FRAME_PREFETCH_SERVICE_HPP
 #define FRAME_PREFETCH_SERVICE_HPP
 
-#include "buffer.hpp"
-#include "kotekanLogging.hpp"
-#include "Telescope.hpp"
 #include "CHORDTelescope.hpp"
+#include "Telescope.hpp"
+#include "buffer.hpp"
 #include "chordMetadata.hpp"
+#include "kotekanLogging.hpp"
 
 #include <atomic>
 #include <cmath>
@@ -154,7 +154,7 @@ void FramePrefetchService::start(uint64_t start_seq,
 
 inline void FramePrefetchService::advance() {
     DEBUG("FramePrefetchService {} advancing from frame {}", unique_name,
-         consumed_cursor.load(std::memory_order_acquire));
+          consumed_cursor.load(std::memory_order_acquire));
     consumed_cursor.fetch_add(1, std::memory_order_release);
 }
 
@@ -196,7 +196,7 @@ void FramePrefetchService::prefetcher_loop() {
         while (marked_full_cursor < consumed) {
             FrameInfo& info = frames[marked_full_cursor & mask];
             DEBUG("FramePrefetchService {} marking frame {} full (seq {})", unique_name,
-                 info.frame_id, info.start_seq);
+                  info.frame_id, info.start_seq);
             buf->mark_frame_full(unique_name, info.frame_id);
             receipt_bitmap_buf->mark_frame_full(unique_name, info.frame_id);
             marked_full_cursor++;
@@ -223,7 +223,7 @@ void FramePrefetchService::prefetcher_loop() {
             int frame_id = produced % buf->num_frames;
 
             DEBUG("FramePrefetchService {} prefetching frame {} (seq {})", unique_name, frame_id,
-                 seq);
+                  seq);
             if (!buf->is_frame_empty(frame_id)) {
                 WARN("FramePrefetchService {}: wait_for_empty_frame on buf frame {} will block",
                      unique_name, frame_id);
@@ -235,7 +235,8 @@ void FramePrefetchService::prefetcher_loop() {
                 return;
             }
             if (!receipt_bitmap_buf->is_frame_empty(frame_id)) {
-                WARN("FramePrefetchService {}: wait_for_empty_frame on receipt_bitmap_buf frame {} will block",
+                WARN("FramePrefetchService {}: wait_for_empty_frame on receipt_bitmap_buf frame {} "
+                     "will block",
                      unique_name, frame_id);
             }
             uint8_t* receipt_bitmap_ptr =
@@ -265,40 +266,43 @@ void FramePrefetchService::prefetcher_loop() {
                     }
                 }
                 DEBUG("FramePrefetchService {}: Setting expected stream IDs for port {}: {}",
-                     unique_name, port, stream_id_list);
+                      unique_name, port, stream_id_list);
 
                 // Add the list of stream IDs to the metadata
                 auto metadata = get_chord_metadata(buf, frame_id);
                 metadata->set_stream_ids(stream_ids_vec);
 
-                
+
 #ifdef DEBUG
                 // Print a list of the frequency IDs corresponding to the expected stream IDs
                 std::string freq_id_list;
-                for (size_t index = 0; index < CHORDTelescope::instance().num_freq_per_stream(); ++index) {
+                for (size_t index = 0; index < CHORDTelescope::instance().num_freq_per_stream();
+                     ++index) {
                     for (size_t i = 0; i < stream_ids_vec.size(); ++i) {
                         uint32_t stream_id = stream_ids_vec[i];
-                        freq_id_t freq_id = CHORDTelescope::instance().to_freq_id(stream_t{stream_id}, index);
+                        freq_id_t freq_id =
+                            CHORDTelescope::instance().to_freq_id(stream_t{stream_id}, index);
                         freq_id_list += std::to_string(freq_id);
                         freq_id_list += " ";
                     }
                 }
                 DEBUG2("FramePrefetchService {}: Setting expected frequency IDs for port {}: {}",
-                     unique_name, port, freq_id_list);
+                       unique_name, port, freq_id_list);
 #endif
 
                 // Add the list of frequencies to the metadata
                 std::vector<int> coarse_freq;
-                for (size_t index = 0; index < CHORDTelescope::instance().num_freq_per_stream(); ++index) {
+                for (size_t index = 0; index < CHORDTelescope::instance().num_freq_per_stream();
+                     ++index) {
                     for (size_t i = 0; i < stream_ids_vec.size(); ++i) {
                         uint32_t stream_id = stream_ids_vec[i];
-                        freq_id_t freq_id = CHORDTelescope::instance().to_freq_id(stream_t{stream_id}, index);
+                        freq_id_t freq_id =
+                            CHORDTelescope::instance().to_freq_id(stream_t{stream_id}, index);
                         coarse_freq.push_back(static_cast<int>(freq_id));
                     }
                 }
                 metadata->set_coarse_freq(coarse_freq);
-                metadata->set_freq_upchan_factor(std::vector<int>(
-                    coarse_freq.size(), 1));
+                metadata->set_freq_upchan_factor(std::vector<int>(coarse_freq.size(), 1));
                 metadata->set_time_downsampling_fpga(1);
 
                 // Set seq number
@@ -314,7 +318,6 @@ void FramePrefetchService::prefetcher_loop() {
                 metadata->set_array_dimension(2, 16, "Ehi8");
                 metadata->set_array_dimension(3, 16, "Tlo16");
                 metadata->set_array_dimension(4, 8, "Elo8");
-
             }
 
             // The receipt bitmap metadata is always set.  One bitmap per worker.

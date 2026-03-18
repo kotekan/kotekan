@@ -785,7 +785,7 @@ size_t CHORDTelescope::num_science_freqs() const {
 
 freq_id_t CHORDTelescope::to_freq_id(stream_t stream_id, uint32_t index) const {
     // The frequency ID is currently defined by the following formula:
-    // freq_id = min_science_freq_id() + index * 128  + stream_id 
+    // freq_id = min_science_freq_id() + index * 128  + stream_id
     return min_science_freq_id() + index * 128 + stream_id.id;
 }
 

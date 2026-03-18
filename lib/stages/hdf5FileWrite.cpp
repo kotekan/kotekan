@@ -89,10 +89,8 @@ class hdf5FileWrite : public kotekan::Stage {
     const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
     const bool create_single_file =
         config.get_default<bool>(unique_name, "create_single_file", false);
-    const int64_t write_x_frames =
-        config.get_default<int64_t>(unique_name, "write_x_frames", -1);
-    const int64_t per_y_frames =
-        config.get_default<int64_t>(unique_name, "per_y_frames", -1);
+    const int64_t write_x_frames = config.get_default<int64_t>(unique_name, "write_x_frames", -1);
+    const int64_t per_y_frames = config.get_default<int64_t>(unique_name, "per_y_frames", -1);
 
     Buffer* const buffer;
 

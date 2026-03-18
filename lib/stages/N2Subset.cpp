@@ -151,9 +151,8 @@ void N2Subset::main_thread() {
             // Different num_elements: copy per-element fields (flags, gain) manually,
             // extracting only the first _out_num_elements entries.
             // eval, emethod, erms are independent of num_elements and can be copied.
-            output_vis.copy_data(input_vis,
-                                 {N2Field::vis, N2Field::weight, N2Field::flags, N2Field::gain,
-                                  N2Field::evec});
+            output_vis.copy_data(input_vis, {N2Field::vis, N2Field::weight, N2Field::flags,
+                                             N2Field::gain, N2Field::evec});
 
             // Copy first _out_num_elements of flags and gain
             for (uint32_t i = 0; i < _out_num_elements; ++i) {
