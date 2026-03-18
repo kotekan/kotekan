@@ -919,13 +919,13 @@ def merge_eop_tables(
         # will expire at the pivot time at which point we can start moving to the
         # new (correct, hopefully) table.
 
-        eop_pivot = current_table[-1].copy()
+        eop_pivot = current_eop_table[-1].copy()
         eop_pivot["t_inst"] = t_pivot_inst_ns
 
         print(
             "The pivot time is after the current table expires. Keeping only the last entry and cloning it to the pivot time"
         )
-        current_eop_to_keep = [current_table[-1], eop_pivot]
+        current_eop_to_keep = [current_eop_table[-1], eop_pivot]
 
     # Initialize the final EOP update table.
     final_eop_table = [

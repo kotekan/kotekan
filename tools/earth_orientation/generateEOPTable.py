@@ -251,7 +251,7 @@ if __name__ == "__main__":
     )
 
     # Print the table
-    eop_utils.print_eop_table(new_eop_table)
+    eop_utils.print_eop_table(eop_table)
 
     # Write the table to a file if asked.
     if args.out_json_file is not None and len(args.out_json_file) > 0:
