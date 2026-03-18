@@ -410,10 +410,10 @@ run_xpose2048:
 ################################################################################
 # RFI setup
 
-# from 2.56 μs to 1.31072 ms
-rfi_downsampling_factor: 512
-# from 1.31072 ms to 41.94304 ms
-rfi_second_downsampling_factor: 32
+# from 2.56 us to 0.655 ms
+rfi_downsampling_factor: 256
+# from 0.655 ms ms to 41.94304 ms
+rfi_second_downsampling_factor: 64
 
 rfi_sk_rfimask_sigmas: 5.0
 rfi_single_feed_min_good_frac: 0.8
@@ -423,8 +423,8 @@ rfi_mu_max: 20.0
 
 # Buffers
 
-rfi_num_times: 256      # 1.31072 ms cadence
-rfi_num_times_bar: 32   # 41.94304 ms cadence
+rfi_num_times: 64      # 0.655 ms cadence
+rfi_num_times_bar: 1   # 41.94304 ms cadence
 
 host_rfi_S012_ringbuffer:
     kotekan_buffer: ring
