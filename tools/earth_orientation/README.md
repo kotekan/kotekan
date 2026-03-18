@@ -22,7 +22,7 @@ In this directory are two executable scripts: `generateEOPTable.py` and `broadca
 
 In regular operating conditions these scripts (or equivalent functionality) should be run daily.
 
-### Generating a fresh EOP Table (for starting Kotekan cold)
+## Generating a fresh EOP Table (for starting Kotekan cold)
 
 For a cold start of Kotekan, you need an EOP Table in the initial `config.yaml`. To generate this table you need to get the `frame0` time from `fpga_master`, specify the number of days the table should cover, and optionally provide a filename to write the table as json to.
 
@@ -40,7 +40,7 @@ The new table will be constructed entirely using the current IERS data, it will 
 
 The EOP table will also be written to `eop_init.json`. This json is in the format for POSTing to Kotekan.
 
-### Generate a new daily EOP table for a running Kotekan instance
+## Generate a new daily EOP table for a running Kotekan instance
 
 As IERS data is updated, the predictions for the current and near-future EOP improve. Hence we should always use the most up-to-date EOP estimation possible, which means refreshing the table ~daily.
 
@@ -54,7 +54,7 @@ $ python generateEOPTable.py --frame0-src kotekan -kh KOTEKAN_HOST -kp KOTEKAN_P
 
 This will generate a new table in `eop_daily.json` which will be identical to Kotekan's current table for at least 30 minutes (default 1hr) into the future, new values will be appended to the table (to fulfill the `num_intervals_after` value, deafult 3), and past values (beyond the ``num_intervals_before` cutoff) will be dropped.
 
-### Broadcast an EOP table to running Kotekan instances
+## Broadcast an EOP table to running Kotekan instances
 
 Once you have generated an EOP table, you need to get it into Kotekan.  If Kotekan is running, this is done via a REST POST call. `broadcastEOPTable.py` is a script to update several instances of running Kotekan 
 
