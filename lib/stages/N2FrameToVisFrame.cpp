@@ -191,6 +191,11 @@ void n2FrameToVisFrame::main_thread() {
              it_n2 != n2_frame.eval.end(); ++it_n2, ++it_vis)
             *it_vis = *it_n2;
 
+        assert(n2_frame.evec.size() == vis_frame.evec.size());
+        for (auto it_n2 = n2_frame.evec.begin(), it_vis = vis_frame.evec.begin();
+             it_n2 != n2_frame.evec.end(); ++it_n2, ++it_vis)
+            *it_vis = std::conj(*it_n2);
+
         vis_frame.erms = n2_frame.erms;
 
         assert(n2_frame.gain.size() == vis_frame.gain.size());
