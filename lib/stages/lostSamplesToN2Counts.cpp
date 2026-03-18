@@ -171,6 +171,40 @@ void lostSamplesToN2Counts::main_thread() {
             if (lost_samples_frame == nullptr)
                 break;
 
+            // Collect science metadata from lost samples
+            const auto lost_samples_meta =
+                get_chord_metadata(lost_samples_buf, lost_samples_frame_id);
+            if (fouter == 0) {
+                n2k_counts_buf->allocate_new_metadata_object(n2k_counts_buf_frame_id);
+                std::shared_ptr<chordMetadata> meta =
+                    get_chord_metadata(n2k_counts_buf, n2k_counts_buf_frame_id);
+                meta->deepCopy(lost_samples_meta);
+            } else {
+                auto meta = get_chord_metadata(n2k_counts_buf, n2k_counts_buf_frame_id);
+                const auto lost_samples_coarse_freq = lost_samples_meta->get_coarse_freq();
+                auto n2k_counts_coarse_freq = meta->get_coarse_freq();
+                n2k_counts_coarse_freq.insert(n2k_counts_coarse_freq.end(),
+                                              lost_samples_coarse_freq.begin(),
+                                              lost_samples_coarse_freq.end());
+                meta->set_coarse_freq(n2k_counts_coarse_freq);
+
+                const auto lost_samples_freq_upchan_factor =
+                    lost_samples_meta->get_freq_upchan_factor();
+                auto n2k_counts_freq_upchan_factor = meta->get_freq_upchan_factor();
+                n2k_counts_freq_upchan_factor.insert(n2k_counts_freq_upchan_factor.end(),
+                                                     lost_samples_freq_upchan_factor.begin(),
+                                                     lost_samples_freq_upchan_factor.end());
+                meta->set_freq_upchan_factor(n2k_counts_freq_upchan_factor);
+
+                const auto lost_samples_freq_upchan_index =
+                    lost_samples_meta->get_freq_upchan_index();
+                auto n2k_counts_freq_upchan_index = meta->get_freq_upchan_index();
+                n2k_counts_freq_upchan_index.insert(n2k_counts_freq_upchan_index.end(),
+                                                    lost_samples_freq_upchan_index.begin(),
+                                                    lost_samples_freq_upchan_index.end());
+                meta->set_freq_upchan_index(n2k_counts_freq_upchan_index);
+            }
+
             // Indices in counts and rfi_mask corresponding to the first
             // frequency in the current lost_samples buffer
             // Note that the rfi mask index is constructed per-bit (i.e. for
@@ -216,8 +250,7 @@ void lostSamplesToN2Counts::main_thread() {
             lost_samples_frame_id++;
         }
 
-        // Set metadata from the frame description
-        n2k_counts_buf->allocate_new_metadata_object(n2k_counts_buf_frame_id);
+        // Update metadata from the frame description
         std::shared_ptr<chordMetadata> meta =
             get_chord_metadata(n2k_counts_buf, n2k_counts_buf_frame_id);
         meta->set_from_frame_desc(n2k_counts_buf->get_ndarray_frame_desc());
