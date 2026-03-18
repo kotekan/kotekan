@@ -169,6 +169,11 @@ if __name__ == "__main__":
 
     # Send table to Kotekan
     for host, port in hostports:
+        print("Sending EOP update to {}:{}...".format(host, port), end='')
         eop_utils.broadcast_kotekan_eop_table(
             host, port, args.eop_post_endpoint, eop_table, args.timeout, args.protocol
         )
+        print(" OK")
+
+    print("All updates sent")
+
