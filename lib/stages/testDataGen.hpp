@@ -88,6 +88,7 @@ private:
     std::string rest_mode;
     int num_frames;
     bool _reuse_random;
+    bool set_dish_index;
     size_t _num_freq_in_frame;
     stream_t stream_id;
     uint32_t _first_frame_index;

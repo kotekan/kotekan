@@ -113,6 +113,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     num_links = config.get_default<uint32_t>(unique_name, "num_links", 1);
+    set_dish_index = config.get_default<bool>(unique_name, "set_dish_index", false);
     // TODO: rename this parameter to `num_freq_per_stream` in the config
     _num_freq_in_frame = config.get_default<size_t>(unique_name, "num_local_freq", 1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
@@ -230,6 +231,37 @@ void testDataGen::main_thread() {
             chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
         chordmeta->set_strides_simple();
         // frame_desc is set only after "type" has been decoded below
+
+        // Set dish information
+        // (This is the outdated way; the modern way uses the telescope object)
+        if (set_dish_index && !chordmeta->dish_index) {
+            const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
+            const auto& dish_grid = chord_telescope.get_dish_grid();
+            const int num_dish_locations_ew = dish_grid.get_num_dishes_x();
+            const int num_dish_locations_ns = dish_grid.get_num_dishes_y();
+            const int num_dish_locations = num_dish_locations_ew * num_dish_locations_ns;
+            std::vector<int> dish_index(num_dish_locations, -1);
+            int num_dishes = 0;
+            for (int dish_loc_ns = 0; dish_loc_ns < num_dish_locations_ns; ++dish_loc_ns) {
+                for (int dish_loc_ew = 0; dish_loc_ew < num_dish_locations_ew; ++dish_loc_ew) {
+                    const int dish_ind = dish_grid.dish_index(dish_loc_ew, dish_loc_ns);
+                    if (dish_ind >= 0) {
+                        ++num_dishes;
+                        assert(dish_index.at(dish_loc_ew + num_dish_locations_ew * dish_loc_ns)
+                               == -1);
+                        dish_index.at(dish_loc_ew + num_dish_locations_ew * dish_loc_ns) = dish_ind;
+                    }
+                }
+            }
+            chordmeta->ndishes = num_dishes;
+            chordmeta->n_dish_locations_ew = num_dish_locations_ew;
+            chordmeta->n_dish_locations_ns = num_dish_locations_ns;
+            chordmeta->dish_index =
+                new dish_index_t[chordmeta->n_dish_locations_ns * chordmeta->n_dish_locations_ew];
+            std::copy(dish_index.begin(), dish_index.end(), chordmeta->dish_index);
+        }
+
+        // Set frequency channel metadata
 
         assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
         std::vector<int> coarse_freq(_num_freq_in_frame);
