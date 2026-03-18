@@ -211,7 +211,6 @@ def read_kotekan_frame0_ns(host, port, timeout, protocol="http://"):
     """
 
     resp = make_rest_get_request(host, port, "telescope/time0_ns", timeout, protocol)
-    print(resp)
 
     return resp.json()["time0_ns"]
 
