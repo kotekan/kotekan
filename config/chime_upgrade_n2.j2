@@ -128,6 +128,9 @@ lost_samples_buffer_{{ id }}:
 
 # Stages
 
+# set to False on instead read data from disk
+{%- if True %}
+
 # This configuration assumes that the system ports are ordered in as 4x10G
 # links for each QSFP+, and that each QSFP+ port comes from exactly one iceBoard
 # and that each iceBoard is in a _different_ crate pair, but also in the same
@@ -216,6 +219,26 @@ zero_samples:
     lost_samples_buf: lost_samples_buffer_{{ id // 4 }}
     out_buf: host_voltage_buffer_{{ id }}
 {%- endfor %}
+
+{%- else %}
+
+{%- for id in range(16) %}
+dbg_read_voltages_{{ id }}:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_{{ id }}
+    file_name: host_voltage_buffer_{{ id }}
+{%- endfor %}
+
+{%- for id in range(4) %}
+dbg_read_lostsamples_{{ id }}:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: lost_samples_buffer_{{ id }}
+    file_name: lost_samples_buffer_{{ id }}
+{%- endfor %}
+
+{%- endif %}
 
 ################################################################################
 # Baseband capture and dump system
