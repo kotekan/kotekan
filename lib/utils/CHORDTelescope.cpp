@@ -433,7 +433,8 @@ bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint6
         uint64_t rollovers_at_start = (fpga_start_ns - gps0_ns) / dt_rollover_ns;
         uint64_t rollovers_in_time0 = (raw_time0_ns - gps0_ns) / dt_rollover_ns;
 
-        INFO_NON_OO("Correcting GPS time by {} 1024 week rollover periods.", rollovers_at_start - rollovers_in_time0);
+        INFO_NON_OO("Correcting GPS time by {} 1024 week rollover periods.",
+                    rollovers_at_start - rollovers_in_time0);
 
         // add 1 rollover of nanoseconds for each rollover time0 is off fpga_start by.
         week_rollover_offset_ns = dt_rollover_ns * (rollovers_at_start - rollovers_in_time0);

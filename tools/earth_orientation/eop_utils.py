@@ -1066,5 +1066,3 @@ def parse_hostport_list(broadcast_list, default_host, default_port):
         hostports.append((default_host, default_port))
 
     return hostports
-
-
