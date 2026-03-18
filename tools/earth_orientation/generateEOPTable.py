@@ -156,6 +156,10 @@ if __name__ == "__main__":
             fpga_master_host, fpga_master_port, timeout
         )
     elif args.frame0_src == "kotekan":
+        if not is_kotekan_alive(kotekan_host, kotekan_port, timeout):
+            print("ERROR: Kotekan could not be reached on {}:{}. Exiting."
+                  .format(kotekan_host, kotekan_port))
+            sys.exit()
         t0_ns = eop_utils.read_kotekan_frame0_ns(kotekan_host, kotekan_port, timeout)
     elif args.frame0_src == "manual":
         t0_ns = args.frame0_ns
@@ -222,11 +226,18 @@ if __name__ == "__main__":
     # Set the final table, possibly by blending with the current table to ensure
     # continuity of EOP values
     if enforce_continuity:
-        # Get the current table loaded into Kotekan
         merge_cushion_dt = TimeDelta(args.merge_cushion_dt, scale="tai")
+        
+        # Get the current table loaded into Kotekan
+        if not is_kotekan_alive(kotekan_host, kotekan_port, timeout):
+            print("ERROR: Kotekan could not be reached on {}:{}. Exiting."
+                  .format(kotekan_host, kotekan_port))
+            sys.exit()
         current_eop_table = eop_utils.read_kotekan_eop_table(
             kotekan_host, kotekan_port, timeout, kotekan_protocol
         )
+
+        # Merge the tables
         eop_table = eop_utils.merge_eop_tables(
             current_eop_table,
             new_eop_table,

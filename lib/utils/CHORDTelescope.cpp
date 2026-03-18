@@ -314,7 +314,7 @@ GPSTimeParams GPSTimeParams::from_config(const kotekan::Config& config, const st
     gps.gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
     gps.gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
     gps.auto_correct_gps_week_rollover =
-        config.get_default<uint64_t>(path, "auto_correct_gps_week_rollover", false);
+        config.get_default<bool>(path, "auto_correct_gps_week_rollover", false);
 
     if (gps.query_gps)
         set_gps_time_params_from_remote(gps); // sets gps_enabled, time0_ns
@@ -432,6 +432,8 @@ bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint6
         // and the apparent number of rollovers in the sent GPS time0.
         uint64_t rollovers_at_start = (fpga_start_ns - gps0_ns) / dt_rollover_ns;
         uint64_t rollovers_in_time0 = (raw_time0_ns - gps0_ns) / dt_rollover_ns;
+
+        INFO_NON_OO("Correcting GPS time by {} 1024 week rollover periods.", rollovers_at_start - rollovers_in_time0);
 
         // add 1 rollover of nanoseconds for each rollover time0 is off fpga_start by.
         week_rollover_offset_ns = dt_rollover_ns * (rollovers_at_start - rollovers_in_time0);

@@ -14,10 +14,10 @@ if __name__ == "__main__":
     time0_ns = eop_utils.read_fpga_master_frame0_ns("crs-control", 54321, 30)
     print(time0_ns)
 
-    time0_ns = eop_utils.read_kotekan_frame0_ns("localhost", 12048, 30)
+    time0_ns = eop_utils.read_kotekan_frame0_ns("recv1", 12048, 30)
     print(time0_ns)
 
-    eop_table = eop_utils.read_kotekan_eop_table("localhost", 12048, 30)
+    eop_table = eop_utils.read_kotekan_eop_table("recv1", 12048, 30)
     print(eop_table)
 
     ts = [

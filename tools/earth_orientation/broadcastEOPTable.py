@@ -6,75 +6,6 @@ import sys
 import eop_utils
 
 
-def parse_broadcast_list(broadcast_list, default_host, default_port):
-    r"""
-    Parse the broadcast list (list of hosts and ports) into a list of
-    hostport pairs.  
-
-    The broadcast list is a list of hosts (strings) and ports (positive
-    integers). If a port appears after a host, the two form a host-port pair.
-    If a host or port appear alone, the default host or default port is used
-    to make a pair.
-
-    Ex.
-    [ host1 port1 host2 host3 port2 port3 ]
-    becomes
-    [ (host1, port1), (host2, default_port), (host3, port2),
-     (default_host, port3) ]
-
-    Parameters
-    ----------
-    broadcast_list : List of str
-        The list of hosts and ports
-    default_host : str
-        Default host to use
-    default_port : int
-        Default port to use
-    
-    Returns
-    -------
-    hostports : List of (str, int)
-        The list of host-port pairs
-
-    Raises
-    ------
-    ValueError if a negative port is received
-    """
-
-    hostports = []
-
-    current_host = None
-
-    for word in broadcast_list:
-        isPort = False
-        try:
-            port = int(word)
-            isPort = True
-        except ValueError:
-            isPort = False
-
-        if isPort:
-            if port < 0:
-                raise ValueError("Bad port value:", port)
-            host = current_host if current_host is not None else default_host
-            hostports.append((host, port))
-            current_host = None
-        else:
-            if current_host is None:
-                current_host = word
-            else:
-                hostports.append((current_host, default_port))
-                current_host = word
-
-    if current_host is not None:
-        hostports.append((current_host, default_port))
-
-    if len(hostports) == 0:
-        hostports.append((default_host, default_port))
-
-    return hostports
-
-
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
@@ -130,7 +61,7 @@ if __name__ == "__main__":
 
     print(json.dumps(eop_table, indent=4))
 
-    hostports = parse_broadcast_list(args.broadcast_list, args.host, args.port)
+    hostports = eop_utils.parse_hostport_list(args.broadcast_list, args.host, args.port)
 
     print("Checking {:d} Kotekan instances are running.".format(len(hostports)))
 
