@@ -120,9 +120,15 @@ public:
         buf << file_name;
         if (create_single_file) {
             // Do not include the frame counter when all output is written to a single file
-            assert(frame_counter < 0);
+            if (frame_counter >= 0)
+                FATAL_ERROR("Internal error -- cannot handle a non-negative frame_counter when "
+                            "creating a single_file HDF5 file with base name \"{:s}\"",
+                            file_name);
         } else {
-            assert(frame_counter >= 0);
+            if (frame_counter < 0)
+                FATAL_ERROR("Internal error -- cannot handle a negative frame_counter when a "
+                            "regular (non single_file) HDF5 file with base name \"{:s}\"",
+                            file_name);
             buf << "." << std::setw(8) << std::setfill('0') << frame_counter;
         }
         buf << ".h5";
