@@ -40,6 +40,13 @@ bufferQuiet::bufferQuiet(Config& config, const std::string& unique_name,
     _copy_frame = config.get_default<bool>(unique_name, "copy_frame", false);
     _quiet_time = config.get<double>(unique_name, "quiet_time");
     _num_reserve_frames = config.get_default<int>(unique_name, "num_reserve_frames", 0);
+
+    // Frame sizes must match exactly
+    if (in_buf->num_frames < _num_reserve_frames) {
+        throw std::runtime_error(fmt::format(
+            "Cannot reserve more ({:d}) frames than present in input buffer {:s} (:{d}).",
+            _num_reserve_frames, in_buf->buffer_name, in_buf->num_frames));
+    }
 }
 
 void bufferQuiet::main_thread() {
@@ -74,10 +81,10 @@ void bufferQuiet::main_thread() {
         if (reason == 1) { // timeout, release all frames
             frames_to_release = in_frame_hold_ctr;
         } else if (in_frame_hold_ctr + _num_reserve_frames
-                   >= out_buf->num_frames) { // emergency release a frame since buffer is full
+                   >= in_buf->num_frames) { // emergency release a frame since buffer is full
             assert(reason == 0);
             assert(in_frame_hold_ctr + _num_reserve_frames
-                   == out_buf->num_frames); // we count up be ones, we cannot miss equality
+                   == in_buf->num_frames); // we count up be ones, we cannot miss equality
             frames_to_release = 1;
         } else { // got a frame, no timeout, no full buffer. Wait.
             assert(reason == 0);
