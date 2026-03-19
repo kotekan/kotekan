@@ -130,7 +130,7 @@ void bufferQuiet::main_thread() {
 
             DEBUG("Releasing frame... in_frame_id: {:d}, in_frame_hold_ctr: {:d}, "
                   "in_frame_release_id: {:d}",
-                  in_frame_id, in_frame_release_id);
+                  in_frame_id, in_frame_hold_ctr, in_frame_release_id);
 
             out_buf->mark_frame_full(unique_name, out_frame_id);
             out_frame_id++;
