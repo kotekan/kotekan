@@ -90,6 +90,10 @@ void bufferQuiet::main_thread() {
             assert(reason == 0);
             frames_to_release = 0;
         }
+
+        DEBUG("Holding {:d} frames, {:d} frames set to be released", in_frame_hold_ctr,
+              frames_to_release);
+
         while (frames_to_release-- > 0) {
 
             // Get a new output frame
@@ -138,7 +142,6 @@ void bufferQuiet::main_thread() {
             in_frame_hold_ctr--;
         }
 
-        DEBUG("Holding {:d} frames", in_frame_hold_ctr);
         first_time = false;
     }
 }
