@@ -51,11 +51,14 @@ void bufferQuiet::main_thread() {
 
     uint8_t* output_frame = nullptr;
 
+    bool first_time = true;
     while (!stop_thread) {
 
         timespec now;
         clock_gettime(CLOCK_MONOTONIC, &now);
-        const timespec timeout = add_nsec(now, _quiet_time * 1e9);
+        // (effectively) disable timeout for first frame, to work around startup
+        // delays of incoming pipeline
+        const timespec timeout = add_nsec(now, (first_time ? 365 * 24 * 3600 : _quiet_time) * 1e9);
 
         const int reason = in_buf->wait_for_full_frame_timeout(unique_name, in_frame_id, timeout);
         if (reason == -1) // thread exit signal
@@ -129,5 +132,6 @@ void bufferQuiet::main_thread() {
         }
 
         DEBUG("Holding {:d} frames", in_frame_hold_ctr);
+        first_time = false;
     }
 }
