@@ -62,7 +62,7 @@ void bufferQuiet::main_thread() {
     while (!stop_thread) {
 
         timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
+        clock_gettime(CLOCK_REALTIME, &now);
         // (effectively) disable timeout for first frame, to work around startup
         // delays of incoming pipeline
         const timespec timeout = add_nsec(now, (first_time ? 365 * 24 * 3600 : _quiet_time) * 1e9);
