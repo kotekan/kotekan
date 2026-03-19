@@ -61,11 +61,21 @@ void bufferQuiet::main_thread() {
     bool first_time = true;
     while (!stop_thread) {
 
-        timespec now;
-        clock_gettime(CLOCK_REALTIME, &now);
-        // (effectively) disable timeout for first frame, to work around startup
-        // delays of incoming pipeline
-        const timespec timeout = add_nsec(now, (first_time ? 365 * 24 * 3600 : _quiet_time) * 1e9);
+        // system_clock is the time used by wait_for_full_frame_timeout
+        const auto now = std::chrono::time_point_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now());
+        // we (effectively) disable timeout for first frame, to work around
+        // startup delays of incoming pipeline
+        const auto timeout_point_nsecs =
+            now
+            + std::chrono::nanoseconds(time_t((first_time ? 365 * 24 * 3600 : _quiet_time) * 1e9));
+        // conversion to timespec is somewhat complicated
+        const auto timeout_point_secs =
+            std::chrono::time_point_cast<std::chrono::nanoseconds>(timeout_point_nsecs);
+        const auto ns =
+            timeout_point_nsecs
+            - std::chrono::time_point_cast<std::chrono::nanoseconds>(timeout_point_secs);
+        const timespec timeout = {timeout_point_secs.time_since_epoch().count(), ns.count()};
 
         const int reason = in_buf->wait_for_full_frame_timeout(unique_name, in_frame_id, timeout);
         if (reason == -1) // thread exit signal
