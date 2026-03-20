@@ -44,7 +44,9 @@ host_buffer_depth: 12
 # size of the voltage ring-buffer as 4
 gpu_buffer_depth: 4
 num_gpus: 2
-cpu_affinity: [0, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+# 14,15,16 for blaze in EigenN2Iter
+# 17,18,19 for N2Accumulate
+cpu_affinity: [0, 10, 11, 12, 13] #, 14, 15, 16, 17, 18, 19]
 
 # Constants
 sizeof_float: 4
@@ -866,8 +868,8 @@ vis_accumulate:
 
 eigencalc:
     kotekan_stage: EigenN2Iter
-    cpu_affinity: [15, 16] # for blaze
-    num_blaze_workers: 2
+    cpu_affinity: [14, 15, 16] # for blaze
+    num_blaze_workers: 3
     num_ev: num_ev_to_calculate
     in_buf: vis_10s_buffer
     out_buf: eig_10s_buffer
