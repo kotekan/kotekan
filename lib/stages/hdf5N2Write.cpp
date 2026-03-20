@@ -70,17 +70,15 @@ static std::string make_acq_base_dir(const std::string& base_dir) {
 
     auto now = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                  now.time_since_epoch())
-                  .count()
+    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count()
               % 1'000'000'000LL;
 
     std::tm tm_buf{};
     gmtime_r(&time_t_now, &tm_buf);
 
     std::ostringstream oss;
-    oss << dir << "/acq_" << std::put_time(&tm_buf, "%Y%m%d_%H%M%S") << "_"
-        << std::setfill('0') << std::setw(9) << ns;
+    oss << dir << "/acq_" << std::put_time(&tm_buf, "%Y%m%d_%H%M%S") << "_" << std::setfill('0')
+        << std::setw(9) << ns;
     return oss.str();
 }
 
@@ -474,8 +472,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                         }
                         dg_group.createAttribute("selected_update_idx", selected_idx);
 
-                        INFO_NON_OO("Copied digital gains from {} into output (selected_update_idx={}).",
-                                    baseband_gain_file, selected_idx);
+                        INFO_NON_OO(
+                            "Copied digital gains from {} into output (selected_update_idx={}).",
+                            baseband_gain_file, selected_idx);
                     }
                 } catch (const HighFive::Exception& e) {
                     FATAL_ERROR_NON_OO("Failed to copy gains file {} into output: {}",
@@ -814,8 +813,7 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
           }),
     _base_dir(make_acq_base_dir(config.get<std::string>(unique_name, "base_dir"))),
     _baseband_gain_file(config.get_default<std::string>(unique_name, "baseband_gain_file", "")),
-    _baseband_gain_update_idx(
-        config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)),
+    _baseband_gain_update_idx(config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)),
     _num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),
     _compression(config.get_default<std::string>(unique_name, "compression", "none")),
     _compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),

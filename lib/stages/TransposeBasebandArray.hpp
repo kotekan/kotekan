@@ -47,7 +47,8 @@
  * @conf element_short          Int. Size of the short element dimension (default: 8).
  * @conf frame_mode             String. Which frames to process: "all" (default), "even", or "odd".
  *                              Use "even"/"odd" to parallelize two instances on alternate frames.
- * @conf check_for_zero_nibbles Bool. Enable checking for zero nibbles in the input data (default: false).
+ * @conf check_for_zero_nibbles Bool. Enable checking for zero nibbles in the input data (default:
+ * false).
  *
  * @author Kotekan Team
  */

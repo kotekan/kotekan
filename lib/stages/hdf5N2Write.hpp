@@ -85,11 +85,12 @@ public:
     const bool use_bitshuffle;      // whether to use bitshuffle filter
     const double open_wall_s;       // time opened
     const uint64_t abs_file_idx;    // absolute file index (abs_time_idx / num_file_t)
-    const std::string base_dir;          // base output directory (without /.partial)
-    const std::string baseband_gain_file; // Path to gains HDF5 file. If empty, gains are not written.
-    const int baseband_gain_update_idx;  // update_time index (-1 = latest)
-    const std::string partial_filepath;  // working on-disk location
-    const N2Layout n2_layout;            // visibility (N2) layout
+    const std::string base_dir;     // base output directory (without /.partial)
+    const std::string
+        baseband_gain_file;             // Path to gains HDF5 file. If empty, gains are not written.
+    const int baseband_gain_update_idx; // update_time index (-1 = latest)
+    const std::string partial_filepath; // working on-disk location
+    const N2Layout n2_layout;           // visibility (N2) layout
 
     double last_update_wall_s;               // last frame receipt
     std::unique_ptr<HighFive::File> h5_file; // Working on-disk HDF5 file handle
@@ -313,9 +314,9 @@ public:
 
 private:
     // Config settings (initialized from Config in constructor)
-    const std::string _base_dir;              /// Base directory to write files into
-    const std::string _baseband_gain_file;   /// Path to digital gains HDF5 file
-    const int _baseband_gain_update_idx;     /// update_time index (-1 = latest)
+    const std::string _base_dir;           /// Base directory to write files into
+    const std::string _baseband_gain_file; /// Path to digital gains HDF5 file
+    const int _baseband_gain_update_idx;   /// update_time index (-1 = latest)
     const std::uint64_t _num_file_t; /// Number of incoming time frames per file, as indexed by the
                                      /// absolute frame index
     const std::string _compression;
