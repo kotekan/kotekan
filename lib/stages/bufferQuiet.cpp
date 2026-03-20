@@ -101,13 +101,17 @@ void bufferQuiet::main_thread() {
                 std::memcpy(output_frame, in_buf->frames[in_frame_release_id], in_buf->frame_size);
                 // this just copies the shared pointer, and is only valid since
                 // a frame description must never change
-                out_buf->set_frame_desc(in_buf->get_frame_description());
             } else {
                 in_buf->pass_metadata(in_frame_release_id, out_buf, out_frame_id);
                 in_buf->swap_frames(in_frame_release_id, out_buf, out_frame_id);
                 // this just copies the shared pointer, and is only valid since
                 // a frame description must never change
-                out_buf->set_frame_desc(in_buf->get_frame_description());
+            }
+            const auto in_frame_desc = in_buf->get_frame_description();
+            if (in_frame_desc) {
+                out_buf->set_frame_desc(in_frame_desc);
+            } else {
+                assert(!out_buf->get_frame_description());
             }
 
             DEBUG("Releasing frame... in_frame_id: {:d}, in_frame_hold_ctr: {:d}, "
