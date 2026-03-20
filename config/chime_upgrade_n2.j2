@@ -81,6 +81,9 @@ updatable_config:
   enable_failed_out:
     kotekan_update_endpoint: "json"
     enabled: false
+  enable_sk_out:
+    kotekan_update_endpoint: "json"
+    enabled: false
 
 dataset_manager:
   use_dataset_broker: False
@@ -951,6 +954,64 @@ write_failed_vis:
     file_type: raw
     file_length: 256
     in_buf: failed_vis_buffer_post
+
+# enable to dump sk statistics data
+{% if False %}
+host_rfi_SKtilde_buffer:
+    kotekan_buffer: standard
+    num_frames: host_buffer_depth
+    frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [rfi_num_times, num_freq_gpu_buf, 3]
+    metadata_pool: main_pool
+host_rfi_SKtilde_buffer_post:
+    kotekan_buffer: standard
+    num_frames: host_buffer_depth
+    frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [rfi_num_times, num_freq_gpu_buf, 3]
+    metadata_pool: main_pool
+host_rfi_SKtilde_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: gpu_buffer_depth
+    ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
+    metadata_pool: main_pool
+run_recv_rfi_SKtilde:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        buffer_depth: gpu_buffer_depth
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        gpu_id: 0
+        in_buffers:
+            host_rfi_SKtilde_ringbuffer: host_rfi_SKtilde_ringbuffer
+        out_buffers:
+            host_rfi_SKtilde_buffer: host_rfi_SKtilde_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_SKtilde_ringbuffer
+          gpu_mem_input: rfi_SKtilde_buffer
+          output_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
+          ring_buffer_size: gpu_buffer_depth * output_size
+          out_buf: host_rfi_SKtilde_buffer
+switch_sk_out:
+    kotekan_stage: bufferSwitch
+    in_bufs:
+      - enabled: host_rfi_SKtilde_buffer
+    out_buf: host_rfi_SKtilde_buffer_post
+    updatable_config: /updatable_config/enable_sk_out
+dump_rfi_SKtilde:
+   kotekan_stage: hdf5FileWrite
+   base_dir: rfi_sk_dump
+   in_buf: host_rfi_SKtilde_buffer_post
+   file_name: host_rfi_SKtilde_buffer
+   create_single_file: true
+{% endif %}
 
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)
