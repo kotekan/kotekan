@@ -5,6 +5,7 @@
 #include "Telescope.hpp"
 #include "buffer.hpp"          // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
 #include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for get_chord_metadata
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 
 #include <algorithm>   // for copy
@@ -361,8 +362,9 @@ void gpuBeamformSimulate::main_thread() {
             "Simulating GPU hyper fine beam processing for {:s}[{:d}] putting result in {:s}[{:d}]",
             input_buf->buffer_name, input_buf_id, hfb_output_buf->buffer_name, output_buf_id);
 
-        freq_now = tel.to_freq_id(metadata_buf, metadata_buffer_id);
-        freq_MHz = tel.to_freq(freq_now);
+        const auto meta = get_chord_metadata(metadata_buf, metadata_buffer_id);
+        freq_now = meta->get_coarse_freq()[0];
+        freq_MHz = tel.to_freq_MHz(freq_now);
 
         // Work out the EW phase coefficients from freq_MHz
         for (int angle_iter = 0; angle_iter < 4; angle_iter++) {
