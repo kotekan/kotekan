@@ -85,6 +85,7 @@ add_library(
     compressLostSamples.cpp
     lostSamplesToPLMask.cpp
     lostSamplesToN2Counts.cpp
+    rfiBroadcast.cpp
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
