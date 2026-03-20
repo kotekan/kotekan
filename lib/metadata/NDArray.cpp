@@ -107,7 +107,7 @@ bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
         bool is_simple_stride = true;
         auto const& strides = this->get_strides();
         auto const& extents = this->get_extents();
-        for (ssize_t d = 0, simple_stride = 1; d < ssize_t(strides.size()); ++d) {
+        for (ssize_t d = ssize_t(strides.size()) - 1, simple_stride = 1; d >= 0; --d) {
             if (simple_stride != strides[d]) {
                 is_simple_stride = false;
                 break;
@@ -118,7 +118,7 @@ bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
             std::ostringstream buf;
             buf << "NDArray " << this->get_quantity_name()
                 << " does not have simple stride. Strides " << format_vector(strides)
-                << " are no simple for extents " << format_vector(extents)
+                << " are not simple for extents " << format_vector(extents)
                 << " and cannot be compared.";
             // cannot use ERROR since I don't derive from kotekan_loging
             throw std::runtime_error(buf.str());
