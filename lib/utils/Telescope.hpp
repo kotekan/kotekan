@@ -320,11 +320,12 @@ protected:
      *
      * @param   tel_path    Path to the telescope in the Config (e.g. /telescope)
      * @param   log_level   The level to set logging at.
+     * @param   require_eop Whether to require a valid EOP table.
      * @param   eop_updatable_config_path   The value of "eop_updatable_config" in
      *          the telescope Config, pointing to the updatable field which
      *          contains "earth_orientation_parameter_table"
      **/
-    Telescope(const std::string& tel_path, const std::string& log_level,
+    Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
               const std::string& eop_updatable_config_path);
 
     /**
@@ -356,13 +357,19 @@ protected:
      * @param   xp_as   Polar Motion x' coordinate in arcseconds
      * @param   yp_as   Polar Motion y' coordinate in arcseconds
      **/
-    EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
-                              double yp_as) const;
+    static EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
+                                     double yp_as);
 
     /**
      * The telescope's name in the config
      */
     const std::string _unique_name;
+
+    /**
+     * Whether to require an EOP table. If false and no (or an empty) EOP table
+     * is provided, the telescope will return a 0 EOP when queried.
+     */
+    const bool _require_eop;
 
     /**
      * This is the Earth Orientation Parameter (EOP) table used to determine

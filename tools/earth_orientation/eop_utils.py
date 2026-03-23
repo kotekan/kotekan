@@ -965,7 +965,7 @@ def print_eop_table(eop_table):
 
     print("\n#### BEGIN EOP TABLE ####\n")
     # JSON for prettier printing and consistent formatting
-    eop_json = json.dumps({"earth_orientation_paramter_table": eop_table}, indent=4)
+    eop_json = json.dumps({"earth_orientation_parameter_table": eop_table}, indent=4)
     print(eop_json)
     print("####  END  EOP TABLE ####\n")
 
