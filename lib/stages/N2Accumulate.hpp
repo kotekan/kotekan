@@ -176,6 +176,7 @@ private:
     const int64_t _num_elements; ///< Total number of telescope elements (~2 * num dishes)
 
     const int _num_workers; ///< number of OpenMP threads to use to process data
+    const int _output_batch_size; ///< number of OpenMP threads to use to process data
 
     const bool _do_fringestop; ///< Whether to fringestop
     const int _debug_accum_mode;

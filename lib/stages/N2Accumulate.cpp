@@ -25,6 +25,7 @@
 #include <omp.h>
 #include <time.h> // for size_t, timespec
 #include <vector> // for vector
+#include <sched.h>
 
 
 using namespace std::placeholders;
@@ -59,6 +60,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")),
     _num_elements(config.get<int64_t>(unique_name, "num_elements")),
     _num_workers(config.get_default<int>(unique_name, "num_workers", 1)),
+    _output_batch_size(config.get_default<int>(unique_name, "output_batch_size", 1)),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
     _debug_accum_mode(config.get_default<int>(unique_name, "debug_accum_mode", 2)),
     _tel(Telescope::instance()),
@@ -131,6 +133,11 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         if (!(_rfi_downsampling_factor % 8 == 0))
             FATAL_ERROR("rfi_downsampling_factor is not a multiple of 8: {:d}",
                         _rfi_downsampling_factor);
+
+        // We output frames in batches. Make sure a whole batch will fit in the output buffer.
+        if (_output_batch_size > out_buf->num_frames) {
+            FATAL_ERROR("output_batch_size ({:d}) is greater than out_buf's num_frames (aka buffer_depth) ({:d})", _output_batch_size, out_buf->num_frames);
+        }
     }
 
     // Compute derived quantities
@@ -439,6 +446,8 @@ void N2Accumulate::main_thread() {
             assert(_vis.size() == corr_stride_t);
             assert(_weights.size() == corr_stride_t / 2);
 
+            int cpu[_num_freq_per_n2k_frame] = {0};
+
             if (_debug_accum_mode == 0) {
 #pragma omp parallel for simd num_threads(_num_workers)
                 for (uint64_t d = 0; d < corr_stride_t; d++) {
@@ -555,6 +564,7 @@ void N2Accumulate::main_thread() {
 
 #pragma omp parallel for num_threads(_num_workers)
                 for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+                    cpu[f] = sched_getcpu();
                     if (_do_fringestop) {
                         // Physical frequency for this f
                         double freq_MHz = _tel.to_freq_MHz(
@@ -611,6 +621,10 @@ void N2Accumulate::main_thread() {
                         } // jhi
                     } // ihi
                 } // f
+
+                for(int f = 0; f < _num_freq_per_n2k_frame; f++) {
+                    INFO("{:03d} : {:03d}", f, cpu[f]);
+                }
 
                 if (vis_sample_num_abs % 2 == 0) {
                     vis_even_ptr = corr + corr_offset_t;
@@ -928,6 +942,7 @@ void N2Accumulate::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t 
 }
 
 bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id) {
+    [[maybe_unused]] double prof_out_start_time = omp_get_wtime();
     // Different frame for each frequency
     // But, same metadata
     std::shared_ptr<chordMetadata> chord_frame_metadata = get_chord_metadata(in_buf, in_frame_id);
@@ -938,132 +953,209 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
     int64_t stride_block = stride_ilo * _n2k_correlation_blocksize;
     int64_t stride_f = stride_block * _n2k_correlation_num_blocks;
 
-    // Loop over frequency
-    for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+    const int64_t freq_block_size = _output_batch_size;
+    const int64_t num_output_workers = std::min(_num_workers, _output_batch_size);
+    const int64_t num_freq_blocks = (_num_freq_per_n2k_frame + freq_block_size - 1) / freq_block_size;
 
-        if (out_buf->wait_for_empty_frame(unique_name, out_frame_id) == nullptr) {
-            return false;
-        }
+    std::vector<std::shared_ptr<N2Metadata>> metas(freq_block_size);
 
-        out_buf->allocate_new_metadata_object(out_frame_id);
-        std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, out_frame_id);
+    assert(_vis_samples_in_out_frame == _num_n2k_samples_to_accumulate);
 
-        assert(_vis_samples_in_out_frame == _num_n2k_samples_to_accumulate);
+    const int num_places = omp_get_num_places();
+    const int NP = std::max(1, num_places);
+    [[maybe_unused]] double prof_out_setup_time = 0;
+    [[maybe_unused]] double prof_out_work_time = 0;
+    [[maybe_unused]] int prof_out_work_num_thread[_num_freq_per_n2k_frame] = {0};
+    [[maybe_unused]] int prof_out_work_thread_id[_num_freq_per_n2k_frame] = {0};
+    [[maybe_unused]] int prof_out_work_cpu_id[_num_freq_per_n2k_frame] = {0};
+    [[maybe_unused]] int prof_out_work_place_id[_num_freq_per_n2k_frame] = {0};
+    [[maybe_unused]] int prof_out_work_part_size[_num_freq_per_n2k_frame] = {0};
+    [[maybe_unused]] std::vector<std::vector<int>> prof_out_work_part_places(_num_freq_per_n2k_frame, std::vector<int>(NP, 0));
+    [[maybe_unused]] int prof_out_work_bidx[_num_freq_per_n2k_frame] = {0};
+    [[maybe_unused]] int prof_out_work_fidx[_num_freq_per_n2k_frame] = {0};
+    [[maybe_unused]] double prof_out_work_work_start[_num_freq_per_n2k_frame] = {0};
+    [[maybe_unused]] double prof_out_work_meta_time[_num_freq_per_n2k_frame] = {0};
+    [[maybe_unused]] double prof_out_work_alloc_time[_num_freq_per_n2k_frame] = {0};
+    [[maybe_unused]] double prof_out_work_work_time[_num_freq_per_n2k_frame] = {0};
+    [[maybe_unused]] double prof_out_work_fill_time[_num_freq_per_n2k_frame] = {0};
+    [[maybe_unused]] double prof_out_free_time = 0;
 
-        meta->fpga_start_tick = _accum_fpga_start_tick;
-        meta->frame_length_fpga_ticks =
-            _vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation;
+    // Loop over frequency blocks
+    for (int64_t fb = 0; fb < num_freq_blocks; fb++) {
 
-        meta->abs_time_idx = _accum_bin_idx;
-        meta->freq_id = chord_frame_metadata->get_coarse_freq()[f];
-        meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
+        [[maybe_unused]] double prof_out_t0 = omp_get_wtime();
+        // Wait for a block of frames to be available.  Grab them and get them metadata.    
+        for (int64_t f_idx = 0; f_idx < freq_block_size; f_idx++) {
+            int64_t f = f_idx + fb * freq_block_size;
+            if (f < _num_freq_per_n2k_frame) {
+                if (out_buf->wait_for_empty_frame(unique_name, out_frame_id + f_idx) == nullptr) {
+                    return false;
+                }
+                out_buf->allocate_new_metadata_object(out_frame_id + f_idx);
+                metas[f_idx] = get_N2_metadata(out_buf, out_frame_id + f_idx);
+                DEBUG("Creating N2FrameView for freq f[{:d}] = {:d}", f,
+                      chord_frame_metadata->get_coarse_freq()[f]);
+                // out_fv[f_idx] = out_vis;
+                // out_fv[f_idx]{out_buf, out_frame_id + f_idx};
+            } else {
+                metas[f_idx] = nullptr;
+            }
+        } // f_idx
+        [[maybe_unused]] double prof_out_t1 = omp_get_wtime();
 
-        meta->frame_start_time_ns = _tel.to_time_ns(meta->fpga_start_tick);
-        meta->freq_MHz = _tel.to_freq_MHz(meta->freq_id);
+        // Write the accumulated data to the output frames, and set their metadata.
+        // We can do this in parallel!
+#pragma omp parallel for num_threads(num_output_workers)
+        for (int64_t f_idx = 0; f_idx < freq_block_size; f_idx++) {
+            [[maybe_unused]] double prof_out_t10 = omp_get_wtime();
+            int64_t f = f_idx + fb * freq_block_size;
+            if (f >= _num_freq_per_n2k_frame)
+                continue;
+            
+            std::shared_ptr<N2Metadata> meta = metas[f_idx];
 
-        meta->time_center_eop = _tel.get_EOP_at_time(
-            _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
-        meta->bin_eop = _tel.get_EOP_at_time(
-            _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
-        meta->bin_start_ERA_deg = _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick)).ERA_deg;
-        meta->bin_end_ERA_deg = _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick
-                                                                  + meta->frame_length_fpga_ticks))
-                                    .ERA_deg;
-        meta->bin_start_LAST = -1; // TODO: update
-        meta->bin_end_LAST = -1;   // TODO: update
-        meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];
+            meta->fpga_start_tick = _accum_fpga_start_tick;
+            meta->frame_length_fpga_ticks =
+                _vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation;
 
-        if (chord_frame_metadata->has_dataset_id()) {
-            meta->dataset_id = chord_frame_metadata->get_dataset_id();
-        }
+            meta->abs_time_idx = _accum_bin_idx;
+            meta->freq_id = chord_frame_metadata->get_coarse_freq()[f];
+            meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
 
-        DEBUG("Creating N2FrameView for freq f[{:d}] = {:d}", f,
-              chord_frame_metadata->get_coarse_freq()[f]);
-        N2FrameView out_vis(out_buf, out_frame_id);
+            meta->frame_start_time_ns = _tel.to_time_ns(meta->fpga_start_tick);
+            meta->freq_MHz = _tel.to_freq_MHz(meta->freq_id);
 
-        // Sample numbers for normalizing weights
-        int64_t ns = _n_valid_fpga_samples_in_vis[f]; // ns = "number of samples"
-        float ins = (ns != 0) ? (1.0f / ((float)ns)) : 0.0f;
+            meta->time_center_eop = eop_null; // TODO: update
+            meta->bin_eop = _tel.get_EOP_at_time(
+                _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
+            meta->bin_start_ERA_deg = _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick)).ERA_deg;
+            meta->bin_end_ERA_deg = _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick
+                                                                      + meta->frame_length_fpga_ticks))
+                                        .ERA_deg;
+            meta->bin_start_LAST = -1; // TODO: update
+            meta->bin_end_LAST = -1;   // TODO: update
+            meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];
 
-        // Copy data into buffer.
-        // This requires changing from the GPU's blocked format to the triangular format N2Buffer
-        // expects.
+            if (chord_frame_metadata->has_dataset_id()) {
+                meta->dataset_id = chord_frame_metadata->get_dataset_id();
+            }
+            [[maybe_unused]] double prof_out_t11 = omp_get_wtime();
+            N2FrameView out_vis(out_buf, out_frame_id + f_idx);
+            [[maybe_unused]] double prof_out_t12 = omp_get_wtime();
 
-        // iterate over the N2K format (blocked lower triangular)
-        int64_t block_idx = 0;
-#pragma omp parallel for num_threads(_num_workers)
-        for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
-            // Lower triangular blocks
-            for (int64_t jhi = 0; jhi <= ihi; jhi++) {
-                for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
-                    for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
-                        // 2D indices into the N2K matrix.
-                        int64_t i = ilo + _n2k_correlation_blocksize * ihi;
-                        int64_t j = jlo + _n2k_correlation_blocksize * jhi;
+            // Sample numbers for normalizing weights
+            int64_t ns = _n_valid_fpga_samples_in_vis[f]; // ns = "number of samples"
+            float ins = (ns != 0) ? (1.0f / ((float)ns)) : 0.0f;
 
-                        // Only proceed if we're in the *true* lower-triangular section of the
-                        // matrix
-                        if (j > i)
-                            continue;
+            // Copy data into buffer.
+            // This requires changing from the GPU's blocked format to the triangular format N2Buffer
+            // expects.
 
-                        // index into the intermediate N2K-shaped array
-                        int64_t idx =
-                            jlo + ilo * stride_ilo + block_idx * stride_block + f * stride_f;
+            // iterate over the N2K format (blocked lower triangular)
+            int64_t block_idx = 0;
+            for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
+                // Lower triangular blocks
+                for (int64_t jhi = 0; jhi <= ihi; jhi++) {
+                    for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
+                        for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
+                            // 2D indices into the N2K matrix.
+                            int64_t i = ilo + _n2k_correlation_blocksize * ihi;
+                            int64_t j = jlo + _n2k_correlation_blocksize * jhi;
 
-                        // Get the index into the n2 view.  N2 is an *upper* triangular unblocked
-                        // form, so we use the global matrix indices to the lower-triangular N2K
-                        // form, and compute the triangular index with their transpose.
-                        //
-                        //  N2K:                    N2:
-                        //       j                        j
-                        //       0  1  2  3               0  1  2  3
-                        //      -----------              -----------
-                        // i  0| 0                  i  0| 0  1  2  3
-                        //    1| 1  2                  1|    4  5  6
-                        //    2| 3  4  5               2|       7  8
-                        //    3| 6  7  8  9            3|          9
-                        //
-                        // vis_N2(i, j) = vis_n2k(j, i)*
+                            // Only proceed if we're in the *true* lower-triangular section of the
+                            // matrix
+                            if (j > i)
+                                continue;
 
-                        int64_t n2_idx = N2::cmap(j, i, _num_elements);
+                            // index into the intermediate N2K-shaped array
+                            int64_t idx =
+                                jlo + ilo * stride_ilo + block_idx * stride_block + f * stride_f;
 
-                        // Populate the visibility matrix, remember the upper-tri element
-                        // is the conjugate of the lower-tri element.
-                        N2::cfloat v{(float)_vis[2 * idx], (float)_vis[2 * idx + 1]};
-                        out_vis.vis[n2_idx] = ins * std::conj(v);
+                            // Get the index into the n2 view.  N2 is an *upper* triangular unblocked
+                            // form, so we use the global matrix indices to the lower-triangular N2K
+                            // form, and compute the triangular index with their transpose.
+                            //
+                            //  N2K:                    N2:
+                            //       j                        j
+                            //       0  1  2  3               0  1  2  3
+                            //      -----------              -----------
+                            // i  0| 0                  i  0| 0  1  2  3
+                            //    1| 1  2                  1|    4  5  6
+                            //    2| 3  4  5               2|       7  8
+                            //    3| 6  7  8  9            3|          9
+                            //
+                            // vis_N2(i, j) = vis_n2k(j, i)*
 
-                        float bias = std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
+                            int64_t n2_idx = N2::cmap(j, i, _num_elements);
 
-                        /*
-                        DEBUG("{} {} w1: {:.12f} v2: {:.12f} |v|^2: {:.12f}, dN^2: {:.12f} |v|^2
-                        dN^2: {:.12f} diff: {:.12e} ==: {}", i, j, _weights[idx], std::norm(v),
-                        std::norm(v)*ins*ins, _n_valid_sample_diff_sq_sum[f], bias, _weights[idx] -
-                        bias, _weights[idx] == bias);
-                        */
+                            // Populate the visibility matrix, remember the upper-tri element
+                            // is the conjugate of the lower-tri element.
+                            N2::cfloat v{(float)_vis[2 * idx], (float)_vis[2 * idx + 1]};
+                            out_vis.vis[n2_idx] = ins * std::conj(v);
 
-                        if (ns > 0) {
-                            _weights[idx] -= bias;
-                        }
+                            float bias = std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
 
-                        // DEBUG("{} {} w2: {}", i, j, _weights[idx]);
+                            
+                            //DEBUG("{} {} w1: {:.12f} v2: {:.12f} |v|^2: {:.12f}, dN^2: {:.12f} |v|^2
+                            //dN^2: {:.12f} diff: {:.12e} ==: {}", i, j, _weights[idx], std::norm(v),
+                            //std::norm(v)*ins*ins, _n_valid_sample_diff_sq_sum[f], bias, _weights[idx] -
+                            //bias, _weights[idx] == bias);
 
-                        out_vis.weight[n2_idx] = (ns > 0) ? ns * (ns / _weights[idx]) : 0;
-                        // DEBUG("{} {} w3: {}", i, j, out_vis.weight[n2_idx]);
-                    } // jlo
-                } // ilo
+                            if (ns > 0) {
+                                _weights[idx] -= bias;
+                            }
 
-                block_idx++;
-            } // jhi
-        } // ihi
+                            // DEBUG("{} {} w2: {}", i, j, _weights[idx]);
 
-        out_vis.erms = -1;
-        out_vis.radiometer_chi2 = 1.0f;
-        std::fill(out_vis.flags.begin(), out_vis.flags.end(), 0);
-        std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
-        std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(1u));
+                            out_vis.weight[n2_idx] = (ns > 0) ? ns * (ns / _weights[idx]) : 0;
+                            // DEBUG("{} {} w3: {}", i, j, out_vis.weight[n2_idx]);
+                        } // jlo
+                    } // ilo
 
-        out_buf->mark_frame_full(unique_name, out_frame_id++);
-    }
+                    block_idx++;
+                } // jhi
+            } // ihi
+
+            [[maybe_unused]] double prof_out_t13 = omp_get_wtime();
+
+            out_vis.erms = -1;
+            out_vis.radiometer_chi2 = 1.0f;
+            std::fill(out_vis.flags.begin(), out_vis.flags.end(), 0);
+            std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
+            std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(1u));
+            [[maybe_unused]] double prof_out_t14 = omp_get_wtime();
+           
+            prof_out_work_num_thread[f] = omp_get_num_threads();
+            prof_out_work_thread_id[f] = omp_get_thread_num();
+            prof_out_work_cpu_id[f] = sched_getcpu();
+            prof_out_work_place_id[f] = omp_get_place_num();
+            prof_out_work_part_size[f] = omp_get_partition_num_places();
+            omp_get_partition_place_nums(prof_out_work_part_places[f].data());
+            prof_out_work_bidx[f] = fb;
+            prof_out_work_fidx[f] = f_idx;
+            prof_out_work_meta_time[f] = prof_out_t11 - prof_out_t10;
+            prof_out_work_alloc_time[f] = prof_out_t12 - prof_out_t11;
+            prof_out_work_work_time[f] = prof_out_t13 - prof_out_t12;
+            prof_out_work_fill_time[f] = prof_out_t14 - prof_out_t13;
+            prof_out_work_work_start[f] = prof_out_t12;
+        } // f_idx
+        
+        [[maybe_unused]] double prof_out_t2 = omp_get_wtime();
+
+        // All the frames in the block are full. Release them and increment out_frame_id;
+        for (int64_t f_idx = 0; f_idx < freq_block_size; f_idx++) {
+            int64_t f = f_idx + fb * freq_block_size;
+            if (f < _num_freq_per_n2k_frame)
+                out_buf->mark_frame_full(unique_name, out_frame_id++);
+        } // f_idx
+        
+        [[maybe_unused]] double prof_out_t3 = omp_get_wtime();
+
+        prof_out_setup_time += prof_out_t1 - prof_out_t0;
+        prof_out_work_time += prof_out_t2 - prof_out_t1;
+        prof_out_free_time += prof_out_t3 - prof_out_t2;
+
+    } // fb
 
     DEBUG("Wrapping up accumulation buffer output copy.");
 
@@ -1072,6 +1164,53 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
     std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);
     std::fill(_n_valid_sample_diff_sq_sum.begin(), _n_valid_sample_diff_sq_sum.end(), 0);
     std::fill(_n_rfi_samples_in_vis.begin(), _n_rfi_samples_in_vis.end(), 0);
+        
+    [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
+
+    INFO("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  {:f} ms", 
+            _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
+            1000 * prof_out_setup_time, 1000 * prof_out_work_time, 
+            1000 * prof_out_free_time);
+
+    INFO("f    | thread    cpu | place | idx  |   meta        alloc       start      work        fill");
+    for(int f = 0; f < _num_freq_per_n2k_frame; f++) {
+        INFO("{:03d} | {:03d} of {:03d} {:03d} | {:02d} | {:03d} {:03d} | {:<12f} ms   {:<12f} ms   {:<12f} ms   {:<12f} ms   {:<12f} ms",
+            f, prof_out_work_thread_id[f], prof_out_work_num_thread[f], prof_out_work_cpu_id[f],
+            prof_out_work_place_id[f],
+            prof_out_work_bidx[f], prof_out_work_fidx[f],
+            1000*prof_out_work_meta_time[f], 1000*prof_out_work_alloc_time[f],
+            1000 * prof_out_work_work_start[f], 1000*prof_out_work_work_time[f],
+            1000*prof_out_work_fill_time[f]);
+        INFO("     Partition Size: {0:d}  Places: {1:}", prof_out_work_part_size[f],
+                fmt::join(prof_out_work_part_places[f], ", "));
+    }
+    INFO("num_threads: {:d}", _num_workers);
+    INFO("batch_size: {:d}", _output_batch_size);
+    INFO("num_output_threads: {:d}", num_output_workers);
+
+    omp_proc_bind_t bind_policy = omp_get_proc_bind();
+    std::string bind_policy_name = "";
+    switch(bind_policy) {
+        case omp_proc_bind_false: bind_policy_name = "false"; break; 
+        case omp_proc_bind_true: bind_policy_name = "true"; break; 
+        case omp_proc_bind_master: bind_policy_name = "master"; break; 
+        case omp_proc_bind_close: bind_policy_name = "close"; break; 
+        case omp_proc_bind_spread: bind_policy_name = "spread"; break; 
+        default:    bind_policy_name = "unknowkn";
+    }
+    INFO("omp_bind_proc: {} {}", static_cast<int>(bind_policy), bind_policy_name);
+    INFO("omp_num_places: {:d}", num_places);
+    for(int p = 0; p < num_places; p++) {
+
+        int num_proc = omp_get_place_num_procs(p);
+        
+        std::vector<int> procs(num_proc);
+
+        omp_get_place_proc_ids(p, procs.data());
+
+        INFO("Place {0:02d} - Procs: {1}", p, fmt::join(procs, ", "));
+    }
+
 
     return true;
 }

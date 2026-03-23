@@ -118,6 +118,10 @@ def make_rest_post_request(
 
 
 def is_kotekan_alive(host, port, timeout, protocol="http://"):
+        print(
+            "fpga_master {:d} {:s}:{:d}".format(t0_ns, args.fpga_host, args.fpga_port),
+            eop_utils.calc_astropy_time_from_unix_ns(t0_ns).isot,
+        )
     r"""
     Check if kotekan is running at the given host:port by querying the
     "endpoints" GET endpoint. Does not raise an exception if the query fails.
