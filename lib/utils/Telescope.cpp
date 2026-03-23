@@ -15,12 +15,18 @@ using kotekan::restServer;
 
 #define GIGA 1'000'000'000L
 
-Telescope::Telescope(const std::string& tel_path, const std::string& log_level,
-                     const std::string& eop_updatable_config_path) : _unique_name(tel_path) {
+Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
+                     const std::string& eop_updatable_config_path) :
+    _unique_name(tel_path), _require_eop(require_eop) {
     set_log_level(log_level);
     set_log_prefix("/telescope");
 
     DEBUG("Building Telescope");
+
+    // Initializing EOP table with dummy values
+    _eop_table = {build_EOP_from_update(0, 0.0, 0.0, 0.0),
+                  build_EOP_from_update(std::numeric_limits<int64_t>::max(), 0.0, 0.0, 0.0)};
+
 
     // Set up callbacks for updating EOP and sending time0_ns
     using namespace std::placeholders;
@@ -100,6 +106,13 @@ bool Telescope::receive_eop_updates(nlohmann::json& json) {
     try {
         // Fill a temporary table with the updated values.
         std::vector<EOP> tmp_eop_table;
+
+        if (!json.contains("earth_orientation_parameter_table") && !_require_eop) {
+            // If EOP is not required, say we succeeded and do nothing.
+            INFO("EOP update did not contain `earth_orientation_parameter_table`, igoring. EOP "
+                 "table is unchanged.");
+            return true;
+        }
         for (const auto& elem : json.at("earth_orientation_parameter_table")) {
             INFO("Telescope EOP update: {:s}", elem.dump());
             int64_t t_ns = elem.at("time_inst_ns").get<int64_t>();
@@ -110,10 +123,23 @@ bool Telescope::receive_eop_updates(nlohmann::json& json) {
         }
 
         if (tmp_eop_table.empty()) {
-            ERROR("Telescope {}: earth_orientation_parameter_table update contained no entries.",
-                  _unique_name);
-            return false;
+            // If table was empty, we're done here.
+
+            if (_require_eop) {
+                // If table was required. Report an error.
+                ERROR(
+                    "Telescope {}: earth_orientation_parameter_table update contained no entries.",
+                    _unique_name);
+                return false;
+            }
+
+            // If table is not required, signal success and ignore the update.
+            INFO("Ignoring `earth_orientation_parameter_table` update, it contained no entries. "
+                 "EOP Table is unchanged.");
+            return true;
         }
+
+        // There's at least one entry in the table, sort it and replace the current table.
 
         // Sort chronologically
         std::sort(tmp_eop_table.begin(), tmp_eop_table.end(), EOP_comp_time);
@@ -150,7 +176,7 @@ void Telescope::send_time0_ns(connectionInstance& conn) {
 }
 
 EOP Telescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst, double xp_as,
-                                     double yp_as) const {
+                                     double yp_as) {
 
     struct timespec ts_inst = nanosec_i64_to_timespec(time_ns);
     int64_t ut1 = get_UT1_from_time(ts_inst, delta_ut1_inst);
@@ -205,21 +231,26 @@ EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
             eop.delta_UT1_inst = eop_b->delta_UT1_inst;
             eop.xp_as = eop_b->xp_as;
             eop.yp_as = eop_b->yp_as;
-            WARN(
-                "Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. Earliest "
-                "time = {:d} s + {:d} ns.",
-                t_target / GIGA, t_target % GIGA, eop_b->t_inst / GIGA, eop_b->t_inst % GIGA);
+            if (t_target < eop_b->t_inst) {
+                WARN("Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. "
+                     "Earliest "
+                     "time = {:d} s + {:d} ns.",
+                     t_target / GIGA, t_target % GIGA, eop_b->t_inst / GIGA, eop_b->t_inst % GIGA);
+            }
         } else if (eop_b == _eop_table.end()) {
             // Time is later than covered by the table, use the last value.
             auto eop_last = eop_b - 1;
             eop.delta_UT1_inst = eop_last->delta_UT1_inst;
             eop.xp_as = eop_last->xp_as;
             eop.yp_as = eop_last->yp_as;
-            WARN("Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest "
-                 "UT1 = "
-                 "{:d} s + {:d} ns.",
-                 t_target / GIGA, t_target % GIGA, eop_last->t_inst / GIGA,
-                 eop_last->t_inst % GIGA);
+            if (t_target > eop_last->t_inst) {
+                WARN(
+                    "Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest "
+                    "UT1 = "
+                    "{:d} s + {:d} ns.",
+                    t_target / GIGA, t_target % GIGA, eop_last->t_inst / GIGA,
+                    eop_last->t_inst % GIGA);
+            }
         } else {
             // Interpolate!
             auto eop_a = eop_b - 1;
