@@ -208,6 +208,9 @@ bool pirateFrbSend::send_frame(uint8_t* frame, int frame_id, std::shared_ptr<str
             channel_low = channel_high;
         }
 
+        INFO("XEngineMetadata validate:");
+        meta.validate();
+        
         std::string config = "yaml";
 
         struct pirateNetworkHeader header;
