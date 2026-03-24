@@ -40,6 +40,8 @@ samples_per_data_set: 16384
 sample_period_ns: 2560
 network_frame_arrival_period: 16384 * sample_period_ns / 1e9
 baseband_buffer_depth: 3*272 # 3*272 = ~33 seconds after accounting for active frames
+# sk_buffer_dpeth is set in an jinja2 if below
+# sk_buffer_depth: 10000
 # see where / if / how to use host_buffer_depth and gpu_buffer_depth
 # must be at least size of gpu_buffer_depth
 host_buffer_depth: 12
@@ -106,8 +108,7 @@ dataset_manager:
 
 main_pool:
   kotekan_metadata_pool: chordMetadata
-# 30k is for sk dump
-  num_metadata_objects: 30 * host_buffer_depth + 5 * baseband_buffer_depth + 30000
+  num_metadata_objects: 30 * host_buffer_depth + 5 * baseband_buffer_depth + sk_buffer_depth
 
 # Baseband metadata pool
 baseband_pool:
@@ -1102,6 +1103,7 @@ write_failed_vis:
 
 # enable to dump sk statistics data
 {% if True %}
+sk_buffer_depth: 10000
 host_rfi_SKtilde_buffer:
     kotekan_buffer: standard
     num_frames: host_buffer_depth
@@ -1113,7 +1115,7 @@ host_rfi_SKtilde_buffer:
 host_rfi_SKtilde_buffer_post:
     kotekan_buffer: standard
     # 42ms per network frame, want to capture ~20min of transit -> 29k frames
-    num_frames: 30000
+    num_frames: sk_buffer_depth
     frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
     type: float32
     dimnames: ["Trfi", "F", "S"]
@@ -1173,6 +1175,8 @@ dump_rfi_SKtilde:
    in_buf: host_rfi_SKtilde_buffer_io
    file_name: host_rfi_SKtilde_buffer
    create_single_file: true
+{% else %}
+sk_buffer_depth: 0
 {% endif %}
 
 # Information for input reordering, packed as
