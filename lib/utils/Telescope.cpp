@@ -15,6 +15,21 @@ using kotekan::restServer;
 
 #define GIGA 1'000'000'000L
 
+void to_json(nlohmann::json& j, const BareEOP& eop) {
+    j = {};
+    j.emplace("time_inst_ns", eop.time_inst_ns);
+    j.emplace("delta_UT1_inst", eop.delta_UT1_inst);
+    j.emplace("x_pm", eop.x_pm);
+    j.emplace("y_pm", eop.y_pm);
+}
+
+void from_json(const nlohmann::json& j, BareEOP& eop) {
+    eop.time_inst_ns = j.at("time_inst_ns");
+    eop.delta_UT1_inst = j.at("delta_UT1_inst");
+    eop.x_pm = j.at("x_pm");
+    eop.y_pm = j.at("y_pm");
+}
+
 Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
                      const std::string& eop_updatable_config_path) :
     _unique_name(tel_path), _require_eop(require_eop) {
@@ -105,7 +120,6 @@ timespec Telescope::seq_length() const {
 bool Telescope::receive_eop_updates(nlohmann::json& json) {
     try {
         // Fill a temporary table with the updated values.
-        std::vector<EOP> tmp_eop_table;
 
         if (!json.contains("earth_orientation_parameter_table") && !_require_eop) {
             // If EOP is not required, say we succeeded and do nothing.
@@ -113,6 +127,12 @@ bool Telescope::receive_eop_updates(nlohmann::json& json) {
                  "table is unchanged.");
             return true;
         }
+        std::vector<BareEOP> bare_eop_table = json.at("earth_orientation_parameter_table");
+        
+        std::vector<EOP> tmp_eop_table(bare_eop_table.size());
+        for (size_t i = 0; i < tmp_eop_table.size(); i++)
+            tmp_eop_table.at(i) = bare_eop_table.at(i).to_EOP();
+        /*
         for (const auto& elem : json.at("earth_orientation_parameter_table")) {
             INFO("Telescope EOP update: {:s}", elem.dump());
             int64_t t_ns = elem.at("time_inst_ns").get<int64_t>();
@@ -121,6 +141,7 @@ bool Telescope::receive_eop_updates(nlohmann::json& json) {
             double y_pm = elem.at("y_pm").get<double>();
             tmp_eop_table.push_back(build_EOP_from_update(t_ns, dut1, x_pm, y_pm));
         }
+        */
 
         if (tmp_eop_table.empty()) {
             // If table was empty, we're done here.
