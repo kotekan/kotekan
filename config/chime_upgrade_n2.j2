@@ -106,7 +106,8 @@ dataset_manager:
 
 main_pool:
   kotekan_metadata_pool: chordMetadata
-  num_metadata_objects: 30 * host_buffer_depth + 5 * baseband_buffer_depth
+# 30k is for sk dump
+  num_metadata_objects: 30 * host_buffer_depth + 5 * baseband_buffer_depth + 30000
 
 # Baseband metadata pool
 baseband_pool:
@@ -1100,7 +1101,7 @@ write_failed_vis:
     in_buf: failed_vis_buffer_post
 
 # enable to dump sk statistics data
-{% if False %}
+{% if True %}
 host_rfi_SKtilde_buffer:
     kotekan_buffer: standard
     num_frames: host_buffer_depth
@@ -1110,6 +1111,15 @@ host_rfi_SKtilde_buffer:
     shape: [rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
 host_rfi_SKtilde_buffer_post:
+    kotekan_buffer: standard
+    # 42ms per network frame, want to capture ~20min of transit -> 29k frames
+    num_frames: 30000
+    frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [rfi_num_times, num_freq_gpu_buf, 3]
+    metadata_pool: main_pool
+host_rfi_SKtilde_buffer_io:
     kotekan_buffer: standard
     num_frames: host_buffer_depth
     frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
@@ -1149,10 +1159,18 @@ switch_sk_out:
       - enabled: host_rfi_SKtilde_buffer
     out_buf: host_rfi_SKtilde_buffer_post
     updatable_config: /updatable_config/enable_sk_out
+delay_sk_out:
+    kotekan_stage: bufferQuiet
+    in_buf: host_rfi_SKtilde_buffer_post
+    out_buf: host_rfi_SKtilde_buffer_io
+    quiet_time: 5.0
+    num_reserve_frames: 32
+    info_level: debug
 dump_rfi_SKtilde:
    kotekan_stage: hdf5FileWrite
+   log_level: warn
    base_dir: rfi_sk_dump
-   in_buf: host_rfi_SKtilde_buffer_post
+   in_buf: host_rfi_SKtilde_buffer_io
    file_name: host_rfi_SKtilde_buffer
    create_single_file: true
 {% endif %}

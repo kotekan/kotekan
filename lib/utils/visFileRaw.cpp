@@ -122,7 +122,8 @@ visFileRaw::visFileRaw(const std::string& name, const kotekan::logLevel log_leve
     // Note not all versions of linux support this feature, and they don't
     // include the macro FALLOC_FL_KEEP_SIZE in that case
 #ifdef FALLOC_FL_KEEP_SIZE
-    fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, frame_size * nfreq * max_time);
+    //fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, frame_size * nfreq * max_time);
+    (void)max_time; // Suppress warning
 #else
     (void)max_time; // Suppress warning
     WARN("fallocate not supported on this system!");
