@@ -96,7 +96,7 @@ void N2TimeDownsample::main_thread() {
 
     uint64_t era_bin_idx_startup = (uint64_t)(eop_startup.ERA_deg / era_bin_width);
     int64_t num_rotations_startup;
-    get_ERA_from_UT1(eop_startup.t_ut1, &num_rotations_startup);
+    get_ERA_from_UT1(eop_startup.t_ut1_ns, &num_rotations_startup);
 
     uint64_t prev_abs_time_idx = 0;
 
@@ -132,13 +132,13 @@ void N2TimeDownsample::main_thread() {
             double era_deg_target = 0.5 * (era_deg_lo + era_deg_hi);
 
             // Initialize num_rotations from first frame.
-            get_ERA_from_UT1(frame.bin_eop.t_ut1, &num_rotations);
+            get_ERA_from_UT1(frame.bin_eop.t_ut1_ns, &num_rotations);
 
             // Get UT1 time at target ERA
-            int64_t t_ut1 = get_UT1_from_ERA(num_rotations, era_deg_target);
+            int64_t t_ut1_ns = get_UT1_from_ERA(num_rotations, era_deg_target);
 
             // Set EOP at target ERA
-            eop_target = tel.get_EOP_at_UT1(t_ut1);
+            eop_target = tel.get_EOP_at_UT1(t_ut1_ns);
 
             // Check ERA at the beginning of the frame. If it's earlier than
             // the bin edge, we'll fill the bin and can start integrating
@@ -167,8 +167,9 @@ void N2TimeDownsample::main_thread() {
             wait_for_alignment = false;
 
 
-        DEBUG("T:   {:d}s + {:d}ns", frame.bin_eop.t_inst / GIGA, frame.bin_eop.t_inst % GIGA);
-        DEBUG("UT1: {:d}s + {:d}ns", frame.bin_eop.t_ut1 / GIGA, frame.bin_eop.t_ut1 % GIGA);
+        DEBUG("T:   {:d}s + {:d}ns", frame.bin_eop.t_inst_ns / GIGA,
+              frame.bin_eop.t_inst_ns % GIGA);
+        DEBUG("UT1: {:d}s + {:d}ns", frame.bin_eop.t_ut1_ns / GIGA, frame.bin_eop.t_ut1_ns % GIGA);
         DEBUG("ERA: {:f}; ERA_target: {:f}; ERA_bin_lo: {:f}; ERA_bin_hi: {:f}",
               frame.bin_eop.ERA_deg, eop_target.ERA_deg, era_deg_lo, era_deg_hi);
 
@@ -191,13 +192,13 @@ void N2TimeDownsample::main_thread() {
             double era_deg_target = 0.5 * (era_deg_lo + era_deg_hi);
 
             // Get the current num_rotations from frame.
-            get_ERA_from_UT1(frame.bin_eop.t_ut1, &num_rotations);
+            get_ERA_from_UT1(frame.bin_eop.t_ut1_ns, &num_rotations);
 
             // Get UT1 time at target ERA
-            int64_t t_ut1 = get_UT1_from_ERA(num_rotations, era_deg_target);
+            int64_t t_ut1_ns = get_UT1_from_ERA(num_rotations, era_deg_target);
 
             // Set EOP at target ERA / UT1
-            eop_target = tel.get_EOP_at_UT1(t_ut1);
+            eop_target = tel.get_EOP_at_UT1(t_ut1_ns);
 
             // Wait for an empty frame
             if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
@@ -390,10 +391,10 @@ void N2TimeDownsample::main_thread() {
             }
 
             DEBUG("Output frame - num_elements: {:d}", output_frame.num_elements);
-            DEBUG("Output T:   {:d}s + {:d}ns", output_frame.bin_eop.t_inst / GIGA,
-                  output_frame.bin_eop.t_inst % GIGA);
-            DEBUG("Output UT1: {:d}s + {:d}ns", output_frame.bin_eop.t_ut1 / GIGA,
-                  output_frame.bin_eop.t_ut1 % GIGA);
+            DEBUG("Output T:   {:d}s + {:d}ns", output_frame.bin_eop.t_inst_ns / GIGA,
+                  output_frame.bin_eop.t_inst_ns % GIGA);
+            DEBUG("Output UT1: {:d}s + {:d}ns", output_frame.bin_eop.t_ut1_ns / GIGA,
+                  output_frame.bin_eop.t_ut1_ns % GIGA);
             DEBUG("Output ERA: {:f}", output_frame.bin_eop.ERA_deg);
 
             char* addr0 = (char*)&(output_frame.vis[0]);

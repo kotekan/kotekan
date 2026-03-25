@@ -619,7 +619,7 @@ def build_EOP_table(times, time0_ns, iers):
 
         # Instrument time is the UNIX timestamp PLUS the TAI time elapsed
         # since start up.
-        t_inst = time0_ns + dt_ns
+        t_inst_ns = time0_ns + dt_ns
 
         # Get the UTC -> UT1 conversion offset at t. This value is
         # discontinuous over a leap second.
@@ -630,7 +630,7 @@ def build_EOP_table(times, time0_ns, iers):
 
         # The Instrument -> UT1 conversion is UT1-UTC PLUS any elapsed leap
         # seconds since t0 (startup). This ensures
-        # UT1 = t_inst + delta_UT1_inst is a continuous function over a leap
+        # UT1 = t_inst_ns + delta_UT1_inst is a continuous function over a leap
         # second.
         delta_ut1_inst = delta_ut1_utc.to_value("second") - (dtai - dtai0)
 
@@ -642,7 +642,7 @@ def build_EOP_table(times, time0_ns, iers):
 
         # Build the EOP entry! Remove numpy-ness.
         eop = dict(
-            t_inst_ns=t_inst,
+            t_inst_ns=t_inst_ns,
             delta_UT1_inst=delta_ut1_inst.item(),
             xp_as=x.to_value("arcsecond").item(),
             yp_as=y.to_value("arcsecond").item(),
@@ -774,7 +774,7 @@ def make_bare_EOP_from_full_EOP(eop):
     Parameters
     ----------
     eop : EOP full entry dict
-        A full Kotekan EOP table entry, containing the fields: t_inst, t_ut1,
+        A full Kotekan EOP table entry, containing the fields: t_inst_ns, t_ut1_ns,
         delta_UT1_inst, ERA_deg, xp_as, yp_as.
 
     Returns
@@ -786,7 +786,7 @@ def make_bare_EOP_from_full_EOP(eop):
     """
 
     return dict(
-        t_inst_ns=eop["t_inst"],
+        t_inst_ns=eop["t_inst_ns"],
         delta_UT1_inst=eop["delta_UT1_inst"],
         xp_as=eop["xp_as"],
         yp_as=eop["yp_as"],
@@ -809,7 +809,7 @@ def merge_eop_tables(
     Parameters
     ----------
     current_eop_table : list of eop entry dicts
-        the current table in kotekan (fields: t_inst, t_ut1, delta_ut1_inst, era_deg,
+        the current table in kotekan (fields: t_inst_ns, t_ut1_ns, delta_ut1_inst, era_deg,
         xp_as, yp_as)
     new_eop_table : list of BareEOP update entry dicts
         the proposed new eop table, may conflict with current table. (fields: 
@@ -850,7 +850,7 @@ def merge_eop_tables(
 
     # Check input tables are sorted.
     for i in range(len(current_eop_table) - 1):
-        if current_eop_table[i]["t_inst"] >= current_eop_table[i + 1]["t_inst"]:
+        if current_eop_table[i]["t_inst_ns"] >= current_eop_table[i + 1]["t_inst_ns"]:
             raise RuntimeError(
                 "current_eop_table is not sorted. Can only merge sorted tables"
             )
@@ -862,7 +862,7 @@ def merge_eop_tables(
 
     # Extract array of times for easier searching.  If we're here, both arrays have
     # strictly increasing instrument times
-    current_times = np.array([eop["t_inst"] for eop in current_eop_table])
+    current_times = np.array([eop["t_inst_ns"] for eop in current_eop_table])
     new_times = np.array([eop["t_inst_ns"] for eop in new_eop_table])
 
     # For current_times, the pivot_idx will be the index of the first element strictly
@@ -920,7 +920,7 @@ def merge_eop_tables(
         # new (correct, hopefully) table.
 
         eop_pivot = current_eop_table[-1].copy()
-        eop_pivot["t_inst"] = t_pivot_inst_ns
+        eop_pivot["t_inst_ns"] = t_pivot_inst_ns
 
         print(
             "The pivot time is after the current table expires. Keeping only the last entry and cloning it to the pivot time"

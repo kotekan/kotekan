@@ -197,7 +197,7 @@ EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
     EOP eop;
 
     int64_t t_target = timespec_to_nanosec_i64(ts_target);
-    eop.t_inst = t_target;
+    eop.t_inst_ns = t_target;
 
     {
         std::shared_lock lock(_eop_lock);
@@ -220,11 +220,12 @@ EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
             eop.delta_UT1_inst = eop_b->delta_UT1_inst;
             eop.xp_as = eop_b->xp_as;
             eop.yp_as = eop_b->yp_as;
-            if (t_target < eop_b->t_inst) {
+            if (t_target < eop_b->t_inst_ns) {
                 WARN("Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. "
                      "Earliest "
                      "time = {:d} s + {:d} ns.",
-                     t_target / GIGA, t_target % GIGA, eop_b->t_inst / GIGA, eop_b->t_inst % GIGA);
+                     t_target / GIGA, t_target % GIGA, eop_b->t_inst_ns / GIGA,
+                     eop_b->t_inst_ns % GIGA);
             }
         } else if (eop_b == _eop_table.end()) {
             // Time is later than covered by the table, use the last value.
@@ -232,21 +233,21 @@ EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
             eop.delta_UT1_inst = eop_last->delta_UT1_inst;
             eop.xp_as = eop_last->xp_as;
             eop.yp_as = eop_last->yp_as;
-            if (t_target > eop_last->t_inst) {
+            if (t_target > eop_last->t_inst_ns) {
                 WARN(
                     "Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest "
                     "UT1 = "
                     "{:d} s + {:d} ns.",
-                    t_target / GIGA, t_target % GIGA, eop_last->t_inst / GIGA,
-                    eop_last->t_inst % GIGA);
+                    t_target / GIGA, t_target % GIGA, eop_last->t_inst_ns / GIGA,
+                    eop_last->t_inst_ns % GIGA);
             }
         } else {
             // Interpolate!
             auto eop_a = eop_b - 1;
             // t - ta in ns. Should be > 0
-            int64_t diff_ns_a = t_target - eop_a->t_inst;
+            int64_t diff_ns_a = t_target - eop_a->t_inst_ns;
             // t - tb in ns. Should be < 0
-            int64_t diff_ns_b = t_target - eop_b->t_inst;
+            int64_t diff_ns_b = t_target - eop_b->t_inst_ns;
             // tb - ta in ns.
             int64_t diff_ns = diff_ns_a - diff_ns_b;
 
@@ -265,24 +266,24 @@ EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
     int64_t ut1 = get_UT1_from_time(ts_target, eop.delta_UT1_inst);
     double era = get_ERA_from_UT1(ut1, nullptr);
 
-    eop.t_ut1 = ut1;
+    eop.t_ut1_ns = ut1;
     eop.ERA_deg = era;
 
     return eop;
 }
 
-EOP Telescope::get_EOP_at_UT1(int64_t t_ut1) const {
+EOP Telescope::get_EOP_at_UT1(int64_t t_ut1_ns) const {
     // Interpolate on the EOP table to find EOP for the given UT1 time.
 
     EOP eop;
-    eop.t_ut1 = t_ut1;
+    eop.t_ut1_ns = t_ut1_ns;
 
     {
         std::shared_lock lock(_eop_lock);
 
         if (_eop_table.empty()) {
             WARN("EOP table is empty, cannot interpolate EOP at UT1 time {:d} s + {:d} ns.",
-                 t_ut1 / GIGA, t_ut1 % GIGA);
+                 t_ut1_ns / GIGA, t_ut1_ns % GIGA);
             return eop_null;
         }
 
@@ -303,7 +304,7 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1) const {
             WARN("Requesting EOP earlier than in table. Requested UT1 = {:d} s + {:d} ns. Earliest "
                  "UT1 "
                  "= {:d} s + {:d} ns.",
-                 t_ut1 / GIGA, t_ut1 % GIGA, eop_b->t_ut1 / GIGA, eop_b->t_ut1 % GIGA);
+                 t_ut1_ns / GIGA, t_ut1_ns % GIGA, eop_b->t_ut1_ns / GIGA, eop_b->t_ut1_ns % GIGA);
         } else if (eop_b == _eop_table.end()) {
             // Time is later than covered by the table, use the last value.
             auto eop_last = eop_b - 1;
@@ -313,15 +314,16 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1) const {
             WARN("Requesting EOP later than in table. Requested UT1 = {:d} s + {:d} ns. Latest UT1 "
                  "= "
                  "{:d} s + {:d} ns.",
-                 t_ut1 / GIGA, t_ut1 % GIGA, eop_last->t_ut1 / GIGA, eop_last->t_ut1 % GIGA);
+                 t_ut1_ns / GIGA, t_ut1_ns % GIGA, eop_last->t_ut1_ns / GIGA,
+                 eop_last->t_ut1_ns % GIGA);
         } else {
             // Interpolate! Target time = t, in table interval [ta, tb]
             auto eop_a = eop_b - 1;
 
             // t - ta in ns. Should be > 0
-            int64_t diff_ns_a = t_ut1 - eop_a->t_ut1;
+            int64_t diff_ns_a = t_ut1_ns - eop_a->t_ut1_ns;
             // t - tb in ns. Should be < 0
-            int64_t diff_ns_b = t_ut1 - eop_b->t_ut1;
+            int64_t diff_ns_b = t_ut1_ns - eop_b->t_ut1_ns;
 
             // tb - ta in ns.
             int64_t diff_ns = diff_ns_a - diff_ns_b;
@@ -339,11 +341,9 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1) const {
     }
 
     // Now that we have a delta_UT1, can get t_inst and the ERA
-    timespec ts_inst = get_time_from_UT1(t_ut1, eop.delta_UT1_inst);
-    double era = get_ERA_from_UT1(t_ut1, nullptr);
+    eop.t_inst_ns = get_time_ns_from_UT1(t_ut1_ns, eop.delta_UT1_inst);
+    eop.ERA_deg = get_ERA_from_UT1(t_ut1_ns, nullptr);
 
-    eop.t_inst = timespec_to_nanosec_i64(ts_inst);
-    eop.ERA_deg = era;
 
     return eop;
 }

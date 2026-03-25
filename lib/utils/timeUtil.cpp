@@ -86,7 +86,7 @@ int64_t get_UT1_from_time(const timespec& t, double delta_UT1_inst) {
     return ut1_ns;
 }
 
-timespec get_time_from_UT1(int64_t t_ut1, double delta_UT1_inst) {
+timespec get_time_from_UT1(int64_t t_ut1_ns, double delta_UT1_inst) {
 
     int64_t t0_ut1_s_jd = 2'451'545L * 86400L;
 
@@ -104,12 +104,22 @@ timespec get_time_from_UT1(int64_t t_ut1, double delta_UT1_inst) {
 
     // Convert UT1 to SI seconds (subtract dUT1), and re-base to J2000
     // (by subtracting J2000 in jy)
-    int64_t t_J2000_ns = t_ut1 - dUT1_ns - J2000_ns_jd + GIGA * (t0_ut1_s_jd - J2000_s_jd);
+    int64_t t_J2000_ns = t_ut1_ns - dUT1_ns - J2000_ns_jd + GIGA * (t0_ut1_s_jd - J2000_s_jd);
 
     // Now re-base to the unix epoch for instrument time.
     int64_t t_ns = t_J2000_ns + J2000_ns_unix + GIGA * J2000_s_unix;
 
     return nanosec_i64_to_timespec(t_ns);
+}
+
+int64_t get_UT1_from_time_ns(int64_t t_ns, double delta_UT1_inst) {
+    timespec ts = nanosec_i64_to_timespec(t_ns);
+    return get_UT1_from_time(ts, delta_UT1_inst);
+}
+
+int64_t get_time_ns_from_UT1(int64_t t_ut1_ns, double delta_UT1_inst) {
+    timespec ts = get_time_from_UT1(t_ut1_ns, delta_UT1_inst);
+    return timespec_to_nanosec_i64(ts);
 }
 
 double get_ERA_from_UT1(int64_t ut1, int64_t* n_rot) {
@@ -200,8 +210,8 @@ double get_ERA_from_time(const timespec& time, double dUT) {
 void to_json(nlohmann::json& j, const EOP& m) {
     assert(j.empty());
 
-    j.emplace("t_inst", m.t_inst);                 // Instrument time, nanoseconds, UNIX epoch.
-    j.emplace("t_ut1", m.t_ut1);                   // UT1 time, nanoseconds, J2000(UT1) epoch.
+    j.emplace("t_inst_ns", m.t_inst_ns);           // Instrument time, nanoseconds, UNIX epoch.
+    j.emplace("t_ut1_ns", m.t_ut1_ns);             // UT1 time, nanoseconds, J2000(UT1) epoch.
     j.emplace("delta_UT1_inst", m.delta_UT1_inst); // Diff between UT1 and Instrument time, seconds
     j.emplace("ERA_deg", m.ERA_deg);               // Earth Rotation Angle, degrees
     j.emplace("xp_as", m.xp_as);                   // Polar Motion x', in arcseconds.
@@ -209,8 +219,8 @@ void to_json(nlohmann::json& j, const EOP& m) {
 }
 
 void from_json(const nlohmann::json& j, EOP& m) {
-    m.t_inst = j.at("t_inst");                 // Instrument time, nanoseconds, UNIX epoch.
-    m.t_ut1 = j.at("t_ut1");                   // UT1 time, nanoseconds, J2000(UT1) epoch.
+    m.t_inst_ns = j.at("t_inst_ns");           // Instrument time, nanoseconds, UNIX epoch.
+    m.t_ut1_ns = j.at("t_ut1_ns");             // UT1 time, nanoseconds, J2000(UT1) epoch.
     m.delta_UT1_inst = j.at("delta_UT1_inst"); // Diff between UT1 and Instrument time, seconds
     m.ERA_deg = j.at("ERA_deg");               // Earth Rotation Angle, degrees
     m.xp_as = j.at("xp_as");                   // Polar Motion x', in arcseconds.
@@ -218,7 +228,7 @@ void from_json(const nlohmann::json& j, EOP& m) {
 }
 
 std::ostream& operator<<(std::ostream& os, const EOP& eop) {
-    os << "EOP{t_inst: " << eop.t_inst << ", t_ut1: " << eop.t_ut1
+    os << "EOP{t_inst_ns: " << eop.t_inst_ns << ", t_ut1_ns: " << eop.t_ut1_ns
        << ", delta_UT1_inst: " << eop.delta_UT1_inst << ", ERA_deg: " << eop.ERA_deg
        << ", xp_as: " << eop.xp_as << ", yp_as: " << eop.yp_as << "}";
 

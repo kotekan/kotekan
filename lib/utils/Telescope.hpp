@@ -60,8 +60,8 @@ struct stream_t {
  * @endpoint    /eop_table  GET     Returns a JSON object with a single field "eop_table" which
  *                                  contains a list of EOP objects. Each EOP object contains 6
  *                                  fields:
- *                                  - t_inst            int64   Instrument time in nanoseconds.
- *                                  - t_ut1             int64   UT1 time in nanoseconds since
+ *                                  - t_inst_ns            int64   Instrument time in nanoseconds.
+ *                                  - t_ut1_ns             int64   UT1 time in nanoseconds since
  *                                                              2451545.0 JD(UT1).
  *                                  - delta_UT1_inst    double  Difference in seconds between
  *                                                              UT1 and Instrument time.

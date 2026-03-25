@@ -343,7 +343,7 @@ def test_EOP(accumulate_data):
         wA = (eopB["t_inst_ns"] - t_inst_ns) / (eopB["t_inst_ns"] - eopA["t_inst_ns"])
         wB = 1.0 - wA
 
-        assert frame.metadata.bin_eop.t_inst == t_inst_ns
+        assert frame.metadata.bin_eop.t_inst_ns == t_inst_ns
         assert np.isclose(
             frame.metadata.bin_eop.delta_UT1_inst,
             wA * eopA["delta_UT1_inst"] + wB * eopB["delta_UT1_inst"],

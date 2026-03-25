@@ -80,8 +80,8 @@ std::vector<EOP> make_full_eop_table(const std::vector<int64_t>& t, const std::v
 
     for (int i = 0; i < N; i++) {
         int64_t ut1 = get_UT1_from_time(nanosec_i64_to_timespec(t[i]), dut1[i]);
-        eop[i] = {.t_inst = t[i],
-                  .t_ut1 = ut1,
+        eop[i] = {.t_inst_ns = t[i],
+                  .t_ut1_ns = ut1,
                   .delta_UT1_inst = dut1[i],
                   .ERA_deg = get_ERA_from_UT1(ut1, nullptr),
                   .xp_as = xpm[i],
@@ -165,9 +165,9 @@ BOOST_AUTO_TEST_CASE(_BareEOP_to_EOP) {
                  .xp_as = -1.6e-8,
                  .yp_as = 3.21986e3};
 
-    int64_t ut1 = get_UT1_from_time(nanosec_i64_to_timespec(beop.t_inst_ns), beop.delta_UT1_inst);
-    EOP eop = {.t_inst = beop.t_inst_ns,
-               .t_ut1 = ut1,
+    int64_t ut1 = get_UT1_from_time_ns(beop.t_inst_ns, beop.delta_UT1_inst);
+    EOP eop = {.t_inst_ns = beop.t_inst_ns,
+               .t_ut1_ns = ut1,
                .delta_UT1_inst = beop.delta_UT1_inst,
                .ERA_deg = get_ERA_from_UT1(ut1, nullptr),
                .xp_as = beop.xp_as,

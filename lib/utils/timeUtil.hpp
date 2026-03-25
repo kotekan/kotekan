@@ -72,6 +72,22 @@ int64_t get_UT1_from_time(const timespec& t, double delta_UT1_inst);
 timespec get_time_from_UT1(int64_t t_ut1, double delta_UT1_inst);
 
 /**
+ * @brief   Compute UT1 time (J2000(UT1) epoch, nanoseconds) from instrument time.
+ * @param   t_ns The instrument time to convert in nanoseconds
+ * @param   delta_UT1_inst Value of UT1-INST at t, seconds
+ * @return  UT1 time (int64_t nanoseconds since J2000(UT1))
+ */
+int64_t get_UT1_from_time_ns(int64_t t_ns, double delta_UT1_inst);
+
+/**
+ * @brief   Compute instrument time from UT1 time (J2000(UT1) epoch, nanoseconds).
+ * @param   t_ut1 The instrument time to convert, const reference timespec
+ * @param   delta_UT1_inst Value of UT1-INST at ut1, seconds
+ * @return  Instrument time in nanoseconds
+ */
+int64_t get_time_ns_from_UT1(int64_t t_ut1, double delta_UT1_inst);
+
+/**
  * @brief   Compute Earth Rotation Angle (ERA) from UT1
  * @param   ut1  The UT1 time to convert, nanoseconds since J2000(UT1)
  * @param   num_rot int64_t pointer, optional location to store number of rotations since UT1
@@ -101,30 +117,34 @@ double get_ERA_from_time(const timespec& t_inst, double delta_UT1_inst);
 /**
  * @brief   Simple struct for containing Earth Orientation Parameter (EOP) data
  *
- * @param   t_inst          int64_t Instrument time, nanoseconds, UNIX epoch.
- * @param   t_ut1           int64_t UT1 time, nanoseconds, J2000(UT1) epoch.
+ * @param   t_inst_ns       int64_t Instrument time, nanoseconds, UNIX epoch.
+ * @param   t_ut1_ns        int64_t UT1 time, nanoseconds, J2000(UT1) epoch.
  * @param   delta_UT1_inst  double  Difference between UT1 and Instrument time, seconds.
  * @param   ERA_deg         double  Earth Rotation Angle, degrees.
  * @param   xp_as           double  Polar Motion x', arcseconds.
  * @param   yp_as           double  Polar Motion y', arcseconds.
  */
 struct EOP {
-    int64_t t_inst;        // Instrument time, nanoseconds, UNIX epoch.
-    int64_t t_ut1;         // UT1 time, nanoseconds, J2000(UT1) epoch.
+    int64_t t_inst_ns;     // Instrument time, nanoseconds, UNIX epoch.
+    int64_t t_ut1_ns;      // UT1 time, nanoseconds, J2000(UT1) epoch.
     double delta_UT1_inst; // Diff between UT1 and Instrument time, seconds
     double ERA_deg;        // Earth Rotation Angle, degrees
     double xp_as;          // Polar Motion x', in arcseconds.
     double yp_as;          // Polar Motion y', in arcseconds.
 };
 
-static constexpr EOP eop_null = {
-    .t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0.0, .ERA_deg = 0.0, .xp_as = 0.0, .yp_as = 0.0};
+static constexpr EOP eop_null = {.t_inst_ns = 0,
+                                 .t_ut1_ns = 0,
+                                 .delta_UT1_inst = 0.0,
+                                 .ERA_deg = 0.0,
+                                 .xp_as = 0.0,
+                                 .yp_as = 0.0};
 
 void to_json(nlohmann::json& j, const EOP& m);
 void from_json(const nlohmann::json& j, EOP& m);
 
 inline bool operator==(const EOP& lhs, const EOP& rhs) {
-    return (lhs.t_inst == rhs.t_inst && lhs.t_ut1 == rhs.t_ut1
+    return (lhs.t_inst_ns == rhs.t_inst_ns && lhs.t_ut1_ns == rhs.t_ut1_ns
             && lhs.delta_UT1_inst == rhs.delta_UT1_inst && lhs.ERA_deg == rhs.ERA_deg
             && lhs.xp_as == rhs.xp_as && lhs.yp_as == rhs.yp_as);
 }
@@ -138,7 +158,7 @@ std::ostream& operator<<(std::ostream& os, const EOP& eop);
  * @params  eop2    Second EOP to compare.
  **/
 inline bool EOP_comp_time(const EOP& eop1, const EOP& eop2) {
-    return eop1.t_inst < eop2.t_inst;
+    return eop1.t_inst_ns < eop2.t_inst_ns;
 }
 
 /**
@@ -150,7 +170,7 @@ inline bool EOP_comp_time(const EOP& eop1, const EOP& eop2) {
  * @params  eop2    Second EOP to compare.
  **/
 inline bool EOP_comp_ut1(const EOP& eop1, const EOP& eop2) {
-    return eop1.t_ut1 < eop2.t_ut1;
+    return eop1.t_ut1_ns < eop2.t_ut1_ns;
 }
 
 /**
@@ -178,10 +198,10 @@ struct BareEOP {
 
     /// Produce an EOP from this BareEOP, computing the redundant fields in the full EOP.
     inline EOP to_EOP() const {
-        int64_t ut1 = get_UT1_from_time(nanosec_i64_to_timespec(t_inst_ns), delta_UT1_inst);
+        int64_t ut1 = get_UT1_from_time_ns(t_inst_ns, delta_UT1_inst);
         double era = get_ERA_from_UT1(ut1, nullptr);
-        return {.t_inst = t_inst_ns,
-                .t_ut1 = ut1,
+        return {.t_inst_ns = t_inst_ns,
+                .t_ut1_ns = ut1,
                 .delta_UT1_inst = delta_UT1_inst,
                 .ERA_deg = era,
                 .xp_as = xp_as,

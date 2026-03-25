@@ -428,8 +428,8 @@ def test_time(n2_data):
 
 def test_eop(n2_data):
 
-    eop_t_inst = np.array([v.metadata.bin_eop.t_inst for v in n2_data])
-    eop_t_ut1 = np.array([v.metadata.bin_eop.t_ut1 for v in n2_data])
+    eop_t_inst_ns = np.array([v.metadata.bin_eop.t_inst_ns for v in n2_data])
+    eop_t_ut1_ns = np.array([v.metadata.bin_eop.t_ut1_ns for v in n2_data])
     eop_dut1 = np.array([v.metadata.bin_eop.delta_UT1_inst for v in n2_data])
     eop_xp_as = np.array([v.metadata.bin_eop.xp_as for v in n2_data])
     eop_yp_as = np.array([v.metadata.bin_eop.yp_as for v in n2_data])
@@ -454,8 +454,8 @@ def test_eop(n2_data):
             f.write("     XPM_TEST:    {:.17f}\n".format(xp_as))
             f.write("     YPM_FRAME:   {:.17f}\n".format(eop_yp_as[i]))
             f.write("     YPM_TEST:    {:.17f}\n".format(yp_as))
-            f.write("     T_DIFF_NS:   {:d}\n".format(eop_t_inst[i] - t_inst_bin[i]))
-            f.write("     UT1_DIFF_NS: {:d}\n".format(eop_t_ut1[i] - ut1_bin[i]))
+            f.write("     T_DIFF_NS:   {:d}\n".format(eop_t_inst_ns[i] - t_inst_bin[i]))
+            f.write("     UT1_DIFF_NS: {:d}\n".format(eop_t_ut1_ns[i] - ut1_bin[i]))
     """
 
     # check EOP
@@ -464,15 +464,15 @@ def test_eop(n2_data):
     assert np.all(np.isclose(eop_yp_as, y_pm, 1.0e-15, 0.0))
 
     # check times
-    assert np.all(np.fabs(eop_t_inst - t_inst_bin) <= eop_t_ns_tol)
-    assert np.all(np.fabs(eop_t_ut1 - ut1_bin) <= eop_ut1_ns_tol)
+    assert np.all(np.fabs(eop_t_inst_ns - t_inst_bin) <= eop_t_ns_tol)
+    assert np.all(np.fabs(eop_t_ut1_ns - ut1_bin) <= eop_ut1_ns_tol)
 
     # check ERA
     assert np.all(np.fabs(eop_era - era_bin) <= era_deg_tol)
 
     # check nanoseconds
-    # assert np.all(np.fabs(eop_t_inst[:, 1] - t_inst_bin[:, 1]) <= eop_t_ns_tol)
-    # assert np.all(np.fabs(eop_t_ut1[:, 1] - ut1_bin[:, 1]) <= eop_ut1_ns_tol)
+    # assert np.all(np.fabs(eop_t_inst_ns[:, 1] - t_inst_bin[:, 1]) <= eop_t_ns_tol)
+    # assert np.all(np.fabs(eop_t_ut1_ns[:, 1] - ut1_bin[:, 1]) <= eop_ut1_ns_tol)
 
 
 def test_contents(n2_data):
