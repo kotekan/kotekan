@@ -299,22 +299,21 @@ BOOST_AUTO_TEST_CASE(_bare_eop_from_json) {
 
 BOOST_AUTO_TEST_CASE(_bare_eop_to_eop) {
 
-    int N = 5;
-    double x[N] = {0.0, 0.1, -0.3, 5e-8, 15};
-    double y[N] = {0.0, -8, 0.7, 32, 8.1e-3};
+    std::vector<double> x{0.0, 0.1, -0.3, 5e-8, 15};
+    std::vector<double> y{0.0, -8, 0.7, 32, 8.1e-3};
 
     for (size_t i = 0; i < TimeData::size; i++) {
         BareEOP beop = {.t_inst_ns = TimeData::t_unix_ns[i],
                         .delta_UT1_inst = TimeData::dUT1[i],
-                        .xp_as = x[i % N],
-                        .yp_as = y[i % N]};
+                        .xp_as = x[i % x.size()],
+                        .yp_as = y[i % y.size()]};
         int64_t ut1 = get_UT1_from_time_ns(beop.t_inst_ns, beop.delta_UT1_inst);
         EOP eop = {.t_inst_ns = TimeData::t_unix_ns[i],
                    .t_ut1_ns = ut1,
                    .delta_UT1_inst = TimeData::dUT1[i],
                    .ERA_deg = get_ERA_from_UT1(ut1, nullptr),
-                   .xp_as = x[i % N],
-                   .yp_as = y[i % N]};
+                   .xp_as = x[i % x.size()],
+                   .yp_as = y[i % y.size()]};
 
         BOOST_CHECK_EQUAL(beop.to_EOP(), eop);
     }
@@ -322,21 +321,20 @@ BOOST_AUTO_TEST_CASE(_bare_eop_to_eop) {
 
 BOOST_AUTO_TEST_CASE(_bare_eop_equal) {
 
-    int N = 5;
-    double x[N] = {0.0, 0.1, -0.3, 5e-8, 15};
-    double y[N] = {0.0, -8, 0.7, 32, 8.1e-3};
+    std::vector<double> x{0.0, 0.1, -0.3, 5e-8, 15};
+    std::vector<double> y{0.0, -8, 0.7, 32, 8.1e-3};
 
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < N; j++) {
+    for (size_t i = 0; i < TimeData::size; i++) {
+        for (size_t j = 0; j < TimeData::size; j++) {
 
             BareEOP beop1 = {.t_inst_ns = TimeData::t_unix_ns[i],
                              .delta_UT1_inst = TimeData::dUT1[i],
-                             .xp_as = x[i % N],
-                             .yp_as = y[i % N]};
+                             .xp_as = x[i % x.size()],
+                             .yp_as = y[i % y.size()]};
             BareEOP beop2 = {.t_inst_ns = TimeData::t_unix_ns[j],
                              .delta_UT1_inst = TimeData::dUT1[j],
-                             .xp_as = x[j % N],
-                             .yp_as = y[j % N]};
+                             .xp_as = x[j % x.size()],
+                             .yp_as = y[j % y.size()]};
 
             if (i == j)
                 BOOST_CHECK_EQUAL(beop1, beop2);
@@ -348,25 +346,24 @@ BOOST_AUTO_TEST_CASE(_bare_eop_equal) {
 
 BOOST_AUTO_TEST_CASE(_eop_comp_time) {
 
-    int N = 5;
-    double x[N] = {0.0, 0.1, -0.3, 5e-8, 15};
-    double y[N] = {0.0, -8, 0.7, 32, 8.1e-3};
+    std::vector<double> x{0.0, 0.1, -0.3, 5e-8, 15};
+    std::vector<double> y{0.0, -8, 0.7, 32, 8.1e-3};
 
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < N; j++) {
+    for (size_t i = 0; i < TimeData::size; i++) {
+        for (size_t j = 0; j < TimeData::size; j++) {
 
             EOP eop1 = {.t_inst_ns = TimeData::t_unix_ns[i],
                         .t_ut1_ns = TimeData::t_ut1[i],
                         .delta_UT1_inst = TimeData::dUT1[i],
                         .ERA_deg = TimeData::era[i],
-                        .xp_as = x[i % N],
-                        .yp_as = y[i % N]};
+                        .xp_as = x[i % x.size()],
+                        .yp_as = y[i % y.size()]};
             EOP eop2 = {.t_inst_ns = TimeData::t_unix_ns[j],
                         .t_ut1_ns = TimeData::t_ut1[j],
                         .delta_UT1_inst = TimeData::dUT1[j],
                         .ERA_deg = TimeData::era[j],
-                        .xp_as = x[j % N],
-                        .yp_as = y[j % N]};
+                        .xp_as = x[j % x.size()],
+                        .yp_as = y[j % y.size()]};
 
             if (eop1.t_inst_ns < eop2.t_inst_ns)
                 BOOST_CHECK(EOP_comp_time(eop1, eop2));
@@ -378,25 +375,24 @@ BOOST_AUTO_TEST_CASE(_eop_comp_time) {
 
 BOOST_AUTO_TEST_CASE(_eop_comp_ut1) {
 
-    int N = 5;
-    double x[N] = {0.0, 0.1, -0.3, 5e-8, 15};
-    double y[N] = {0.0, -8, 0.7, 32, 8.1e-3};
+    std::vector<double> x{0.0, 0.1, -0.3, 5e-8, 15};
+    std::vector<double> y{0.0, -8, 0.7, 32, 8.1e-3};
 
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < N; j++) {
+    for (size_t i = 0; i < TimeData::size; i++) {
+        for (size_t j = 0; j < TimeData::size; j++) {
 
             EOP eop1 = {.t_inst_ns = TimeData::t_unix_ns[i],
                         .t_ut1_ns = TimeData::t_ut1[i],
                         .delta_UT1_inst = TimeData::dUT1[i],
                         .ERA_deg = TimeData::era[i],
-                        .xp_as = x[i % N],
-                        .yp_as = y[i % N]};
+                        .xp_as = x[i % x.size()],
+                        .yp_as = y[i % y.size()]};
             EOP eop2 = {.t_inst_ns = TimeData::t_unix_ns[j],
                         .t_ut1_ns = TimeData::t_ut1[j],
                         .delta_UT1_inst = TimeData::dUT1[j],
                         .ERA_deg = TimeData::era[j],
-                        .xp_as = x[j % N],
-                        .yp_as = y[j % N]};
+                        .xp_as = x[j % x.size()],
+                        .yp_as = y[j % y.size()]};
 
             if (eop1.t_ut1_ns < eop2.t_ut1_ns)
                 BOOST_CHECK(EOP_comp_ut1(eop1, eop2));
