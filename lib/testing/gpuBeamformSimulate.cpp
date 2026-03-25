@@ -55,7 +55,6 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& uniq
     _northmost_beam = config.get<float>(unique_name, "northmost_beam");
     Freq_ref = (light * (128) / (sin(_northmost_beam * PI / 180.) * feed_sep * 256)) / 1.e6;
     _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
-    _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
     _num_frb_total_beams = config.get<int32_t>(unique_name, "num_frb_total_beams");
     _ew_spacing_c = (float*)malloc(4 * sizeof(float));
     for (int i = 0; i < 4; i++) {
