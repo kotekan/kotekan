@@ -140,18 +140,22 @@ static constexpr EOP eop_null = {.t_inst_ns = 0,
                                  .xp_as = 0.0,
                                  .yp_as = 0.0};
 
+/// JSON serialization functions
 void to_json(nlohmann::json& j, const EOP& m);
 void from_json(const nlohmann::json& j, EOP& m);
 
+/// Simple equality comparison
 inline bool operator==(const EOP& lhs, const EOP& rhs) {
     return (lhs.t_inst_ns == rhs.t_inst_ns && lhs.t_ut1_ns == rhs.t_ut1_ns
             && lhs.delta_UT1_inst == rhs.delta_UT1_inst && lhs.ERA_deg == rhs.ERA_deg
             && lhs.xp_as == rhs.xp_as && lhs.yp_as == rhs.yp_as);
 }
 
+/// Simple string printing.
 std::ostream& operator<<(std::ostream& os, const EOP& eop);
+
 /**
- * @brief   Comparison function for searching/sorting the EOP table. Compares
+ * @brief   Comparison function for searching/sorting an EOP table. Compares
  *          EOP based on t_inst, orders chronologically.
  *
  * @params  eop1    First EOP to compare.
@@ -162,7 +166,7 @@ inline bool EOP_comp_time(const EOP& eop1, const EOP& eop2) {
 }
 
 /**
- * @brief   Comparison function for searching/sorting the EOP table. Compares
+ * @brief   Comparison function for searching/sorting an EOP table. Compares
  *          EOP based on t_ut1, orders by increasing rotation. Will produce the
  *          same order as t_inst, unless something is apocalyptically wrong.
  *
@@ -182,19 +186,6 @@ struct BareEOP {
     double delta_UT1_inst; /// UT1 - INST at this moment.
     double xp_as;          /// x polar motion parameter at this moment, arcseconds.
     double yp_as;          /// y polar motion parameter at this moment, arcseconds.
-
-    /*
-    /// Constuct a null BareEOP.
-    inline BareEOP() : t_inst_ns(0), delta_UT1_inst(0.0), xp_as(0.0), yp_as(0.0) {}
-
-    /// Construct a BareEOP with given parameters.
-    inline BareEOP(int64_t t_inst, double dut1, double xp, double yp) : t_inst_ns(t_inst),
-    delta_UT1_inst(dut1), xp_as(xp), yp_as(yp) {}
-
-    /// Construct a BareEOP from given EOP.
-    inline BareEOP(const EOP& eop) : t_inst_ns(eop.t_inst), delta_UT1_inst(eop.delta_UT1_inst),
-        xp_as(eop.xp_as), yp_as(eop.xp_as) {}
-    */
 
     /// Produce an EOP from this BareEOP, computing the redundant fields in the full EOP.
     inline EOP to_EOP() const {
@@ -218,8 +209,11 @@ inline bool operator==(const BareEOP& lhs, const BareEOP& rhs) {
             && lhs.xp_as == rhs.xp_as && lhs.yp_as == rhs.yp_as);
 }
 
+/// Simple printing to string
 std::ostream& operator<<(std::ostream& os, const BareEOP& eop);
 
+
+/// JSON serialization
 void to_json(nlohmann::json& j, const BareEOP& eop);
 void from_json(const nlohmann::json& j, BareEOP& eop);
 

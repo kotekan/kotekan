@@ -3,6 +3,7 @@
 #include "timeUtil.hpp"
 
 #include "fmt.hpp"
+#include "json.hpp"
 
 #include <boost/test/included/unit_test.hpp>
 #include <filesystem>
@@ -14,6 +15,8 @@
 
 #define ERA_TOL 2e-12 // <~ 0.5 nanoseconds of rotation
 #define NS_TOL 0
+
+using json = nlohmann::json;
 
 void check_timespec_equal(const timespec& t1, const timespec& t2) {
     BOOST_CHECK_EQUAL(t1.tv_sec, t2.tv_sec);
@@ -229,4 +232,60 @@ BOOST_AUTO_TEST_CASE(_era_to_ut1_to_era) {
         check_era_close(era, TimeData::era[i]);
         BOOST_CHECK_EQUAL(nrot, TimeData::nrot[i]);
     }
+}
+
+/*
+ * EOP TESTS
+ */
+
+BOOST_AUTO_TEST_CASE(_eop_to_json) {
+    EOP eop = {.t_inst_ns = 12345678901234,
+               .t_ut1_ns = -54321,
+               .delta_UT1_inst = 0.1,
+               .ERA_deg = 35.1,
+               .xp_as = -3.14e-5,
+               .yp_as = 2.71828};
+
+    json jeop = json::parse(R"({"t_inst_ns": 12345678901234, "t_ut1_ns": -54321, "delta_UT1_inst": 0.1, "ERA_deg": 35.1, "xp_as": -3.14e-5, "yp_as": 2.71828})");
+
+    json jeop_conv = eop;
+
+    BOOST_CHECK_EQUAL(jeop_conv, jeop);
+}
+
+BOOST_AUTO_TEST_CASE(_eop_from_json) {
+    EOP eop = {.t_inst_ns = 12345678901234,
+               .t_ut1_ns = -54321,
+               .delta_UT1_inst = 0.1,
+               .ERA_deg = 35.1,
+               .xp_as = -3.14e-5,
+               .yp_as = 2.71828};
+
+    json jeop = json::parse(R"({"t_inst_ns": 12345678901234, "t_ut1_ns": -54321, "delta_UT1_inst": 0.1, "ERA_deg": 35.1, "xp_as": -3.14e-5, "yp_as": 2.71828})");
+
+    EOP eop_conv = jeop;
+
+    BOOST_CHECK_EQUAL(eop_conv, eop);
+}
+
+BOOST_AUTO_TEST_CASE(_bare_eop_to_json) {
+    BareEOP eop = {
+        .t_inst_ns = 12345678901234, .delta_UT1_inst = 0.1, .xp_as = -3.14e-5, .yp_as = 2.71828};
+
+    json jeop = json::parse(R"({"t_inst_ns": 12345678901234, "delta_UT1_inst": 0.1,  "xp_as": -3.14e-5, "yp_as": 2.71828})");
+
+    json jeop_conv = eop;
+
+    BOOST_CHECK_EQUAL(jeop_conv, jeop);
+}
+
+BOOST_AUTO_TEST_CASE(_bare_eop_from_json) {
+    BareEOP eop = {
+        .t_inst_ns = 12345678901234, .delta_UT1_inst = 0.1, .xp_as = -3.14e-5, .yp_as = 2.71828};
+
+    json jeop = json::parse(R"({"t_inst_ns": 12345678901234, "delta_UT1_inst": 0.1,  "xp_as": -3.14e-5, "yp_as": 2.71828})");
+
+    BareEOP eop_conv = jeop;
+
+    BOOST_CHECK_EQUAL(eop_conv, eop);
 }
