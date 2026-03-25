@@ -165,8 +165,7 @@ BOOST_AUTO_TEST_CASE(_BareEOP_to_EOP) {
                  .xp_as = -1.6e-8,
                  .yp_as = 3.21986e3};
 
-    int64_t ut1 =
-        get_UT1_from_time(nanosec_i64_to_timespec(beop.t_inst_ns), beop.delta_UT1_inst);
+    int64_t ut1 = get_UT1_from_time(nanosec_i64_to_timespec(beop.t_inst_ns), beop.delta_UT1_inst);
     EOP eop = {.t_inst = beop.t_inst_ns,
                .t_ut1 = ut1,
                .delta_UT1_inst = beop.delta_UT1_inst,
