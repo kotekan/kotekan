@@ -227,22 +227,22 @@ std::ostream& operator<<(std::ostream& os, const EOP& eop) {
 
 void to_json(nlohmann::json& j, const BareEOP& eop) {
     j = {};
-    j.emplace("time_inst_ns", eop.time_inst_ns);
+    j.emplace("t_inst_ns", eop.t_inst_ns);
     j.emplace("delta_UT1_inst", eop.delta_UT1_inst);
-    j.emplace("x_pm", eop.x_pm);
-    j.emplace("y_pm", eop.y_pm);
+    j.emplace("xp_as", eop.xp_as);
+    j.emplace("yp_as", eop.yp_as);
 }
 
 void from_json(const nlohmann::json& j, BareEOP& eop) {
-    eop.time_inst_ns = j.at("time_inst_ns");
+    eop.t_inst_ns = j.at("t_inst_ns");
     eop.delta_UT1_inst = j.at("delta_UT1_inst");
-    eop.x_pm = j.at("x_pm");
-    eop.y_pm = j.at("y_pm");
+    eop.xp_as = j.at("xp_as");
+    eop.yp_as = j.at("yp_as");
 }
 
 std::ostream& operator<<(std::ostream& os, const BareEOP& eop) {
-    os << "BareEOP{time_inst_ns: " << eop.time_inst_ns << ", delta_UT1_inst: " << eop.delta_UT1_inst
-       << ", x_pm: " << eop.x_pm << ", y_pm: " << eop.y_pm << "}";
+    os << "BareEOP{t_inst_ns: " << eop.t_inst_ns << ", delta_UT1_inst: " << eop.delta_UT1_inst
+       << ", xp_as: " << eop.xp_as << ", yp_as: " << eop.yp_as << "}";
 
     return os;
 }

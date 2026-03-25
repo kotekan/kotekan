@@ -335,10 +335,10 @@ def broadcast_kotekan_eop_table(
         The port at which to find the kotekan instance. For instance 12048.
     eop_endpoint : The endpoint for the EOP table config updater in Kotekan,
         no leading "/".
-    eop_table : dict containing a List of dicts, each an EOP update table entry
+    eop_table : dict containing a List of dicts, each a BareEOP table entry
         The EOP table. A dict with a single key "earth_orientation_parameter_table",
-        whose value is a list of EOP table update entries, each a dict with
-        entries "time_inst_ns", "delta_UT1_inst", "x_pm", and "y_pm".
+        whose value is a list of BareEOP table update entries, each a dict with
+        entries "t_inst_ns", "delta_UT1_inst", "xp_as", and "yp_as".
     timeout : float
         Timeout in seconds for the request.
     protocol : String, optional
@@ -580,11 +580,11 @@ def build_EOP_table(times, time0_ns, iers):
 
     Each EOP table entry is a dict with 4 entries:
 
-        - "time_inst_ns" : int, the instrument timestamp in nanoseconds
+        - "t_inst_ns" : int, the instrument timestamp in nanoseconds
         - "delta_UT1_inst" : float, the difference between UT1 and instrument
         time, in seconds.
-        - "x_pm" : float, Polar Motion x' coordinate, in arcseconds.
-        - "y_pm" : float, Polar Motion y' coordinate, in arcseconds.
+        - "xp_as" : float, Polar Motion x' coordinate, in arcseconds.
+        - "yp_as" : float, Polar Motion y' coordinate, in arcseconds.
 
     Parameters
     ----------
@@ -642,10 +642,10 @@ def build_EOP_table(times, time0_ns, iers):
 
         # Build the EOP entry! Remove numpy-ness.
         eop = dict(
-            time_inst_ns=t_inst,
+            t_inst_ns=t_inst,
             delta_UT1_inst=delta_ut1_inst.item(),
-            x_pm=x.to_value("arcsecond").item(),
-            y_pm=y.to_value("arcsecond").item(),
+            xp_as=x.to_value("arcsecond").item(),
+            yp_as=y.to_value("arcsecond").item(),
         )
 
         # Append to the table.
@@ -766,9 +766,9 @@ def build_time_array(
     return times
 
 
-def make_update_EOP_from_full_EOP(eop):
+def make_bare_EOP_from_full_EOP(eop):
     r"""
-    Produce an EOP update dict (suitable for sending to Kotekan or putting in a config
+    Produce a BareEOP dict (suitable for sending to Kotekan or putting in a config
     file) from a full EOP dict (one received from Kotekan)
     
     Parameters
@@ -780,16 +780,16 @@ def make_update_EOP_from_full_EOP(eop):
     Returns
     -------
 
-    eop_update : EOP update dict
-        An EOP update table entry, contain the fields: time_inst_ns, delta_UT1_inst,
-        x_pm, y_pm.
+    eop_bare : BareEOP dict
+        An BareEOP table entry, contain the fields: t_inst_ns, delta_UT1_inst,
+        xp_as, yp_as.
     """
 
     return dict(
-        time_inst_ns=eop["t_inst"],
+        t_inst_ns=eop["t_inst"],
         delta_UT1_inst=eop["delta_UT1_inst"],
-        x_pm=eop["xp_as"],
-        y_pm=eop["yp_as"],
+        xp_as=eop["xp_as"],
+        yp_as=eop["yp_as"],
     )
 
 
@@ -811,9 +811,9 @@ def merge_eop_tables(
     current_eop_table : list of eop entry dicts
         the current table in kotekan (fields: t_inst, t_ut1, delta_ut1_inst, era_deg,
         xp_as, yp_as)
-    new_eop_table : list of eop update entry dicts
+    new_eop_table : list of BareEOP update entry dicts
         the proposed new eop table, may conflict with current table. (fields: 
-        time_inst_ns, delta_ut1_inst, x_pm, y_pm)
+        t_inst_ns, delta_ut1_inst, xp_as, yp_as)
     t_ref : Astropy Time object
         The reference (likely current) time used to determine the current interval.
     time0_ns : int
@@ -825,7 +825,7 @@ def merge_eop_tables(
     
     Returns
     -------
-    final_eop_table : List of EOP entry dicts
+    final_eop_table : List of BareEOP entry dicts
         The final blended table.
     """
 
@@ -855,7 +855,7 @@ def merge_eop_tables(
                 "current_eop_table is not sorted. Can only merge sorted tables"
             )
     for i in range(len(new_eop_table) - 1):
-        if new_eop_table[i]["time_inst_ns"] >= new_eop_table[i + 1]["time_inst_ns"]:
+        if new_eop_table[i]["t_inst_ns"] >= new_eop_table[i + 1]["t_inst_ns"]:
             raise RuntimeError(
                 "new_eop_table is not sorted. Can only merge sorted tables"
             )
@@ -863,7 +863,7 @@ def merge_eop_tables(
     # Extract array of times for easier searching.  If we're here, both arrays have
     # strictly increasing instrument times
     current_times = np.array([eop["t_inst"] for eop in current_eop_table])
-    new_times = np.array([eop["time_inst_ns"] for eop in new_eop_table])
+    new_times = np.array([eop["t_inst_ns"] for eop in new_eop_table])
 
     # For current_times, the pivot_idx will be the index of the first element strictly
     # greater than the pivot time.  For new_times, the pivot_idx is the index of the
@@ -928,13 +928,11 @@ def merge_eop_tables(
         current_eop_to_keep = [current_eop_table[-1], eop_pivot]
 
     # Initialize the final EOP update table.
-    final_eop_table = [
-        make_update_EOP_from_full_EOP(eop) for eop in current_eop_to_keep
-    ]
+    final_eop_table = [make_bare_EOP_from_full_EOP(eop) for eop in current_eop_to_keep]
 
     # Easy now.  Find the first entry in the new table that's ahead of the end of
     # the preliminary final table.
-    new_pivot_idx = np.searchsorted(new_times, final_eop_table[-1]["time_inst_ns"])
+    new_pivot_idx = np.searchsorted(new_times, final_eop_table[-1]["t_inst_ns"])
 
     # If there are any entries (in normal operations there should be!) add them to
     # the end of the table

@@ -216,6 +216,7 @@ if __name__ == "__main__":
 
     # Build the table, use astropy's automatic IERS table
     iers = astropy.utils.iers.IERS_Auto.open()
+    # This is a list of BareEOP objects
     new_eop_table = eop_utils.build_EOP_table(ts, t0_ns, iers)
     iers.close()
 
@@ -239,6 +240,8 @@ if __name__ == "__main__":
                 )
             )
             sys.exit()
+
+        # This is a table of EOP objects
         current_eop_table = eop_utils.read_kotekan_eop_table(
             kotekan_host, kotekan_port, timeout, kotekan_protocol
         )
@@ -259,10 +262,10 @@ if __name__ == "__main__":
         "The final EOP table contains {:d} entries from {} to {}".format(
             len(eop_table),
             eop_utils.calc_astropy_time_from_inst_ns(
-                eop_table[0]["time_inst_ns"], t0_ns
+                eop_table[0]["t_inst_ns"], t0_ns
             ).utc.isot,
             eop_utils.calc_astropy_time_from_inst_ns(
-                eop_table[-1]["time_inst_ns"], t0_ns
+                eop_table[-1]["t_inst_ns"], t0_ns
             ).utc.isot,
         )
     )

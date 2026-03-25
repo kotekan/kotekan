@@ -54,15 +54,15 @@ earth_rotation_data:
   kotekan_update_endpoint: json
   earth_orientation_parameter_table: [
     {
-      time_inst_ns: 1764575999000000000,
+      t_inst_ns: 1764575999000000000,
       delta_UT1_inst: 0.08,
-      x_pm: 0.13,
-      y_pm: 0.32
+      xp_as: 0.13,
+      yp_as: 0.32
     }, {
-      time_inst_ns: 1764676000000000000,
+      t_inst_ns: 1764676000000000000,
       delta_UT1_inst: 0.08,
-      x_pm: 0.13,
-      y_pm: 0.32
+      xp_as: 0.13,
+      yp_as: 0.32
     }]
 
 gps_time:

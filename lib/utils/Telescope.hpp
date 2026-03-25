@@ -71,19 +71,19 @@ struct stream_t {
  *
  * Updatable Config
  *
- * @conf    eop_updatable_config    Optional. If not present, EOP table will be empty and only
+ * @conf    eop_updatable_config    Optional. If not present, EOP table will be a dummy and only
  *                                  null values (all 0s) will be returned by get_EOP functions.
  *                                  If present, the config path to an updatable config field
  *                                  containing the field "earth_orientation_parameter_table",
- *                                  which is a list of EOP Update objects. Each contains 4
+ *                                  which is a list of BareEOP objects. Each contains 4
  *                                  fields:
- *                                  - time_inst_ns      int     Instrument time in nanoseconds.
+ *                                  - t_inst_ns      int     Instrument time in nanoseconds.
  *                                  - delta_UT1_inst    double  As in EOP.
- *                                  - x_pm              double  As in EOP.
- *                                  - y_pm              double  As in EOP.
+ *                                  - xp_as             double  As in EOP.
+ *                                  - yp_as             double  As in EOP.
  *                                  Upon receiving an update, the entire EOP table is replaced
  *                                  with the new table. UT1 and ERA values are calculated from
- *                                  the given time_inst_ns and delta_UT1_inst.
+ *                                  the given t_inst_ns and delta_UT1_inst.
  *
  * To maintain continuity, tools updating the EOP table should first GET the current table, and
  * only update or add values at least two entries in the future.  The table is linearly

@@ -16,11 +16,11 @@ using kotekan::restServer;
 #define GIGA 1'000'000'000L
 
 static constexpr BareEOP dummy_bare_eop_first = {
-    .time_inst_ns = 0, .delta_UT1_inst = 0.0, .x_pm = 0.0, .y_pm = 0.0};
-static constexpr BareEOP dummy_bare_eop_last = {.time_inst_ns = std::numeric_limits<int64_t>::max(),
+    .t_inst_ns = 0, .delta_UT1_inst = 0.0, .xp_as = 0.0, .yp_as = 0.0};
+static constexpr BareEOP dummy_bare_eop_last = {.t_inst_ns = std::numeric_limits<int64_t>::max(),
                                                 .delta_UT1_inst = 0.0,
-                                                .x_pm = 0.0,
-                                                .y_pm = 0.0};
+                                                .xp_as = 0.0,
+                                                .yp_as = 0.0};
 
 Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
                      const std::string& eop_updatable_config_path) :

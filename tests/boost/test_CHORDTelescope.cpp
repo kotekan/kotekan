@@ -57,15 +57,15 @@ const std::string default_config_str = R"config_str({
     "kotekan_update_endpoint": "json",
     "earth_orientation_parameter_table": [
         {
-            "time_inst_ns": 1761883200000000000,
+            "t_inst_ns": 1761883200000000000,
             "delta_UT1_inst": 0.0,
-            "x_pm": 0.0,
-            "y_pm": 0.0
+            "xp_as": 0.0,
+            "yp_as": 0.0
         }, {
-            "time_inst_ns": 1761969600000000000,
+            "t_inst_ns": 1761969600000000000,
             "delta_UT1_inst": 0.0,
-            "x_pm": 0.0,
-            "y_pm": 0.0
+            "xp_as": 0.0,
+            "yp_as": 0.0
         }]
     }
 })config_str";
