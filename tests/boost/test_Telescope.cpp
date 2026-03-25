@@ -70,35 +70,41 @@ const Telescope& get_telescope(json& json_config) {
  ******************/
 
 
-std::vector<EOP> make_full_eop_table(const std::vector<int64_t> &t, const std::vector<double> &dut1,
-                                     const std::vector<double> &xpm, const std::vector<double> &ypm) {
+std::vector<EOP> make_full_eop_table(const std::vector<int64_t>& t, const std::vector<double>& dut1,
+                                     const std::vector<double>& xpm,
+                                     const std::vector<double>& ypm) {
 
     int N = t.size();
-    
+
     std::vector<EOP> eop(N);
 
-    for(int i = 0; i < N; i++) {
+    for (int i = 0; i < N; i++) {
         int64_t ut1 = get_UT1_from_time(nanosec_i64_to_timespec(t[i]), dut1[i]);
-        eop[i] = {.t_inst=t[i], .t_ut1 = ut1,
-                  .delta_UT1_inst=dut1[i], .ERA_deg=get_ERA_from_UT1(ut1, nullptr),
-                  .xp_as=xpm[i], .yp_as=ypm[i]};
+        eop[i] = {.t_inst = t[i],
+                  .t_ut1 = ut1,
+                  .delta_UT1_inst = dut1[i],
+                  .ERA_deg = get_ERA_from_UT1(ut1, nullptr),
+                  .xp_as = xpm[i],
+                  .yp_as = ypm[i]};
     }
 
     return eop;
 }
 
-json make_conf_eop_table(const std::vector<int64_t> &t, const std::vector<double> &dut1,
-                                       const std::vector<double> &xpm, const std::vector<double> &ypm) {
+json make_conf_eop_table(const std::vector<int64_t>& t, const std::vector<double>& dut1,
+                         const std::vector<double>& xpm, const std::vector<double>& ypm) {
 
     int N = t.size();
-    
+
     BOOST_TEST_MESSAGE("make table");
     json eop_update_table = json::array();
 
-    for(int i = 0; i < N; i++) {
+    for (int i = 0; i < N; i++) {
         BOOST_TEST_MESSAGE("add elem");
-        eop_update_table.push_back({{"time_inst_ns", t[i]}, {"delta_UT1_inst", dut1[i]},
-                                    {"x_pm", xpm[i]}, {"y_pm", ypm[i]}});
+        eop_update_table.push_back({{"time_inst_ns", t[i]},
+                                    {"delta_UT1_inst", dut1[i]},
+                                    {"x_pm", xpm[i]},
+                                    {"y_pm", ypm[i]}});
     }
 
     BOOST_TEST_MESSAGE("make final");
@@ -129,9 +135,11 @@ BOOST_AUTO_TEST_CASE(_name_tel) {
 }
 
 BOOST_AUTO_TEST_CASE(_BareEOP_to_json) {
-   
-    BareEOP eop{.time_inst_ns=12345678901234, .delta_UT1_inst=-1.7, .x_pm=1.23, .y_pm=-3.6e-8};
-    json jeop = json::parse(R"({"time_inst_ns": 12345678901234, "delta_UT1_inst": -1.7, "x_pm": 1.23, "y_pm": -3.6e-8})");
+
+    BareEOP eop{
+        .time_inst_ns = 12345678901234, .delta_UT1_inst = -1.7, .x_pm = 1.23, .y_pm = -3.6e-8};
+    json jeop = json::parse(
+        R"({"time_inst_ns": 12345678901234, "delta_UT1_inst": -1.7, "x_pm": 1.23, "y_pm": -3.6e-8})");
 
     json jeop_conv = eop;
 
@@ -139,10 +147,12 @@ BOOST_AUTO_TEST_CASE(_BareEOP_to_json) {
 }
 
 BOOST_AUTO_TEST_CASE(_json_to_BareEOP) {
-   
-    //BareEOP eop(12345678901234, -1.7, 1.23, -3.6e-8);
-    BareEOP eop{.time_inst_ns=12345678901234, .delta_UT1_inst=-1.7, .x_pm=1.23, .y_pm=-3.6e-8};
-    json jeop = json::parse(R"({"time_inst_ns": 12345678901234, "delta_UT1_inst": -1.7, "x_pm": 1.23, "y_pm": -3.6e-8})");
+
+    // BareEOP eop(12345678901234, -1.7, 1.23, -3.6e-8);
+    BareEOP eop{
+        .time_inst_ns = 12345678901234, .delta_UT1_inst = -1.7, .x_pm = 1.23, .y_pm = -3.6e-8};
+    json jeop = json::parse(
+        R"({"time_inst_ns": 12345678901234, "delta_UT1_inst": -1.7, "x_pm": 1.23, "y_pm": -3.6e-8})");
 
     BareEOP eop_conv = jeop;
 
@@ -150,12 +160,19 @@ BOOST_AUTO_TEST_CASE(_json_to_BareEOP) {
 }
 
 BOOST_AUTO_TEST_CASE(_BareEOP_to_EOP) {
-    BareEOP beop{.time_inst_ns=12345678901234567, .delta_UT1_inst=-3.2, .x_pm=-1.6e-8, .y_pm=3.21986e3};
+    BareEOP beop{.time_inst_ns = 12345678901234567,
+                 .delta_UT1_inst = -3.2,
+                 .x_pm = -1.6e-8,
+                 .y_pm = 3.21986e3};
 
-    int64_t ut1 = get_UT1_from_time(nanosec_i64_to_timespec(beop.time_inst_ns),
-                                    beop.delta_UT1_inst);
-    EOP eop = {.t_inst=beop.time_inst_ns, .t_ut1=ut1, .delta_UT1_inst=beop.delta_UT1_inst,
-                .ERA_deg=get_ERA_from_UT1(ut1, nullptr), .xp_as=beop.x_pm, .yp_as=beop.y_pm};
+    int64_t ut1 =
+        get_UT1_from_time(nanosec_i64_to_timespec(beop.time_inst_ns), beop.delta_UT1_inst);
+    EOP eop = {.t_inst = beop.time_inst_ns,
+               .t_ut1 = ut1,
+               .delta_UT1_inst = beop.delta_UT1_inst,
+               .ERA_deg = get_ERA_from_UT1(ut1, nullptr),
+               .xp_as = beop.x_pm,
+               .yp_as = beop.y_pm};
 
     BOOST_CHECK_EQUAL(beop.to_EOP(), eop);
 }

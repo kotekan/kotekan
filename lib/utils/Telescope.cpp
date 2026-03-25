@@ -15,8 +15,12 @@ using kotekan::restServer;
 
 #define GIGA 1'000'000'000L
 
-static constexpr BareEOP dummy_bare_eop_first = {.time_inst_ns=0, .delta_UT1_inst=0.0, .x_pm=0.0, .y_pm=0.0};
-static constexpr BareEOP dummy_bare_eop_last = {.time_inst_ns=std::numeric_limits<int64_t>::max(), .delta_UT1_inst=0.0, .x_pm=0.0, .y_pm=0.0};
+static constexpr BareEOP dummy_bare_eop_first = {
+    .time_inst_ns = 0, .delta_UT1_inst = 0.0, .x_pm = 0.0, .y_pm = 0.0};
+static constexpr BareEOP dummy_bare_eop_last = {.time_inst_ns = std::numeric_limits<int64_t>::max(),
+                                                .delta_UT1_inst = 0.0,
+                                                .x_pm = 0.0,
+                                                .y_pm = 0.0};
 
 Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
                      const std::string& eop_updatable_config_path) :
@@ -118,8 +122,8 @@ bool Telescope::receive_eop_updates(nlohmann::json& json) {
             return true;
         }
         std::vector<BareEOP> bare_eop_table = json.at("earth_orientation_parameter_table");
-        
-        size_t N = bare_eop_table.size(); 
+
+        size_t N = bare_eop_table.size();
         std::vector<EOP> tmp_eop_table(N);
 
         for (size_t i = 0; i < N; i++)
@@ -130,9 +134,8 @@ bool Telescope::receive_eop_updates(nlohmann::json& json) {
 
             if (_require_eop) {
                 // If table was required. Report an error.
-                ERROR(
-                    "earth_orientation_parameter_table update contained no entries.",
-                    _unique_name);
+                ERROR("earth_orientation_parameter_table update contained no entries.",
+                      _unique_name);
                 return false;
             }
 

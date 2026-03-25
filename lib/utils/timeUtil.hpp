@@ -124,7 +124,9 @@ void to_json(nlohmann::json& j, const EOP& m);
 void from_json(const nlohmann::json& j, EOP& m);
 
 inline bool operator==(const EOP& lhs, const EOP& rhs) {
-    return (lhs.t_inst == rhs.t_inst && lhs.t_ut1 == rhs.t_ut1 && lhs.delta_UT1_inst == rhs.delta_UT1_inst && lhs.ERA_deg == rhs.ERA_deg && lhs.xp_as == rhs.xp_as && lhs.yp_as == rhs.yp_as);
+    return (lhs.t_inst == rhs.t_inst && lhs.t_ut1 == rhs.t_ut1
+            && lhs.delta_UT1_inst == rhs.delta_UT1_inst && lhs.ERA_deg == rhs.ERA_deg
+            && lhs.xp_as == rhs.xp_as && lhs.yp_as == rhs.yp_as);
 }
 
 std::ostream& operator<<(std::ostream& os, const EOP& eop);
@@ -152,20 +154,22 @@ inline bool EOP_comp_ut1(const EOP& eop1, const EOP& eop2) {
 }
 
 /**
- * @brief A struct used for updating the EOP Table via REST which contains minimal EOP data. A full EOP can be produced from a BareEOP.
+ * @brief A struct used for updating the EOP Table via REST which contains minimal EOP data. A full
+ * EOP can be produced from a BareEOP.
  */
 struct BareEOP {
-    int64_t time_inst_ns;   /// Instrument time INST in nanoseconds for this moment.
-    double delta_UT1_inst;  /// UT1 - INST at this moment.
-    double x_pm;            /// x polar motion parameter at this moment, arcseconds.
-    double y_pm;            /// y polar motion parameter at this moment, arcseconds.
+    int64_t time_inst_ns;  /// Instrument time INST in nanoseconds for this moment.
+    double delta_UT1_inst; /// UT1 - INST at this moment.
+    double x_pm;           /// x polar motion parameter at this moment, arcseconds.
+    double y_pm;           /// y polar motion parameter at this moment, arcseconds.
 
     /*
     /// Constuct a null BareEOP.
     inline BareEOP() : time_inst_ns(0), delta_UT1_inst(0.0), x_pm(0.0), y_pm(0.0) {}
-   
+
     /// Construct a BareEOP with given parameters.
-    inline BareEOP(int64_t t_inst, double dut1, double xp, double yp) : time_inst_ns(t_inst), delta_UT1_inst(dut1), x_pm(xp), y_pm(yp) {}
+    inline BareEOP(int64_t t_inst, double dut1, double xp, double yp) : time_inst_ns(t_inst),
+    delta_UT1_inst(dut1), x_pm(xp), y_pm(yp) {}
 
     /// Construct a BareEOP from given EOP.
     inline BareEOP(const EOP& eop) : time_inst_ns(eop.t_inst), delta_UT1_inst(eop.delta_UT1_inst),
@@ -176,15 +180,22 @@ struct BareEOP {
     inline EOP to_EOP() const {
         int64_t ut1 = get_UT1_from_time(nanosec_i64_to_timespec(time_inst_ns), delta_UT1_inst);
         double era = get_ERA_from_UT1(ut1, nullptr);
-        return {.t_inst=time_inst_ns, .t_ut1=ut1, .delta_UT1_inst=delta_UT1_inst, .ERA_deg=era, .xp_as=x_pm, .yp_as=y_pm};
+        return {.t_inst = time_inst_ns,
+                .t_ut1 = ut1,
+                .delta_UT1_inst = delta_UT1_inst,
+                .ERA_deg = era,
+                .xp_as = x_pm,
+                .yp_as = y_pm};
     }
 };
 
-static constexpr BareEOP bare_eop_null = {.time_inst_ns=0, .delta_UT1_inst=0, .x_pm=0, .y_pm=0};
+static constexpr BareEOP bare_eop_null = {
+    .time_inst_ns = 0, .delta_UT1_inst = 0, .x_pm = 0, .y_pm = 0};
 
 /// Simple equality for BareEOP
 inline bool operator==(const BareEOP& lhs, const BareEOP& rhs) {
-    return (lhs.time_inst_ns == rhs.time_inst_ns && lhs.delta_UT1_inst == rhs.delta_UT1_inst && lhs.x_pm == rhs.x_pm && lhs.y_pm == rhs.y_pm);
+    return (lhs.time_inst_ns == rhs.time_inst_ns && lhs.delta_UT1_inst == rhs.delta_UT1_inst
+            && lhs.x_pm == rhs.x_pm && lhs.y_pm == rhs.y_pm);
 }
 
 std::ostream& operator<<(std::ostream& os, const BareEOP& eop);
