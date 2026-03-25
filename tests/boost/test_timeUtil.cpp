@@ -64,6 +64,7 @@ public:
     };
 
     static std::vector<timespec> t_unix;
+    static std::vector<int64_t> t_unix_ns;
     static std::vector<int64_t> t_ut1;
     static std::vector<double> dUT1;
     static std::vector<double> era;
@@ -72,6 +73,7 @@ public:
 };
 
 std::vector<timespec> TimeData::t_unix{};
+std::vector<int64_t> TimeData::t_unix_ns{};
 std::vector<int64_t> TimeData::t_ut1{};
 std::vector<double> TimeData::dUT1{};
 std::vector<double> TimeData::era{};
@@ -112,6 +114,7 @@ void TimeData::setup() {
         if (words[0] == "UNIX") {
             timespec t = {.tv_sec = std::stol(words[1]), .tv_nsec = std::stol(words[3])};
             t_unix.push_back(t);
+            t_unix_ns.push_back(timespec_to_nanosec_i64(t));
         } else if (words[0] == "UT1") {
             t_ut1.push_back(std::stol(words[1]));
         } else if (words[0] == "dUT1") {
@@ -246,7 +249,8 @@ BOOST_AUTO_TEST_CASE(_eop_to_json) {
                .xp_as = -3.14e-5,
                .yp_as = 2.71828};
 
-    json jeop = json::parse(R"({"t_inst_ns": 12345678901234, "t_ut1_ns": -54321, "delta_UT1_inst": 0.1, "ERA_deg": 35.1, "xp_as": -3.14e-5, "yp_as": 2.71828})");
+    json jeop = json::parse(
+        R"({"t_inst_ns": 12345678901234, "t_ut1_ns": -54321, "delta_UT1_inst": 0.1, "ERA_deg": 35.1, "xp_as": -3.14e-5, "yp_as": 2.71828})");
 
     json jeop_conv = eop;
 
@@ -261,7 +265,8 @@ BOOST_AUTO_TEST_CASE(_eop_from_json) {
                .xp_as = -3.14e-5,
                .yp_as = 2.71828};
 
-    json jeop = json::parse(R"({"t_inst_ns": 12345678901234, "t_ut1_ns": -54321, "delta_UT1_inst": 0.1, "ERA_deg": 35.1, "xp_as": -3.14e-5, "yp_as": 2.71828})");
+    json jeop = json::parse(
+        R"({"t_inst_ns": 12345678901234, "t_ut1_ns": -54321, "delta_UT1_inst": 0.1, "ERA_deg": 35.1, "xp_as": -3.14e-5, "yp_as": 2.71828})");
 
     EOP eop_conv = jeop;
 
@@ -272,7 +277,8 @@ BOOST_AUTO_TEST_CASE(_bare_eop_to_json) {
     BareEOP eop = {
         .t_inst_ns = 12345678901234, .delta_UT1_inst = 0.1, .xp_as = -3.14e-5, .yp_as = 2.71828};
 
-    json jeop = json::parse(R"({"t_inst_ns": 12345678901234, "delta_UT1_inst": 0.1,  "xp_as": -3.14e-5, "yp_as": 2.71828})");
+    json jeop = json::parse(
+        R"({"t_inst_ns": 12345678901234, "delta_UT1_inst": 0.1,  "xp_as": -3.14e-5, "yp_as": 2.71828})");
 
     json jeop_conv = eop;
 
@@ -283,9 +289,119 @@ BOOST_AUTO_TEST_CASE(_bare_eop_from_json) {
     BareEOP eop = {
         .t_inst_ns = 12345678901234, .delta_UT1_inst = 0.1, .xp_as = -3.14e-5, .yp_as = 2.71828};
 
-    json jeop = json::parse(R"({"t_inst_ns": 12345678901234, "delta_UT1_inst": 0.1,  "xp_as": -3.14e-5, "yp_as": 2.71828})");
+    json jeop = json::parse(
+        R"({"t_inst_ns": 12345678901234, "delta_UT1_inst": 0.1,  "xp_as": -3.14e-5, "yp_as": 2.71828})");
 
     BareEOP eop_conv = jeop;
 
     BOOST_CHECK_EQUAL(eop_conv, eop);
+}
+
+BOOST_AUTO_TEST_CASE(_bare_eop_to_eop) {
+
+    int N = 5;
+    double x[N] = {0.0, 0.1, -0.3, 5e-8, 15};
+    double y[N] = {0.0, -8, 0.7, 32, 8.1e-3};
+
+    for (size_t i = 0; i < TimeData::size; i++) {
+        BareEOP beop = {.t_inst_ns = TimeData::t_unix_ns[i],
+                        .delta_UT1_inst = TimeData::dUT1[i],
+                        .xp_as = x[i % N],
+                        .yp_as = y[i % N]};
+        int64_t ut1 = get_UT1_from_time_ns(beop.t_inst_ns, beop.delta_UT1_inst);
+        EOP eop = {.t_inst_ns = TimeData::t_unix_ns[i],
+                   .t_ut1_ns = ut1,
+                   .delta_UT1_inst = TimeData::dUT1[i],
+                   .ERA_deg = get_ERA_from_UT1(ut1, nullptr),
+                   .xp_as = x[i % N],
+                   .yp_as = y[i % N]};
+
+        BOOST_CHECK_EQUAL(beop.to_EOP(), eop);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(_bare_eop_equal) {
+
+    int N = 5;
+    double x[N] = {0.0, 0.1, -0.3, 5e-8, 15};
+    double y[N] = {0.0, -8, 0.7, 32, 8.1e-3};
+
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+
+            BareEOP beop1 = {.t_inst_ns = TimeData::t_unix_ns[i],
+                             .delta_UT1_inst = TimeData::dUT1[i],
+                             .xp_as = x[i % N],
+                             .yp_as = y[i % N]};
+            BareEOP beop2 = {.t_inst_ns = TimeData::t_unix_ns[j],
+                             .delta_UT1_inst = TimeData::dUT1[j],
+                             .xp_as = x[j % N],
+                             .yp_as = y[j % N]};
+
+            if (i == j)
+                BOOST_CHECK_EQUAL(beop1, beop2);
+            else
+                BOOST_CHECK_NE(beop1, beop2);
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(_eop_comp_time) {
+
+    int N = 5;
+    double x[N] = {0.0, 0.1, -0.3, 5e-8, 15};
+    double y[N] = {0.0, -8, 0.7, 32, 8.1e-3};
+
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+
+            EOP eop1 = {.t_inst_ns = TimeData::t_unix_ns[i],
+                        .t_ut1_ns = TimeData::t_ut1[i],
+                        .delta_UT1_inst = TimeData::dUT1[i],
+                        .ERA_deg = TimeData::era[i],
+                        .xp_as = x[i % N],
+                        .yp_as = y[i % N]};
+            EOP eop2 = {.t_inst_ns = TimeData::t_unix_ns[j],
+                        .t_ut1_ns = TimeData::t_ut1[j],
+                        .delta_UT1_inst = TimeData::dUT1[j],
+                        .ERA_deg = TimeData::era[j],
+                        .xp_as = x[j % N],
+                        .yp_as = y[j % N]};
+
+            if (eop1.t_inst_ns < eop2.t_inst_ns)
+                BOOST_CHECK(EOP_comp_time(eop1, eop2));
+            else
+                BOOST_CHECK(!EOP_comp_time(eop1, eop2));
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(_eop_comp_ut1) {
+
+    int N = 5;
+    double x[N] = {0.0, 0.1, -0.3, 5e-8, 15};
+    double y[N] = {0.0, -8, 0.7, 32, 8.1e-3};
+
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+
+            EOP eop1 = {.t_inst_ns = TimeData::t_unix_ns[i],
+                        .t_ut1_ns = TimeData::t_ut1[i],
+                        .delta_UT1_inst = TimeData::dUT1[i],
+                        .ERA_deg = TimeData::era[i],
+                        .xp_as = x[i % N],
+                        .yp_as = y[i % N]};
+            EOP eop2 = {.t_inst_ns = TimeData::t_unix_ns[j],
+                        .t_ut1_ns = TimeData::t_ut1[j],
+                        .delta_UT1_inst = TimeData::dUT1[j],
+                        .ERA_deg = TimeData::era[j],
+                        .xp_as = x[j % N],
+                        .yp_as = y[j % N]};
+
+            if (eop1.t_ut1_ns < eop2.t_ut1_ns)
+                BOOST_CHECK(EOP_comp_ut1(eop1, eop2));
+            else
+                BOOST_CHECK(!EOP_comp_ut1(eop1, eop2));
+        }
+    }
 }
