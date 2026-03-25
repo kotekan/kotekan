@@ -39,33 +39,6 @@ struct stream_t {
     uint64_t id;
 };
 
-struct BareEOP {
-    int64_t time_inst_ns;
-    double delta_UT1_inst;
-    double x_pm;
-    double y_pm;
-
-    inline BareEOP() : time_inst_ns(0), delta_UT1_inst(0.0), x_pm(0.0), y_pm(0.0) {}
-    
-    inline BareEOP(int64_t t_inst, double dut1, double xp, double yp) : time_inst_ns(t_inst), delta_UT1_inst(dut1), x_pm(xp), y_pm(yp) {}
-
-    inline BareEOP(const EOP& eop) : time_inst_ns(eop.t_inst), delta_UT1_inst(eop.delta_UT1_inst),
-        x_pm(eop.xp_as), y_pm(eop.xp_as) {}
-
-    inline EOP to_EOP() const {
-        int64_t ut1 = get_UT1_from_time(nanosec_i64_to_timespec(time_inst_ns), delta_UT1_inst);
-        double era = get_ERA_from_UT1(ut1, nullptr);
-        return {.t_inst=time_inst_ns, .t_ut1=ut1, .delta_UT1_inst=delta_UT1_inst, .ERA_deg=era, .xp_as=x_pm, .yp_as=y_pm};
-    }
-};
-
-inline bool operator==(const BareEOP& lhs, const BareEOP& rhs) {
-    return (lhs.time_inst_ns == rhs.time_inst_ns && lhs.delta_UT1_inst == rhs.delta_UT1_inst && lhs.x_pm == rhs.x_pm && lhs.y_pm == rhs.y_pm);
-}
-
-void to_json(nlohmann::json& j, const BareEOP& eop);
-void from_json(const nlohmann::json& j, BareEOP& eop);
-
 /**
  * @brief A class to hold telescope specific functionality.
  *
@@ -375,17 +348,6 @@ protected:
      * @param   conn    Kotekan connection.
      */
     void send_time0_ns(kotekan::connectionInstance& conn);
-
-    /**
-     * @brief   Build a single EOP struct from config values
-     *
-     * @param   t_ns    Instrument time in nanoseconds.
-     * @param   delta_ut1_inst  Diff between UT1 and Instrument time in seconds
-     * @param   xp_as   Polar Motion x' coordinate in arcseconds
-     * @param   yp_as   Polar Motion y' coordinate in arcseconds
-     **/
-    static EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
-                                     double yp_as);
 
     /**
      * The telescope's name in the config

@@ -15,20 +15,8 @@ using kotekan::restServer;
 
 #define GIGA 1'000'000'000L
 
-void to_json(nlohmann::json& j, const BareEOP& eop) {
-    j = {};
-    j.emplace("time_inst_ns", eop.time_inst_ns);
-    j.emplace("delta_UT1_inst", eop.delta_UT1_inst);
-    j.emplace("x_pm", eop.x_pm);
-    j.emplace("y_pm", eop.y_pm);
-}
-
-void from_json(const nlohmann::json& j, BareEOP& eop) {
-    eop.time_inst_ns = j.at("time_inst_ns");
-    eop.delta_UT1_inst = j.at("delta_UT1_inst");
-    eop.x_pm = j.at("x_pm");
-    eop.y_pm = j.at("y_pm");
-}
+static constexpr BareEOP dummy_bare_eop_first = {.time_inst_ns=0, .delta_UT1_inst=0.0, .x_pm=0.0, .y_pm=0.0};
+static constexpr BareEOP dummy_bare_eop_last = {.time_inst_ns=std::numeric_limits<int64_t>::max(), .delta_UT1_inst=0.0, .x_pm=0.0, .y_pm=0.0};
 
 Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
                      const std::string& eop_updatable_config_path) :
@@ -39,9 +27,11 @@ Telescope::Telescope(const std::string& tel_path, const std::string& log_level, 
     DEBUG("Building Telescope");
 
     // Initializing EOP table with dummy values
-    _eop_table = {build_EOP_from_update(0, 0.0, 0.0, 0.0),
-                  build_EOP_from_update(std::numeric_limits<int64_t>::max(), 0.0, 0.0, 0.0)};
-
+    /*
+    _eop_table = {BareEOP(0, 0.0, 0.0, 0.0).to_EOP(),
+                  BareEOP(std::numeric_limits<int64_t>::max(), 0.0, 0.0, 0.0).to_EOP()};
+    */
+    _eop_table = {dummy_bare_eop_first.to_EOP(), dummy_bare_eop_last.to_EOP()};
 
     // Set up callbacks for updating EOP and sending time0_ns
     using namespace std::placeholders;
@@ -129,19 +119,11 @@ bool Telescope::receive_eop_updates(nlohmann::json& json) {
         }
         std::vector<BareEOP> bare_eop_table = json.at("earth_orientation_parameter_table");
         
-        std::vector<EOP> tmp_eop_table(bare_eop_table.size());
-        for (size_t i = 0; i < tmp_eop_table.size(); i++)
+        size_t N = bare_eop_table.size(); 
+        std::vector<EOP> tmp_eop_table(N);
+
+        for (size_t i = 0; i < N; i++)
             tmp_eop_table.at(i) = bare_eop_table.at(i).to_EOP();
-        /*
-        for (const auto& elem : json.at("earth_orientation_parameter_table")) {
-            INFO("Telescope EOP update: {:s}", elem.dump());
-            int64_t t_ns = elem.at("time_inst_ns").get<int64_t>();
-            double dut1 = elem.at("delta_UT1_inst").get<double>();
-            double x_pm = elem.at("x_pm").get<double>();
-            double y_pm = elem.at("y_pm").get<double>();
-            tmp_eop_table.push_back(build_EOP_from_update(t_ns, dut1, x_pm, y_pm));
-        }
-        */
 
         if (tmp_eop_table.empty()) {
             // If table was empty, we're done here.
@@ -149,7 +131,7 @@ bool Telescope::receive_eop_updates(nlohmann::json& json) {
             if (_require_eop) {
                 // If table was required. Report an error.
                 ERROR(
-                    "Telescope {}: earth_orientation_parameter_table update contained no entries.",
+                    "earth_orientation_parameter_table update contained no entries.",
                     _unique_name);
                 return false;
             }
@@ -194,23 +176,6 @@ void Telescope::send_time0_ns(connectionInstance& conn) {
     nlohmann::json reply;
     reply["time0_ns"] = to_time_ns(0);
     conn.send_json_reply(reply);
-}
-
-EOP Telescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst, double xp_as,
-                                     double yp_as) {
-
-    struct timespec ts_inst = nanosec_i64_to_timespec(time_ns);
-    int64_t ut1 = get_UT1_from_time(ts_inst, delta_ut1_inst);
-    double era = get_ERA_from_UT1(ut1, nullptr);
-
-    EOP eop{.t_inst = time_ns,
-            .t_ut1 = ut1,
-            .delta_UT1_inst = delta_ut1_inst,
-            .ERA_deg = era,
-            .xp_as = xp_as,
-            .yp_as = yp_as};
-
-    return eop;
 }
 
 std::vector<EOP> Telescope::get_current_EOP_table() const {

@@ -130,7 +130,7 @@ BOOST_AUTO_TEST_CASE(_name_tel) {
 
 BOOST_AUTO_TEST_CASE(_BareEOP_to_json) {
    
-    BareEOP eop(12345678901234, -1.7, 1.23, -3.6e-8);
+    BareEOP eop{.time_inst_ns=12345678901234, .delta_UT1_inst=-1.7, .x_pm=1.23, .y_pm=-3.6e-8};
     json jeop = json::parse(R"({"time_inst_ns": 12345678901234, "delta_UT1_inst": -1.7, "x_pm": 1.23, "y_pm": -3.6e-8})");
 
     json jeop_conv = eop;
@@ -140,12 +140,24 @@ BOOST_AUTO_TEST_CASE(_BareEOP_to_json) {
 
 BOOST_AUTO_TEST_CASE(_json_to_BareEOP) {
    
-    BareEOP eop(12345678901234, -1.7, 1.23, -3.6e-8);
+    //BareEOP eop(12345678901234, -1.7, 1.23, -3.6e-8);
+    BareEOP eop{.time_inst_ns=12345678901234, .delta_UT1_inst=-1.7, .x_pm=1.23, .y_pm=-3.6e-8};
     json jeop = json::parse(R"({"time_inst_ns": 12345678901234, "delta_UT1_inst": -1.7, "x_pm": 1.23, "y_pm": -3.6e-8})");
 
     BareEOP eop_conv = jeop;
 
     BOOST_CHECK_MESSAGE(eop_conv == eop, "from_json(BareEOP)");
+}
+
+BOOST_AUTO_TEST_CASE(_BareEOP_to_EOP) {
+    BareEOP beop{.time_inst_ns=12345678901234567, .delta_UT1_inst=-3.2, .x_pm=-1.6e-8, .y_pm=3.21986e3};
+
+    int64_t ut1 = get_UT1_from_time(nanosec_i64_to_timespec(beop.time_inst_ns),
+                                    beop.delta_UT1_inst);
+    EOP eop = {.t_inst=beop.time_inst_ns, .t_ut1=ut1, .delta_UT1_inst=beop.delta_UT1_inst,
+                .ERA_deg=get_ERA_from_UT1(ut1, nullptr), .xp_as=beop.x_pm, .yp_as=beop.y_pm};
+
+    BOOST_CHECK_EQUAL(beop.to_EOP(), eop);
 }
 
 /*
