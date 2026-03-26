@@ -7,6 +7,7 @@
 #include "errors.h" // _global_log_level
 #include "restServer.hpp"
 #include "timeUtil.hpp"
+#include "test_logging.hpp"
 
 #include "fmt.hpp"
 #include "json.hpp"
@@ -31,93 +32,114 @@ const std::string default_tel_config_str = R"tel_config_str({
 "type": "config",
 "log_level": "debug",
 "telescope": {
-    "name": "fake",
-    "require_eop": false
+    "name": "TestTelescope",
+    "require_eop": false,
+    "eop_updatable_config": ""
     }
 })tel_config_str";
 
-const std::string default_eop_config_str = R"eop_config_str({
-"earth_rotation_data": {
-    "kotekan_update_endpoint": "json",
-    "earth_orientation_parameter_table": [
-        {
-            "t_inst_ns": 1761883200000000000,
-            "delta_UT1_inst": 0.0,
-            "xp_as": 0.0,
-            "yp_as": 0.0
-        }, {
-            "t_inst_ns": 1761969600000000000,
-            "delta_UT1_inst": 0.0,
-            "xp_as": 0.0,
-            "yp_as": 0.0
-        }]
-    }
-})eop_config_str";
+// Just a hollow Telescope for testing
+class TestTelescope : public Telescope {
+public:
+    TestTelescope(const Config& config, const std::string& path) :
+        Telescope(path, config.get<std::string>(path, "log_level"),
+                config.get<bool>(path, "require_eop"),
+                config.get<std::string>(path, "eop_updatable_config")) {}
 
-const Telescope& get_telescope(json& json_config) {
-    Config conf;
-    conf.update_config(json_config);
-    configUpdater& config_updater = configUpdater::instance();
-    config_updater.apply_config(conf);
-    Telescope::instance(conf);
-    return Telescope::instance();
-}
+    // These functions don't have to do anything, they're not being tested.
+    freq_id_t to_freq_id([[maybe_unused]] stream_t stream, [[maybe_unused]] uint32_t ind) const override {return 0;}
+    double to_freq_MHz([[maybe_unused]] freq_id_t freq_id) const override {return 0.0;}
+    size_t num_freq_per_stream() const override {return 0;}
+    size_t num_freq() const override {return 0;}
+    double freq_width_MHz([[maybe_unused]] freq_id_t freq_id) const override {return 0.0;};
+    uint8_t nyquist_zone() const override {return 0;}
+    bool gps_time_enabled() const override {return false;}
+    timespec to_time([[maybe_unused]] uint64_t seq) const override {return {.tv_sec=0, .tv_nsec=0};};
+    int64_t to_time_ns([[maybe_unused]] uint64_t seq) const override {return 0;}
+    uint64_t to_seq([[maybe_unused]] timespec time) const override {return 0;}
+    uint64_t seq_length_nsec() const override {return 0;}
+};
+
+REGISTER_TELESCOPE(TestTelescope, "TestTelescope");
 
 /******************
  *
- * HELPERS
+ * Fixtures: Logging, RestServer, and Telescope(s)
  *
  ******************/
 
 
-std::vector<EOP> make_full_eop_table(const std::vector<int64_t>& t, const std::vector<double>& dut1,
-                                     const std::vector<double>& xpm,
-                                     const std::vector<double>& ypm) {
+struct LoggingFixture {
+    LoggingFixture() {
+        kotekan_test_logging::configure();
+    }
+};
 
-    int N = t.size();
+struct RestServerFixture {
+    RestServerFixture() {
+        try {
+            kotekan::restServer::instance().start("127.0.0.1", 0);
+        } catch (...) {
+        }
+    }
+};
 
-    std::vector<EOP> eop(N);
+struct TelescopeFixture {
+    TelescopeFixture() {
+        json json_config = json::parse(default_tel_config_str);
+        Config conf;
+        conf.update_config(json_config);
+        configUpdater::instance().apply_config(conf);
+        Telescope::instance(conf);
+    }
+};
 
-    for (int i = 0; i < N; i++) {
-        int64_t ut1 = get_UT1_from_time(nanosec_i64_to_timespec(t[i]), dut1[i]);
-        eop[i] = {.t_inst_ns = t[i],
-                  .t_ut1_ns = ut1,
-                  .delta_UT1_inst = dut1[i],
-                  .ERA_deg = get_ERA_from_UT1(ut1, nullptr),
-                  .xp_as = xpm[i],
-                  .yp_as = ypm[i]};
+struct TelescopeEOPFixture {
+    TelescopeEOPFixture() {
+        json json_config = json::parse(default_tel_config_str);
+
+        N = 5;
+
+        int64_t giga = 1'000'000'000;
+        t = {1, 0, giga, giga*giga, giga*giga + 100'000*giga};
+        dut1 = {0.0, -1.5, 9.8765e-3, 18, 0.123456};
+        x = {0.0, 0.1, -1.0, -987, 1.234e-5};
+        y = {0.0, 0.2, -0.5, 2.345e-5, 123};
+
+        BOOST_REQUIRE(t.size() == N);
+        BOOST_REQUIRE(dut1.size() == N);
+        BOOST_REQUIRE(x.size() == N);
+        BOOST_REQUIRE(y.size() == N);
+
+        for(size_t i = 0; i < N; i++) {
+            BareEOP beop = {.t_inst_ns=t[i], .delta_UT1_inst=dut1[i], .xp_as=x[i], .yp_as=y[i]};
+            fix_bare_eop_table.push_back(beop);
+            fix_eop_table.push_back(beop.to_EOP());
+        }
+
+        json_config["telescope"]["require_eop"] = true;
+        json_config["telescope"]["eop_updatable_config"] = "/eop_update";
+        json_config["eop_update"] = {{"kotekan_update_endpoint", "json"},
+                                     {"earth_orientation_parameter_table", fix_bare_eop_table}};
+
+        Config conf;
+        conf.update_config(json_config);
+        configUpdater::instance().apply_config(conf);
+        Telescope::instance(conf);
     }
 
-    return eop;
-}
+    size_t N;
+    std::vector<int64_t> t;
+    std::vector<double> dut1;
+    std::vector<double> x;
+    std::vector<double> y;
 
-json make_conf_eop_table(const std::vector<int64_t>& t, const std::vector<double>& dut1,
-                         const std::vector<double>& xpm, const std::vector<double>& ypm) {
+    std::vector<EOP> fix_eop_table;
+    std::vector<BareEOP> fix_bare_eop_table;
+};
 
-    int N = t.size();
-
-    BOOST_TEST_MESSAGE("make table");
-    json eop_update_table = json::array();
-
-    for (int i = 0; i < N; i++) {
-        BOOST_TEST_MESSAGE("add elem");
-        eop_update_table.push_back({{"t_inst_ns", t[i]},
-                                    {"delta_UT1_inst", dut1[i]},
-                                    {"xp_as", xpm[i]},
-                                    {"yp_as", ypm[i]}});
-    }
-
-    BOOST_TEST_MESSAGE("make final");
-    json eop_conf_json = {};
-    BOOST_TEST_MESSAGE("add endpoint");
-    eop_conf_json["kotekan_update_endpoint"] = "json";
-    BOOST_TEST_MESSAGE("add table");
-    eop_conf_json["earth_orientation_parameter_table"] = eop_update_table;
-    BOOST_TEST_MESSAGE("return");
-
-    return eop_conf_json;
-}
-
+BOOST_TEST_GLOBAL_FIXTURE(LoggingFixture);
+BOOST_TEST_GLOBAL_FIXTURE(RestServerFixture);
 
 /******************
  *
@@ -126,67 +148,40 @@ json make_conf_eop_table(const std::vector<int64_t>& t, const std::vector<double
  ******************/
 
 
-BOOST_AUTO_TEST_CASE(_name_tel) {
-    json json_config = json::parse(default_tel_config_str);
+BOOST_FIXTURE_TEST_CASE(_name_tel, TelescopeFixture) {
+    const Telescope& tel = Telescope::instance();
 
-    const Telescope& tel = get_telescope(json_config);
-
-    BOOST_CHECK_EQUAL(tel.get_name(), "fake");
+    BOOST_CHECK_EQUAL(tel.get_name(), "TestTelescope");
 }
 
-/*
-BOOST_AUTO_TEST_CASE(_eop_table) {
-    _global_log_level = 5;
-    BOOST_TEST_MESSAGE("parse");
-    json json_config = json::parse(default_tel_config_str);
+BOOST_FIXTURE_TEST_CASE(_get_eop_table, TelescopeEOPFixture) {
+    const Telescope& tel = Telescope::instance();
 
-    BOOST_TEST_MESSAGE("add field");
-    json_config["telescope"]["eop_updatable_config"] = "eop_update";
-    json_config["telescope"]["require_eop"] = true;
+    std::vector<EOP> eop_table = tel.get_current_EOP_table();
 
-    int64_t giga = 1'000'000'000L;
+    // Check table is right size
+    BOOST_CHECK_EQUAL(eop_table.size(), N);
 
-    BOOST_TEST_MESSAGE("init vecs");
-    std::vector<int64_t> t{100 * giga, giga * giga, 2 * giga * giga + 2};
-    std::vector<double> dut1{0.0, 0.5, -1.7};
-    std::vector<double> xpm{0.0, -1.0, 2.34};
-    std::vector<double> ypm{0.0, 0.00001, -8.99999};
+    // Check table is ordered in instrument time
+    for(size_t i = 0; i < N-1; i++)
+        BOOST_CHECK_LT(eop_table[i].t_inst_ns, eop_table[i+1].t_inst_ns);
 
-    std::vector<EOP> eop_true = make_full_eop_table(t, dut1, xpm, ypm);
+    // Check table is also ordered in UT1
+    for(size_t i = 0; i < N-1; i++)
+        BOOST_CHECK_LT(eop_table[i].t_ut1_ns, eop_table[i+1].t_ut1_ns);
 
-    BOOST_TEST_MESSAGE("make conf");
-    json eop_update = make_conf_eop_table(t, dut1, xpm, ypm);
+    // Check table entries are identical to what we sent, they might not be in same order though!
+    std::set<size_t> found_indices;
+    for(size_t i = 0; i < N; i++) {
+        const auto it = std::find(fix_eop_table.begin(), fix_eop_table.end(), eop_table[i]);
+        BOOST_CHECK_MESSAGE(it != fix_eop_table.end(),
+                fmt::format("EOP entry {:d} {} not found", i, eop_table[i]));
 
-    BOOST_TEST_MESSAGE("assign eop");
-    json_config["eop_update"] = eop_update;
+        size_t index = std::distance(fix_eop_table.begin(), it);
 
-    BOOST_TEST_MESSAGE(json_config);
-    std::vector<EOP> eop;
-    BOOST_TEST_MESSAGE("Make tel");
-    boost::test_tools::output_test_stream my_cout;
-    boost::test_tools::output_test_stream my_cerr;
-    {
-        cout_redirect guard_out(my_cout.rdbuf());
-        cerr_redirect guard_err(my_cerr.rdbuf());
-        try {
-            const Telescope& tel = get_telescope(json_config);
-            eop = tel.get_current_EOP_table();
-        } catch (const std::runtime_error &e ) {
-            BOOST_TEST_MESSAGE(fmt::format("ERROR: {}", e.what()));
-
-            BOOST_TEST_MESSAGE("STDOUT");
-            BOOST_TEST_MESSAGE(my_cout.str());
-            BOOST_TEST_MESSAGE("STDERR");
-            BOOST_TEST_MESSAGE(my_cerr.str());
-        }
+        BOOST_CHECK_MESSAGE(found_indices.count(index) == 0, fmt::format("EOP entry {:d} {} occured again!", i, eop_table[i]));
+        found_indices.insert(index);
     }
 
-    BOOST_TEST_MESSAGE("STDOUT");
-    BOOST_TEST_MESSAGE(my_cout.str());
-    BOOST_TEST_MESSAGE("STDERR");
-    BOOST_TEST_MESSAGE(my_cerr.str());
-
-
-    BOOST_CHECK_EQUAL(eop.size(), eop_true.size());
 }
-*/
+

@@ -33,6 +33,7 @@ back to UT1.
 #define TIME_UTIL_HPP
 
 #include "json.hpp" // for json
+#include "fmt.hpp"
 
 #include <inttypes.h>
 #include <time.h> // for timespec
@@ -131,6 +132,9 @@ struct EOP {
     double ERA_deg;        // Earth Rotation Angle, degrees
     double xp_as;          // Polar Motion x', in arcseconds.
     double yp_as;          // Polar Motion y', in arcseconds.
+
+    /// Return a simple string representation of the EOP for printing purposes
+    std::string to_string() const;
 };
 
 static constexpr EOP eop_null = {.t_inst_ns = 0,
@@ -153,6 +157,9 @@ inline bool operator==(const EOP& lhs, const EOP& rhs) {
 
 /// Simple string printing.
 std::ostream& operator<<(std::ostream& os, const EOP& eop);
+
+/// Printing with fmt {}
+std::string format_as(const EOP& eop);
 
 /**
  * @brief   Comparison function for searching/sorting an EOP table. Compares
@@ -198,6 +205,9 @@ struct BareEOP {
                 .xp_as = xp_as,
                 .yp_as = yp_as};
     }
+
+    /// Return a simple string representation of the BareEOP for printing purposes
+    std::string to_string() const;
 };
 
 static constexpr BareEOP bare_eop_null = {
@@ -212,6 +222,8 @@ inline bool operator==(const BareEOP& lhs, const BareEOP& rhs) {
 /// Simple printing to string
 std::ostream& operator<<(std::ostream& os, const BareEOP& eop);
 
+/// Printing with fmt {}
+std::string format_as(const BareEOP& eop);
 
 /// JSON serialization
 void to_json(nlohmann::json& j, const BareEOP& eop);
