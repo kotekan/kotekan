@@ -249,14 +249,23 @@ void frbNetworkProcess::main_thread() {
 
                 for (int link = 0; link < number_of_l1_links; link++) {
                     if (e_stream == local_beam_offset / 4 + link) {
-                        DestIpSocket& dst = stream_dest[link];
+                        DestIpSocket& dst = stream_dest.at(link);
                         if (dst.active
                             && (_ping_dead_threshold == std::chrono::seconds::zero() || dst.live)) {
-                            sendto(src_sockets[dst.sending_socket].socket_fd,
-                                   &packet_buffer[(e_stream * packets_per_stream + frame)
-                                                  * udp_frb_packet_size],
-                                   udp_frb_packet_size, 0, (struct sockaddr*)&dst.addr,
-                                   sizeof(dst.addr));
+                            const size_t idx =
+                                (e_stream * packets_per_stream + frame) * udp_frb_packet_size;
+                            assert(idx < in_buf->frame_size
+                                   && "out of range access into input frame");
+                            ssize_t send_len =
+                                sendto(src_sockets.at(dst.sending_socket).socket_fd,
+                                       &packet_buffer[idx], udp_frb_packet_size, 0,
+                                       (struct sockaddr*)&dst.addr, sizeof(dst.addr));
+                            if (send_len != udp_frb_packet_size) {
+                                char ip_addr[64] = "<unknown>";
+                                ERROR("Error sending to {:s}: {:d}",
+                                      inet_ntop(AF_INET, &dst.addr, ip_addr, sizeof(ip_addr)),
+                                      send_len);
+                            }
                         }
                     }
                 }
@@ -288,6 +297,8 @@ int frbNetworkProcess::initialize_source_sockets() {
     int rack, node, nos, my_node_id;
     if (number_of_subnets > 0)
         parse_chime_host_name(rack, node, nos, my_node_id);
+    else
+        rack = node = nos = my_node_id = 0;
     for (int i = 0; i < (number_of_subnets > 0 ? number_of_subnets : 1); i++) {
         // construct an local address for each of the four VLANs 10.6.0.0/16..10.9.0.0/16
         std::string ip_addr = number_of_subnets > 0
@@ -308,9 +319,11 @@ int frbNetworkProcess::initialize_source_sockets() {
             FATAL_ERROR("Network Thread: socket() failed: {:s} ", strerror(errno));
             return -1;
         }
-        if (bind(sock_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-            FATAL_ERROR("port binding failed ");
-            return -1;
+        if (number_of_subnets > 0) {
+            if (bind(sock_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+                FATAL_ERROR("port binding failed ");
+                return -1;
+            }
         }
 
         // use a larger send buffer for the socket
@@ -348,7 +361,11 @@ int frbNetworkProcess::initialize_destinations() {
             if (!dest_sockets.count(addr.sin_addr.s_addr)) {
                 // new destination, initialize the entry in `dest_sockets`
                 addr.sin_port = htons(udp_frb_port_number);
-                int sending_socket = get_vlan_from_ip(link_ip[i].c_str()) - 6;
+                const int vlan = get_vlan_from_ip(link_ip[i].c_str());
+                // in CHIME FRB L1 is on VLANs 10.6.0.0/16..10.9.0.0/16
+                const int sending_socket = number_of_subnets > 0 ? vlan - 6 : 0;
+                assert(sending_socket >= 0 && sending_socket < (ptrdiff_t)src_sockets.size()
+                       && "unexpected vlan");
                 dest_sockets.insert(
                     {addr.sin_addr.s_addr, DestIpSocket{link_ip[i], addr, sending_socket}});
             }
