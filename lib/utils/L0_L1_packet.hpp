@@ -81,6 +81,7 @@ struct L0_L1_header {
     uint16_t    nupfreq;        // upsampling factor (probably either 1 or 16)
     uint16_t    ntsamp;         // number of time samples in packet
 
+#ifdef L0_L1_HEADER_VARIABLE_SIZE_PART
     // Beam IDs in the data packet, numbered from 0-1023. 
     // It is not assumed that the 8 beams processed on each frbsearch node are consecutive. 
     // The mapping between beam ids and sky locations is currently undefined.
@@ -121,4 +122,5 @@ struct L0_L1_header {
     // 0x00 or 0xff, it should be treated as masked.
 
     uint8_t     data[ abs(data_nbytes) ];
+#endif
 };
