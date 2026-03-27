@@ -19,6 +19,7 @@ class FrbPacketHeader(ctypes.Structure):
         ("version", ctypes.c_uint32),
         ("nbytes", ctypes.c_int16),
         ("fpga_counts_per_sample", ctypes.c_uint16),
+        ("fpga0_ns", ctypes.c_uint64),
         ("fpga_seq_num", ctypes.c_uint64),
         ("nbeams", ctypes.c_uint16),
         ("nfreq", ctypes.c_uint16),
