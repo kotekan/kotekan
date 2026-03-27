@@ -228,8 +228,9 @@ void from_json(const nlohmann::json& j, EOP& m) {
 }
 
 std::string EOP::to_string() const {
-    return fmt::format("EOP{{t_inst_ns: {}, t_ut1_ns: {}, delta_UT1_inst: {}, ERA_deg: {}, xp_as: {}, yp_as: {}}}",
-              t_inst_ns, t_ut1_ns, delta_UT1_inst, ERA_deg, xp_as, yp_as);
+    return fmt::format(
+        "EOP{{t_inst_ns: {}, t_ut1_ns: {}, delta_UT1_inst: {}, ERA_deg: {}, xp_as: {}, yp_as: {}}}",
+        t_inst_ns, t_ut1_ns, delta_UT1_inst, ERA_deg, xp_as, yp_as);
 }
 
 
@@ -239,8 +240,8 @@ std::ostream& operator<<(std::ostream& os, const EOP& eop) {
     return os;
 }
 
-std::string format_as(const EOP &eop) {
-    return eop.to_string(); 
+std::string format_as(const EOP& eop) {
+    return eop.to_string();
 }
 
 void to_json(nlohmann::json& j, const BareEOP& eop) {
@@ -260,11 +261,11 @@ void from_json(const nlohmann::json& j, BareEOP& eop) {
 
 std::string BareEOP::to_string() const {
     return fmt::format("BareEOP{{t_inst_ns: {}, delta_UT1_inst: {}, xp_as: {}, yp_as: {}}}",
-              t_inst_ns, delta_UT1_inst, xp_as, yp_as);
+                       t_inst_ns, delta_UT1_inst, xp_as, yp_as);
 }
 
-std::string format_as(const BareEOP &eop) {
-    return eop.to_string(); 
+std::string format_as(const BareEOP& eop) {
+    return eop.to_string();
 }
 
 std::ostream& operator<<(std::ostream& os, const BareEOP& eop) {
