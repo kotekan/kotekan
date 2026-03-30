@@ -254,7 +254,7 @@ void frbNetworkProcess::main_thread() {
                             && (_ping_dead_threshold == std::chrono::seconds::zero() || dst.live)) {
                             const size_t idx =
                                 (e_stream * packets_per_stream + frame) * udp_frb_packet_size;
-                            assert(idx < in_buf->frame_size
+                            assert(idx + udp_frb_packet_size <= in_buf->frame_size
                                    && "out of range access into input frame");
                             ssize_t send_len =
                                 sendto(src_sockets.at(dst.sending_socket).socket_fd,
