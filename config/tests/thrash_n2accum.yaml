@@ -154,8 +154,8 @@ N2_accumulate:
     packet_loss_is_scalar: True
     num_workers: 4
     output_batch_size: 8
-    do_fringestop: False
-    debug_accum_mode: 0
+    do_fringestop: True
+    debug_accum_mode: 3
 
 eat_n2:
   kotekan_stage: dropAllFrames

@@ -23,9 +23,9 @@
 #include <functional> // for bind, function, placeholders
 #include <memory>     // for shared_ptr, __shared_ptr_access
 #include <omp.h>
+#include <sched.h>
 #include <time.h> // for size_t, timespec
 #include <vector> // for vector
-#include <sched.h>
 
 
 using namespace std::placeholders;
@@ -136,7 +136,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
         // We output frames in batches. Make sure a whole batch will fit in the output buffer.
         if (_output_batch_size > out_buf->num_frames) {
-            FATAL_ERROR("output_batch_size ({:d}) is greater than out_buf's num_frames (aka buffer_depth) ({:d})", _output_batch_size, out_buf->num_frames);
+            FATAL_ERROR("output_batch_size ({:d}) is greater than out_buf's num_frames (aka "
+                        "buffer_depth) ({:d})",
+                        _output_batch_size, out_buf->num_frames);
         }
     }
 
@@ -446,8 +448,6 @@ void N2Accumulate::main_thread() {
             assert(_vis.size() == corr_stride_t);
             assert(_weights.size() == corr_stride_t / 2);
 
-            int cpu[_num_freq_per_n2k_frame] = {0};
-
             if (_debug_accum_mode == 0) {
 #pragma omp parallel for simd num_threads(_num_workers)
                 for (uint64_t d = 0; d < corr_stride_t; d++) {
@@ -564,7 +564,6 @@ void N2Accumulate::main_thread() {
 
 #pragma omp parallel for num_threads(_num_workers)
                 for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
-                    cpu[f] = sched_getcpu();
                     if (_do_fringestop) {
                         // Physical frequency for this f
                         double freq_MHz = _tel.to_freq_MHz(
@@ -724,6 +723,133 @@ void N2Accumulate::main_thread() {
                 } // vis_sample even/odd
 
             } // debug_accum_mode 2
+            else if (_debug_accum_mode == 3) {
+
+                if (vis_sample_num_abs % 2 == 0) {
+                    vis_even_ptr = corr + corr_offset_t;
+                } else {
+                    EOP eop_even = _tel.get_EOP_at_time(
+                        _tel.to_time(seq - _n_fpga_samples_per_n2k_correlation / 2));
+                    EOP eop = _tel.get_EOP_at_time(
+                        _tel.to_time(seq + _n_fpga_samples_per_n2k_correlation / 2));
+#pragma omp parallel for num_threads(_num_workers)
+                    for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+                        if (_do_fringestop) {
+                            // Physical frequency for this f
+                            double freq_MHz = _tel.to_freq_MHz(
+                                static_cast<freq_id_t>(frame_metadata->get_coarse_freq()[f]));
+                            // Compute the fringestopping phases for this frequency
+                            _tel.cast<CHORDTelescope>().fringestop_phases_1d(
+                                freq_MHz, eop, target_eop, fringe_phase);
+                            _tel.cast<CHORDTelescope>().fringestop_phases_1d(
+                                freq_MHz, eop_even, target_eop, fringe_phase_even);
+                        }
+
+                        // Our current offset into the corr array
+                        uint64_t corr_offset_tf = corr_offset_t + f * corr_stride_f;
+                        uint64_t vis_offset_f = f * corr_stride_f;
+                        uint64_t weight_offset_f =
+                            f * corr_stride_f / 2; // weights are real, corr is complex
+
+                        uint64_t block_idx = 0;
+                        for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
+                            for (int64_t jhi = 0; jhi <= ihi; jhi++) {
+                                // For this stage to run, _num_elements must be a multiple of 64.
+                                // Since correlation blocksize is 16, there will always be a
+                                // multiple of 4 correlation_linear_blocks.  So for num_polarization
+                                // = 2, a block will not cross a polarization boundary, and we're
+                                // guaranteed all elements in a block will share a polarization.
+                                uint64_t di0 = _n2k_correlation_blocksize * ihi % num_dishes;
+                                uint64_t dj0 = _n2k_correlation_blocksize * jhi % num_dishes;
+                                uint64_t corr_offset_tfb =
+                                    corr_offset_tf + block_idx * corr_stride_b;
+                                uint64_t vis_offset_fb = vis_offset_f + block_idx * corr_stride_b;
+                                uint64_t weight_offset_fb =
+                                    weight_offset_f + block_idx * corr_stride_b / 2;
+
+                                const std::complex<float>* phase_i = fringe_phase.data() + di0;
+                                const std::complex<float>* phase_j = fringe_phase.data() + dj0;
+                                const std::complex<float>* phase_even_i =
+                                    fringe_phase_even.data() + di0;
+                                const std::complex<float>* phase_even_j =
+                                    fringe_phase_even.data() + dj0;
+
+                                for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
+                                    for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
+
+                                        uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
+                                        uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
+                                        if (_do_fringestop) {
+                                            // To apply phases:
+                                            //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
+                                            //                   = V_ij * Phase_i * conj(Phase_j)
+                                            std::complex<float> phase =
+                                                phase_i[ilo] * std::conj(phase_j[jlo]);
+                                            std::complex<float> phase_even =
+                                                phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
+
+                                            std::complex<float> vis_even{
+                                                static_cast<float>(
+                                                    vis_even_ptr[vis_offset_fb + idx + 0]),
+                                                static_cast<float>(
+                                                    vis_even_ptr[vis_offset_fb + idx + 1])};
+                                            std::complex<float> vis_odd{
+                                                static_cast<float>(corr[corr_offset_tfb + idx + 0]),
+                                                static_cast<float>(
+                                                    corr[corr_offset_tfb + idx + 1])};
+                                            std::complex<float> dvis =
+                                                phase * vis_odd - phase_even * vis_even;
+
+                                            _vis[vis_offset_fb + idx + 0] +=
+                                                phase.real() * corr[corr_offset_tfb + idx + 0]
+                                                - phase.imag() * corr[corr_offset_tfb + idx + 1]
+                                                + phase_even.real()
+                                                      * vis_even_ptr[vis_offset_fb + idx + 0]
+                                                - phase_even.imag()
+                                                      * vis_even_ptr[vis_offset_fb + idx + 1];
+                                            _vis[vis_offset_fb + idx + 1] +=
+                                                phase.imag() * corr[corr_offset_tfb + idx + 0]
+                                                + phase.real() * corr[corr_offset_tfb + idx + 1]
+                                                + phase_even.imag()
+                                                      * vis_even_ptr[vis_offset_fb + idx + 0]
+                                                + phase_even.real()
+                                                      * vis_even_ptr[vis_offset_fb + idx + 1];
+
+                                            _weights[weight_offset_fb + w_idx] +=
+                                                dvis.real() * dvis.real()
+                                                + dvis.imag() * dvis.imag();
+                                        } else {
+                                            std::complex<float> vis_even{
+                                                static_cast<float>(
+                                                    vis_even_ptr[vis_offset_fb + idx + 0]),
+                                                static_cast<float>(
+                                                    vis_even_ptr[vis_offset_fb + idx + 1])};
+                                            std::complex<float> vis_odd{
+                                                static_cast<float>(corr[corr_offset_tfb + idx + 0]),
+                                                static_cast<float>(
+                                                    corr[corr_offset_tfb + idx + 1])};
+                                            std::complex<float> dvis = vis_odd - vis_even;
+
+                                            _vis[vis_offset_fb + idx + 0] +=
+                                                corr[corr_offset_tfb + idx + 0]
+                                                + vis_even_ptr[vis_offset_fb + idx + 0];
+                                            _vis[vis_offset_fb + idx + 1] +=
+                                                corr[corr_offset_tfb + idx + 1]
+                                                + vis_even_ptr[vis_offset_fb + idx + 1];
+
+                                            _weights[weight_offset_fb + w_idx] +=
+                                                dvis.real() * dvis.real()
+                                                + dvis.imag() * dvis.imag();
+                                        }
+                                    } // jlo
+                                } // ilo
+                                block_idx++;
+                            } // jhi
+                        } // ihi
+                    } // f
+                } // vis_sample even/odd
+
+            } // debug_accum_mode 3
 
             // Track (frequency-dependent) lost samples
             for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
@@ -951,7 +1077,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
 
     const int64_t freq_block_size = _output_batch_size;
     const int64_t num_output_workers = std::min(_num_workers, _output_batch_size);
-    const int64_t num_freq_blocks = (_num_freq_per_n2k_frame + freq_block_size - 1) / freq_block_size;
+    const int64_t num_freq_blocks =
+        (_num_freq_per_n2k_frame + freq_block_size - 1) / freq_block_size;
 
     std::vector<std::shared_ptr<N2Metadata>> metas(freq_block_size);
 
@@ -965,7 +1092,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
     for (int64_t fb = 0; fb < num_freq_blocks; fb++) {
 
         [[maybe_unused]] double prof_out_t0 = omp_get_wtime();
-        // Wait for a block of frames to be available.  Grab them and get them metadata.    
+        // Wait for a block of frames to be available.  Grab them and get them metadata.
         for (int64_t f_idx = 0; f_idx < freq_block_size; f_idx++) {
             int64_t f = f_idx + fb * freq_block_size;
             if (f < _num_freq_per_n2k_frame) {
@@ -991,7 +1118,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
             int64_t f = f_idx + fb * freq_block_size;
             if (f >= _num_freq_per_n2k_frame)
                 continue;
-            
+
             std::shared_ptr<N2Metadata> meta = metas[f_idx];
 
             meta->fpga_start_tick = _accum_fpga_start_tick;
@@ -1008,10 +1135,12 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
             meta->time_center_eop = eop_null; // TODO: update
             meta->bin_eop = _tel.get_EOP_at_time(
                 _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
-            meta->bin_start_ERA_deg = _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick)).ERA_deg;
-            meta->bin_end_ERA_deg = _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick
-                                                                      + meta->frame_length_fpga_ticks))
-                                        .ERA_deg;
+            meta->bin_start_ERA_deg =
+                _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick)).ERA_deg;
+            meta->bin_end_ERA_deg =
+                _tel.get_EOP_at_time(
+                        _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks))
+                    .ERA_deg;
             meta->bin_start_LAST = -1; // TODO: update
             meta->bin_end_LAST = -1;   // TODO: update
             meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];
@@ -1026,8 +1155,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
             float ins = (ns != 0) ? (1.0f / ((float)ns)) : 0.0f;
 
             // Copy data into buffer.
-            // This requires changing from the GPU's blocked format to the triangular format N2Buffer
-            // expects.
+            // This requires changing from the GPU's blocked format to the triangular format
+            // N2Buffer expects.
 
             // iterate over the N2K format (blocked lower triangular)
             int64_t block_idx = 0;
@@ -1049,9 +1178,10 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
                             int64_t idx =
                                 jlo + ilo * stride_ilo + block_idx * stride_block + f * stride_f;
 
-                            // Get the index into the n2 view.  N2 is an *upper* triangular unblocked
-                            // form, so we use the global matrix indices to the lower-triangular N2K
-                            // form, and compute the triangular index with their transpose.
+                            // Get the index into the n2 view.  N2 is an *upper* triangular
+                            // unblocked form, so we use the global matrix indices to the
+                            // lower-triangular N2K form, and compute the triangular index with
+                            // their transpose.
                             //
                             //  N2K:                    N2:
                             //       j                        j
@@ -1073,11 +1203,11 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
 
                             float bias = std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
 
-                            
-                            //DEBUG("{} {} w1: {:.12f} v2: {:.12f} |v|^2: {:.12f}, dN^2: {:.12f} |v|^2
-                            //dN^2: {:.12f} diff: {:.12e} ==: {}", i, j, _weights[idx], std::norm(v),
-                            //std::norm(v)*ins*ins, _n_valid_sample_diff_sq_sum[f], bias, _weights[idx] -
-                            //bias, _weights[idx] == bias);
+
+                            // DEBUG("{} {} w1: {:.12f} v2: {:.12f} |v|^2: {:.12f}, dN^2: {:.12f}
+                            // |v|^2 dN^2: {:.12f} diff: {:.12e} ==: {}", i, j, _weights[idx],
+                            // std::norm(v), std::norm(v)*ins*ins, _n_valid_sample_diff_sq_sum[f],
+                            // bias, _weights[idx] - bias, _weights[idx] == bias);
 
                             if (ns > 0) {
                                 _weights[idx] -= bias;
@@ -1100,7 +1230,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
             std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
             std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(1u));
         } // f_idx
-        
+
         [[maybe_unused]] double prof_out_t2 = omp_get_wtime();
 
         // All the frames in the block are full. Release them and increment out_frame_id;
@@ -1109,7 +1239,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
             if (f < _num_freq_per_n2k_frame)
                 out_buf->mark_frame_full(unique_name, out_frame_id++);
         } // f_idx
-        
+
         [[maybe_unused]] double prof_out_t3 = omp_get_wtime();
 
         prof_out_setup_time += prof_out_t1 - prof_out_t0;
@@ -1123,14 +1253,14 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
     [[maybe_unused]] double prof_out_fill_time = omp_get_wtime();
 
     // _vis and _weights are large, 0 them in parallel.
-#pragma omp parallel for num_threads(_num_workers)
-    for(uint64_t i = 0; i < _vis.size(); i++) 
+#pragma omp parallel for simd num_threads(_num_workers)
+    for (uint64_t i = 0; i < _vis.size(); i++)
         _vis[i] = 0;
 
-#pragma omp parallel for num_threads(_num_workers)
-    for(uint64_t i = 0; i < _weights.size(); i++) 
+#pragma omp parallel for simd num_threads(_num_workers)
+    for (uint64_t i = 0; i < _weights.size(); i++)
         _weights[i] = 0.0f;
-   
+
     // These arrays are smaller, single threaded is fine.
     std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);
     std::fill(_n_valid_sample_diff_sq_sum.begin(), _n_valid_sample_diff_sq_sum.end(), 0);
@@ -1138,10 +1268,11 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
 
     [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
 
-    INFO("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  {:f} ms\n    fill:  {:f} ms", 
-            _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
-            1000 * prof_out_setup_time, 1000 * prof_out_work_time, 
-            1000 * prof_out_free_time, 1000 * (prof_out_end_time - prof_out_fill_time));
+    INFO("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  "
+         "{:f} ms\n    fill:  {:f} ms",
+         _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
+         1000 * prof_out_setup_time, 1000 * prof_out_work_time, 1000 * prof_out_free_time,
+         1000 * (prof_out_end_time - prof_out_fill_time));
 
     return true;
 }

@@ -522,6 +522,7 @@ void testN2kGen::main_thread() {
                   count_buf->buffer_name, count_frame_id, seq_num);
 
         } // if (repeat <= 0 or num_frames_generated < num_frames)
+        /*
         else if (repeat_count > 0) {
             // We're repeating!  Just copy from the store into the buffer.
             size_t store_index = num_frames_generated % num_frames;
@@ -534,6 +535,7 @@ void testN2kGen::main_thread() {
             // DEBUG("Repeated a {:s} test counts data set into {:s}[{:d}] at seq {:d}", count_type,
             //       count_buf->buffer_name, count_frame_id, seq_num);
         }
+        */
 
         [[maybe_unused]] double curr_time = omp_get_wtime();
         DEBUG("Frame generation took {:f} ms + {:f} ms idle", (curr_time - start_time) * 1000,
