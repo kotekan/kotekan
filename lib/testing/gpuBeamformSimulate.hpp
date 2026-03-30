@@ -63,7 +63,6 @@ private:
     double Freq_ref;
     /// The sky angle of the 4 EW beams in degree
     std::vector<float> _ew_spacing;
-    float* _ew_spacing_c;
     /// Default gain values if gain file is missing for this freq, currently set to 1+1j
     std::vector<float> default_gains;
     /// No. of beams
@@ -73,9 +72,9 @@ private:
     std::string _gain_dir;
 
     /// Array of phase delays for E-W brute force beamform, float of size 32
-    float* coff;
+    std::vector<float> coff;
     /// Array of gains, float size of 2048*2
-    float* cpu_gain;
+    std::vector<float> cpu_gain;
 
     /// Buffer for accessing metadata
     Buffer* metadata_buf;
@@ -87,24 +86,24 @@ private:
     float freq_MHz;
 
     /// Unpacked data
-    double* input_unpacked;
+    std::vector<double> input_unpacked;
     /// Unpacked data padded
-    double* input_unpacked_padded;
+    std::vector<double> input_unpacked_padded;
     /// Clamped to 256 n-s beams
-    double* clamping_output;
+    std::vector<double> clamping_output;
     /// Output from NS-EW beamform (pre-upchannelization)
-    double* cpu_beamform_output;
+    std::vector<double> cpu_beamform_output;
     /// Transpose beamform_output from time-pol-beams to pol-beam-time
-    double* transposed_output;
+    std::vector<double> transposed_output;
     /// Intermediate array to hold the 128 times for upchannelize
-    double* tmp128;
+    std::vector<double> tmp128;
     /// Intermediate array to hold the 512 values for FFT bf
-    int* tmp512;
+    std::vector<int> tmp512;
     /// Array of reordering index in C style for backwards compatibility.
-    int* reorder_map_c;
+    std::vector<int> reorder_map_c;
     /// Output data
-    float* cpu_final_output;
-    float* cpu_hfb_final_output;
+    std::vector<float> cpu_final_output;
+    std::vector<float> cpu_hfb_final_output;
 
     /// Input length, should be nsamp x n_elem x 2
     int input_len;
@@ -120,14 +119,45 @@ private:
     /// Scaling factor to be applied on the gains, currently set to 1.0 and somewhat deprecated?
     float scaling;
 
-    void reorder(unsigned char* data, int* map);
-    void cpu_beamform_ns(double* data, uint64_t transform_length, int stop_level);
-    void cpu_beamform_ew(double* input, double* output, float* Coeff, int nbeamsNS, int nbeamsEW,
-                         int npol, int nsamp_in);
-    void clamping(double* input, double* output, float freq, int nbeamsNS, int nbeamsEW,
-                  int nsamp_in, int npol);
-    void transpose(double* input, double* output, int nbeams, int nsamp_in);
-    void upchannelize(double* data, int upchan);
+    template<typename T>
+    class vectorView {
+    public:
+        vectorView(std::vector<T>& data) : _data(data.data()), _len(data.size()){};
+        vectorView(T* data, size_t len) : _data(data), _len(len){};
+        T& operator[](size_t i) {
+            return _data[i];
+        }
+        const T& operator[](size_t i) const {
+            return _data[i];
+        }
+        T& at(size_t i) {
+            assert(i < _len);
+            return _data[i];
+        }
+        const T& at(size_t i) const {
+            assert(i < _len);
+            return _data[i];
+        }
+
+        size_t size() const {
+            return _len;
+        }
+
+    private:
+        T* _data;
+        size_t _len;
+    };
+
+    void reorder(unsigned char* data, std::vector<int>& map);
+    void cpu_beamform_ns(vectorView<double> data, uint64_t transform_length, int stop_level);
+    void cpu_beamform_ew(std::vector<double>& input, std::vector<double>& output,
+                         std::vector<float>& Coeff, int nbeamsNS, int nbeamsEW, int npol,
+                         int nsamp_in);
+    void clamping(std::vector<double>& input, std::vector<double>& output, float freq, int nbeamsNS,
+                  int nbeamsEW, int nsamp_in, int npol);
+    void transpose(std::vector<double>& input, std::vector<double>& output, int nbeams,
+                   int nsamp_in);
+    void upchannelize(std::vector<double>& data, int upchan);
 };
 
 #endif
