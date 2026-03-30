@@ -622,10 +622,6 @@ void N2Accumulate::main_thread() {
                     } // ihi
                 } // f
 
-                for(int f = 0; f < _num_freq_per_n2k_frame; f++) {
-                    INFO("{:03d} : {:03d}", f, cpu[f]);
-                }
-
                 if (vis_sample_num_abs % 2 == 0) {
                     vis_even_ptr = corr + corr_offset_t;
                 } else {
@@ -961,23 +957,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
 
     assert(_vis_samples_in_out_frame == _num_n2k_samples_to_accumulate);
 
-    const int num_places = omp_get_num_places();
-    const int NP = std::max(1, num_places);
     [[maybe_unused]] double prof_out_setup_time = 0;
     [[maybe_unused]] double prof_out_work_time = 0;
-    [[maybe_unused]] int prof_out_work_num_thread[_num_freq_per_n2k_frame] = {0};
-    [[maybe_unused]] int prof_out_work_thread_id[_num_freq_per_n2k_frame] = {0};
-    [[maybe_unused]] int prof_out_work_cpu_id[_num_freq_per_n2k_frame] = {0};
-    [[maybe_unused]] int prof_out_work_place_id[_num_freq_per_n2k_frame] = {0};
-    [[maybe_unused]] int prof_out_work_part_size[_num_freq_per_n2k_frame] = {0};
-    [[maybe_unused]] std::vector<std::vector<int>> prof_out_work_part_places(_num_freq_per_n2k_frame, std::vector<int>(NP, 0));
-    [[maybe_unused]] int prof_out_work_bidx[_num_freq_per_n2k_frame] = {0};
-    [[maybe_unused]] int prof_out_work_fidx[_num_freq_per_n2k_frame] = {0};
-    [[maybe_unused]] double prof_out_work_work_start[_num_freq_per_n2k_frame] = {0};
-    [[maybe_unused]] double prof_out_work_meta_time[_num_freq_per_n2k_frame] = {0};
-    [[maybe_unused]] double prof_out_work_alloc_time[_num_freq_per_n2k_frame] = {0};
-    [[maybe_unused]] double prof_out_work_work_time[_num_freq_per_n2k_frame] = {0};
-    [[maybe_unused]] double prof_out_work_fill_time[_num_freq_per_n2k_frame] = {0};
     [[maybe_unused]] double prof_out_free_time = 0;
 
     // Loop over frequency blocks
@@ -1007,7 +988,6 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
         // We can do this in parallel!
 #pragma omp parallel for num_threads(num_output_workers)
         for (int64_t f_idx = 0; f_idx < freq_block_size; f_idx++) {
-            [[maybe_unused]] double prof_out_t10 = omp_get_wtime();
             int64_t f = f_idx + fb * freq_block_size;
             if (f >= _num_freq_per_n2k_frame)
                 continue;
@@ -1039,9 +1019,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
             if (chord_frame_metadata->has_dataset_id()) {
                 meta->dataset_id = chord_frame_metadata->get_dataset_id();
             }
-            [[maybe_unused]] double prof_out_t11 = omp_get_wtime();
             N2FrameView out_vis(out_buf, out_frame_id + f_idx);
-            [[maybe_unused]] double prof_out_t12 = omp_get_wtime();
 
             // Sample numbers for normalizing weights
             int64_t ns = _n_valid_fpga_samples_in_vis[f]; // ns = "number of samples"
@@ -1116,28 +1094,11 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
                 } // jhi
             } // ihi
 
-            [[maybe_unused]] double prof_out_t13 = omp_get_wtime();
-
             out_vis.erms = -1;
             out_vis.radiometer_chi2 = 1.0f;
             std::fill(out_vis.flags.begin(), out_vis.flags.end(), 0);
             std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
             std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(1u));
-            [[maybe_unused]] double prof_out_t14 = omp_get_wtime();
-           
-            prof_out_work_num_thread[f] = omp_get_num_threads();
-            prof_out_work_thread_id[f] = omp_get_thread_num();
-            prof_out_work_cpu_id[f] = sched_getcpu();
-            prof_out_work_place_id[f] = omp_get_place_num();
-            prof_out_work_part_size[f] = omp_get_partition_num_places();
-            omp_get_partition_place_nums(prof_out_work_part_places[f].data());
-            prof_out_work_bidx[f] = fb;
-            prof_out_work_fidx[f] = f_idx;
-            prof_out_work_meta_time[f] = prof_out_t11 - prof_out_t10;
-            prof_out_work_alloc_time[f] = prof_out_t12 - prof_out_t11;
-            prof_out_work_work_time[f] = prof_out_t13 - prof_out_t12;
-            prof_out_work_fill_time[f] = prof_out_t14 - prof_out_t13;
-            prof_out_work_work_start[f] = prof_out_t12;
         } // f_idx
         
         [[maybe_unused]] double prof_out_t2 = omp_get_wtime();
@@ -1159,6 +1120,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
 
     DEBUG("Wrapping up accumulation buffer output copy.");
 
+    [[maybe_unused]] double prof_out_fill_time = omp_get_wtime();
+
     std::fill(_vis.begin(), _vis.end(), 0);
     std::fill(_weights.begin(), _weights.end(), 0.0f);
     std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);
@@ -1167,50 +1130,10 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
         
     [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
 
-    INFO("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  {:f} ms", 
+    INFO("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  {:f} ms\n    fill:  {:f} ms", 
             _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
             1000 * prof_out_setup_time, 1000 * prof_out_work_time, 
-            1000 * prof_out_free_time);
-
-    INFO("f    | thread    cpu | place | idx  |   meta        alloc       start      work        fill");
-    for(int f = 0; f < _num_freq_per_n2k_frame; f++) {
-        INFO("{:03d} | {:03d} of {:03d} {:03d} | {:02d} | {:03d} {:03d} | {:<12f} ms   {:<12f} ms   {:<12f} ms   {:<12f} ms   {:<12f} ms",
-            f, prof_out_work_thread_id[f], prof_out_work_num_thread[f], prof_out_work_cpu_id[f],
-            prof_out_work_place_id[f],
-            prof_out_work_bidx[f], prof_out_work_fidx[f],
-            1000*prof_out_work_meta_time[f], 1000*prof_out_work_alloc_time[f],
-            1000 * prof_out_work_work_start[f], 1000*prof_out_work_work_time[f],
-            1000*prof_out_work_fill_time[f]);
-        INFO("     Partition Size: {0:d}  Places: {1:}", prof_out_work_part_size[f],
-                fmt::join(prof_out_work_part_places[f], ", "));
-    }
-    INFO("num_threads: {:d}", _num_workers);
-    INFO("batch_size: {:d}", _output_batch_size);
-    INFO("num_output_threads: {:d}", num_output_workers);
-
-    omp_proc_bind_t bind_policy = omp_get_proc_bind();
-    std::string bind_policy_name = "";
-    switch(bind_policy) {
-        case omp_proc_bind_false: bind_policy_name = "false"; break; 
-        case omp_proc_bind_true: bind_policy_name = "true"; break; 
-        case omp_proc_bind_master: bind_policy_name = "master"; break; 
-        case omp_proc_bind_close: bind_policy_name = "close"; break; 
-        case omp_proc_bind_spread: bind_policy_name = "spread"; break; 
-        default:    bind_policy_name = "unknowkn";
-    }
-    INFO("omp_bind_proc: {} {}", static_cast<int>(bind_policy), bind_policy_name);
-    INFO("omp_num_places: {:d}", num_places);
-    for(int p = 0; p < num_places; p++) {
-
-        int num_proc = omp_get_place_num_procs(p);
-        
-        std::vector<int> procs(num_proc);
-
-        omp_get_place_proc_ids(p, procs.data());
-
-        INFO("Place {0:02d} - Procs: {1}", p, fmt::join(procs, ", "));
-    }
-
+            1000 * prof_out_free_time, 1000 * (prof_out_end_time - prof_out_fill_time));
 
     return true;
 }
