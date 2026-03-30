@@ -18,7 +18,6 @@
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
 #include <stdio.h>     // for fclose, fopen, fread, snprintf, FILE
-#include <stdlib.h>    // for free, malloc
 #include <string.h>    // for memcpy
 #include <sys/types.h> // for uint
 
@@ -57,10 +56,6 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& uniq
     Freq_ref = (light * (128) / (sin(_northmost_beam * PI / 180.) * feed_sep * 256)) / 1.e6;
     _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
     _num_frb_total_beams = config.get<int32_t>(unique_name, "num_frb_total_beams");
-    _ew_spacing_c = (float*)malloc(4 * sizeof(float));
-    for (int i = 0; i < 4; i++) {
-        _ew_spacing_c[i] = _ew_spacing[i];
-    }
     _gain_dir = config.get<std::string>(unique_name, "gain_dir");
     std::vector<float> dg = {0.0, 0.0}; // re,im
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
@@ -92,24 +87,23 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& uniq
     assert(output_len == out_id_max + 1);
     hfb_output_len = _num_frb_total_beams * _factor_upchan;
 
-    input_unpacked = (double*)malloc(input_len * sizeof(double));
-    input_unpacked_padded = (double*)malloc(input_len_padded * sizeof(double));
-    clamping_output = (double*)malloc(input_len * sizeof(double));
-    cpu_beamform_output = (double*)malloc(input_len * sizeof(double));
-    transposed_output = (double*)malloc(transposed_len * sizeof(double));
-    tmp128 = (double*)malloc(_factor_upchan * 2 * sizeof(double));
-    cpu_final_output = (float*)malloc(output_len * sizeof(float));
-    cpu_hfb_final_output = (float*)malloc(hfb_output_len * sizeof(float));
+    input_unpacked.resize(input_len);
+    input_unpacked_padded.resize(input_len_padded);
+    clamping_output.resize(input_len);
+    cpu_beamform_output.resize(input_len);
+    transposed_output.resize(transposed_len);
+    tmp128.resize(_factor_upchan * 2);
+    cpu_final_output.resize(output_len);
+    cpu_hfb_final_output.resize(hfb_output_len);
 
-    cpu_gain = (float*)malloc(2 * 2048 * sizeof(float));
+    cpu_gain.resize(2 * 2048);
 
-    coff = (float*)malloc(16 * 2 * sizeof(float));
-    assert(coff != nullptr);
+    coff.resize(16 * 2);
 
     // Backward compatibility, array in c
-    reorder_map_c = (int*)malloc(512 * sizeof(int));
+    reorder_map_c.resize(512);
     for (uint i = 0; i < 512; ++i) {
-        reorder_map_c[i] = _reorder_map[i];
+        reorder_map_c.at(i) = _reorder_map.at(i);
     }
 
     metadata_buf = get_buffer("network_in_buf");
@@ -118,39 +112,26 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& uniq
     freq_MHz = -1;
 }
 
-gpuBeamformSimulate::~gpuBeamformSimulate() {
-    free(input_unpacked_padded);
-    free(input_unpacked);
-    free(clamping_output);
-    free(cpu_beamform_output);
-    free(coff);
-    free(cpu_gain);
-    free(transposed_output);
-    free(tmp128);
-    free(cpu_final_output);
-    free(cpu_hfb_final_output);
-    free(reorder_map_c);
-    free(_ew_spacing_c);
-}
+gpuBeamformSimulate::~gpuBeamformSimulate() {}
 
-void gpuBeamformSimulate::reorder(unsigned char* data, int* map) {
-    tmp512 = (int*)malloc(2048 * sizeof(int));
+void gpuBeamformSimulate::reorder(unsigned char* data, std::vector<int>& map) {
+    std::vector<int> tmp512(2048);
     for (int j = 0; j < _samples_per_data_set; j++) {
         for (int i = 0; i < 512; i++) {
-            int id = map[i];
-            tmp512[i * 4] = data[j * 2048 + (id * 4)];
-            tmp512[i * 4 + 1] = data[j * 2048 + (id * 4 + 1)];
-            tmp512[i * 4 + 2] = data[j * 2048 + (id * 4 + 2)];
-            tmp512[i * 4 + 3] = data[j * 2048 + (id * 4 + 3)];
+            int id = map.at(i);
+            tmp512.at(i * 4) = data[j * 2048 + (id * 4)];
+            tmp512.at(i * 4 + 1) = data[j * 2048 + (id * 4 + 1)];
+            tmp512.at(i * 4 + 2) = data[j * 2048 + (id * 4 + 2)];
+            tmp512.at(i * 4 + 3) = data[j * 2048 + (id * 4 + 3)];
         }
         for (int i = 0; i < 2048; i++) {
-            data[j * 2048 + i] = tmp512[i];
+            data[j * 2048 + i] = tmp512.at(i);
         }
     }
-    free(tmp512);
 }
 
-void gpuBeamformSimulate::cpu_beamform_ns(double* data, uint64_t transform_length, int stop_level) {
+void gpuBeamformSimulate::cpu_beamform_ns(vectorView<double> data, uint64_t transform_length,
+                                          int stop_level) {
     uint64_t n, m, j, i;
     double wr, wi, theta;
     double tempr, tempi;
@@ -159,8 +140,8 @@ void gpuBeamformSimulate::cpu_beamform_ns(double* data, uint64_t transform_lengt
 
     for (i = 1; i < n; i += 2) { /* This is the bit-reversal section of the routine. */
         if (j > i) {
-            SWAP(data[j - 1], data[i - 1]); /* Exchange the two complex numbers. */
-            SWAP(data[j], data[i]);
+            SWAP(data.at(j - 1), data.at(i - 1)); /* Exchange the two complex numbers. */
+            SWAP(data.at(j), data.at(i));
         }
         m = transform_length;
         while (m >= 2 && j > m) {
@@ -184,19 +165,20 @@ void gpuBeamformSimulate::cpu_beamform_ns(double* data, uint64_t transform_lengt
                 wi = sin(minor_index * theta);
                 int first_index = (index + minor_index) * 2;
                 int second_index = first_index + step_size * 2;
-                tempr = wr * data[second_index] - wi * data[second_index + 1];
-                tempi = wi * data[second_index] + wr * data[second_index + 1];
-                data[second_index] = data[first_index] - tempr;
-                data[second_index + 1] = data[first_index + 1] - tempi;
-                data[first_index] += tempr;
-                data[first_index + 1] += tempi;
+                tempr = wr * data.at(second_index) - wi * data.at(second_index + 1);
+                tempi = wi * data.at(second_index) + wr * data.at(second_index + 1);
+                data.at(second_index) = data.at(first_index) - tempr;
+                data.at(second_index + 1) = data.at(first_index + 1) - tempi;
+                data.at(first_index) += tempr;
+                data.at(first_index + 1) += tempi;
             }
         }
     }
 }
 
-void gpuBeamformSimulate::cpu_beamform_ew(double* input, double* output, float* Coeff, int nbeamsNS,
-                                          int nbeamsEW, int npol, int nsamp_in) {
+void gpuBeamformSimulate::cpu_beamform_ew(std::vector<double>& input, std::vector<double>& output,
+                                          std::vector<float>& Coeff, int nbeamsNS, int nbeamsEW,
+                                          int npol, int nsamp_in) {
 
     int elm_now, out_add;
     for (int t = 0; t < nsamp_in; t++) {
@@ -208,22 +190,24 @@ void gpuBeamformSimulate::cpu_beamform_ew(double* input, double* output, float* 
                         elm_now = (t * 2048 + p * 1024 + elm * 256 + bNS) * 2;
 
                         // REAL
-                        output[out_add] += input[elm_now] * Coeff[2 * (bEW * 4 + elm)]
-                                           + input[elm_now + 1] * Coeff[2 * (bEW * 4 + elm) + 1];
+                        output.at(out_add) +=
+                            input.at(elm_now) * Coeff.at(2 * (bEW * 4 + elm))
+                            + input.at(elm_now + 1) * Coeff.at(2 * (bEW * 4 + elm) + 1);
                         // IMAG
-                        output[out_add + 1] += input[elm_now] * Coeff[2 * (bEW * 4 + elm) + 1]
-                                               - input[elm_now + 1] * Coeff[2 * (bEW * 4 + elm)];
+                        output.at(out_add + 1) +=
+                            input.at(elm_now) * Coeff.at(2 * (bEW * 4 + elm) + 1)
+                            - input.at(elm_now + 1) * Coeff.at(2 * (bEW * 4 + elm));
                     }
-                    output[out_add] = output[out_add] / 4.;
-                    output[out_add + 1] = output[out_add + 1] / 4.;
+                    output.at(out_add) = output.at(out_add) / 4.;
+                    output.at(out_add + 1) = output.at(out_add + 1) / 4.;
                 }
             }
         }
     }
 }
 
-void gpuBeamformSimulate::clamping(double* input, double* output, float freq, int nbeamsNS,
-                                   int nbeamsEW, int nsamp_in, int npol) {
+void gpuBeamformSimulate::clamping(std::vector<double>& input, std::vector<double>& output,
+                                   float freq, int nbeamsNS, int nbeamsEW, int nsamp_in, int npol) {
     float t, delta_t, Beam_Ref;
     int cl_index;
     float D2R = PI / 180.;
@@ -250,35 +234,36 @@ void gpuBeamformSimulate::clamping(double* input, double* output, float freq, in
             for (int p = 0; p < npol; p++) {
                 for (int b2 = 0; b2 < nbeamsEW; b2++) {
                     // flip N-S by writing to (255-b)
-                    output[2
-                           * (i * npol * nbeamsNS * nbeamsEW + p * nbeams + b2 * nbeamsNS
-                              + (255 - b))] =
-                        input[2 * (i * 2048 * 2 + p * 1024 * 2 + b2 * 512 + cl_index)];
-                    output[2
-                               * (i * npol * nbeamsNS * nbeamsEW + p * nbeams + b2 * nbeamsNS
-                                  + (255 - b))
-                           + 1] =
-                        input[2 * (i * 2048 * 2 + p * 1024 * 2 + b2 * 512 + cl_index) + 1];
+                    output.at(2
+                              * (i * npol * nbeamsNS * nbeamsEW + p * nbeams + b2 * nbeamsNS
+                                 + (255 - b))) =
+                        input.at(2 * (i * 2048 * 2 + p * 1024 * 2 + b2 * 512 + cl_index));
+                    output.at(2
+                                  * (i * npol * nbeamsNS * nbeamsEW + p * nbeams + b2 * nbeamsNS
+                                     + (255 - b))
+                              + 1) =
+                        input.at(2 * (i * 2048 * 2 + p * 1024 * 2 + b2 * 512 + cl_index) + 1);
                 }
             }
         }
     }
 }
 
-void gpuBeamformSimulate::transpose(double* input, double* output, int n_beams, int n_samp) {
+void gpuBeamformSimulate::transpose(std::vector<double>& input, std::vector<double>& output,
+                                    int n_beams, int n_samp) {
     for (int j = 0; j < n_samp; j++) {
         for (int i = 0; i < n_beams; i++) {
-            output[(i * (n_samp + 32) + j) * 2] = input[(j * n_beams + i) * 2];
-            output[(i * (n_samp + 32) + j) * 2 + 1] = input[(j * n_beams + i) * 2 + 1];
+            output.at((i * (n_samp + 32) + j) * 2) = input.at((j * n_beams + i) * 2);
+            output.at((i * (n_samp + 32) + j) * 2 + 1) = input.at((j * n_beams + i) * 2 + 1);
             for (int k = 0; k < 32; k++) {
-                output[(i * (n_samp + 32) + (n_samp + k)) * 2] = 0.0;
-                output[(i * (n_samp + 32) + (n_samp + k)) * 2 + 1] = 0.0;
+                output.at((i * (n_samp + 32) + (n_samp + k)) * 2) = 0.0;
+                output.at((i * (n_samp + 32) + (n_samp + k)) * 2 + 1) = 0.0;
             }
         }
     }
 }
 
-void gpuBeamformSimulate::upchannelize(double* data, int nn) {
+void gpuBeamformSimulate::upchannelize(std::vector<double>& data, int nn) {
     unsigned long n, mmax, m, j, istep, i;
     double wtemp, wr, wpr, wpi, wi, theta;
     double tempr, tempi;
@@ -286,8 +271,8 @@ void gpuBeamformSimulate::upchannelize(double* data, int nn) {
     j = 1;
     for (i = 1; i < n; i += 2) { /* bit-reversal section of the routine. */
         if (j > i) {
-            SWAP(data[j - 1], data[i - 1]); /* Exchange two complex numbers. */
-            SWAP(data[j], data[i]);
+            SWAP(data.at(j - 1), data.at(i - 1)); /* Exchange two complex numbers. */
+            SWAP(data.at(j), data.at(i));
         }
         m = nn;
         while (m >= 2 && j > m) {
@@ -308,12 +293,12 @@ void gpuBeamformSimulate::upchannelize(double* data, int nn) {
         for (m = 1; m < mmax; m += 2) { /* two nested inner loops. */
             for (i = m; i <= n; i += istep) {
                 j = i + mmax; /* This is the Danielson-Lanczos formula. */
-                tempr = wr * data[j - 1] - wi * data[j];
-                tempi = wr * data[j] + wi * data[j - 1];
-                data[j - 1] = data[i - 1] - tempr;
-                data[j] = data[i] - tempi;
-                data[i - 1] += tempr;
-                data[i] += tempi;
+                tempr = wr * data.at(j - 1) - wi * data.at(j);
+                tempi = wr * data.at(j) + wi * data.at(j - 1);
+                data.at(j - 1) = data.at(i - 1) - tempr;
+                data.at(j) = data.at(i) - tempi;
+                data.at(i - 1) += tempr;
+                data.at(i) += tempi;
             }
             wr = (wtemp = wr) * wpr - wi * wpi + wr; /* Trigonometric recurrence. */
             wi = wi * wpr + wtemp * wpi + wi;
@@ -352,18 +337,18 @@ void gpuBeamformSimulate::main_thread() {
             break;
 
         for (int i = 0; i < input_len; i++) {
-            cpu_beamform_output[i] = 0.0; // Need this
-            clamping_output[i] = 0.0;     // Maybe don't need this
+            cpu_beamform_output.at(i) = 0.0; // Need this
+            clamping_output.at(i) = 0.0;     // Maybe don't need this
         }
         for (int i = 0; i < transposed_len; i++) {
-            transposed_output[i] = 0.0; // Maybe don't need this
+            transposed_output.at(i) = 0.0; // Maybe don't need this
         }
         for (int i = 0; i < output_len; i++) {
-            cpu_final_output[i] = 0.0;
+            cpu_final_output.at(i) = 0.0;
         }
 
         for (int i = 0; i < hfb_output_len; i++)
-            cpu_hfb_final_output[i] = 0.f;
+            cpu_hfb_final_output.at(i) = 0.f;
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
@@ -380,11 +365,11 @@ void gpuBeamformSimulate::main_thread() {
 
         // Work out the EW phase coefficients from freq_MHz
         for (int angle_iter = 0; angle_iter < 4; angle_iter++) {
-            double anglefrac = sin(_ew_spacing[angle_iter] * PI / 180.);
+            double anglefrac = sin(_ew_spacing.at(angle_iter) * PI / 180.);
             for (int cylinder = 0; cylinder < 4; cylinder++) {
-                coff[angle_iter * 4 * 2 + cylinder * 2] =
+                coff.at(angle_iter * 4 * 2 + cylinder * 2) =
                     cos(2 * PI * anglefrac * cylinder * 22 * freq_MHz * 1.e6 / light);
-                coff[angle_iter * 4 * 2 + cylinder * 2 + 1] =
+                coff.at(angle_iter * 4 * 2 + cylinder * 2 + 1) =
                     sin(2 * PI * anglefrac * cylinder * 22 * freq_MHz * 1.e6 / light);
             }
         }
@@ -398,17 +383,17 @@ void gpuBeamformSimulate::main_thread() {
         if (ptr_myfile == nullptr) {
             ERROR("CPU verification code: Cannot open gain file {:s}", filename);
             for (int i = 0; i < 2048; i++) {
-                cpu_gain[i * 2] = default_gains[0] * scaling;
-                cpu_gain[i * 2 + 1] = default_gains[1] * scaling;
+                cpu_gain.at(i * 2) = default_gains[0] * scaling;
+                cpu_gain.at(i * 2 + 1) = default_gains[1] * scaling;
             }
         } else {
             uint32_t read_length = sizeof(float) * 2 * 2048;
-            if (fread(cpu_gain, read_length, 1, ptr_myfile) != 1) {
+            if (fread(cpu_gain.data(), read_length, 1, ptr_myfile) != 1) {
                 ERROR("Couldn't read gain file...");
             }
             for (uint32_t i = 0; i < 2048; i++) {
-                cpu_gain[i * 2] = cpu_gain[i * 2] * scaling;
-                cpu_gain[i * 2 + 1] = cpu_gain[i * 2] * scaling;
+                cpu_gain.at(i * 2) = cpu_gain[i * 2] * scaling;
+                cpu_gain.at(i * 2 + 1) = cpu_gain[i * 2] * scaling;
             }
             fclose(ptr_myfile);
         }
@@ -419,8 +404,8 @@ void gpuBeamformSimulate::main_thread() {
         // Unpack and pad the input data
         int dest_idx = 0;
         for (size_t i = 0; i < input_buf->frame_size; ++i) {
-            input_unpacked[dest_idx++] = HI_NIBBLE(input[i]) - 8;
-            input_unpacked[dest_idx++] = LO_NIBBLE(input[i]) - 8;
+            input_unpacked.at(dest_idx++) = HI_NIBBLE(input[i]) - 8;
+            input_unpacked.at(dest_idx++) = LO_NIBBLE(input[i]) - 8;
         }
 
         // Pad to 512
@@ -432,30 +417,30 @@ void gpuBeamformSimulate::main_thread() {
                     for (int i = 0; i < 512; i++) {
                         if (i < 256) {
                             // Real
-                            input_unpacked_padded[index++] =
+                            input_unpacked_padded.at(index++) =
                                 input_unpacked[2
                                                * (j * npol * nbeams + p * nbeams + b * nbeamsNS
                                                   + i)]
-                                    * cpu_gain[(p * nbeams + b * nbeamsNS + i) * 2]
+                                    * cpu_gain.at((p * nbeams + b * nbeamsNS + i) * 2)
                                 + input_unpacked[2
                                                      * (j * npol * nbeams + p * nbeams
                                                         + b * nbeamsNS + i)
                                                  + 1]
-                                      * cpu_gain[(p * nbeams + b * nbeamsNS + i) * 2 + 1];
+                                      * cpu_gain.at((p * nbeams + b * nbeamsNS + i) * 2 + 1);
                             // Imag
-                            input_unpacked_padded[index++] =
+                            input_unpacked_padded.at(index++) =
                                 input_unpacked[2
                                                    * (j * npol * nbeams + p * nbeams + b * nbeamsNS
                                                       + i)
                                                + 1]
-                                    * cpu_gain[(p * nbeams + b * nbeamsNS + i) * 2]
+                                    * cpu_gain.at((p * nbeams + b * nbeamsNS + i) * 2)
                                 - input_unpacked[2
                                                  * (j * npol * nbeams + p * nbeams + b * nbeamsNS
                                                     + i)]
-                                      * cpu_gain[(p * nbeams + b * nbeamsNS + i) * 2 + 1];
+                                      * cpu_gain.at((p * nbeams + b * nbeamsNS + i) * 2 + 1);
                         } else {
-                            input_unpacked_padded[index++] = 0;
-                            input_unpacked_padded[index++] = 0;
+                            input_unpacked_padded.at(index++) = 0;
+                            input_unpacked_padded.at(index++) = 0;
                         }
                     }
                 }
@@ -464,7 +449,8 @@ void gpuBeamformSimulate::main_thread() {
 
         // Beamform north south.
         for (int i = 0; i < _samples_per_data_set * npol * nbeamsEW; i++) {
-            cpu_beamform_ns(&input_unpacked_padded[i * 512 * 2], 512, 8);
+            cpu_beamform_ns(vectorView<double>(&input_unpacked_padded.at(i * 512 * 2), 512 * 2),
+                            512, 8);
         }
 
         // Clamp the data
@@ -483,18 +469,18 @@ void gpuBeamformSimulate::main_thread() {
             for (int n = 0; n < _samples_per_data_set / _factor_upchan; n++) {
                 int index = 0;
                 for (int i = 0; i < _factor_upchan; i++) {
-                    tmp128[index++] = transposed_output[(b * (_samples_per_data_set + 32)
-                                                         + n * _factor_upchan + i)
-                                                        * 2];
-                    tmp128[index++] = transposed_output
-                        [(b * (_samples_per_data_set + 32) + n * _factor_upchan + i) * 2 + 1];
+                    tmp128.at(index++) = transposed_output[(b * (_samples_per_data_set + 32)
+                                                            + n * _factor_upchan + i)
+                                                           * 2];
+                    tmp128.at(index++) = transposed_output.at(
+                        (b * (_samples_per_data_set + 32) + n * _factor_upchan + i) * 2 + 1);
                 }
                 upchannelize(tmp128, _factor_upchan);
                 for (int i = 0; i < _factor_upchan; i++) {
-                    cpu_beamform_output[(b * _samples_per_data_set + n * _factor_upchan + i) * 2] =
-                        tmp128[i * 2];
+                    cpu_beamform_output.at((b * _samples_per_data_set + n * _factor_upchan + i)
+                                           * 2) = tmp128.at(i * 2);
                     cpu_beamform_output[(b * _samples_per_data_set + n * _factor_upchan + i) * 2
-                                        + 1] = tmp128[i * 2 + 1];
+                                        + 1] = tmp128.at(i * 2 + 1);
                 }
             }
         }
@@ -524,8 +510,8 @@ void gpuBeamformSimulate::main_thread() {
                                  + (t * _downsample_time + tt) * _factor_upchan + f)
                                 * 2;
 
-                            tmp_real = cpu_beamform_output[sample_offset];
-                            tmp_imag = cpu_beamform_output[sample_offset + 1];
+                            tmp_real = cpu_beamform_output.at(sample_offset);
+                            tmp_imag = cpu_beamform_output.at(sample_offset + 1);
 
                             out_sq += tmp_real * tmp_real + tmp_imag * tmp_imag;
                         } // end for tt
@@ -535,11 +521,11 @@ void gpuBeamformSimulate::main_thread() {
 
                 // JSW TODO: apply bandpass filter
                 const int output_offset = b * nfreq_out + ((f + 64) % 128);
-                cpu_hfb_final_output[output_offset] = total_sum;
+                cpu_hfb_final_output.at(output_offset) = total_sum;
             } // end for freq
         } // end for beam
 
-        memcpy(hfb_output, cpu_hfb_final_output, hfb_output_buf->frame_size);
+        memcpy(hfb_output, cpu_hfb_final_output.data(), hfb_output_buf->frame_size);
 
         // Downsample
         nfreq_out = _factor_upchan / _downsample_freq;
@@ -555,30 +541,29 @@ void gpuBeamformSimulate::main_thread() {
                     for (int pp = 0; pp < npol; pp++) {
                         for (int tt = 0; tt < _downsample_time; tt++) {
                             for (int ff = 0; ff < _downsample_freq; ff++) {
-                                tmp_real = cpu_beamform_output[(pp * 1024 * _samples_per_data_set
-                                                                + b * _samples_per_data_set
-                                                                + (t * _downsample_time + tt)
-                                                                      * _factor_upchan
-                                                                + (f * _downsample_freq + ff))
-                                                               * 2];
-                                tmp_imag = cpu_beamform_output[(pp * 1024 * _samples_per_data_set
-                                                                + b * _samples_per_data_set
-                                                                + (t * _downsample_time + tt)
-                                                                      * _factor_upchan
-                                                                + (f * _downsample_freq + ff))
-                                                                   * 2
-                                                               + 1];
+                                tmp_real = cpu_beamform_output.at(
+                                    (pp * 1024 * _samples_per_data_set + b * _samples_per_data_set
+                                     + (t * _downsample_time + tt) * _factor_upchan
+                                     + (f * _downsample_freq + ff))
+                                    * 2);
+                                tmp_imag = cpu_beamform_output.at(
+                                    (pp * 1024 * _samples_per_data_set + b * _samples_per_data_set
+                                     + (t * _downsample_time + tt) * _factor_upchan
+                                     + (f * _downsample_freq + ff))
+                                        * 2
+                                    + 1);
                                 out_sq += tmp_real * tmp_real + tmp_imag * tmp_imag;
                             } // end for ff
                         } // end for tt
                     } // end for pol
-                    cpu_final_output[out_id] = out_sq / 48. / BP[int((f + 8) % 16)];
+                    assert(out_id < output_len);
+                    cpu_final_output.at(out_id) = out_sq / 48. / BP[int((f + 8) % 16)];
 
                 } // end for freq
             } // end for time
         } // end for beam
 
-        memcpy(output, cpu_final_output, output_buf->frame_size);
+        memcpy(output, cpu_final_output.data(), output_buf->frame_size);
 
         INFO("Simulating GPU beamform processing done for {:s}[{:d}] result is in {:s}[{:d}]",
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
