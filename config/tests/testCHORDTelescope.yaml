@@ -51,7 +51,7 @@ telescope:
   dish_coelev_deg: 0.0
 
   eop_updatable_config: "/earth_rotation_data"
-  require_eop: true
+  require_eop: false
 
   dish_separation_x_m: 6.3
   dish_separation_y_m: 8.5
