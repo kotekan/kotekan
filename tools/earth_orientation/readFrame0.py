@@ -1,5 +1,17 @@
+#!/usr/bin/env python3
+"""
+/*********************************************************************************
+* Earth Orientation Parameter Tools 
+* File: readFrame0.py
+* Purpose: Contact running fpga_master and/or kotekan instances via REST and output their values for `frame0_nano`.
+* Python Version: 3.12
+* Dependencies: argparse, eop_utils
+* Authors: Geoffrey Ryan
+*********************************************************************************/
+"""
 import argparse
 import eop_utils
+
 
 if __name__ == "__main__":
 

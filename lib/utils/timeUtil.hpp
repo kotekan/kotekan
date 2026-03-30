@@ -82,8 +82,8 @@ int64_t get_UT1_from_time_ns(int64_t t_ns, double delta_UT1_inst);
 
 /**
  * @brief   Compute instrument time from UT1 time (J2000(UT1) epoch, nanoseconds).
- * @param   t_ut1 The instrument time to convert, const reference timespec
- * @param   delta_UT1_inst Value of UT1-INST at ut1, seconds
+ * @param   t_ut1 The UT1 time to convert, nanoseconds since J2000(UT1)
+ * @param   delta_UT1_inst Value of UT1-INST at t_ut1, seconds
  * @return  Instrument time in nanoseconds
  */
 int64_t get_time_ns_from_UT1(int64_t t_ut1, double delta_UT1_inst);

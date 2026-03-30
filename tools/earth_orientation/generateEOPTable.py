@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""
+/*********************************************************************************
+* Earth Orientation Parameter Tools 
+* File: generateEOPTable.py
+* Purpose: Generate an Earth Orientation Parameter (EOP) Table suitable for broadcasting to Kotekan, compatible with the current frame0 time and any currently loaded EOP table.
+* Python Version: 3.12
+* Dependencies: argparse, eop_utils, astropy
+* Authors: Geoffrey Ryan
+*********************************************************************************/
+"""
 import argparse
 import json
 from pathlib import Path

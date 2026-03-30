@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-import argparse
+"""
+/*********************************************************************************
+* Earth Orientation Parameter Tools 
+* File: eop_utils.py
+* Purpose: Provide helper functions for converting between Astropy, Instrument, and UT1 times, for parsing EOP objects, and making REST calls to Kotekan and fpga_master
+* Python Version: 3.12
+* Dependencies: requests, astropy, numpy
+* Authors: Geoffrey Ryan
+*********************************************************************************/
+"""
 import json
 from pathlib import Path
 import sys

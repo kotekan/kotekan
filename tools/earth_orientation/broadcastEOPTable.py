@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""
+/*********************************************************************************
+* Earth Orientation Parameter Tools 
+* File: broadcastEOPTable.py
+* Purpose: Send the given EOP table to running kotekan instance(s).
+* Python Version: 3.12
+* Dependencies: argparse, eop_utils
+* Authors: Geoffrey Ryan
+*********************************************************************************/
+"""
 import argparse
 import json
 from pathlib import Path

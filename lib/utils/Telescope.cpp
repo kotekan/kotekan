@@ -31,10 +31,6 @@ Telescope::Telescope(const std::string& tel_path, const std::string& log_level, 
     DEBUG("Building Telescope");
 
     // Initializing EOP table with dummy values
-    /*
-    _eop_table = {BareEOP(0, 0.0, 0.0, 0.0).to_EOP(),
-                  BareEOP(std::numeric_limits<int64_t>::max(), 0.0, 0.0, 0.0).to_EOP()};
-    */
     _eop_table = {dummy_bare_eop_first.to_EOP(), dummy_bare_eop_last.to_EOP()};
 
     // Set up callbacks for updating EOP and sending time0_ns
@@ -117,7 +113,7 @@ bool Telescope::receive_eop_updates(nlohmann::json& json) {
 
         if (!json.contains("earth_orientation_parameter_table") && !_require_eop) {
             // If EOP is not required, say we succeeded and do nothing.
-            INFO("EOP update did not contain `earth_orientation_parameter_table`, igoring. EOP "
+            WARN("EOP update did not contain `earth_orientation_parameter_table`, ignoring. EOP "
                  "table is unchanged.");
             return true;
         }
