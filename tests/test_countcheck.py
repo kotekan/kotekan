@@ -57,16 +57,16 @@ EARTH_ROTATION_DATA = {
     "kotekan_update_endpoint": "json",
     "earth_orientation_parameter_table": [
         {
-            "time_inst_ns": (T_START_S - 1000) * GIGA,
+            "t_inst_ns": (T_START_S - 1000) * GIGA,
             "delta_UT1_inst": 0.0,
-            "x_pm": 0.0,
-            "y_pm": 0.0,
+            "xp_as": 0.0,
+            "yp_as": 0.0,
         },
         {
-            "time_inst_ns": (T_START_S + 100000) * GIGA,
+            "t_inst_ns": (T_START_S + 100000) * GIGA,
             "delta_UT1_inst": 0.0,
-            "x_pm": 1.0,
-            "y_pm": 1.0,
+            "xp_as": 1.0,
+            "yp_as": 1.0,
         },
     ],
 }

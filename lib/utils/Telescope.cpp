@@ -15,12 +15,23 @@ using kotekan::restServer;
 
 #define GIGA 1'000'000'000L
 
-Telescope::Telescope(const std::string& tel_path, const std::string& log_level,
-                     const std::string& eop_updatable_config_path) : _unique_name(tel_path) {
+static constexpr BareEOP dummy_bare_eop_first = {
+    .t_inst_ns = 0, .delta_UT1_inst = 0.0, .xp_as = 0.0, .yp_as = 0.0};
+static constexpr BareEOP dummy_bare_eop_last = {.t_inst_ns = std::numeric_limits<int64_t>::max(),
+                                                .delta_UT1_inst = 0.0,
+                                                .xp_as = 0.0,
+                                                .yp_as = 0.0};
+
+Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
+                     const std::string& eop_updatable_config_path) :
+    _unique_name(tel_path), _require_eop(require_eop) {
     set_log_level(log_level);
     set_log_prefix("/telescope");
 
     DEBUG("Building Telescope");
+
+    // Initializing EOP table with dummy values
+    _eop_table = {dummy_bare_eop_first.to_EOP(), dummy_bare_eop_last.to_EOP()};
 
     // Set up callbacks for updating EOP and sending time0_ns
     using namespace std::placeholders;
@@ -99,21 +110,38 @@ timespec Telescope::seq_length() const {
 bool Telescope::receive_eop_updates(nlohmann::json& json) {
     try {
         // Fill a temporary table with the updated values.
-        std::vector<EOP> tmp_eop_table;
-        for (const auto& elem : json.at("earth_orientation_parameter_table")) {
-            INFO("Telescope EOP update: {:s}", elem.dump());
-            int64_t t_ns = elem.at("time_inst_ns").get<int64_t>();
-            double dut1 = elem.at("delta_UT1_inst").get<double>();
-            double x_pm = elem.at("x_pm").get<double>();
-            double y_pm = elem.at("y_pm").get<double>();
-            tmp_eop_table.push_back(build_EOP_from_update(t_ns, dut1, x_pm, y_pm));
+
+        if (!json.contains("earth_orientation_parameter_table") && !_require_eop) {
+            // If EOP is not required, say we succeeded and do nothing.
+            WARN("EOP update did not contain `earth_orientation_parameter_table`, ignoring. EOP "
+                 "table is unchanged.");
+            return true;
         }
+        std::vector<BareEOP> bare_eop_table = json.at("earth_orientation_parameter_table");
+
+        size_t N = bare_eop_table.size();
+        std::vector<EOP> tmp_eop_table(N);
+
+        for (size_t i = 0; i < N; i++)
+            tmp_eop_table.at(i) = bare_eop_table.at(i).to_EOP();
 
         if (tmp_eop_table.empty()) {
-            ERROR("Telescope {}: earth_orientation_parameter_table update contained no entries.",
-                  _unique_name);
-            return false;
+            // If table was empty, we're done here.
+
+            if (_require_eop) {
+                // If table was required. Report an error.
+                ERROR("earth_orientation_parameter_table update contained no entries.",
+                      _unique_name);
+                return false;
+            }
+
+            // If table is not required, signal success and ignore the update.
+            INFO("Ignoring `earth_orientation_parameter_table` update, it contained no entries. "
+                 "EOP Table is unchanged.");
+            return true;
         }
+
+        // There's at least one entry in the table, sort it and replace the current table.
 
         // Sort chronologically
         std::sort(tmp_eop_table.begin(), tmp_eop_table.end(), EOP_comp_time);
@@ -149,23 +177,6 @@ void Telescope::send_time0_ns(connectionInstance& conn) {
     conn.send_json_reply(reply);
 }
 
-EOP Telescope::build_EOP_from_update(int64_t time_ns, double delta_ut1_inst, double xp_as,
-                                     double yp_as) const {
-
-    struct timespec ts_inst = nanosec_i64_to_timespec(time_ns);
-    int64_t ut1 = get_UT1_from_time(ts_inst, delta_ut1_inst);
-    double era = get_ERA_from_UT1(ut1, nullptr);
-
-    EOP eop{.t_inst = time_ns,
-            .t_ut1 = ut1,
-            .delta_UT1_inst = delta_ut1_inst,
-            .ERA_deg = era,
-            .xp_as = xp_as,
-            .yp_as = yp_as};
-
-    return eop;
-}
-
 std::vector<EOP> Telescope::get_current_EOP_table() const {
 
     std::vector<EOP> tab_copy;
@@ -177,19 +188,24 @@ std::vector<EOP> Telescope::get_current_EOP_table() const {
 }
 
 EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
-    // Interpolate on the EOP table to find EOP for the given instrument time.
+    // extract the time in nanoseconds and then use the time_ns function.
+    int64_t ts_target_ns = timespec_to_nanosec_i64(ts_target);
+    return get_EOP_at_time_ns(ts_target_ns);
+}
 
+EOP Telescope::get_EOP_at_time_ns(int64_t t_target_ns) const {
+    // Interpolate on the EOP table to find EOP for the given instrument time.
     EOP eop;
 
-    int64_t t_target = timespec_to_nanosec_i64(ts_target);
-    eop.t_inst = t_target;
+    eop.t_inst_ns = t_target_ns;
 
+    // thread-safety: acquire lock on EOP table
     {
         std::shared_lock lock(_eop_lock);
 
         if (_eop_table.empty()) {
             WARN("EOP table is empty, cannot interpolate EOP at instrument time {:d} s + {:d} ns.",
-                 t_target / GIGA, t_target % GIGA);
+                 t_target_ns / GIGA, t_target_ns % GIGA);
             return eop_null;
         }
 
@@ -205,28 +221,34 @@ EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
             eop.delta_UT1_inst = eop_b->delta_UT1_inst;
             eop.xp_as = eop_b->xp_as;
             eop.yp_as = eop_b->yp_as;
-            WARN(
-                "Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. Earliest "
-                "time = {:d} s + {:d} ns.",
-                t_target / GIGA, t_target % GIGA, eop_b->t_inst / GIGA, eop_b->t_inst % GIGA);
+            if (t_target_ns < eop_b->t_inst_ns) {
+                WARN("Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. "
+                     "Earliest "
+                     "time = {:d} s + {:d} ns.",
+                     t_target_ns / GIGA, t_target_ns % GIGA, eop_b->t_inst_ns / GIGA,
+                     eop_b->t_inst_ns % GIGA);
+            }
         } else if (eop_b == _eop_table.end()) {
             // Time is later than covered by the table, use the last value.
             auto eop_last = eop_b - 1;
             eop.delta_UT1_inst = eop_last->delta_UT1_inst;
             eop.xp_as = eop_last->xp_as;
             eop.yp_as = eop_last->yp_as;
-            WARN("Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest "
-                 "UT1 = "
-                 "{:d} s + {:d} ns.",
-                 t_target / GIGA, t_target % GIGA, eop_last->t_inst / GIGA,
-                 eop_last->t_inst % GIGA);
+            if (t_target_ns > eop_last->t_inst_ns) {
+                WARN(
+                    "Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest "
+                    "UT1 = "
+                    "{:d} s + {:d} ns.",
+                    t_target_ns / GIGA, t_target_ns % GIGA, eop_last->t_inst_ns / GIGA,
+                    eop_last->t_inst_ns % GIGA);
+            }
         } else {
             // Interpolate!
             auto eop_a = eop_b - 1;
             // t - ta in ns. Should be > 0
-            int64_t diff_ns_a = t_target - eop_a->t_inst;
+            int64_t diff_ns_a = t_target_ns - eop_a->t_inst_ns;
             // t - tb in ns. Should be < 0
-            int64_t diff_ns_b = t_target - eop_b->t_inst;
+            int64_t diff_ns_b = t_target_ns - eop_b->t_inst_ns;
             // tb - ta in ns.
             int64_t diff_ns = diff_ns_a - diff_ns_b;
 
@@ -239,30 +261,31 @@ EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
             eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
             eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
         }
-    }
+    } // eop_lock
 
     // now that we have a delta_UT1, can compute UT1 and ERA
-    int64_t ut1 = get_UT1_from_time(ts_target, eop.delta_UT1_inst);
+    int64_t ut1 = get_UT1_from_time_ns(t_target_ns, eop.delta_UT1_inst);
     double era = get_ERA_from_UT1(ut1, nullptr);
 
-    eop.t_ut1 = ut1;
+    eop.t_ut1_ns = ut1;
     eop.ERA_deg = era;
 
     return eop;
 }
 
-EOP Telescope::get_EOP_at_UT1(int64_t t_ut1) const {
+EOP Telescope::get_EOP_at_UT1(int64_t t_ut1_ns) const {
     // Interpolate on the EOP table to find EOP for the given UT1 time.
 
     EOP eop;
-    eop.t_ut1 = t_ut1;
+    eop.t_ut1_ns = t_ut1_ns;
 
+    // thread-safety: acquire lock on EOP table
     {
         std::shared_lock lock(_eop_lock);
 
         if (_eop_table.empty()) {
             WARN("EOP table is empty, cannot interpolate EOP at UT1 time {:d} s + {:d} ns.",
-                 t_ut1 / GIGA, t_ut1 % GIGA);
+                 t_ut1_ns / GIGA, t_ut1_ns % GIGA);
             return eop_null;
         }
 
@@ -283,7 +306,7 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1) const {
             WARN("Requesting EOP earlier than in table. Requested UT1 = {:d} s + {:d} ns. Earliest "
                  "UT1 "
                  "= {:d} s + {:d} ns.",
-                 t_ut1 / GIGA, t_ut1 % GIGA, eop_b->t_ut1 / GIGA, eop_b->t_ut1 % GIGA);
+                 t_ut1_ns / GIGA, t_ut1_ns % GIGA, eop_b->t_ut1_ns / GIGA, eop_b->t_ut1_ns % GIGA);
         } else if (eop_b == _eop_table.end()) {
             // Time is later than covered by the table, use the last value.
             auto eop_last = eop_b - 1;
@@ -293,15 +316,16 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1) const {
             WARN("Requesting EOP later than in table. Requested UT1 = {:d} s + {:d} ns. Latest UT1 "
                  "= "
                  "{:d} s + {:d} ns.",
-                 t_ut1 / GIGA, t_ut1 % GIGA, eop_last->t_ut1 / GIGA, eop_last->t_ut1 % GIGA);
+                 t_ut1_ns / GIGA, t_ut1_ns % GIGA, eop_last->t_ut1_ns / GIGA,
+                 eop_last->t_ut1_ns % GIGA);
         } else {
             // Interpolate! Target time = t, in table interval [ta, tb]
             auto eop_a = eop_b - 1;
 
             // t - ta in ns. Should be > 0
-            int64_t diff_ns_a = t_ut1 - eop_a->t_ut1;
+            int64_t diff_ns_a = t_ut1_ns - eop_a->t_ut1_ns;
             // t - tb in ns. Should be < 0
-            int64_t diff_ns_b = t_ut1 - eop_b->t_ut1;
+            int64_t diff_ns_b = t_ut1_ns - eop_b->t_ut1_ns;
 
             // tb - ta in ns.
             int64_t diff_ns = diff_ns_a - diff_ns_b;
@@ -316,14 +340,12 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1) const {
             eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
             eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
         }
-    }
+    } // eop_lock
 
     // Now that we have a delta_UT1, can get t_inst and the ERA
-    timespec ts_inst = get_time_from_UT1(t_ut1, eop.delta_UT1_inst);
-    double era = get_ERA_from_UT1(t_ut1, nullptr);
+    eop.t_inst_ns = get_time_ns_from_UT1(t_ut1_ns, eop.delta_UT1_inst);
+    eop.ERA_deg = get_ERA_from_UT1(t_ut1_ns, nullptr);
 
-    eop.t_inst = timespec_to_nanosec_i64(ts_inst);
-    eop.ERA_deg = era;
 
     return eop;
 }

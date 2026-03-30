@@ -253,9 +253,8 @@ public:
 
             if (meta->has_fpga_seq_num()) {
                 dataset.createAttribute("fpga_seq_num", meta->get_fpga_seq_num());
-                dataset.createAttribute(
-                    "fpga_seq_time_nsec",
-                    timespec_to_nanosec_i64(telescope.to_time(meta->get_fpga_seq_num())));
+                dataset.createAttribute("fpga_seq_time_nsec",
+                                        telescope.to_time_ns(meta->get_fpga_seq_num()));
             }
 
             if (meta->has_time_downsampling_fpga())
@@ -398,15 +397,15 @@ public:
         file.createAttribute("freq_id", frame.freq_id);
         file.createAttribute("freq_MHz", frame.freq_MHz);
         file.createAttribute("abs_time_idx", frame.abs_time_idx);
-        file.createAttribute("time_center_eop.t_inst", frame.time_center_eop.t_inst);
-        file.createAttribute("time_center_eop.t_ut1", frame.time_center_eop.t_ut1);
+        file.createAttribute("time_center_eop.t_inst_ns", frame.time_center_eop.t_inst_ns);
+        file.createAttribute("time_center_eop.t_ut1_ns", frame.time_center_eop.t_ut1_ns);
         file.createAttribute("time_center_eop.delta_UT1_inst",
                              frame.time_center_eop.delta_UT1_inst);
         file.createAttribute("time_center_eop.ERA_deg", frame.time_center_eop.ERA_deg);
         file.createAttribute("time_center_eop.xp_as", frame.time_center_eop.xp_as);
         file.createAttribute("time_center_eop.yp_as", frame.time_center_eop.yp_as);
-        file.createAttribute("bin_eop.t_inst", frame.bin_eop.t_inst);
-        file.createAttribute("bin_eop.t_ut1", frame.bin_eop.t_ut1);
+        file.createAttribute("bin_eop.t_inst_ns", frame.bin_eop.t_inst_ns);
+        file.createAttribute("bin_eop.t_ut1_ns", frame.bin_eop.t_ut1_ns);
         file.createAttribute("bin_eop.delta_UT1_inst", frame.bin_eop.delta_UT1_inst);
         file.createAttribute("bin_eop.ERA_deg", frame.bin_eop.ERA_deg);
         file.createAttribute("bin_eop.xp_as", frame.bin_eop.xp_as);

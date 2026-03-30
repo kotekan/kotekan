@@ -295,7 +295,7 @@ public:
 
                 if (meta->has_fpga_seq_num()) {
                     const auto fpga_seq_time_nsec_value =
-                        timespec_to_nanosec_i64(telescope.to_time(meta->get_fpga_seq_num()));
+                        telescope.to_time_ns(meta->get_fpga_seq_num());
                     const auto fpga_seq_time_nsec = group->CreateAttribute(
                         "fpga_seq_time_nsec", std::vector<GUInt64>{},
                         GDALExtendedDataType::Create(get_gdal_datatype(fpga_seq_time_nsec_value)));
