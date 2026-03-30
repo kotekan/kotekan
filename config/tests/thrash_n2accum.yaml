@@ -145,20 +145,20 @@ gen_fake_corr_counts:
 
 N2_accumulate:
     kotekan_stage: N2Accumulate
-    cpu_affinity: [4, 5, 6, 7]
+    cpu_affinity: [8, 9, 10, 11]
     in_buf: fake_correlation_buffer
     in_counts_buf: fake_counts_buffer
     in_rfimask_buf: fake_rfimask_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
-    num_workers: 2
+    num_workers: 4
     output_batch_size: 8
     do_fringestop: False
     debug_accum_mode: 0
 
 eat_n2:
   kotekan_stage: dropAllFrames
-  cpu_affinity: [8]
+  cpu_affinity: [12]
   in_buf: n2_buffer
   max_frames: n2_frames
