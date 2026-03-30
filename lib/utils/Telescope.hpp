@@ -297,6 +297,15 @@ public:
     EOP get_EOP_at_time(const timespec& ts) const;
 
     /**
+     * @brief   Return the EOP at the desired instrument time. Will interpolate
+     *          over table, use first or last entry if target time is out of
+     *          table range.
+     *
+     * @param   t_ns  Target instrument time in nanoseconds.
+     **/
+    EOP get_EOP_at_time_ns(int64_t t_ns) const;
+
+    /**
      * @brief   Return the EOP at the desired UT1 time. Will interpolate
      *          over table, using the first or last entry if target time is
      *          out of table range.

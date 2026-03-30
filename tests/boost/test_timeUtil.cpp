@@ -319,6 +319,28 @@ BOOST_AUTO_TEST_CASE(_bare_eop_to_eop) {
     }
 }
 
+BOOST_AUTO_TEST_CASE(_eop_to_bare_eop) {
+
+    std::vector<double> x{0.0, 0.1, -0.3, 5e-8, 15};
+    std::vector<double> y{0.0, -8, 0.7, 32, 8.1e-3};
+
+    for (size_t i = 0; i < TimeData::size; i++) {
+        BareEOP beop = {.t_inst_ns = TimeData::t_unix_ns[i],
+                        .delta_UT1_inst = TimeData::dUT1[i],
+                        .xp_as = x[i % x.size()],
+                        .yp_as = y[i % y.size()]};
+        int64_t ut1 = get_UT1_from_time_ns(beop.t_inst_ns, beop.delta_UT1_inst);
+        EOP eop = {.t_inst_ns = TimeData::t_unix_ns[i],
+                   .t_ut1_ns = ut1,
+                   .delta_UT1_inst = TimeData::dUT1[i],
+                   .ERA_deg = get_ERA_from_UT1(ut1, nullptr),
+                   .xp_as = x[i % x.size()],
+                   .yp_as = y[i % y.size()]};
+
+        BOOST_CHECK_EQUAL(BareEOP::from_EOP(eop), beop);
+    }
+}
+
 BOOST_AUTO_TEST_CASE(_bare_eop_equal) {
 
     std::vector<double> x{0.0, 0.1, -0.3, 5e-8, 15};

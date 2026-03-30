@@ -192,19 +192,24 @@ std::vector<EOP> Telescope::get_current_EOP_table() const {
 }
 
 EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
-    // Interpolate on the EOP table to find EOP for the given instrument time.
+    // extract the time in nanoseconds and then use the time_ns function.
+    int64_t ts_target_ns = timespec_to_nanosec_i64(ts_target);
+    return get_EOP_at_time_ns(ts_target_ns);
+}
 
+EOP Telescope::get_EOP_at_time_ns(int64_t t_target_ns) const {
+    // Interpolate on the EOP table to find EOP for the given instrument time.
     EOP eop;
 
-    int64_t t_target = timespec_to_nanosec_i64(ts_target);
-    eop.t_inst_ns = t_target;
+    eop.t_inst_ns = t_target_ns;
 
+    // thread-safety: acquire lock on EOP table
     {
         std::shared_lock lock(_eop_lock);
 
         if (_eop_table.empty()) {
             WARN("EOP table is empty, cannot interpolate EOP at instrument time {:d} s + {:d} ns.",
-                 t_target / GIGA, t_target % GIGA);
+                 t_target_ns / GIGA, t_target_ns % GIGA);
             return eop_null;
         }
 
@@ -220,11 +225,11 @@ EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
             eop.delta_UT1_inst = eop_b->delta_UT1_inst;
             eop.xp_as = eop_b->xp_as;
             eop.yp_as = eop_b->yp_as;
-            if (t_target < eop_b->t_inst_ns) {
+            if (t_target_ns < eop_b->t_inst_ns) {
                 WARN("Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. "
                      "Earliest "
                      "time = {:d} s + {:d} ns.",
-                     t_target / GIGA, t_target % GIGA, eop_b->t_inst_ns / GIGA,
+                     t_target_ns / GIGA, t_target_ns % GIGA, eop_b->t_inst_ns / GIGA,
                      eop_b->t_inst_ns % GIGA);
             }
         } else if (eop_b == _eop_table.end()) {
@@ -233,21 +238,21 @@ EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
             eop.delta_UT1_inst = eop_last->delta_UT1_inst;
             eop.xp_as = eop_last->xp_as;
             eop.yp_as = eop_last->yp_as;
-            if (t_target > eop_last->t_inst_ns) {
+            if (t_target_ns > eop_last->t_inst_ns) {
                 WARN(
                     "Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest "
                     "UT1 = "
                     "{:d} s + {:d} ns.",
-                    t_target / GIGA, t_target % GIGA, eop_last->t_inst_ns / GIGA,
+                    t_target_ns / GIGA, t_target_ns % GIGA, eop_last->t_inst_ns / GIGA,
                     eop_last->t_inst_ns % GIGA);
             }
         } else {
             // Interpolate!
             auto eop_a = eop_b - 1;
             // t - ta in ns. Should be > 0
-            int64_t diff_ns_a = t_target - eop_a->t_inst_ns;
+            int64_t diff_ns_a = t_target_ns - eop_a->t_inst_ns;
             // t - tb in ns. Should be < 0
-            int64_t diff_ns_b = t_target - eop_b->t_inst_ns;
+            int64_t diff_ns_b = t_target_ns - eop_b->t_inst_ns;
             // tb - ta in ns.
             int64_t diff_ns = diff_ns_a - diff_ns_b;
 
@@ -260,10 +265,10 @@ EOP Telescope::get_EOP_at_time(const timespec& ts_target) const {
             eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
             eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
         }
-    }
+    } // eop_lock
 
     // now that we have a delta_UT1, can compute UT1 and ERA
-    int64_t ut1 = get_UT1_from_time(ts_target, eop.delta_UT1_inst);
+    int64_t ut1 = get_UT1_from_time_ns(t_target_ns, eop.delta_UT1_inst);
     double era = get_ERA_from_UT1(ut1, nullptr);
 
     eop.t_ut1_ns = ut1;
@@ -278,6 +283,7 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1_ns) const {
     EOP eop;
     eop.t_ut1_ns = t_ut1_ns;
 
+    // thread-safety: acquire lock on EOP table
     {
         std::shared_lock lock(_eop_lock);
 
@@ -338,7 +344,7 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1_ns) const {
             eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
             eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
         }
-    }
+    } // eop_lock
 
     // Now that we have a delta_UT1, can get t_inst and the ERA
     eop.t_inst_ns = get_time_ns_from_UT1(t_ut1_ns, eop.delta_UT1_inst);

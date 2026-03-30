@@ -22,6 +22,11 @@
 #include <time.h>
 #include <vector>
 
+#define ERA_TOL 2e-12 // <~ 0.5 nanoseconds of rotation in degrees
+#define NS_TOL 0
+#define DUT1_TOL 1.0e-10 // 0.5 ns
+#define XP_TOL 7.5e-9    // 0.5 nanoseconds of rotation in arcseconds
+
 using kotekan::Config;
 using json = nlohmann::json;
 using kotekan::configUpdater;
@@ -87,6 +92,36 @@ REGISTER_TELESCOPE(TestTelescope, "TestTelescope");
 
 /******************
  *
+ * Comparison functions
+ *
+ ******************/
+
+
+void check_ns_close(int64_t t1, int64_t t2, const std::string& name) {
+    BOOST_CHECK_MESSAGE(abs(t1 - t2) <= NS_TOL,
+                        fmt::format("|{0:s}1 - {0:s}2| = |{1:d} - {2:d}| = {3:d} < {4:d} failed",
+                                    name, t1, t2, abs(t1 - t2), NS_TOL));
+}
+
+void check_double_close(double x, double y, double tol, const std::string& name) {
+    BOOST_CHECK_MESSAGE(
+        fabs(x - y) < tol,
+        fmt::format("|{0:s}1 - {0:s}2| = |{1:.14f} - {2:.14f}| = {3:.3e} < {4:.3e} failed", name, x,
+                    y, fabs(x - y), tol));
+}
+
+void check_eop_close(const EOP& eop1, const EOP& eop2) {
+    check_ns_close(eop1.t_inst_ns, eop2.t_inst_ns, "inst");
+    check_ns_close(eop1.t_ut1_ns, eop2.t_ut1_ns, "ut1");
+    check_double_close(eop1.delta_UT1_inst, eop2.delta_UT1_inst, DUT1_TOL, "dut1");
+    check_double_close(eop1.ERA_deg, eop2.ERA_deg, ERA_TOL, "era");
+    check_double_close(eop1.xp_as, eop2.xp_as, XP_TOL, "xp");
+    check_double_close(eop1.yp_as, eop2.yp_as, XP_TOL, "yp");
+}
+
+
+/******************
+ *
  * Fixtures: Logging, RestServer, and Telescope(s)
  *
  ******************/
@@ -124,7 +159,12 @@ struct TelescopeEOPFixture {
         N = 5;
 
         int64_t giga = 1'000'000'000;
-        t = {1, 0, giga, giga * giga, giga * giga + 100'000 * giga};
+        // When we test interpolation later, we test it at 1/4
+        // the distance between table entries. So the smallest
+        // separation in our test table is 4 nanoseconds.
+        //
+        // Deliberately out of order to test Telescope's reordering.
+        t = {4, 0, giga, giga * giga, giga * giga + 100'000 * giga};
         dut1 = {0.0, -1.5, 9.8765e-3, 18, 0.123456};
         x = {0.0, 0.1, -1.0, -987, 1.234e-5};
         y = {0.0, 0.2, -0.5, 2.345e-5, 123};
@@ -162,7 +202,8 @@ struct TelescopeEOPFixture {
     std::vector<BareEOP> fix_bare_eop_table;
 };
 
-BOOST_TEST_GLOBAL_FIXTURE(LoggingFixture);
+// Uncomment to show kotekan logs to stdout during test run.
+// BOOST_TEST_GLOBAL_FIXTURE(LoggingFixture);
 BOOST_TEST_GLOBAL_FIXTURE(RestServerFixture);
 
 /******************
@@ -206,5 +247,135 @@ BOOST_FIXTURE_TEST_CASE(_get_eop_table, TelescopeEOPFixture) {
         BOOST_CHECK_MESSAGE(found_indices.count(index) == 0,
                             fmt::format("EOP entry {:d} {} occured again!", i, eop_table[i]));
         found_indices.insert(index);
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(_get_eop_at_t, TelescopeEOPFixture) {
+    const Telescope& tel = Telescope::instance();
+
+    int64_t giga = 1'000'000'000;
+
+    std::vector<EOP> eop_table = tel.get_current_EOP_table();
+
+    // Loop over intervals between times in tables (include times before/after
+    for (size_t i = 0; i <= N; i++) {
+
+        // For each interval, grab the left and right values (just copy for before/after)
+        int64_t ta, tb;
+        double dut1a, dut1b, xa, xb, ya, yb;
+        if (i > 0) {
+            ta = eop_table[i - 1].t_inst_ns;
+            dut1a = eop_table[i - 1].delta_UT1_inst;
+            xa = eop_table[i - 1].xp_as;
+            ya = eop_table[i - 1].yp_as;
+        } else {
+            ta = eop_table[0].t_inst_ns - giga;
+            dut1a = eop_table[0].delta_UT1_inst;
+            xa = eop_table[0].xp_as;
+            ya = eop_table[0].yp_as;
+        }
+
+        if (i < N) {
+            tb = eop_table[i].t_inst_ns;
+            dut1b = eop_table[i].delta_UT1_inst;
+            xb = eop_table[i].xp_as;
+            yb = eop_table[i].yp_as;
+        } else {
+            tb = eop_table[N - 1].t_inst_ns + giga;
+            dut1b = eop_table[N - 1].delta_UT1_inst;
+            xb = eop_table[N - 1].xp_as;
+            yb = eop_table[N - 1].yp_as;
+        }
+
+        BOOST_TEST_MESSAGE(fmt::format("eop_a - t: {} dut1: {} x: {} y: {}", ta, dut1a, xa, ya));
+        BOOST_TEST_MESSAGE(fmt::format("eop_b - t: {} dut1: {} x: {} y: {}", tb, dut1b, xb, yb));
+
+        // Test a few points on this interval.
+        for (double w : {0.0, 0.25, 0.5, 0.75, 1.0}) {
+
+            BOOST_TEST_MESSAGE(fmt::format("w: {}", w));
+
+            // Make  the target EOP
+            BareEOP test_beop = {.t_inst_ns = ta + static_cast<int64_t>(w * (tb - ta)),
+                                 .delta_UT1_inst = (1 - w) * dut1a + w * dut1b,
+                                 .xp_as = (1 - w) * xa + w * xb,
+                                 .yp_as = (1 - w) * ya + w * yb};
+            EOP test_eop = test_beop.to_EOP();
+
+            // Check the _at_time_ns function.
+            EOP tel_eop = tel.get_EOP_at_time_ns(test_eop.t_inst_ns);
+
+            check_eop_close(tel_eop, test_eop);
+
+            // Check the _at_function while we're here.
+            EOP tel_eop2 = tel.get_EOP_at_time(nanosec_i64_to_timespec(test_eop.t_inst_ns));
+
+            check_eop_close(tel_eop2, test_eop);
+        }
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(_get_eop_at_ut1, TelescopeEOPFixture) {
+    const Telescope& tel = Telescope::instance();
+
+    int64_t giga = 1'000'000'000;
+
+    std::vector<EOP> eop_table = tel.get_current_EOP_table();
+
+    // Loop over intervals between times in tables (include times before/after
+    for (size_t i = 0; i <= N; i++) {
+
+        // For each interval, grab the left and right values (just copy for before/after)
+        int64_t ut1a, ut1b;
+        double dut1a, dut1b, xa, xb, ya, yb;
+        if (i > 0) {
+            ut1a = eop_table[i - 1].t_ut1_ns;
+            dut1a = eop_table[i - 1].delta_UT1_inst;
+            xa = eop_table[i - 1].xp_as;
+            ya = eop_table[i - 1].yp_as;
+        } else {
+            ut1a = eop_table[0].t_ut1_ns - giga;
+            dut1a = eop_table[0].delta_UT1_inst;
+            xa = eop_table[0].xp_as;
+            ya = eop_table[0].yp_as;
+        }
+
+        if (i < N) {
+            ut1b = eop_table[i].t_ut1_ns;
+            dut1b = eop_table[i].delta_UT1_inst;
+            xb = eop_table[i].xp_as;
+            yb = eop_table[i].yp_as;
+        } else {
+            ut1b = eop_table[N - 1].t_ut1_ns + giga;
+            dut1b = eop_table[N - 1].delta_UT1_inst;
+            xb = eop_table[N - 1].xp_as;
+            yb = eop_table[N - 1].yp_as;
+        }
+
+        BOOST_TEST_MESSAGE(
+            fmt::format("eop_a - ut1: {} dut1: {} x: {} y: {}", ut1a, dut1a, xa, ya));
+        BOOST_TEST_MESSAGE(
+            fmt::format("eop_b - ut1: {} dut1: {} x: {} y: {}", ut1b, dut1b, xb, yb));
+
+        // Test a few points on this interval.
+        for (double w : {0.0, 0.25, 0.5, 0.75, 1.0}) {
+
+            BOOST_TEST_MESSAGE(fmt::format("w: {}", w));
+
+            // Make  the target EOP
+            EOP test_eop = {.t_inst_ns = 0,
+                            .t_ut1_ns = ut1a + static_cast<int64_t>(w * (ut1b - ut1a)),
+                            .delta_UT1_inst = (1 - w) * dut1a + w * dut1b,
+                            .ERA_deg = 0.0,
+                            .xp_as = (1 - w) * xa + w * xb,
+                            .yp_as = (1 - w) * ya + w * yb};
+            test_eop.t_inst_ns = get_time_ns_from_UT1(test_eop.t_ut1_ns, test_eop.delta_UT1_inst);
+            test_eop.ERA_deg = get_ERA_from_UT1(test_eop.t_ut1_ns, nullptr);
+
+            // Check the _at_UT1 function.
+            EOP tel_eop = tel.get_EOP_at_UT1(test_eop.t_ut1_ns);
+
+            check_eop_close(tel_eop, test_eop);
+        }
     }
 }

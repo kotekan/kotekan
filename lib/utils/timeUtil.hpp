@@ -115,6 +115,7 @@ int64_t get_UT1_from_ERA(int64_t num_rot, double ERA_deg);
  */
 double get_ERA_from_time(const timespec& t_inst, double delta_UT1_inst);
 
+
 /**
  * @brief   Simple struct for containing Earth Orientation Parameter (EOP) data
  *
@@ -204,6 +205,14 @@ struct BareEOP {
                 .ERA_deg = era,
                 .xp_as = xp_as,
                 .yp_as = yp_as};
+    }
+
+    /// Produce a BareEOP from an EOP, stripping the redundant fields.
+    static inline BareEOP from_EOP(const EOP& eop) {
+        return {.t_inst_ns = eop.t_inst_ns,
+                .delta_UT1_inst = eop.delta_UT1_inst,
+                .xp_as = eop.xp_as,
+                .yp_as = eop.yp_as};
     }
 
     /// Return a simple string representation of the BareEOP for printing purposes
