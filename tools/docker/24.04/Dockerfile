@@ -225,3 +225,15 @@ ENV PATH="${PATH:+${PATH}:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sb
 ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
 
+# Install mathdx for CHIME beamformer
+RUN mkdir src && \
+    ( \
+        cd src && \
+        wget https://developer.nvidia.com/downloads/compute/cuFFTDx/redist/cuFFTDx/cuda13/nvidia-mathdx-26.03.0-cuda13.tar.gz && \
+        tar -xzf nvidia-mathdx-26.03.0-cuda13.tar.gz && \
+        cd nvidia-mathdx-26.03.0-cuda13 && \
+        mv nvidia/mathdx/26.03/include /usr/local/include/mathdx && \
+        cp -a nvidia/mathdx/26.03/lib/* /usr/local/lib/ && \
+        cp -a nvidia/mathdx/26.03/src/* /usr/local/src/ && \
+    true) && \
+    rm -rf src
