@@ -52,6 +52,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& uniq
     _downsample_time = config.get<int32_t>(unique_name, "downsample_time");
     _downsample_freq = config.get<int32_t>(unique_name, "downsample_freq");
     _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
+    assert(_reorder_map.size() == 512);
     _northmost_beam = config.get<float>(unique_name, "northmost_beam");
     Freq_ref = (light * (128) / (sin(_northmost_beam * PI / 180.) * feed_sep * 256)) / 1.e6;
     _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
@@ -70,6 +71,17 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& uniq
     output_buf = get_buffer("beam_out_buf");
     output_buf->register_producer(unique_name);
 
+    // from loop over output below
+    const int nfreq_out = _factor_upchan / _downsample_freq;
+    const int nsamp_out = _samples_per_data_set / _factor_upchan / _downsample_time;
+    const int b_max = 1023;
+    const int t_max = nsamp_out - 1;
+    // const int f_max = nfreq_out - 1;
+    const int out_id_max =
+        b_max * nsamp_out * nfreq_out + t_max * nfreq_out + 15 /*((f_max + 8) % 16)*/;
+    assert(output_buf->frame_size == (out_id_max + 1) * sizeof(float)
+           && "Unexpected output frame size");
+
     hfb_output_buf = get_buffer("hfb_out_buf");
     hfb_output_buf->register_producer(unique_name);
 
@@ -77,6 +89,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& uniq
     input_len_padded = input_len * 2;
     transposed_len = (_samples_per_data_set + 32) * _num_elements * 2;
     output_len = _num_elements * (_samples_per_data_set / _downsample_time / _downsample_freq / 2);
+    assert(output_len == out_id_max + 1);
     hfb_output_len = _num_frb_total_beams * _factor_upchan;
 
     input_unpacked = (double*)malloc(input_len * sizeof(double));
