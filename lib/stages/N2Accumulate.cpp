@@ -1122,12 +1122,20 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
 
     [[maybe_unused]] double prof_out_fill_time = omp_get_wtime();
 
-    std::fill(_vis.begin(), _vis.end(), 0);
-    std::fill(_weights.begin(), _weights.end(), 0.0f);
+    // _vis and _weights are large, 0 them in parallel.
+#pragma omp parallel for num_threads(_num_workers)
+    for(uint64_t i = 0; i < _vis.size(); i++) 
+        _vis[i] = 0;
+
+#pragma omp parallel for num_threads(_num_workers)
+    for(uint64_t i = 0; i < _weights.size(); i++) 
+        _weights[i] = 0.0f;
+   
+    // These arrays are smaller, single threaded is fine.
     std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);
     std::fill(_n_valid_sample_diff_sq_sum.begin(), _n_valid_sample_diff_sq_sum.end(), 0);
     std::fill(_n_rfi_samples_in_vis.begin(), _n_rfi_samples_in_vis.end(), 0);
-        
+
     [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
 
     INFO("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  {:f} ms\n    fill:  {:f} ms", 
