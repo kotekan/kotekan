@@ -72,6 +72,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& uniq
     const int b_max = 1023;
     const int t_max = nsamp_out - 1;
     // const int f_max = nfreq_out - 1;
+    assert(nfreq_out == 16);
     const int out_id_max =
         b_max * nsamp_out * nfreq_out + t_max * nfreq_out + 15 /*((f_max + 8) % 16)*/;
     assert(output_buf->frame_size == (out_id_max + 1) * sizeof(float)
