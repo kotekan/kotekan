@@ -935,6 +935,7 @@ std::uint64_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
 
 bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
     const std::string abs_idx = std::to_string(filedata.abs_file_idx);
+    DEBUG_NON_OO("hdf5N2Write: Flushing and closing file {}...", abs_idx);
     try {
         filedata.flush_to_disk();
     } catch (const HighFive::Exception& e) {
@@ -962,6 +963,7 @@ bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
     filedata.close();
 
     // Attempt rename from partial to final
+    DEBUG_NON_OO("hdf5N2Write: Renaming file {}...", abs_idx);
     auto ds_filename = filedata._get_final_filename();
     if (!ds_filename) {
         WARN("Could not determine final filename for {} (no UT1 found); leaving partial in place.",
