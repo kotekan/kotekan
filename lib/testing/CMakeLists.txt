@@ -34,6 +34,7 @@ add_library(
     testLostSamplesToPLMask.cpp
     testN2kGen.cpp
     testRFIS012Gen.cpp
+    testRFImaskGen.cpp
     TestDropFrames.cpp
     testCHORDTelescope.cpp
     testXpose.cpp

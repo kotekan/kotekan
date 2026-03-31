@@ -6,17 +6,15 @@ type: config
 log_level: INFO
 
 buffer_depth: 4
-cpu_affinity: [9, 10, 11, 12]  # [2,3,4,5,8,9,10,11]
+cpu_affinity: [13, 14]  # [2,3,4,5,8,9,10,11]
 sizeof_float: 4
-frame_arrival_period: 5.12e-6 * samples_per_data_set
+frame_arrival_period: 2.56e-6 * samples_per_data_set
 sizeof_int: 4
 
 # For faster CHORD testing, we're using...
-sub_integration_ntime: 2048
-samples_per_data_set: 4096
+sub_integration_ntime: 16384
+samples_per_data_set: 16384
 rfi_downsampling_factor: 256
-# sub_integration_ntime: 8192  # ~40 ms for chord
-# samples_per_data_set: 8192   # 
 num_times: samples_per_data_set
 num_polarizations: 2
 num_dishes: 1024
@@ -37,7 +35,7 @@ vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 
 frames_to_generate: buffer_depth  # must be at least n2_frames_to_write * num_n2k_samples_to_accumulate
-repeat: 16
+repeat: 32
 corr_frames: repeat * frames_to_generate
 n2_samples_per_frame: samples_per_data_set / sub_integration_ntime
 n2_frames: num_local_freq * (corr_frames * samples_per_data_set) / (sub_integration_ntime * num_n2k_samples_to_accumulate)
@@ -68,15 +66,15 @@ earth_rotation_data:
   kotekan_update_endpoint: json
   earth_orientation_parameter_table: [
     {
-      time_inst_ns: 1750000000000000000,
+      t_inst_ns: 1750000000000000000,
       delta_UT1_inst: 0.5,
-      x_pm: 0.1,
-      y_pm: 0.2
+      xp_as: 0.1,
+      yp_as: 0.2
     }, {
-      time_inst_ns: 1770000000000000000,
+      t_inst_ns: 1770000000000000000,
       delta_UT1_inst: -0.5,
-      x_pm: 0.3,
-      y_pm: 0.4
+      xp_as: 0.3,
+      yp_as: 0.4
     }]
 
   
@@ -115,16 +113,14 @@ n2_buffer:
     metadata_pool: n2_pool
 
 gen_fake_rfi_RFImask:
-    type: const1x8
-    value: 255
-    kotekan_stage: testDataGen
-    cpu_affinity: [2]
+    kotekan_stage: testRFImaskGen
+    cpu_affinity: [3]
     out_buf: fake_rfimask_buffer
-    name: "RFImask"
-    array_shape: [ 4, 16, 128 ]  # [samples_per_data_set / 1024, num_local_freq, 128]
-    dim_name: ["T8hi128", "F", "T8lo128"]
-    num_frames: frames_to_generate * repeat
-    meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
+    type: "random"
+    value: 0xFFFFFFFFFFFFFFFF
+    num_frames: frames_to_generate
+    repeat_count: repeat
+    freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 gen_fake_corr_counts:
     kotekan_stage: testN2kGen
@@ -152,7 +148,7 @@ N2_accumulate:
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
-    num_workers: 4
+    num_workers: 2
     output_batch_size: 8
     do_fringestop: True
     debug_accum_mode: 3
