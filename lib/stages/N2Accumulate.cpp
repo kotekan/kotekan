@@ -349,8 +349,8 @@ void N2Accumulate::main_thread() {
 
         // Record the current frame time being processed.
         comp_time_seconds_metric.set(_tel.to_time_ns(frame_metadata->get_fpga_seq_num()) / 1e9);
-            
-        
+
+
         // Sequence number for the start of this frame.
         int64_t seq0 = frame_metadata->get_fpga_seq_num();
 
