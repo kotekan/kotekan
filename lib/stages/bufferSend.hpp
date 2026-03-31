@@ -11,6 +11,7 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "prometheusMetrics.hpp" // for Counter
+#include "kotekanLogging.hpp"  // for kotekanLogging
 
 #include <atomic>             // for atomic
 #include <condition_variable> // for condition_variable
@@ -44,7 +45,8 @@ struct bufferFrameHeader : public bufferFrameHeaderNoConfigTracker {
 };
 static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 bytes");
 
-struct destination {
+class networkDestination : public kotekan::kotekanLogging {
+public:
     /// The connection file handle
     int socket_fd;
     /// The server port to connect to.
@@ -55,12 +57,25 @@ struct destination {
     std::atomic<bool> connected;
     /// Internal server address struct
     struct sockaddr_in server_addr;
+    /// The number of seconds between connection attempts
+    uint32_t reconnect_time;
+    /// The number of seconds before send() times outs and returns and error.
+    uint32_t send_timeout;
     /// Prevent the sending thread and connection thread from contension
     std::mutex connection_state_mutex;
     /// Used to wakeup the connect thread after a change to the connection state
     std::condition_variable connection_state_cv;
     /// The thread we're using to connect
     std::thread connect_thread;
+
+    /// Thread for connecting to the remote server
+    void test_thread(std::string name);
+    
+    /// Thread for connecting to the remote server
+    void connect_to_server(std::string name, std::atomic_bool const& stop_thread);
+
+    /// Closes the open connection and starts the process of trying to reconnect
+    void close_connection();
 };
 
 /**
@@ -105,7 +120,8 @@ class bufferSend : public kotekan::Stage {
 public:
     /// Standard constructor
     bufferSend(kotekan::Config& config, const std::string& unique_name,
-               kotekan::bufferContainer& buffer_container);
+               kotekan::bufferContainer& buffer_container,
+               std::string buffer_name="buf");
 
     /// Destructor
     ~bufferSend();
@@ -116,15 +132,12 @@ public:
     /// Adds the target server to the pipeline dot graph
     virtual std::string dot_string(const std::string& prefix) const override;
 
-    /// Thread for connecting to the remote server
-    void connect_to_server(struct destination& dest);
-
 protected:
     /// The input buffer to send frames from.
     Buffer* buf;
 
     /// Where we're sending stuff
-    struct destination dest;
+    networkDestination dest;
 
     /// Threshold to drop frames
     float drop_threshold;
@@ -135,14 +148,6 @@ protected:
      * it does not include the number of frames dropped because the server is down.
      */
     kotekan::prometheus::Counter& dropped_frame_counter;
-
-    /// The input buffer name to grab.
-    virtual std::string get_buffer_name() const;
-
-    virtual void initialize_destination();
-
-    /// Closes the open connection and starts the process of trying to reconnect
-    void close_connection(struct destination& dest);
 
     /// Called when a frame has been received -- just after it has been claimed from
     /// kotekan.  If false is returned, the sending will end.
@@ -156,12 +161,6 @@ private:
     /// The input buffer name to grab.
     std::string buffer_name;
 
-    /// The number of seconds before send() times outs and returns and error.
-    uint32_t send_timeout;
-
-    /// The number of seconds between connection attempts
-    uint32_t reconnect_time;
-
     /// Whether to drop frames or block if buffer is full
     bool drop_frames;
 
@@ -172,7 +171,7 @@ private:
     std::string config_tracker_combined_hash;
 
     /// Send a frame
-    bool send_frame(uint8_t* frame, int frame_id, struct destination& dest);
+    bool send_frame(uint8_t* frame, int frame_id, networkDestination& dest);
 };
 
 #endif

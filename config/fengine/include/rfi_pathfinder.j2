@@ -8,8 +8,11 @@
 rfi_downsampling_factor: 256
 # # from 1.31072 ms to 31.45728 ms
 # rfi_second_downsampling_factor: 24
+
+# dstn
 # from 1.31072 ms to 41.94304 ms
-rfi_second_downsampling_factor: 32
+#rfi_second_downsampling_factor: 32
+rfi_second_downsampling_factor: 1
 
 rfi_sk_rfimask_sigmas: 5.0
 rfi_single_feed_min_good_frac: 0.8
@@ -21,7 +24,10 @@ rfi_mu_max: 20.0
 
 # Buffers
 
-rfi_num_times: 256      # 1.31072 ms cadence
+#dstn
+#rfi_num_times: 256      # 1.31072 ms cadence
+rfi_num_times: 32
+
 rfi_num_times_bar: 32   # 41.94304 ms cadence
 
 host_rfi_S012_buffer:

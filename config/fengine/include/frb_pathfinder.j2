@@ -24,9 +24,35 @@ host_frb2_beam_positions_buffer:
     frame_size: sizeof_float32 * 2 * frb2_num_beams
     metadata_pool: main_pool
 
+host_frb2_beam_ids_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_int16 * frb2_num_beams
+    metadata_pool: main_pool
+
 frb_chunk_size: 256
 
 ################################################################################
+
+# FRB Search node targets
+
+frb_search_nodes: [
+  {'ip': '10.0.0.42',
+   'port': 9000,
+   'beamset': 0,
+   'beam_index_min': 0,
+   'beam_index_max': 200,
+  },
+  {'ip': '10.0.0.43',
+   'port': 9000,
+   'beamset': 1,
+   'beam_index_min': 200,
+   'beam_index_max': 400,
+  }
+]
+
+################################################################################
+
 
 # Buffers
 
@@ -349,6 +375,7 @@ run_calc_frb2_weights:
     kotekan_stage: calcFRB2Weights
     frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
     frb2_beam_positions: host_frb2_beam_positions_buffer
+    frb2_beam_ids: host_frb2_beam_ids_buffer
     frb2_weights: host_frb2_weights_buffer
 
 run_frb23:
@@ -397,3 +424,13 @@ run_frb23:
         - name: cudaOutputData
           gpu_mem: frb3_beams_meanstd_buffer
           out_buf: host_frb3_beams_meanstd_buffer
+
+# Network send
+
+send_frb:
+    kotekan_stage: pirateFrbSend
+    intensity: host_frb3_beams_buffer
+    offset_scale: host_frb3_beams_meanstd_buffer
+    beam_positions: host_frb2_beam_positions_buffer
+    beam_ids: host_frb2_beam_ids_buffer
+
