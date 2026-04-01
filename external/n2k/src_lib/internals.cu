@@ -1,5 +1,7 @@
 #include "../include/n2k/internals/internals.hpp"
+
 #include <ksgpu/cuda_utils.hpp>
+#include <cassert>
 
 #include <cassert>
 
@@ -76,7 +78,7 @@ void _check_array(int ndim, const ssize_t *shape, const ssize_t *strides, ssize_
 	err = "does not have correct dimension";
     else if (!ksgpu::af_on_gpu(aflags))
 	err = "is not on GPU";
-    else if (contiguous && (ksgpu::compute_ncontig(ndim,shape,strides) != ndim))
+    else if (contiguous && (ksgpu::array_get_ncontig(ndim,shape,strides) != ndim))
 	err = "is not contiguous";
     else
 	return;

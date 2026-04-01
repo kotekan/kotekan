@@ -1,7 +1,7 @@
-#include <ksgpu.hpp>
 #include "../include/n2k/Correlator.hpp"
 
 #include <cassert>
+#include <ksgpu.hpp>
 
 using namespace std;
 using namespace ksgpu;
