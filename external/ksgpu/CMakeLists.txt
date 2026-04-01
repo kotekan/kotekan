@@ -21,30 +21,14 @@ add_custom_command(
     COMMENT "generating device_mma.hpp")
 
 # Define source files and headers
-set(HFILES
-    include/ksgpu/Array.hpp
-    include/ksgpu/Barrier.hpp
-    include/ksgpu/CpuThreadPool.hpp
-    include/ksgpu/CudaStreamPool.hpp
-    include/ksgpu/ThreadSafeRingBuffer.hpp
-    include/ksgpu/complex_type_traits.hpp
-    include/ksgpu/constexpr_functions.hpp
-    include/ksgpu/cuda_utils.hpp
-    include/ksgpu/device_mma.hpp
-    include/ksgpu/mem_utils.hpp
-    include/ksgpu/memcpy_kernels.hpp
-    include/ksgpu/rand_utils.hpp
-    include/ksgpu/string_utils.hpp
-    include/ksgpu/test_utils.hpp
-    include/ksgpu/time_utils.hpp
-    include/ksgpu.hpp
-    include/device_mma.hpp)
+file(GLOB HFILES "include/ksgpu/*.hpp" "include/*.hpp")
 
-file(GLOB CUFILES "src_lib/*.cu")
-message(STATUS "CUFILES: ${CUFILES}")
+file(GLOB SRCFILES "src_lib/*.cu" "src_lib/*.cpp")
+set_source_files_properties(${SRCFILES} PROPERTIES LANGUAGE CUDA)
+message(STATUS "SRCFILES: ${SRCFILES}")
 
 # Add library targets
-add_library(ksgpu ${HFILES} ${CUFILES})
+add_library(ksgpu ${HFILES} ${SRCFILES})
 
 # Set architecture flags
 set_target_properties(ksgpu PROPERTIES CUDA_ARCHITECTURES "86;89")
@@ -62,3 +46,7 @@ set(CMAKE_CUDA_FLAGS
 # Include directories
 target_include_directories(ksgpu PUBLIC include/.)
 target_include_directories(ksgpu PUBLIC .)
+
+# worarounds around issues with ksgpu
+set_source_files_properties(src_lib/mem_utils.cpp PROPERTIES
+    COMPILE_FLAGS -Wno-error=unused-parameter)
