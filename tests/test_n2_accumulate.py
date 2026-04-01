@@ -144,8 +144,8 @@ accumulate_params = {
     "log_level": "DEBUG",
     "output_batch_size": 4,
     "debug_accum_mode": 3,
-    # "variance_mode": "CHIMEv1"
-    "variance_mode": "EvenOddPosDef"
+    "variance_mode": "CHIMEv1"
+    # "variance_mode": "EvenOddPosDef"
 }
 
 
