@@ -154,9 +154,11 @@ void lostSamplesToN2Counts::main_thread() {
         // Get the RFI mask low num samples, which is the last dimension
         std::shared_ptr<chordMetadata> rfi_meta =
             get_chord_metadata(rfi_mask_buf, rfi_mask_buf_frame_id);
-        // rfi_mask fine time samples (last dimension)
+        // rfi_mask fine time samples (last dimension). Note that this
+        // is in *bytes*, not bits
         size_t _rfi_t_lo = rfi_meta->dim[rfi_meta->dims - 1];
-        // Stride between coarse time samples
+        size_t _rfi_t_lo_bits = BITS_PER_BYTE * _rfi_t_lo;
+        // Stride between coarse time samples, also in bytes
         size_t _rfi_f_stride = _rfi_t_lo;
         size_t _rfi_t_hi_stride = num_n2k_freq * _rfi_f_stride;
 
@@ -167,19 +169,21 @@ void lostSamplesToN2Counts::main_thread() {
 
             DEBUG("Waiting on full lost_samples frame from buffer {:d}.", fouter);
             uint8_t* lost_samples_frame =
-                lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_frame_id);
+                (uint8_t*)lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_frame_id);
             if (lost_samples_frame == nullptr)
                 break;
 
             // Collect science metadata from lost samples
             const auto lost_samples_meta =
                 get_chord_metadata(lost_samples_buf, lost_samples_frame_id);
+
             if (fouter == 0) {
                 n2k_counts_buf->allocate_new_metadata_object(n2k_counts_buf_frame_id);
                 std::shared_ptr<chordMetadata> meta =
                     get_chord_metadata(n2k_counts_buf, n2k_counts_buf_frame_id);
                 meta->deepCopy(lost_samples_meta);
             } else {
+                // Insert per-frequency metadata from the lost samples buffer
                 auto meta = get_chord_metadata(n2k_counts_buf, n2k_counts_buf_frame_id);
                 const auto lost_samples_coarse_freq = lost_samples_meta->get_coarse_freq();
                 auto n2k_counts_coarse_freq = meta->get_coarse_freq();
@@ -207,9 +211,6 @@ void lostSamplesToN2Counts::main_thread() {
 
             // Indices in counts and rfi_mask corresponding to the first
             // frequency in the current lost_samples buffer
-            // Note that the rfi mask index is constructed per-bit (i.e. for
-            // a uint1 array) and converted to a uint8 index immediately
-            // before accessing the index in the array
             size_t cidx_f = fouter * _num_freq_per_lost_samples_buffer * _counts_stride;
             size_t ridx_f = fouter * _num_freq_per_lost_samples_buffer * _rfi_f_stride;
 
@@ -222,17 +223,15 @@ void lostSamplesToN2Counts::main_thread() {
                     // Accumulate for this subintegration
                     int32_t _sum = 0;
                     for (size_t ts = t0; ts < t0 + sub_integration_ntime; ++ts) {
-                        // base offset + coarse_time * stride + fine_time
-                        size_t tsr =
-                            ridx_f + (ts / _rfi_t_lo) * _rfi_t_hi_stride + (ts % _rfi_t_lo);
-                        // Convert bit index in a uint1 buffer to byte index in a uint8 buffer
-                        tsr /= BITS_PER_BYTE;
-                        // Assume that this is a uint1 stream viewed as uint8, meaning
-                        // that the MSB is the first sample in a given byte
-                        uint8_t shiftval = (BITS_PER_BYTE - 1) - ts % BITS_PER_BYTE;
+                        // base offset (in bytes) + coarse_time_sample * stride (in bytes)
+                        // + fine_time_sample (in bytes)
+                        size_t tsr = ridx_f + (ts / _rfi_t_lo_bits) * _rfi_t_hi_stride
+                                     + (ts % _rfi_t_lo_bits) / BITS_PER_BYTE;
+                        // Iterate through individual bits in the rfi mask
+                        uint8_t shiftval = ts % BITS_PER_BYTE;
                         // tsr only increments every 8 iterations -
                         // accumulate individual bits
-                        _sum += (lost_samples_frame[ts] ^ 1u)
+                        _sum += ((lost_samples_frame[ts] & 1u) ^ 1u)
                                 & ((rfi_mask_frame[tsr] >> shiftval) & 1u);
                     }
                     // Set the current subintegration and freq in counts. Only
