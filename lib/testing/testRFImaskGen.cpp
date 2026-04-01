@@ -62,7 +62,7 @@ using kotekan::Stage;
 class testRFImaskGen : public Stage {
 public:
     testRFImaskGen(Config& config, const std::string& unique_name,
-               bufferContainer& buffer_container);
+                   bufferContainer& buffer_container);
     ~testRFImaskGen(){};
     void main_thread() override;
 
@@ -89,7 +89,7 @@ private:
 REGISTER_KOTEKAN_STAGE(testRFImaskGen);
 
 testRFImaskGen::testRFImaskGen(Config& config, const std::string& unique_name,
-                       bufferContainer& buffer_container) :
+                               bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&testRFImaskGen::main_thread, this)),
     name(config.get_default<std::string>(unique_name, "name", "RFImask")),
     type(config.get_default<std::string>(unique_name, "type", "const")),
@@ -128,14 +128,13 @@ testRFImaskGen::testRFImaskGen(Config& config, const std::string& unique_name,
     }
 
     // allocate frame descriptors
-    out_buf->allocate_ndarray_frame_desc(
-        kotekan::uint1x8, name,
-        {samples_per_data_set / 1024, num_local_freq, 128},
-        {"T8hi128", "F", "T8lo128"});
+    out_buf->allocate_ndarray_frame_desc(kotekan::uint1x8, name,
+                                         {samples_per_data_set / 1024, num_local_freq, 128},
+                                         {"T8hi128", "F", "T8lo128"});
 
-    if(out_buf->frame_size != out_buf->frames_desc->get_byte_size())
+    if (out_buf->frame_size != out_buf->frames_desc->get_byte_size())
         FATAL_ERROR("out_but {:s} has frame size {:d}, expected {:d}.", out_buf->buffer_name,
-                out_buf->frame_size, out_buf->frames_desc->get_byte_size());
+                    out_buf->frame_size, out_buf->frames_desc->get_byte_size());
 }
 
 std::shared_ptr<chordMetadata> testRFImaskGen::get_new_metadata(Buffer* buf, frameID frame_id) {
@@ -225,16 +224,16 @@ void testRFImaskGen::main_thread() {
 
         // If we're not repeating, or we're in the first num_frames, generate data
         if (repeat_count <= 0 || (num_frames > 0 && num_frames_generated < num_frames)) {
-            
+
             int64_t num_thi = samples_per_data_set / 1024;
-            int64_t num_tlo = 1024 / 64;  // Writing rfimask as u64's
-           
+            int64_t num_tlo = 1024 / 64; // Writing rfimask as u64's
+
             int64_t df = num_tlo;
             int64_t dthi = num_tlo * num_local_freq;
 
             for (int64_t thi = 0; thi < num_thi; thi++) {
                 for (int f = 0; f < num_local_freq; f++) {
-                    for(int64_t tlo = 0; tlo < num_tlo; tlo++) {
+                    for (int64_t tlo = 0; tlo < num_tlo; tlo++) {
                         int64_t idx = tlo + f * df + thi * dthi;
                         if (type == "const") {
                             if (value_array.size() > 0) {
