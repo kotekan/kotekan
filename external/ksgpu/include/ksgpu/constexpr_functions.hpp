@@ -50,6 +50,11 @@ constexpr __host__ __device__ T constexpr_max(T m, T n)
     return (m > n) ? m : n;
 }
 
+constexpr __host__ __device__ int constexpr_align(int m, int n)
+{
+    return ((m+n-1) / n) * n;
+}
+
 
 } // namespace ksgpu
 

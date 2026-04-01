@@ -1,11 +1,8 @@
 #include "../include/ksgpu/test_utils.hpp"
-#include "../include/ksgpu/complex_type_traits.hpp"  // is_complex_v<T>, decomplexify_type<T>::type
 #include "../include/ksgpu/rand_utils.hpp"
 #include "../include/ksgpu/xassert.hpp"
 
 #include <cmath>
-#include <complex>
-#include <iostream>
 
 using namespace std;
 
@@ -27,7 +24,7 @@ inline long make_random_axis(long maxaxis, long &maxsize)
     long n = std::min(maxaxis, maxsize);
     double t = rand_uniform(1.0e-6, log(n+1.0) - 1.0e-6);
     long ret = long(exp(t));  // round down
-    maxsize = maxsize / ret;        // round down
+    maxsize = maxsize / ret;  // round down
     return ret;
 }
 
@@ -35,7 +32,7 @@ inline long make_random_axis(long maxaxis, long &maxsize)
 vector<long> make_random_shape(int ndim, long maxaxis, long maxsize)
 {
     if (ndim == 0)
-	ndim = rand_int(1, ArrayMaxDim+1);
+        ndim = rand_int(1, ArrayMaxDim+1);
     
     xassert(ndim > 0);
     xassert(ndim <= ArrayMaxDim);
@@ -43,7 +40,7 @@ vector<long> make_random_shape(int ndim, long maxaxis, long maxsize)
 
     vector<long> shape(ndim);
     for (int d = 0; d < ndim; d++)
-	shape[d] = make_random_axis(maxaxis, maxsize);  // modifies 'maxsize'
+        shape[d] = make_random_axis(maxaxis, maxsize);  // modifies 'maxsize'
 
     randomly_permute(shape);
     return shape;
@@ -53,9 +50,8 @@ vector<long> make_random_shape(int ndim, long maxaxis, long maxsize)
 // -------------------------------------------------------------------------------------------------
 
 
-vector<long> make_random_strides(int ndim, const long *shape, int ncontig, int nalign)
+vector<long> make_random_strides(int ndim, const long *shape, int ncontig, long nalign)
 {
-    xassert(ndim <= ArrayMaxDim);
     xassert(ncontig >= 0);
     xassert(ncontig <= ndim);
     xassert(nalign >= 1);
@@ -68,32 +64,54 @@ vector<long> make_random_strides(int ndim, const long *shape, int ncontig, int n
 
     // These strides are contiguous
     for (int d = ndim-1; d >= nd_strided; d--) {
-	xassert(shape[d] > 0);
-	strides[d] = min_stride;
-	min_stride += (shape[d]-1) * strides[d];
+        xassert(shape[d] > 0);
+        strides[d] = min_stride;
+        min_stride += (shape[d]-1) * strides[d];
     }
 
     // These strides are not necessarily contiguous
     for (int i = 0; i < nd_strided; i++) {
-	int d = axis_ordering[i];
-	xassert(shape[d] > 0);
+        int d = axis_ordering[i];
+        xassert(shape[d] > 0);
 
-	// Assign stride (as multiple of nalign)
-	long smin = (min_stride + nalign - 1) / nalign;
-	long smax = std::max(smin+1, (2*min_stride)/nalign);
-	long s = (rand_uniform() < 0.33) ? smin : rand_int(smin,smax+1);
-	
-	strides[d] = s * nalign;
-	min_stride += (shape[d]-1) * strides[d];
+        // Assign stride (as multiple of nalign)
+        long smin = (min_stride + nalign - 1) / nalign;
+        long smax = std::max(smin+1, (2*min_stride)/nalign);
+        long s = (rand_uniform() < 0.33) ? smin : rand_int(smin,smax+1);
+        
+        strides[d] = s * nalign;
+        min_stride += (shape[d]-1) * strides[d];
     }
 
     return strides;
 }
 
 
-vector<long> make_random_strides(const vector<long> &shape, int ncontig, int nalign)
+vector<long> make_random_strides(const vector<long> &shape, int ncontig, long nalign)
 {
     return make_random_strides(shape.size(), &shape[0], ncontig, nalign);
+}
+
+
+vector<long> make_contiguous_strides(int ndim, const long *shape)
+{
+    vector<long> strides(ndim);
+    long curr_stride = 1;
+
+    // These strides are contiguous
+    for (int d = ndim-1; d >= 0; d--) {
+        xassert(shape[d] > 0);
+        strides[d] = curr_stride;
+        curr_stride += (shape[d]-1) * strides[d];
+    }
+
+    return strides;
+}
+
+
+vector<long> make_contiguous_strides(const vector<long> &shape)
+{
+    return make_contiguous_strides(shape.size(), &shape[0]);
 }
 
 
@@ -103,233 +121,138 @@ vector<long> make_random_strides(const vector<long> &shape, int ncontig, int nal
 // Helper for make_random_reshape_compatible_shapes()
 struct RcBlock
 {
-    bool dflag;
-    vector<long> bshape;
-    vector<long> bstrides;  // contiguous
-    long bsize;
+    // If dflag==true, then this RcBlock represents a single src axis and multiple dst axes.
+    // If dflag==false, then this RcBlock represents multiple src axes and a single dst axis.
+    bool dflag = false;
+    
+    vector<long> bshape;    // multi-axis ("factored") shape
+    long bstride = 0;       // single-axis stride
+    long bsize = 0;         // single-axis length (= product of 'bshape')
+
+    // Note: the following special case is allowed:
+    //  bshape = empty vector
+    //  bstrides = empty vector
+    //  bsize = 1
 };
 
 
-void make_random_reshape_compatible_shapes(vector<long> &dshape,
-					   vector<long> &sshape,
-					   vector<long> &sstrides,
-					   int maxaxis, long maxsize)
+// Helper for make_random_reshape_compatible_shapes()
+struct RcAxis
 {
-    xassert(maxaxis > 0);
-    xassert(maxsize > 0);
-    
-    vector<long> dstrides;
-    dshape.clear();
-    sshape.clear();
-    sstrides.clear();
+    long len = 0;
+    long stride = 0;
+
+    RcAxis() { }
+    RcAxis(long len_, long stride_) : len(len_), stride(stride_) { }
+};
+
+
+void make_random_reshape_compatible_shapes(vector<long> &dshape, vector<long> &sshape, vector<long> &sstrides)
+{
+    long maxaxis = 10;
+    long maxsize = 100000;
+
+    // Initialize all members of 'blocks' except 'bstrides'.
     
     vector<RcBlock> blocks;
     uint ddims = 0;
     uint sdims = 0;
 
-    while (blocks.size() < ArrayMaxDim) {
-	RcBlock block;
-	block.dflag = rand_int(0,2);
-	
-	uint &fdims = block.dflag ? ddims : sdims;   // "factored" dims
-	uint &udims = block.dflag ? sdims : ddims;   // "unfactored" dims
+    while ((ddims < ArrayMaxDim) || (sdims < ArrayMaxDim)) {
+        RcBlock block;
+        block.dflag = rand_int(0,2);
+        
+        uint &fdims = block.dflag ? ddims : sdims;   // "factored" dims
+        uint &udims = block.dflag ? sdims : ddims;   // "unfactored" dims
 
-	if (udims == ArrayMaxDim)
-	    break;
-	
-	int nb_max = ArrayMaxDim - fdims;
-	int nb = 0;
-	
-	if ((nb_max > 0) && (rand_uniform() < 0.95)) {
-	    nb = rand_int(1, nb_max+1);
-	    block.bshape = make_random_shape(nb, maxaxis, maxsize);  // modifies 'maxsize'
-	}
-	
-	block.bstrides.resize(nb);
-	block.bsize = 1;
+        if ((udims == ArrayMaxDim) && (fdims == 0))
+            continue;  // corner case
+        if (udims == ArrayMaxDim)
+            break;
+        
+        uint nb = 0;  // number of factored axes
+        int nb_max = ArrayMaxDim - fdims;
 
-	for (int i = nb-1; i >= 0; i--) {
-	    block.bstrides[i] = block.bsize;
-	    block.bsize *= block.bshape[i];
-	}
+        if ((nb_max > 0) && (rand_uniform() < 0.95)) {
+            nb = rand_int(1, nb_max+1);
+            block.bshape = make_random_shape(nb, maxaxis, maxsize);
+            xassert(block.bshape.size() == nb);  // should never fail
+        }
+        
+        block.bsize = 1;
+        for (uint i = 0; i < nb; i++)
+            block.bsize *= block.bshape[i];
 
-	blocks.push_back(block);
-	fdims += nb;
-	udims += 1;
+        xassert(block.bsize > 0);  // should never fail
+        maxsize /= block.bsize;
+        
+        blocks.push_back(block);
+        fdims += nb;
+        udims += 1;
 
-	if (rand_uniform() < 0.2)
-	    break;
+        if ((ddims > 0) && (sdims > 0) && (rand_uniform() < 0.2))
+            break;
     }
+    
+    // Should never fail.
+    xassert(ddims > 0);
+    xassert(sdims > 0);
 
     randomly_permute(blocks);
 
+    // Initialize 'bstride' members of 'blocks'.
+    
     int nblocks = blocks.size();
-    vector<long> block_sizes(nblocks);
-    
+    vector<long> block_sizes(nblocks);    
     for (int i = 0; i < nblocks; i++)
-	block_sizes[i] = blocks[i].bsize;
+        block_sizes[i] = blocks[i].bsize;
     
-    vector<long> block_strides = make_random_strides(block_sizes);    
+    vector<long> block_strides = make_random_strides(block_sizes);
+    for (int i = 0; i < nblocks; i++)
+        blocks[i].bstride = block_strides[i];
+
+    randomly_permute(blocks);
+
+    // Now 'blocks' has been fully initialized.
+    // Unpack 'blocks' into 'daxes', 'saxes'.
+
+    vector<RcAxis> daxes;
+    vector<RcAxis> saxes;
 
     for (int i = 0; i < nblocks; i++) {
-	const RcBlock &block = blocks[i];
-	int block_stride = block_strides[i];
-	
-	vector<long> &fshape = block.dflag ? dshape : sshape;   // "factored" shape
-	vector<long> &ushape = block.dflag ? sshape : dshape;   // "unfactored" shape
-	vector<long> &fstrides = block.dflag ? dstrides : sstrides;   // "factored" strides
-	vector<long> &ustrides = block.dflag ? sstrides : dstrides;   // "unfactored" strides
+        const RcBlock &block = blocks[i];
+        vector<RcAxis> &faxes = block.dflag ? daxes : saxes;
+        vector<RcAxis> &uaxes = block.dflag ? saxes : daxes;
 
-	ushape.push_back(block.bsize);
-	ustrides.push_back(block_stride);
+        uaxes.push_back({ block.bsize, block.bstride });
 
-	for (uint j = 0; j < block.bshape.size(); j++) {
-	    fshape.push_back(block.bshape[j]);
-	    fstrides.push_back(block.bstrides[j] * block_stride);
-	}
+        long nf = faxes.size();
+        faxes.resize(nf + block.bshape.size());
+
+        long stride = block.bstride;
+        for (int j = block.bshape.size()-1; j >= 0; j--) {
+            faxes[nf+j].len = block.bshape[j];
+            faxes[nf+j].stride = stride;
+            stride *= block.bshape[j];
+        }
     }
 
-    xassert(dshape.size() == ddims);
-    xassert(sshape.size() == sdims);
-    xassert(dstrides.size() == ddims);
-    xassert(sstrides.size() == sdims);
+    // Should never fail.
+    xassert(daxes.size() == ddims);
+    xassert(saxes.size() == sdims);
 
-    if (ddims == 0)
-	dshape.push_back(1);
-    if (sdims == 0)
-	sshape.push_back(1);
-    if (sdims == 0)
-	sstrides.push_back(1);
-}
-
-		 
-// -------------------------------------------------------------------------------------------------
-
-
-inline ostream &operator<<(ostream &os, __half x)
-{
-    os << __half2float(x);
-    return os;
-}
-
-
-template<typename T>
-void print_array(const Array<T> &arr, const vector<string> &axis_names, std::ostream &os)
-{
-    xassert((axis_names.size() == 0) || (axis_names.size() == uint(arr.ndim)));
-
-    int nd = arr.ndim;
+    // Unpack (daxes,saxes) into (dshape,sshape,sstrides).
     
-    for (auto ix = arr.ix_start(); arr.ix_valid(ix); arr.ix_next(ix)) {
-	if (axis_names.size() == 0) {
-	    os << "    (";
-	    for (int d = 0; d < nd; d++)
-		os << (d ? "," : "") << ix[d];
-	    os << ((nd <= 1) ? ",)" : ")");
-	}
-	else {
-	    os << "   ";
-	    for (int d = 0; d < nd; d++)
-		os << " " << axis_names[d] << "=" << ix[d];
-	}
+    dshape.resize(ddims);
+    sshape.resize(sdims);
+    sstrides.resize(sdims);
 
-	os << ": " << arr.at(ix) << "\n";
-    }
-
-    os.flush();
-}
-
-
-// -------------------------------------------------------------------------------------------------
-
-    
-template<typename T>
-typename ksgpu::decomplexify_type<T>::type
-assert_arrays_equal(const Array<T> &arr1,
-		    const Array<T> &arr2,
-		    const string &name1,
-		    const string &name2,
-		    const vector<string> &axis_names,
-		    float epsabs,
-		    float epsrel,
-		    long max_display,
-		    bool verbose)
-{
-    using Tr = typename decomplexify_type<T>::type;
-    
-    xassert(arr1.shape_equals(arr2));
-    xassert(axis_names.size() == uint(arr1.ndim));
-    xassert(max_display > 0);
-    xassert(epsabs >= 0.0);
-    xassert(epsrel >= 0.0);
-
-    Array<T> harr1 = arr1.to_host(false);  // page_locked=false
-    Array<T> harr2 = arr2.to_host(false);  // page_locked=false
-    int nfail = 0;
-    Tr maxdiff = 0;
-
-    for (auto ix = arr1.ix_start(); arr1.ix_valid(ix); arr1.ix_next(ix)) {
-	T x = harr1.at(ix);
-	T y = harr2.at(ix);
-
-	Tr delta;
-	if constexpr (!is_unsigned_v<T>)
-	    delta = std::abs(x-y);
-	else
-	    delta = (x > y) ? (x-y) : (y-x);
-	
-	Tr thresh = 0;
-	if constexpr (!is_integral_v<T>)
-	    thresh = epsabs + 0.5*epsrel * (std::abs(x) + std::abs(y));
-
-	maxdiff = max(maxdiff, delta);
-	bool failed = (delta > thresh);
-
-	// Automatically fail if either array contains NaN/Inf.
-	// (Could introduce a flag to toggle this behavior on/off.)
-	if constexpr (is_complex_v<T>) {
-	    if (!std::isfinite(x.real()) || !std::isfinite(x.imag()) || !std::isfinite(y.real()) || !std::isfinite(y.imag()))
-		failed = true;
-	}	    
-	else if constexpr (!is_integral_v<T>) {
-	    if (!std::isfinite(x) || !std::isfinite(y))
-		failed = true;
-	}
-	
-	if (!failed && !verbose)
-	    continue;
-
-	if (failed && (nfail == 0))
-	    cout << "\nassert_arrays_equal() failed [shape=" << arr1.shape_str() << "]\n";
-
-	if (failed)
-	    nfail++;
-	
-	if (nfail >= max_display)
-	    continue;
-	
-	cout << "   ";
-	for (int d = 0; d < arr1.ndim; d++)
-	    cout << " " << axis_names[d] << "=" << ix[d];
-
-	cout << ": " << name1 << "=" << x << ", " << name2
-	     << "=" << y << "  [delta=" << delta << "]";
-
-	if (failed)
-	    cout << " FAILED";
-
-	cout << "\n";
-    }
-    
-    if ((nfail > max_display) && !verbose)
-	cout << "        [ + " << (nfail-max_display) << " more failures]\n";
-
-    cout.flush();
-    
-    if (nfail > 0)
-	exit(1);
-    
-    return maxdiff;
+    for (uint i = 0; i < ddims; i++)
+        dshape[i] = daxes[i].len;
+    for (uint i = 0; i < sdims; i++)
+        sshape[i] = saxes[i].len;
+    for (uint i = 0; i < sdims; i++)
+        sstrides[i] = saxes[i].stride;
 }
 
 
@@ -340,8 +263,8 @@ __global__ void busy_wait_kernel(uint *arr, long niter)
 {
     uint x = arr[threadIdx.x];
     for (long i = 0; i < niter; i++) {
-	x = (x ^ 0x12345678U);
-	x = (x << 5) ^ (x >> 10);
+        x = (x ^ 0x12345678U);
+        x = (x << 5) ^ (x >> 10);
     }
     arr[threadIdx.x] = x;
 }
@@ -356,55 +279,7 @@ void launch_busy_wait_kernel(Array<uint> &arr, double a40_seconds, cudaStream_t 
     long niter = 1.4e8 * a40_seconds;
     
     busy_wait_kernel <<< 1, 32, 0, s >>>
-	(arr.data, niter);
+        (arr.data, niter);
 }
-
-
-// -------------------------------------------------------------------------------------------------
-
-
-#define INSTANTIATE_PRINT_ARRAY(T)	    \
-    template void print_array(              \
-	const Array<T> &arr,                \
-	const vector<string> &axis_names,   \
-	ostream &os)
-
-#define INSTANTIATE_ASSERT_ARRAYS_EQUAL(T)  \
-    template				    \
-    ksgpu::decomplexify_type<T>::type	    \
-    assert_arrays_equal(		    \
-	const Array<T> &arr1,	            \
-	const Array<T> &arr2,		    \
-	const string &name1,		    \
-	const string &name2,		    \
-	const vector<string> &axis_names,   \
-	float epsabs,                       \
-	float epsrel,                       \
-	long max_display, 	            \
-	bool verbose)
-
-#define INSTANTIATE_TEMPLATES(T) \
-    INSTANTIATE_PRINT_ARRAY(T); \
-    INSTANTIATE_ASSERT_ARRAYS_EQUAL(T)
-
-
-INSTANTIATE_TEMPLATES(float);
-INSTANTIATE_TEMPLATES(double);
-INSTANTIATE_TEMPLATES(int);
-INSTANTIATE_TEMPLATES(long);
-INSTANTIATE_TEMPLATES(short);
-INSTANTIATE_TEMPLATES(char);
-INSTANTIATE_TEMPLATES(uint);
-INSTANTIATE_TEMPLATES(ulong);
-INSTANTIATE_TEMPLATES(ushort);
-INSTANTIATE_TEMPLATES(unsigned char);
-INSTANTIATE_TEMPLATES(complex<float>);
-INSTANTIATE_TEMPLATES(complex<double>);
-INSTANTIATE_TEMPLATES(complex<int>);
-
-// FIXME implement assert_arrays_equal<__half>().
-// In the meantime, I'm instantiating print_array<__half>(), but not assert_arrays_equal<__half>().
-INSTANTIATE_PRINT_ARRAY(__half);
-
 
 }  // namespace ksgpu

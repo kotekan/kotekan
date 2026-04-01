@@ -24,7 +24,7 @@ namespace ksgpu {
 //   auto callback = [&](const CpuThreadPool &pool, int ithread)
 //       {
 //          // do some work
-//	 };
+//       };
 //
 //   CpuThreadPool tp(callback, nthreads, callbacks_per_thread, "kernel name");
 //
@@ -44,8 +44,8 @@ public:
 
     // If max_callbacks_per_thread=0, then CpuThreadPool.run() will run forever.
     CpuThreadPool(const callback_t &callback, int nthreads,
-		  int max_callbacks_per_thread_per_thread=0,
-		  const std::string &name="CpuThreadPool");
+                  int max_callbacks_per_thread=0,
+                  const std::string &name="CpuThreadPool");
 
     // Runs stream pool to completion.
     void run();
@@ -76,9 +76,9 @@ protected:
     bool is_started = false;
     
     struct TimingMonitor {
-	std::string label;
-	double coeff;
-	bool thrflag;
+        std::string label;
+        double coeff;
+        bool thrflag;
     };
 
     // Protected by tm_lock.

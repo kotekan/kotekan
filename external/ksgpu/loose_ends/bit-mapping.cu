@@ -55,9 +55,9 @@ static __device__ int compute_lane_perm()
     int t = threadIdx.x;
     
     return (((t & 0x01) << 2) |   // i0
-	    ((t & 0x10) >> 1) |   // i1
-	    ((t & 0x02) << 3) |   // i2
-	    ((t & 0x0c) >> 2));   // k1 k2
+            ((t & 0x10) >> 1) |   // i1
+            ((t & 0x02) << 3) |   // i2
+            ((t & 0x0c) >> 2));   // k1 k2
 }
 
     
@@ -134,50 +134,50 @@ struct BitMapping
     const int rank;
 
     BitMapping(const vector<string> &names_)
-	: names(names_), rank(names_.size())
+        : names(names_), rank(names_.size())
     {
-	xassert(rank >= 5);
-	xassert(rank <= 15);
-	
-	// No duplicates
-	for (int i = 1; i < rank; i++)
-	    for (int j = 0; j < i; j++)
-		xassert(names[i] != names[j]);
+        xassert(rank >= 5);
+        xassert(rank <= 15);
+        
+        // No duplicates
+        for (int i = 1; i < rank; i++)
+            for (int j = 0; j < i; j++)
+                xassert(names[i] != names[j]);
     }
 
     int name_to_index(const string &bit_name) const
     {
-	for (int r = 0; r < rank; r++)
-	    if (names[r] == bit_name)
-		return (1 << r);
-	throw runtime_error("bit name '" + bit_name + "' not found");
+        for (int r = 0; r < rank; r++)
+            if (names[r] == bit_name)
+                return (1 << r);
+        throw runtime_error("bit name '" + bit_name + "' not found");
     }
 
     string index_to_name(int i) const
     {
-	xassert(i >= 0);
-	xassert(i < (1 << rank));
+        xassert(i >= 0);
+        xassert(i < (1 << rank));
 
-	stringstream ss;
-	ss << "[";
-	
-	for (int r = 0; r < rank; r++)
-	    if (i & (1 << r))
-		ss << " " << names[r];
-	
-	ss << " ]";
-	return ss.str();
+        stringstream ss;
+        ss << "[";
+        
+        for (int r = 0; r < rank; r++)
+            if (i & (1 << r))
+                ss << " " << names[r];
+        
+        ss << " ]";
+        return ss.str();
     }
 
     Array<int> make_src_array_for_testing() const
     {
-	const int n = (1 << rank);
-	
-	Array<int> ret({n}, af_rhost);
-	for (int i = 0; i < n; i++)
-	    ret.data[i] = i;
+        const int n = (1 << rank);
+        
+        Array<int> ret({n}, af_rhost);
+        for (int i = 0; i < n; i++)
+            ret.data[i] = i;
 
-	return ret.to_gpu();
+        return ret.to_gpu();
     }
 };
 
@@ -195,33 +195,33 @@ static void test_shuffle_kernel(const Array<int> &dst_, const BitMapping &bm_phy
     xassert(dst.shape_equals({n}));
 
     for (int i = 0; i < n; i++) {
-	int d_expected = 0;
-	for (int r = 0; r < rank; r++)
-	    if (i & (1 << r))
-		d_expected |= bm_in.name_to_index(bm_out.names[r]);
+        int d_expected = 0;
+        for (int r = 0; r < rank; r++)
+            if (i & (1 << r))
+                d_expected |= bm_in.name_to_index(bm_out.names[r]);
 
-	int d_actual = dst.at({i});
-	if (d_actual == d_expected)
-	    continue;
+        int d_actual = dst.at({i});
+        if (d_actual == d_expected)
+            continue;
 
-	cout << "Mismatch found\n"
-	     << "    at dst_index=" << i
-	     << ", dst_phys=" << bm_phys.index_to_name(i)
-	     << ", dst_logical=" << bm_out.index_to_name(i) << "\n"
-	     << "    got array value " << d_actual
-	     << ", which came from src_phys=" << bm_phys.index_to_name(d_actual)
-	     << ", src_logical=" << bm_in.index_to_name(d_actual) << "\n"
-	     << "    expected array value " << d_expected
-	     << ", which was at src_phys=" << bm_phys.index_to_name(d_expected)
-	     << ", src_logical=" << bm_in.index_to_name(d_expected)
-	     << endl;
+        cout << "Mismatch found\n"
+             << "    at dst_index=" << i
+             << ", dst_phys=" << bm_phys.index_to_name(i)
+             << ", dst_logical=" << bm_out.index_to_name(i) << "\n"
+             << "    got array value " << d_actual
+             << ", which came from src_phys=" << bm_phys.index_to_name(d_actual)
+             << ", src_logical=" << bm_in.index_to_name(d_actual) << "\n"
+             << "    expected array value " << d_expected
+             << ", which was at src_phys=" << bm_phys.index_to_name(d_expected)
+             << ", src_logical=" << bm_in.index_to_name(d_expected)
+             << endl;
 
-	nfail++;
+        nfail++;
     }
 
     if (nfail > 0) {
-	cout << "shuffle kernel test failed" << endl;
-	exit(1);
+        cout << "shuffle kernel test failed" << endl;
+        exit(1);
     }
 }
 
@@ -243,11 +243,11 @@ __global__ void kernel_shuffle_V_16_16(int *dst, const int *src)
 
     #pragma unroll
     for (int i = 0; i < 2; i++) {
-	#pragma unroll
-	for (int j = 0; j < 4; j++) {
-	    V0[i][j] = src[128*i + 32*j + laneId];
-	    V1[i][j] = src[128*i + 32*j + laneId + 256];
-	}
+        #pragma unroll
+        for (int j = 0; j < 4; j++) {
+            V0[i][j] = src[128*i + 32*j + laneId];
+            V1[i][j] = src[128*i + 32*j + laneId + 256];
+        }
     }
 
     int lane_perm = compute_lane_perm();
@@ -255,11 +255,11 @@ __global__ void kernel_shuffle_V_16_16(int *dst, const int *src)
 
     #pragma unroll
     for (int i = 0; i < 2; i++) {
-	#pragma unroll
-	for (int j = 0; j < 4; j++) {
-	    dst[128*i + 32*j + laneId] = V0[i][j];
-	    dst[128*i + 32*j + laneId + 256] = V1[i][j];
-	}
+        #pragma unroll
+        for (int j = 0; j < 4; j++) {
+            dst[128*i + 32*j + laneId] = V0[i][j];
+            dst[128*i + 32*j + laneId + 256] = V1[i][j];
+        }
     }
 }
 

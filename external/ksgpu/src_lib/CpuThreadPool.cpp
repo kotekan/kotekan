@@ -27,17 +27,17 @@ void CpuThreadPool::run()
     
     unique_lock ulock(main_lock);
     if (is_started)
-	throw runtime_error("CpuThreadPool::run() called twice");
+        throw runtime_error("CpuThreadPool::run() called twice");
 
     start_time = get_time();
     is_started = true;
     ulock.unlock();
 
     for (int i = 0; i < nthreads; i++)
-	threads[i] = std::thread(worker_thread_body, this, i);
+        threads[i] = std::thread(worker_thread_body, this, i);
     
     for (int i = 0; i < nthreads; i++)
-	threads[i].join();
+        threads[i].join();
 }
 
 void CpuThreadPool::monitor_throughput(const string &label, double coeff)
@@ -68,36 +68,35 @@ void CpuThreadPool::worker_thread_body(CpuThreadPool *pool, int ithread)
 {
     int nthreads = pool->nthreads;
     int max_callbacks = nthreads * pool->max_callbacks_per_thread;
-    auto callback = pool->callback;
-    
+
     unique_lock<mutex> ul(pool->main_lock);
     auto start_time = pool->start_time;
     ul.unlock();
     
     for (;;) {
-	// Run callback without lock held.
-	pool->callback(*pool, ithread);
-	double t = time_since(start_time);
+        // Run callback without lock held.
+        pool->callback(*pool, ithread);
+        double t = time_since(start_time);
 
-	ul.lock();
-	int n = pool->num_callbacks;
-	
-	if ((max_callbacks > 0) && (n >= max_callbacks))
-	    return;
+        ul.lock();
+        int n = pool->num_callbacks;
+        
+        if ((max_callbacks > 0) && (n >= max_callbacks))
+            return;
 
-	n++;
-	pool->num_callbacks = n;
-	pool->elapsed_time = t;
-	
-	ul.unlock();
+        n++;
+        pool->num_callbacks = n;
+        pool->elapsed_time = t;
+        
+        ul.unlock();
 
-	if (n % nthreads)
-	    continue;
-	
-	unique_lock<mutex> tl(pool->tm_lock);
-	
-	if ((n == max_callbacks) || (pool->timing_monitors.size() > 0))
-	    pool->_show_timings(n, t);
+        if (n % nthreads)
+            continue;
+        
+        unique_lock<mutex> tl(pool->tm_lock);
+        
+        if ((n == max_callbacks) || (pool->timing_monitors.size() > 0))
+            pool->_show_timings(n, t);
     }
 }
 
@@ -118,7 +117,7 @@ void CpuThreadPool::_add_timing_monitor(const string &label, double coeff, bool 
 void CpuThreadPool::_show_timings(int ncb, double ttot)
 {
     int max_callbacks = nthreads * max_callbacks_per_thread;
-	
+        
     TimingMonitor tm_default;
     tm_default.label = "callbacks/sec";
     tm_default.coeff = 1.0;
@@ -128,26 +127,28 @@ void CpuThreadPool::_show_timings(int ncb, double ttot)
     double trec = (ttot > 0.0) ? (ncb/ttot) : 0.0;
     
     int ntm = timing_monitors.size();
-    const TimingMonitor *tm = &timing_monitors[0];
+    const TimingMonitor *tm = &tm_default;
 
     if (ntm == 0) {
-	ntm = 1;
-	tm = &tm_default;
+        ntm = 1;
+    }
+    else {
+        tm = &timing_monitors[0];
     }
 
     if ((max_callbacks == 0) || (ncb < max_callbacks))
-	cout << "    ";
+        cout << "    ";
 
     cout << name << " [" << ncb;
 
     if (max_callbacks > 0)
-	cout << "/" << max_callbacks;
+        cout << "/" << max_callbacks;
 
     cout << "]";
 
     for (int i = 0; i < ntm; i++) {
-	double x = tm[i].thrflag ? (tm[i].coeff * trec) : (t / tm[i].coeff);
-	cout << ((i > 0) ? ", " : ": ") << tm[i].label << " = " << x;
+        double x = tm[i].thrflag ? (tm[i].coeff * trec) : (t / tm[i].coeff);
+        cout << ((i > 0) ? ", " : ": ") << tm[i].label << " = " << x;
     }
 
     cout << "\n";
