@@ -70,8 +70,10 @@ testLostSamplesToPLMask::~testLostSamplesToPLMask() {}
 // produce some data somewhat randomly
 static bool is_lost(int time, int fbin) {
     std::string buffer(2 * sizeof(int), '\0');
+    // ensure result is consistent across PL mask downsampling.
+    int time_ds = (time / PL_MASK_DOWNSAMPLING_FACTOR) * PL_MASK_DOWNSAMPLING_FACTOR;
     // lost_samples do not depend on dish or polarization
-    std::memcpy(buffer.data() + 0 * sizeof(int), &time, sizeof(int));
+    std::memcpy(buffer.data() + 0 * sizeof(int), &time_ds, sizeof(int));
     std::memcpy(buffer.data() + 1 * sizeof(int), &fbin, sizeof(int));
     Hash hashval = hash(buffer);
     return hashval.l & 1;
@@ -214,6 +216,7 @@ void testLostSamplesToPLMask::main_thread() {
             // done
             lost_samples_buf->mark_frame_full(unique_name, frame_id);
         }
+        seq_num += samples_in_dataset;
         frame_id = (frame_id + 1) % pl_mask_buf->num_frames;
     }
 }
