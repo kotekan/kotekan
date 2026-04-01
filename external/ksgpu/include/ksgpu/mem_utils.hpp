@@ -5,6 +5,7 @@
 #include <memory>
 #include <type_traits>
 
+#include "Dtype.hpp"
 #include "rand_utils.hpp"     // randomize()
 #include "xassert.hpp"
 
@@ -16,12 +17,20 @@ namespace ksgpu {
 
 // -------------------------------------------------------------------------------------------------
 //
-// Core functions, defined later in this file ("Implementation" below)
+// Core functions, defined later in this file ("Implementation" below).
 
 
-// See below for a complete list of flags.
+// See below for a complete list of 'af_alloc' flags.
+// af_alloc() version 1: dtype is inferred from template parameter T.
 template<typename T>
 inline std::shared_ptr<T> af_alloc(long nelts, int flags);
+
+
+// See below for a complete list of 'af_alloc' flags.
+// af_alloc() version 2: dtype is specified at runtime.
+// If (T != void) and dtype is inconsistent with native (C++) type T, then exception is thrown.
+template<typename T> 
+inline std::shared_ptr<T> af_alloc(Dtype dtype, long nelts, int flags);
 
 
 template<typename T>
@@ -35,8 +44,6 @@ inline std::shared_ptr<T> af_clone(int dst_flags, const T *src, long nelts);
 // -------------------------------------------------------------------------------------------------
 //
 // Flags for use in af_alloc().
-// Note: anticipate refining 'af_unified', to toggle cudaMemAttachHost vs cudaMemAttachGlobal.
-// Note: anticipate refining 'af_rhost' (e.g. cudaHostAllocWriteCombined).
 
 
 // Location flags: where is memory allocated?
@@ -81,44 +88,29 @@ inline bool af_on_host(int flags) { return (flags & af_gpu) == 0; }
 // Implementation.
 
 
-// Handles all flags except 'af_random'.
-extern std::shared_ptr<void> _af_alloc(long nbytes, int flags);
+extern std::shared_ptr<void> _af_alloc(Dtype dtype, long nelts, int flags);
+
 
 // Uses location flags, but ignores initialization and debug flags.
+// Just a "thin" wrapper which selects between memcpy() or cudaMemcpy().
 extern void _af_copy(void *dst, int dst_flags, const void *src, int src_flags, long nbytes);
 
 
+// Version of af_alloc() without a runtime dtype.
 template<typename T>
 inline std::shared_ptr<T> af_alloc(long nelts, int flags)
 {
-    // FIXME should have some static_asserts here, to ensure
-    // that 'T' doesn't have constructors/destructors.
+    static_assert(!std::is_void_v<T>, "af_alloc<T>(): if T=void, then you must call the version of af_alloc() with a runtime dtype");
+    return std::reinterpret_pointer_cast<T> (_af_alloc(Dtype::native<T>(), nelts, flags));
+}
 
-    xassert(nelts >= 0);
-    long nbytes = nelts * sizeof(T);
 
-    // _af_alloc() handles all flags except 'af_random'.
-    std::shared_ptr<T> ret = std::reinterpret_pointer_cast<T> (_af_alloc(nbytes, flags));
-
-    if (!(flags & af_random))
-	return ret;
-
-    // FIXME should use "if constexpr" for more graceful handling
-    // of non-integral and non-floating-point types.
-        
-    if (!(flags & af_gpu)) {
-	randomize(ret.get(), nelts);
-	return ret;
-    }
-
-    // FIXME slow, memory-intensive way of randomizing array on GPU, by randomizing on CPU
-    // and copying. It would be better to launch a kernel to randomize directly on GPU.
-
-    int src_flags = af_rhost;
-    std::shared_ptr<T> host = std::reinterpret_pointer_cast<T> (_af_alloc(nbytes, src_flags));
-    randomize(host.get(), nelts);
-    af_copy(ret.get(), flags, host.get(), src_flags, nelts);
-    return ret;
+// Version of af_alloc() with a runtime dtype.
+template<typename T>
+inline std::shared_ptr<T> af_alloc(Dtype dtype, long nelts, int flags)
+{
+    _check_dtype<T> (dtype, "af_alloc");
+    return std::reinterpret_pointer_cast<T> (_af_alloc(dtype, nelts, flags));
 }
 
 
@@ -136,11 +128,12 @@ inline void af_copy(T *dst, int dst_flags, const T *src, int src_flags, long nel
 
 
 template<typename T>
-inline std::shared_ptr<T> af_clone(int dst_flags, const T *src, long nelts)
+inline std::shared_ptr<T> af_clone(int dst_flags, const T *src, int src_flags, long nelts)
 {
     dst_flags &= ~af_initialization_flags;
     std::shared_ptr<T> ret = af_alloc<T> (nelts, dst_flags);
-    af_copy(ret.get(), src, nelts);
+    af_copy(ret.get(), dst_flags, src, src_flags, nelts);
+    return ret;
 }
 
 

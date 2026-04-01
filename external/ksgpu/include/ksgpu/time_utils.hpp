@@ -4,19 +4,25 @@
 #include <stdexcept>
 #include <sys/time.h>
 
+#ifndef _unlikely
+#define _unlikely(cond)  (__builtin_expect(cond,0))
+#endif
+
+
 namespace ksgpu {
 #if 0
 }   // pacify editor auto-indent
 #endif
 
 
+// Note: one call to get_time() takes around 25 ns.
 inline struct timeval get_time()
 {
     struct timeval t;
     
     int err = gettimeofday(&t, NULL);
-    if (err != 0)
-	throw std::runtime_error("gettimeofday() failed?!");
+    if (_unlikely(err != 0))
+        throw std::runtime_error("gettimeofday() failed?!");
 
     return t;
 }

@@ -19,10 +19,10 @@ __global__ void memcpy_kernel(int *dst, const int *src, long nelts, int nelts_pe
 
     long nn = nelts - n0;
     if (nelts_per_block > nn)
-	nelts_per_block = nn;
-	
+        nelts_per_block = nn;
+        
     for (int i = threadIdx.x; i < nelts_per_block; i += blockDim.x)
-	dst[i] = src[i];
+        dst[i] = src[i];
 }
 
 
@@ -42,7 +42,7 @@ void launch_memcpy_kernel(void *dst, const void *src, long nbytes, cudaStream_t 
     xassert((nbytes % 128) == 0);
 
     if (nbytes == 0)
-	return;
+        return;
 
     long nelts = nbytes >> 2;
     long nblocks = (nelts + nelts_per_block - 1) / nelts_per_block;
@@ -51,9 +51,9 @@ void launch_memcpy_kernel(void *dst, const void *src, long nbytes, cudaStream_t 
     xassert((nblocks > 0) && (nblocks <= max_nblocks));
     
     memcpy_kernel<<< nblocks, nthreads_per_block, 0, stream >>>
-	(reinterpret_cast<int *> (dst),
-	 reinterpret_cast<const int *> (src),
-	 nelts, nelts_per_block);
+        (reinterpret_cast<int *> (dst),
+         reinterpret_cast<const int *> (src),
+         nelts, nelts_per_block);
 }
 
 
@@ -66,15 +66,15 @@ __global__ void memcpy_2d_kernel(int *dst, long dp_nelts, const int *src, long s
     long c0 = long(blockIdx.x) * long(blockDim.x) + threadIdx.x;
 
     if (c0 >= ncols)
-	return;
-	
+        return;
+        
     dst += (dp_nelts * r0) + c0;
     src += (sp_nelts * r0) + c0;
 
     nrows_per_block = min(nrows_per_block, nrows-r0);
     
     for (long r = threadIdx.y; r < nrows_per_block; r += blockDim.y)
-	dst[r * dp_nelts] = src[r * sp_nelts];
+        dst[r * dp_nelts] = src[r * sp_nelts];
 }
 
 
@@ -96,7 +96,7 @@ void launch_memcpy_2d_kernel(void *dst, long dpitch, const void *src, long spitc
     xassert((spitch % 128) == 0);
 
     if ((width == 0) || (height == 0))
-	return;
+        return;
 
     long nrows = height;
     long ncols = width >> 2;
@@ -107,16 +107,16 @@ void launch_memcpy_2d_kernel(void *dst, long dpitch, const void *src, long spitc
     nthreads.z = 1;
 
     if (ncols > 128*nrows) {
-	nthreads.x = 128; // cols
-	nthreads.y = 1;   // rows
+        nthreads.x = 128; // cols
+        nthreads.y = 1;   // rows
     }
     else if (ncols < 32*nrows) {
-	nthreads.x = 32;  // cols
-	nthreads.y = 4;   // rows
+        nthreads.x = 32;  // cols
+        nthreads.y = 4;   // rows
     }
     else {
-	nthreads.x = 64;  // cols
-	nthreads.y = 2;   // rows
+        nthreads.x = 64;  // cols
+        nthreads.y = 2;   // rows
     }
 
     long nr0 = nthreads.y * max_nblocks_y;
@@ -136,9 +136,9 @@ void launch_memcpy_2d_kernel(void *dst, long dpitch, const void *src, long spitc
     nblocks.z = 1;
     
     memcpy_2d_kernel<<< nblocks, nthreads, 0, stream >>>
-	(reinterpret_cast<int *> (dst), dp_nelts,
-	 reinterpret_cast<const int *> (src), sp_nelts,
-	 nrows, ncols, nrows_per_block);
+        (reinterpret_cast<int *> (dst), dp_nelts,
+         reinterpret_cast<const int *> (src), sp_nelts,
+         nrows, ncols, nrows_per_block);
 }
 
 
