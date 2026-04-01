@@ -1,10 +1,12 @@
 #include "../include/n2k/rfi_kernels.hpp"
 #include "../include/n2k/internals/internals.hpp"
 
-#include <gputils/cuda_utils.hpp>
+#include <ksgpu/cuda_utils.hpp>
+
+#include <cassert>
 
 using namespace std;
-using namespace gputils;
+using namespace ksgpu;
 
 
 // This is a good place to describe the array layout for PL mask.
@@ -257,7 +259,7 @@ void launch_s0_kernel(ulong* s0, const ulong* pl_mask, long T, long Tmin, long T
 	throw runtime_error("launch_s0_kernel: number of time samples T must be a multiple of downsampling factor 'Nds'");
 
     dim3 nblocks, nthreads;
-    gputils::assign_kernel_dims(nblocks, nthreads, S >> 2, (F+3) >> 2, Tds);
+    ksgpu::assign_kernel_dims(nblocks, nthreads, S >> 2, (F+3) >> 2, Tds);
 
     s0_kernel <<< nblocks, nthreads, 0, stream >>>
         ((ulong4_16a *) s0, (const uint *) pl_mask, T, Tmin, Tsize, F, S, Nds, out_fstride >> 2);

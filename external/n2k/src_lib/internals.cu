@@ -1,8 +1,10 @@
 #include "../include/n2k/internals/internals.hpp"
-#include <gputils/cuda_utils.hpp>
+#include <ksgpu/cuda_utils.hpp>
+
+#include <cassert>
 
 using namespace std;
-using namespace gputils;
+using namespace ksgpu;
 
 
 namespace n2k {
@@ -13,7 +15,7 @@ namespace n2k {
 
 Array<complex<int>> make_random_unpacked_e_array(int T, int F, int S)
 {
-    std::mt19937 &rng = gputils::default_rng;
+    std::mt19937 &rng = ksgpu::default_rng;
     auto dist = std::uniform_int_distribution<int> (-7, 7);
 
     Array<complex<int>> ret({T,F,S}, af_uhost);
@@ -72,9 +74,9 @@ void _check_array(int ndim, const ssize_t *shape, const ssize_t *strides, ssize_
 	err = "is empty";
     else if (expected_ndim != ndim)
 	err = "does not have correct dimension";
-    else if (!gputils::af_on_gpu(aflags))
+    else if (!ksgpu::af_on_gpu(aflags))
 	err = "is not on GPU";
-    else if (contiguous && (gputils::compute_ncontig(ndim,shape,strides) != ndim))
+    else if (contiguous && (ksgpu::compute_ncontig(ndim,shape,strides) != ndim))
 	err = "is not contiguous";
     else
 	return;

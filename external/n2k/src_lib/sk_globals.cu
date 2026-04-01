@@ -2,6 +2,8 @@
 
 #include "../include/n2k/internals/sk_globals.hpp"
 
+#include <cassert>
+
 namespace n2k {
 namespace sk_globals {
 

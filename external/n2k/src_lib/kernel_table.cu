@@ -1,13 +1,14 @@
 #include <mutex>
+#include <cassert>
 #include <stdexcept>
-#include <gputils/cuda_utils.hpp>
-#include <gputils/string_utils.hpp>
+#include <ksgpu/cuda_utils.hpp>
+#include <ksgpu/string_utils.hpp>
 
 #include "../include/n2k/Correlator.hpp"
 #include "../include/n2k/internals/CorrelatorKernel.hpp"
 
 using namespace std;
-using namespace gputils;
+using namespace ksgpu;
 
 namespace n2k {
 #if 0

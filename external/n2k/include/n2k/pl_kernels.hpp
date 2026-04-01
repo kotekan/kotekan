@@ -1,7 +1,7 @@
 #ifndef _N2K_PL_KERNELS_HPP
 #define _N2K_PL_KERNELS_HPP
 
-#include <gputils/Array.hpp>
+#include <ksgpu/Array.hpp>
 
 namespace n2k {
 #if 0
@@ -54,10 +54,10 @@ extern void launch_pl_mask_expander(
     cudaStream_t stream = 0);
 
 
-// Version 2: gputils::Array<> interface.
+// Version 2: ksgpu::Array<> interface.
 extern void launch_pl_mask_expander(
-    gputils::Array<ulong> &pl_out,        // shape (Tout/64, F, Sds)
-    const gputils::Array<ulong> &pl_in,   // shape (Tout/128, (Fout+3)/4, Sds)
+    ksgpu::Array<ulong> &pl_out,        // shape (Tout/64, F, Sds)
+    const ksgpu::Array<ulong> &pl_in,   // shape (Tout/128, (Fout+3)/4, Sds)
     cudaStream_t stream = 0);
 
 
@@ -124,11 +124,11 @@ extern void launch_pl_1bit_correlator(
     cudaStream_t stream = 0);
 
 
-// Version 2: gputils::Array<> interface.
+// Version 2: ksgpu::Array<> interface.
 extern void launch_pl_1bit_correlator(
-    gputils::Array<int> &counts,           // shape (T/Nds, F, Ntiles, 8, 8), where Ntiles = ((Sds/8) * (Sds/8+1)) / 2.
-    const gputils::Array<ulong> &pl_mask,  // shape (T/64, F, Sds)
-    const gputils::Array<uint> &rfimask,   // shape (F, T/32)
+    ksgpu::Array<int> &counts,           // shape (T/Nds, F, Ntiles, 8, 8), where Ntiles = ((Sds/8) * (Sds/8+1)) / 2.
+    const ksgpu::Array<ulong> &pl_mask,  // shape (T/64, F, Sds)
+    const ksgpu::Array<uint> &rfimask,   // shape (F, T/32)
     long Nds,                              // downsampling factor of counts array, relative to baseband
     cudaStream_t stream = 0);
 

@@ -77,7 +77,7 @@ endforeach()
 
 # Add library targets
 add_library(n2k SHARED ${CUFILES} ${HFILES})
-target_link_libraries(n2k gputils)
+target_link_libraries(n2k ksgpu)
 
 # Include directories
 target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
