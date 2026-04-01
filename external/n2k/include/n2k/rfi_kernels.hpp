@@ -422,10 +422,10 @@ struct SkKernel
 
     void launch(
         ksgpu::Array<float> &out_sk_feed_averaged,   // Shape (T,F,3)
-	ksgpu::Array<float> &out_sk_single_feed,     // Either empty array or shape (T,F,3,S)
-	ksgpu::Array<uint> &out_rfimask,             // Either empty array or shape (F,T*Nds/32), need not be contiguous
-	const ksgpu::Array<ulong> &in_S012,          // Shape (T,F,3,S)
-	const ksgpu::Array<uint8_t> &in_bf_mask,     // Length S (bad feed bask)
+        ksgpu::Array<float> &out_sk_single_feed,     // Either empty array or shape (T,F,3,S)
+        ksgpu::Array<uint> &out_rfimask,             // Either empty array or shape (F,T*Nds/32), need not be contiguous
+        const ksgpu::Array<ulong> &in_S012,          // Shape (T,F,3,S)
+        const ksgpu::Array<uint8_t> &in_bf_mask,     // Length S (bad feed bask)
 	cudaStream_t stream = 0) const;
 
     // Used internally by launch() + constructor.

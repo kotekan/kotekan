@@ -1,4 +1,6 @@
 #include <ksgpu.hpp>
+
+#include <cassert>
 #include "../include/n2k/Correlator.hpp"
 
 #include <cassert>
