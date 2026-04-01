@@ -20,6 +20,19 @@
 
 using N2::frameID;
 
+enum class N2VarianceMode : uint32_t {
+    CHIMEv1 = 0,
+    EvenOddPosDef = 1
+};
+
+std::string N2VarianceMode_to_string(const N2VarianceMode &m);
+N2VarianceMode N2VarianceMode_from_string(const std::string &s);
+std::ostream& operator<<(std::ostream& os, const N2VarianceMode& m);
+std::string format_as(const N2VarianceMode& m);
+void to_json(nlohmann::json& j, const N2VarianceMode& m);
+void from_json(const nlohmann::json& j, N2VarianceMode& m);
+
+
 /**
  * @class N2Accumulate
  * @brief Accumulate the high rate GPU output into integrated N2Buffers.
@@ -179,7 +192,9 @@ private:
     const int _output_batch_size; ///< number of OpenMP threads to use to process data
 
     const bool _do_fringestop; ///< Whether to fringestop
+    const N2VarianceMode _variance_mode; 
     const int _debug_accum_mode;
+
 
     // Some derived parameters
 
@@ -205,7 +220,6 @@ private:
     std::vector<float> _weights;
     // number of fpga samples, per frequency, in frame
     std::vector<int32_t> _n_valid_fpga_samples_in_vis;
-    std::vector<int32_t> _n_valid_fpga_samples_in_vis_even;
     std::vector<float> _n_valid_sample_diff_sq_sum;
     std::vector<int32_t> _n_rfi_samples_in_vis;
     int64_t _vis_samples_in_out_frame;

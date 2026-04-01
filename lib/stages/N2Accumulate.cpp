@@ -62,6 +62,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _num_workers(config.get_default<int>(unique_name, "num_workers", 1)),
     _output_batch_size(config.get_default<int>(unique_name, "output_batch_size", 1)),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
+    _variance_mode(config.get<N2VarianceMode>(unique_name, "variance_mode")),
     _debug_accum_mode(config.get_default<int>(unique_name, "debug_accum_mode", 2)),
     _tel(Telescope::instance()),
     skipped_frame_counter(Metrics::instance().add_counter(
@@ -69,6 +70,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
+
+    std::cout << "Variance mode: " << _variance_mode << std::endl;
+    INFO("Variance mode: {}", _variance_mode);
 
     // Ensure outgoing buffer is of type N2
     if (out_buf->buffer_type != "N2")
@@ -183,7 +187,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     // number of fpga samples, per frequency, in frame
     _n_valid_fpga_samples_in_vis = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
-    _n_valid_fpga_samples_in_vis_even = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
     _n_valid_sample_diff_sq_sum = std::vector<float>(_num_freq_per_n2k_frame, 0);
     _n_rfi_samples_in_vis = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
 
@@ -274,6 +277,9 @@ void N2Accumulate::main_thread() {
     // frequencies
     std::vector<int32_t> vis_even_vec(corr_stride_t, 0);
     const int32_t* vis_even_ptr = nullptr;
+    
+    std::vector<int32_t> n_valid_fpga_samples_t0(_num_freq_per_n2k_frame, 0);
+    std::vector<int32_t> n_valid_fpga_samples_t1(_num_freq_per_n2k_frame, 0);
 
     // vis_even may be an odd frame if the first frame eencountered is odd,
     // since fpga_seq_num does not have to start from 0, in which case we skip
@@ -448,6 +454,29 @@ void N2Accumulate::main_thread() {
             assert(_vis.size() == corr_stride_t);
             assert(_weights.size() == corr_stride_t / 2);
 
+            // First: normalization.  Accumulate the number of valid/lost/rfi ticks in the sample
+            for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+
+                // Assume the packet loss is scalar, read the counts for the frame
+                // from element 0.
+                assert(_packet_loss_is_scalar);
+                int64_t count_idx = f * counts_stride_f + vis_samp_n * counts_stride_t;
+
+                int32_t valid_fpga_samples = counts[count_idx];
+
+                _n_valid_fpga_samples_in_vis[f] += valid_fpga_samples;
+
+                // Track the lost samples needed for the weights too.
+                if (vis_sample_num_abs % 2 == 0) {
+                    n_valid_fpga_samples_t0[f] = valid_fpga_samples;
+                } else {
+                    n_valid_fpga_samples_t1[f] = valid_fpga_samples;
+                    float samples_diff = valid_fpga_samples - n_valid_fpga_samples_t0[f];
+                    _n_valid_sample_diff_sq_sum[f] += samples_diff * samples_diff;
+                } // if even/odd
+            } // f
+
+            // Now for the hard part, visibilities and weights
             if (_debug_accum_mode == 0) {
 #pragma omp parallel for simd num_threads(_num_workers)
                 for (uint64_t d = 0; d < corr_stride_t; d++) {
@@ -628,6 +657,18 @@ void N2Accumulate::main_thread() {
                         _tel.to_time(seq - _n_fpga_samples_per_n2k_correlation / 2));
 #pragma omp parallel for num_threads(_num_workers)
                     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+
+                        // 1/N for even (idx ~ 0) sample
+                        float inv_n_t0 = (n_valid_fpga_samples_t0[f] <= 0) ? 0.0f : 1.0f / n_valid_fpga_samples_t0[f];
+                        // 1/N for odd  (idx ~ 1) sample
+                        float inv_n_t1 = (n_valid_fpga_samples_t1[f] <= 0) ? 0.0f : 1.0f / n_valid_fpga_samples_t1[f];
+                        // var(corr_e/Ne / corr_o/No) ~ 1/Ne + 1/No
+                        // 1/var ~ 1/(1/Ne + 1/No) = Ne No / (Ne + No)
+                        float inv_dvis_var = 0.0f;
+                        if (n_valid_fpga_samples_t0[f] > 0 && n_valid_fpga_samples_t0[f] > 0) {
+                            inv_dvis_var = static_cast<float>( n_valid_fpga_samples_t0[f] * n_valid_fpga_samples_t1[f]) / n_valid_fpga_samples_t0[f] * n_valid_fpga_samples_t1[f];
+                        }
+
                         if (_do_fringestop) {
                             // Physical frequency for this f
                             double freq_MHz = _tel.to_freq_MHz(
@@ -661,8 +702,8 @@ void N2Accumulate::main_thread() {
                                 uint64_t weight_offset_fb =
                                     weight_offset_f + block_idx * corr_stride_b / 2;
 
-                                const std::complex<float>* phase_i = fringe_phase.data() + di0;
-                                const std::complex<float>* phase_j = fringe_phase.data() + dj0;
+                                const std::complex<float>* phase_odd_i = fringe_phase.data() + di0;
+                                const std::complex<float>* phase_odd_j = fringe_phase.data() + dj0;
                                 const std::complex<float>* phase_even_i =
                                     fringe_phase_even.data() + di0;
                                 const std::complex<float>* phase_even_j =
@@ -674,45 +715,39 @@ void N2Accumulate::main_thread() {
                                         uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
                                         uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
 
+                                        std::complex<float> vis_even{
+                                            static_cast<float>(
+                                                vis_even_ptr[vis_offset_fb + idx + 0]),
+                                            static_cast<float>(
+                                                vis_even_ptr[vis_offset_fb + idx + 1])};
+                                        std::complex<float> vis_odd{
+                                            static_cast<float>(corr[corr_offset_tfb + idx + 0]),
+                                            static_cast<float>(
+                                                corr[corr_offset_tfb + idx + 1])};
                                         if (_do_fringestop) {
                                             // To apply phases:
                                             //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
                                             //                   = V_ij * Phase_i * conj(Phase_j)
-                                            std::complex<float> phase =
-                                                phase_i[ilo] * std::conj(phase_j[jlo]);
+                                            std::complex<float> phase_odd =
+                                                phase_odd_i[ilo] * std::conj(phase_odd_j[jlo]);
                                             std::complex<float> phase_even =
                                                 phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
 
-                                            std::complex<float> vis_even{
-                                                static_cast<float>(
-                                                    vis_even_ptr[vis_offset_fb + idx + 0]),
-                                                static_cast<float>(
-                                                    vis_even_ptr[vis_offset_fb + idx + 1])};
-                                            std::complex<float> vis_odd{
-                                                static_cast<float>(corr[corr_offset_tfb + idx + 0]),
-                                                static_cast<float>(
-                                                    corr[corr_offset_tfb + idx + 1])};
-                                            std::complex<float> dvis =
-                                                phase * vis_odd - phase_even * vis_even;
+                                            vis_odd *= phase_odd;
+                                            vis_even *= phase_even;
+                                        } // fringestop
 
-                                            _weights[weight_offset_fb + w_idx] +=
-                                                dvis.real() * dvis.real()
-                                                + dvis.imag() * dvis.imag();
-                                        } else {
-                                            std::complex<float> vis_even{
-                                                static_cast<float>(
-                                                    vis_even_ptr[vis_offset_fb + idx + 0]),
-                                                static_cast<float>(
-                                                    vis_even_ptr[vis_offset_fb + idx + 1])};
-                                            std::complex<float> vis_odd{
-                                                static_cast<float>(corr[corr_offset_tfb + idx + 0]),
-                                                static_cast<float>(
-                                                    corr[corr_offset_tfb + idx + 1])};
+                                        if (_variance_mode == N2VarianceMode::CHIMEv1) {
                                             std::complex<float> dvis = vis_odd - vis_even;
 
                                             _weights[weight_offset_fb + w_idx] +=
                                                 dvis.real() * dvis.real()
                                                 + dvis.imag() * dvis.imag();
+                                        } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
+                                            std::complex<float> dvis = inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
+                                            _weights[weight_offset_fb + w_idx] +=
+                                                inv_dvis_var * (dvis.real() * dvis.real()
+                                                + dvis.imag() * dvis.imag());
                                         }
                                     } // jlo
                                 } // ilo
@@ -734,6 +769,18 @@ void N2Accumulate::main_thread() {
                         _tel.to_time(seq + _n_fpga_samples_per_n2k_correlation / 2));
 #pragma omp parallel for num_threads(_num_workers)
                     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+
+                        // 1/N for even (idx ~ 0) sample
+                        float inv_n_t0 = (n_valid_fpga_samples_t0[f] <= 0) ? 0.0f : 1.0f / n_valid_fpga_samples_t0[f];
+                        // 1/N for odd  (idx ~ 1) sample
+                        float inv_n_t1 = (n_valid_fpga_samples_t1[f] <= 0) ? 0.0f : 1.0f / n_valid_fpga_samples_t1[f];
+                        // var(corr_e/Ne / corr_o/No) ~ 1/Ne + 1/No
+                        // 1/var ~ 1/(1/Ne + 1/No) = Ne No / (Ne + No)
+                        float inv_dvis_var = 0.0f;
+                        if (n_valid_fpga_samples_t0[f] > 0 && n_valid_fpga_samples_t0[f] > 0) {
+                            inv_dvis_var = static_cast<float>( n_valid_fpga_samples_t0[f] * n_valid_fpga_samples_t1[f]) / n_valid_fpga_samples_t0[f] * n_valid_fpga_samples_t1[f];
+                        }
+
                         if (_do_fringestop) {
                             // Physical frequency for this f
                             double freq_MHz = _tel.to_freq_MHz(
@@ -779,67 +826,44 @@ void N2Accumulate::main_thread() {
 
                                         uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
                                         uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
+                                        
+                                        std::complex<float> vis_even{
+                                            static_cast<float>(
+                                                vis_even_ptr[vis_offset_fb + idx + 0]),
+                                            static_cast<float>(
+                                                vis_even_ptr[vis_offset_fb + idx + 1])};
+                                        std::complex<float> vis_odd{
+                                            static_cast<float>(corr[corr_offset_tfb + idx + 0]),
+                                            static_cast<float>(
+                                                corr[corr_offset_tfb + idx + 1])};
+                                        
                                         if (_do_fringestop) {
                                             // To apply phases:
                                             //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
                                             //                   = V_ij * Phase_i * conj(Phase_j)
-                                            std::complex<float> phase =
+                                            std::complex<float> phase_odd =
                                                 phase_i[ilo] * std::conj(phase_j[jlo]);
                                             std::complex<float> phase_even =
                                                 phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
 
-                                            std::complex<float> vis_even{
-                                                static_cast<float>(
-                                                    vis_even_ptr[vis_offset_fb + idx + 0]),
-                                                static_cast<float>(
-                                                    vis_even_ptr[vis_offset_fb + idx + 1])};
-                                            std::complex<float> vis_odd{
-                                                static_cast<float>(corr[corr_offset_tfb + idx + 0]),
-                                                static_cast<float>(
-                                                    corr[corr_offset_tfb + idx + 1])};
-                                            std::complex<float> dvis =
-                                                phase * vis_odd - phase_even * vis_even;
+                                            vis_odd *= phase_odd;
+                                            vis_even *= phase_even;
+                                        }
 
-                                            _vis[vis_offset_fb + idx + 0] +=
-                                                phase.real() * corr[corr_offset_tfb + idx + 0]
-                                                - phase.imag() * corr[corr_offset_tfb + idx + 1]
-                                                + phase_even.real()
-                                                      * vis_even_ptr[vis_offset_fb + idx + 0]
-                                                - phase_even.imag()
-                                                      * vis_even_ptr[vis_offset_fb + idx + 1];
-                                            _vis[vis_offset_fb + idx + 1] +=
-                                                phase.imag() * corr[corr_offset_tfb + idx + 0]
-                                                + phase.real() * corr[corr_offset_tfb + idx + 1]
-                                                + phase_even.imag()
-                                                      * vis_even_ptr[vis_offset_fb + idx + 0]
-                                                + phase_even.real()
-                                                      * vis_even_ptr[vis_offset_fb + idx + 1];
+                                        _vis[vis_offset_fb + idx + 0] += vis_even.real() + vis_odd.real();
+                                        _vis[vis_offset_fb + idx + 1] += vis_even.imag() + vis_odd.imag();
 
-                                            _weights[weight_offset_fb + w_idx] +=
-                                                dvis.real() * dvis.real()
-                                                + dvis.imag() * dvis.imag();
-                                        } else {
-                                            std::complex<float> vis_even{
-                                                static_cast<float>(
-                                                    vis_even_ptr[vis_offset_fb + idx + 0]),
-                                                static_cast<float>(
-                                                    vis_even_ptr[vis_offset_fb + idx + 1])};
-                                            std::complex<float> vis_odd{
-                                                static_cast<float>(corr[corr_offset_tfb + idx + 0]),
-                                                static_cast<float>(
-                                                    corr[corr_offset_tfb + idx + 1])};
+                                        if (_variance_mode == N2VarianceMode::CHIMEv1) {
                                             std::complex<float> dvis = vis_odd - vis_even;
 
-                                            _vis[vis_offset_fb + idx + 0] +=
-                                                corr[corr_offset_tfb + idx + 0]
-                                                + vis_even_ptr[vis_offset_fb + idx + 0];
-                                            _vis[vis_offset_fb + idx + 1] +=
-                                                corr[corr_offset_tfb + idx + 1]
-                                                + vis_even_ptr[vis_offset_fb + idx + 1];
-
                                             _weights[weight_offset_fb + w_idx] +=
                                                 dvis.real() * dvis.real()
                                                 + dvis.imag() * dvis.imag();
+                                        } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
+                                            std::complex<float> dvis = inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
+                                            _weights[weight_offset_fb + w_idx] +=
+                                                inv_dvis_var * (dvis.real() * dvis.real()
+                                                + dvis.imag() * dvis.imag());
                                         }
                                     } // jlo
                                 } // ilo
@@ -850,27 +874,6 @@ void N2Accumulate::main_thread() {
                 } // vis_sample even/odd
 
             } // debug_accum_mode 3
-
-            // Track (frequency-dependent) lost samples
-            for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
-
-                // Assume the packet loss is scalar, read the counts for the frame
-                // from element 0.
-                assert(_packet_loss_is_scalar);
-                int64_t count_idx = f * counts_stride_f + vis_samp_n * counts_stride_t;
-
-                int32_t valid_fpga_samples = counts[count_idx];
-
-                _n_valid_fpga_samples_in_vis[f] += valid_fpga_samples;
-
-                // Track the lost samples needed for the weights too.
-                if (vis_sample_num_abs % 2 == 0) {
-                    _n_valid_fpga_samples_in_vis_even[f] = valid_fpga_samples;
-                } else {
-                    float samples_diff = valid_fpga_samples - _n_valid_fpga_samples_in_vis_even[f];
-                    _n_valid_sample_diff_sq_sum[f] += samples_diff * samples_diff;
-                } // if even/odd
-            } // f
 
             accumulate_rfimask_in_sample(rfimask, vis_samp_n);
 
@@ -1201,22 +1204,35 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
                             N2::cfloat v{(float)_vis[2 * idx], (float)_vis[2 * idx + 1]};
                             out_vis.vis[n2_idx] = ins * std::conj(v);
 
-                            float bias = std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
+                            if (_variance_mode == N2VarianceMode::CHIMEv1) {
+                                float bias = std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
 
 
-                            // DEBUG("{} {} w1: {:.12f} v2: {:.12f} |v|^2: {:.12f}, dN^2: {:.12f}
-                            // |v|^2 dN^2: {:.12f} diff: {:.12e} ==: {}", i, j, _weights[idx],
-                            // std::norm(v), std::norm(v)*ins*ins, _n_valid_sample_diff_sq_sum[f],
-                            // bias, _weights[idx] - bias, _weights[idx] == bias);
+                                // DEBUG("{} {} w1: {:.12f} v2: {:.12f} |v|^2: {:.12f}, dN^2: {:.12f}
+                                // |v|^2 dN^2: {:.12f} diff: {:.12e} ==: {}", i, j, _weights[idx],
+                                // std::norm(v), std::norm(v)*ins*ins, _n_valid_sample_diff_sq_sum[f],
+                                // bias, _weights[idx] - bias, _weights[idx] == bias);
 
-                            if (ns > 0) {
-                                _weights[idx] -= bias;
+                                if (ns > 0) {
+                                    _weights[idx] -= bias;
+                                }
+
+                                // DEBUG("{} {} w2: {}", i, j, _weights[idx]);
+
+                                out_vis.weight[n2_idx] = (ns > 0 && _weights[idx] != 0.0f) ? ns * (ns / _weights[idx]) : 0.0f;
+                                // DEBUG("{} {} w3: {}", i, j, out_vis.weight[n2_idx]);
+                            } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
+                                if (_vis_samples_in_out_frame % 2 != 0) {
+                                    FATAL_ERROR("EvenOdd variance estimator requires an even number of frames, got: {} for accumulation {} at seq {}", _vis_samples_in_out_frame, _accum_bin_idx, _accum_fpga_start_tick);
+                                }
+                                assert(_vis_samples_in_out_frame % 2 == 0);
+
+                                int64_t num_var_samp = _vis_samples_in_out_frame / 2;
+                                int64_t norm = ns * num_var_samp;
+                                out_vis.weight[n2_idx] = (norm > 0 && _weights[idx] > 0) ? norm / _weights[idx] : 0.0f; 
+                            } else {
+                                FATAL_ERROR("Cannot output weights for variance_mode: {}", _variance_mode);
                             }
-
-                            // DEBUG("{} {} w2: {}", i, j, _weights[idx]);
-
-                            out_vis.weight[n2_idx] = (ns > 0) ? ns * (ns / _weights[idx]) : 0;
-                            // DEBUG("{} {} w3: {}", i, j, out_vis.weight[n2_idx]);
                         } // jlo
                     } // ilo
 
@@ -1275,4 +1291,40 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
          1000 * (prof_out_end_time - prof_out_fill_time));
 
     return true;
+}
+
+std::string N2VarianceMode_to_string(const N2VarianceMode &m) {
+    switch (m) {
+        case N2VarianceMode::CHIMEv1: return "CHIMEv1";
+        case N2VarianceMode::EvenOddPosDef: return "EvenOddPosDef";
+        default:
+                FATAL_ERROR_NON_OO("Unknown N2VarianceMode: {:d}", static_cast<uint32_t>(m));
+    }
+}
+
+N2VarianceMode N2VarianceMode_from_string(const std::string &s) {
+    if (s == "CHIMEv1") {
+        return N2VarianceMode::CHIMEv1;
+    } else if (s == "EvenOddPosDef") {
+        return N2VarianceMode::EvenOddPosDef;
+    } else {
+        FATAL_ERROR_NON_OO(R"(Could not parse "{:s}" into N2VarianceMode)", s);
+    }
+}
+
+std::ostream& operator<<(std::ostream& os, const N2VarianceMode& m) {
+    os << N2VarianceMode_to_string(m);
+    return os;
+}
+
+std::string format_as(const N2VarianceMode& m) {
+    return N2VarianceMode_to_string(m);
+}
+
+void to_json(nlohmann::json& j, const N2VarianceMode& m) {
+    j = N2VarianceMode_to_string(m);
+}
+
+void from_json(const nlohmann::json& j, N2VarianceMode& m) {
+    m = N2VarianceMode_from_string(j);
 }

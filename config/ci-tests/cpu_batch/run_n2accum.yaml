@@ -145,6 +145,7 @@ N2_accumulate:
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
+    variance_mode: EvenOddPosDef
 
 write_fake_correlation:
   kotekan_stage: hdf5FileWrite
@@ -176,7 +177,7 @@ write_fake_rfimask:
 write_N2:
    kotekan_stage: hdf5FileWrite
    base_dir: fake_data
-   file_name: n2_vis
+   file_name: n2_vis_posdef
    prefix_hostname: false
    max_frames: num_local_freq * n2_frames_to_write # Will trigger exit after writing this many frames
    skip_writing: false
