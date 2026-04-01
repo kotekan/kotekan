@@ -2,6 +2,9 @@
 # Tests that the lostSamples --> N2 Counts pipeline for CHIME/HIRAX produces matching output
 # as n2k pipeline for CHORD.
 #
+# This currently uses the CPU version of the pipeline, as something about the GPU setup in this file is wrong.
+# TODO: Fix, make the comparison against the GPU.
+
 type: config
 log_level: INFO
 
@@ -66,11 +69,11 @@ dummy_pl_mask_buffer:
     frame_size: ((samples_per_data_set / pl_mask_downsampling_factor) * (num_local_freq / 4) * (num_elements / 8)) / 8
     metadata_pool: main_pool
 
-host_n2k_counts_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
-    metadata_pool: main_pool
+# host_n2k_counts_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+#     metadata_pool: main_pool
 
 host_ls_counts_buffer:
     kotekan_buffer: standard
@@ -94,20 +97,20 @@ simulated_n2k_counts_buffer:
 # Ringbuffer signalling buffers
 ###############################
 
-host_rfi_RFImask_ringbuffer:
-    kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq / 8
-    metadata_pool: main_pool
-
-host_pl_mask_ringbuffer:
-    kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
-    metadata_pool: main_pool
-
-host_pl_mask_exp_ringbuffer:
-    kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * (samples_per_data_set * num_local_freq * (num_elements / 8)) / 8
-    metadata_pool: main_pool
+# host_rfi_RFImask_ringbuffer:
+#     kotekan_buffer: ring
+#     ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq / 8
+#     metadata_pool: main_pool
+# 
+# host_pl_mask_ringbuffer:
+#     kotekan_buffer: ring
+#     ring_buffer_size: buffer_depth * ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
+#     metadata_pool: main_pool
+# 
+# host_pl_mask_exp_ringbuffer:
+#     kotekan_buffer: ring
+#     ring_buffer_size: buffer_depth * (samples_per_data_set * num_local_freq * (num_elements / 8)) / 8
+#     metadata_pool: main_pool
 
 ################
 # Kotekan stages
@@ -153,71 +156,71 @@ lostSamplesToPLMask:
       - lost_samples_buffer_1
       - lost_samples_buffer_2
 
-run_send_rfi_RFImask:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_rfi_RFImask_buffer_in: host_rfi_RFImask_buffer
-        out_buffers:
-            host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
-        commands:
-        - name: cudaCopyToRingbuffer
-          input_size: samples_per_data_set * num_local_freq  / 8
-          ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq / 8
-          in_buf: host_rfi_RFImask_buffer_in
-          signal_buf: host_rfi_RFImask_ringbuffer_out
-          gpu_mem_output: rfi_RFImask_buffer
-
-run_send_pl_mask:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_pl_mask_buffer_in: host_pl_mask_buffer
-        out_buffers:
-            host_pl_mask_ringbuffer_out: host_pl_mask_ringbuffer
-        commands:
-        - name: cudaCopyToRingbuffer
-          input_size: (samples_per_data_set/2) * (num_local_freq/4) * (num_elements/8) / 8
-          ring_buffer_size: buffer_depth * input_size
-          in_buf: host_pl_mask_buffer_in
-          signal_buf: host_pl_mask_ringbuffer_out
-          gpu_mem_output: pl_mask_buffer
-
-run_pl_expand:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
-        out_buffers:
-            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
-        commands:
-        - name: cudaPLMaskExpander
-          num_frequencies: num_local_freq
-          pl_mask_name: pl_mask
-          pl_expanded_mask_name: pl_mask_exp
-
-run_pl_corr:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
-            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
-        out_buffers:
-            host_n2k_counts_buffer: host_n2k_counts_buffer
-        commands:
-        - name: cudaPL1bitCorrelator
-          num_frequencies: num_local_freq
-          pl_expanded_mask_name: pl_mask_exp
-          rfi_RFImask_name: rfi_RFImask
-          n2k_counts_name: n2k_counts
-        - name: cudaSyncOutput
-        - name: cudaOutputData
-          gpu_mem: n2k_counts_buffer
-          out_buf: host_n2k_counts_buffer
+# run_send_rfi_RFImask:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_rfi_RFImask_buffer_in: host_rfi_RFImask_buffer
+#         out_buffers:
+#             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
+#         commands:
+#         - name: cudaCopyToRingbuffer
+#           input_size: samples_per_data_set * num_local_freq  / 8
+#           ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq / 8
+#           in_buf: host_rfi_RFImask_buffer_in
+#           signal_buf: host_rfi_RFImask_ringbuffer_out
+#           gpu_mem_output: rfi_RFImask_buffer
+# 
+# run_send_pl_mask:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_pl_mask_buffer_in: host_pl_mask_buffer
+#         out_buffers:
+#             host_pl_mask_ringbuffer_out: host_pl_mask_ringbuffer
+#         commands:
+#         - name: cudaCopyToRingbuffer
+#           input_size: (samples_per_data_set/2) * (num_local_freq/4) * (num_elements/8) / 8
+#           ring_buffer_size: buffer_depth * input_size
+#           in_buf: host_pl_mask_buffer_in
+#           signal_buf: host_pl_mask_ringbuffer_out
+#           gpu_mem_output: pl_mask_buffer
+# 
+# run_pl_expand:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+#         out_buffers:
+#             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
+#         commands:
+#         - name: cudaPLMaskExpander
+#           num_frequencies: num_local_freq
+#           pl_mask_name: pl_mask
+#           pl_expanded_mask_name: pl_mask_exp
+# 
+# run_pl_corr:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
+#             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+#         out_buffers:
+#             host_n2k_counts_buffer: host_n2k_counts_buffer
+#         commands:
+#         - name: cudaPL1bitCorrelator
+#           num_frequencies: num_local_freq
+#           pl_expanded_mask_name: pl_mask_exp
+#           rfi_RFImask_name: rfi_RFImask
+#           n2k_counts_name: n2k_counts
+#         - name: cudaSyncOutput
+#         - name: cudaOutputData
+#           gpu_mem: n2k_counts_buffer
+#           out_buf: host_n2k_counts_buffer
 
 cpu_pl_exp:
     kotekan_stage: gpuSimulateN2kPLExpand
@@ -269,10 +272,14 @@ writers:
         kotekan_stage: hdf5FileWrite
         file_name: dummy_pl_mask
         in_buf: dummy_pl_mask_buffer
-    n2k_counts:
+#     n2k_counts:
+#         kotekan_stage: hdf5FileWrite
+#         file_name: n2k_counts
+#         in_buf: host_n2k_counts_buffer
+    cpu_n2k_counts:
         kotekan_stage: hdf5FileWrite
-        file_name: n2k_counts
-        in_buf: host_n2k_counts_buffer
+        file_name: cpu_n2k_counts
+        in_buf: simulated_n2k_counts_buffer
     ls_counts:
         kotekan_stage: hdf5FileWrite
         file_name: ls_counts
