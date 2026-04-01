@@ -232,6 +232,7 @@ cpu_pl_corr:
 
 check_counts_data:
     kotekan_stage: testDataCheckInt
+    # first_buf: host_n2k_counts_buffer
     first_buf: simulated_n2k_counts_buffer
     second_buf: host_ls_counts_buffer
     num_frames_to_test: 2*buffer_depth
