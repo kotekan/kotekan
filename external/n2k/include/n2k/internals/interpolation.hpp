@@ -1,6 +1,7 @@
 #ifndef _N2K_INTERPOLATION_HPP
 #define _N2K_INTERPOLATION_HPP
 
+#include <cassert>
 #include <stdexcept>
 #include "device_inlines.hpp"  // bank_conflict_free_load(), roll_forward(), roll_backward()
 #include "sk_globals.hpp"

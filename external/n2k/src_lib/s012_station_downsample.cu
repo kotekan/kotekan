@@ -2,10 +2,12 @@
 #include "../include/n2k/internals/bad_feed_mask.hpp"
 #include "../include/n2k/internals/internals.hpp"
 
-#include <gputils/cuda_utils.hpp>
+#include <ksgpu/cuda_utils.hpp>
+
+#include <cassert>
 
 using namespace std;
-using namespace gputils;
+using namespace ksgpu;
 
 
 namespace n2k {
