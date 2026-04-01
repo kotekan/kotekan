@@ -255,9 +255,7 @@ def gen_vis_data(t_idx, f_idx):
 
     num_frames_in_accum = accumulate_params["num_n2k_samples_to_accumulate"]
 
-    for t in range(
-        t_n2k_0, t_n2k_0 + num_frames_in_accum
-    ):
+    for t in range(t_n2k_0, t_n2k_0 + num_frames_in_accum):
 
         count_idx = (t * global_params["num_local_freq"] + f_idx) % len(count_vals)
 
@@ -276,23 +274,25 @@ def gen_vis_data(t_idx, f_idx):
             diff_vis = vis_pat * counts - even_vis
             diff_vis_sq += diff_vis.real ** 2 + diff_vis.imag ** 2
             diff_N_sq += (counts - even_counts) ** 2
-            
+
             if counts > 0 and even_counts > 0:
                 diff_vis_n = vis_pat - even_vis / even_counts
-                diff_Z += ((counts * even_counts) / (counts + even_counts)) * (diff_vis_n.real**2 + diff_vis_n.imag**2)
+                diff_Z += ((counts * even_counts) / (counts + even_counts)) * (
+                    diff_vis_n.real ** 2 + diff_vis_n.imag ** 2
+                )
             # print(t, diff_vis[-3:], diff_vis_sq[-3:], diff_N_sq[-3:])
 
     if total_counts > 0:
         # print(vis[-3:], total_counts)
         vis /= total_counts
 
-        if accumulate_params['variance_mode'] == 'CHIMEv1':
+        if accumulate_params["variance_mode"] == "CHIMEv1":
             bias = diff_N_sq * (vis.real ** 2 + vis.imag ** 2)
             # print(vis[-3:], diff_N_sq[-3:], vis[-3:].real**2 + vis[-3:].imag**2)
             # print(diff_vis_sq[-3:], bias[-3:], diff_vis_sq[-3:] - bias[-3:])
             good = diff_vis_sq != bias
             weights[good] = total_counts ** 2 / ((diff_vis_sq - bias)[good])
-        elif accumulate_params['variance_mode'] == 'EvenOddPosDef':
+        elif accumulate_params["variance_mode"] == "EvenOddPosDef":
             weights[:] = (total_counts * num_frames_in_accum / 2) / diff_Z
 
     else:

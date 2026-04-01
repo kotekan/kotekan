@@ -277,7 +277,7 @@ void N2Accumulate::main_thread() {
     // frequencies
     std::vector<int32_t> vis_even_vec(corr_stride_t, 0);
     const int32_t* vis_even_ptr = nullptr;
-    
+
     std::vector<int32_t> n_valid_fpga_samples_t0(_num_freq_per_n2k_frame, 0);
     std::vector<int32_t> n_valid_fpga_samples_t1(_num_freq_per_n2k_frame, 0);
 
@@ -659,14 +659,21 @@ void N2Accumulate::main_thread() {
                     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
 
                         // 1/N for even (idx ~ 0) sample
-                        float inv_n_t0 = (n_valid_fpga_samples_t0[f] <= 0) ? 0.0f : 1.0f / n_valid_fpga_samples_t0[f];
+                        float inv_n_t0 = (n_valid_fpga_samples_t0[f] <= 0)
+                                             ? 0.0f
+                                             : 1.0f / n_valid_fpga_samples_t0[f];
                         // 1/N for odd  (idx ~ 1) sample
-                        float inv_n_t1 = (n_valid_fpga_samples_t1[f] <= 0) ? 0.0f : 1.0f / n_valid_fpga_samples_t1[f];
+                        float inv_n_t1 = (n_valid_fpga_samples_t1[f] <= 0)
+                                             ? 0.0f
+                                             : 1.0f / n_valid_fpga_samples_t1[f];
                         // var(corr_e/Ne / corr_o/No) ~ 1/Ne + 1/No
                         // 1/var ~ 1/(1/Ne + 1/No) = Ne No / (Ne + No)
                         float inv_dvis_var = 0.0f;
                         if (n_valid_fpga_samples_t0[f] > 0 && n_valid_fpga_samples_t0[f] > 0) {
-                            inv_dvis_var = static_cast<float>( n_valid_fpga_samples_t0[f] * n_valid_fpga_samples_t1[f]) / n_valid_fpga_samples_t0[f] * n_valid_fpga_samples_t1[f];
+                            inv_dvis_var = static_cast<float>(n_valid_fpga_samples_t0[f]
+                                                              * n_valid_fpga_samples_t1[f])
+                                           / n_valid_fpga_samples_t0[f]
+                                           * n_valid_fpga_samples_t1[f];
                         }
 
                         if (_do_fringestop) {
@@ -722,8 +729,7 @@ void N2Accumulate::main_thread() {
                                                 vis_even_ptr[vis_offset_fb + idx + 1])};
                                         std::complex<float> vis_odd{
                                             static_cast<float>(corr[corr_offset_tfb + idx + 0]),
-                                            static_cast<float>(
-                                                corr[corr_offset_tfb + idx + 1])};
+                                            static_cast<float>(corr[corr_offset_tfb + idx + 1])};
                                         if (_do_fringestop) {
                                             // To apply phases:
                                             //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
@@ -743,11 +749,14 @@ void N2Accumulate::main_thread() {
                                             _weights[weight_offset_fb + w_idx] +=
                                                 dvis.real() * dvis.real()
                                                 + dvis.imag() * dvis.imag();
-                                        } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
-                                            std::complex<float> dvis = inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
+                                        } else if (_variance_mode
+                                                   == N2VarianceMode::EvenOddPosDef) {
+                                            std::complex<float> dvis =
+                                                inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
                                             _weights[weight_offset_fb + w_idx] +=
-                                                inv_dvis_var * (dvis.real() * dvis.real()
-                                                + dvis.imag() * dvis.imag());
+                                                inv_dvis_var
+                                                * (dvis.real() * dvis.real()
+                                                   + dvis.imag() * dvis.imag());
                                         }
                                     } // jlo
                                 } // ilo
@@ -771,14 +780,21 @@ void N2Accumulate::main_thread() {
                     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
 
                         // 1/N for even (idx ~ 0) sample
-                        float inv_n_t0 = (n_valid_fpga_samples_t0[f] <= 0) ? 0.0f : 1.0f / n_valid_fpga_samples_t0[f];
+                        float inv_n_t0 = (n_valid_fpga_samples_t0[f] <= 0)
+                                             ? 0.0f
+                                             : 1.0f / n_valid_fpga_samples_t0[f];
                         // 1/N for odd  (idx ~ 1) sample
-                        float inv_n_t1 = (n_valid_fpga_samples_t1[f] <= 0) ? 0.0f : 1.0f / n_valid_fpga_samples_t1[f];
+                        float inv_n_t1 = (n_valid_fpga_samples_t1[f] <= 0)
+                                             ? 0.0f
+                                             : 1.0f / n_valid_fpga_samples_t1[f];
                         // var(corr_e/Ne / corr_o/No) ~ 1/Ne + 1/No
                         // 1/var ~ 1/(1/Ne + 1/No) = Ne No / (Ne + No)
                         float inv_dvis_var = 0.0f;
                         if (n_valid_fpga_samples_t0[f] > 0 && n_valid_fpga_samples_t0[f] > 0) {
-                            inv_dvis_var = static_cast<float>( n_valid_fpga_samples_t0[f] * n_valid_fpga_samples_t1[f]) / n_valid_fpga_samples_t0[f] * n_valid_fpga_samples_t1[f];
+                            inv_dvis_var = static_cast<float>(n_valid_fpga_samples_t0[f]
+                                                              * n_valid_fpga_samples_t1[f])
+                                           / n_valid_fpga_samples_t0[f]
+                                           * n_valid_fpga_samples_t1[f];
                         }
 
                         if (_do_fringestop) {
@@ -826,7 +842,7 @@ void N2Accumulate::main_thread() {
 
                                         uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
                                         uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
-                                        
+
                                         std::complex<float> vis_even{
                                             static_cast<float>(
                                                 vis_even_ptr[vis_offset_fb + idx + 0]),
@@ -834,9 +850,8 @@ void N2Accumulate::main_thread() {
                                                 vis_even_ptr[vis_offset_fb + idx + 1])};
                                         std::complex<float> vis_odd{
                                             static_cast<float>(corr[corr_offset_tfb + idx + 0]),
-                                            static_cast<float>(
-                                                corr[corr_offset_tfb + idx + 1])};
-                                        
+                                            static_cast<float>(corr[corr_offset_tfb + idx + 1])};
+
                                         if (_do_fringestop) {
                                             // To apply phases:
                                             //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
@@ -850,8 +865,10 @@ void N2Accumulate::main_thread() {
                                             vis_even *= phase_even;
                                         }
 
-                                        _vis[vis_offset_fb + idx + 0] += vis_even.real() + vis_odd.real();
-                                        _vis[vis_offset_fb + idx + 1] += vis_even.imag() + vis_odd.imag();
+                                        _vis[vis_offset_fb + idx + 0] +=
+                                            vis_even.real() + vis_odd.real();
+                                        _vis[vis_offset_fb + idx + 1] +=
+                                            vis_even.imag() + vis_odd.imag();
 
                                         if (_variance_mode == N2VarianceMode::CHIMEv1) {
                                             std::complex<float> dvis = vis_odd - vis_even;
@@ -859,11 +876,14 @@ void N2Accumulate::main_thread() {
                                             _weights[weight_offset_fb + w_idx] +=
                                                 dvis.real() * dvis.real()
                                                 + dvis.imag() * dvis.imag();
-                                        } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
-                                            std::complex<float> dvis = inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
+                                        } else if (_variance_mode
+                                                   == N2VarianceMode::EvenOddPosDef) {
+                                            std::complex<float> dvis =
+                                                inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
                                             _weights[weight_offset_fb + w_idx] +=
-                                                inv_dvis_var * (dvis.real() * dvis.real()
-                                                + dvis.imag() * dvis.imag());
+                                                inv_dvis_var
+                                                * (dvis.real() * dvis.real()
+                                                   + dvis.imag() * dvis.imag());
                                         }
                                     } // jlo
                                 } // ilo
@@ -1205,13 +1225,15 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
                             out_vis.vis[n2_idx] = ins * std::conj(v);
 
                             if (_variance_mode == N2VarianceMode::CHIMEv1) {
-                                float bias = std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
+                                float bias =
+                                    std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
 
 
-                                // DEBUG("{} {} w1: {:.12f} v2: {:.12f} |v|^2: {:.12f}, dN^2: {:.12f}
-                                // |v|^2 dN^2: {:.12f} diff: {:.12e} ==: {}", i, j, _weights[idx],
-                                // std::norm(v), std::norm(v)*ins*ins, _n_valid_sample_diff_sq_sum[f],
-                                // bias, _weights[idx] - bias, _weights[idx] == bias);
+                                // DEBUG("{} {} w1: {:.12f} v2: {:.12f} |v|^2: {:.12f}, dN^2:
+                                // {:.12f} |v|^2 dN^2: {:.12f} diff: {:.12e} ==: {}", i, j,
+                                // _weights[idx], std::norm(v), std::norm(v)*ins*ins,
+                                // _n_valid_sample_diff_sq_sum[f], bias, _weights[idx] - bias,
+                                // _weights[idx] == bias);
 
                                 if (ns > 0) {
                                     _weights[idx] -= bias;
@@ -1219,19 +1241,27 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
 
                                 // DEBUG("{} {} w2: {}", i, j, _weights[idx]);
 
-                                out_vis.weight[n2_idx] = (ns > 0 && _weights[idx] != 0.0f) ? ns * (ns / _weights[idx]) : 0.0f;
+                                out_vis.weight[n2_idx] = (ns > 0 && _weights[idx] != 0.0f)
+                                                             ? ns * (ns / _weights[idx])
+                                                             : 0.0f;
                                 // DEBUG("{} {} w3: {}", i, j, out_vis.weight[n2_idx]);
                             } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
                                 if (_vis_samples_in_out_frame % 2 != 0) {
-                                    FATAL_ERROR("EvenOdd variance estimator requires an even number of frames, got: {} for accumulation {} at seq {}", _vis_samples_in_out_frame, _accum_bin_idx, _accum_fpga_start_tick);
+                                    FATAL_ERROR(
+                                        "EvenOdd variance estimator requires an even number of "
+                                        "frames, got: {} for accumulation {} at seq {}",
+                                        _vis_samples_in_out_frame, _accum_bin_idx,
+                                        _accum_fpga_start_tick);
                                 }
                                 assert(_vis_samples_in_out_frame % 2 == 0);
 
                                 int64_t num_var_samp = _vis_samples_in_out_frame / 2;
                                 int64_t norm = ns * num_var_samp;
-                                out_vis.weight[n2_idx] = (norm > 0 && _weights[idx] > 0) ? norm / _weights[idx] : 0.0f; 
+                                out_vis.weight[n2_idx] =
+                                    (norm > 0 && _weights[idx] > 0) ? norm / _weights[idx] : 0.0f;
                             } else {
-                                FATAL_ERROR("Cannot output weights for variance_mode: {}", _variance_mode);
+                                FATAL_ERROR("Cannot output weights for variance_mode: {}",
+                                            _variance_mode);
                             }
                         } // jlo
                     } // ilo
@@ -1293,16 +1323,18 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
     return true;
 }
 
-std::string N2VarianceMode_to_string(const N2VarianceMode &m) {
+std::string N2VarianceMode_to_string(const N2VarianceMode& m) {
     switch (m) {
-        case N2VarianceMode::CHIMEv1: return "CHIMEv1";
-        case N2VarianceMode::EvenOddPosDef: return "EvenOddPosDef";
+        case N2VarianceMode::CHIMEv1:
+            return "CHIMEv1";
+        case N2VarianceMode::EvenOddPosDef:
+            return "EvenOddPosDef";
         default:
-                FATAL_ERROR_NON_OO("Unknown N2VarianceMode: {:d}", static_cast<uint32_t>(m));
+            FATAL_ERROR_NON_OO("Unknown N2VarianceMode: {:d}", static_cast<uint32_t>(m));
     }
 }
 
-N2VarianceMode N2VarianceMode_from_string(const std::string &s) {
+N2VarianceMode N2VarianceMode_from_string(const std::string& s) {
     if (s == "CHIMEv1") {
         return N2VarianceMode::CHIMEv1;
     } else if (s == "EvenOddPosDef") {

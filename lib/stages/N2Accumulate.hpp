@@ -20,13 +20,10 @@
 
 using N2::frameID;
 
-enum class N2VarianceMode : uint32_t {
-    CHIMEv1 = 0,
-    EvenOddPosDef = 1
-};
+enum class N2VarianceMode : uint32_t { CHIMEv1 = 0, EvenOddPosDef = 1 };
 
-std::string N2VarianceMode_to_string(const N2VarianceMode &m);
-N2VarianceMode N2VarianceMode_from_string(const std::string &s);
+std::string N2VarianceMode_to_string(const N2VarianceMode& m);
+N2VarianceMode N2VarianceMode_from_string(const std::string& s);
 std::ostream& operator<<(std::ostream& os, const N2VarianceMode& m);
 std::string format_as(const N2VarianceMode& m);
 void to_json(nlohmann::json& j, const N2VarianceMode& m);
@@ -192,7 +189,7 @@ private:
     const int _output_batch_size; ///< number of OpenMP threads to use to process data
 
     const bool _do_fringestop; ///< Whether to fringestop
-    const N2VarianceMode _variance_mode; 
+    const N2VarianceMode _variance_mode;
     const int _debug_accum_mode;
 
 
