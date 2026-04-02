@@ -12,11 +12,18 @@ frb_num_beams_P: 2 * num_dishes_x
 frb_num_beams_Q: 2 * num_dishes_y
 frb1_input_scale: 1.0 / 1024
 
-frb2_num_beams_x: 32
-frb2_num_beams_y: 32
-frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
-frb2_beam_separation_x: 0.020
-frb2_beam_separation_y: 0.015
+#frb2_num_beams_x: 32
+#frb2_num_beams_y: 32
+#frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
+#frb2_beam_separation_x: 0.020
+#frb2_beam_separation_y: 0.015
+
+# dustin hack placeholder
+frb2_num_beams: 1024
+frb2_beam_max_radius: 0.6
+# radians: ~129 deg
+frb2_beam_angle_step: 2.2514
+frb2_n_per_node: 200
 
 host_frb2_beam_positions_buffer:
     kotekan_buffer: standard
@@ -36,21 +43,28 @@ frb_chunk_size: 256
 
 # FRB Search node targets
 
+# frb_search_nodes: [
+#   {'ip': '10.0.0.42',
+#    'port': 9000,
+#    'beamset': 0,
+#    'beam_index_min': 0,
+#    'beam_index_max': 200,
+#   },
+#   {'ip': '10.0.0.43',
+#    'port': 9000,
+#    'beamset': 1,
+#    'beam_index_min': 200,
+#    'beam_index_max': 400,
+#   }
+# ]
 frb_search_nodes: [
-  {'ip': '10.0.0.42',
-   'port': 9000,
-   'beamset': 0,
+  {'ip': '127.0.0.1',
+   'port': 5000,
+   'beamset': 42,
    'beam_index_min': 0,
    'beam_index_max': 200,
   },
-  {'ip': '10.0.0.43',
-   'port': 9000,
-   'beamset': 1,
-   'beam_index_min': 200,
-   'beam_index_max': 400,
-  }
 ]
-
 ################################################################################
 
 
@@ -103,7 +117,7 @@ host_frb1_U64_phase_buffer:
 host_frb2_weights_buffer:
     kotekan_buffer: standard
     num_frames: 1
-    frame_size: sizeof_float16 * (2 * num_dishes_y) * (2 * num_dishes_x) * (frb2_num_beams_x * frb2_num_beams_y) * (upchan_all_max_output_channel - upchan_all_min_output_channel)
+    frame_size: sizeof_float16 * (2 * num_dishes_y) * (2 * num_dishes_x) * (frb2_num_beams) * (upchan_all_max_output_channel - upchan_all_min_output_channel)
     metadata_pool: main_pool
 
 # Beams
@@ -372,7 +386,8 @@ run_frb1_U64:
 # FRB 2 and 3
 
 run_calc_frb2_weights:
-    kotekan_stage: calcFRB2Weights
+    # kotekan_stage: calcFRB2Weights
+    kotekan_stage: calcFRB2Weights_Seth
     frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
     frb2_beam_positions: host_frb2_beam_positions_buffer
     frb2_beam_ids: host_frb2_beam_ids_buffer

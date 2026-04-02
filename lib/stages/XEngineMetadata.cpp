@@ -36,7 +36,7 @@ void XEngineMetadata::validate() const
         xassert(zone_nfreq[i] > 0);
 
     for (size_t i = 0; i+1 < zone_freq_edges.size(); i++) {
-        xassert(zone_freq_edges[i] > 0.0);
+        xassert(zone_freq_edges[i] >= 0.0);
         xassert(zone_freq_edges[i] < zone_freq_edges[i+1]);
     }
 
@@ -175,6 +175,14 @@ void XEngineMetadata::to_yaml(YAML::Emitter &emitter, bool verbose) const
                 << YAML::Value << YAML::Flow << YAML::BeginSeq;
         for (long id: beam_ids)
             emitter << id;
+        emitter << YAML::EndSeq;
+    }
+
+    if (beam_positions.size() > 0) {
+        emitter << YAML::Key << "beam_positions"
+                << YAML::Value << YAML::Flow << YAML::BeginSeq;
+        for (float p: beam_positions)
+            emitter << p;
         emitter << YAML::EndSeq;
     }
 

@@ -53,6 +53,8 @@ struct XEngineMetadata
     // If empty when read from YAML, defaults to [ 0, 1, ..., (nbeams-1) ].
     std::vector<long> beam_ids;
 
+    std::vector<float> beam_positions;
+
     // When an X-engine node sends metadata to an FRB search node, it indicates the starting time
     // of the data stream that will follow. Currently, we represent the starting time by a sample
     // count, which must be a multiple of 256.

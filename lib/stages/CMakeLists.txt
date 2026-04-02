@@ -76,6 +76,7 @@ add_library(
     setUpchanGain.cpp
     setFRB1Phase.cpp
     calcFRB2Weights.cpp
+    calcFRB2Weights_Seth.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp

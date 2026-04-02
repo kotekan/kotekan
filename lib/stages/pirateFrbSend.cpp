@@ -37,7 +37,34 @@ pirateFrbSend::pirateFrbSend(Config& config, const std::string& unique_name,
     beam_position_buf->register_consumer(unique_name);
     beam_id_buf = get_buffer("beam_ids");
     beam_id_buf->register_consumer(unique_name);
-    
+
+    frb_chunk_size = config.get<int>(unique_name, "frb_chunk_size");
+    if (frb_chunk_size != 256)
+        FATAL_ERROR("frb_chunk_size must be 256");
+    frb_num_output_times = config.get<int>(unique_name, "frb_num_output_times");
+    assert(frb_num_output_times % frb_chunk_size == 0);
+
+    n_beams = config.get<int>(unique_name, "frb2_num_beams");
+
+    upchan_total_channels = (config.get<int>(unique_name, "upchan_all_max_output_channel") -
+                             config.get<int>(unique_name, "upchan_all_min_output_channel"));
+
+    size_t expect_size = sizeof(float16_t) * 2 * (frb_num_output_times / frb_chunk_size) *
+        n_beams * upchan_total_channels;
+    if (offset_scale_buf->frame_size != expect_size)
+        FATAL_ERROR("offset_scale_buf must have size {:d}x{:d}x{:d}x{:d}x{:d} = {:d}; got {:d}",
+                    sizeof(float16_t), 2, frb_num_output_times / frb_chunk_size, n_beams,
+                    upchan_total_channels, expect_size, offset_scale_buf->frame_size);
+    assert(offset_scale_buf->frame_size == expect_size);
+
+    // int4
+    expect_size = (n_beams * upchan_total_channels * frb_chunk_size) / 2;
+    if (intensity_buf->frame_size != expect_size)
+        FATAL_ERROR("intensity_buf must have size {:d}x{:d}x{:d}/2 = {:d}; got {:d}",
+                    n_beams, upchan_total_channels, frb_chunk_size, expect_size,
+                    intensity_buf->frame_size);
+    assert(intensity_buf->frame_size == expect_size);
+
     /**
 beams: [
 {beam_id: 0, x: 0.0, y: 0.0, type: Real},
@@ -66,8 +93,6 @@ frb_search_nodes: [
     uint32_t send_timeout = config.get_default<uint32_t>(unique_name, "send_timeout", 20);
     uint32_t reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
 
-    int n_beams = config.get<int>(unique_name, "frb2_num_beams");
-
     json frb_targets = config.get<std::vector<json> >(unique_name, "frb_search_nodes");
     for (json target : frb_targets) {
         if (!target.is_object()) {
@@ -79,7 +104,7 @@ frb_search_nodes: [
         //std::vector<int> beam_ids = target["beams"].get<std::vector<int> >();
         int beam_index_min = target["beam_index_min"].get<int>();
         int beam_index_max = target["beam_index_max"].get<int>();
-        if (beam_index_max > n_beams)
+        if (beam_index_max > (int)n_beams)
             FATAL_ERROR("beam_index_max ({:d}) must be <= n_beams ({:d})",
                         beam_index_max, n_beams);
         if (beam_index_min >= beam_index_max)
@@ -176,19 +201,21 @@ void pirateFrbSend::main_thread() {
     beam_id_buf->mark_frame_empty(unique_name, frame_id);
 
     while (!stop_thread) {
-        INFO("Waiting for frame {:d}...");
+        INFO("Waiting for frame {:d}...", frame_id);
         uint8_t* intensity_frame = intensity_buf->wait_for_full_frame(unique_name, frame_id);
         if (intensity_frame == nullptr)
             break;
         uint8_t* offset_scale_frame = offset_scale_buf->wait_for_full_frame(unique_name, frame_id);
         if (offset_scale_frame == nullptr)
             break;
-        INFO("Got data for frame {:d}");
+        INFO("Got data for frame {:d}", frame_id);
 
         uint32_t num_full_frames = intensity_buf->get_num_full_frames();
 
         // This logic is from sendBuffer, but with drop_frames assumed true.
 
+        INFO("Drop threshold: num_full_frames {:d}, num_frames {:d}, drop threshold {:f}",
+             num_full_frames, intensity_buf->num_frames, drop_threshold);
         if ((float)num_full_frames / (float)intensity_buf->num_frames > drop_threshold) {
             // If the number of full frames is high, then we drop some
             // frames, because we likely aren't sending fast enough to
@@ -274,27 +301,50 @@ bool pirateFrbSend::send_frame(uint8_t* intensity_frame, uint8_t* offset_scale_f
         double adc_freq = config.get<double>(unique_name, "adc_frequency");
         int samples_per_frame = config.get<int>(unique_name, "num_samples_per_frame");
 
+        double MHz = 1e6;
+
         int channel_low = 0;
-        double freq_low = channel_low * adc_freq / samples_per_frame;
+        double freq_low = channel_low * adc_freq / samples_per_frame / MHz;
         meta.zone_freq_edges.push_back(freq_low);
 
-        json upchan_ranges = config.get<std::vector<json> >(unique_name, "upchan_channel_ranges");
-        if (!upchan_ranges.is_object()) {
-            throw std::invalid_argument(fmt::format(fmt("Expect 'upchan_channel_ranges' to contain a dicts")));
-        }
-        for (auto& it : upchan_ranges.items()) {
+        //json upchan_ranges = config.get<std::vector<json> >(unique_name, "upchan_channel_ranges");
+ 
+        //if (!upchan_ranges.is_object()) {
+        //throw std::invalid_argument(fmt::format(fmt("Expect 'upchan_channel_ranges' to contain a dict")));
+        //}
+        //std::map<std::string, std::vector<int> >
+        auto upchan_factors = config.get<std::vector<int> >(unique_name, "upchan_factors");
+        upchan_factors.insert(upchan_factors.begin(), 1);
+
+        // somehow it can't parse the map with int keys, they have to be strings.
+        //auto upchan_ranges = config.get<std::map<int, std::vector<int> > >(unique_name, "upchan_channel_ranges");
+        auto upchan_ranges = config.get<std::map<std::string, std::vector<int> > >(unique_name, "upchan_channel_ranges");
+        //for (auto& it : upchan_ranges.items()) {
+        //for (auto& it : upchan_ranges) {
             //int upchan_factor = it.key().get<int>();
-            int upchan_factor = std::stoi(it.key());
-            std::vector<int> channel_range = it.value().get<std::vector<int> >();
+        //int upchan_factor = std::stoi(it.key());
+            //std::vector<int> channel_range = it.value().get<std::vector<int> >();
+
+        // argh, keys not generated in yaml order
+        //for (const auto& [key, value] : upchan_ranges) {
+        //int upchan_factor = std::stoi(key);
+        //std::vector<int> channel_range = value;
+        while (upchan_factors.size()) {
+            int key = upchan_factors.back();
+            upchan_factors.pop_back();
+            std::vector<int> channel_range = upchan_ranges[std::to_string(key)];
+            int upchan_factor = key;
+
             if (channel_range.size() != 2) {
                 throw std::invalid_argument(fmt::format(fmt("Expect 'upchan_channel_ranges' values to be a pair of integers")));
             }
             int lo = channel_range[0];
             int channel_high = channel_range[1];
             if (lo != channel_low) {
-                throw std::invalid_argument(fmt::format(fmt("Expect 'upchan_channel_ranges' values to be contiguous")));
+                throw std::invalid_argument(fmt::format(fmt("Expect 'upchan_channel_ranges' values to be contiguous: upchan {:d}, lo,hi [{:d}, {:d}], expected lo = {:d}"),
+                                                            upchan_factor, lo, channel_high, channel_low));
             }
-            double freq_high = channel_high * adc_freq / samples_per_frame;
+            double freq_high = channel_high * adc_freq / samples_per_frame / MHz;
             meta.zone_freq_edges.push_back(freq_high);
             int nfreq = upchan_factor * (channel_high - lo);
             meta.zone_nfreq.push_back(nfreq);
@@ -305,8 +355,14 @@ bool pirateFrbSend::send_frame(uint8_t* intensity_frame, uint8_t* offset_scale_f
 
         meta.freq_channels = config.get<std::vector<long> >(unique_name, "frequency_channels");
 
-        for (int16_t b : dest->beam_ids)
+        for (int16_t b : dest->beam_ids) {
+            INFO("Dest {:s}:{:d} gets beam id {:d}", dest->server_ip, dest->server_port, b);
             meta.beam_ids.push_back(b);
+        }
+        for (float p : dest->beam_positions)
+            meta.beam_positions.push_back(p);
+
+        meta.nbeams = dest->beam_ids.size();
 
         INFO("XEngineMetadata validate:");
         meta.validate();
@@ -318,7 +374,7 @@ bool pirateFrbSend::send_frame(uint8_t* intensity_frame, uint8_t* offset_scale_f
         
         struct pirateNetworkHeader header;
         header.magic_number = 0xf4bf4b01;
-        header.config_length = config.size();
+        header.config_length = config.size() + 1;
         size_t header_len = sizeof(struct pirateNetworkHeader);
 
         DEBUG2("Sending header");
@@ -337,8 +393,35 @@ bool pirateFrbSend::send_frame(uint8_t* intensity_frame, uint8_t* offset_scale_f
             n_sent += n;
         }
         dest->sent_header = true;
+        INFO("Sent header + yaml (size {:d}) to dest {:s}:{:d}", config.size(), dest->server_ip, dest->server_port);
     }
 
+    // Send 256-time-sample mini-chunks.
+
+    for (int chunk=0; chunk<(int)(frb_num_output_times / frb_chunk_size); chunk++) {
+        // First the offset & scale:
+        size_t chunksize = sizeof(float16_t) * 2 * frb_chunk_size * n_beams * upchan_total_channels;
+        n_sent = 0;
+        while ((n = send(dest->socket_fd,
+                         offset_scale_frame + (chunk * chunksize) + n_sent,
+                         chunksize - n_sent,
+                         MSG_NOSIGNAL))
+               > 0) {
+            n_sent += n;
+        }
+        // Then the intensities:
+        chunksize = (n_beams * upchan_total_channels * frb_chunk_size) / 2;
+        n_sent = 0;
+        while ((n = send(dest->socket_fd,
+                         intensity_frame + (chunk * chunksize) + n_sent,
+                         chunksize - n_sent,
+                         MSG_NOSIGNAL))
+               > 0) {
+            n_sent += n;
+        }
+        INFO("Sent chunk {:d}/{:d}", (chunk+1), frb_num_output_times / frb_chunk_size);
+    }
+    
     return true;
 }
 
