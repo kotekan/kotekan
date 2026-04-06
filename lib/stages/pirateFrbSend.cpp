@@ -44,6 +44,10 @@ pirateFrbSend::pirateFrbSend(Config& config, const std::string& unique_name,
     frb_num_output_times = config.get<int>(unique_name, "frb_num_output_times");
     assert(frb_num_output_times % frb_chunk_size == 0);
 
+    // HACK -- this makes life much easier....
+    if (frb_num_output_times != frb_chunk_size)
+        FATAL_ERROR("frb_num_output_times must be equal to frb_chunk_size!");
+
     n_beams = config.get<int>(unique_name, "frb2_num_beams");
 
     upchan_total_channels = (config.get<int>(unique_name, "upchan_all_max_output_channel") -
@@ -64,6 +68,7 @@ pirateFrbSend::pirateFrbSend(Config& config, const std::string& unique_name,
                     n_beams, upchan_total_channels, frb_chunk_size, expect_size,
                     intensity_buf->frame_size);
     assert(intensity_buf->frame_size == expect_size);
+
 
     /**
 beams: [
@@ -161,7 +166,6 @@ void pirateFrbSend::main_thread() {
     float*   beam_pos = nullptr;
     int16_t* beam_ids = nullptr;
     size_t expect_size;
-    int n_beams = config.get<int>(unique_name, "frb2_num_beams");
 
     beam_pos_ptr = beam_position_buf->wait_for_full_frame(unique_name, frame_id);
     if (beam_pos_ptr == nullptr)
@@ -210,6 +214,19 @@ void pirateFrbSend::main_thread() {
             break;
         INFO("Got data for frame {:d}", frame_id);
 
+
+        //FrameDesc get_frame_descr
+        //std::shared_ptr<const kotekan::GenericNDArray>
+        INFO("getting ndarray");
+        auto intensity_nd = intensity_buf->get_ndarray_frame_desc();
+
+        INFO("printing ndarray");
+        intensity_nd->output_framedesc(std::cout);
+
+        assert((size_t)intensity_nd->get_extent(0) == n_beams);
+        assert((size_t)intensity_nd->get_extent(1) == upchan_total_channels);
+        assert((size_t)intensity_nd->get_extent(2) == frb_chunk_size);
+        
         uint32_t num_full_frames = intensity_buf->get_num_full_frames();
 
         // This logic is from sendBuffer, but with drop_frames assumed true.
@@ -230,7 +247,7 @@ void pirateFrbSend::main_thread() {
                     any_connected = true;
                     INFO("Sending frame {:d} to dest {:s}:{:d}",
                          frame_id, dest->server_ip, dest->server_port);
-                    if (!send_frame(intensity_frame, offset_scale_frame, dest)) {
+                    if (!send_frame(frame_id, intensity_frame, offset_scale_frame, dest)) {
                         INFO("Failed to send frame {:d} to dest {:s}:{:d}; closing connection",
                              frame_id, dest->server_ip, dest->server_port);
                         dest->close_connection();
@@ -262,7 +279,8 @@ void pirateFrbSend::main_thread() {
     INFO("Exiting");
 }
 
-bool pirateFrbSend::send_frame(uint8_t* intensity_frame, uint8_t* offset_scale_frame,
+bool pirateFrbSend::send_frame(int frame_id,
+                               uint8_t* intensity_frame, uint8_t* offset_scale_frame,
                                std::shared_ptr<pirateDestination> dest) {
     int32_t n = 0;
     int32_t n_sent = 0;
@@ -398,29 +416,64 @@ bool pirateFrbSend::send_frame(uint8_t* intensity_frame, uint8_t* offset_scale_f
 
     // Send 256-time-sample mini-chunks.
 
-    for (int chunk=0; chunk<(int)(frb_num_output_times / frb_chunk_size); chunk++) {
-        // First the offset & scale:
-        size_t chunksize = sizeof(float16_t) * 2 * frb_chunk_size * n_beams * upchan_total_channels;
-        n_sent = 0;
-        while ((n = send(dest->socket_fd,
-                         offset_scale_frame + (chunk * chunksize) + n_sent,
-                         chunksize - n_sent,
-                         MSG_NOSIGNAL))
-               > 0) {
-            n_sent += n;
-        }
-        // Then the intensities:
-        chunksize = (n_beams * upchan_total_channels * frb_chunk_size) / 2;
-        n_sent = 0;
-        while ((n = send(dest->socket_fd,
-                         intensity_frame + (chunk * chunksize) + n_sent,
-                         chunksize - n_sent,
-                         MSG_NOSIGNAL))
-               > 0) {
-            n_sent += n;
-        }
-        INFO("Sent chunk {:d}/{:d}", (chunk+1), frb_num_output_times / frb_chunk_size);
+    //for (int chunk=0; chunk<(int)(frb_num_output_times / frb_chunk_size); chunk++) {
+    /*
+    // First the offset & scale:
+    size_t chunksize = sizeof(float16_t) * 2 * frb_chunk_size * n_beams * upchan_total_channels;
+    n_sent = 0;
+    while ((n = send(dest->socket_fd,
+    offset_scale_frame + (chunk * chunksize) + n_sent,
+    chunksize - n_sent,
+    MSG_NOSIGNAL))
+    > 0) {
+    n_sent += n;
     }
+    // Then the intensities:
+    chunksize = (n_beams * upchan_total_channels * frb_chunk_size) / 2;
+    n_sent = 0;
+    while ((n = send(dest->socket_fd,
+    intensity_frame + (chunk * chunksize) + n_sent,
+    chunksize - n_sent,
+    MSG_NOSIGNAL))
+    > 0) {
+    n_sent += n;
+    }
+    */
+    //}
+
+    // The data come in frb_chunk_size == 256 time sample chunks.
+    // The data array shape is Beams, Freqs, Times.
+    // So we can just pull out our range of Beam indices for this dest.
+
+    size_t dest_nbeams = dest->beam_index_max - dest->beam_index_min;
+    size_t size_per_beam = sizeof(float16_t) * 2 * upchan_total_channels;
+    size_t total_size = dest_nbeams * size_per_beam;
+    // HACK -- we're assuming contiguous data packing...
+    size_t offset = dest->beam_index_min * size_per_beam;
+
+    n_sent = 0;
+    while ((n = send(dest->socket_fd,
+                     offset_scale_frame + offset + n_sent,
+                     total_size - n_sent,
+                     MSG_NOSIGNAL))
+           > 0) {
+        n_sent += n;
+    }
+
+    // Then the intensities:
+    size_per_beam = upchan_total_channels * frb_chunk_size / 2;
+    total_size = dest_nbeams * size_per_beam;
+    offset = dest->beam_index_min * size_per_beam;
+    
+    n_sent = 0;
+    while ((n = send(dest->socket_fd,
+                     intensity_frame + offset + n_sent,
+                     total_size - n_sent,
+                     MSG_NOSIGNAL))
+           > 0) {
+        n_sent += n;
+    }
+    INFO("Sent frame {:d}: {:d} beams to {:s}:{:d}", frame_id, dest_nbeams, dest->server_ip, dest->server_port);
     
     return true;
 }

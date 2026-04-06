@@ -57,7 +57,8 @@ private:
     size_t frb_chunk_size;
     size_t frb_num_output_times;
 
-    bool send_frame(uint8_t* intensity_frame,
+    bool send_frame(int frame_id,
+                    uint8_t* intensity_frame,
                     uint8_t* offset_scale_frame,
                     std::shared_ptr<pirateDestination> dest);
 };
