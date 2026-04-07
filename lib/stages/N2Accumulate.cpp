@@ -672,8 +672,8 @@ void N2Accumulate::main_thread() {
                         if (n_valid_fpga_samples_t0[f] > 0 && n_valid_fpga_samples_t0[f] > 0) {
                             inv_dvis_var = static_cast<float>(n_valid_fpga_samples_t0[f]
                                                               * n_valid_fpga_samples_t1[f])
-                                           / n_valid_fpga_samples_t0[f]
-                                           * n_valid_fpga_samples_t1[f];
+                                           / (n_valid_fpga_samples_t0[f]
+                                              + n_valid_fpga_samples_t1[f]);
                         }
 
                         if (_do_fringestop) {
@@ -837,56 +837,90 @@ void N2Accumulate::main_thread() {
                                 const std::complex<float>* phase_even_j =
                                     fringe_phase_even.data() + dj0;
 
-                                for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
-                                    for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
+                                if (_variance_mode == N2VarianceMode::CHIMEv1) {
+                                    for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
+                                        for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
 
-                                        uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
-                                        uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
+                                            uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
+                                            uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
 
-                                        std::complex<float> vis_even{
-                                            static_cast<float>(
-                                                vis_even_ptr[vis_offset_fb + idx + 0]),
-                                            static_cast<float>(
-                                                vis_even_ptr[vis_offset_fb + idx + 1])};
-                                        std::complex<float> vis_odd{
-                                            static_cast<float>(corr[corr_offset_tfb + idx + 0]),
-                                            static_cast<float>(corr[corr_offset_tfb + idx + 1])};
+                                            std::complex<float> vis_even{
+                                                static_cast<float>(
+                                                    vis_even_ptr[vis_offset_fb + idx + 0]),
+                                                static_cast<float>(
+                                                    vis_even_ptr[vis_offset_fb + idx + 1])};
+                                            std::complex<float> vis_odd{
+                                                static_cast<float>(corr[corr_offset_tfb + idx + 0]),
+                                                static_cast<float>(corr[corr_offset_tfb + idx + 1])};
 
-                                        if (_do_fringestop) {
-                                            // To apply phases:
-                                            //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
-                                            //                   = V_ij * Phase_i * conj(Phase_j)
-                                            std::complex<float> phase_odd =
-                                                phase_i[ilo] * std::conj(phase_j[jlo]);
-                                            std::complex<float> phase_even =
-                                                phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
+                                            if (_do_fringestop) {
+                                                // To apply phases:
+                                                //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
+                                                //                   = V_ij * Phase_i * conj(Phase_j)
+                                                std::complex<float> phase_odd =
+                                                    phase_i[ilo] * std::conj(phase_j[jlo]);
+                                                std::complex<float> phase_even =
+                                                    phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
 
-                                            vis_odd *= phase_odd;
-                                            vis_even *= phase_even;
-                                        }
+                                                vis_odd *= phase_odd;
+                                                vis_even *= phase_even;
+                                            }
 
-                                        _vis[vis_offset_fb + idx + 0] +=
-                                            vis_even.real() + vis_odd.real();
-                                        _vis[vis_offset_fb + idx + 1] +=
-                                            vis_even.imag() + vis_odd.imag();
+                                            _vis[vis_offset_fb + idx + 0] +=
+                                                vis_even.real() + vis_odd.real();
+                                            _vis[vis_offset_fb + idx + 1] +=
+                                                vis_even.imag() + vis_odd.imag();
 
-                                        if (_variance_mode == N2VarianceMode::CHIMEv1) {
                                             std::complex<float> dvis = vis_odd - vis_even;
 
                                             _weights[weight_offset_fb + w_idx] +=
                                                 dvis.real() * dvis.real()
                                                 + dvis.imag() * dvis.imag();
-                                        } else if (_variance_mode
-                                                   == N2VarianceMode::EvenOddPosDef) {
+                                        } // jlo
+                                    } // ilo
+                                } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
+                                    for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
+                                        for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
+
+                                            uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
+                                            uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
+
+                                            std::complex<float> vis_even{
+                                                static_cast<float>(
+                                                    vis_even_ptr[vis_offset_fb + idx + 0]),
+                                                static_cast<float>(
+                                                    vis_even_ptr[vis_offset_fb + idx + 1])};
+                                            std::complex<float> vis_odd{
+                                                static_cast<float>(corr[corr_offset_tfb + idx + 0]),
+                                                static_cast<float>(corr[corr_offset_tfb + idx + 1])};
+
+                                            if (_do_fringestop) {
+                                                // To apply phases:
+                                                //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
+                                                //                   = V_ij * Phase_i * conj(Phase_j)
+                                                std::complex<float> phase_odd =
+                                                    phase_i[ilo] * std::conj(phase_j[jlo]);
+                                                std::complex<float> phase_even =
+                                                    phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
+
+                                                vis_odd *= phase_odd;
+                                                vis_even *= phase_even;
+                                            }
+
+                                            _vis[vis_offset_fb + idx + 0] +=
+                                                vis_even.real() + vis_odd.real();
+                                            _vis[vis_offset_fb + idx + 1] +=
+                                                vis_even.imag() + vis_odd.imag();
+
                                             std::complex<float> dvis =
                                                 inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
                                             _weights[weight_offset_fb + w_idx] +=
                                                 inv_dvis_var
                                                 * (dvis.real() * dvis.real()
                                                    + dvis.imag() * dvis.imag());
-                                        }
-                                    } // jlo
-                                } // ilo
+                                        } // jlo
+                                    } // ilo
+                                } // variance_mode
                                 block_idx++;
                             } // jhi
                         } // ihi

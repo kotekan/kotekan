@@ -147,6 +147,8 @@ N2_accumulate:
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
+    variance_mode: CHIMEv1
+     #variance_mode: EvenOddPosDef
     num_workers: 2
     output_batch_size: 8
     do_fringestop: True
