@@ -670,10 +670,10 @@ void N2Accumulate::main_thread() {
                         // 1/var ~ 1/(1/Ne + 1/No) = Ne No / (Ne + No)
                         float inv_dvis_var = 0.0f;
                         if (n_valid_fpga_samples_t0[f] > 0 && n_valid_fpga_samples_t0[f] > 0) {
-                            inv_dvis_var = static_cast<float>(n_valid_fpga_samples_t0[f]
-                                                              * n_valid_fpga_samples_t1[f])
-                                           / (n_valid_fpga_samples_t0[f]
-                                              + n_valid_fpga_samples_t1[f]);
+                            inv_dvis_var =
+                                static_cast<float>(n_valid_fpga_samples_t0[f]
+                                                   * n_valid_fpga_samples_t1[f])
+                                / (n_valid_fpga_samples_t0[f] + n_valid_fpga_samples_t1[f]);
                         }
 
                         if (_do_fringestop) {
@@ -839,9 +839,11 @@ void N2Accumulate::main_thread() {
 
                                 if (_variance_mode == N2VarianceMode::CHIMEv1) {
                                     for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
-                                        for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
+                                        for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize;
+                                             jlo++) {
 
-                                            uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
+                                            uint64_t idx =
+                                                2 * (ilo * _n2k_correlation_blocksize + jlo);
                                             uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
 
                                             std::complex<float> vis_even{
@@ -851,16 +853,19 @@ void N2Accumulate::main_thread() {
                                                     vis_even_ptr[vis_offset_fb + idx + 1])};
                                             std::complex<float> vis_odd{
                                                 static_cast<float>(corr[corr_offset_tfb + idx + 0]),
-                                                static_cast<float>(corr[corr_offset_tfb + idx + 1])};
+                                                static_cast<float>(
+                                                    corr[corr_offset_tfb + idx + 1])};
 
                                             if (_do_fringestop) {
                                                 // To apply phases:
                                                 //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
-                                                //                   = V_ij * Phase_i * conj(Phase_j)
+                                                //                   = V_ij * Phase_i *
+                                                //                   conj(Phase_j)
                                                 std::complex<float> phase_odd =
                                                     phase_i[ilo] * std::conj(phase_j[jlo]);
                                                 std::complex<float> phase_even =
-                                                    phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
+                                                    phase_even_i[ilo]
+                                                    * std::conj(phase_even_j[jlo]);
 
                                                 vis_odd *= phase_odd;
                                                 vis_even *= phase_even;
@@ -880,9 +885,11 @@ void N2Accumulate::main_thread() {
                                     } // ilo
                                 } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
                                     for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
-                                        for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
+                                        for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize;
+                                             jlo++) {
 
-                                            uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
+                                            uint64_t idx =
+                                                2 * (ilo * _n2k_correlation_blocksize + jlo);
                                             uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
 
                                             std::complex<float> vis_even{
@@ -892,16 +899,19 @@ void N2Accumulate::main_thread() {
                                                     vis_even_ptr[vis_offset_fb + idx + 1])};
                                             std::complex<float> vis_odd{
                                                 static_cast<float>(corr[corr_offset_tfb + idx + 0]),
-                                                static_cast<float>(corr[corr_offset_tfb + idx + 1])};
+                                                static_cast<float>(
+                                                    corr[corr_offset_tfb + idx + 1])};
 
                                             if (_do_fringestop) {
                                                 // To apply phases:
                                                 //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
-                                                //                   = V_ij * Phase_i * conj(Phase_j)
+                                                //                   = V_ij * Phase_i *
+                                                //                   conj(Phase_j)
                                                 std::complex<float> phase_odd =
                                                     phase_i[ilo] * std::conj(phase_j[jlo]);
                                                 std::complex<float> phase_even =
-                                                    phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
+                                                    phase_even_i[ilo]
+                                                    * std::conj(phase_even_j[jlo]);
 
                                                 vis_odd *= phase_odd;
                                                 vis_even *= phase_even;
