@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""
+/*********************************************************************************
+* Earth Orientation Parameter Tools 
+* File: broadcastEOPTable.py
+* Purpose: Send the given EOP table to running kotekan instance(s).
+* Python Version: 3.12
+* Dependencies: argparse, eop_utils
+* Authors: Geoffrey Ryan
+*********************************************************************************/
+"""
 import argparse
 import json
 from pathlib import Path
@@ -10,7 +20,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         prog="EOP Table Broadcaster",
-        description="Send an Earth Orientation Parameter (EOP) update table to Kotekan",
+        description="Send an Earth Orientation Parameter (EOP) update table (BareEOP) to Kotekan",
     )
 
     parser.add_argument(
@@ -49,7 +59,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "input_json_file",
         nargs=1,
-        help='Input file name, a JSON file containing the EOP update table to send: An object with the member "earth_orientation_paramer_table" whose value is a list of EOP update objects.',
+        help='Input file name, a JSON file containing the EOP update table to send: An object with the member "earth_orientation_paramer_table" whose value is a list of BareEOP objects.',
     )
 
     args = parser.parse_args()

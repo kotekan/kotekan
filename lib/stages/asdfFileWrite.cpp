@@ -312,8 +312,8 @@ public:
                         group->emplace("fpga_seq_num",
                                        std::make_shared<ASDF::int_entry>(meta->get_fpga_seq_num()));
                         group->emplace("fpga_seq_time_nsec",
-                                       std::make_shared<ASDF::int_entry>(timespec_to_nanosec_i64(
-                                           telescope.to_time(meta->get_fpga_seq_num()))));
+                                       std::make_shared<ASDF::int_entry>(
+                                           telescope.to_time_ns(meta->get_fpga_seq_num())));
                     }
 
                     if (meta->has_time_downsampling_fpga())

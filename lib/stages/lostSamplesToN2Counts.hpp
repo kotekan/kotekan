@@ -14,7 +14,7 @@
  *
  * This stage will accumulate the logical AND of the lost samples and RFI masks, based
  * on the convention that a value of 1 correpsonds to a good sample and 0 to a flagged
- * samples in the RFI mask, and a value of corresponds to a _missing_ sample in the
+ * samples in the RFI mask, and a value of 1 corresponds to a _missing_ sample in the
  * lost samples mask.
  *
  * This stage is specific to CHIME - others should likely use cudaPL1bitCorrelator and
@@ -25,13 +25,17 @@
  *
  * @par Buffers
  * @buffer rfi_mask_buf Array of flags indicating samples affected by RFI
- *     @buffer_format [num_times / 8 / 128][freq][128]
+ *     @buffer_format uint1x8
+ *     @buffer_shape     As uint8: [num_times / 8 / 128][freq][128]
+ *                       As uint1: [num_times / 8 / 128][freq][8 * 128]
  *     @buffer_metadata chordMetadata
  * @buffer lost_samples_buf Array of flags which indicate if a sample in a given location is lost
- *     @buffer_format [num_times]
+ *     @buffer_format uint8
+ *     @buffer_shape [num_times]
  *     @buffer_metadata chordMetadata
  * @buffer n2k_counts_buf Array counting the number of good samples per subintegration
- *     @buffer_format [num_subintegrations][freq][tiles][blocksize][blocksize]
+ *     @buffer_format int32
+ *     @buffer_shape [num_subintegrations][freq][tiles][blocksize][blocksize]
  *     @buffer_metadata chordMetadata
  *
  * @conf num_elements                        Int. Number of instrument elements. In CHIME, this

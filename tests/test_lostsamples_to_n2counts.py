@@ -56,9 +56,9 @@ class FakeRFIBuffer(runner.InputBuffer):
             "kotekan_stage": "testDataGen",
             "out_buf": self.name,
             "type": "const1x8",
-            "value": 255,
+            "value": 85,  # alternating 10101010...
             "name": stage_name,
-            "array_shape": [samples_per_data_set // 128 // 8, num_local_freq, 128],
+            "array_shape": [samples_per_data_set // 1024, num_local_freq, 128],
             "dim_name": ["T8hi128", "F", "T8lo128"],
         }
 
@@ -102,7 +102,7 @@ class FakeLostSamplesN2Buffer(runner.InputBuffer):
             "kotekan_stage": "testDataGen",
             "out_buf": self.name,
             "type": "const8",
-            "value": 1,
+            "value": 0,  # no missing samples
             "name": stage_name,
             "array_shape": [samples_per_data_set],
             "dim_name": ["T"],
@@ -197,14 +197,16 @@ def _generate_input_rfibuf(
     Returns
     -------
     buf : runner.FakeRFIBuffer
-        Buffer instance filled with ones.
+        Buffer instance filled with alternating ones and zeros.
     arr : np.ndarray
-        Numpy array of same size filled with ones.
+        Numpy array of same size filled with alternating ones and zeros.
     """
     buf = FakeRFIBuffer(samples_per_data_set=nsamples, num_local_freq=nfreq)
 
+    # Creates an array of size nfreq * nsamples / 8 filled with
+    # value 255, unpacked into a nfreq * nsamples array of ones
     arr = np.ones(nsamples * nfreq, dtype=np.uint8)
-    arr = np.packbits(arr, axis=-1, bitorder="big")
+    arr[1::2] = 0  # Alternating 10101010... to match kotekan-generated
 
     return buf, arr
 
@@ -234,7 +236,8 @@ def _generate_input_lost_samples_bufs(
 
     # This is set to match the corresponding numpy array.
     # If this is changed, must change the array as well
-    fill_type_args: dict = {"type": "ramp", "value": 1}
+    # fill_type_args: dict = {"type": "ramp", "value": 1}
+    fill_type_args: dict = {}
 
     for n in range(nbufs):
         buffers.append(
@@ -242,7 +245,8 @@ def _generate_input_lost_samples_bufs(
         )
 
     # Create the matching numpy array
-    arr = (np.arange(nsamples) % 256).astype(np.uint8)
+    # arr = (np.arange(nsamples) % 256).astype(np.uint8)
+    arr = np.zeros(nsamples, dtype=np.uint8)
 
     return buffers, [arr.copy() for _ in range(nbufs)]
 
@@ -266,7 +270,8 @@ def accumulate_numpy(
     sub_integration_time
         Number of time samples per subintegration
     rfiarr
-        Array corresponding to the RFI mask
+        Array corresponding to the RFI mask. This is unpacked, so
+        each byte represents a bit in the mask.
     lost_samples_arrs
         List of 1D arrays corresponding to lost_samples masks
 
@@ -276,16 +281,17 @@ def accumulate_numpy(
         Array created by multiplying and accumulating the input masks
     """
     # Sort out the expected RFI buffer dimensions
-    t_hi = nsamples // 128
-    # Unpack and reshape the rfi array to shape [freq, subintegrations]
-    ra = np.unpackbits(rfiarr, axis=-1, bitorder="big")
+    # This is the number of coarse times samples
+    t_hi = nsamples // 1024
 
     # Split the array into coarse time samples and concatenate into
-    # a single contiguous time axis
+    # a single contiguous time axis (shape: freq, time)
     rtc = []
-    for arr in np.array_split(ra, t_hi):
+    for arr in np.split(rfiarr, t_hi):
+        # Reshape the (freq, fine_time) array and append
         rtc.append(arr.reshape(nfreq, -1))
 
+    # Concatenate across the frequency axis
     rtc = np.concatenate(rtc, axis=-1)
 
     # Sort out the expected number of frequencies represented
@@ -306,11 +312,15 @@ def accumulate_numpy(
     for ii, buf in enumerate(lost_samples_arrs):
         # reshape to sum over the last axis for accumulation
         ea = buf.reshape(-1, sub_integration_time)
+        # Choose which frequencies to accumulate here
         sl = slice(ii * nfreq_per_buf, (ii + 1) * nfreq_per_buf)
         eb = rtc[sl].reshape(-1, sub_integration_time)
         # Should automatically broadcast length-1 axis in ea against
-        # freq slice in eb
-        expected_output[:, ii] = ((ea ^ 1) & eb).astype(np.int32).sum(axis=-1)
+        # freq slice in eb. Need this slightly annoying double transpose to
+        # handle varying axis lengths
+        expected_output[:, sl] = np.atleast_2d(
+            ((ea ^ 1) & eb).astype(np.int32).sum(axis=-1).T
+        ).T
 
     return expected_output
 
@@ -414,4 +424,6 @@ def test_accumulate(tmpdir_factory, nsamples, nfreq, sub_integration_ntime):
         assert np.all([arrs == es for arrs, es in zip(arr.shape, _expected_shape)])
         # Check that the payload is as-expected and non-zero
         assert np.any(arr > 0)
+        # Compare to the numpy-accumulated buffer
+        assert np.all([a == b for a, b in zip(arr.shape[:2], arr_accum.shape)])
         assert (arr[:, :, 0, 0, 0] == arr_accum).all()

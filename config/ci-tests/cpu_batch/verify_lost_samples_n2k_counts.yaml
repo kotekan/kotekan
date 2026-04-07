@@ -1,0 +1,287 @@
+#
+# Tests that the lostSamples --> N2 Counts pipeline for CHIME/HIRAX produces matching output
+# as n2k pipeline for CHORD.
+#
+# This currently uses the CPU version of the pipeline, as something about the GPU setup in this file is wrong.
+# TODO: Fix, make the comparison against the GPU.
+
+type: config
+log_level: INFO
+
+cpu_affinity: [0, 1]
+num_gpus: 1
+
+frame_arrival_period: 5.12e-6 * samples_per_data_set
+sizeof_int: 4
+
+num_dishes: 64   # Needs to be CHORD/Pathfinder compatible.
+num_polarizations: 2
+num_elements: num_polarizations * num_dishes
+num_freq_bins: 3 # actual CHIME has 4, but then its 4 bins of 4 freqs each, which is a worse test case
+num_local_freq: 4 *  num_freq_bins
+
+pl_mask_downsampling_factor: 2
+pl_mask_dishes_per_bin: 8
+
+#counts matrix size
+counts_blocksize: 8
+counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
+counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
+
+buffer_depth: 5
+samples_per_data_set: 2048
+sub_integration_ntime: 1024
+num_times: samples_per_data_set
+  # num_frame_samples: pl_mask_hilo_split * pl_mask_downsampling_factor * 2  # 2 pl_mask tiles worth of samples
+
+# Pools
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 20*buffer_depth
+
+# Buffers
+lost_samples_buffers:
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set
+    metadata_pool: main_pool
+    lost_samples_buffer_0:
+        kotekan_buffer: standard
+    lost_samples_buffer_1:
+        kotekan_buffer: standard
+    lost_samples_buffer_2:
+        kotekan_buffer: standard
+
+host_rfi_RFImask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_local_freq / 8
+    metadata_pool: main_pool
+
+host_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: ((samples_per_data_set / pl_mask_downsampling_factor) * (num_local_freq / 4) * (num_elements / pl_mask_dishes_per_bin)) / 8
+    metadata_pool: main_pool
+
+dummy_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: ((samples_per_data_set / pl_mask_downsampling_factor) * (num_local_freq / 4) * (num_elements / 8)) / 8
+    metadata_pool: main_pool
+
+# host_n2k_counts_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+#     metadata_pool: main_pool
+
+host_ls_counts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    metadata_pool: main_pool
+
+simulated_pl_mask_exp_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set * (num_local_freq) * (num_elements / 8)) / 8
+    metadata_pool: main_pool
+
+simulated_n2k_counts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    metadata_pool: main_pool
+
+###############################
+# Ringbuffer signalling buffers
+###############################
+
+# host_rfi_RFImask_ringbuffer:
+#     kotekan_buffer: ring
+#     ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq / 8
+#     metadata_pool: main_pool
+# 
+# host_pl_mask_ringbuffer:
+#     kotekan_buffer: ring
+#     ring_buffer_size: buffer_depth * ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
+#     metadata_pool: main_pool
+# 
+# host_pl_mask_exp_ringbuffer:
+#     kotekan_buffer: ring
+#     ring_buffer_size: buffer_depth * (samples_per_data_set * num_local_freq * (num_elements / 8)) / 8
+#     metadata_pool: main_pool
+
+################
+# Kotekan stages
+################
+
+gen_lost_samples:
+    log_level: WARN
+    kotekan_stage: testLostSamplesToPLMask
+    # num_dishes: num_dishes # set via global
+    # num_polarizations: num_polarizations # set via global
+    pl_mask_buf: dummy_pl_mask_buffer
+    lost_samples_buffers:
+      - lost_samples_buffer_0
+      - lost_samples_buffer_1
+      - lost_samples_buffer_2
+
+gen_rfimask:
+    type: random1x8  # For the real test, this should be `random1x8`
+    value: 255
+    kotekan_stage: testDataGen
+    out_buf: host_rfi_RFImask_buffer
+    name: "RFImask"
+    array_shape: [ 2, 12, 128 ]  # [samples_per_data_set/1024, num_local_freq, 128]
+    dim_name: ["T8hi128", "F", "T8lo128"]
+    num_frames: 2*buffer_depth
+    meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
+
+lostSamplesToN2Counts:
+    kotekan_stage: lostSamplesToN2Counts
+    rfi_mask_buf: host_rfi_RFImask_buffer
+    lost_samples_buffers:
+      - lost_samples_buffer_0
+      - lost_samples_buffer_1
+      - lost_samples_buffer_2
+    n2k_counts_buf: host_ls_counts_buffer
+    num_n2k_freq: num_local_freq
+
+lostSamplesToPLMask:
+    kotekan_stage: lostSamplesToPLMask
+    pl_mask_buf: host_pl_mask_buffer
+    lost_samples_buffers:
+      - lost_samples_buffer_0
+      - lost_samples_buffer_1
+      - lost_samples_buffer_2
+
+# run_send_rfi_RFImask:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_rfi_RFImask_buffer_in: host_rfi_RFImask_buffer
+#         out_buffers:
+#             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
+#         commands:
+#         - name: cudaCopyToRingbuffer
+#           input_size: samples_per_data_set * num_local_freq  / 8
+#           ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq / 8
+#           in_buf: host_rfi_RFImask_buffer_in
+#           signal_buf: host_rfi_RFImask_ringbuffer_out
+#           gpu_mem_output: rfi_RFImask_buffer
+# 
+# run_send_pl_mask:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_pl_mask_buffer_in: host_pl_mask_buffer
+#         out_buffers:
+#             host_pl_mask_ringbuffer_out: host_pl_mask_ringbuffer
+#         commands:
+#         - name: cudaCopyToRingbuffer
+#           input_size: (samples_per_data_set/2) * (num_local_freq/4) * (num_elements/8) / 8
+#           ring_buffer_size: buffer_depth * input_size
+#           in_buf: host_pl_mask_buffer_in
+#           signal_buf: host_pl_mask_ringbuffer_out
+#           gpu_mem_output: pl_mask_buffer
+# 
+# run_pl_expand:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+#         out_buffers:
+#             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
+#         commands:
+#         - name: cudaPLMaskExpander
+#           num_frequencies: num_local_freq
+#           pl_mask_name: pl_mask
+#           pl_expanded_mask_name: pl_mask_exp
+# 
+# run_pl_corr:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
+#             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+#         out_buffers:
+#             host_n2k_counts_buffer: host_n2k_counts_buffer
+#         commands:
+#         - name: cudaPL1bitCorrelator
+#           num_frequencies: num_local_freq
+#           pl_expanded_mask_name: pl_mask_exp
+#           rfi_RFImask_name: rfi_RFImask
+#           n2k_counts_name: n2k_counts
+#         - name: cudaSyncOutput
+#         - name: cudaOutputData
+#           gpu_mem: n2k_counts_buffer
+#           out_buf: host_n2k_counts_buffer
+
+cpu_pl_exp:
+    kotekan_stage: gpuSimulateN2kPLExpand
+    in_buf: host_pl_mask_buffer
+    out_buf: simulated_pl_mask_exp_buffer
+
+cpu_pl_corr:
+    kotekan_stage: gpuSimulateN2kPL1bitCorr
+    in_plmask_buf: simulated_pl_mask_exp_buffer
+    in_rfimask_buf: host_rfi_RFImask_buffer
+    out_buf: simulated_n2k_counts_buffer
+
+check_counts_data:
+    kotekan_stage: testDataCheckInt
+    # first_buf: host_n2k_counts_buffer
+    first_buf: simulated_n2k_counts_buffer
+    second_buf: host_ls_counts_buffer
+    num_frames_to_test: 2*buffer_depth
+    trigger_exit_on_pass: False
+    check_metadata: True
+
+# dump to disk to inspect manually
+writers:
+    base_dir: test_lostSamplesToPLMask
+    prefix_hostname: false
+    max_frames: buffer_depth
+    skip_writing: true # change to false to see the files
+    lost_samples_0:
+        kotekan_stage: hdf5FileWrite
+        file_name: lost_samples_buffer_0
+        in_buf: lost_samples_buffer_0
+    lost_samples_1:
+        kotekan_stage: hdf5FileWrite
+        file_name: lost_samples_buffer_1
+        in_buf: lost_samples_buffer_1
+    lost_samples_2:
+        kotekan_stage: hdf5FileWrite
+        file_name: lost_samples_buffer_2
+        in_buf: lost_samples_buffer_2
+    rfi_RFImask:
+        kotekan_stage: hdf5FileWrite
+        file_name: rfi_RFImask
+        in_buf: host_rfi_RFImask_buffer
+    pl_mask:
+        kotekan_stage: hdf5FileWrite
+        file_name: pl_mask
+        in_buf: host_pl_mask_buffer
+    dummy_pl_mask:
+        kotekan_stage: hdf5FileWrite
+        file_name: dummy_pl_mask
+        in_buf: dummy_pl_mask_buffer
+#     n2k_counts:
+#         kotekan_stage: hdf5FileWrite
+#         file_name: n2k_counts
+#         in_buf: host_n2k_counts_buffer
+    cpu_n2k_counts:
+        kotekan_stage: hdf5FileWrite
+        file_name: cpu_n2k_counts
+        in_buf: simulated_n2k_counts_buffer
+    ls_counts:
+        kotekan_stage: hdf5FileWrite
+        file_name: ls_counts
+        in_buf: host_ls_counts_buffer
+

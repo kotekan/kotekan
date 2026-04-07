@@ -39,6 +39,14 @@ host_n2k_counts_buffer:
     frame_size: sizeof_int32 * n2k_counts_triangle_size * num_frequencies * n2k_num_subintegrations
     metadata_pool: main_pool
 
+host_n2_vis_buffer:
+    kotekan_buffer: N2
+    n2_layout: "FullUpperTri"
+    num_elements: n2k_correlation_num_elements
+    num_frames: buffer_depth * num_frequencies
+    num_ev: 0
+    metadata_pool: n2_pool
+
 ################################################################################
 
 # Stages
@@ -88,3 +96,16 @@ run_n2k_counts:
         - name: cudaOutputData
           gpu_mem: n2k_counts_buffer
           out_buf: host_n2k_counts_buffer
+
+run_N2_accumulate:
+    kotekan_stage: N2Accumulate
+    samples_per_data_set: n2k_samples_per_data_set
+    sub_integration_ntime: n2k_sub_integration_ntime
+    num_n2k_samples_to_accumulate: 48 # 1 second
+    num_elements: n2k_correlation_num_elements
+    num_freq_per_n2k_frame: num_frequencies
+    packet_loss_is_scalar: true
+    in_buf: host_n2k_correlation_buffer
+    in_counts_buf: host_n2k_counts_buffer
+    in_rfimask_buf: host_rfi_RFImask_buffer
+    out_buf: host_n2_vis_buffer

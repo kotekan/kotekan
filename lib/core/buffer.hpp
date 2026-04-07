@@ -567,6 +567,12 @@ public:
                 ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "),
                       fmt::join(nd_desc->get_dimnames(), ", "));
         }
+
+        if (frames_desc->get_byte_size() != frame_size) {
+            FATAL_ERROR("Buffer {:s} ndarray_frame_desc has size {:d}, does not match buffer "
+                        "frame_size {:d}",
+                        buffer_name, frames_desc->get_byte_size(), frame_size);
+        }
     }
 
     /**
@@ -606,6 +612,12 @@ public:
                 ERROR("Dimnames do not match: [{:s}] != [{:s}]",
                       fmt::format("{:s}", fmt::join(dimnames, ", ")),
                       fmt::format("{:s}", fmt::join(nd_desc->get_dimnames(), ", ")));
+        }
+
+        if (frames_desc->get_byte_size() != frame_size) {
+            FATAL_ERROR("Buffer {:s} ndarray_frame_desc has size {:d}, does not match buffer "
+                        "frame_size {:d}",
+                        buffer_name, frames_desc->get_byte_size(), frame_size);
         }
     }
 

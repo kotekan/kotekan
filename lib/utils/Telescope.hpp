@@ -60,8 +60,8 @@ struct stream_t {
  * @endpoint    /eop_table  GET     Returns a JSON object with a single field "eop_table" which
  *                                  contains a list of EOP objects. Each EOP object contains 6
  *                                  fields:
- *                                  - t_inst            int64   Instrument time in nanoseconds.
- *                                  - t_ut1             int64   UT1 time in nanoseconds since
+ *                                  - t_inst_ns            int64   Instrument time in nanoseconds.
+ *                                  - t_ut1_ns             int64   UT1 time in nanoseconds since
  *                                                              2451545.0 JD(UT1).
  *                                  - delta_UT1_inst    double  Difference in seconds between
  *                                                              UT1 and Instrument time.
@@ -71,19 +71,19 @@ struct stream_t {
  *
  * Updatable Config
  *
- * @conf    eop_updatable_config    Optional. If not present, EOP table will be empty and only
+ * @conf    eop_updatable_config    Optional. If not present, EOP table will be a dummy and only
  *                                  null values (all 0s) will be returned by get_EOP functions.
  *                                  If present, the config path to an updatable config field
  *                                  containing the field "earth_orientation_parameter_table",
- *                                  which is a list of EOP Update objects. Each contains 4
+ *                                  which is a list of BareEOP objects. Each contains 4
  *                                  fields:
- *                                  - time_inst_ns      int     Instrument time in nanoseconds.
+ *                                  - t_inst_ns      int     Instrument time in nanoseconds.
  *                                  - delta_UT1_inst    double  As in EOP.
- *                                  - x_pm              double  As in EOP.
- *                                  - y_pm              double  As in EOP.
+ *                                  - xp_as             double  As in EOP.
+ *                                  - yp_as             double  As in EOP.
  *                                  Upon receiving an update, the entire EOP table is replaced
  *                                  with the new table. UT1 and ERA values are calculated from
- *                                  the given time_inst_ns and delta_UT1_inst.
+ *                                  the given t_inst_ns and delta_UT1_inst.
  *
  * To maintain continuity, tools updating the EOP table should first GET the current table, and
  * only update or add values at least two entries in the future.  The table is linearly
@@ -297,6 +297,15 @@ public:
     EOP get_EOP_at_time(const timespec& ts) const;
 
     /**
+     * @brief   Return the EOP at the desired instrument time. Will interpolate
+     *          over table, use first or last entry if target time is out of
+     *          table range.
+     *
+     * @param   t_ns  Target instrument time in nanoseconds.
+     **/
+    EOP get_EOP_at_time_ns(int64_t t_ns) const;
+
+    /**
      * @brief   Return the EOP at the desired UT1 time. Will interpolate
      *          over table, using the first or last entry if target time is
      *          out of table range.
@@ -320,11 +329,12 @@ protected:
      *
      * @param   tel_path    Path to the telescope in the Config (e.g. /telescope)
      * @param   log_level   The level to set logging at.
+     * @param   require_eop Whether to require a valid EOP table.
      * @param   eop_updatable_config_path   The value of "eop_updatable_config" in
      *          the telescope Config, pointing to the updatable field which
      *          contains "earth_orientation_parameter_table"
      **/
-    Telescope(const std::string& tel_path, const std::string& log_level,
+    Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
               const std::string& eop_updatable_config_path);
 
     /**
@@ -349,20 +359,15 @@ protected:
     void send_time0_ns(kotekan::connectionInstance& conn);
 
     /**
-     * @brief   Build a single EOP struct from config values
-     *
-     * @param   t_ns    Instrument time in nanoseconds.
-     * @param   delta_ut1_inst  Diff between UT1 and Instrument time in seconds
-     * @param   xp_as   Polar Motion x' coordinate in arcseconds
-     * @param   yp_as   Polar Motion y' coordinate in arcseconds
-     **/
-    EOP build_EOP_from_update(int64_t t_ns, double delta_ut1_inst, double xp_as,
-                              double yp_as) const;
-
-    /**
      * The telescope's name in the config
      */
     const std::string _unique_name;
+
+    /**
+     * Whether to require an EOP table. If false and no (or an empty) EOP table
+     * is provided, the telescope will return a 0 EOP when queried.
+     */
+    const bool _require_eop;
 
     /**
      * This is the Earth Orientation Parameter (EOP) table used to determine
