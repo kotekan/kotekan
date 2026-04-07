@@ -128,7 +128,7 @@ gen_lost_samples:
       - lost_samples_buffer_2
 
 gen_rfimask:
-    type: const1x8  # For the real test, this should be `random1x8`
+    type: random1x8  # For the real test, this should be `random1x8`
     value: 255
     kotekan_stage: testDataGen
     out_buf: host_rfi_RFImask_buffer
