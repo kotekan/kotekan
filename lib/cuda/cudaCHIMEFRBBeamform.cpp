@@ -1,6 +1,7 @@
 #include "Config.hpp"                 // for Config
 #include "DataType.hpp"               // for int4x2_swapped_withoffset_t, uint1x8_t
 #include "NDArray.hpp"                // for NDArray
+#include "NDArrayBuffer.hpp"          // for NDArrayBuffer
 #include "NDArrayRingBuffer.hpp"      // for NDArrayRingBuffer, read_descriptor_t, extent_t
 #include "bufferContainer.hpp"        // for bufferContainer
 #include "chordMetadata.hpp"          // for chordMetadata
@@ -20,6 +21,8 @@
 #include <string>             // for basic_string, string
 #include <type_traits>        // for is_same
 #include <vector>             // for vector
+
+using kotekan::bufferContainer;
 
 class cudaCHIMEFRBBeamform : public cudaCommand {
 public:
@@ -50,6 +53,11 @@ private:
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage; // (time, freq, pol, ew*ns)
     NDArrayRingBuffer<kotekan::GetType_t<kotekan::cfloat16>, 5>
         frb1_beams; // (time, freq, pol, ew, ns)
+
+    // pre-computed non-buffer data
+    NDArrayBuffer<uint, 2> map;
+    NDArrayBuffer<float, 4> co;
+    NDArrayBuffer<float, 4> gains; // these actually come from a buffer
 };
 
 REGISTER_CUDA_COMMAND(cudaCHIMEFRBBeamform);
@@ -77,7 +85,15 @@ cudaCHIMEFRBBeamform::cudaCHIMEFRBBeamform(kotekan::Config& config, const std::s
     frb1_beams(frb1_beams_name, "frb1",
                std::array<std::ptrdiff_t, 5>{buffer_depth * num_times, num_frequencies,
                                              num_polarizations, 256, 4},
-               std::array<std::string, 5>{"T", "F", "P", "EW", "NS"}, *this)
+               std::array<std::string, 5>{"T", "F", "P", "EW", "NS"}, *this),
+    //  'gains':      shape (F,2,4,256), dtype float32+32, axes (freq,pol,ew,ns)
+    map(unique_name + "/gpu_mem_map", "index", std::array<ptrdiff_t, 2>{num_frequencies, 256},
+        std::array<kotekan::Symbol, 2>{"F", "NS"}, *this),
+    co(unique_name + "/gpu_mem_co", "coeff", std::array<ptrdiff_t, 4>{num_frequencies, 4, 4, 2},
+       std::array<kotekan::Symbol, 4>{"F", "EWout", "EWin", "ReIm"}, *this),
+    gains(unique_name + "/gpu_mem_gains", "G",
+          std::array<ptrdiff_t, 4>{num_frequencies, num_polarizations, 4, 256},
+          std::array<kotekan::Symbol, 4>{"F", "P", "EW", "NS"}, *this)
 //
 {
     if (num_times % 128 != 0)
@@ -185,17 +201,13 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     const auto& voltage_meta = voltage.get_metadata();
     const auto& frb1_beams_meta = frb1_beams.get_metadata();
 
-    // TODO: (pre-)compute these
-    const uint* map = NULL;
-    const float* co = NULL;
-    const float* gains = NULL;
-
     // pirate uses a uint8_t pointer for pairs of 4bit ints
     // pirate uses a float16 pointer for pairs of float16 that form a complex<float16>
     pirate::launch_chime_frb_beamform(
-        reinterpret_cast<const uint8_t*>(voltage_memory + T_offset), map, co,
-        reinterpret_cast<__half*>(frb1_beams_memory + Tfrb_offset), gains,
-        reinterpret_cast<long>(T), reinterpret_cast<long>(Tfrb), device.getStream(cuda_stream_id));
+        reinterpret_cast<const uint8_t*>(voltage_memory + T_offset), map.get_ndarray().data(),
+        co.get_ndarray().data(), reinterpret_cast<__half*>(frb1_beams_memory + Tfrb_offset),
+        gains.get_ndarray().data(), reinterpret_cast<long>(T), reinterpret_cast<long>(Tfrb),
+        device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
