@@ -1,0 +1,225 @@
+#include "Config.hpp"                 // for Config
+#include "DataType.hpp"               // for int4x2_swapped_withoffset_t, uint1x8_t
+#include "NDArray.hpp"                // for NDArray
+#include "NDArrayRingBuffer.hpp"      // for NDArrayRingBuffer, read_descriptor_t, extent_t
+#include "bufferContainer.hpp"        // for bufferContainer
+#include "chordMetadata.hpp"          // for chordMetadata
+#include "cudaCommand.hpp"            // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp"    // for cudaDeviceInterface
+#include "cudaUtils.hpp"              // for CHECK_CUDA_ERROR
+#include "gpuCommand.hpp"             // for gpuCommandType
+#include "kotekanLogging.hpp"         // for DEBUG, FATAL_ERROR
+#include "pirate/ChimeBeamformer.hpp" // for launch_chime_frb_beamform
+
+#include <cassert>            // for assert
+#include <cstddef>            // for ptrdiff_t, size_t
+#include <cstdint>            // for uint64_t, uint8_t
+#include <cuda_runtime_api.h> // for cudaStreamSynchronize
+#include <driver_types.h>     // for CUstream_st, cudaEvent_t, CUevent_st
+#include <memory>             // for allocator, shared_ptr, __shared_ptr_access
+#include <string>             // for basic_string, string
+#include <type_traits>        // for is_same
+#include <vector>             // for vector
+
+class cudaCHIMEFRBBeamform : public cudaCommand {
+public:
+    cudaCHIMEFRBBeamform(kotekan::Config& config, const std::string& unique_name,
+                         kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                         const int instance_num);
+    virtual ~cudaCHIMEFRBBeamform();
+
+    int wait_on_precondition() override;
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
+    void finalize_frame() override;
+
+private:
+    // Parameters
+    const int buffer_depth;
+    const int num_times;
+    const int num_frequencies;
+    const int num_polarizations;
+    const int num_dishes;
+    const bool poison_buffers;
+
+    // Kotekan buffer names
+    const std::string voltage_name;
+    const std::string frb1_beams_name;
+
+    // Buffers
+    NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage; // (time, freq, pol, ew*ns)
+    NDArrayRingBuffer<kotekan::GetType_t<kotekan::cfloat16>, 5>
+        frb1_beams; // (time, freq, pol, ew, ns)
+};
+
+REGISTER_CUDA_COMMAND(cudaCHIMEFRBBeamform);
+
+cudaCHIMEFRBBeamform::cudaCHIMEFRBBeamform(kotekan::Config& config, const std::string& unique_name,
+                                           kotekan::bufferContainer& host_buffers,
+                                           cudaDeviceInterface& device, const int instance_num) :
+    cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
+                "cudaCHIMEFRBBeamform"),
+    // Parameters
+    buffer_depth(config.get<int>(unique_name, "buffer_depth")),
+    num_times(config.get<int>(unique_name, "num_times")),
+    num_frequencies(config.get<int>(unique_name, "num_frequencies")),
+    num_polarizations(config.get<int>(unique_name, "num_polarizations")),
+    num_dishes(config.get<int>(unique_name, "num_dishes")),
+    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
+    // Buffer names
+    voltage_name(config.get<std::string>(unique_name, "voltage_name")),
+    frb1_beams_name(config.get<std::string>(unique_name, "frb1_beams_name")),
+    // Buffers
+    voltage(voltage_name, "E",
+            std::array<std::ptrdiff_t, 4>{buffer_depth * num_times, num_frequencies,
+                                          num_polarizations, num_dishes},
+            std::array<std::string, 4>{"T", "F", "P", "D"}, *this),
+    frb1_beams(frb1_beams_name, "frb1",
+               std::array<std::ptrdiff_t, 5>{buffer_depth * num_times, num_frequencies,
+                                             num_polarizations, 256, 4},
+               std::array<std::string, 5>{"T", "F", "P", "EW", "NS"}, *this)
+//
+{
+    if (num_times % 128 != 0)
+        FATAL_ERROR("num_times % 128 != 0");
+
+    if (num_polarizations != 2)
+        FATAL_ERROR("num_polarizations != 2");
+
+    if (num_dishes != 1024)
+        FATAL_ERROR("num_dishes != 1024");
+
+    static_assert(
+        sizeof(uint8_t)
+        == kotekan::type_total_bytes(
+            kotekan::int4x2_swapped_withoffset)); // pirate does not declare the correct 4bit type
+    static_assert(std::is_same_v<__half, kotekan::GetType_t<kotekan::cfloat16>::value_type>);
+
+    voltage.register_consumer();
+    frb1_beams.register_producer();
+
+    // TODO: compute "map" used for clamping
+    // TODO: compute "co" coefficients for EW beamforming
+    // xpose2048 should have information on how to set this up
+
+    set_command_type(gpuCommandType::KERNEL);
+}
+
+cudaCHIMEFRBBeamform::~cudaCHIMEFRBBeamform() {}
+
+int cudaCHIMEFRBBeamform::wait_on_precondition() {
+    DEBUG("Waiting for voltage input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const std::ptrdiff_t voltage_read = num_times; // get one full frame
+    const int voltage_errcode =
+        voltage.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+            if (available_elements < voltage_read)
+                return read_descriptor_t{.claimed = 0, .read = 0};
+            else
+                return read_descriptor_t{.claimed = voltage_read, .read = voltage_read};
+        });
+    if (voltage_errcode < 0)
+        return voltage_errcode;
+    DEBUG("Done waiting for voltage input ringbuffer data for frame {:d}; will read {:d} elements",
+          gpu_frame_id, voltage_read);
+
+    DEBUG("Waiting for frb1_beams output ringbuffer space for frame {:d}...", gpu_frame_id);
+    const std::ptrdiff_t frb1_beams_written =
+        voltage_read; // no downsampling in time when forming beams
+    const int frb1_beams_errcode = frb1_beams.wait_for_writable(frb1_beams_written);
+    if (frb1_beams_errcode < 0)
+        return frb1_beams_errcode;
+    DEBUG("Done waiting for frb1_beams ouput ringbuffer data for frame {:d}; will write {:d} "
+          "elements",
+          gpu_frame_id, frb1_beams_written);
+
+    return 0;
+}
+
+cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
+                                          const std::vector<cudaEvent_t>& /*pre_events*/) {
+    pre_execute();
+    record_start_event();
+
+    voltage.check_metadata();
+
+    // TODO: Set these metadata only once
+    frb1_beams.set_metadata(voltage.get_metadata());
+
+    // There is no poison value
+    // if (poison_buffers)
+    //    frb1_beams.set_to_poison(0xff);
+
+    const kotekan::int4x2_swapped_withoffset_t* const voltage_memory = voltage.get_ndarray().data();
+    kotekan::GetType_t<kotekan::cfloat16>* const frb1_beams_memory =
+        frb1_beams.get_ndarray().data();
+
+    const std::ptrdiff_t Tsize = voltage.get_ndarray().extent(0);
+    assert(Tsize % 128 == 0);
+    // Tmin wraps around into actual array index to avoid overflows
+    const std::ptrdiff_t Tmin = voltage.get_read_valid().begin() % Tsize;
+    assert(Tmin % 128 == 0);
+    const std::ptrdiff_t T = voltage.get_read_valid().size();
+    if (Tmin + T > Tsize) {
+        FATAL_ERROR("Chunk starting at Tmin={:d} of size T={:d} runs past end of ringbuffer {:s} "
+                    "of size Tsize={:d}",
+                    Tmin, T, voltage.get_buffer_name(), Tsize);
+    }
+    assert(Tmin + T <= Tsize);
+    const std::ptrdiff_t T_offset = Tmin * voltage.get_ndarray().stride(0);
+
+    const std::ptrdiff_t Tfrb_size = frb1_beams.get_ndarray().extent(0);
+    assert(Tfrb_size % 128 == 0);
+    // Tmin wraps around into actual array index to avoid overflows
+    const std::ptrdiff_t Tfrb_min = frb1_beams.get_read_valid().begin() % Tfrb_size;
+    assert(Tfrb_min % 128 == 0);
+    const std::ptrdiff_t Tfrb = frb1_beams.get_read_valid().size();
+    const std::ptrdiff_t Tfrb_offset = Tmin * frb1_beams.get_ndarray().stride(0);
+
+    assert(T == Tfrb);
+    // check compatibility of arrays
+    assert(voltage.get_ndarray().extent(1) == frb1_beams.get_ndarray().extent(1));           // freq
+    assert(voltage.get_ndarray().extent(2) == 2 && frb1_beams.get_ndarray().extent(2) == 2); // pol
+    assert(voltage.get_ndarray().extent(3) == 1024 && frb1_beams.get_ndarray().extent(3) == 4
+           && frb1_beams.get_ndarray().extent(4) == 256); // dishes
+
+    const auto& voltage_meta = voltage.get_metadata();
+    const auto& frb1_beams_meta = frb1_beams.get_metadata();
+
+    // TODO: (pre-)compute these
+    const uint* map = NULL;
+    const float* co = NULL;
+    const float* gains = NULL;
+
+    // pirate uses a uint8_t pointer for pairs of 4bit ints
+    // pirate uses a float16 pointer for pairs of float16 that form a complex<float16>
+    pirate::launch_chime_frb_beamform(
+        reinterpret_cast<const uint8_t*>(voltage_memory + T_offset), map, co,
+        reinterpret_cast<__half*>(frb1_beams_memory + Tfrb_offset), gains,
+        reinterpret_cast<long>(T), reinterpret_cast<long>(Tfrb), device.getStream(cuda_stream_id));
+#ifdef DEBUGGING
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+#endif
+#if 0
+    n2k::launch_s12_kernel((ulong*)(rfi_S012_memory + S_stride + Trfi_offset),
+                           (const uint8_t*)(voltage_memory + T_offset), T, 0, Tsize,
+                           num_frequencies, num_dishes * num_polarizations, rfi_downsampling_factor,
+                           F_stride, offset_encoded, device.getStream(cuda_stream_id));
+#endif
+#ifdef DEBUGGING
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+#endif
+
+    // There is no poison value
+    // if (poison_buffers)
+    //     frb1_beams.check_for_poison(0xff);
+
+    return record_end_event();
+}
+
+void cudaCHIMEFRBBeamform::finalize_frame() {
+    // Advance the ring buffers
+    voltage.finish_read();
+    frb1_beams.finish_write();
+
+    cudaCommand::finalize_frame();
+}
