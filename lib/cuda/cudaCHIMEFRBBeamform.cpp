@@ -307,12 +307,14 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     assert(Tfrb1_min % 128 == 0);
     const std::ptrdiff_t Tfrb1 = frb1_beams.get_read_valid().size();
     const std::ptrdiff_t Tfrb1_offset = Tmin * frb1_beams.get_ndarray().stride(0);
+    assert(Tfrb1_min + Tfrb1 <= Tfrb1_size);
 
     const std::ptrdiff_t Tfrb2_size = frb2_beams.get_ndarray().extent(0);
     // Tmin wraps around into actual array index to avoid overflows
     const std::ptrdiff_t Tfrb2_min = frb2_beams.get_read_valid().begin() % Tfrb2_size;
     const std::ptrdiff_t Tfrb2 = frb2_beams.get_read_valid().size();
     const std::ptrdiff_t Tfrb2_offset = Tmin * frb2_beams.get_ndarray().stride(0);
+    assert(Tfrb2_min + Tfrb2 <= Tfrb2_size);
 
     assert(T == Tfrb1);
     assert(Tfrb2 == 1); // outermost index (frame number)
