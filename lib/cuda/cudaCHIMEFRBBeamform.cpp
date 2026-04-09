@@ -3,6 +3,7 @@
 #include "NDArray.hpp"                // for NDArray
 #include "NDArrayBuffer.hpp"          // for NDArrayBuffer
 #include "NDArrayRingBuffer.hpp"      // for NDArrayRingBuffer, read_descriptor_t, extent_t
+#include "Telescope.hpp"              // for Telescope
 #include "bufferContainer.hpp"        // for bufferContainer
 #include "chordMetadata.hpp"          // for chordMetadata
 #include "cudaCommand.hpp"            // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
@@ -37,6 +38,9 @@ public:
     void finalize_frame() override;
 
 private:
+    constexpr static const int num_cylinders = 4;
+    constexpr static const int num_dishes_per_cylinder = 256;
+
     // Parameters
     const int buffer_depth;
     const int num_times;
@@ -58,9 +62,44 @@ private:
     NDArrayBuffer<uint, 2> map;
     NDArrayBuffer<float, 4> co;
     NDArrayBuffer<float, 4> gains; // these actually come from a buffer
+
+    const Telescope& tel;
+
+    // helpers
+    void calculate_ew_co(std::vector<float>& co, const std::vector<int>& coarse_freq);
+
+    bool first_time; // keep track if whether we have already initialized constant data
 };
 
 REGISTER_CUDA_COMMAND(cudaCHIMEFRBBeamform);
+
+void cudaCHIMEFRBBeamform::calculate_ew_co(std::vector<float>& coff,
+                                           const std::vector<int>& coarse_freq) {
+    // copied from lib/testing/gpuBeamformSimulate.cpp git hash bdbe7b3
+    // then re-formatted
+
+    assert(num_cylinders == 4);
+    const double ew_spacing[4] = {// same as production CHIME
+                                  -0.4, 0, 0.4, 0.8};
+
+    // these are defined gpuBeamformSimulate.cpp, let's hope they are correct
+    const double PI = 3.14159265;
+    const double light = 299792458.;
+
+    // Work out the EW phase coefficients from freq_MHz
+    for (int f = 0; f < num_frequencies; ++f) {
+        const double freq_MHz = tel.to_freq_MHz(freq_id_t(coarse_freq.at(f)));
+        for (int angle_iter = 0; angle_iter < num_cylinders; angle_iter++) {
+            double anglefrac = sin(ew_spacing[angle_iter] * PI / 180.);
+            for (int cylinder = 0; cylinder < num_cylinders; cylinder++) {
+                coff.at(angle_iter * num_cylinders * 2 + cylinder * 2) =
+                    cos(2 * PI * anglefrac * cylinder * 22 * freq_MHz * 1.e6 / light);
+                coff.at(angle_iter * num_cylinders * 2 + cylinder * 2 + 1) =
+                    sin(2 * PI * anglefrac * cylinder * 22 * freq_MHz * 1.e6 / light);
+            }
+        }
+    }
+}
 
 cudaCHIMEFRBBeamform::cudaCHIMEFRBBeamform(kotekan::Config& config, const std::string& unique_name,
                                            kotekan::bufferContainer& host_buffers,
@@ -84,16 +123,20 @@ cudaCHIMEFRBBeamform::cudaCHIMEFRBBeamform(kotekan::Config& config, const std::s
             std::array<std::string, 4>{"T", "F", "P", "D"}, *this),
     frb1_beams(frb1_beams_name, "frb1",
                std::array<std::ptrdiff_t, 5>{buffer_depth * num_times, num_frequencies,
-                                             num_polarizations, 256, 4},
+                                             num_polarizations, num_cylinders,
+                                             num_dishes_per_cylinder},
                std::array<std::string, 5>{"T", "F", "P", "EW", "NS"}, *this),
-    //  'gains':      shape (F,2,4,256), dtype float32+32, axes (freq,pol,ew,ns)
-    map(unique_name + "/gpu_mem_map", "index", std::array<ptrdiff_t, 2>{num_frequencies, 256},
+    map(unique_name + "/gpu_mem_map", "index",
+        std::array<ptrdiff_t, 2>{num_frequencies, num_dishes_per_cylinder},
         std::array<kotekan::Symbol, 2>{"F", "NS"}, *this),
-    co(unique_name + "/gpu_mem_co", "coeff", std::array<ptrdiff_t, 4>{num_frequencies, 4, 4, 2},
+    co(unique_name + "/gpu_mem_co", "coeff",
+       std::array<ptrdiff_t, 4>{num_frequencies, num_cylinders, num_cylinders, 2},
        std::array<kotekan::Symbol, 4>{"F", "EWout", "EWin", "ReIm"}, *this),
     gains(unique_name + "/gpu_mem_gains", "G",
-          std::array<ptrdiff_t, 4>{num_frequencies, num_polarizations, 4, 256},
-          std::array<kotekan::Symbol, 4>{"F", "P", "EW", "NS"}, *this)
+          std::array<ptrdiff_t, 4>{num_frequencies, num_polarizations, num_cylinders,
+                                   num_dishes_per_cylinder},
+          std::array<kotekan::Symbol, 4>{"F", "P", "EW", "NS"}, *this),
+    tel(Telescope::instance()), first_time(true)
 //
 {
     if (num_times % 128 != 0)
@@ -102,7 +145,7 @@ cudaCHIMEFRBBeamform::cudaCHIMEFRBBeamform(kotekan::Config& config, const std::s
     if (num_polarizations != 2)
         FATAL_ERROR("num_polarizations != 2");
 
-    if (num_dishes != 1024)
+    if (num_dishes != num_cylinders * num_dishes_per_cylinder)
         FATAL_ERROR("num_dishes != 1024");
 
     static_assert(
@@ -113,10 +156,6 @@ cudaCHIMEFRBBeamform::cudaCHIMEFRBBeamform(kotekan::Config& config, const std::s
 
     voltage.register_consumer();
     frb1_beams.register_producer();
-
-    // TODO: compute "map" used for clamping
-    // TODO: compute "co" coefficients for EW beamforming
-    // xpose2048 should have information on how to set this up
 
     set_command_type(gpuCommandType::KERNEL);
 }
@@ -165,9 +204,54 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     // if (poison_buffers)
     //    frb1_beams.set_to_poison(0xff);
 
+    // needs metadata and thus access to an actual frame
+    if (first_time && instance_num == 0) { // first time and we handle frame 0 of the buffer depth
+        DEBUG("Setting up constant data");
+
+        const auto meta = voltage.get_metadata();
+        const auto coarse_freq = meta->get_coarse_freq();
+
+        // indices for clamping
+        std::vector<uint> host_map(map.get_ndarray().size());
+        for (int f = 0; f < num_frequencies; ++f) {
+            const double northmost_beam = 60.0; // same as production CHIME
+            const double freq_in_MHz = tel.to_freq_MHz(freq_id_t(coarse_freq.at(f)));
+            uint* const host_map_memory = &host_map.at(f * map.get_ndarray().stride(0));
+            pirate::calculate_cl_index(host_map_memory, freq_in_MHz, northmost_beam);
+        }
+        CHECK_CUDA_ERROR(
+            cudaMemcpyAsync(host_map.data(), map.get_ndarray().get_data(),
+                            map.get_ndarray().size() * map.get_ndarray().get_value_type_size(),
+                            cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
+
+        // this could be done in the constructor, though keeping it here keeps
+        // things in one location
+        std::vector<float> host_co(co.get_ndarray().size());
+        calculate_ew_co(host_co, coarse_freq);
+        CHECK_CUDA_ERROR(
+            cudaMemcpyAsync(host_co.data(), co.get_ndarray().get_data(),
+                            co.get_ndarray().size() * co.get_ndarray().get_value_type_size(),
+                            cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
+
+        // TODO: this should actually come out of a buffer, but is hard-coded for now
+        std::vector<float> host_gains(gains.get_ndarray().size(), 1.0);
+        CHECK_CUDA_ERROR(
+            cudaMemcpyAsync(host_gains.data(), gains.get_ndarray().get_data(),
+                            gains.get_ndarray().size() * gains.get_ndarray().get_value_type_size(),
+                            cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
+
+        // only almost thread save in that we must ensure that the compiler does
+        // to re-order execution too aggressively
+        first_time = true;
+    }
+
+
     const kotekan::int4x2_swapped_withoffset_t* const voltage_memory = voltage.get_ndarray().data();
     kotekan::GetType_t<kotekan::cfloat16>* const frb1_beams_memory =
         frb1_beams.get_ndarray().data();
+    const uint* const map_memory = map.get_ndarray().data();
+    const float* const co_memory = co.get_ndarray().data();
+    const float* const gains_memory = gains.get_ndarray().data();
 
     const std::ptrdiff_t Tsize = voltage.get_ndarray().extent(0);
     assert(Tsize % 128 == 0);
@@ -195,8 +279,9 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     // check compatibility of arrays
     assert(voltage.get_ndarray().extent(1) == frb1_beams.get_ndarray().extent(1));           // freq
     assert(voltage.get_ndarray().extent(2) == 2 && frb1_beams.get_ndarray().extent(2) == 2); // pol
-    assert(voltage.get_ndarray().extent(3) == 1024 && frb1_beams.get_ndarray().extent(3) == 4
-           && frb1_beams.get_ndarray().extent(4) == 256); // dishes
+    assert(voltage.get_ndarray().extent(3) == num_dishes_per_cylinder * num_cylinders
+           && frb1_beams.get_ndarray().extent(3) == num_cylinders
+           && frb1_beams.get_ndarray().extent(4) == num_dishes_per_cylinder); // dishes
 
     const auto& voltage_meta = voltage.get_metadata();
     const auto& frb1_beams_meta = frb1_beams.get_metadata();
@@ -204,10 +289,9 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     // pirate uses a uint8_t pointer for pairs of 4bit ints
     // pirate uses a float16 pointer for pairs of float16 that form a complex<float16>
     pirate::launch_chime_frb_beamform(
-        reinterpret_cast<const uint8_t*>(voltage_memory + T_offset), map.get_ndarray().data(),
-        co.get_ndarray().data(), reinterpret_cast<__half*>(frb1_beams_memory + Tfrb_offset),
-        gains.get_ndarray().data(), reinterpret_cast<long>(T), reinterpret_cast<long>(Tfrb),
-        device.getStream(cuda_stream_id));
+        reinterpret_cast<const uint8_t*>(voltage_memory + T_offset), map_memory, co_memory,
+        reinterpret_cast<__half*>(frb1_beams_memory + Tfrb_offset), gains_memory,
+        reinterpret_cast<long>(T), reinterpret_cast<long>(Tfrb), device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
