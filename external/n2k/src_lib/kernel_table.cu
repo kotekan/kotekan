@@ -1,5 +1,4 @@
 #include <mutex>
-#include <cassert>
 #include <stdexcept>
 #include <ksgpu/cuda_utils.hpp>
 #include <ksgpu/string_utils.hpp>

@@ -3,8 +3,6 @@
 
 #include "device_inlines.hpp"
 
-#include <cassert>
-
 // This source file is used internally in CUDA kernels.
 // It probably won't be useful "externally" to n2k.
 

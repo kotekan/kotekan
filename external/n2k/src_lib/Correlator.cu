@@ -26,8 +26,8 @@ CorrelatorParams::CorrelatorParams(int nstations_, int nfreq_) :
     ntiles_2d_tot(ntiles_2d_offdiag + ntiles_1d),
     threadblocks_per_freq(ntiles_2d_tot)
 {
-    xassert(nstations > 0);
-    xassert(nfreq > 0);
+    assert(nstations > 0);
+    assert(nfreq > 0);
 
     if (nstations % CorrelatorParams::ns_divisor)
 	throw runtime_error("n2k: expected nstations(=" + to_str(nstations) + ") to be a multiple of " + to_str(CorrelatorParams::ns_divisor));
@@ -43,11 +43,11 @@ Correlator::Correlator(const CorrelatorParams &params_) : params(params_)
 
 void Correlator::launch(int *vis_out, const int8_t *e_in, const uint *rfimask, int nt_outer, int nt_inner, cudaStream_t stream, bool sync) const
 {
-    xassert(nt_outer > 0);
-    xassert(nt_inner > 0);
-    xassert(vis_out != nullptr);
-    xassert(e_in != nullptr);
-    xassert(rfimask != nullptr);
+    assert(nt_outer > 0);
+    assert(nt_inner > 0);
+    assert(vis_out != nullptr);
+    assert(e_in != nullptr);
+    assert(rfimask != nullptr);
 
     if (nt_inner % CorrelatorParams::nt_divisor)
 	throw runtime_error("n2k::Correlator::launch: expected nt_inner(=" + to_str(nt_inner) + ") to be a multiple of " + to_str(CorrelatorParams::nt_divisor));
@@ -109,12 +109,12 @@ void Correlator::launch(Array<int> &vis_out, const Array<int8_t> &e_in, const Ar
 	throw runtime_error(ss.str());
     }
 
-    xassert(vis_out.is_fully_contiguous());
-    xassert(vis_out.on_gpu());
-    xassert(e_in.is_fully_contiguous());
-    xassert(e_in.on_gpu());
-    xassert(rfimask.is_fully_contiguous());
-    xassert(rfimask.on_gpu());
+    assert(vis_out.is_fully_contiguous());
+    assert(vis_out.on_gpu());
+    assert(e_in.is_fully_contiguous());
+    assert(e_in.on_gpu());
+    assert(rfimask.is_fully_contiguous());
+    assert(rfimask.on_gpu());
     
     this->launch(vis_out.data, e_in.data, rfimask.data, nt_outer, nt_inner, stream, sync);
 }

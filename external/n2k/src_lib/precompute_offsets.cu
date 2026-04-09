@@ -3,12 +3,11 @@
 #include <cassert>
 #include "../include/n2k/Correlator.hpp"
 
-#include <cassert>
-
 using namespace std;
 using namespace ksgpu;
 using namespace n2k;
 
+#include <cassert>
 
 namespace n2k {
 #if 0
