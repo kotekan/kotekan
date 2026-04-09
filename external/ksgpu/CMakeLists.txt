@@ -47,7 +47,7 @@ set(CMAKE_CUDA_FLAGS
 target_include_directories(ksgpu PUBLIC include/.)
 target_include_directories(ksgpu PUBLIC .)
 
-# worarounds around issues with ksgpu
+# workarounds around issues with ksgpu
 set_source_files_properties(
     src_lib/mem_utils.cpp # keep ksgpu untouched, including stuff thtat generates warnings
     PROPERTIES COMPILE_FLAGS "-Wno-error=unused-parameter")
