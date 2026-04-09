@@ -658,24 +658,6 @@ void N2Accumulate::main_thread() {
 #pragma omp parallel for num_threads(_num_workers)
                     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
 
-                        // 1/N for even (idx ~ 0) sample
-                        float inv_n_t0 = (n_valid_fpga_samples_t0[f] <= 0)
-                                             ? 0.0f
-                                             : 1.0f / n_valid_fpga_samples_t0[f];
-                        // 1/N for odd  (idx ~ 1) sample
-                        float inv_n_t1 = (n_valid_fpga_samples_t1[f] <= 0)
-                                             ? 0.0f
-                                             : 1.0f / n_valid_fpga_samples_t1[f];
-                        // var(corr_e/Ne / corr_o/No) ~ 1/Ne + 1/No
-                        // 1/var ~ 1/(1/Ne + 1/No) = Ne No / (Ne + No)
-                        float inv_dvis_var = 0.0f;
-                        if (n_valid_fpga_samples_t0[f] > 0 && n_valid_fpga_samples_t0[f] > 0) {
-                            inv_dvis_var =
-                                static_cast<float>(n_valid_fpga_samples_t0[f]
-                                                   * n_valid_fpga_samples_t1[f])
-                                / (n_valid_fpga_samples_t0[f] + n_valid_fpga_samples_t1[f]);
-                        }
-
                         if (_do_fringestop) {
                             // Physical frequency for this f
                             double freq_MHz = _tel.to_freq_MHz(
@@ -743,21 +725,10 @@ void N2Accumulate::main_thread() {
                                             vis_even *= phase_even;
                                         } // fringestop
 
-                                        if (_variance_mode == N2VarianceMode::CHIMEv1) {
-                                            std::complex<float> dvis = vis_odd - vis_even;
+                                        std::complex<float> dvis = vis_odd - vis_even;
 
-                                            _weights[weight_offset_fb + w_idx] +=
-                                                dvis.real() * dvis.real()
-                                                + dvis.imag() * dvis.imag();
-                                        } else if (_variance_mode
-                                                   == N2VarianceMode::EvenOddPosDef) {
-                                            std::complex<float> dvis =
-                                                inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
-                                            _weights[weight_offset_fb + w_idx] +=
-                                                inv_dvis_var
-                                                * (dvis.real() * dvis.real()
-                                                   + dvis.imag() * dvis.imag());
-                                        }
+                                        _weights[weight_offset_fb + w_idx] +=
+                                            dvis.real() * dvis.real() + dvis.imag() * dvis.imag();
                                     } // jlo
                                 } // ilo
                                 block_idx++;
@@ -776,6 +747,7 @@ void N2Accumulate::main_thread() {
                         _tel.to_time(seq - _n_fpga_samples_per_n2k_correlation / 2));
                     EOP eop = _tel.get_EOP_at_time(
                         _tel.to_time(seq + _n_fpga_samples_per_n2k_correlation / 2));
+
 #pragma omp parallel for num_threads(_num_workers)
                     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
 
@@ -791,10 +763,10 @@ void N2Accumulate::main_thread() {
                         // 1/var ~ 1/(1/Ne + 1/No) = Ne No / (Ne + No)
                         float inv_dvis_var = 0.0f;
                         if (n_valid_fpga_samples_t0[f] > 0 && n_valid_fpga_samples_t0[f] > 0) {
-                            inv_dvis_var = static_cast<float>(n_valid_fpga_samples_t0[f]
-                                                              * n_valid_fpga_samples_t1[f])
-                                           / n_valid_fpga_samples_t0[f]
-                                           * n_valid_fpga_samples_t1[f];
+                            inv_dvis_var =
+                                static_cast<float>(n_valid_fpga_samples_t0[f]
+                                                   * n_valid_fpga_samples_t1[f])
+                                / (n_valid_fpga_samples_t0[f] + n_valid_fpga_samples_t1[f]);
                         }
 
                         if (_do_fringestop) {
@@ -813,6 +785,7 @@ void N2Accumulate::main_thread() {
                         uint64_t vis_offset_f = f * corr_stride_f;
                         uint64_t weight_offset_f =
                             f * corr_stride_f / 2; // weights are real, corr is complex
+
 
                         uint64_t block_idx = 0;
                         for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {

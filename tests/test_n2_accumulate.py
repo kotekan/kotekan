@@ -144,8 +144,8 @@ accumulate_params = {
     "log_level": "DEBUG",
     "output_batch_size": 4,
     "debug_accum_mode": 3,
-    "variance_mode": "CHIMEv1"
-    # "variance_mode": "EvenOddPosDef"
+    # "variance_mode": "CHIMEv1"
+    "variance_mode": "EvenOddPosDef",
 }
 
 
@@ -277,10 +277,14 @@ def gen_vis_data(t_idx, f_idx):
 
             if counts > 0 and even_counts > 0:
                 diff_vis_n = vis_pat - even_vis / even_counts
+                inv_diff_vis_n_var = (counts * even_counts) / (counts + even_counts)
                 diff_Z += ((counts * even_counts) / (counts + even_counts)) * (
                     diff_vis_n.real ** 2 + diff_vis_n.imag ** 2
                 )
-            # print(t, diff_vis[-3:], diff_vis_sq[-3:], diff_N_sq[-3:])
+                # print(t, diff_vis[-3:], diff_vis_sq[-3:], diff_N_sq[-3:])
+                # print(
+                #     t, diff_vis_n[0], even_counts, counts, inv_diff_vis_n_var, diff_Z[0]
+                # )
 
     if total_counts > 0:
         # print(vis[-3:], total_counts)
@@ -294,6 +298,7 @@ def gen_vis_data(t_idx, f_idx):
             weights[good] = total_counts ** 2 / ((diff_vis_sq - bias)[good])
         elif accumulate_params["variance_mode"] == "EvenOddPosDef":
             weights[:] = (total_counts * num_frames_in_accum / 2) / diff_Z
+            # print(weights[0])
 
     else:
         vis[:] = 0.0
