@@ -220,11 +220,6 @@ RUN mkdir src && \
     true) && \
     rm -rf src
 
-ENV CUDADIR=/usr/local/cuda
-ENV PATH="${PATH:+${PATH}:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
-ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
-
 # Install mathdx for CHIME beamformer
 RUN mkdir src && \
     ( \
@@ -237,3 +232,8 @@ RUN mkdir src && \
         cp -a nvidia/mathdx/26.03/src/* /usr/local/src/ && \
     true) && \
     rm -rf src
+
+ENV CUDADIR=/usr/local/cuda
+ENV PATH="${PATH:+${PATH}:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
+ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
