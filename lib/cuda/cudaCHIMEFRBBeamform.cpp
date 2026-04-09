@@ -40,6 +40,11 @@ public:
 private:
     constexpr static const int num_cylinders = 4;
     constexpr static const int num_dishes_per_cylinder = 256;
+    constexpr static const int num_beams = num_cylinders * num_dishes_per_cylinder;
+
+    // these match production CHIME
+    constexpr static const int factor_upchan_out = 16;
+    constexpr static const int downsample_time = 384;
 
     // Parameters
     const int buffer_depth;
@@ -52,11 +57,14 @@ private:
     // Kotekan buffer names
     const std::string voltage_name;
     const std::string frb1_beams_name;
+    const std::string frb2_beams_name;
 
     // Buffers
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage; // (time, freq, pol, ew*ns)
+    // this is internal and can be changed to an NDArrayBuffer
     NDArrayRingBuffer<kotekan::GetType_t<kotekan::cfloat16>, 5>
-        frb1_beams; // (time, freq, pol, ew, ns)
+        frb1_beams;                         // (time, freq, pol, ew, ns)
+    NDArrayRingBuffer<float, 5> frb2_beams; // (ctime, beam, cfreq, time, ufreq)
 
     // pre-computed non-buffer data
     NDArrayBuffer<uint, 2> map;
@@ -116,6 +124,7 @@ cudaCHIMEFRBBeamform::cudaCHIMEFRBBeamform(kotekan::Config& config, const std::s
     // Buffer names
     voltage_name(config.get<std::string>(unique_name, "voltage_name")),
     frb1_beams_name(config.get<std::string>(unique_name, "frb1_beams_name")),
+    frb2_beams_name(config.get<std::string>(unique_name, "frb2_beams_name")),
     // Buffers
     voltage(voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{buffer_depth * num_times, num_frequencies,
@@ -126,6 +135,10 @@ cudaCHIMEFRBBeamform::cudaCHIMEFRBBeamform(kotekan::Config& config, const std::s
                                              num_polarizations, num_cylinders,
                                              num_dishes_per_cylinder},
                std::array<std::string, 5>{"T", "F", "P", "EW", "NS"}, *this),
+    frb2_beams(frb2_beams_name, "frb2",
+               std::array<std::ptrdiff_t, 5>{buffer_depth, num_beams, num_frequencies,
+                                             num_times / downsample_time, factor_upchan_out},
+               std::array<std::string, 5>{"Tc", "B", "Fc", "Tfrb", "Fu"}, *this),
     map(unique_name + "/gpu_mem_map", "index",
         std::array<ptrdiff_t, 2>{num_frequencies, num_dishes_per_cylinder},
         std::array<kotekan::Symbol, 2>{"F", "NS"}, *this),
@@ -139,7 +152,12 @@ cudaCHIMEFRBBeamform::cudaCHIMEFRBBeamform(kotekan::Config& config, const std::s
     tel(Telescope::instance()), first_time(true)
 //
 {
+    // from beam former
     if (num_times % 128 != 0)
+        FATAL_ERROR("num_times % 128 != 0");
+
+    // from upchannelization
+    if (num_times % 384 != 0)
         FATAL_ERROR("num_times % 128 != 0");
 
     if (num_polarizations != 2)
@@ -156,6 +174,7 @@ cudaCHIMEFRBBeamform::cudaCHIMEFRBBeamform(kotekan::Config& config, const std::s
 
     voltage.register_consumer();
     frb1_beams.register_producer();
+    frb2_beams.register_producer();
 
     set_command_type(gpuCommandType::KERNEL);
 }
@@ -187,6 +206,15 @@ int cudaCHIMEFRBBeamform::wait_on_precondition() {
           "elements",
           gpu_frame_id, frb1_beams_written);
 
+    DEBUG("Waiting for frb2_beams output ringbuffer space for frame {:d}...", gpu_frame_id);
+    const std::ptrdiff_t frb2_beams_written = 1; // fake outer time index
+    const int frb2_beams_errcode = frb2_beams.wait_for_writable(frb2_beams_written);
+    if (frb2_beams_errcode < 0)
+        return frb2_beams_errcode;
+    DEBUG("Done waiting for frb2_beams ouput ringbuffer data for frame {:d}; will write {:d} "
+          "elements",
+          gpu_frame_id, frb2_beams_written);
+
     return 0;
 }
 
@@ -199,10 +227,14 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
 
     // TODO: Set these metadata only once
     frb1_beams.set_metadata(voltage.get_metadata());
+    frb2_beams.set_metadata(voltage.get_metadata());
+    // TODO: update frb2 metadata due to time downsampling and frequency upsampling
 
     // There is no poison value
-    // if (poison_buffers)
+    // if (poison_buffers) {
     //    frb1_beams.set_to_poison(0xff);
+    //    frb2_beams.set_to_poison(0xff);
+    // }
 
     // needs metadata and thus access to an actual frame
     if (first_time && instance_num == 0) { // first time and we handle frame 0 of the buffer depth
@@ -249,6 +281,7 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     const kotekan::int4x2_swapped_withoffset_t* const voltage_memory = voltage.get_ndarray().data();
     kotekan::GetType_t<kotekan::cfloat16>* const frb1_beams_memory =
         frb1_beams.get_ndarray().data();
+    float* const frb2_beams_memory = frb2_beams.get_ndarray().data();
     const uint* const map_memory = map.get_ndarray().data();
     const float* const co_memory = co.get_ndarray().data();
     const float* const gains_memory = gains.get_ndarray().data();
@@ -267,40 +300,40 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     assert(Tmin + T <= Tsize);
     const std::ptrdiff_t T_offset = Tmin * voltage.get_ndarray().stride(0);
 
-    const std::ptrdiff_t Tfrb_size = frb1_beams.get_ndarray().extent(0);
-    assert(Tfrb_size % 128 == 0);
+    const std::ptrdiff_t Tfrb1_size = frb1_beams.get_ndarray().extent(0);
+    assert(Tfrb1_size % 128 == 0);
     // Tmin wraps around into actual array index to avoid overflows
-    const std::ptrdiff_t Tfrb_min = frb1_beams.get_read_valid().begin() % Tfrb_size;
-    assert(Tfrb_min % 128 == 0);
-    const std::ptrdiff_t Tfrb = frb1_beams.get_read_valid().size();
-    const std::ptrdiff_t Tfrb_offset = Tmin * frb1_beams.get_ndarray().stride(0);
+    const std::ptrdiff_t Tfrb1_min = frb1_beams.get_read_valid().begin() % Tfrb1_size;
+    assert(Tfrb1_min % 128 == 0);
+    const std::ptrdiff_t Tfrb1 = frb1_beams.get_read_valid().size();
+    const std::ptrdiff_t Tfrb1_offset = Tmin * frb1_beams.get_ndarray().stride(0);
 
-    assert(T == Tfrb);
+    const std::ptrdiff_t Tfrb2_size = frb2_beams.get_ndarray().extent(0);
+    // Tmin wraps around into actual array index to avoid overflows
+    const std::ptrdiff_t Tfrb2_min = frb2_beams.get_read_valid().begin() % Tfrb2_size;
+    const std::ptrdiff_t Tfrb2 = frb2_beams.get_read_valid().size();
+    const std::ptrdiff_t Tfrb2_offset = Tmin * frb2_beams.get_ndarray().stride(0);
+
+    assert(T == Tfrb1);
+    assert(Tfrb2 == 1); // outermost index (frame number)
     // check compatibility of arrays
     assert(voltage.get_ndarray().extent(1) == frb1_beams.get_ndarray().extent(1));           // freq
     assert(voltage.get_ndarray().extent(2) == 2 && frb1_beams.get_ndarray().extent(2) == 2); // pol
     assert(voltage.get_ndarray().extent(3) == num_dishes_per_cylinder * num_cylinders
            && frb1_beams.get_ndarray().extent(3) == num_cylinders
            && frb1_beams.get_ndarray().extent(4) == num_dishes_per_cylinder); // dishes
-
-    const auto& voltage_meta = voltage.get_metadata();
-    const auto& frb1_beams_meta = frb1_beams.get_metadata();
+    assert(frb2_beams.get_ndarray().extent(0) == buffer_depth);
+    assert(frb2_beams.get_ndarray().extent(1) == num_beams);
+    assert(frb2_beams.get_ndarray().extent(2) == num_frequencies);
+    assert(frb2_beams.get_ndarray().extent(3) == num_times / downsample_time);
+    assert(frb2_beams.get_ndarray().extent(4) == factor_upchan_out);
 
     // pirate uses a uint8_t pointer for pairs of 4bit ints
     // pirate uses a float16 pointer for pairs of float16 that form a complex<float16>
     pirate::launch_chime_frb_beamform(
         reinterpret_cast<const uint8_t*>(voltage_memory + T_offset), map_memory, co_memory,
-        reinterpret_cast<__half*>(frb1_beams_memory + Tfrb_offset), gains_memory,
+        reinterpret_cast<__half*>(frb1_beams_memory + Tfrb1_offset), gains_memory,
         static_cast<long>(T), static_cast<long>(num_frequencies), device.getStream(cuda_stream_id));
-#ifdef DEBUGGING
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-#endif
-#if 0
-    n2k::launch_s12_kernel((ulong*)(rfi_S012_memory + S_stride + Trfi_offset),
-                           (const uint8_t*)(voltage_memory + T_offset), T, 0, Tsize,
-                           num_frequencies, num_dishes * num_polarizations, rfi_downsampling_factor,
-                           F_stride, offset_encoded, device.getStream(cuda_stream_id));
-#endif
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
@@ -308,6 +341,22 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     // There is no poison value
     // if (poison_buffers)
     //     frb1_beams.check_for_poison(0xff);
+
+    // we lie to kotekan about not actually also consuming frb1, but since that
+    // should become an internal variable soon anyway...
+
+    pirate::launch_chime_frb_upchan(reinterpret_cast<__half*>(frb1_beams_memory + Tfrb1_offset),
+                                    frb2_beams_memory + Tfrb2_offset, static_cast<long>(Tfrb1),
+                                    static_cast<long>(num_frequencies),
+                                    static_cast<long>(factor_upchan_out),
+                                    device.getStream(cuda_stream_id));
+#ifdef DEBUGGING
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+#endif
+
+    // There is no poison value
+    // if (poison_buffers)
+    //     frb2_beams.check_for_poison(0xff);
 
     return record_end_event();
 }
