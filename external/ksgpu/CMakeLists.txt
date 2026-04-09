@@ -23,12 +23,14 @@ add_custom_command(
 # Define source files and headers
 file(GLOB HFILES "include/ksgpu/*.hpp" "include/*.hpp")
 
-file(GLOB SRCFILES "src_lib/*.cu" "src_lib/*.cpp")
-set_source_files_properties(${SRCFILES} PROPERTIES LANGUAGE CUDA)
-message(STATUS "SRCFILES: ${SRCFILES}")
+file(GLOB CUDASRCFILES "src_lib/*.cu")
+set_source_files_properties(${CUDASRCFILES} PROPERTIES LANGUAGE CUDA)
+file(GLOB CXXSRCFILES "src_lib/*.cpp")
+set_source_files_properties(${CXXSRCFILES} PROPERTIES LANGUAGE CXX)
+message(STATUS "SRCFILES: ${CUDASRCFILES} ${CXXSRCFILES}")
 
 # Add library targets
-add_library(ksgpu ${HFILES} ${SRCFILES})
+add_library(ksgpu ${HFILES} ${CUDASRCFILES} ${CXXSRCFILES})
 
 # Set architecture flags
 set_target_properties(ksgpu PROPERTIES CUDA_ARCHITECTURES "86;89")
@@ -42,6 +44,7 @@ set_property(TARGET ksgpu PROPERTY CUDA_STANDARD 17)
 set(CMAKE_CUDA_FLAGS
     "${CMAKE_CUDA_FLAGS} -m64 -O3 --compiler-options -Wall,-fPIC --forward-unknown-to-host-compiler"
 )
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -O3 -Wall -fPIC")
 
 # Include directories
 target_include_directories(ksgpu PUBLIC include/.)
@@ -49,5 +52,6 @@ target_include_directories(ksgpu PUBLIC .)
 
 # workarounds around issues with ksgpu
 set_source_files_properties(
-    src_lib/mem_utils.cpp # keep ksgpu untouched, including stuff thtat generates warnings
+    src_lib/mem_utils.cpp src_lib/assert_arrays_equal.cpp
+    # keep ksgpu untouched, including stuff thtat generates warnings
     PROPERTIES COMPILE_FLAGS "-Wno-error=unused-parameter")
