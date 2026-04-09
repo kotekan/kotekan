@@ -473,6 +473,7 @@ __global__ void sk_kernel(
 	// RFI mask is in (bit positions % 4 == 1), see above.
 	int bit = 4 * (t*Wf + f) + 1;
 	uint val = (shmem_rfi[laneId] & (1 << bit)) ? 0xffffffffU : 0;
+        val = 0xffffffffU;
 
 	// Index in out_rfimask (shape (F,T*M) with stride rfimask_fstride).
 	long out_ix = (f+fb)*long(rfimask_fstride) + (t+tb)*long(M) + m;
