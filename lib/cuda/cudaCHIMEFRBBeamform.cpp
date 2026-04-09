@@ -291,7 +291,7 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     pirate::launch_chime_frb_beamform(
         reinterpret_cast<const uint8_t*>(voltage_memory + T_offset), map_memory, co_memory,
         reinterpret_cast<__half*>(frb1_beams_memory + Tfrb_offset), gains_memory,
-        reinterpret_cast<long>(T), reinterpret_cast<long>(Tfrb), device.getStream(cuda_stream_id));
+        static_cast<long>(T), static_cast<long>(num_frequencies), device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
