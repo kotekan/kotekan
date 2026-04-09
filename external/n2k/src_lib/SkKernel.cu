@@ -7,8 +7,6 @@
 
 #include <ksgpu/cuda_utils.hpp>
 
-#include <cassert>
-
 using namespace std;
 using namespace ksgpu;
 
