@@ -168,11 +168,11 @@ void EigenN2Iter::main_thread() {
         EigConvergenceStats stats;
 
         // Get input visibilities. We assume the shape of these doesn't change.
-        INFO("EigenN2Iter waiting for input frame...");
+        DEBUG("EigenN2Iter waiting for input frame...");
         if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
-        INFO("EigenN2Iter got input frame.");
+        DEBUG("EigenN2Iter got input frame.");
         N2FrameView input_frame(in_buf, input_frame_id);
 
         // Check that we have the full triangle
