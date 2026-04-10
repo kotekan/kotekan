@@ -36,6 +36,7 @@ CorrelatorParams::CorrelatorParams(int nstations_, int nfreq_) :
     
 Correlator::Correlator(const CorrelatorParams &params_) : params(params_)
 {
+    CUDA_CALL(cudaGetDevice(&this->cuda_device));
     this->precomputed_offsets = precompute_offsets(params);
     this->kernel = get_kernel(params.nstations, params.nfreq);
 }
@@ -43,6 +44,12 @@ Correlator::Correlator(const CorrelatorParams &params_) : params(params_)
 
 void Correlator::launch(int *vis_out, const int8_t *e_in, const uint *rfimask, int nt_outer, int nt_inner, cudaStream_t stream, bool sync) const
 {
+    int current_device;
+    CUDA_CALL(cudaGetDevice(&current_device));
+
+    if (current_device != this->cuda_device)
+        throw runtime_error("n2k::Correlator::launch: current cuda device (=" + to_str(current_device) + ") does not match device at construction time (=" + to_str(this->cuda_device) + ")");
+
     assert(nt_outer > 0);
     assert(nt_inner > 0);
     assert(vis_out != nullptr);
