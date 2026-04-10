@@ -147,8 +147,8 @@ public:
     //  - We define the visibility matrix as V_{ij} = sum_t E_{it} E_{jt}^*, with the complex
     //    conjugate on the second factor. (This would be trivial to change.)
     //
-    //  - The kernel will segfault if run on a GPU which is not the cuda default device.
-    //    This will be easy to fix later.
+    //  - The kernel must be launched on the same cuda device that was active when the
+    //    Correlator was constructed. The launch() method checks this and throws if not.
     //
     //  - The same Correlator object can be used to launch multiple kernels concurrently (either in
     //    serial using the same cuda stream, or in parallel using different cuda streams).
@@ -182,6 +182,8 @@ public:
     using kernel_t = void (*)(int *, const int8_t *, const uint *, const int *, int, int);
 
 protected:
+    int cuda_device;
+
     // This small (currently 27 KB) array will persist in GPU memory for the lifetime of the Correlator object.
     // Note that the shared_ptr destructor will call cudaFree().
     std::shared_ptr<int> precomputed_offsets;
