@@ -182,6 +182,8 @@ public:
     using kernel_t = void (*)(int *, const int8_t *, const uint *, const int *, int, int);
 
 protected:
+    int cuda_device;
+
     // This small (currently 27 KB) array will persist in GPU memory for the lifetime of the Correlator object.
     // Note that the shared_ptr destructor will call cudaFree().
     std::shared_ptr<int> precomputed_offsets;

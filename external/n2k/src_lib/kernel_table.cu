@@ -22,7 +22,6 @@ struct KernelTableEntry
     int nfreq = 0;
     
     Correlator::kernel_t kernel = nullptr;
-    mutable bool shmem_attr_set = false;
 };
 
 
@@ -47,14 +46,15 @@ Correlator::kernel_t get_kernel(int nstations, int nfreq)
 	// Reference for cudaFuncSetAttribute()
 	// https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__HIGHLEVEL.html#group__CUDART__HIGHLEVEL_1g422642bfa0c035a590e4c43ff7c11f8d
     
-	if (!e.shmem_attr_set) {
-	    CUDA_CALL(cudaFuncSetAttribute(
-	        e.kernel, 
-		cudaFuncAttributeMaxDynamicSharedMemorySize,
-		CorrelatorParams::shmem_nbytes
-	    ));
-	    e.shmem_attr_set = true;
-	}
+
+
+    // Note that we now call cudaFuncSetAttribute() unconditionally (i.e. in every call to get_kernel())
+    // to make sure that it gets called at least once per cuda device.
+	CUDA_CALL(cudaFuncSetAttribute(
+            e.kernel, 
+            cudaFuncAttributeMaxDynamicSharedMemorySize,
+            CorrelatorParams::shmem_nbytes
+    ));
 
 	return e.kernel;
     }
