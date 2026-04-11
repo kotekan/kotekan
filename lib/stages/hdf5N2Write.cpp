@@ -1,10 +1,13 @@
 #include "hdf5N2Write.hpp"
 
 #include "H5Support.hpp"
-#include "Telescope.hpp" // for Telescope
-#include "util.h"        // for mkdir_p
+#include "Telescope.hpp"  // for Telescope
+#include "restClient.hpp" // for restClient
+#include "util.h"         // for mkdir_p
 
 #include "json.hpp"
+
+#include <event2/http.h> // for evhttp_uri_parse
 
 #include <N2FrameView.hpp>
 #include <N2Metadata.hpp>
@@ -59,6 +62,70 @@ static size_t hash_file_contents(const std::string& path) {
         return 0;
     std::string contents((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
     return std::hash<std::string>{}(contents);
+}
+
+/// Fetch `url` over plain HTTP via kotekan's built-in restClient and write the
+/// response body verbatim to `dest_path`. FATAL on any parse/fetch/write error.
+/// Intended for small files (bytes land in a std::string before hitting disk).
+static void download_url_to_file(const std::string& url, const std::string& dest_path) {
+    struct evhttp_uri* uri = evhttp_uri_parse(url.c_str());
+    if (!uri) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: could not parse URL '{}'", url);
+        return;
+    }
+
+    const char* scheme = evhttp_uri_get_scheme(uri);
+    if (!scheme || std::string(scheme) != "http") {
+        evhttp_uri_free(uri);
+        FATAL_ERROR_NON_OO(
+            "hdf5N2Write: baseband_gain_url must use plain http:// (got '{}')", url);
+        return;
+    }
+
+    const char* host_c = evhttp_uri_get_host(uri);
+    if (!host_c || host_c[0] == '\0') {
+        evhttp_uri_free(uri);
+        FATAL_ERROR_NON_OO("hdf5N2Write: baseband_gain_url has no host: '{}'", url);
+        return;
+    }
+    const std::string host = host_c;
+
+    int port = evhttp_uri_get_port(uri);
+    if (port <= 0)
+        port = 80;
+
+    const char* path_c = evhttp_uri_get_path(uri);
+    std::string path = (path_c && path_c[0] != '\0') ? path_c : "/";
+    const char* query_c = evhttp_uri_get_query(uri);
+    if (query_c && query_c[0] != '\0') {
+        path += "?";
+        path += query_c;
+    }
+    evhttp_uri_free(uri);
+
+    INFO_NON_OO("hdf5N2Write: downloading gains file from http://{}:{}{}", host, port, path);
+    // GET (empty JSON body). No auth, no custom headers — matches endpoint constraints.
+    restClient::restReply reply = restClient::instance().make_request_blocking(
+        path, nlohmann::json::object(), host, static_cast<unsigned short>(port));
+    if (!reply.first) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: failed to fetch gains file from '{}'", url);
+        return;
+    }
+
+    std::ofstream ofs(dest_path, std::ios::binary | std::ios::trunc);
+    if (!ofs) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: could not open '{}' for writing downloaded gains file",
+                           dest_path);
+        return;
+    }
+    ofs.write(reply.second.data(), static_cast<std::streamsize>(reply.second.size()));
+    if (!ofs) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: failed to write {} bytes to '{}'",
+                           reply.second.size(), dest_path);
+        return;
+    }
+    ofs.close();
+    INFO_NON_OO("hdf5N2Write: wrote {} bytes to '{}'", reply.second.size(), dest_path);
 }
 
 /// Generate an acquisition base directory path: base_dir/acq_YYYYMMDD_HHMMSS_NNNNNNNNN
@@ -813,6 +880,7 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
           }),
     _base_dir(make_acq_base_dir(config.get<std::string>(unique_name, "base_dir"))),
     _baseband_gain_file(config.get_default<std::string>(unique_name, "baseband_gain_file", "")),
+    _baseband_gain_url(config.get_default<std::string>(unique_name, "baseband_gain_url", "")),
     _baseband_gain_update_idx(config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)),
     _num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),
     _compression(config.get_default<std::string>(unique_name, "compression", "none")),
@@ -847,6 +915,15 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
         "kotekan_hdf5N2Write_unfinalized_file", unique_name, {"abs_file_idx", "partial_path"})) {
 
     _buffer->register_consumer(unique_name);
+
+    // baseband_gain_file and baseband_gain_url are mutually exclusive. If the URL is
+    // set, the actual local path is filled in from main_thread() after the .partial
+    // directory exists.
+    if (!_baseband_gain_file.empty() && !_baseband_gain_url.empty()) {
+        FATAL_ERROR("baseband_gain_file and baseband_gain_url are mutually exclusive; set only "
+                    "one of them (file='{}', url='{}')",
+                    _baseband_gain_file, _baseband_gain_url);
+    }
 
     // Validate file window configuration
     if (_num_file_t == 0) {
@@ -1052,6 +1129,15 @@ void hdf5N2Write::main_thread() {
         if (mkdir_p(partial_dir.c_str(), 0777) != 0) {
             const char* const msg = strerror(errno);
             FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", partial_dir.c_str(), msg);
+        }
+
+        // If a URL was provided instead of a local path, fetch the gains file
+        // once into the partial dir and point _baseband_gain_file at the cached
+        // copy. From here on the existing local-file code path is used.
+        if (!_baseband_gain_url.empty()) {
+            const std::string cached = partial_dir + "/baseband_gains.h5";
+            download_url_to_file(_baseband_gain_url, cached);
+            _baseband_gain_file = cached;
         }
     }
 

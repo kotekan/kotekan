@@ -1,11 +1,11 @@
 #include "../include/n2k/pl_kernels.hpp"
 #include "../include/n2k/internals/internals.hpp"
 
-#include <gputils/cuda_utils.hpp>
-#include <gputils/string_utils.hpp>
+#include <ksgpu/cuda_utils.hpp>
+#include <ksgpu/string_utils.hpp>
 
 using namespace std;
-using namespace gputils;
+using namespace ksgpu;
 
 namespace n2k {
 #if 0
@@ -142,7 +142,7 @@ void launch_pl_mask_expander(ulong *pl_out, const ulong *pl_in,
 	throw runtime_error("launch_pl_mask_expander: 32-bit overflow");
     
     dim3 nblocks, nthreads;
-    gputils::assign_kernel_dims(nblocks, nthreads, N, Fout, M);  // x <-> n, y <-> f, z <-> m
+    ksgpu::assign_kernel_dims(nblocks, nthreads, N, Fout, M);  // x <-> n, y <-> f, z <-> m
 
     pl_mask_expand_kernel <<< nblocks, nthreads, 0, stream >>>
 	((uint *) pl_out, (const uint *) pl_in,

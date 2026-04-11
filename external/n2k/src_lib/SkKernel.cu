@@ -5,10 +5,10 @@
 #include "../include/n2k/internals/interpolation.hpp"
 #include "../include/n2k/internals/sk_globals.hpp"
 
-#include <gputils/cuda_utils.hpp>
+#include <ksgpu/cuda_utils.hpp>
 
 using namespace std;
-using namespace gputils;
+using namespace ksgpu;
 
 
 namespace n2k {
