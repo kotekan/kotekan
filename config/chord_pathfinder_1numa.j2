@@ -7,7 +7,7 @@
 # num_output_frames: fully accumulated N2 frames per frequency that should reach hdf5N2Write
 {% set num_output_frames = 100 %}
 
-# num_local_freq: number of contiguous frequency IDs to simulate on this GPU;
+# num_local_freq: number of frequency IDs to simulate on this GPU;
 #    must be divisible by 4 because pl_mask shapes use num_local_freq/4.
 {% set num_local_freq = 384 %}
 
@@ -142,7 +142,7 @@ telescope:
 
     require_gps: True
     query_gps: True
-    gps_host: "crs-control"
+    gps_host: "chive"
     gps_port: 54321
     gps_endpoint: "/get-frame0-time"
     auto_correct_gps_week_rollover: True
@@ -151,19 +151,7 @@ telescope:
 
 earth_rotation_data:
     kotekan_update_endpoint: json
-    earth_orientation_parameter_table: [
-        {"time_inst_ns": 1773619200000000000, "delta_UT1_inst": 0.0618436, "x_pm": 0.103666, "y_pm": 0.397414},
-        {"time_inst_ns": 1773705600000000000, "delta_UT1_inst": 0.0611428, "x_pm": 0.103835, "y_pm": 0.398062},
-        {"time_inst_ns": 1773792000000000000, "delta_UT1_inst": 0.0602311, "x_pm": 0.104082, "y_pm": 0.398709},
-        {"time_inst_ns": 1773878400000000000, "delta_UT1_inst": 0.0591636, "x_pm": 0.104346, "y_pm": 0.399345},
-        {"time_inst_ns": 1773964800000000000, "delta_UT1_inst": 0.0580483, "x_pm": 0.10461, "y_pm": 0.399997},
-        {"time_inst_ns": 1774051200000000000, "delta_UT1_inst": 0.0570235, "x_pm": 0.104915, "y_pm": 0.400661},
-        {"time_inst_ns": 1774137600000000000, "delta_UT1_inst": 0.056187, "x_pm": 0.105272, "y_pm": 0.401317},
-        {"time_inst_ns": 1774224000000000000, "delta_UT1_inst": 0.0555814, "x_pm": 0.105657, "y_pm": 0.401957},
-        {"time_inst_ns": 1774310400000000000, "delta_UT1_inst": 0.0552137, "x_pm": 0.106069, "y_pm": 0.402599},
-        {"time_inst_ns": 1774396800000000000, "delta_UT1_inst": 0.0549834, "x_pm": 0.10652, "y_pm": 0.403244},
-        {"time_inst_ns": 1774483200000000000, "delta_UT1_inst": 0.0548208, "x_pm": 0.107002, "y_pm": 0.403878}
-    ]
+    earth_orientation_parameter_table: []
 
 # Pools
 main_pool:
@@ -564,9 +552,9 @@ hdf5_N2_write_eigen:
     log_level: DEBUG
     kotekan_stage: hdf5N2Write
     cpu_affinity: [13]
-    in_buf: n2_eigen_buffer
+    in_buf: n2_subset_buffer
     base_dir: /mnt/cs00/data/kotekan_vis_files/
-    baseband_gain_file: /mnt/cs00/data/chord_pathfinder_f_engine_data/data/digital_gains/20260312T191610Z_chord_pathfinder_digitalgain/00000000.h5
+    baseband_gain_file: /mnt/cs00/data/chord_pathfinder_f_engine_data/data/digital_gains/20260402T193003Z_chord_pathfinder_digitalgain/00000000.h5
     file_name: pipeline_eigen
     prefix_hostname: false
     use_bitshuffle: true
