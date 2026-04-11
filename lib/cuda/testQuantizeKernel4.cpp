@@ -159,7 +159,7 @@ public:
                                         beam, expected_offset, offset, scale_may_collapse);
 
                         // Check absolute error of scale
-                        bool scale_is_good = abs(scale - expected_scale) <= epsilon;
+                        bool scale_is_good = fabs(scale - expected_scale) <= epsilon;
                         // If the scale is close to zero then don't worry about the scale at all
                         if (scale_may_collapse)
                             scale_is_good = true;

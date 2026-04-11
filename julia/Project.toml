@@ -15,8 +15,8 @@ YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 
 [compat]
 CUDA = "5.0.0"
-CUDASIMDTypes = "1.10.1"
-IndexSpaces = "1.9.0"
+CUDASIMDTypes = "1.13.0"
+IndexSpaces = "1.10.1"
 JuliaFormatter = "1.0.42"
 Mustache = "1.0.18"
 StaticArrays = "1.9.7"

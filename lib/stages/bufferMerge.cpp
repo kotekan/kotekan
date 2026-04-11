@@ -116,6 +116,14 @@ void bufferMerge::main_thread() {
                 // Move the metadata over to the new frame
                 in_buf->pass_metadata(in_frame_id, out_buf, out_frame_id);
 
+                // Link frame description
+                const auto in_frame_desc = in_buf->get_frame_description();
+                if (in_frame_desc) {
+                    out_buf->set_frame_desc(in_frame_desc);
+                } else {
+                    assert(!out_buf->get_frame_description());
+                }
+
                 // Copy or swap the frame.
                 if (in_buf->get_num_consumers() > 1) {
                     std::memcpy(output_frame, in_buf->frames[in_frame_id], in_buf->frame_size);

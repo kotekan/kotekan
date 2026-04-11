@@ -31,7 +31,7 @@ telescope:
     dish_vert_axis: [0.0, 0.0, 1.0]
     dish_coelev_deg: 0.0
 
-    eop_updatable_config: "/earth_rotation_data"
+    require_eop: false
 
     dish_separation_x_m: 6.3
     dish_separation_y_m: 8.5
@@ -61,11 +61,6 @@ telescope:
 {%     endif %}
 {%   endfor %}
 {% endfor %}
-
-earth_rotation_data:
-    kotekan_update_endpoint: json
-    earth_orientation_parameter_table:
-    - {time_inst_ns: 0, delta_UT1_inst: 0.0, x_pm: 0.0, y_pm: 0.0}
 
 ################################################################################
 

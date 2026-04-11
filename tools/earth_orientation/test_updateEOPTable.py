@@ -62,10 +62,10 @@ if __name__ == "__main__":
 
     eop_table = eop_utils.build_EOP_table(ts, t0_ns, iers)
 
-    t_ns = np.array([eop["time_inst_ns"] for eop in eop_table])
+    t_ns = np.array([eop["t_inst_ns"] for eop in eop_table])
     dut1 = np.array([eop["delta_UT1_inst"] for eop in eop_table])
-    x = np.array([eop["x_pm"] for eop in eop_table])
-    y = np.array([eop["y_pm"] for eop in eop_table])
+    x = np.array([eop["xp_as"] for eop in eop_table])
+    y = np.array([eop["yp_as"] for eop in eop_table])
 
     fig, ax = plt.subplots(3, 1, figsize=(12, 9))
 

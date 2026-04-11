@@ -73,6 +73,8 @@
  * @conf  num_ev_conv      UInt. Test only the top `num_ev_conv` eigenpairs for convergence.
  * @conf  krylov           UInt, default 2. Size of the Krylov basis to use.
  * @conf  subspace         UInt, default 3. Number of subspace iteration substeps.
+ * @conf  num_blaze_workers UInt, default 0. If greater than 0 limit number of
+ *                          blaze worker threads (kotekan wide)
  *
  * @par Metrics
  * @metric kotekan_eigenN2iter_comp_time_seconds
@@ -121,6 +123,9 @@ private:
     const size_t _max_iterations;
     const size_t _krylov;
     const size_t _subspace;
+
+    /// Blaze number of threads
+    uint32_t _num_blaze_workers;
 
     /// Parameters for masking the matrix
     std::vector<size_t> _exclude_inputs;

@@ -233,6 +233,7 @@ struct CompareCTypes {
                                                        {"type", "ArrayDish"},
                                                        {"label", "D01"}}});
     telescope["eop_updatable_config"] = "/earth_rotation_data";
+    telescope["require_eop"] = false;
     telescope["grid_x_axis"] = {1.0, 0.0, 0.0};
     telescope["grid_y_axis"] = {0.0, 1.0, 0.0};
     telescope["dish_elev_axis"] = {1.0, 0.0, 0.0};
@@ -242,9 +243,7 @@ struct CompareCTypes {
 
     nlohmann::json eop_update;
     eop_update["kotekan_update_endpoint"] = "json";
-    eop_update["earth_orientation_parameter_table"] = nlohmann::json::array(
-        {{{"time_inst_ns", 0}, {"delta_UT1_inst", 0.0}, {"x_pm", 0.0}, {"y_pm", 0.0}},
-         {{"time_inst_ns", 1'000'000}, {"delta_UT1_inst", 0.0}, {"x_pm", 0.0}, {"y_pm", 0.0}}});
+    eop_update["earth_orientation_parameter_table"] = nlohmann::json::array();
 
     auto set_path = [&](const std::string& key, const nlohmann::json& val) {
         cfg[key] = val;
@@ -353,8 +352,8 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     auto meta = get_N2_metadata(buf, frame_id);
     BOOST_REQUIRE(meta);
     meta->abs_time_idx = abs_time_idx;
-    meta->time_center_eop.t_ut1 = static_cast<int64_t>(frame_start_time_ns);
-    meta->bin_eop.t_ut1 = static_cast<int64_t>(frame_start_time_ns);
+    meta->time_center_eop.t_ut1_ns = get_UT1_from_time_ns(frame_start_time_ns, 0.0);
+    meta->bin_eop.t_ut1_ns = get_UT1_from_time_ns(frame_start_time_ns, 0.0);
 }
 
 #endif // TEST_UTILS_HPP

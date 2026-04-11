@@ -177,7 +177,7 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         // for the port reset to complete, which takes a lot longer than the prefetching.
         // It is possible there might be some way to prevent this reset from happening,
         // but for now we just start well into the future.
-        uint64_t future_seq = seq_num + 3000000; // About 15 second in the future.
+        uint64_t future_seq = seq_num + 6000000; // About 30 second in the future.
         uint64_t start_seq = future_seq - (future_seq % time_samples_per_frame);
         prefetch_service->start(start_seq, stream_ids_expected);
         first_run = false;

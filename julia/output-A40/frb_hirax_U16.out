@@ -6,13 +6,1304 @@ CHORD FRB beamformer
 Compiling kernel...
 Allocating input data...
 Setting up input data...
-dish = 250
-freq = 118
-polr = 1
-time = 597
-Wvalue = -0.07517732f0 + 0.36116815f0im
-Evalue = 4 - 5im
-dstime = 24
+Tbarmin = 0
+Tbarmax = 1024
+Fbar_in_min = 0
+Fbar_in_max = 512
+Ttildemin = 0
+Ttildemax = 42
+Fbar_out_min = 0
+Fbar_out_max = 512
+num_threads = 32
+num_warps = 16
+num_blocks = 512
+dish_grid = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0), (8, 0), (9, 0), (10, 0), (11, 0), (12, 0), (13, 0), (14, 0), (15, 0), (0, 1), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (8, 1), (9, 1), (10, 1), (11, 1), (12, 1), (13, 1), (14, 1), (15, 1), (0, 2), (1, 2), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 2), (8, 2), (9, 2), (10, 2), (11, 2), (12, 2), (13, 2), (14, 2), (15, 2), (0, 3), (1, 3), (2, 3), (3, 3), (4, 3), (5, 3), (6, 3), (7, 3), (8, 3), (9, 3), (10, 3), (11, 3), (12, 3), (13, 3), (14, 3), (15, 3), (0, 4), (1, 4), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4), (7, 4), (8, 4), (9, 4), (10, 4), (11, 4), (12, 4), (13, 4), (14, 4), (15, 4), (0, 5), (1, 5), (2, 5), (3, 5), (4, 5), (5, 5), (6, 5), (7, 5), (8, 5), (9, 5), (10, 5), (11, 5), (12, 5), (13, 5), (14, 5), (15, 5), (0, 6), (1, 6), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (8, 6), (9, 6), (10, 6), (11, 6), (12, 6), (13, 6), (14, 6), (15, 6), (0, 7), (1, 7), (2, 7), (3, 7), (4, 7), (5, 7), (6, 7), (7, 7), (8, 7), (9, 7), (10, 7), (11, 7), (12, 7), (13, 7), (14, 7), (15, 7), (0, 8), (1, 8), (2, 8), (3, 8), (4, 8), (5, 8), (6, 8), (7, 8), (8, 8), (9, 8), (10, 8), (11, 8), (12, 8), (13, 8), (14, 8), (15, 8), (0, 9), (1, 9), (2, 9), (3, 9), (4, 9), (5, 9), (6, 9), (7, 9), (8, 9), (9, 9), (10, 9), (11, 9), (12, 9), (13, 9), (14, 9), (15, 9), (0, 10), (1, 10), (2, 10), (3, 10), (4, 10), (5, 10), (6, 10), (7, 10), (8, 10), (9, 10), (10, 10), (11, 10), (12, 10), (13, 10), (14, 10), (15, 10), (0, 11), (1, 11), (2, 11), (3, 11), (4, 11), (5, 11), (6, 11), (7, 11), (8, 11), (9, 11), (10, 11), (11, 11), (12, 11), (13, 11), (14, 11), (15, 11), (0, 12), (1, 12), (2, 12), (3, 12), (4, 12), (5, 12), (6, 12), (7, 12), (8, 12), (9, 12), (10, 12), (11, 12), (12, 12), (13, 12), (14, 12), (15, 12), (0, 13), (1, 13), (2, 13), (3, 13), (4, 13), (5, 13), (6, 13), (7, 13), (8, 13), (9, 13), (10, 13), (11, 13), (12, 13), (13, 13), (14, 13), (15, 13), (0, 14), (1, 14), (2, 14), (3, 14), (4, 14), (5, 14), (6, 14), (7, 14), (8, 14), (9, 14), (10, 14), (11, 14), (12, 14), (13, 14), (14, 14), (15, 14), (0, 15), (1, 15), (2, 15), (3, 15), (4, 15), (5, 15), (6, 15), (7, 15), (8, 15), (9, 15), (10, 15), (11, 15), (12, 15), (13, 15), (14, 15), (15, 15)]
+freq = 207
+polr = 0
+time = 3531
+Fvalue = -1.1594405f0 - 1.8685707f0im
+Evalue = -1 - 2im
+dish=0 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=1 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=2 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=3 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=4 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=5 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=6 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=7 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=8 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=9 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=10 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=11 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=12 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=13 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=14 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=15 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=16 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=17 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=18 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=19 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=20 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=21 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=22 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=23 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=24 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=25 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=26 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=27 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=28 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=29 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=30 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=31 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=32 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=33 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=34 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=35 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=36 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=37 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=38 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=39 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=40 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=41 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=42 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=43 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=44 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=45 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=46 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=47 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=48 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=49 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=50 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=51 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=52 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=53 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=54 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=55 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=56 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=57 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=58 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=59 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=60 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=61 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=62 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=63 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=64 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=65 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=66 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=67 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=68 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=69 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=70 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=71 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=72 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=73 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=74 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=75 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=76 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=77 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=78 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=79 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=80 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=81 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=82 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=83 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=84 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=85 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=86 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=87 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=88 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=89 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=90 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=91 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=92 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=93 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=94 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=95 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=96 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=97 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=98 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=99 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=100 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=101 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=102 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=103 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=104 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=105 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=106 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=107 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=108 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=109 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=110 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=111 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=112 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=113 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=114 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=115 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=116 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=117 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=118 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=119 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=120 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=121 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=122 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=123 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=124 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=125 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=126 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=127 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=128 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=129 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=130 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=131 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=132 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=133 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=134 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=135 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=136 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=137 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=138 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=139 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=140 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=141 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=142 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=143 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=144 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=145 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=146 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=147 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=148 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=149 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=150 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=151 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=152 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=153 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=154 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=155 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=156 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=157 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=158 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=159 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=160 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=161 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=162 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=163 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=164 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=165 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=166 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=167 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=168 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=169 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=170 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=171 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=172 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=173 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=174 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=175 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=176 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=177 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=178 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=179 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=180 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=181 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=182 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=183 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=184 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=185 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=186 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=187 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=188 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=189 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=190 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=191 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=192 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=193 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=194 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=195 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=196 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=197 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=198 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=199 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=200 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=201 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=202 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=203 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=204 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=205 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=206 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=207 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=208 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=209 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=210 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=211 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=212 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=213 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=214 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=215 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=216 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=217 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=218 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=219 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=220 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=221 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=222 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=223 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=224 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=225 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=226 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=227 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=228 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=229 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=230 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=231 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=232 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=233 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=234 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=235 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=236 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=237 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=238 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=239 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=240 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=241 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=242 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=243 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=244 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=245 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=246 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=247 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=248 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=249 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=250 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=251 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=252 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=253 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=254 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=255 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dstime = 147
+beamp=0 beamq=0 I=6.666666666666666
+beamp=1 beamq=0 I=2.7105954603863553
+beamp=2 beamq=0 I=0.0
+beamp=3 beamq=0 I=0.30904415577249394
+beamp=4 beamq=0 I=0.0
+beamp=5 beamq=0 I=0.1171913733440529
+beamp=6 beamq=0 I=0.0
+beamp=7 beamq=0 I=0.064707049975213
+beamp=8 beamq=0 I=0.0
+beamp=9 beamq=0 I=0.04358108703778914
+beamp=10 beamq=0 I=0.0
+beamp=11 beamq=0 I=0.03348182895960246
+beamp=12 beamq=0 I=0.0
+beamp=13 beamq=0 I=0.028438001370539125
+beamp=14 beamq=0 I=0.0
+beamp=15 beamq=0 I=0.026294285464560176
+beamp=16 beamq=0 I=0.0
+beamp=17 beamq=0 I=0.026294285464560176
+beamp=18 beamq=0 I=0.0
+beamp=19 beamq=0 I=0.028438001370539125
+beamp=20 beamq=0 I=0.0
+beamp=21 beamq=0 I=0.03348182895960246
+beamp=22 beamq=0 I=0.0
+beamp=23 beamq=0 I=0.04358108703778914
+beamp=24 beamq=0 I=0.0
+beamp=25 beamq=0 I=0.064707049975213
+beamp=26 beamq=0 I=0.0
+beamp=27 beamq=0 I=0.1171913733440529
+beamp=28 beamq=0 I=0.0
+beamp=29 beamq=0 I=0.30904415577249394
+beamp=30 beamq=0 I=0.0
+beamp=31 beamq=0 I=2.7105954603863553
+beamp=0 beamq=1 I=2.7105954603863553
+beamp=1 beamq=1 I=1.1020991893973906
+beamp=2 beamq=1 I=0.0
+beamp=3 beamq=1 I=0.12565405670696692
+beamp=4 beamq=1 I=0.0
+beamp=5 beamq=1 I=0.0476487594648466
+beamp=6 beamq=1 I=0.0
+beamp=7 beamq=1 I=0.02630919653562547
+beamp=8 beamq=1 I=0.0
+beamp=9 beamq=1 I=0.017719603805617636
+beamp=10 beamq=1 I=0.0
+beamp=11 beamq=1 I=0.013613353131934944
+beamp=12 beamq=1 I=0.0
+beamp=13 beamq=1 I=0.011562587325439364
+beamp=14 beamq=1 I=0.0
+beamp=15 beamq=1 I=0.010690975622150956
+beamp=16 beamq=1 I=0.0
+beamp=17 beamq=1 I=0.01069097551730932
+beamp=18 beamq=1 I=0.0
+beamp=19 beamq=1 I=0.01156258704929819
+beamp=20 beamq=1 I=0.0
+beamp=21 beamq=1 I=0.01361335272282349
+beamp=22 beamq=1 I=0.0
+beamp=23 beamq=1 I=0.017719603615536973
+beamp=24 beamq=1 I=0.0
+beamp=25 beamq=1 I=0.026309196737522696
+beamp=26 beamq=1 I=0.0
+beamp=27 beamq=1 I=0.04764875932896868
+beamp=28 beamq=1 I=0.0
+beamp=29 beamq=1 I=0.12565405694426457
+beamp=30 beamq=1 I=0.0
+beamp=31 beamq=1 I=1.102099189924732
+beamp=0 beamq=2 I=0.0
+beamp=1 beamq=2 I=0.0
+beamp=2 beamq=2 I=0.0
+beamp=3 beamq=2 I=0.0
+beamp=4 beamq=2 I=0.0
+beamp=5 beamq=2 I=0.0
+beamp=6 beamq=2 I=0.0
+beamp=7 beamq=2 I=0.0
+beamp=8 beamq=2 I=0.0
+beamp=9 beamq=2 I=0.0
+beamp=10 beamq=2 I=0.0
+beamp=11 beamq=2 I=0.0
+beamp=12 beamq=2 I=0.0
+beamp=13 beamq=2 I=0.0
+beamp=14 beamq=2 I=0.0
+beamp=15 beamq=2 I=0.0
+beamp=16 beamq=2 I=0.0
+beamp=17 beamq=2 I=0.0
+beamp=18 beamq=2 I=0.0
+beamp=19 beamq=2 I=0.0
+beamp=20 beamq=2 I=0.0
+beamp=21 beamq=2 I=0.0
+beamp=22 beamq=2 I=0.0
+beamp=23 beamq=2 I=0.0
+beamp=24 beamq=2 I=0.0
+beamp=25 beamq=2 I=0.0
+beamp=26 beamq=2 I=0.0
+beamp=27 beamq=2 I=0.0
+beamp=28 beamq=2 I=0.0
+beamp=29 beamq=2 I=0.0
+beamp=30 beamq=2 I=0.0
+beamp=31 beamq=2 I=0.0
+beamp=0 beamq=3 I=0.30904415577249394
+beamp=1 beamq=3 I=0.12565405670696692
+beamp=2 beamq=3 I=0.0
+beamp=3 beamq=3 I=0.014326244572456398
+beamp=4 beamq=3 I=0.0
+beamp=5 beamq=3 I=0.005432596338554169
+beamp=6 beamq=3 I=0.0
+beamp=7 beamq=3 I=0.0029996004706486154
+beamp=8 beamq=3 I=0.0
+beamp=9 beamq=3 I=0.0020202720404762487
+beamp=10 beamq=3 I=0.0
+beamp=11 beamq=3 I=0.0015521044814787264
+beamp=12 beamq=3 I=0.0
+beamp=13 beamq=3 I=0.001318289718812289
+beamp=14 beamq=3 I=0.0
+beamp=15 beamq=3 I=0.001218914289855775
+beamp=16 beamq=3 I=0.0
+beamp=17 beamq=3 I=0.0012189142842276614
+beamp=18 beamq=3 I=0.0
+beamp=19 beamq=3 I=0.0013182896338676568
+beamp=20 beamq=3 I=0.0
+beamp=21 beamq=3 I=0.0015521043418490876
+beamp=22 beamq=3 I=0.0
+beamp=23 beamq=3 I=0.0020202720437482724
+beamp=24 beamq=3 I=0.0
+beamp=25 beamq=3 I=0.0029996005540668413
+beamp=26 beamq=3 I=0.0
+beamp=27 beamq=3 I=0.005432596331863941
+beamp=28 beamq=3 I=0.0
+beamp=29 beamq=3 I=0.014326244783230736
+beamp=30 beamq=3 I=0.0
+beamp=31 beamq=3 I=0.12565405694426457
+beamp=0 beamq=4 I=0.0
+beamp=1 beamq=4 I=0.0
+beamp=2 beamq=4 I=0.0
+beamp=3 beamq=4 I=0.0
+beamp=4 beamq=4 I=0.0
+beamp=5 beamq=4 I=0.0
+beamp=6 beamq=4 I=0.0
+beamp=7 beamq=4 I=0.0
+beamp=8 beamq=4 I=0.0
+beamp=9 beamq=4 I=0.0
+beamp=10 beamq=4 I=0.0
+beamp=11 beamq=4 I=0.0
+beamp=12 beamq=4 I=0.0
+beamp=13 beamq=4 I=0.0
+beamp=14 beamq=4 I=0.0
+beamp=15 beamq=4 I=0.0
+beamp=16 beamq=4 I=0.0
+beamp=17 beamq=4 I=0.0
+beamp=18 beamq=4 I=0.0
+beamp=19 beamq=4 I=0.0
+beamp=20 beamq=4 I=0.0
+beamp=21 beamq=4 I=0.0
+beamp=22 beamq=4 I=0.0
+beamp=23 beamq=4 I=0.0
+beamp=24 beamq=4 I=0.0
+beamp=25 beamq=4 I=0.0
+beamp=26 beamq=4 I=0.0
+beamp=27 beamq=4 I=0.0
+beamp=28 beamq=4 I=0.0
+beamp=29 beamq=4 I=0.0
+beamp=30 beamq=4 I=0.0
+beamp=31 beamq=4 I=0.0
+beamp=0 beamq=5 I=0.1171913733440529
+beamp=1 beamq=5 I=0.0476487594648466
+beamp=2 beamq=5 I=0.0
+beamp=3 beamq=5 I=0.005432596338554169
+beamp=4 beamq=5 I=0.0
+beamp=5 beamq=5 I=0.0020600731411052355
+beamp=6 beamq=5 I=0.0
+beamp=7 beamq=5 I=0.0011374661578847944
+beamp=8 beamq=5 I=0.0
+beamp=9 beamq=5 I=0.0007660990670803017
+beamp=10 beamq=5 I=0.0
+beamp=11 beamq=5 I=0.0005885672276769718
+beamp=12 beamq=5 I=0.0
+beamp=13 beamq=5 I=0.0004999032809236004
+beamp=14 beamq=5 I=0.0
+beamp=15 beamq=5 I=0.00046221946887307355
+beamp=16 beamq=5 I=0.0
+beamp=17 beamq=5 I=0.00046221957878809047
+beamp=18 beamq=5 I=0.0
+beamp=19 beamq=5 I=0.0004999032089774591
+beamp=20 beamq=5 I=0.0
+beamp=21 beamq=5 I=0.0005885671653203357
+beamp=22 beamq=5 I=0.0
+beamp=23 beamq=5 I=0.0007660988833330367
+beamp=24 beamq=5 I=0.0
+beamp=25 beamq=5 I=0.0011374660799565288
+beamp=26 beamq=5 I=0.0
+beamp=27 beamq=5 I=0.0020600734956164476
+beamp=28 beamq=5 I=0.0
+beamp=29 beamq=5 I=0.005432596331863941
+beamp=30 beamq=5 I=0.0
+beamp=31 beamq=5 I=0.04764875932896868
+beamp=0 beamq=6 I=0.0
+beamp=1 beamq=6 I=0.0
+beamp=2 beamq=6 I=0.0
+beamp=3 beamq=6 I=0.0
+beamp=4 beamq=6 I=0.0
+beamp=5 beamq=6 I=0.0
+beamp=6 beamq=6 I=0.0
+beamp=7 beamq=6 I=0.0
+beamp=8 beamq=6 I=0.0
+beamp=9 beamq=6 I=0.0
+beamp=10 beamq=6 I=0.0
+beamp=11 beamq=6 I=0.0
+beamp=12 beamq=6 I=0.0
+beamp=13 beamq=6 I=0.0
+beamp=14 beamq=6 I=0.0
+beamp=15 beamq=6 I=0.0
+beamp=16 beamq=6 I=0.0
+beamp=17 beamq=6 I=0.0
+beamp=18 beamq=6 I=0.0
+beamp=19 beamq=6 I=0.0
+beamp=20 beamq=6 I=0.0
+beamp=21 beamq=6 I=0.0
+beamp=22 beamq=6 I=0.0
+beamp=23 beamq=6 I=0.0
+beamp=24 beamq=6 I=0.0
+beamp=25 beamq=6 I=0.0
+beamp=26 beamq=6 I=0.0
+beamp=27 beamq=6 I=0.0
+beamp=28 beamq=6 I=0.0
+beamp=29 beamq=6 I=0.0
+beamp=30 beamq=6 I=0.0
+beamp=31 beamq=6 I=0.0
+beamp=0 beamq=7 I=0.064707049975213
+beamp=1 beamq=7 I=0.02630919653562547
+beamp=2 beamq=7 I=0.0
+beamp=3 beamq=7 I=0.0029996004706486154
+beamp=4 beamq=7 I=0.0
+beamp=5 beamq=7 I=0.0011374661578847944
+beamp=6 beamq=7 I=0.0
+beamp=7 beamq=7 I=0.0006280503855682943
+beamp=8 beamq=7 I=0.0
+beamp=9 beamq=7 I=0.0004230005365392494
+beamp=10 beamq=7 I=0.0
+beamp=11 beamq=7 I=0.0003249765652045226
+beamp=12 beamq=7 I=0.0
+beamp=13 beamq=7 I=0.0002760208671729883
+beamp=14 beamq=7 I=0.0
+beamp=15 beamq=7 I=0.00025521386537151236
+beamp=16 beamq=7 I=0.0
+beamp=17 beamq=7 I=0.00025521382257810465
+beamp=18 beamq=7 I=0.0
+beamp=19 beamq=7 I=0.0002760208963901031
+beamp=20 beamq=7 I=0.0
+beamp=21 beamq=7 I=0.0003249765179316194
+beamp=22 beamq=7 I=0.0
+beamp=23 beamq=7 I=0.0004230005338748298
+beamp=24 beamq=7 I=0.0
+beamp=25 beamq=7 I=0.0006280505427380345
+beamp=26 beamq=7 I=0.0
+beamp=27 beamq=7 I=0.0011374660799565288
+beamp=28 beamq=7 I=0.0
+beamp=29 beamq=7 I=0.0029996005540668413
+beamp=30 beamq=7 I=0.0
+beamp=31 beamq=7 I=0.026309196737522696
+beamp=0 beamq=8 I=0.0
+beamp=1 beamq=8 I=0.0
+beamp=2 beamq=8 I=0.0
+beamp=3 beamq=8 I=0.0
+beamp=4 beamq=8 I=0.0
+beamp=5 beamq=8 I=0.0
+beamp=6 beamq=8 I=0.0
+beamp=7 beamq=8 I=0.0
+beamp=8 beamq=8 I=0.0
+beamp=9 beamq=8 I=0.0
+beamp=10 beamq=8 I=0.0
+beamp=11 beamq=8 I=0.0
+beamp=12 beamq=8 I=0.0
+beamp=13 beamq=8 I=0.0
+beamp=14 beamq=8 I=0.0
+beamp=15 beamq=8 I=0.0
+beamp=16 beamq=8 I=0.0
+beamp=17 beamq=8 I=0.0
+beamp=18 beamq=8 I=0.0
+beamp=19 beamq=8 I=0.0
+beamp=20 beamq=8 I=0.0
+beamp=21 beamq=8 I=0.0
+beamp=22 beamq=8 I=0.0
+beamp=23 beamq=8 I=0.0
+beamp=24 beamq=8 I=0.0
+beamp=25 beamq=8 I=0.0
+beamp=26 beamq=8 I=0.0
+beamp=27 beamq=8 I=0.0
+beamp=28 beamq=8 I=0.0
+beamp=29 beamq=8 I=0.0
+beamp=30 beamq=8 I=0.0
+beamp=31 beamq=8 I=0.0
+beamp=0 beamq=9 I=0.04358108703778914
+beamp=1 beamq=9 I=0.017719603805617636
+beamp=2 beamq=9 I=0.0
+beamp=3 beamq=9 I=0.0020202720404762487
+beamp=4 beamq=9 I=0.0
+beamp=5 beamq=9 I=0.0007660990670803017
+beamp=6 beamq=9 I=0.0
+beamp=7 beamq=9 I=0.0004230005365392494
+beamp=8 beamq=9 I=0.0
+beamp=9 beamq=9 I=0.0002848966227492966
+beamp=10 beamq=9 I=0.0
+beamp=11 beamq=9 I=0.00021887617315995722
+beamp=12 beamq=9 I=0.0
+beamp=13 beamq=9 I=0.00018590383608708063
+beamp=14 beamq=9 I=0.0
+beamp=15 beamq=9 I=0.00017189004875850798
+beamp=16 beamq=9 I=0.0
+beamp=17 beamq=9 I=0.0001718900112368671
+beamp=18 beamq=9 I=0.0
+beamp=19 beamq=9 I=0.00018590387829322082
+beamp=20 beamq=9 I=0.0
+beamp=21 beamq=9 I=0.00021887618082365906
+beamp=22 beamq=9 I=0.0
+beamp=23 beamq=9 I=0.000284896925120752
+beamp=24 beamq=9 I=0.0
+beamp=25 beamq=9 I=0.0004230005338748298
+beamp=26 beamq=9 I=0.0
+beamp=27 beamq=9 I=0.0007660988833330367
+beamp=28 beamq=9 I=0.0
+beamp=29 beamq=9 I=0.0020202720437482724
+beamp=30 beamq=9 I=0.0
+beamp=31 beamq=9 I=0.017719603615536973
+beamp=0 beamq=10 I=0.0
+beamp=1 beamq=10 I=0.0
+beamp=2 beamq=10 I=0.0
+beamp=3 beamq=10 I=0.0
+beamp=4 beamq=10 I=0.0
+beamp=5 beamq=10 I=0.0
+beamp=6 beamq=10 I=0.0
+beamp=7 beamq=10 I=0.0
+beamp=8 beamq=10 I=0.0
+beamp=9 beamq=10 I=0.0
+beamp=10 beamq=10 I=0.0
+beamp=11 beamq=10 I=0.0
+beamp=12 beamq=10 I=0.0
+beamp=13 beamq=10 I=0.0
+beamp=14 beamq=10 I=0.0
+beamp=15 beamq=10 I=0.0
+beamp=16 beamq=10 I=0.0
+beamp=17 beamq=10 I=0.0
+beamp=18 beamq=10 I=0.0
+beamp=19 beamq=10 I=0.0
+beamp=20 beamq=10 I=0.0
+beamp=21 beamq=10 I=0.0
+beamp=22 beamq=10 I=0.0
+beamp=23 beamq=10 I=0.0
+beamp=24 beamq=10 I=0.0
+beamp=25 beamq=10 I=0.0
+beamp=26 beamq=10 I=0.0
+beamp=27 beamq=10 I=0.0
+beamp=28 beamq=10 I=0.0
+beamp=29 beamq=10 I=0.0
+beamp=30 beamq=10 I=0.0
+beamp=31 beamq=10 I=0.0
+beamp=0 beamq=11 I=0.03348182895960246
+beamp=1 beamq=11 I=0.013613353131934944
+beamp=2 beamq=11 I=0.0
+beamp=3 beamq=11 I=0.0015521044814787264
+beamp=4 beamq=11 I=0.0
+beamp=5 beamq=11 I=0.0005885672276769718
+beamp=6 beamq=11 I=0.0
+beamp=7 beamq=11 I=0.0003249765652045226
+beamp=8 beamq=11 I=0.0
+beamp=9 beamq=11 I=0.00021887617315995722
+beamp=10 beamq=11 I=0.0
+beamp=11 beamq=11 I=0.0001681550523491007
+beamp=12 beamq=11 I=0.0
+beamp=13 beamq=11 I=0.00014282347898521053
+beamp=14 beamq=11 I=0.0
+beamp=15 beamq=11 I=0.00013205712372606578
+beamp=16 beamq=11 I=0.0
+beamp=17 beamq=11 I=0.00013205710589714458
+beamp=18 beamq=11 I=0.0
+beamp=19 beamq=11 I=0.00014282339708823869
+beamp=20 beamq=11 I=0.0
+beamp=21 beamq=11 I=0.00016815471137920373
+beamp=22 beamq=11 I=0.0
+beamp=23 beamq=11 I=0.00021887618082365906
+beamp=24 beamq=11 I=0.0
+beamp=25 beamq=11 I=0.0003249765179316194
+beamp=26 beamq=11 I=0.0
+beamp=27 beamq=11 I=0.0005885671653203357
+beamp=28 beamq=11 I=0.0
+beamp=29 beamq=11 I=0.0015521043418490876
+beamp=30 beamq=11 I=0.0
+beamp=31 beamq=11 I=0.01361335272282349
+beamp=0 beamq=12 I=0.0
+beamp=1 beamq=12 I=0.0
+beamp=2 beamq=12 I=0.0
+beamp=3 beamq=12 I=0.0
+beamp=4 beamq=12 I=0.0
+beamp=5 beamq=12 I=0.0
+beamp=6 beamq=12 I=0.0
+beamp=7 beamq=12 I=0.0
+beamp=8 beamq=12 I=0.0
+beamp=9 beamq=12 I=0.0
+beamp=10 beamq=12 I=0.0
+beamp=11 beamq=12 I=0.0
+beamp=12 beamq=12 I=0.0
+beamp=13 beamq=12 I=0.0
+beamp=14 beamq=12 I=0.0
+beamp=15 beamq=12 I=0.0
+beamp=16 beamq=12 I=0.0
+beamp=17 beamq=12 I=0.0
+beamp=18 beamq=12 I=0.0
+beamp=19 beamq=12 I=0.0
+beamp=20 beamq=12 I=0.0
+beamp=21 beamq=12 I=0.0
+beamp=22 beamq=12 I=0.0
+beamp=23 beamq=12 I=0.0
+beamp=24 beamq=12 I=0.0
+beamp=25 beamq=12 I=0.0
+beamp=26 beamq=12 I=0.0
+beamp=27 beamq=12 I=0.0
+beamp=28 beamq=12 I=0.0
+beamp=29 beamq=12 I=0.0
+beamp=30 beamq=12 I=0.0
+beamp=31 beamq=12 I=0.0
+beamp=0 beamq=13 I=0.028438001370539125
+beamp=1 beamq=13 I=0.011562587325439364
+beamp=2 beamq=13 I=0.0
+beamp=3 beamq=13 I=0.001318289718812289
+beamp=4 beamq=13 I=0.0
+beamp=5 beamq=13 I=0.0004999032809236004
+beamp=6 beamq=13 I=0.0
+beamp=7 beamq=13 I=0.0002760208671729883
+beamp=8 beamq=13 I=0.0
+beamp=9 beamq=13 I=0.00018590383608708063
+beamp=10 beamq=13 I=0.0
+beamp=11 beamq=13 I=0.00014282347898521053
+beamp=12 beamq=13 I=0.0
+beamp=13 beamq=13 I=0.00012130790986892692
+beamp=14 beamq=13 I=0.0
+beamp=15 beamq=13 I=0.00011216353673558556
+beamp=16 beamq=13 I=0.0
+beamp=17 beamq=13 I=0.00011216354122200838
+beamp=18 beamq=13 I=0.0
+beamp=19 beamq=13 I=0.00012130808261203723
+beamp=20 beamq=13 I=0.0
+beamp=21 beamq=13 I=0.00014282339708823869
+beamp=22 beamq=13 I=0.0
+beamp=23 beamq=13 I=0.00018590387829322082
+beamp=24 beamq=13 I=0.0
+beamp=25 beamq=13 I=0.0002760208963901031
+beamp=26 beamq=13 I=0.0
+beamp=27 beamq=13 I=0.0004999032089774591
+beamp=28 beamq=13 I=0.0
+beamp=29 beamq=13 I=0.0013182896338676568
+beamp=30 beamq=13 I=0.0
+beamp=31 beamq=13 I=0.01156258704929819
+beamp=0 beamq=14 I=0.0
+beamp=1 beamq=14 I=0.0
+beamp=2 beamq=14 I=0.0
+beamp=3 beamq=14 I=0.0
+beamp=4 beamq=14 I=0.0
+beamp=5 beamq=14 I=0.0
+beamp=6 beamq=14 I=0.0
+beamp=7 beamq=14 I=0.0
+beamp=8 beamq=14 I=0.0
+beamp=9 beamq=14 I=0.0
+beamp=10 beamq=14 I=0.0
+beamp=11 beamq=14 I=0.0
+beamp=12 beamq=14 I=0.0
+beamp=13 beamq=14 I=0.0
+beamp=14 beamq=14 I=0.0
+beamp=15 beamq=14 I=0.0
+beamp=16 beamq=14 I=0.0
+beamp=17 beamq=14 I=0.0
+beamp=18 beamq=14 I=0.0
+beamp=19 beamq=14 I=0.0
+beamp=20 beamq=14 I=0.0
+beamp=21 beamq=14 I=0.0
+beamp=22 beamq=14 I=0.0
+beamp=23 beamq=14 I=0.0
+beamp=24 beamq=14 I=0.0
+beamp=25 beamq=14 I=0.0
+beamp=26 beamq=14 I=0.0
+beamp=27 beamq=14 I=0.0
+beamp=28 beamq=14 I=0.0
+beamp=29 beamq=14 I=0.0
+beamp=30 beamq=14 I=0.0
+beamp=31 beamq=14 I=0.0
+beamp=0 beamq=15 I=0.026294285464560176
+beamp=1 beamq=15 I=0.010690975622150956
+beamp=2 beamq=15 I=0.0
+beamp=3 beamq=15 I=0.001218914289855775
+beamp=4 beamq=15 I=0.0
+beamp=5 beamq=15 I=0.00046221946887307355
+beamp=6 beamq=15 I=0.0
+beamp=7 beamq=15 I=0.00025521386537151236
+beamp=8 beamq=15 I=0.0
+beamp=9 beamq=15 I=0.00017189004875850798
+beamp=10 beamq=15 I=0.0
+beamp=11 beamq=15 I=0.00013205712372606578
+beamp=12 beamq=15 I=0.0
+beamp=13 beamq=15 I=0.00011216353673558556
+beamp=14 beamq=15 I=0.0
+beamp=15 beamq=15 I=0.0001037083982551743
+beamp=16 beamq=15 I=0.0
+beamp=17 beamq=15 I=0.0001037084365437827
+beamp=18 beamq=15 I=0.0
+beamp=19 beamq=15 I=0.00011216354122200838
+beamp=20 beamq=15 I=0.0
+beamp=21 beamq=15 I=0.00013205710589714458
+beamp=22 beamq=15 I=0.0
+beamp=23 beamq=15 I=0.0001718900112368671
+beamp=24 beamq=15 I=0.0
+beamp=25 beamq=15 I=0.00025521382257810465
+beamp=26 beamq=15 I=0.0
+beamp=27 beamq=15 I=0.00046221957878809047
+beamp=28 beamq=15 I=0.0
+beamp=29 beamq=15 I=0.0012189142842276614
+beamp=30 beamq=15 I=0.0
+beamp=31 beamq=15 I=0.010690975517309322
+beamp=0 beamq=16 I=0.0
+beamp=1 beamq=16 I=0.0
+beamp=2 beamq=16 I=0.0
+beamp=3 beamq=16 I=0.0
+beamp=4 beamq=16 I=0.0
+beamp=5 beamq=16 I=0.0
+beamp=6 beamq=16 I=0.0
+beamp=7 beamq=16 I=0.0
+beamp=8 beamq=16 I=0.0
+beamp=9 beamq=16 I=0.0
+beamp=10 beamq=16 I=0.0
+beamp=11 beamq=16 I=0.0
+beamp=12 beamq=16 I=0.0
+beamp=13 beamq=16 I=0.0
+beamp=14 beamq=16 I=0.0
+beamp=15 beamq=16 I=0.0
+beamp=16 beamq=16 I=0.0
+beamp=17 beamq=16 I=0.0
+beamp=18 beamq=16 I=0.0
+beamp=19 beamq=16 I=0.0
+beamp=20 beamq=16 I=0.0
+beamp=21 beamq=16 I=0.0
+beamp=22 beamq=16 I=0.0
+beamp=23 beamq=16 I=0.0
+beamp=24 beamq=16 I=0.0
+beamp=25 beamq=16 I=0.0
+beamp=26 beamq=16 I=0.0
+beamp=27 beamq=16 I=0.0
+beamp=28 beamq=16 I=0.0
+beamp=29 beamq=16 I=0.0
+beamp=30 beamq=16 I=0.0
+beamp=31 beamq=16 I=0.0
+beamp=0 beamq=17 I=0.026294285464560176
+beamp=1 beamq=17 I=0.01069097551730932
+beamp=2 beamq=17 I=0.0
+beamp=3 beamq=17 I=0.0012189142842276614
+beamp=4 beamq=17 I=0.0
+beamp=5 beamq=17 I=0.00046221957878809047
+beamp=6 beamq=17 I=0.0
+beamp=7 beamq=17 I=0.00025521382257810465
+beamp=8 beamq=17 I=0.0
+beamp=9 beamq=17 I=0.0001718900112368671
+beamp=10 beamq=17 I=0.0
+beamp=11 beamq=17 I=0.00013205710589714458
+beamp=12 beamq=17 I=0.0
+beamp=13 beamq=17 I=0.00011216354122200838
+beamp=14 beamq=17 I=0.0
+beamp=15 beamq=17 I=0.0001037084365437827
+beamp=16 beamq=17 I=0.0
+beamp=17 beamq=17 I=0.0001037083982551743
+beamp=18 beamq=17 I=0.0
+beamp=19 beamq=17 I=0.00011216353673558556
+beamp=20 beamq=17 I=0.0
+beamp=21 beamq=17 I=0.00013205712372606578
+beamp=22 beamq=17 I=0.0
+beamp=23 beamq=17 I=0.00017189004875850798
+beamp=24 beamq=17 I=0.0
+beamp=25 beamq=17 I=0.00025521386537151236
+beamp=26 beamq=17 I=0.0
+beamp=27 beamq=17 I=0.00046221946887307355
+beamp=28 beamq=17 I=0.0
+beamp=29 beamq=17 I=0.001218914289855775
+beamp=30 beamq=17 I=0.0
+beamp=31 beamq=17 I=0.010690975622150956
+beamp=0 beamq=18 I=0.0
+beamp=1 beamq=18 I=0.0
+beamp=2 beamq=18 I=0.0
+beamp=3 beamq=18 I=0.0
+beamp=4 beamq=18 I=0.0
+beamp=5 beamq=18 I=0.0
+beamp=6 beamq=18 I=0.0
+beamp=7 beamq=18 I=0.0
+beamp=8 beamq=18 I=0.0
+beamp=9 beamq=18 I=0.0
+beamp=10 beamq=18 I=0.0
+beamp=11 beamq=18 I=0.0
+beamp=12 beamq=18 I=0.0
+beamp=13 beamq=18 I=0.0
+beamp=14 beamq=18 I=0.0
+beamp=15 beamq=18 I=0.0
+beamp=16 beamq=18 I=0.0
+beamp=17 beamq=18 I=0.0
+beamp=18 beamq=18 I=0.0
+beamp=19 beamq=18 I=0.0
+beamp=20 beamq=18 I=0.0
+beamp=21 beamq=18 I=0.0
+beamp=22 beamq=18 I=0.0
+beamp=23 beamq=18 I=0.0
+beamp=24 beamq=18 I=0.0
+beamp=25 beamq=18 I=0.0
+beamp=26 beamq=18 I=0.0
+beamp=27 beamq=18 I=0.0
+beamp=28 beamq=18 I=0.0
+beamp=29 beamq=18 I=0.0
+beamp=30 beamq=18 I=0.0
+beamp=31 beamq=18 I=0.0
+beamp=0 beamq=19 I=0.028438001370539125
+beamp=1 beamq=19 I=0.01156258704929819
+beamp=2 beamq=19 I=0.0
+beamp=3 beamq=19 I=0.0013182896338676568
+beamp=4 beamq=19 I=0.0
+beamp=5 beamq=19 I=0.0004999032089774591
+beamp=6 beamq=19 I=0.0
+beamp=7 beamq=19 I=0.0002760208963901031
+beamp=8 beamq=19 I=0.0
+beamp=9 beamq=19 I=0.00018590387829322082
+beamp=10 beamq=19 I=0.0
+beamp=11 beamq=19 I=0.00014282339708823869
+beamp=12 beamq=19 I=0.0
+beamp=13 beamq=19 I=0.00012130808261203723
+beamp=14 beamq=19 I=0.0
+beamp=15 beamq=19 I=0.00011216354122200838
+beamp=16 beamq=19 I=0.0
+beamp=17 beamq=19 I=0.00011216353673558556
+beamp=18 beamq=19 I=0.0
+beamp=19 beamq=19 I=0.00012130790986892692
+beamp=20 beamq=19 I=0.0
+beamp=21 beamq=19 I=0.00014282347898521053
+beamp=22 beamq=19 I=0.0
+beamp=23 beamq=19 I=0.00018590383608708063
+beamp=24 beamq=19 I=0.0
+beamp=25 beamq=19 I=0.0002760208671729883
+beamp=26 beamq=19 I=0.0
+beamp=27 beamq=19 I=0.0004999032809236004
+beamp=28 beamq=19 I=0.0
+beamp=29 beamq=19 I=0.001318289718812289
+beamp=30 beamq=19 I=0.0
+beamp=31 beamq=19 I=0.011562587325439366
+beamp=0 beamq=20 I=0.0
+beamp=1 beamq=20 I=0.0
+beamp=2 beamq=20 I=0.0
+beamp=3 beamq=20 I=0.0
+beamp=4 beamq=20 I=0.0
+beamp=5 beamq=20 I=0.0
+beamp=6 beamq=20 I=0.0
+beamp=7 beamq=20 I=0.0
+beamp=8 beamq=20 I=0.0
+beamp=9 beamq=20 I=0.0
+beamp=10 beamq=20 I=0.0
+beamp=11 beamq=20 I=0.0
+beamp=12 beamq=20 I=0.0
+beamp=13 beamq=20 I=0.0
+beamp=14 beamq=20 I=0.0
+beamp=15 beamq=20 I=0.0
+beamp=16 beamq=20 I=0.0
+beamp=17 beamq=20 I=0.0
+beamp=18 beamq=20 I=0.0
+beamp=19 beamq=20 I=0.0
+beamp=20 beamq=20 I=0.0
+beamp=21 beamq=20 I=0.0
+beamp=22 beamq=20 I=0.0
+beamp=23 beamq=20 I=0.0
+beamp=24 beamq=20 I=0.0
+beamp=25 beamq=20 I=0.0
+beamp=26 beamq=20 I=0.0
+beamp=27 beamq=20 I=0.0
+beamp=28 beamq=20 I=0.0
+beamp=29 beamq=20 I=0.0
+beamp=30 beamq=20 I=0.0
+beamp=31 beamq=20 I=0.0
+beamp=0 beamq=21 I=0.03348182895960246
+beamp=1 beamq=21 I=0.01361335272282349
+beamp=2 beamq=21 I=0.0
+beamp=3 beamq=21 I=0.0015521043418490876
+beamp=4 beamq=21 I=0.0
+beamp=5 beamq=21 I=0.0005885671653203357
+beamp=6 beamq=21 I=0.0
+beamp=7 beamq=21 I=0.0003249765179316194
+beamp=8 beamq=21 I=0.0
+beamp=9 beamq=21 I=0.00021887618082365906
+beamp=10 beamq=21 I=0.0
+beamp=11 beamq=21 I=0.00016815471137920373
+beamp=12 beamq=21 I=0.0
+beamp=13 beamq=21 I=0.00014282339708823869
+beamp=14 beamq=21 I=0.0
+beamp=15 beamq=21 I=0.00013205710589714458
+beamp=16 beamq=21 I=0.0
+beamp=17 beamq=21 I=0.00013205712372606578
+beamp=18 beamq=21 I=0.0
+beamp=19 beamq=21 I=0.00014282347898521053
+beamp=20 beamq=21 I=0.0
+beamp=21 beamq=21 I=0.0001681550523491007
+beamp=22 beamq=21 I=0.0
+beamp=23 beamq=21 I=0.00021887617315995722
+beamp=24 beamq=21 I=0.0
+beamp=25 beamq=21 I=0.0003249765652045226
+beamp=26 beamq=21 I=0.0
+beamp=27 beamq=21 I=0.0005885672276769718
+beamp=28 beamq=21 I=0.0
+beamp=29 beamq=21 I=0.0015521044814787264
+beamp=30 beamq=21 I=0.0
+beamp=31 beamq=21 I=0.013613353131934944
+beamp=0 beamq=22 I=0.0
+beamp=1 beamq=22 I=0.0
+beamp=2 beamq=22 I=0.0
+beamp=3 beamq=22 I=0.0
+beamp=4 beamq=22 I=0.0
+beamp=5 beamq=22 I=0.0
+beamp=6 beamq=22 I=0.0
+beamp=7 beamq=22 I=0.0
+beamp=8 beamq=22 I=0.0
+beamp=9 beamq=22 I=0.0
+beamp=10 beamq=22 I=0.0
+beamp=11 beamq=22 I=0.0
+beamp=12 beamq=22 I=0.0
+beamp=13 beamq=22 I=0.0
+beamp=14 beamq=22 I=0.0
+beamp=15 beamq=22 I=0.0
+beamp=16 beamq=22 I=0.0
+beamp=17 beamq=22 I=0.0
+beamp=18 beamq=22 I=0.0
+beamp=19 beamq=22 I=0.0
+beamp=20 beamq=22 I=0.0
+beamp=21 beamq=22 I=0.0
+beamp=22 beamq=22 I=0.0
+beamp=23 beamq=22 I=0.0
+beamp=24 beamq=22 I=0.0
+beamp=25 beamq=22 I=0.0
+beamp=26 beamq=22 I=0.0
+beamp=27 beamq=22 I=0.0
+beamp=28 beamq=22 I=0.0
+beamp=29 beamq=22 I=0.0
+beamp=30 beamq=22 I=0.0
+beamp=31 beamq=22 I=0.0
+beamp=0 beamq=23 I=0.04358108703778914
+beamp=1 beamq=23 I=0.017719603615536973
+beamp=2 beamq=23 I=0.0
+beamp=3 beamq=23 I=0.0020202720437482724
+beamp=4 beamq=23 I=0.0
+beamp=5 beamq=23 I=0.0007660988833330367
+beamp=6 beamq=23 I=0.0
+beamp=7 beamq=23 I=0.0004230005338748298
+beamp=8 beamq=23 I=0.0
+beamp=9 beamq=23 I=0.000284896925120752
+beamp=10 beamq=23 I=0.0
+beamp=11 beamq=23 I=0.00021887618082365906
+beamp=12 beamq=23 I=0.0
+beamp=13 beamq=23 I=0.00018590387829322082
+beamp=14 beamq=23 I=0.0
+beamp=15 beamq=23 I=0.0001718900112368671
+beamp=16 beamq=23 I=0.0
+beamp=17 beamq=23 I=0.00017189004875850798
+beamp=18 beamq=23 I=0.0
+beamp=19 beamq=23 I=0.00018590383608708063
+beamp=20 beamq=23 I=0.0
+beamp=21 beamq=23 I=0.00021887617315995722
+beamp=22 beamq=23 I=0.0
+beamp=23 beamq=23 I=0.0002848966227492966
+beamp=24 beamq=23 I=0.0
+beamp=25 beamq=23 I=0.0004230005365392494
+beamp=26 beamq=23 I=0.0
+beamp=27 beamq=23 I=0.0007660990670803017
+beamp=28 beamq=23 I=0.0
+beamp=29 beamq=23 I=0.0020202720404762487
+beamp=30 beamq=23 I=0.0
+beamp=31 beamq=23 I=0.017719603805617636
+beamp=0 beamq=24 I=0.0
+beamp=1 beamq=24 I=0.0
+beamp=2 beamq=24 I=0.0
+beamp=3 beamq=24 I=0.0
+beamp=4 beamq=24 I=0.0
+beamp=5 beamq=24 I=0.0
+beamp=6 beamq=24 I=0.0
+beamp=7 beamq=24 I=0.0
+beamp=8 beamq=24 I=0.0
+beamp=9 beamq=24 I=0.0
+beamp=10 beamq=24 I=0.0
+beamp=11 beamq=24 I=0.0
+beamp=12 beamq=24 I=0.0
+beamp=13 beamq=24 I=0.0
+beamp=14 beamq=24 I=0.0
+beamp=15 beamq=24 I=0.0
+beamp=16 beamq=24 I=0.0
+beamp=17 beamq=24 I=0.0
+beamp=18 beamq=24 I=0.0
+beamp=19 beamq=24 I=0.0
+beamp=20 beamq=24 I=0.0
+beamp=21 beamq=24 I=0.0
+beamp=22 beamq=24 I=0.0
+beamp=23 beamq=24 I=0.0
+beamp=24 beamq=24 I=0.0
+beamp=25 beamq=24 I=0.0
+beamp=26 beamq=24 I=0.0
+beamp=27 beamq=24 I=0.0
+beamp=28 beamq=24 I=0.0
+beamp=29 beamq=24 I=0.0
+beamp=30 beamq=24 I=0.0
+beamp=31 beamq=24 I=0.0
+beamp=0 beamq=25 I=0.064707049975213
+beamp=1 beamq=25 I=0.026309196737522696
+beamp=2 beamq=25 I=0.0
+beamp=3 beamq=25 I=0.0029996005540668413
+beamp=4 beamq=25 I=0.0
+beamp=5 beamq=25 I=0.0011374660799565288
+beamp=6 beamq=25 I=0.0
+beamp=7 beamq=25 I=0.0006280505427380345
+beamp=8 beamq=25 I=0.0
+beamp=9 beamq=25 I=0.0004230005338748298
+beamp=10 beamq=25 I=0.0
+beamp=11 beamq=25 I=0.0003249765179316194
+beamp=12 beamq=25 I=0.0
+beamp=13 beamq=25 I=0.0002760208963901031
+beamp=14 beamq=25 I=0.0
+beamp=15 beamq=25 I=0.00025521382257810465
+beamp=16 beamq=25 I=0.0
+beamp=17 beamq=25 I=0.00025521386537151236
+beamp=18 beamq=25 I=0.0
+beamp=19 beamq=25 I=0.0002760208671729883
+beamp=20 beamq=25 I=0.0
+beamp=21 beamq=25 I=0.0003249765652045226
+beamp=22 beamq=25 I=0.0
+beamp=23 beamq=25 I=0.0004230005365392494
+beamp=24 beamq=25 I=0.0
+beamp=25 beamq=25 I=0.0006280503855682943
+beamp=26 beamq=25 I=0.0
+beamp=27 beamq=25 I=0.0011374661578847944
+beamp=28 beamq=25 I=0.0
+beamp=29 beamq=25 I=0.0029996004706486154
+beamp=30 beamq=25 I=0.0
+beamp=31 beamq=25 I=0.02630919653562547
+beamp=0 beamq=26 I=0.0
+beamp=1 beamq=26 I=0.0
+beamp=2 beamq=26 I=0.0
+beamp=3 beamq=26 I=0.0
+beamp=4 beamq=26 I=0.0
+beamp=5 beamq=26 I=0.0
+beamp=6 beamq=26 I=0.0
+beamp=7 beamq=26 I=0.0
+beamp=8 beamq=26 I=0.0
+beamp=9 beamq=26 I=0.0
+beamp=10 beamq=26 I=0.0
+beamp=11 beamq=26 I=0.0
+beamp=12 beamq=26 I=0.0
+beamp=13 beamq=26 I=0.0
+beamp=14 beamq=26 I=0.0
+beamp=15 beamq=26 I=0.0
+beamp=16 beamq=26 I=0.0
+beamp=17 beamq=26 I=0.0
+beamp=18 beamq=26 I=0.0
+beamp=19 beamq=26 I=0.0
+beamp=20 beamq=26 I=0.0
+beamp=21 beamq=26 I=0.0
+beamp=22 beamq=26 I=0.0
+beamp=23 beamq=26 I=0.0
+beamp=24 beamq=26 I=0.0
+beamp=25 beamq=26 I=0.0
+beamp=26 beamq=26 I=0.0
+beamp=27 beamq=26 I=0.0
+beamp=28 beamq=26 I=0.0
+beamp=29 beamq=26 I=0.0
+beamp=30 beamq=26 I=0.0
+beamp=31 beamq=26 I=0.0
+beamp=0 beamq=27 I=0.1171913733440529
+beamp=1 beamq=27 I=0.04764875932896868
+beamp=2 beamq=27 I=0.0
+beamp=3 beamq=27 I=0.005432596331863941
+beamp=4 beamq=27 I=0.0
+beamp=5 beamq=27 I=0.0020600734956164476
+beamp=6 beamq=27 I=0.0
+beamp=7 beamq=27 I=0.0011374660799565288
+beamp=8 beamq=27 I=0.0
+beamp=9 beamq=27 I=0.0007660988833330367
+beamp=10 beamq=27 I=0.0
+beamp=11 beamq=27 I=0.0005885671653203357
+beamp=12 beamq=27 I=0.0
+beamp=13 beamq=27 I=0.0004999032089774591
+beamp=14 beamq=27 I=0.0
+beamp=15 beamq=27 I=0.00046221957878809047
+beamp=16 beamq=27 I=0.0
+beamp=17 beamq=27 I=0.00046221946887307355
+beamp=18 beamq=27 I=0.0
+beamp=19 beamq=27 I=0.0004999032809236004
+beamp=20 beamq=27 I=0.0
+beamp=21 beamq=27 I=0.0005885672276769718
+beamp=22 beamq=27 I=0.0
+beamp=23 beamq=27 I=0.0007660990670803017
+beamp=24 beamq=27 I=0.0
+beamp=25 beamq=27 I=0.0011374661578847944
+beamp=26 beamq=27 I=0.0
+beamp=27 beamq=27 I=0.0020600731411052355
+beamp=28 beamq=27 I=0.0
+beamp=29 beamq=27 I=0.005432596338554169
+beamp=30 beamq=27 I=0.0
+beamp=31 beamq=27 I=0.0476487594648466
+beamp=0 beamq=28 I=0.0
+beamp=1 beamq=28 I=0.0
+beamp=2 beamq=28 I=0.0
+beamp=3 beamq=28 I=0.0
+beamp=4 beamq=28 I=0.0
+beamp=5 beamq=28 I=0.0
+beamp=6 beamq=28 I=0.0
+beamp=7 beamq=28 I=0.0
+beamp=8 beamq=28 I=0.0
+beamp=9 beamq=28 I=0.0
+beamp=10 beamq=28 I=0.0
+beamp=11 beamq=28 I=0.0
+beamp=12 beamq=28 I=0.0
+beamp=13 beamq=28 I=0.0
+beamp=14 beamq=28 I=0.0
+beamp=15 beamq=28 I=0.0
+beamp=16 beamq=28 I=0.0
+beamp=17 beamq=28 I=0.0
+beamp=18 beamq=28 I=0.0
+beamp=19 beamq=28 I=0.0
+beamp=20 beamq=28 I=0.0
+beamp=21 beamq=28 I=0.0
+beamp=22 beamq=28 I=0.0
+beamp=23 beamq=28 I=0.0
+beamp=24 beamq=28 I=0.0
+beamp=25 beamq=28 I=0.0
+beamp=26 beamq=28 I=0.0
+beamp=27 beamq=28 I=0.0
+beamp=28 beamq=28 I=0.0
+beamp=29 beamq=28 I=0.0
+beamp=30 beamq=28 I=0.0
+beamp=31 beamq=28 I=0.0
+beamp=0 beamq=29 I=0.30904415577249394
+beamp=1 beamq=29 I=0.12565405694426457
+beamp=2 beamq=29 I=0.0
+beamp=3 beamq=29 I=0.014326244783230736
+beamp=4 beamq=29 I=0.0
+beamp=5 beamq=29 I=0.005432596331863941
+beamp=6 beamq=29 I=0.0
+beamp=7 beamq=29 I=0.0029996005540668413
+beamp=8 beamq=29 I=0.0
+beamp=9 beamq=29 I=0.0020202720437482724
+beamp=10 beamq=29 I=0.0
+beamp=11 beamq=29 I=0.0015521043418490876
+beamp=12 beamq=29 I=0.0
+beamp=13 beamq=29 I=0.0013182896338676568
+beamp=14 beamq=29 I=0.0
+beamp=15 beamq=29 I=0.0012189142842276614
+beamp=16 beamq=29 I=0.0
+beamp=17 beamq=29 I=0.001218914289855775
+beamp=18 beamq=29 I=0.0
+beamp=19 beamq=29 I=0.001318289718812289
+beamp=20 beamq=29 I=0.0
+beamp=21 beamq=29 I=0.0015521044814787264
+beamp=22 beamq=29 I=0.0
+beamp=23 beamq=29 I=0.0020202720404762487
+beamp=24 beamq=29 I=0.0
+beamp=25 beamq=29 I=0.0029996004706486154
+beamp=26 beamq=29 I=0.0
+beamp=27 beamq=29 I=0.005432596338554169
+beamp=28 beamq=29 I=0.0
+beamp=29 beamq=29 I=0.014326244572456398
+beamp=30 beamq=29 I=0.0
+beamp=31 beamq=29 I=0.12565405670696692
+beamp=0 beamq=30 I=0.0
+beamp=1 beamq=30 I=0.0
+beamp=2 beamq=30 I=0.0
+beamp=3 beamq=30 I=0.0
+beamp=4 beamq=30 I=0.0
+beamp=5 beamq=30 I=0.0
+beamp=6 beamq=30 I=0.0
+beamp=7 beamq=30 I=0.0
+beamp=8 beamq=30 I=0.0
+beamp=9 beamq=30 I=0.0
+beamp=10 beamq=30 I=0.0
+beamp=11 beamq=30 I=0.0
+beamp=12 beamq=30 I=0.0
+beamp=13 beamq=30 I=0.0
+beamp=14 beamq=30 I=0.0
+beamp=15 beamq=30 I=0.0
+beamp=16 beamq=30 I=0.0
+beamp=17 beamq=30 I=0.0
+beamp=18 beamq=30 I=0.0
+beamp=19 beamq=30 I=0.0
+beamp=20 beamq=30 I=0.0
+beamp=21 beamq=30 I=0.0
+beamp=22 beamq=30 I=0.0
+beamp=23 beamq=30 I=0.0
+beamp=24 beamq=30 I=0.0
+beamp=25 beamq=30 I=0.0
+beamp=26 beamq=30 I=0.0
+beamp=27 beamq=30 I=0.0
+beamp=28 beamq=30 I=0.0
+beamp=29 beamq=30 I=0.0
+beamp=30 beamq=30 I=0.0
+beamp=31 beamq=30 I=0.0
+beamp=0 beamq=31 I=2.7105954603863553
+beamp=1 beamq=31 I=1.102099189924732
+beamp=2 beamq=31 I=0.0
+beamp=3 beamq=31 I=0.12565405694426457
+beamp=4 beamq=31 I=0.0
+beamp=5 beamq=31 I=0.04764875932896868
+beamp=6 beamq=31 I=0.0
+beamp=7 beamq=31 I=0.026309196737522696
+beamp=8 beamq=31 I=0.0
+beamp=9 beamq=31 I=0.017719603615536973
+beamp=10 beamq=31 I=0.0
+beamp=11 beamq=31 I=0.01361335272282349
+beamp=12 beamq=31 I=0.0
+beamp=13 beamq=31 I=0.01156258704929819
+beamp=14 beamq=31 I=0.0
+beamp=15 beamq=31 I=0.010690975517309322
+beamp=16 beamq=31 I=0.0
+beamp=17 beamq=31 I=0.010690975622150956
+beamp=18 beamq=31 I=0.0
+beamp=19 beamq=31 I=0.011562587325439366
+beamp=20 beamq=31 I=0.0
+beamp=21 beamq=31 I=0.013613353131934944
+beamp=22 beamq=31 I=0.0
+beamp=23 beamq=31 I=0.017719603805617636
+beamp=24 beamq=31 I=0.0
+beamp=25 beamq=31 I=0.02630919653562547
+beamp=26 beamq=31 I=0.0
+beamp=27 beamq=31 I=0.0476487594648466
+beamp=28 beamq=31 I=0.0
+beamp=29 beamq=31 I=0.12565405670696692
+beamp=30 beamq=31 I=0.0
+beamp=31 beamq=31 I=1.1020991893973906
 Copying data from CPU to GPU...
 Running kernel...
 Copying data back from GPU to CPU...

@@ -27,8 +27,8 @@ class CTimeSpec(ctypes.Structure):
 class EOP(ctypes.Structure):
 
     _fields_ = [
-        ("t_inst", ctypes.c_int64),
-        ("t_ut1", ctypes.c_int64),
+        ("t_inst_ns", ctypes.c_int64),
+        ("t_ut1_ns", ctypes.c_int64),
         ("delta_UT1_inst", ctypes.c_double),
         ("ERA_deg", ctypes.c_double),
         ("xp_as", ctypes.c_double),

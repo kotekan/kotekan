@@ -10,6 +10,7 @@
 
 #include <algorithm>  // for lower_bound, copy, sort, max
 #include <assert.h>   // for assert
+#include <chrono>     // for system_clock, duration_cast, nanoseconds
 #include <exception>  // for exception
 #include <functional> // for bind, _1, function
 #include <math.h>     // for sin, cos, M_PI
@@ -328,8 +329,10 @@ GPSTimeParams GPSTimeParams::from_config(const kotekan::Config& config, const st
 
     if (gps.gps_enabled)
         INFO_NON_OO("Telescope configured with GPS time0: {:d} ns", gps.time0_ns);
-    else
-        INFO_NON_OO("Telescope GPS time not enabled.");
+    else {
+        INFO_NON_OO("Telescope GPS time not enabled, using system time.");
+        set_gps_time_params_from_system(gps); // sets gps_enabled, time0_ns
+    }
 
     return gps;
 }
@@ -375,6 +378,13 @@ void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps) {
     gps.time0_ns = time0_ns;
     gps.gps_enabled = true;
     INFO_NON_OO("GPS frame0 time set to {:d}", gps.time0_ns);
+}
+
+void GPSTimeParams::set_gps_time_params_from_system(GPSTimeParams& gps) {
+    gps.time0_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
+    gps.gps_enabled = false;
 }
 
 bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint64_t& time0_ns,
@@ -455,6 +465,7 @@ bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint6
 
 CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(path, config.get<std::string>(path, "log_level"),
+              config.get_default<bool>(path, "require_eop", false),
               config.get_default<std::string>(path, "eop_updatable_config", "")),
     // Frequency sampling parameters
     _freq_params(FreqParams::from_config(config, path)),

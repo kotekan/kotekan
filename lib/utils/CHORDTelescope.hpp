@@ -421,6 +421,9 @@ private:
 
     /// Set the GPS time parameters (gps_enabled, time0_ns) from a remote server (fpga_master)
     static void set_gps_time_params_from_remote(GPSTimeParams& gps);
+
+    /// Set the GPS time parameters (gps_enabled, time0_ns) from the system clock.
+    static void set_gps_time_params_from_system(GPSTimeParams& gps);
 };
 
 

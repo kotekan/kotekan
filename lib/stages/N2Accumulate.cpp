@@ -301,8 +301,7 @@ void N2Accumulate::main_thread() {
         }
 
         // Record the current frame time being processed.
-        comp_time_seconds_metric.set(
-            timespec_to_nanosec_i64(_tel.to_time(frame_metadata->get_fpga_seq_num())) / 1e9);
+        comp_time_seconds_metric.set(_tel.to_time_ns(frame_metadata->get_fpga_seq_num()) / 1e9);
 
         // Accumulate each visibility sample in the in_frame
         // t_outer
