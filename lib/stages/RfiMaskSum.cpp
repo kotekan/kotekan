@@ -269,7 +269,7 @@ void RfiMaskSum::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_
 
             int64_t idx = thi * rfi_stride_thi + f * rfi_stride_f + tlo;
 
-            uint8_t rfimask_val = (rfimak[idx] >> tbit) & 0x1;
+            uint8_t rfimask_val = (rfimask[idx] >> tbit) & 0x1;
 
             rfimask_count[f] += (1 - rfimask_val) * _rfi_downsampling_factor;
         } // t
