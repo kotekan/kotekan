@@ -1,27 +1,27 @@
-#include "Config.hpp"            // for Config
-#include "N2Util.hpp"            // for frameID
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
-#include "div.hpp"                 // for div_noremainder
-#include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO
+#include "Config.hpp"          // for Config
+#include "N2Util.hpp"          // for frameID
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "div.hpp"             // for div_noremainder
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
 
-#include "fmt.hpp"      // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <assert.h>   // for assert
 #include <functional> // for bind, function, placeholders
 #include <memory>     // for shared_ptr, __shared_ptr_access
-#include <vector> // for vector
+#include <vector>     // for vector
 
 
 using namespace std::placeholders;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::Stage;
 using kotekan::div_noremainder;
+using kotekan::Stage;
 using N2::frameID;
 
 /**
@@ -86,7 +86,7 @@ using N2::frameID;
 class RfiMaskSum : public kotekan::Stage {
 public:
     RfiMaskSum(kotekan::Config& config, const std::string& unique_name,
-                 kotekan::bufferContainer& buffer_container);
+               kotekan::bufferContainer& buffer_container);
     ~RfiMaskSum() = default;
 
     /**
@@ -98,8 +98,8 @@ public:
 
 private:
     // Buffers to read/write
-    Buffer* in_buf;      /// Buffer containing input rfimask
-    Buffer* out_buf;     /// Output for the main vis dataset only
+    Buffer* in_buf;  /// Buffer containing input rfimask
+    Buffer* out_buf; /// Output for the main vis dataset only
 
     // Parameters saved from the config files
     const int64_t _num_local_freq;
@@ -109,14 +109,15 @@ private:
     const int64_t _rfi_downsampling_factor; ///< Downsampling factor for RFI mask
     const int64_t _num_integrations;
 
-    void accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_vis, uint64_t *rfimask_count);
+    void accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_vis,
+                                      uint64_t* rfimask_count);
 };
 
 REGISTER_KOTEKAN_STAGE(RfiMaskSum);
 
 
 RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
-                           bufferContainer& buffer_container) :
+                       bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&RfiMaskSum::main_thread, this)),
     _num_local_freq(config.get<int64_t>(unique_name, "num_local_freq")),
     _samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
@@ -143,8 +144,7 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
         if (!(_samples_per_data_set > 0))
             FATAL_ERROR("samples_per_data_set is not positve: {:d}", _samples_per_data_set);
         if (!(_sub_integration_ntime > 0))
-            FATAL_ERROR("sub_integration_ntime is not positve: {:d}",
-                        _sub_integration_ntime);
+            FATAL_ERROR("sub_integration_ntime is not positve: {:d}", _sub_integration_ntime);
         if (!(_samples_per_data_set % _sub_integration_ntime == 0))
             FATAL_ERROR(
                 "samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d})",
@@ -159,7 +159,8 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
                         _rfi_downsampling_factor);
 
         if (!(_sub_integration_ntime % _rfi_downsampling_factor == 0)) {
-            FATAL_ERROR("sub_integration_ntime {} is not a multiple of rfi_downsampling_factor {}", _sub_integration_ntime, _rfi_downsampling_factor);
+            FATAL_ERROR("sub_integration_ntime {} is not a multiple of rfi_downsampling_factor {}",
+                        _sub_integration_ntime, _rfi_downsampling_factor);
         }
     }
 
@@ -170,8 +171,8 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
         FATAL_ERROR("RfiMaskSum in_buf ({:s}) has frame size {:d}. Expected {:d}.",
                     in_buf->buffer_name, in_buf->frame_size, in_rfimask_frame_size);
 
-    out_buf->allocate_ndarray_frame_desc(
-        kotekan::uint64, "RFImask_count", {_num_integrations, _num_local_freq}, {"Tc", "F"});
+    out_buf->allocate_ndarray_frame_desc(kotekan::uint64, "RFImask_count",
+                                         {_num_integrations, _num_local_freq}, {"Tc", "F"});
 }
 
 void RfiMaskSum::main_thread() {
@@ -190,8 +191,10 @@ void RfiMaskSum::main_thread() {
         const uint8_t* rfimask = (uint8_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (rfimask == nullptr)
             break;
-        DEBUG("Waiting for new RFImask_count frame {:s}[{:d}].", out_buf->buffer_name, out_frame_id);
-        uint64_t* rfimask_count = (uint64_t*)out_buf->wait_for_full_frame(unique_name, out_frame_id);
+        DEBUG("Waiting for new RFImask_count frame {:s}[{:d}].", out_buf->buffer_name,
+              out_frame_id);
+        uint64_t* rfimask_count =
+            (uint64_t*)out_buf->wait_for_full_frame(unique_name, out_frame_id);
         if (rfimask_count == nullptr)
             break;
 
@@ -201,18 +204,18 @@ void RfiMaskSum::main_thread() {
 
             accumulate_rfimask_in_sample(rfimask, t_int, rfimask_count + t_int * _num_local_freq);
         } // t_int
-        
+
         // Get metadata for all incoming frames.
-        std::shared_ptr<chordMetadata> in_meta =
-            get_chord_metadata(in_buf, in_frame_id);
-        
+        std::shared_ptr<chordMetadata> in_meta = get_chord_metadata(in_buf, in_frame_id);
+
         out_buf->allocate_new_metadata_object(out_frame_id);
         const std::shared_ptr<chordMetadata> out_meta = get_chord_metadata(out_buf, out_frame_id);
-       
+
         out_meta->deepCopy(in_meta);
         out_meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
-        out_meta->set_time_downsampling_fpga(div_noremainder(in_meta->get_time_downsampling_fpga(), 1024) * _sub_integration_ntime);
-       
+        out_meta->set_time_downsampling_fpga(
+            div_noremainder(in_meta->get_time_downsampling_fpga(), 1024) * _sub_integration_ntime);
+
         out_meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
 
         // Advance to the next frame
@@ -221,7 +224,8 @@ void RfiMaskSum::main_thread() {
     }
 }
 
-void RfiMaskSum::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_vis, uint64_t *rfimask_count) {
+void RfiMaskSum::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_vis,
+                                              uint64_t* rfimask_count) {
     // Sum the RFI mask
     //
     // Each RFI mask frame has structure:
@@ -253,8 +257,8 @@ void RfiMaskSum::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_
 
     for (int64_t f = 0; f < _num_local_freq; ++f) {
         rfimask_count[f] = 0;
-        for (int64_t t = t_vis * _sub_integration_ntime;
-             t < (t_vis + 1) * _sub_integration_ntime; t += _rfi_downsampling_factor) {
+        for (int64_t t = t_vis * _sub_integration_ntime; t < (t_vis + 1) * _sub_integration_ntime;
+             t += _rfi_downsampling_factor) {
 
             // Casting to a uint64_t here is a micro-optimization,
             // the assembly is slighty simpler if the compliler knows
