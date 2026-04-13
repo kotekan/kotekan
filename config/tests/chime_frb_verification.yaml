@@ -92,6 +92,25 @@ network_buffers:
   network_buffer_0:
     kotekan_buffer: standard
 
+gpu_beamform_output_buffers:
+  num_frames: buffer_depth
+  frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
+  metadata_pool: main_pool
+  gpu_beamform_output_buffer_0:
+    kotekan_buffer: standard
+
+gain_frb_buffer:
+  num_frames: buffer_depth
+  frame_size: 2048 * 2 * sizeof_float
+  metadata_pool: main_pool
+  kotekan_buffer: standard
+
+# trivial gain
+set_gain_frb_guffer:
+  kotekan_stage: testDataGenFloat
+  type: const
+  value: 1.0
+
 cpu_output_buffers:
   num_frames: buffer_depth
   frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
@@ -134,6 +153,15 @@ cpu_simulate:
     network_in_buf: network_buffer_0
     beam_out_buf: cpu_output_buffer_0
     hfb_out_buf: cpu_hfb_output_buffer_0
+
+check_data:
+  bf_data_check_0:
+    num_frames_to_test: 1
+    epsilon: 0.001
+    kotekan_stage: testDataCheckFloat
+    first_buf : gpu_beamform_output_buffer_0
+    second_buf: cpu_output_buffer_0
+
 
 frb:
   # set via a globals
