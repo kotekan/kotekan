@@ -179,7 +179,7 @@ hdf5_N2_write_subset:
     kotekan_stage: hdf5N2Write
     cpu_affinity: [12]
     in_buf: n2_recv_subset_buffer
-    base_dir: /data/kotekan_vis_files/subset/
+    base_dir: /mnt/cs00/data/kotekan_vis_files/subset/
     file_name: pipeline_test
     prefix_hostname: false
     use_bitshuffle: true
@@ -195,21 +195,21 @@ hdf5_N2_write_subset:
 
 
 # Full visibilities (all elements)
-hdf5_N2_write_full:
-    log_level: DEBUG
-    kotekan_stage: hdf5N2Write
-    cpu_affinity: [12]
-    in_buf: n2_recv_full_buffer
-    base_dir: /data/kotekan_vis_files/full/
-    file_name: pipeline_test
-    prefix_hostname: false
-    use_bitshuffle: true
-    compression: "lz4"
-    compression_level: 3
-    zip_compression: 0
-    # Chunking: ensure positive chunk sizes
-    blocksize_f: 32
-    late_frame_grace_seconds: 30
-    num_ev: 0
-    n2_layout: "FullUpperTri"
-    num_file_t: 20
+# hdf5_N2_write_full:
+#     log_level: DEBUG
+#     kotekan_stage: hdf5N2Write
+#     cpu_affinity: [12]
+#     in_buf: n2_recv_full_buffer
+#     base_dir: /mnt/cs00/data/kotekan_vis_files/full/
+#     file_name: pipeline_test
+#     prefix_hostname: false
+#     use_bitshuffle: true
+#     compression: "lz4"
+#     compression_level: 3
+#     zip_compression: 0
+#     # Chunking: ensure positive chunk sizes
+#     blocksize_f: 32
+#     late_frame_grace_seconds: 30
+#     num_ev: 0
+#     n2_layout: "FullUpperTri"
+#     num_file_t: 20

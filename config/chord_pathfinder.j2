@@ -752,13 +752,13 @@ n2_accumulate_1:
 n2_subset:
     kotekan_stage: N2Subset
     cpu_affinity: [11]
-    in_buf: n2_buffer_1
-    out_buf: n2_subset_buffer_1
+    in_buf: n2_buffer
+    out_buf: n2_subset_buffer
 
 n2_subset_1:
     kotekan_stage: N2Subset
     cpu_affinity: [29]
-    in_buf: n2_buffer
+    in_buf: n2_buffer_1
     out_buf: n2_subset_buffer_1
 
 # Add eigen calculation (runs on subsetted data)
@@ -792,6 +792,8 @@ eigencalc_1:
     num_ev_conv: 2
     krylov: 2
     subspace: 2
+
+# Buffer sends
 
 buffer_send_n2_subset:
     kotekan_stage: bufferSend

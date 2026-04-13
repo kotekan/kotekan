@@ -1,3 +1,13 @@
+// Blaze's ParallelSection uses a process-wide static bool to detect nested parallel
+// sections.  When two EigenN2Iter stages run concurrently, they race on that flag and
+// throw "Nested parallel sections detected".  Replace the guard with a no-op so that
+// independent threads can enter Blaze SMP sections concurrently.  Must appear before
+// any other Blaze header (the include guard prevents ParallelSection.h from restoring
+// the original macro later).
+#include <blaze/math/smp/ParallelSection.h>
+#undef BLAZE_PARALLEL_SECTION
+#define BLAZE_PARALLEL_SECTION if (true)
+
 #include "EigenN2Iter.hpp"
 
 #include "Config.hpp"            // for Config
@@ -217,7 +227,25 @@ void EigenN2Iter::main_thread() {
 
                 failed_buf->mark_frame_full(unique_name, failed_frame_id++);
             }
+
+            // Pass through vis data even when eigen computation fails
+            if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
+                break;
+            }
+            in_buf->pass_metadata(input_frame_id, out_buf, output_frame_id);
+            N2FrameView output_frame(out_buf, output_frame_id);
+            output_frame.copy_data(input_frame, {N2Field::eval, N2Field::evec, N2Field::erms});
+            for (uint32_t i = 0; i < _num_eigenvectors; i++) {
+                output_frame.eval[i] = 0.0f;
+                for (uint32_t j = 0; j < num_elements; j++) {
+                    output_frame.evec[i * num_elements + j] = {0.0f, 0.0f};
+                }
+            }
+            output_frame.erms = 0.0f;
+            output_frame.emethod = N2EigenMethod::none;
+
             in_buf->mark_frame_empty(unique_name, input_frame_id++);
+            out_buf->mark_frame_full(unique_name, output_frame_id++);
             continue;
         }
         auto& evals = eigpair.first;
