@@ -2,11 +2,11 @@
 #include "../include/n2k/internals/internals.hpp"
 #include "../include/n2k/internals/device_inlines.hpp"
 
-#include <gputils/cuda_utils.hpp>
-#include <gputils/device_mma.hpp>
+#include <ksgpu/cuda_utils.hpp>
+#include <ksgpu/device_mma.hpp>
 
 using namespace std;
-using namespace gputils;
+using namespace ksgpu;
 
 namespace n2k {
 #if 0

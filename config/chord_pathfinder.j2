@@ -7,7 +7,7 @@
 # num_output_frames: fully accumulated N2 frames per frequency that should reach hdf5N2Write
 {% set num_output_frames = 100 %}
 
-# num_local_freq: number of contiguous frequency IDs to simulate on this GPU;
+# num_local_freq: number of frequency IDs to simulate on this GPU;
 #    must be divisible by 4 because pl_mask shapes use num_local_freq/4.
 {% set num_local_freq = 384 %}
 
@@ -64,7 +64,7 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: INFO
+log_level: WARN
 
 numa_node: 0
 
@@ -102,49 +102,56 @@ element_short: 8
 element_long: num_elements / element_short
 
 telescope:
-  name: CHORDTelescope
-  sampling_rate_MHz: {{ sampling_rate_MHz }}
-  fft_length: {{ fft_length }}
-  nyquist_zone: {{ nyquist_zone }}
-  min_science_freq_MHz: {{ science_min_freq_MHz }}
-  max_science_freq_MHz: {{ science_max_freq_MHz }}
+    name: CHORDTelescope
+    sampling_rate_MHz: {{ sampling_rate_MHz }}
+    fft_length: {{ fft_length }}
+    nyquist_zone: {{ nyquist_zone }}
+    min_science_freq_MHz: {{ science_min_freq_MHz }}
+    max_science_freq_MHz: {{ science_max_freq_MHz }}
 
-  origin_itrs_lat_deg: 49.32075144444
-  origin_itrs_lon_deg: -119.62081125
+    origin_itrs_lat_deg: 49.32075144444
+    origin_itrs_lon_deg: -119.62081125
 
-  grid_x_axis: [ 0.999974342398359362,
+    grid_x_axis: [ 0.999974342398359362,
                 -0.000037539331442772,
                 -0.007163318767675494]
-  grid_y_axis: [0.000065403387739210,
+    grid_y_axis: [0.000065403387739210,
                 0.999992433220348809,
                 0.003889630373557614]
-  
-  dish_elev_axis: [0.99999999838132391,
+
+    dish_elev_axis: [0.99999999838132391,
                    -0.000056897733584327
                    0.0]
-  dish_vert_axis: [0.0, 0.0, 1.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
 
-  dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
-  check_duplicate_dish_grid: false  # Pathfinder has duplicate grid locations
+    dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
+    check_duplicate_dish_grid: false  # Pathfinder has duplicate grid locations
 
-  num_dishes_x: 8
-  num_dishes_y: 12
-  dish_separation_x_m: 6.300156854906823
-  dish_separation_y_m: 8.500057809796308
-  dish_inputs: [
-    {dish_idx: 0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p1},
-    {dish_idx: 1, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p2},
-    {dish_idx: 2, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p1},
-    {dish_idx: 3, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p2},
-    {dish_idx: 4, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p1},
-    {dish_idx: 5, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p2}
-  ]
+    num_dishes_x: 8
+    num_dishes_y: 12
+    dish_separation_x_m: 6.300156854906823
+    dish_separation_y_m: 8.500057809796308
+    dish_inputs: [
+        {dish_idx: 0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p1},
+        {dish_idx: 1, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p2},
+        {dish_idx: 2, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p1},
+        {dish_idx: 3, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p2},
+        {dish_idx: 4, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p1},
+        {dish_idx: 5, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p2}
+    ]
 
-  require_gps: False
-  eop_updatable_config: /earth_rotation_data
+    require_gps: True
+    query_gps: True
+    gps_host: "chive"
+    gps_port: 54321
+    gps_endpoint: "/get-frame0-time"
+    auto_correct_gps_week_rollover: True
 
-gps_time:
-  frame0_nano: 1773347320000002880
+    eop_updatable_config: /earth_rotation_data
+
+earth_rotation_data:
+    kotekan_update_endpoint: json
+    earth_orientation_parameter_table: []
 
 
 # Pools
@@ -745,13 +752,13 @@ n2_accumulate_1:
 n2_subset:
     kotekan_stage: N2Subset
     cpu_affinity: [11]
-    in_buf: n2_buffer_1
-    out_buf: n2_subset_buffer_1
+    in_buf: n2_buffer
+    out_buf: n2_subset_buffer
 
 n2_subset_1:
     kotekan_stage: N2Subset
     cpu_affinity: [29]
-    in_buf: n2_buffer
+    in_buf: n2_buffer_1
     out_buf: n2_subset_buffer_1
 
 # Add eigen calculation (runs on subsetted data)
@@ -761,6 +768,7 @@ eigencalc:
     num_ev: num_ev_to_calculate
     cpu_affinity: [10]
     log_level: info
+    num_blaze_workers: 1
     in_buf: n2_subset_buffer
     out_buf: n2_eigen_buffer
     # Convergence config
@@ -776,6 +784,7 @@ eigencalc_1:
     num_ev: num_ev_to_calculate
     cpu_affinity: [30]
     log_level: info
+    num_blaze_workers: 1
     in_buf: n2_subset_buffer_1
     out_buf: n2_eigen_buffer_1
     # Convergence config
@@ -785,6 +794,8 @@ eigencalc_1:
     num_ev_conv: 2
     krylov: 2
     subspace: 2
+
+# Buffer sends
 
 buffer_send_n2_subset:
     kotekan_stage: bufferSend
@@ -810,7 +821,7 @@ buffer_send_n2_subset_1:
     retry_time: 10.0
     drop_frames: true
 
-buffer_send_n2_full_2:
+buffer_send_n2_full_1:
     kotekan_stage: bufferSend
     buf: n2_buffer_1
     server_ip: 10.222.0.51

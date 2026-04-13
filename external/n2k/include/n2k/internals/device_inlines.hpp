@@ -1,6 +1,8 @@
 #ifndef _N2K_DEVICE_INLINES_HPP
 #define _N2K_DEVICE_INLINES_HPP
 
+#include <cassert>
+
 // This source file is used internally in CUDA kernels.
 // It probably won't be useful "externally" to n2k.
 

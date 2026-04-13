@@ -262,7 +262,13 @@ public:
  * @conf use_bitshuffle           Bool. Enable bitshuffle with the selected backend codec (default:
  *                                false).
  * @conf baseband_gain_file       String. Path to the digital gains HDF5 file. If empty (default),
- *                                gains are not written.
+ *                                gains are not written. Mutually exclusive with
+ *                                `baseband_gain_url`.
+ * @conf baseband_gain_url        String. HTTP URL to fetch the digital gains HDF5 file from at
+ *                                startup. The file is downloaded once into
+ *                                `<base_dir>/.partial/baseband_gains.h5` and then used as if it
+ *                                had been provided via `baseband_gain_file`. Plain HTTP only; no
+ *                                HTTPS, no auth. Mutually exclusive with `baseband_gain_file`.
  * @conf baseband_gain_update_idx Int. Index along the update_time axis to read from the gains
  *                                file (-1 = latest, default: -1).
  * @conf late_frame_grace_seconds UInt. Grace period in seconds for late frames (default: 60).
@@ -314,9 +320,13 @@ public:
 
 private:
     // Config settings (initialized from Config in constructor)
-    const std::string _base_dir;           /// Base directory to write files into
-    const std::string _baseband_gain_file; /// Path to digital gains HDF5 file
-    const int _baseband_gain_update_idx;   /// update_time index (-1 = latest)
+    const std::string _base_dir; /// Base directory to write files into
+    /// Path to digital gains HDF5 file. Set either directly from config or, if
+    /// `baseband_gain_url` is configured, populated at startup after the URL is
+    /// downloaded into `<base_dir>/.partial/baseband_gains.h5`.
+    std::string _baseband_gain_file;
+    const std::string _baseband_gain_url; /// HTTP URL to fetch the gains file from (optional)
+    const int _baseband_gain_update_idx;  /// update_time index (-1 = latest)
     const std::uint64_t _num_file_t; /// Number of incoming time frames per file, as indexed by the
                                      /// absolute frame index
     const std::string _compression;
