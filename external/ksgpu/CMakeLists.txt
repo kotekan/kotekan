@@ -6,7 +6,7 @@
 #
 # Then, compile cu files %.o: %.cu $(HFILES) $(NVCC) -c -o $@ $< as a library.
 #
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.17)
 project(ksgpu)
 
 message(STATUS "KSGPU Current source directory: ${CMAKE_CURRENT_SOURCE_DIR}")
@@ -50,4 +50,4 @@ target_include_directories(ksgpu PUBLIC .)
 # workarounds around issues with ksgpu
 set_source_files_properties(
     src_lib/mem_utils.cpp # keep ksgpu untouched, including stuff thtat generates warnings
-    PROPERTIES COMPILE_FLAGS "-Wno-error=unused-parameter")
+    PROPERTIES COMPILE_FLAGS "-Wno-unused-parameter")
