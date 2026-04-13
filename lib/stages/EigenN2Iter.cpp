@@ -1,13 +1,3 @@
-// Blaze's ParallelSection uses a process-wide static bool to detect nested parallel
-// sections.  When two EigenN2Iter stages run concurrently, they race on that flag and
-// throw "Nested parallel sections detected".  Replace the guard with a no-op so that
-// independent threads can enter Blaze SMP sections concurrently.  Must appear before
-// any other Blaze header (the include guard prevents ParallelSection.h from restoring
-// the original macro later).
-#include <blaze/math/smp/ParallelSection.h>
-#undef BLAZE_PARALLEL_SECTION
-#define BLAZE_PARALLEL_SECTION if (true)
-
 #include "EigenN2Iter.hpp"
 
 #include "Config.hpp"            // for Config
