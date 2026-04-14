@@ -54,6 +54,8 @@ void XEngineMetadata::validate() const
     // Validate nbeams and beam_ids.
     xassert(nbeams > 0);
 
+    //xassert(beamset > 0);  ?
+
     if (beam_ids.size() > 0) {
         if (long(beam_ids.size()) != nbeams) {
             stringstream ss;
@@ -168,6 +170,8 @@ void XEngineMetadata::to_yaml(YAML::Emitter &emitter, bool verbose) const
         ) << YAML::Newline << YAML::Newline;
     }
 
+    emitter << YAML::Key << "beamset" << YAML::Value << beamset;
+
     emitter << YAML::Key << "nbeams" << YAML::Value << nbeams;
 
     if (beam_ids.size() > 0) {
@@ -240,6 +244,7 @@ XEngineMetadata XEngineMetadata::from_yaml(const YamlFile &f)
     ret.zone_freq_edges = f.get_vector<double> ("zone_freq_edges");
     ret.freq_channels = f.get_vector<long> ("freq_channels", std::vector<long>());
     ret.nbeams = f.get_scalar<long> ("nbeams");
+    ret.beamset = f.get_scalar<long> ("beamset");
     ret.beam_ids = f.get_vector<long> ("beam_ids", std::vector<long>());
     ret.initial_time_sample = f.get_scalar<long> ("initial_time_sample");
 

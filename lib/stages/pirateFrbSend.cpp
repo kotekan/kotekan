@@ -390,6 +390,7 @@ bool pirateFrbSend::send_frame(int frame_id,
             meta.beam_positions.push_back(p);
 
         meta.nbeams = dest->beam_ids.size();
+        meta.beamset = dest->beamset;
 
         INFO("XEngineMetadata validate:");
         meta.validate();

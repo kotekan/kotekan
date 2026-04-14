@@ -55,6 +55,8 @@ struct XEngineMetadata
 
     std::vector<float> beam_positions;
 
+    long beamset = 0;
+
     // When an X-engine node sends metadata to an FRB search node, it indicates the starting time
     // of the data stream that will follow. Currently, we represent the starting time by a sample
     // count, which must be a multiple of 256.
