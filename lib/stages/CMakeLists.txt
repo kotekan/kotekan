@@ -68,6 +68,7 @@ add_library(
     bufferCopy.cpp
     bufferSwitch.cpp
     bufferDelay.cpp
+    bufferQuiet.cpp
     BufferSplit.cpp
     InputSubset.cpp
     setScatterIndices.cpp
@@ -96,6 +97,7 @@ add_library(
     BeamExtract.cpp
     BeamInspect.cpp
     configTrackerWriter.cpp
+    givenDataGen.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
@@ -108,6 +110,7 @@ add_library(
     N2TimeDownsample.cpp
     N2FringeStop.cpp
     dropAllFrames.cpp
+    N2FrameToVisFrame.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 

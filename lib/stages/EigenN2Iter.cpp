@@ -9,7 +9,7 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"            // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
 #include "kotekanLogging.hpp"    // for DEBUG
-#include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
+#include "prometheusMetrics.hpp" // for Counter, Gauge, Metrics, MetricFamily
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
@@ -41,6 +41,7 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&EigenN2Iter::main_thread, this)),
 
     in_buf(get_buffer("in_buf")), out_buf(get_buffer("out_buf")),
+    failed_buf(config.exists(unique_name, "failed_buf") ? get_buffer("failed_buf") : nullptr),
 
     _num_eigenvectors(config.get<size_t>(unique_name, "num_ev")),
 
@@ -51,6 +52,9 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     _max_iterations(config.get_default<size_t>(unique_name, "max_iterations", 15)),
     _krylov(config.get_default<size_t>(unique_name, "krylov", 2)),
     _subspace(config.get_default<size_t>(unique_name, "subspace", 3)),
+
+    // blaze parallelizations
+    _num_blaze_workers(config.get_default<uint32_t>(unique_name, "num_blaze_workers", 0)),
 
     // Masking params
     _exclude_inputs(config.get_default<std::vector<size_t>>(unique_name, "exclude_inputs", {})),
@@ -67,7 +71,9 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     eigenvalue_convergence_metric(Metrics::instance().add_gauge(
         "kotekan_eigenN2iter_eigenvalue_convergence", unique_name, {"freq_id"})),
     eigenvector_convergence_metric(Metrics::instance().add_gauge(
-        "kotekan_eigenN2iter_eigenvector_convergence", unique_name, {"freq_id"})) {
+        "kotekan_eigenN2iter_eigenvector_convergence", unique_name, {"freq_id"})),
+    num_failed_eigencalc(
+        Metrics::instance().add_counter("kotekan_eigenN2iter_num_failed_eigencalc", unique_name)) {
 
     in_buf->register_consumer(unique_name);
     out_buf->register_producer(unique_name);
@@ -96,6 +102,34 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
                     out_desc->get_num_ev(), _num_eigenvectors);
     }
 
+    if (failed_buf) {
+        failed_buf->register_producer(unique_name);
+        // this replicates some of the tests on in_buf to not rely on previous tests
+        if (in_buf->buffer_type != "N2" || failed_buf->buffer_type != "N2")
+            FATAL_ERROR("EigenN2Iter stage requires 'N2' buffers as input and failed.");
+
+        // Validate that input and failed buffers have N2 frame descriptors set
+        auto in_desc =
+            std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(in_buf->get_frame_description());
+        auto failed_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(
+            failed_buf->get_frame_description());
+        if (!in_desc || !failed_desc) {
+            FATAL_ERROR("EigenN2Iter: Input and failed buffers must have N2FrameDesc set");
+        }
+        // Validate num_elements and layout match
+        if (in_desc->get_num_elements() != failed_desc->get_num_elements()) {
+            FATAL_ERROR("EigenN2Iter: Input and failed buffer num_elements must match");
+        }
+        if (in_desc->get_n2_layout() != failed_desc->get_n2_layout()) {
+            FATAL_ERROR("EigenN2Iter: Input and failed buffer n2_layout must match");
+        }
+        // Validate failed buffer has correct num_ev for this stage
+        if (failed_desc->get_num_ev() != 0) {
+            FATAL_ERROR("EigenN2Iter: Failed buffer num_ev ({:d}) not 0",
+                        failed_desc->get_num_ev());
+        }
+    }
+
     if (_num_ev_conv > _num_eigenvectors)
         FATAL_ERROR("The `num_ev_conv` config parameter ({:d}) must be less than or equal to "
                     "`num_ev` ({:d}).",
@@ -114,12 +148,18 @@ void EigenN2Iter::main_thread() {
 
     frameID input_frame_id(in_buf);
     frameID output_frame_id(out_buf);
+    // need to pass a valid buffer to avoid a segfault, even if failed_frame_id
+    // is not used afterwards
+    frameID failed_frame_id(failed_buf != nullptr ? failed_buf : out_buf);
 
     DynamicHermitian<float> mask;
     uint32_t num_elements = 0;
     bool initialized = false;
 
+    // these are kotekan wide (process wide) settings
     openblas_set_num_threads(1);
+    if (_num_blaze_workers > 0)
+        blaze::setNumThreads(_num_blaze_workers);
 
     while (!stop_thread) {
 
@@ -156,9 +196,30 @@ void EigenN2Iter::main_thread() {
         DynamicHermitian<cfloat> vis = to_blaze_herm(input_frame.vis);
 
         // Perform the actual eigen-decomposition
-        std::tie(eigpair, stats) =
-            eigen_masked_subspace(vis, mask, _num_eigenvectors, _tol_eval, _tol_evec,
-                                  _max_iterations, _num_ev_conv, _krylov, _subspace);
+        try {
+            std::tie(eigpair, stats) =
+                eigen_masked_subspace(vis, mask, _num_eigenvectors, _tol_eval, _tol_evec,
+                                      _max_iterations, _num_ev_conv, _krylov, _subspace);
+        } catch (const std::runtime_error& e) {
+            ERROR("Could not find eigenvalues after {:d} for frame fpga_seq {:d}: {:s}",
+                  _max_iterations, input_frame.fpga_start_tick, e.what());
+
+            num_failed_eigencalc.inc(1);
+
+            if (failed_buf != nullptr) {
+                if (failed_buf->wait_for_empty_frame(unique_name, failed_frame_id) == nullptr) {
+                    break;
+                }
+
+                in_buf->pass_metadata(input_frame_id, failed_buf, failed_frame_id);
+                N2FrameView failed_frame(failed_buf, failed_frame_id);
+                failed_frame.copy_data(input_frame, {N2Field::eval, N2Field::evec, N2Field::erms});
+
+                failed_buf->mark_frame_full(unique_name, failed_frame_id++);
+            }
+            in_buf->mark_frame_empty(unique_name, input_frame_id++);
+            continue;
+        }
         auto& evals = eigpair.first;
         auto& evecs = eigpair.second;
 

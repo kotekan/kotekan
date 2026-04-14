@@ -44,29 +44,27 @@ pirateFrbSend::pirateFrbSend(Config& config, const std::string& unique_name,
     frb_num_output_times = config.get<int>(unique_name, "frb_num_output_times");
     assert(frb_num_output_times % frb_chunk_size == 0);
 
-    // HACK -- this makes life much easier....
-    if (frb_num_output_times != frb_chunk_size)
-        FATAL_ERROR("frb_num_output_times must be equal to frb_chunk_size!");
-
     n_beams = config.get<int>(unique_name, "frb2_num_beams");
 
     upchan_total_channels = (config.get<int>(unique_name, "upchan_all_max_output_channel") -
                              config.get<int>(unique_name, "upchan_all_min_output_channel"));
 
-    size_t expect_size = sizeof(float16_t) * 2 * (frb_num_output_times / frb_chunk_size) *
-        n_beams * upchan_total_channels;
+    size_t expect_size = sizeof(float16_t) * 2 * upchan_total_channels * n_beams *
+        (frb_num_output_times / frb_chunk_size);
     if (offset_scale_buf->frame_size != expect_size)
         FATAL_ERROR("offset_scale_buf must have size {:d}x{:d}x{:d}x{:d}x{:d} = {:d}; got {:d}",
-                    sizeof(float16_t), 2, frb_num_output_times / frb_chunk_size, n_beams,
-                    upchan_total_channels, expect_size, offset_scale_buf->frame_size);
+                    sizeof(float16_t), 2, upchan_total_channels, n_beams,
+                    frb_num_output_times / frb_chunk_size,
+                    expect_size, offset_scale_buf->frame_size);
     assert(offset_scale_buf->frame_size == expect_size);
 
     // int4
-    expect_size = (n_beams * upchan_total_channels * frb_chunk_size) / 2;
+    expect_size = (n_beams * upchan_total_channels * frb_num_output_times) / 2;
     if (intensity_buf->frame_size != expect_size)
-        FATAL_ERROR("intensity_buf must have size {:d}x{:d}x{:d}/2 = {:d}; got {:d}",
-                    n_beams, upchan_total_channels, frb_chunk_size, expect_size,
-                    intensity_buf->frame_size);
+        FATAL_ERROR("intensity_buf must have size {:d}x{:d}x{:d}x{:d}/2 = {:d}; got {:d}",
+                    frb_chunk_size, upchan_total_channels, n_beams,
+                    frb_num_output_times / frb_chunk_size,
+                    expect_size, intensity_buf->frame_size);
     assert(intensity_buf->frame_size == expect_size);
 
 
@@ -219,14 +217,25 @@ void pirateFrbSend::main_thread() {
         //std::shared_ptr<const kotekan::GenericNDArray>
         INFO("getting ndarray");
         auto intensity_nd = intensity_buf->get_ndarray_frame_desc();
-
-        INFO("printing ndarray");
+        INFO("printing intensity ndarray");
         intensity_nd->output_framedesc(std::cout);
+        auto offset_scale_nd = offset_scale_buf->get_ndarray_frame_desc();
+        INFO("printing offset-scale ndarray");
+        offset_scale_nd->output_framedesc(std::cout);
+        INFO("printed");
 
-        assert((size_t)intensity_nd->get_extent(0) == n_beams);
-        assert((size_t)intensity_nd->get_extent(1) == upchan_total_channels);
-        assert((size_t)intensity_nd->get_extent(2) == frb_chunk_size);
-        
+        assert((size_t)intensity_nd->get_extent(0) == frb_num_output_times / frb_chunk_size);
+        assert((size_t)intensity_nd->get_extent(1) == n_beams);
+        assert((size_t)intensity_nd->get_extent(2) == upchan_total_channels);
+        assert((size_t)intensity_nd->get_extent(3) == frb_chunk_size/2);
+        assert(intensity_nd->get_value_datatype() == kotekan::int4x2);
+
+        assert((size_t)offset_scale_nd->get_extent(0) == frb_num_output_times / frb_chunk_size);
+        assert((size_t)offset_scale_nd->get_extent(1) == n_beams);
+        assert((size_t)offset_scale_nd->get_extent(2) == upchan_total_channels);
+        assert((size_t)offset_scale_nd->get_extent(3) == 2);
+        assert(offset_scale_nd->get_value_datatype() == kotekan::float16);
+
         uint32_t num_full_frames = intensity_buf->get_num_full_frames();
 
         // This logic is from sendBuffer, but with drop_frames assumed true.
@@ -416,7 +425,6 @@ bool pirateFrbSend::send_frame(int frame_id,
 
     // Send 256-time-sample mini-chunks.
 
-    //for (int chunk=0; chunk<(int)(frb_num_output_times / frb_chunk_size); chunk++) {
     /*
     // First the offset & scale:
     size_t chunksize = sizeof(float16_t) * 2 * frb_chunk_size * n_beams * upchan_total_channels;
@@ -441,40 +449,42 @@ bool pirateFrbSend::send_frame(int frame_id,
     */
     //}
 
-    // The data come in frb_chunk_size == 256 time sample chunks.
-    // The data array shape is Beams, Freqs, Times.
-    // So we can just pull out our range of Beam indices for this dest.
+    for (int chunk=0; chunk<(int)(frb_num_output_times / frb_chunk_size); chunk++) {
+        // The data come in frb_chunk_size == 256 time sample chunks.
+        // The offset-scale array shape is big_Times(== chunk), Beams, Freqs, 2
+        // So we can just pull out our range of Beam indices for this dest x chunk.
 
-    size_t dest_nbeams = dest->beam_index_max - dest->beam_index_min;
-    size_t size_per_beam = sizeof(float16_t) * 2 * upchan_total_channels;
-    size_t total_size = dest_nbeams * size_per_beam;
-    // HACK -- we're assuming contiguous data packing...
-    size_t offset = dest->beam_index_min * size_per_beam;
+        size_t dest_nbeams = dest->beam_index_max - dest->beam_index_min;
+        size_t size_per_beam = sizeof(float16_t) * 2 * upchan_total_channels;
+        size_t total_chunk_size = dest_nbeams * size_per_beam;
+        // HACK -- we're assuming contiguous data packing...
+        size_t offset = total_chunk_size * chunk + dest->beam_index_min * size_per_beam;
 
-    n_sent = 0;
-    while ((n = send(dest->socket_fd,
-                     offset_scale_frame + offset + n_sent,
-                     total_size - n_sent,
-                     MSG_NOSIGNAL))
-           > 0) {
-        n_sent += n;
+        n_sent = 0;
+        while ((n = send(dest->socket_fd,
+                         offset_scale_frame + offset + n_sent,
+                         total_chunk_size - n_sent,
+                         MSG_NOSIGNAL))
+               > 0) {
+            n_sent += n;
+        }
+
+        // Then the intensities:
+        size_per_beam = upchan_total_channels * frb_chunk_size / 2;
+        total_chunk_size = dest_nbeams * size_per_beam;
+        offset = total_chunk_size * chunk + dest->beam_index_min * size_per_beam;
+
+        n_sent = 0;
+        while ((n = send(dest->socket_fd,
+                         intensity_frame + offset + n_sent,
+                         total_chunk_size - n_sent,
+                         MSG_NOSIGNAL))
+               > 0) {
+            n_sent += n;
+        }
+        INFO("Sent frame {:d} chunk {:d}: {:d} beams to {:s}:{:d}", frame_id, chunk, dest_nbeams, dest->server_ip, dest->server_port);
     }
 
-    // Then the intensities:
-    size_per_beam = upchan_total_channels * frb_chunk_size / 2;
-    total_size = dest_nbeams * size_per_beam;
-    offset = dest->beam_index_min * size_per_beam;
-    
-    n_sent = 0;
-    while ((n = send(dest->socket_fd,
-                     intensity_frame + offset + n_sent,
-                     total_size - n_sent,
-                     MSG_NOSIGNAL))
-           > 0) {
-        n_sent += n;
-    }
-    INFO("Sent frame {:d}: {:d} beams to {:s}:{:d}", frame_id, dest_nbeams, dest->server_ip, dest->server_port);
-    
     return true;
 }
 

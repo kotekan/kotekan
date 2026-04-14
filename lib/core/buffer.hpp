@@ -545,7 +545,7 @@ public:
             frames_desc =
                 std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
         else {
-            auto nd_desc = std::dynamic_pointer_cast<kotekan::GenericNDArray>(frames_desc);
+            auto nd_desc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
             if (!nd_desc) {
                 ERROR("Frame desc mismatch: existing desc is not an NDArray");
                 return;
@@ -566,6 +566,12 @@ public:
                 ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "),
                       fmt::join(nd_desc->get_dimnames(), ", "));
         }
+
+        if (frames_desc->get_byte_size() != frame_size) {
+            FATAL_ERROR("Buffer {:s} ndarray_frame_desc has size {:d}, does not match buffer "
+                        "frame_size {:d}",
+                        buffer_name, frames_desc->get_byte_size(), frame_size);
+        }
     }
 
     /**
@@ -584,7 +590,7 @@ public:
             frames_desc = kotekan::GenericNDArray::create(value_type, quantity_name, extents,
                                                           dimnames, nullptr);
         } else {
-            auto nd_desc = std::dynamic_pointer_cast<kotekan::GenericNDArray>(frames_desc);
+            auto nd_desc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
             if (!nd_desc) {
                 ERROR("Frame desc mismatch: existing desc is not an NDArray");
                 return;
@@ -605,6 +611,12 @@ public:
                 ERROR("Dimnames do not match: [{:s}] != [{:s}]",
                       fmt::format("{:s}", fmt::join(dimnames, ", ")),
                       fmt::format("{:s}", fmt::join(nd_desc->get_dimnames(), ", ")));
+        }
+
+        if (frames_desc->get_byte_size() != frame_size) {
+            FATAL_ERROR("Buffer {:s} ndarray_frame_desc has size {:d}, does not match buffer "
+                        "frame_size {:d}",
+                        buffer_name, frames_desc->get_byte_size(), frame_size);
         }
     }
 
@@ -630,7 +642,7 @@ public:
     /**
      * @brief Sets the frame description
      */
-    void set_frame_desc(std::shared_ptr<kotekan::FrameDesc> new_desc) {
+    void set_frame_desc(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
         buffer_lock lock(mutex);
 
         if (new_desc->get_byte_size() != frame_size) {
@@ -689,7 +701,7 @@ public:
     std::vector<uint8_t*> frames;
 
     /// Metdata describing the shape of the data stored in frames
-    std::shared_ptr<kotekan::FrameDesc> frames_desc;
+    std::shared_ptr<const kotekan::FrameDesc> frames_desc;
 
     /**
      * @brief Flag variables to say which frames are full

@@ -321,24 +321,24 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
             std::vector<EOP> eop_table = telescope.get_current_EOP_table();
             const int eop_len = eop_table.size();
             if (eop_len > 0) {
-                std::vector<int64_t> eop_t_inst(eop_len);
-                std::vector<int64_t> eop_t_ut1(eop_len);
-                std::vector<int64_t> eop_delta_UT1_inst(eop_len);
+                std::vector<int64_t> eop_t_inst_ns(eop_len);
+                std::vector<int64_t> eop_t_ut1_ns(eop_len);
+                std::vector<double> eop_delta_UT1_inst(eop_len);
                 std::vector<double> eop_ERA_deg(eop_len);
                 std::vector<double> eop_xp_as(eop_len);
                 std::vector<double> eop_yp_as(eop_len);
 
                 for (int i = 0; i < eop_len; i++) {
                     EOP eop = eop_table[i];
-                    eop_t_inst[i] = eop.t_inst;
-                    eop_t_ut1[i] = eop.t_ut1;
+                    eop_t_inst_ns[i] = eop.t_inst_ns;
+                    eop_t_ut1_ns[i] = eop.t_ut1_ns;
                     eop_delta_UT1_inst[i] = eop.delta_UT1_inst;
                     eop_ERA_deg[i] = eop.ERA_deg;
                     eop_xp_as[i] = eop.xp_as;
                     eop_yp_as[i] = eop.yp_as;
                 }
-                _check_create_attribute(*file, "EOP_t_inst", eop_t_inst);
-                _check_create_attribute(*file, "EOP_t_ut1", eop_t_ut1);
+                _check_create_attribute(*file, "EOP_t_inst_ns", eop_t_inst_ns);
+                _check_create_attribute(*file, "EOP_t_ut1_ns", eop_t_ut1_ns);
                 _check_create_attribute(*file, "EOP_delta_UT1_inst", eop_delta_UT1_inst);
                 _check_create_attribute(*file, "EOP_ERA_deg", eop_ERA_deg);
                 _check_create_attribute(*file, "EOP_xp_as", eop_xp_as);
@@ -613,8 +613,8 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
         || (frame_length_fpga_ticks[t_index] > 0
             && frame_length_fpga_ticks[t_index] != fv.frame_length_fpga_ticks)
         || (time_center_ut1[t_index] > 0
-            && !ns_close(time_center_ut1[t_index], fv.time_center_eop.t_ut1))
-        || (bin_ut1[t_index] > 0 && !ns_close(bin_ut1[t_index], fv.bin_eop.t_ut1))
+            && !ns_close(time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns))
+        || (bin_ut1[t_index] > 0 && !ns_close(bin_ut1[t_index], fv.bin_eop.t_ut1_ns))
         || (bin_start_ERA_deg[t_index] < 0) || (bin_start_ERA_deg[t_index] > 360)
         || (bin_end_ERA_deg[t_index] < 0) || (bin_end_ERA_deg[t_index] > 360)) {
         // TODO: Don't check these yet, but do when we have LAST values
@@ -626,14 +626,14 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
             "fv.gain.size()={}, fv.flags.size()={}, fv.num_elements={}, fv.num_prod={}, "
             "fv.num_ev={}, fpga_start_tick[t_index]={}, fv.fpga_start_tick={}, "
             "fv.frame_length_fpga_ticks={}, frame_length_fpga_ticks[t_index]={}, "
-            "time_center_ut1[t_index]={}, fv.time_center_eop.t_ut1={}, bin_ut1[t_index]={}, "
-            "fv.bin_eop.t_ut1={}, bin_start_ERA_deg[t_index]={}, bin_end_ERA_deg[t_index]={}, "
+            "time_center_ut1[t_index]={}, fv.time_center_eop.t_ut1_ns={}, bin_ut1[t_index]={}, "
+            "fv.bin_eop.t_ut1_ns={}, bin_start_ERA_deg[t_index]={}, bin_end_ERA_deg[t_index]={}, "
             "bin_start_LAST[t_index]={}, bin_end_LAST[t_index]={}",
             f_index, t_index, fv.vis.size(), fv.weight.size(), fv.eval.size(), fv.evec.size(),
             fv.gain.size(), fv.flags.size(), fv.num_elements, fv.num_prod, fv.num_ev,
             fpga_start_tick[t_index], fv.fpga_start_tick, fv.frame_length_fpga_ticks,
-            frame_length_fpga_ticks[t_index], time_center_ut1[t_index], fv.time_center_eop.t_ut1,
-            bin_ut1[t_index], fv.bin_eop.t_ut1, bin_start_ERA_deg[t_index],
+            frame_length_fpga_ticks[t_index], time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns,
+            bin_ut1[t_index], fv.bin_eop.t_ut1_ns, bin_start_ERA_deg[t_index],
             bin_end_ERA_deg[t_index], bin_start_LAST[t_index], bin_end_LAST[t_index]);
         return AddFrameStatus::MetadataMismatch;
     }
@@ -668,8 +668,8 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     // Store per-time metadata
     fpga_start_tick[t_index] = fv.fpga_start_tick;
     frame_length_fpga_ticks[t_index] = fv.frame_length_fpga_ticks;
-    time_center_ut1[t_index] = fv.time_center_eop.t_ut1;
-    bin_ut1[t_index] = fv.bin_eop.t_ut1;
+    time_center_ut1[t_index] = fv.time_center_eop.t_ut1_ns;
+    bin_ut1[t_index] = fv.bin_eop.t_ut1_ns;
     bin_start_ERA_deg[t_index] = fv.bin_start_ERA_deg;
     bin_end_ERA_deg[t_index] = fv.bin_end_ERA_deg;
     bin_start_LAST[t_index] = fv.bin_start_LAST;
@@ -935,6 +935,7 @@ std::uint64_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
 
 bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
     const std::string abs_idx = std::to_string(filedata.abs_file_idx);
+    DEBUG_NON_OO("hdf5N2Write: Flushing and closing file {}...", abs_idx);
     try {
         filedata.flush_to_disk();
     } catch (const HighFive::Exception& e) {
@@ -962,6 +963,7 @@ bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
     filedata.close();
 
     // Attempt rename from partial to final
+    DEBUG_NON_OO("hdf5N2Write: Renaming file {}...", abs_idx);
     auto ds_filename = filedata._get_final_filename();
     if (!ds_filename) {
         WARN("Could not determine final filename for {} (no UT1 found); leaving partial in place.",

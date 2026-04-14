@@ -215,19 +215,14 @@ private:
         J_index_P,
         J_index_F,
         J_index_B,
+        J_index_Thi,
         J_rank,
     };
     static constexpr std::array<const char*, J_rank> J_labels = {
-        "T",
-        "P",
-        "F",
-        "B",
+        "T", "P", "F", "B", "Thi",
     };
     static constexpr std::array<std::ptrdiff_t, J_rank> J_lengths = {
-        8192,
-        2,
-        384,
-        16,
+        8192, 2, 384, 16, 1,
     };
     static constexpr auto J_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -236,8 +231,8 @@ private:
         return str;
     };
     static constexpr std::array<std::ptrdiff_t, J_rank + 1> J_strides = {
-        J_calc_stride(J_index_T), J_calc_stride(J_index_P), J_calc_stride(J_index_F),
-        J_calc_stride(J_index_B), J_calc_stride(J_rank),
+        J_calc_stride(J_index_T), J_calc_stride(J_index_P),   J_calc_stride(J_index_F),
+        J_calc_stride(J_index_B), J_calc_stride(J_index_Thi), J_calc_stride(J_rank),
     };
     static constexpr std::ptrdiff_t J_length = J_strides[J_rank];
     static constexpr std::ptrdiff_t J_length_in_bytes = type_total_bytes(J_type) * J_length;

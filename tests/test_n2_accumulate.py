@@ -116,16 +116,16 @@ global_params = {
         "kotekan_update_endpoint": "json",
         "earth_orientation_parameter_table": [
             {
-                "time_inst_ns": (t_start_s - 1000) * GIGA,
+                "t_inst_ns": (t_start_s - 1000) * GIGA,
                 "delta_UT1_inst": 0.0,
-                "x_pm": 0.0,
-                "y_pm": 0.0,
+                "xp_as": 0.0,
+                "yp_as": 0.0,
             },
             {
-                "time_inst_ns": (t_start_s + 100000) * GIGA,
+                "t_inst_ns": (t_start_s + 100000) * GIGA,
                 "delta_UT1_inst": 0.0,
-                "x_pm": 1.0,
-                "y_pm": 1.0,
+                "xp_as": 1.0,
+                "yp_as": 1.0,
             },
         ],
     },
@@ -340,12 +340,10 @@ def test_EOP(accumulate_data):
 
         t_inst_ns = seq * dt_ns + t0_ns
 
-        wA = (eopB["time_inst_ns"] - t_inst_ns) / (
-            eopB["time_inst_ns"] - eopA["time_inst_ns"]
-        )
+        wA = (eopB["t_inst_ns"] - t_inst_ns) / (eopB["t_inst_ns"] - eopA["t_inst_ns"])
         wB = 1.0 - wA
 
-        assert frame.metadata.bin_eop.t_inst == t_inst_ns
+        assert frame.metadata.bin_eop.t_inst_ns == t_inst_ns
         assert np.isclose(
             frame.metadata.bin_eop.delta_UT1_inst,
             wA * eopA["delta_UT1_inst"] + wB * eopB["delta_UT1_inst"],
@@ -354,13 +352,13 @@ def test_EOP(accumulate_data):
         )
         assert np.isclose(
             frame.metadata.bin_eop.xp_as,
-            wA * eopA["x_pm"] + wB * eopB["x_pm"],
+            wA * eopA["xp_as"] + wB * eopB["xp_as"],
             atol=0.0,
             rtol=1.0e-12,
         )
         assert np.isclose(
             frame.metadata.bin_eop.yp_as,
-            wA * eopA["y_pm"] + wB * eopB["y_pm"],
+            wA * eopA["yp_as"] + wB * eopB["yp_as"],
             atol=0.0,
             rtol=1.0e-12,
         )

@@ -86,21 +86,21 @@ run_recv_rfi_SKtilde:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_SKtilde_buffer
 
-run_recv_rfi_RFImask:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
-        out_buffers:
-            host_rfi_RFImask_buffer: host_rfi_RFImask_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_rfi_RFImask_ringbuffer
-          gpu_mem_input: rfi_RFImask_buffer
-          output_size: num_frequencies * num_times / 8
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_rfi_RFImask_buffer
+# run_recv_rfi_RFImask:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+#         out_buffers:
+#             host_rfi_RFImask_buffer: host_rfi_RFImask_buffer
+#         commands:
+#         - name: cudaCopyFromRingbuffer
+#           host_signal: host_rfi_RFImask_ringbuffer
+#           gpu_mem_input: rfi_RFImask_buffer
+#           output_size: num_frequencies * num_times / 8
+#           ring_buffer_size: buffer_depth * output_size
+#           out_buf: host_rfi_RFImask_buffer
 
 run_recv_rfi_SKbar:
     gpu_0:
@@ -302,6 +302,15 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_n2k_counts_buffer
         file_name: n2k_counts
+    write_n2_vis:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_n2_vis_buffer
+        file_name: n2_vis
+        create_single_file: false # not implemented
+    # write_n2_vis:
+    #     kotekan_stage: hdf5N2Write
+    #     num_file_t: 4
+    #     in_buf: host_n2_vis_buffer
     write_bb_beam_positions:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beam_positions_buffer
@@ -414,8 +423,8 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_buffer
         file_name: frb3_beams
-    write_frb3_beams_meanstd:
+    write_frb3_beams_offsetscale:
         kotekan_stage: hdf5FileWrite
-        in_buf: host_frb3_beams_meanstd_buffer
-        file_name: frb3_beams_meanstd
+        in_buf: host_frb3_beams_offsetscale_buffer
+        file_name: frb3_beams_offsetscale
         max_frames: 4

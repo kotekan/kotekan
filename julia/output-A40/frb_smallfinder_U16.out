@@ -6,13 +6,472 @@ CHORD FRB beamformer
 Compiling kernel...
 Allocating input data...
 Setting up input data...
-dish = 58
-freq = 4
-polr = 1
-time = 173
-Wvalue = -0.14169419f0 + 0.32392487f0im
-Evalue = -2 + 6im
-dstime = 14
+Tbarmin = 0
+Tbarmax = 480
+Fbar_in_min = 0
+Fbar_in_max = 128
+Ttildemin = 0
+Ttildemax = 40
+Fbar_out_min = 0
+Fbar_out_max = 128
+num_threads = 32
+num_warps = 6
+num_blocks = 128
+dish_grid = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0), (0, 1), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (0, 2), (1, 2), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 2), (0, 3), (1, 3), (2, 3), (3, 3), (4, 3), (5, 3), (6, 3), (7, 3), (0, 4), (1, 4), (2, 4), (3, 4), (4, 4), (5, 4), (6, 4), (7, 4), (0, 5), (1, 5), (2, 5), (3, 5), (4, 5), (5, 5), (6, 5), (7, 5), (0, 6), (1, 6), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6), (0, 7), (1, 7), (2, 7), (3, 7), (4, 7), (5, 7), (6, 7), (7, 7), (0, 8), (1, 8), (2, 8), (3, 8), (4, 8), (5, 8), (6, 8), (7, 8), (0, 9), (1, 9), (2, 9), (3, 9), (4, 9), (5, 9), (6, 9), (7, 9), (0, 10), (1, 10), (2, 10), (3, 10), (4, 10), (5, 10), (6, 10), (7, 10), (0, 11), (1, 11), (2, 11), (3, 11), (4, 11), (5, 11), (6, 11), (7, 11)]
+freq = 51
+polr = 0
+time = 1765
+Fvalue = -1.1594405f0 - 1.8685707f0im
+Evalue = -1 - 2im
+dish=0 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=1 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=2 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=3 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=4 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=5 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=6 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=7 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=8 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=9 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=10 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=11 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=12 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=13 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=14 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=15 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=16 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=17 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=18 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=19 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=20 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=21 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=22 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=23 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=24 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=25 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=26 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=27 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=28 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=29 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=30 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=31 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=32 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=33 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=34 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=35 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=36 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=37 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=38 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=39 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=40 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=41 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=42 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=43 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=44 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=45 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=46 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=47 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=48 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=49 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=50 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=51 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=52 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=53 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=54 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=55 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=56 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=57 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=58 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=59 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dish=60 E=Int4x8(6, 7, -8, -8, -8, -8, -8, -8)
+dish=61 E=Int4x8(6, 7, 6, 7, -8, -8, -8, -8)
+dish=62 E=Int4x8(6, 7, 6, 7, 6, 7, -8, -8)
+dish=63 E=Int4x8(6, 7, 6, 7, 6, 7, 6, 7)
+dstime = 147
+beamp=0 beamq=0 I=0.8333333333333333
+beamp=1 beamq=0 I=0.34211121655389826
+beamp=2 beamq=0 I=0.0
+beamp=3 beamq=0 I=0.042185268283765016
+beamp=4 beamq=0 I=0.0
+beamp=5 beamq=0 I=0.01883414929025074
+beamp=6 beamq=0 I=0.0
+beamp=7 beamq=0 I=0.013536017083994554
+beamp=8 beamq=0 I=0.0
+beamp=9 beamq=0 I=0.013536017083994554
+beamp=10 beamq=0 I=0.0
+beamp=11 beamq=0 I=0.01883414929025074
+beamp=12 beamq=0 I=0.0
+beamp=13 beamq=0 I=0.042185268283765016
+beamp=14 beamq=0 I=0.0
+beamp=15 beamq=0 I=0.3421112165538983
+beamp=0 beamq=1 I=0.5731980545527651
+beamp=1 beamq=1 I=0.2353170035171373
+beamp=2 beamq=1 I=7.029244084947686e-17
+beamp=3 beamq=1 I=0.029016619209485412
+beamp=4 beamq=1 I=1.0769741580022677e-16
+beamp=5 beamq=1 I=0.012954838066286743
+beamp=6 beamq=1 I=3.053836119167504e-17
+beamp=7 beamq=1 I=0.009310583500659622
+beamp=8 beamq=1 I=1.2287624621502383e-17
+beamp=9 beamq=1 I=0.0093105854180808
+beamp=10 beamq=1 I=1.4474099002681484e-16
+beamp=11 beamq=1 I=0.01295483878829191
+beamp=12 beamq=1 I=2.9237318584692435e-16
+beamp=13 beamq=1 I=0.029016623723425547
+beamp=14 beamq=1 I=1.2217151480290824e-15
+beamp=15 beamq=1 I=0.2353169775145567
+beamp=0 beamq=2 I=0.14578325513139082
+beamp=1 beamq=2 I=0.0598489078295591
+beamp=2 beamq=2 I=1.5630581319999354e-16
+beamp=3 beamq=2 I=0.007379887729540936
+beamp=4 beamq=2 I=4.788559595144311e-17
+beamp=5 beamq=2 I=0.0032948443815083894
+beamp=6 beamq=2 I=9.432558900623889e-17
+beamp=7 beamq=2 I=0.0023679882569618968
+beamp=8 beamq=2 I=2.7484525072507537e-16
+beamp=9 beamq=2 I=0.002367988537947373
+beamp=10 beamq=2 I=5.639658300545432e-16
+beamp=11 beamq=2 I=0.0032948459197060243
+beamp=12 beamq=2 I=1.6281102623490657e-16
+beamp=13 beamq=2 I=0.007379888519518496
+beamp=14 beamq=2 I=1.785680978083626e-15
+beamp=15 beamq=2 I=0.05984888910616856
+beamp=0 beamq=3 I=0.0
+beamp=1 beamq=3 I=0.0
+beamp=2 beamq=3 I=0.0
+beamp=3 beamq=3 I=0.0
+beamp=4 beamq=3 I=0.0
+beamp=5 beamq=3 I=0.0
+beamp=6 beamq=3 I=0.0
+beamp=7 beamq=3 I=0.0
+beamp=8 beamq=3 I=0.0
+beamp=9 beamq=3 I=0.0
+beamp=10 beamq=3 I=0.0
+beamp=11 beamq=3 I=0.0
+beamp=12 beamq=3 I=0.0
+beamp=13 beamq=3 I=0.0
+beamp=14 beamq=3 I=0.0
+beamp=15 beamq=3 I=0.0
+beamp=0 beamq=4 I=0.03906250143747043
+beamp=1 beamq=4 I=0.016036457422160127
+beamp=2 beamq=4 I=6.107672238335007e-17
+beamp=3 beamq=4 I=0.0019774346865835263
+beamp=4 beamq=4 I=9.920449878242366e-17
+beamp=5 beamq=4 I=0.0008828514592983121
+beamp=6 beamq=4 I=2.256947522390658e-16
+beamp=7 beamq=4 I=0.0006345007959310148
+beamp=8 beamq=4 I=1.9967390009941372e-16
+beamp=9 beamq=4 I=0.0006345002733842201
+beamp=10 beamq=4 I=1.548602103033462e-15
+beamp=11 beamq=4 I=0.0008828507499896944
+beamp=12 beamq=4 I=2.316217241153199e-15
+beamp=13 beamq=4 I=0.0019774311563676775
+beamp=14 beamq=4 I=1.6743695550417805e-15
+beamp=15 beamq=4 I=0.016036469904859185
+beamp=0 beamq=5 I=0.02635150966377528
+beamp=1 beamq=5 I=0.01081817432535186
+beamp=2 beamq=5 I=8.854317741964952e-16
+beamp=3 beamq=5 I=0.001333973663951458
+beamp=4 beamq=5 I=4.063951143199832e-16
+beamp=5 beamq=5 I=0.0005955690732889265
+beamp=6 beamq=5 I=7.607485243606622e-17
+beamp=7 beamq=5 I=0.00042803311527596263
+beamp=8 beamq=5 I=4.0784071721663057e-16
+beamp=9 beamq=5 I=0.0004280346336300871
+beamp=10 beamq=5 I=1.20743981942469e-15
+beamp=11 beamq=5 I=0.0005955702012633772
+beamp=12 beamq=5 I=1.2564096175486186e-15
+beamp=13 beamq=5 I=0.0013339787582202006
+beamp=14 beamq=5 I=1.3515844982566378e-14
+beamp=15 beamq=5 I=0.010818159661627623
+beamp=0 beamq=6 I=0.0
+beamp=1 beamq=6 I=0.0
+beamp=2 beamq=6 I=0.0
+beamp=3 beamq=6 I=0.0
+beamp=4 beamq=6 I=0.0
+beamp=5 beamq=6 I=0.0
+beamp=6 beamq=6 I=0.0
+beamp=7 beamq=6 I=0.0
+beamp=8 beamq=6 I=0.0
+beamp=9 beamq=6 I=0.0
+beamp=10 beamq=6 I=0.0
+beamp=11 beamq=6 I=0.0
+beamp=12 beamq=6 I=0.0
+beamp=13 beamq=6 I=0.0
+beamp=14 beamq=6 I=0.0
+beamp=15 beamq=6 I=0.0
+beamp=0 beamq=7 I=0.015515536871855324
+beamp=1 beamq=7 I=0.006369646273562177
+beamp=2 beamq=7 I=1.5359530776877978e-16
+beamp=3 beamq=7 I=0.0007854330157932417
+beamp=4 beamq=7 I=1.7817055701178455e-16
+beamp=5 beamq=7 I=0.00035066551567545053
+beamp=6 beamq=7 I=1.0209570457571833e-16
+beamp=7 beamq=7 I=0.0002520215128944586
+beamp=8 beamq=7 I=2.8912057932946783e-16
+beamp=9 beamq=7 I=0.0002520229087920353
+beamp=10 beamq=7 I=5.731815485206699e-16
+beamp=11 beamq=7 I=0.0003506665904340206
+beamp=12 beamq=7 I=2.762727835855146e-15
+beamp=13 beamq=7 I=0.0007854346907676224
+beamp=14 beamq=7 I=3.254955622163565e-15
+beamp=15 beamq=7 I=0.0063696592124661885
+beamp=0 beamq=8 I=0.01302083740357841
+beamp=1 beamq=8 I=0.005345486224399747
+beamp=2 beamq=8 I=4.340422697183636e-16
+beamp=3 beamq=8 I=0.0006591443703679073
+beamp=4 beamq=8 I=6.552195129054065e-16
+beamp=5 beamq=8 I=0.0002942840539146064
+beamp=6 beamq=8 I=1.9389148851282437e-16
+beamp=7 beamq=8 I=0.0002115002855814594
+beamp=8 beamq=8 I=8.167656366057466e-16
+beamp=9 beamq=8 I=0.0002114994024409363
+beamp=10 beamq=8 I=1.297067199016825e-15
+beamp=11 beamq=8 I=0.0002942840885031394
+beamp=12 beamq=8 I=2.540104989771456e-15
+beamp=13 beamq=8 I=0.0006591429594365647
+beamp=14 beamq=8 I=1.1660413664719519e-14
+beamp=15 beamq=8 I=0.005345495374703875
+beamp=0 beamq=9 I=0.0
+beamp=1 beamq=9 I=0.0
+beamp=2 beamq=9 I=0.0
+beamp=3 beamq=9 I=0.0
+beamp=4 beamq=9 I=0.0
+beamp=5 beamq=9 I=0.0
+beamp=6 beamq=9 I=0.0
+beamp=7 beamq=9 I=0.0
+beamp=8 beamq=9 I=0.0
+beamp=9 beamq=9 I=0.0
+beamp=10 beamq=9 I=0.0
+beamp=11 beamq=9 I=0.0
+beamp=12 beamq=9 I=0.0
+beamp=13 beamq=9 I=0.0
+beamp=14 beamq=9 I=0.0
+beamp=15 beamq=9 I=0.0
+beamp=0 beamq=10 I=0.010466766759046018
+beamp=1 beamq=10 I=0.004296956807415847
+beamp=2 beamq=10 I=1.0229447497400734e-15
+beamp=3 beamq=10 I=0.0005298517464489749
+beamp=4 beamq=10 I=9.125368285086329e-17
+beamp=5 beamq=10 I=0.0002365593141819833
+beamp=6 beamq=10 I=1.3462176975028345e-16
+beamp=7 beamq=10 I=0.00017001407686400804
+beamp=8 beamq=10 I=1.4465063984577438e-15
+beamp=9 beamq=10 I=0.00017001429067446281
+beamp=10 beamq=10 I=4.519316055643744e-16
+beamp=11 beamq=10 I=0.00023655928671905378
+beamp=12 beamq=10 I=1.6091367243305694e-15
+beamp=13 beamq=10 I=0.0005298521727262397
+beamp=14 beamq=10 I=1.5417716293468033e-14
+beamp=15 beamq=10 I=0.004296975578516667
+beamp=0 beamq=11 I=0.00993489091189593
+beamp=1 beamq=11 I=0.004078611262466671
+beamp=2 beamq=11 I=1.2865865780161319e-15
+beamp=3 beamq=11 I=0.0005029288139635544
+beamp=4 beamq=11 I=1.5757071573455997e-16
+beamp=5 beamq=11 I=0.00022453840171136498
+beamp=6 beamq=11 I=2.1991234065247647e-16
+beamp=7 beamq=11 I=0.00016137477639121216
+beamp=8 beamq=11 I=1.423918853197629e-16
+beamp=9 beamq=11 I=0.0001613743969352383
+beamp=10 beamq=11 I=6.507020038533835e-16
+beamp=11 beamq=11 I=0.00022453791823606403
+beamp=12 beamq=11 I=1.844047195035762e-15
+beamp=13 beamq=11 I=0.0005029265183110201
+beamp=14 beamq=11 I=1.1981337507775228e-14
+beamp=15 beamq=11 I=0.004078597217387161
+beamp=0 beamq=12 I=0.0
+beamp=1 beamq=12 I=0.0
+beamp=2 beamq=12 I=0.0
+beamp=3 beamq=12 I=0.0
+beamp=4 beamq=12 I=0.0
+beamp=5 beamq=12 I=0.0
+beamp=6 beamq=12 I=0.0
+beamp=7 beamq=12 I=0.0
+beamp=8 beamq=12 I=0.0
+beamp=9 beamq=12 I=0.0
+beamp=10 beamq=12 I=0.0
+beamp=11 beamq=12 I=0.0
+beamp=12 beamq=12 I=0.0
+beamp=13 beamq=12 I=0.0
+beamp=14 beamq=12 I=0.0
+beamp=15 beamq=12 I=0.0
+beamp=0 beamq=13 I=0.009934867886250292
+beamp=1 beamq=13 I=0.004078594934318945
+beamp=2 beamq=13 I=2.596302802378621e-15
+beamp=3 beamq=13 I=0.000502924818608667
+beamp=4 beamq=13 I=1.9967390009941372e-16
+beamp=5 beamq=13 I=0.00022453648217941283
+beamp=6 beamq=13 I=7.408714845317613e-18
+beamp=7 beamq=13 I=0.0001613737496719862
+beamp=8 beamq=13 I=6.685913396993943e-16
+beamp=9 beamq=13 I=0.0001613731590514147
+beamp=10 beamq=13 I=1.5359530776877978e-16
+beamp=11 beamq=13 I=0.00022453664630731423
+beamp=12 beamq=13 I=6.512441049396263e-15
+beamp=13 beamq=13 I=0.0005029255946463606
+beamp=14 beamq=13 I=1.6896929457462424e-14
+beamp=15 beamq=13 I=0.004078576428188759
+beamp=0 beamq=14 I=0.010466783073618558
+beamp=1 beamq=14 I=0.004296963883998849
+beamp=2 beamq=14 I=3.834461683357067e-16
+beamp=3 beamq=14 I=0.0005298540522606415
+beamp=4 beamq=14 I=1.548602103033462e-15
+beamp=5 beamq=14 I=0.00023656056740750713
+beamp=6 beamq=14 I=2.6201552501733023e-17
+beamp=7 beamq=14 I=0.00017001460132469145
+beamp=8 beamq=14 I=3.644726303172104e-16
+beamp=9 beamq=14 I=0.00017001496574877827
+beamp=10 beamq=14 I=2.628828867553186e-15
+beamp=11 beamq=14 I=0.00023655958130352272
+beamp=12 beamq=14 I=4.887041292478411e-15
+beamp=13 beamq=14 I=0.0005298527960818503
+beamp=14 beamq=14 I=1.858991114979854e-14
+beamp=15 beamq=14 I=0.004296999264714779
+beamp=0 beamq=15 I=0.0
+beamp=1 beamq=15 I=0.0
+beamp=2 beamq=15 I=0.0
+beamp=3 beamq=15 I=0.0
+beamp=4 beamq=15 I=0.0
+beamp=5 beamq=15 I=0.0
+beamp=6 beamq=15 I=0.0
+beamp=7 beamq=15 I=0.0
+beamp=8 beamq=15 I=0.0
+beamp=9 beamq=15 I=0.0
+beamp=10 beamq=15 I=0.0
+beamp=11 beamq=15 I=0.0
+beamp=12 beamq=15 I=0.0
+beamp=13 beamq=15 I=0.0
+beamp=14 beamq=15 I=0.0
+beamp=15 beamq=15 I=0.0
+beamp=0 beamq=16 I=0.01302082470933737
+beamp=1 beamq=16 I=0.005345484224254151
+beamp=2 beamq=16 I=2.2695965477363223e-16
+beamp=3 beamq=16 I=0.0006591449173305602
+beamp=4 beamq=16 I=1.270865646515092e-15
+beamp=5 beamq=16 I=0.000294283679875241
+beamp=6 beamq=16 I=6.752772530963883e-16
+beamp=7 beamq=16 I=0.00021150067172699512
+beamp=8 beamq=16 I=1.3901278854884975e-15
+beamp=9 beamq=16 I=0.00021150043230358043
+beamp=10 beamq=16 I=7.878535786727998e-16
+beamp=11 beamq=16 I=0.00029428375388188184
+beamp=12 beamq=16 I=1.2455675958237635e-15
+beamp=13 beamq=16 I=0.0006591412943441896
+beamp=14 beamq=16 I=2.214555217446475e-14
+beamp=15 beamq=16 I=0.005345471140876201
+beamp=0 beamq=17 I=0.015515531698075413
+beamp=1 beamq=17 I=0.006369643281859051
+beamp=2 beamq=17 I=4.403667823911957e-16
+beamp=3 beamq=17 I=0.0007854327104651183
+beamp=4 beamq=17 I=7.012981052360404e-16
+beamp=5 beamq=17 I=0.00035066601351483093
+beamp=6 beamq=17 I=2.4358408808507665e-16
+beamp=7 beamq=17 I=0.00025202248035556356
+beamp=8 beamq=17 I=1.9967390009941372e-16
+beamp=9 beamq=17 I=0.0002520212942738779
+beamp=10 beamq=17 I=6.167303357821711e-16
+beamp=11 beamq=17 I=0.00035066593359276267
+beamp=12 beamq=17 I=1.1235948514191443e-15
+beamp=13 beamq=17 I=0.0007854318256815655
+beamp=14 beamq=17 I=9.857746852600286e-15
+beamp=15 beamq=17 I=0.006369659814421384
+beamp=0 beamq=18 I=0.0
+beamp=1 beamq=18 I=0.0
+beamp=2 beamq=18 I=0.0
+beamp=3 beamq=18 I=0.0
+beamp=4 beamq=18 I=0.0
+beamp=5 beamq=18 I=0.0
+beamp=6 beamq=18 I=0.0
+beamp=7 beamq=18 I=0.0
+beamp=8 beamq=18 I=0.0
+beamp=9 beamq=18 I=0.0
+beamp=10 beamq=18 I=0.0
+beamp=11 beamq=18 I=0.0
+beamp=12 beamq=18 I=0.0
+beamp=13 beamq=18 I=0.0
+beamp=14 beamq=18 I=0.0
+beamp=15 beamq=18 I=0.0
+beamp=0 beamq=19 I=0.02635150706976444
+beamp=1 beamq=19 I=0.01081819249451043
+beamp=2 beamq=19 I=2.3463942016207122e-15
+beamp=3 beamq=19 I=0.0013339744692494417
+beamp=4 beamq=19 I=7.555082138603156e-16
+beamp=5 beamq=19 I=0.0005955695318019804
+beamp=6 beamq=19 I=1.0426410892068934e-15
+beamp=7 beamq=19 I=0.00042803224244782404
+beamp=8 beamq=19 I=7.408714845317613e-16
+beamp=9 beamq=19 I=0.0004280322159534181
+beamp=10 beamq=19 I=5.269222558279552e-16
+beamp=11 beamq=19 I=0.0005955696832810297
+beamp=12 beamq=19 I=5.33608169224949e-16
+beamp=13 beamq=19 I=0.0013339751652927914
+beamp=14 beamq=19 I=1.327966960932662e-14
+beamp=15 beamq=19 I=0.01081813893361433
+beamp=0 beamq=20 I=0.03906256626990679
+beamp=1 beamq=20 I=0.016036489070717953
+beamp=2 beamq=20 I=4.0232935617316255e-15
+beamp=3 beamq=20 I=0.001977440012846377
+beamp=4 beamq=20 I=1.0426410892068934e-15
+beamp=5 beamq=20 I=0.0008828530732511563
+beamp=6 beamq=20 I=7.93997390983551e-16
+beamp=7 beamq=20 I=0.0006345026429406506
+beamp=8 beamq=20 I=2.891928594743002e-15
+beamp=9 beamq=20 I=0.0006345033045839513
+beamp=10 beamq=20 I=5.2267579731905354e-15
+beamp=11 beamq=20 I=0.0008828571521643399
+beamp=12 beamq=20 I=8.571883076032478e-15
+beamp=13 beamq=20 I=0.0019774433365886504
+beamp=14 beamq=20 I=2.7883692172344283e-14
+beamp=15 beamq=20 I=0.016036569545896745
+beamp=0 beamq=21 I=0.0
+beamp=1 beamq=21 I=0.0
+beamp=2 beamq=21 I=0.0
+beamp=3 beamq=21 I=0.0
+beamp=4 beamq=21 I=0.0
+beamp=5 beamq=21 I=0.0
+beamp=6 beamq=21 I=0.0
+beamp=7 beamq=21 I=0.0
+beamp=8 beamq=21 I=0.0
+beamp=9 beamq=21 I=0.0
+beamp=10 beamq=21 I=0.0
+beamp=11 beamq=21 I=0.0
+beamp=12 beamq=21 I=0.0
+beamp=13 beamq=21 I=0.0
+beamp=14 beamq=21 I=0.0
+beamp=15 beamq=21 I=0.0
+beamp=0 beamq=22 I=0.145783193392517
+beamp=1 beamq=22 I=0.05984883160430848
+beamp=2 beamq=22 I=5.3292150784904156e-15
+beamp=3 beamq=22 I=0.0073798781492993865
+beamp=4 beamq=22 I=1.485537676667222e-15
+beamp=5 beamq=22 I=0.0032948382690595286
+beamp=6 beamq=22 I=2.6743653587975774e-16
+beamp=7 beamq=22 I=0.002367986379186317
+beamp=8 beamq=22 I=4.944865408344304e-15
+beamp=9 beamq=22 I=0.002367992448569517
+beamp=10 beamq=22 I=1.9546358166292834e-15
+beamp=11 beamq=22 I=0.0032948383383692116
+beamp=12 beamq=22 I=1.2169265884339382e-14
+beamp=13 beamq=22 I=0.00737989777183065
+beamp=14 beamq=22 I=2.242310793062104e-15
+beamp=15 beamq=22 I=0.0598488844177192
+beamp=0 beamq=23 I=0.5731981439630843
+beamp=1 beamq=23 I=0.23531711826172788
+beamp=2 beamq=23 I=3.0578115271332842e-15
+beamp=3 beamq=23 I=0.029016633826635014
+beamp=4 beamq=23 I=7.620134268952287e-16
+beamp=5 beamq=23 I=0.012954845833440486
+beamp=6 beamq=23 I=8.155007340711802e-16
+beamp=7 beamq=23 I=0.00931058174857292
+beamp=8 beamq=23 I=1.1060669162972954e-15
+beamp=9 beamq=23 I=0.009310587821931221
+beamp=10 beamq=23 I=2.235263478940948e-15
+beamp=11 beamq=23 I=0.012954834818978429
+beamp=12 beamq=23 I=5.594844610749364e-15
+beamp=13 beamq=23 I=0.029016621252903024
+beamp=14 beamq=23 I=1.7703214473067477e-15
+beamp=15 beamq=23 I=0.23531710986987592
 Copying data from CPU to GPU...
 Running kernel...
 Copying data back from GPU to CPU...

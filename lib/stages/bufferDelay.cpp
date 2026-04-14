@@ -9,6 +9,7 @@
 #include "fmt.hpp"  // for compile_string_to_view, format, fmt
 #include "json.hpp" // for json
 
+#include <cassert>    // for assert
 #include <cstring>    // for memcpy
 #include <functional> // for bind, function
 #include <memory>     // for shared_ptr, __shared_ptr_access
@@ -93,6 +94,12 @@ void bufferDelay::main_thread() {
             } else {
                 in_buf->pass_metadata(in_frame_release_id, out_buf, out_frame_id);
                 in_buf->swap_frames(in_frame_release_id, out_buf, out_frame_id);
+            }
+            const auto in_frame_desc = in_buf->get_frame_description();
+            if (in_frame_desc) {
+                out_buf->set_frame_desc(in_frame_desc);
+            } else {
+                assert(!out_buf->get_frame_description());
             }
 
             DEBUG("Reached maximum no. of frames to hold. Releasing oldest frame... in_frame_id: "
