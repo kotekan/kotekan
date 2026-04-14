@@ -23,6 +23,8 @@ add_library(
     gpuSimulateRFIS012tilde.cpp
     gpuSimulateRFISK.cpp
     inventBFMask.cpp
+    inventVoltage.cpp
+    inventVoltageCHIME.cpp
     inventPLMask.cpp
     networkOutputSim.cpp
     simVdifData.cpp
