@@ -14,15 +14,6 @@ import io
 import numpy as np
 from kotekan import timespec
 
-"""
-class CTimeSpec(ctypes.Structure):
-
-    _fields_ = [
-        ("tv_sec", ctypes.c_time_t),
-        ("tv_nsec", ctypes.c_long),
-    ]
-"""
-
 
 class EOP(ctypes.Structure):
 

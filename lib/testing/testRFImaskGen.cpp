@@ -70,8 +70,8 @@ private:
     Buffer* out_buf;
     const std::string name;
     const std::string type;
-    const uint64_t value;
-    const std::vector<uint64_t> value_array;
+    const uint8_t value;
+    const std::vector<uint8_t> value_array;
     const int64_t samples_per_data_set;
     const int64_t rfi_downsampling_factor;
     const int64_t num_frames;
@@ -93,8 +93,8 @@ testRFImaskGen::testRFImaskGen(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&testRFImaskGen::main_thread, this)),
     name(config.get_default<std::string>(unique_name, "name", "RFImask")),
     type(config.get_default<std::string>(unique_name, "type", "const")),
-    value(config.get_default<uint64_t>(unique_name, "value", 0)),
-    value_array(config.get_default<std::vector<uint64_t>>(unique_name, "value_array", {})),
+    value(config.get_default<uint8_t>(unique_name, "value", 0)),
+    value_array(config.get_default<std::vector<uint8_t>>(unique_name, "value_array", {})),
     samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
     rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")),
     num_frames(config.get<int64_t>(unique_name, "num_frames")),
@@ -103,7 +103,7 @@ testRFImaskGen::testRFImaskGen(Config& config, const std::string& unique_name,
     seed(config.get_default<uint64_t>(unique_name, "seed", 123245)),
     first_frame_index(config.get_default<int64_t>(unique_name, "first_frame_index", 0)),
     repeat_count(config.get_default<int64_t>(unique_name, "repeat_count", 0)),
-    num_entries((samples_per_data_set * num_local_freq) / 64) {
+    num_entries((samples_per_data_set * num_local_freq) / 8) {
 
     // Get buffers
     out_buf = get_buffer("out_buf");
@@ -186,7 +186,7 @@ void testRFImaskGen::main_thread() {
     int64_t seq_num = first_frame_index * samples_per_data_set;
 
     std::mt19937 rng(seed);
-    std::uniform_int_distribution<uint64_t> dist;
+    std::uniform_int_distribution<uint8_t> dist;
 
     int total_frames = num_frames;
     if (repeat_count > 0) {
@@ -196,7 +196,7 @@ void testRFImaskGen::main_thread() {
     int val_idx = num_entries * first_frame_index;
 
     // If repeating, buffers to store the constructed frames.
-    std::vector<uint64_t> store;
+    std::vector<uint8_t> store;
 
     if (repeat_count > 0) {
         store.resize(num_entries * num_frames);
@@ -207,7 +207,7 @@ void testRFImaskGen::main_thread() {
     while (!stop_thread) {
 
         // grab frames
-        uint64_t* rfimask = (uint64_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
+        uint8_t* rfimask = (uint8_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
         if (rfimask == nullptr)
             break;
 
@@ -226,7 +226,7 @@ void testRFImaskGen::main_thread() {
         if (repeat_count <= 0 || (num_frames > 0 && num_frames_generated < num_frames)) {
 
             int64_t num_thi = samples_per_data_set / 1024;
-            int64_t num_tlo = 1024 / 64; // Writing rfimask as u64's
+            int64_t num_tlo = 1024 / 8; // Writing rfimask as u8's
 
             int64_t df = num_tlo;
             int64_t dthi = num_tlo * num_local_freq;
@@ -259,22 +259,7 @@ void testRFImaskGen::main_thread() {
 
             DEBUG("Generated a {:s} test correlation data set in {:s}[{:d}] at seq {:d}", type,
                   out_buf->buffer_name, frame_id, seq_num);
-
-        } // if (repeat <= 0 or num_frames_generated < num_frames)
-        /*
-        else if (repeat_count > 0) {
-            // We're repeating!  Just copy from the store into the buffer.
-            size_t store_index = num_frames_generated % num_frames;
-            std::copy(corr_store.begin() + store_index * corr_num_entries,
-                      corr_store.begin() + (store_index + 1) * corr_num_entries, corr);
-            std::copy(count_store.begin() + store_index * count_num_entries,
-                      count_store.begin() + (store_index + 1) * count_num_entries, count);
-            // DEBUG("Repeated a {:s} test correlation data set into {:s}[{:d}] at seq {:d}",
-            //       corr_type, corr_buf->buffer_name, corr_frame_id, seq_num);
-            // DEBUG("Repeated a {:s} test counts data set into {:s}[{:d}] at seq {:d}", count_type,
-            //       count_buf->buffer_name, count_frame_id, seq_num);
         }
-        */
 
         [[maybe_unused]] double curr_time = omp_get_wtime();
         DEBUG("Frame generation took {:f} ms + {:f} ms idle", (curr_time - start_time) * 1000,

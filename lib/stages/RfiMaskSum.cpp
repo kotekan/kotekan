@@ -26,62 +26,30 @@ using N2::frameID;
 
 /**
  * @class RfiMaskSum
- * @brief Accumulate the high rate GPU output into integrated N2Buffers.
+ * @brief Accumulate the raw rate RFI mask into counts per correlator frame. This counts the bad
+ * samples, e.g. samples for which RFIMask = 0.  The count will be in [0, sub_integration_ntime]
  *
- * This stage accumulates output from the N2k GPU correlator into integrated
- * visibility buffers.
- *
- * TODO:    - ERA binning
- *          - fringestopping
- *          - radiometer_chi2
- *          - improved variance estimator
- *
- * num_integrations := samples_per_dataset / sub_integration_ntime
+ * num_integrations := samples_per_data_set / sub_integration_ntime
  * num_freq := num_local_freq
  *
- * num_corr_blocks_lin := num_elements / 16
- * num_corr_blocks := num_corr_blocks_lin * (num_corr_blocks_lin + 1) / 2
- *
- * num_count_blocks_lin := num_elements / 8 / 8     # 8 for blocksize,
- *                                                  # 8 for downsampling
- * num_count_blocks := num_count_blocks_lin * (num_count_blocks_lin + 1) / 2
- *
  * @par Buffers
- * @buffer  in_buf          Correlation buffer from n2k. Blocked Lower Triangular.
- *      @buffer_format      NDArray int32 [num_integrations, num_freq, num_corr_blocks, 16, 16, 2]
- *      @buffer_metadata    chordMetadata
- * @buffer  in_counts_buf   Counts buffer from n2k. Blocked Lower Triangular
- *      @buffer_format      NDArray int32 [num_integrations, num_freq, num_count_blocks, 8, 8]
- *      @buffer_metadata    chordMetadata
- * @buffer  in_rfimask_buf  RFImask buffer from n2k, the same mask used to compute
- *                          the correlation.
+ * @buffer  in_buf      RFImask buffer from n2k.
  *         @buffer_format   NDArray uint1x8 [samples_per_dataset / 128 / 8, num_freq, 128]
  *         @buffer_metadata chordMetadata
- * @buffer  out_buf         The accumulated and tagged data.
- *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
- *      @buffer_metadata N2Metadata
+ * @buffer  out_buf     RFI count of bad samples.
+ *      @buffer_format      NDArray int32 [num_integrations, num_freq]
+ *      @buffer_metadata    chordMetadata
  *
- * @conf    num_local_freq          int64_t Number of frequencies in
+ * @conf    num_local_freq              int64_t Number of frequencies in
  *                                          buffers, required.
- * @conf    num_n2k_samples_to_accumulate   int64_t Number of samples (subintegrations)
- *                                          to accumulate in each output frame. Default: 0.
- * @conf    packet_loss_is_scalar           bool    Whether the packet loss (ie. the counts
- *                                          matrix) is a scalar in dish element or not.  If so,
- *                                          all baselines use the same value from `counts`, the
- *                                          first element in the buffer. The `false` case has
- *                                          not been implemented.
- * @conf    samples_per_data_set            int64_t Total number of time samples covered by each
+ * @conf    samples_per_data_set        int64_t Total number of time samples covered by each
  *                                          input frame. nt_outer in n2k.
- * @conf    sub_integration_ntime           int64_t Number of time samples integrated in each
+ * @conf    sub_integration_ntime       int64_t Number of time samples integrated in each
  *                                          entry in correlation and counts buffers.  n2_inner
  *                                          in n2k.
- * @conf    rfi_downsampling_factor         int64_t Number of time samples used to compute
+ * @conf    rfi_downsampling_factor     int64_t Number of time samples used to compute
  *                                          RFImask.  The values in the RFIMask buffer are
  *                                          repeated this many times.
- * @conf    num_elements                    int64_t Number of elements (num_dish x num_pol) in
- *                                          the buffers.
- * @conf    do_fringestop                   bool    Whether to fringestop incoming correlations.
- *                                          Default: False
  */
 class RfiMaskSum : public kotekan::Stage {
 public:
@@ -99,7 +67,7 @@ public:
 private:
     // Buffers to read/write
     Buffer* in_buf;  /// Buffer containing input rfimask
-    Buffer* out_buf; /// Output for the main vis dataset only
+    Buffer* out_buf; /// Output for the RFI counts
 
     // Parameters saved from the config files
     const int64_t _num_local_freq;
@@ -110,7 +78,7 @@ private:
     const int64_t _num_integrations;
 
     void accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_vis,
-                                      uint64_t* rfimask_count);
+                                      int32_t* rfimask_count);
 };
 
 REGISTER_KOTEKAN_STAGE(RfiMaskSum);
@@ -171,7 +139,7 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
         FATAL_ERROR("RfiMaskSum in_buf ({:s}) has frame size {:d}. Expected {:d}.",
                     in_buf->buffer_name, in_buf->frame_size, in_rfimask_frame_size);
 
-    out_buf->allocate_ndarray_frame_desc(kotekan::uint64, "RFImask_count",
+    out_buf->allocate_ndarray_frame_desc(kotekan::int32, "RFImask_count",
                                          {_num_integrations, _num_local_freq}, {"Tc", "F"});
 }
 
@@ -193,11 +161,11 @@ void RfiMaskSum::main_thread() {
             break;
         DEBUG("Waiting for new RFImask_count frame {:s}[{:d}].", out_buf->buffer_name,
               out_frame_id);
-        uint64_t* rfimask_count =
-            (uint64_t*)out_buf->wait_for_full_frame(unique_name, out_frame_id);
+        int32_t* rfimask_count = (int32_t*)out_buf->wait_for_empty_frame(unique_name, out_frame_id);
         if (rfimask_count == nullptr)
             break;
 
+        DEBUG("Accumulating RFI mask");
         // Accumulate each visibility sample in the in_frame
         // t_outer
         for (int64_t t_int = 0; t_int < _num_integrations; t_int++) {
@@ -205,6 +173,7 @@ void RfiMaskSum::main_thread() {
             accumulate_rfimask_in_sample(rfimask, t_int, rfimask_count + t_int * _num_local_freq);
         } // t_int
 
+        DEBUG("Setting Metadata");
         // Get metadata for all incoming frames.
         std::shared_ptr<chordMetadata> in_meta = get_chord_metadata(in_buf, in_frame_id);
 
@@ -225,7 +194,7 @@ void RfiMaskSum::main_thread() {
 }
 
 void RfiMaskSum::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_vis,
-                                              uint64_t* rfimask_count) {
+                                              int32_t* rfimask_count) {
     // Sum the RFI mask
     //
     // Each RFI mask frame has structure:

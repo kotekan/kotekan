@@ -19,10 +19,12 @@ import tempfile
 import time
 import warnings
 import re
+import numpy as np
 
 from . import baseband_buffer
 from . import visbuffer
 from . import n2buffer
+from . import chordbuffer
 from . import frbbuffer
 from . import psrbuffer
 
@@ -704,6 +706,105 @@ class DumpVisBuffer(OutputBuffer):
         """
         return visbuffer.VisBuffer.load_files(
             "%s/*%s*.dump" % (self.output_dir, self.name)
+        )
+
+
+class ReadChordBuffer(InputBuffer):
+    """Write down a ChordBuffer and reads it with hdf5FileRead."""
+
+    _buf_ind = 0
+
+    def __init__(self, input_dir, buffer_list):
+
+        self.name = "hdf5fileread_buf"
+        stage_name = "hdf5fileread%i" % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.input_dir = input_dir
+        self.buffer_list = buffer_list
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+                "num_frames": "buffer_depth",
+                "frame_size": buffer_list[0].data.nbytes,
+            }
+        }
+
+        stage_config = {
+            "kotekan_stage": "hdf5FileRead",
+            "out_buf": self.name,
+            "input_dir": input_dir,
+            "file_name": self.name,
+            "prefix_hostname": False,
+            "prefix_host_rank": False,
+        }
+
+        self.stage_block = {stage_name: stage_config}
+
+    def write(self):
+        """Write a list of ChordBuffer objects to disk."""
+        chordbuffer.ChordBuffer.to_files(
+            self.buffer_list, self.input_dir + "/" + self.name
+        )
+
+
+class DumpChordBuffer(OutputBuffer):
+    """Consume a Chord buffer and provide its content as `ChordBuffer` objects.
+
+    Parameters
+    ----------
+    output_dir : str
+        Temp. directory to output to. Dumped files are not removed.
+    """
+
+    _buf_ind = 0
+
+    name = None
+
+    def __init__(self, output_dir, shape, dtype, max_frames=-1):
+        self.name = f"dumpchord_buf{self._buf_ind}"
+        stage_name = f"dump{self._buf_ind}"
+
+        self.__class__._buf_ind += 1
+
+        self.output_dir = output_dir
+        self.num_entries = int(np.prod(shape))
+        self.max_frames = max_frames
+        self.dtype = dtype
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+                "num_frames": "buffer_depth",
+                "frame_size": self.num_entries * np.dtype(self.dtype).itemsize,
+            }
+        }
+
+        self.stage_block = {
+            stage_name: {
+                "kotekan_stage": "hdf5FileWrite",
+                "in_buf": self.name,
+                "file_name": self.name,
+                "base_dir": output_dir,
+                "prefix_hostname": False,
+                "max_frames": max_frames,
+            }
+        }
+
+    def load(self):
+        """Load the output data from the buffer.
+
+        Returns
+        -------
+        dumps : lost of buffers
+            Buffer output.
+        """
+
+        return chordbuffer.ChordBuffer.load_files(
+            f"{self.output_dir}/*{self.name}*.h5", self.name
         )
 
 
