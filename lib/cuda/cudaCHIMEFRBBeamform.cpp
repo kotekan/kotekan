@@ -306,14 +306,14 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Tfrb1_min = frb1_beams.get_read_valid().begin() % Tfrb1_size;
     assert(Tfrb1_min % 128 == 0);
     const std::ptrdiff_t Tfrb1 = frb1_beams.get_read_valid().size();
-    const std::ptrdiff_t Tfrb1_offset = Tmin * frb1_beams.get_ndarray().stride(0);
+    const std::ptrdiff_t Tfrb1_offset = Tfrb1_min * frb1_beams.get_ndarray().stride(0);
     assert(Tfrb1_min + Tfrb1 <= Tfrb1_size);
 
     const std::ptrdiff_t Tfrb2_size = frb2_beams.get_ndarray().extent(0);
     // Tmin wraps around into actual array index to avoid overflows
-    const std::ptrdiff_t Tfrb2_min = frb2_beams.get_read_valid().begin() % Tfrb2_size;
-    const std::ptrdiff_t Tfrb2 = frb2_beams.get_read_valid().size();
-    const std::ptrdiff_t Tfrb2_offset = Tmin * frb2_beams.get_ndarray().stride(0);
+    const std::ptrdiff_t Tfrb2_min = frb2_beams.get_write_valid().begin() % Tfrb2_size;
+    const std::ptrdiff_t Tfrb2 = frb2_beams.get_write_valid().size();
+    const std::ptrdiff_t Tfrb2_offset = Tfrb2_min * frb2_beams.get_ndarray().stride(0);
     assert(Tfrb2_min + Tfrb2 <= Tfrb2_size);
 
     assert(T == Tfrb1);
@@ -350,7 +350,7 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     pirate::launch_chime_frb_upchan(reinterpret_cast<__half*>(frb1_beams_memory + Tfrb1_offset),
                                     frb2_beams_memory + Tfrb2_offset, static_cast<long>(Tfrb1),
                                     static_cast<long>(num_frequencies),
-                                    static_cast<long>(factor_upchan_out),
+                                    static_cast<long>(num_beams),
                                     device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
@@ -366,7 +366,8 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
 void cudaCHIMEFRBBeamform::finalize_frame() {
     // Advance the ring buffers
     voltage.finish_read();
-    frb1_beams.finish_write();
+    //frb1_beams.finish_write();
+    frb2_beams.finish_write();
 
     cudaCommand::finalize_frame();
 }
