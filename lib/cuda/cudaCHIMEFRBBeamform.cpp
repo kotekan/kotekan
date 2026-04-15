@@ -196,6 +196,7 @@ int cudaCHIMEFRBBeamform::wait_on_precondition() {
     DEBUG("Done waiting for voltage input ringbuffer data for frame {:d}; will read {:d} elements",
           gpu_frame_id, voltage_read);
 
+# if 0 // disable FRB1 access control for now, it's only a temp array
     DEBUG("Waiting for frb1_beams output ringbuffer space for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t frb1_beams_written =
         voltage_read; // no downsampling in time when forming beams
@@ -205,6 +206,7 @@ int cudaCHIMEFRBBeamform::wait_on_precondition() {
     DEBUG("Done waiting for frb1_beams ouput ringbuffer data for frame {:d}; will write {:d} "
           "elements",
           gpu_frame_id, frb1_beams_written);
+#endif
 
     DEBUG("Waiting for frb2_beams output ringbuffer space for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t frb2_beams_written = 1; // fake outer time index
@@ -303,9 +305,10 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Tfrb1_size = frb1_beams.get_ndarray().extent(0);
     assert(Tfrb1_size % 128 == 0);
     // Tmin wraps around into actual array index to avoid overflows
-    const std::ptrdiff_t Tfrb1_min = frb1_beams.get_read_valid().begin() % Tfrb1_size;
+    // disable all access control fo now
+    const std::ptrdiff_t Tfrb1_min = Tmin; // frb1_beams.get_read_valid().begin() % Tfrb1_size;
     assert(Tfrb1_min % 128 == 0);
-    const std::ptrdiff_t Tfrb1 = frb1_beams.get_read_valid().size();
+    const std::ptrdiff_t Tfrb1 = T; // frb1_beams.get_read_valid().size();
     const std::ptrdiff_t Tfrb1_offset = Tfrb1_min * frb1_beams.get_ndarray().stride(0);
     assert(Tfrb1_min + Tfrb1 <= Tfrb1_size);
 
