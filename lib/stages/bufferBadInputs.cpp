@@ -6,6 +6,7 @@
 #include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
 #include "configUpdater.hpp"  // for configUpdater
 #include "kotekanLogging.hpp" // for DEBUG, ERROR
+#include "visUtil.hpp"        // for get_cylinder_to_beamformer_reorder_table
 
 #include <exception>  // for exception
 #include <functional> // for bind, function, _1
@@ -39,6 +40,8 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     uint8_t* host_mask = (uint8_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
     // Reset the mask (1 == good)
     std::memset(host_mask, 1U, num_elements);
+    // Get the reorder mapping
+    constexpr const auto reorder = get_cylinder_to_beamformer_reorder_table();
 
     bool all_good = true;
 
@@ -52,7 +55,7 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     // Add current bad input to the mask
     for (int element : bad_inputs) {
         if (element < (int)num_elements && element >= 0) {
-            host_mask[element] = 0;
+            host_mask[reorder[element]] = 0;
         } else {
             ERROR("Got input with invalid index: {:d}", element);
             all_good = false;

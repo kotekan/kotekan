@@ -20,14 +20,18 @@
 
 /**
  * @class bufferBadInputs
- * @brief Buffers updates to the bad input list.
+ * @brief CHIME-specific stage which buffers updates to the bad input list.
  *
  * Copies a list of bad inputs into a mask buffer, which is 0 if
  * an element is bad and 1 if it is good.
  *
+ * This stage expects the input buffer to be recieved in CHIME cylinder order,
+ * and automatically remaps into beamformer order.
+ *
  * @par Buffers
  * @buffer out_buf Kotekan buffer of bad inputs.
- *     @buffer_format Array of @c uint8_t
+ *     @buffer_shape [num_element]
+ *     @buffer_format uint8_t
  *
  * @conf   updatable_config/bad_inputs  String.  String pointing to the location of the
  *                                      config block containing the following properties:
