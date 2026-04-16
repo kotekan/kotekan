@@ -57,7 +57,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _packet_loss_is_scalar(config.get<bool>(unique_name, "packet_loss_is_scalar")),
     _n_fpga_samples_per_n2k_frame(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _n_fpga_samples_per_n2k_correlation(config.get<int64_t>(unique_name, "sub_integration_ntime")),
-    _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")),
     _num_elements(config.get<int64_t>(unique_name, "num_elements")),
     _num_workers(config.get_default<int>(unique_name, "num_workers", 1)),
     _output_batch_size(config.get_default<int>(unique_name, "output_batch_size", 1)),
@@ -84,8 +83,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     in_counts_buf = get_buffer("in_counts_buf");
     in_counts_buf->register_consumer(unique_name);
 
-    in_rfimask_buf = get_buffer("in_rfimask_buf");
-    in_rfimask_buf->register_consumer(unique_name);
+    in_rficounts_buf = get_buffer("in_rficounts_buf");
+    in_rficounts_buf->register_consumer(unique_name);
 
     // Sanity checks on initialization
     {
@@ -129,14 +128,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         if (!(_num_elements % (8 * _n2k_counts_blocksize) == 0))
             FATAL_ERROR("num_elements ({:d}) / 8 is not a multiple of the counts block size ({:d})",
                         _num_elements, _n2k_counts_blocksize);
-
-        // RFI downsampling factor checks
-        if (!(_rfi_downsampling_factor > 0))
-            FATAL_ERROR("rfi_downsampling_factor is not positive: {:d}", _rfi_downsampling_factor);
-
-        if (!(_rfi_downsampling_factor % 8 == 0))
-            FATAL_ERROR("rfi_downsampling_factor is not a multiple of 8: {:d}",
-                        _rfi_downsampling_factor);
 
         // We output frames in batches. Make sure a whole batch will fit in the output buffer.
         if (_output_batch_size > out_buf->num_frames) {
@@ -199,7 +190,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                                 * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
     size_t in_counts_frame_size = sizeof(int32_t) * _n2k_counts_num_products
                                   * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
-    size_t in_rfimask_frame_size = _num_freq_per_n2k_frame * _n_fpga_samples_per_n2k_frame / 8;
+    size_t in_rficounts_frame_size = sizeof(int32_t) * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;;
 
     if (in_buf->frame_size != in_corr_frame_size)
         FATAL_ERROR("N2Accumulate in_buf ({:s}) has frame size {:d}. Expected {:d}.",
@@ -207,9 +198,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     if (in_counts_buf->frame_size != in_counts_frame_size)
         FATAL_ERROR("N2Accumulate in_counts_buf ({:s}) has frame size {:d}. Expected {:d}.",
                     in_counts_buf->buffer_name, in_counts_buf->frame_size, in_counts_frame_size);
-    if (in_rfimask_buf->frame_size != in_rfimask_frame_size)
-        FATAL_ERROR("N2Accumulate in_rfimask_buf ({:s}) has frame size {:d}. Expected {:d}.",
-                    in_rfimask_buf->buffer_name, in_rfimask_buf->frame_size, in_rfimask_frame_size);
+    if (in_rficounts_buf->frame_size != in_rficounts_frame_size)
+        FATAL_ERROR("N2Accumulate in_rficounts_buf ({:s}) has frame size {:d}. Expected {:d}.",
+                    in_rficounts_buf->buffer_name, in_rficounts_buf->frame_size, in_rficounts_frame_size);
 
 
     // Validate that the output buffer's frame descriptor (set by bufferFactory) matches
@@ -259,7 +250,7 @@ void N2Accumulate::main_thread() {
     frameID in_frame_id(in_buf);
     int previous_in_frame_id = -1;
     frameID in_counts_frame_id(in_counts_buf);
-    frameID in_rfimask_frame_id(in_rfimask_buf);
+    frameID in_rficounts_frame_id(in_rficounts_buf);
     frameID out_frame_id(out_buf);
 
     INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]", in_buf->buffer_name,
@@ -321,12 +312,12 @@ void N2Accumulate::main_thread() {
         if (counts == nullptr)
             break;
 
-        // Fetch a new rfimask frame and get its sequence id
-        DEBUG("Waiting for new input RFImask frame {:s}[{:d}].", in_rfimask_buf->buffer_name,
-              in_rfimask_frame_id);
-        const uint8_t* rfimask =
-            (uint8_t*)in_rfimask_buf->wait_for_full_frame(unique_name, in_rfimask_frame_id);
-        if (rfimask == nullptr)
+        // Fetch a new rficounts frame and get its sequence id
+        DEBUG("Waiting for new input RFIcounts frame {:s}[{:d}].", in_rficounts_buf->buffer_name,
+              in_rficounts_frame_id);
+        const int32_t* rficounts =
+            (int32_t*)in_rficounts_buf->wait_for_full_frame(unique_name, in_rficounts_frame_id);
+        if (rficounts == nullptr)
             break;
 
         // Get metadata for all incoming frames.
@@ -334,8 +325,8 @@ void N2Accumulate::main_thread() {
 
         std::shared_ptr<chordMetadata> counts_metadata =
             get_chord_metadata(in_counts_buf, in_counts_frame_id);
-        std::shared_ptr<chordMetadata> rfimask_metadata =
-            get_chord_metadata(in_rfimask_buf, in_rfimask_frame_id);
+        std::shared_ptr<chordMetadata> rficounts_metadata =
+            get_chord_metadata(in_rficounts_buf, in_rficounts_frame_id);
 
         // Check synchronization
         if (frame_metadata->get_fpga_seq_num() != counts_metadata->get_fpga_seq_num()) {
@@ -345,12 +336,12 @@ void N2Accumulate::main_thread() {
                         in_counts_buf->buffer_name, in_counts_frame_id,
                         counts_metadata->get_fpga_seq_num());
         }
-        if (frame_metadata->get_fpga_seq_num() != rfimask_metadata->get_fpga_seq_num()) {
+        if (frame_metadata->get_fpga_seq_num() != rficounts_metadata->get_fpga_seq_num()) {
             FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
-                        "RFIMask buffer {:s}[{:d}] seq={:d}",
+                        "RFICounts buffer {:s}[{:d}] seq={:d}",
                         in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
-                        in_rfimask_buf->buffer_name, in_rfimask_frame_id,
-                        rfimask_metadata->get_fpga_seq_num());
+                        in_rficounts_buf->buffer_name, in_rficounts_frame_id,
+                        rficounts_metadata->get_fpga_seq_num());
         }
 
         // Record the current frame time being processed.
@@ -912,7 +903,10 @@ void N2Accumulate::main_thread() {
 
             } // debug_accum_mode 3
 
-            accumulate_rfimask_in_sample(rfimask, vis_samp_n);
+            // Accumulate the RFI counts
+            for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+                _n_rfi_samples_in_vis[f] += rficounts[vis_samp_n * _num_freq_per_n2k_frame + f];
+            }
 
             _vis_samples_in_out_frame++;
 
@@ -944,7 +938,7 @@ void N2Accumulate::main_thread() {
             in_buf->mark_frame_empty(unique_name, previous_in_frame_id);
         previous_in_frame_id = in_frame_id++;
         in_counts_buf->mark_frame_empty(unique_name, in_counts_frame_id++);
-        in_rfimask_buf->mark_frame_empty(unique_name, in_rfimask_frame_id++);
+        in_rficounts_buf->mark_frame_empty(unique_name, in_rficounts_frame_id++);
     }
 }
 
@@ -1051,56 +1045,6 @@ bool N2Accumulate::is_seq_start_of_bin(uint64_t seq, int64_t bin_idx) {
 
         return (seq % fpga_ticks_per_accum == 0);
     }
-}
-
-void N2Accumulate::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_vis) {
-    // Sum the RFI mask
-    //
-    // Each RFI mask frame has structure:
-    //
-    //      rfimask[Thi/1024, F, Tlo]
-    //
-    // In particular:
-    //
-    //      int1 rfimask[n_fpga_samples_per_n2k_frame / 1024, _num_freq_per_n2k_frame, 1024]
-    //      int8 rfimask[n_fpga_samples_per_n2k_frame / 1024, _num_freq_per_n2k_frame, 128]
-    //
-    // Raw time sample index at start of vis sample (n2k integration):
-    //
-    //      t = vis_samp_n * n_fpga_samples_per_n2k_correlation
-    //
-    // For an int8 rfimask, for a raw index t:
-    //
-    //      thi = t / 1024
-    //      tlo = (t % 1024) / 8
-    //      tbit = t % 8
-    //
-    //      t = tbit + 8*tlo + 1024*thi
-    //
-    // Furthermore, the RFI mask is only computed every rfi_downsampling_factor
-    // samples, so t can be incremented by rfi_downsampling_factor.
-    // rfi_downsampling factor itself must be divisible by 32, so we know
-    // tbit will always be 0.
-
-    uint64_t rfi_stride_f = 128; // = rfimask_fast_time_len / bits_per_entry = 1024 / 8;
-    uint64_t rfi_stride_thi = rfi_stride_f * _num_freq_per_n2k_frame;
-
-    for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
-        for (int64_t t = t_vis * _n_fpga_samples_per_n2k_correlation;
-             t < (t_vis + 1) * _n_fpga_samples_per_n2k_correlation; t += _rfi_downsampling_factor) {
-
-            // Casting to a uint64_t here is a micro-optimization,
-            // the assembly is slighty simpler if the compliler knows
-            // the numerator is non-negative.
-            int64_t thi = ((uint64_t)t) / 1024;
-            int64_t tlo = (((uint64_t)t) % 1024) / 8;
-
-            int64_t idx = thi * rfi_stride_thi + f * rfi_stride_f + tlo;
-
-            _n_rfi_samples_in_vis[f] += (1 - (rfimask[idx] & 0x1)) * _rfi_downsampling_factor;
-        }
-
-    } // f
 }
 
 bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id) {

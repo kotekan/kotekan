@@ -209,7 +209,7 @@ def accumulate_data(tmpdir_factory):
 
     accumulate_run_params = accumulate_params.copy()
     accumulate_run_params["in_counts_buf"] = input_buffers.counts_name
-    accumulate_run_params["in_rfimask_buf"] = input_buffers.rfi_name
+    accumulate_run_params["in_rficounts_buf"] = input_buffers.rficounts_name
 
     test = runner.KotekanStageTester(
         "N2Accumulate",

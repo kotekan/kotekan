@@ -50,6 +50,8 @@ using N2::frameID;
  * @conf    rfi_downsampling_factor     int64_t Number of time samples used to compute
  *                                          RFImask.  The values in the RFIMask buffer are
  *                                          repeated this many times.
+ *
+ * @author  Geoff Ryan
  */
 class RfiMaskSum : public kotekan::Stage {
 public:

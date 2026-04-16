@@ -400,9 +400,11 @@ class FakeN2KBuffers(InputBuffer):
         self.name = "faken2k_corr_buf%i" % self._buf_ind
         self.counts_name = "faken2k_counts_buf%i" % self._buf_ind
         self.rfi_name = "faken2k_rfi_buf%i" % self._buf_ind
+        self.rficounts_name = "faken2k_rficounts_buf%i" % self._buf_ind
 
         n2k_stage_name = "faken2k_gen_%i" % self._buf_ind
         rfi_stage_name = "faken2k_gen_rfi_%i" % self._buf_ind
+        rficount_stage_name = "faken2k_rficount_%i" % self._buf_ind
 
         self.__class__._buf_ind += 1
 
@@ -439,6 +441,13 @@ class FakeN2KBuffers(InputBuffer):
                 "num_frames": "buffer_depth",
                 "frame_size": "(samples_per_data_set * num_local_freq) / 8",
             },
+            self.rficounts_name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "chord_pool",
+                "num_frames": "buffer_depth",
+                "sizeof_int": 4,
+                "frame_size": "(samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int",
+            },
         }
 
         n2k_gen_config = {
@@ -462,6 +471,11 @@ class FakeN2KBuffers(InputBuffer):
             "dim_name": ["T8hi128", "F", "T8lo128"],
             "meta_time_downsample_factor": 1024,
         }
+        rficount_config = {
+            "kotekan_stage": "RfiMaskSum",
+            "in_buf": self.rfi_name,
+            "out_buf": self.rficounts_name,
+        }
 
         n2k_gen_config.update(n2k_kwargs)
         rfi_gen_config.update(rfi_kwargs)
@@ -469,11 +483,12 @@ class FakeN2KBuffers(InputBuffer):
         self.stage_block = {
             n2k_stage_name: n2k_gen_config,
             rfi_stage_name: rfi_gen_config,
+            rficount_stage_name: rficount_config,
         }
         self.global_block = {
             "chord_pool": {
                 "kotekan_metadata_pool": "chordMetadata",
-                "num_metadata_objects": "3 * buffer_depth",
+                "num_metadata_objects": "4 * buffer_depth",
             }
         }
 

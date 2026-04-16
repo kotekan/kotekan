@@ -59,9 +59,8 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * @buffer  in_counts_buf   Counts buffer from n2k. Blocked Lower Triangular
  *      @buffer_format      NDArray int32 [num_integrations, num_freq, num_count_blocks, 8, 8]
  *      @buffer_metadata    chordMetadata
- * @buffer  in_rfimask_buf  RFImask buffer from n2k, the same mask used to compute
- *                          the correlation.
- *         @buffer_format   NDArray uint1x8 [samples_per_dataset / 128 / 8, num_freq, 128]
+ * @buffer  in_rficounts_buf  RFIcounts buffer, the count of bad (rfimask=0) samples in the RFI mask in each n2k correlation.
+ *         @buffer_format   NDArray int32 [num_integrations, num_freq]
  *         @buffer_metadata chordMetadata
  * @buffer  out_buf         The accumulated and tagged data.
  *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
@@ -81,9 +80,6 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * @conf    sub_integration_ntime           int64_t Number of time samples integrated in each
  *                                          entry in correlation and counts buffers.  n2_inner
  *                                          in n2k.
- * @conf    rfi_downsampling_factor         int64_t Number of time samples used to compute
- *                                          RFImask.  The values in the RFIMask buffer are
- *                                          repeated this many times.
  * @conf    num_elements                    int64_t Number of elements (num_dish x num_pol) in
  *                                          the buffers.
  * @conf    do_fringestop                   bool    Whether to fringestop incoming correlations.
@@ -142,15 +138,6 @@ public:
     bool is_seq_start_of_bin(uint64_t seq, int64_t bin_idx);
 
     /**
-     * @brief Accumulate the rfimask over the given n2k integration into _n_rfi_samples_in_vis
-     *
-     * @param   rfimask The raw rfimask used in n2k to compute the correlation.
-     * @param   t_vis   Time index denoting the current sample being accumulated,
-     *                  in [0, samples_per_dataset / sub_integration_ntime)
-     */
-    void accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_vis);
-
-    /**
      * @brief Copy accumulated visibility matrix and weights to the output buffer,
      * reset the visibility and weights matrices.
      *
@@ -166,7 +153,7 @@ private:
     // Buffers to read/write
     Buffer* in_buf;         /// Buffer containing input correlations
     Buffer* in_counts_buf;  /// Buffer containing input counts
-    Buffer* in_rfimask_buf; /// Buffer containing input rfimask
+    Buffer* in_rficounts_buf; /// Buffer containing input rfimask
     Buffer* out_buf;        /// Output for the main vis dataset only
 
     // Parameters saved from the config files
@@ -180,8 +167,6 @@ private:
     const int64_t _n_fpga_samples_per_n2k_frame;
     const int64_t _n_fpga_samples_per_n2k_correlation;
     int64_t _n_integrations_per_n2k_frame;
-
-    const int64_t _rfi_downsampling_factor; ///< Downsampling factor for RFI mask
 
     const int64_t _num_elements; ///< Total number of telescope elements (~2 * num dishes)
 

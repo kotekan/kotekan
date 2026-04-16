@@ -104,6 +104,12 @@ fake_rfimask_buffer:
     frame_size: (samples_per_data_set * num_local_freq) / 8
     metadata_pool: main_pool
 
+fake_rficounts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    metadata_pool: main_pool
+
 n2_buffer:
     kotekan_buffer: N2
     n2_layout: "FullUpperTri"
@@ -137,48 +143,49 @@ gen_fake_corr_counts:
     num_frames: frames_to_generate
     freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
+RFImask_sum:
+  kotekan_stage: RfiMaskSum
+  in_buf: fake_rfimask_buffer
+  out_buf: fake_rficounts_buffer
+
 N2_accumulate:
     kotekan_stage: N2Accumulate
     in_buf: fake_correlation_buffer
     in_counts_buf: fake_counts_buffer
-    in_rfimask_buf: fake_rfimask_buffer
+    in_rficounts_buf: fake_rficounts_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
     variance_mode: EvenOddPosDef
 
-write_fake_correlation:
-  kotekan_stage: hdf5FileWrite
-  base_dir: fake_data
-  file_name: n2k_corr
-  prefix_hostname: false
-  max_frames: -1  # buffer_depth
-  skip_writing: false
-  in_buf: fake_correlation_buffer
+writers:
+    base_dir: fake_data
+    prefix_hostname: false
+    skip_writing: false
+    max_frames: -1  # buffer_depth
 
-write_fake_counts:
-   kotekan_stage: hdf5FileWrite
-   base_dir: fake_data
-   file_name: n2k_counts
-   prefix_hostname: false
-   max_frames: -1  # buffer_depth # Will trigger exit after writing this many frames
-   skip_writing: false
-   in_buf: fake_counts_buffer
+    write_fake_correlation:
+        kotekan_stage: hdf5FileWrite
+        file_name: n2k_corr
+        in_buf: fake_correlation_buffer
 
-write_fake_rfimask:
-   kotekan_stage: hdf5FileWrite
-   base_dir: fake_data
-   file_name: n2k_rfimask
-   prefix_hostname: false
-   max_frames: -1  # buffer_depth # Will trigger exit after writing this many frames
-   skip_writing: false
-   in_buf: fake_rfimask_buffer
+    write_fake_counts:
+        kotekan_stage: hdf5FileWrite
+        file_name: n2k_counts
+        in_buf: fake_counts_buffer
 
-write_N2:
-   kotekan_stage: hdf5FileWrite
-   base_dir: fake_data
-   file_name: n2_vis_posdef
-   prefix_hostname: false
-   max_frames: num_local_freq * n2_frames_to_write # Will trigger exit after writing this many frames
-   skip_writing: false
-   in_buf: n2_buffer
+    write_fake_rfimask:
+        kotekan_stage: hdf5FileWrite
+        file_name: n2k_rfimask
+        in_buf: fake_rfimask_buffer
+
+    write_fake_rficounts:
+        kotekan_stage: hdf5FileWrite
+        file_name: n2k_rficounts
+        in_buf: fake_rficounts_buffer
+
+    write_N2:
+        kotekan_stage: hdf5FileWrite
+        file_name: n2_vis_posdef
+        in_buf: n2_buffer
+        max_frames: num_local_freq * n2_frames_to_write # Will trigger exit after writing this many frames

@@ -171,9 +171,6 @@ def rfimasksum_data(tmpdir_factory, setup):
     yield dump_buffer.load()
 
 
-# @pytest.mark.parametrize("setup", [(very_small_config, [[1]]),
-#                                   (small_config, [[1]]),
-#                                   (prod_config, [[1]])], indirect=True)
 def test_meta(rfimasksum_data, setup):
 
     config, vals = setup
@@ -188,9 +185,6 @@ def test_meta(rfimasksum_data, setup):
         assert frame.metadata["fpga_seq_num"] == idx * config["samples_per_data_set"]
 
 
-# @pytest.mark.parametrize("setup", [(very_small_config, [[1]]),
-#                                   (small_config, [[1]]),
-#                                   (prod_config, [[1]])], indirect=True)
 def test_structure(rfimasksum_data, setup):
 
     config, vals = setup
