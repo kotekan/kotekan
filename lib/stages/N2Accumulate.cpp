@@ -190,7 +190,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                                 * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
     size_t in_counts_frame_size = sizeof(int32_t) * _n2k_counts_num_products
                                   * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
-    size_t in_rficounts_frame_size = sizeof(int32_t) * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;;
+    size_t in_rficounts_frame_size =
+        sizeof(int32_t) * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
+    ;
 
     if (in_buf->frame_size != in_corr_frame_size)
         FATAL_ERROR("N2Accumulate in_buf ({:s}) has frame size {:d}. Expected {:d}.",
@@ -200,7 +202,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                     in_counts_buf->buffer_name, in_counts_buf->frame_size, in_counts_frame_size);
     if (in_rficounts_buf->frame_size != in_rficounts_frame_size)
         FATAL_ERROR("N2Accumulate in_rficounts_buf ({:s}) has frame size {:d}. Expected {:d}.",
-                    in_rficounts_buf->buffer_name, in_rficounts_buf->frame_size, in_rficounts_frame_size);
+                    in_rficounts_buf->buffer_name, in_rficounts_buf->frame_size,
+                    in_rficounts_frame_size);
 
 
     // Validate that the output buffer's frame descriptor (set by bufferFactory) matches

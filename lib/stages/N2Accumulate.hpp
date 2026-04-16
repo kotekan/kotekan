@@ -59,7 +59,8 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * @buffer  in_counts_buf   Counts buffer from n2k. Blocked Lower Triangular
  *      @buffer_format      NDArray int32 [num_integrations, num_freq, num_count_blocks, 8, 8]
  *      @buffer_metadata    chordMetadata
- * @buffer  in_rficounts_buf  RFIcounts buffer, the count of bad (rfimask=0) samples in the RFI mask in each n2k correlation.
+ * @buffer  in_rficounts_buf  RFIcounts buffer, the count of bad (rfimask=0) samples in the RFI mask
+ * in each n2k correlation.
  *         @buffer_format   NDArray int32 [num_integrations, num_freq]
  *         @buffer_metadata chordMetadata
  * @buffer  out_buf         The accumulated and tagged data.
@@ -151,10 +152,10 @@ public:
 
 private:
     // Buffers to read/write
-    Buffer* in_buf;         /// Buffer containing input correlations
-    Buffer* in_counts_buf;  /// Buffer containing input counts
+    Buffer* in_buf;           /// Buffer containing input correlations
+    Buffer* in_counts_buf;    /// Buffer containing input counts
     Buffer* in_rficounts_buf; /// Buffer containing input rfimask
-    Buffer* out_buf;        /// Output for the main vis dataset only
+    Buffer* out_buf;          /// Output for the main vis dataset only
 
     // Parameters saved from the config files
     const int64_t _num_freq_per_n2k_frame;

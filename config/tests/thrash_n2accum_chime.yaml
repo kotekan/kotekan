@@ -106,6 +106,12 @@ fake_rfimask_buffer:
     frame_size: (samples_per_data_set * num_local_freq) / 8
     metadata_pool: main_pool
 
+fake_rficounts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    metadata_pool: main_pool
+
 n2_buffer:
     kotekan_buffer: N2
     n2_layout: "FullUpperTri"
@@ -139,12 +145,18 @@ gen_fake_corr_counts:
     repeat_count: repeat
     freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
+rfimask_to_counts:
+    kotekan_stage: RfiMaskSum
+    cpu_affinity: [3]
+    in_buf: fake_rfimask_buffer
+    out_buf: fake_rficounts_buffer
+
 N2_accumulate:
     kotekan_stage: N2Accumulate
     cpu_affinity: [8, 9, 10, 11]
     in_buf: fake_correlation_buffer
     in_counts_buf: fake_counts_buffer
-    in_rfimask_buf: fake_rfimask_buffer
+    in_rficounts_buf: fake_rficounts_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
