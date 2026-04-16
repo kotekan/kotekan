@@ -232,14 +232,8 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     frb2_beams.set_metadata(voltage.get_metadata());
     // TODO: update frb2 metadata due to time downsampling and frequency upsampling
 
-    // There is no poison value
-    // if (poison_buffers) {
-    //    frb1_beams.set_to_poison(0xff);
-    //    frb2_beams.set_to_poison(0xff);
-    // }
-
     // needs metadata and thus access to an actual frame
-    if (first_time && instance_num == 0) { // first time and we handle frame 0 of the buffer depth
+    if (first_time) { // && instance_num == 0) { // first time and we handle frame 0 of the buffer depth
         DEBUG("Setting up constant data");
 
         const auto meta = voltage.get_metadata();
@@ -269,10 +263,17 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
 
         // TODO: this should actually come out of a buffer, but is hard-coded for now
         std::vector<float> host_gains(gains.get_ndarray().size(), 1.0);
+        for(int i = 0 ; i < host_gains.size() ; i++) {
+          std::cerr << host_gains[i] << " ";
+        }
+        std::cerr << std::endl;
         CHECK_CUDA_ERROR(
             cudaMemcpyAsync(host_gains.data(), gains.get_ndarray().get_data(),
                             gains.get_ndarray().size() * gains.get_ndarray().get_value_type_size(),
                             cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
+
+        CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+        gains.check_for_poison(0x00);
 
         // only almost thread save in that we must ensure that the compiler does
         // to re-order execution too aggressively
@@ -333,6 +334,16 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     assert(frb2_beams.get_ndarray().extent(3) == num_times / downsample_time);
     assert(frb2_beams.get_ndarray().extent(4) == factor_upchan_out);
 
+    //map.check_for_poison(0x00); // may contain 0 bytes
+    //co.check_for_poison(0x00); // may contain 0 bytes
+    //gains.check_for_poison(0x00);
+
+    voltage.check_input_for_poison(0x00);
+#if 0
+    if (poison_buffers)
+       frb1_beams.set_to_poison(0xff); // NaN
+#endif
+
     // pirate uses a uint8_t pointer for pairs of 4bit ints
     // pirate uses a float16 pointer for pairs of float16 that form a complex<float16>
     pirate::launch_chime_frb_beamform(
@@ -343,9 +354,13 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
 
-    // There is no poison value
-    // if (poison_buffers)
-    //     frb1_beams.check_for_poison(0xff);
+#if 0
+    if (poison_buffers)
+        frb1_beams.check_for_poison(0xff);
+#endif
+
+    if (poison_buffers)
+        frb2_beams.set_to_poison(0xff); // NaN
 
     // we lie to kotekan about not actually also consuming frb1, but since that
     // should become an internal variable soon anyway...
@@ -359,9 +374,8 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
 
-    // There is no poison value
-    // if (poison_buffers)
-    //     frb2_beams.check_for_poison(0xff);
+    if (poison_buffers)
+        frb2_beams.check_for_poison(0xff);
 
     return record_end_event();
 }
