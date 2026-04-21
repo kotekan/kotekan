@@ -61,8 +61,8 @@ add_library(
     frbNetworkProcess.cpp
     pulsarNetworkProcess.cpp
     pirateFrbSend.cpp
-    XEngineMetadata.cpp
-    YamlFile.cpp
+    libpirate/XEngineMetadata.cpp
+    libpirate/YamlFile.cpp
     file_utils.cpp
     bufferMerge.cpp
     bufferCopy.cpp
@@ -115,6 +115,7 @@ add_library(
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
 target_include_directories(kotekan_stages PRIVATE .)
+target_include_directories(kotekan_stages PRIVATE libpirate)
 
 if(LIBAIRSPY_FOUND)
     target_sources(kotekan_stages PRIVATE airspyInput.cpp)
