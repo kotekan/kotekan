@@ -123,11 +123,6 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
         // RFI downsampling factor checks
         if (!(_rfi_downsampling_factor > 0))
             FATAL_ERROR("rfi_downsampling_factor is not positive: {:d}", _rfi_downsampling_factor);
-        /*
-                if (!(_rfi_downsampling_factor % 8 == 0))
-                    FATAL_ERROR("rfi_downsampling_factor is not a multiple of 8: {:d}",
-                                _rfi_downsampling_factor);
-                                */
 
         if (!(_sub_integration_ntime % _rfi_downsampling_factor == 0)) {
             FATAL_ERROR("sub_integration_ntime {} is not a multiple of rfi_downsampling_factor {}",
@@ -147,7 +142,6 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
 }
 
 void RfiMaskSum::main_thread() {
-
 
     frameID in_frame_id(in_buf);
     frameID out_frame_id(out_buf);

@@ -21,6 +21,7 @@ namespace jsonMetadata {
 // in namespace for C++ const
 #define MAX_NUM_BEAMS 20
 const int CHORD_META_MAX_FREQ = 4096;
+constexpr int MAX_NUM_RFI_THRESHOLDS = 8;
 
 typedef nlohmann::json metadata;
 
@@ -56,6 +57,12 @@ const std::string
     FREQ_UPCHAN_FACTOR("FREQ_UPCHAN_FACTOR"); // an array of int of size CHORD_META_MAX_FREQ
 const std::string
     FREQ_UPCHAN_INDEX("FREQ_UPCHAN_INDEX"); // an array of int of size CHORD_META_MAX_FREQ
+
+const std::string RFI_FRAME_EXCISION_ENABLED(
+    "RFI_FRAME_EXCISION_ENABLED"); // a bool noting whether RFI second stage excision (gpu frames)
+                                   // is enabled
+const std::string RFI_FRAME_EXCISION_THRESHOLDS(
+    "RFI_FRAME_EXCISION_THRESHOLDS"); // an array of array<float, 2> of size MAX_NUM_RFI_THRESHOLDS
 
 
 struct beamCoord {

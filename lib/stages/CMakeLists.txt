@@ -109,6 +109,7 @@ add_library(
     dropAllFrames.cpp
     N2FrameToVisFrame.cpp
     RfiMaskSum.cpp
+    RfiFrameMask.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
