@@ -274,7 +274,7 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
 
         // only almost thread save in that we must ensure that the compiler does
         // to re-order execution too aggressively
-        first_time = true;
+        first_time = false;
     }
 
 
