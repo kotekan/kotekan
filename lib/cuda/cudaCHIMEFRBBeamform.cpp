@@ -62,7 +62,7 @@ private:
     // Buffers
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage; // (time, freq, pol, ew*ns)
     // this is internal and can be changed to an NDArrayBuffer
-    NDArrayRingBuffer<kotekan::GetType_t<kotekan::cfloat16>, 5>
+    NDArrayBuffer<kotekan::GetType_t<kotekan::cfloat16>, 5>
         frb1_beams;                         // (time, freq, pol, ew, ns)
     NDArrayRingBuffer<float, 5> frb2_beams; // (ctime, beam, cfreq, time, ufreq)
 
@@ -173,7 +173,7 @@ cudaCHIMEFRBBeamform::cudaCHIMEFRBBeamform(kotekan::Config& config, const std::s
     static_assert(std::is_same_v<__half, kotekan::GetType_t<kotekan::cfloat16>::value_type>);
 
     voltage.register_consumer();
-    frb1_beams.register_producer();
+    //frb1_beams.register_producer();
     frb2_beams.register_producer();
 
     set_command_type(gpuCommandType::KERNEL);
@@ -239,6 +239,10 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
         const auto meta = voltage.get_metadata();
         const auto coarse_freq = meta->get_coarse_freq();
 
+        map.set_to_poison(0xff); // may contain 0 bytes
+        co.set_to_poison(0xff); // may contain 0 bytes
+        gains.set_to_poison(0x00);
+
         // indices for clamping
         std::vector<uint> host_map(map.get_ndarray().size());
         for (int f = 0; f < num_frequencies; ++f) {
@@ -263,17 +267,10 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
 
         // TODO: this should actually come out of a buffer, but is hard-coded for now
         std::vector<float> host_gains(gains.get_ndarray().size(), 1.0);
-        for(int i = 0 ; i < host_gains.size() ; i++) {
-          std::cerr << host_gains[i] << " ";
-        }
-        std::cerr << std::endl;
         CHECK_CUDA_ERROR(
             cudaMemcpyAsync(gains.get_ndarray().get_data(), host_gains.data(),
                             gains.get_ndarray().size() * gains.get_ndarray().get_value_type_size(),
                             cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
-
-        CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-        gains.check_for_poison(0x00);
 
         // only almost thread save in that we must ensure that the compiler does
         // to re-order execution too aggressively
@@ -334,15 +331,17 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     assert(frb2_beams.get_ndarray().extent(3) == num_times / downsample_time);
     assert(frb2_beams.get_ndarray().extent(4) == factor_upchan_out);
 
-    //map.check_for_poison(0x00); // may contain 0 bytes
-    //co.check_for_poison(0x00); // may contain 0 bytes
-    //gains.check_for_poison(0x00);
+    map.check_for_poison(0xff); // may contain 0 bytes
+    co.check_for_poison(0xff); // may contain 0 bytes
+    gains.check_for_poison(0x00);
 
     voltage.check_input_for_poison(0x00);
-#if 0
+#if 1
     if (poison_buffers)
-       frb1_beams.set_to_poison(0xff); // NaN
+       frb1_beams.set_to_poison(0x00); // NaN
 #endif
+
+    std::cerr << "T, num_frequencies" << T << ", " << num_frequencies << std::endl;
 
     // pirate uses a uint8_t pointer for pairs of 4bit ints
     // pirate uses a float16 pointer for pairs of float16 that form a complex<float16>
@@ -354,9 +353,9 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
 
-#if 0
+#if 1
     if (poison_buffers)
-        frb1_beams.check_for_poison(0xff);
+        frb1_beams.check_for_poison(0x00);
 #endif
 
     if (poison_buffers)
