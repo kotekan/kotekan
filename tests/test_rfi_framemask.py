@@ -13,16 +13,14 @@ prod_config = {
         "rfi_enabled": {
             "kotekan_update_endpoint": "json",
             "enabled": True,
-            "valid_from_time_ns": 0},
+            "valid_from_time_ns": 0,
+        },
         "rfi_thresholds": {
             "kotekan_update_endpoint": "json",
-            "thresholds": [
-                {"threshold": 1.0,
-                 "fraction": 0.5 },
-            ],
+            "thresholds": [{"threshold": 1.0, "fraction": 0.5},],
             "valid_from_time_ns": 0,
-        }
-    }
+        },
+    },
 }
 
 small_config = {
@@ -35,17 +33,14 @@ small_config = {
         "rfi_enabled": {
             "kotekan_update_endpoint": "json",
             "enabled": True,
-            "valid_from_time_ns": 0
+            "valid_from_time_ns": 0,
         },
         "rfi_thresholds": {
             "kotekan_update_endpoint": "json",
-            "thresholds": [
-                {"threshold": 1.0,
-                 "fraction": 0.5 },
-            ],
+            "thresholds": [{"threshold": 1.0, "fraction": 0.5},],
             "valid_from_time_ns": 0,
-        }
-    }
+        },
+    },
 }
 
 very_small_config = {
@@ -58,16 +53,14 @@ very_small_config = {
         "rfi_enabled": {
             "kotekan_update_endpoint": "json",
             "enabled": True,
-            "valid_from_time_ns": 0},
+            "valid_from_time_ns": 0,
+        },
         "rfi_thresholds": {
             "kotekan_update_endpoint": "json",
-            "thresholds": [
-                {"threshold": 1.0,
-                 "fraction": 0.5 },
-            ],
+            "thresholds": [{"threshold": 1.0, "fraction": 0.5},],
             "valid_from_time_ns": 0,
-        }
-    }
+        },
+    },
 }
 
 
@@ -93,9 +86,7 @@ def generate_sktilde(vals, seq_num, num_times, num_freq, rfi_downsampling):
     rfi_num_times = num_times // rfi_downsampling
 
     data = np.empty((rfi_num_times, num_freq, 3), dtype=np.float32)
-    meta = runner.chordbuffer.get_metadata(
-        "SKtilde", "float32", ("Trfi", "F", "SK")
-    )
+    meta = runner.chordbuffer.get_metadata("SKtilde", "float32", ("Trfi", "F", "SK"))
     meta["fpga_seq_num"] = seq_num
     meta["time_downsampling_fpga"] = rfi_downsampling
 
@@ -198,14 +189,20 @@ def rfiframemask_data(tmpdir_factory, setup):
     )
 
     test = runner.KotekanStageTester(
-            "RfiFrameMask", {"enabled_updatable_config": "/updatable_config/rfi_enabled",
-                             "thresholds_updatable_config": "/updatable_config/rfi_thresholds"},
-            input_buffer, dump_buffer, config,
+        "RfiFrameMask",
+        {
+            "enabled_updatable_config": "/updatable_config/rfi_enabled",
+            "thresholds_updatable_config": "/updatable_config/rfi_thresholds",
+        },
+        input_buffer,
+        dump_buffer,
+        config,
     )
 
     test.run()
 
     yield dump_buffer.load()
+
 
 """
 def test_meta(rfimasksum_data, setup):
@@ -234,6 +231,7 @@ def test_structure(rfiframemask_data, setup):
             config["num_local_freq"],
         )
         assert frame.data.dtype == np.uint8
+
 
 """
 def test_count(rfimasksum_data, setup):

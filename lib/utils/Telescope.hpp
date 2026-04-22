@@ -258,7 +258,7 @@ public:
      * @return  The corresponding sequence number.
      **/
     virtual uint64_t to_seq(timespec time) const = 0;
-    
+
     /**
      * @brief Convert an Instrument (~UNIX epoch) time into the nearest sequence number.
      *
