@@ -12,7 +12,7 @@ prod_config = {
     "rfi_enabled": {
         "kotekan_update_endpoint": "json",
         "enabled": True,
-        "valid_from_time_ns": 0,
+        "valid_at_time_ns": 0,
     },
     "rfi_thresholds": {
         "kotekan_update_endpoint": "json",
@@ -20,7 +20,7 @@ prod_config = {
             {"threshold": 0.0, "fraction": 0.5},
             {"threshold": 1.0, "fraction": 0.8},
         ],
-        "valid_from_time_ns": 0,
+        "valid_at_time_ns": 0,
     },
 }
 
@@ -33,12 +33,12 @@ small_config = {
     "rfi_enabled": {
         "kotekan_update_endpoint": "json",
         "enabled": True,
-        "valid_from_time_ns": 0,
+        "valid_at_time_ns": 0,
     },
     "rfi_thresholds": {
         "kotekan_update_endpoint": "json",
         "thresholds": [],
-        "valid_from_time_ns": 0,
+        "valid_at_time_ns": 0,
     },
 }
 
@@ -51,12 +51,12 @@ very_small_config = {
     "rfi_enabled": {
         "kotekan_update_endpoint": "json",
         "enabled": False,
-        "valid_from_time_ns": 0,
+        "valid_at_time_ns": 0,
     },
     "rfi_thresholds": {
         "kotekan_update_endpoint": "json",
         "thresholds": [{"threshold": 1.0, "fraction": 0.5},],
-        "valid_from_time_ns": 0,
+        "valid_at_time_ns": 0,
     },
 }
 
