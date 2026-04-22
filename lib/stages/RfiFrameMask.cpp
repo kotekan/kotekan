@@ -93,7 +93,7 @@ private:
     const std::string _enabled_config_path;
     const std::string _thresholds_config_path;
 
-    std::mutex update_mutex;
+    std::mutex _update_mutex;
     int64_t _enabled_valid_from_seq;
     int64_t _thresholds_valid_from_seq;
     bool _enabled;
@@ -236,6 +236,10 @@ void RfiFrameMask::main_thread() {
         // update the thresholds and enabled status for this frame.
         int64_t seq_num = in_meta->get_fpga_seq_num();
         update_enabled_and_thresholds(seq_num);
+        
+        if (_threshold.size() != _fraction.size() || _threshold.size() > jsonMetadata::MAX_NUM_RFI_THRESHOLDS) {
+            FATAL_ERROR("'threshold' and 'fraction' arrays have bad sizes ({:d} and {:d}). Must be identical and at most {:d}", _threshold.size(), _fraction.size(), jsonMetadata::MAX_NUM_RFI_THRESHOLDS);
+        }
 
         DEBUG("Computing RFI frame mask");
         for (int64_t t_int = 0; t_int < _num_integrations; t_int++) {
@@ -298,19 +302,27 @@ void RfiFrameMask::main_thread() {
 }
 
 void RfiFrameMask::update_enabled_and_thresholds([[maybe_unused]] int64_t seq_num) {
-    std::lock_guard<std::mutex> lock(update_mutex);
 
+    // Acquire the lock so these don't get updated out from under us
+    std::lock_guard<std::mutex> lock(_update_mutex);
+
+    // Update the `enabled` flag if we're in its valid region
     if (seq_num >= _next_enabled_valid_from_seq) {
+        // Copy the `next` values to the active ones.
         _enabled = _next_enabled;
         _enabled_valid_from_seq = _next_enabled_valid_from_seq;
-        _next_enabled_valid_from_seq = -1;
+        // Set the `next` valid time to the distant future so we don't copy again.
+        _next_enabled_valid_from_seq = std::numeric_limits<int64_t>::max();
     }
 
+    // Update `threshold` and `fraction` if we're in their valid region
     if (seq_num >= _next_thresholds_valid_from_seq) {
+        // Copy the `next` values to the active ones.
         _threshold = _next_threshold;
         _fraction = _next_fraction;
         _thresholds_valid_from_seq = _next_thresholds_valid_from_seq;
-        _next_thresholds_valid_from_seq = -1;
+        // Set the `next` valid time to the distant future so we don't copy again.
+        _next_thresholds_valid_from_seq = std::numeric_limits<int64_t>::max();
     }
 }
 
@@ -328,11 +340,13 @@ void RfiFrameMask::check_sktilde_meta(std::shared_ptr<chordMetadata> meta) {
         FATAL_ERROR("Input buffer has dim[2] = {:d}, should be 3 for sktilde", meta->dim[2]);
 }
 
-bool RfiFrameMask::receive_rfi_excision_enabled([[maybe_unused]] nlohmann::json& json) {
+bool RfiFrameMask::receive_rfi_excision_enabled(nlohmann::json& json) {
 
+    // To store the read values
     bool new_enabled;
     int64_t new_time_ns;
 
+    // Attempt to get the values from the JSON.
     try {
         new_enabled = json.at("rfi_frame_excision").get<bool>();
         new_time_ns = json.at("valid_from_time_ns").get<int64_t>();
@@ -341,18 +355,20 @@ bool RfiFrameMask::receive_rfi_excision_enabled([[maybe_unused]] nlohmann::json&
         return false;
     }
 
-    int64_t seq_num = Telescope::instance().to_seq(nanosec_i64_to_timespec(new_time_ns));
+    // We have values! Compute the sequence number and print a status message.
+    int64_t seq_num = Telescope::instance().to_seq(new_time_ns);
 
     std::string time_str = fmt::format("t_inst = {:d} s + {:d} ns (seq {:d})",
-                                       new_time_ns / 1'000'000, new_time_ns % 1'000'000, seq_num);
+                                       new_time_ns / 1'000'000'000, new_time_ns % 1'000'000'000, seq_num);
 
     if (new_enabled)
         INFO("Enabling RFI Frame Excision at: {:s}", time_str);
     else
         INFO("Disabling RFI Frame Excision at: {:s}", time_str);
 
+    // Update the values. Must acquire the lock, and only touch the "next" values.
     {
-        std::lock_guard<std::mutex> lock(update_mutex);
+        std::lock_guard<std::mutex> lock(_update_mutex);
         _next_enabled = new_enabled;
         _next_enabled_valid_from_seq = seq_num;
     }
@@ -360,15 +376,138 @@ bool RfiFrameMask::receive_rfi_excision_enabled([[maybe_unused]] nlohmann::json&
     return true;
 }
 
-bool RfiFrameMask::receive_rfi_excision_thresholds([[maybe_unused]] nlohmann::json& json) {
+bool RfiFrameMask::receive_rfi_excision_thresholds(nlohmann::json& update) {
+
+    nlohmann::json j;
+    int64_t new_time_ns;
+   
+    // Parse the json update for the time
     try {
+        new_time_ns = update.at("valid_from_time_ns").get<int64_t>();
     } catch (std::exception& e) {
-        WARN("RfiFrameMask failed to read update to {:s}: {:s}", _thresholds_config_path, e.what());
+        WARN("RfiFrameMask failed to read update to {:s} - 'valid_from_time_ns' not found: {:s}", _thresholds_config_path, e.what());
         return false;
+    }
+
+    // Parse the update for the thresholds list
+    try {
+        j = update.at("thresholds");
+    } catch (std::exception& e) {
+        WARN("RfiFrameMask failed to read update to {:s} - 'thresholds' not found: {:s}", _thresholds_config_path, e.what());
+        return false;
+    }
+
+    if (!j.is_array()) {
+        WARN("RfiFrameMask failed to read update to {:s} - 'thresholds' is not a list: {}", _thresholds_config_path, j.dump());
+        return false;
+    }
+
+    if (j.size() > jsonMetadata::MAX_NUM_RFI_THRESHOLDS) {
+        WARN("RfiFrameMask failed to read update to {:s} - 'thresholds' has length {:d}, maximum accepted is {:d}", _thresholds_config_path, j.size(), jsonMetadata::MAX_NUM_RFI_THRESHOLDS);
+        return false;
+    }
+
+    // Parse the thresholds list
+    std::vector<float> new_threshold;
+    std::vector<float> new_fraction;
+
+    for (const auto& t : j) {
+        if (!t.is_object()) {
+            WARN("RfiFrameMask failed to read update to {:s} - item in 'thresholds' is not a dict: {}", _thresholds_config_path, t.dump());
+            return false;
+        }
+        
+        float thresh, fract;
+        try {
+            thresh = t.at("threshold").get<float>();
+        } catch (std::exception& e) {
+            WARN("RfiFrameMask failed to read update to {:s} - float 'threshold' not present in item {}: {:s}", _thresholds_config_path, t.dump(), e.what());
+            return false;
+        }
+        try {
+            fract = t.at("fraction").get<float>();
+        } catch (std::exception& e) {
+            WARN("RfiFrameMask failed to read update to {:s} - float 'fraction' not present in item {}: {:s}", _thresholds_config_path, t.dump(), e.what());
+            return false;
+        }
+
+        new_threshold.push_back(thresh);
+        new_fraction.push_back(fract);
+    }
+
+    // We have values! Compute the sequence number and print a status message.
+    int64_t seq_num = Telescope::instance().to_seq(new_time_ns);
+    std::string time_str = fmt::format("t_inst = {:d} s + {:d} ns (seq {:d})",
+                                       new_time_ns / 1'000'000'000, new_time_ns % 1'000'000'000, seq_num);
+
+    INFO("Setting new RFI Frame Excision cuts to take effect at: {}", time_str);
+    for (size_t i = 0; i < new_threshold.size(); i++)
+        INFO("  {:d}: threshold={}, fraction={}", new_threshold.at(i), new_fraction.at(i));
+    
+    // Update the values. Must acquire the lock, and only touch the "next" values.
+    {
+        std::lock_guard<std::mutex> lock(_update_mutex);
+        _next_threshold = new_threshold;
+        _next_fraction = new_fraction;
+        _next_thresholds_valid_from_seq = seq_num;
     }
 
     return true;
 }
 
-void RfiFrameMask::send_rfi_excision_enabled([[maybe_unused]] connectionInstance& conn) {}
-void RfiFrameMask::send_rfi_excision_thresholds([[maybe_unused]] connectionInstance& conn) {}
+void RfiFrameMask::send_rfi_excision_enabled(connectionInstance& conn) {
+    nlohmann::json reply;
+    {
+        std::lock_guard<std::mutex> lock(_update_mutex);
+
+        nlohmann::json active = {};
+        active["enabled"] = _enabled;
+        active["valid_from_time_ns"] = Telescope::instance().to_time_ns(_enabled_valid_from_seq);
+
+
+        nlohmann::json next = {};
+        next["enabled"] = _next_enabled;
+        next["valid_from_time_ns"] = Telescope::instance().to_time_ns(_next_enabled_valid_from_seq);
+        
+        reply["active"] = active;
+        reply["next"] = next;
+    }
+
+    conn.send_json_reply(reply);
+}
+
+void RfiFrameMask::send_rfi_excision_thresholds(connectionInstance& conn) {
+    nlohmann::json reply;
+    {
+        std::lock_guard<std::mutex> lock(_update_mutex);
+
+        // Pack threshold & fraction arrays into array of dicts to mirror the input format
+        nlohmann::json thresholds = nlohmann::json::array();
+        for(size_t i = 0; i < _threshold.size(); i++) {
+            nlohmann::json item;
+            item["threshold"] = _threshold.at(i);
+            item["fraction"] = _fraction.at(i);
+        }
+        nlohmann::json next_thresholds = nlohmann::json::array();
+        for(size_t i = 0; i < _next_threshold.size(); i++) {
+            nlohmann::json item;
+            item["threshold"] = _next_threshold.at(i);
+            item["fraction"] = _next_fraction.at(i);
+        }
+
+        // create the objects for active and next entries.
+        nlohmann::json active = {};
+        active["thresholds"] = thresholds;
+        active["valid_from_time_ns"] = Telescope::instance().to_time_ns(_thresholds_valid_from_seq);
+
+        nlohmann::json next = {};
+        next["thresholds"] = next_thresholds;
+        next["valid_from_time_ns"] = Telescope::instance().to_time_ns(_next_thresholds_valid_from_seq);
+        
+        // assemble the reply
+        reply["active"] = active;
+        reply["next"] = next;
+    }
+
+    conn.send_json_reply(reply);
+}
