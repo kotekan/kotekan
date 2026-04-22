@@ -17,7 +17,11 @@ num_elements: 2048
 num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 6144 # must be this to get 16 output samples (not 12)
-buffer_depth: 2
+sample_period_ns: 2560
+network_frame_arrival_period: 6144 * sample_period_ns / 1e9
+# see where / if / how to use buffer_depth and gpu_buffer_depth
+# must be at least size of gpu_buffer_depth
+buffer_depth: 4
 baseband_buffer_depth: 120  # 48Gb, 15s buffer.
 vbuffer_depth: 32
 num_links: 4
@@ -27,7 +31,12 @@ block_size: 32
 num_gpus: 1
 link_map: [0,1,2,3]
 
+# this must be 4 since cudaTranspose2048_chime.cpp hard-codes the outermost
+# size of the voltage ring-buffer as 4
+gpu_buffer_depth: 4
+
 # Constants
+sizeof_half: 2
 sizeof_float: 4
 sizeof_int: 4
 sizeof_short: 2
@@ -85,31 +94,123 @@ hfb_pool:
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
 
 # Buffers
-network_buffers:
+host_voltage_buffer:
+  kotekan_buffer: standard
   num_frames: baseband_buffer_depth
   frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
   metadata_pool: main_pool
-  network_buffer_0:
-    kotekan_buffer: standard
+host_voltage_ringbuffer:
+  kotekan_buffer: ring
+  # [24576, 1, 2, 512]
+  # value = 0x55555ba9c5e0 "T"}, {value = 0x55555ba9d650 "F"}, {value = 0x55555ba9d8a0 "P"}, {
+  # value = 0x55555ba9e5f0 "D"}}}
+  ring_buffer_size: gpu_buffer_depth * samples_per_data_set * num_elements * num_local_freq
+  type: float32
+  dimnames: ["F", "T", "P", "E"]
+  shape: [num_local_freq,  samples_per_dataset, 2, num_elements / 2]
+  metadata_pool: main_pool
 
-gpu_beamform_output_buffers:
+host_beamform_frb1_buffer:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: num_data_sets * samples_per_data_set * num_local_freq * num_elements * 2*sizeof_half
+  metadata_pool: main_pool
+host_beamform_frb1_ringbuffer:
+  kotekan_buffer: ring
+  ring_buffer_size: buffer_depth * num_data_sets * samples_per_data_set * num_local_freq * num_elements * 2*sizeof_half
+  type: cfloat16
+  dimnames: ["T", "F", "P", "EW", "NS"]
+  shape: [buffer_depth * samples_per_data_set, num_local_freq, 2, 4, num_elements / 2 / 4]
+  metadata_pool: main_pool
+
+host_beamform_frb2_buffer:
+  kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
   metadata_pool: main_pool
-  gpu_beamform_output_buffer_0:
-    kotekan_buffer: standard
+host_beamform_frb2_ringbuffer:
+  kotekan_buffer: ring
+  ring_buffer_size: buffer_depth * num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
+  type: float32
+  dimnames: ["Tc", "B", "Fc", "Tfrb", "Fu"]
+  shape: [buffer_depth,  num_elements / 2, num_local_freq, samples_per_data_set / (3 * 128), 16]
+  metadata_pool: main_pool
 
 gain_frb_buffer:
+  kotekan_buffer: standard
+  metadata_pool: main_pool
   num_frames: buffer_depth
   frame_size: 2048 * 2 * sizeof_float
-  metadata_pool: main_pool
-  kotekan_buffer: standard
 
 # trivial gain
-set_gain_frb_guffer:
+set_gain_frb_buffer:
   kotekan_stage: testDataGenFloat
   type: const
   value: 1.0
+  # TODO: needs array description etc
+  network_out_buf: gain_frb_buffer
+
+# send data to GPU
+run_send_voltage:
+  kotekan_stage: cudaProcess
+  log_level: debug
+  gpu_id: 0
+  buffer_depth: gpu_buffer_depth
+  frame_arrival_period: network_frame_arrival_period
+  num_times: samples_per_data_set
+  in_buffers:
+      host_voltage_buffer: host_voltage_buffer
+  out_buffers:
+      host_voltage_ringbuffer: host_voltage_ringbuffer
+  commands:
+  - name: cudaCopyToRingbuffer
+    input_size: samples_per_data_set * num_elements * num_local_freq
+    ring_buffer_size: gpu_buffer_depth * input_size
+    in_buf: host_voltage_buffer
+    signal_buf: host_voltage_ringbuffer
+    gpu_mem_output: voltage_buffer
+
+# TODO: reorder into beamformer order
+# TODO: handle gains (hard-coded to 1.0 in C++ code right now)
+gpu_beamform:
+  kotekan_stage: cudaProcess
+  log_level: debug
+  buffer_depth: gpu_buffer_depth
+  frame_arrival_period: network_frame_arrival_period
+  num_times: samples_per_data_set
+  gpu_id: 0
+  in_buffers:
+      host_voltage_ringbuffer: host_voltage_ringbuffer
+  out_buffers:
+      host_beamform_frb2_ringbuffer: host_beamform_frb2_ringbuffer
+      host_beamform_frb1_ringbuffer: host_beamform_frb1_ringbuffer
+  commands:
+  - name: cudaCHIMEFRBBeamform
+    poison_buffers: true
+    num_frequencies: num_local_freq
+    num_polarizations: 2
+    num_dishes: num_elements / 2
+    voltage_name: voltage
+    frb1_beams_name: beamform_frb1
+    frb2_beams_name: beamform_frb2
+
+recv_gpu_beamform_output_buffer:
+  kotekan_stage: cudaProcess
+  buffer_depth: gpu_buffer_depth
+  frame_arrival_period: network_frame_arrival_period
+  num_times: samples_per_data_set
+  gpu_id: 0
+  in_buffers:
+      host_beamform_frb2_ringbuffer: host_beamform_frb2_ringbuffer
+  out_buffers:
+      host_beamform_frb2_buffer: host_beamform_frb2_buffer
+  commands:
+  - name: cudaCopyFromRingbuffer
+    host_signal: host_beamform_frb2_ringbuffer
+    gpu_mem_input: beamform_frb2
+    output_size: sizeof_float * num_frb_total_beams * num_local_freq * samples_per_data_set / (downsample_time * factor_upchan) * factor_upchan_out
+    ring_buffer_size: gpu_buffer_depth * output_size
+    out_buf: host_beamform_frb2_buffer
 
 cpu_output_buffers:
   num_frames: buffer_depth
@@ -130,14 +231,18 @@ lost_samples_buffer:
   num_frames: 2 * buffer_depth
   frame_size: samples_per_data_set * num_local_freq * num_data_sets
   metadata_pool: main_pool
-cpu_affinity: [2,3,8,9]
 
 gen_data:
   test_data_gen_network:
-    type: random #const
+    type: random_signed_offset
     value: 153
     kotekan_stage: testDataGen
-    out_buf: network_buffer_0
+    out_buf: host_voltage_buffer
+    name: "E"
+    # kotekan does not like variables in arrays
+    #array_shape: [ samples_per_data_set, num_local_freq, 2, num_elements/2 ]
+    array_shape: [ 6144, 1, 2, 1024 ]
+    dim_name: [ "T", "F", "P", "D" ]
   test_data_gen_lost_samples:
     type: const
     value: 0
@@ -150,7 +255,7 @@ cpu_simulate:
     ew_spacing: [0.0, 0.1, 0.2, 0.3]
     northmost_beam: 90.0
     kotekan_stage: gpuBeamformSimulate
-    network_in_buf: network_buffer_0
+    network_in_buf: host_voltage_buffer
     beam_out_buf: cpu_output_buffer_0
     hfb_out_buf: cpu_hfb_output_buffer_0
 
@@ -159,7 +264,7 @@ check_data:
     num_frames_to_test: 1
     epsilon: 0.001
     kotekan_stage: testDataCheckFloat
-    first_buf : gpu_beamform_output_buffer_0
+    first_buf : host_beamform_frb2_buffer
     second_buf: cpu_output_buffer_0
 
 
