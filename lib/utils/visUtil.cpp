@@ -212,7 +212,6 @@ parse_reorder_default(kotekan::Config& config, const std::string base_path) {
     }
 }
 
-
 size_t _member_alignment(size_t offset, size_t size) {
     return (((size - (offset % size)) % size) + offset);
 }

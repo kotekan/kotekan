@@ -2,25 +2,25 @@
 
 ################################################################################
 #
-# Run a CHORD pathfinder benchmark
+# Run a CHORD benchmark
 #
 ################################################################################
 
 ---
 log_level: warn
 
-base_dir: data/fengine_benchmark_pathfinder # unused
+base_dir: data/fengine_benchmark_chord # unused
 prefix_hostname: false
 prefix_host_rank: true
 
 {% include "include/defs.j2" %}
-{% include "include/fengine_pathfinder.j2" %}
+{% include "include/fengine_chord.j2" %}
 
-{% include "include/rfi_pathfinder.j2" %}
-{% include "include/n2k_pathfinder.j2" %}
-{% include "include/bb_pathfinder.j2" %}
-{% include "include/upchan_pathfinder.j2" %}
-{% include "include/frb_pathfinder.j2" %}
+{% include "include/rfi_chord.j2" %}
+{% include "include/n2k_chord.j2" %}
+{% include "include/bb_chord.j2" %}
+{% include "include/upchan_chord.j2" %}
+{% include "include/frb_chord.j2" %}
 
 {% include "include/invent_voltage.j2" %}
 {% include "include/output_benchmark.j2" %}
