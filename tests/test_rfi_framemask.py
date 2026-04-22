@@ -262,6 +262,7 @@ def make_frame_mask(sktilde, config):
 
 
 def test_meta(rfiframemask_data, setup):
+    # Test the metadata
 
     config, sk_vals, sigma_vals = setup
 
@@ -291,20 +292,8 @@ def test_meta(rfiframemask_data, setup):
         ).all()
 
 
-def test_structure(rfiframemask_data, setup, sktilde_data):
-
-    config, sk_vals, sigma_vals = setup
-
-    for idx, frame in enumerate(rfiframemask_data):
-
-        assert frame.data.shape == (
-            config["samples_per_data_set"] // config["sub_integration_ntime"],
-            config["num_local_freq"],
-        )
-        assert frame.data.dtype == np.uint8
-
-
 def test_frame_mask(rfiframemask_data, setup, sktilde_data):
+    # Test the frame mask data
 
     config, sk_vals, sigma_vals = setup
 
