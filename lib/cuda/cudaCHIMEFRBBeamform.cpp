@@ -248,7 +248,7 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
             pirate::calculate_cl_index(host_map_memory, freq_in_MHz, northmost_beam);
         }
         CHECK_CUDA_ERROR(
-            cudaMemcpyAsync(host_map.data(), map.get_ndarray().get_data(),
+            cudaMemcpyAsync(map.get_ndarray().get_data(), host_map.data(),
                             map.get_ndarray().size() * map.get_ndarray().get_value_type_size(),
                             cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 
@@ -257,7 +257,7 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
         std::vector<float> host_co(co.get_ndarray().size());
         calculate_ew_co(host_co, coarse_freq);
         CHECK_CUDA_ERROR(
-            cudaMemcpyAsync(host_co.data(), co.get_ndarray().get_data(),
+            cudaMemcpyAsync(co.get_ndarray().get_data(), host_co.data(),
                             co.get_ndarray().size() * co.get_ndarray().get_value_type_size(),
                             cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 
@@ -268,7 +268,7 @@ cudaEvent_t cudaCHIMEFRBBeamform::execute(cudaPipelineState& /*pipestate*/,
         }
         std::cerr << std::endl;
         CHECK_CUDA_ERROR(
-            cudaMemcpyAsync(host_gains.data(), gains.get_ndarray().get_data(),
+            cudaMemcpyAsync(gains.get_ndarray().get_data(), host_gains.data(),
                             gains.get_ndarray().size() * gains.get_ndarray().get_value_type_size(),
                             cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 
