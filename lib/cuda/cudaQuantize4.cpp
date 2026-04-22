@@ -69,8 +69,8 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
     _num_beams(config.get<std::int64_t>(unique_name, "num_beams")),
     _num_frequencies(config.get<std::int64_t>(unique_name, "num_frequencies")),
     _num_times(config.get<std::int64_t>(unique_name, "num_times")),
-    _num_chunks(
-        kotekan::div_noremainder(1LL * _num_beams * _num_frequencies * _num_times, CHUNK_SIZE)),
+    _num_chunks(1LL * _num_beams * _num_frequencies
+                * kotekan::div_noremainder(_num_times, CHUNK_SIZE)),
     //
     _stddev_cutoff(config.get<float>(unique_name, "stddev_cutoff")),
     //
