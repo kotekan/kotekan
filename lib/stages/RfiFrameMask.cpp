@@ -160,13 +160,17 @@ RfiFrameMask::RfiFrameMask(Config& config, const std::string& unique_name,
     }
 
     // Ensure incoming buffer frame size is correct
+    /*
     size_t sk_frame_size = _rfi_num_times * _num_local_freq * 3 * sizeof(float);
 
     if (in_buf->frame_size != sk_frame_size)
         FATAL_ERROR("RfiFrameMask in_buf ({:s}) has frame size {:d}. Expected {:d}.",
                     in_buf->buffer_name, in_buf->frame_size, sk_frame_size);
+    */
 
     // Set up outgoing frame descriptor
+    in_buf->allocate_ndarray_frame_desc(kotekan::float32, "SKtilde",
+                                         {_rfi_num_times, _num_local_freq, 3}, {"Trfi", "F", "SK"});
     out_buf->allocate_ndarray_frame_desc(kotekan::uint8, "RFIFrameMask",
                                          {_num_integrations, _num_local_freq}, {"Tc", "F"});
 
@@ -348,7 +352,7 @@ bool RfiFrameMask::receive_rfi_excision_enabled(nlohmann::json& json) {
 
     // Attempt to get the values from the JSON.
     try {
-        new_enabled = json.at("rfi_frame_excision").get<bool>();
+        new_enabled = json.at("enabled").get<bool>();
         new_time_ns = json.at("valid_from_time_ns").get<int64_t>();
     } catch (std::exception& e) {
         WARN("RfiFrameMask failed to read update to {:s}: {:s}", _enabled_config_path, e.what());
@@ -442,7 +446,7 @@ bool RfiFrameMask::receive_rfi_excision_thresholds(nlohmann::json& update) {
 
     INFO("Setting new RFI Frame Excision cuts to take effect at: {}", time_str);
     for (size_t i = 0; i < new_threshold.size(); i++)
-        INFO("  {:d}: threshold={}, fraction={}", new_threshold.at(i), new_fraction.at(i));
+        INFO("  {:d}: threshold={:f}, fraction={:f}", i, new_threshold.at(i), new_fraction.at(i));
     
     // Update the values. Must acquire the lock, and only touch the "next" values.
     {
