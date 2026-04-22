@@ -280,6 +280,14 @@ public:
             if (meta->has_freq_upchan_index())
                 dataset.createAttribute("freq_upchan_index", meta->get_freq_upchan_index());
 
+            if (meta->has_rfi_frame_excision_enabled())
+                dataset.createAttribute("rfi_frame_excision_enabled",
+                                        meta->get_rfi_frame_excision_enabled());
+
+            if (meta->has_rfi_frame_excision_thresholds())
+                dataset.createAttribute("rfi_frame_excision_thresholds",
+                                        meta->get_rfi_frame_excision_thresholds());
+
             if (meta->ndishes >= 0) {
                 dataset.createAttribute("ndishes", meta->ndishes);
                 // const DataSpace space{std::size_t(meta->n_dish_locations_ns),

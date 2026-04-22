@@ -263,7 +263,7 @@ void RfiFrameMask::main_thread() {
                         float sigma = sktilde[sk_idx + 2];
 
                         for (size_t k = 0; k < _threshold.size(); k++) {
-                            if (sk > _threshold.at(k) * sigma)
+                            if (sk > _threshold.at(k) * sigma + 1.0f)
                                 num_sk_exceeds.at(k) += 1;
                         } // k
                     } // t_rfi

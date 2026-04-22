@@ -9,17 +9,18 @@ prod_config = {
     "num_local_freq": 3,
     "sub_integration_ntime": 8192,
     "rfi_downsampling_factor": 256,
-    "updatable_config": {
-        "rfi_enabled": {
-            "kotekan_update_endpoint": "json",
-            "enabled": True,
-            "valid_from_time_ns": 0,
-        },
-        "rfi_thresholds": {
-            "kotekan_update_endpoint": "json",
-            "thresholds": [{"threshold": 1.0, "fraction": 0.5},],
-            "valid_from_time_ns": 0,
-        },
+    "rfi_enabled": {
+        "kotekan_update_endpoint": "json",
+        "enabled": True,
+        "valid_from_time_ns": 0,
+    },
+    "rfi_thresholds": {
+        "kotekan_update_endpoint": "json",
+        "thresholds": [
+            {"threshold": 0.0, "fraction": 0.5},
+            {"threshold": 1.0, "fraction": 0.8},
+        ],
+        "valid_from_time_ns": 0,
     },
 }
 
@@ -29,17 +30,15 @@ small_config = {
     "num_local_freq": 3,
     "sub_integration_ntime": 32,
     "rfi_downsampling_factor": 1,
-    "updatable_config": {
-        "rfi_enabled": {
-            "kotekan_update_endpoint": "json",
-            "enabled": True,
-            "valid_from_time_ns": 0,
-        },
-        "rfi_thresholds": {
-            "kotekan_update_endpoint": "json",
-            "thresholds": [{"threshold": 1.0, "fraction": 0.5},],
-            "valid_from_time_ns": 0,
-        },
+    "rfi_enabled": {
+        "kotekan_update_endpoint": "json",
+        "enabled": True,
+        "valid_from_time_ns": 0,
+    },
+    "rfi_thresholds": {
+        "kotekan_update_endpoint": "json",
+        "thresholds": [],
+        "valid_from_time_ns": 0,
     },
 }
 
@@ -49,135 +48,136 @@ very_small_config = {
     "num_local_freq": 1,
     "sub_integration_ntime": 1,
     "rfi_downsampling_factor": 1,
-    "updatable_config": {
-        "rfi_enabled": {
-            "kotekan_update_endpoint": "json",
-            "enabled": True,
-            "valid_from_time_ns": 0,
-        },
-        "rfi_thresholds": {
-            "kotekan_update_endpoint": "json",
-            "thresholds": [{"threshold": 1.0, "fraction": 0.5},],
-            "valid_from_time_ns": 0,
-        },
+    "rfi_enabled": {
+        "kotekan_update_endpoint": "json",
+        "enabled": False,
+        "valid_from_time_ns": 0,
+    },
+    "rfi_thresholds": {
+        "kotekan_update_endpoint": "json",
+        "thresholds": [{"threshold": 1.0, "fraction": 0.5},],
+        "valid_from_time_ns": 0,
     },
 }
-
-
-def generate_sktilde(vals, seq_num, num_times, num_freq, rfi_downsampling):
-    """
-    Generate an SKtilde frame in a ChordBuffer
-
-    Parameters
-    ----------
-    vals : List[List[0,1]]
-        A list-of-lists containing 0 or 1. The outer list indexes frequency, the inner time. Each 0 or 1 is applied to `rfi_downsampling` number of time samples.
-        Both frequency and time axes are cycled through if the list is shorter than the data array.
-    seq_num : int
-        FPGA sequence number at start of frame.
-    num_times : int
-        Number of times in this frame
-    num_freq : int
-        Number of frequencies in this frame
-    rfi_downsampling : int
-        RFI Downsampling factor: RFImask elements are repeated this many times
-    """
-
-    rfi_num_times = num_times // rfi_downsampling
-
-    data = np.empty((rfi_num_times, num_freq, 3), dtype=np.float32)
-    meta = runner.chordbuffer.get_metadata("SKtilde", "float32", ("Trfi", "F", "SK"))
-    meta["fpga_seq_num"] = seq_num
-    meta["time_downsampling_fpga"] = rfi_downsampling
-
-    data[:, :, :] = 0.0
-
-    return runner.chordbuffer.ChordBuffer(data, meta)
-
-
-def count_rfi(frame_idx, config, vals):
-    """
-    Count the number of bad samples that would be in the RFI mask made with `vals`.
-    """
-
-    # Number of unique RFI samples per frame
-    nrfi = config["samples_per_data_set"] // config["rfi_downsampling_factor"]
-
-    # Number of integrations per frame
-    nint = config["samples_per_data_set"] // config["sub_integration_ntime"]
-
-    # initialize count array to 0
-    counts = np.zeros((nint, config["num_local_freq"]), dtype=int)
-
-    # the RFI-time index this frame starts at
-    trfi0 = frame_idx * nrfi
-
-    # loop over freq
-    for f in range(config["num_local_freq"]):
-        # grab the vals for this freq
-        val_f = vals[f % len(vals)]
-        # loop over all RFI times in this frame
-        for trfi in range(trfi0, trfi0 + nrfi):
-            # the global t (counts samples)
-            t = trfi * config["rfi_downsampling_factor"]
-            # The integration t (counts correlator outputs)
-            tint = t // config["sub_integration_ntime"]
-
-            # val_f[idx] is the RFImask value at this time
-            idx = trfi % len(val_f)
-
-            # integration index
-            int_idx = tint % nint
-
-            # accumulate the counts
-            counts[int_idx, f] += (1 - val_f[idx]) * config["rfi_downsampling_factor"]
-
-    return counts
 
 
 @pytest.fixture(
     scope="module",
     params=[
-        (very_small_config, [[1, 0, 1, 1, 0]]),
-        (small_config, [[0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]]),
+        (very_small_config, [[4.0]], [[0.1]]),
+        (small_config, [[4.0]], [[0.1]]),
         (
             prod_config,
             [
-                [1, 0, 1, 0, 1, 0, 1, 0],
-                [1, 1, 0],
-                [1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1],
+                [1.2, 0.9] * 32 + [1.2],
+                [0.8, 0.9, 1.0, 1.1, 1.2, 1.3],
+                [1.0, 1.01, 0.9, 0.95, 0.99],
             ],
+            [[0.1], [0.05, 0.2], [0.1, 0.2, 0.05]],
         ),
     ],
 )
 def setup(request):
-    config, vals = request.param
-    return config, vals
+    """
+    Generate the base config and setup parameters to run a test. This (and the other fixtures) should provide *everything* needed to test a stage.
+
+    Parameters
+    ----------
+    request : pytest magic
+        Provides the parameterized values.
+
+    Returns
+    -------
+    tuple
+        The base config, as well as parameters to generate input SK data
+    """
+    config, sk_vals, sigma_vals = request.param
+    return config, sk_vals, sigma_vals
 
 
 @pytest.fixture(scope="module")
-def rfiframemask_data(tmpdir_factory, setup):
+def sktilde_data(setup):
+    """
+    Generate a list of input SKtilde frames in ChordBuffers
 
-    config, vals = setup
+    Parameters
+    ----------
+    setup : fixture
+        Includes the base config as well as SK generation parameters
+
+    Returns
+    -------
+    List of ChordBuffers each containing an SKtilde frame.
+    """
+
+    config, sk_vals, sigma_vals = setup
+
+    rfi_num_times = config["samples_per_data_set"] // config["rfi_downsampling_factor"]
 
     num_frames = 2 * config["buffer_depth"]
 
-    sktildes = [
-        generate_sktilde(
-            vals,
-            seq_num,
-            config["samples_per_data_set"],
-            config["num_local_freq"],
-            config["rfi_downsampling_factor"],
+    bufs = []
+
+    for idx in range(num_frames):
+
+        seq_num = idx * config["samples_per_data_set"]
+
+        data = np.empty((rfi_num_times, config["num_local_freq"], 3), dtype=np.float32)
+
+        meta = runner.chordbuffer.get_metadata(
+            "SKtilde", "float32", ("Trfi", "F", "SK")
         )
-        for seq_num in config["samples_per_data_set"] * np.arange(num_frames)
-    ]
+        meta["fpga_seq_num"] = seq_num
+        meta["time_downsampling_fpga"] = config["rfi_downsampling_factor"]
+
+        trfi0 = idx * rfi_num_times
+
+        # Loop over the given sk and sigma lists. Each should be a list-of-lists, with frequency
+        # as the outer axis and time as the inner. Values are directly assigned to the SKtilde buffer.
+        for f in range(config["num_local_freq"]):
+            sk_f = sk_vals[f % len(sk_vals)]
+            sigma_f = sigma_vals[f % len(sigma_vals)]
+
+            for trfi in range(trfi0, trfi0 + rfi_num_times):
+                data[trfi - trfi0, f, 0] = sk_f[trfi % len(sk_f)]
+                data[trfi - trfi0, f, 2] = sigma_f[trfi % len(sigma_f)]
+        data[:, :, 1] = 0.0
+
+        bufs.append(runner.chordbuffer.ChordBuffer(data, meta))
+
+    return bufs
+
+
+@pytest.fixture(scope="module")
+def rfiframemask_data(tmpdir_factory, setup, sktilde_data):
+    """
+    Run the RfiFrameMask stage on the given input and yield the output buffers.
+
+    Parameters
+    ----------
+    tmpdir_factory : pytest magic
+        Generates temporary directories
+    setup : fixture
+        Includes the base config as well as SK generation parameters
+    sktilde_data : fixture
+        A List of ChordBuffers for input
+
+    Yields
+    ------
+    List of ChordBuffers each containing an RFIFrameMask generated by RfiFrameMask.
+    """
+
+    config, sk_vals, sigma_vals = setup
+
+    num_frames = len(sktilde_data)
 
     tmpdir = tmpdir_factory.mktemp("rfiframemask")
 
-    input_buffer = runner.ReadChordBuffer(str(tmpdir), sktildes)
+    # Make input buffer and write the files for it to read.
+    input_buffer = runner.ReadChordBuffer(str(tmpdir), sktilde_data)
     input_buffer.write()
 
+    # Make the output buffer we'll read from
     dump_buffer = runner.DumpChordBuffer(
         str(tmpdir),
         shape=(
@@ -188,11 +188,12 @@ def rfiframemask_data(tmpdir_factory, setup):
         max_frames=num_frames,
     )
 
+    # The test stage!
     test = runner.KotekanStageTester(
         "RfiFrameMask",
         {
-            "enabled_updatable_config": "/updatable_config/rfi_enabled",
-            "thresholds_updatable_config": "/updatable_config/rfi_thresholds",
+            "enabled_updatable_config": "/rfi_enabled",
+            "thresholds_updatable_config": "/rfi_thresholds",
         },
         input_buffer,
         dump_buffer,
@@ -204,25 +205,95 @@ def rfiframemask_data(tmpdir_factory, setup):
     yield dump_buffer.load()
 
 
-"""
-def test_meta(rfimasksum_data, setup):
+def make_frame_mask(sktilde, config):
+    """
+    Apply the thresholds in `config` to generate a frame mask from the SK data in sktilde, for testing against the RfiFrameMask Kotekan stage.
 
-    config, vals = setup
+    Parameters
+    ----------
+    sktilde : ChordBuffer
+        The input SK data
+    config : dict
+        The base config for the run
 
-    for idx, frame in enumerate(rfimasksum_data):
+    Returns
+    -------
+    ndarray (num_integrations, num_frequency), uint8
+        The frame mask. 1 for a good integration, 0 for a bad integration.
+    """
 
-        assert frame.metadata["name"] == "RFImask_count"
+    # Number of integrations per frame, and trfi per integration
+    nint = config["samples_per_data_set"] // config["sub_integration_ntime"]
+    nrfi = config["sub_integration_ntime"] // config["rfi_downsampling_factor"]
+
+    # Unpack the thresholds and fractions from the config
+    thresh = np.array(
+        [el["threshold"] for el in config["rfi_thresholds"]["thresholds"]]
+    )
+    fract = np.array([el["fraction"] for el in config["rfi_thresholds"]["thresholds"]])
+
+    # Default to 1 (good)
+    frame_mask = np.ones((nint, sktilde.data.shape[1]), dtype=np.uint8)
+
+    # Leave now if we're not enabled or there are no thresholds
+    if len(thresh) == 0 or not config["rfi_enabled"]["enabled"]:
+        return frame_mask
+
+    # Loop over integrations
+    for tint in range(nint):
+
+        # Grab relevant sk and sigma data
+        sk = sktilde.data[tint * nrfi : (tint + 1) * nrfi, :, 0]
+        sigma = sktilde.data[tint * nrfi : (tint + 1) * nrfi, :, 2]
+
+        # Convert to a z-score (e.g. sk in sigmas).  Mean sk is 1.0!
+        z = (sk - 1) / sigma
+
+        # Count how many samples in each frequency are above each threshold
+        exceeds = np.count_nonzero(z[:, :, None] > thresh[None, None, :], axis=0)
+
+        # Collapse over thresholds, if any are violated the whole integration is bad
+        bad = (exceeds / nrfi > fract[None, :]).any(axis=1)
+
+        # set the bad integrations to 0
+        frame_mask[tint, bad] = 0
+
+    return frame_mask
+
+
+def test_meta(rfiframemask_data, setup):
+
+    config, sk_vals, sigma_vals = setup
+
+    for idx, frame in enumerate(rfiframemask_data):
+
+        assert frame.metadata["name"] == "RFIFrameMask"
         assert (frame.metadata["dim_names"] == ["Tc", "F"]).all()
         assert (
             frame.metadata["time_downsampling_fpga"] == config["sub_integration_ntime"]
         )
         assert frame.metadata["fpga_seq_num"] == idx * config["samples_per_data_set"]
-"""
+
+        assert (
+            frame.metadata["rfi_frame_excision_enabled"]
+            == config["rfi_enabled"]["enabled"]
+        )
+
+        assert (
+            frame.metadata["rfi_frame_excision_thresholds"]
+            == np.array(
+                [
+                    [el["threshold"], el["fraction"]]
+                    for el in config["rfi_thresholds"]["thresholds"]
+                ],
+                dtype=np.float32,
+            )
+        ).all()
 
 
-def test_structure(rfiframemask_data, setup):
+def test_structure(rfiframemask_data, setup, sktilde_data):
 
-    config, vals = setup
+    config, sk_vals, sigma_vals = setup
 
     for idx, frame in enumerate(rfiframemask_data):
 
@@ -233,14 +304,28 @@ def test_structure(rfiframemask_data, setup):
         assert frame.data.dtype == np.uint8
 
 
-"""
-def test_count(rfimasksum_data, setup):
+def test_frame_mask(rfiframemask_data, setup, sktilde_data):
 
-    config, vals = setup
+    config, sk_vals, sigma_vals = setup
 
-    for idx, frame in enumerate(rfimasksum_data):
+    # Should have same number of frames!
+    assert len(rfiframemask_data) == len(sktilde_data)
 
-        count = count_rfi(idx, config, vals)
+    for idx, frame in enumerate(rfiframemask_data):
 
-        assert (frame.data == count).all()
-"""
+        # Check output is the right shape and type
+        assert frame.data.shape == (
+            config["samples_per_data_set"] // config["sub_integration_ntime"],
+            config["num_local_freq"],
+        )
+        assert frame.data.dtype == np.uint8
+
+        # Generate the correct frame mask
+        frame_mask = make_frame_mask(sktilde_data[idx], config)
+
+        # Confirm the Kotekan and Python masks have same shape and type
+        assert frame.data.shape == frame_mask.shape
+        assert frame.data.dtype == frame_mask.dtype
+
+        # Check the masks are identical
+        assert (frame.data == frame_mask).all()

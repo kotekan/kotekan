@@ -171,6 +171,14 @@ public:
                     meta->set_freq_upchan_index(
                         dataset.getAttribute("freq_upchan_index").read<std::vector<int>>());
 
+                if (dataset.hasAttribute("rfi_frame_excision_enabled"))
+                    meta->set_rfi_frame_excision_enabled(
+                        dataset.getAttribute("rfi_frame_excision_enabled").read<bool>());
+                if (dataset.hasAttribute("rfi_frame_excision_thresholds"))
+                    meta->set_rfi_frame_excision_thresholds(
+                        dataset.getAttribute("rfi_frame_excision_thresholds")
+                            .read<std::vector<std::array<float, 2>>>());
+
                 if (dataset.hasAttribute("ndishes")) {
                     meta->ndishes = dataset.getAttribute("ndishes").read<int>();
 
