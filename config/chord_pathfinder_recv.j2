@@ -1,5 +1,5 @@
 {#-
-  chord_pathfinder.j2
+  chord_pathfinder_recv.j2
   Basic N2 receiver config.
 -#}
 
@@ -9,7 +9,7 @@
 
 # num_local_freq: number of contiguous frequency IDs to simulate on this GPU;
 #    must be divisible by 4 because pl_mask shapes use num_local_freq/4.
-{% set num_local_freq = 384 %}
+{% set num_local_freq = 6550 %}
 
 
 # CHORD telescope sampling setup (matches CHORDTelescope defaults)
