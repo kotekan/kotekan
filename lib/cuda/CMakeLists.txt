@@ -35,10 +35,13 @@ add_library(
     cudaPL1bitCorrelator.cpp
     cudaQuantize4.cpp
     cudaQuantize8.cpp
+    cudaQuantize8Chime.cpp
     cudaQuantizeKernel4.cu
     cudaQuantizeKernel8.cu
+    cudaQuantizeKernel8Chime.cu
     testQuantizeKernel4.cpp
     testQuantizeKernel8.cpp
+    testQuantizeKernel8Chime.cpp
     cudaRechunk.cpp
     cudaRFIS012.cpp
     cudaRFIS012bar.cpp

@@ -226,13 +226,12 @@ gpu_quantize8_chunks(const __half* __restrict__ const input0, __half* __restrict
         __half inv_scaleh = __float2half_rn(inv_scale);
 
         // Avoid non-finite numbers
-        using std::isfinite;
         if (!isfinite(__half2float(offseth)) || !isfinite(__half2float(scaleh))) {
             // Offset or scale are non-finite
             offseth = __float2half_rn(0.0f);
             scaleh = __float2half_rn(0.0f);
-            inv_offseth = __float2half_rn(inv_offset);
-            inv_scaleh = __float2half_rn(inv_scale);
+            inv_offseth = __float2half_rn(0.0f);
+            inv_scaleh = __float2half_rn(0.0f);
         } else if (!isfinite(__half2float(inv_offseth)) || !isfinite(__half2float(inv_scaleh))) {
             // Offset and scale are fine, but the inverse scale is non-finite. This means the scale
             // is too close to zero.
