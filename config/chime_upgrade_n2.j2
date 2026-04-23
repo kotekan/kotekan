@@ -474,8 +474,10 @@ rfi_second_downsampling_factor: 64
 rfi_sk_rfimask_sigmas: 5.0
 rfi_single_feed_min_good_frac: 0.8
 rfi_feed_averaged_min_good_frac: 0.8
+# range [2,50] as suggested in SK estimation note in software design document
+# (overleaf 671416c2d6343fda483e336b) and references to the SK note therein.
 rfi_mu_min: 2.0
-rfi_mu_max: 20.0
+rfi_mu_max: 50.0
 
 # Buffers
 
