@@ -12,6 +12,7 @@
 #include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
+#include "chordMetadata.hpp"     // for chordMetadata
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
 
 #include <cstdint> // for int64_t, int32_t
@@ -142,10 +143,14 @@ public:
      */
     bool is_seq_start_of_bin(uint64_t seq, int64_t bin_idx);
 
-    void accum_counts(const int32_t* counts, int64_t t_int, int64_t t_int_abs,
+    void accum_counts(const int32_t* counts_mat_t0, const int32_t* counts_mat_t1,
                       std::vector<int32_t>& count_t0, std::vector<int32_t>& count_t1);
-    void accum_rficounts(const int32_t* rficounts, int64_t t_int);
-    void accum_corr();
+    void accum_rficounts(const int32_t* rficounts);
+    void accum_corr_and_weight(const int32_t* corr_t0, const int32_t* corr_t1, std::shared_ptr<chordMetadata> corr_meta,
+                               int64_t seq, EOP& target_eop,
+                               std::vector<int32_t>& count_t0, std::vector<int32_t>& count_t1,
+                                                              std::vector<std::complex<float>>& fringe_phase_t0,
+                               std::vector<std::complex<float>>& fringe_phase_t1);
 
     /**
      * @brief Copy accumulated visibility matrix and weights to the output buffer,
