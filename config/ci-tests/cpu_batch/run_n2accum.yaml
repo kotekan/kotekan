@@ -110,6 +110,12 @@ fake_rficounts_buffer:
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
     metadata_pool: main_pool
 
+fake_rfi_frame_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    metadata_pool: main_pool
+
 n2_buffer:
     kotekan_buffer: N2
     n2_layout: "FullUpperTri"
@@ -126,6 +132,12 @@ gen_fake_rfi_RFImask:
     dim_name: ["T8hi128", "F", "T8lo128"]
     num_frames: frames_to_generate
     meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
+
+gen_RFI_frame_mask:
+    kotekan_stage: testRFIFrameMaskGen
+    out_buf: fake_rfi_frame_mask_buffer
+    type: random
+    num_frames: frames_to_generate
 
 gen_fake_corr_counts:
     log_level: DEBUG
@@ -144,9 +156,9 @@ gen_fake_corr_counts:
     freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 RFImask_sum:
-  kotekan_stage: RfiMaskSum
-  in_buf: fake_rfimask_buffer
-  out_buf: fake_rficounts_buffer
+    kotekan_stage: RfiMaskSum
+    in_buf: fake_rfimask_buffer
+    out_buf: fake_rficounts_buffer
 
 N2_accumulate:
     kotekan_stage: N2Accumulate
@@ -183,6 +195,11 @@ writers:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_rficounts
         in_buf: fake_rficounts_buffer
+
+    write_fake_rfi_frame_mask:
+        kotekan_stage: hdf5FileWrite
+        file_name: n2k_rfiframemask
+        in_buf: fake_rfi_frame_mask_buffer
 
     write_N2:
         kotekan_stage: hdf5FileWrite

@@ -35,6 +35,7 @@ add_library(
     testN2kGen.cpp
     testRFIS012Gen.cpp
     testRFImaskGen.cpp
+    testRFIFrameMaskGen.cpp
     TestDropFrames.cpp
     testCHORDTelescope.cpp
     testXpose.cpp
