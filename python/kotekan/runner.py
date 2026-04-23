@@ -395,16 +395,18 @@ class FakeN2KBuffers(InputBuffer):
 
     _buf_ind = 0
 
-    def __init__(self, samples_per_data_set, num_local_freq, n2k_kwargs, rfi_kwargs):
+    def __init__(self, samples_per_data_set, num_local_freq, n2k_kwargs, rfi_kwargs, rfiframemask_kwargs):
 
         self.name = "faken2k_corr_buf%i" % self._buf_ind
         self.counts_name = "faken2k_counts_buf%i" % self._buf_ind
         self.rfi_name = "faken2k_rfi_buf%i" % self._buf_ind
         self.rficounts_name = "faken2k_rficounts_buf%i" % self._buf_ind
+        self.rfiframemask_name = "faken2k_rfiframemask_buf%i" % self._buf_ind
 
         n2k_stage_name = "faken2k_gen_%i" % self._buf_ind
         rfi_stage_name = "faken2k_gen_rfi_%i" % self._buf_ind
         rficount_stage_name = "faken2k_rficount_%i" % self._buf_ind
+        rfiframemask_stage_name = "faken2k_gen_rfiframemask_%i" % self._buf_ind
 
         self.__class__._buf_ind += 1
 
@@ -448,6 +450,12 @@ class FakeN2KBuffers(InputBuffer):
                 "sizeof_int": 4,
                 "frame_size": "(samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int",
             },
+            self.rfiframemask_name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "chord_pool",
+                "num_frames": "buffer_depth",
+                "frame_size": "(samples_per_data_set / sub_integration_ntime) * num_local_freq",
+            },
         }
 
         n2k_gen_config = {
@@ -476,14 +484,22 @@ class FakeN2KBuffers(InputBuffer):
             "in_buf": self.rfi_name,
             "out_buf": self.rficounts_name,
         }
+        rfiframemask_gen_config = {
+            "kotekan_stage": "testRFIFrameMaskGen",
+            "out_buf": self.rfiframemask_name,
+            "type": "const",
+            "value": [1],
+        }
 
         n2k_gen_config.update(n2k_kwargs)
         rfi_gen_config.update(rfi_kwargs)
+        rfiframemask_gen_config.update(rfiframemask_kwargs)
 
         self.stage_block = {
             n2k_stage_name: n2k_gen_config,
             rfi_stage_name: rfi_gen_config,
             rficount_stage_name: rficount_config,
+            rfiframemask_stage_name: rfiframemask_gen_config,
         }
         self.global_block = {
             "chord_pool": {

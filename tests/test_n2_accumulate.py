@@ -192,6 +192,8 @@ def accumulate_data(tmpdir_factory):
             "num_frames": global_params["total_frames"],
         },
         {"type": "const", "values": rfi_vals, "first_frame_index": start_frame_idx},
+        {"num_frames": global_params["total_frames"],
+         "freq_ids": freq_ids}
     )
 
     # Number of accumulated frames expected at the output (per freq).
@@ -210,6 +212,7 @@ def accumulate_data(tmpdir_factory):
     accumulate_run_params = accumulate_params.copy()
     accumulate_run_params["in_counts_buf"] = input_buffers.counts_name
     accumulate_run_params["in_rficounts_buf"] = input_buffers.rficounts_name
+    accumulate_run_params["in_rfiframemask_buf"] = input_buffers.rfiframemask_name
 
     test = runner.KotekanStageTester(
         "N2Accumulate",
