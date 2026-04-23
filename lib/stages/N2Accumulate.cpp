@@ -86,6 +86,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     in_rficounts_buf = get_buffer("in_rficounts_buf");
     in_rficounts_buf->register_consumer(unique_name);
 
+    in_rfiframemask_buf = get_buffer("in_rfiframemask_buf");
+    in_rfiframemask_buf->register_consumer(unique_name);
+
     // Sanity checks on initialization
     {
         // number of frequencies in incoming frames from n2k
@@ -185,25 +188,26 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _accum_fpga_start_tick = -1;
     _accum_bin_idx = -1;
 
-    // Ensure incoming buffer frame sizes are correct
-    size_t in_corr_frame_size = 2 * sizeof(int32_t) * _n2k_correlation_num_products
-                                * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
-    size_t in_counts_frame_size = sizeof(int32_t) * _n2k_counts_num_products
-                                  * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
-    size_t in_rficounts_frame_size =
-        sizeof(int32_t) * _num_freq_per_n2k_frame * _n_integrations_per_n2k_frame;
-    ;
+    // Ensure incoming buffer shapes and type are correct
+    in_buf->allocate_ndarray_frame_desc(kotekan::int32, "n2k_correlation",
+                                        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame,
+                                         _n2k_correlation_num_blocks, _n2k_correlation_blocksize,
+                                         _n2k_correlation_blocksize, 2},
+                                        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
 
-    if (in_buf->frame_size != in_corr_frame_size)
-        FATAL_ERROR("N2Accumulate in_buf ({:s}) has frame size {:d}. Expected {:d}.",
-                    in_buf->buffer_name, in_buf->frame_size, in_corr_frame_size);
-    if (in_counts_buf->frame_size != in_counts_frame_size)
-        FATAL_ERROR("N2Accumulate in_counts_buf ({:s}) has frame size {:d}. Expected {:d}.",
-                    in_counts_buf->buffer_name, in_counts_buf->frame_size, in_counts_frame_size);
-    if (in_rficounts_buf->frame_size != in_rficounts_frame_size)
-        FATAL_ERROR("N2Accumulate in_rficounts_buf ({:s}) has frame size {:d}. Expected {:d}.",
-                    in_rficounts_buf->buffer_name, in_rficounts_buf->frame_size,
-                    in_rficounts_frame_size);
+    in_counts_buf->allocate_ndarray_frame_desc(kotekan::int32, "n2k_counts",
+                                               {_n_integrations_per_n2k_frame,
+                                                _num_freq_per_n2k_frame, _n2k_counts_num_blocks,
+                                                _n2k_counts_blocksize, _n2k_counts_blocksize},
+                                               {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+
+    in_rficounts_buf->allocate_ndarray_frame_desc(
+        kotekan::int32, "RFI_counts", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
+        {"Tc", "F"});
+
+    in_rfiframemask_buf->allocate_ndarray_frame_desc(
+        kotekan::uint8, "RFIFrameMask", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
+        {"Tc", "F"});
 
 
     // Validate that the output buffer's frame descriptor (set by bufferFactory) matches

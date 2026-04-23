@@ -1,12 +1,12 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType
+#include "N2Util.hpp"          // for frameID
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
 #include "metadata.hpp"        // for metadataObject
-#include "N2Util.hpp"          // for frameID
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -44,18 +44,20 @@ using N2::frameID;
  * @conf  first_frame_index     Int. Default 0. Starting FPGA frame number, for
  *                              frames of size samples_per_data_set.
  * @conf  samples_per_data_set  Int. FPGA samples encompassed by one frame.
- * @conf  sub_integration_ntime Int. FPGA samples per integration. Multiple integrations may be in a frame.
+ * @conf  sub_integration_ntime Int. FPGA samples per integration. Multiple integrations may be in a
+ * frame.
  * @conf  num_frames            Int. How many frames to produce. Default inf (-1)
  * @conf  num_local_freq        Int. Number of frequencies in each GPU frame.
  * @conf  freq_ids              Vector of Ints. freq_ids to insert into metadata.
- * @conf  repeat_count          Int. If positive, the 'num_frames' frames will be repeated this many times, producing num_frames * repeat_count total frames.
+ * @conf  repeat_count          Int. If positive, the 'num_frames' frames will be repeated this many
+ * times, producing num_frames * repeat_count total frames.
  *
  * @author Geoffrey Ryan
  */
 class testRFIFrameMaskGen : public Stage {
 public:
     testRFIFrameMaskGen(Config& config, const std::string& unique_name,
-                   bufferContainer& buffer_container);
+                        bufferContainer& buffer_container);
     ~testRFIFrameMaskGen(){};
     void main_thread() override;
 
@@ -83,8 +85,9 @@ private:
 REGISTER_KOTEKAN_STAGE(testRFIFrameMaskGen);
 
 testRFIFrameMaskGen::testRFIFrameMaskGen(Config& config, const std::string& unique_name,
-                               bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&testRFIFrameMaskGen::main_thread, this)),
+                                         bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container,
+          std::bind(&testRFIFrameMaskGen::main_thread, this)),
     name(config.get_default<std::string>(unique_name, "name", "RFIFrameMask")),
     type(config.get_default<std::string>(unique_name, "type", "const")),
     value(config.get_default<uint8_t>(unique_name, "value", 0)),
@@ -116,7 +119,9 @@ testRFIFrameMaskGen::testRFIFrameMaskGen(Config& config, const std::string& uniq
         FATAL_ERROR("sub_integration_ntime ({:d}) is not positive.", sub_integration_ntime);
     }
     if (samples_per_data_set % sub_integration_ntime != 0) {
-        FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d}).", samples_per_data_set, sub_integration_ntime);
+        FATAL_ERROR(
+            "samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d}).",
+            samples_per_data_set, sub_integration_ntime);
     }
     if (freq_ids.empty()) {
         FATAL_ERROR("freq_ids must have at least one element.");
@@ -126,12 +131,12 @@ testRFIFrameMaskGen::testRFIFrameMaskGen(Config& config, const std::string& uniq
     }
 
     // allocate frame descriptors
-    out_buf->allocate_ndarray_frame_desc(kotekan::uint8, name,
-                                         {num_integrations, num_local_freq},
+    out_buf->allocate_ndarray_frame_desc(kotekan::uint8, name, {num_integrations, num_local_freq},
                                          {"Tc", "F"});
 }
 
-std::shared_ptr<chordMetadata> testRFIFrameMaskGen::get_new_metadata(Buffer* buf, frameID frame_id) {
+std::shared_ptr<chordMetadata> testRFIFrameMaskGen::get_new_metadata(Buffer* buf,
+                                                                     frameID frame_id) {
     buf->allocate_new_metadata_object(frame_id);
 
     const std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
@@ -150,7 +155,8 @@ std::shared_ptr<chordMetadata> testRFIFrameMaskGen::get_new_metadata(Buffer* buf
     return meta;
 }
 
-void testRFIFrameMaskGen::set_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num) {
+void testRFIFrameMaskGen::set_metadata(const std::shared_ptr<chordMetadata>& meta,
+                                       uint64_t seq_num) {
     meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
 
     meta->set_fpga_seq_num(seq_num);

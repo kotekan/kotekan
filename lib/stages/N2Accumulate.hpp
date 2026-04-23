@@ -63,6 +63,10 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * in each n2k correlation.
  *         @buffer_format   NDArray int32 [num_integrations, num_freq]
  *         @buffer_metadata chordMetadata
+ * @buffer  in_rfiframemask_buf  RFIFrameMask buffer, a mask marking specific correlator samples to
+ * excise.
+ *         @buffer_format   NDArray uint8 [num_integrations, num_freq]
+ *         @buffer_metadata chordMetadata
  * @buffer  out_buf         The accumulated and tagged data.
  *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
  *      @buffer_metadata N2Metadata
@@ -152,10 +156,11 @@ public:
 
 private:
     // Buffers to read/write
-    Buffer* in_buf;           /// Buffer containing input correlations
-    Buffer* in_counts_buf;    /// Buffer containing input counts
-    Buffer* in_rficounts_buf; /// Buffer containing input rfimask
-    Buffer* out_buf;          /// Output for the main vis dataset only
+    Buffer* in_buf;              /// Buffer containing input correlations
+    Buffer* in_counts_buf;       /// Buffer containing input counts
+    Buffer* in_rficounts_buf;    /// Buffer containing input rficounts
+    Buffer* in_rfiframemask_buf; /// Buffer containing input rfiframemask
+    Buffer* out_buf;             /// Output for the main vis dataset only
 
     // Parameters saved from the config files
     const int64_t _num_freq_per_n2k_frame;
