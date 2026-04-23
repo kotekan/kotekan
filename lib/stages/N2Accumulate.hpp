@@ -144,11 +144,14 @@ public:
     bool is_seq_start_of_bin(uint64_t seq, int64_t bin_idx);
 
     void accum_counts(const int32_t* counts_mat_t0, const int32_t* counts_mat_t1,
+                      const uint8_t* rfiframemask_t0, const uint8_t* rfiframemask_t1,
                       std::vector<int32_t>& count_t0, std::vector<int32_t>& count_t1);
-    void accum_rficounts(const int32_t* rficounts);
+    void accum_rficounts(const int32_t* rficounts_t0, const int32_t* rficounts_t1,
+                         const uint8_t* rfiframemask_t0, const uint8_t* rfiframemask_t1);
     void accum_corr_and_weight(const int32_t* corr_t0, const int32_t* corr_t1,
-                               std::shared_ptr<chordMetadata> corr_meta, int64_t seq,
-                               EOP& target_eop, std::vector<int32_t>& count_t0,
+                               std::shared_ptr<chordMetadata> corr_meta,
+                               const uint8_t* rfiframemask_t0, const uint8_t* rfiframemask_t1,
+                               int64_t seq, EOP& target_eop, std::vector<int32_t>& count_t0,
                                std::vector<int32_t>& count_t1,
                                std::vector<std::complex<float>>& fringe_phase_t0,
                                std::vector<std::complex<float>>& fringe_phase_t1);

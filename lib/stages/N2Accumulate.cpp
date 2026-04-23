@@ -43,7 +43,6 @@ enum class Mode {
     WAITING_FOR_ALIGNMENT,
     READY,
     ACCUMULATING,
-    SKIPPING,
 };
 
 
@@ -255,12 +254,15 @@ void N2Accumulate::main_thread() {
         Metrics::instance().add_gauge("kotekan_samples_in_accumulated_out_frame", unique_name);
 
     frameID in_frame_id(in_buf);
-    int previous_in_frame_id = -1;
-    int previous_in_counts_frame_id = -1;
     frameID in_counts_frame_id(in_counts_buf);
     frameID in_rficounts_frame_id(in_rficounts_buf);
     frameID in_rfiframemask_frame_id(in_rfiframemask_buf);
     frameID out_frame_id(out_buf);
+
+    int previous_in_frame_id = -1;
+    int previous_in_counts_frame_id = -1;
+    int previous_in_rficounts_frame_id = -1;
+    int previous_in_rfiframemask_frame_id = -1;
 
     INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]", in_buf->buffer_name,
          in_frame_id, out_buf->buffer_name, out_frame_id);
@@ -273,6 +275,8 @@ void N2Accumulate::main_thread() {
     std::vector<int32_t> vis_even_vec(corr_stride_t, 0);
     const int32_t* corr_even = nullptr;
     const int32_t* counts_mat_even = nullptr;
+    const int32_t* rficounts_even = nullptr;
+    const uint8_t* rfiframemask_even = nullptr;
 
     std::vector<int32_t> n_valid_fpga_samples_t0(_num_freq_per_n2k_frame, 0);
     std::vector<int32_t> n_valid_fpga_samples_t1(_num_freq_per_n2k_frame, 0);
@@ -461,29 +465,35 @@ void N2Accumulate::main_thread() {
 
             uint64_t corr_offset_t = t * corr_stride_t;
             uint64_t counts_offset_t = t * counts_stride_t;
-            uint64_t rficounts_offset_t = t * _num_freq_per_n2k_frame;
+            uint64_t rfi_offset_t = t * _num_freq_per_n2k_frame;
 
             // Double checking the accumulation arrays are the right shape
             assert(_vis.size() == corr_stride_t);
             assert(_weights.size() == corr_stride_t / 2);
 
-            // First: accum RFI. Every frame!
-            accum_rficounts(rficounts + rficounts_offset_t);
 
-            // Second: If we're an even frame, save pointers to the correlation and counts matrices
+            // First: If we're an even frame, save pointers to the correlation and counts matrices
             // and get outta here.
             if (t_abs % 2 == 0) {
                 corr_even = corr + corr_offset_t;
                 counts_mat_even = counts_mat + counts_offset_t;
+                rficounts_even = rficounts + rfi_offset_t;
+                rfiframemask_even = rfiframemask + rfi_offset_t;
                 continue;
             }
 
+            // Second: accum RFI.
+            accum_rficounts(rficounts_even, rficounts + rfi_offset_t, rfiframemask_even,
+                            rfiframemask + rfi_offset_t);
+
             // Third: normalization.  Accumulate the number of valid ticks in the last two samples
-            accum_counts(counts_mat + counts_offset_t, counts_mat_even, n_valid_fpga_samples_t0,
+            accum_counts(counts_mat_even, counts_mat + counts_offset_t, rfiframemask_even,
+                         rfiframemask + rfi_offset_t, n_valid_fpga_samples_t0,
                          n_valid_fpga_samples_t1);
 
             // Fourth: Now for the hard part, visibilities and weights
-            accum_corr_and_weight(corr + corr_offset_t, corr_even, frame_metadata, seq, target_eop,
+            accum_corr_and_weight(corr_even, corr + corr_offset_t, frame_metadata,
+                                  rfiframemask_even, rfiframemask + rfi_offset_t, seq, target_eop,
                                   n_valid_fpga_samples_t0, n_valid_fpga_samples_t1, fringe_phase_t0,
                                   fringe_phase_t1);
 
@@ -520,8 +530,12 @@ void N2Accumulate::main_thread() {
         if (previous_in_counts_frame_id != -1)
             in_counts_buf->mark_frame_empty(unique_name, previous_in_counts_frame_id);
         previous_in_counts_frame_id = in_counts_frame_id++;
-        in_rficounts_buf->mark_frame_empty(unique_name, in_rficounts_frame_id++);
-        in_rfiframemask_buf->mark_frame_empty(unique_name, in_rfiframemask_frame_id++);
+        if (previous_in_rficounts_frame_id != -1)
+            in_rficounts_buf->mark_frame_empty(unique_name, previous_in_rficounts_frame_id);
+        previous_in_rficounts_frame_id = in_rficounts_frame_id++;
+        if (previous_in_rfiframemask_frame_id != -1)
+            in_rfiframemask_buf->mark_frame_empty(unique_name, previous_in_rfiframemask_frame_id);
+        previous_in_rfiframemask_frame_id = in_rfiframemask_frame_id++;
     }
 }
 
@@ -631,6 +645,7 @@ bool N2Accumulate::is_seq_start_of_bin(uint64_t seq, int64_t bin_idx) {
 }
 
 void N2Accumulate::accum_counts(const int32_t* counts_mat_t0, const int32_t* counts_mat_t1,
+                                const uint8_t* rfiframemask_t0, const uint8_t* rfiframemask_t1,
                                 std::vector<int32_t>& count_t0, std::vector<int32_t>& count_t1) {
 
     int64_t counts_stride_f = _n2k_counts_num_products;
@@ -638,6 +653,11 @@ void N2Accumulate::accum_counts(const int32_t* counts_mat_t0, const int32_t* cou
     assert(_packet_loss_is_scalar);
 
     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+        if (rfiframemask_t0[f] == 0 || rfiframemask_t1[f] == 0) {
+            count_t0[f] = 0;
+            count_t1[f] = 0;
+            continue;
+        }
 
         // Assume the packet loss is scalar, read the counts for the frame
         // from element 0.
@@ -653,14 +673,20 @@ void N2Accumulate::accum_counts(const int32_t* counts_mat_t0, const int32_t* cou
     } // f
 }
 
-void N2Accumulate::accum_rficounts(const int32_t* rficounts) {
+void N2Accumulate::accum_rficounts(const int32_t* rficounts_t0, const int32_t* rficounts_t1,
+                                   const uint8_t* rfiframemask_t0, const uint8_t* rfiframemask_t1) {
     for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
-        _n_rfi_samples_in_vis[f] += rficounts[f];
+        if (rfiframemask_t0[f] == 0 || rfiframemask_t1[f] == 0)
+            _n_rfi_samples_in_vis[f] += 2 * _n_fpga_samples_per_n2k_correlation;
+        else
+            _n_rfi_samples_in_vis[f] += rficounts_t0[f] + rficounts_t1[f];
     } // f
 }
 
 void N2Accumulate::accum_corr_and_weight(const int32_t* corr_t0, const int32_t* corr_t1,
-                                         std::shared_ptr<chordMetadata> corr_meta, int64_t seq,
+                                         std::shared_ptr<chordMetadata> corr_meta,
+                                         const uint8_t* rfiframemask_t0,
+                                         const uint8_t* rfiframemask_t1, int64_t seq,
                                          EOP& target_eop, std::vector<int32_t>& count_t0,
                                          std::vector<int32_t>& count_t1,
                                          std::vector<std::complex<float>>& fringe_phase_t0,
@@ -691,6 +717,9 @@ void N2Accumulate::accum_corr_and_weight(const int32_t* corr_t0, const int32_t* 
 
 #pragma omp parallel for num_threads(_num_workers)
         for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+            if (rfiframemask_t0[f] == 0 || rfiframemask_t1[f] == 0) {
+                continue;
+            }
 
             // 1/N for even (idx ~ 0) sample
             float inv_n_t0 = (count_t0[f] <= 0) ? 0.0f : 1.0f / count_t0[f];

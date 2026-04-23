@@ -495,7 +495,7 @@ class FakeN2KBuffers(InputBuffer):
             "kotekan_stage": "testRFIFrameMaskGen",
             "out_buf": self.rfiframemask_name,
             "type": "const",
-            "value": [1],
+            "value": 1,
         }
 
         n2k_gen_config.update(n2k_kwargs)
