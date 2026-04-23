@@ -61,6 +61,7 @@ add_library(
     HFBRawReader.cpp
     restInspectFrame.cpp
     frbNetworkProcess.cpp
+    frbNetworkSend.cpp
     pulsarNetworkProcess.cpp
     bufferMerge.cpp
     bufferCopy.cpp
