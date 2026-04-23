@@ -896,13 +896,25 @@ vis_convert:
     kotekan_stage: n2FrameToVisFrame
     n2_buf: eig_10s_buffer
     vis_buf: vis_buffer
-    freq_ids: [ 269, 485, 493, 1005, 477, 957, 981, 989, 277, 301, 717, 901, 285, 293, 541, 749 ]
+    # missing 2nd NIC:
+    # cs1g2: 49, 649, 657, 865
+    # cs1g3: 25, 561, 641, 937
+    # cs1g4: down/blocklisted
+    # cs1g5: 537, 705, 737, 873
+    # cn0g2, cn0g3, cn0g4, cn0g5 (cn0g3 is blocklisted)
+    freq_ids: [ 666, 698, 730, 738, 58, 66, 818, 962, 234, 746, 802, 954 ]
 
 failed_vis_convert:
     kotekan_stage: n2FrameToVisFrame
     n2_buf: failed_10s_buffer
     vis_buf: failed_vis_buffer
-    freq_ids: [ 269, 485, 493, 1005, 477, 957, 981, 989, 277, 301, 717, 901, 285, 293, 541, 749 ]
+    # missing 2nd NIC:
+    # cs1g2: 49, 649, 657, 865
+    # cs1g3: 25, 561, 641, 937
+    # cs1g4: down/blocklisted
+    # cs1g5: 537, 705, 737, 873
+    # cn0g2, cn0g3, cn0g4, cn0g5 (cn0g3 is blocklisted)
+    freq_ids: [ 666, 698, 730, 738, 58, 66, 818, 962, 234, 746, 802, 954 ]
 
 switch_vis_out:
     kotekan_stage: bufferSwitch
