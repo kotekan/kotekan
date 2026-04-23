@@ -142,6 +142,11 @@ public:
      */
     bool is_seq_start_of_bin(uint64_t seq, int64_t bin_idx);
 
+    void accum_counts(const int32_t* counts, int64_t t_int, int64_t t_int_abs,
+                      std::vector<int32_t>& count_t0, std::vector<int32_t>& count_t1);
+    void accum_rficounts(const int32_t* rficounts, int64_t t_int);
+    void accum_corr();
+
     /**
      * @brief Copy accumulated visibility matrix and weights to the output buffer,
      * reset the visibility and weights matrices.

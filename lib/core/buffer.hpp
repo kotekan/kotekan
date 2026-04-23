@@ -548,7 +548,7 @@ public:
         else {
             auto nd_desc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
             if (!nd_desc) {
-                ERROR("Frame desc mismatch: existing desc is not an NDArray");
+                FATAL_ERROR("Frame desc mismatch: existing desc is not an NDArray");
                 return;
             }
             if (D != nd_desc->get_rank())

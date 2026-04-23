@@ -192,8 +192,11 @@ def accumulate_data(tmpdir_factory):
             "num_frames": global_params["total_frames"],
         },
         {"type": "const", "values": rfi_vals, "first_frame_index": start_frame_idx},
-        {"num_frames": global_params["total_frames"],
-         "freq_ids": freq_ids}
+        {
+            "num_frames": global_params["total_frames"],
+            "freq_ids": freq_ids,
+            "first_frame_index": start_frame_idx,
+        },
     )
 
     # Number of accumulated frames expected at the output (per freq).

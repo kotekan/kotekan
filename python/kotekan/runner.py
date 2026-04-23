@@ -395,7 +395,14 @@ class FakeN2KBuffers(InputBuffer):
 
     _buf_ind = 0
 
-    def __init__(self, samples_per_data_set, num_local_freq, n2k_kwargs, rfi_kwargs, rfiframemask_kwargs):
+    def __init__(
+        self,
+        samples_per_data_set,
+        num_local_freq,
+        n2k_kwargs,
+        rfi_kwargs,
+        rfiframemask_kwargs,
+    ):
 
         self.name = "faken2k_corr_buf%i" % self._buf_ind
         self.counts_name = "faken2k_counts_buf%i" % self._buf_ind
@@ -504,7 +511,7 @@ class FakeN2KBuffers(InputBuffer):
         self.global_block = {
             "chord_pool": {
                 "kotekan_metadata_pool": "chordMetadata",
-                "num_metadata_objects": "4 * buffer_depth",
+                "num_metadata_objects": "5 * buffer_depth",
             }
         }
 

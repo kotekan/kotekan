@@ -101,7 +101,7 @@ testRFIFrameMaskGen::testRFIFrameMaskGen(Config& config, const std::string& uniq
     first_frame_index(config.get_default<int64_t>(unique_name, "first_frame_index", 0)),
     repeat_count(config.get_default<int64_t>(unique_name, "repeat_count", 0)),
     num_integrations(samples_per_data_set / sub_integration_ntime),
-    num_entries(sub_integration_ntime * num_local_freq) {
+    num_entries(num_integrations * num_local_freq) {
 
     // Get buffers
     out_buf = get_buffer("out_buf");

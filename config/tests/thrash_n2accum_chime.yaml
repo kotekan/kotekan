@@ -11,7 +11,6 @@ sizeof_float: 4
 frame_arrival_period: 2.56e-6 * samples_per_data_set
 sizeof_int: 4
 
-# For faster CHORD testing, we're using...
 sub_integration_ntime: 16384
 samples_per_data_set: 16384
 rfi_downsampling_factor: 256
@@ -112,6 +111,12 @@ fake_rficounts_buffer:
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
     metadata_pool: main_pool
 
+fake_rfiframemask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    metadata_pool: main_pool
+
 n2_buffer:
     kotekan_buffer: N2
     n2_layout: "FullUpperTri"
@@ -145,6 +150,16 @@ gen_fake_corr_counts:
     repeat_count: repeat
     freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
+gen_fake_rfiframemask:
+    kotekan_stage: testRFIFrameMaskGen
+    cpu_affinity: [3]
+    out_buf: fake_rfiframemask_buffer
+    type: "const"
+    value: 1
+    num_frames: frames_to_generate
+    repeat_count: repeat
+    freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
 rfimask_to_counts:
     kotekan_stage: RfiMaskSum
     cpu_affinity: [3]
@@ -157,6 +172,7 @@ N2_accumulate:
     in_buf: fake_correlation_buffer
     in_counts_buf: fake_counts_buffer
     in_rficounts_buf: fake_rficounts_buffer
+    in_rfiframemask_buf: fake_rfiframemask_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
