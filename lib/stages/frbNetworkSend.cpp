@@ -533,6 +533,7 @@ void frbNetworkSend::ping_destinations() {
     assert(!ping_src_fd.empty());
     // quick destination lookup by next scheduled check time
     using RefDestIpSocketTime = std::reference_wrapper<DestIpSocketTime>;
+
     std::priority_queue<RefDestIpSocketTime> dest_by_time;
     for (auto& ipaddr_dst : dest_by_ip) {
         DestIpSocketTime& dest_ping_info = std::get<1>(ipaddr_dst);
